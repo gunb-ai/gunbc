@@ -1,0 +1,96 @@
+module v2.compiler.traversal_order_roster
+
+// THE DISPOSITION ROSTER of the traversal-order census (v2.compiler.traversal_order_census): the class of
+// each traversal the census detects on the M2V path (gunbc.plans.demand_engine_program milestone M2V).
+// The census DETECTS every site by walking the resolved trees (never by this file); this file only SAYS
+// what a detected site is. The two are joined by the site's identity, so a site with no row is
+// Unresolved (there is no Unresolved arm to author) and a row with no site is refused as stale. The
+// roster therefore only shrinks or is re-pointed: it can never make a site vanish.
+//
+// A CLASS IS CLAIMED FROM WHAT THE SITE COMPUTES, NEVER FROM ITS SHAPE:
+//   StructuralEnumeration       -- the site visits every child to build an index, census or hash, and the
+//                                  order it visits them in is representation only. `builds` names what is
+//                                  built. A `builds` that names nothing is unwritable (NonEmptyStr).
+//   ExplicitRecurrence          -- a real carrier: each step's result feeds the next. `carrier` names the
+//                                  value that is threaded. A `carrier` that names nothing is unwritable (NonEmptyStr).
+//   AdmittedFusedRealization    -- the site realizes a named part of the demand-engine plan. It carries a
+//                                  DeclarationRef to the plan's discharge declaration, which the compiler
+//                                  resolves, so a row naming nothing real is unwritable; no plan exists
+//                                  yet, so expect no such row.
+//
+// THE SITE KEY is (enclosing declaration, child-index path from the declaration's body, the callee or
+// field read, the kind, a content digest of the site's own expression). The path is POSITIONAL: an edit
+// that moves an earlier sibling of one of the site's ancestors changes it, and the row then goes stale
+// LOUDLY (the stale row is named and the new site is Unresolved) -- re-point churn, never a silent
+// reassignment. The digest is what catches two same-callee sites exchanged in place: the row's key then
+// disagrees with the code now at that path. No line number or ordinal appears in a key.
+
+import std.types { List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.text { String }
+import v2.std.integer { Int }
+
+type TraversalSiteKind
+  = SiteCall
+  | SiteValueReference
+  | SiteChildrenRead
+
+type TraversalSiteKey {
+  function: String
+  path: List<Int>
+  callee: String
+  kind: TraversalSiteKind
+  shape: String
+}
+
+type TraversalClass
+  = StructuralEnumeration { builds: NonEmptyStr }
+  | ExplicitRecurrence { carrier: NonEmptyStr }
+  | AdmittedFusedRealization { discharge: DeclarationRef }
+
+type TraversalDisposition {
+  key: TraversalSiteKey
+  class: TraversalClass
+}
+
+// One row per stage of the M2V path. `root` is the stage's entry declaration, a DeclarationRef the compiler resolves (a root naming nothing real is unwritable), from which the census
+// derives the stage's closure (the declarations it can reach inside traversal_closure_scope), so a helper
+// module factored out of a stage later cannot be invisible: a module in a closure that is no stage root's
+// module_path refuses the census as unowned. The module whose every traversal is censused is the root's own module_path, derived, never a second spelling.
+type TraversalStage {
+  stage: String
+  root: DeclarationRef
+}
+
+data traversal_stage_roster: List<TraversalStage> = [
+  TraversalStage { stage: "resolve", root: DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "resolve_node", field: WholeDeclaration } },
+  TraversalStage { stage: "infer", root: DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer", field: WholeDeclaration } },
+  TraversalStage { stage: "eval", root: DeclarationRef { module_path: "v2.compiler.eval", decl_name: "eval_node", field: WholeDeclaration } },
+  TraversalStage { stage: "target_model", root: DeclarationRef { module_path: "v2.std.compilers.target_model", decl_name: "target_model_declared_inhabitants", field: WholeDeclaration } },
+  TraversalStage { stage: "emit", root: DeclarationRef { module_path: "v2.compiler.emit", decl_name: "emit", field: WholeDeclaration } }
+]
+
+// The module prefixes a stage closure is derived inside. std and extdeps are callees only: a primitive
+// reached there is a site in the caller, and its body is not censused.
+data traversal_closure_scope: List<String> = ["v2.compiler", "v2.std.compilers"]
+
+// The seeds of the primitive derivation: the declarations that traverse a list. The collection roster's
+// own operations (v2.compiler.fold_lowering collection_roster_rows) are added by the census, not copied
+// here; every seed is a DeclarationRef the compiler resolves.
+data traversal_primitive_seeds: List<DeclarationRef> = [
+  DeclarationRef { module_path: "std.algebra", decl_name: "fold_list", field: WholeDeclaration },
+  DeclarationRef { module_path: "std.algebra", decl_name: "fold_list_right", field: WholeDeclaration },
+  DeclarationRef { module_path: "std.algebra", decl_name: "list_map", field: WholeDeclaration },
+  DeclarationRef { module_path: "std.algebra", decl_name: "list_flat_map", field: WholeDeclaration },
+  DeclarationRef { module_path: "std.algebra", decl_name: "zip_eq", field: WholeDeclaration },
+  DeclarationRef { module_path: "std.algebra", decl_name: "zip_map", field: WholeDeclaration },
+  DeclarationRef { module_path: "std.algebra", decl_name: "reduce_or", field: WholeDeclaration },
+  DeclarationRef { module_path: "v2.std.node", decl_name: "fold_node", field: WholeDeclaration },
+  DeclarationRef { module_path: "v2.std.node", decl_name: "fold_node_topdown", field: WholeDeclaration },
+  DeclarationRef { module_path: "v2.std.node", decl_name: "fold_node_dependent", field: WholeDeclaration },
+  DeclarationRef { module_path: "v2.std.node", decl_name: "node_subtree_nodes", field: WholeDeclaration }
+]
+
+// Rows are added only where the class can be justified from what the site computes. A site whose class
+// cannot be justified stays Unresolved, and that is a valid answer.
+data traversal_dispositions: List<TraversalDisposition> = []

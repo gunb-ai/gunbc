@@ -1,0 +1,650 @@
+module v2.compiler.traversal_order_census
+
+import std.algebra { Cons, Empty, fold_list, list_snoc_item, is_empty, length, empty_map, map_insert, map_lookup, list_at_optional }
+import std.decl_ref { DeclarationRef }
+import v2.compiler.eval { eval_transform_has_callee_reference }
+import v2.compiler.parse { parse_tree_projection_edge }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.traversal_order_roster {
+  AdmittedFusedRealization,
+  ExplicitRecurrence,
+  SiteCall,
+  SiteChildrenRead,
+  SiteValueReference,
+  StructuralEnumeration,
+  TraversalClass,
+  TraversalDisposition,
+  TraversalSiteKey,
+  TraversalSiteKind,
+  TraversalStage
+}
+import v2.extdeps.languages.dag { dag_surface_module_header_metadata_edge, namespace_graft_spine_body_optional }
+import v2.std.integer { Int }
+import std.types { Bool, List, Map }
+import v2.std.node {
+  Authored,
+  ComputationNode,
+  Edge,
+  Loop,
+  LoopDomainEdge,
+  LoopRealizedDeclarationEdge,
+  Node,
+  Positional,
+  StructuralLabel,
+  Transform,
+  TypeNode,
+  content_hash,
+  edge_is_core,
+  label_sort_key,
+  symbol_lexeme
+}
+import v2.std.node_query { field_projection_optional }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name {
+  QualifiedName,
+  declaration_reference_path_optional,
+  lexical_reference_label_optional,
+  parameter_reference_path_optional,
+  qualified_name_snoc,
+  qualified_name_to_dotted_string
+}
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.std.text { String }
+
+// THE TRAVERSAL-ORDER CENSUS (gunbc.plans.demand_engine_program milestone M2V). Measurement only: it
+// changes no behaviour. It DETECTS every traversal on the stage path by walking the resolved trees, and
+// JOINS each detected site to its typed disposition (v2.compiler.traversal_order_roster) by identity.
+//
+// WHAT IS A SITE. In a stage-owned module, a mention of a traversal PRIMITIVE: (a) a call whose callee is
+// a primitive (a Transform head, or the realized declaration of a fold's Loop), (b) a bare reference to a
+// primitive passed as a value -- higher-order delegation, (c) a read of a node's `children` field.
+// Primitives are the seeds (the std.algebra folds and the v2.std.node walkers, plus the collection
+// roster's operations) and every NON-stage function that feeds one of its own parameters, or a
+// projection of one, into a primitive or reads `children` -- a helper-mediated traversal is the same
+// site one call away. A non-stage function that names a primitive as a value cannot be established
+// syntactically and refuses as unestablished_primitive.
+//
+// WHAT COMPLETENESS MEANS. The census walks every module under the closure scope, derives each stage's
+// closure from its root over the callee graph, and refuses a closure module no stage owns: a helper
+// module factored out of a stage cannot hide a traversal. The reduction below is a PURE function of the
+// facts it is handed, so a control supplies facts and the same join runs that the real route runs.
+
+// ═══ FACTS ════════════════════════════════════════════════════════════════════════════════════════
+
+type TraversalMention {
+  callee: String
+  kind: TraversalSiteKind
+  path: List<Int>
+  shape: String
+  fed: Bool
+}
+
+type TraversalFnFact {
+  function: String
+  module: String
+  mentions: List<TraversalMention>
+}
+
+type TravAcc {
+  mentions: List<TraversalMention>
+}
+
+type TravIdx {
+  acc: TravAcc
+  i: Int
+}
+
+type TravWalk {
+  functions: List<TraversalFnFact>
+}
+
+// The containment rule is the symbol index's own (see v2.compiler.dependency_demand_census
+// demand_fact_children): a module-spine body is unwrapped, so a path formed here is a declared path.
+fn trav_children(node: Node) -> List<Edge> {
+  match namespace_graft_spine_body_optional(node: node) {
+    Present { value: body } => body.children
+    Absent => node.children
+  }
+}
+
+fn traversal_module_facts(resolved: ResolvedTree, module_qn: QualifiedName, retain_shape: Bool) -> List<TraversalFnFact> {
+  trav_node(w: TravWalk { functions: Empty }, position: module_qn, module_qn: module_qn, node: resolved.root, resolved: resolved, retain: retain_shape).functions
+}
+
+fn trav_node(w: TravWalk, position: QualifiedName, module_qn: QualifiedName, node: Node, resolved: ResolvedTree, retain: Bool) -> TravWalk {
+  fold(trav_children(node: node), init: w, f: fn(acc, e) {
+    trav_edge(w: acc, position: position, module_qn: module_qn, edge: e, resolved: resolved, retain: retain)
+  })
+}
+
+fn trav_edge(w: TravWalk, position: QualifiedName, module_qn: QualifiedName, edge: Edge, resolved: ResolvedTree, retain: Bool) -> TravWalk {
+  match edge.label {
+    Positional => trav_node(w: w, position: position, module_qn: module_qn, node: edge.target, resolved: resolved, retain: retain)
+    StructuralLabel { label: _ } =>
+      if dag_surface_module_header_metadata_edge(e: edge) {
+        w
+      } else {
+        trav_labelled(w: w, child: qualified_name_snoc(qn: position, segment: label_sort_key(label: edge.label)), module_qn: module_qn, edge: edge, resolved: resolved, retain: retain)
+      }
+    Authored { name: sym } =>
+      if parse_tree_projection_edge(name: sym) {
+        trav_node(w: w, position: position, module_qn: module_qn, node: edge.target, resolved: resolved, retain: retain)
+      } else {
+        trav_labelled(w: w, child: qualified_name_snoc(qn: position, segment: sym), module_qn: module_qn, edge: edge, resolved: resolved, retain: retain)
+      }
+  }
+}
+
+fn trav_labelled(w: TravWalk, child: QualifiedName, module_qn: QualifiedName, edge: Edge, resolved: ResolvedTree, retain: Bool) -> TravWalk {
+  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: child) {
+    Absent => trav_node(w: w, position: child, module_qn: module_qn, node: edge.target, resolved: resolved, retain: retain)
+    Present { value: _ } =>
+      TravWalk {
+        functions: list_snoc_item(xs: w.functions, item: TraversalFnFact {
+          function: qualified_name_to_dotted_string(qn: child),
+          module: qualified_name_to_dotted_string(qn: module_qn),
+          mentions: trav_expr(acc: TravAcc { mentions: Empty }, ipath: Empty, node: edge.target, retain: retain).mentions
+        })
+      }
+  }
+}
+
+// ═══ THE SITE READ INSIDE ONE DECLARATION ═════════════════════════════════════════════════════════
+
+fn trav_note(acc: TravAcc, callee: QualifiedName, kind: TraversalSiteKind, ipath: List<Int>, shape_node: Node, fed: Bool, retain: Bool) -> TravAcc {
+  TravAcc {
+    mentions: list_snoc_item(xs: acc.mentions, item: TraversalMention {
+      callee: qualified_name_to_dotted_string(qn: callee),
+      kind: kind,
+      path: ipath,
+      shape: if retain { content_hash(n: shape_node).digest as String } else { "" },
+      fed: fed
+    })
+  }
+}
+
+// An argument is FED when it is the function's own parameter, a local binding, or a field projection of
+// one (`n.children`): the traversal then consumes what the caller handed in. Delegation is decided by
+// this syntactic rule alone, never by a callee's behaviour.
+fn trav_arg_fed(node: Node) -> Bool {
+  match parameter_reference_path_optional(node: node) {
+    Present { value: _ } => true
+    Absent =>
+      match lexical_reference_label_optional(node: node) {
+        Present { value: _ } => true
+        Absent =>
+          match field_projection_optional(n: node) {
+            Present { value: fp } => trav_arg_fed(node: fp.base)
+            Absent => false
+          }
+      }
+  }
+}
+
+fn trav_is_transform(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: b } =>
+      match b {
+        Transform => true
+        _ => false
+      }
+  }
+}
+
+fn trav_is_loop(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: b } =>
+      match b {
+        Loop => true
+        _ => false
+      }
+  }
+}
+
+fn trav_call_head_optional(node: Node) -> Optional<QualifiedName> {
+  if trav_is_transform(node: node) && eval_transform_has_callee_reference(node: node) {
+    match first(node.children) {
+      Present { value: e } => declaration_reference_path_optional(node: e.target)
+      Absent => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+fn trav_args_fed(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(any, e) { any || trav_arg_fed(node: e.target) })
+}
+
+fn trav_loop_fed(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(any, e) {
+    if edge_is_core(e: e, marker: LoopDomainEdge) { any || trav_arg_fed(node: e.target) } else { any }
+  })
+}
+
+fn trav_children_read(acc: TravAcc, ipath: List<Int>, node: Node, retain: Bool) -> TravAcc {
+  match field_projection_optional(n: node) {
+    Present { value: fp } =>
+      if symbol_lexeme(sym: fp.field) == "children" {
+        trav_note(acc: acc, callee: qualified_name_snoc(qn: Empty, segment: fp.field), kind: SiteChildrenRead, ipath: ipath, shape_node: node, fed: false, retain: retain)
+      } else {
+        acc
+      }
+    Absent => acc
+  }
+}
+
+fn trav_expr(acc: TravAcc, ipath: List<Int>, node: Node, retain: Bool) -> TravAcc {
+  match declaration_reference_path_optional(node: node) {
+    Present { value: target } =>
+      trav_note(acc: acc, callee: target, kind: SiteValueReference, ipath: ipath, shape_node: node, fed: false, retain: retain)
+    Absent =>
+      match trav_call_head_optional(node: node) {
+        Present { value: head } =>
+          trav_descend(acc: trav_note(acc: acc, callee: head, kind: SiteCall, ipath: ipath, shape_node: node, fed: trav_args_fed(node: node), retain: retain), ipath: ipath, node: node, skip_head: true, retain: retain)
+        Absent =>
+          trav_descend(acc: trav_children_read(acc: acc, ipath: ipath, node: node, retain: retain), ipath: ipath, node: node, skip_head: false, retain: retain)
+      }
+  }
+}
+
+// A fold desugars into a Loop whose LoopRealizedDeclarationEdge names the realizing declaration
+// (v2.compiler.fold_lowering fold_recurrence_encoding): that edge is the call, fed when the loop's
+// domain is.
+fn trav_descend(acc: TravAcc, ipath: List<Int>, node: Node, skip_head: Bool, retain: Bool) -> TravAcc {
+  fold(node.children, init: TravIdx { acc: acc, i: 0 }, f: fn(s, e) {
+    let at = list_snoc_item(xs: ipath, item: s.i)
+    let next = if skip_head && s.i == 0 {
+      s.acc
+    } else if trav_is_loop(node: node) && edge_is_core(e: e, marker: LoopRealizedDeclarationEdge) {
+      match declaration_reference_path_optional(node: e.target) {
+        Present { value: head } => trav_note(acc: s.acc, callee: head, kind: SiteCall, ipath: ipath, shape_node: node, fed: trav_loop_fed(node: node), retain: retain)
+        Absent => trav_expr(acc: s.acc, ipath: at, node: e.target, retain: retain)
+      }
+    } else {
+      trav_expr(acc: s.acc, ipath: at, node: e.target, retain: retain)
+    }
+    TravIdx { acc: next, i: s.i + 1 }
+  }).acc
+}
+
+// ═══ THE REDUCTION (pure over facts) ══════════════════════════════════════════════════════════════
+
+type TraversalUnresolvedCause
+  = NoRow
+  | DuplicateRow
+
+// A detected site is either claimed by exactly one roster row or Unresolved; there is no Unresolved arm to
+// author in the roster, so the sum lives here, and the text is rendered only in traversal_census_lines.
+type TraversalVerdict
+  = SiteResolved { class: TraversalClass }
+  | SiteUnresolved { cause: TraversalUnresolvedCause }
+
+type TraversalSiteResult {
+  stage: String
+  module: String
+  key: TraversalSiteKey
+  verdict: TraversalVerdict
+}
+
+type TraversalTally
+  = TallyStructural
+  | TallyRecurrence
+  | TallyFused
+  | TallyUnresolved
+
+fn traversal_result_tally(r: TraversalSiteResult) -> TraversalTally {
+  match r.verdict {
+    SiteResolved { class: c } =>
+      match c {
+        StructuralEnumeration { builds: _ } => TallyStructural
+        ExplicitRecurrence { carrier: _ } => TallyRecurrence
+        AdmittedFusedRealization { discharge: _ } => TallyFused
+      }
+    SiteUnresolved { cause: _ } => TallyUnresolved
+  }
+}
+
+fn traversal_tally_same(a: TraversalTally, b: TraversalTally) -> Bool {
+  trav_tally_index(t: a) == trav_tally_index(t: b)
+}
+
+fn traversal_result_unresolved(r: TraversalSiteResult) -> Bool {
+  traversal_tally_same(a: traversal_result_tally(r: r), b: TallyUnresolved)
+}
+
+fn trav_tally_index(t: TraversalTally) -> Int {
+  match t {
+    TallyStructural => 0
+    TallyRecurrence => 1
+    TallyFused => 2
+    TallyUnresolved => 3
+  }
+}
+
+fn traversal_result_unresolved_for_no_row(r: TraversalSiteResult) -> Bool {
+  match r.verdict {
+    SiteUnresolved { cause: c } =>
+      match c {
+        NoRow => true
+        DuplicateRow => false
+      }
+    SiteResolved { class: _ } => false
+  }
+}
+
+fn trav_cause_text(r: TraversalSiteResult) -> String {
+  match r.verdict {
+    SiteUnresolved { cause: c } =>
+      match c {
+        NoRow => "no_row"
+        DuplicateRow => "duplicate_row"
+      }
+    SiteResolved { class: _ } => ""
+  }
+}
+
+type TraversalCensusReport {
+  results: List<TraversalSiteResult>
+  stale: List<TraversalSiteKey>
+  refusals: List<String>
+}
+
+fn trav_has(m: Map<String, Bool>, key: String) -> Bool {
+  match map_lookup(m: m, key: key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn trav_rounds() -> List<Int> {
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+}
+
+fn trav_owned_modules(stages: List<TraversalStage>) -> Map<String, Bool> {
+  fold_list(xs: stages, empty: empty_map(), cons: fn(m, s) {
+    fold_list(xs: [s.root.module_path], empty: m, cons: fn(a, mod) { map_insert(m: a, key: mod, value: true) })
+  })
+}
+
+fn trav_stage_of_module(stages: List<TraversalStage>, module: String) -> String {
+  fold_list(xs: stages, empty: "", cons: fn(found, s) {
+    if fold_list(xs: [s.root.module_path], empty: false, cons: fn(any, mod) { any || mod == module }) { s.stage } else { found }
+  })
+}
+
+fn trav_delegates(prims: Map<String, Bool>, f: TraversalFnFact) -> Bool {
+  fold_list(xs: f.mentions, empty: false, cons: fn(any, m) {
+    any || (match m.kind {
+      SiteChildrenRead => true
+      SiteCall => m.fed && trav_has(m: prims, key: m.callee)
+      SiteValueReference => false
+    })
+  })
+}
+
+fn trav_primitive_round(prims: Map<String, Bool>, facts: List<TraversalFnFact>, owned: Map<String, Bool>) -> Map<String, Bool> {
+  fold_list(xs: facts, empty: prims, cons: fn(p, f) {
+    if trav_has(m: owned, key: f.module) || trav_has(m: p, key: f.function) {
+      p
+    } else if trav_delegates(prims: p, f: f) {
+      map_insert(m: p, key: f.function, value: true)
+    } else {
+      p
+    }
+  })
+}
+
+fn trav_primitives(seeds: List<String>, facts: List<TraversalFnFact>, owned: Map<String, Bool>) -> Map<String, Bool> {
+  fold_list(xs: trav_rounds(), empty: fold_list(xs: seeds, empty: empty_map(), cons: fn(m, s) { map_insert(m: m, key: s, value: true) }), cons: fn(p, r) {
+    trav_primitive_round(prims: p, facts: facts, owned: owned)
+  })
+}
+
+fn trav_primitives_unsettled(prims: Map<String, Bool>, facts: List<TraversalFnFact>, owned: Map<String, Bool>) -> Bool {
+  fold_list(xs: facts, empty: false, cons: fn(any, f) {
+    any || (!trav_has(m: owned, key: f.module) && !trav_has(m: prims, key: f.function) && trav_delegates(prims: prims, f: f))
+  })
+}
+
+fn trav_kind_word(k: TraversalSiteKind) -> String {
+  match k {
+    SiteCall => "call"
+    SiteValueReference => "value"
+    SiteChildrenRead => "children"
+  }
+}
+
+fn trav_path_text(path: List<Int>) -> String {
+  fold_list(xs: path, empty: "", cons: fn(acc, i) { if acc == "" { to_string(i) } else { concat(acc, concat(".", to_string(i))) } })
+}
+
+fn trav_site_key(f: TraversalFnFact, m: TraversalMention) -> TraversalSiteKey {
+  TraversalSiteKey { function: f.function, path: m.path, callee: m.callee, kind: m.kind, shape: m.shape }
+}
+
+// A mention is a SITE when it is a primitive call, a call of the enclosing function itself (direct
+// recursion over a Cons or a tree; mutual recursion is NOT detected), a primitive named as a value, or a children read.
+fn trav_is_site(prims: Map<String, Bool>, f: TraversalFnFact, m: TraversalMention) -> Bool {
+  match m.kind {
+    SiteChildrenRead => true
+    SiteCall => trav_has(m: prims, key: m.callee) || m.callee == f.function
+    SiteValueReference => trav_has(m: prims, key: m.callee)
+  }
+}
+
+// The roster joined once by site identity: a count and the first class per identity, so a site's lookup and
+// the stale-row scan are map reads rather than a rescan of the roster per site.
+type TravRowIndex {
+  counts: Map<String, Int>
+  classes: Map<String, TraversalClass>
+}
+
+fn trav_site_id(key: TraversalSiteKey) -> String {
+  concat(trav_key_text(key: key), concat(" shape=", key.shape))
+}
+
+fn trav_row_index(rows: List<TraversalDisposition>) -> TravRowIndex {
+  fold_list(xs: rows, empty: TravRowIndex { counts: empty_map(), classes: empty_map() }, cons: fn(ix, r) {
+    let id = trav_site_id(key: r.key)
+    let classes = match map_lookup(m: ix.classes, key: id) {
+      Present { value: _ } => ix.classes
+      Absent => map_insert(m: ix.classes, key: id, value: r.class)
+    }
+    TravRowIndex { counts: map_insert(m: ix.counts, key: id, value: trav_row_count(ix: ix, id: id) + 1), classes: classes }
+  })
+}
+
+fn trav_row_count(ix: TravRowIndex, id: String) -> Int {
+  match map_lookup(m: ix.counts, key: id) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn trav_result(stage: String, module: String, key: TraversalSiteKey, ix: TravRowIndex) -> TraversalSiteResult {
+  let id = trav_site_id(key: key)
+  if trav_row_count(ix: ix, id: id) > 1 {
+    TraversalSiteResult { stage: stage, module: module, key: key, verdict: SiteUnresolved { cause: DuplicateRow } }
+  } else {
+    match map_lookup(m: ix.classes, key: id) {
+      Absent => TraversalSiteResult { stage: stage, module: module, key: key, verdict: SiteUnresolved { cause: NoRow } }
+      Present { value: c } => TraversalSiteResult { stage: stage, module: module, key: key, verdict: SiteResolved { class: c } }
+    }
+  }
+}
+
+// ── the closure of a stage: its root's reachable functions inside the walked scope ────────────────
+
+type TravClosure {
+  reached: Map<String, Bool>
+  frontier: List<String>
+}
+
+fn trav_fn_index(facts: List<TraversalFnFact>) -> Map<String, TraversalFnFact> {
+  fold_list(xs: facts, empty: empty_map(), cons: fn(m, f) { map_insert(m: m, key: f.function, value: f) })
+}
+
+fn trav_closure_round(c: TravClosure, index: Map<String, TraversalFnFact>) -> TravClosure {
+  fold_list(xs: c.frontier, empty: TravClosure { reached: c.reached, frontier: [] }, cons: fn(next, name) {
+    match map_lookup(m: index, key: name) {
+      Absent => next
+      Present { value: f } =>
+        fold_list(xs: f.mentions, empty: next, cons: fn(n, m) {
+          if trav_has(m: n.reached, key: m.callee) || !trav_has_fn(index: index, key: m.callee) {
+            n
+          } else {
+            TravClosure { reached: map_insert(m: n.reached, key: m.callee, value: true), frontier: list_snoc_item(xs: n.frontier, item: m.callee) }
+          }
+        })
+    }
+  })
+}
+
+fn trav_has_fn(index: Map<String, TraversalFnFact>, key: String) -> Bool {
+  match map_lookup(m: index, key: key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn trav_closure(root: String, index: Map<String, TraversalFnFact>, facts: List<TraversalFnFact>) -> TravClosure {
+  fold_list(xs: facts, empty: TravClosure { reached: map_insert(m: empty_map(), key: root, value: true), frontier: [root] }, cons: fn(c, r) {
+    trav_closure_round(c: c, index: index)
+  })
+}
+
+// Modules of the closure that no stage owns. A reached function's module is read off its own fact.
+fn trav_unowned(stage: TraversalStage, closure: TravClosure, facts: List<TraversalFnFact>, owned: Map<String, Bool>) -> List<String> {
+  fold_list(xs: facts, empty: [], cons: fn(acc, f) {
+    if trav_has(m: closure.reached, key: f.function) && !trav_has(m: owned, key: f.module) && !fold_list(xs: acc, empty: false, cons: fn(any, x) { any || x == f.module }) {
+      list_snoc_item(xs: acc, item: concat(stage.stage, concat(" ", f.module)))
+    } else {
+      acc
+    }
+  })
+}
+
+fn traversal_census_join(
+  stages: List<TraversalStage>,
+  facts: List<TraversalFnFact>,
+  rows: List<TraversalDisposition>,
+  seeds: List<String>
+) -> TraversalCensusReport {
+  let owned = trav_owned_modules(stages: stages)
+  let prims = trav_primitives(seeds: seeds, facts: facts, owned: owned)
+  let index = trav_fn_index(facts: facts)
+  let ix = trav_row_index(rows: rows)
+  let results = fold_list(xs: facts, empty: [], cons: fn(acc, f) {
+    if trav_has(m: owned, key: f.module) {
+      fold_list(xs: f.mentions, empty: acc, cons: fn(a, m) {
+        if trav_is_site(prims: prims, f: f, m: m) {
+          list_snoc_item(xs: a, item: trav_result(stage: trav_stage_of_module(stages: stages, module: f.module), module: f.module, key: trav_site_key(f: f, m: m), ix: ix))
+        } else {
+          a
+        }
+      })
+    } else {
+      acc
+    }
+  })
+  let seen = fold_list(xs: results, empty: empty_map(), cons: fn(m, r) { map_insert(m: m, key: trav_site_id(key: r.key), value: true) })
+  let stale = fold_list(xs: rows, empty: [], cons: fn(acc, r) {
+    if trav_has(m: seen, key: trav_site_id(key: r.key)) { acc } else { list_snoc_item(xs: acc, item: r.key) }
+  })
+  let unestablished = fold_list(xs: facts, empty: [], cons: fn(acc, f) {
+    if trav_has(m: owned, key: f.module) {
+      acc
+    } else {
+      fold_list(xs: f.mentions, empty: acc, cons: fn(a, m) {
+        match m.kind {
+          SiteValueReference =>
+            if trav_has(m: prims, key: m.callee) { list_snoc_item(xs: a, item: concat("unestablished_primitive ", concat(f.function, concat(" names ", m.callee)))) } else { a }
+          SiteCall => a
+          SiteChildrenRead => a
+        }
+      })
+    }
+  })
+  let missing_roots = fold_list(xs: stages, empty: [], cons: fn(acc, s) {
+    if trav_has_fn(index: index, key: trav_ref_key(r: s.root)) { acc } else { list_snoc_item(xs: acc, item: concat("missing_root ", concat(s.stage, concat(" ", trav_ref_key(r: s.root))))) }
+  })
+  let unowned = fold_list(xs: stages, empty: [], cons: fn(acc, s) {
+    if trav_has_fn(index: index, key: trav_ref_key(r: s.root)) {
+      let closure = trav_closure(root: trav_ref_key(r: s.root), index: index, facts: facts)
+      let settled = if is_empty(xs: closure.frontier) { acc } else { list_snoc_item(xs: acc, item: concat("closure_did_not_settle ", s.stage)) }
+      fold_list(xs: trav_unowned(stage: s, closure: closure, facts: facts, owned: owned), empty: settled, cons: fn(a, u) { list_snoc_item(xs: a, item: concat("unowned_module ", u)) })
+    } else {
+      acc
+    }
+  })
+  let unsettled = if trav_primitives_unsettled(prims: prims, facts: facts, owned: owned) { ["primitive_derivation_did_not_settle"] } else { [] }
+  TraversalCensusReport {
+    results: results,
+    stale: stale,
+    refusals: fold_list(xs: [unestablished, missing_roots, unowned, unsettled], empty: [], cons: fn(acc, l) {
+      fold_list(xs: l, empty: acc, cons: fn(a, x) { list_snoc_item(xs: a, item: x) })
+    })
+  }
+}
+
+// ═══ THE OUTPUT ═══════════════════════════════════════════════════════════════════════════════════
+
+fn trav_count(results: List<TraversalSiteResult>, module: String, tally: TraversalTally) -> Int {
+  fold_list(xs: results, empty: 0, cons: fn(n, r) { if r.module == module && trav_tally_index(t: traversal_result_tally(r: r)) == trav_tally_index(t: tally) { n + 1 } else { n } })
+}
+
+fn trav_unresolved_count(report: TraversalCensusReport) -> Int {
+  fold_list(xs: report.results, empty: 0, cons: fn(n, r) { if traversal_result_unresolved(r: r) { n + 1 } else { n } })
+}
+
+fn traversal_census_exit(report: TraversalCensusReport) -> Int {
+  if trav_unresolved_count(report: report) == 0 && is_empty(xs: report.stale) && is_empty(xs: report.refusals) { 0 } else { 1 }
+}
+
+fn trav_key_text(key: TraversalSiteKey) -> String {
+  concat("function=", concat(key.function, concat(" path=", concat(trav_path_text(path: key.path), concat(" kind=", concat(trav_kind_word(k: key.kind), concat(" callee=", key.callee)))))))
+}
+
+fn trav_total_line(stage: String, module: String, results: List<TraversalSiteResult>) -> String {
+  let structural = to_string(trav_count(results: results, module: module, tally: TallyStructural))
+  let recurrence = to_string(trav_count(results: results, module: module, tally: TallyRecurrence))
+  let fused = to_string(trav_count(results: results, module: module, tally: TallyFused))
+  let unresolved = to_string(trav_count(results: results, module: module, tally: TallyUnresolved))
+  concat("[traversal-order-census] total stage=", concat(stage, concat(" module=", concat(module, concat(" structural=", concat(structural, concat(" recurrence=", concat(recurrence, concat(" fused=", concat(fused, concat(" unresolved=", unresolved))))))))))) 
+}
+
+fn traversal_census_lines(stages: List<TraversalStage>, report: TraversalCensusReport) -> List<String> {
+  let totals = fold_list(xs: stages, empty: [], cons: fn(acc, s) {
+    fold_list(xs: [s.root.module_path], empty: acc, cons: fn(a, mod) {
+      list_snoc_item(xs: a, item: trav_total_line(stage: s.stage, module: mod, results: report.results))
+    })
+  })
+  let unresolved = fold_list(xs: report.results, empty: [], cons: fn(acc, r) {
+    if traversal_result_unresolved(r: r) {
+      list_snoc_item(xs: acc, item: concat("[traversal-order-census] unresolved stage=", concat(r.stage, concat(" ", concat(trav_key_text(key: r.key), concat(" cause=", trav_cause_text(r: r)))))))
+    } else {
+      acc
+    }
+  })
+  let stale = fold_list(xs: report.stale, empty: [], cons: fn(acc, k) {
+    list_snoc_item(xs: acc, item: concat("[traversal-order-census] stale_row ", trav_key_text(key: k)))
+  })
+  let refusals = fold_list(xs: report.refusals, empty: [], cons: fn(acc, x) {
+    list_snoc_item(xs: acc, item: concat("[traversal-order-census] refusal ", x))
+  })
+  let verdict = [concat("[traversal-order-census] verdict ", concat(if traversal_census_exit(report: report) == 0 { "held" } else { "refused" },
+    concat(" sites=", concat(to_string(length(xs: report.results)),
+    concat(" unresolved=", concat(to_string(trav_unresolved_count(report: report)),
+    concat(" stale=", concat(to_string(length(xs: report.stale)),
+    concat(" refusals=", to_string(length(xs: report.refusals)))))))))))]
+  fold_list(xs: [totals, unresolved, stale, refusals, verdict], empty: [], cons: fn(acc, l) {
+    fold_list(xs: l, empty: acc, cons: fn(a, x) { list_snoc_item(xs: a, item: x) })
+  })
+}
+
+fn trav_ref_key(r: DeclarationRef) -> String {
+  concat(r.module_path, concat(".", r.decl_name))
+}

@@ -18,7 +18,7 @@ import v2.workflow.v2_native_route {
   native_route_package_text_module,
   required_v2_native_job_name
 }
-import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
+import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, CensusVerbTraversalOrder, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
 import gunbc.native_route_universe {
   native_route_default_pattern,
   native_route_label_in_package,
@@ -292,6 +292,22 @@ import v2.compiler.dependency_demand_census {
   demand_census_report,
   demand_census_strip,
   demand_census_unbound_locus_from_diagnostics,
+}
+import v2.compiler.traversal_order_census {
+  TraversalCensusReport,
+  TraversalFnFact,
+  traversal_census_exit,
+  traversal_census_join,
+  traversal_census_lines,
+  traversal_module_facts,
+  trav_rounds
+}
+import v2.compiler.fold_lowering { collection_roster_rows }
+import v2.compiler.traversal_order_roster {
+  traversal_closure_scope,
+  traversal_dispositions,
+  traversal_primitive_seeds,
+  traversal_stage_roster
 }
 import v2.compiler.normalized_tree {
   NormalizedTree,
@@ -3223,6 +3239,193 @@ fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOu
       NativeDemandCensusOutput {
         lines: demand_census_lines(r: report),
         exit: demand_census_exit(r: report)
+      }
+  }
+}
+
+// THE TRAVERSAL-ORDER CENSUS (M2V; v2.compiler.traversal_order_census). Streaming like the demand census:
+// each module in the closure scope is resolved, its traversal facts extracted, and its tree dropped
+// before the next; the join over the facts is the census's own pure reduction.
+type NativeTraversalCensusFold {
+  context: NativeTestContext
+  facts: List<TraversalFnFact>
+  unread: List<String>
+}
+
+type NativeTraversalCensusOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_traversal_census_in_scope(module_qn: QualifiedName) -> Bool {
+  fold_list(xs: traversal_closure_scope, empty: false, cons: fn(any, p) {
+    any || list_starts_with(xs: module_qn, prefix: qualified_name_from_dotted_string(dotted: p), eq: fn(a, b) { a == b })
+  })
+}
+
+fn native_traversal_census_owned(module: String) -> Bool {
+  fold_list(xs: traversal_stage_roster, empty: false, cons: fn(any, s) {
+    any || (s.root.module_path == module)
+  })
+}
+
+fn native_traversal_census_module(w: NativeTraversalCensusFold, root: NormalizedTree) -> NativeTraversalCensusFold {
+  match qualified_name_from_module_node(root: root.root) {
+    Rejected { diagnostics: _ } =>
+      NativeTraversalCensusFold { context: w.context, facts: w.facts, unread: Cons { head: "<module name unreadable>", tail: w.unread } }
+    Accepted { value: module_qn, diagnostics: _ } =>
+      if native_traversal_census_in_scope(module_qn: module_qn) {
+        let step = native_test_resolve_module(context: w.context, module: module_qn)
+        match step.resolved {
+          Rejected { diagnostics: d } =>
+            NativeTraversalCensusFold { context: step.context, facts: w.facts, unread: Cons { head: concat(qualified_name_to_dotted_string(qn: module_qn), concat(" cause=", symbol_lexeme(sym: d.head.reason))), tail: w.unread } }
+          Accepted { value: resolved, diagnostics: _ } =>
+            NativeTraversalCensusFold {
+              context: step.context,
+              facts: fold_list(
+                xs: traversal_module_facts(resolved: resolved, module_qn: module_qn, retain_shape: native_traversal_census_owned(module: qualified_name_to_dotted_string(qn: module_qn))),
+                empty: w.facts,
+                cons: fn(acc, f) { Cons { head: f, tail: acc } }
+              ),
+              unread: w.unread
+            }
+        }
+      } else {
+        w
+      }
+  }
+}
+
+fn native_traversal_census_seeds() -> List<String> {
+  fold_list(xs: collection_roster_rows, empty: fold_list(xs: traversal_primitive_seeds, empty: [], cons: fn(a, d) { Cons { head: concat(d.module_path, concat(".", d.decl_name)), tail: a } }), cons: fn(acc, r) {
+    Cons { head: concat(r.row.module_path, concat(".", r.row.decl_name)), tail: acc }
+  })
+}
+
+// THE CENSUS' SUBJECT IS THE STAGE ROOTS' IMPORT CLOSURE, NOT THE POOL. Preparing every ingested file
+// (about 11k modules) to census a few hundred paid the whole pool's parse and index for nothing, and
+// the one dispatch over it was cancelled at the platform ceiling with no output. The closure is read
+// off the files' own `module` / `import` header lines (the text fact native_lane_declared_module_name
+// reads), seeded by the stage roots' module_path, one round per import depth. A frontier still open
+// after the rounds is a refusal, never a truncated closure.
+fn native_traversal_import_names(content: String) -> List<String> {
+  fold_list(xs: split(s: content, delimiter: "\n"), empty: [], cons: fn(acc, line) {
+    let t = trim(line)
+    if starts_with(s: t, prefix: "import ") {
+      match list_at_optional(xs: split(s: trim(substring(s: t, start: 7, end: string_length(s: t))), delimiter: " "), index: 0) {
+        Present { value: name } => list_snoc_item(xs: acc, item: name)
+        Absent => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+type NativeTraversalImportClosure {
+  reached: Map<String, Bool>
+  frontier: List<String>
+  missing: List<String>
+}
+
+type NativeTraversalClosureReads {
+  reads: SourceRootIngest
+  missing: List<String>
+}
+
+fn native_traversal_import_round(c: NativeTraversalImportClosure, by_name: Map<String, DagSourceReadWitness>) -> NativeTraversalImportClosure {
+  fold_list(xs: c.frontier, empty: NativeTraversalImportClosure { reached: c.reached, frontier: [], missing: c.missing }, cons: fn(next, named) {
+    match map_lookup(m: by_name, key: named) {
+      Absent => NativeTraversalImportClosure { reached: next.reached, frontier: next.frontier, missing: list_snoc_item(xs: next.missing, item: named) }
+      Present { value: read } =>
+        fold_list(xs: native_traversal_import_names(content: read.source.carried), empty: next, cons: fn(n, name) {
+          match map_lookup(m: n.reached, key: name) {
+            Present { value: _ } => n
+            Absent => NativeTraversalImportClosure { reached: map_insert(m: n.reached, key: name, value: true), frontier: list_snoc_item(xs: n.frontier, item: name), missing: n.missing }
+          }
+        })
+    }
+  })
+}
+
+fn native_traversal_import_seed(c: NativeTraversalImportClosure, named: String) -> NativeTraversalImportClosure {
+  match map_lookup(m: c.reached, key: named) {
+    Present { value: _ } => c
+    Absent => NativeTraversalImportClosure { reached: map_insert(m: c.reached, key: named, value: true), frontier: list_snoc_item(xs: c.frontier, item: named), missing: c.missing }
+  }
+}
+
+fn native_traversal_closure_reads(ingest: SourceRootIngest) -> Optional<NativeTraversalClosureReads> {
+  let by_name = fold_list(xs: ingest, empty: empty_map(), cons: fn(m, read) {
+    match native_lane_declared_module_name(content: read.source.carried) {
+      Absent => m
+      Present { value: name } => map_insert(m: m, key: name, value: read)
+    }
+  })
+  let staged = fold_list(xs: traversal_stage_roster, empty: NativeTraversalImportClosure { reached: empty_map(), frontier: [], missing: [] }, cons: fn(c, s) {
+    native_traversal_import_seed(c: c, named: s.root.module_path)
+  })
+  let primitives = fold_list(xs: traversal_primitive_seeds, empty: staged, cons: fn(c, d) { native_traversal_import_seed(c: c, named: d.module_path) })
+  let seeded = fold_list(xs: collection_roster_rows, empty: primitives, cons: fn(c, r) { native_traversal_import_seed(c: c, named: r.row.module_path) })
+  let settled = fold_list(xs: trav_rounds(), empty: seeded, cons: fn(c, r) { native_traversal_import_round(c: c, by_name: by_name) })
+  if is_empty(xs: settled.frontier) {
+    optional_present(value: NativeTraversalClosureReads { missing: settled.missing, reads: fold_list(xs: ingest, empty: [], cons: fn(acc, read) {
+      match native_lane_declared_module_name(content: read.source.carried) {
+        Present { value: name } =>
+          match map_lookup(m: settled.reached, key: name) {
+            Present { value: _ } => list_snoc_item(xs: acc, item: read)
+            Absent => acc
+          }
+        Absent => acc
+      }
+    }) })
+  } else {
+    optional_absent()
+  }
+}
+
+fn native_traversal_order_census_output(ingest: SourceRootIngest) -> NativeTraversalCensusOutput {
+  match native_test_front_end_prepare() {
+    Rejected { diagnostics: d } =>
+      NativeTraversalCensusOutput { lines: [concat("[traversal-order-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: front, diagnostics: _ } =>
+      match program_assembly_ingest_scope_outcome(ingest: ingest) {
+        Rejected { diagnostics: d } =>
+          NativeTraversalCensusOutput { lines: [concat("[traversal-order-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+        Accepted { value: scope, diagnostics: _ } =>
+        match native_traversal_closure_reads(ingest: ingest) {
+        Absent =>
+          NativeTraversalCensusOutput { lines: ["[traversal-order-census] no observation: import_closure_did_not_settle"], exit: 2 }
+        Present { value: closure } =>
+          let state = fold_list(
+            xs: closure.reads,
+            empty: native_test_context_state_empty(),
+            cons: fn(acc, read) {
+              native_test_context_fold_step(state: acc, read: read, lex: front.lex, prepared: front.prepared, scope: scope)
+            }
+          )
+          let walked = fold_list(
+            xs: state.roots,
+            empty: NativeTraversalCensusFold { context: native_test_context_finish(state: state, front: front, ingest: ingest), facts: Empty, unread: Empty },
+            cons: fn(w, root) { native_traversal_census_module(w: w, root: root) }
+          )
+          if is_empty(xs: walked.facts) {
+            NativeTraversalCensusOutput { lines: ["[traversal-order-census] no observation: no module in the closure scope resolved"], exit: 2 }
+          } else {
+            let joined = traversal_census_join(
+              stages: traversal_stage_roster,
+              facts: walked.facts,
+              rows: traversal_dispositions,
+              seeds: native_traversal_census_seeds()
+            )
+            let report = TraversalCensusReport {
+              results: joined.results,
+              stale: joined.stale,
+              refusals: fold_list(xs: closure.missing, empty: fold_list(xs: walked.unread, empty: joined.refusals, cons: fn(acc, m) { Cons { head: concat("unreadable_module ", m), tail: acc } }), cons: fn(acc, m) { Cons { head: concat("import_without_file ", m), tail: acc } })
+            }
+            NativeTraversalCensusOutput { lines: traversal_census_lines(stages: traversal_stage_roster, report: report), exit: traversal_census_exit(report: report) }
+          }
+        }
       }
   }
 }
@@ -7367,6 +7570,9 @@ fn native_census_verb_output(verb: NativeCensusVerbWord, ingest: SourceRootInges
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
     CensusVerbDeclRef =>
       let o = native_decl_ref_census_output(ingest: ingest)
+      NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+    CensusVerbTraversalOrder =>
+      let o = native_traversal_order_census_output(ingest: ingest)
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
   }
 }

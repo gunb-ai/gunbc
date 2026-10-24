@@ -191,7 +191,7 @@ test fn an_empty_command_line_refuses_with_the_usage_holds() -> Bool {
 
 test fn an_unknown_verb_refuses_and_names_the_word_holds() -> Bool {
   (refusal_detail(argv: ["adjudicat", "x"])
-    == "REFUSED: unknown mode adjudicat -- expected adjudicate, census, census-resolve, census-infer, census-scoped, demand-census, decl-ref-census")
+    == "REFUSED: unknown mode adjudicat -- expected adjudicate, census, census-resolve, census-infer, census-scoped, demand-census, decl-ref-census, traversal-order-census")
   && plan_exit_is_misuse(argv: ["adjudicat", "x"])
 }
 
@@ -210,7 +210,7 @@ test fn a_refused_plan_names_no_roots_and_no_facts_path_holds() -> Bool {
 // refusal is reported.
 test fn a_later_word_cannot_repair_an_unknown_verb_holds() -> Bool {
   refusal_detail(argv: ["nonsense", "census"])
-    == "REFUSED: unknown mode nonsense -- expected adjudicate, census, census-resolve, census-infer, census-scoped, demand-census, decl-ref-census"
+    == "REFUSED: unknown mode nonsense -- expected adjudicate, census, census-resolve, census-infer, census-scoped, demand-census, decl-ref-census, traversal-order-census"
 }
 
 // THE PATTERN OPTION: carried to the plan as the authority parsed it, and refused at the command
@@ -395,7 +395,7 @@ test fn every_native_census_verb_word_has_a_binding_holds() -> Bool {
 }
 
 test fn a_misspelled_census_verb_is_not_a_word_holds() -> Bool {
-  match native_census_verb_of_word(word: "decl-ref-cenzus") {
+  match native_census_verb_of_word(word: "traversal-order-cenzus") {
     Present { value: _ } => false
     Absent => true
   }
