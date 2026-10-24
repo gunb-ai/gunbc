@@ -27,7 +27,6 @@ pub struct Magma<T> {
     pub _phantom: std::marker::PhantomData<T>,
 }
 
-
 #[derive(Clone)]
 pub struct Semigroup<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
