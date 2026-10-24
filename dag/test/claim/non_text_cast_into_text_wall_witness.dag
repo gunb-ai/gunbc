@@ -92,8 +92,8 @@ test fn w_non_text_cast_not_into_text_is_still_accepted() -> Bool { blocking_cou
 // and this wall's question, so the fixture compiles with no blocking diagnostic.
 // A user-declared type spelled Int is a nominal product, so the nominal-source wall (validate_cast's
 // HostTextRouteAbsentNominal arm, test.claim.nominal_cast_wall_witness) refuses it -- but under ITS message, never
-// this wall's. The discriminator is the subject: this wall's text (truncated at 80 chars, the census
-// subject width) must not appear, and the nominal wall's must.
+// this wall's. The discriminator is the subject: this wall's text (the census subject: 77 bytes and an ellipsis,
+// compile_clean_internal_error_histogram_name) must not appear, and the nominal wall's must.
 fn refusals_at(source: String, subject: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
@@ -103,7 +103,7 @@ fn refusals_at(source: String, subject: String) -> Int {
 }
 
 test fn w_user_declared_type_spelled_int_is_not_the_kernel_int() -> Bool {
-  refusals_at(source: user_declared_int_source, subject: "invalid cast: Int as NonEmptyStr -- a non-text value has no route into text; bui") == 0
+  refusals_at(source: user_declared_int_source, subject: "invalid cast: Int as NonEmptyStr -- a non-text value has no route into text; …") == 0
     && refusals_at(source: user_declared_int_source, subject: "invalid cast: Int as NonEmptyStr: a nominal value has no declared conversion") == 1
 }
 
@@ -120,7 +120,7 @@ test fn w_nat_as_string_is_refused() -> Bool { blocking_count(source: nat_as_str
 
 // The refusal is THIS wall's, at the subject that names the cast the author wrote.
 test fn w_int_as_string_refusal_names_the_cast() -> Bool {
-  refusals_at(source: int_as_string_source, subject: "invalid cast: Int as String -- a non-text value has no route into text; build th") == 1
+  refusals_at(source: int_as_string_source, subject: "invalid cast: Int as String -- a non-text value has no route into text; build…") == 1
 }
 
 test fn w_declared_int_to_text_route_is_accepted() -> Bool { blocking_count(source: declared_route_source) == 0 }
