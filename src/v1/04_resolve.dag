@@ -1354,7 +1354,8 @@ fn field_children_with_stamped_type(field: Node, source_indices: Map<String, New
 fn reference_tree_with_declaration(n: Node, binders: List<String>, env: TypeEnv) -> Node {
   let name = authored_name(env: env, node: n)
   let is_binder_reference = n.children |> count == 0 && n.params |> count == 0 && binders |> any(b => b == name)
-  let is_declaration = match n.module_item_kind { ModuleItemTypeDeclaration => true  _ => false }
+  // A declaration, or an application's expansion (its children are the declaration's own members, not arguments).
+  let is_declaration = is_declaration_body(n: n) || match n.module_item_kind { ModuleItemTypeDeclaration => true  _ => false }
   if is_binder_reference || is_declaration || is_kernel_type(name: name) {
     n
   } else {
