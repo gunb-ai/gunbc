@@ -1,0 +1,166 @@
+module test.claim.same_head_cross_module_identity_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT (DESIGN 4: type compatibility keys on the exact declaration a position resolves to,
+// never its leaf name): two modules each declare a `Box` record and a `Choice` coproduct, and a
+// value of one module's type is passed where the other's is declared. The seat is v1.compiler.infer
+// application_type_names_compatible, whose equal-spelling arm used to answer true for any two
+// types spelled alike, and foreign_concrete_coproduct_where_parent_required, which resolved the
+// produced coproduct by its spelling in the consuming module. The REDs are invalid programs,
+// authorable only as fixture source (DESIGN 4b).
+data sh_a_source: String = "module sh.a\ntype Box { v: Int }\ntype Choice\n  = Left { n: Int }\n  | Right\n"
+data sh_b_source: String = "module sh.b\ntype Box { v: Int }\ntype Choice\n  = Lft { n: Int }\n  | Rgt\n"
+data sh_mk_source: String = "module sh.mk\nimport sh.b { Box, Choice }\nfn make_box() -> Box { Box { v: 1 } }\nfn make_choice() -> Choice { Rgt }\n"
+data sh_a_mk_source: String = "module sh.amk\nimport sh.a { Box, Choice }\nfn make_a_box() -> Box { Box { v: 1 } }\nfn make_a_choice() -> Choice { Right }\n"
+data sh_c_source: String = "module sh.c\ntype Pl { v: Int }\ntype Choice\n  = Wrap { p: Pl }\n  | Nil\nfn c_take(c: Choice) -> Int { 1 }\nfn c_mk_pl() -> Pl { Pl { v: 1 } }\nfn c_mk_choice() -> Choice { Wrap { p: Pl { v: 1 } } }\n"
+data sh_prelude: String = "module sh.entry\nimport sh.a { Box, Choice }\nimport sh.mk { make_box, make_choice }\nimport sh.amk { make_a_box, make_a_choice }\nimport sh.c { c_take, c_mk_pl, c_mk_choice }\nfn sh_take_box(x: Box) -> Int { x.v }\nfn sh_take_choice(c: Choice) -> Int { 1 }\n"
+
+fn sh_run(entry_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("sh/a.dag", sh_a_source),
+      fixture_source("sh/b.dag", sh_b_source),
+      fixture_source("sh/mk.dag", sh_mk_source),
+      fixture_source("sh/amk.dag", sh_a_mk_source),
+      fixture_source("sh/c.dag", sh_c_source),
+      fixture_source("sh/entry.dag", entry_source)
+    ],
+    entry: "sh/entry.dag"
+  })
+}
+
+fn sh_accepted(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(fixture_blocking_rows(rows)) == 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn sh_refused(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(fixture_blocking_rows(rows)) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// RED: a record of the same leaf name from another module.
+test fn sh_same_named_record_from_another_module_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int { sh_take_box(x: make_box()) }\n")))
+}
+
+// RED: a coproduct of the same leaf name from another module.
+test fn sh_same_named_coproduct_from_another_module_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int { sh_take_choice(c: make_choice()) }\n")))
+}
+
+// POSITIVE CONTROL at the exact head: the formal's own declaration, produced by another module.
+test fn sh_record_of_the_same_declaration_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int { sh_take_box(x: make_a_box()) }\n")))
+}
+
+test fn sh_coproduct_of_the_same_declaration_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int { sh_take_choice(c: make_a_choice()) }\n")))
+}
+
+// POSITIVE CONTROL: a record literal of the formal's own declaration.
+test fn sh_record_literal_of_the_formal_declaration_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int { sh_take_box(x: Box { v: 1 }) }\n")))
+}
+
+// RED: the same homonym at the other positions a type is judged: a let annotation, a declared
+// return type and a record field.
+test fn sh_same_named_record_at_a_let_annotation_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let x: Box = make_box()\n  x.v\n}\n")))
+}
+
+test fn sh_same_named_record_at_a_return_type_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Box { make_box() }\n")))
+}
+
+test fn sh_same_named_record_at_a_record_field_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "type ShHolder { b: Box }\nfn sh_use() -> ShHolder { ShHolder { b: make_box() } }\n")))
+}
+
+test fn sh_same_named_coproduct_at_a_return_type_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Choice { make_choice() }\n")))
+}
+
+// POSITIVE CONTROLS at the same positions, the exact head.
+test fn sh_same_declaration_at_a_let_annotation_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let x: Box = make_a_box()\n  x.v\n}\n")))
+}
+
+test fn sh_same_declaration_at_a_return_type_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Box { make_a_box() }\n")))
+}
+
+test fn sh_same_declaration_at_a_record_field_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "type ShHolder { b: Box }\nfn sh_use() -> ShHolder { ShHolder { b: make_a_box() } }\n")))
+}
+
+// RED: the FORMAL is declared in a module the caller does not import by that spelling. The caller's `Choice` is
+// sh.a's, which has no `Pl` payload; the callee's `Choice` is sh.c's, whose `Wrap` carries one. A `Pl` where the
+// callee's `Choice` is required is a payload where its parent is required, and must be judged against the callee's
+// declaration, not the caller's same-spelled one.
+test fn sh_payload_where_callee_parent_is_required_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int { c_take(c: c_mk_pl()) }\n")))
+}
+
+// RED: a coproduct-typed record field whose value is another module's same-named coproduct.
+test fn sh_same_named_coproduct_at_a_record_field_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "type ShHolderC { c: Choice }\nfn sh_use() -> ShHolderC { ShHolderC { c: make_choice() } }\n")))
+}
+
+// Controls: the callee's own coproduct at its own formal, and the same declaration at a coproduct field.
+test fn sh_callee_coproduct_at_its_own_formal_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int { c_take(c: c_mk_choice()) }\n")))
+}
+
+test fn sh_same_declaration_at_a_coproduct_field_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "type ShHolderC { c: Choice }\nfn sh_use() -> ShHolderC { ShHolderC { c: make_a_choice() } }\n")))
+}
+
+// RED: the JOIN seats, where two values of one position must agree: if branches, match arms and list literal
+// elements, each holding one module's `Box` beside the other's.
+test fn sh_same_named_record_across_if_branches_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let x = if true { make_box() } else { make_a_box() }\n  1\n}\n")))
+}
+
+test fn sh_same_named_record_across_match_arms_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let x = match true {\n    true => make_box()\n    false => make_a_box()\n  }\n  1\n}\n")))
+}
+
+test fn sh_same_named_record_across_list_elements_is_refused() -> Bool {
+  sh_refused(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let xs = [make_box(), make_a_box()]\n  1\n}\n")))
+}
+
+// Controls: one declaration at every join.
+test fn sh_same_declaration_across_if_branches_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let x = if true { make_a_box() } else { Box { v: 2 } }\n  1\n}\n")))
+}
+
+test fn sh_same_declaration_across_match_arms_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let x = match true {\n    true => make_a_box()\n    false => Box { v: 2 }\n  }\n  1\n}\n")))
+}
+
+test fn sh_same_declaration_across_list_elements_is_accepted() -> Bool {
+  sh_accepted(o: sh_run(entry_source: concat(sh_prelude, "fn sh_use() -> Int {\n  let xs = [make_a_box(), Box { v: 2 }]\n  1\n}\n")))
+}

@@ -91,6 +91,21 @@ test fn kc_local_alias_of_the_carrier_admits_its_constructor() -> Bool {
   carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "type KcAlias<T> = FreeMonoid<T>\nfn kc_take_alias(xs: KcAlias<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_alias(xs: Empty {}) }\n")))
 }
 
+// An alias of an alias settles to the carrier, so its constructor is admitted.
+test fn kc_alias_of_an_alias_admits_the_carrier_constructor() -> Bool {
+  carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "type KcAlias<T> = FreeMonoid<T>\ntype KcAlias2<T> = KcAlias<T>\nfn kc_take_alias(xs: KcAlias2<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_alias(xs: Cons { head: 1, tail: Empty {} }) }\n")))
+}
+
+// RED: a record of a DIFFERENT owner through the alias is still refused.
+test fn kc_alias_refuses_a_record_of_another_owner() -> Bool {
+  carrier_refused(o: carrier_run(entry_source: concat(kc_prelude, "type KcPoint { x: Int }\ntype KcAlias<T> = FreeMonoid<T>\nfn kc_take_alias(xs: KcAlias<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_alias(xs: KcPoint { x: 1 }) }\n")))
+}
+
+// RED: the alias settles to the carrier AT ITS ARGUMENT -- a String element is not an Int element.
+test fn kc_alias_refuses_a_value_at_the_wrong_argument() -> Bool {
+  carrier_refused(o: carrier_run(entry_source: concat(kc_prelude, "type KcAlias<T> = FreeMonoid<T>\nfn kc_take_alias(xs: KcAlias<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_alias(xs: Cons { head: \"a\", tail: Empty {} }) }\n")))
+}
+
 test fn kc_list_field_admits_the_carrier_constructor() -> Bool {
   carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "type KcHolder { xs: List<Int> }\nfn kc_use() -> KcHolder { KcHolder { xs: Empty {} } }\n")))
 }
