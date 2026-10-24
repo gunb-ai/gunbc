@@ -261,8 +261,10 @@ fn v2_native_frontier_label() -> Label {
 // reaching one more stage). Every front-end, resolve and infer refusal is GROUPED BY THE FATAL REASON
 // (v2.compiler.source_root_eval native_census_cause_groups_add), with the stage and head kept as member
 // fields. An import cascade is collapsed to its root (census C): each cascaded module is one member
-// under the root's reason. At infer the only cascade is a refused closure provider leading an
-// importer's chain (native_census_infer_cascade). The roots are ranked by closure fan-out
+// under the root's reason. A module refused through a refused provider's declaration is filed at resolve,
+// as a member of that provider's root (native_census_chain_cascade), and every infer refusal is a root of
+// its own: no cross-module refusal reaches infer (the census part 2 header in
+// v2.compiler.source_root_eval says why). The roots are ranked by closure fan-out
 // (native_census_roots_ranked), and each is marked against the native test target's closure
 // (native_census_subject_closure). The receipt's stderr names the host memory budget's source. It is
 // THE route to that census: the binary's `census` / `census-resolve` / `census-infer` verbs remain

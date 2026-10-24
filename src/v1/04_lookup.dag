@@ -1,7 +1,7 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
-import v1.compiler.infer_items { ItemKind, FnItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
+import v1.compiler.infer_items { ItemKind, FnItem, TypeItem, ServiceItem, ResourceItem, DataItem, OtherItem, item_kind }
 import std.types { is_kernel_type }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
@@ -311,8 +311,9 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // borrowed declaration surface that carries a signature without one -- so a nullary fn reached
 // this way reads as OtherItem, and an admit-list of the callable kind refuses every member
 // of the population this arm exists to serve. The call position is what establishes that the name
-// is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE or
-// a DATA row, none of which a call may target.
+// is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE, a
+// RESOURCE or a DATA row, none of which a call may target. The match names every arm, so a kind
+// added later must be answered here rather than fall into the callable side.
 // THE CENSUS NEVER SERVES AN ALGEBRA METHOD-TEMPLATE NAME. `func_sig_from_global_bare` already
 // answers Unresolved for those names so the ExprCall known-method bridge types them. Returning a
 // census identity here made CallTargetOutcome look like a declaration, so constructor admission
@@ -328,8 +329,10 @@ fn census_declaration_identity(type_env: TypeEnv, func_name: String) -> Borrowed
       match item_kind(item: bd.node) {
         TypeItem => Absent
         ServiceItem => Absent
+        ResourceItem => Absent
         DataItem => Absent
-        _ => Present { value: bd }
+        FnItem => Present { value: bd }
+        OtherItem => Present { value: bd }
       }
     BorrowedCensusDeclAmbiguous { candidates: _ } => Absent
     BorrowedCensusDeclNotFound => Absent
