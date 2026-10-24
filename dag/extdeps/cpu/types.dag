@@ -1,7 +1,7 @@
 module extdeps.cpu.types
 
 
-import extdeps.external_authority { ExternalAuthority, FactCitation }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture }
 import extdeps.vendor { Vendor }
@@ -119,6 +119,8 @@ type CpuSocket {
   contact_count: Int
 
   cooling_mount: ProcessorCoolingMount
+
+  figure_standing: CitedFigureStanding
 }
 
 // WHY THE ATTACHMENT-MODE HALF IS NOT HERE. Splitting termination from attachment is one correction
@@ -130,6 +132,10 @@ type CpuSocket {
 // coproduct in the corpus whose only caller is its own witness, which is the decorative-carrier
 // failure this repository keeps catching in review.
 
+// figure_standing is the evidentiary standing of termination and contact_count, carried with the socket they
+// are facts about rather than restated per SKU. It is NOT part of a socket's identity: a citation is not
+// the socket, so cpu_socket_eq ignores it.
+//
 // SAME SOCKET means same platform owner AND same termination AND same count. Equal counts across
 // platforms are a coincidence of scale, not a compatibility fact, and a cooler or a footprint that
 // decided on the count alone would fit a part it was never made for.
@@ -171,7 +177,6 @@ type CpuModelCatalogRow {
   threads: HardwareThreadCount
   nominal_sustained_per_thread_hz: Hertz
   socket: CpuSocket
-  socket_citations: List<FactCitation>
   tdp_watts: Watt
   l1_cache: CpuL1CacheGeometry
   l1_cache_citations: List<FactCitation>
