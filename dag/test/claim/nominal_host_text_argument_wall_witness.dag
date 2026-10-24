@@ -83,6 +83,8 @@ data concat_optional_source: String = "module probe_host_text_concat_optional\ni
 
 data join_optional_elements_source: String = "module probe_host_text_join_optional\nimport std.types { String, Int, List }\nfn text(o: String?) -> String { join([o], \",\") }\n"
 
+data concat_imported_coproduct_source: String = "module probe_host_text_concat_imported\nimport std.types { String, Int, List }\nimport extdeps.languages.json.parse { JsonDocumentGap }\nfn text(g: JsonDocumentGap) -> String { concat(\"gap=\", g) }\n"
+
 test fn a_record_at_concat_is_refused() -> Bool {
   refusals(source: concat_record_source, subject: "nominal P at host text String formal of concat: no declared conversion") == 1
 }
@@ -149,4 +151,8 @@ test fn an_optional_at_concat_is_refused() -> Bool {
 
 test fn optional_elements_at_join_are_refused() -> Bool {
   blocking_refusals_containing(source: join_optional_elements_source, fragment: " at host text elements of join: no declared conversion") == 1
+}
+
+test fn an_imported_coproduct_at_concat_is_refused() -> Bool {
+  refusals(source: concat_imported_coproduct_source, subject: "nominal JsonDocumentGap at host text String formal of concat: no declared conversion") == 1
 }
