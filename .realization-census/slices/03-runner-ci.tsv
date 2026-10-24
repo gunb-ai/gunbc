@@ -1,0 +1,137 @@
+module	path	mech_storage	mech_caching	mech_access	mech_authz	mech_placement	ambient	leads
+gunbc.annotation_parse_instrument_agreement	dag/gunbc/annotation_parse_instrument_agreement.dag	L4	L0	L0	L0	L4	0	L4:abs /usr/local/ctrl-build-shims/gunbc ; L4:upstream binary /usr/local/bin/gunbc
+gunbc.build_cache.build_cache_endpoint_observation	dag/gunbc/build_cache/build_cache_endpoint_observation.dag	L0	L3	L0	L0	L2	0	L3:cache vocab BuildCacheEndpointObservation|BuildCacheInstance|BuildCacheServerPlacement|build_cache
+gunbc.build_cache.build_cache_endpoint_observe	dag/gunbc/build_cache/build_cache_endpoint_observe.dag	L4	L3	L0	L0	L4	0	L4:abs /proc/|/proc/sys/kernel/random/boot_id ; L3:cache vocab BuildCacheEndpointObservation|BuildCacheEndpointReads|BuildCacheEndpointSurvey|BuildCacheInstance ; L4:unit .service
+gunbc.build_cache.build_cache_endpoint_path	dag/gunbc/build_cache/build_cache_endpoint_path.dag	L0	L3	L0	L0	L0	0	L3:cache vocab BuildCacheInstance|build_cache|build_cache_endpoint_path|build_cache_endpoint_path_scope_disposition
+gunbc.build_cache.build_cache_ensure	dag/gunbc/build_cache/build_cache_ensure.dag	L0	L3	L0	L0	L0	0	L3:cache vocab BuildCacheInstance|BuildCacheServerPlacement|EnsureBuildCacheAdmission|EnsureBuildCacheAdmissionFold
+gunbc.build_cache.build_cache_instance	dag/gunbc/build_cache/build_cache_instance.dag	L4	L3	L0	L0	L4	0	L4:abs /var/lib/ctrl/sccache|/var/lib/ctrl/sccache-ci|/var/lib/ctrl/sccache-ci/server.sock|/var/lib/ctrl/sccache/server.sock ; L3:cache vocab BuildCacheCapacityConfiguration|BuildCacheCapacityConfigured|BuildCacheCapacityConfiguredUngrounded|BuildCacheCapacityObservation ; L4:unit gunbc-build-cache-ci.service|gunbc-build-cache-session.service
+gunbc.build_cache.build_cache_instance_readiness	dag/gunbc/build_cache/build_cache_instance_readiness.dag	L0	L3	L0	L0	L0	0	L3:cache vocab BuildCacheCapacityConfigured|BuildCacheCapacityConfiguredUngrounded|BuildCacheCapacityObservation|BuildCacheCapacityObservationUnavailable
+gunbc.build_cache.build_cache_latency_probe	dag/gunbc/build_cache/build_cache_latency_probe.dag	L0	L3	L0	L0	L4	0	L3:cache vocab build_cache|build_cache_latency_probe|build_cache_latency_probe_disposition|build_cache_latency_producer_disposition ; L4:host srv1-|srv2-|srv3-|srv4-
+gunbc.build_cache.build_cache_provision_verdict	dag/gunbc/build_cache/build_cache_provision_verdict.dag	L0	L3	L0	L0	L4	0	L3:cache vocab BuildCacheDaemonObservation|BuildCacheProvisionConverged|BuildCacheProvisionRefusal|BuildCacheProvisionRefused ; L4:host srv1
+gunbc.build_cache.build_cache_unit	dag/gunbc/build_cache/build_cache_unit.dag	L4	L3	L0	L0	L4	0	L4:abs /etc/systemd/system/ ; L3:cache vocab BuildCacheInstance|build_cache|build_cache_instance|build_cache_unit ; L4:/etc/systemd literal
+gunbc.ci.ci_budget_tree	dag/gunbc/ci/ci_budget_tree.dag	L2	L0	L0	L0	L4	0	L4:host srv1|srv2|srv3|srv4
+gunbc.ci.ci_deploy_access	dag/gunbc/ci/ci_deploy_access.dag	L4	L2	L0	L4	L2	0	L4:abs /etc/sudoers.d/gunbc-deploy ; L4:8 sudo sites
+gunbc.ci.ci_deploy_sudoers	dag/gunbc/ci/ci_deploy_sudoers.dag	L0	L0	L0	L4	L4	0	L4:18 sudo sites ; L4:upstream binary /usr/bin/chown|/usr/bin/rsync
+gunbc.ci.ci_deploy_target_host	dag/gunbc/ci/ci_deploy_target_host.dag	L0	L0	L4	L0	L2	1	L4:1 env reads
+gunbc.ci.ci_failure_class	dag/gunbc/ci/ci_failure_class.dag	L0	L3	L0	L0	L0	0	L3:cache vocab cache|sccache|sccache_failed_to_execute_compile_log_fragment|sccache_fatal_error_log_fragment
+gunbc.ci.ci_fleet	dag/gunbc/ci/ci_fleet.dag	L0	L0	L0	L0	L4	0	L4:host gunbc-operator-srv1|gunbc-operator-srv2|gunbc-operator-srv3|gunbc-operator-srv4
+gunbc.ci.ci_layer_roots	dag/gunbc/ci/ci_layer_roots.dag	L2	L0	L0	L4	L0	0	L4:1 sudo sites
+gunbc.ci.ci_spec	dag/gunbc/ci/ci_spec.dag	L4	L0	L0	L2	L4	0	L4:abs /dev/null|/dev/urandom|/proc/|/tmp/fleet-converge-apply ; L4:host target/srv1-tasks-preapply-receipt.txt
+gunbc.ci.ci_workflow_expressions	dag/gunbc/ci/ci_workflow_expressions.dag	L0	L3	L0	L0	L0	0	L3:cache vocab ci_cache_hash_files|ci_cache_key|ci_cache_key_template|ci_cache_path
+gunbc.ci.ci_yaml_validate	dag/gunbc/ci/ci_yaml_validate.dag	L0	L0	L0	L0	L0	1	
+gunbc.class_b_import_closure_overlay	dag/gunbc/class_b_import_closure_overlay.dag	L5	L0	L0	L0	L0	3	L4:1 raw writes, no store authority ; L5:mech Mkdir.
+gunbc.compiler_frontend_program_status	dag/gunbc/compiler_frontend_program_status.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.design.brand_mark_assets_cli	dag/gunbc/design/brand_mark_assets_cli.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.design_document	dag/gunbc/design_document.dag	L0	L0	L0	L4	L0	0	L4:1 sudo sites
+gunbc.doc_graph_roots	dag/gunbc/doc_graph_roots.dag	L0	L0	L0	L0	L4	0	L4:host extdeps.tailscale.serve|tailscale_serve_route_key
+gunbc.floor.floor_cold_build_receipt	dag/gunbc/floor/floor_cold_build_receipt.dag	L0	L3	L0	L0	L0	0	L3:cache vocab sccache_reachable
+gunbc.floor.floor_demand	dag/gunbc/floor/floor_demand.dag	L0	L3	L0	L0	L4	0	L3:cache vocab beat_reclaimable_cache|sccache_reachable ; L4:host actions-runner@srv1-01.service|actions-runner@srv1-03.service|actions-runner@srv2-01.service|actions-runner@srv2-02.service ; L4:unit actions-runner@srv1-01.service|actions-runner@srv1-03.service|actions-runner@srv2-01.service
+gunbc.floor.floor_materialization	dag/gunbc/floor/floor_materialization.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheProvider|floor_entry_walk_memo_provider_id
+gunbc.generated_artifact	dag/gunbc/generated_artifact.dag	L0	L0	L0	L4	L2	0	L4:4 sudo sites
+gunbc.generated_artifact_emit	dag/gunbc/generated_artifact_emit.dag	L0	L0	L0	L4	L2	0	L4:2 sudo sites
+gunbc.generated_artifact_observation	dag/gunbc/generated_artifact_observation.dag	L0	L0	L0	L0	L0	2	
+gunbc.heal_candidate	dag/gunbc/heal_candidate.dag	L5	L0	L4	L0	L0	9	L4:2 raw writes, no store authority ; L5:mech Mkdir.|Remove.RecursiveForce ; L4:1 env reads
+gunbc.heal_candidate_stage0	dag/gunbc/heal_candidate_stage0.dag	L0	L0	L0	L0	L0	2	
+gunbc.heal_publication	dag/gunbc/heal_publication.dag	L4	L0	L4	L0	L0	4	L4:1 raw writes, no store authority ; L4:1 env reads
+gunbc.instrument_targets	dag/gunbc/instrument_targets.dag	L0	L3	L0	L0	L0	0	L3:cache vocab compute_run_unit_sccache_probe_binding|compute_run_unit_sccache_probe_function|compute_run_unit_sccache_probe_label
+gunbc.live_rust_observation	dag/gunbc/live_rust_observation.dag	L0	L0	L4	L0	L0	1	L4:1 env reads
+gunbc.materialization_kernel_closing_frontier_audit	dag/gunbc/materialization_kernel_closing_frontier_audit.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheProvider|cache
+gunbc.materialization_provider_targets	dag/gunbc/materialization_provider_targets.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheInterfaceId|cache|cache_identity|cache_row
+gunbc.materialization_store_budgets	dag/gunbc/materialization_store_budgets.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheInterfaceCatalogFacts|cache|cache_identity
+gunbc.namespace_cut.namespace_cut_subject_observation	dag/gunbc/namespace_cut/namespace_cut_subject_observation.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.native_product_federation	dag/gunbc/native_product_federation.dag	L0	L3	L2	L0	L0	0	L3:cache vocab fabric_cache_blobs_read_secret_id|fabric_cache_blobs_read_secret_version|fabric_cache_blobs_write_secret_id|fabric_cache_blobs_write_secret_version
+gunbc.native_product_shared_store	dag/gunbc/native_product_shared_store.dag	L0	L3	L2	L0	L0	0	L3:cache vocab get_cache_blob|put_cache_blob
+gunbc.native_product_shared_transfer	dag/gunbc/native_product_shared_transfer.dag	L5	L0	L2	L0	L0	7	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce
+gunbc.observation_ci_render	dag/gunbc/observation_ci_render.dag	L0	L3	L0	L0	L0	0	L3:cache vocab cache
+gunbc.observation_seed_render	dag/gunbc/observation_seed_render.dag	L0	L3	L0	L0	L0	0	L3:cache vocab cache_evictions_in_window|cache_readmissions_in_window
+gunbc.parse_verdict_publish	dag/gunbc/parse_verdict_publish.dag	L0	L3	L0	L0	L0	0	L3:cache vocab GhaCacheDefaultBranchScope|GhaCacheEntryScope|GhaCachePullRequestMergeRefScope|cache
+gunbc.parse_verdict_restore	dag/gunbc/parse_verdict_restore.dag	L4	L3	L0	L0	L0	0	L4:abs /dev/null ; L3:cache vocab GhaCachePullRequestMergeRefScope|cache|cache_key|cache_restore_action
+gunbc.parse_verdict_schema	dag/gunbc/parse_verdict_schema.dag	L0	L3	L0	L0	L0	0	L3:cache vocab parse_compiler_sha_identity_cache_key|parse_compiler_sha_identity_cache_prefix
+gunbc.repo_workspace	dag/gunbc/repo_workspace.dag	L0	L3	L0	L0	L0	0	L3:cache vocab LocalCacheState
+gunbc.review_sheet_legacy_extent_producer	dag/gunbc/review_sheet_legacy_extent_producer.dag	L0	L0	L2	L0	L0	1	
+gunbc.review_sheet_spreadsheet_actuator	dag/gunbc/review_sheet_spreadsheet_actuator.dag	L4	L0	L0	L0	L0	0	L4:abs /etc/gunbc/review-sheet-legacy-extent-declaration.json
+gunbc.runner.runner_activation	dag/gunbc/runner/runner_activation.dag	L0	L3	L0	L0	L0	0	L3:cache vocab BuildCacheEndpointObservation|BuildCacheInstance|BuildCacheInstanceReady|BuildCacheServerPlacement
+gunbc.runner.runner_attempt_launch	dag/gunbc/runner/runner_attempt_launch.dag	L5	L0	L2	L0	L4	1	L4:1 raw writes, no store authority ; L5:mech mkdir_parents_command ; L4:upstream binary /bin/busybox
+gunbc.runner.runner_broker_progress_watchdog	dag/gunbc/runner/runner_broker_progress_watchdog.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_browser_toolchain	dag/gunbc/runner/runner_browser_toolchain.dag	L5	L0	L0	L0	L2	11	L4:abs /usr/sbin:/usr/bin:/sbin:/bin ; L5:6 raw writes beside store authority ; L5:mech Remove.RecursiveForce|mkdir_parents_command|rm_recursive
+gunbc.runner.runner_capacity_operator_access	dag/gunbc/runner/runner_capacity_operator_access.dag	L0	L0	L0	L4	L4	0	L4:1 sudo sites ; L4:upstream binary /usr/bin/sudo
+gunbc.runner.runner_capacity_plan	dag/gunbc/runner/runner_capacity_plan.dag	L0	L3	L0	L0	L2	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_checkout_receipt	dag/gunbc/runner/runner_checkout_receipt.dag	L0	L3	L0	L0	L0	0	L3:cache vocab loader_cache_defect
+gunbc.runner.runner_claim_set_guest	dag/gunbc/runner/runner_claim_set_guest.dag	L4	L0	L4	L0	L0	2	L4:1 raw writes, no store authority ; L4:1 env reads
+gunbc.runner.runner_claim_set_receipt	dag/gunbc/runner/runner_claim_set_receipt.dag	L0	L0	L0	L0	L0	1	
+gunbc.runner.runner_claim_set_work	dag/gunbc/runner/runner_claim_set_work.dag	L0	L3	L0	L0	L0	0	L3:cache vocab cache_policy|claim_set_cache_policy
+gunbc.runner.runner_connectivity_recovery	dag/gunbc/runner/runner_connectivity_recovery.dag	L0	L3	L0	L0	L2	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_connectivity_repair_plan	dag/gunbc/runner/runner_connectivity_repair_plan.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance|runner_jit_installation_token_cache_scaffold
+gunbc.runner.runner_disk_reclaim	dag/gunbc/runner/runner_disk_reclaim.dag	L4	L3	L0	L0	L4	0	L4:abs /etc/systemd/system/gunbc-runner-reclaim.service|/etc/systemd/system/gunbc-runner-reclaim.timer ; L3:cache vocab ContainerCachePrune ; L4:upstream binary /usr/local/bin/reclaim-runner-disk.sh ; L4:/etc/systemd literal
+gunbc.runner.runner_group_restriction_ensure_run	dag/gunbc/runner/runner_group_restriction_ensure_run.dag	L4	L0	L0	L2	L2	1	L4:1 raw writes, no store authority
+gunbc.runner.runner_guest_image	dag/gunbc/runner/runner_guest_image.dag	L5	L0	L4	L0	L4	4	L4:abs /etc/resolv.conf|/etc/systemd/system|/etc/systemd/system/|/root ; L5:3 raw writes beside store authority ; L5:mech mkdir_parents_command|rm_recursive ; L4:1 env reads ; L4:upstream binary /usr/bin/echo ; L4:unit gunbc-runner-agent.service ; L4:/etc/systemd literal
+gunbc.runner.runner_host_cap_bracket	dag/gunbc/runner/runner_host_cap_bracket.dag	L4	L0	L0	L0	L2	1	L4:1 raw writes, no store authority
+gunbc.runner.runner_host_deploy	dag/gunbc/runner/runner_host_deploy.dag	L0	L3	L0	L0	L4	0	L3:cache vocab build_cache|build_cache_instance|cache|runner_host_sccache_provision_script ; L4:host srv1|srv2|srv3|srv4
+gunbc.runner.runner_host_file_converge	dag/gunbc/runner/runner_host_file_converge.dag	L5	L3	L0	L4	L2	2	L4:abs /etc ; L5:2 raw writes beside store authority ; L3:cache vocab build_cache|build_cache_instance ; L4:11 sudo sites
+gunbc.runner.runner_host_grants	dag/gunbc/runner/runner_host_grants.dag	L4	L3	L0	L4	L2	0	L4:abs /etc/sudoers.d/gunbc-ghrunner ; L3:cache vocab actions_runner_cache_dir|build_cache|build_cache_instance ; L4:16 sudo sites
+gunbc.runner.runner_host_kernel_config	dag/gunbc/runner/runner_host_kernel_config.dag	L4	L0	L0	L0	L0	0	L4:abs /var/tmp/gunbc-hostimage/linux-6.12.108/.config
+gunbc.runner.runner_host_medium	dag/gunbc/runner/runner_host_medium.dag	L5	L0	L0	L0	L0	0	L5:mech mkdir_parents_command|rm_recursive
+gunbc.runner.runner_host_medium_publish	dag/gunbc/runner/runner_host_medium_publish.dag	L4	L0	L0	L0	L2	1	L4:1 raw writes, no store authority
+gunbc.runner.runner_host_surface	dag/gunbc/runner/runner_host_surface.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_host_unit_slot	dag/gunbc/runner/runner_host_unit_slot.dag	L0	L0	L0	L0	L4	0	L4:unit .service
+gunbc.runner.runner_incarnation	dag/gunbc/runner/runner_incarnation.dag	L0	L3	L0	L0	L2	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_lifecycle	dag/gunbc/runner/runner_lifecycle.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_local_state	dag/gunbc/runner/runner_local_state.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_lost_boot_sweep_run	dag/gunbc/runner/runner_lost_boot_sweep_run.dag	L4	L0	L2	L0	L2	2	L4:1 raw writes, no store authority
+gunbc.runner.runner_microvm	dag/gunbc/runner/runner_microvm.dag	L0	L3	L0	L0	L0	0	L3:cache vocab GuestCacheAllowance|ShapeRefusedCacheAllowanceUnderivable|beat_reclaimable_cache|build_cache
+gunbc.runner.runner_microvm_attempt	dag/gunbc/runner/runner_microvm_attempt.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_attempt_identity	dag/gunbc/runner/runner_microvm_attempt_identity.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_boot_probe	dag/gunbc/runner/runner_microvm_boot_probe.dag	L5	L0	L4	L0	L0	4	L4:3 raw writes, no store authority ; L5:mech mkdir_parents_command ; L4:1 env reads
+gunbc.runner.runner_microvm_cell_readiness	dag/gunbc/runner/runner_microvm_cell_readiness.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_cell_readiness_location	dag/gunbc/runner/runner_microvm_cell_readiness_location.dag	L4	L0	L0	L0	L0	0	L4:abs /var/lib/gunbc/microvm-cell-readiness
+gunbc.runner.runner_microvm_cell_readiness_store	dag/gunbc/runner/runner_microvm_cell_readiness_store.dag	L4	L3	L2	L0	L0	4	L4:1 raw writes, no store authority ; L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_host_ready	dag/gunbc/runner/runner_microvm_host_ready.dag	L5	L0	L4	L0	L0	2	L4:1 raw writes, no store authority ; L5:mech mkdir_parents_command ; L4:1 env reads
+gunbc.runner.runner_microvm_lifecycle	dag/gunbc/runner/runner_microvm_lifecycle.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_lifecycle_realize	dag/gunbc/runner/runner_microvm_lifecycle_realize.dag	L5	L3	L2	L0	L0	4	L4:2 raw writes, no store authority ; L5:mech rm_recursive ; L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_network	dag/gunbc/runner/runner_microvm_network.dag	L4	L3	L0	L0	L4	0	L4:abs /etc/gunbc|/etc/sysctl.d|/etc/sysctl.d/50-gunbc-microvm-forward.conf|/etc/systemd/network ; L3:cache vocab build_cache|build_cache_instance ; L4:unit gunbc-microvm-nft.service|systemd-networkd.service|systemd-sysctl.service ; L4:/etc/systemd literal
+gunbc.runner.runner_microvm_network_apply	dag/gunbc/runner/runner_microvm_network_apply.dag	L5	L3	L0	L0	L2	7	L5:4 raw writes beside store authority ; L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_network_converge	dag/gunbc/runner/runner_microvm_network_converge.dag	L4	L3	L4	L0	L4	4	L4:abs /var/lib/gunbc-microvm-network-stage ; L3:cache vocab build_cache|build_cache_instance ; L4:2 env reads ; L4:unit gunbc-microvm-nft.service
+gunbc.runner.runner_microvm_network_observe	dag/gunbc/runner/runner_microvm_network_observe.dag	L5	L3	L0	L0	L2	2	L4:2 raw writes, no store authority ; L5:mech mkdir_parents_command ; L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_network_receipt_store	dag/gunbc/runner/runner_microvm_network_receipt_store.dag	L5	L0	L0	L0	L0	2	L4:1 raw writes, no store authority ; L5:mech WriteCreateNew
+gunbc.runner.runner_microvm_network_sanitation_observe	dag/gunbc/runner/runner_microvm_network_sanitation_observe.dag	L0	L3	L2	L0	L0	1	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_shakedown	dag/gunbc/runner/runner_microvm_shakedown.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_slot_controller	dag/gunbc/runner/runner_microvm_slot_controller.dag	L5	L3	L4	L0	L2	3	L5:1 raw writes beside store authority ; L3:cache vocab build_cache|build_cache_instance ; L4:1 env reads
+gunbc.runner.runner_microvm_slot_reserve	dag/gunbc/runner/runner_microvm_slot_reserve.dag	L5	L3	L0	L0	L2	2	L5:2 raw writes beside store authority ; L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_slot_start	dag/gunbc/runner/runner_microvm_slot_start.dag	L4	L3	L0	L0	L0	2	L4:1 raw writes, no store authority ; L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_microvm_slot_unit	dag/gunbc/runner/runner_microvm_slot_unit.dag	L4	L0	L0	L0	L4	0	L4:abs /etc/credstore/|/etc/systemd/system/|/opt/gunbc/microvm-controller|/var/lib/gunbc/microvm-slot-controller ; L4:unit gunbc-microvm-controller.slice|gunbc-microvm-slot-reserve.service|gunbc-microvm-slot@.service ; L4:/etc/systemd literal
+gunbc.runner.runner_microvm_slot_unit_identity	dag/gunbc/runner/runner_microvm_slot_unit_identity.dag	L0	L0	L0	L0	L4	0	L4:unit .service
+gunbc.runner.runner_microvm_stop_propagation_probe	dag/gunbc/runner/runner_microvm_stop_propagation_probe.dag	L0	L0	L0	L0	L4	0	L4:unit gunbc-stop-propagation-probe-stand-in.service|gunbc-stop-propagation-probe-supervisor.service
+gunbc.runner.runner_password_session_tool_converge	dag/gunbc/runner/runner_password_session_tool_converge.dag	L4	L0	L0	L0	L2	1	L4:1 raw writes, no store authority
+gunbc.runner.runner_qemu_toolchain	dag/gunbc/runner/runner_qemu_toolchain.dag	L5	L0	L0	L0	L0	1	L4:abs /usr/lib/aarch64-linux-gnu:|/usr/sbin:/usr/bin:/sbin:/bin ; L5:mech mkdir_parents_command|rm_recursive
+gunbc.runner.runner_registration_labels	dag/gunbc/runner/runner_registration_labels.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_revision_job_guest	dag/gunbc/runner/runner_revision_job_guest.dag	L5	L0	L0	L0	L0	0	L4:abs /dev/vdb|/dev/vdc|/dev/vdd|/etc/gunbc-revision-job-cargo-config.toml ; L5:mech mkdir_parents_command
+gunbc.runner.runner_revision_job_image	dag/gunbc/runner/runner_revision_job_image.dag	L5	L0	L2	L0	L4	6	L4:abs /etc/fstab|/etc/resolv.conf|/etc/systemd/system/|/etc/systemd/system/sysinit.target.wants/fcnet.service ; L5:5 raw writes beside store authority ; L5:mech mkdir_parents_command|rm_recursive ; L4:upstream binary /usr/bin/cc|/usr/bin/git|/usr/bin/ld|/usr/bin/tar ; L4:unit gunbc-revision-job.service ; L4:/etc/systemd literal
+gunbc.runner.runner_revision_job_launch	dag/gunbc/runner/runner_revision_job_launch.dag	L5	L0	L0	L0	L0	0	L5:mech mkdir_parents_command
+gunbc.runner.runner_revision_job_main	dag/gunbc/runner/runner_revision_job_main.dag	L5	L3	L4	L0	L0	6	L4:abs /dev/vde ; L5:2 raw writes beside store authority ; L5:mech WriteCreateNew ; L3:cache vocab build_cache|build_cache_instance|cache_dir|cache_repo ; L4:1 env reads
+gunbc.runner.runner_revision_job_receipt	dag/gunbc/runner/runner_revision_job_receipt.dag	L5	L0	L0	L0	L0	5	L4:2 raw writes, no store authority ; L5:mech WriteCreateNew|mkdir_parents_command
+gunbc.runner.runner_revision_job_stage	dag/gunbc/runner/runner_revision_job_stage.dag	L5	L3	L0	L0	L0	2	L4:2 raw writes, no store authority ; L5:mech WriteCreateNew|mkdir_parents_command ; L3:cache vocab cache_repo|vendor_cache|vendor_cache_key
+gunbc.runner.runner_revision_job_toolchain	dag/gunbc/runner/runner_revision_job_toolchain.dag	L5	L0	L2	L0	L4	6	L4:abs /etc/nsswitch.conf|/usr/lib/cpp|/usr/share/libc-bin/nsswitch.conf ; L5:1 raw writes beside store authority ; L5:mech WriteCreateNew|mkdir_parents_command ; L4:upstream binary /usr/bin/cc|/usr/sbin/ldconfig.real
+gunbc.runner.runner_revision_job_unit	dag/gunbc/runner/runner_revision_job_unit.dag	L4	L3	L0	L0	L4	0	L4:abs /etc/systemd/system/|/var/lib/gunbc/revision-job|/var/lib/gunbc/revision-job/receipts|/var/lib/gunbc/revision-job/spec ; L3:cache vocab build_cache|build_cache_instance|revision_job_cache_dir ; L4:unit .service|gunbc-revision-job-runner@.service ; L4:/etc/systemd literal
+gunbc.runner.runner_runtime_snapshot	dag/gunbc/runner/runner_runtime_snapshot.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_service_activation	dag/gunbc/runner/runner_service_activation.dag	L0	L3	L0	L4	L0	0	L3:cache vocab BuildCacheInstanceReady|cache_ready ; L4:1 sudo sites
+gunbc.runner.runner_service_slot_controller	dag/gunbc/runner/runner_service_slot_controller.dag	L0	L0	L4	L0	L2	1	L4:1 env reads
+gunbc.runner.runner_slot_actuation	dag/gunbc/runner/runner_slot_actuation.dag	L0	L0	L0	L4	L2	0	L4:2 sudo sites
+gunbc.runner.runner_slot_allocation	dag/gunbc/runner/runner_slot_allocation.dag	L2	L3	L0	L0	L4	0	L3:cache vocab build_cache|build_cache_instance|microvm_controller_slice_cache_headroom ; L4:host actions-runner@srv1-04.service|actions-runner@srv1-05.service|actions-runner@srv2-03.service|srv1-05 ; L4:unit actions-runner@srv1-04.service|actions-runner@srv1-05.service|actions-runner@srv2-03.service
+gunbc.runner.runner_slot_job_role	dag/gunbc/runner/runner_slot_job_role.dag	L0	L3	L0	L0	L2	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_slot_provision	dag/gunbc/runner/runner_slot_provision.dag	L0	L3	L0	L0	L0	0	L3:cache vocab actions_runner_cache_dir|build_cache|build_cache_instance|cache_install_command
+gunbc.runner.runner_slot_retirement	dag/gunbc/runner/runner_slot_retirement.dag	L0	L3	L0	L0	L4	0	L3:cache vocab build_cache|build_cache_instance ; L4:host actions-runner@srv1-03.service|actions-runner@srv1-04.service|actions-runner@srv1-05.service|actions-runner@srv1-06.service ; L4:unit actions-runner@srv1-03.service|actions-runner@srv1-04.service|actions-runner@srv1-05.service
+gunbc.runner.runner_teardown_receipt	dag/gunbc/runner/runner_teardown_receipt.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.runner.runner_throughput_qualification_route	dag/gunbc/runner/runner_throughput_qualification_route.dag	L0	L0	L0	L0	L4	0	L4:unit .service
+gunbc.runner.runner_unit	dag/gunbc/runner/runner_unit.dag	L4	L3	L0	L0	L4	0	L4:abs /etc/systemd/system/ ; L3:cache vocab build_cache|build_cache_instance ; L4:unit .service ; L4:/etc/systemd literal
+gunbc.runner.runner_unit_file	dag/gunbc/runner/runner_unit_file.dag	L4	L3	L4	L0	L4	0	L4:abs /etc/actions-runner/app.pem|/etc/systemd/system/ ; L3:cache vocab build_cache|build_cache_instance|build_cache_unit|cache ; L4:credential path /etc/actions-runner/app.pem ; L4:/etc/systemd literal
+gunbc.runner.runner_unit_live_read	dag/gunbc/runner/runner_unit_live_read.dag	L0	L0	L0	L0	L4	0	L4:host actions-runner@srv1-01.service ; L4:unit actions-runner@srv1-01.service
+gunbc.runner.workspace_guest_image	dag/gunbc/runner/workspace_guest_image.dag	L5	L0	L2	L0	L4	3	L4:abs /etc/resolv.conf|/etc/ssh/sshd_config.gunbc-workspace|/etc/systemd/system/gunbc-workspace.service|/etc/systemd/system/multi-user.target.wants ; L5:3 raw writes beside store authority ; L5:mech mkdir_parents_command|rm_recursive ; L4:upstream binary /usr/bin/ssh-keygen|/usr/local/sbin/gunbc-workspace-bootstrap|/usr/sbin/sshd ; L4:unit ../gunbc-workspace.service ; L4:/etc/systemd literal
+gunbc.runner.workspace_microvm	dag/gunbc/runner/workspace_microvm.dag	L5	L3	L2	L2	L0	2	L5:mech mkdir_parents_command ; L3:cache vocab build_cache|build_cache_instance
+gunbc.seed_growth_admission	dag/gunbc/seed_growth_admission.dag	L0	L3	L0	L0	L0	0	L3:cache vocab census_memo_seed_growth|census_memo_seed_growth_justification|decl_facts_shared_memo_seed_growth|decl_facts_shared_memo_seed_growth_justification
+gunbc.source_layout_namespaces	dag/gunbc/source_layout_namespaces.dag	L0	L0	L0	L0	L4	0	L4:host extdeps.tailscale|gunbc.srv3|test.claim.srv3
+gunbc.source_root_read	dag/gunbc/source_root_read.dag	L0	L0	L0	L0	L0	3	
+gunbc.tier_o_artifact_emit	dag/gunbc/tier_o_artifact_emit.dag	L0	L0	L0	L4	L2	0	L4:2 sudo sites
+gunbc.toolchain_coherence	dag/gunbc/toolchain_coherence.dag	L0	L3	L0	L0	L0	0	L3:cache vocab build_cache|build_cache_instance
+gunbc.typed_module_cache_capacity	dag/gunbc/typed_module_cache_capacity.dag	L2	L3	L0	L0	L0	1	L3:cache vocab TypedModuleCacheCap|typed_module_cache_cap_derivation|typed_module_cache_cap_is_refused|typed_module_cache_capacity
+gunbc.v1.v1_complexity_decl_classification_roster	dag/gunbc/v1/v1_complexity_decl_classification_roster.dag	L0	L3	L0	L0	L0	0	L3:cache vocab InterproceduralSummaryMemo
+gunbc.witness.compiler_gate_workflow	dag/gunbc/witness/compiler_gate_workflow.dag	L0	L3	L0	L0	L2	0	L3:cache vocab ci_cache_cargo_step_under

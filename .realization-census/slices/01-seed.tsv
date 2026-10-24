@@ -1,0 +1,162 @@
+module	path	mech_storage	mech_caching	mech_access	mech_authz	mech_placement	ambient	leads
+src/v1/04_env	src/v1/04_env.dag	L0	L3	L0	L0	L0	0	L3:cache vocab GuardedTypeEnvCacheMerge|TypeEnvCache|TypeEnvCacheMergeConflict|cache
+src/v1/04_infer	src/v1/04_infer.dag	L0	L3	L0	L0	L0	0	L3:cache vocab GuardedTypeEnvCacheMerge|ParentCacheRow|TypeEnvCache|TypeEnvCacheMergeConflict
+src/v1/04_items	src/v1/04_items.dag	L0	L3	L0	L0	L0	0	L3:cache vocab TypeEnvCache|cache|empty_type_env_cache|type_env_cache
+src/v1/05_emit	src/v1/05_emit.dag	L5	L0	L0	L0	L0	0	L5:mech WriteCreateNew
+src/v1/05_emit_rust	src/v1/05_emit_rust.dag	L5	L3	L0	L0	L0	0	L5:mech WriteCreateNew ; L3:cache vocab CacheEvidence|CacheInterfaceCatalogFacts|CacheInterfaceCatalogIoSemantics|cache
+src/v1/complexity	src/v1/complexity.dag	L0	L3	L0	L0	L0	0	L3:cache vocab cache_summary|cached
+src/v1/dag_collect	src/v1/dag_collect.dag	L0	L3	L0	L0	L0	0	L3:cache vocab _memo_reset|dag_collect_fp_memo_reset|dag_node_surface_fingerprint_memo
+src/v1/dag_collect_support	src/v1/dag_collect_support.dag	L0	L3	L0	L0	L0	0	L3:cache vocab dag_collect_fp_memo_reset|dag_node_surface_fingerprint_memo
+src/v1/stage0/build.rs	src/v1/stage0/build.rs	L0	L0	L4	L0	L0	6	L4:2 env reads
+src/v1/stage0/src/behavioral_receipt_host.rs	src/v1/stage0/src/behavioral_receipt_host.rs	L5	L0	L0	L0	L0	19	L4:3 raw writes, no store authority ; L5:mech create_dir_all
+src/v1/stage0/src/bin/bootstrap_witness.rs	src/v1/stage0/src/bin/bootstrap_witness.rs	L5	L0	L4	L0	L0	60	L4:abs /tmp/v2-ci-timing.txt ; L5:6 raw writes beside store authority ; L5:mech create_dir_all ; L4:2 env reads
+src/v1/stage0/src/bin/carrier_realization_census.rs	src/v1/stage0/src/bin/carrier_realization_census.rs	L4	L0	L0	L0	L0	2	L4:1 raw writes, no store authority
+src/v1/stage0/src/bin/claim_batch.rs	src/v1/stage0/src/bin/claim_batch.rs	L4	L3	L4	L0	L0	5	L4:abs /proc/self/status ; L3:cache vocab clear_decl_census_memo|data_eval_cache_hit_ratio|eval_call_memo_frame_exit|register_decl_census_memo ; L4:4 env reads
+src/v1/stage0/src/bin/claim_executor.rs	src/v1/stage0/src/bin/claim_executor.rs	L5	L3	L4	L0	L4	10	L4:1 raw writes, no store authority ; L5:mech create_dir_all ; L3:cache vocab cache|cached|release_process_caches_at_exit|sccache ; L4:1 env reads ; L4:upstream binary /usr/bin/git
+src/v1/stage0/src/bin/dag_collect_fingerprint_witness.rs	src/v1/stage0/src/bin/dag_collect_fingerprint_witness.rs	L0	L3	L0	L0	L0	0	L3:cache vocab dag_collect_fp_memo_reset
+src/v1/stage0/src/bin/effects_rest_transport_witness.rs	src/v1/stage0/src/bin/effects_rest_transport_witness.rs	L0	L0	L0	L0	L0	1	
+src/v1/stage0/src/bin/generic_identity_census.rs	src/v1/stage0/src/bin/generic_identity_census.rs	L4	L0	L0	L0	L0	2	L4:1 raw writes, no store authority
+src/v1/stage0/src/bin/interp_recorded_fixture_witness.rs	src/v1/stage0/src/bin/interp_recorded_fixture_witness.rs	L5	L0	L0	L0	L0	46	L4:abs /tmp/gunbc_fs_closure_scale_witness.txt|/tmp/gunbc_fs_witness_absent_should_not_exist_42|/tmp/gunbc_fs_write_witness|/tmp/gunbc_probe ; L5:8 raw writes beside store authority ; L5:mech create_dir_all
+src/v1/stage0/src/bin/parse_witness.rs	src/v1/stage0/src/bin/parse_witness.rs	L0	L0	L0	L0	L0	1	
+src/v1/stage0/src/bin/type_occurrence_binding_census.rs	src/v1/stage0/src/bin/type_occurrence_binding_census.rs	L0	L0	L0	L0	L0	4	
+src/v1/stage0/src/cli_run.rs	src/v1/stage0/src/cli_run.rs	L5	L5	L4	L0	L4	183	L4:abs /dev/null|/etc/passwd|/proc/self/status|/proc/sys/kernel/hostname ; L5:35 raw writes beside store authority ; L5:mech create_dir_all ; L5:32 process-wide memo statics ; L4:11 env reads ; L4:host 127.0.0.1|tailscale-user-login|tailscale_identity
+src/v1/stage0/src/cli_run/cgroup_memory.rs	src/v1/stage0/src/cli_run/cgroup_memory.rs	L0	L0	L0	L0	L0	1	
+src/v1/stage0/src/cli_run/checker_dependency.rs	src/v1/stage0/src/cli_run/checker_dependency.rs	L5	L0	L0	L0	L0	9	L4:4 raw writes, no store authority ; L5:mech create_dir_all
+src/v1/stage0/src/cli_run/compile_clean.rs	src/v1/stage0/src/cli_run/compile_clean.rs	L0	L5	L4	L0	L0	5	L5:1 process-wide memo statics ; L4:4 env reads
+src/v1/stage0/src/cli_run/complexity_gates.rs	src/v1/stage0/src/cli_run/complexity_gates.rs	L0	L3	L0	L0	L0	0	L3:cache vocab cla_cached_builtin_cache|cla_cached_wildcard_facts
+src/v1/stage0/src/cli_run/declared_refs.rs	src/v1/stage0/src/cli_run/declared_refs.rs	L0	L0	L4	L0	L0	1	L4:1 env reads
+src/v1/stage0/src/cli_run/demand_acquire.rs	src/v1/stage0/src/cli_run/demand_acquire.rs	L5	L5	L4	L0	L0	23	L4:9 raw writes, no store authority ; L5:mech create_dir_all ; L5:1 process-wide memo statics ; L4:2 env reads
+src/v1/stage0/src/cli_run/derived_row_roster.rs	src/v1/stage0/src/cli_run/derived_row_roster.rs	L5	L0	L0	L0	L0	16	L4:2 raw writes, no store authority ; L5:mech create_dir_all
+src/v1/stage0/src/cli_run/doc_graph.rs	src/v1/stage0/src/cli_run/doc_graph.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/cli_run/emit_host.rs	src/v1/stage0/src/cli_run/emit_host.rs	L5	L5	L0	L0	L0	12	L4:1 raw writes, no store authority ; L5:mech create_dir_all ; L5:1 process-wide memo statics
+src/v1/stage0/src/cli_run/emitted_crate_workspace_host.rs	src/v1/stage0/src/cli_run/emitted_crate_workspace_host.rs	L5	L0	L0	L0	L0	4	L4:1 raw writes, no store authority ; L5:mech create_dir_all
+src/v1/stage0/src/cli_run/entry_resolve.rs	src/v1/stage0/src/cli_run/entry_resolve.rs	L5	L5	L4	L0	L0	33	L4:11 raw writes, no store authority ; L5:mech create_dir_all ; L5:4 process-wide memo statics ; L4:2 env reads
+src/v1/stage0/src/cli_run/fallback_arm_census.rs	src/v1/stage0/src/cli_run/fallback_arm_census.rs	L0	L3	L0	L0	L0	0	L3:cache vocab fac_cached_census_facts
+src/v1/stage0/src/cli_run/languages_census.rs	src/v1/stage0/src/cli_run/languages_census.rs	L0	L5	L0	L0	L0	3	L5:1 process-wide memo statics
+src/v1/stage0/src/cli_run/native_lane_runner.rs	src/v1/stage0/src/cli_run/native_lane_runner.rs	L5	L3	L4	L0	L4	104	L4:abs /tmp/x.rusage ; L5:18 raw writes beside store authority ; L5:mech create_dir_all|fs::rename ; L3:cache vocab native_product_cache ; L4:8 env reads ; L4:upstream binary /bin/sh|/bin/sh\n-c\n{script} ; L4:host 127.0.0.1
+src/v1/stage0/src/cli_run/native_product_cache.rs	src/v1/stage0/src/cli_run/native_product_cache.rs	L5	L0	L4	L0	L0	37	L4:12 raw writes, no store authority ; L5:mech create_dir_all|fs::rename ; L4:3 env reads
+src/v1/stage0/src/cli_run/non_fold_residue.rs	src/v1/stage0/src/cli_run/non_fold_residue.rs	L0	L5	L0	L0	L0	0	L5:3 process-wide memo statics
+src/v1/stage0/src/cli_run/pool_acquire.rs	src/v1/stage0/src/cli_run/pool_acquire.rs	L0	L5	L0	L0	L0	0	L5:3 process-wide memo statics
+src/v1/stage0/src/cli_run/pre_entry_phase.rs	src/v1/stage0/src/cli_run/pre_entry_phase.rs	L0	L5	L0	L0	L0	0	L5:3 process-wide memo statics
+src/v1/stage0/src/cli_run/provider_acquire.rs	src/v1/stage0/src/cli_run/provider_acquire.rs	L5	L3	L4	L0	L0	8	L4:2 raw writes, no store authority ; L5:mech create_dir_all ; L3:cache vocab ResolvedGraphMemoShare ; L4:1 env reads
+src/v1/stage0/src/cli_run/reach_base_standings.rs	src/v1/stage0/src/cli_run/reach_base_standings.rs	L5	L5	L0	L0	L0	3	L4:1 raw writes, no store authority ; L5:mech create_dir_all ; L5:1 process-wide memo statics
+src/v1/stage0/src/cli_run/required_ci_measurement.rs	src/v1/stage0/src/cli_run/required_ci_measurement.rs	L4	L0	L0	L0	L0	5	L4:1 raw writes, no store authority
+src/v1/stage0/src/cli_run/required_floor_runner.rs	src/v1/stage0/src/cli_run/required_floor_runner.rs	L0	L0	L4	L0	L0	2	L4:1 env reads
+src/v1/stage0/src/cli_run/rostered_row_join.rs	src/v1/stage0/src/cli_run/rostered_row_join.rs	L5	L0	L0	L0	L0	7	L4:2 raw writes, no store authority ; L5:mech create_dir_all
+src/v1/stage0/src/cli_run/scope_rank_view.rs	src/v1/stage0/src/cli_run/scope_rank_view.rs	L0	L3	L0	L0	L0	0	L3:cache vocab claim_scope_for_without_memos
+src/v1/stage0/src/cli_run/test_migration.rs	src/v1/stage0/src/cli_run/test_migration.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs	src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs	L5	L0	L0	L0	L0	8	L4:2 raw writes, no store authority ; L5:mech create_dir_all
+src/v1/stage0/src/cli_run/user_work_scope.rs	src/v1/stage0/src/cli_run/user_work_scope.rs	L5	L0	L4	L0	L4	16	L4:abs /proc/self/cgroup|/run/systemd/system|/sys/fs/cgroup|/sys/fs/cgroup{rel}/{name} ; L5:2 raw writes beside store authority ; L5:mech create_dir_all ; L4:3 env reads ; L4:host gunbc-fci1-controls.slice ; L4:unit .service|.slice|0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service
+src/v1/stage0/src/cli_run/witness_gates.rs	src/v1/stage0/src/cli_run/witness_gates.rs	L4	L5	L0	L0	L0	5	L4:1 raw writes, no store authority ; L5:4 process-wide memo statics
+src/v1/stage0/src/closure_identity.rs	src/v1/stage0/src/closure_identity.rs	L4	L5	L0	L0	L0	1	L4:abs /proc/self/exe ; L5:1 process-wide memo statics
+src/v1/stage0/src/codex_app_server_stdio_session.rs	src/v1/stage0/src/codex_app_server_stdio_session.rs	L4	L0	L0	L0	L0	3	L4:1 raw writes, no store authority
+src/v1/stage0/src/compiler_tests.rs	src/v1/stage0/src/compiler_tests.rs	L5	L0	L4	L0	L0	10	L4:2 raw writes, no store authority ; L5:mech create_dir_all ; L4:1 env reads
+src/v1/stage0/src/coproduct_reflection.rs	src/v1/stage0/src/coproduct_reflection.rs	L0	L5	L0	L0	L0	1	L5:2 process-wide memo statics
+src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs	src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs	L5	L0	L0	L0	L0	52	L4:25 raw writes, no store authority ; L5:mech create_dir_all
+src/v1/stage0/src/declaration_index.rs	src/v1/stage0/src/declaration_index.rs	L0	L0	L0	L0	L4	1	L4:host gunbc.srv3.srv3_os_install_actuate_scope|gunbc.tailscale_acl_phase2_credential|tailscale_acl_phase2_live_write_disposition|tailscale_acl_upsert_wet
+src/v1/stage0/src/emitted_closure_compile_host.rs	src/v1/stage0/src/emitted_closure_compile_host.rs	L5	L0	L4	L0	L0	44	L4:abs /run/probe/crate|/tmp/probe-crate|/tmp/t|/tmp/workspace ; L5:6 raw writes beside store authority ; L5:mech create_dir_all ; L4:4 env reads
+src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs	src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs	L4	L0	L4	L0	L4	14	L4:2 raw writes, no store authority ; L4:1 env reads ; L4:host 127.0.0.1
+src/v1/stage0/src/extdeps_container_oci_digest.rs	src/v1/stage0/src/extdeps_container_oci_digest.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/extdeps_currency_currency.rs	src/v1/stage0/src/extdeps_currency_currency.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/extdeps_external_authority.rs	src/v1/stage0/src/extdeps_external_authority.rs	L0	L5	L0	L0	L0	0	L5:4 process-wide memo statics
+src/v1/stage0/src/extdeps_filesystem_rust_realization.rs	src/v1/stage0/src/extdeps_filesystem_rust_realization.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/extdeps_ietf_http_semantics.rs	src/v1/stage0/src/extdeps_ietf_http_semantics.rs	L0	L5	L0	L0	L0	0	L5:5 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_dag_emit.rs	src/v1/stage0/src/extdeps_languages_dag_emit.rs	L0	L5	L0	L0	L0	0	L5:30 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_dag_syntax.rs	src/v1/stage0/src/extdeps_languages_dag_syntax.rs	L0	L5	L0	L0	L0	0	L5:12 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_dag_types.rs	src/v1/stage0/src/extdeps_languages_dag_types.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_go_emit.rs	src/v1/stage0/src/extdeps_languages_go_emit.rs	L0	L5	L0	L0	L0	0	L5:33 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_go_syntax.rs	src/v1/stage0/src/extdeps_languages_go_syntax.rs	L0	L5	L0	L0	L0	0	L5:3 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_go_types.rs	src/v1/stage0/src/extdeps_languages_go_types.rs	L0	L5	L0	L0	L0	0	L5:16 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_python_emit.rs	src/v1/stage0/src/extdeps_languages_python_emit.rs	L0	L5	L0	L0	L0	0	L5:35 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_python_syntax.rs	src/v1/stage0/src/extdeps_languages_python_syntax.rs	L0	L5	L0	L0	L0	0	L5:3 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_python_types.rs	src/v1/stage0/src/extdeps_languages_python_types.rs	L0	L5	L0	L0	L0	0	L5:27 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_rust_capabilities.rs	src/v1/stage0/src/extdeps_languages_rust_capabilities.rs	L0	L5	L0	L0	L0	0	L5:4 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_rust_derive_contracts.rs	src/v1/stage0/src/extdeps_languages_rust_derive_contracts.rs	L0	L5	L0	L0	L0	0	L5:17 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_rust_emit.rs	src/v1/stage0/src/extdeps_languages_rust_emit.rs	L0	L5	L0	L0	L0	0	L5:52 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_rust_representation.rs	src/v1/stage0/src/extdeps_languages_rust_representation.rs	L0	L5	L0	L0	L0	0	L5:5 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_rust_syntax.rs	src/v1/stage0/src/extdeps_languages_rust_syntax.rs	L0	L5	L0	L0	L0	0	L5:8 process-wide memo statics
+src/v1/stage0/src/extdeps_languages_rust_types.rs	src/v1/stage0/src/extdeps_languages_rust_types.rs	L0	L5	L0	L0	L0	0	L5:20 process-wide memo statics
+src/v1/stage0/src/extdeps_posix_clock_gettime.rs	src/v1/stage0/src/extdeps_posix_clock_gettime.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/extdeps_rust_cargo.rs	src/v1/stage0/src/extdeps_rust_cargo.rs	L0	L5	L0	L0	L0	0	L5:10 process-wide memo statics
+src/v1/stage0/src/extdeps_rust_version.rs	src/v1/stage0/src/extdeps_rust_version.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/extdeps_units_dimensionless.rs	src/v1/stage0/src/extdeps_units_dimensionless.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/extdeps_units_iec_80000_13.rs	src/v1/stage0/src/extdeps_units_iec_80000_13.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/extdeps_units_iso8601.rs	src/v1/stage0/src/extdeps_units_iso8601.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/extdeps_units_iso_80000_3.rs	src/v1/stage0/src/extdeps_units_iso_80000_3.rs	L0	L5	L0	L0	L0	0	L5:5 process-wide memo statics
+src/v1/stage0/src/extdeps_uri_path.rs	src/v1/stage0/src/extdeps_uri_path.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/extdeps_version.rs	src/v1/stage0/src/extdeps_version.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/extdeps_version_semver.rs	src/v1/stage0/src/extdeps_version_semver.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/generated_artifact_boundary_host.rs	src/v1/stage0/src/generated_artifact_boundary_host.rs	L0	L0	L0	L0	L0	1	
+src/v1/stage0/src/gunbc_cli_dispatch_generated.rs	src/v1/stage0/src/gunbc_cli_dispatch_generated.rs	L0	L0	L0	L0	L4	0	L4:host 127.0.0.1
+src/v1/stage0/src/gunbc_cli_dispatch_surface.rs	src/v1/stage0/src/gunbc_cli_dispatch_surface.rs	L0	L5	L0	L0	L4	0	L5:1 process-wide memo statics ; L4:host 127.0.0.1
+src/v1/stage0/src/gunbc_emitted_crate_workspace.rs	src/v1/stage0/src/gunbc_emitted_crate_workspace.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/gunbc_file_transport_generated.rs	src/v1/stage0/src/gunbc_file_transport_generated.rs	L5	L0	L0	L0	L0	7	L5:mech create_new
+src/v1/stage0/src/gunbc_rust_crate_package_ident.rs	src/v1/stage0/src/gunbc_rust_crate_package_ident.rs	L0	L5	L0	L0	L0	0	L5:3 process-wide memo statics
+src/v1/stage0/src/gunbc_rust_emitted_edge.rs	src/v1/stage0/src/gunbc_rust_emitted_edge.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/gunbc_rust_source_type_bindings.rs	src/v1/stage0/src/gunbc_rust_source_type_bindings.rs	L0	L5	L0	L0	L0	0	L5:4 process-wide memo statics
+src/v1/stage0/src/gunbc_stage0_stage0_crate_layout_generated.rs	src/v1/stage0/src/gunbc_stage0_stage0_crate_layout_generated.rs	L0	L5	L0	L0	L0	0	L5:5 process-wide memo statics
+src/v1/stage0/src/gunbc_stage0_stage0_crate_partition_generated.rs	src/v1/stage0/src/gunbc_stage0_stage0_crate_partition_generated.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/gunbc_stage0_stage0_emitted_population_manifest.rs	src/v1/stage0/src/gunbc_stage0_stage0_emitted_population_manifest.rs	L0	L5	L0	L0	L0	0	L5:3 process-wide memo statics
+src/v1/stage0/src/gunbc_stage0_stage0_executable_assembly_generated.rs	src/v1/stage0/src/gunbc_stage0_stage0_executable_assembly_generated.rs	L0	L5	L0	L0	L0	0	L5:4 process-wide memo statics
+src/v1/stage0/src/gunbc_structural_realization_bindings.rs	src/v1/stage0/src/gunbc_structural_realization_bindings.rs	L0	L5	L0	L0	L0	0	L5:7 process-wide memo statics
+src/v1/stage0/src/main.rs	src/v1/stage0/src/main.rs	L5	L0	L0	L0	L4	7	L4:abs /proc/nope|/proc/nope/src|/proc/nope/src/a.rs ; L5:1 raw writes beside store authority ; L5:mech create_dir_all ; L4:host 127.0.0.1
+src/v1/stage0/src/memory_governor.rs	src/v1/stage0/src/memory_governor.rs	L5	L3	L4	L0	L4	28	L4:abs /proc/meminfo|/proc/self/cgroup|/proc/self/stat|/proc/self/status ; L5:7 raw writes beside store authority ; L5:mech create_dir_all ; L3:cache vocab cache|cache_evictions_in_window|cache_readmissions_in_window ; L4:3 env reads ; L4:unit actions-runner.slice
+src/v1/stage0/src/module_path_index/index.rs	src/v1/stage0/src/module_path_index/index.rs	L0	L0	L0	L0	L0	1	
+src/v1/stage0/src/module_path_index/parsed_dag_file.rs	src/v1/stage0/src/module_path_index/parsed_dag_file.rs	L0	L0	L0	L0	L0	1	
+src/v1/stage0/src/namespace_baseline.rs	src/v1/stage0/src/namespace_baseline.rs	L5	L0	L0	L0	L0	21	L4:1 raw writes, no store authority ; L5:mech create_dir_all
+src/v1/stage0/src/partition_crate_boundary_host.rs	src/v1/stage0/src/partition_crate_boundary_host.rs	L5	L0	L4	L0	L0	5	L4:1 raw writes, no store authority ; L5:mech create_dir_all ; L4:1 env reads
+src/v1/stage0/src/phase_profile.rs	src/v1/stage0/src/phase_profile.rs	L0	L5	L4	L0	L0	2	L5:1 process-wide memo statics ; L4:2 env reads
+src/v1/stage0/src/pre_push.rs	src/v1/stage0/src/pre_push.rs	L4	L3	L0	L0	L0	9	L4:abs /dev/null ; L3:cache vocab cached
+src/v1/stage0/src/process_group.rs	src/v1/stage0/src/process_group.rs	L5	L0	L0	L0	L0	16	L4:abs /proc ; L5:2 raw writes beside store authority ; L5:mech create_dir_all
+src/v1/stage0/src/recorded_fixture.rs	src/v1/stage0/src/recorded_fixture.rs	L5	L0	L0	L0	L0	5	L4:1 raw writes, no store authority ; L5:mech create_dir_all
+src/v1/stage0/src/required_regen_host.rs	src/v1/stage0/src/required_regen_host.rs	L5	L3	L4	L0	L0	105	L4:abs /proc/self/exe|/proc/self/fd/{}|/proc/sys/kernel/hostname|/tmp ; L5:18 raw writes beside store authority ; L5:mech create_dir_all|fs::rename ; L3:cache vocab disk_cache|memo|memo_normalized|normalize_cache_path ; L4:2 env reads
+src/v1/stage0/src/std_algebra.rs	src/v1/stage0/src/std_algebra.rs	L0	L5	L0	L0	L0	0	L5:7 process-wide memo statics
+src/v1/stage0/src/std_coercion.rs	src/v1/stage0/src/std_coercion.rs	L0	L5	L0	L0	L0	0	L5:3 process-wide memo statics
+src/v1/stage0/src/std_compiler_entry.rs	src/v1/stage0/src/std_compiler_entry.rs	L0	L5	L0	L0	L0	0	L5:4 process-wide memo statics
+src/v1/stage0/src/std_content_hash.rs	src/v1/stage0/src/std_content_hash.rs	L0	L5	L0	L0	L0	0	L5:3 process-wide memo statics
+src/v1/stage0/src/std_decimal.rs	src/v1/stage0/src/std_decimal.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/std_integer.rs	src/v1/stage0/src/std_integer.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/std_interface_summary.rs	src/v1/stage0/src/std_interface_summary.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/std_machine_constraints.rs	src/v1/stage0/src/std_machine_constraints.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/std_measure.rs	src/v1/stage0/src/std_measure.rs	L0	L5	L0	L0	L0	0	L5:5 process-wide memo statics
+src/v1/stage0/src/std_nat.rs	src/v1/stage0/src/std_nat.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/std_node.rs	src/v1/stage0/src/std_node.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/std_occurrence_binding.rs	src/v1/stage0/src/std_occurrence_binding.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/std_occurrence_binding_candidates.rs	src/v1/stage0/src/std_occurrence_binding_candidates.rs	L0	L5	L0	L0	L0	0	L5:9 process-wide memo statics
+src/v1/stage0/src/std_occurrence_identity.rs	src/v1/stage0/src/std_occurrence_identity.rs	L0	L5	L0	L0	L0	0	L5:10 process-wide memo statics
+src/v1/stage0/src/std_primitive_projection.rs	src/v1/stage0/src/std_primitive_projection.rs	L0	L5	L0	L0	L0	0	L5:29 process-wide memo statics
+src/v1/stage0/src/std_syntax.rs	src/v1/stage0/src/std_syntax.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/std_termination.rs	src/v1/stage0/src/std_termination.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/std_trait_derive_shape.rs	src/v1/stage0/src/std_trait_derive_shape.rs	L0	L5	L0	L0	L0	0	L5:5 process-wide memo statics
+src/v1/stage0/src/std_types.rs	src/v1/stage0/src/std_types.rs	L0	L5	L0	L0	L0	0	L5:7 process-wide memo statics
+src/v1/stage0/src/std_unicode_scalar.rs	src/v1/stage0/src/std_unicode_scalar.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/std_workspace_artifact.rs	src/v1/stage0/src/std_workspace_artifact.rs	L0	L3	L0	L0	L0	0	L3:cache vocab LocalCacheState
+src/v1/stage0/src/target_invocation_host.rs	src/v1/stage0/src/target_invocation_host.rs	L5	L3	L4	L0	L4	52	L4:abs /sys/fs/cgroup/system.slice/actions-runner@srv4-15.service ; L5:13 raw writes beside store authority ; L5:mech create_dir_all ; L3:cache vocab TypeEnvCache ; L4:4 env reads ; L4:host /sys/fs/cgroup/system.slice/actions-runner@srv4-15.service
+src/v1/stage0/src/v1_compiler_coercion.rs	src/v1/stage0/src/v1_compiler_coercion.rs	L0	L5	L0	L0	L0	0	L5:5 process-wide memo statics
+src/v1/stage0/src/v1_compiler_compile.rs	src/v1/stage0/src/v1_compiler_compile.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/v1_compiler_complexity.rs	src/v1/stage0/src/v1_compiler_complexity.rs	L0	L5	L0	L0	L0	0	L5:4 process-wide memo statics
+src/v1/stage0/src/v1_compiler_dag_collect.rs	src/v1/stage0/src/v1_compiler_dag_collect.rs	L0	L3	L0	L0	L0	0	L3:cache vocab _memo_reset|dag_collect_fp_memo_reset|dag_node_surface_fingerprint_memo
+src/v1/stage0/src/v1_compiler_dag_collect_support.rs	src/v1/stage0/src/v1_compiler_dag_collect_support.rs	L0	L3	L0	L0	L0	0	L3:cache vocab dag_collect_fp_memo_reset|dag_node_surface_fingerprint_memo
+src/v1/stage0/src/v1_compiler_emit.rs	src/v1/stage0/src/v1_compiler_emit.rs	L5	L5	L0	L0	L0	0	L5:mech WriteCreateNew ; L5:7 process-wide memo statics
+src/v1/stage0/src/v1_compiler_emit_rust.rs	src/v1/stage0/src/v1_compiler_emit_rust.rs	L5	L5	L0	L0	L0	0	L5:mech WriteCreateNew ; L5:39 process-wide memo statics
+src/v1/stage0/src/v1_compiler_emitted_workspace.rs	src/v1/stage0/src/v1_compiler_emitted_workspace.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/v1_compiler_infer.rs	src/v1/stage0/src/v1_compiler_infer.rs	L0	L5	L0	L0	L0	0	L5:18 process-wide memo statics
+src/v1/stage0/src/v1_compiler_infer_emit_info.rs	src/v1/stage0/src/v1_compiler_infer_emit_info.rs	L0	L5	L0	L0	L0	0	L5:3 process-wide memo statics
+src/v1/stage0/src/v1_compiler_infer_env.rs	src/v1/stage0/src/v1_compiler_infer_env.rs	L0	L5	L0	L0	L0	0	L5:4 process-wide memo statics
+src/v1/stage0/src/v1_compiler_infer_items.rs	src/v1/stage0/src/v1_compiler_infer_items.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/v1_compiler_infer_method.rs	src/v1/stage0/src/v1_compiler_infer_method.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/v1_compiler_infer_resolve.rs	src/v1/stage0/src/v1_compiler_infer_resolve.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/v1_compiler_parse.rs	src/v1/stage0/src/v1_compiler_parse.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/v1_compiler_runtime_rust.rs	src/v1/stage0/src/v1_compiler_runtime_rust.rs	L0	L5	L0	L0	L0	0	L5:10 process-wide memo statics
+src/v1/stage0/src/v1_compiler_stage0_crates.rs	src/v1/stage0/src/v1_compiler_stage0_crates.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/v1_compiler_tokenize.rs	src/v1/stage0/src/v1_compiler_tokenize.rs	L0	L5	L0	L0	L0	0	L5:5 process-wide memo statics
+src/v1/stage0/src/v1_compiler_trait_derive_emit.rs	src/v1/stage0/src/v1_compiler_trait_derive_emit.rs	L0	L5	L0	L0	L0	0	L5:12 process-wide memo statics
+src/v1/stage0/src/v1_gunbc_occurrence_binding_parser_walk.rs	src/v1/stage0/src/v1_gunbc_occurrence_binding_parser_walk.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/v1_interpreter.rs	src/v1/stage0/src/v1_interpreter.rs	L5	L5	L4	L0	L4	159	L4:abs /etc/absent_hostname|/etc/hostname|/home/runner/.cargo/bin/cargo|/home/u ; L5:22 raw writes beside store authority ; L5:mech create_dir_all|create_new|fs::rename ; L5:42 process-wide memo statics ; L4:31 env reads ; L4:upstream binary /bin/false|/bin/true
+src/v1/stage0/src/v1_interpreter_dispatch_generated.rs	src/v1/stage0/src/v1_interpreter_dispatch_generated.rs	L0	L3	L0	L0	L0	0	L3:cache vocab FreeCallEmitHostNativeCacheEvict|FreeCallEmitHostRunTransportCached
+src/v1/stage0/src/v1_rt.rs	src/v1/stage0/src/v1_rt.rs	L5	L5	L4	L0	L0	16	L4:abs /proc/self/cgroup|/proc/self/mountinfo|/proc/self/stat|/sys/fs/cgroup ; L5:mech create_new ; L5:10 process-wide memo statics ; L4:2 env reads
+src/v1/stage0/src/v1_std_core.rs	src/v1/stage0/src/v1_std_core.rs	L0	L5	L0	L0	L0	0	L5:32 process-wide memo statics
+src/v1/stage0/src/v1_test_non_ascii_perf_fixture.rs	src/v1/stage0/src/v1_test_non_ascii_perf_fixture.rs	L0	L5	L0	L0	L0	0	L5:2 process-wide memo statics
+src/v1/stage0/src/v1_tests_claim_escape_json_string_differential.rs	src/v1/stage0/src/v1_tests_claim_escape_json_string_differential.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/stage0/src/v1_tests_claim_shared_type_leaf_collision_census.rs	src/v1/stage0/src/v1_tests_claim_shared_type_leaf_collision_census.rs	L0	L5	L0	L0	L0	0	L5:1 process-wide memo statics
+src/v1/trait_derive_emit	src/v1/trait_derive_emit.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheProbe

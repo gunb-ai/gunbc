@@ -1,0 +1,124 @@
+module	path	mech_storage	mech_caching	mech_access	mech_authz	mech_placement	ambient	leads
+extdeps.access.posix	dag/extdeps/access/posix.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /bin/false|/sbin/nologin|/usr/bin/false|/usr/sbin/nologin
+extdeps.bmc.ipmi	dag/extdeps/bmc/ipmi.dag	L4	L3	L2	L0	L0	0	L4:abs /dev/imb|/dev/ipmi|/dev/ipmi<N> ; L3:cache vocab SdrElistAuthenticatedCached|SelListAuthenticatedCached|sdr_cache_file
+extdeps.bmc.os_install_actuator_toolchain	dag/extdeps/bmc/os_install_actuator_toolchain.dag	L4	L0	L0	L0	L0	0	L4:abs /var/lib/gunbc/bin
+extdeps.boards.asrock_rack	dag/extdeps/boards/asrock_rack.dag	L4	L0	L0	L0	L4	0	L4:abs /usr/share/swampd/config-asrr.json|/usr/share/swampd/config.json ; L4:upstream binary /usr/bin/swampd ; L4:host github.com/gunb-ai/gunbc/blob/main/docs/runbooks/srv3-nbd-proxy-ws-upgrade-dry-run.md ; L4:unit phosphor-pid-control.service
+extdeps.cache.key_completeness	dag/extdeps/cache/key_completeness.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheInterfaceCatalogFacts|cache|cache_catalog_key_completeness_holds|cache_key_derivation_complete
+extdeps.cache.pin	dag/extdeps/cache/pin.dag	L0	L3	L0	L0	L0	0	L3:cache vocab admit_sccache_binary_artifact_pin_integrity|cache|sccache|sccache_binary_artifact_content_identity
+extdeps.cache.sccache	dag/extdeps/cache/sccache.dag	L2	L2	L0	L0	L4	0	L4:upstream binary /usr/local/bin/sccache
+extdeps.cloud_init.cloud_init	dag/extdeps/cloud_init/cloud_init.dag	L4	L0	L0	L0	L0	0	L4:abs /etc/cloud/cloud-init.disabled|/etc/cloud/cloud.cfg.d/90-installer-network.cfg|/etc/cloud/cloud.cfg.d/99-installer.cfg|/etc/netplan/50-cloud-init.yaml
+extdeps.cloudflare.r2	dag/extdeps/cloudflare/r2.dag	L0	L0	L0	L0	L4	0	L4:host .eu.r2.cloudflarestorage.com|.fedramp-high.r2.cloudflarestorage.com|.fedramp.r2.cloudflarestorage.com|.r2.cloudflarestorage.com
+extdeps.container.docker_ce	dag/extdeps/container/docker_ce.dag	L4	L0	L0	L0	L0	0	L4:abs /etc/apt/keyrings|/etc/apt/keyrings/docker.gpg|/etc/apt/sources.list.d/docker.list
+extdeps.container.oci.ctrl_session_witness	dag/extdeps/container/oci/ctrl_session_witness.dag	L4	L0	L0	L0	L4	0	L4:abs /tmp ; L4:upstream binary /usr/bin/tini|/usr/local/bin/session-entrypoint
+extdeps.crypto.seeded_filler	dag/extdeps/crypto/seeded_filler.dag	L0	L0	L0	L0	L0	1	
+extdeps.docker.cli	dag/extdeps/docker/cli.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /usr/bin/docker
+extdeps.docker.images.sparkrun_vllm_ds4_gb10	dag/extdeps/docker/images/sparkrun_vllm_ds4_gb10.dag	L4	L0	L0	L0	L0	0	L4:abs /opt/env/bin/python3|/opt/env/bin/ray|/opt/env/bin/vllm
+extdeps.ethtool	dag/extdeps/ethtool.dag	L4	L0	L0	L0	L0	0	L4:abs /usr/sbin
+extdeps.exec.command	dag/extdeps/exec/command.dag	L0	L0	L0	L4	L4	0	L4:3 sudo sites ; L4:host extdeps.tailscale.serve|tailscale_serve_off_command|tailscale_serve_status_json_command
+extdeps.exec.program	dag/extdeps/exec/program.dag	L0	L0	L0	L0	L4	0	L4:host extdeps.tailscale.serve|tailscale_program
+extdeps.filesystem.filesystem_io	dag/extdeps/filesystem/filesystem_io.dag	L5	L0	L0	L0	L0	1	L5:mech WriteCreateNew
+extdeps.firmware.tianocore_edk2.aavmf	dag/extdeps/firmware/tianocore_edk2/aavmf.dag	L4	L0	L0	L0	L0	0	L4:abs /usr/share/AAVMF/AAVMF_CODE.fd|/usr/share/AAVMF/AAVMF_VARS.fd
+extdeps.firmware.uefi_shell	dag/extdeps/firmware/uefi_shell.dag	L0	L0	L0	L0	L4	0	L4:host 0.0.0.0
+extdeps.git	dag/extdeps/git.dag	L4	L0	L2	L0	L0	0	L4:abs /dev/null
+extdeps.git.plumbing	dag/extdeps/git/plumbing.dag	L0	L3	L0	L0	L0	0	L3:cache vocab UpdateIndexCacheInfo
+extdeps.github.action.cache	dag/extdeps/github/action/cache.dag	L0	L3	L0	L0	L0	0	L3:cache vocab cache|cache_manifest_readings
+extdeps.github.action.rust_cache	dag/extdeps/github/action/rust_cache.dag	L0	L3	L0	L0	L0	0	L3:cache vocab rust_cache|rust_cache_manifest_readings
+extdeps.github.action.setup_rust_toolchain	dag/extdeps/github/action/setup_rust_toolchain.dag	L0	L3	L0	L0	L0	0	L3:cache vocab rust_cache
+extdeps.github.actions_runner	dag/extdeps/github/actions_runner.dag	L4	L3	L0	L0	L4	0	L4:abs /opt/actions-runner|/opt/actions-runner-cache|/tmp/actions-runner.tar.gz ; L3:cache vocab actions_runner_cache_dir|cache_install_command ; L4:upstream binary /bin/Runner.Listener
+extdeps.github.merge_group_event	dag/extdeps/github/merge_group_event.dag	L0	L0	L0	L0	L0	1	
+extdeps.github.push_event	dag/extdeps/github/push_event.dag	L0	L0	L0	L0	L0	2	
+extdeps.github.workflow_run_event	dag/extdeps/github/workflow_run_event.dag	L0	L0	L0	L0	L0	1	
+extdeps.google.issue_tracker	dag/extdeps/google/issue_tracker.dag	L0	L3	L0	L0	L0	0	L3:cache vocab AvatarFromCachedPrior|probe_cache
+extdeps.gpu.apple	dag/extdeps/gpu/apple.dag	L0	L3	L0	L0	L0	0	L3:cache vocab sm_cache|sm_cache_citations
+extdeps.gpu.machine_shape	dag/extdeps/gpu/machine_shape.dag	L0	L3	L0	L0	L0	0	L3:cache vocab GpuSmCacheGeometry|sm_cache
+extdeps.gpu.nvidia	dag/extdeps/gpu/nvidia.dag	L0	L3	L0	L0	L0	0	L3:cache vocab GpuSmCacheGeometry|sm_cache|sm_cache_citations
+extdeps.gpu.types	dag/extdeps/gpu/types.dag	L0	L3	L0	L0	L0	0	L3:cache vocab GpuSmCacheGeometry|sm_cache|sm_cache_citations
+extdeps.http.client	dag/extdeps/http/client.dag	L4	L0	L2	L0	L0	0	L4:abs /dev/null
+extdeps.http.server	dag/extdeps/http/server.dag	L0	L3	L0	L0	L0	0	L3:cache vocab ServeResponseHeaderCacheImmutable|serve_cache_control_field_name
+extdeps.huggingface.hub	dag/extdeps/huggingface/hub.dag	L0	L3	L0	L0	L0	0	L3:cache vocab HubCacheEnvironment|cache_root|hf_hub_cache|hub_cache_environment_unset
+extdeps.iproute2.ip_address	dag/extdeps/iproute2/ip_address.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /usr/sbin/ip
+extdeps.iproute2.ss	dag/extdeps/iproute2/ss.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /usr/bin/ss
+extdeps.iputils.arping	dag/extdeps/iputils/arping.dag	L0	L0	L2	L0	L4	0	L4:upstream binary /usr/sbin/arping
+extdeps.linux.cgroup_v2	dag/extdeps/linux/cgroup_v2.dag	L4	L0	L0	L0	L0	0	L4:abs /sys/fs/cgroup
+extdeps.linux.kernel_random	dag/extdeps/linux/kernel_random.dag	L4	L0	L0	L0	L0	0	L4:abs /proc/sys/kernel/random/boot_id
+extdeps.linux.nf_conntrack	dag/extdeps/linux/nf_conntrack.dag	L4	L0	L0	L0	L0	0	L4:abs /proc/sys/net/netfilter
+extdeps.linux.proc_meminfo	dag/extdeps/linux/proc_meminfo.dag	L0	L3	L0	L0	L0	0	L3:cache vocab cached
+extdeps.linux.procfs	dag/extdeps/linux/procfs.dag	L4	L0	L0	L0	L0	0	L4:abs /proc/|/proc/meminfo|/proc/net/pnp|/proc/net/tcp
+extdeps.linux.tun_fdinfo	dag/extdeps/linux/tun_fdinfo.dag	L4	L0	L0	L0	L0	5	L4:abs /proc|/proc/|/sys/class/net/
+extdeps.linux.usb_gadget	dag/extdeps/linux/usb_gadget.dag	L5	L0	L0	L0	L0	0	L5:mech mkdir_parents_command
+extdeps.llm.anthropic_messages_api	dag/extdeps/llm/anthropic_messages_api.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheControl|CacheControlType|CacheEphemeral|cache_control
+extdeps.llm.openai	dag/extdeps/llm/openai.dag	L0	L3	L0	L0	L0	0	L3:cache vocab cached_tokens
+extdeps.needrestart	dag/extdeps/needrestart.dag	L4	L0	L0	L0	L0	0	L4:abs /etc/needrestart/conf.d
+extdeps.netplan.netplan	dag/extdeps/netplan/netplan.dag	L4	L0	L0	L0	L0	0	L4:abs /etc/netplan|/run/NetworkManager/system-connections/netplan-
+extdeps.networkmanager.nmcli	dag/extdeps/networkmanager/nmcli.dag	L4	L0	L0	L0	L0	0	L4:abs /etc/NetworkManager/system-connections/
+extdeps.ntfy.ntfy	dag/extdeps/ntfy/ntfy.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheDisabled|CacheServerSide|NtfyCachePolicy|cache
+extdeps.ntfy.serve	dag/extdeps/ntfy/serve.dag	L0	L3	L0	L0	L0	0	L3:cache vocab NtfyAuthAccessCache
+extdeps.nvidia.glm_5_3_flash_nvfp4	dag/extdeps/nvidia/glm_5_3_flash_nvfp4.dag	L0	L3	L0	L0	L0	0	L3:cache vocab VllmKvCacheDtypeRequest
+extdeps.os.ubuntu_ports_archive	dag/extdeps/os/ubuntu_ports_archive.dag	L4	L0	L0	L0	L0	0	L4:abs /usr/share/keyrings/ubuntu-archive-keyring.gpg
+extdeps.package_managers.apt	dag/extdeps/package_managers/apt.dag	L4	L0	L2	L0	L4	0	L4:abs /usr/bin|/usr/local/bin|/usr/sbin ; L4:upstream binary /usr/bin/apt-get ; L4:host tailscale
+extdeps.package_managers.brew	dag/extdeps/package_managers/brew.dag	L4	L0	L0	L0	L0	0	L4:abs /opt/homebrew|/opt/homebrew/bin|/usr/local|/usr/local/bin
+extdeps.posix.sh_invocation	dag/extdeps/posix/sh_invocation.dag	L4	L0	L0	L0	L0	0	L4:abs /dev/stdin
+extdeps.pricing.aws_ec2	dag/extdeps/pricing/aws_ec2.dag	L0	L0	L0	L0	L4	0	L4:host pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/us-east-1/index.json
+extdeps.pricing.object_storage	dag/extdeps/pricing/object_storage.dag	L0	L0	L0	L0	L4	0	L4:host pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-east-1/index.csv
+extdeps.printing.orca_slicer	dag/extdeps/printing/orca_slicer.dag	L5	L0	L0	L0	L0	3	L5:mech Remove.RecursiveForce
+extdeps.procps.kill	dag/extdeps/procps/kill.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /usr/bin/kill
+extdeps.provisioning.ubuntu_install_media	dag/extdeps/provisioning/ubuntu_install_media.dag	L4	L0	L0	L0	L0	0	L4:abs /var/lib/gunbc/artifacts
+extdeps.provisioning.ubuntu_seeded_install_media_remaster	dag/extdeps/provisioning/ubuntu_seeded_install_media_remaster.dag	L5	L0	L0	L0	L0	0	L4:abs /tmp/gunbc-seeded-media. ; L5:mech mkdir_parents_command|rm_recursive
+extdeps.radixark.glm_5_3_nvfp4	dag/extdeps/radixark/glm_5_3_nvfp4.dag	L0	L3	L0	L0	L0	0	L3:cache vocab kv_cache_width
+extdeps.realization.artifact_store_fs	dag/extdeps/realization/artifact_store_fs.dag	L5	L2	L0	L2	L0	4	L5:1 raw writes beside store authority
+extdeps.realization.cache_purity	dag/extdeps/realization/cache_purity.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CachePurityVerdict|CachePurityViolation|cache_purity|cache_purity_verdict
+extdeps.realization.emit_on_demand_host	dag/extdeps/realization/emit_on_demand_host.dag	L2	L3	L0	L0	L0	0	L3:cache vocab cache_root|emit_host_native_cache_evict|emit_on_demand_evict_native_cache|native_cache_realization_workspace_root
+extdeps.realization.materialization_store_local	dag/extdeps/realization/materialization_store_local.dag	L5	L2	L0	L2	L0	7	L5:1 raw writes beside store authority ; L5:mech WriteCreateNew
+extdeps.rust.cargo	dag/extdeps/rust/cargo.dag	L0	L3	L0	L0	L0	0	L3:cache vocab LocalCacheState
+extdeps.shell	dag/extdeps/shell.dag	L4	L0	L2	L0	L0	16	L4:abs /proc
+extdeps.shell.credentials	dag/extdeps/shell/credentials.dag	L0	L0	L4	L0	L0	1	L4:1 env reads
+extdeps.shell.exec	dag/extdeps/shell/exec.dag	L0	L0	L0	L0	L0	1	
+extdeps.ssh.client_options	dag/extdeps/ssh/client_options.dag	L4	L0	L0	L0	L0	0	L4:abs /dev/null
+extdeps.storage.types	dag/extdeps/storage/types.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CachedMirror
+extdeps.sudo.elevation	dag/extdeps/sudo/elevation.dag	L0	L0	L0	L4	L4	0	L4:4 sudo sites ; L4:upstream binary /usr/bin/sudo
+extdeps.sudo.nopasswd_execute_probe_check_op	dag/extdeps/sudo/nopasswd_execute_probe_check_op.dag	L0	L0	L0	L4	L0	0	L4:4 sudo sites
+extdeps.sudo.visudo	dag/extdeps/sudo/visudo.dag	L0	L0	L0	L4	L4	0	L4:3 sudo sites ; L4:upstream binary /usr/sbin/visudo
+extdeps.systemd	dag/extdeps/systemd.dag	L4	L0	L0	L0	L4	0	L4:abs /run/systemd/system|/usr/bin ; L4:unit -.slice|.service|.slice
+extdeps.systemd.oomd	dag/extdeps/systemd/oomd.dag	L4	L0	L0	L0	L4	0	L4:abs /etc/systemd/oomd.conf|/etc/systemd/oomd.conf.d ; L4:unit systemd-oomd.service ; L4:/etc/systemd literal
+extdeps.systemd.udevd	dag/extdeps/systemd/udevd.dag	L4	L0	L0	L0	L0	0	L4:abs /dev/disk/by-label
+extdeps.systemd.unit_file	dag/extdeps/systemd/unit_file.dag	L4	L0	L0	L0	L4	0	L4:abs /etc/systemd/system ; L4:/etc/systemd literal
+extdeps.systems.nvidia	dag/extdeps/systems/nvidia.dag	L0	L3	L0	L0	L0	0	L3:cache vocab sm_cache|sm_cache_citations
+extdeps.systems.nvidia_gh200	dag/extdeps/systems/nvidia_gh200.dag	L0	L3	L0	L0	L0	0	L3:cache vocab sm_cache|sm_cache_citations
+extdeps.tailscale.acl	dag/extdeps/tailscale/acl.dag	L0	L0	L0	L0	L4	0	L4:host extdeps.tailscale.acl|https://tailscale.com/kb/1018|tailscale.com/kb/1018|tailscale.com/kb/1337/acl-syntax
+extdeps.tailscale.acl_api	dag/extdeps/tailscale/acl_api.dag	L0	L0	L2	L0	L4	0	L4:host extdeps.tailscale.acl_api|https://api.tailscale.com|tailscale.AclAdmin|tailscale.com/api
+extdeps.tailscale.identity	dag/extdeps/tailscale/identity.dag	L0	L0	L0	L0	L4	0	L4:host tailscale.com/kb/1312/serve
+extdeps.tailscale.serve	dag/extdeps/tailscale/serve.dag	L0	L0	L0	L0	L4	0	L4:host http://127.0.0.1:|tailscale|tailscale.com/kb/1242/tailscale-serve
+extdeps.tailscale.whois	dag/extdeps/tailscale/whois.dag	L0	L0	L0	L0	L4	0	L4:host tailscale|tailscale.com/kb/1080/cli#whois
+extdeps.toolchain.types	dag/extdeps/toolchain/types.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheInterfaceId|cache_identity|linked_cache_interface
+extdeps.tools.busybox	dag/extdeps/tools/busybox.dag	L0	L0	L0	L0	L4	0	L4:host 0.0.0.0
+extdeps.tools.chmod	dag/extdeps/tools/chmod.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /bin/chmod
+extdeps.tools.chown	dag/extdeps/tools/chown.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /usr/bin/chown
+extdeps.tools.curl	dag/extdeps/tools/curl.dag	L4	L0	L2	L0	L0	0	L4:abs /dev/null|/dev/stderr
+extdeps.tools.diffutils	dag/extdeps/tools/diffutils.dag	L0	L0	L0	L0	L0	1	
+extdeps.tools.env	dag/extdeps/tools/env.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /usr/bin/env
+extdeps.tools.free	dag/extdeps/tools/free.dag	L0	L3	L0	L0	L0	0	L3:cache vocab buff_cache
+extdeps.tools.gnu_coreutils	dag/extdeps/tools/gnu_coreutils.dag	L5	L0	L0	L0	L0	0	L4:abs /dev/null ; L5:mech mkdir_create_only_command|mkdir_create_only_with_mode_command|mkdir_parents_command|rm_recursive
+extdeps.tools.gnu_time	dag/extdeps/tools/gnu_time.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /usr/bin/time
+extdeps.tools.gzip	dag/extdeps/tools/gzip.dag	L4	L0	L0	L0	L0	0	L4:abs /usr/bin
+extdeps.tools.hostname	dag/extdeps/tools/hostname.dag	L0	L0	L0	L0	L4	1	L4:host localhost
+extdeps.tools.id	dag/extdeps/tools/id.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /usr/bin/id
+extdeps.tools.jq	dag/extdeps/tools/jq.dag	L0	L0	L0	L0	L0	3	
+extdeps.tools.kopia	dag/extdeps/tools/kopia.dag	L0	L3	L0	L0	L0	0	L3:cache vocab cache_directory
+extdeps.tools.mkdir	dag/extdeps/tools/mkdir.dag	L5	L0	L0	L0	L4	0	L5:mech mkdir_exact_command|mkdir_parents_command ; L4:upstream binary /usr/bin/mkdir
+extdeps.tools.npm	dag/extdeps/tools/npm.dag	L0	L3	L2	L0	L0	0	L3:cache vocab Cache|cache
+extdeps.tools.sha256sum	dag/extdeps/tools/sha256sum.dag	L5	L0	L0	L0	L4	4	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce ; L4:upstream binary /usr/bin/sha256sum
+extdeps.tools.stat	dag/extdeps/tools/stat.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /usr/bin/stat
+extdeps.tools.util_linux_flock	dag/extdeps/tools/util_linux_flock.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /usr/bin/flock
+extdeps.tools.websocat	dag/extdeps/tools/websocat.dag	L4	L0	L0	L0	L4	0	L4:abs /var/lib/gunbc/bin/websocat ; L4:host tcp:127.0.0.1:
+extdeps.virtualization.firecracker	dag/extdeps/virtualization/firecracker.dag	L4	L0	L0	L0	L4	0	L4:abs /dev/kvm|/dev/vd|/root ; L4:host https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.12/aarch64/|https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.12/aarch64/ubuntu-24.04.squashfs|https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.12/aarch64/vmlinux-6.1.128
+extdeps.virtualization.qemu	dag/extdeps/virtualization/qemu.dag	L4	L0	L0	L0	L4	0	L4:abs /dev/kvm ; L4:upstream binary /usr/bin/qemu-system-aarch64
+extdeps.vllm.engine_args	dag/extdeps/vllm/engine_args.dag	L0	L3	L0	L0	L0	0	L3:cache vocab VllmKvCacheDtypeRequest|kv_cache_bytes|kv_cache_dtype|vllm_kv_cache_dtype_flag
+extdeps.vllm.kv_cache	dag/extdeps/vllm/kv_cache.dag	L0	L3	L0	L0	L0	0	L3:cache vocab GpuKvCacheSize|ReadingIsNotTheKvCacheSizeLine|ResolvedKvCacheFormat|kv_cache
+extdeps.vllm.kv_dtype_capability	dag/extdeps/vllm/kv_dtype_capability.dag	L0	L3	L0	L0	L0	0	L3:cache vocab VllmKvCacheDtypeRequest|vllm_kv_cache_dtype_wire
+extdeps.vllm.kv_group_metadata	dag/extdeps/vllm/kv_group_metadata.dag	L0	L3	L0	L0	L0	0	L3:cache vocab VllmKvCacheSpecKind|vllm_kv_cache_spec_kind_from_wire|vllm_kv_cache_spec_kind_wire
+extdeps.vllm.kv_layout	dag/extdeps/vllm/kv_layout.dag	L0	L3	L0	L0	L0	0	L3:cache vocab GpuKvCacheSize|ResolvedKvCacheFormat|cache_format|kv_cache
+extdeps.vllm.log_lines	dag/extdeps/vllm/log_lines.dag	L0	L3	L0	L0	L0	0	L3:cache vocab GpuKvCacheSize|ResolvedKvCacheFormat
+extdeps.vllm.memory_profile	dag/extdeps/vllm/memory_profile.dag	L0	L3	L0	L0	L0	0	L3:cache vocab GpuKvCacheSize|ResolvedKvCacheFormat
+extdeps.vllm.metrics	dag/extdeps/vllm/metrics.dag	L0	L3	L0	L0	L0	0	L3:cache vocab IsThePrefixCacheEffective|KvCacheUsagePerc|PrefixCacheHits|PrefixCacheQueries
+extdeps.vllm.runtime_defaults	dag/extdeps/vllm/runtime_defaults.dag	L0	L3	L0	L0	L0	0	L3:cache vocab KvCacheMemoryBytesField|PrefixCachePartitionPolicy|defaults_kv_cache_memory_bytes|kv_cache_bytes
+extdeps.vllm.server	dag/extdeps/vllm/server.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheConfigBlockFields

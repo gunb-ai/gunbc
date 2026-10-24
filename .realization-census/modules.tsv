@@ -1,0 +1,34 @@
+module	class	storage_level	caching_level	access_level	authz_level	placement_level	ambient_calls	worst_finding	evidence_symbols	phase
+gunbc.roadmap.roadmap_belt_actuate	production	L5	L0	L4	L4	L4	85	about 30 direct Filesystem.Write calls persist belt state files (tick receipt, intent, obligation, oracle pin) with no store library behind them	belt_tick_receipt_write_for_instance; belt_capture_intent_write; belt_attempt_obligation_receipt_write; belt_worktree_claim_ensure; belt_claude_preflight_for_instance; belt_dispatch_admitted_instance_ids; belt_exit_stall_rearm_commands; 13 srv1_live_dashboard_instance() wrappers	P0
+gunbc.roadmap.roadmap_attempt_worktree_claim	production	L2	L0	L0	L0	L2	0	none: root is received (path-typed NonEmptyStr) and the store is the CAS library	root parameters; observe_cas_slot_state; cas_slot_keys	P0
+gunbc.roadmap.roadmap_attempt_worktree_claim_root	production	L1	L0	L0	L0	L2	0	none: the one derivation of the claim root, enrolled as an owned directory	worktree_claim_slots_root_of; worktree_claim_slots_directory	P0
+gunbc.roadmap.roadmap_session_placement	production	L5	L0	L0	L0	L2	5	placement records and settle notes written by direct Filesystem.Write/Read/List beside the CAS store it also imports	session_placement_record_write; session_placement_release_write; session_placement_file; session_settle_note	P0
+gunbc.durable_cas_file_store	production	L4	L0	L0	L0	L0	0	the CAS library carries one consumer's root literal (authorization claims)	authorization_claim_store_root	P0
+gunbc.auth.approval_assertion_counter	production	L4	L0	L0	L0	L0	0	store root hard-coded "/var/lib/gunbc/approval-assertion-counters"	approval_assertion_counter_root	P0
+gunbc.auth.approval_decision_store	production	L4	L0	L4	L1	L0	0	approvals root "/var/lib/gunbc/approvals" and MAC-key file "/etc/gunbc-roadmap/approval-mac-key" hard-coded beside a SecretRef for the same key	approval_mac_key_path; approval_mac_key_secret_ref; approval_capability_expectation	P0
+gunbc.dispatch_credential_acquisition	production	L5	L0	L0	L0	L2	4	creates the cursor runtime tree by shelling mkdir (create-only, with mode) and a find/rm sweep beside gunbc.owned_directory	credential_create_cursor_runtime_root; credential_remove_cursor_runtime_root_at; credential_acquisition_slots_directory	P0
+gunbc.compute.work_provider_local	production	L4	L2	L4	L0	L1	16	"/run/user/<uid>" runtime dir and RUSTC_WRAPPER=sccache binding derived locally; ComputeLayout itself is the placement authority	ComputeLayout; runtime_dir in unit spawn; SystemdSetenvBinding RUSTC_WRAPPER; ComputeMemoized → compute_store_read	P0
+gunbc.fabric.fabric_storage_file_store	production	L5	L0	L0	L0	L0	5	root received but the store creates its own directories with shell.Mkdir.Parents instead of gunbc.owned_directory	fabric_storage_file_root_ensure; fabric_storage_object_create; fabric_storage_file_get	P0
+gunbc.live_deploy.desired	production	L0	L0	L0	L0	L1	0	none: it declares the desired deployments (srv1 live, srv1 lab, srv2) from the instance and fleet authorities	srv1_production_desired_deployment; deployment_srv2_target; production_admitted_branch	P0
+gunbc.harness.harness_cli	production	L4	L0	L0	L0	L4	4	operator-laptop literals: "/Users/briansrls/gunbc", "/opt/homebrew/bin/gtimeout", fixed /tmp scratch files	harness_macbook_working_directory; harness_macbook_timeout_program; harness_request_scratch_path; harness_probe_events_path	P0
+gunbc.fleet.fleet_posix_accounts	production	L0	L0	L1	L1	L4	0	upstream binary paths (/usr/bin/systemctl, apt-get, tailscale ...) declared as literals in a fleet module; the sudo-grant roster itself is the L1 authority	fleet_posix_root_sudo_grants; fleet_posix_operator_sudo_grants; fleet_operator_email	P0
+extdeps.huggingface.hub	extdeps	L1	L1	L1	L0	L0	0	none: faithfully models upstream cache layout and env vars	hub_default_cache_root; hub_cache_root_env_var; HF_TOKEN	P0
+src/v1/stage0/src/cli_run.rs	seed	L5	L5	L4	L0	L4	178	dozens of process-wide memo tables (OnceLock/thread_local) and direct std::fs/Command calls; CI-environment branches on GITHUB_ACTIONS	CHECKOUT_ROOT; PROCESS_WORKSPACE_ROOT; OBSERVATION_SOURCE_ROOTS; ROUTINE_ROLLUP_FOLD; GITHUB_ACTIONS reads	P0
+std.optional	production	L0	L0	L0	L0	L0	0	none		P0-random
+gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall	production	L0	L0	L0	L0	L0	0	none (ledger-shaped row outside the ledger filter)		P0-random
+gunbc.constructor_binding_channel	production	L0	L0	L0	L0	L0	0	none		P0-random
+gunbc.plan_registry	production	L0	L0	L0	L0	L0	0	none		P0-random
+gunbc.auth.bmc_assimilator_cells	production	L0	L0	L2	L0	L0	0	none: projects SecretAccessGrant rows it receives	bmc_assimilator_cells_over	P0-random
+gunbc.guarantee_stall.trigger_capability_referent_free_by_construction_stall	production	L0	L0	L0	L0	L0	0	none (ledger-shaped)		P0-random
+product.electrical.connectivity	production	L0	L0	L0	L0	L0	0	none		P0-random
+gunbc.cli_run_workspace_root_scaffold	production	L0	L0	L1	L0	L0	0	none: scaffold ledger that declares GUNBC_WORKSPACE_ROOT for the seed (see other)	gunbc_workspace_root_env_name	P0-random
+product.supplier.vast_ai	production	L0	L0	L0	L0	L0	0	none: supplier offer rows		P0-random
+gunbc.design.material	production	L0	L0	L0	L0	L0	0	none		P0-random
+std.artifact_store_scratch_grant	production	L1	L0	L0	L1	L0	0	none: declares the /tmp/gunbc_ scratch store grant envelope (see other: gunbc policy prefix inside std)	artifact_store_scratch_root; is_gunbc_tmp_scratch_store_root; artifact_store_scratch_write_admissible	P2-parent
+std.cache_identity	production	L0	L1	L0	L0	L0	0	none: cache interface identity vocabulary	CacheInterfaceId	P2-parent
+std.cache_interface	production	L1	L1	L0	L0	L0	0	none: the storage/cache interface authority	StorageSurface; BackendCacheKey	P2-parent
+std.emit_on_demand	production	L4	L4	L0	L0	L0	0	native emit cache root hard-coded "/tmp/gunbc_emit_on_demand" in std	emit_on_demand_native_cache_root; emit_on_demand_family_cache_root	P2-parent
+std.materialization_store_grant	production	L1	L0	L0	L1	L0	0	none: declares the materialization store's volume path and frame roots and its grants (see other)	materialization_store_host_volume_path; materialization_store_frame_root_prefix; materialization_store_grants	P2-parent
+std.realization	production	L1	L1	L0	L0	L1	0	none: the realization vocabulary (Memoize arm, Placement)	Memoize	P2-parent
+std.realization_schedule	production	L0	L0	L0	L0	L0	0	none: the lead was prose inside a multi-line string (walk_plan_note)	walk_plan_note	P2-parent
+std.workspace_artifact	production	L0	L0	L0	L0	L0	0	none: LocalCacheState is a classification arm, not a cache	LocalCacheState	P2-parent

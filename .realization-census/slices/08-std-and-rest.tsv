@@ -1,0 +1,9 @@
+module	path	mech_storage	mech_caching	mech_access	mech_authz	mech_placement	ambient	leads
+std.artifact_store_scratch_grant	dag/std/artifact_store_scratch_grant.dag	L4	L2	L0	L2	L0	0	L4:abs /tmp/gunbc_
+std.cache_identity	dag/std/cache_identity.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheInterfaceId|cache_identity|cache_interface_product_dissolve_on
+std.cache_interface	dag/std/cache_interface.dag	L2	L3	L0	L0	L0	0	L3:cache vocab BackendCacheKey|CacheDeploymentBackends|CacheEvidence|CacheInterfaceFacts
+std.emit_on_demand	dag/std/emit_on_demand.dag	L4	L3	L0	L0	L0	0	L4:abs /tmp/gunbc_emit_on_demand ; L3:cache vocab EmitOnDemandCacheReceipt|emit_on_demand_family_cache_root|emit_on_demand_native_cache_root
+std.materialization_store_grant	dag/std/materialization_store_grant.dag	L4	L2	L0	L2	L0	0	L4:abs /tmp/gunbc_compute_|/var/lib/gunbc/materialization-store
+std.realization	dag/std/realization.dag	L2	L3	L0	L0	L0	0	L3:cache vocab Memoize
+std.realization_schedule	dag/std/realization_schedule.dag	L0	L3	L0	L0	L0	0	L3:cache vocab Memo|memo|memoized|stage_memo
+std.workspace_artifact	dag/std/workspace_artifact.dag	L0	L3	L0	L0	L0	0	L3:cache vocab LocalCacheState

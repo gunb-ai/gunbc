@@ -1,0 +1,129 @@
+module	path	mech_storage	mech_caching	mech_access	mech_authz	mech_placement	ambient	leads
+gunbc.action_use_admission	dag/gunbc/action_use_admission.dag	L0	L3	L0	L0	L0	0	L3:cache vocab cache|cache_action|cache_manifest_readings|cache_restore_action
+gunbc.actions_run_binding	dag/gunbc/actions_run_binding.dag	L0	L0	L4	L0	L0	1	L4:1 env reads
+gunbc.auth.access_token_source	dag/gunbc/auth/access_token_source.dag	L0	L0	L4	L0	L0	6	L4:4 env reads
+gunbc.auth.approval_assertion_counter	dag/gunbc/auth/approval_assertion_counter.dag	L4	L0	L0	L0	L0	0	L4:abs /var/lib/gunbc/approval-assertion-counters
+gunbc.auth.approval_broker_endpoint	dag/gunbc/auth/approval_broker_endpoint.dag	L0	L0	L4	L2	L4	1	L4:1 env reads ; L4:host 127.0.0.1
+gunbc.auth.approval_decision_store	dag/gunbc/auth/approval_decision_store.dag	L4	L0	L4	L2	L2	0	L4:abs /etc/gunbc-roadmap/approval-mac-key|/var/lib/gunbc/approvals ; L4:credential path /etc/gunbc-roadmap/approval-mac-key
+gunbc.auth.approval_device_crypto_client	dag/gunbc/auth/approval_device_crypto_client.dag	L0	L0	L4	L2	L4	1	L4:1 env reads ; L4:host 127.0.0.1
+gunbc.auth.approval_device_redemption	dag/gunbc/auth/approval_device_redemption.dag	L4	L3	L0	L2	L2	0	L4:abs /var/lib/gunbc/approval-devices|/var/lib/gunbc/approval-jwks ; L3:cache vocab approval_jwks_cache_directory|approval_jwks_cache_root
+gunbc.auth.approval_device_routes	dag/gunbc/auth/approval_device_routes.dag	L5	L3	L0	L2	L0	1	L4:abs /var/lib/gunbc/approval-device-push ; L5:1 raw writes beside store authority ; L3:cache vocab JwksCacheLayout|approval_jwks_cache_layout|approval_jwks_cache_root|jwks_cache_file_name
+gunbc.auth.approval_gate	dag/gunbc/auth/approval_gate.dag	L4	L0	L0	L2	L0	3	L4:1 raw writes, no store authority
+gunbc.auth.approval_keyring_converge	dag/gunbc/auth/approval_keyring_converge.dag	L4	L0	L0	L4	L2	3	L4:abs /etc|/etc/gunbc-roadmap ; L4:2 sudo sites
+gunbc.auth.approval_notification	dag/gunbc/auth/approval_notification.dag	L0	L3	L0	L0	L0	0	L3:cache vocab CacheServerSide|NtfyCachePolicy|approval_cache_policy|cache
+gunbc.auth.approval_ntfy_converge	dag/gunbc/auth/approval_ntfy_converge.dag	L2	L3	L0	L2	L2	0	L3:cache vocab ntfy_attachment_cache_dir
+gunbc.auth.approval_ntfy_deployment	dag/gunbc/auth/approval_ntfy_deployment.dag	L4	L0	L0	L2	L4	0	L4:abs /etc/gunbc-ntfy|/var/lib/gunbc-ntfy ; L4:upstream binary /usr/local/bin/ntfy ; L4:host 127.0.0.1 ; L4:unit gunbc-ntfy.service
+gunbc.auth.approval_ntfy_publish	dag/gunbc/auth/approval_ntfy_publish.dag	L0	L3	L2	L0	L2	0	L3:cache vocab cache
+gunbc.auth.approval_request_submission	dag/gunbc/auth/approval_request_submission.dag	L4	L3	L4	L2	L0	1	L4:abs /etc/gunbc-ntfy/publisher-token|/etc/gunbc-roadmap/approval-submission-mac-key ; L3:cache vocab cache|ntfy_cache_wire ; L4:credential path /etc/gunbc-roadmap/approval-submission-mac-key|/etc/gunbc-ntfy/publisher-token
+gunbc.auth.approval_store_receipt	dag/gunbc/auth/approval_store_receipt.dag	L4	L0	L4	L2	L0	0	L4:abs /etc/gunbc-roadmap/approval-store-receipt-mac-key ; L4:credential path /etc/gunbc-roadmap/approval-store-receipt-mac-key
+gunbc.auth.branch_run_grant	dag/gunbc/auth/branch_run_grant.dag	L4	L0	L2	L2	L0	1	L4:1 raw writes, no store authority
+gunbc.auth.branch_run_grant_broker	dag/gunbc/auth/branch_run_grant_broker.dag	L0	L0	L0	L0	L4	0	L4:host srv1
+gunbc.auth.ci_app_key_rotation	dag/gunbc/auth/ci_app_key_rotation.dag	L4	L0	L4	L0	L0	2	L4:1 raw writes, no store authority ; L4:1 env reads
+gunbc.auth.credentials	dag/gunbc/auth/credentials.dag	L0	L0	L0	L0	L0	3	
+gunbc.auth.deployment_gate_authorization	dag/gunbc/auth/deployment_gate_authorization.dag	L0	L0	L0	L2	L4	0	L4:host tailscale-relay:approval-broker
+gunbc.auth.gcp_iam_bootstrap	dag/gunbc/auth/gcp_iam_bootstrap.dag	L5	L0	L2	L2	L0	6	L4:4 raw writes, no store authority ; L5:mech WriteCreateNew
+gunbc.auth.gcp_iam_converge_run	dag/gunbc/auth/gcp_iam_converge_run.dag	L4	L0	L2	L2	L0	1	L4:1 raw writes, no store authority
+gunbc.auth.github_apps	dag/gunbc/auth/github_apps.dag	L4	L0	L4	L0	L2	0	L4:abs /etc/gunbc/publication/gunbai-bot.pem ; L4:credential path /etc/gunbc/publication/gunbai-bot.pem
+gunbc.auth.github_deployment_environment	dag/gunbc/auth/github_deployment_environment.dag	L0	L0	L0	L0	L4	0	L4:host srv1-production
+gunbc.auth.login_transaction_store	dag/gunbc/auth/login_transaction_store.dag	L5	L0	L0	L0	L2	6	L5:2 raw writes beside store authority ; L5:mech WriteCreateNew
+gunbc.auth.mac_keyring	dag/gunbc/auth/mac_keyring.dag	L0	L0	L0	L0	L0	1	
+gunbc.auth.materialized_secret	dag/gunbc/auth/materialized_secret.dag	L5	L0	L4	L0	L0	6	L4:1 raw writes, no store authority ; L5:mech Mkdir. ; L4:1 env reads
+gunbc.auth.mosquitto_options_binding	dag/gunbc/auth/mosquitto_options_binding.dag	L5	L0	L0	L0	L0	4	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce
+gunbc.auth.netrc_binding	dag/gunbc/auth/netrc_binding.dag	L4	L0	L0	L0	L0	5	L4:1 raw writes, no store authority
+gunbc.auth.oidc_deployment_config	dag/gunbc/auth/oidc_deployment_config.dag	L0	L0	L4	L0	L0	5	L4:1 env reads
+gunbc.auth.oidc_id_token_verification	dag/gunbc/auth/oidc_id_token_verification.dag	L5	L3	L0	L0	L2	6	L5:4 raw writes beside store authority ; L3:cache vocab JwksCacheFresh|JwksCacheLayout|JwksCacheMiss|JwksCacheRead
+gunbc.auth.privileged_effect_census	dag/gunbc/auth/privileged_effect_census.dag	L0	L0	L2	L4	L4	0	L4:4 sudo sites ; L4:host gunbc.srv3.srv3_bmc_credential_resolve
+gunbc.auth.profile_projection	dag/gunbc/auth/profile_projection.dag	L5	L0	L0	L0	L2	5	L5:1 raw writes beside store authority
+gunbc.auth.session_store	dag/gunbc/auth/session_store.dag	L5	L0	L0	L0	L2	8	L5:1 raw writes beside store authority
+gunbc.auth.tracker_web_oauth_client	dag/gunbc/auth/tracker_web_oauth_client.dag	L4	L0	L4	L0	L4	0	L4:abs /etc/gunbc-oidc/tracker-web-dev-client-secret|/etc/gunbc-oidc/tracker-web-dev.json ; L4:credential path /etc/gunbc-oidc/tracker-web-dev-client-secret ; L4:host https://srv1.tailecbe08.ts.net:8444/auth/google/callback|https://srv2.tailecbe08.ts.net:18082/auth/google/callback|tracker-dev.gunb.ai ; L4:unit gunbc-dash-18082.service
+gunbc.claude_code_credential	dag/gunbc/claude_code_credential.dag	L4	L0	L4	L0	L0	0	L4:abs /etc/gunbc-claude-code/oauth-token-harness ; L4:credential path /etc/gunbc-claude-code/oauth-token-harness
+gunbc.claude_setup_token_enrollment	dag/gunbc/claude_setup_token_enrollment.dag	L4	L0	L0	L0	L0	0	L4:abs /home|/var/lib/gunbc/claude-enrollment/
+gunbc.cli_dispatch_surface	dag/gunbc/cli_dispatch_surface.dag	L0	L0	L0	L0	L4	0	L4:host 127.0.0.1
+gunbc.codex_app_server_press	dag/gunbc/codex_app_server_press.dag	L4	L0	L0	L0	L0	2	L4:abs /tmp/gunbc-codex-press-evidence
+gunbc.codex_harness_credential	dag/gunbc/codex_harness_credential.dag	L4	L0	L2	L0	L2	0	L4:abs /etc/gunbc-codex-harness|/etc/gunbc-codex-harness/auth.json|/etc/gunbc-codex-harness/turn.lock
+gunbc.codex_runtime_paths	dag/gunbc/codex_runtime_paths.dag	L4	L0	L0	L0	L0	0	L4:abs /opt/gunbc/provider-runtime/codex
+gunbc.codex_supervised_turn	dag/gunbc/codex_supervised_turn.dag	L5	L0	L0	L0	L0	2	L5:2 raw writes beside store authority
+gunbc.codex_supervised_turn_run	dag/gunbc/codex_supervised_turn_run.dag	L2	L0	L0	L0	L2	1	
+gunbc.cursor_harness_credential	dag/gunbc/cursor_harness_credential.dag	L4	L0	L0	L0	L2	0	L4:abs /etc/gunbc-cursor-harness/api-key
+gunbc.decoder_execution_identity	dag/gunbc/decoder_execution_identity.dag	L0	L0	L0	L0	L0	1	
+gunbc.dispatch_credential_acquisition	dag/gunbc/dispatch_credential_acquisition.dag	L5	L0	L0	L0	L2	4	L5:mech mkdir_create_only_with_mode_command|rm_recursive
+gunbc.dispatch_credential_snapshot	dag/gunbc/dispatch_credential_snapshot.dag	L5	L0	L2	L0	L0	9	L4:2 raw writes, no store authority ; L5:mech WriteCreateNew
+gunbc.dispatch_preflight	dag/gunbc/dispatch_preflight.dag	L0	L0	L4	L0	L3	1	L4:1 env reads ; L3:1 live-instance pins
+gunbc.dispatch_selection	dag/gunbc/dispatch_selection.dag	L0	L0	L0	L0	L3	0	L3:1 live-instance pins
+gunbc.durable_cas_file_store	dag/gunbc/durable_cas_file_store.dag	L4	L0	L0	L0	L0	0	L4:abs /var/lib/gunbc/authorization-claims
+gunbc.durable_handoff_host	dag/gunbc/durable_handoff_host.dag	L5	L0	L0	L0	L0	0	L5:mech mkdir_create_only_command
+gunbc.executor_privileged_operation	dag/gunbc/executor_privileged_operation.dag	L2	L3	L0	L4	L2	0	L3:cache vocab actions_runner_cache_dir ; L4:15 sudo sites
+gunbc.filesystem_file_observe	dag/gunbc/filesystem_file_observe.dag	L0	L0	L0	L0	L0	3	
+gunbc.filesystem_interface	dag/gunbc/filesystem_interface.dag	L5	L0	L0	L0	L0	6	L4:3 raw writes, no store authority ; L5:mech WriteCreateNew
+gunbc.filesystem_model	dag/gunbc/filesystem_model.dag	L5	L0	L0	L0	L0	0	L5:mech create_new
+gunbc.flex_vast_credential	dag/gunbc/flex_vast_credential.dag	L4	L0	L0	L0	L2	0	L4:abs /etc/gunbc-flex/vast-api-key
+gunbc.git_diff_change_window	dag/gunbc/git_diff_change_window.dag	L0	L0	L0	L0	L0	1	
+gunbc.github_app_acquisition	dag/gunbc/github_app_acquisition.dag	L0	L0	L2	L0	L2	1	
+gunbc.github_effect_perform	dag/gunbc/github_effect_perform.dag	L5	L0	L4	L0	L2	6	L4:abs /etc/gunbc/microvm-controller/app.pem|/run/gunbc-service-slot/app.pem ; L5:2 raw writes beside store authority ; L4:credential path /etc/gunbc/microvm-controller/app.pem|/run/gunbc-service-slot/app.pem
+gunbc.harness.harness_cli	dag/gunbc/harness/harness_cli.dag	L5	L0	L0	L0	L4	4	L4:abs /Users/briansrls/gunbc|/tmp/gunbc-harness-probe-events.jsonl|/tmp/gunbc-harness-request.json ; L5:4 raw writes beside store authority ; L4:upstream binary /opt/homebrew/bin/gtimeout
+gunbc.harness.harness_hosted_route	dag/gunbc/harness/harness_hosted_route.dag	L5	L0	L2	L0	L0	5	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce
+gunbc.harness.harness_operator_route	dag/gunbc/harness/harness_operator_route.dag	L5	L0	L4	L0	L0	6	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce ; L4:1 env reads
+gunbc.harness.harness_tool	dag/gunbc/harness/harness_tool.dag	L0	L0	L0	L0	L4	0	L4:upstream binary /bin/sh
+gunbc.harness.harness_turn	dag/gunbc/harness/harness_turn.dag	L4	L0	L0	L0	L0	9	L4:5 raw writes, no store authority
+gunbc.harness.harness_wire	dag/gunbc/harness/harness_wire.dag	L0	L3	L0	L0	L2	0	L3:cache vocab CachedTokensMemberAbsent|CachedTokensMemberDuplicated|CachedTokensNegative|CachedTokensNotANumber
+gunbc.harness.operator_pod_launch	dag/gunbc/harness/operator_pod_launch.dag	L0	L0	L0	L0	L4	0	L4:host 0.0.0.0
+gunbc.live_deploy.apply	dag/gunbc/live_deploy/apply.dag	L5	L3	L0	L4	L2	4	L5:1 raw writes beside store authority ; L5:mech mkdir_parents_command ; L3:cache vocab build_cache|build_cache_instance ; L4:2 sudo sites
+gunbc.live_deploy.apply_legs	dag/gunbc/live_deploy/apply_legs.dag	L4	L0	L0	L4	L4	0	L4:abs /dev/stdin|/etc/sudoers|/opt/gunbc ; L4:3 sudo sites ; L4:host tailscale-client|tailscale-serve-mapping
+gunbc.live_deploy.apply_receipt	dag/gunbc/live_deploy/apply_receipt.dag	L0	L0	L0	L0	L0	1	
+gunbc.live_deploy.deployed_tree_observation	dag/gunbc/live_deploy/deployed_tree_observation.dag	L4	L0	L0	L0	L2	0	L4:abs /tmp/gunbc-deployed-tree-index-
+gunbc.live_deploy.deployed_tree_report	dag/gunbc/live_deploy/deployed_tree_report.dag	L4	L0	L0	L0	L4	1	L4:1 raw writes, no store authority ; L4:host srv1
+gunbc.live_deploy.desired	dag/gunbc/live_deploy/desired.dag	L0	L0	L0	L0	L3	0	L3:3 live-instance pins
+gunbc.live_deploy.emit	dag/gunbc/live_deploy/emit.dag	L5	L0	L0	L4	L4	0	L4:abs /etc/sudoers.d/gunbc-attempt-system-unit- ; L5:mech mkdir_parents_command ; L4:4 sudo sites ; L4:host tailscale
+gunbc.live_deploy.intent	dag/gunbc/live_deploy/intent.dag	L0	L0	L0	L0	L4	0	L4:host http://127.0.0.1:
+gunbc.live_deploy.member_observe	dag/gunbc/live_deploy/member_observe.dag	L4	L0	L0	L0	L2	5	L4:abs /tmp
+gunbc.live_deploy.operations	dag/gunbc/live_deploy/operations.dag	L0	L0	L0	L4	L2	0	L4:1 sudo sites
+gunbc.live_deploy.pre_swap_admission	dag/gunbc/live_deploy/pre_swap_admission.dag	L5	L0	L0	L0	L2	2	L5:mech Remove.RecursiveForce
+gunbc.live_deploy.release_locus	dag/gunbc/live_deploy/release_locus.dag	L0	L0	L0	L4	L0	0	L4:4 sudo sites
+gunbc.live_deploy.repository_convergence	dag/gunbc/live_deploy/repository_convergence.dag	L0	L3	L0	L0	L0	3	L3:cache vocab LocalCacheState
+gunbc.live_deploy.repository_convergence_placement	dag/gunbc/live_deploy/repository_convergence_placement.dag	L4	L0	L0	L0	L4	2	L4:1 raw writes, no store authority ; L4:unit .slice
+gunbc.live_deploy.retract_legs	dag/gunbc/live_deploy/retract_legs.dag	L2	L0	L0	L0	L4	0	L4:host tailscale-client|tailscale-serve-off
+gunbc.live_deploy.role_singleton_convergence	dag/gunbc/live_deploy/role_singleton_convergence.dag	L0	L0	L0	L0	L2	3	
+gunbc.live_deploy.slice_bounds	dag/gunbc/live_deploy/slice_bounds.dag	L0	L0	L0	L0	L4	0	L4:host gunbc-fci1-controls.slice ; L4:unit gunbc-approval-broker.slice|gunbc-attempt-worker.slice|gunbc-fci1-controls.slice
+gunbc.live_deploy.spec	dag/gunbc/live_deploy/spec.dag	L4	L2	L0	L2	L4	0	L4:abs /etc/gunbc-|/etc/gunbc-tree-sync.env|/etc/systemd/system/|/etc/systemd/user/ ; L3:1 live-instance pins ; L4:unit -attempt-unit-drain.path|-attempt-unit-drain.service|-belt-credential-recovery.service ; L4:/etc/systemd literal
+gunbc.live_deploy.srv1_residue_rehearsal	dag/gunbc/live_deploy/srv1_residue_rehearsal.dag	L4	L0	L0	L4	L4	0	L4:abs /opt/gunbc/dispatch-worktrees/2-emit-partition|/opt/gunbc/dispatch-worktrees/5-regen-cutover|/opt/gunbc/dispatch-worktrees/namespace-occurrence-transport-a4a977ea6a45af340|/opt/gunbc/dispatch-worktrees/ts-authority-converge ; L4:2 sudo sites ; L4:host docs/probes/srv2-05-native-agreement-divergence-diagnosis.md
+gunbc.persistent_instance_roots	dag/gunbc/persistent_instance_roots.dag	L4	L0	L0	L0	L4	0	L4:abs /Users/briansrls/.local/share/gunbc-macbook-local|/home/briansrls/.local/share/gunbc-srv2-deploy ; L4:host /home/briansrls/.local/share/gunbc-srv2-deploy
+gunbc.provider_interface_binding	dag/gunbc/provider_interface_binding.dag	L0	L0	L0	L0	L0	1	
+gunbc.provider_wire_evidence	dag/gunbc/provider_wire_evidence.dag	L5	L0	L0	L0	L0	13	L4:1 raw writes, no store authority ; L5:mech Mkdir.|Remove.RecursiveForce
+gunbc.roadmap.attempt_system_unit_launch	dag/gunbc/roadmap/attempt_system_unit_launch.dag	L5	L0	L0	L2	L4	7	L4:abs /opt/gunbc/attempt-system-unit-helpers ; L5:2 raw writes beside store authority ; L5:mech Mkdir.|WriteCreateNew ; L4:upstream binary /usr/bin/systemd-run ; L3:1 live-instance pins
+gunbc.roadmap.dashboard_instance_directories	dag/gunbc/roadmap/dashboard_instance_directories.dag	L2	L3	L0	L0	L2	0	L3:cache vocab jwks_cache_directory
+gunbc.roadmap.roadmap_acceptance_history_carrier	dag/gunbc/roadmap/roadmap_acceptance_history_carrier.dag	L0	L0	L0	L0	L0	1	
+gunbc.roadmap.roadmap_attempt_exit_spool	dag/gunbc/roadmap/roadmap_attempt_exit_spool.dag	L5	L0	L0	L0	L0	3	L5:mech Mkdir.
+gunbc.roadmap.roadmap_attempt_metering	dag/gunbc/roadmap/roadmap_attempt_metering.dag	L5	L0	L0	L0	L2	6	L4:3 raw writes, no store authority ; L5:mech WriteCreateNew
+gunbc.roadmap.roadmap_attempt_occurrence	dag/gunbc/roadmap/roadmap_attempt_occurrence.dag	L0	L0	L0	L0	L4	0	L4:unit .service
+gunbc.roadmap.roadmap_attempt_request_record	dag/gunbc/roadmap/roadmap_attempt_request_record.dag	L5	L0	L0	L0	L2	1	L4:1 raw writes, no store authority ; L5:mech WriteCreateNew
+gunbc.roadmap.roadmap_auth_routes	dag/gunbc/roadmap/roadmap_auth_routes.dag	L4	L3	L0	L0	L2	2	L4:1 raw writes, no store authority ; L3:cache vocab jwks_cache_layout_for_instance
+gunbc.roadmap.roadmap_authority	dag/gunbc/roadmap/roadmap_authority.dag	L0	L0	L0	L4	L4	0	L4:4 sudo sites ; L4:host dag/test/claim/shell/shell_dag_live_deploy_restart_tailscale_witness.dag|fleet-srv2-retirement-completion|shell-dag-live-deploy-restart-tailscale|srv1-srv2-bmc-firmware-exposes-memory-errors
+gunbc.roadmap.roadmap_belt_actuate	dag/gunbc/roadmap/roadmap_belt_actuate.dag	L5	L0	L4	L4	L4	85	L5:30 raw writes beside store authority ; L4:3 env reads ; L4:3 sudo sites ; L4:upstream binary /usr/bin/env|/usr/bin/id|/usr/bin/stat ; L3:13 live-instance pins ; L4:host srv1-live|srv2-deploy ; L4:unit gunbc-supervisor-x-k-t3.service
+gunbc.roadmap.roadmap_belt_obligation	dag/gunbc/roadmap/roadmap_belt_obligation.dag	L0	L0	L0	L0	L4	0	L4:unit .service
+gunbc.roadmap.roadmap_belt_tick_cli	dag/gunbc/roadmap/roadmap_belt_tick_cli.dag	L4	L0	L4	L0	L2	11	L4:6 raw writes, no store authority ; L4:3 env reads
+gunbc.roadmap.roadmap_closing_contract_authoring	dag/gunbc/roadmap/roadmap_closing_contract_authoring.dag	L0	L0	L0	L0	L0	4	
+gunbc.roadmap.roadmap_dashboard_instance	dag/gunbc/roadmap/roadmap_dashboard_instance.dag	L4	L2	L0	L0	L4	0	L4:abs /Users/briansrls|/Users/briansrls/.local/share|/Users/briansrls/gunbc|/etc/systemd/system/ ; L4:upstream binary /bin/mkdir|/bin/sh|/bin/test|/opt/homebrew/bin/cargo ; L3:10 live-instance pins ; L4:host /home/briansrls/.local/share/gunbc-dashboard-instances/srv2-lab-v1-deletion|/home/briansrls/gunbc-srv2-deploy|0.0.0.0|127.0.0.1 ; L4:unit .service|.timer ; L4:/etc/systemd literal
+gunbc.roadmap.roadmap_dashboard_instance_apply	dag/gunbc/roadmap/roadmap_dashboard_instance_apply.dag	L5	L0	L0	L0	L4	2	L5:mech Remove.RecursiveForce ; L4:upstream binary /usr/bin/cp|/usr/bin/curl|/usr/bin/dirname|/usr/bin/git ; L3:7 live-instance pins ; L4:host 127.0.0.1|http://127.0.0.1:|srv2
+gunbc.roadmap.roadmap_dispatch_actuator	dag/gunbc/roadmap/roadmap_dispatch_actuator.dag	L5	L0	L0	L0	L4	1	L5:1 raw writes beside store authority ; L5:mech WriteCreateNew ; L3:3 live-instance pins ; L4:unit .service
+gunbc.roadmap.roadmap_dispatch_environment	dag/gunbc/roadmap/roadmap_dispatch_environment.dag	L2	L0	L0	L0	L0	1	
+gunbc.roadmap.roadmap_dogfood_route	dag/gunbc/roadmap/roadmap_dogfood_route.dag	L2	L2	L0	L0	L3	0	L3:1 live-instance pins
+gunbc.roadmap.roadmap_event_carrier	dag/gunbc/roadmap/roadmap_event_carrier.dag	L5	L0	L0	L0	L2	10	L4:abs /tmp/gunbc-roadmap-event-snapshot. ; L5:2 raw writes beside store authority
+gunbc.roadmap.roadmap_launch_deployment_cli	dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag	L5	L0	L0	L0	L4	4	L4:4 raw writes, no store authority ; L5:mech mkdir_parents_command ; L4:host srv1
+gunbc.roadmap.roadmap_launch_deployment_observe	dag/gunbc/roadmap/roadmap_launch_deployment_observe.dag	L0	L0	L0	L0	L4	0	L4:host http://127.0.0.1:
+gunbc.roadmap.roadmap_publication_helper	dag/gunbc/roadmap/roadmap_publication_helper.dag	L5	L0	L0	L0	L0	8	L4:2 raw writes, no store authority ; L5:mech WriteCreateNew
+gunbc.roadmap.roadmap_publish_actuate	dag/gunbc/roadmap/roadmap_publish_actuate.dag	L5	L0	L0	L0	L0	6	L5:mech Remove.RecursiveForce
+gunbc.roadmap.roadmap_serve	dag/gunbc/roadmap/roadmap_serve.dag	L0	L3	L0	L2	L3	0	L3:cache vocab ServeResponseHeaderCacheImmutable ; L3:14 live-instance pins
+gunbc.roadmap.roadmap_served_observation	dag/gunbc/roadmap/roadmap_served_observation.dag	L4	L0	L0	L0	L2	3	L4:2 raw writes, no store authority
+gunbc.roadmap.roadmap_session_placement	dag/gunbc/roadmap/roadmap_session_placement.dag	L5	L0	L0	L0	L2	5	L5:3 raw writes beside store authority
+gunbc.roadmap.roadmap_verification_receipt	dag/gunbc/roadmap/roadmap_verification_receipt.dag	L4	L0	L0	L0	L0	6	L4:abs /dev/null
+gunbc.roadmap.roadmap_verify	dag/gunbc/roadmap/roadmap_verify.dag	L4	L0	L0	L0	L4	1	L4:1 raw writes, no store authority ; L4:upstream binary /usr/bin/env ; L3:2 live-instance pins
+gunbc.roadmap.spool_stall	dag/gunbc/roadmap/spool_stall.dag	L5	L0	L0	L0	L0	4	L4:1 raw writes, no store authority ; L5:mech Mkdir.|WriteCreateNew
+gunbc.scm.init	dag/gunbc/scm/init.dag	L0	L0	L0	L0	L0	2	
+gunbc.scm.repository_convert	dag/gunbc/scm/repository_convert.dag	L4	L0	L0	L0	L0	3	L4:2 raw writes, no store authority
+gunbc.scm.repository_load	dag/gunbc/scm/repository_load.dag	L0	L0	L0	L0	L0	3	
+gunbc.scm.repository_save	dag/gunbc/scm/repository_save.dag	L5	L0	L0	L0	L0	8	L4:4 raw writes, no store authority ; L5:mech WriteCreateNew
+gunbc.scm.scm_wet_execution_receipt	dag/gunbc/scm/scm_wet_execution_receipt.dag	L4	L0	L0	L0	L0	0	L4:abs /opt/cargo/bin/cargo|/tmp/claude-1000/-home-briansrls--worktrees-gunbc-deep-carp-676/825827b7-c94b-4de8-8cc4-4616121fbc8b/scratchpad/acc-target/release/gunbc
+gunbc.scm.write_spine_ingress	dag/gunbc/scm/write_spine_ingress.dag	L0	L0	L0	L0	L0	2	
+gunbc.session_reservation_policy	dag/gunbc/session_reservation_policy.dag	L4	L0	L0	L0	L4	0	L4:abs /sys/fs/cgroup|/sys/fs/cgroup/sessions.slice ; L4:host local-cgroup-read-srv1-2026-10-14|local-cgroup-read-srv2-2026-09-12|srv1|srv2
+gunbc.tailscale_acl_phase2_credential	dag/gunbc/tailscale_acl_phase2_credential.dag	L0	L0	L0	L0	L4	0	L4:host gunbc.tailscale_acl_phase2_credential|tailscale-acl-ephemeral-token|tailscale_acl_upsert_wet
+gunbc.worker_turn_standing	dag/gunbc/worker_turn_standing.dag	L0	L0	L0	L0	L2	1	

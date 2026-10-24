@@ -1,0 +1,85 @@
+module	path	mech_storage	mech_caching	mech_access	mech_authz	mech_placement	ambient	leads
+gunbc.apply	dag/gunbc/apply.dag	L0	L0	L0	L0	L4	0	L4:host dashboard-srv1
+gunbc.assimilate.bmc_bootstrap_provision	dag/gunbc/assimilate/bmc_bootstrap_provision.dag	L0	L0	L0	L0	L0	1	
+gunbc.assimilate.bmc_token_federation	dag/gunbc/assimilate/bmc_token_federation.dag	L0	L0	L2	L0	L4	0	L4:host bmc-srv3-admin
+gunbc.bmc.bmc_fan_converge	dag/gunbc/bmc/bmc_fan_converge.dag	L4	L0	L2	L0	L4	1	L4:abs /etc/gunbc/bmc-identities/srv3-machine-id|/etc/gunbc/bmc-identities/srv4-machine-id|/etc/gunbc/bmc-known-hosts/srv3|/etc/gunbc/bmc-known-hosts/srv4 ; L4:upstream binary /usr/bin/swampd ; L4:host /etc/gunbc/bmc-identities/srv3-machine-id|/etc/gunbc/bmc-identities/srv4-machine-id|/etc/gunbc/bmc-known-hosts/srv3|/etc/gunbc/bmc-known-hosts/srv4
+gunbc.bmc.bmc_fan_program_capture	dag/gunbc/bmc/bmc_fan_program_capture.dag	L4	L0	L0	L0	L4	0	L4:abs /usr/share/swampd/config-asrr.json ; L4:host artifacts/bmc/srv3-config-asrr.json|artifacts/bmc/srv4-config-asrr.json|srv3|srv4
+gunbc.bmc.bmc_fan_program_observation	dag/gunbc/bmc/bmc_fan_program_observation.dag	L0	L0	L0	L0	L0	1	
+gunbc.bmc.bmc_fan_program_observation_witness	dag/gunbc/bmc/bmc_fan_program_observation_witness.dag	L0	L0	L0	L0	L4	2	L4:host artifacts/bmc/srv3-config-asrr.json
+gunbc.bmc.bmc_fan_projection	dag/gunbc/bmc/bmc_fan_projection.dag	L4	L0	L0	L0	L0	0	L4:abs /usr/share/swampd/config-asrr.json
+gunbc.bmc.bmc_netboot_serve	dag/gunbc/bmc/bmc_netboot_serve.dag	L5	L0	L0	L0	L0	1	L4:abs /tmp/gunbc-bmc-|/tmp/netboot|/var/lib/gunbc/artifacts/netboot ; L5:1 raw writes beside store authority ; L5:mech mkdir_parents_command
+gunbc.bmc.bmc_virtual_media	dag/gunbc/bmc/bmc_virtual_media.dag	L4	L0	L0	L0	L4	0	L4:abs /dev/nbd0|/sys/kernel/config/usb_gadget|/tmp/gunbc-nbd-srv4.conf|/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv4-seeded.iso ; L4:host /tmp/gunbc-nbd-srv4.conf|/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv4-seeded.iso|srv4-0001
+gunbc.board_authority_binding	dag/gunbc/board_authority_binding.dag	L0	L0	L0	L0	L0	1	
+gunbc.busybox_bmc_build	dag/gunbc/busybox_bmc_build.dag	L5	L0	L0	L0	L0	0	L4:abs /tmp/gunbc-bb-build|/tmp/gunbc-busybox-src.tar.bz2|/var/lib/gunbc/artifacts/netboot/busybox ; L5:mech mkdir_parents_command
+gunbc.cloudflare.r2_bucket_ensure	dag/gunbc/cloudflare/r2_bucket_ensure.dag	L4	L0	L2	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.cloudflare.r2_conditional_put_race_probe	dag/gunbc/cloudflare/r2_conditional_put_race_probe.dag	L5	L0	L2	L0	L0	6	L4:3 raw writes, no store authority ; L5:mech Remove.RecursiveForce
+gunbc.cloudflare.r2_mint_secret_access	dag/gunbc/cloudflare/r2_mint_secret_access.dag	L0	L3	L2	L0	L0	0	L3:cache vocab fabric_cache_blobs_read_secret_id|fabric_cache_blobs_write_secret_id
+gunbc.cloudflare.r2_origin	dag/gunbc/cloudflare/r2_origin.dag	L0	L3	L0	L0	L2	0	L3:cache vocab FabricCacheBlobs|KeyAddressedCacheBlobs|fabric_cache_blob_prefix|fabric_cache_blobs_read_access_key_id
+gunbc.cloudflare.r2_permission_group_observe	dag/gunbc/cloudflare/r2_permission_group_observe.dag	L4	L0	L2	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.cloudflare.r2_s3_netrc	dag/gunbc/cloudflare/r2_s3_netrc.dag	L5	L0	L2	L0	L0	9	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce
+gunbc.cloudflare.r2_staged_transfer	dag/gunbc/cloudflare/r2_staged_transfer.dag	L5	L0	L2	L0	L0	2	L5:mech Remove.RecursiveForce
+gunbc.cloudflare.r2_token_mint_run	dag/gunbc/cloudflare/r2_token_mint_run.dag	L5	L3	L4	L0	L2	7	L4:abs /tmp/r2-account-token-list.txt|/tmp/r2-mint-receipts/|/tmp/r2-object-read-revoke-receipt.txt ; L5:4 raw writes beside store authority ; L5:mech Mkdir. ; L3:cache vocab FabricCacheBlobs|run_cache_object_read|run_cache_object_write ; L4:2 env reads ; L4:credential path /tmp/r2-account-token-list.txt
+gunbc.container.registry_image_config	dag/gunbc/container/registry_image_config.dag	L5	L0	L0	L0	L0	13	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce
+gunbc.demo.board_artifacts	dag/gunbc/demo/board_artifacts.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.demo.semantic_system_readout	dag/gunbc/demo/semantic_system_readout.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.deploy_transition	dag/gunbc/deploy_transition.dag	L4	L0	L0	L0	L0	7	L4:3 raw writes, no store authority
+gunbc.deployment_risk	dag/gunbc/deployment_risk.dag	L0	L0	L0	L2	L4	0	L4:host srv1-daily-workspace|srv1-lab-codex-feedback|srv2-deploy|srv2-lab-v1-deletion
+gunbc.devboot.build	dag/gunbc/devboot/build.dag	L4	L3	L0	L0	L0	6	L4:3 raw writes, no store authority ; L3:cache vocab UpdateIndexCacheInfo
+gunbc.devboot.produce	dag/gunbc/devboot/produce.dag	L4	L0	L0	L0	L0	2	L4:2 raw writes, no store authority
+gunbc.econ.llm_attempt_receipt	dag/gunbc/econ/llm_attempt_receipt.dag	L0	L3	L0	L0	L0	0	L3:cache vocab PrefixCacheHit|PrefixCacheMiss|PrefixCacheObservation|PrefixCacheUnobserved
+gunbc.frontend_eval.control	dag/gunbc/frontend_eval/control.dag	L5	L0	L0	L0	L0	9	L4:4 raw writes, no store authority ; L5:mech Mkdir.|Remove.RecursiveForce
+gunbc.frontend_eval.instrument	dag/gunbc/frontend_eval/instrument.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.guest_image_delivery	dag/gunbc/guest_image_delivery.dag	L5	L0	L0	L0	L0	1	L4:1 raw writes, no store authority ; L5:mech mkdir_parents_command
+gunbc.machine_intake.bmc_recovery_route	dag/gunbc/machine_intake/bmc_recovery_route.dag	L4	L0	L0	L2	L0	0	L4:abs /dev/imb|/dev/ipmi0|/tmp/pw
+gunbc.machine_intake.boot_image_export_ownership	dag/gunbc/machine_intake/boot_image_export_ownership.dag	L4	L0	L0	L0	L4	0	L4:abs /srv/bmc ; L4:upstream binary /bin/bash
+gunbc.machine_intake.fan_observe	dag/gunbc/machine_intake/fan_observe.dag	L4	L0	L0	L0	L2	2	L4:2 raw writes, no store authority
+gunbc.machine_intake.host_capture_envelope	dag/gunbc/machine_intake/host_capture_envelope.dag	L4	L0	L0	L0	L0	0	L4:abs /dev/shm/gunbc|/sys/devices/system/edac|/sys/devices/system/edac/mc/mc0/
+gunbc.machine_intake.megarac_boot_media_attach	dag/gunbc/machine_intake/megarac_boot_media_attach.dag	L4	L0	L0	L0	L0	0	L4:abs /tmp/gunbc-
+gunbc.machine_intake.megarac_kvm_observer_observe	dag/gunbc/machine_intake/megarac_kvm_observer_observe.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.machine_intake.megarac_kvm_still	dag/gunbc/machine_intake/megarac_kvm_still.dag	L4	L0	L0	L0	L0	5	L4:4 raw writes, no store authority
+gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle	dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag	L4	L3	L0	L0	L2	4	L4:1 raw writes, no store authority ; L3:cache vocab SdrCacheDumped|SdrCacheNotTaken|SdrCacheReading|SdrCacheUnread
+gunbc.machine_intake.mtcollins1_boot_dry_realization	dag/gunbc/machine_intake/mtcollins1_boot_dry_realization.dag	L5	L0	L0	L0	L4	0	L4:abs /home/runner/work/gunbc/gunbc|/proc/|/proc/self/ns/pid|/proc/self/stat ; L5:mech create_new ; L4:host srv1
+gunbc.machine_intake.mtcollins1_boot_fan_gate	dag/gunbc/machine_intake/mtcollins1_boot_fan_gate.dag	L4	L0	L0	L0	L0	3	L4:2 raw writes, no store authority
+gunbc.machine_intake.mtcollins1_boot_run	dag/gunbc/machine_intake/mtcollins1_boot_run.dag	L5	L3	L0	L0	L2	37	L4:abs /proc/ ; L5:12 raw writes beside store authority ; L3:cache vocab SdrCacheNotTaken|SdrCacheReading|sdr_cache
+gunbc.machine_intake.mtcollins1_census_image	dag/gunbc/machine_intake/mtcollins1_census_image.dag	L4	L0	L0	L0	L0	0	L4:abs /dev/
+gunbc.machine_intake.mtcollins1_census_image_publish	dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag	L5	L0	L0	L0	L2	1	L4:abs /var/tmp/gunbc-mtcollins1-census-regress.|/var/tmp/gunbc-mtcollins1-census-regress.XXXXXXXX ; L5:1 raw writes beside store authority ; L5:mech rm_recursive
+gunbc.machine_intake.mtcollins1_census_member_readback	dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag	L5	L0	L0	L0	L2	1	L4:abs /tmp/gunbc- ; L5:1 raw writes beside store authority ; L5:mech rm_recursive
+gunbc.machine_intake.mtcollins1_census_qemu_host_observe	dag/gunbc/machine_intake/mtcollins1_census_qemu_host_observe.dag	L5	L0	L0	L0	L0	1	L4:1 raw writes, no store authority ; L5:mech mkdir_parents_command
+gunbc.machine_intake.mtcollins1_fan_observe	dag/gunbc/machine_intake/mtcollins1_fan_observe.dag	L4	L0	L4	L0	L2	3	L4:1 raw writes, no store authority ; L4:1 env reads
+gunbc.machine_intake.mtcollins1_sol_notice	dag/gunbc/machine_intake/mtcollins1_sol_notice.dag	L5	L0	L0	L0	L0	8	L4:abs /dev/stdout ; L5:5 raw writes beside store authority
+gunbc.machine_intake.mtjade1_access_observation	dag/gunbc/machine_intake/mtjade1_access_observation.dag	L0	L0	L0	L0	L4	10	L4:host srv1
+gunbc.machine_intake.sol_hold	dag/gunbc/machine_intake/sol_hold.dag	L4	L0	L0	L0	L0	0	L4:abs /dev/null|/proc/
+gunbc.namecheap.observe	dag/gunbc/namecheap/observe.dag	L4	L0	L2	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.node_http_server_emit	dag/gunbc/node_http_server_emit.dag	L0	L0	L0	L0	L4	0	L4:host 0.0.0.0
+gunbc.oracle_oci.always_free_ensure	dag/gunbc/oracle_oci/always_free_ensure.dag	L4	L0	L2	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.oracle_oci.api	dag/gunbc/oracle_oci/api.dag	L4	L0	L4	L0	L2	0	L4:abs /etc/gunbc/oracle-oci/api-signing-key.pem ; L4:credential path /etc/gunbc/oracle-oci/api-signing-key.pem
+gunbc.oracle_oci.compartment_ensure	dag/gunbc/oracle_oci/compartment_ensure.dag	L4	L0	L2	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.oracle_oci.instance_ensure	dag/gunbc/oracle_oci/instance_ensure.dag	L5	L0	L2	L0	L2	5	L4:abs /etc/gunbc/oracle-oci|/etc/gunbc/oracle-oci/instance-converge.lock ; L5:2 raw writes beside store authority ; L5:mech WriteCreateNew
+gunbc.oracle_oci.network_ensure	dag/gunbc/oracle_oci/network_ensure.dag	L0	L0	L2	L0	L4	0	L4:host 0.0.0.0/0
+gunbc.readback_independence	dag/gunbc/readback_independence.dag	L0	L3	L0	L0	L0	0	L3:cache vocab sccache_show_stats_probe
+gunbc.revision_job_image_delivery	dag/gunbc/revision_job_image_delivery.dag	L5	L0	L0	L0	L0	0	L5:mech mkdir_parents_command
+gunbc.served_surface_browser_observation	dag/gunbc/served_surface_browser_observation.dag	L0	L0	L0	L0	L4	0	L4:host 127.0.0.1:43821/body|127.0.0.1:43821/empty|127.0.0.1:43822/refused
+gunbc.site.gunb_ai_css	dag/gunbc/site/gunb_ai_css.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.site.gunb_ai_deck	dag/gunbc/site/gunb_ai_deck.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.site.gunb_ai_layout_review	dag/gunbc/site/gunb_ai_layout_review.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.site.gunb_ai_mark	dag/gunbc/site/gunb_ai_mark.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.site.gunb_ai_page	dag/gunbc/site/gunb_ai_page.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.site.gunb_ai_tokens_review	dag/gunbc/site/gunb_ai_tokens_review.dag	L4	L0	L0	L0	L0	1	L4:1 raw writes, no store authority
+gunbc.srv3.srv3_actuate_shell_paths	dag/gunbc/srv3/srv3_actuate_shell_paths.dag	L4	L0	L4	L0	L4	0	L4:abs /tmp/srv3_bmcweb_login_body.json|/tmp/srv3_bmcweb_login_response.json|/tmp/srv3_bmcweb_token|/var/lib/gunbc/logs/srv3-install-sol-console.log ; L4:credential path /tmp/srv3_bmcweb_token ; L4:host /var/lib/gunbc/logs/srv3-install-sol-console.log
+gunbc.srv3.srv3_boot_once_cd	dag/gunbc/srv3/srv3_boot_once_cd.dag	L5	L0	L2	L2	L0	4	L4:abs /tmp/srv3_boot_cd_body.json|/tmp/srv3_reset_body.json ; L5:2 raw writes beside store authority
+gunbc.srv3.srv3_nbd_proxy_serve_intent	dag/gunbc/srv3/srv3_nbd_proxy_serve_intent.dag	L0	L0	L0	L0	L4	0	L4:host srv3-nbd-proxy-10809
+gunbc.srv3.srv3_os_install_actuate	dag/gunbc/srv3/srv3_os_install_actuate.dag	L4	L0	L2	L0	L4	1	L4:1 raw writes, no store authority ; L4:host docs/runbooks/srv3-os-install-actuate.md|srv3-os-install-actuate
+gunbc.srv3.srv3_os_install_actuate_scope	dag/gunbc/srv3/srv3_os_install_actuate_scope.dag	L0	L0	L0	L0	L4	0	L4:host gunbc.srv3.srv3_bmc_credential_resolve|srv3-seeded
+gunbc.srv3.srv3_os_install_actuate_workflow	dag/gunbc/srv3/srv3_os_install_actuate_workflow.dag	L0	L0	L0	L2	L4	0	L4:host bmc-srv3-admin|srv3-boot-once-cd|srv3-os-install-actuate-1
+gunbc.srv3.srv3_os_install_diagnostic	dag/gunbc/srv3/srv3_os_install_diagnostic.dag	L0	L0	L0	L0	L4	0	L4:host docs/runbooks/srv3-os-install-actuate.md#install-debug-diagnostic-fold|srv3
+gunbc.srv3.srv3_seeded_install_media	dag/gunbc/srv3/srv3_seeded_install_media.dag	L0	L0	L0	L0	L4	0	L4:host gunbc.srv3.srv3_os_install_actuate_scope|ubuntu-24.04.3-live-server-srv3-seeded
+gunbc.srv3.srv3_seeded_install_media_artifact	dag/gunbc/srv3/srv3_seeded_install_media_artifact.dag	L0	L0	L0	L0	L4	0	L4:host ubuntu-24.04.3-live-server-srv3-seeded
+gunbc.srv4_uefi_observed	dag/gunbc/srv4_uefi_observed.dag	L0	L0	L0	L0	L4	0	L4:host 0.0.0.0
+gunbc.tools.bmc_first_contact	dag/gunbc/tools/bmc_first_contact.dag	L0	L0	L4	L0	L0	2	L4:1 env reads
+gunbc.tools.bmc_health_reader_converge	dag/gunbc/tools/bmc_health_reader_converge.dag	L5	L0	L2	L0	L2	6	L4:abs /tmp/bmc_health_reader_body_ ; L5:1 raw writes beside store authority
+gunbc.tools.bmc_intake_first_contact	dag/gunbc/tools/bmc_intake_first_contact.dag	L0	L0	L4	L0	L0	2	L4:1 env reads
+gunbc.tools.bmc_onboard	dag/gunbc/tools/bmc_onboard.dag	L5	L0	L4	L0	L2	11	L4:abs /tmp/bmc_onboard_netrc|/tmp/bmc_onboard_pwbody.json ; L5:1 raw writes beside store authority ; L4:1 env reads
+gunbc.tools.bmc_read_telemetry	dag/gunbc/tools/bmc_read_telemetry.dag	L0	L0	L4	L0	L0	4	L4:2 env reads
+gunbc.tools.card_intake	dag/gunbc/tools/card_intake.dag	L0	L0	L0	L0	L0	1	
+gunbc.tools.review	dag/gunbc/tools/review.dag	L4	L0	L0	L0	L0	0	L4:abs /Users/briansrls/.local/share/gunbc-review/logs/cron.log
+gunbc.url_file_acquisition	dag/gunbc/url_file_acquisition.dag	L5	L0	L0	L0	L0	5	L5:mech Mkdir.|Remove.RecursiveForce

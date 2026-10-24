@@ -1,0 +1,878 @@
+module	class	path	storage	caching	access	authz	placement	ambient	signal	leads	ambient_ops
+extdeps.access.posix	extdeps	dag/extdeps/access/posix.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /bin/false|/sbin/nologin|/usr/bin/false|/usr/sbin/nologin	
+extdeps.bmc.ipmi	extdeps	dag/extdeps/bmc/ipmi.dag	L4	L3	L2	L0	L0	0	1	L4:abs /dev/imb|/dev/ipmi|/dev/ipmi<N> ; L3:cache vocab SdrElistAuthenticatedCached|SelListAuthenticatedCached|sdr_cache_file	
+extdeps.bmc.os_install_actuator_toolchain	extdeps	dag/extdeps/bmc/os_install_actuator_toolchain.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/lib/gunbc/bin	
+extdeps.boards.asrock_rack	extdeps	dag/extdeps/boards/asrock_rack.dag	L4	L0	L0	L0	L4	0	1	L4:abs /usr/share/swampd/config-asrr.json|/usr/share/swampd/config.json ; L4:upstream binary /usr/bin/swampd ; L4:host github.com/gunb-ai/gunbc/blob/main/docs/runbooks/srv3-nbd-proxy-ws-upgrade-dry-run.md ; L4:unit phosphor-pid-control.service	
+extdeps.cache.key_completeness	extdeps	dag/extdeps/cache/key_completeness.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheInterfaceCatalogFacts|cache|cache_catalog_key_completeness_holds|cache_key_derivation_complete	
+extdeps.cache.pin	extdeps	dag/extdeps/cache/pin.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab admit_sccache_binary_artifact_pin_integrity|cache|sccache|sccache_binary_artifact_content_identity	
+extdeps.cache.sccache	extdeps	dag/extdeps/cache/sccache.dag	L2	L2	L0	L0	L4	0	1	L4:upstream binary /usr/local/bin/sccache	
+extdeps.cloud_init.cloud_init	extdeps	dag/extdeps/cloud_init/cloud_init.dag	L4	L0	L0	L0	L0	0	1	L4:abs /etc/cloud/cloud-init.disabled|/etc/cloud/cloud.cfg.d/90-installer-network.cfg|/etc/cloud/cloud.cfg.d/99-installer.cfg|/etc/netplan/50-cloud-init.yaml	
+extdeps.cloudflare.r2	extdeps	dag/extdeps/cloudflare/r2.dag	L0	L0	L0	L0	L4	0	1	L4:host .eu.r2.cloudflarestorage.com|.fedramp-high.r2.cloudflarestorage.com|.fedramp.r2.cloudflarestorage.com|.r2.cloudflarestorage.com	
+extdeps.container.docker_ce	extdeps	dag/extdeps/container/docker_ce.dag	L4	L0	L0	L0	L0	0	1	L4:abs /etc/apt/keyrings|/etc/apt/keyrings/docker.gpg|/etc/apt/sources.list.d/docker.list	
+extdeps.container.oci.ctrl_session_witness	extdeps	dag/extdeps/container/oci/ctrl_session_witness.dag	L4	L0	L0	L0	L4	0	1	L4:abs /tmp ; L4:upstream binary /usr/bin/tini|/usr/local/bin/session-entrypoint	
+extdeps.crypto.seeded_filler	extdeps	dag/extdeps/crypto/seeded_filler.dag	L0	L0	L0	L0	L0	1	1		shell.Remove.FileForce
+extdeps.docker.cli	extdeps	dag/extdeps/docker/cli.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /usr/bin/docker	
+extdeps.docker.images.sparkrun_vllm_ds4_gb10	extdeps	dag/extdeps/docker/images/sparkrun_vllm_ds4_gb10.dag	L4	L0	L0	L0	L0	0	1	L4:abs /opt/env/bin/python3|/opt/env/bin/ray|/opt/env/bin/vllm	
+extdeps.ethtool	extdeps	dag/extdeps/ethtool.dag	L4	L0	L0	L0	L0	0	1	L4:abs /usr/sbin	
+extdeps.exec.command	extdeps	dag/extdeps/exec/command.dag	L0	L0	L0	L4	L4	0	1	L4:3 sudo sites ; L4:host extdeps.tailscale.serve|tailscale_serve_off_command|tailscale_serve_status_json_command	
+extdeps.exec.program	extdeps	dag/extdeps/exec/program.dag	L0	L0	L0	L0	L4	0	1	L4:host extdeps.tailscale.serve|tailscale_program	
+extdeps.filesystem.filesystem_io	extdeps	dag/extdeps/filesystem/filesystem_io.dag	L5	L0	L0	L0	L0	1	1	L5:mech WriteCreateNew	Filesystem.List
+extdeps.firmware.tianocore_edk2.aavmf	extdeps	dag/extdeps/firmware/tianocore_edk2/aavmf.dag	L4	L0	L0	L0	L0	0	1	L4:abs /usr/share/AAVMF/AAVMF_CODE.fd|/usr/share/AAVMF/AAVMF_VARS.fd	
+extdeps.firmware.uefi_shell	extdeps	dag/extdeps/firmware/uefi_shell.dag	L0	L0	L0	L0	L4	0	1	L4:host 0.0.0.0	
+extdeps.git	extdeps	dag/extdeps/git.dag	L4	L0	L2	L0	L0	0	1	L4:abs /dev/null	
+extdeps.git.plumbing	extdeps	dag/extdeps/git/plumbing.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab UpdateIndexCacheInfo	
+extdeps.github.action.cache	extdeps	dag/extdeps/github/action/cache.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache|cache_manifest_readings	
+extdeps.github.action.rust_cache	extdeps	dag/extdeps/github/action/rust_cache.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab rust_cache|rust_cache_manifest_readings	
+extdeps.github.action.setup_rust_toolchain	extdeps	dag/extdeps/github/action/setup_rust_toolchain.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab rust_cache	
+extdeps.github.actions_runner	extdeps	dag/extdeps/github/actions_runner.dag	L4	L3	L0	L0	L4	0	1	L4:abs /opt/actions-runner|/opt/actions-runner-cache|/tmp/actions-runner.tar.gz ; L3:cache vocab actions_runner_cache_dir|cache_install_command ; L4:upstream binary /bin/Runner.Listener	
+extdeps.github.merge_group_event	extdeps	dag/extdeps/github/merge_group_event.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+extdeps.github.push_event	extdeps	dag/extdeps/github/push_event.dag	L0	L0	L0	L0	L0	2	1		Filesystem.Read
+extdeps.github.workflow_run_event	extdeps	dag/extdeps/github/workflow_run_event.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+extdeps.google.issue_tracker	extdeps	dag/extdeps/google/issue_tracker.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab AvatarFromCachedPrior|probe_cache	
+extdeps.gpu.apple	extdeps	dag/extdeps/gpu/apple.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab sm_cache|sm_cache_citations	
+extdeps.gpu.machine_shape	extdeps	dag/extdeps/gpu/machine_shape.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab GpuSmCacheGeometry|sm_cache	
+extdeps.gpu.nvidia	extdeps	dag/extdeps/gpu/nvidia.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab GpuSmCacheGeometry|sm_cache|sm_cache_citations	
+extdeps.gpu.types	extdeps	dag/extdeps/gpu/types.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab GpuSmCacheGeometry|sm_cache|sm_cache_citations	
+extdeps.http.client	extdeps	dag/extdeps/http/client.dag	L4	L0	L2	L0	L0	0	1	L4:abs /dev/null	
+extdeps.http.server	extdeps	dag/extdeps/http/server.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab ServeResponseHeaderCacheImmutable|serve_cache_control_field_name	
+extdeps.huggingface.hub	extdeps	dag/extdeps/huggingface/hub.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab HubCacheEnvironment|cache_root|hf_hub_cache|hub_cache_environment_unset	
+extdeps.iproute2.ip_address	extdeps	dag/extdeps/iproute2/ip_address.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /usr/sbin/ip	
+extdeps.iproute2.ss	extdeps	dag/extdeps/iproute2/ss.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /usr/bin/ss	
+extdeps.iputils.arping	extdeps	dag/extdeps/iputils/arping.dag	L0	L0	L2	L0	L4	0	1	L4:upstream binary /usr/sbin/arping	
+extdeps.linux.cgroup_v2	extdeps	dag/extdeps/linux/cgroup_v2.dag	L4	L0	L0	L0	L0	0	1	L4:abs /sys/fs/cgroup	
+extdeps.linux.kernel_random	extdeps	dag/extdeps/linux/kernel_random.dag	L4	L0	L0	L0	L0	0	1	L4:abs /proc/sys/kernel/random/boot_id	
+extdeps.linux.nf_conntrack	extdeps	dag/extdeps/linux/nf_conntrack.dag	L4	L0	L0	L0	L0	0	1	L4:abs /proc/sys/net/netfilter	
+extdeps.linux.proc_meminfo	extdeps	dag/extdeps/linux/proc_meminfo.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cached	
+extdeps.linux.procfs	extdeps	dag/extdeps/linux/procfs.dag	L4	L0	L0	L0	L0	0	1	L4:abs /proc/|/proc/meminfo|/proc/net/pnp|/proc/net/tcp	
+extdeps.linux.tun_fdinfo	extdeps	dag/extdeps/linux/tun_fdinfo.dag	L4	L0	L0	L0	L0	5	1	L4:abs /proc|/proc/|/sys/class/net/	Filesystem.List,Filesystem.Read
+extdeps.linux.usb_gadget	extdeps	dag/extdeps/linux/usb_gadget.dag	L5	L0	L0	L0	L0	0	1	L5:mech mkdir_parents_command	
+extdeps.llm.anthropic_messages_api	extdeps	dag/extdeps/llm/anthropic_messages_api.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheControl|CacheControlType|CacheEphemeral|cache_control	
+extdeps.llm.openai	extdeps	dag/extdeps/llm/openai.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cached_tokens	
+extdeps.needrestart	extdeps	dag/extdeps/needrestart.dag	L4	L0	L0	L0	L0	0	1	L4:abs /etc/needrestart/conf.d	
+extdeps.netplan.netplan	extdeps	dag/extdeps/netplan/netplan.dag	L4	L0	L0	L0	L0	0	1	L4:abs /etc/netplan|/run/NetworkManager/system-connections/netplan-	
+extdeps.networkmanager.nmcli	extdeps	dag/extdeps/networkmanager/nmcli.dag	L4	L0	L0	L0	L0	0	1	L4:abs /etc/NetworkManager/system-connections/	
+extdeps.ntfy.ntfy	extdeps	dag/extdeps/ntfy/ntfy.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheDisabled|CacheServerSide|NtfyCachePolicy|cache	
+extdeps.ntfy.serve	extdeps	dag/extdeps/ntfy/serve.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab NtfyAuthAccessCache	
+extdeps.nvidia.glm_5_3_flash_nvfp4	extdeps	dag/extdeps/nvidia/glm_5_3_flash_nvfp4.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab VllmKvCacheDtypeRequest	
+extdeps.os.ubuntu_ports_archive	extdeps	dag/extdeps/os/ubuntu_ports_archive.dag	L4	L0	L0	L0	L0	0	1	L4:abs /usr/share/keyrings/ubuntu-archive-keyring.gpg	
+extdeps.package_managers.apt	extdeps	dag/extdeps/package_managers/apt.dag	L4	L0	L2	L0	L4	0	1	L4:abs /usr/bin|/usr/local/bin|/usr/sbin ; L4:upstream binary /usr/bin/apt-get ; L4:host tailscale	
+extdeps.package_managers.brew	extdeps	dag/extdeps/package_managers/brew.dag	L4	L0	L0	L0	L0	0	1	L4:abs /opt/homebrew|/opt/homebrew/bin|/usr/local|/usr/local/bin	
+extdeps.posix.sh_invocation	extdeps	dag/extdeps/posix/sh_invocation.dag	L4	L0	L0	L0	L0	0	1	L4:abs /dev/stdin	
+extdeps.pricing.aws_ec2	extdeps	dag/extdeps/pricing/aws_ec2.dag	L0	L0	L0	L0	L4	0	1	L4:host pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/us-east-1/index.json	
+extdeps.pricing.object_storage	extdeps	dag/extdeps/pricing/object_storage.dag	L0	L0	L0	L0	L4	0	1	L4:host pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-east-1/index.csv	
+extdeps.printing.orca_slicer	extdeps	dag/extdeps/printing/orca_slicer.dag	L5	L0	L0	L0	L0	3	1	L5:mech Remove.RecursiveForce	shell.Copy.File,shell.Mktemp.Dir,shell.Remove.RecursiveForce
+extdeps.procps.kill	extdeps	dag/extdeps/procps/kill.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /usr/bin/kill	
+extdeps.provisioning.ubuntu_install_media	extdeps	dag/extdeps/provisioning/ubuntu_install_media.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/lib/gunbc/artifacts	
+extdeps.provisioning.ubuntu_seeded_install_media_remaster	extdeps	dag/extdeps/provisioning/ubuntu_seeded_install_media_remaster.dag	L5	L0	L0	L0	L0	0	1	L4:abs /tmp/gunbc-seeded-media. ; L5:mech mkdir_parents_command|rm_recursive	
+extdeps.radixark.glm_5_3_nvfp4	extdeps	dag/extdeps/radixark/glm_5_3_nvfp4.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab kv_cache_width	
+extdeps.realization.artifact_store_fs	extdeps	dag/extdeps/realization/artifact_store_fs.dag	L5	L2	L0	L2	L0	4	1	L5:1 raw writes beside store authority	Filesystem.Delete,Filesystem.List,Filesystem.Read,Filesystem.Write
+extdeps.realization.cache_purity	extdeps	dag/extdeps/realization/cache_purity.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CachePurityVerdict|CachePurityViolation|cache_purity|cache_purity_verdict	
+extdeps.realization.emit_on_demand_host	extdeps	dag/extdeps/realization/emit_on_demand_host.dag	L2	L3	L0	L0	L0	0	1	L3:cache vocab cache_root|emit_host_native_cache_evict|emit_on_demand_evict_native_cache|native_cache_realization_workspace_root	
+extdeps.realization.materialization_store_local	extdeps	dag/extdeps/realization/materialization_store_local.dag	L5	L2	L0	L2	L0	7	1	L5:1 raw writes beside store authority ; L5:mech WriteCreateNew	Filesystem.Delete,Filesystem.LinkCreateNew,Filesystem.List,Filesystem.Read,Filesystem.WriteCreateNew,shell.Copy.File
+extdeps.rust.cargo	extdeps	dag/extdeps/rust/cargo.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab LocalCacheState	
+extdeps.shell	extdeps	dag/extdeps/shell.dag	L4	L0	L2	L0	L0	16	1	L4:abs /proc	shell.Chmod,shell.Copy,shell.Env,shell.Find,shell.GCloud,shell.Id
+extdeps.shell.credentials	extdeps	dag/extdeps/shell/credentials.dag	L0	L0	L4	L0	L0	1	1	L4:1 env reads	shell.Env.Get
+extdeps.shell.exec	extdeps	dag/extdeps/shell/exec.dag	L0	L0	L0	L0	L0	1	1		shell.Exec
+extdeps.ssh.client_options	extdeps	dag/extdeps/ssh/client_options.dag	L4	L0	L0	L0	L0	0	1	L4:abs /dev/null	
+extdeps.storage.types	extdeps	dag/extdeps/storage/types.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CachedMirror	
+extdeps.sudo.elevation	extdeps	dag/extdeps/sudo/elevation.dag	L0	L0	L0	L4	L4	0	1	L4:4 sudo sites ; L4:upstream binary /usr/bin/sudo	
+extdeps.sudo.nopasswd_execute_probe_check_op	extdeps	dag/extdeps/sudo/nopasswd_execute_probe_check_op.dag	L0	L0	L0	L4	L0	0	1	L4:4 sudo sites	
+extdeps.sudo.visudo	extdeps	dag/extdeps/sudo/visudo.dag	L0	L0	L0	L4	L4	0	1	L4:3 sudo sites ; L4:upstream binary /usr/sbin/visudo	
+extdeps.systemd	extdeps	dag/extdeps/systemd.dag	L4	L0	L0	L0	L4	0	1	L4:abs /run/systemd/system|/usr/bin ; L4:unit -.slice|.service|.slice	
+extdeps.systemd.oomd	extdeps	dag/extdeps/systemd/oomd.dag	L4	L0	L0	L0	L4	0	1	L4:abs /etc/systemd/oomd.conf|/etc/systemd/oomd.conf.d ; L4:unit systemd-oomd.service ; L4:/etc/systemd literal	
+extdeps.systemd.udevd	extdeps	dag/extdeps/systemd/udevd.dag	L4	L0	L0	L0	L0	0	1	L4:abs /dev/disk/by-label	
+extdeps.systemd.unit_file	extdeps	dag/extdeps/systemd/unit_file.dag	L4	L0	L0	L0	L4	0	1	L4:abs /etc/systemd/system ; L4:/etc/systemd literal	
+extdeps.systems.nvidia	extdeps	dag/extdeps/systems/nvidia.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab sm_cache|sm_cache_citations	
+extdeps.systems.nvidia_gh200	extdeps	dag/extdeps/systems/nvidia_gh200.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab sm_cache|sm_cache_citations	
+extdeps.tailscale.acl	extdeps	dag/extdeps/tailscale/acl.dag	L0	L0	L0	L0	L4	0	1	L4:host extdeps.tailscale.acl|https://tailscale.com/kb/1018|tailscale.com/kb/1018|tailscale.com/kb/1337/acl-syntax	
+extdeps.tailscale.acl_api	extdeps	dag/extdeps/tailscale/acl_api.dag	L0	L0	L2	L0	L4	0	1	L4:host extdeps.tailscale.acl_api|https://api.tailscale.com|tailscale.AclAdmin|tailscale.com/api	
+extdeps.tailscale.identity	extdeps	dag/extdeps/tailscale/identity.dag	L0	L0	L0	L0	L4	0	1	L4:host tailscale.com/kb/1312/serve	
+extdeps.tailscale.serve	extdeps	dag/extdeps/tailscale/serve.dag	L0	L0	L0	L0	L4	0	1	L4:host http://127.0.0.1:|tailscale|tailscale.com/kb/1242/tailscale-serve	
+extdeps.tailscale.whois	extdeps	dag/extdeps/tailscale/whois.dag	L0	L0	L0	L0	L4	0	1	L4:host tailscale|tailscale.com/kb/1080/cli#whois	
+extdeps.toolchain.types	extdeps	dag/extdeps/toolchain/types.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheInterfaceId|cache_identity|linked_cache_interface	
+extdeps.tools.busybox	extdeps	dag/extdeps/tools/busybox.dag	L0	L0	L0	L0	L4	0	1	L4:host 0.0.0.0	
+extdeps.tools.chmod	extdeps	dag/extdeps/tools/chmod.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /bin/chmod	
+extdeps.tools.chown	extdeps	dag/extdeps/tools/chown.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /usr/bin/chown	
+extdeps.tools.curl	extdeps	dag/extdeps/tools/curl.dag	L4	L0	L2	L0	L0	0	1	L4:abs /dev/null|/dev/stderr	
+extdeps.tools.diffutils	extdeps	dag/extdeps/tools/diffutils.dag	L0	L0	L0	L0	L0	1	1		shell.Diff
+extdeps.tools.env	extdeps	dag/extdeps/tools/env.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /usr/bin/env	
+extdeps.tools.free	extdeps	dag/extdeps/tools/free.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab buff_cache	
+extdeps.tools.gnu_coreutils	extdeps	dag/extdeps/tools/gnu_coreutils.dag	L5	L0	L0	L0	L0	0	1	L4:abs /dev/null ; L5:mech mkdir_create_only_command|mkdir_create_only_with_mode_command|mkdir_parents_command|rm_recursive	
+extdeps.tools.gnu_time	extdeps	dag/extdeps/tools/gnu_time.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /usr/bin/time	
+extdeps.tools.gzip	extdeps	dag/extdeps/tools/gzip.dag	L4	L0	L0	L0	L0	0	1	L4:abs /usr/bin	
+extdeps.tools.hostname	extdeps	dag/extdeps/tools/hostname.dag	L0	L0	L0	L0	L4	1	1	L4:host localhost	Process.Run
+extdeps.tools.id	extdeps	dag/extdeps/tools/id.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /usr/bin/id	
+extdeps.tools.jq	extdeps	dag/extdeps/tools/jq.dag	L0	L0	L0	L0	L0	3	1		Process.RunWithStdin,Process.RunWithoutStdin
+extdeps.tools.kopia	extdeps	dag/extdeps/tools/kopia.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache_directory	
+extdeps.tools.mkdir	extdeps	dag/extdeps/tools/mkdir.dag	L5	L0	L0	L0	L4	0	1	L5:mech mkdir_exact_command|mkdir_parents_command ; L4:upstream binary /usr/bin/mkdir	
+extdeps.tools.npm	extdeps	dag/extdeps/tools/npm.dag	L0	L3	L2	L0	L0	0	1	L3:cache vocab Cache|cache	
+extdeps.tools.sha256sum	extdeps	dag/extdeps/tools/sha256sum.dag	L5	L0	L0	L0	L4	4	1	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce ; L4:upstream binary /usr/bin/sha256sum	Filesystem.Write,shell.Mktemp.Dir,shell.Remove.RecursiveForce
+extdeps.tools.stat	extdeps	dag/extdeps/tools/stat.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /usr/bin/stat	
+extdeps.tools.util_linux_flock	extdeps	dag/extdeps/tools/util_linux_flock.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /usr/bin/flock	
+extdeps.tools.websocat	extdeps	dag/extdeps/tools/websocat.dag	L4	L0	L0	L0	L4	0	1	L4:abs /var/lib/gunbc/bin/websocat ; L4:host tcp:127.0.0.1:	
+extdeps.virtualization.firecracker	extdeps	dag/extdeps/virtualization/firecracker.dag	L4	L0	L0	L0	L4	0	1	L4:abs /dev/kvm|/dev/vd|/root ; L4:host https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.12/aarch64/|https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.12/aarch64/ubuntu-24.04.squashfs|https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.12/aarch64/vmlinux-6.1.128	
+extdeps.virtualization.qemu	extdeps	dag/extdeps/virtualization/qemu.dag	L4	L0	L0	L0	L4	0	1	L4:abs /dev/kvm ; L4:upstream binary /usr/bin/qemu-system-aarch64	
+extdeps.vllm.engine_args	extdeps	dag/extdeps/vllm/engine_args.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab VllmKvCacheDtypeRequest|kv_cache_bytes|kv_cache_dtype|vllm_kv_cache_dtype_flag	
+extdeps.vllm.kv_cache	extdeps	dag/extdeps/vllm/kv_cache.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab GpuKvCacheSize|ReadingIsNotTheKvCacheSizeLine|ResolvedKvCacheFormat|kv_cache	
+extdeps.vllm.kv_dtype_capability	extdeps	dag/extdeps/vllm/kv_dtype_capability.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab VllmKvCacheDtypeRequest|vllm_kv_cache_dtype_wire	
+extdeps.vllm.kv_group_metadata	extdeps	dag/extdeps/vllm/kv_group_metadata.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab VllmKvCacheSpecKind|vllm_kv_cache_spec_kind_from_wire|vllm_kv_cache_spec_kind_wire	
+extdeps.vllm.kv_layout	extdeps	dag/extdeps/vllm/kv_layout.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab GpuKvCacheSize|ResolvedKvCacheFormat|cache_format|kv_cache	
+extdeps.vllm.log_lines	extdeps	dag/extdeps/vllm/log_lines.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab GpuKvCacheSize|ResolvedKvCacheFormat	
+extdeps.vllm.memory_profile	extdeps	dag/extdeps/vllm/memory_profile.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab GpuKvCacheSize|ResolvedKvCacheFormat	
+extdeps.vllm.metrics	extdeps	dag/extdeps/vllm/metrics.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab IsThePrefixCacheEffective|KvCacheUsagePerc|PrefixCacheHits|PrefixCacheQueries	
+extdeps.vllm.runtime_defaults	extdeps	dag/extdeps/vllm/runtime_defaults.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab KvCacheMemoryBytesField|PrefixCachePartitionPolicy|defaults_kv_cache_memory_bytes|kv_cache_bytes	
+extdeps.vllm.server	extdeps	dag/extdeps/vllm/server.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheConfigBlockFields	
+gunbc.action_use_admission	production	dag/gunbc/action_use_admission.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache|cache_action|cache_manifest_readings|cache_restore_action	
+gunbc.actions_run_binding	production	dag/gunbc/actions_run_binding.dag	L0	L0	L4	L0	L0	1	1	L4:1 env reads	shell.Env.Get
+gunbc.annotation_parse_instrument_agreement	production	dag/gunbc/annotation_parse_instrument_agreement.dag	L4	L0	L0	L0	L4	0	1	L4:abs /usr/local/ctrl-build-shims/gunbc ; L4:upstream binary /usr/local/bin/gunbc	
+gunbc.apply	production	dag/gunbc/apply.dag	L0	L0	L0	L0	L4	0	1	L4:host dashboard-srv1	
+gunbc.assimilate.bmc_bootstrap_provision	production	dag/gunbc/assimilate/bmc_bootstrap_provision.dag	L0	L0	L0	L0	L0	1	1		shell.GCloud.AuthPrintAccessToken
+gunbc.assimilate.bmc_token_federation	production	dag/gunbc/assimilate/bmc_token_federation.dag	L0	L0	L2	L0	L4	0	1	L4:host bmc-srv3-admin	
+gunbc.auth.access_token_source	production	dag/gunbc/auth/access_token_source.dag	L0	L0	L4	L0	L0	6	1	L4:4 env reads	Filesystem.Read,shell.Env.Get,shell.GCloud.AuthPrintAccessToken
+gunbc.auth.approval_assertion_counter	production	dag/gunbc/auth/approval_assertion_counter.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/lib/gunbc/approval-assertion-counters	
+gunbc.auth.approval_broker_endpoint	production	dag/gunbc/auth/approval_broker_endpoint.dag	L0	L0	L4	L2	L4	1	1	L4:1 env reads ; L4:host 127.0.0.1	shell.Env.Get
+gunbc.auth.approval_decision_store	production	dag/gunbc/auth/approval_decision_store.dag	L4	L0	L4	L2	L2	0	1	L4:abs /etc/gunbc-roadmap/approval-mac-key|/var/lib/gunbc/approvals ; L4:credential path /etc/gunbc-roadmap/approval-mac-key	
+gunbc.auth.approval_device_crypto_client	production	dag/gunbc/auth/approval_device_crypto_client.dag	L0	L0	L4	L2	L4	1	1	L4:1 env reads ; L4:host 127.0.0.1	shell.Env.Get
+gunbc.auth.approval_device_redemption	production	dag/gunbc/auth/approval_device_redemption.dag	L4	L3	L0	L2	L2	0	1	L4:abs /var/lib/gunbc/approval-devices|/var/lib/gunbc/approval-jwks ; L3:cache vocab approval_jwks_cache_directory|approval_jwks_cache_root	
+gunbc.auth.approval_device_routes	production	dag/gunbc/auth/approval_device_routes.dag	L5	L3	L0	L2	L0	1	1	L4:abs /var/lib/gunbc/approval-device-push ; L5:1 raw writes beside store authority ; L3:cache vocab JwksCacheLayout|approval_jwks_cache_layout|approval_jwks_cache_root|jwks_cache_file_name	Filesystem.WriteOwnerOnly
+gunbc.auth.approval_gate	production	dag/gunbc/auth/approval_gate.dag	L4	L0	L0	L2	L0	3	1	L4:1 raw writes, no store authority	Filesystem.Delete,Filesystem.Read,Filesystem.WriteOwnerOnly
+gunbc.auth.approval_keyring_converge	production	dag/gunbc/auth/approval_keyring_converge.dag	L4	L0	L0	L4	L2	3	1	L4:abs /etc|/etc/gunbc-roadmap ; L4:2 sudo sites	Filesystem.Read
+gunbc.auth.approval_notification	production	dag/gunbc/auth/approval_notification.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheServerSide|NtfyCachePolicy|approval_cache_policy|cache	
+gunbc.auth.approval_ntfy_converge	production	dag/gunbc/auth/approval_ntfy_converge.dag	L2	L3	L0	L2	L2	0	1	L3:cache vocab ntfy_attachment_cache_dir	
+gunbc.auth.approval_ntfy_deployment	production	dag/gunbc/auth/approval_ntfy_deployment.dag	L4	L0	L0	L2	L4	0	1	L4:abs /etc/gunbc-ntfy|/var/lib/gunbc-ntfy ; L4:upstream binary /usr/local/bin/ntfy ; L4:host 127.0.0.1 ; L4:unit gunbc-ntfy.service	
+gunbc.auth.approval_ntfy_publish	production	dag/gunbc/auth/approval_ntfy_publish.dag	L0	L3	L2	L0	L2	0	1	L3:cache vocab cache	
+gunbc.auth.approval_request_submission	production	dag/gunbc/auth/approval_request_submission.dag	L4	L3	L4	L2	L0	1	1	L4:abs /etc/gunbc-ntfy/publisher-token|/etc/gunbc-roadmap/approval-submission-mac-key ; L3:cache vocab cache|ntfy_cache_wire ; L4:credential path /etc/gunbc-roadmap/approval-submission-mac-key|/etc/gunbc-ntfy/publisher-token	Filesystem.Read
+gunbc.auth.approval_store_receipt	production	dag/gunbc/auth/approval_store_receipt.dag	L4	L0	L4	L2	L0	0	1	L4:abs /etc/gunbc-roadmap/approval-store-receipt-mac-key ; L4:credential path /etc/gunbc-roadmap/approval-store-receipt-mac-key	
+gunbc.auth.branch_run_grant	production	dag/gunbc/auth/branch_run_grant.dag	L4	L0	L2	L2	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.auth.branch_run_grant_broker	production	dag/gunbc/auth/branch_run_grant_broker.dag	L0	L0	L0	L0	L4	0	1	L4:host srv1	
+gunbc.auth.ci_app_key_rotation	production	dag/gunbc/auth/ci_app_key_rotation.dag	L4	L0	L4	L0	L0	2	1	L4:1 raw writes, no store authority ; L4:1 env reads	Filesystem.Write,shell.Env.Get
+gunbc.auth.credentials	production	dag/gunbc/auth/credentials.dag	L0	L0	L0	L0	L0	3	1		Filesystem.Read,shell.GCloud.AuthPrintAccessToken
+gunbc.auth.deployment_gate_authorization	production	dag/gunbc/auth/deployment_gate_authorization.dag	L0	L0	L0	L2	L4	0	1	L4:host tailscale-relay:approval-broker	
+gunbc.auth.gcp_iam_bootstrap	production	dag/gunbc/auth/gcp_iam_bootstrap.dag	L5	L0	L2	L2	L0	6	1	L4:4 raw writes, no store authority ; L5:mech WriteCreateNew	Filesystem.List,Filesystem.Read,Filesystem.WriteCreateNew
+gunbc.auth.gcp_iam_converge_run	production	dag/gunbc/auth/gcp_iam_converge_run.dag	L4	L0	L2	L2	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.auth.github_apps	production	dag/gunbc/auth/github_apps.dag	L4	L0	L4	L0	L2	0	1	L4:abs /etc/gunbc/publication/gunbai-bot.pem ; L4:credential path /etc/gunbc/publication/gunbai-bot.pem	
+gunbc.auth.github_deployment_environment	production	dag/gunbc/auth/github_deployment_environment.dag	L0	L0	L0	L0	L4	0	1	L4:host srv1-production	
+gunbc.auth.login_transaction_store	production	dag/gunbc/auth/login_transaction_store.dag	L5	L0	L0	L0	L2	6	1	L5:2 raw writes beside store authority ; L5:mech WriteCreateNew	Filesystem.Delete,Filesystem.List,Filesystem.Read,Filesystem.WriteCreateNewWithMode,Filesystem.WriteOwnerOnly
+gunbc.auth.mac_keyring	production	dag/gunbc/auth/mac_keyring.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.auth.materialized_secret	production	dag/gunbc/auth/materialized_secret.dag	L5	L0	L4	L0	L0	6	1	L4:1 raw writes, no store authority ; L5:mech Mkdir. ; L4:1 env reads	Filesystem.WriteOwnerOnly,shell.Chmod.OwnerOnlyDirectory,shell.Env.Get,shell.Mkdir.Parents,shell.Mktemp.Dir,shell.Remove.FileForce
+gunbc.auth.mosquitto_options_binding	production	dag/gunbc/auth/mosquitto_options_binding.dag	L5	L0	L0	L0	L0	4	1	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce	Filesystem.WriteOwnerOnly,shell.Mktemp.Dir,shell.Remove.RecursiveForce
+gunbc.auth.netrc_binding	production	dag/gunbc/auth/netrc_binding.dag	L4	L0	L0	L0	L0	5	1	L4:1 raw writes, no store authority	Filesystem.WriteOwnerOnly,shell.Mktemp.Dir,shell.Remove.FileForce
+gunbc.auth.oidc_deployment_config	production	dag/gunbc/auth/oidc_deployment_config.dag	L0	L0	L4	L0	L0	5	1	L4:1 env reads	Filesystem.List,Filesystem.Read,shell.Env.Get
+gunbc.auth.oidc_id_token_verification	production	dag/gunbc/auth/oidc_id_token_verification.dag	L5	L3	L0	L0	L2	6	1	L5:4 raw writes beside store authority ; L3:cache vocab JwksCacheFresh|JwksCacheLayout|JwksCacheMiss|JwksCacheRead	Filesystem.List,Filesystem.Read,Filesystem.Write,Filesystem.WriteOwnerOnly
+gunbc.auth.privileged_effect_census	production	dag/gunbc/auth/privileged_effect_census.dag	L0	L0	L2	L4	L4	0	1	L4:4 sudo sites ; L4:host gunbc.srv3.srv3_bmc_credential_resolve	
+gunbc.auth.profile_projection	production	dag/gunbc/auth/profile_projection.dag	L5	L0	L0	L0	L2	5	1	L5:1 raw writes beside store authority	Filesystem.List,Filesystem.Read,Filesystem.WriteOwnerOnly
+gunbc.auth.session_store	production	dag/gunbc/auth/session_store.dag	L5	L0	L0	L0	L2	8	1	L5:1 raw writes beside store authority	Filesystem.Delete,Filesystem.List,Filesystem.Read,Filesystem.WriteOwnerOnly
+gunbc.auth.tracker_web_oauth_client	production	dag/gunbc/auth/tracker_web_oauth_client.dag	L4	L0	L4	L0	L4	0	1	L4:abs /etc/gunbc-oidc/tracker-web-dev-client-secret|/etc/gunbc-oidc/tracker-web-dev.json ; L4:credential path /etc/gunbc-oidc/tracker-web-dev-client-secret ; L4:host https://srv1.tailecbe08.ts.net:8444/auth/google/callback|https://srv2.tailecbe08.ts.net:18082/auth/google/callback|tracker-dev.gunb.ai ; L4:unit gunbc-dash-18082.service	
+gunbc.bmc.bmc_fan_converge	production	dag/gunbc/bmc/bmc_fan_converge.dag	L4	L0	L2	L0	L4	1	1	L4:abs /etc/gunbc/bmc-identities/srv3-machine-id|/etc/gunbc/bmc-identities/srv4-machine-id|/etc/gunbc/bmc-known-hosts/srv3|/etc/gunbc/bmc-known-hosts/srv4 ; L4:upstream binary /usr/bin/swampd ; L4:host /etc/gunbc/bmc-identities/srv3-machine-id|/etc/gunbc/bmc-identities/srv4-machine-id|/etc/gunbc/bmc-known-hosts/srv3|/etc/gunbc/bmc-known-hosts/srv4	Filesystem.Read
+gunbc.bmc.bmc_fan_program_capture	production	dag/gunbc/bmc/bmc_fan_program_capture.dag	L4	L0	L0	L0	L4	0	1	L4:abs /usr/share/swampd/config-asrr.json ; L4:host artifacts/bmc/srv3-config-asrr.json|artifacts/bmc/srv4-config-asrr.json|srv3|srv4	
+gunbc.bmc.bmc_fan_program_observation	production	dag/gunbc/bmc/bmc_fan_program_observation.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.bmc.bmc_fan_program_observation_witness	production	dag/gunbc/bmc/bmc_fan_program_observation_witness.dag	L0	L0	L0	L0	L4	2	1	L4:host artifacts/bmc/srv3-config-asrr.json	Filesystem.Read
+gunbc.bmc.bmc_fan_projection	production	dag/gunbc/bmc/bmc_fan_projection.dag	L4	L0	L0	L0	L0	0	1	L4:abs /usr/share/swampd/config-asrr.json	
+gunbc.bmc.bmc_netboot_serve	production	dag/gunbc/bmc/bmc_netboot_serve.dag	L5	L0	L0	L0	L0	1	1	L4:abs /tmp/gunbc-bmc-|/tmp/netboot|/var/lib/gunbc/artifacts/netboot ; L5:1 raw writes beside store authority ; L5:mech mkdir_parents_command	Filesystem.Write
+gunbc.bmc.bmc_virtual_media	production	dag/gunbc/bmc/bmc_virtual_media.dag	L4	L0	L0	L0	L4	0	1	L4:abs /dev/nbd0|/sys/kernel/config/usb_gadget|/tmp/gunbc-nbd-srv4.conf|/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv4-seeded.iso ; L4:host /tmp/gunbc-nbd-srv4.conf|/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv4-seeded.iso|srv4-0001	
+gunbc.board_authority_binding	production	dag/gunbc/board_authority_binding.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.build_cache.build_cache_endpoint_observation	production	dag/gunbc/build_cache/build_cache_endpoint_observation.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab BuildCacheEndpointObservation|BuildCacheInstance|BuildCacheServerPlacement|build_cache	
+gunbc.build_cache.build_cache_endpoint_observe	production	dag/gunbc/build_cache/build_cache_endpoint_observe.dag	L4	L3	L0	L0	L4	0	1	L4:abs /proc/|/proc/sys/kernel/random/boot_id ; L3:cache vocab BuildCacheEndpointObservation|BuildCacheEndpointReads|BuildCacheEndpointSurvey|BuildCacheInstance ; L4:unit .service	
+gunbc.build_cache.build_cache_endpoint_path	production	dag/gunbc/build_cache/build_cache_endpoint_path.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab BuildCacheInstance|build_cache|build_cache_endpoint_path|build_cache_endpoint_path_scope_disposition	
+gunbc.build_cache.build_cache_ensure	production	dag/gunbc/build_cache/build_cache_ensure.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab BuildCacheInstance|BuildCacheServerPlacement|EnsureBuildCacheAdmission|EnsureBuildCacheAdmissionFold	
+gunbc.build_cache.build_cache_instance	production	dag/gunbc/build_cache/build_cache_instance.dag	L4	L3	L0	L0	L4	0	1	L4:abs /var/lib/ctrl/sccache|/var/lib/ctrl/sccache-ci|/var/lib/ctrl/sccache-ci/server.sock|/var/lib/ctrl/sccache/server.sock ; L3:cache vocab BuildCacheCapacityConfiguration|BuildCacheCapacityConfigured|BuildCacheCapacityConfiguredUngrounded|BuildCacheCapacityObservation ; L4:unit gunbc-build-cache-ci.service|gunbc-build-cache-session.service	
+gunbc.build_cache.build_cache_instance_readiness	production	dag/gunbc/build_cache/build_cache_instance_readiness.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab BuildCacheCapacityConfigured|BuildCacheCapacityConfiguredUngrounded|BuildCacheCapacityObservation|BuildCacheCapacityObservationUnavailable	
+gunbc.build_cache.build_cache_latency_probe	production	dag/gunbc/build_cache/build_cache_latency_probe.dag	L0	L3	L0	L0	L4	0	1	L3:cache vocab build_cache|build_cache_latency_probe|build_cache_latency_probe_disposition|build_cache_latency_producer_disposition ; L4:host srv1-|srv2-|srv3-|srv4-	
+gunbc.build_cache.build_cache_provision_verdict	production	dag/gunbc/build_cache/build_cache_provision_verdict.dag	L0	L3	L0	L0	L4	0	1	L3:cache vocab BuildCacheDaemonObservation|BuildCacheProvisionConverged|BuildCacheProvisionRefusal|BuildCacheProvisionRefused ; L4:host srv1	
+gunbc.build_cache.build_cache_unit	production	dag/gunbc/build_cache/build_cache_unit.dag	L4	L3	L0	L0	L4	0	1	L4:abs /etc/systemd/system/ ; L3:cache vocab BuildCacheInstance|build_cache|build_cache_instance|build_cache_unit ; L4:/etc/systemd literal	
+gunbc.busybox_bmc_build	production	dag/gunbc/busybox_bmc_build.dag	L5	L0	L0	L0	L0	0	1	L4:abs /tmp/gunbc-bb-build|/tmp/gunbc-busybox-src.tar.bz2|/var/lib/gunbc/artifacts/netboot/busybox ; L5:mech mkdir_parents_command	
+gunbc.ci.ci_budget_tree	production	dag/gunbc/ci/ci_budget_tree.dag	L2	L0	L0	L0	L4	0	1	L4:host srv1|srv2|srv3|srv4	
+gunbc.ci.ci_deploy_access	production	dag/gunbc/ci/ci_deploy_access.dag	L4	L2	L0	L4	L2	0	1	L4:abs /etc/sudoers.d/gunbc-deploy ; L4:8 sudo sites	
+gunbc.ci.ci_deploy_sudoers	production	dag/gunbc/ci/ci_deploy_sudoers.dag	L0	L0	L0	L4	L4	0	1	L4:18 sudo sites ; L4:upstream binary /usr/bin/chown|/usr/bin/rsync	
+gunbc.ci.ci_deploy_target_host	production	dag/gunbc/ci/ci_deploy_target_host.dag	L0	L0	L4	L0	L2	1	1	L4:1 env reads	shell.Env.Get
+gunbc.ci.ci_failure_class	production	dag/gunbc/ci/ci_failure_class.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache|sccache|sccache_failed_to_execute_compile_log_fragment|sccache_fatal_error_log_fragment	
+gunbc.ci.ci_fleet	production	dag/gunbc/ci/ci_fleet.dag	L0	L0	L0	L0	L4	0	1	L4:host gunbc-operator-srv1|gunbc-operator-srv2|gunbc-operator-srv3|gunbc-operator-srv4	
+gunbc.ci.ci_layer_roots	production	dag/gunbc/ci/ci_layer_roots.dag	L2	L0	L0	L4	L0	0	1	L4:1 sudo sites	
+gunbc.ci.ci_spec	production	dag/gunbc/ci/ci_spec.dag	L4	L0	L0	L2	L4	0	1	L4:abs /dev/null|/dev/urandom|/proc/|/tmp/fleet-converge-apply ; L4:host target/srv1-tasks-preapply-receipt.txt	
+gunbc.ci.ci_workflow_expressions	production	dag/gunbc/ci/ci_workflow_expressions.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab ci_cache_hash_files|ci_cache_key|ci_cache_key_template|ci_cache_path	
+gunbc.ci.ci_yaml_validate	production	dag/gunbc/ci/ci_yaml_validate.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.class_b_import_closure_overlay	production	dag/gunbc/class_b_import_closure_overlay.dag	L5	L0	L0	L0	L0	3	1	L4:1 raw writes, no store authority ; L5:mech Mkdir.	Filesystem.Read,Filesystem.Write,shell.Mkdir.Parents
+gunbc.claude_code_credential	production	dag/gunbc/claude_code_credential.dag	L4	L0	L4	L0	L0	0	1	L4:abs /etc/gunbc-claude-code/oauth-token-harness ; L4:credential path /etc/gunbc-claude-code/oauth-token-harness	
+gunbc.claude_setup_token_enrollment	production	dag/gunbc/claude_setup_token_enrollment.dag	L4	L0	L0	L0	L0	0	1	L4:abs /home|/var/lib/gunbc/claude-enrollment/	
+gunbc.cli_dispatch_surface	production	dag/gunbc/cli_dispatch_surface.dag	L0	L0	L0	L0	L4	0	1	L4:host 127.0.0.1	
+gunbc.cloudflare.r2_bucket_ensure	production	dag/gunbc/cloudflare/r2_bucket_ensure.dag	L4	L0	L2	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.cloudflare.r2_conditional_put_race_probe	production	dag/gunbc/cloudflare/r2_conditional_put_race_probe.dag	L5	L0	L2	L0	L0	6	1	L4:3 raw writes, no store authority ; L5:mech Remove.RecursiveForce	Filesystem.Read,Filesystem.Write,shell.Mktemp.Dir,shell.Remove.RecursiveForce
+gunbc.cloudflare.r2_mint_secret_access	production	dag/gunbc/cloudflare/r2_mint_secret_access.dag	L0	L3	L2	L0	L0	0	1	L3:cache vocab fabric_cache_blobs_read_secret_id|fabric_cache_blobs_write_secret_id	
+gunbc.cloudflare.r2_origin	production	dag/gunbc/cloudflare/r2_origin.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab FabricCacheBlobs|KeyAddressedCacheBlobs|fabric_cache_blob_prefix|fabric_cache_blobs_read_access_key_id	
+gunbc.cloudflare.r2_permission_group_observe	production	dag/gunbc/cloudflare/r2_permission_group_observe.dag	L4	L0	L2	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.cloudflare.r2_s3_netrc	production	dag/gunbc/cloudflare/r2_s3_netrc.dag	L5	L0	L2	L0	L0	9	1	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce	Filesystem.WriteOwnerOnly,shell.Mktemp.Dir,shell.Remove.FileForce,shell.Remove.RecursiveForce
+gunbc.cloudflare.r2_staged_transfer	production	dag/gunbc/cloudflare/r2_staged_transfer.dag	L5	L0	L2	L0	L0	2	1	L5:mech Remove.RecursiveForce	shell.Mktemp.Dir,shell.Remove.RecursiveForce
+gunbc.cloudflare.r2_token_mint_run	production	dag/gunbc/cloudflare/r2_token_mint_run.dag	L5	L3	L4	L0	L2	7	1	L4:abs /tmp/r2-account-token-list.txt|/tmp/r2-mint-receipts/|/tmp/r2-object-read-revoke-receipt.txt ; L5:4 raw writes beside store authority ; L5:mech Mkdir. ; L3:cache vocab FabricCacheBlobs|run_cache_object_read|run_cache_object_write ; L4:2 env reads ; L4:credential path /tmp/r2-account-token-list.txt	Filesystem.Write,shell.Env.Get,shell.Mkdir.Parents
+gunbc.codex_app_server_press	production	dag/gunbc/codex_app_server_press.dag	L4	L0	L0	L0	L0	2	1	L4:abs /tmp/gunbc-codex-press-evidence	shell.Exec.RunArgvStdin,shell.Test.IsFile
+gunbc.codex_harness_credential	production	dag/gunbc/codex_harness_credential.dag	L4	L0	L2	L0	L2	0	1	L4:abs /etc/gunbc-codex-harness|/etc/gunbc-codex-harness/auth.json|/etc/gunbc-codex-harness/turn.lock	
+gunbc.codex_runtime_paths	production	dag/gunbc/codex_runtime_paths.dag	L4	L0	L0	L0	L0	0	1	L4:abs /opt/gunbc/provider-runtime/codex	
+gunbc.codex_supervised_turn	production	dag/gunbc/codex_supervised_turn.dag	L5	L0	L0	L0	L0	2	1	L5:2 raw writes beside store authority	Filesystem.Write
+gunbc.codex_supervised_turn_run	production	dag/gunbc/codex_supervised_turn_run.dag	L2	L0	L0	L0	L2	1	1		shell.Test.IsFile
+gunbc.command_runner	production	dag/gunbc/command_runner.dag	L0	L0	L0	L0	L0	4	1		shell.Exec.RunArgv,shell.Exec.RunArgvOutcome,shell.Exec.RunArgvStdin
+gunbc.compile_pool_ensure	production	dag/gunbc/compile_pool_ensure.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab BuildCacheServerPlacement|EnsureCachePlacementUnknown|build_cache|build_cache_instance	
+gunbc.compile_pool_observe	production	dag/gunbc/compile_pool_observe.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.compiler_frontend_program_status	production	dag/gunbc/compiler_frontend_program_status.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.compute.compute_seat_ensure	production	dag/gunbc/compute/compute_seat_ensure.dag	L2	L0	L0	L0	L2	4	1		Filesystem.List,Filesystem.Read
+gunbc.compute.recorded_cgroup_drain	production	dag/gunbc/compute/recorded_cgroup_drain.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.compute.test_run	production	dag/gunbc/compute/test_run.dag	L4	L0	L0	L0	L2	2	1	L4:2 raw writes, no store authority	Filesystem.Write
+gunbc.compute.unit_bounds	production	dag/gunbc/compute/unit_bounds.dag	L4	L0	L0	L0	L4	0	1	L4:abs /run/systemd/system ; L4:unit -/var/lib/lxd/unix.socket|-/var/snap/lxd/common/lxd/unix.socket|.service	
+gunbc.compute.work_provider_local	production	dag/gunbc/compute/work_provider_local.dag	L5	L2	L0	L0	L2	16	1	L4:abs /proc/self/status|/run/user/ ; L5:7 raw writes beside store authority ; L5:mech Remove.RecursiveForce|WriteCreateNew	Filesystem.Delete,Filesystem.List,Filesystem.Read,Filesystem.Write,Filesystem.WriteCreateNew,shell.Remove.RecursiveForce
+gunbc.compute.work_request	production	dag/gunbc/compute/work_request.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache_release	
+gunbc.container.registry_image_config	production	dag/gunbc/container/registry_image_config.dag	L5	L0	L0	L0	L0	13	1	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce	Filesystem.WriteOwnerOnly,shell.Mktemp.Dir,shell.Remove.RecursiveForce
+gunbc.cursor_harness_credential	production	dag/gunbc/cursor_harness_credential.dag	L4	L0	L0	L0	L2	0	1	L4:abs /etc/gunbc-cursor-harness/api-key	
+gunbc.decoder_execution_identity	production	dag/gunbc/decoder_execution_identity.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.demo.board_artifacts	production	dag/gunbc/demo/board_artifacts.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.demo.semantic_system_readout	production	dag/gunbc/demo/semantic_system_readout.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.deploy_transition	production	dag/gunbc/deploy_transition.dag	L4	L0	L0	L0	L0	7	1	L4:3 raw writes, no store authority	Filesystem.Delete,Filesystem.List,Filesystem.Read,Filesystem.Write,Filesystem.WriteOwnerOnly
+gunbc.deployment_risk	production	dag/gunbc/deployment_risk.dag	L0	L0	L0	L2	L4	0	1	L4:host srv1-daily-workspace|srv1-lab-codex-feedback|srv2-deploy|srv2-lab-v1-deletion	
+gunbc.design.brand_mark_assets_cli	production	dag/gunbc/design/brand_mark_assets_cli.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.WriteBytes
+gunbc.design_document	production	dag/gunbc/design_document.dag	L0	L0	L0	L4	L0	0	1	L4:1 sudo sites	
+gunbc.devboot.build	production	dag/gunbc/devboot/build.dag	L4	L3	L0	L0	L0	6	1	L4:3 raw writes, no store authority ; L3:cache vocab UpdateIndexCacheInfo	Filesystem.List,Filesystem.Read,Filesystem.Write
+gunbc.devboot.produce	production	dag/gunbc/devboot/produce.dag	L4	L0	L0	L0	L0	2	1	L4:2 raw writes, no store authority	Filesystem.Write
+gunbc.dispatch_credential_acquisition	production	dag/gunbc/dispatch_credential_acquisition.dag	L5	L0	L0	L0	L2	4	1	L5:mech mkdir_create_only_with_mode_command|rm_recursive	Filesystem.List,Filesystem.Read
+gunbc.dispatch_credential_snapshot	production	dag/gunbc/dispatch_credential_snapshot.dag	L5	L0	L2	L0	L0	9	1	L4:2 raw writes, no store authority ; L5:mech WriteCreateNew	Filesystem.Read,Filesystem.WriteCreateNew,Filesystem.WriteOwnerOnly,shell.Mktemp.FileInDirectory,shell.Move.Replace,shell.Remove.FileForce
+gunbc.dispatch_preflight	production	dag/gunbc/dispatch_preflight.dag	L0	L0	L4	L0	L3	1	1	L4:1 env reads ; L3:1 live-instance pins	shell.Env.Get
+gunbc.dispatch_selection	production	dag/gunbc/dispatch_selection.dag	L0	L0	L0	L0	L3	0	1	L3:1 live-instance pins	
+gunbc.doc_graph_roots	production	dag/gunbc/doc_graph_roots.dag	L0	L0	L0	L0	L4	0	1	L4:host extdeps.tailscale.serve|tailscale_serve_route_key	
+gunbc.durable_cas_file_store	production	dag/gunbc/durable_cas_file_store.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/lib/gunbc/authorization-claims	
+gunbc.durable_handoff_host	production	dag/gunbc/durable_handoff_host.dag	L5	L0	L0	L0	L0	0	1	L5:mech mkdir_create_only_command	
+gunbc.econ.llm_attempt_receipt	production	dag/gunbc/econ/llm_attempt_receipt.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab PrefixCacheHit|PrefixCacheMiss|PrefixCacheObservation|PrefixCacheUnobserved	
+gunbc.executor_privileged_operation	production	dag/gunbc/executor_privileged_operation.dag	L2	L3	L0	L4	L2	0	1	L3:cache vocab actions_runner_cache_dir ; L4:15 sudo sites	
+gunbc.fabric.fabric_allocation_store_substrate	production	dag/gunbc/fabric/fabric_allocation_store_substrate.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/lib/gunbc|/var/lib/gunbc/fabric	
+gunbc.fabric.fabric_blob_r2	production	dag/gunbc/fabric/fabric_blob_r2.dag	L0	L3	L2	L0	L0	0	1	L3:cache vocab FabricCacheBlobs|fabric_cache_blob_key|fabric_cache_object_bound|get_cache_blob	
+gunbc.fabric.fabric_blob_shell	production	dag/gunbc/fabric/fabric_blob_shell.dag	L4	L3	L0	L0	L0	0	1	L4:abs /dev/null ; L3:cache vocab FabricCacheBlobs|fabric_cache_blob_prefix|fabric_cache_object_bound	
+gunbc.fabric.fabric_cell_acquire	production	dag/gunbc/fabric/fabric_cell_acquire.dag	L0	L3	L0	L0	L4	1	1	L3:cache vocab build_cache|build_cache_instance ; L4:unit fabric-cell-*.slice	Filesystem.List
+gunbc.fabric.fabric_cell_converge	production	dag/gunbc/fabric/fabric_cell_converge.dag	L4	L3	L0	L0	L4	0	1	L4:abs /opt ; L3:cache vocab build_cache|build_cache_instance ; L4:unit .slice	
+gunbc.fabric.fabric_cell_effect	production	dag/gunbc/fabric/fabric_cell_effect.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.fabric.fabric_cell_host_root	production	dag/gunbc/fabric/fabric_cell_host_root.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.fabric.fabric_cell_observe	production	dag/gunbc/fabric/fabric_cell_observe.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.fabric.fabric_cell_subject	production	dag/gunbc/fabric/fabric_cell_subject.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.fabric.fabric_ci_program	production	dag/gunbc/fabric/fabric_ci_program.dag	L0	L0	L0	L4	L0	0	1	L4:1 sudo sites	
+gunbc.fabric.fabric_control_plane	production	dag/gunbc/fabric/fabric_control_plane.dag	L4	L3	L0	L0	L2	0	1	L4:abs /var/lib/gunbc/fabric/allocation ; L3:cache vocab build_cache|build_cache_instance	
+gunbc.fabric.fabric_executor_class	production	dag/gunbc/fabric/fabric_executor_class.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.fabric.fabric_m0_commit	production	dag/gunbc/fabric/fabric_m0_commit.dag	L2	L3	L0	L2	L0	0	1	L3:cache vocab cache_manifest_read	
+gunbc.fabric.fabric_object_r2	production	dag/gunbc/fabric/fabric_object_r2.dag	L5	L0	L2	L0	L0	3	1	L5:1 raw writes beside store authority	Filesystem.Read,Filesystem.Write,shell.Mktemp.Dir
+gunbc.fabric.fabric_required_build_cell	production	dag/gunbc/fabric/fabric_required_build_cell.dag	L2	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.fabric.fabric_source_snapshot	production	dag/gunbc/fabric/fabric_source_snapshot.dag	L5	L0	L0	L0	L0	16	1	L4:abs /run|/run/user|/run/user/|/tmp ; L5:1 raw writes beside store authority ; L5:mech Mkdir.|Remove.RecursiveForce|WriteCreateNew	Filesystem.Read,Filesystem.WriteCreateNew,shell.Chmod.OwnerOnlyDirectory,shell.Id.UserId,shell.Id.UserName,shell.Mkdir.NewOwnerOnly
+gunbc.fabric.fabric_storage_file_store	production	dag/gunbc/fabric/fabric_storage_file_store.dag	L5	L0	L0	L0	L0	5	1	L5:2 raw writes beside store authority ; L5:mech Mkdir.|WriteCreateNew	Filesystem.Read,Filesystem.WriteCreateNew,Filesystem.WriteCreateNewWithMode,shell.Mkdir.Parents
+gunbc.fabric.fabric_storage_r2_head	production	dag/gunbc/fabric/fabric_storage_r2_head.dag	L5	L0	L2	L0	L0	3	1	L5:1 raw writes beside store authority	Filesystem.Read,Filesystem.Write,shell.Mktemp.Dir
+gunbc.fabric.fabric_storage_state_auth_io	production	dag/gunbc/fabric/fabric_storage_state_auth_io.dag	L0	L0	L4	L0	L0	1	1	L4:1 env reads	shell.Env.Get
+gunbc.fabric.fabric_storage_state_location	production	dag/gunbc/fabric/fabric_storage_state_location.dag	L4	L0	L4	L0	L0	0	1	L4:abs /etc/gunbc-fabric-storage/state-writer-mac-key ; L4:credential path /etc/gunbc-fabric-storage/state-writer-mac-key	
+gunbc.fabric.fabric_witness_run	production	dag/gunbc/fabric/fabric_witness_run.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache|cache_policy	
+gunbc.fabric.fabric_writer_identity_observe	production	dag/gunbc/fabric/fabric_writer_identity_observe.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.fabric.fabric_writer_roster	production	dag/gunbc/fabric/fabric_writer_roster.dag	L0	L0	L0	L0	L4	0	1	L3:1 live-instance pins ; L4:host srv1|srv3|srv4	
+gunbc.fabric.fci1_bounded_execution_context	production	dag/gunbc/fabric/fci1_bounded_execution_context.dag	L0	L0	L0	L0	L4	0	1	L4:host fci1-bounded-driver.service ; L4:unit fci1-bounded-driver.service	
+gunbc.fabric.fci1_controls_slice	production	dag/gunbc/fabric/fci1_controls_slice.dag	L4	L0	L0	L0	L2	0	1	L4:abs /run/systemd/system	
+gunbc.fabric.workspace_checkpoint_instrument	production	dag/gunbc/fabric/workspace_checkpoint_instrument.dag	L5	L3	L4	L0	L4	16	1	L5:3 raw writes beside store authority ; L5:mech Mkdir.|Remove.RecursiveForce ; L3:cache vocab cache_directory ; L4:1 env reads ; L4:host srv3	Filesystem.Write,shell.Copy.File,shell.Env.Get,shell.Find.FilesAndSymlinksWithMode,shell.Mkdir.Parents,shell.Mktemp.Dir
+gunbc.fabric.workspace_source	production	dag/gunbc/fabric/workspace_source.dag	L5	L0	L4	L0	L4	16	1	L4:abs /home/briansrls|/home/briansrls/.codex|/home/briansrls/gunbc ; L5:3 raw writes beside store authority ; L5:mech Mkdir.|Remove.RecursiveForce ; L4:1 env reads ; L4:host srv1	Filesystem.Write,shell.Env.Get,shell.Find.FilesAndSymlinksWithMode,shell.Find.ListDirs,shell.Id.UserName,shell.Mkdir.Parents
+gunbc.fabric.workspace_transcript_rate	production	dag/gunbc/fabric/workspace_transcript_rate.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.filesystem_file_observe	production	dag/gunbc/filesystem_file_observe.dag	L0	L0	L0	L0	L0	3	1		Filesystem.List,Filesystem.Read
+gunbc.filesystem_interface	production	dag/gunbc/filesystem_interface.dag	L5	L0	L0	L0	L0	6	1	L4:3 raw writes, no store authority ; L5:mech WriteCreateNew	Filesystem.Delete,Filesystem.List,Filesystem.Read,Filesystem.WriteCreateNew,Filesystem.WriteCreateNewWithMode,Filesystem.WriteOwnerOnly
+gunbc.filesystem_model	production	dag/gunbc/filesystem_model.dag	L5	L0	L0	L0	L0	0	1	L5:mech create_new	
+gunbc.fleet.altra_firmware_library	production	dag/gunbc/fleet/altra_firmware_library.dag	L4	L0	L0	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.fleet.app_control_plane_inspection	production	dag/gunbc/fleet/app_control_plane_inspection.dag	L4	L0	L4	L0	L0	2	1	L4:1 raw writes, no store authority ; L4:1 env reads	Filesystem.Write,shell.Env.Get
+gunbc.fleet.fleet_asset_identity	production	dag/gunbc/fleet/fleet_asset_identity.dag	L0	L0	L0	L0	L4	0	1	L4:host chassis-srv1|chassis-srv2|chassis-srv3|chassis-srv4	
+gunbc.fleet.fleet_bmc_observation	production	dag/gunbc/fleet/fleet_bmc_observation.dag	L4	L0	L0	L0	L4	0	1	L4:abs /dev/mtdblock4|/dev/mtdblock5|/run/initramfs/ro|/run/initramfs/rw ; L4:upstream binary /usr/bin/swampd ; L4:unit phosphor-pid-control.service	
+gunbc.fleet.fleet_bmc_state	production	dag/gunbc/fleet/fleet_bmc_state.dag	L0	L0	L0	L0	L4	0	1	L4:host srv4-bmc-graceful-restart-2026-07-30T22:53:06Z	
+gunbc.fleet.fleet_bootstrap_principal_session	production	dag/gunbc/fleet/fleet_bootstrap_principal_session.dag	L0	L0	L4	L0	L2	1	1	L4:1 env reads	shell.Env.Get
+gunbc.fleet.fleet_converge_cli	production	dag/gunbc/fleet/fleet_converge_cli.dag	L5	L0	L0	L0	L2	2	1	L5:1 raw writes beside store authority	Filesystem.Write,shell.Move.File
+gunbc.fleet.fleet_converge_plan	production	dag/gunbc/fleet/fleet_converge_plan.dag	L4	L3	L0	L4	L4	0	1	L4:abs /etc/systemd/system/|/tmp/fleet-converge-plan/observed_baseline.hex|/tmp/fleet-converge-plan/plan_content.hex|/tmp/fleet-converge-plan/plan_generation.txt ; L3:cache vocab build_cache|build_cache_instance ; L4:3 sudo sites ; L4:/etc/systemd literal	
+gunbc.fleet.fleet_converge_plan_cli	production	dag/gunbc/fleet/fleet_converge_plan_cli.dag	L5	L0	L0	L4	L4	48	1	L4:abs /etc/systemd/system/ ; L5:19 raw writes beside store authority ; L5:mech mkdir_parents_command ; L4:3 sudo sites ; L4:/etc/systemd literal	Filesystem.List,Filesystem.Read,Filesystem.Write
+gunbc.fleet.fleet_converge_plan_revision	production	dag/gunbc/fleet/fleet_converge_plan_revision.dag	L4	L0	L0	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.fleet.fleet_converge_receipt	production	dag/gunbc/fleet/fleet_converge_receipt.dag	L5	L0	L0	L0	L2	4	1	L4:abs /tmp/fleet-converge-apply|/tmp/fleet-converge-apply/apply_receipt.json|/tmp/fleet-converge-plan/plan_receipt.json ; L5:2 raw writes beside store authority	Filesystem.Read,Filesystem.Write
+gunbc.fleet.fleet_converge_state_path	production	dag/gunbc/fleet/fleet_converge_state_path.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/lib/gunbc/fleet-converge	
+gunbc.fleet.fleet_converge_timer	production	dag/gunbc/fleet/fleet_converge_timer.dag	L0	L0	L0	L0	L4	0	1	L4:unit ctrl-fleet-converge.service|ctrl-fleet-converge.timer	
+gunbc.fleet.fleet_converge_workflow	production	dag/gunbc/fleet/fleet_converge_workflow.dag	L0	L3	L2	L4	L2	0	1	L3:cache vocab ci_cache_cargo_step|ci_release_bins_cache_step|release_bins_cache_step_name ; L4:1 sudo sites	
+gunbc.fleet.fleet_fan_wiring_witness	production	dag/gunbc/fleet/fleet_fan_wiring_witness.dag	L0	L0	L0	L0	L4	0	1	L4:host srv1|srv3|srv4	
+gunbc.fleet.fleet_generation_execution	production	dag/gunbc/fleet/fleet_generation_execution.dag	L4	L0	L0	L0	L2	0	1	L4:abs /var/lib/gunbc/fleet-converge	
+gunbc.fleet.fleet_health	production	dag/gunbc/fleet/fleet_health.dag	L4	L0	L4	L0	L2	3	1	L4:1 raw writes, no store authority ; L4:2 env reads	Filesystem.Write,shell.Env.Get
+gunbc.fleet.fleet_health_observe	production	dag/gunbc/fleet/fleet_health_observe.dag	L0	L0	L0	L0	L0	5	1		Http.GetChassisSensor,Http.GetChassisSensors,Http.GetChassisThermal,Http.GetManager,Http.GetSystemEventLogEntries
+gunbc.fleet.fleet_host_assembly	production	dag/gunbc/fleet/fleet_host_assembly.dag	L0	L0	L0	L0	L4	0	1	L4:host board-srv1|board-srv2|board-srv3|board-srv4	
+gunbc.fleet.fleet_host_grant_coverage	production	dag/gunbc/fleet/fleet_host_grant_coverage.dag	L0	L0	L0	L4	L0	0	1	L4:10 sudo sites	
+gunbc.fleet.fleet_host_identity	production	dag/gunbc/fleet/fleet_host_identity.dag	L0	L0	L0	L0	L4	0	1	L4:host srv1|srv10|srv11|srv12	
+gunbc.fleet.fleet_host_key_enrollment	production	dag/gunbc/fleet/fleet_host_key_enrollment.dag	L5	L0	L4	L0	L4	11	1	L5:8 raw writes beside store authority ; L5:mech WriteCreateNew|mkdir_parents_command ; L4:1 env reads ; L4:host srv1|srv2|srv3|srv4	Filesystem.Read,Filesystem.Write,Filesystem.WriteCreateNew,shell.Env.Get
+gunbc.fleet.fleet_host_power	production	dag/gunbc/fleet/fleet_host_power.dag	L0	L0	L0	L0	L4	0	1	L4:host srv1|srv2|srv3|srv4	
+gunbc.fleet.fleet_intent	production	dag/gunbc/fleet/fleet_intent.dag	L2	L3	L0	L0	L2	0	1	L3:cache vocab cache|cache_state_summary|sccache|sccache_toolchain_capability	
+gunbc.fleet.fleet_intent_network	production	dag/gunbc/fleet/fleet_intent_network.dag	L0	L0	L0	L0	L4	0	1	L4:host srv1-bmc|srv1-host-lan|srv1-tailscale|srv10-host-lan	
+gunbc.fleet.fleet_known_hosts_anchor	production	dag/gunbc/fleet/fleet_known_hosts_anchor.dag	L5	L0	L4	L0	L2	9	1	L4:1 raw writes, no store authority ; L5:mech Mkdir. ; L4:1 env reads	Filesystem.Read,Filesystem.Write,shell.Env.Get,shell.Mkdir.NewOwnerOnly,shell.Stat.ModeOf,shell.Stat.OwnerOf
+gunbc.fleet.fleet_multi_principal_probe	production	dag/gunbc/fleet/fleet_multi_principal_probe.dag	L4	L0	L4	L4	L4	7	1	L4:5 raw writes, no store authority ; L4:2 env reads ; L4:7 sudo sites ; L4:host srv3|srv4	Filesystem.Write,shell.Env.Get
+gunbc.fleet.fleet_plan_artifact_location	production	dag/gunbc/fleet/fleet_plan_artifact_location.dag	L4	L0	L0	L0	L0	0	1	L4:abs /tmp/fleet-converge-plan|/tmp/fleet-converge-plan/apply.sh|/tmp/fleet-converge-plan/plan.txt	
+gunbc.fleet.fleet_posix_accounts	production	dag/gunbc/fleet/fleet_posix_accounts.dag	L4	L0	L0	L4	L4	0	1	L4:abs /home/|/opt/gunbc/bin/gunbc-deploy-privileged ; L4:3 sudo sites ; L4:upstream binary /bin/bash|/usr/bin/apt-get|/usr/bin/cp|/usr/bin/hostnamectl ; L4:host /usr/bin/tailscale|srv1|srv2|srv3	
+gunbc.fleet.fleet_probe_identity_observe	production	dag/gunbc/fleet/fleet_probe_identity_observe.dag	L4	L0	L4	L0	L2	4	1	L4:1 raw writes, no store authority ; L4:2 env reads	Filesystem.Write,shell.Env.Get,shell.PosixCommandV.Check
+gunbc.fleet.fleet_reach_endpoint	production	dag/gunbc/fleet/fleet_reach_endpoint.dag	L0	L0	L0	L0	L4	0	1	L4:host srv1|srv2	
+gunbc.fleet.fleet_receipt_collector	production	dag/gunbc/fleet/fleet_receipt_collector.dag	L4	L0	L4	L0	L2	2	1	L4:1 raw writes, no store authority ; L4:1 env reads	Filesystem.Write,shell.Env.Get
+gunbc.fleet.fleet_release_bins_key	production	dag/gunbc/fleet/fleet_release_bins_key.dag	L4	L2	L0	L0	L0	0	1	L4:abs /dev/null	
+gunbc.fleet.fleet_runner_connectivity	production	dag/gunbc/fleet/fleet_runner_connectivity.dag	L0	L3	L0	L0	L4	0	1	L3:cache vocab build_cache|build_cache_instance ; L4:host srv1-01|srv1-02|srv1-03|srv1-04	
+gunbc.fleet.fleet_shell_transport_observation	production	dag/gunbc/fleet/fleet_shell_transport_observation.dag	L0	L0	L0	L0	L4	0	1	L4:host node@srv1|node@srv2|node@srv4	
+gunbc.fleet.fleet_show_effective_read	production	dag/gunbc/fleet/fleet_show_effective_read.dag	L2	L0	L0	L0	L4	0	1	L4:host actions-runner@srv1-*.service|actions-runner@srv1-02.service|actions-runner@srv2-*.service|actions-runner@srv2-01.service ; L4:unit actions-runner@srv1-*.service|actions-runner@srv1-02.service|actions-runner@srv2-*.service	
+gunbc.fleet.fleet_ssh_credential_verify	production	dag/gunbc/fleet/fleet_ssh_credential_verify.dag	L4	L0	L0	L0	L2	3	1	L4:1 raw writes, no store authority	Filesystem.Read,Filesystem.Write
+gunbc.fleet.fleet_ssh_locus	production	dag/gunbc/fleet/fleet_ssh_locus.dag	L4	L0	L4	L0	L2	1	1	L4:abs /home/gunbc-automation ; L4:1 env reads	shell.Env.Get
+gunbc.fleet.fleet_tailnet	production	dag/gunbc/fleet/fleet_tailnet.dag	L0	L0	L0	L0	L4	0	1	L4:host tailecbe08.ts.net	
+gunbc.fleet.fleet_wireless_link_converge	production	dag/gunbc/fleet/fleet_wireless_link_converge.dag	L4	L0	L0	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.fleet.fleet_workflow_steps	production	dag/gunbc/fleet/fleet_workflow_steps.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab cache_action|ci_cache_cargo_step|ci_cache_cargo_step_under|ci_cache_key	
+gunbc.fleet.flex_pass_run	production	dag/gunbc/fleet/flex_pass_run.dag	L4	L0	L2	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.fleet.hetzner_cloud_server_control	production	dag/gunbc/fleet/hetzner_cloud_server_control.dag	L4	L0	L2	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.fleet.host_credential_custody_converge	production	dag/gunbc/fleet/host_credential_custody_converge.dag	L5	L0	L2	L2	L2	1	1	L4:abs /proc/self/mountinfo|/run ; L5:1 raw writes beside store authority	Filesystem.Write
+gunbc.fleet.org_actions_inspection	production	dag/gunbc/fleet/org_actions_inspection.dag	L4	L0	L2	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.fleet.organization_runner_roster_read	production	dag/gunbc/fleet/organization_runner_roster_read.dag	L4	L0	L4	L0	L2	5	1	L4:1 raw writes, no store authority ; L4:4 env reads	Filesystem.Write,shell.Env.Get
+gunbc.fleet.printer_batch	production	dag/gunbc/fleet/printer_batch.dag	L5	L0	L2	L2	L2	6	1	L4:4 raw writes, no store authority ; L5:mech WriteCreateNew	Filesystem.Read,Filesystem.Write,Filesystem.WriteCreateNew
+gunbc.fleet.printer_credential_migration_run	production	dag/gunbc/fleet/printer_credential_migration_run.dag	L0	L0	L4	L0	L2	4	1	L4:4 env reads	shell.Env.Get
+gunbc.fleet.printer_delivery_wet_run	production	dag/gunbc/fleet/printer_delivery_wet_run.dag	L0	L0	L4	L0	L2	2	1	L4:2 env reads	shell.Env.Get
+gunbc.fleet.printer_job_start	production	dag/gunbc/fleet/printer_job_start.dag	L5	L0	L2	L0	L2	5	1	L5:mech Remove.RecursiveForce	shell.Mktemp.Dir,shell.Remove.RecursiveForce
+gunbc.fleet.printer_operator_approval	production	dag/gunbc/fleet/printer_operator_approval.dag	L5	L0	L2	L2	L2	3	1	L4:3 raw writes, no store authority ; L5:mech WriteCreateNew	Filesystem.Write,Filesystem.WriteCreateNew
+gunbc.fleet.printer_project_delivery	production	dag/gunbc/fleet/printer_project_delivery.dag	L5	L0	L2	L0	L2	7	1	L5:mech Remove.RecursiveForce	shell.Copy.File,shell.Mktemp.Dir,shell.Remove.FileForce,shell.Remove.RecursiveForce
+gunbc.fleet.printer_receipt	production	dag/gunbc/fleet/printer_receipt.dag	L4	L0	L2	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.fleet.printer_report	production	dag/gunbc/fleet/printer_report.dag	L5	L0	L2	L0	L2	2	1	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce	Filesystem.Write,shell.Remove.RecursiveForce
+gunbc.fleet.printer_start_reconciliation	production	dag/gunbc/fleet/printer_start_reconciliation.dag	L4	L0	L2	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.fleet.printer_workflow_artifact	production	dag/gunbc/fleet/printer_workflow_artifact.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/lib/gunbc/printer-starts	
+gunbc.fleet.site_pxe_edge_converge	production	dag/gunbc/fleet/site_pxe_edge_converge.dag	L5	L0	L0	L0	L4	1	1	L4:abs /etc|/etc/gunbc-site-pxe-edge.dnsmasq.conf|/srv/gunbc-site-pxe-edge/tftp ; L5:1 raw writes beside store authority ; L4:upstream binary /usr/sbin/dnsmasq ; L4:host srv4 ; L4:unit gunbc-site-pxe-edge.service	Filesystem.Write
+gunbc.flex_vast_credential	production	dag/gunbc/flex_vast_credential.dag	L4	L0	L0	L0	L2	0	1	L4:abs /etc/gunbc-flex/vast-api-key	
+gunbc.floor.floor_cold_build_receipt	production	dag/gunbc/floor/floor_cold_build_receipt.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab sccache_reachable	
+gunbc.floor.floor_demand	production	dag/gunbc/floor/floor_demand.dag	L0	L3	L0	L0	L4	0	1	L3:cache vocab beat_reclaimable_cache|sccache_reachable ; L4:host actions-runner@srv1-01.service|actions-runner@srv1-03.service|actions-runner@srv2-01.service|actions-runner@srv2-02.service ; L4:unit actions-runner@srv1-01.service|actions-runner@srv1-03.service|actions-runner@srv2-01.service	
+gunbc.floor.floor_materialization	production	dag/gunbc/floor/floor_materialization.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheProvider|floor_entry_walk_memo_provider_id	
+gunbc.frontend_eval.control	production	dag/gunbc/frontend_eval/control.dag	L5	L0	L0	L0	L0	9	1	L4:4 raw writes, no store authority ; L5:mech Mkdir.|Remove.RecursiveForce	Filesystem.Read,Filesystem.Write,shell.Mkdir.Parents,shell.Remove.RecursiveForce
+gunbc.frontend_eval.instrument	production	dag/gunbc/frontend_eval/instrument.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.generated_artifact	production	dag/gunbc/generated_artifact.dag	L0	L0	L0	L4	L2	0	1	L4:4 sudo sites	
+gunbc.generated_artifact_emit	production	dag/gunbc/generated_artifact_emit.dag	L0	L0	L0	L4	L2	0	1	L4:2 sudo sites	
+gunbc.generated_artifact_observation	production	dag/gunbc/generated_artifact_observation.dag	L0	L0	L0	L0	L0	2	1		Filesystem.List,Filesystem.Read
+gunbc.git_diff_change_window	production	dag/gunbc/git_diff_change_window.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.github_app_acquisition	production	dag/gunbc/github_app_acquisition.dag	L0	L0	L2	L0	L2	1	1		Filesystem.Read
+gunbc.github_effect_perform	production	dag/gunbc/github_effect_perform.dag	L5	L0	L4	L0	L2	6	1	L4:abs /etc/gunbc/microvm-controller/app.pem|/run/gunbc-service-slot/app.pem ; L5:2 raw writes beside store authority ; L4:credential path /etc/gunbc/microvm-controller/app.pem|/run/gunbc-service-slot/app.pem	Filesystem.Delete,Filesystem.WriteOwnerOnly
+gunbc.guest_image_delivery	production	dag/gunbc/guest_image_delivery.dag	L5	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority ; L5:mech mkdir_parents_command	Filesystem.Write
+gunbc.harness.harness_cli	production	dag/gunbc/harness/harness_cli.dag	L5	L0	L0	L0	L4	4	1	L4:abs /Users/briansrls/gunbc|/tmp/gunbc-harness-probe-events.jsonl|/tmp/gunbc-harness-request.json ; L5:4 raw writes beside store authority ; L4:upstream binary /opt/homebrew/bin/gtimeout	Filesystem.Write
+gunbc.harness.harness_hosted_route	production	dag/gunbc/harness/harness_hosted_route.dag	L5	L0	L2	L0	L0	5	1	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce	Filesystem.WriteOwnerOnly,shell.Mktemp.Dir,shell.Remove.RecursiveForce
+gunbc.harness.harness_operator_route	production	dag/gunbc/harness/harness_operator_route.dag	L5	L0	L4	L0	L0	6	1	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce ; L4:1 env reads	Filesystem.Read,Filesystem.WriteOwnerOnly,shell.Env.Get,shell.Mktemp.Dir,shell.Remove.RecursiveForce
+gunbc.harness.harness_tool	production	dag/gunbc/harness/harness_tool.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /bin/sh	
+gunbc.harness.harness_turn	production	dag/gunbc/harness/harness_turn.dag	L4	L0	L0	L0	L0	9	1	L4:5 raw writes, no store authority	Filesystem.List,Filesystem.Read,Filesystem.Write
+gunbc.harness.harness_wire	production	dag/gunbc/harness/harness_wire.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab CachedTokensMemberAbsent|CachedTokensMemberDuplicated|CachedTokensNegative|CachedTokensNotANumber	
+gunbc.harness.operator_pod_launch	production	dag/gunbc/harness/operator_pod_launch.dag	L0	L0	L0	L0	L4	0	1	L4:host 0.0.0.0	
+gunbc.heal_candidate	production	dag/gunbc/heal_candidate.dag	L5	L0	L4	L0	L0	9	1	L4:2 raw writes, no store authority ; L5:mech Mkdir.|Remove.RecursiveForce ; L4:1 env reads	Filesystem.Read,Filesystem.Write,shell.Env.Get,shell.Mkdir.Parents,shell.Remove.RecursiveForce
+gunbc.heal_candidate_stage0	production	dag/gunbc/heal_candidate_stage0.dag	L0	L0	L0	L0	L0	2	1		Filesystem.List
+gunbc.heal_publication	production	dag/gunbc/heal_publication.dag	L4	L0	L4	L0	L0	4	1	L4:1 raw writes, no store authority ; L4:1 env reads	Filesystem.Read,Filesystem.Write,shell.Env.Get
+gunbc.host.build_cache_daemon_ensure	production	dag/gunbc/host/build_cache_daemon_ensure.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab BuildCacheDaemonEnsurePlan|BuildCacheDaemonObservation|BuildCacheEnsureExecuted|BuildCacheEnsureFold	
+gunbc.host.ctrl_jobserver_residue	production	dag/gunbc/host/ctrl_jobserver_residue.dag	L4	L0	L0	L0	L4	0	1	L4:abs /etc/default/ctrl-jobserver|/etc/systemd/system/ctrl-jobserver.service|/var/lib/ctrl/jobserver ; L4:upstream binary /usr/local/sbin/ctrl-jobserver ; L4:unit ctrl-jobserver.service ; L4:/etc/systemd literal	
+gunbc.host.cursor_agent_realization	production	dag/gunbc/host/cursor_agent_realization.dag	L4	L0	L0	L0	L0	1	1	L4:abs /etc/apparmor.d/gunbc-cursor-sandbox-agent-cli|/opt/gunbc/cursor-agent	Filesystem.List
+gunbc.host.host_assimilation_program	production	dag/gunbc/host/host_assimilation_program.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab BuildCacheProvision	
+gunbc.host.host_authorized_keys_reconcile	production	dag/gunbc/host/host_authorized_keys_reconcile.dag	L0	L0	L0	L0	L4	0	1	L4:host briansrls@srv1|node-orch@srv2	
+gunbc.host.host_axis_caps	production	dag/gunbc/host/host_axis_caps.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.host.host_boot_attempt_admission	production	dag/gunbc/host/host_boot_attempt_admission.dag	L4	L0	L0	L2	L2	0	1	L4:abs /var/lib/gunbc/boot-attempts	
+gunbc.host.host_budget_source	production	dag/gunbc/host/host_budget_source.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache|enforce_typed_cache_entry_cap|typed_module_cache_cap_derivation|typed_module_cache_capacity	
+gunbc.host.host_build_cache_catalog_gate	production	dag/gunbc/host/host_build_cache_catalog_gate.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheInterfaceId|ProvisionBuildCacheCatalogGateVerdict|ProvisionBuildCacheCatalogRealizable|ProvisionBuildCacheCatalogRefused	
+gunbc.host.host_build_cache_provision	production	dag/gunbc/host/host_build_cache_provision.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab BuildCache|CacheInterfaceId|EnsureBuildCacheInstance|ProvisionBuildCacheCatalogRealizable	
+gunbc.host.host_cli_dependency	production	dag/gunbc/host/host_cli_dependency.dag	L0	L0	L0	L0	L0	1	1		shell.PosixCommandV.Check
+gunbc.host.host_codex_runtime_provision	production	dag/gunbc/host/host_codex_runtime_provision.dag	L0	L0	L0	L0	L4	0	1	L4:host srv1	
+gunbc.host.host_codex_runtime_provision_verdict	production	dag/gunbc/host/host_codex_runtime_provision_verdict.dag	L0	L0	L0	L0	L4	0	1	L4:host srv1	
+gunbc.host.host_compile_pool	production	dag/gunbc/host/host_compile_pool.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.host.host_converge	production	dag/gunbc/host/host_converge.dag	L4	L0	L0	L0	L4	0	1	L4:abs /etc/systemd/system.control/|/run/systemd/system.control/|/sys/fs/cgroup ; L4:unit .service|system-actions-runner.slice|system.slice ; L4:/etc/systemd literal	
+gunbc.host.host_converge_slice1	production	dag/gunbc/host/host_converge_slice1.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.host.host_disk_reclaim	production	dag/gunbc/host/host_disk_reclaim.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab DockerBuildCacheAccretion|build_cache|build_cache_instance	
+gunbc.host.host_disk_reclaim_units	production	dag/gunbc/host/host_disk_reclaim_units.dag	L0	L0	L0	L0	L4	0	1	L4:upstream binary /usr/local/bin/reclaim-runner-disk.sh ; L4:unit ctrl-runner-reclaim.service|ctrl-runner-reclaim.timer	
+gunbc.host.host_effect	production	dag/gunbc/host/host_effect.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab BuildCacheInstance|EnsureBuildCacheInstance|build_cache|build_cache_instance	
+gunbc.host.host_effect_codex_supervised_turn	production	dag/gunbc/host/host_effect_codex_supervised_turn.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.host.host_effect_realize	production	dag/gunbc/host/host_effect_realize.dag	L5	L3	L0	L4	L4	9	1	L4:abs /dev/stdin|/etc/systemd/system/|/proc|/tmp/gunbc-broker-dark-install. ; L5:1 raw writes beside store authority ; L5:mech mkdir_parents_command|rm_recursive ; L3:cache vocab BuildCacheDaemonObservation|BuildCacheEndpointReads|BuildCacheEndpointSurvey|BuildCacheEnsureExecuted ; L4:43 sudo sites ; L4:upstream binary /usr/bin/sccache ; L4:host http://127.0.0.1:|test.claim.srv3.srv3_token_subject_witness ; L4:unit sccache-server.service ; L4:/etc/systemd literal	Filesystem.Read,Filesystem.Write,shell.Exec.Run,shell.Exec.RunArgv,shell.Exec.RunArgvStdin,shell.Find.SocketInodeHolders
+gunbc.host.host_hygiene_liveness	production	dag/gunbc/host/host_hygiene_liveness.dag	L2	L0	L0	L0	L4	0	1	L4:unit host_hygiene_liveness.timer	
+gunbc.host.host_hygiene_reaper	production	dag/gunbc/host/host_hygiene_reaper.dag	L2	L3	L0	L0	L4	0	1	L3:cache vocab CgroupBuildCacheServerOccupant|RefusalBuildCacheServerOccupant|action_kills_build_cache_server|gunbc_host_hygiene_reaper_build_cache_placement_scaffold ; L4:unit host_hygiene_reaper.timer	
+gunbc.host.host_hygiene_reaper_observe	production	dag/gunbc/host/host_hygiene_reaper_observe.dag	L4	L3	L0	L0	L4	1	1	L4:abs /etc/systemd/system.control/|/proc/|/sys/fs/cgroup ; L3:cache vocab CgroupBuildCacheServerOccupant|host_hygiene_build_cache_cmdline_marker|host_hygiene_pid_cmdline_is_build_cache ; L4:/etc/systemd literal	shell.Test.IsDirectory
+gunbc.host.host_hygiene_reaper_remediate	production	dag/gunbc/host/host_hygiene_reaper_remediate.dag	L5	L0	L0	L0	L0	2	1	L5:mech Remove.RecursiveForce	shell.Remove.RecursiveForce
+gunbc.host.host_kernel_dependency_apply	production	dag/gunbc/host/host_kernel_dependency_apply.dag	L4	L3	L0	L0	L4	6	1	L4:abs /dev/stdin|/proc/self/status|/proc/sys/kernel/random/boot_id ; L3:cache vocab build_cache|build_cache_instance ; L4:unit actions*runner*.service	Filesystem.Read
+gunbc.host.host_kernel_dependency_observe	production	dag/gunbc/host/host_kernel_dependency_observe.dag	L4	L0	L0	L0	L0	5	1	L4:abs /etc/os-release|/proc/sys/kernel/random/boot_id	Filesystem.List,Filesystem.Read
+gunbc.host.host_layout	production	dag/gunbc/host/host_layout.dag	L4	L0	L0	L0	L4	0	1	L4:abs /home/briansrls|/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0|/opt/gunbc/approval-broker|/opt/gunbc/attempt-state ; L4:host srv1|srv2 ; L4:unit gunbc-compile-pool.slice	
+gunbc.host.host_memory_envelope_observe	production	dag/gunbc/host/host_memory_envelope_observe.dag	L4	L0	L0	L0	L4	1	1	L4:1 raw writes, no store authority ; L4:unit *.slice|gunbc.slice|sessions.slice	Filesystem.Write
+gunbc.host.host_memory_observation	production	dag/gunbc/host/host_memory_observation.dag	L2	L0	L0	L0	L4	1	1	L4:host srv3-08	Filesystem.Read
+gunbc.host.host_reach_identity_probe	production	dag/gunbc/host/host_reach_identity_probe.dag	L4	L0	L4	L0	L4	2	1	L4:1 raw writes, no store authority ; L4:1 env reads ; L4:host srv1|srv2|srv3|srv4	Filesystem.Write,shell.Env.Get
+gunbc.host.host_reset_return_run	production	dag/gunbc/host/host_reset_return_run.dag	L4	L0	L4	L0	L0	6	1	L4:2 raw writes, no store authority ; L4:4 env reads	Filesystem.Write,shell.Env.Get
+gunbc.host.host_standup	production	dag/gunbc/host/host_standup.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab BuildCacheProvision	
+gunbc.host.host_toolchain_ensure	production	dag/gunbc/host/host_toolchain_ensure.dag	L2	L3	L0	L0	L2	0	1	L3:cache vocab BuildCache|EnsureBuildCacheInstance|build_cache|build_cache_instance	
+gunbc.host.managed_host_boot_image_fetch	production	dag/gunbc/host/managed_host_boot_image_fetch.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/tmp	
+gunbc.host.managed_host_unit_hold	production	dag/gunbc/host/managed_host_unit_hold.dag	L4	L3	L0	L0	L0	0	1	L4:abs /var/lib/gunbc/unit-holds ; L3:cache vocab build_cache|build_cache_instance	
+gunbc.host.memory_observation	production	dag/gunbc/host/memory_observation.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.host.memory_stall_refusal	production	dag/gunbc/host/memory_stall_refusal.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache_evictions_in_window|cache_readmissions_in_window	
+gunbc.host.provider_guest_adoption	production	dag/gunbc/host/provider_guest_adoption.dag	L4	L0	L0	L0	L2	0	1	L4:abs /proc/meminfo	
+gunbc.host.sccache_verified_install	production	dag/gunbc/host/sccache_verified_install.dag	L4	L3	L0	L0	L0	0	1	L4:abs /tmp|/tmp/sccache.tar.gz ; L3:cache vocab cache|sccache|sccache_installed_binary_path|sccache_release_archive_dir	
+gunbc.host.srv1_software_inhabitance_receipt	production	dag/gunbc/host/srv1_software_inhabitance_receipt.dag	L4	L0	L0	L0	L4	0	1	L4:abs /etc/os-release|/sys/fs/cgroup/user.slice/user- ; L4:upstream binary /usr/bin/git|/usr/bin/jq|/usr/bin/systemd-run|/usr/bin/timeout ; L4:host tailscale	
+gunbc.host.verified_archive_install	production	dag/gunbc/host/verified_archive_install.dag	L5	L0	L0	L0	L0	0	1	L5:mech mkdir_parents_command	
+gunbc.host.verified_binary_install	production	dag/gunbc/host/verified_binary_install.dag	L5	L0	L0	L0	L0	0	1	L5:mech rm_recursive	
+gunbc.host_command_binding	production	dag/gunbc/host_command_binding.dag	L4	L0	L0	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.hostname_allocation	production	dag/gunbc/hostname_allocation.dag	L0	L0	L0	L0	L4	0	1	L4:host srv1|srv13|srv14|srv15	
+gunbc.hostname_set	production	dag/gunbc/hostname_set.dag	L0	L0	L0	L4	L2	0	1	L4:1 sudo sites	
+gunbc.instrument_targets	production	dag/gunbc/instrument_targets.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab compute_run_unit_sccache_probe_binding|compute_run_unit_sccache_probe_function|compute_run_unit_sccache_probe_label	
+gunbc.live_deploy.apply	production	dag/gunbc/live_deploy/apply.dag	L5	L3	L0	L4	L2	4	1	L5:1 raw writes beside store authority ; L5:mech mkdir_parents_command ; L3:cache vocab build_cache|build_cache_instance ; L4:2 sudo sites	Filesystem.Read,Filesystem.Write
+gunbc.live_deploy.apply_legs	production	dag/gunbc/live_deploy/apply_legs.dag	L4	L0	L0	L4	L4	0	1	L4:abs /dev/stdin|/etc/sudoers|/opt/gunbc ; L4:3 sudo sites ; L4:host tailscale-client|tailscale-serve-mapping	
+gunbc.live_deploy.apply_receipt	production	dag/gunbc/live_deploy/apply_receipt.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.live_deploy.deployed_tree_observation	production	dag/gunbc/live_deploy/deployed_tree_observation.dag	L4	L0	L0	L0	L2	0	1	L4:abs /tmp/gunbc-deployed-tree-index-	
+gunbc.live_deploy.deployed_tree_report	production	dag/gunbc/live_deploy/deployed_tree_report.dag	L4	L0	L0	L0	L4	1	1	L4:1 raw writes, no store authority ; L4:host srv1	Filesystem.Write
+gunbc.live_deploy.desired	production	dag/gunbc/live_deploy/desired.dag	L0	L0	L0	L0	L3	0	1	L3:3 live-instance pins	
+gunbc.live_deploy.emit	production	dag/gunbc/live_deploy/emit.dag	L5	L0	L0	L4	L4	0	1	L4:abs /etc/sudoers.d/gunbc-attempt-system-unit- ; L5:mech mkdir_parents_command ; L4:4 sudo sites ; L4:host tailscale	
+gunbc.live_deploy.intent	production	dag/gunbc/live_deploy/intent.dag	L0	L0	L0	L0	L4	0	1	L4:host http://127.0.0.1:	
+gunbc.live_deploy.member_observe	production	dag/gunbc/live_deploy/member_observe.dag	L4	L0	L0	L0	L2	5	1	L4:abs /tmp	Filesystem.Delete,Filesystem.List,Filesystem.Read,shell.Mktemp.FileInDirectory
+gunbc.live_deploy.operations	production	dag/gunbc/live_deploy/operations.dag	L0	L0	L0	L4	L2	0	1	L4:1 sudo sites	
+gunbc.live_deploy.pre_swap_admission	production	dag/gunbc/live_deploy/pre_swap_admission.dag	L5	L0	L0	L0	L2	2	1	L5:mech Remove.RecursiveForce	shell.Mktemp.Dir,shell.Remove.RecursiveForce
+gunbc.live_deploy.release_locus	production	dag/gunbc/live_deploy/release_locus.dag	L0	L0	L0	L4	L0	0	1	L4:4 sudo sites	
+gunbc.live_deploy.repository_convergence	production	dag/gunbc/live_deploy/repository_convergence.dag	L0	L3	L0	L0	L0	3	1	L3:cache vocab LocalCacheState	Filesystem.Delete,Filesystem.List,Filesystem.Read
+gunbc.live_deploy.repository_convergence_placement	production	dag/gunbc/live_deploy/repository_convergence_placement.dag	L4	L0	L0	L0	L4	2	1	L4:1 raw writes, no store authority ; L4:unit .slice	Filesystem.Read,Filesystem.Write
+gunbc.live_deploy.retract_legs	production	dag/gunbc/live_deploy/retract_legs.dag	L2	L0	L0	L0	L4	0	1	L4:host tailscale-client|tailscale-serve-off	
+gunbc.live_deploy.role_singleton_convergence	production	dag/gunbc/live_deploy/role_singleton_convergence.dag	L0	L0	L0	L0	L2	3	1		shell.Stat.GroupOf,shell.Stat.ModeOf,shell.Stat.OwnerOf
+gunbc.live_deploy.slice_bounds	production	dag/gunbc/live_deploy/slice_bounds.dag	L0	L0	L0	L0	L4	0	1	L4:host gunbc-fci1-controls.slice ; L4:unit gunbc-approval-broker.slice|gunbc-attempt-worker.slice|gunbc-fci1-controls.slice	
+gunbc.live_deploy.spec	production	dag/gunbc/live_deploy/spec.dag	L4	L2	L0	L2	L4	0	1	L4:abs /etc/gunbc-|/etc/gunbc-tree-sync.env|/etc/systemd/system/|/etc/systemd/user/ ; L3:1 live-instance pins ; L4:unit -attempt-unit-drain.path|-attempt-unit-drain.service|-belt-credential-recovery.service ; L4:/etc/systemd literal	
+gunbc.live_deploy.srv1_residue_rehearsal	production	dag/gunbc/live_deploy/srv1_residue_rehearsal.dag	L4	L0	L0	L4	L4	0	1	L4:abs /opt/gunbc/dispatch-worktrees/2-emit-partition|/opt/gunbc/dispatch-worktrees/5-regen-cutover|/opt/gunbc/dispatch-worktrees/namespace-occurrence-transport-a4a977ea6a45af340|/opt/gunbc/dispatch-worktrees/ts-authority-converge ; L4:2 sudo sites ; L4:host docs/probes/srv2-05-native-agreement-divergence-diagnosis.md	
+gunbc.live_rust_observation	production	dag/gunbc/live_rust_observation.dag	L0	L0	L4	L0	L0	1	1	L4:1 env reads	shell.Env.Get
+gunbc.machine_intake.bmc_recovery_route	production	dag/gunbc/machine_intake/bmc_recovery_route.dag	L4	L0	L0	L2	L0	0	1	L4:abs /dev/imb|/dev/ipmi0|/tmp/pw	
+gunbc.machine_intake.boot_image_export_ownership	production	dag/gunbc/machine_intake/boot_image_export_ownership.dag	L4	L0	L0	L0	L4	0	1	L4:abs /srv/bmc ; L4:upstream binary /bin/bash	
+gunbc.machine_intake.fan_observe	production	dag/gunbc/machine_intake/fan_observe.dag	L4	L0	L0	L0	L2	2	1	L4:2 raw writes, no store authority	Filesystem.Write
+gunbc.machine_intake.host_capture_envelope	production	dag/gunbc/machine_intake/host_capture_envelope.dag	L4	L0	L0	L0	L0	0	1	L4:abs /dev/shm/gunbc|/sys/devices/system/edac|/sys/devices/system/edac/mc/mc0/	
+gunbc.machine_intake.megarac_boot_media_attach	production	dag/gunbc/machine_intake/megarac_boot_media_attach.dag	L4	L0	L0	L0	L0	0	1	L4:abs /tmp/gunbc-	
+gunbc.machine_intake.megarac_kvm_observer_observe	production	dag/gunbc/machine_intake/megarac_kvm_observer_observe.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.machine_intake.megarac_kvm_still	production	dag/gunbc/machine_intake/megarac_kvm_still.dag	L4	L0	L0	L0	L0	5	1	L4:4 raw writes, no store authority	Filesystem.Read,Filesystem.Write
+gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle	production	dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag	L4	L3	L0	L0	L2	4	1	L4:1 raw writes, no store authority ; L3:cache vocab SdrCacheDumped|SdrCacheNotTaken|SdrCacheReading|SdrCacheUnread	Filesystem.Read,Filesystem.Write,Http.GetResourceByPath
+gunbc.machine_intake.mtcollins1_boot_dry_realization	production	dag/gunbc/machine_intake/mtcollins1_boot_dry_realization.dag	L5	L0	L0	L0	L4	0	1	L4:abs /home/runner/work/gunbc/gunbc|/proc/|/proc/self/ns/pid|/proc/self/stat ; L5:mech create_new ; L4:host srv1	
+gunbc.machine_intake.mtcollins1_boot_fan_gate	production	dag/gunbc/machine_intake/mtcollins1_boot_fan_gate.dag	L4	L0	L0	L0	L0	3	1	L4:2 raw writes, no store authority	Filesystem.Read,Filesystem.Write
+gunbc.machine_intake.mtcollins1_boot_run	production	dag/gunbc/machine_intake/mtcollins1_boot_run.dag	L5	L3	L0	L0	L2	37	1	L4:abs /proc/ ; L5:12 raw writes beside store authority ; L3:cache vocab SdrCacheNotTaken|SdrCacheReading|sdr_cache	Filesystem.Delete,Filesystem.Read,Filesystem.Write,shell.Move.File
+gunbc.machine_intake.mtcollins1_census_image	production	dag/gunbc/machine_intake/mtcollins1_census_image.dag	L4	L0	L0	L0	L0	0	1	L4:abs /dev/	
+gunbc.machine_intake.mtcollins1_census_image_publish	production	dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag	L5	L0	L0	L0	L2	1	1	L4:abs /var/tmp/gunbc-mtcollins1-census-regress.|/var/tmp/gunbc-mtcollins1-census-regress.XXXXXXXX ; L5:1 raw writes beside store authority ; L5:mech rm_recursive	Filesystem.Write
+gunbc.machine_intake.mtcollins1_census_member_readback	production	dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag	L5	L0	L0	L0	L2	1	1	L4:abs /tmp/gunbc- ; L5:1 raw writes beside store authority ; L5:mech rm_recursive	Filesystem.Write
+gunbc.machine_intake.mtcollins1_census_qemu_host_observe	production	dag/gunbc/machine_intake/mtcollins1_census_qemu_host_observe.dag	L5	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority ; L5:mech mkdir_parents_command	Filesystem.Write
+gunbc.machine_intake.mtcollins1_fan_observe	production	dag/gunbc/machine_intake/mtcollins1_fan_observe.dag	L4	L0	L4	L0	L2	3	1	L4:1 raw writes, no store authority ; L4:1 env reads	Filesystem.Read,Filesystem.Write,shell.Env.Get
+gunbc.machine_intake.mtcollins1_sol_notice	production	dag/gunbc/machine_intake/mtcollins1_sol_notice.dag	L5	L0	L0	L0	L0	8	1	L4:abs /dev/stdout ; L5:5 raw writes beside store authority	Filesystem.Read,Filesystem.Write
+gunbc.machine_intake.mtjade1_access_observation	production	dag/gunbc/machine_intake/mtjade1_access_observation.dag	L0	L0	L0	L0	L4	10	1	L4:host srv1	Filesystem.Read
+gunbc.machine_intake.sol_hold	production	dag/gunbc/machine_intake/sol_hold.dag	L4	L0	L0	L0	L0	0	1	L4:abs /dev/null|/proc/	
+gunbc.materialization_kernel_closing_frontier_audit	production	dag/gunbc/materialization_kernel_closing_frontier_audit.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheProvider|cache	
+gunbc.materialization_provider_targets	production	dag/gunbc/materialization_provider_targets.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheInterfaceId|cache|cache_identity|cache_row	
+gunbc.materialization_store_budgets	production	dag/gunbc/materialization_store_budgets.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheInterfaceCatalogFacts|cache|cache_identity	
+gunbc.namecheap.observe	production	dag/gunbc/namecheap/observe.dag	L4	L0	L2	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.namespace_cut.namespace_cut_subject_observation	production	dag/gunbc/namespace_cut/namespace_cut_subject_observation.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.native_product_federation	production	dag/gunbc/native_product_federation.dag	L0	L3	L2	L0	L0	0	1	L3:cache vocab fabric_cache_blobs_read_secret_id|fabric_cache_blobs_read_secret_version|fabric_cache_blobs_write_secret_id|fabric_cache_blobs_write_secret_version	
+gunbc.native_product_shared_store	production	dag/gunbc/native_product_shared_store.dag	L0	L3	L2	L0	L0	0	1	L3:cache vocab get_cache_blob|put_cache_blob	
+gunbc.native_product_shared_transfer	production	dag/gunbc/native_product_shared_transfer.dag	L5	L0	L2	L0	L0	7	1	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce	Filesystem.List,Filesystem.Write,shell.Mktemp.Dir,shell.Remove.RecursiveForce,shell.Test.IsFile
+gunbc.network_identity_subsumption	production	dag/gunbc/network_identity_subsumption.dag	L0	L0	L0	L0	L4	0	1	L4:host srv3	
+gunbc.node_http_server_emit	production	dag/gunbc/node_http_server_emit.dag	L0	L0	L0	L0	L4	0	1	L4:host 0.0.0.0	
+gunbc.observation_ci_render	production	dag/gunbc/observation_ci_render.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache	
+gunbc.observation_seed_render	production	dag/gunbc/observation_seed_render.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache_evictions_in_window|cache_readmissions_in_window	
+gunbc.oomd_install	production	dag/gunbc/oomd_install.dag	L2	L0	L0	L0	L4	0	1	L4:unit sessions.slice	
+gunbc.operator_fan_declaration	production	dag/gunbc/operator_fan_declaration.dag	L0	L0	L0	L0	L4	0	1	L4:host srv3|srv4	
+gunbc.oracle_oci.always_free_ensure	production	dag/gunbc/oracle_oci/always_free_ensure.dag	L4	L0	L2	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.oracle_oci.api	production	dag/gunbc/oracle_oci/api.dag	L4	L0	L4	L0	L2	0	1	L4:abs /etc/gunbc/oracle-oci/api-signing-key.pem ; L4:credential path /etc/gunbc/oracle-oci/api-signing-key.pem	
+gunbc.oracle_oci.compartment_ensure	production	dag/gunbc/oracle_oci/compartment_ensure.dag	L4	L0	L2	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.oracle_oci.instance_ensure	production	dag/gunbc/oracle_oci/instance_ensure.dag	L5	L0	L2	L0	L2	5	1	L4:abs /etc/gunbc/oracle-oci|/etc/gunbc/oracle-oci/instance-converge.lock ; L5:2 raw writes beside store authority ; L5:mech WriteCreateNew	Filesystem.Delete,Filesystem.Read,Filesystem.WriteCreateNew
+gunbc.oracle_oci.network_ensure	production	dag/gunbc/oracle_oci/network_ensure.dag	L0	L0	L2	L0	L4	0	1	L4:host 0.0.0.0/0	
+gunbc.os_install	production	dag/gunbc/os_install.dag	L0	L0	L0	L0	L4	0	1	L4:host install.srv3.lan/ubuntu-24.04/|install.srv3.lan/ubuntu-24.04/autoinstall/	
+gunbc.owned_process	production	dag/gunbc/owned_process.dag	L4	L0	L0	L0	L0	2	1	L4:abs /proc/	Filesystem.Read
+gunbc.package_delivery	production	dag/gunbc/package_delivery.dag	L5	L3	L0	L0	L0	54	1	L4:13 raw writes, no store authority ; L5:mech Mkdir.|Remove.RecursiveForce ; L3:cache vocab Cache|CodexRuntimeCacheSeedRefused|cache|cache_dir	Filesystem.Read,Filesystem.Write,shell.Find.FilesAndSymlinksWithMode,shell.Find.FilesByNameSorted,shell.Mkdir.Parents,shell.Mktemp.Dir
+gunbc.parse_verdict_publish	production	dag/gunbc/parse_verdict_publish.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab GhaCacheDefaultBranchScope|GhaCacheEntryScope|GhaCachePullRequestMergeRefScope|cache	
+gunbc.parse_verdict_restore	production	dag/gunbc/parse_verdict_restore.dag	L4	L3	L0	L0	L0	0	1	L4:abs /dev/null ; L3:cache vocab GhaCachePullRequestMergeRefScope|cache|cache_key|cache_restore_action	
+gunbc.parse_verdict_schema	production	dag/gunbc/parse_verdict_schema.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab parse_compiler_sha_identity_cache_key|parse_compiler_sha_identity_cache_prefix	
+gunbc.persistent_instance_roots	production	dag/gunbc/persistent_instance_roots.dag	L4	L0	L0	L0	L4	0	1	L4:abs /Users/briansrls/.local/share/gunbc-macbook-local|/home/briansrls/.local/share/gunbc-srv2-deploy ; L4:host /home/briansrls/.local/share/gunbc-srv2-deploy	
+gunbc.process_hold_identity	production	dag/gunbc/process_hold_identity.dag	L4	L3	L0	L0	L0	1	1	L4:abs /proc/|/proc/self/ns/pid|/proc/self/stat|/proc/sys/kernel/random/boot_id ; L3:cache vocab build_cache|build_cache_instance	Filesystem.Read
+gunbc.provider_interface_binding	production	dag/gunbc/provider_interface_binding.dag	L0	L0	L0	L0	L0	1	1		shell.Test.IsFile
+gunbc.provider_wire_evidence	production	dag/gunbc/provider_wire_evidence.dag	L5	L0	L0	L0	L0	13	1	L4:1 raw writes, no store authority ; L5:mech Mkdir.|Remove.RecursiveForce	Filesystem.Write,shell.Chmod.OwnerOnlyDirectory,shell.Chmod.OwnerReadWriteFile,shell.Link.Hard,shell.Mkdir.Parents,shell.Mktemp.FileInDirectory
+gunbc.provisioning.altra_autoinstall_seed	production	dag/gunbc/provisioning/altra_autoinstall_seed.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CachedMirror	
+gunbc.readback_independence	production	dag/gunbc/readback_independence.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab sccache_show_stats_probe	
+gunbc.repo_workspace	production	dag/gunbc/repo_workspace.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab LocalCacheState	
+gunbc.review_sheet_legacy_extent_producer	production	dag/gunbc/review_sheet_legacy_extent_producer.dag	L0	L0	L2	L0	L0	1	1		Filesystem.Read
+gunbc.review_sheet_spreadsheet_actuator	production	dag/gunbc/review_sheet_spreadsheet_actuator.dag	L4	L0	L0	L0	L0	0	1	L4:abs /etc/gunbc/review-sheet-legacy-extent-declaration.json	
+gunbc.revision_job_image_delivery	production	dag/gunbc/revision_job_image_delivery.dag	L5	L0	L0	L0	L0	0	1	L5:mech mkdir_parents_command	
+gunbc.roadmap.attempt_system_unit_launch	production	dag/gunbc/roadmap/attempt_system_unit_launch.dag	L5	L0	L0	L2	L4	7	1	L4:abs /opt/gunbc/attempt-system-unit-helpers ; L5:2 raw writes beside store authority ; L5:mech Mkdir.|WriteCreateNew ; L4:upstream binary /usr/bin/systemd-run ; L3:1 live-instance pins	Filesystem.List,Filesystem.Read,Filesystem.Write,Filesystem.WriteCreateNew,shell.Mkdir.NewOwnerOnly,shell.Move.NoReplaceDirectory
+gunbc.roadmap.dashboard_instance_directories	production	dag/gunbc/roadmap/dashboard_instance_directories.dag	L2	L3	L0	L0	L2	0	1	L3:cache vocab jwks_cache_directory	
+gunbc.roadmap.roadmap_acceptance_history_carrier	production	dag/gunbc/roadmap/roadmap_acceptance_history_carrier.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.roadmap.roadmap_attempt_exit_spool	production	dag/gunbc/roadmap/roadmap_attempt_exit_spool.dag	L5	L0	L0	L0	L0	3	1	L5:mech Mkdir.	Filesystem.List,shell.Exec.RunArgv,shell.Mkdir.Parents
+gunbc.roadmap.roadmap_attempt_metering	production	dag/gunbc/roadmap/roadmap_attempt_metering.dag	L5	L0	L0	L0	L2	6	1	L4:3 raw writes, no store authority ; L5:mech WriteCreateNew	Filesystem.List,Filesystem.Read,Filesystem.Write,Filesystem.WriteCreateNew
+gunbc.roadmap.roadmap_attempt_occurrence	production	dag/gunbc/roadmap/roadmap_attempt_occurrence.dag	L0	L0	L0	L0	L4	0	1	L4:unit .service	
+gunbc.roadmap.roadmap_attempt_request_record	production	dag/gunbc/roadmap/roadmap_attempt_request_record.dag	L5	L0	L0	L0	L2	1	1	L4:1 raw writes, no store authority ; L5:mech WriteCreateNew	Filesystem.WriteCreateNew
+gunbc.roadmap.roadmap_auth_routes	production	dag/gunbc/roadmap/roadmap_auth_routes.dag	L4	L3	L0	L0	L2	2	1	L4:1 raw writes, no store authority ; L3:cache vocab jwks_cache_layout_for_instance	Filesystem.Delete,Filesystem.WriteOwnerOnly
+gunbc.roadmap.roadmap_authority	production	dag/gunbc/roadmap/roadmap_authority.dag	L0	L0	L0	L4	L4	0	1	L4:4 sudo sites ; L4:host dag/test/claim/shell/shell_dag_live_deploy_restart_tailscale_witness.dag|fleet-srv2-retirement-completion|shell-dag-live-deploy-restart-tailscale|srv1-srv2-bmc-firmware-exposes-memory-errors	
+gunbc.roadmap.roadmap_belt_actuate	production	dag/gunbc/roadmap/roadmap_belt_actuate.dag	L5	L0	L4	L4	L4	85	1	L5:30 raw writes beside store authority ; L4:3 env reads ; L4:3 sudo sites ; L4:upstream binary /usr/bin/env|/usr/bin/id|/usr/bin/stat ; L3:13 live-instance pins ; L4:host srv1-live|srv2-deploy ; L4:unit gunbc-supervisor-x-k-t3.service	Filesystem.Delete,Filesystem.List,Filesystem.Read,Filesystem.Write,shell.Env.Get,shell.PosixCommandV.Check
+gunbc.roadmap.roadmap_belt_obligation	production	dag/gunbc/roadmap/roadmap_belt_obligation.dag	L0	L0	L0	L0	L4	0	1	L4:unit .service	
+gunbc.roadmap.roadmap_belt_tick_cli	production	dag/gunbc/roadmap/roadmap_belt_tick_cli.dag	L4	L0	L4	L0	L2	11	1	L4:6 raw writes, no store authority ; L4:3 env reads	Filesystem.List,Filesystem.Read,Filesystem.Write,shell.Env.Get
+gunbc.roadmap.roadmap_closing_contract_authoring	production	dag/gunbc/roadmap/roadmap_closing_contract_authoring.dag	L0	L0	L0	L0	L0	4	1		Filesystem.Read,shell.PosixCommandV.Check,shell.Test.IsExecutable
+gunbc.roadmap.roadmap_dashboard_instance	production	dag/gunbc/roadmap/roadmap_dashboard_instance.dag	L4	L2	L0	L0	L4	0	1	L4:abs /Users/briansrls|/Users/briansrls/.local/share|/Users/briansrls/gunbc|/etc/systemd/system/ ; L4:upstream binary /bin/mkdir|/bin/sh|/bin/test|/opt/homebrew/bin/cargo ; L3:10 live-instance pins ; L4:host /home/briansrls/.local/share/gunbc-dashboard-instances/srv2-lab-v1-deletion|/home/briansrls/gunbc-srv2-deploy|0.0.0.0|127.0.0.1 ; L4:unit .service|.timer ; L4:/etc/systemd literal	
+gunbc.roadmap.roadmap_dashboard_instance_apply	production	dag/gunbc/roadmap/roadmap_dashboard_instance_apply.dag	L5	L0	L0	L0	L4	2	1	L5:mech Remove.RecursiveForce ; L4:upstream binary /usr/bin/cp|/usr/bin/curl|/usr/bin/dirname|/usr/bin/git ; L3:7 live-instance pins ; L4:host 127.0.0.1|http://127.0.0.1:|srv2	shell.Mktemp.Dir,shell.Remove.RecursiveForce
+gunbc.roadmap.roadmap_dispatch_actuator	production	dag/gunbc/roadmap/roadmap_dispatch_actuator.dag	L5	L0	L0	L0	L4	1	1	L5:1 raw writes beside store authority ; L5:mech WriteCreateNew ; L3:3 live-instance pins ; L4:unit .service	Filesystem.WriteCreateNew
+gunbc.roadmap.roadmap_dispatch_environment	production	dag/gunbc/roadmap/roadmap_dispatch_environment.dag	L2	L0	L0	L0	L0	1	1		shell.Test.IsExecutable
+gunbc.roadmap.roadmap_dogfood_route	production	dag/gunbc/roadmap/roadmap_dogfood_route.dag	L2	L2	L0	L0	L3	0	1	L3:1 live-instance pins	
+gunbc.roadmap.roadmap_event_carrier	production	dag/gunbc/roadmap/roadmap_event_carrier.dag	L5	L0	L0	L0	L2	10	1	L4:abs /tmp/gunbc-roadmap-event-snapshot. ; L5:2 raw writes beside store authority	Filesystem.List,Filesystem.Read,Filesystem.Write,shell.Mktemp.DirWithTemplate
+gunbc.roadmap.roadmap_launch_deployment_cli	production	dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag	L5	L0	L0	L0	L4	4	1	L4:4 raw writes, no store authority ; L5:mech mkdir_parents_command ; L4:host srv1	Filesystem.Write,Filesystem.WriteOwnerOnly
+gunbc.roadmap.roadmap_launch_deployment_observe	production	dag/gunbc/roadmap/roadmap_launch_deployment_observe.dag	L0	L0	L0	L0	L4	0	1	L4:host http://127.0.0.1:	
+gunbc.roadmap.roadmap_publication_helper	production	dag/gunbc/roadmap/roadmap_publication_helper.dag	L5	L0	L0	L0	L0	8	1	L4:2 raw writes, no store authority ; L5:mech WriteCreateNew	Filesystem.Delete,Filesystem.List,Filesystem.Read,Filesystem.Write,Filesystem.WriteCreateNew,shell.Move.File
+gunbc.roadmap.roadmap_publish_actuate	production	dag/gunbc/roadmap/roadmap_publish_actuate.dag	L5	L0	L0	L0	L0	6	1	L5:mech Remove.RecursiveForce	Filesystem.Read,shell.Mktemp.Dir,shell.Remove.RecursiveForce,shell.Test.IsDirectory,shell.Test.IsFile
+gunbc.roadmap.roadmap_serve	production	dag/gunbc/roadmap/roadmap_serve.dag	L0	L3	L0	L2	L3	0	1	L3:cache vocab ServeResponseHeaderCacheImmutable ; L3:14 live-instance pins	
+gunbc.roadmap.roadmap_served_observation	production	dag/gunbc/roadmap/roadmap_served_observation.dag	L4	L0	L0	L0	L2	3	1	L4:2 raw writes, no store authority	Filesystem.Read,Filesystem.Write
+gunbc.roadmap.roadmap_session_placement	production	dag/gunbc/roadmap/roadmap_session_placement.dag	L5	L0	L0	L0	L2	5	1	L5:3 raw writes beside store authority	Filesystem.List,Filesystem.Read,Filesystem.Write
+gunbc.roadmap.roadmap_verification_receipt	production	dag/gunbc/roadmap/roadmap_verification_receipt.dag	L4	L0	L0	L0	L0	6	1	L4:abs /dev/null	Filesystem.List,Filesystem.Read
+gunbc.roadmap.roadmap_verify	production	dag/gunbc/roadmap/roadmap_verify.dag	L4	L0	L0	L0	L4	1	1	L4:1 raw writes, no store authority ; L4:upstream binary /usr/bin/env ; L3:2 live-instance pins	Filesystem.Write
+gunbc.roadmap.spool_stall	production	dag/gunbc/roadmap/spool_stall.dag	L5	L0	L0	L0	L0	4	1	L4:1 raw writes, no store authority ; L5:mech Mkdir.|WriteCreateNew	Filesystem.Delete,Filesystem.Read,Filesystem.WriteCreateNew,shell.Mkdir.Parents
+gunbc.runner.runner_activation	production	dag/gunbc/runner/runner_activation.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab BuildCacheEndpointObservation|BuildCacheInstance|BuildCacheInstanceReady|BuildCacheServerPlacement	
+gunbc.runner.runner_attempt_launch	production	dag/gunbc/runner/runner_attempt_launch.dag	L5	L0	L2	L0	L4	1	1	L4:1 raw writes, no store authority ; L5:mech mkdir_parents_command ; L4:upstream binary /bin/busybox	Filesystem.Write
+gunbc.runner.runner_broker_progress_watchdog	production	dag/gunbc/runner/runner_broker_progress_watchdog.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_browser_toolchain	production	dag/gunbc/runner/runner_browser_toolchain.dag	L5	L0	L0	L0	L2	11	1	L4:abs /usr/sbin:/usr/bin:/sbin:/bin ; L5:6 raw writes beside store authority ; L5:mech Remove.RecursiveForce|mkdir_parents_command|rm_recursive	Filesystem.Write,shell.Mktemp.Dir,shell.Mktemp.DirWithTemplate,shell.Remove.RecursiveForce
+gunbc.runner.runner_capacity_operator_access	production	dag/gunbc/runner/runner_capacity_operator_access.dag	L0	L0	L0	L4	L4	0	1	L4:1 sudo sites ; L4:upstream binary /usr/bin/sudo	
+gunbc.runner.runner_capacity_plan	production	dag/gunbc/runner/runner_capacity_plan.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_checkout_receipt	production	dag/gunbc/runner/runner_checkout_receipt.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab loader_cache_defect	
+gunbc.runner.runner_claim_set_guest	production	dag/gunbc/runner/runner_claim_set_guest.dag	L4	L0	L4	L0	L0	2	1	L4:1 raw writes, no store authority ; L4:1 env reads	Filesystem.Write,shell.Env.Get
+gunbc.runner.runner_claim_set_receipt	production	dag/gunbc/runner/runner_claim_set_receipt.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.runner.runner_claim_set_work	production	dag/gunbc/runner/runner_claim_set_work.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache_policy|claim_set_cache_policy	
+gunbc.runner.runner_connectivity_recovery	production	dag/gunbc/runner/runner_connectivity_recovery.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_connectivity_repair_plan	production	dag/gunbc/runner/runner_connectivity_repair_plan.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance|runner_jit_installation_token_cache_scaffold	
+gunbc.runner.runner_disk_reclaim	production	dag/gunbc/runner/runner_disk_reclaim.dag	L4	L3	L0	L0	L4	0	1	L4:abs /etc/systemd/system/gunbc-runner-reclaim.service|/etc/systemd/system/gunbc-runner-reclaim.timer ; L3:cache vocab ContainerCachePrune ; L4:upstream binary /usr/local/bin/reclaim-runner-disk.sh ; L4:/etc/systemd literal	
+gunbc.runner.runner_group_restriction_ensure_run	production	dag/gunbc/runner/runner_group_restriction_ensure_run.dag	L4	L0	L0	L2	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.runner.runner_guest_image	production	dag/gunbc/runner/runner_guest_image.dag	L5	L0	L4	L0	L4	4	1	L4:abs /etc/resolv.conf|/etc/systemd/system|/etc/systemd/system/|/root ; L5:3 raw writes beside store authority ; L5:mech mkdir_parents_command|rm_recursive ; L4:1 env reads ; L4:upstream binary /usr/bin/echo ; L4:unit gunbc-runner-agent.service ; L4:/etc/systemd literal	Filesystem.Write,shell.Env.Get
+gunbc.runner.runner_host_cap_bracket	production	dag/gunbc/runner/runner_host_cap_bracket.dag	L4	L0	L0	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.runner.runner_host_deploy	production	dag/gunbc/runner/runner_host_deploy.dag	L0	L3	L0	L0	L4	0	1	L3:cache vocab build_cache|build_cache_instance|cache|runner_host_sccache_provision_script ; L4:host srv1|srv2|srv3|srv4	
+gunbc.runner.runner_host_file_converge	production	dag/gunbc/runner/runner_host_file_converge.dag	L5	L3	L0	L4	L2	2	1	L4:abs /etc ; L5:2 raw writes beside store authority ; L3:cache vocab build_cache|build_cache_instance ; L4:11 sudo sites	Filesystem.Write
+gunbc.runner.runner_host_grants	production	dag/gunbc/runner/runner_host_grants.dag	L4	L3	L0	L4	L2	0	1	L4:abs /etc/sudoers.d/gunbc-ghrunner ; L3:cache vocab actions_runner_cache_dir|build_cache|build_cache_instance ; L4:16 sudo sites	
+gunbc.runner.runner_host_kernel_config	production	dag/gunbc/runner/runner_host_kernel_config.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/tmp/gunbc-hostimage/linux-6.12.108/.config	
+gunbc.runner.runner_host_medium	production	dag/gunbc/runner/runner_host_medium.dag	L5	L0	L0	L0	L0	0	1	L5:mech mkdir_parents_command|rm_recursive	
+gunbc.runner.runner_host_medium_publish	production	dag/gunbc/runner/runner_host_medium_publish.dag	L4	L0	L0	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.runner.runner_host_surface	production	dag/gunbc/runner/runner_host_surface.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_host_unit_slot	production	dag/gunbc/runner/runner_host_unit_slot.dag	L0	L0	L0	L0	L4	0	1	L4:unit .service	
+gunbc.runner.runner_incarnation	production	dag/gunbc/runner/runner_incarnation.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_lifecycle	production	dag/gunbc/runner/runner_lifecycle.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_local_state	production	dag/gunbc/runner/runner_local_state.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_lost_boot_sweep_run	production	dag/gunbc/runner/runner_lost_boot_sweep_run.dag	L4	L0	L2	L0	L2	2	1	L4:1 raw writes, no store authority	Filesystem.Read,Filesystem.Write
+gunbc.runner.runner_microvm	production	dag/gunbc/runner/runner_microvm.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab GuestCacheAllowance|ShapeRefusedCacheAllowanceUnderivable|beat_reclaimable_cache|build_cache	
+gunbc.runner.runner_microvm_attempt	production	dag/gunbc/runner/runner_microvm_attempt.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_microvm_attempt_identity	production	dag/gunbc/runner/runner_microvm_attempt_identity.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_microvm_boot_probe	production	dag/gunbc/runner/runner_microvm_boot_probe.dag	L5	L0	L4	L0	L0	4	1	L4:3 raw writes, no store authority ; L5:mech mkdir_parents_command ; L4:1 env reads	Filesystem.Write,shell.Env.Get
+gunbc.runner.runner_microvm_cell_readiness	production	dag/gunbc/runner/runner_microvm_cell_readiness.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_microvm_cell_readiness_location	production	dag/gunbc/runner/runner_microvm_cell_readiness_location.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/lib/gunbc/microvm-cell-readiness	
+gunbc.runner.runner_microvm_cell_readiness_store	production	dag/gunbc/runner/runner_microvm_cell_readiness_store.dag	L4	L3	L2	L0	L0	4	1	L4:1 raw writes, no store authority ; L3:cache vocab build_cache|build_cache_instance	Filesystem.List,Filesystem.Read,Filesystem.Write
+gunbc.runner.runner_microvm_host_ready	production	dag/gunbc/runner/runner_microvm_host_ready.dag	L5	L0	L4	L0	L0	2	1	L4:1 raw writes, no store authority ; L5:mech mkdir_parents_command ; L4:1 env reads	Filesystem.Write,shell.Env.Get
+gunbc.runner.runner_microvm_lifecycle	production	dag/gunbc/runner/runner_microvm_lifecycle.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_microvm_lifecycle_realize	production	dag/gunbc/runner/runner_microvm_lifecycle_realize.dag	L5	L3	L2	L0	L0	4	1	L4:2 raw writes, no store authority ; L5:mech rm_recursive ; L3:cache vocab build_cache|build_cache_instance	Filesystem.Read,Filesystem.Write
+gunbc.runner.runner_microvm_network	production	dag/gunbc/runner/runner_microvm_network.dag	L4	L3	L0	L0	L4	0	1	L4:abs /etc/gunbc|/etc/sysctl.d|/etc/sysctl.d/50-gunbc-microvm-forward.conf|/etc/systemd/network ; L3:cache vocab build_cache|build_cache_instance ; L4:unit gunbc-microvm-nft.service|systemd-networkd.service|systemd-sysctl.service ; L4:/etc/systemd literal	
+gunbc.runner.runner_microvm_network_apply	production	dag/gunbc/runner/runner_microvm_network_apply.dag	L5	L3	L0	L0	L2	7	1	L5:4 raw writes beside store authority ; L3:cache vocab build_cache|build_cache_instance	Filesystem.Read,Filesystem.Write,shell.Mktemp.FileInDirectory,shell.Remove.FileForce
+gunbc.runner.runner_microvm_network_converge	production	dag/gunbc/runner/runner_microvm_network_converge.dag	L4	L3	L4	L0	L4	4	1	L4:abs /var/lib/gunbc-microvm-network-stage ; L3:cache vocab build_cache|build_cache_instance ; L4:2 env reads ; L4:unit gunbc-microvm-nft.service	Filesystem.List,Filesystem.Read,shell.Env.Get
+gunbc.runner.runner_microvm_network_observe	production	dag/gunbc/runner/runner_microvm_network_observe.dag	L5	L3	L0	L0	L2	2	1	L4:2 raw writes, no store authority ; L5:mech mkdir_parents_command ; L3:cache vocab build_cache|build_cache_instance	Filesystem.Write
+gunbc.runner.runner_microvm_network_receipt_store	production	dag/gunbc/runner/runner_microvm_network_receipt_store.dag	L5	L0	L0	L0	L0	2	1	L4:1 raw writes, no store authority ; L5:mech WriteCreateNew	Filesystem.Read,Filesystem.WriteCreateNew
+gunbc.runner.runner_microvm_network_sanitation_observe	production	dag/gunbc/runner/runner_microvm_network_sanitation_observe.dag	L0	L3	L2	L0	L0	1	1	L3:cache vocab build_cache|build_cache_instance	Filesystem.Read
+gunbc.runner.runner_microvm_shakedown	production	dag/gunbc/runner/runner_microvm_shakedown.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_microvm_slot_controller	production	dag/gunbc/runner/runner_microvm_slot_controller.dag	L5	L3	L4	L0	L2	3	1	L5:1 raw writes beside store authority ; L3:cache vocab build_cache|build_cache_instance ; L4:1 env reads	Filesystem.Read,Filesystem.Write,shell.Env.Get
+gunbc.runner.runner_microvm_slot_reserve	production	dag/gunbc/runner/runner_microvm_slot_reserve.dag	L5	L3	L0	L0	L2	2	1	L5:2 raw writes beside store authority ; L3:cache vocab build_cache|build_cache_instance	Filesystem.Write
+gunbc.runner.runner_microvm_slot_start	production	dag/gunbc/runner/runner_microvm_slot_start.dag	L4	L3	L0	L0	L0	2	1	L4:1 raw writes, no store authority ; L3:cache vocab build_cache|build_cache_instance	Filesystem.Read,Filesystem.Write
+gunbc.runner.runner_microvm_slot_unit	production	dag/gunbc/runner/runner_microvm_slot_unit.dag	L4	L0	L0	L0	L4	0	1	L4:abs /etc/credstore/|/etc/systemd/system/|/opt/gunbc/microvm-controller|/var/lib/gunbc/microvm-slot-controller ; L4:unit gunbc-microvm-controller.slice|gunbc-microvm-slot-reserve.service|gunbc-microvm-slot@.service ; L4:/etc/systemd literal	
+gunbc.runner.runner_microvm_slot_unit_identity	production	dag/gunbc/runner/runner_microvm_slot_unit_identity.dag	L0	L0	L0	L0	L4	0	1	L4:unit .service	
+gunbc.runner.runner_microvm_stop_propagation_probe	production	dag/gunbc/runner/runner_microvm_stop_propagation_probe.dag	L0	L0	L0	L0	L4	0	1	L4:unit gunbc-stop-propagation-probe-stand-in.service|gunbc-stop-propagation-probe-supervisor.service	
+gunbc.runner.runner_password_session_tool_converge	production	dag/gunbc/runner/runner_password_session_tool_converge.dag	L4	L0	L0	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.runner.runner_qemu_toolchain	production	dag/gunbc/runner/runner_qemu_toolchain.dag	L5	L0	L0	L0	L0	1	1	L4:abs /usr/lib/aarch64-linux-gnu:|/usr/sbin:/usr/bin:/sbin:/bin ; L5:mech mkdir_parents_command|rm_recursive	shell.Mktemp.DirWithTemplate
+gunbc.runner.runner_registration_labels	production	dag/gunbc/runner/runner_registration_labels.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_revision_job_guest	production	dag/gunbc/runner/runner_revision_job_guest.dag	L5	L0	L0	L0	L0	0	1	L4:abs /dev/vdb|/dev/vdc|/dev/vdd|/etc/gunbc-revision-job-cargo-config.toml ; L5:mech mkdir_parents_command	
+gunbc.runner.runner_revision_job_image	production	dag/gunbc/runner/runner_revision_job_image.dag	L5	L0	L2	L0	L4	6	1	L4:abs /etc/fstab|/etc/resolv.conf|/etc/systemd/system/|/etc/systemd/system/sysinit.target.wants/fcnet.service ; L5:5 raw writes beside store authority ; L5:mech mkdir_parents_command|rm_recursive ; L4:upstream binary /usr/bin/cc|/usr/bin/git|/usr/bin/ld|/usr/bin/tar ; L4:unit gunbc-revision-job.service ; L4:/etc/systemd literal	Filesystem.Read,Filesystem.Write
+gunbc.runner.runner_revision_job_launch	production	dag/gunbc/runner/runner_revision_job_launch.dag	L5	L0	L0	L0	L0	0	1	L5:mech mkdir_parents_command	
+gunbc.runner.runner_revision_job_main	production	dag/gunbc/runner/runner_revision_job_main.dag	L5	L3	L4	L0	L0	6	1	L4:abs /dev/vde ; L5:2 raw writes beside store authority ; L5:mech WriteCreateNew ; L3:cache vocab build_cache|build_cache_instance|cache_dir|cache_repo ; L4:1 env reads	Filesystem.Read,Filesystem.WriteCreateNew,shell.Env.Get
+gunbc.runner.runner_revision_job_receipt	production	dag/gunbc/runner/runner_revision_job_receipt.dag	L5	L0	L0	L0	L0	5	1	L4:2 raw writes, no store authority ; L5:mech WriteCreateNew|mkdir_parents_command	Filesystem.LinkCreateNew,Filesystem.Read,Filesystem.WriteCreateNew
+gunbc.runner.runner_revision_job_stage	production	dag/gunbc/runner/runner_revision_job_stage.dag	L5	L3	L0	L0	L0	2	1	L4:2 raw writes, no store authority ; L5:mech WriteCreateNew|mkdir_parents_command ; L3:cache vocab cache_repo|vendor_cache|vendor_cache_key	Filesystem.WriteCreateNew
+gunbc.runner.runner_revision_job_toolchain	production	dag/gunbc/runner/runner_revision_job_toolchain.dag	L5	L0	L2	L0	L4	6	1	L4:abs /etc/nsswitch.conf|/usr/lib/cpp|/usr/share/libc-bin/nsswitch.conf ; L5:1 raw writes beside store authority ; L5:mech WriteCreateNew|mkdir_parents_command ; L4:upstream binary /usr/bin/cc|/usr/sbin/ldconfig.real	Filesystem.Read,Filesystem.WriteCreateNew,shell.PosixCommandV.Check
+gunbc.runner.runner_revision_job_unit	production	dag/gunbc/runner/runner_revision_job_unit.dag	L4	L3	L0	L0	L4	0	1	L4:abs /etc/systemd/system/|/var/lib/gunbc/revision-job|/var/lib/gunbc/revision-job/receipts|/var/lib/gunbc/revision-job/spec ; L3:cache vocab build_cache|build_cache_instance|revision_job_cache_dir ; L4:unit .service|gunbc-revision-job-runner@.service ; L4:/etc/systemd literal	
+gunbc.runner.runner_runtime_snapshot	production	dag/gunbc/runner/runner_runtime_snapshot.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_service_activation	production	dag/gunbc/runner/runner_service_activation.dag	L0	L3	L0	L4	L0	0	1	L3:cache vocab BuildCacheInstanceReady|cache_ready ; L4:1 sudo sites	
+gunbc.runner.runner_service_slot_controller	production	dag/gunbc/runner/runner_service_slot_controller.dag	L0	L0	L4	L0	L2	1	1	L4:1 env reads	shell.Env.Get
+gunbc.runner.runner_slot_actuation	production	dag/gunbc/runner/runner_slot_actuation.dag	L0	L0	L0	L4	L2	0	1	L4:2 sudo sites	
+gunbc.runner.runner_slot_allocation	production	dag/gunbc/runner/runner_slot_allocation.dag	L2	L3	L0	L0	L4	0	1	L3:cache vocab build_cache|build_cache_instance|microvm_controller_slice_cache_headroom ; L4:host actions-runner@srv1-04.service|actions-runner@srv1-05.service|actions-runner@srv2-03.service|srv1-05 ; L4:unit actions-runner@srv1-04.service|actions-runner@srv1-05.service|actions-runner@srv2-03.service	
+gunbc.runner.runner_slot_job_role	production	dag/gunbc/runner/runner_slot_job_role.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_slot_provision	production	dag/gunbc/runner/runner_slot_provision.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab actions_runner_cache_dir|build_cache|build_cache_instance|cache_install_command	
+gunbc.runner.runner_slot_retirement	production	dag/gunbc/runner/runner_slot_retirement.dag	L0	L3	L0	L0	L4	0	1	L3:cache vocab build_cache|build_cache_instance ; L4:host actions-runner@srv1-03.service|actions-runner@srv1-04.service|actions-runner@srv1-05.service|actions-runner@srv1-06.service ; L4:unit actions-runner@srv1-03.service|actions-runner@srv1-04.service|actions-runner@srv1-05.service	
+gunbc.runner.runner_teardown_receipt	production	dag/gunbc/runner/runner_teardown_receipt.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.runner.runner_throughput_qualification_route	production	dag/gunbc/runner/runner_throughput_qualification_route.dag	L0	L0	L0	L0	L4	0	1	L4:unit .service	
+gunbc.runner.runner_unit	production	dag/gunbc/runner/runner_unit.dag	L4	L3	L0	L0	L4	0	1	L4:abs /etc/systemd/system/ ; L3:cache vocab build_cache|build_cache_instance ; L4:unit .service ; L4:/etc/systemd literal	
+gunbc.runner.runner_unit_file	production	dag/gunbc/runner/runner_unit_file.dag	L4	L3	L4	L0	L4	0	1	L4:abs /etc/actions-runner/app.pem|/etc/systemd/system/ ; L3:cache vocab build_cache|build_cache_instance|build_cache_unit|cache ; L4:credential path /etc/actions-runner/app.pem ; L4:/etc/systemd literal	
+gunbc.runner.runner_unit_live_read	production	dag/gunbc/runner/runner_unit_live_read.dag	L0	L0	L0	L0	L4	0	1	L4:host actions-runner@srv1-01.service ; L4:unit actions-runner@srv1-01.service	
+gunbc.runner.workspace_guest_image	production	dag/gunbc/runner/workspace_guest_image.dag	L5	L0	L2	L0	L4	3	1	L4:abs /etc/resolv.conf|/etc/ssh/sshd_config.gunbc-workspace|/etc/systemd/system/gunbc-workspace.service|/etc/systemd/system/multi-user.target.wants ; L5:3 raw writes beside store authority ; L5:mech mkdir_parents_command|rm_recursive ; L4:upstream binary /usr/bin/ssh-keygen|/usr/local/sbin/gunbc-workspace-bootstrap|/usr/sbin/sshd ; L4:unit ../gunbc-workspace.service ; L4:/etc/systemd literal	Filesystem.Write
+gunbc.runner.workspace_microvm	production	dag/gunbc/runner/workspace_microvm.dag	L5	L3	L2	L2	L0	2	1	L5:mech mkdir_parents_command ; L3:cache vocab build_cache|build_cache_instance	Filesystem.Read
+gunbc.scm.init	production	dag/gunbc/scm/init.dag	L0	L0	L0	L0	L0	2	1		Filesystem.List,Filesystem.Read
+gunbc.scm.repository_convert	production	dag/gunbc/scm/repository_convert.dag	L4	L0	L0	L0	L0	3	1	L4:2 raw writes, no store authority	Filesystem.Read,Filesystem.Write
+gunbc.scm.repository_load	production	dag/gunbc/scm/repository_load.dag	L0	L0	L0	L0	L0	3	1		Filesystem.Read
+gunbc.scm.repository_save	production	dag/gunbc/scm/repository_save.dag	L5	L0	L0	L0	L0	8	1	L4:4 raw writes, no store authority ; L5:mech WriteCreateNew	Filesystem.List,Filesystem.Read,Filesystem.Write,Filesystem.WriteCreateNew
+gunbc.scm.scm_wet_execution_receipt	production	dag/gunbc/scm/scm_wet_execution_receipt.dag	L4	L0	L0	L0	L0	0	1	L4:abs /opt/cargo/bin/cargo|/tmp/claude-1000/-home-briansrls--worktrees-gunbc-deep-carp-676/825827b7-c94b-4de8-8cc4-4616121fbc8b/scratchpad/acc-target/release/gunbc	
+gunbc.scm.write_spine_ingress	production	dag/gunbc/scm/write_spine_ingress.dag	L0	L0	L0	L0	L0	2	1		Filesystem.List,Filesystem.Read
+gunbc.secret_provision_actuator	production	dag/gunbc/secret_provision_actuator.dag	L5	L0	L2	L0	L0	9	1	L4:1 raw writes, no store authority ; L5:mech Remove.RecursiveForce	Filesystem.Read,Filesystem.WriteOwnerOnly,shell.Copy.File,shell.Mktemp.Dir,shell.Remove.RecursiveForce
+gunbc.seed_growth_admission	production	dag/gunbc/seed_growth_admission.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab census_memo_seed_growth|census_memo_seed_growth_justification|decl_facts_shared_memo_seed_growth|decl_facts_shared_memo_seed_growth_justification	
+gunbc.served_surface_browser_observation	production	dag/gunbc/served_surface_browser_observation.dag	L0	L0	L0	L0	L4	0	1	L4:host 127.0.0.1:43821/body|127.0.0.1:43821/empty|127.0.0.1:43822/refused	
+gunbc.serving.replica_incarnation	production	dag/gunbc/serving/replica_incarnation.dag	L4	L0	L0	L0	L0	0	1	L4:abs /proc/	
+gunbc.serving.serving_artifact_placement	production	dag/gunbc/serving/serving_artifact_placement.dag	L5	L0	L0	L0	L0	0	1	L5:mech mkdir_parents_command	
+gunbc.serving.serving_front_door	production	dag/gunbc/serving/serving_front_door.dag	L4	L0	L4	L2	L0	0	1	L4:abs /etc/gunbc/serving-seat-permit.key ; L4:credential path /etc/gunbc/serving-seat-permit.key	
+gunbc.serving.session_store	production	dag/gunbc/serving/session_store.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CachedTokensMemberAbsent|CachedTokensMemberDuplicated|CachedTokensNegative|CachedTokensNotANumber	
+gunbc.serving.turn_admission	production	dag/gunbc/serving/turn_admission.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab cached_tokens	
+gunbc.session_reservation_policy	production	dag/gunbc/session_reservation_policy.dag	L4	L0	L0	L0	L4	0	1	L4:abs /sys/fs/cgroup|/sys/fs/cgroup/sessions.slice ; L4:host local-cgroup-read-srv1-2026-10-14|local-cgroup-read-srv2-2026-09-12|srv1|srv2	
+gunbc.site.gunb_ai_css	production	dag/gunbc/site/gunb_ai_css.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.site.gunb_ai_deck	production	dag/gunbc/site/gunb_ai_deck.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.site.gunb_ai_layout_review	production	dag/gunbc/site/gunb_ai_layout_review.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.site.gunb_ai_mark	production	dag/gunbc/site/gunb_ai_mark.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.site.gunb_ai_page	production	dag/gunbc/site/gunb_ai_page.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.site.gunb_ai_tokens_review	production	dag/gunbc/site/gunb_ai_tokens_review.dag	L4	L0	L0	L0	L0	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.source_layout_namespaces	production	dag/gunbc/source_layout_namespaces.dag	L0	L0	L0	L0	L4	0	1	L4:host extdeps.tailscale|gunbc.srv3|test.claim.srv3	
+gunbc.source_root_read	production	dag/gunbc/source_root_read.dag	L0	L0	L0	L0	L0	3	1		Filesystem.List,Filesystem.Read
+gunbc.spark.arm_memory_fit	production	dag/gunbc/spark/arm_memory_fit.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab ArmKvCache|ArmRankCacheSupply|CacheAdmissionProved|CacheAdmissionRefused	
+gunbc.spark.collective_transport_plan	production	dag/gunbc/spark/collective_transport_plan.dag	L4	L0	L0	L0	L0	0	1	L4:abs /dev/infiniband	
+gunbc.spark.credential_workflow	production	dag/gunbc/spark/credential_workflow.dag	L0	L0	L2	L4	L2	0	1	L4:1 sudo sites	
+gunbc.spark.dgx_procurement	production	dag/gunbc/spark/dgx_procurement.dag	L0	L0	L0	L0	L4	0	1	L4:host srv10|srv11|srv12|srv5	
+gunbc.spark.fabric_blob_peer	production	dag/gunbc/spark/fabric_blob_peer.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/lib/gunbc/blobs|/var/lib/gunbc/blobs-rsyncd.conf|/var/lib/gunbc/blobs/.staging	
+gunbc.spark.fabric_rail_apply	production	dag/gunbc/spark/fabric_rail_apply.dag	L4	L0	L0	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+gunbc.spark.grant_privileged_operation	production	dag/gunbc/spark/grant_privileged_operation.dag	L0	L0	L0	L4	L2	1	1	L4:27 sudo sites	Filesystem.Read
+gunbc.spark.host_privileged_apply	production	dag/gunbc/spark/host_privileged_apply.dag	L0	L0	L0	L4	L2	0	1	L4:1 sudo sites	
+gunbc.spark.managed_access_apply	production	dag/gunbc/spark/managed_access_apply.dag	L4	L0	L2	L4	L2	2	1	L4:2 raw writes, no store authority ; L4:1 sudo sites	Filesystem.Write
+gunbc.spark.managed_access_bootstrap	production	dag/gunbc/spark/managed_access_bootstrap.dag	L4	L0	L0	L4	L2	0	1	L4:abs /home/ ; L4:5 sudo sites	
+gunbc.spark.managed_grant_install	production	dag/gunbc/spark/managed_grant_install.dag	L4	L0	L0	L4	L2	1	1	L4:1 raw writes, no store authority ; L4:6 sudo sites	Filesystem.Write
+gunbc.spark.managed_grant_reconcile	production	dag/gunbc/spark/managed_grant_reconcile.dag	L4	L0	L0	L4	L0	0	1	L4:abs /etc/sudoers.d|/etc/sudoers.d/ ; L4:12 sudo sites	
+gunbc.spark.model_snapshot_acquisition	production	dag/gunbc/spark/model_snapshot_acquisition.dag	L4	L3	L0	L0	L0	0	1	L4:abs /home/briansrls/.cache/huggingface/hub|/home/briansrls/models ; L3:cache vocab HubCachePlacement|cache_root|hub_cache_verify_argv|hub_default_cache_root	
+gunbc.spark.model_snapshot_materialize	production	dag/gunbc/spark/model_snapshot_materialize.dag	L4	L3	L0	L4	L2	0	1	L4:abs /root ; L3:cache vocab HubCacheEnvironment|HubCachePlacement|cache_env|cache_root ; L4:1 sudo sites	
+gunbc.spark.oobe_execution_placement	production	dag/gunbc/spark/oobe_execution_placement.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab PlaywrightBrowserCacheEntry|cache_entry	
+gunbc.spark.oobe_screen_observation	production	dag/gunbc/spark/oobe_screen_observation.dag	L0	L0	L0	L0	L4	0	1	L4:host 127.0.0.1:18082|srv4	
+gunbc.spark.pinned_base_env_classification	production	dag/gunbc/spark/pinned_base_env_classification.dag	L0	L0	L0	L0	L4	0	1	L4:host NODE_IP=0.0.0.0	
+gunbc.spark.retired_serving_container_names	production	dag/gunbc/spark/retired_serving_container_names.dag	L0	L0	L0	L0	L4	0	1	L4:unit gunbc-spark-pair-head.service|gunbc-spark-pair-worker.service|spark-ray-worker.service	
+gunbc.spark.serving_arm	production	dag/gunbc/spark/serving_arm.dag	L4	L3	L0	L0	L4	0	1	L4:abs /opt/env/bin/hf ; L3:cache vocab GlmNativeKvCacheDtypeAdmission|GlmNativeKvCacheDtypeAdmitted|GlmNativeKvCacheDtypeRefused|HubCachePlacement ; L4:upstream binary /usr/local/bin/hf	
+gunbc.spark.serving_capacity_intent	production	dag/gunbc/spark/serving_capacity_intent.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab VllmKvCacheDtypeRequest	
+gunbc.spark.serving_compatibility	production	dag/gunbc/spark/serving_compatibility.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab KvCacheKernelShapeRefused	
+gunbc.spark.serving_performance_subject	production	dag/gunbc/spark/serving_performance_subject.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab AxisKvCacheDtype|VllmKvCacheDtypeRequest|kv_cache_dtype|vllm_kv_cache_dtype_wire	
+gunbc.spark.serving_promotion	production	dag/gunbc/spark/serving_promotion.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheFitProved|CacheFitRefused|CacheFitUnestablished|CacheFitVerdict	
+gunbc.spark.serving_rank_observe	production	dag/gunbc/spark/serving_rank_observe.dag	L4	L3	L0	L0	L0	0	1	L4:abs /dev/infiniband ; L3:cache vocab GpuKvCacheSize	
+gunbc.spark.snapshot_rail_replica	production	dag/gunbc/spark/snapshot_rail_replica.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab HubCachePlacement|blob_in_cache|cache_blob|cache_root	
+gunbc.spark.systemd_execution_cell	production	dag/gunbc/spark/systemd_execution_cell.dag	L4	L3	L0	L0	L4	0	1	L4:abs /var/tmp/ ; L3:cache vocab systemd_workload_cache_reuse_script ; L4:host base=http://127.0.0.1:|http://127.0.0.1:	
+gunbc.spark.vllm_observed	production	dag/gunbc/spark/vllm_observed.dag	L0	L3	L0	L0	L4	0	1	L3:cache vocab CacheConfigBlockFields|VllmCacheConfigGaugeReadback|cache_config_gauge|kv_cache_dtype ; L4:host srv6	
+gunbc.srv1_tasks_preapply_observation	production	dag/gunbc/srv1_tasks_preapply_observation.dag	L5	L0	L0	L0	L4	1	1	L4:abs /sys/fs/cgroup ; L5:1 raw writes beside store authority ; L4:host srv1|target/srv1-tasks-preapply-receipt.txt	Filesystem.Write
+gunbc.srv3.srv3_actuate_shell_paths	production	dag/gunbc/srv3/srv3_actuate_shell_paths.dag	L4	L0	L4	L0	L4	0	1	L4:abs /tmp/srv3_bmcweb_login_body.json|/tmp/srv3_bmcweb_login_response.json|/tmp/srv3_bmcweb_token|/var/lib/gunbc/logs/srv3-install-sol-console.log ; L4:credential path /tmp/srv3_bmcweb_token ; L4:host /var/lib/gunbc/logs/srv3-install-sol-console.log	
+gunbc.srv3.srv3_boot_once_cd	production	dag/gunbc/srv3/srv3_boot_once_cd.dag	L5	L0	L2	L2	L0	4	1	L4:abs /tmp/srv3_boot_cd_body.json|/tmp/srv3_reset_body.json ; L5:2 raw writes beside store authority	Filesystem.Write,Http.ResetSystem,Http.SetBootSourceOverride
+gunbc.srv3.srv3_nbd_proxy_serve_intent	production	dag/gunbc/srv3/srv3_nbd_proxy_serve_intent.dag	L0	L0	L0	L0	L4	0	1	L4:host srv3-nbd-proxy-10809	
+gunbc.srv3.srv3_os_install_actuate	production	dag/gunbc/srv3/srv3_os_install_actuate.dag	L4	L0	L2	L0	L4	1	1	L4:1 raw writes, no store authority ; L4:host docs/runbooks/srv3-os-install-actuate.md|srv3-os-install-actuate	Filesystem.Write
+gunbc.srv3.srv3_os_install_actuate_scope	production	dag/gunbc/srv3/srv3_os_install_actuate_scope.dag	L0	L0	L0	L0	L4	0	1	L4:host gunbc.srv3.srv3_bmc_credential_resolve|srv3-seeded	
+gunbc.srv3.srv3_os_install_actuate_workflow	production	dag/gunbc/srv3/srv3_os_install_actuate_workflow.dag	L0	L0	L0	L2	L4	0	1	L4:host bmc-srv3-admin|srv3-boot-once-cd|srv3-os-install-actuate-1	
+gunbc.srv3.srv3_os_install_diagnostic	production	dag/gunbc/srv3/srv3_os_install_diagnostic.dag	L0	L0	L0	L0	L4	0	1	L4:host docs/runbooks/srv3-os-install-actuate.md#install-debug-diagnostic-fold|srv3	
+gunbc.srv3.srv3_seeded_install_media	production	dag/gunbc/srv3/srv3_seeded_install_media.dag	L0	L0	L0	L0	L4	0	1	L4:host gunbc.srv3.srv3_os_install_actuate_scope|ubuntu-24.04.3-live-server-srv3-seeded	
+gunbc.srv3.srv3_seeded_install_media_artifact	production	dag/gunbc/srv3/srv3_seeded_install_media_artifact.dag	L0	L0	L0	L0	L4	0	1	L4:host ubuntu-24.04.3-live-server-srv3-seeded	
+gunbc.srv4_uefi_observed	production	dag/gunbc/srv4_uefi_observed.dag	L0	L0	L0	L0	L4	0	1	L4:host 0.0.0.0	
+gunbc.systemd_directive_value_grain	production	dag/gunbc/systemd_directive_value_grain.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab BuildCacheEnvironmentVariable|build_cache_environment_variables|cache|sccache	
+gunbc.tailscale_acl_phase2_credential	production	dag/gunbc/tailscale_acl_phase2_credential.dag	L0	L0	L0	L0	L4	0	1	L4:host gunbc.tailscale_acl_phase2_credential|tailscale-acl-ephemeral-token|tailscale_acl_upsert_wet	
+gunbc.tier_o_artifact_emit	production	dag/gunbc/tier_o_artifact_emit.dag	L0	L0	L0	L4	L2	0	1	L4:2 sudo sites	
+gunbc.toolchain_coherence	production	dag/gunbc/toolchain_coherence.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.tools.bmc_first_contact	production	dag/gunbc/tools/bmc_first_contact.dag	L0	L0	L4	L0	L0	2	1	L4:1 env reads	Http.GetSystem,shell.Env.Get
+gunbc.tools.bmc_health_reader_converge	production	dag/gunbc/tools/bmc_health_reader_converge.dag	L5	L0	L2	L0	L2	6	1	L4:abs /tmp/bmc_health_reader_body_ ; L5:1 raw writes beside store authority	Filesystem.WriteOwnerOnly,Http.CreateAccount,Http.GetAccount,Http.GetAccounts,Http.GetSystem,shell.Remove.FileForce
+gunbc.tools.bmc_intake_first_contact	production	dag/gunbc/tools/bmc_intake_first_contact.dag	L0	L0	L4	L0	L0	2	1	L4:1 env reads	Http.ProbeServiceRoot,shell.Env.Get
+gunbc.tools.bmc_onboard	production	dag/gunbc/tools/bmc_onboard.dag	L5	L0	L4	L0	L2	11	1	L4:abs /tmp/bmc_onboard_netrc|/tmp/bmc_onboard_pwbody.json ; L5:1 raw writes beside store authority ; L4:1 env reads	Filesystem.Read,Filesystem.Write,Http.GetServiceRoot,Http.GetSystem,Http.SetAccountPassword,shell.Env.Get
+gunbc.tools.bmc_read_telemetry	production	dag/gunbc/tools/bmc_read_telemetry.dag	L0	L0	L4	L0	L0	4	1	L4:2 env reads	Http.GetChassisSensors,Http.GetSystem,shell.Env.Get
+gunbc.tools.card_intake	production	dag/gunbc/tools/card_intake.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+gunbc.tools.review	production	dag/gunbc/tools/review.dag	L4	L0	L0	L0	L0	0	1	L4:abs /Users/briansrls/.local/share/gunbc-review/logs/cron.log	
+gunbc.typed_module_cache_capacity	production	dag/gunbc/typed_module_cache_capacity.dag	L2	L3	L0	L0	L0	1	1	L3:cache vocab TypedModuleCacheCap|typed_module_cache_cap_derivation|typed_module_cache_cap_is_refused|typed_module_cache_capacity	Filesystem.Read
+gunbc.typed_remote_file_write	production	dag/gunbc/typed_remote_file_write.dag	L0	L0	L0	L4	L2	0	1	L4:3 sudo sites	
+gunbc.url_file_acquisition	production	dag/gunbc/url_file_acquisition.dag	L5	L0	L0	L0	L0	5	1	L5:mech Mkdir.|Remove.RecursiveForce	shell.Mkdir.Parents,shell.Move.File,shell.Remove.RecursiveForce,shell.Test.IsFile
+gunbc.v1.v1_complexity_decl_classification_roster	production	dag/gunbc/v1/v1_complexity_decl_classification_roster.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab InterproceduralSummaryMemo	
+gunbc.witness.compiler_gate_workflow	production	dag/gunbc/witness/compiler_gate_workflow.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab ci_cache_cargo_step_under	
+gunbc.worker_turn_standing	production	dag/gunbc/worker_turn_standing.dag	L0	L0	L0	L0	L2	1	1		shell.Exec.RunArgvStdin
+gunbc.workspace_acquisition_invocation	production	dag/gunbc/workspace_acquisition_invocation.dag	L4	L3	L4	L0	L0	2	1	L4:abs /proc/self/stat ; L3:cache vocab build_cache|build_cache_instance ; L4:1 env reads	Filesystem.Read,shell.Env.Get
+gunbc.workspace_allocation	production	dag/gunbc/workspace_allocation.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_allocation_dispatch	production	dag/gunbc/workspace_allocation_dispatch.dag	L4	L0	L4	L0	L0	3	1	L4:abs /dev/stdin ; L4:1 env reads	Filesystem.Read,shell.Env.Get
+gunbc.workspace_allocation_launch_directive	production	dag/gunbc/workspace_allocation_launch_directive.dag	L2	L3	L0	L0	L0	1	1	L3:cache vocab build_cache|build_cache_instance	Filesystem.Read
+gunbc.workspace_allocation_lifecycle	production	dag/gunbc/workspace_allocation_lifecycle.dag	L0	L3	L0	L2	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_allocation_metrics	production	dag/gunbc/workspace_allocation_metrics.dag	L2	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_allocation_operations	production	dag/gunbc/workspace_allocation_operations.dag	L4	L3	L0	L0	L2	0	1	L4:abs /etc/credstore ; L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_allocation_policy	production	dag/gunbc/workspace_allocation_policy.dag	L0	L0	L0	L0	L4	0	1	L4:host /.ssh/gunbc-workspace-srv1-13|gunbc-workspace-srv1-13	
+gunbc.workspace_allocation_supply	production	dag/gunbc/workspace_allocation_supply.dag	L2	L3	L0	L2	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_commissioning	production	dag/gunbc/workspace_commissioning.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_commissioning_admission_observe	production	dag/gunbc/workspace_commissioning_admission_observe.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_commissioning_apply_readback	production	dag/gunbc/workspace_commissioning_apply_readback.dag	L2	L3	L0	L0	L0	5	1	L3:cache vocab build_cache|build_cache_instance	Filesystem.Delete,Filesystem.Read
+gunbc.workspace_commissioning_controller	production	dag/gunbc/workspace_commissioning_controller.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_commissioning_directive	production	dag/gunbc/workspace_commissioning_directive.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_commissioning_dispatch	production	dag/gunbc/workspace_commissioning_dispatch.dag	L4	L3	L0	L0	L2	4	1	L4:abs /dev/stdin ; L3:cache vocab build_cache|build_cache_instance	Filesystem.Read
+gunbc.workspace_commissioning_dispatch_operations	production	dag/gunbc/workspace_commissioning_dispatch_operations.dag	L4	L0	L0	L4	L2	0	1	L4:abs /etc/sudoers.d/gunbc-workspace-commissioning ; L4:4 sudo sites	
+gunbc.workspace_commissioning_executor_cli	production	dag/gunbc/workspace_commissioning_executor_cli.dag	L0	L0	L4	L0	L0	4	1	L4:4 env reads	shell.Env.Get
+gunbc.workspace_commissioning_executor_fence	production	dag/gunbc/workspace_commissioning_executor_fence.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_commissioning_executor_helper	production	dag/gunbc/workspace_commissioning_executor_helper.dag	L4	L3	L4	L0	L2	2	1	L4:abs /proc/self/cgroup ; L3:cache vocab build_cache|build_cache_instance ; L4:1 env reads	Filesystem.Read,shell.Env.Get
+gunbc.workspace_commissioning_executor_input	production	dag/gunbc/workspace_commissioning_executor_input.dag	L0	L3	L0	L0	L2	1	1	L3:cache vocab build_cache|build_cache_instance	Filesystem.Read
+gunbc.workspace_commissioning_executor_submission	production	dag/gunbc/workspace_commissioning_executor_submission.dag	L5	L3	L0	L0	L2	5	1	L4:abs /etc/credstore ; L5:1 raw writes beside store authority ; L5:mech WriteCreateNew ; L3:cache vocab build_cache|build_cache_instance	Filesystem.Delete,Filesystem.Read,Filesystem.WriteCreateNewWithMode
+gunbc.workspace_commissioning_executor_unit	production	dag/gunbc/workspace_commissioning_executor_unit.dag	L4	L0	L0	L0	L4	0	1	L4:abs /etc/systemd/system/ ; L4:unit .service|gunbc-workspace-commissioning@.service ; L4:/etc/systemd literal	
+gunbc.workspace_commissioning_fleet	production	dag/gunbc/workspace_commissioning_fleet.dag	L0	L3	L0	L2	L2	2	1	L3:cache vocab build_cache|build_cache_instance	Filesystem.Read
+gunbc.workspace_commissioning_history	production	dag/gunbc/workspace_commissioning_history.dag	L0	L3	L0	L0	L0	2	1	L3:cache vocab build_cache|build_cache_instance	Filesystem.List,Filesystem.Read
+gunbc.workspace_commissioning_input_store	production	dag/gunbc/workspace_commissioning_input_store.dag	L2	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_commissioning_location	production	dag/gunbc/workspace_commissioning_location.dag	L4	L0	L0	L0	L0	0	1	L4:abs /var/lib/gunbc/workspace-commissioning	
+gunbc.workspace_commissioning_observe	production	dag/gunbc/workspace_commissioning_observe.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_commissioning_runtime	production	dag/gunbc/workspace_commissioning_runtime.dag	L0	L3	L0	L2	L2	2	1	L3:cache vocab build_cache|build_cache_instance	Filesystem.Read
+gunbc.workspace_commissioning_start_identity	production	dag/gunbc/workspace_commissioning_start_identity.dag	L4	L0	L4	L0	L0	2	1	L4:abs /etc/credstore/ ; L4:1 env reads	Filesystem.Read,shell.Env.Get
+gunbc.workspace_commissioning_store	production	dag/gunbc/workspace_commissioning_store.dag	L2	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_commissioning_transaction	production	dag/gunbc/workspace_commissioning_transaction.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_gateway	production	dag/gunbc/workspace_gateway.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_gateway_admission	production	dag/gunbc/workspace_gateway_admission.dag	L0	L3	L0	L2	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_gateway_observer	production	dag/gunbc/workspace_gateway_observer.dag	L5	L3	L0	L0	L2	3	1	L4:abs /tmp/gunbc_workspace_gateway.XXXXXX ; L5:1 raw writes beside store authority ; L5:mech Remove.RecursiveForce|WriteCreateNew ; L3:cache vocab build_cache|build_cache_instance	Filesystem.WriteCreateNew,shell.Mktemp.DirWithTemplate,shell.Remove.RecursiveForce
+gunbc.workspace_gateway_store	production	dag/gunbc/workspace_gateway_store.dag	L2	L3	L0	L2	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_host_offer_observe	production	dag/gunbc/workspace_host_offer_observe.dag	L0	L3	L0	L0	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_initial_sanitation	production	dag/gunbc/workspace_initial_sanitation.dag	L0	L3	L0	L0	L0	3	1	L3:cache vocab build_cache|build_cache_instance	Filesystem.List,Filesystem.Read
+gunbc.workspace_offer_producer	production	dag/gunbc/workspace_offer_producer.dag	L0	L3	L0	L2	L2	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_operator_request	production	dag/gunbc/workspace_operator_request.dag	L4	L0	L4	L0	L0	2	1	L4:1 raw writes, no store authority ; L4:1 env reads	Filesystem.Write,shell.Env.Get
+gunbc.workspace_slot_mutation	production	dag/gunbc/workspace_slot_mutation.dag	L2	L3	L0	L0	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_ssh_access	production	dag/gunbc/workspace_ssh_access.dag	L0	L3	L0	L2	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+gunbc.workspace_tool_observer	production	dag/gunbc/workspace_tool_observer.dag	L0	L3	L0	L2	L0	0	1	L3:cache vocab build_cache|build_cache_instance	
+product.fabric.flex_vast_template_control	production	dag/product/fabric/flex_vast_template_control.dag	L4	L0	L2	L0	L2	1	1	L4:1 raw writes, no store authority	Filesystem.Write
+product.fabric.serving_recipe	production	dag/product/fabric/serving_recipe.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheFractionOfHost|CacheNone|ServingCacheSizing|ServingCacheTiers	
+product.printed_chassis.assembly_inventory	production	dag/product/printed_chassis/assembly_inventory.dag	L0	L0	L0	L0	L0	1	1		Filesystem.Read
+product.printed_chassis.cad_check_run	production	dag/product/printed_chassis/cad_check_run.dag	L4	L0	L0	L0	L0	2	1	L4:2 raw writes, no store authority	Filesystem.Write
+product.printed_chassis.preparation_identity	production	dag/product/printed_chassis/preparation_identity.dag	L0	L0	L0	L0	L0	3	1		Filesystem.Read
+product.printed_chassis.print_preparation	production	dag/product/printed_chassis/print_preparation.dag	L5	L0	L0	L0	L0	5	1	L4:2 raw writes, no store authority ; L5:mech Mkdir.|WriteCreateNew	Filesystem.Read,Filesystem.WriteCreateNew,shell.Mkdir.Parents
+product.printed_chassis.print_workflow	production	dag/product/printed_chassis/print_workflow.dag	L5	L0	L2	L0	L2	7	1	L4:1 raw writes, no store authority ; L5:mech Mkdir.|WriteCreateNew	Filesystem.Read,Filesystem.WriteCreateNew,shell.Mkdir.Parents
+product.printed_chassis.stack_mass_review	production	dag/product/printed_chassis/stack_mass_review.dag	L0	L0	L0	L0	L4	0	1	L4:host srv3|srv3-population-with-Noctua-design-variant|srv4	
+product.printing.cad_runtime_converge	production	dag/product/printing/cad_runtime_converge.dag	L5	L0	L0	L0	L4	6	1	L5:2 raw writes beside store authority ; L5:mech Mkdir.|Remove.RecursiveForce|WriteCreateNew ; L4:upstream binary /bin/micromamba-	Filesystem.Write,Filesystem.WriteCreateNew,shell.Mkdir.NewOwnerOnly,shell.Mkdir.Parents,shell.Remove.RecursiveForce
+product.printing.print_runtime	production	dag/product/printing/print_runtime.dag	L5	L0	L0	L0	L4	4	1	L4:abs /etc/os-release|/var/lib/gunbc/print-runtime ; L5:1 raw writes beside store authority ; L5:mech Mkdir.|WriteCreateNew ; L4:upstream binary /bin/python	Filesystem.Read,Filesystem.WriteCreateNew,shell.Mkdir.Parents
+product.printing.runtime_converge	production	dag/product/printing/runtime_converge.dag	L5	L0	L0	L0	L2	1	1	L4:abs /etc/os-release ; L5:1 raw writes beside store authority	Filesystem.Write
+src/v1/04_env	seed	src/v1/04_env.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab GuardedTypeEnvCacheMerge|TypeEnvCache|TypeEnvCacheMergeConflict|cache	
+src/v1/04_infer	seed	src/v1/04_infer.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab GuardedTypeEnvCacheMerge|ParentCacheRow|TypeEnvCache|TypeEnvCacheMergeConflict	
+src/v1/04_items	seed	src/v1/04_items.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab TypeEnvCache|cache|empty_type_env_cache|type_env_cache	
+src/v1/05_emit	seed	src/v1/05_emit.dag	L5	L0	L0	L0	L0	0	1	L5:mech WriteCreateNew	
+src/v1/05_emit_rust	seed	src/v1/05_emit_rust.dag	L5	L3	L0	L0	L0	0	1	L5:mech WriteCreateNew ; L3:cache vocab CacheEvidence|CacheInterfaceCatalogFacts|CacheInterfaceCatalogIoSemantics|cache	
+src/v1/complexity	seed	src/v1/complexity.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab cache_summary|cached	
+src/v1/dag_collect	seed	src/v1/dag_collect.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab _memo_reset|dag_collect_fp_memo_reset|dag_node_surface_fingerprint_memo	
+src/v1/dag_collect_support	seed	src/v1/dag_collect_support.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab dag_collect_fp_memo_reset|dag_node_surface_fingerprint_memo	
+src/v1/stage0/build.rs	seed	src/v1/stage0/build.rs	L0	L0	L4	L0	L0	6	1	L4:2 env reads	Command::new,std::env::var,std::fs::read_dir,std::fs::read_to_string
+src/v1/stage0/src/behavioral_receipt_host.rs	seed	src/v1/stage0/src/behavioral_receipt_host.rs	L5	L0	L0	L0	L0	19	1	L4:3 raw writes, no store authority ; L5:mech create_dir_all	Command::new,fs::create_dir_all,fs::read_dir,fs::read_to_string,fs::write
+src/v1/stage0/src/bin/bootstrap_witness.rs	seed	src/v1/stage0/src/bin/bootstrap_witness.rs	L5	L0	L4	L0	L0	60	1	L4:abs /tmp/v2-ci-timing.txt ; L5:6 raw writes beside store authority ; L5:mech create_dir_all ; L4:2 env reads	Command::new,OpenOptions::new,std::env::var_os,std::fs::copy,std::fs::create_dir_all,std::fs::read_dir
+src/v1/stage0/src/bin/carrier_realization_census.rs	seed	src/v1/stage0/src/bin/carrier_realization_census.rs	L4	L0	L0	L0	L0	2	1	L4:1 raw writes, no store authority	std::fs::read_to_string,std::fs::write
+src/v1/stage0/src/bin/claim_batch.rs	seed	src/v1/stage0/src/bin/claim_batch.rs	L4	L3	L4	L0	L0	5	1	L4:abs /proc/self/status ; L3:cache vocab clear_decl_census_memo|data_eval_cache_hit_ratio|eval_call_memo_frame_exit|register_decl_census_memo ; L4:4 env reads	std::env::var,std::env::var_os,std::fs::read_to_string
+src/v1/stage0/src/bin/claim_executor.rs	seed	src/v1/stage0/src/bin/claim_executor.rs	L5	L3	L4	L0	L4	10	1	L4:1 raw writes, no store authority ; L5:mech create_dir_all ; L3:cache vocab cache|cached|release_process_caches_at_exit|sccache ; L4:1 env reads ; L4:upstream binary /usr/bin/git	std::env::var_os,std::fs::create_dir_all,std::fs::metadata,std::fs::read_to_string,std::fs::remove_dir_all,std::fs::set_permissions
+src/v1/stage0/src/bin/dag_collect_fingerprint_witness.rs	seed	src/v1/stage0/src/bin/dag_collect_fingerprint_witness.rs	L0	L3	L0	L0	L0	0	1	L3:cache vocab dag_collect_fp_memo_reset	
+src/v1/stage0/src/bin/effects_rest_transport_witness.rs	seed	src/v1/stage0/src/bin/effects_rest_transport_witness.rs	L0	L0	L0	L0	L0	1	1		std::fs::read_to_string
+src/v1/stage0/src/bin/generic_identity_census.rs	seed	src/v1/stage0/src/bin/generic_identity_census.rs	L4	L0	L0	L0	L0	2	1	L4:1 raw writes, no store authority	std::fs::read_to_string,std::fs::write
+src/v1/stage0/src/bin/interp_recorded_fixture_witness.rs	seed	src/v1/stage0/src/bin/interp_recorded_fixture_witness.rs	L5	L0	L0	L0	L0	46	1	L4:abs /tmp/gunbc_fs_closure_scale_witness.txt|/tmp/gunbc_fs_witness_absent_should_not_exist_42|/tmp/gunbc_fs_write_witness|/tmp/gunbc_probe ; L5:8 raw writes beside store authority ; L5:mech create_dir_all	Command::new,fs::create_dir_all,fs::read,fs::read_dir,fs::read_to_string,fs::remove_dir_all
+src/v1/stage0/src/bin/parse_witness.rs	seed	src/v1/stage0/src/bin/parse_witness.rs	L0	L0	L0	L0	L0	1	1		std::fs::read_to_string
+src/v1/stage0/src/bin/type_occurrence_binding_census.rs	seed	src/v1/stage0/src/bin/type_occurrence_binding_census.rs	L0	L0	L0	L0	L0	4	1		std::fs::read_dir,std::fs::read_to_string
+src/v1/stage0/src/cli_run.rs	seed	src/v1/stage0/src/cli_run.rs	L5	L5	L4	L0	L4	183	1	L4:abs /dev/null|/etc/passwd|/proc/self/status|/proc/sys/kernel/hostname ; L5:35 raw writes beside store authority ; L5:mech create_dir_all ; L5:32 process-wide memo statics ; L4:11 env reads ; L4:host 127.0.0.1|tailscale-user-login|tailscale_identity	Command::new,TcpStream::connect,fs::create_dir_all,fs::remove_dir_all,fs::write,std::env::var
+src/v1/stage0/src/cli_run/cgroup_memory.rs	seed	src/v1/stage0/src/cli_run/cgroup_memory.rs	L0	L0	L0	L0	L0	1	1		std::fs::read_to_string
+src/v1/stage0/src/cli_run/checker_dependency.rs	seed	src/v1/stage0/src/cli_run/checker_dependency.rs	L5	L0	L0	L0	L0	9	1	L4:4 raw writes, no store authority ; L5:mech create_dir_all	std::fs::create_dir_all,std::fs::read_to_string,std::fs::remove_dir_all,std::fs::write
+src/v1/stage0/src/cli_run/compile_clean.rs	seed	src/v1/stage0/src/cli_run/compile_clean.rs	L0	L5	L4	L0	L0	5	1	L5:1 process-wide memo statics ; L4:4 env reads	std::env::var,std::fs::read
+src/v1/stage0/src/cli_run/complexity_gates.rs	seed	src/v1/stage0/src/cli_run/complexity_gates.rs	L0	L3	L0	L0	L0	0	1	L3:cache vocab cla_cached_builtin_cache|cla_cached_wildcard_facts	
+src/v1/stage0/src/cli_run/declared_refs.rs	seed	src/v1/stage0/src/cli_run/declared_refs.rs	L0	L0	L4	L0	L0	1	1	L4:1 env reads	std::env::var
+src/v1/stage0/src/cli_run/demand_acquire.rs	seed	src/v1/stage0/src/cli_run/demand_acquire.rs	L5	L5	L4	L0	L0	23	1	L4:9 raw writes, no store authority ; L5:mech create_dir_all ; L5:1 process-wide memo statics ; L4:2 env reads	fs::create_dir_all,fs::remove_dir_all,fs::write,std::env::var,std::fs::read_dir,std::fs::read_to_string
+src/v1/stage0/src/cli_run/derived_row_roster.rs	seed	src/v1/stage0/src/cli_run/derived_row_roster.rs	L5	L0	L0	L0	L0	16	1	L4:2 raw writes, no store authority ; L5:mech create_dir_all	fs::read_to_string,std::fs::create_dir_all,std::fs::read_dir,std::fs::read_to_string,std::fs::remove_dir_all,std::fs::remove_file
+src/v1/stage0/src/cli_run/doc_graph.rs	seed	src/v1/stage0/src/cli_run/doc_graph.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/cli_run/emit_host.rs	seed	src/v1/stage0/src/cli_run/emit_host.rs	L5	L5	L0	L0	L0	12	1	L4:1 raw writes, no store authority ; L5:mech create_dir_all ; L5:1 process-wide memo statics	Command::new,std::fs::create_dir_all,std::fs::read_dir,std::fs::read_to_string,std::fs::remove_dir_all,std::fs::write
+src/v1/stage0/src/cli_run/emitted_crate_workspace_host.rs	seed	src/v1/stage0/src/cli_run/emitted_crate_workspace_host.rs	L5	L0	L0	L0	L0	4	1	L4:1 raw writes, no store authority ; L5:mech create_dir_all	Command::new,std::fs::create_dir_all,std::fs::remove_dir_all,std::fs::write
+src/v1/stage0/src/cli_run/entry_resolve.rs	seed	src/v1/stage0/src/cli_run/entry_resolve.rs	L5	L5	L4	L0	L0	33	1	L4:11 raw writes, no store authority ; L5:mech create_dir_all ; L5:4 process-wide memo statics ; L4:2 env reads	fs::create_dir_all,fs::remove_dir_all,fs::write,std::env::var,std::fs::create_dir_all,std::fs::read_to_string
+src/v1/stage0/src/cli_run/fallback_arm_census.rs	seed	src/v1/stage0/src/cli_run/fallback_arm_census.rs	L0	L3	L0	L0	L0	0	1	L3:cache vocab fac_cached_census_facts	
+src/v1/stage0/src/cli_run/languages_census.rs	seed	src/v1/stage0/src/cli_run/languages_census.rs	L0	L5	L0	L0	L0	3	1	L5:1 process-wide memo statics	std::fs::read_dir,std::fs::read_to_string
+src/v1/stage0/src/cli_run/native_lane_runner.rs	seed	src/v1/stage0/src/cli_run/native_lane_runner.rs	L5	L3	L4	L0	L4	104	1	L4:abs /tmp/x.rusage ; L5:18 raw writes beside store authority ; L5:mech create_dir_all|fs::rename ; L3:cache vocab native_product_cache ; L4:8 env reads ; L4:upstream binary /bin/sh|/bin/sh\n-c\n{script} ; L4:host 127.0.0.1	Command::new,File::create,OpenOptions::new,TcpStream::connect,std::env::var,std::fs::copy
+src/v1/stage0/src/cli_run/native_product_cache.rs	seed	src/v1/stage0/src/cli_run/native_product_cache.rs	L5	L0	L4	L0	L0	37	1	L4:12 raw writes, no store authority ; L5:mech create_dir_all|fs::rename ; L4:3 env reads	Command::new,OpenOptions::new,std::env::var,std::fs::copy,std::fs::create_dir_all,std::fs::read
+src/v1/stage0/src/cli_run/non_fold_residue.rs	seed	src/v1/stage0/src/cli_run/non_fold_residue.rs	L0	L5	L0	L0	L0	0	1	L5:3 process-wide memo statics	
+src/v1/stage0/src/cli_run/pool_acquire.rs	seed	src/v1/stage0/src/cli_run/pool_acquire.rs	L0	L5	L0	L0	L0	0	1	L5:3 process-wide memo statics	
+src/v1/stage0/src/cli_run/pre_entry_phase.rs	seed	src/v1/stage0/src/cli_run/pre_entry_phase.rs	L0	L5	L0	L0	L0	0	1	L5:3 process-wide memo statics	
+src/v1/stage0/src/cli_run/provider_acquire.rs	seed	src/v1/stage0/src/cli_run/provider_acquire.rs	L5	L3	L4	L0	L0	8	1	L4:2 raw writes, no store authority ; L5:mech create_dir_all ; L3:cache vocab ResolvedGraphMemoShare ; L4:1 env reads	std::env::var,std::fs::create_dir_all,std::fs::read_to_string,std::fs::remove_dir_all,std::fs::write
+src/v1/stage0/src/cli_run/reach_base_standings.rs	seed	src/v1/stage0/src/cli_run/reach_base_standings.rs	L5	L5	L0	L0	L0	3	1	L4:1 raw writes, no store authority ; L5:mech create_dir_all ; L5:1 process-wide memo statics	std::fs::create_dir_all,std::fs::remove_dir_all,std::fs::write
+src/v1/stage0/src/cli_run/required_ci_measurement.rs	seed	src/v1/stage0/src/cli_run/required_ci_measurement.rs	L4	L0	L0	L0	L0	5	1	L4:1 raw writes, no store authority	std::fs::read,std::fs::remove_file,std::fs::write
+src/v1/stage0/src/cli_run/required_floor_runner.rs	seed	src/v1/stage0/src/cli_run/required_floor_runner.rs	L0	L0	L4	L0	L0	2	1	L4:1 env reads	std::env::var,std::fs::read_to_string
+src/v1/stage0/src/cli_run/rostered_row_join.rs	seed	src/v1/stage0/src/cli_run/rostered_row_join.rs	L5	L0	L0	L0	L0	7	1	L4:2 raw writes, no store authority ; L5:mech create_dir_all	fs::create_dir_all,fs::remove_dir_all,fs::write,std::fs::read_dir
+src/v1/stage0/src/cli_run/scope_rank_view.rs	seed	src/v1/stage0/src/cli_run/scope_rank_view.rs	L0	L3	L0	L0	L0	0	1	L3:cache vocab claim_scope_for_without_memos	
+src/v1/stage0/src/cli_run/test_migration.rs	seed	src/v1/stage0/src/cli_run/test_migration.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs	seed	src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs	L5	L0	L0	L0	L0	8	1	L4:2 raw writes, no store authority ; L5:mech create_dir_all	std::fs::create_dir_all,std::fs::read_to_string,std::fs::remove_dir_all,std::fs::write
+src/v1/stage0/src/cli_run/user_work_scope.rs	seed	src/v1/stage0/src/cli_run/user_work_scope.rs	L5	L0	L4	L0	L4	16	1	L4:abs /proc/self/cgroup|/run/systemd/system|/sys/fs/cgroup|/sys/fs/cgroup{rel}/{name} ; L5:2 raw writes beside store authority ; L5:mech create_dir_all ; L4:3 env reads ; L4:host gunbc-fci1-controls.slice ; L4:unit .service|.slice|0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service	Command::new,std::env::var,std::env::var_os,std::fs::create_dir_all,std::fs::read_to_string,std::fs::remove_dir_all
+src/v1/stage0/src/cli_run/witness_gates.rs	seed	src/v1/stage0/src/cli_run/witness_gates.rs	L4	L5	L0	L0	L0	5	1	L4:1 raw writes, no store authority ; L5:4 process-wide memo statics	std::fs::read_to_string,std::fs::remove_file,std::fs::write
+src/v1/stage0/src/closure_identity.rs	seed	src/v1/stage0/src/closure_identity.rs	L4	L5	L0	L0	L0	1	1	L4:abs /proc/self/exe ; L5:1 process-wide memo statics	fs::read
+src/v1/stage0/src/codex_app_server_stdio_session.rs	seed	src/v1/stage0/src/codex_app_server_stdio_session.rs	L4	L0	L0	L0	L0	3	1	L4:1 raw writes, no store authority	Command::new,std::fs::read_to_string,std::fs::write
+src/v1/stage0/src/compiler_tests.rs	seed	src/v1/stage0/src/compiler_tests.rs	L5	L0	L4	L0	L0	10	1	L4:2 raw writes, no store authority ; L5:mech create_dir_all ; L4:1 env reads	Command::new,std::env::var,std::fs::create_dir_all,std::fs::read_dir,std::fs::read_to_string,std::fs::remove_dir_all
+src/v1/stage0/src/coproduct_reflection.rs	seed	src/v1/stage0/src/coproduct_reflection.rs	L0	L5	L0	L0	L0	1	1	L5:2 process-wide memo statics	std::fs::read_to_string
+src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs	seed	src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs	L5	L0	L0	L0	L0	52	1	L4:25 raw writes, no store authority ; L5:mech create_dir_all	Command::new,File::open,fs::create_dir_all,fs::read_to_string,fs::remove_dir_all,fs::write
+src/v1/stage0/src/declaration_index.rs	seed	src/v1/stage0/src/declaration_index.rs	L0	L0	L0	L0	L4	1	1	L4:host gunbc.srv3.srv3_os_install_actuate_scope|gunbc.tailscale_acl_phase2_credential|tailscale_acl_phase2_live_write_disposition|tailscale_acl_upsert_wet	std::fs::read_to_string
+src/v1/stage0/src/emitted_closure_compile_host.rs	seed	src/v1/stage0/src/emitted_closure_compile_host.rs	L5	L0	L4	L0	L0	44	1	L4:abs /run/probe/crate|/tmp/probe-crate|/tmp/t|/tmp/workspace ; L5:6 raw writes beside store authority ; L5:mech create_dir_all ; L4:4 env reads	Command::new,std::env::var,std::env::var_os,std::fs::canonicalize,std::fs::create_dir,std::fs::create_dir_all
+src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs	seed	src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs	L4	L0	L4	L0	L4	14	1	L4:2 raw writes, no store authority ; L4:1 env reads ; L4:host 127.0.0.1	Command::new,TcpStream::connect,std::env::var,std::fs::read,std::fs::read_to_string,std::fs::remove_dir_all
+src/v1/stage0/src/extdeps_container_oci_digest.rs	seed	src/v1/stage0/src/extdeps_container_oci_digest.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/extdeps_currency_currency.rs	seed	src/v1/stage0/src/extdeps_currency_currency.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/extdeps_external_authority.rs	seed	src/v1/stage0/src/extdeps_external_authority.rs	L0	L5	L0	L0	L0	0	1	L5:4 process-wide memo statics	
+src/v1/stage0/src/extdeps_filesystem_rust_realization.rs	seed	src/v1/stage0/src/extdeps_filesystem_rust_realization.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/extdeps_ietf_http_semantics.rs	seed	src/v1/stage0/src/extdeps_ietf_http_semantics.rs	L0	L5	L0	L0	L0	0	1	L5:5 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_dag_emit.rs	seed	src/v1/stage0/src/extdeps_languages_dag_emit.rs	L0	L5	L0	L0	L0	0	1	L5:30 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_dag_syntax.rs	seed	src/v1/stage0/src/extdeps_languages_dag_syntax.rs	L0	L5	L0	L0	L0	0	1	L5:12 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_dag_types.rs	seed	src/v1/stage0/src/extdeps_languages_dag_types.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_go_emit.rs	seed	src/v1/stage0/src/extdeps_languages_go_emit.rs	L0	L5	L0	L0	L0	0	1	L5:33 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_go_syntax.rs	seed	src/v1/stage0/src/extdeps_languages_go_syntax.rs	L0	L5	L0	L0	L0	0	1	L5:3 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_go_types.rs	seed	src/v1/stage0/src/extdeps_languages_go_types.rs	L0	L5	L0	L0	L0	0	1	L5:16 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_python_emit.rs	seed	src/v1/stage0/src/extdeps_languages_python_emit.rs	L0	L5	L0	L0	L0	0	1	L5:35 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_python_syntax.rs	seed	src/v1/stage0/src/extdeps_languages_python_syntax.rs	L0	L5	L0	L0	L0	0	1	L5:3 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_python_types.rs	seed	src/v1/stage0/src/extdeps_languages_python_types.rs	L0	L5	L0	L0	L0	0	1	L5:27 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_rust_capabilities.rs	seed	src/v1/stage0/src/extdeps_languages_rust_capabilities.rs	L0	L5	L0	L0	L0	0	1	L5:4 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_rust_derive_contracts.rs	seed	src/v1/stage0/src/extdeps_languages_rust_derive_contracts.rs	L0	L5	L0	L0	L0	0	1	L5:17 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_rust_emit.rs	seed	src/v1/stage0/src/extdeps_languages_rust_emit.rs	L0	L5	L0	L0	L0	0	1	L5:52 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_rust_representation.rs	seed	src/v1/stage0/src/extdeps_languages_rust_representation.rs	L0	L5	L0	L0	L0	0	1	L5:5 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_rust_syntax.rs	seed	src/v1/stage0/src/extdeps_languages_rust_syntax.rs	L0	L5	L0	L0	L0	0	1	L5:8 process-wide memo statics	
+src/v1/stage0/src/extdeps_languages_rust_types.rs	seed	src/v1/stage0/src/extdeps_languages_rust_types.rs	L0	L5	L0	L0	L0	0	1	L5:20 process-wide memo statics	
+src/v1/stage0/src/extdeps_posix_clock_gettime.rs	seed	src/v1/stage0/src/extdeps_posix_clock_gettime.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/extdeps_rust_cargo.rs	seed	src/v1/stage0/src/extdeps_rust_cargo.rs	L0	L5	L0	L0	L0	0	1	L5:10 process-wide memo statics	
+src/v1/stage0/src/extdeps_rust_version.rs	seed	src/v1/stage0/src/extdeps_rust_version.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/extdeps_units_dimensionless.rs	seed	src/v1/stage0/src/extdeps_units_dimensionless.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/extdeps_units_iec_80000_13.rs	seed	src/v1/stage0/src/extdeps_units_iec_80000_13.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/extdeps_units_iso8601.rs	seed	src/v1/stage0/src/extdeps_units_iso8601.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/extdeps_units_iso_80000_3.rs	seed	src/v1/stage0/src/extdeps_units_iso_80000_3.rs	L0	L5	L0	L0	L0	0	1	L5:5 process-wide memo statics	
+src/v1/stage0/src/extdeps_uri_path.rs	seed	src/v1/stage0/src/extdeps_uri_path.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/extdeps_version.rs	seed	src/v1/stage0/src/extdeps_version.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/extdeps_version_semver.rs	seed	src/v1/stage0/src/extdeps_version_semver.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/generated_artifact_boundary_host.rs	seed	src/v1/stage0/src/generated_artifact_boundary_host.rs	L0	L0	L0	L0	L0	1	1		fs::read_to_string
+src/v1/stage0/src/gunbc_cli_dispatch_generated.rs	seed	src/v1/stage0/src/gunbc_cli_dispatch_generated.rs	L0	L0	L0	L0	L4	0	1	L4:host 127.0.0.1	
+src/v1/stage0/src/gunbc_cli_dispatch_surface.rs	seed	src/v1/stage0/src/gunbc_cli_dispatch_surface.rs	L0	L5	L0	L0	L4	0	1	L5:1 process-wide memo statics ; L4:host 127.0.0.1	
+src/v1/stage0/src/gunbc_emitted_crate_workspace.rs	seed	src/v1/stage0/src/gunbc_emitted_crate_workspace.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/gunbc_file_transport_generated.rs	seed	src/v1/stage0/src/gunbc_file_transport_generated.rs	L5	L0	L0	L0	L0	7	1	L5:mech create_new	OpenOptions::new,std::fs::hard_link,std::fs::remove_file
+src/v1/stage0/src/gunbc_rust_crate_package_ident.rs	seed	src/v1/stage0/src/gunbc_rust_crate_package_ident.rs	L0	L5	L0	L0	L0	0	1	L5:3 process-wide memo statics	
+src/v1/stage0/src/gunbc_rust_emitted_edge.rs	seed	src/v1/stage0/src/gunbc_rust_emitted_edge.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/gunbc_rust_source_type_bindings.rs	seed	src/v1/stage0/src/gunbc_rust_source_type_bindings.rs	L0	L5	L0	L0	L0	0	1	L5:4 process-wide memo statics	
+src/v1/stage0/src/gunbc_stage0_stage0_crate_layout_generated.rs	seed	src/v1/stage0/src/gunbc_stage0_stage0_crate_layout_generated.rs	L0	L5	L0	L0	L0	0	1	L5:5 process-wide memo statics	
+src/v1/stage0/src/gunbc_stage0_stage0_crate_partition_generated.rs	seed	src/v1/stage0/src/gunbc_stage0_stage0_crate_partition_generated.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/gunbc_stage0_stage0_emitted_population_manifest.rs	seed	src/v1/stage0/src/gunbc_stage0_stage0_emitted_population_manifest.rs	L0	L5	L0	L0	L0	0	1	L5:3 process-wide memo statics	
+src/v1/stage0/src/gunbc_stage0_stage0_executable_assembly_generated.rs	seed	src/v1/stage0/src/gunbc_stage0_stage0_executable_assembly_generated.rs	L0	L5	L0	L0	L0	0	1	L5:4 process-wide memo statics	
+src/v1/stage0/src/gunbc_structural_realization_bindings.rs	seed	src/v1/stage0/src/gunbc_structural_realization_bindings.rs	L0	L5	L0	L0	L0	0	1	L5:7 process-wide memo statics	
+src/v1/stage0/src/main.rs	seed	src/v1/stage0/src/main.rs	L5	L0	L0	L0	L4	7	1	L4:abs /proc/nope|/proc/nope/src|/proc/nope/src/a.rs ; L5:1 raw writes beside store authority ; L5:mech create_dir_all ; L4:host 127.0.0.1	std::fs::canonicalize,std::fs::create_dir_all,std::fs::read_dir,std::fs::write
+src/v1/stage0/src/memory_governor.rs	seed	src/v1/stage0/src/memory_governor.rs	L5	L3	L4	L0	L4	28	1	L4:abs /proc/meminfo|/proc/self/cgroup|/proc/self/stat|/proc/self/status ; L5:7 raw writes beside store authority ; L5:mech create_dir_all ; L3:cache vocab cache|cache_evictions_in_window|cache_readmissions_in_window ; L4:3 env reads ; L4:unit actions-runner.slice	std::env::var,std::fs::create_dir,std::fs::create_dir_all,std::fs::read_to_string,std::fs::remove_dir,std::fs::remove_dir_all
+src/v1/stage0/src/module_path_index/index.rs	seed	src/v1/stage0/src/module_path_index/index.rs	L0	L0	L0	L0	L0	1	1		std::fs::read_to_string
+src/v1/stage0/src/module_path_index/parsed_dag_file.rs	seed	src/v1/stage0/src/module_path_index/parsed_dag_file.rs	L0	L0	L0	L0	L0	1	1		std::fs::read_to_string
+src/v1/stage0/src/namespace_baseline.rs	seed	src/v1/stage0/src/namespace_baseline.rs	L5	L0	L0	L0	L0	21	1	L4:1 raw writes, no store authority ; L5:mech create_dir_all	Command::new,std::fs::copy,std::fs::create_dir_all,std::fs::read_dir,std::fs::read_to_string,std::fs::remove_dir_all
+src/v1/stage0/src/partition_crate_boundary_host.rs	seed	src/v1/stage0/src/partition_crate_boundary_host.rs	L5	L0	L4	L0	L0	5	1	L4:1 raw writes, no store authority ; L5:mech create_dir_all ; L4:1 env reads	Command::new,fs::create_dir_all,fs::read_to_string,fs::write,std::env::var
+src/v1/stage0/src/phase_profile.rs	seed	src/v1/stage0/src/phase_profile.rs	L0	L5	L4	L0	L0	2	1	L5:1 process-wide memo statics ; L4:2 env reads	std::env::var
+src/v1/stage0/src/pre_push.rs	seed	src/v1/stage0/src/pre_push.rs	L4	L3	L0	L0	L0	9	1	L4:abs /dev/null ; L3:cache vocab cached	Command::new,std::fs::metadata
+src/v1/stage0/src/process_group.rs	seed	src/v1/stage0/src/process_group.rs	L5	L0	L0	L0	L0	16	1	L4:abs /proc ; L5:2 raw writes beside store authority ; L5:mech create_dir_all	std::fs::create_dir_all,std::fs::read_dir,std::fs::read_to_string,std::fs::remove_dir_all,std::fs::write
+src/v1/stage0/src/recorded_fixture.rs	seed	src/v1/stage0/src/recorded_fixture.rs	L5	L0	L0	L0	L0	5	1	L4:1 raw writes, no store authority ; L5:mech create_dir_all	fs::create_dir_all,fs::read,fs::remove_dir_all,fs::write
+src/v1/stage0/src/required_regen_host.rs	seed	src/v1/stage0/src/required_regen_host.rs	L5	L3	L4	L0	L0	105	1	L4:abs /proc/self/exe|/proc/self/fd/{}|/proc/sys/kernel/hostname|/tmp ; L5:18 raw writes beside store authority ; L5:mech create_dir_all|fs::rename ; L3:cache vocab disk_cache|memo|memo_normalized|normalize_cache_path ; L4:2 env reads	Command::new,File::open,OpenOptions::new,fs::copy,fs::create_dir_all,fs::read
+src/v1/stage0/src/std_algebra.rs	seed	src/v1/stage0/src/std_algebra.rs	L0	L5	L0	L0	L0	0	1	L5:7 process-wide memo statics	
+src/v1/stage0/src/std_coercion.rs	seed	src/v1/stage0/src/std_coercion.rs	L0	L5	L0	L0	L0	0	1	L5:3 process-wide memo statics	
+src/v1/stage0/src/std_compiler_entry.rs	seed	src/v1/stage0/src/std_compiler_entry.rs	L0	L5	L0	L0	L0	0	1	L5:4 process-wide memo statics	
+src/v1/stage0/src/std_content_hash.rs	seed	src/v1/stage0/src/std_content_hash.rs	L0	L5	L0	L0	L0	0	1	L5:3 process-wide memo statics	
+src/v1/stage0/src/std_decimal.rs	seed	src/v1/stage0/src/std_decimal.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/std_integer.rs	seed	src/v1/stage0/src/std_integer.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/std_interface_summary.rs	seed	src/v1/stage0/src/std_interface_summary.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/std_machine_constraints.rs	seed	src/v1/stage0/src/std_machine_constraints.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/std_measure.rs	seed	src/v1/stage0/src/std_measure.rs	L0	L5	L0	L0	L0	0	1	L5:5 process-wide memo statics	
+src/v1/stage0/src/std_nat.rs	seed	src/v1/stage0/src/std_nat.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/std_node.rs	seed	src/v1/stage0/src/std_node.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/std_occurrence_binding.rs	seed	src/v1/stage0/src/std_occurrence_binding.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/std_occurrence_binding_candidates.rs	seed	src/v1/stage0/src/std_occurrence_binding_candidates.rs	L0	L5	L0	L0	L0	0	1	L5:9 process-wide memo statics	
+src/v1/stage0/src/std_occurrence_identity.rs	seed	src/v1/stage0/src/std_occurrence_identity.rs	L0	L5	L0	L0	L0	0	1	L5:10 process-wide memo statics	
+src/v1/stage0/src/std_primitive_projection.rs	seed	src/v1/stage0/src/std_primitive_projection.rs	L0	L5	L0	L0	L0	0	1	L5:29 process-wide memo statics	
+src/v1/stage0/src/std_syntax.rs	seed	src/v1/stage0/src/std_syntax.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/std_termination.rs	seed	src/v1/stage0/src/std_termination.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/std_trait_derive_shape.rs	seed	src/v1/stage0/src/std_trait_derive_shape.rs	L0	L5	L0	L0	L0	0	1	L5:5 process-wide memo statics	
+src/v1/stage0/src/std_types.rs	seed	src/v1/stage0/src/std_types.rs	L0	L5	L0	L0	L0	0	1	L5:7 process-wide memo statics	
+src/v1/stage0/src/std_unicode_scalar.rs	seed	src/v1/stage0/src/std_unicode_scalar.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/std_workspace_artifact.rs	seed	src/v1/stage0/src/std_workspace_artifact.rs	L0	L3	L0	L0	L0	0	1	L3:cache vocab LocalCacheState	
+src/v1/stage0/src/target_invocation_host.rs	seed	src/v1/stage0/src/target_invocation_host.rs	L5	L3	L4	L0	L4	52	1	L4:abs /sys/fs/cgroup/system.slice/actions-runner@srv4-15.service ; L5:13 raw writes beside store authority ; L5:mech create_dir_all ; L3:cache vocab TypeEnvCache ; L4:4 env reads ; L4:host /sys/fs/cgroup/system.slice/actions-runner@srv4-15.service	Command::new,std::env::var,std::env::var_os,std::fs::canonicalize,std::fs::copy,std::fs::create_dir_all
+src/v1/stage0/src/v1_compiler_coercion.rs	seed	src/v1/stage0/src/v1_compiler_coercion.rs	L0	L5	L0	L0	L0	0	1	L5:5 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_compile.rs	seed	src/v1/stage0/src/v1_compiler_compile.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_complexity.rs	seed	src/v1/stage0/src/v1_compiler_complexity.rs	L0	L5	L0	L0	L0	0	1	L5:4 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_dag_collect.rs	seed	src/v1/stage0/src/v1_compiler_dag_collect.rs	L0	L3	L0	L0	L0	0	1	L3:cache vocab _memo_reset|dag_collect_fp_memo_reset|dag_node_surface_fingerprint_memo	
+src/v1/stage0/src/v1_compiler_dag_collect_support.rs	seed	src/v1/stage0/src/v1_compiler_dag_collect_support.rs	L0	L3	L0	L0	L0	0	1	L3:cache vocab dag_collect_fp_memo_reset|dag_node_surface_fingerprint_memo	
+src/v1/stage0/src/v1_compiler_emit.rs	seed	src/v1/stage0/src/v1_compiler_emit.rs	L5	L5	L0	L0	L0	0	1	L5:mech WriteCreateNew ; L5:7 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_emit_rust.rs	seed	src/v1/stage0/src/v1_compiler_emit_rust.rs	L5	L5	L0	L0	L0	0	1	L5:mech WriteCreateNew ; L5:39 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_emitted_workspace.rs	seed	src/v1/stage0/src/v1_compiler_emitted_workspace.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_infer.rs	seed	src/v1/stage0/src/v1_compiler_infer.rs	L0	L5	L0	L0	L0	0	1	L5:18 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_infer_emit_info.rs	seed	src/v1/stage0/src/v1_compiler_infer_emit_info.rs	L0	L5	L0	L0	L0	0	1	L5:3 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_infer_env.rs	seed	src/v1/stage0/src/v1_compiler_infer_env.rs	L0	L5	L0	L0	L0	0	1	L5:4 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_infer_items.rs	seed	src/v1/stage0/src/v1_compiler_infer_items.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_infer_method.rs	seed	src/v1/stage0/src/v1_compiler_infer_method.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_infer_resolve.rs	seed	src/v1/stage0/src/v1_compiler_infer_resolve.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_parse.rs	seed	src/v1/stage0/src/v1_compiler_parse.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_runtime_rust.rs	seed	src/v1/stage0/src/v1_compiler_runtime_rust.rs	L0	L5	L0	L0	L0	0	1	L5:10 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_stage0_crates.rs	seed	src/v1/stage0/src/v1_compiler_stage0_crates.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_tokenize.rs	seed	src/v1/stage0/src/v1_compiler_tokenize.rs	L0	L5	L0	L0	L0	0	1	L5:5 process-wide memo statics	
+src/v1/stage0/src/v1_compiler_trait_derive_emit.rs	seed	src/v1/stage0/src/v1_compiler_trait_derive_emit.rs	L0	L5	L0	L0	L0	0	1	L5:12 process-wide memo statics	
+src/v1/stage0/src/v1_gunbc_occurrence_binding_parser_walk.rs	seed	src/v1/stage0/src/v1_gunbc_occurrence_binding_parser_walk.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/v1_interpreter.rs	seed	src/v1/stage0/src/v1_interpreter.rs	L5	L5	L4	L0	L4	159	1	L4:abs /etc/absent_hostname|/etc/hostname|/home/runner/.cargo/bin/cargo|/home/u ; L5:22 raw writes beside store authority ; L5:mech create_dir_all|create_new|fs::rename ; L5:42 process-wide memo statics ; L4:31 env reads ; L4:upstream binary /bin/false|/bin/true	Command::new,File::create,OpenOptions::new,std::env::var,std::env::var_os,std::fs::canonicalize
+src/v1/stage0/src/v1_interpreter_dispatch_generated.rs	seed	src/v1/stage0/src/v1_interpreter_dispatch_generated.rs	L0	L3	L0	L0	L0	0	1	L3:cache vocab FreeCallEmitHostNativeCacheEvict|FreeCallEmitHostRunTransportCached	
+src/v1/stage0/src/v1_rt.rs	seed	src/v1/stage0/src/v1_rt.rs	L5	L5	L4	L0	L0	16	1	L4:abs /proc/self/cgroup|/proc/self/mountinfo|/proc/self/stat|/sys/fs/cgroup ; L5:mech create_new ; L5:10 process-wide memo statics ; L4:2 env reads	OpenOptions::new,std::env::var,std::fs::hard_link,std::fs::read_to_string,std::fs::remove_file
+src/v1/stage0/src/v1_std_core.rs	seed	src/v1/stage0/src/v1_std_core.rs	L0	L5	L0	L0	L0	0	1	L5:32 process-wide memo statics	
+src/v1/stage0/src/v1_test_non_ascii_perf_fixture.rs	seed	src/v1/stage0/src/v1_test_non_ascii_perf_fixture.rs	L0	L5	L0	L0	L0	0	1	L5:2 process-wide memo statics	
+src/v1/stage0/src/v1_tests_claim_escape_json_string_differential.rs	seed	src/v1/stage0/src/v1_tests_claim_escape_json_string_differential.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/stage0/src/v1_tests_claim_shared_type_leaf_collision_census.rs	seed	src/v1/stage0/src/v1_tests_claim_shared_type_leaf_collision_census.rs	L0	L5	L0	L0	L0	0	1	L5:1 process-wide memo statics	
+src/v1/trait_derive_emit	seed	src/v1/trait_derive_emit.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheProbe	
+std.artifact_store_scratch_grant	production	dag/std/artifact_store_scratch_grant.dag	L4	L2	L0	L2	L0	0	1	L4:abs /tmp/gunbc_	
+std.cache_identity	production	dag/std/cache_identity.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab CacheInterfaceId|cache_identity|cache_interface_product_dissolve_on	
+std.cache_interface	production	dag/std/cache_interface.dag	L2	L3	L0	L0	L0	0	1	L3:cache vocab BackendCacheKey|CacheDeploymentBackends|CacheEvidence|CacheInterfaceFacts	
+std.emit_on_demand	production	dag/std/emit_on_demand.dag	L4	L3	L0	L0	L0	0	1	L4:abs /tmp/gunbc_emit_on_demand ; L3:cache vocab EmitOnDemandCacheReceipt|emit_on_demand_family_cache_root|emit_on_demand_native_cache_root	
+std.materialization_store_grant	production	dag/std/materialization_store_grant.dag	L4	L2	L0	L2	L0	0	1	L4:abs /tmp/gunbc_compute_|/var/lib/gunbc/materialization-store	
+std.realization	production	dag/std/realization.dag	L2	L3	L0	L0	L0	0	1	L3:cache vocab Memoize	
+std.realization_schedule	production	dag/std/realization_schedule.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab Memo|memo|memoized|stage_memo	
+std.workspace_artifact	production	dag/std/workspace_artifact.dag	L0	L3	L0	L0	L0	0	1	L3:cache vocab LocalCacheState	
