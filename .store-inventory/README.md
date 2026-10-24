@@ -17,3 +17,6 @@ Rulings (stern-ram-763, 2026-10-24):
 Spine: vivid-ibex-111's per-store hand read (census-data/vivid-ibex-111-store-inventory b3a8cb4cf8e, shape column), plus rows only jolly-hawk-60's or bright-gull-439's readers found (census-data/bright-gull-439 0cc49a7b3cb9): hold-library consumers, instruments, extdeps, src/v2.
 Further rulings (stern-ram-763, 2026-10-24): APPEND_LOG -> Blocked: append-only (named); SECRET_PATH -> ReHomedAccess; DEPLOY_TREE -> ReHomedPlacement; shared parent roots split into one member declaration per store under the parent (Blocked only if two stores share one directory's entries); BMC /tmp credential files OutOfLane.
 cohort = the child PR that owns the row. 'note' starting 'child checks:' is a disposition the child confirms before migrating.
+
+## row_id
+`row_id` = 'S' + sha256(module NUL store NUL occurrence)[:8]. It depends only on the row's identity, not its position, so it is stable across republishes as long as module and store are unchanged. Every child PR lists the row_ids it discharges, so the closeout is an identity join over this file.
