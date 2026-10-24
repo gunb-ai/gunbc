@@ -28,7 +28,7 @@ elapsed () { echo $(( $(date +%s) - START )); }
 runjob () { # runjob <tag> <tree> <entry> <wet|dry> <fn1> [..]   (skip if checkpoint present)
   local tag=$1; shift; local tree=$1; shift; local entry=$1; shift; local mode=$1; shift
   if [ "$ARMS" != all ]; then case ",$ARMS," in *",$tag,"*) ;; *) echo "ROW $tag SKIPPED-ARGLIST"; return 0;; esac; fi
-  [ -s $CKPT/jobs/$tag.out ] && { echo "ROW $tag SKIPPED-CHECKPOINT"; return 0; }
+  if [ -s $CKPT/jobs/$tag.out ]; then echo "ROW $tag (checkpoint) rc=? lines=$(wc -l < $CKPT/jobs/$tag.out) P=$(grep -c '^PASS ' $CKPT/jobs/$tag.out) F=$(grep -c '^FAIL ' $CKPT/jobs/$tag.out) U=$(grep -c '^UNOBSERVED ' $CKPT/jobs/$tag.out)"; grep -E '^(PASS|FAIL|UNOBSERVED) ' $CKPT/jobs/$tag.out | sed "s|^|  $tag |" | head -12; return 0; fi
   local el; el=$(elapsed)
   if [ "$el" -gt "$DEADLINE" ]; then echo "DEADLINE_REACHED at ${el}s before $tag -- resume later"; return 1; fi
   local fns; fns=$(printf '%s,' "$@" | sed 's/,$//')
@@ -47,7 +47,7 @@ runjob () { # runjob <tag> <tree> <entry> <wet|dry> <fn1> [..]   (skip if checkp
 sweep_job () { # sweep_job <tag> <idx> <file> <tree>
   local tag=$1 i=$2 f=$3; local CKPT_TREE=$4
   if [ "$ARMS" != all ]; then case ",$ARMS," in *",SW-$tag-$i,"*) ;; *) echo "ROW SW-$tag-$i SKIPPED-ARGLIST"; return 0;; esac; fi
-  [ -s $CKPT/jobs/SW-$tag-$i.out ] && { echo "ROW SW-$tag-$i file=$f SKIPPED-CHECKPOINT"; return 0; }
+  if [ -s $CKPT/jobs/SW-$tag-$i.out ]; then echo "ROW SW-$tag-$i file=$f (checkpoint) P=$(grep -c '^PASS ' $CKPT/jobs/SW-$tag-$i.out) F=$(grep -c '^FAIL ' $CKPT/jobs/SW-$tag-$i.out) U=$(grep -c '^UNOBSERVED ' $CKPT/jobs/SW-$tag-$i.out)"; return 0; fi
   local el; el=$(elapsed)
   if [ "$el" -gt "$DEADLINE" ]; then echo "DEADLINE_REACHED at ${el}s before SW-$tag-$i -- resume later"; return 1; fi
   local fns; fns=$(fns_of2 $CKPT_TREE/$f | paste -sd, -)
