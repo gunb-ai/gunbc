@@ -31365,17 +31365,28 @@ type WireSerializeResult<T> = Result<T, String>;
 
 pub fn resolve_coproduct_wire_policy(
     coproduct_name: &str,
+    declaring_module: Option<&str>,
     modules: &[Rc<TypedModule>],
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
 ) -> Option<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> {
     use crate::v1_compiler_emit_rust::resolve_local_coproduct_wire_policy;
     use crate::v1_std_core::module_imports;
+    // KEYED BY THE PAIR, NOT THE BARE NAME -- parity with the typing authority.
+    // `build_coproduct_wire_contract_index` (v1_interpreter.rs) indexes rows by
+    // (DeclarationRef.module_path, DeclarationRef.decl_name) and `decode_nullary_coproduct` looks
+    // them up with the coproduct's DECLARING module; this fold must answer the same question the
+    // interpreter answers, or the emitted policy and the interpreted policy disagree (RFM
+    // coproduct_wire_contract_target_not_local_in_emitted_extdeps_github: a row aimed at another
+    // module's same-named coproduct was served here). A coproduct with no declaring module in the
+    // index has no pair any row can name, so it resolves to the default, like the authority.
+    let declaring_module = declaring_module?;
     let si = Rc::new(source_indices.clone());
     let mut matches: Vec<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> = Vec::new();
     for tm in modules {
         let imports = module_imports(tm.module.clone());
         if let Some(local) = resolve_local_coproduct_wire_policy(
             coproduct_name.to_string(),
+            declaring_module.to_string(),
             false,
             tm.items.clone(),
             imports,
@@ -31537,8 +31548,15 @@ fn serialize_variant_to_wire_json(
         data_path_wire_variant_tag, policy_is_string_variant, policy_is_untagged,
         policy_serde_tag_field, rust_tagged_object_policy,
     };
+    // The declaring module comes from the SAME index the interpreter's decode consults via
+    // `module_path_for_type_decl_node`, so serialize and decode agree on which declaration a row
+    // governs (pair key, RFM coproduct_wire_contract_target_not_local_in_emitted_extdeps_github).
+    let declaring_module = ctx
+        .type_decl_index()
+        .declaring_module_for_coproduct(type_name);
     let policy = resolve_coproduct_wire_policy(
         type_name,
+        declaring_module.as_deref(),
         &ctx.modules.iter().cloned().collect::<std::vec::Vec<_>>(),
         ctx.source_indices.as_ref(),
     )
