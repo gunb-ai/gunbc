@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_witness_file_does_not_resolve_under_claim_batch_on_main
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_witness_file_does_not_resolve_under_claim_batch_on_main: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_witness_file_does_not_resolve_under_claim_batch_on_main" as NonEmptyStr,
+
+  receipts: [
+    "a witness file does not resolve under claim_batch on main: every claim in dag/test/claim/build_selection_witness.dag is unexecutable on the hermetic route, so a change whose only discriminating RED lives there (gunbc#14376, w_an_unreadable_answer_projects_no_reading_not_a_zero) can be green on typecheck and unrun. The file typechecks; the claim_batch resolve step refuses it.",
+
+    "SPECIMEN, found 2026-10-19 by clever-lark-379 while collecting exact-head evidence for the nfr PR stack. At main 1f12e92594b, `claim_batch --hermetic --source-root dag --source-root src/v2 --entry dag/test/claim/build_selection_witness.dag --functions w_the_axes_are_the_five_the_pipeline_funds` (a witness no PR touches) answers `claim_batch: resolve failed for dag/test/claim/build_selection_witness.dag: dag/product/build_fulfillment.dag:162:68: error: no field 'part' on type 'empty_list_element'`, repeated at 164:59, 165:53, 165:79 and 165:119 (display_label, quantity_per_build). Run in one ctrl-build --remote dispatch: cargo build --release -p v1-compiler --bin claim_batch, then the claim_batch call.",
+
+    "THE SITE is product.build_fulfillment derive_bom: `fold(recipe.memory.proposed.population, init: [], f: (lines, dimm) => ...)` reads `line.part` and `line.display_label` off the accumulator, whose type the resolver infers from the empty-list literal init as empty_list_element rather than from the BomLine the fold body concatenates. This is a type-system floor defect (the accumulator type of a fold whose init is `[]`), routed to Charter 1 by vivid-carp-314; the row records the harm so it ranks, it does not propose a local rewrite of derive_bom.",
+
+    "ATTAINABLE CEILING: structurally guaranteed -- an accepted program has a fold accumulator typed from its step function, so the claim route resolves what the typechecker accepts. NEXT-RUNG TRIGGER, at capability grain: fold accumulator inference joins the declared init with the step result type (a typecheck/resolve agreement, not a per-file fix), with a discriminating RED of a fold whose init is `[]` and whose step reads a field of the accumulator element. Until then a witness whose module closure reaches build_fulfillment is mitigatable only: it must be run, never assumed.",
+
+    "RECOGNITION RULE: a witness that typechecks is not a witness that ran. Before citing a claim as executed, show its PASS line from claim_batch at the exact head; `resolve failed` is no observation (exit 2), not a pass.",
+  ],
+
+  evidence: [],
+}
