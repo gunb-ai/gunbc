@@ -258,7 +258,7 @@ pub fn list_append<T: Clone>(
 }
 
 pub fn list_push<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
-    v1_rt::rc_list_push(xs.clone(), item.clone())
+    v1_rt::rc_list_push(xs, item)
 }
 
 pub fn list_snoc_item<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
@@ -335,7 +335,7 @@ pub fn map_entry_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     acc: Rc<HashMap<K, V>>,
     entry: Rc<MapIntroductionEntry<K, V>>,
 ) -> Rc<HashMap<K, V>> {
-    v1_rt::rc_map_insert(acc.clone(), entry.key.clone(), entry.value.clone())
+    v1_rt::rc_map_insert(acc, entry.key.clone(), entry.value.clone())
 }
 
 #[derive(Clone)]
@@ -378,7 +378,7 @@ pub fn ordering_fold<R: Clone>(o: Ordering, fold: Rc<OrderingFold<R>>) -> R {
 
 pub fn ordering_is_less(o: Ordering) -> bool {
     ordering_fold(
-        o.clone(),
+        o,
         Rc::new(OrderingFold {
             less: true,
             equal: false,
@@ -740,7 +740,7 @@ pub fn template_param_position(
 }
 
 pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
-    template_param_position(t.clone(), |p| match (*p.clone()).clone() {
+    template_param_position(t, |p| match (*p.clone()).clone() {
         AlgebraTypeTemplate::CallableOf { .. } => true,
         AlgebraTypeTemplate::ReceiverSelf => false,
         AlgebraTypeTemplate::ReceiverElement => false,
@@ -756,7 +756,7 @@ pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
 }
 
 pub fn template_receiver_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
-    template_param_position(t.clone(), |p| {
+    template_param_position(t, |p| {
         (p.clone() == Rc::new(AlgebraTypeTemplate::ReceiverSelf))
     })
 }
@@ -1262,7 +1262,7 @@ pub fn kernel_carrier_admits_numeral(name: String) -> bool {
 }
 
 pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
-    match algebra_profile_support(profile.clone()) {
+    match algebra_profile_support(profile) {
         AlgebraSupportAxis::FiniteSupport => true,
         AlgebraSupportAxis::OpenSupport => false,
     }
@@ -2428,7 +2428,7 @@ pub fn fold_non_empty<T: Clone>(
     tail: Rc<FreeMonoid<T>>,
     cons: impl Fn(T, T) -> T + Clone,
 ) -> T {
-    fold_list(tail.clone(), head.clone(), cons.clone())
+    fold_list(tail, head, cons)
 }
 
 pub fn join_separated<T: Clone>(
@@ -2445,7 +2445,7 @@ pub fn join_separated<T: Clone>(
             let first = (*__fm)[0].clone();
             let rest: Rc<Vec<_>> = Rc::new(__fm.skip(1));
             fold_list(rest.clone(), first.clone(), |acc, field| {
-                combine(combine(acc.clone(), separator.clone()), field.clone())
+                combine(combine(acc, separator.clone()), field)
             })
         }
     }
@@ -2453,8 +2453,8 @@ pub fn join_separated<T: Clone>(
 
 pub fn string_concat_join(fields: Rc<Vec<String>>, separator: String) -> String {
     join_separated(
-        fields.clone(),
-        separator.clone(),
+        fields,
+        separator,
         |acc, field| v1_rt::concat(acc.clone(), field.clone()),
         "".to_string(),
     )
@@ -2481,7 +2481,7 @@ pub fn fold_list_right<T: Clone, A: Clone>(
 }
 
 pub fn list_reverse<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
-    fold_list(xs.clone(), Rc::new(vec![]), |acc, item| {
+    fold_list(xs, Rc::new(vec![]), |acc, item| {
         Rc::new({
             let mut __cons_v = (*acc.clone()).clone();
             __cons_v.insert(0, item.clone());
@@ -2494,10 +2494,10 @@ pub fn list_map<T: Clone, U: Clone>(
     xs: Rc<FreeMonoid<T>>,
     f: impl Fn(T) -> U + Clone,
 ) -> Rc<FreeMonoid<U>> {
-    fold_list_right(xs.clone(), Rc::new(vec![]), |acc, item| {
+    fold_list_right(xs, Rc::new(vec![]), |acc, item| {
         Rc::new({
             let mut __cons_v = (*acc.clone()).clone();
-            __cons_v.insert(0, f(item.clone()));
+            __cons_v.insert(0, f(item));
             __cons_v
         })
     })
@@ -2507,8 +2507,8 @@ pub fn list_flat_map<T: Clone, U: Clone>(
     xs: Rc<FreeMonoid<T>>,
     f: impl Fn(T) -> Rc<FreeMonoid<U>> + Clone,
 ) -> Rc<FreeMonoid<U>> {
-    fold_list_right(xs.clone(), Rc::new(vec![]), |acc, item| {
-        fold_list_right(f(item.clone()), acc.clone(), |inner, produced| {
+    fold_list_right(xs, Rc::new(vec![]), |acc, item| {
+        fold_list_right(f(item), acc, |inner, produced| {
             Rc::new({
                 let mut __cons_v = (*inner.clone()).clone();
                 __cons_v.insert(0, produced.clone());
@@ -2711,7 +2711,7 @@ pub fn list_sort_by_key<T: Clone, K: Clone>(
                 })
             }),
             length(xs.clone()),
-            order.clone(),
+            order,
         ),
         |k| k.item.clone(),
     )
@@ -2730,7 +2730,7 @@ pub fn map_insert_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, 
     key: K,
     value: V,
 ) -> Rc<HashMap<K, V>> {
-    v1_rt::rc_map_insert(m.clone(), key.clone(), value.clone())
+    v1_rt::rc_map_insert(m, key, value)
 }
 
 pub fn map_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
@@ -2738,39 +2738,39 @@ pub fn map_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     key: K,
     value: V,
 ) -> Rc<HashMap<K, V>> {
-    v1_rt::rc_map_insert(m.clone(), key.clone(), value.clone())
+    v1_rt::rc_map_insert(m, key, value)
 }
 
 pub fn map_lookup_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     m: Rc<HashMap<K, V>>,
     key: K,
 ) -> Option<V> {
-    v1_rt::lookup(&m, key.clone())
+    v1_rt::lookup(&m, key)
 }
 
 pub fn map_lookup<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     m: Rc<HashMap<K, V>>,
     key: K,
 ) -> Option<V> {
-    v1_rt::lookup(&m, key.clone())
+    v1_rt::lookup(&m, key)
 }
 
 pub fn map_contains_key<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     m: Rc<HashMap<K, V>>,
     key: K,
 ) -> bool {
-    match v1_rt::lookup(&m, key.clone()) {
+    match v1_rt::lookup(&m, key) {
         Some(_) => true,
         std::option::Option::None => false,
     }
 }
 
 pub fn list_at_primitive_delegate<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
-    v1_rt::list_get_optional(&xs, index.clone())
+    v1_rt::list_get_optional(&xs, index)
 }
 
 pub fn list_at_optional<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
-    v1_rt::list_get_optional(&xs, index.clone())
+    v1_rt::list_get_optional(&xs, index)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2782,7 +2782,7 @@ pub enum ListAtLookup<T> {
 
 pub fn list_at_reference<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T> {
     match (*fold_list(
-        xs.clone(),
+        xs,
         Rc::new(ListAtLookup::ListAtMissing {
             remaining: index.clone(),
         }),
@@ -2828,7 +2828,7 @@ pub fn is_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {
 }
 
 pub fn non_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {
-    match is_empty(xs.clone()) {
+    match is_empty(xs) {
         true => false,
         false => true,
     }
@@ -2839,8 +2839,8 @@ pub fn length<T: Clone>(xs: Rc<FreeMonoid<T>>) -> i64 {
 }
 
 pub fn for_all<T: Clone>(xs: Rc<FreeMonoid<T>>, predicate: impl Fn(T) -> bool + Clone) -> bool {
-    fold_list(xs.clone(), true, |acc, item| match acc.clone() {
-        true => predicate(item.clone()),
+    fold_list(xs, true, |acc, item| match acc.clone() {
+        true => predicate(item),
         false => false,
     })
 }
@@ -2863,7 +2863,7 @@ pub fn contains<T: Clone>(
 }
 
 pub fn count_where<T: Clone>(xs: Rc<FreeMonoid<T>>, predicate: impl Fn(T) -> bool + Clone) -> i64 {
-    fold_list(xs.clone(), 0, |count, item| match predicate(item.clone()) {
+    fold_list(xs, 0, |count, item| match predicate(item) {
         true => v1_rt::int_add(count.clone(), 1),
         false => count.clone(),
     })
@@ -2874,13 +2874,13 @@ pub fn count_equal<T: Clone>(
     item: T,
     eq: impl Fn(T, T) -> bool + Clone,
 ) -> i64 {
-    count_where(xs.clone(), |candidate| eq(candidate.clone(), item.clone()))
+    count_where(xs, |candidate| eq(candidate, item.clone()))
 }
 
 pub fn unique<T: Clone>(xs: Rc<FreeMonoid<T>>, eq: impl Fn(T, T) -> bool + Clone) -> bool {
     {
         let state = fold_list(
-            xs.clone(),
+            xs,
             Rc::new(FreeMonoidUniqueState {
                 seen: Rc::new(vec![]),
                 unique: true,
@@ -2984,14 +2984,14 @@ pub fn list_starts_with<T: Clone>(
 ) -> bool {
     {
         let state = fold_list(
-            prefix.clone(),
+            prefix,
             Rc::new(ListPrefixState {
                 rest: xs.clone(),
                 matched: true,
                 _phantom: std::marker::PhantomData,
             }),
             |acc, item| match acc.matched.clone() {
-                false => acc.clone(),
+                false => acc,
                 true => {
                     let __fm = acc.rest.clone();
                     if __fm.is_empty() {
@@ -3005,7 +3005,7 @@ pub fn list_starts_with<T: Clone>(
                         let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
                         Rc::new(ListPrefixState {
                             rest: t.clone(),
-                            matched: eq(h.clone(), item.clone()),
+                            matched: eq(h.clone(), item),
                             _phantom: std::marker::PhantomData,
                         })
                     }
@@ -3155,7 +3155,7 @@ pub fn reduce_or<T: Clone>(
         } else {
             let h = (*__fm)[0].clone();
             let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            fold_non_empty(h.clone(), t.clone(), combine.clone())
+            fold_non_empty(h.clone(), t.clone(), combine)
         }
     }
 }
