@@ -3526,6 +3526,42 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.documentary_refs_witness", function: "documentary_refs_generated_document_renders_the_rows" },
+      entry: "dag/test/claim/documentary_refs_witness.dag",
+      function: "documentary_refs_generated_document_renders_the_rows",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.documentary_refs_witness", function: "documentary_refs_every_ruling_standing_agrees_with_the_document" },
+      entry: "dag/test/claim/documentary_refs_witness.dag",
+      function: "documentary_refs_every_ruling_standing_agrees_with_the_document",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.documentary_refs_witness", function: "documentary_refs_a_ledger_only_row_the_document_cites_refuses" },
+      entry: "dag/test/claim/documentary_refs_witness.dag",
+      function: "documentary_refs_a_ledger_only_row_the_document_cites_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.documentary_refs_witness", function: "documentary_refs_a_cited_row_the_document_omits_refuses" },
+      entry: "dag/test/claim/documentary_refs_witness.dag",
+      function: "documentary_refs_a_cited_row_the_document_omits_refuses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.documentary_refs_witness", function: "documentary_refs_agreeing_standings_are_admitted" },
+      entry: "dag/test/claim/documentary_refs_witness.dag",
+      function: "documentary_refs_agreeing_standings_are_admitted",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.design_ruling_standing_witness", function: "an_unclassified_ruling_row_is_refused_and_a_classified_one_is_not" },
+      entry: "dag/test/claim/design_ruling_standing_witness.dag",
+      function: "an_unclassified_ruling_row_is_refused_and_a_classified_one_is_not",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.claim_batch_parse_gate_witness", function: "an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line" },
       entry: "dag/test/claim/claim_batch_parse_gate_witness.dag",
       function: "an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line",
