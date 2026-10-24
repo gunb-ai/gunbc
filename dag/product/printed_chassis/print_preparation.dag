@@ -4,8 +4,6 @@ import extdeps.languages.json.emit {JsonNull,JsonBool,JsonNumber,JsonString,Json
 import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
 
 import std.bytes {bytes_octets,utf8_encode_bytes}
-import extdeps.crypto.sha2 {sha256_computed_digest}
-import std.content_hash {Sha256Digest}
 import std.types {String,List,Int,NonEmptyStr,Bool,FilePath}
 import product.printing.process_geometry {preserves_print_plane,prototype_support_policy,support_policy_json,support_settings}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
@@ -51,11 +49,7 @@ fn run_kernel(cad_runtime:CadRuntimeReady,script:String,call:String) -> ProcessE
 // archive, and every plate of one request slices against those bytes. The readback requirements
 // are the same profiles' values for the keys this product admits on, so the sliced archive is
 // checked against what was fed rather than against a second hand-written table.
-type StagedProfiles sole_constructor {machine:String,filament:String,process:String,required:JsonValue,machine_sha256:Sha256Digest,filament_sha256:Sha256Digest,process_sha256:Sha256Digest}
-fn staged_machine_sha256(p:StagedProfiles) -> Sha256Digest {p.machine_sha256}
-fn staged_filament_sha256(p:StagedProfiles) -> Sha256Digest {p.filament_sha256}
-fn staged_process_sha256(p:StagedProfiles) -> Sha256Digest {p.process_sha256}
-fn text_sha256(s:String) -> Sha256Digest {sha256_computed_digest(message:bytes_octets(b:utf8_encode_bytes(s:s)))}
+type StagedProfiles sole_constructor {machine:String,filament:String,process:String,required:JsonValue}
 type RecipeStaging = RecipeStaged {profiles:StagedProfiles} | RecipeStagingRefused {cause:NonEmptyStr}
 
 data required_machine_keys: List<String> = ["printer_model","nozzle_diameter"]
@@ -89,14 +83,11 @@ fn stage_recipe_profiles_in(dir:String,output:String,appimage:String,recipe:Prin
  let machine_text=serialize_json(v:json_object(members:machine))
  let filament_text=serialize_json(v:json_object(members:filament))
  let process_text=serialize_json(v:json_object(members:process))
- let profiles=StagedProfiles {machine:concat(output,".machine.json"),filament:concat(output,".filament.json"),process:concat(output,".process.json"),required:required,machine_sha256:text_sha256(s:machine_text),filament_sha256:text_sha256(s:filament_text),process_sha256:text_sha256(s:process_text)}
+ let profiles=StagedProfiles {machine:concat(output,".machine.json"),filament:concat(output,".filament.json"),process:concat(output,".process.json"),required:required}
  let written=Filesystem.WriteCreateNew(path:profiles.machine,content:machine_text).success &&
   Filesystem.WriteCreateNew(path:profiles.filament,content:filament_text).success &&
   Filesystem.WriteCreateNew(path:profiles.process,content:process_text).success
  if written {RecipeStaged {profiles:profiles}} else {RecipeStagingRefused {cause:"Profile outputs already exist or are not writable"}}
-}
-fn plate_plan_sha256(plan:PlatePreparation) -> Sha256Digest {
- text_sha256(s:serialize_json(v:json_object(members:[json_kv(key:"placements",value:json_array(elements:map(plan.placements,p=>placement_json(p:p)))),json_kv(key:"support_free",value:json_array(elements:map(plan.support_free,x=>json_string(s:x))))])))
 }
 fn readback_call(project:String,plan:PlatePreparation,receipt:String,profiles:StagedProfiles,runtime_receipt_sha256:String) -> String {
  let paths=serialize_json(v:json_object(members:[json_kv(key:"machine",value:json_string(s:profiles.machine)),json_kv(key:"filament",value:json_string(s:profiles.filament)),json_kv(key:"process",value:json_string(s:profiles.process))]))

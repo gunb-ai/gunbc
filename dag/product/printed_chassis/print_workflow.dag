@@ -4,7 +4,7 @@ import product.printed_chassis.preparation_identity {PreparedSlot,PreparedAssemb
 import extdeps.languages.json.parse {FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
 import std.process {ExitFailure}
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
-import product.printing.print_runtime {PrintRuntimeReady,print_runtime_receipt_sha256,observe_print_runtime,PrintRuntimeObserved,PrintRuntimeRefused,print_runtime_cad}
+import product.printing.print_runtime {PrintRuntimeReady,observe_print_runtime,PrintRuntimeObserved,PrintRuntimeRefused,print_runtime_cad}
 import product.printing.runtime_converge {converge}
 import product.printing.cad_runtime_converge {converge_cad_runtime}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
@@ -20,11 +20,9 @@ import extdeps.shell
 import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json_field_string,FieldRead}
 import extdeps.languages.json.emit {json_object,json_kv,json_string,json_array,serialize_json}
 import product.printed_chassis.print_batch_plan {parse_plan,PrinterSpec,PlateSpec}
-import product.printed_chassis.print_preparation {prepare,StagedProfiles,stage_recipe_profiles,RecipeStaged,RecipeStagingRefused,plate_plan_sha256,staged_machine_sha256,staged_filament_sha256,staged_process_sha256}
+import product.printed_chassis.print_preparation {prepare,StagedProfiles,stage_recipe_profiles,RecipeStaged,RecipeStagingRefused}
 import product.printing.print_recipe {PrintRecipe,print_recipe_from_wire}
 import product.printing.slicer_acquisition {acquire_orca_archive,SlicerArchiveReady,SlicerArchiveRefused}
-import product.printed_chassis.prepared_project_store {PreparationKey,lookup_prepared,PreparedFound,PreparedAbsent,PreparedLookupRefused,store_prepared,PreparedStored,PreparedStoreRefused,materialize_prepared,prepared_project_store,prepared_artifact_sha256,prepared_key_digest}
-import extdeps.printing.orca_slicer {orca_slicer_linux_aarch64_appimage_sha256}
 import product.printed_chassis.cad_check_run {check_printable_cad}
 import gunbc.fleet.printer_selection {select_printer,PrinterSelected,PrinterSelectionRefused}
 import std.content_hash {sha256_hex_digest,Sha256Digest}
@@ -38,7 +36,7 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 
 // A single invocation prepares every requested plate and writes one receipt. It starts nothing:
 // gunbc.fleet.printer_actuation is the only start authority.
-type PreparedPlate {path:String,digest:Sha256Digest,key_digest:Sha256Digest,attempt:String}
+type PreparedPlate {path:String,digest:Sha256Digest,attempt:String}
 type PreparedQueue {printer:PhysicalAssetIdentity,version:NonEmptyStr,plates:List<PreparedPlate>}
 type QueuePrepared = QueueReadyForApproval {queue:PreparedQueue} | QueuePreparationRefused {reason:String}
 // Plan shape (unique printers and attempts, numeric versions) is product.printed_chassis.print_batch_plan
@@ -53,36 +51,26 @@ fn plate_path(output:String,printer:PrinterSpec,plate:PlateSpec) -> String {
  let key=serialize_json(v:json_array(elements:[json_string(s:printer.printer as String),json_string(s:plate.attempt)]))
  join([output,"/",sha256_hex(message:bytes_octets(b:utf8_encode_bytes(s:key))) as String,".3mf"],"")
 }
-fn plate_key(runtime:PrintRuntimeReady,selection:PreparationSelection,profiles:StagedProfiles,plate:PlateSpec) -> PreparationKey? {
- let runtime_digest=match sha256_hex_digest(hex:print_runtime_receipt_sha256(r:runtime)) {Present {value:d}=>d Absent=>return none}
- let slicer=match sha256_hex_digest(hex:orca_slicer_linux_aarch64_appimage_sha256 as String) {Present {value:d}=>d Absent=>return none}
- Present {value:PreparationKey {root:selection.root_wire,source_revision:selection.source_revision,recipe:selection.recipe.name,machine_profile_sha256:staged_machine_sha256(p:profiles),filament_profile_sha256:staged_filament_sha256(p:profiles),process_profile_sha256:staged_process_sha256(p:profiles),slicer_archive_sha256:slicer,plate_plan_sha256:plate_plan_sha256(plan:plate.plan),runtime_receipt_sha256:runtime_digest}}
-}
-type PreparationSelection {root_wire:String,source_revision:NonEmptyStr,recipe:PrintRecipe}
-// A plate whose key is already in the store is materialized from it, not re-sliced; otherwise it
-// is prepared and stored. Either way the plate's identity is the stored bytes' digest.
-fn prepare_plate(runtime:PrintRuntimeReady,selection:PreparationSelection,spec:PrinterSpec,plate:PlateSpec,output:String,appimage:String,profiles:StagedProfiles) -> PreparedPlate? {
- let path=plate_path(output:output,printer:spec,plate:plate)
- let key=match plate_key(runtime:runtime,selection:selection,profiles:profiles,plate:plate) {Present {value:k}=>k Absent=>return none}
- match lookup_prepared(store:prepared_project_store as String,key:key) {
-  PreparedLookupRefused {cause:_}=>none
-  PreparedFound {project:found}=>if materialize_prepared(project:found,path:path) {Present {value:PreparedPlate {path:path,digest:prepared_artifact_sha256(p:found),key_digest:prepared_key_digest(p:found),attempt:plate.attempt}}} else {none}
-  PreparedAbsent=>match prepare(runtime:runtime,cad:concat(output,"/cad"),plan:plate.plan,output:path,appimage:appimage,profiles:profiles) {
-   ExitFailure {code:_,reason:_}=>none
-   ExitSuccess=>{
-    let read=Filesystem.Read(path:concat(path,".readback.json"))
-    let read_digest=if read.success {match parse_json_document(s:read.content) {JsonDocumentParsed {value:v}=>match json_field_string(obj:v,key:"project_sha256") {FieldRead {value:d}=>sha256_hex_digest(hex:d) FieldAbsent=>none FieldMalformed {cause:_}=>none} JsonDocumentUnreadable {gap:_}=>none}} else {none}
-    match read_digest {Absent=>none Present {value:digest}=>match store_prepared(store:prepared_project_store as String,key:key,project_path:path,project_sha256:digest) {
-     PreparedStored {project:stored}=>Present {value:PreparedPlate {path:path,digest:digest,key_digest:prepared_key_digest(p:stored),attempt:plate.attempt}}
-     PreparedStoreRefused {cause:_}=>none
-    }}
-   }
+// PREPARATION IS RECOMPUTED, NOT CACHED. A prepared plate is identified by the sha256 of its bytes,
+// read back from the sliced archive; its path is a locator re-hashed by every consumer. No store or
+// preparation key sits beside std.materialization_provider: by the materialization ladder (DESIGN
+// section 2) a cache answers a reuse obligation, and prints are rare, take minutes to prepare and
+// share no preparation across requests, so there is none. A recurring, measured reuse is the trigger
+// to key preparation as a std.materialization_provider ArtifactRequest and serve it from the local
+// materialization store, not to grow a second one here.
+fn prepare_plate(runtime:PrintRuntimeReady,path:String,plate:PlateSpec,output:String,appimage:String,profiles:StagedProfiles) -> PreparedPlate? {
+ match prepare(runtime:runtime,cad:concat(output,"/cad"),plan:plate.plan,output:path,appimage:appimage,profiles:profiles) {
+  ExitFailure {code:_,reason:_}=>none
+  ExitSuccess=>{
+   let read=Filesystem.Read(path:concat(path,".readback.json"))
+   let read_digest=if read.success {match parse_json_document(s:read.content) {JsonDocumentParsed {value:v}=>match json_field_string(obj:v,key:"project_sha256") {FieldRead {value:d}=>sha256_hex_digest(hex:d) FieldAbsent=>none FieldMalformed {cause:_}=>none} JsonDocumentUnreadable {gap:_}=>none}} else {none}
+   match read_digest {Absent=>none Present {value:digest}=>Present {value:PreparedPlate {path:path,digest:digest,attempt:plate.attempt}}}
   }
  }
 }
-fn prepare_queue(runtime:PrintRuntimeReady,selection:PreparationSelection,spec:PrinterSpec,output:String,appimage:String,profiles:StagedProfiles) -> QueuePrepared {
- let results=map(spec.plates,p=>prepare_plate(runtime:runtime,selection:selection,spec:spec,plate:p,output:output,appimage:appimage,profiles:profiles))
- if any(results,r=>match r {Absent=>true Present {value:_}=>false}) {QueuePreparationRefused {reason:"A plate failed CAD packing, pinned slicing, readback or the prepared store"}}
+fn prepare_queue(runtime:PrintRuntimeReady,spec:PrinterSpec,output:String,appimage:String,profiles:StagedProfiles) -> QueuePrepared {
+ let results=map(spec.plates,p=>prepare_plate(runtime:runtime,path:plate_path(output:output,printer:spec,plate:p),plate:p,output:output,appimage:appimage,profiles:profiles))
+ if any(results,r=>match r {Absent=>true Present {value:_}=>false}) {QueuePreparationRefused {reason:"A plate failed CAD packing, pinned slicing or readback"}}
  else {QueueReadyForApproval {queue:PreparedQueue {printer:spec.printer,version:spec.version,plates:flat_map(results,r=>match r {Present {value:p}=>[p] Absent=>[]})}}}
 }
 fn run(plan_file:String,output:String,recipe:String,source_revision:String,root:String) -> ProcessExit {
@@ -90,7 +78,6 @@ fn run(plan_file:String,output:String,recipe:String,source_revision:String,root:
  let selected=match printed_assembly_root_from_wire(s:root) {Present {value:r}=>r Absent=>return exit_failure(reason:"Unknown printed assembly root")}
  let chosen=match print_recipe_from_wire(s:recipe) {Present {value:r}=>r Absent=>return exit_failure(reason:"Unknown print recipe")}
  if source_revision=="" {return exit_failure(reason:"Preparation needs the source revision its geometry is generated at")}
- let selection=PreparationSelection {root_wire:root,source_revision:source_revision as NonEmptyStr,recipe:chosen}
  let read=Filesystem.Read(path:plan_file)
  if !read.success {return exit_failure(reason:"Cannot read fleet print plan")}
  let specs=match parse_plan(text:read.content) {Present {value:p}=>p Absent=>return exit_failure(reason:"Malformed printer queues, duplicate identities or invalid placements")}
@@ -98,11 +85,11 @@ fn run(plan_file:String,output:String,recipe:String,source_revision:String,root:
  let runtime=match observe_print_runtime(appimage:appimage,receipt:concat(output,"/runtime.json")) {PrintRuntimeObserved {runtime:r}=>r PrintRuntimeRefused {reason:why}=>return exit_failure(reason:why)}
  let profiles=match stage_recipe_profiles(output:concat(output,"/inputs"),appimage:appimage,recipe:chosen) {RecipeStaged {profiles:p}=>p RecipeStagingRefused {cause:c}=>return exit_failure(reason:c as String)}
  match check_printable_cad(cad:print_runtime_cad(r:runtime),root:selected,output:concat(output,"/cad")) {ExitSuccess=>{} cad_refusal=>return cad_refusal}
- let results=map(specs,s=>prepare_queue(runtime:runtime,selection:selection,spec:s,output:output,appimage:appimage,profiles:profiles))
+ let results=map(specs,s=>prepare_queue(runtime:runtime,spec:s,output:output,appimage:appimage,profiles:profiles))
  if any(results,r=>match r {QueuePreparationRefused {reason:_}=>true QueueReadyForApproval {queue:_}=>false}) {return exit_failure(reason:"Fleet preparation refused; inspect per-plate preparation logs; nothing was started")}
  let queues=flat_map(results,r=>match r {QueueReadyForApproval {queue:q}=>[q] QueuePreparationRefused {reason:_}=>[]})
  if !queues_valid(queues:queues) {return exit_failure(reason:"Prepared fleet queues failed final admission")}
- let receipt=serialize_json(v:json_array(elements:map(queues,q=>json_object(members:[json_kv(key:"printer",value:json_string(s:q.printer as String)),json_kv(key:"version",value:json_string(s:q.version as String)),json_kv(key:"recipe",value:json_string(s:recipe)),json_kv(key:"source_revision",value:json_string(s:source_revision)),json_kv(key:"plates",value:json_array(elements:map(q.plates,p=>json_object(members:[json_kv(key:"path",value:json_string(s:p.path)),json_kv(key:"digest",value:json_string(s:p.digest.hex as String)),json_kv(key:"key_digest",value:json_string(s:p.key_digest.hex as String)),json_kv(key:"attempt",value:json_string(s:p.attempt))]))))]))))
+ let receipt=serialize_json(v:json_array(elements:map(queues,q=>json_object(members:[json_kv(key:"printer",value:json_string(s:q.printer as String)),json_kv(key:"version",value:json_string(s:q.version as String)),json_kv(key:"recipe",value:json_string(s:recipe)),json_kv(key:"source_revision",value:json_string(s:source_revision)),json_kv(key:"plates",value:json_array(elements:map(q.plates,p=>json_object(members:[json_kv(key:"path",value:json_string(s:p.path)),json_kv(key:"digest",value:json_string(s:p.digest.hex as String)),json_kv(key:"attempt",value:json_string(s:p.attempt))]))))]))))
  if !Filesystem.WriteCreateNew(path:concat(output,"/prepared-queues.json"),content:receipt).success {return exit_failure(reason:"Prepared queue receipt already exists or is not writable")}
  ExitSuccess
 }
