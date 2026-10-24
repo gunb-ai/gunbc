@@ -97,8 +97,8 @@ fn nrp_label(a: DurableHoldNonHolderReleaseAssessment<NrpObservation>) -> String
   }
 }
 
-fn nrp(observed: DurableHoldObservation, release: DurableHoldNonHolderRelease<NrpObservation>) -> String {
-  nrp_label(a: durable_hold_nonholder_release_assess(observed: observed, release: release))
+fn nrp(observed: DurableHoldObservation, request: DurableHoldNonHolderRelease<NrpObservation>) -> String {
+  nrp_label(a: durable_hold_nonholder_release_assess(observed: observed, request: request))
 }
 
 // ONE HOLD, ONE GENERATION, THREE COMPLETION VERDICTS: only an observed-complete section is
@@ -106,9 +106,9 @@ fn nrp(observed: DurableHoldObservation, release: DurableHoldNonHolderRelease<Nr
 // the slot names, carrying the observation it was read from.
 test fn only_an_observed_complete_section_releases_and_an_unobserved_one_refuses() -> Bool {
   let held = nrp_held(owner: nrp_holder, generation: 3)
-  nrp(observed: held, release: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 1)) == "section-incomplete"
-    && nrp(observed: held, release: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 2)) == "completion-unobservable"
-    && (match durable_hold_nonholder_release_assess(observed: held, release: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 0)) {
+  nrp(observed: held, request: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 1)) == "section-incomplete"
+    && nrp(observed: held, request: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 2)) == "completion-unobservable"
+    && (match durable_hold_nonholder_release_assess(observed: held, request: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 0)) {
       NonHolderReleaseEligible { generation: g, released_holder: h, basis: NonHolderReleasedOnEvidence { observation: o } } =>
         cas_generation_count(g: g) == 3 && (h as String) == nrp_holder && (o.observed_head as String) == "c0ffee1"
       _ => false
@@ -120,19 +120,19 @@ test fn only_an_observed_complete_section_releases_and_an_unobserved_one_refuses
 // 3, and an unobservable verdict for another holder reports the binding, not the look.
 test fn evidence_releases_only_the_hold_it_was_taken_of() -> Bool {
   let complete_at_3 = nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 0)
-  nrp(observed: nrp_held(owner: nrp_holder, generation: 5), release: complete_at_3) == "slot-moved"
-    && nrp(observed: nrp_held(owner: "converge:9999", generation: 3), release: complete_at_3) == "another-holder"
-    && nrp(observed: nrp_held(owner: "converge:9999", generation: 3), release: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 2)) == "another-holder"
+  nrp(observed: nrp_held(owner: nrp_holder, generation: 5), request: complete_at_3) == "slot-moved"
+    && nrp(observed: nrp_held(owner: "converge:9999", generation: 3), request: complete_at_3) == "another-holder"
+    && nrp(observed: nrp_held(owner: "converge:9999", generation: 3), request: nrp_on_evidence(holder: nrp_holder, generation: 3, verdict: 2)) == "another-holder"
 }
 
 // THE OPERATOR ARM: a refused decision refuses as not-authorized; a permitted grant releases only the
 // hold its Subject names; a permitted grant naming this hold is eligible and carries the grant.
 test fn an_operator_grant_releases_only_when_permitted_and_naming_this_hold() -> Bool {
   let held = nrp_held(owner: nrp_holder, generation: 3)
-  nrp(observed: held, release: nrp_not_granted) == "not-authorized"
-    && nrp(observed: held, release: nrp_permitted(holder: nrp_holder, generation: 4)) == "slot-moved"
-    && nrp(observed: held, release: nrp_permitted(holder: "converge:9999", generation: 3)) == "another-holder"
-    && (match durable_hold_nonholder_release_assess(observed: held, release: nrp_permitted(holder: nrp_holder, generation: 3)) {
+  nrp(observed: held, request: nrp_not_granted) == "not-authorized"
+    && nrp(observed: held, request: nrp_permitted(holder: nrp_holder, generation: 4)) == "slot-moved"
+    && nrp(observed: held, request: nrp_permitted(holder: "converge:9999", generation: 3)) == "another-holder"
+    && (match durable_hold_nonholder_release_assess(observed: held, request: nrp_permitted(holder: nrp_holder, generation: 3)) {
       NonHolderReleaseEligible { generation: g, released_holder: h, basis: NonHolderReleasedByOperator { grant: grant } } =>
         cas_generation_count(g: g) == 3 && (h as String) == nrp_holder && (grant.granted_by as String) == "operator"
       _ => false
@@ -148,12 +148,12 @@ test fn a_slot_that_is_not_observed_held_releases_nothing_on_either_basis() -> B
   let free = HoldSlotFree { generation: 3, released_by: "done" as DurableHoldReleaseRef }
   let undecodable = HoldSlotUndecodable { generation: 3, detail: "no recognised tag" as NonEmptyStr }
   let unavailable = HoldObservationUnavailable { cause: CasUnreadableReadRefused { detail: "store unreachable" } }
-  nrp(observed: HoldSlotAbsent, release: evidence) == "nothing-held"
-    && nrp(observed: HoldSlotAbsent, release: operator) == "nothing-held"
-    && nrp(observed: free, release: evidence) == "nothing-held"
-    && nrp(observed: free, release: operator) == "nothing-held"
-    && nrp(observed: undecodable, release: evidence) == "undecodable"
-    && nrp(observed: undecodable, release: nrp_not_granted) == "undecodable"
-    && nrp(observed: unavailable, release: evidence) == "unavailable"
-    && nrp(observed: unavailable, release: operator) == "unavailable"
+  nrp(observed: HoldSlotAbsent, request: evidence) == "nothing-held"
+    && nrp(observed: HoldSlotAbsent, request: operator) == "nothing-held"
+    && nrp(observed: free, request: evidence) == "nothing-held"
+    && nrp(observed: free, request: operator) == "nothing-held"
+    && nrp(observed: undecodable, request: evidence) == "undecodable"
+    && nrp(observed: undecodable, request: nrp_not_granted) == "undecodable"
+    && nrp(observed: unavailable, request: evidence) == "unavailable"
+    && nrp(observed: unavailable, request: operator) == "unavailable"
 }

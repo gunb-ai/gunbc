@@ -609,14 +609,14 @@ type FileHoldNonHolderReleaseAssessment<Observation>
 fn file_hold_nonholder_release_assess<Observation>(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
-  release: DurableHoldNonHolderRelease<Observation>,
+  request: DurableHoldNonHolderRelease<Observation>,
   released_by: DurableHoldReleaseRef,
 ) -> FileHoldNonHolderReleaseAssessment<Observation>
   admit_callers: [
     decl_ref(module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", decl_name: "nr_assess"),
   ]
 {
-  match durable_hold_nonholder_release_assess(observed: observe_file_hold(root: root, key: slot_key), release: release) {
+  match durable_hold_nonholder_release_assess(observed: observe_file_hold(root: root, key: slot_key), request: request) {
     NonHolderReleaseRefused { refusal: r } => FileHoldNonHolderReleaseNotEligible { slot_key: slot_key, refusal: r }
     NonHolderReleaseEligible { generation: g, released_holder: h, basis: b } =>
       FileHoldNonHolderReleasePlanned {

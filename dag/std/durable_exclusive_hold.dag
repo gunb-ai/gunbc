@@ -369,7 +369,7 @@ fn durable_hold_release_by_operator_assess<Observation>(
 
 fn durable_hold_nonholder_release_assess<Observation>(
   observed: DurableHoldObservation,
-  release: DurableHoldNonHolderRelease<Observation>,
+  request: DurableHoldNonHolderRelease<Observation>,
 ) -> DurableHoldNonHolderReleaseAssessment<Observation> {
   match observed {
     HoldSlotAbsent => NonHolderReleaseRefused { refusal: NonHolderReleaseNothingHeld }
@@ -379,7 +379,7 @@ fn durable_hold_nonholder_release_assess<Observation>(
     HoldObservationUnavailable { cause: c } =>
       NonHolderReleaseRefused { refusal: NonHolderReleaseObservationUnavailable { cause: c } }
     HoldSlotHeld { generation: g, owner: holder } =>
-      match release {
+      match request {
         ReleasedOnEvidence { evidence: e } =>
           durable_hold_release_on_evidence_assess(generation: g, holder: holder, report: e)
         ReleasedByOperator { authorization: a } =>

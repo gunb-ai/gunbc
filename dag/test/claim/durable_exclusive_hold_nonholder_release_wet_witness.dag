@@ -147,8 +147,8 @@ fn nr_by_operator(granted_for: DurableHoldSubject, releasing: DurableHoldSubject
   }
 }
 
-fn nr_assess(root: NonEmptyStr, release: DurableHoldNonHolderRelease<NrRepositoryObservation>, reason: String) -> FileHoldNonHolderReleaseAssessment<NrRepositoryObservation> {
-  file_hold_nonholder_release_assess(root: root, slot_key: "cell", release: release, released_by: nr_release(text: reason))
+fn nr_assess(root: NonEmptyStr, request: DurableHoldNonHolderRelease<NrRepositoryObservation>, reason: String) -> FileHoldNonHolderReleaseAssessment<NrRepositoryObservation> {
+  file_hold_nonholder_release_assess(root: root, slot_key: "cell", request: request, released_by: nr_release(text: reason))
 }
 
 fn nr_plan(a: FileHoldNonHolderReleaseAssessment<NrRepositoryObservation>) -> FileHoldReleasePlan? {
@@ -225,8 +225,8 @@ test fn a_nonholder_release_without_completion_evidence_refuses_and_leaves_the_h
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
   let g = nr_acquired_generation(o: first)
-  let unobserved = nr_assess(root: root, release: nr_on_evidence(holder: nr_holder, generation: g, verdict: 2), reason: "cleared on evidence")
-  let incomplete = nr_assess(root: root, release: nr_on_evidence(holder: nr_holder, generation: g, verdict: 1), reason: "cleared on evidence")
+  let unobserved = nr_assess(root: root, request: nr_on_evidence(holder: nr_holder, generation: g, verdict: 2), reason: "cleared on evidence")
+  let incomplete = nr_assess(root: root, request: nr_on_evidence(holder: nr_holder, generation: g, verdict: 1), reason: "cleared on evidence")
   let untouched = nr_slot_generation_absent(root: root, generation: 2) && nr_slot_bytes(root: root, generation: 1) == "held|converge:4242"
   let removed = shell.Remove.RecursiveForce(path: root_path)
   nr_acquired_at(o: first, generation: 1)
@@ -250,8 +250,8 @@ test fn evidence_for_another_holder_or_a_moved_generation_refuses_by_real_execut
   }
   let again = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
   let current = nr_acquired_generation(o: again)
-  let stale = nr_assess(root: root, release: nr_on_evidence(holder: nr_holder, generation: stale_generation, verdict: 0), reason: "cleared on evidence")
-  let foreign = nr_assess(root: root, release: nr_on_evidence(holder: "converge:9999", generation: current, verdict: 0), reason: "cleared on evidence")
+  let stale = nr_assess(root: root, request: nr_on_evidence(holder: nr_holder, generation: stale_generation, verdict: 0), reason: "cleared on evidence")
+  let foreign = nr_assess(root: root, request: nr_on_evidence(holder: "converge:9999", generation: current, verdict: 0), reason: "cleared on evidence")
   let untouched = nr_slot_generation_absent(root: root, generation: 4) && nr_slot_bytes(root: root, generation: 3) == "held|converge:4242"
   let removed = shell.Remove.RecursiveForce(path: root_path)
   nr_acquired_at(o: first, generation: 1)
@@ -273,8 +273,8 @@ test fn an_operator_release_without_a_permitting_grant_for_this_hold_refuses_by_
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
   let this_hold = nr_subject(holder: nr_holder, generation: nr_acquired_generation(o: first))
   let other_hold = nr_subject(holder: nr_holder, generation: 2)
-  let expired = nr_assess(root: root, release: nr_by_operator(granted_for: this_hold, releasing: this_hold, expired: true), reason: "operator abandoned")
-  let elsewhere = nr_assess(root: root, release: nr_by_operator(granted_for: other_hold, releasing: other_hold, expired: false), reason: "operator abandoned")
+  let expired = nr_assess(root: root, request: nr_by_operator(granted_for: this_hold, releasing: this_hold, expired: true), reason: "operator abandoned")
+  let elsewhere = nr_assess(root: root, request: nr_by_operator(granted_for: other_hold, releasing: other_hold, expired: false), reason: "operator abandoned")
   let untouched = nr_slot_generation_absent(root: root, generation: 2) && nr_slot_bytes(root: root, generation: 1) == "held|converge:4242"
   let removed = shell.Remove.RecursiveForce(path: root_path)
   nr_acquired_at(o: first, generation: 1)
@@ -292,7 +292,7 @@ test fn a_release_on_matching_completion_evidence_frees_the_hold_and_reads_back_
   let root_path = nr_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
-  let assessed = nr_assess(root: root, release: nr_on_evidence(holder: nr_holder, generation: nr_acquired_generation(o: first), verdict: 0), reason: "section observed complete")
+  let assessed = nr_assess(root: root, request: nr_on_evidence(holder: nr_holder, generation: nr_acquired_generation(o: first), verdict: 0), reason: "section observed complete")
   let basis_ok = match assessed {
     FileHoldNonHolderReleasePlanned { plan: p, released_holder: h, basis: NonHolderReleasedOnEvidence { observation: o } } =>
       cas_generation_count(g: p.generation) == 1 && (h as String) == nr_holder && (o.observed_head as String) == "c0ffee1"
@@ -319,7 +319,7 @@ test fn a_release_by_a_permitted_operator_grant_frees_the_hold_and_reads_back_by
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
   let this_hold = nr_subject(holder: nr_holder, generation: nr_acquired_generation(o: first))
-  let assessed = nr_assess(root: root, release: nr_by_operator(granted_for: this_hold, releasing: this_hold, expired: false), reason: "operator abandoned")
+  let assessed = nr_assess(root: root, request: nr_by_operator(granted_for: this_hold, releasing: this_hold, expired: false), reason: "operator abandoned")
   let basis_ok = match assessed {
     FileHoldNonHolderReleasePlanned { plan: p, released_holder: h, basis: NonHolderReleasedByOperator { grant: grant } } =>
       cas_generation_count(g: p.generation) == 1 && (h as String) == nr_holder && (grant.granted_by as String) == "operator"
@@ -343,7 +343,7 @@ test fn a_nonholder_release_committed_after_the_slot_moved_is_lost_by_real_execu
   let root_path = nr_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
-  let plan = nr_plan(a: nr_assess(root: root, release: nr_on_evidence(holder: nr_holder, generation: nr_acquired_generation(o: first), verdict: 0), reason: "section observed complete"))
+  let plan = nr_plan(a: nr_assess(root: root, request: nr_on_evidence(holder: nr_holder, generation: nr_acquired_generation(o: first), verdict: 0), reason: "section observed complete"))
   let committed = nr_commit(p: plan)
   let again = nr_commit(p: plan)
   let no_third = nr_slot_generation_absent(root: root, generation: 3)
