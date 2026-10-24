@@ -51,6 +51,7 @@ import v2.compiler.effect_pair_census {
   ReachesHostActuation,
   activation_edges,
   repeated_occurrences,
+  site_contexts,
   epc_site_text,
   body_effect_pairs
 }
@@ -58,7 +59,7 @@ import v2.compiler.effect_pair_census {
 // The reducer's controls over supplied body facts. The extraction that produces such facts from a
 // resolved tree is exercised by the source-snippet controls beside these.
 fn epc_site(occurrence: Int) -> EffectSite {
-  EffectSite { occurrence: occurrence, identity: Absent, callee: qualified_name_from_dotted_string(dotted: "t.shell"), reason: ReachesHostActuation }
+  EffectSite { occurrence: occurrence, identity: Absent, callee: qualified_name_from_dotted_string(dotted: "t.shell"), reason: ReachesHostActuation, contexts: "none" }
 }
 
 fn epc_facts_with(sites: List<EffectSite>, orders: List<OrderEdge>, exclusive: List<OrderEdge>) -> BodyEffectFacts {
@@ -207,7 +208,8 @@ fn epc_repeat_body() -> BodyOrdered {
     not_derived: Empty,
     activation_not_derived: Empty,
     repetition_unknown: Empty,
-    repeated: list_snoc_item(xs: Empty, item: RepeatedOccurrence { occurrence: 1, source: "loop_iterated_body" })
+    repeated: list_snoc_item(xs: Empty, item: RepeatedOccurrence { occurrence: 1, source: "loop_iterated_body" }),
+    groups: Empty
   }
 }
 
@@ -387,7 +389,7 @@ test fn a_shared_selector_and_arm_node_keeps_roles_by_slot_holds() -> Bool {
 
 // An absent OccurrenceId is a typed unlocated disposition; the tick (7 here) appears only as a labelled in-function anchor, never as the identity.
 test fn a_site_without_an_occurrence_identity_is_reported_unlocated_not_by_tick_holds() -> Bool {
-  epc_site_text(s: epc_site(occurrence: 7)) == "t.shell@unlocated anchor=call_site_ordinal_in_function:7(host_actuation)"
+  epc_site_text(s: epc_site(occurrence: 7)) == "t.shell@unlocated contexts=none anchor=call_site_ordinal_in_function:7(host_actuation)"
 }
 
 // ---- REPETITION: only a Loop's iterated body repeats --------------------------------------------------
@@ -467,4 +469,23 @@ test fn an_ordinary_fn_declaration_records_no_repetition_holds() -> Bool {
         _ => false
       }
   }
+}
+
+fn epc_ctx_groups() -> List<FactGroup> {
+  [
+    FactActivationGroup { children: [FactSpan { enter: 0, exit: 2, role: FactSelector }, FactSpan { enter: 2, exit: 6, role: FactAlternative }], not_derived: Empty },
+    FactRepeatedGroup { children: [FactSpan { enter: 3, exit: 5, role: FactUnroled }], repetition: LoopIteratedBody }
+  ]
+}
+
+// ONE structural occurrence evaluated in more than one context lists EVERY context, not one: tick 4 is an
+// alternative of the Branch AND inside the Loop's iterated body. RED if only the first (or the innermost) context is reported.
+test fn one_occurrence_in_two_contexts_lists_both_holds() -> Bool {
+  site_contexts(sites: Empty, groups: epc_ctx_groups(), tick: 4) == "activation:alternative+repeated:loop_iterated_body"
+}
+
+// The role distinguishes selector from alternative, and a site under no extent is "none".
+test fn a_selector_site_and_an_unnested_site_report_their_own_role_holds() -> Bool {
+  site_contexts(sites: Empty, groups: epc_ctx_groups(), tick: 1) == "activation:selector"
+    && site_contexts(sites: Empty, groups: epc_ctx_groups(), tick: 9) == "none"
 }

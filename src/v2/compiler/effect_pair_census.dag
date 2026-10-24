@@ -55,6 +55,7 @@ type EffectSite {
   identity: Optional<Int>
   callee: QualifiedName
   reason: ReachReason
+  contexts: String
 }
 
 // What the derivations say about the two sites' resources. Distinct never means independent.
@@ -312,6 +313,7 @@ type BodyOrdered {
   activation_not_derived: List<String>
   repeated: List<RepeatedOccurrence>
   repetition_unknown: List<RepeatedOccurrence>
+  groups: List<FactGroup>
 }
 
 type RepeatedOccurrence {
@@ -426,6 +428,37 @@ fn body_not_derived(sites: List<FactCallSite>, index: Map<Int, List<String>>) ->
   })
 }
 
+// EVERY structural context one call site is evaluated in, from the walk's groups: the activation role of each
+// Branch/Match extent that contains it (selector / alternative / unroled) and each repeated extent (the Loop's
+// iterated body, or a lambda whose instantiation is unknown). One occurrence in several contexts lists them all;
+// outside every extent it is "none". The tick is only the join key into the spans.
+fn site_contexts(sites: List<FactCallSite>, groups: List<FactGroup>, tick: Int) -> String {
+  let words = fold_list(xs: groups, empty: Empty, cons: fn(acc, g) {
+    match g {
+      FactActivationGroup { children: spans, not_derived: _ } =>
+        fold_list(xs: spans, empty: acc, cons: fn(a, sp) {
+          if tick >= sp.enter && tick < sp.exit { list_snoc_item(xs: a, item: concat("activation:", span_role_word(r: sp.role))) } else { a }
+        })
+      FactRepeatedGroup { children: spans, repetition: rep } =>
+        fold_list(xs: spans, empty: acc, cons: fn(a, sp) {
+          if tick >= sp.enter && tick < sp.exit { list_snoc_item(xs: a, item: concat("repeated:", repetition_word(r: rep))) } else { a }
+        })
+    }
+  })
+  match words {
+    Empty => "none"
+    Cons { head: h, tail: rest } => fold_list(xs: rest, empty: h, cons: fn(a, w) { concat(concat(a, "+"), w) })
+  }
+}
+
+fn span_role_word(r: FactSpanRole) -> String {
+  match r {
+    FactSelector => "selector"
+    FactAlternative => "alternative"
+    FactUnroled => "unroled"
+  }
+}
+
 // Only a Loop's iterated body repeats; a lambda is a typed unknown (its consumer's instantiation is not read here).
 fn repeated_occurrences(sites: List<FactCallSite>, groups: List<FactGroup>, want: FactRepetition) -> List<RepeatedOccurrence> {
   fold_list(xs: groups, empty: Empty, cons: fn(acc, g) {
@@ -453,7 +486,7 @@ fn module_ordered_bodies(module: QualifiedName, bodies: List<FactBodySites>, use
   let nd_index = not_derived_index(rows: not_derived)
   fold_list(xs: bodies, empty: Empty, cons: fn(acc, body) {
     let act = activation_edges(sites: body.sites, groups: body.groups)
-    list_snoc_item(xs: acc, item: BodyOrdered { module: module, function: body.function, sites: body.sites, orders: fold_list(xs: act.orders, empty: extract_order_edges(sites: body.sites, use_index: use_index), cons: fn(a, e) { list_snoc_item(xs: a, item: e) }), exclusive: act.exclusive, not_derived: body_not_derived(sites: body.sites, index: nd_index), activation_not_derived: act.refusals, repeated: repeated_occurrences(sites: body.sites, groups: body.groups, want: LoopIteratedBody), repetition_unknown: repeated_occurrences(sites: body.sites, groups: body.groups, want: LambdaInstantiationUnknown) })
+    list_snoc_item(xs: acc, item: BodyOrdered { module: module, function: body.function, sites: body.sites, orders: fold_list(xs: act.orders, empty: extract_order_edges(sites: body.sites, use_index: use_index), cons: fn(a, e) { list_snoc_item(xs: a, item: e) }), exclusive: act.exclusive, not_derived: body_not_derived(sites: body.sites, index: nd_index), activation_not_derived: act.refusals, repeated: repeated_occurrences(sites: body.sites, groups: body.groups, want: LoopIteratedBody), repetition_unknown: repeated_occurrences(sites: body.sites, groups: body.groups, want: LambdaInstantiationUnknown), groups: body.groups })
   })
 }
 
@@ -465,7 +498,7 @@ fn body_effect_facts(body: BodyOrdered, table: EffectReachTable) -> BodyEffectFa
     function: body.function,
     sites: fold_list(xs: body.sites, empty: Empty, cons: fn(acc, s) {
       match effect_reach_reason(table: table, callee: s.callee) {
-        Present { value: r } => list_snoc_item(xs: acc, item: EffectSite { occurrence: s.enter, identity: extract_occurrence_key(o: s.occurrence), callee: s.callee, reason: r })
+        Present { value: r } => list_snoc_item(xs: acc, item: EffectSite { occurrence: s.enter, identity: extract_occurrence_key(o: s.occurrence), callee: s.callee, reason: r, contexts: site_contexts(sites: body.sites, groups: body.groups, tick: s.enter) })
         Absent => acc
       }
     }),
@@ -765,7 +798,7 @@ fn epc_identity_word(i: Optional<Int>) -> String {
 }
 
 fn epc_site_text(s: EffectSite) -> String {
-  epc_text(parts: [qualified_name_to_dotted_string(qn: s.callee), "@", epc_identity_word(i: s.identity), " anchor=call_site_ordinal_in_function:", to_string(s.occurrence), "(", epc_reason_word(r: s.reason), ")"])
+  epc_text(parts: [qualified_name_to_dotted_string(qn: s.callee), "@", epc_identity_word(i: s.identity), " contexts=", s.contexts, " anchor=call_site_ordinal_in_function:", to_string(s.occurrence), "(", epc_reason_word(r: s.reason), ")"])
 }
 
 fn epc_pair_line(p: EffectPairRow) -> String {
