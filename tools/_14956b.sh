@@ -15,7 +15,7 @@ if [ "$PHASE" = b1 ]; then
 fi
 build_head || exit 9
 CB=$CARGO_TARGET_DIR/release/claim_batch
-CKPT=/root/workspace/.c4ckpt956; mkdir -p $CKPT/gates 2>/dev/null || { CKPT=$REPO/.c4ckpt956; mkdir -p $CKPT/gates; }
+CKPT=/tmp/c4v/ckpt956; mkdir -p $CKPT/gates
 echo "CKPT=$CKPT"
 ELW=src/v2/test/claim/enforcement_live_witness.dag
 GATE=enforcement_consistency_gate_holds
@@ -69,6 +69,14 @@ b1)
   echo "=== G5 AuditOnly-repoint control $(date -u +%H:%M:%S)Z"; run1 G5 $V $ELW wet $GATE $PROBE
   echo "=== G6 probe alone $(date -u +%H:%M:%S)Z"; run1 G6 $H $ELW wet $PROBE
   ;;
+b4)
+  wt $M $HEAD_SHA || { echo WTM_FAIL; exit 9; }
+  python3 tools/_14956mut.py $M $V || { echo MUTATION_FAIL -- STOP; exit 9; }
+  echo "=== G4 Blocking-repoint RED $(date -u +%H:%M:%S)Z"; run1 G4 $M $ELW wet $GATE $PROBE ;;
+b5)
+  wt $V $HEAD_SHA || { echo WTV_FAIL; exit 9; }
+  python3 tools/_14956mut.py $M $V || { echo MUTATION_FAIL -- STOP; exit 9; }
+  echo "=== G5 AuditOnly-repoint control $(date -u +%H:%M:%S)Z"; run1 G5 $V $ELW wet $GATE $PROBE ;;
 b2) echo "=== SWEEP head $(date -u +%H:%M:%S)Z"; sweep head $H
   echo "files-done=$(ls $CKPT/head 2>/dev/null | wc -l)/14" ;;
 b3)
