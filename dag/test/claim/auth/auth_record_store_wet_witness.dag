@@ -41,13 +41,13 @@ import gunbc.auth.profile_projection {
 // to be byte-identical to the planted one. RED if the format moved, if the sealed read does not find what the
 // old code wrote, or if the store reads somewhere other than the declared directory.
 
-data session_bytes_before_the_seal: String = "SESSION_BYTES_PLACEHOLDER"
+data session_bytes_before_the_seal: String = "{\"schema\": \"gunbc-auth-session/v1\", \"session_id\": \"sealreadback-session\", \"principal\": \"principal:google-oidc/accounts/seal-readback-subject\", \"authenticated_at\": \"2026-10-24T00:00:00Z\", \"expires_at\": \"2099-01-01T00:00:00Z\", \"auth_method\": \"google-oidc\", \"client\": \"tracker-web\", \"csrf\": \"sealreadback-csrf\", \"picture\": \"https://example.com/a.png\", \"name\": \"Ada Readback\", \"email\": \"ada@example.com\"}"
 
-data login_transaction_bytes_before_the_seal: String = "LOGIN_BYTES_PLACEHOLDER"
+data login_transaction_bytes_before_the_seal: String = "{\"schema\": \"gunbc-login-transaction/v1\", \"state\": \"sealreadback-state\", \"nonce\": \"sealreadback-nonce\", \"created_at\": \"2026-10-24T00:00:00Z\", \"expires_at\": \"2099-01-01T00:00:00Z\", \"verifier\": \"sealreadback-verifier\", \"return_path\": \"/after\"}"
 
-data profile_bytes_before_the_seal: String = "PROFILE_BYTES_PLACEHOLDER"
+data profile_bytes_before_the_seal: String = "{\"schema\": \"gunbc-auth-profile/v1\", \"principal\": \"principal:google-oidc/accounts/seal-readback-subject\", \"updated_at\": \"2026-10-24T00:00:00Z\", \"source\": \"google-oidc-login\", \"name\": \"Ada Readback\", \"email\": \"ada@example.com\", \"picture\": \"https://example.com/a.png\"}"
 
-data profile_file_before_the_seal: String = "PROFILE_NAME_PLACEHOLDER"
+data profile_file_before_the_seal: String = "3c76eb97447ac648fe93eed227472769f960b96a682d2d690ce71d2ab134bf9b.json"
 
 fn fixture_principal() -> PrincipalRef {
   PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "seal-readback-subject" }
