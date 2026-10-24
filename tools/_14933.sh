@@ -125,6 +125,9 @@ echo "=== T3 --outcomes-out on BASE must refuse $(date -u +%H:%M:%S)Z"
 if [ -s $CKPT/jobs/T2.out ] && [ -s $CKPT/jobs/T2b.out ]; then
   # strip the resolve/elapsed timing noise, then compare bytes
   for x in T2 T2b; do grep -vE "^\[resolve|resolve_wire_closure_ms|el=|resolved_ms" $CKPT/jobs/$x.out > $CKPT/$x.norm; done
-  if diff -q $CKPT/T2.norm $CKPT/T2b.norm >/dev/null 2>&1; then echo "UNCHANGED_VS_MAIN byte-identical (timing-stripped)"; else echo "UNCHANGED_VS_MAIN DIFFERS:"; diff $CKPT/T2.norm $CKPT/T2b.norm | head -20; fi
+  if diff -q $CKPT/T2.norm $CKPT/T2b.norm >/dev/null 2>&1; then echo "UNCHANGED_VS_MAIN byte-identical (timing-stripped)"; else echo "UNCHANGED_VS_MAIN DIFFERS (first 24 diff lines):"; diff $CKPT/T2.norm $CKPT/T2b.norm | head -24 | sed "s|^|  diff: |"; fi
+  # verdict-only compare: PASS/FAIL/UNOBSERVED lines must match exactly
+  for x in T2 T2b; do grep -E '^(PASS|FAIL|UNOBSERVED) ' $CKPT/jobs/$x.out > $CKPT/$x.verdicts; done
+  diff $CKPT/T2.verdicts $CKPT/T2b.verdicts && echo "VERDICTS_IDENTICAL_vs_main"
 fi
 echo "ALL_DONE_14933 $(date -u +%H:%M:%S)Z"
