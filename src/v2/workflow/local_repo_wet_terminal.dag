@@ -1920,6 +1920,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_google_enrolment_wet_witness", function: "a_traversal_enrolment_id_is_refused_by_the_store_before_any_read" },
+      entry: "dag/test/claim/approval_google_enrolment_wet_witness.dag",
+      function: "a_traversal_enrolment_id_is_refused_by_the_store_before_any_read",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.approval_device_routes_wet_witness", function: "a_bound_realization_passes_the_read_past_the_gate" },
       entry: "dag/test/claim/approval_device_routes_wet_witness.dag",
       function: "a_bound_realization_passes_the_read_past_the_gate",

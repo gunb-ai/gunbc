@@ -45,8 +45,11 @@ import gunbc.auth.approval_device_wire {
 }
 import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
-  file_compare_and_set, observe_cas_slot_state,
+  SlotStore, file_slot_store,
 }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
+import gunbc.host_state_root { HostStateTree, host_state_tree, host_state_tree_path }
+import gunbc.auth.oidc_id_token_verification { JwksCacheOps, jwks_cache_ops_over }
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
@@ -416,17 +419,59 @@ fn redeem_device_over_store(
 // Beside them, one create-once slot per approver email holds the Google subject pinned to it. Records
 // are owner-only, as the approval store's are. The parse that re-mints a stored enrolment lives in
 // approval_google_enrolment, the module its sole constructor is sealed to.
-data approval_device_store_root: NonEmptyStr = "/var/lib/gunbc/approval-devices"
+// THE BROKER'S HOST-SINGLETON STORES live under the host-state tree (gunbc.host_state_root), each at its own
+// member. One broker deployment, so each mint takes the tree and nothing else. A declaration carries only the
+// member: each directory row is a gunbc.managed_directory ManagedDirectory, whose mode is DERIVED from its
+// declared dependents, so a declared mode here would be a second authority for that fact.
+fn approval_broker_store_path(tree: HostStateTree, member: NonEmptyStr) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", member as String], "") as NonEmptyStr
+}
+
+fn approval_broker_store_listing(root: NonEmptyStr) -> FilesystemListingObservation {
+  let listed = Filesystem.List(path: root as String)
+  filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error)
+}
+
+// ── The device store ───────────────────────────────────────────────────────────────────────────
+// THE ONE DECLARATION OF THE DEVICE STORE (enrolments and subject pins share its slot namespace, told apart
+// by key prefix: they are two record kinds of one store, not two stores).
+type ApprovalDeviceStoreSlotsDeclaration { member: NonEmptyStr }
+
+data approval_device_store_slots: ApprovalDeviceStoreSlotsDeclaration = ApprovalDeviceStoreSlotsDeclaration {
+  member: "approval-devices" as NonEmptyStr,
+}
+
+// A SEALED VALUE MINTED FROM THAT DECLARATION, as gunbc.roadmap.roadmap_attempt_worktree_claim_root
+// WorktreeClaimStore is: sole_constructor, non-generic, never a variant arm, built only by
+// approval_device_store, which lists the derived directory and answers Ready only for a listed one. Every
+// enrolment and subject-pin operation below takes it; none takes a root.
+type ApprovalDeviceStore sole_constructor {
+  slots: SlotStore
+}
+
+type ApprovalDeviceStoreReading
+  = ApprovalDeviceStoreReady { store: ApprovalDeviceStore }
+  | ApprovalDeviceStoreUnready { detail: String }
+
+fn approval_device_store(tree: HostStateTree) -> ApprovalDeviceStoreReading {
+  let root = approval_broker_store_path(tree: tree, member: approval_device_store_slots.member)
+  match approval_broker_store_listing(root: root) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => ApprovalDeviceStoreUnready { detail: join(["the approval device store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => ApprovalDeviceStoreUnready { detail: join(["the approval device store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => ApprovalDeviceStoreReady { store: ApprovalDeviceStore { slots: file_slot_store(root: root) } }
+  }
+}
 
 // THE STORE DIRECTORY IS CONVERGED BY THE BROKER INSTALL (gunbc.live_deploy.emit
-// approval_broker_dark_install_release_steps). The owner is the operator's account, because the
-// verbs that read and write it (approval_device_routes) run as that account and nothing else needs
-// it, so the derived mode is owner-only. Ownership is Ensured, not Owned: the directory holds
-// enrolled devices, which must survive a retract of the deployment that created it.
+// approval_broker_dark_install_release_steps), at the path derived from the same declaration as the mint over
+// the production tree. The owner is the operator's account, because the verbs that read and write it
+// (approval_device_routes) run as that account and nothing else needs it, so the derived mode is owner-only.
+// Ownership is Ensured, not Owned: the directory holds enrolled devices, which must survive a retract of the
+// deployment that created it.
 fn approval_device_store_directory() -> ManagedDirectory {
   ManagedDirectory {
     member: "approval-device-store" as NonEmptyStr,
-    path: approval_device_store_root as String as FilePath,
+    path: approval_broker_store_path(tree: host_state_tree(), member: approval_device_store_slots.member) as String as FilePath,
     owner: fleet_posix_operator_user,
     group_principal: fleet_posix_operator_user,
     dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
@@ -435,15 +480,40 @@ fn approval_device_store_directory() -> ManagedDirectory {
   }
 }
 
-// THE BROKER'S OWN JWKS CACHE (ruling of clever-eagle-893, 2026-10-23): the cache of Google's signing
-// keys that gunbc.auth.oidc_id_token_verification reads, kept beside the device store so the broker
-// never reaches a dashboard instance's directory. Ensured for the same reason as the store.
-data approval_jwks_cache_root: NonEmptyStr = "/var/lib/gunbc/approval-jwks"
+// ── The broker's JWKS cache ──────────────────────────────────────────────────────────────────────
+// THE BROKER'S OWN JWKS CACHE (ruling of clever-eagle-893, 2026-10-23: no second fetch path): the cache of
+// Google's signing keys, kept beside the device store so the broker never reaches a dashboard instance's
+// directory. Its operations are the one JWKS cache carrier (gunbc.auth.oidc_id_token_verification
+// JwksCacheOps); its identity is this sealed type, distinct from the instance cache's InstanceJwksCache, so
+// neither stands where the other is required.
+type BrokerJwksCacheSlotsDeclaration { member: NonEmptyStr }
 
+data broker_jwks_cache_slots: BrokerJwksCacheSlotsDeclaration = BrokerJwksCacheSlotsDeclaration {
+  member: "approval-jwks" as NonEmptyStr,
+}
+
+type BrokerJwksCache sole_constructor {
+  ops: JwksCacheOps
+}
+
+type BrokerJwksCacheReading
+  = BrokerJwksCacheReady { cache: BrokerJwksCache }
+  | BrokerJwksCacheUnready { detail: String }
+
+fn broker_jwks_cache(tree: HostStateTree) -> BrokerJwksCacheReading {
+  let root = approval_broker_store_path(tree: tree, member: broker_jwks_cache_slots.member)
+  match approval_broker_store_listing(root: root) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => BrokerJwksCacheUnready { detail: join(["the broker JWKS cache's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => BrokerJwksCacheUnready { detail: join(["the broker JWKS cache's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => BrokerJwksCacheReady { cache: BrokerJwksCache { ops: jwks_cache_ops_over(root: root as String as FilePath) } }
+  }
+}
+
+// Ensured for the same reason as the device store, at the path derived from broker_jwks_cache_slots.
 fn approval_jwks_cache_directory() -> ManagedDirectory {
   ManagedDirectory {
     member: "approval-jwks-cache" as NonEmptyStr,
-    path: approval_jwks_cache_root as String as FilePath,
+    path: approval_broker_store_path(tree: host_state_tree(), member: broker_jwks_cache_slots.member) as String as FilePath,
     owner: fleet_posix_operator_user,
     group_principal: fleet_posix_operator_user,
     dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
@@ -457,11 +527,12 @@ type DeviceStoreWrite
   | DeviceStoreSlotOccupied
   | DeviceStoreRefused { detail: NonEmptyStr }
 
-fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected: CasExpectation, payload: NonEmptyStr) -> DeviceStoreWrite {
+fn device_store_write(devices: ApprovalDeviceStore, key: NonEmptyStr, expected: CasExpectation, payload: NonEmptyStr) -> DeviceStoreWrite {
   match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => DeviceStoreRefused { detail: "device store key is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v) {
+      let commit = devices.slots.commit
+      match commit(OwnerOnlyCreateOnly, v) {
         CasCommitted { committed: _ } => DeviceStoreWritten
         CasPreconditionFailed { expected: _, observed: _ } => DeviceStoreSlotOccupied
         CasStoreRefused { cause: _ } => DeviceStoreRefused { detail: "device store refused the publication" }
@@ -469,8 +540,9 @@ fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected: CasExpectat
   }
 }
 
-fn observe_google_enrolment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> GoogleEnrolmentSlot {
-  match observe_cas_slot_state(root: root, key: enrollment_id) {
+fn observe_google_enrolment(devices: ApprovalDeviceStore, enrollment_id: NonEmptyStr) -> GoogleEnrolmentSlot {
+  let observe = devices.slots.observe
+  match observe(enrollment_id) {
     CasObservedUnreadable { cause: c } => GoogleEnrolmentUnreadable { detail: concat("enrolment slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
     CasObservedReadable { readable: r } => match r {
       CasReadableAbsent => GoogleEnrolmentAbsent
@@ -481,15 +553,15 @@ fn observe_google_enrolment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> Go
 
 // THE ONLY ENROLMENT WRITE: creating the enrolment is one CAS expecting an absent slot, so a resent
 // POST that raced its twin lands on DeviceStoreSlotOccupied rather than overwriting.
-fn commit_google_enrolment(root: NonEmptyStr, enrollment: GoogleDeviceEnrollment) -> DeviceStoreWrite {
-  device_store_write(root: root, key: enrollment.enrollment_id, expected: ExpectSlotAbsent, payload: google_enrolment_json(e: enrollment) as NonEmptyStr)
+fn commit_google_enrolment(devices: ApprovalDeviceStore, enrollment: GoogleDeviceEnrollment) -> DeviceStoreWrite {
+  device_store_write(devices: devices, key: enrollment.enrollment_id, expected: ExpectSlotAbsent, payload: google_enrolment_json(e: enrollment) as NonEmptyStr)
 }
 
 // REVOCATION IS ONE CAS from generation 1 to 2, and lands only on a live enrolment.
-fn revoke_google_enrolment(root: NonEmptyStr, slot: GoogleEnrolmentSlot, revoked_at: Timestamp) -> DeviceStoreWrite {
+fn revoke_google_enrolment(devices: ApprovalDeviceStore, slot: GoogleEnrolmentSlot, revoked_at: Timestamp) -> DeviceStoreWrite {
   match slot {
     GoogleEnrolmentActive { enrollment: e } =>
-      device_store_write(root: root, key: e.enrollment_id, expected: ExpectSlotGeneration { generation: google_enrolment_record_kind_generation(k: GoogleEnrolledRecord) }, payload: google_revocation_json(e: e, revoked_at: revoked_at) as NonEmptyStr)
+      device_store_write(devices: devices, key: e.enrollment_id, expected: ExpectSlotGeneration { generation: google_enrolment_record_kind_generation(k: GoogleEnrolledRecord) }, payload: google_revocation_json(e: e, revoked_at: revoked_at) as NonEmptyStr)
     GoogleEnrolmentAbsent => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
     GoogleEnrolmentRevoked { enrollment: _, revoked_at: _ } => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
     GoogleEnrolmentUnreadable { detail: _ } => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
@@ -499,18 +571,20 @@ fn revoke_google_enrolment(root: NonEmptyStr, slot: GoogleEnrolmentSlot, revoked
 // THE SUBJECT PIN: attempt the create with the presented subject; on a lost CAS reread the slot.
 // The observation is the only thing the pin join reads, so two accounts racing under one address
 // cannot both reach an enrolment.
-fn create_or_read_subject_pin(root: NonEmptyStr, email: NonEmptyStr, subject: NonEmptyStr) -> SubjectPinCreateOrRead {
-  match device_store_write(root: root, key: subject_pin_key(email: email), expected: ExpectSlotAbsent, payload: subject_pin_json(email: email, subject: subject) as NonEmptyStr) {
+fn create_or_read_subject_pin(devices: ApprovalDeviceStore, email: NonEmptyStr, subject: NonEmptyStr) -> SubjectPinCreateOrRead {
+  match device_store_write(devices: devices, key: subject_pin_key(email: email), expected: ExpectSlotAbsent, payload: subject_pin_json(email: email, subject: subject) as NonEmptyStr) {
     DeviceStoreWritten => SubjectPinCreatedForPresented
     DeviceStoreRefused { detail: d } => SubjectPinUnreadable { detail: d }
-    DeviceStoreSlotOccupied =>
-      match observe_cas_slot_state(root: root, key: subject_pin_key(email: email)) {
+    DeviceStoreSlotOccupied => {
+      let observe = devices.slots.observe
+      match observe(subject_pin_key(email: email)) {
         CasObservedUnreadable { cause: c } => SubjectPinUnreadable { detail: concat("subject pin slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
         CasObservedReadable { readable: r } => match r {
           CasReadableAbsent => SubjectPinUnreadable { detail: "subject pin slot lost the create and then read absent" }
           CasReadablePresent { version: ver } => parse_subject_pin(text: ver.value as String, email: email)
         }
       }
+    }
   }
 }
 
@@ -532,12 +606,13 @@ type GoogleEnrolmentListing
   = GoogleEnrolmentsListed { slots: List<GoogleEnrolmentSlot> }
   | GoogleEnrolmentListingRefused { detail: NonEmptyStr }
 
-fn list_google_enrolments(root: NonEmptyStr) -> GoogleEnrolmentListing {
-  match cas_slot_keys(root: root) {
+fn list_google_enrolments(devices: ApprovalDeviceStore) -> GoogleEnrolmentListing {
+  let keys_of = devices.slots.keys
+  match keys_of() {
     CasSlotKeysListingRefused { root: _, detail: d } => GoogleEnrolmentListingRefused { detail: d as NonEmptyStr }
     CasSlotKeysSubjectRefused { root: r, cause: c } => GoogleEnrolmentListingRefused { detail: join(["store root ", r as String, " is not an admissible directory: ", c], "") as NonEmptyStr }
     CasSlotKeysListed { keys: keys } =>
-      GoogleEnrolmentsListed { slots: map(filter(keys, k => starts_with(s: k as String, prefix: "genr-")), k => observe_google_enrolment(root: root, enrollment_id: k)) }
+      GoogleEnrolmentsListed { slots: map(filter(keys, k => starts_with(s: k as String, prefix: "genr-")), k => observe_google_enrolment(devices: devices, enrollment_id: k)) }
   }
 }
 
