@@ -774,7 +774,6 @@ Rc::new(InferScopeComponents {
     name: crate::v1_std_core::authored_name_at(env.source_indices.clone(), titem.clone()),
     resolved: crate::v1_compiler_infer_types::resolved_type(titem.clone()),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
-    alias_rhs: std::option::Option::None,
 })),
 })
             } else {
@@ -823,7 +822,6 @@ pub fn nominal_type_binding(name: String) -> Rc<TypeBinding> {
         name: name.clone(),
         resolved: nominal_leaf_type(name.clone()),
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
-        alias_rhs: std::option::Option::None,
     })
 }
 
@@ -1140,7 +1138,6 @@ pub fn namespace_alias_binding_for_target(
         name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
         resolved: target_node.clone(),
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
-        alias_rhs: std::option::Option::None,
     })
 }
 
@@ -11609,7 +11606,6 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
                         ),
                         resolved: crate::v1_std_core::param_node_type_expr(p.clone()),
                         provenance: Rc::new(SubValueRelation::PreservedValue),
-                        alias_rhs: std::option::Option::None,
                     }),
                 )
             },
@@ -11750,7 +11746,6 @@ pub fn extend_scope(
                 name: name.clone(),
                 resolved: resolved.clone(),
                 provenance: provenance.clone(),
-                alias_rhs: std::option::Option::None,
             }),
         );
         let __rb_3_0 = v1_rt::rc_map_insert(scope.body_locals.clone(), name.clone(), true);
@@ -11815,7 +11810,6 @@ pub fn extend_scope_match_bound(
                 name: name.clone(),
                 resolved: resolved.clone(),
                 provenance: provenance.clone(),
-                alias_rhs: std::option::Option::None,
             }),
         );
         let __rb_3_0 = v1_rt::rc_map_insert(scope.body_locals.clone(), name.clone(), true);
@@ -11876,7 +11870,6 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
                         name: p.clone(),
                         resolved: type_variable_node("lambda_param".to_string()),
                         provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                        alias_rhs: std::option::Option::None,
                     }),
                 )
             },
@@ -22555,7 +22548,6 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                                         val.clone(),
                                     ),
                                     provenance: rel.clone(),
-                                    alias_rhs: std::option::Option::None,
                                 }),
                             ),
                             func_env: ctx.func_env.clone(),
@@ -22583,7 +22575,6 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                                     val.clone(),
                                 ),
                                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                                alias_rhs: std::option::Option::None,
                             }),
                         ),
                         func_env: ctx.func_env.clone(),
@@ -22666,7 +22657,6 @@ Rc::new(DescentContext {
     name: bname.clone(),
     resolved: crate::v1_compiler_infer_types::resolved_type(val.clone()),
     provenance: rel.clone(),
-    alias_rhs: std::option::Option::None,
 })),
     func_env: acc.ctx.func_env.clone(),
     per_field_vars: acc.ctx.per_field_vars.clone(),
@@ -22684,7 +22674,6 @@ Rc::new(DescentContext {
     name: bname.clone(),
     resolved: crate::v1_compiler_infer_types::resolved_type(val.clone()),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
-    alias_rhs: std::option::Option::None,
 })),
     func_env: acc.ctx.func_env.clone(),
     per_field_vars: acc.ctx.per_field_vars.clone(),
@@ -26517,7 +26506,6 @@ pub fn kernel_coproduct_variant_locals(env: Rc<TypeEnv>) -> Rc<HashMap<String, R
                                         name: arm.clone(),
                                         resolved: b.resolved.clone(),
                                         provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                                        alias_rhs: std::option::Option::None,
                                     }),
                                 ),
                                 std::option::Option::None => acc.clone(),
@@ -27054,7 +27042,6 @@ pub fn local_binding_for_item(
                         ),
                         resolved: type_node.clone(),
                         provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                        alias_rhs: std::option::Option::None,
                     }))
                 }
             } else {
@@ -27093,7 +27080,6 @@ pub fn local_binding_for_item(
                             ),
                             resolved: fn_node.clone(),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            alias_rhs: std::option::Option::None,
                         }))
                     }
                 } else {
@@ -27133,7 +27119,6 @@ pub fn local_binding_for_item(
                                 ),
                                 resolved: alias_node.clone(),
                                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                                alias_rhs: std::option::Option::None,
                             }))
                         }
                     } else {
@@ -27156,7 +27141,6 @@ pub fn local_binding_for_item(
                                     ),
                                     resolved: ref_node.clone(),
                                     provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                                    alias_rhs: std::option::Option::None,
                                 }))
                             }
                         } else {
@@ -27197,7 +27181,6 @@ pub fn local_binding_for_item(
                                         ),
                                         resolved: bare_node.clone(),
                                         provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                                        alias_rhs: std::option::Option::None,
                                     }))
                                 }
                             } else {
@@ -27259,7 +27242,6 @@ pub fn local_binding_for_item(
                                                 provenance: Rc::new(
                                                     SubValueRelation::SubValueUnknown,
                                                 ),
-                                                alias_rhs: std::option::Option::None,
                                             }))
                                         }
                                     } else {
@@ -27503,7 +27485,6 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
                                                 provenance: Rc::new(
                                                     SubValueRelation::SubValueUnknown,
                                                 ),
-                                                alias_rhs: std::option::Option::None,
                                             }),
                                         )
                                     },
@@ -28387,21 +28368,18 @@ pub fn census_qualify_sig_return_binding(
                 ),
             );
             let __rb_2_0 = binding.provenance.clone();
-            let __rb_3_0 = binding.alias_rhs.clone();
             let mut __rb_h = binding;
             match Rc::get_mut(&mut __rb_h) {
                 Some(__rb_r) => {
                     __rb_r.name = __rb_0_0;
                     __rb_r.resolved = __rb_1_0;
                     __rb_r.provenance = __rb_2_0;
-                    __rb_r.alias_rhs = __rb_3_0;
                 }
                 None => {
                     __rb_h = Rc::new(TypeBinding {
                         name: __rb_0_0,
                         resolved: __rb_1_0,
                         provenance: __rb_2_0,
-                        alias_rhs: __rb_3_0,
                     });
                 }
             }
@@ -28454,7 +28432,6 @@ pub fn census_upgrade_sig_binding(
                                     })),
                                 ),
                                 provenance: binding.provenance.clone(),
-                                alias_rhs: binding.alias_rhs.clone(),
                             })
                         }
                     } else {
@@ -28603,21 +28580,18 @@ pub fn census_upgrade_type_decl_binding(
                 excluded.clone(),
             );
             let __rb_2_0 = binding.provenance.clone();
-            let __rb_3_0 = binding.alias_rhs.clone();
             let mut __rb_h = binding;
             match Rc::get_mut(&mut __rb_h) {
                 Some(__rb_r) => {
                     __rb_r.name = __rb_0_0;
                     __rb_r.resolved = __rb_1_0;
                     __rb_r.provenance = __rb_2_0;
-                    __rb_r.alias_rhs = __rb_3_0;
                 }
                 None => {
                     __rb_h = Rc::new(TypeBinding {
                         name: __rb_0_0,
                         resolved: __rb_1_0,
                         provenance: __rb_2_0,
-                        alias_rhs: __rb_3_0,
                     });
                 }
             }
@@ -28674,21 +28648,18 @@ pub fn census_qualify_leaf_binding(
                 ),
             );
             let __rb_2_0 = binding.provenance.clone();
-            let __rb_3_0 = binding.alias_rhs.clone();
             let mut __rb_h = binding;
             match Rc::get_mut(&mut __rb_h) {
                 Some(__rb_r) => {
                     __rb_r.name = __rb_0_0;
                     __rb_r.resolved = __rb_1_0;
                     __rb_r.provenance = __rb_2_0;
-                    __rb_r.alias_rhs = __rb_3_0;
                 }
                 None => {
                     __rb_h = Rc::new(TypeBinding {
                         name: __rb_0_0,
                         resolved: __rb_1_0,
                         provenance: __rb_2_0,
-                        alias_rhs: __rb_3_0,
                     });
                 }
             }
@@ -28975,7 +28946,6 @@ pub fn census_with_resolved_fn_sigs(
                             name: crate::v1_std_core::qualified_last_segment(k.clone()),
                             resolved: node.clone(),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            alias_rhs: std::option::Option::None,
                         }),
                         crate::v1_compiler_infer_env::qualified_all_but_last(k.clone()),
                         index.clone(),
@@ -29462,7 +29432,6 @@ pub fn build_type_env(
                                 ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            alias_rhs: std::option::Option::None,
                         }),
                     )
                 },
@@ -29500,7 +29469,6 @@ pub fn build_type_env(
                     ident: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
             }),
         );
         let kernel_optional = kernel_optional_type_node();
@@ -29513,7 +29481,6 @@ pub fn build_type_env(
                 name: "Optional".to_string(),
                 resolved: kernel_optional.clone(),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
             }),
         );
         let kernel_bindings = v1_rt::rc_map_insert(
@@ -29525,7 +29492,6 @@ pub fn build_type_env(
                 name: "Bool".to_string(),
                 resolved: kernel_bool_type_node(),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
             }),
         );
         let node_fields =
@@ -30126,7 +30092,6 @@ pub fn build_type_env_unresolved(
                                 ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            alias_rhs: std::option::Option::None,
                         }),
                     )
                 },
@@ -30141,7 +30106,6 @@ pub fn build_type_env_unresolved(
                 name: "Optional".to_string(),
                 resolved: kernel_optional.clone(),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
             }),
         );
         let kernel_bindings = v1_rt::rc_map_insert(
@@ -30153,7 +30117,6 @@ pub fn build_type_env_unresolved(
                 name: "Bool".to_string(),
                 resolved: kernel_bool_type_node(),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
             }),
         );
         let kernel_str_bindings =
@@ -30236,7 +30199,6 @@ v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
     resolved: type_node.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
-    alias_rhs: std::option::Option::None,
 }))
 }
                 } else {
@@ -30270,7 +30232,6 @@ v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
     resolved: alias_node.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
-    alias_rhs: std::option::Option::None,
 }))
 }
                     } else {
@@ -30281,7 +30242,6 @@ v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
     resolved: ref_node.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
-    alias_rhs: std::option::Option::None,
 }))
 }
                         } else {
@@ -30318,7 +30278,6 @@ v1_rt::rc_map_insert(acc.clone(), item_ident.clone(), Rc::new(TypeBinding {
     name: crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
     resolved: type_node.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
-    alias_rhs: std::option::Option::None,
 }))
 }
                                 } else {
@@ -30847,7 +30806,6 @@ pub fn insert_variant_owner_checked(
                     name: arm_name.clone(),
                     resolved: owner.clone(),
                     provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                    alias_rhs: std::option::Option::None,
                 }),
             ),
             collision_errors: state.collision_errors.clone(),
@@ -30961,7 +30919,6 @@ pub fn build_global_bare_variant_locals(
                             name: name.clone(),
                             resolved: owner.clone(),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            alias_rhs: std::option::Option::None,
                         }),
                     )
                 } else {
@@ -34230,7 +34187,6 @@ pub fn typecheck_module(
                             ),
                             resolved: item.type_annotation.clone().clone().unwrap(),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            alias_rhs: std::option::Option::None,
                         }),
                     )
                 } else {
@@ -34481,15 +34437,6 @@ pub fn bindings_accum_insert(
     }
 }
 
-pub fn alias_rhs_reference(pre: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
-    match crate::v1_compiler_infer_env::transparent_alias_rhs(pre.clone()) {
-        Some(rhs) => Some(
-            crate::v1_compiler_infer_resolve::reference_with_declaration(rhs.clone(), env.clone()),
-        ),
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
 pub fn resolve_env_bindings(
     env: Rc<TypeEnv>,
     module_name: String,
@@ -34618,7 +34565,6 @@ let updated_binding = Rc::new(TypeBinding {
     name: name.clone(),
     resolved: resolved.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
-    alias_rhs: alias_rhs_reference(pre.clone(), env.clone()),
 });
 bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.parents.clone(), env.source_indices.clone(), result.diagnostics.clone())
 },
@@ -34680,7 +34626,6 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
                             name: name.clone(),
                             resolved: resolved.clone(),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            alias_rhs: alias_rhs_reference(pre.clone(), env.clone()),
                         });
                         bindings_accum_insert(
                             acc.clone(),
@@ -35671,7 +35616,6 @@ pub fn compiler_kernel_type_env(
                                 ident: None,
                             }),
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                            alias_rhs: std::option::Option::None,
                         }),
                     )
                 },
@@ -35709,7 +35653,6 @@ pub fn compiler_kernel_type_env(
                     ident: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
             }),
         );
         let kernel_optional = kernel_optional_type_node();
@@ -35722,7 +35665,6 @@ pub fn compiler_kernel_type_env(
                 name: "Optional".to_string(),
                 resolved: kernel_optional.clone(),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
             }),
         );
         let kernel_bindings = v1_rt::rc_map_insert(
@@ -35734,7 +35676,6 @@ pub fn compiler_kernel_type_env(
                 name: "Bool".to_string(),
                 resolved: kernel_bool_type_node(),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
             }),
         );
         let node_fields =

@@ -500,7 +500,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
             else if titem.body != none && (titem.params |> count == 0) && titem.transport == none && titem.connective == NoConnective && titem.inferred != none {
               InferScopeComponents {
                 svc_registry: acc.svc_registry,
-                svc_locals: map_insert(acc.svc_locals, authored_name_at(source_indices: env.source_indices, node: titem), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: titem), resolved: resolved_type(n: titem), provenance: SubValueUnknown, alias_rhs: none })
+                svc_locals: map_insert(acc.svc_locals, authored_name_at(source_indices: env.source_indices, node: titem), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: titem), resolved: resolved_type(n: titem), provenance: SubValueUnknown  })
               }
             }
             else {
@@ -522,7 +522,7 @@ fn nominal_leaf_type(name: String) -> Node {
 }
 
 fn nominal_type_binding(name: String) -> TypeBinding {
-  TypeBinding { name: name, resolved: nominal_leaf_type(name: name), provenance: SubValueUnknown, alias_rhs: none }
+  TypeBinding { name: name, resolved: nominal_leaf_type(name: name), provenance: SubValueUnknown  }
 }
 
 type FieldRecursionResult {
@@ -659,7 +659,7 @@ fn namespace_alias_binding_for_target(
   TypeBinding {
     name: authored_name_at(source_indices: source_indices, node: item),
     resolved: target_node,
-    provenance: SubValueUnknown, alias_rhs: none
+    provenance: SubValueUnknown
   }
 }
 
@@ -7805,7 +7805,7 @@ fn present_arms_over_unresolved_scrutinee(arms: List<Node>, span: SourceSpan, mo
 
 fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), TypeBinding { name: param_node_name_at(n: p, source_indices: scope.type_env.source_indices), resolved: param_node_type_expr(n: p), provenance: PreservedValue, alias_rhs: none })
+    map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), TypeBinding { name: param_node_name_at(n: p, source_indices: scope.type_env.source_indices), resolved: param_node_type_expr(n: p), provenance: PreservedValue  })
   )
   let new_body_locals = fold(params, init: scope.body_locals, f: (acc, p) =>
     map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), true)
@@ -7885,7 +7885,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance, alias_rhs: none }),
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance  }),
     body_locals: map_insert(scope.body_locals, name, true),
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
@@ -7902,7 +7902,7 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance, alias_rhs: none }),
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance  }),
     body_locals: map_insert(scope.body_locals, name, true),
     match_bound_names: map_insert(scope.match_bound_names, name, true),
     module_name: scope.module_name,
@@ -7917,7 +7917,7 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
 
 fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, p, TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown, alias_rhs: none })
+    map_insert(acc, p, TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown  })
   )
   let new_body_locals = fold(params, init: scope.body_locals, f: (acc, p) =>
     map_insert(acc, p, true)
@@ -13630,7 +13630,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel),
             size_aliases: inner_size_aliases,
-            scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: rel, alias_rhs: none }),
+            scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: rel  }),
             func_env: ctx.func_env,
             per_field_vars: inner_per_field,
             body_locals: map_insert(ctx.body_locals, binding_name, true)
@@ -13640,7 +13640,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: ctx.sub_value_vars,
             size_aliases: inner_size_aliases,
-            scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: SubValueUnknown, alias_rhs: none }),
+            scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: SubValueUnknown  }),
             func_env: ctx.func_env,
             per_field_vars: inner_per_field,
             body_locals: map_insert(ctx.body_locals, binding_name, true)
@@ -13687,7 +13687,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: map_insert(acc.ctx.sub_value_vars, bname, rel),
                   size_aliases: new_sa,
-                  scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: rel, alias_rhs: none }),
+                  scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: rel  }),
                   func_env: acc.ctx.func_env,
                   per_field_vars: acc.ctx.per_field_vars,
                   body_locals: map_insert(acc.ctx.body_locals, bname, true)
@@ -13697,7 +13697,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: acc.ctx.sub_value_vars,
                   size_aliases: new_sa,
-                  scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: SubValueUnknown, alias_rhs: none }),
+                  scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: SubValueUnknown  }),
                   func_env: acc.ctx.func_env,
                   per_field_vars: acc.ctx.per_field_vars,
                   body_locals: map_insert(acc.ctx.body_locals, bname, true)
@@ -15386,7 +15386,7 @@ fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
           Present { value: bindings } =>
             if (bindings |> count) == 1 {
               match bindings |> first {
-                Present { value: b } => map_insert(acc, arm, TypeBinding { name: arm, resolved: b.resolved, provenance: SubValueUnknown, alias_rhs: none })
+                Present { value: b } => map_insert(acc, arm, TypeBinding { name: arm, resolved: b.resolved, provenance: SubValueUnknown  })
                 Absent => acc
               }
             } else { acc }
@@ -15719,7 +15719,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       uses: [], body: none, transport: none, properties: item.properties,
       type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none } }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown  } }
   } else if item.body != none && item.transport == none {
     let fn_node = Node {
       occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
@@ -15728,7 +15728,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       uses: item.uses, body: none, transport: none, properties: item.properties,
       type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown, alias_rhs: none } }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown  } }
   } else if item.inferred != none && item.params |> count == 0 && item.body == none {
     let alias_node = Node {
       occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
@@ -15737,10 +15737,10 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       uses: [], body: none, transport: none, properties: [],
       type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown, alias_rhs: none } }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown  } }
   } else if item.transport == none && item.children |> count > 0 {
     let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown, alias_rhs: none } }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown  } }
   } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
     let bare_node = Node {
       occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
@@ -15749,7 +15749,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       uses: [], body: none, transport: none, properties: [],
       type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown, alias_rhs: none } }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown  } }
   } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
     Present { value: nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)) }
   } else if item.module_item_kind == ModuleItemTypeDeclaration && item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.children |> count == 0 && item.transport == none {
@@ -15760,7 +15760,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       uses: [], body: none, transport: none, properties: item.properties,
       type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none } }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown  } }
   } else {
     none
   }
@@ -15917,7 +15917,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                     binding: TypeBinding {
                       name: vname,
                       resolved: item,
-                      provenance: SubValueUnknown, alias_rhs: none
+                      provenance: SubValueUnknown
                     }
                   )
                   }
@@ -16345,7 +16345,7 @@ fn census_qualify_sig_return_binding(binding: TypeBinding, module_path: String, 
   TypeBinding {
     name: binding.name,
     resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: empty_map())),
-    provenance: binding.provenance, alias_rhs: binding.alias_rhs
+    provenance: binding.provenance
   }
 }
 
@@ -16361,7 +16361,7 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
           TypeBinding {
             name: binding.name,
             resolved: node_with_inferred(n: node, inferred: Present { value: Resolved { node: preserved } }),
-            provenance: binding.provenance, alias_rhs: binding.alias_rhs
+            provenance: binding.provenance
           }
         } else { binding }
       _ => binding
@@ -16413,7 +16413,7 @@ fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, c
   TypeBinding {
     name: binding.name,
     resolved: qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded),
-    provenance: binding.provenance, alias_rhs: binding.alias_rhs
+    provenance: binding.provenance
   }
 }
 
@@ -16428,7 +16428,7 @@ fn census_qualify_leaf_binding(binding: TypeBinding, module_path: String, census
   TypeBinding {
     name: binding.name,
     resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: excluded)),
-    provenance: binding.provenance, alias_rhs: binding.alias_rhs
+    provenance: binding.provenance
   }
 }
 
@@ -16524,7 +16524,7 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
     match map_get(index.entries, k) {
       Present { value: node } =>
         let upgraded = census_upgrade_binding(
-          binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown, alias_rhs: none },
+          binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown  },
           module_path: qualified_all_but_last(name: k),
           census: index,
           source_indices: source_indices
@@ -16703,18 +16703,18 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
       name: name,
       resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
-      provenance: SubValueUnknown, alias_rhs: none
+      provenance: SubValueUnknown
     })
   )
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
     resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
-    provenance: SubValueUnknown, alias_rhs: none
+    provenance: SubValueUnknown
   })
   let kernel_optional = kernel_optional_type_node()
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown, alias_rhs: none })
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown, alias_rhs: none })
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown  })
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown  })
 
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
@@ -16885,11 +16885,11 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_bindings = fold(
     map_keys(kernel_type_set),
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }, provenance: SubValueUnknown, alias_rhs: none })
+    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }, provenance: SubValueUnknown  })
   )
   let kernel_optional = kernel_optional_type_node()
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown, alias_rhs: none })
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown, alias_rhs: none })
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown  })
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown  })
   let kernel_str_bindings = str_bindings_from_bindings(bindings: kernel_bindings)
   let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: kernel_str_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: build_unit_variant_index(str_bindings: kernel_str_bindings, parents: [], source_indices: source_indices), unit_variant_index_observed: true }
 
@@ -16910,18 +16910,18 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     let has_structure = item.connective != NoConnective
     if has_structure {
       let type_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
-      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none })
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown  })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
       let alias_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
-      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown, alias_rhs: none })
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown  })
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
-      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown, alias_rhs: none })
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown  })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
     } else if item.module_item_kind == ModuleItemTypeDeclaration && item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.children |> count == 0 && item.transport == none {
       let type_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
-      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown, alias_rhs: none })
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown  })
     } else {
       acc
     }
@@ -17189,7 +17189,7 @@ fn insert_variant_owner_checked(state: VariantFoldState, arm_name: String, owner
       }
     Absent =>
       VariantFoldState {
-        locals: map_insert(state.locals, arm_name, TypeBinding { name: arm_name, resolved: owner, provenance: SubValueUnknown, alias_rhs: none }),
+        locals: map_insert(state.locals, arm_name, TypeBinding { name: arm_name, resolved: owner, provenance: SubValueUnknown  }),
         collision_errors: state.collision_errors
       }
   }
@@ -17265,7 +17265,7 @@ fn build_global_bare_variant_locals(
       Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } =>
         let owner = binding.resolved
         if owner.connective == Disj && has_child_named(n: owner, name: name, source_indices: source_indices) {
-          map_insert(acc, name, TypeBinding { name: name, resolved: owner, provenance: SubValueUnknown, alias_rhs: none })
+          map_insert(acc, name, TypeBinding { name: name, resolved: owner, provenance: SubValueUnknown  })
         } else {
           acc
         }
@@ -18664,7 +18664,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
     if item.body != none && item.params |> count == 0 && item.inferred == none && item.type_annotation != none {
-      map_insert(acc, authored_name_at(source_indices: source_indices, node: item), TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: item.type_annotation.value, provenance: SubValueUnknown, alias_rhs: none })
+      map_insert(acc, authored_name_at(source_indices: source_indices, node: item), TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: item.type_annotation.value, provenance: SubValueUnknown  })
     } else {
       acc
     }
@@ -18778,18 +18778,6 @@ fn bindings_accum_insert(acc: BindingsAccum, ident: Int, updated_binding: TypeBi
   }
 }
 
-// THE ALIAS'S RIGHT-HAND-SIDE REFERENCE, RETAINED ON ITS ENV BINDING (quiet-gull-780 ruling B). A
-// transparent alias item (`type A = B`, `type A = B<C>`: a bare, required, unannotated item whose
-// `inferred` is its authored RHS) keeps that RHS reference node, with the head's identity written by
-// the one writer in THIS module's env, the alias's declaring scope. Every other binding answers none.
-// The resolved binding itself is unchanged; this is the reference a reader asks "what does the alias
-// name", so nothing downstream re-resolves the spelling.
-fn alias_rhs_reference(pre: Node, env: TypeEnv) -> Node? {
-  match transparent_alias_rhs(pre: pre) {
-    Present { value: rhs } => Present { value: reference_with_declaration(n: rhs, env: env) }
-    Absent => none
-  }
-}
 
 fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Int, Bool>, deps_map: Map<String, List<String>>) -> EnvResolveResult {
   let remaining = map(
@@ -18830,7 +18818,7 @@ fn topo_resolve_types(
           let result = resolve_node(n: pre, env: env, module_name: module_name)
           let resolved = preserve_nominal_brand_on_resolve(
             identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
-          let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown, alias_rhs: alias_rhs_reference(pre: pre, env: env) }
+          let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown  }
           bindings_accum_insert(acc: acc, ident: ident, updated_binding: updated_binding, parents: env.parents, source_indices: env.source_indices, result_diagnostics: result.diagnostics)
         Absent => acc
       }
@@ -18849,7 +18837,7 @@ fn topo_resolve_types(
         let result = resolve_node(n: pre, env: env, module_name: module_name)
         let resolved = preserve_nominal_brand_on_resolve(
           identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
-        let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown, alias_rhs: alias_rhs_reference(pre: pre, env: env) }
+        let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown  }
         bindings_accum_insert(acc: acc, ident: ident, updated_binding: updated_binding, parents: env.parents, source_indices: env.source_indices, result_diagnostics: result.diagnostics)
       Absent => acc
     }
@@ -19322,18 +19310,18 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
       name: name,
       resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
-      provenance: SubValueUnknown, alias_rhs: none
+      provenance: SubValueUnknown
     })
   )
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
     resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
-    provenance: SubValueUnknown, alias_rhs: none
+    provenance: SubValueUnknown
   })
   let kernel_optional = kernel_optional_type_node()
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown, alias_rhs: none })
-  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown, alias_rhs: none })
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown  })
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown  })
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))

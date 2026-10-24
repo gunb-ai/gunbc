@@ -42,6 +42,7 @@ mod namespace_unique_on_chain_policy_test;
 #[cfg(test)]
 mod none_undetermined_carrier_refuse_test;
 #[cfg(test)]
+mod opaque_kernel_leaf_alias_test;
 mod record_literal_declared_type_inhabitance_test;
 #[cfg(test)]
 mod record_literal_names_a_union_type_refusal_test;

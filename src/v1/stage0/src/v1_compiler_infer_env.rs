@@ -86,7 +86,6 @@ pub struct TypeBinding {
     pub name: String,
     pub resolved: Rc<Node>,
     pub provenance: Rc<SubValueRelation>,
-    pub alias_rhs: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1384,7 +1383,6 @@ pub fn lookup_qualified_module_projection(
             name: name.clone(),
             resolved: resolved.clone(),
             provenance: Rc::new(SubValueRelation::SubValueUnknown),
-            alias_rhs: std::option::Option::None,
         })),
         std::option::Option::None => std::option::Option::None,
     }
@@ -2585,7 +2583,6 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     ident: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
             });
             let shadowed = effective_visible_binding(
                 e.str_bindings.clone(),
@@ -3745,90 +3742,67 @@ pub fn alias_rhs_of_declaration(
     item_ref: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
-    {
-        let declaring = if (env.module_path.clone() == item_ref.module_path.clone()) {
-            Some(env.clone())
-        } else {
-            Rc::new({
-                let mut __result = Vec::new();
-                for p in env.parents.clone().iter().cloned() {
-                    if (p.module_path.clone() == item_ref.module_path.clone()) {
-                        __result.push(p);
-                    }
+    match symbol_index_lookup(
+        env.symbol_index.clone(),
+        v1_rt::concat(
+            v1_rt::concat(item_ref.module_path.clone(), ".".to_string()),
+            item_ref.decl_name.clone(),
+        ),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(item) => match transparent_alias_rhs(item.clone()) {
+            Some(rhs) => match rhs.declaration.clone() {
+                Some(_) => Some(rhs.clone()),
+                std::option::Option::None => {
+                    alias_rhs_with_index_identity(rhs.clone(), item_ref.clone(), env.clone())
                 }
-                __result
-            })
-            .first()
-            .cloned()
-        };
-        let from_env = match declaring.clone() {
-            std::option::Option::None => std::option::Option::None,
-            Some(owner) => {
-                match v1_rt::map_get(&owner.str_bindings.clone(), item_ref.decl_name.clone()) {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(binding) => binding.alias_rhs.clone(),
-                }
-            }
-        };
-        match from_env.clone() {
-            Some(rhs) => Some(rhs.clone()),
-            std::option::Option::None => match symbol_index_lookup(
-                env.symbol_index.clone(),
-                v1_rt::concat(
-                    v1_rt::concat(item_ref.module_path.clone(), ".".to_string()),
-                    item_ref.decl_name.clone(),
-                ),
-            ) {
-                std::option::Option::None => std::option::Option::None,
-                Some(item) => match transparent_alias_rhs(item.clone()) {
-                    Some(rhs) => match rhs.declaration.clone() {
-                        Some(_) => Some(rhs.clone()),
-                        std::option::Option::None => alias_rhs_with_index_identity(
-                            rhs.clone(),
-                            item_ref.module_path.clone(),
-                            env.clone(),
-                        ),
-                    },
-                    std::option::Option::None => std::option::Option::None,
-                },
             },
-        }
+            std::option::Option::None => std::option::Option::None,
+        },
     }
 }
 
 pub fn alias_rhs_with_index_identity(
     rhs: Rc<Node>,
-    owner_module: String,
+    alias: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
     {
         let spelled = crate::v1_std_core::authored_name_at(env.source_indices.clone(), rhs.clone());
-        match declaration_named_in_module(spelled.clone(), owner_module.clone(), env.clone()) {
+        match declaration_named_in_module(spelled.clone(), alias.module_path.clone(), env.clone()) {
             std::option::Option::None => std::option::Option::None,
-            Some(d) => Some(Rc::new(Node {
-                occurrence_identity: rhs.occurrence_identity.clone(),
-                name: rhs.name.clone(),
-                span: rhs.span.clone(),
-                ident_span: rhs.ident_span.clone(),
-                children: rhs.children.clone(),
-                connective: rhs.connective.clone(),
-                params: rhs.params.clone(),
-                inferred: rhs.inferred.clone(),
-                return_cardinality: rhs.return_cardinality.clone(),
-                uses: rhs.uses.clone(),
-                body: rhs.body.clone(),
-                transport: rhs.transport.clone(),
-                properties: rhs.properties.clone(),
-                type_annotation: rhs.type_annotation.clone(),
-                is_self_recursive: rhs.is_self_recursive.clone(),
-                has_non_tail_self_call: rhs.has_non_tail_self_call.clone(),
-                match_pattern: rhs.match_pattern.clone(),
-                module_item_kind: rhs.module_item_kind.clone(),
-                declaration_marker: rhs.declaration_marker.clone(),
-                declaration: Some(d.clone()),
-                expr_data: rhs.expr_data.clone(),
-                ident: None,
-            })),
+            Some(d) => {
+                if ((d.module_path.clone() == alias.module_path.clone())
+                    && (d.decl_name.clone() == alias.decl_name.clone()))
+                {
+                    std::option::Option::None
+                } else {
+                    Some(Rc::new(Node {
+                        occurrence_identity: rhs.occurrence_identity.clone(),
+                        name: rhs.name.clone(),
+                        span: rhs.span.clone(),
+                        ident_span: rhs.ident_span.clone(),
+                        children: rhs.children.clone(),
+                        connective: rhs.connective.clone(),
+                        params: rhs.params.clone(),
+                        inferred: rhs.inferred.clone(),
+                        return_cardinality: rhs.return_cardinality.clone(),
+                        uses: rhs.uses.clone(),
+                        body: rhs.body.clone(),
+                        transport: rhs.transport.clone(),
+                        properties: rhs.properties.clone(),
+                        type_annotation: rhs.type_annotation.clone(),
+                        is_self_recursive: rhs.is_self_recursive.clone(),
+                        has_non_tail_self_call: rhs.has_non_tail_self_call.clone(),
+                        match_pattern: rhs.match_pattern.clone(),
+                        module_item_kind: rhs.module_item_kind.clone(),
+                        declaration_marker: rhs.declaration_marker.clone(),
+                        declaration: Some(d.clone()),
+                        expr_data: rhs.expr_data.clone(),
+                        ident: None,
+                    }))
+                }
+            }
         }
     }
 }

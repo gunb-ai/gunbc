@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.an_opaque_kernel_leaf_alias_resolves_to_itself
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_opaque_kernel_leaf_alias_resolves_to_itself: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_opaque_kernel_leaf_alias_resolves_to_itself" as NonEmptyStr,
+
+  receipts: [
+    "an opaque declaration named like a kernel leaf (`type String` in v2.std.node) is read by the symbol-index alias path as a transparent alias whose right-hand side is the spelling `String`; resolving that spelling in the declaring module finds the declaration itself, so the opaque kernel leaf acquires a v2.std.node.String declaration identity. DESIGN section 4: v2.std.text String and the kernel String are distinct and cross only through the declared unfold, and type compatibility keys on the exact declaration a position resolves to. The stored TypeBinding.alias_rhs path left the leaf declaration-less, so deleting the field in favour of the one index reader (C1.7) would have changed the answer for exactly this declaration.",
+
+    "FOUND 2026-10-19 by the stored-versus-fallback differential under self-host: 2,341 mismatches, all v2.std.node.String, in 1,789,180 hits. An opaque declaration (`type String`, `type Symbol`) is not an alias of itself, so alias_rhs_with_index_identity in src/v1/04_env.dag answers none for any spelling that resolves to the alias's own declaration, whatever the spelling (review 82816). CORRECTION: an earlier revision narrowed this to is_kernel_type spellings because the broad form moved about 1.78M v2.std.node.Symbol reads in the stored-versus-fallback differential. That differential compared presence of a right-hand side against the stored field this change deletes, so it measured representation, not the settled type outcome; it is not a correctness fact and no longer exists as an instrument once the field is gone. Evidence for the broad form is the outcome: at head 579256a29f18 gunbc test //gunbc/instruments:self-host exits 0 and the three v1-compiler-tests opaque_ tests pass.",
+
+    "RUNG: found at mechanically preventable (an executed unit RED plus a self-host differential, neither on the required v2-bootstrap path, rung_drop v1_required_lanes_withdrawn). CEILING: structurally guaranteed for v1, where the alias reader has one source; the opaque-leaf case is v1-only and dissolves with the seed. NEXT TRIGGER: a gated route that executes v1-compiler-tests, the capability named by the rung_drop. RED: test v1-compiler-tests opaque_kernel_leaf_alias_stays_declaration_less and opaque_declaration_is_not_an_alias_of_itself_whatever_its_spelling (both executed at 76cf04471106 with the refusal disabled in the runner copy: both FAILED, positive control passed); positive control declared_target_alias_keeps_its_head.",
+  ],
+
+  evidence: [],
+}
