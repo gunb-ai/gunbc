@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.lowered_output_reread_as_raw_parse_at_v2_bod
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data lowered_output_reread_as_raw_parse_at_v2_body_lowering: RecurringFailureMode = RecurringFailureMode {
   identity: "lowered_output_reread_as_raw_parse_at_v2_body_lowering" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a lowered node that the body-lowering allowlist does not name is RE-READ AS RAW PARSE, and the parse readers' first-match descents answer a PART of it with no diagnostic** (INVALID STATE: a producer's output -- a construct, a field projection, a qualified-name spine, a literal -- reaches a reader above it in v2.compiler.body_lowering_fold, body_lower_is_core_substrate answers false because nobody added that shape to it, and the reader walks the node again as if it were unlowered, answering its first atom, its base, or a recognised descendant.) This is the SOURCE of the silent part-for-whole class that gunbc#12145 exposed site by site (as_cast_has_no_lowered_form, caret_symbol_has_no_lowered_form, else_less_if_statement_has_no_lowered_form and compound_call_argument_value_refused_as_unread all cite 12145's silent narrowing), and each earlier instance was closed at the symptom by growing the allowlist: the qualified-name spine (call_expression_erased_at_v2_body_lowering, gunbc#11683), the construct, the int literal's digit list, and #12269's field projection (`p + g(x).a` lowered to `p + g(x)`). It is DESIGN section 5's absorbing fallback: a reader that cannot classify a node widens to the parse reading instead of refusing.",

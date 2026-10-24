@@ -1,7 +1,8 @@
 module gunbc.rung_drop.variant_fields_unlowered_on_the_native_route
 
 import std.types { List, NonEmptyStr, String }
-import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-21 (gunbc#11998, side-chat ruling via neat-boar-16). ONE frontier for record
@@ -53,22 +54,19 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // either refusal because it never runs the native infer or the native resolver over test modules;
 // that blindness is part of the finding, and CI enrollment still waits on
 // v2_native_route_off_the_merge_path.
-data variant_fields_unlowered_on_the_native_route_population: List<String> = [
-  "the emitted (native-route) compiler: variant-field lowering and match-arm binder binding are executed by the interpreted v2 stages but not yet observed on the native route (the emitted compiler builds since gunbc#12089; the native run over the specimen is deferred until gunbc#12100 fixes the compile.emit cost); specimen: the binder `node` of the `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at",
-]
+data variant_fields_unlowered_on_the_native_route_population: FreeSemigroup<String> = FreeSemigroup { head: "the emitted (native-route) compiler: variant-field lowering and match-arm binder binding are executed by the interpreted v2 stages but not yet observed on the native route (the emitted compiler builds since gunbc#12089; the native run over the specimen is deferred until gunbc#12100 fixes the compile.emit cost); specimen: the binder `node` of the `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at", tail: [] }
 
 data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
   identity: "variant_fields_unlowered_on_the_native_route" as NonEmptyStr,
   subject: "native route lowers variant fields, named and positional, into declared field identities and binds pattern binders from them, the way the seed does",
   declared: "2026-09-21",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "a v2 stage lowers variant fields into declared field identities (named and positional \"0\")"
     },
-    population: variant_fields_unlowered_on_the_native_route_population,
+    population: Enumerated { members: variant_fields_unlowered_on_the_native_route_population },
     restoration_trigger: "the emitted compiler builds, and on that native route the specimen is observed: the binder `node` in v2.std.symbol_index symbol_index_candidates_at binds its arm and a positional `A(x)` construction and match round-trip field \"0\". A declaration-kind classifier alone (gunbc#12082) does NOT satisfy this: it changes how the interpreted stages decide, not whether the native route is observed."
-  }
+  } }
 }

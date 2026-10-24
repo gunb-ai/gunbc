@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.vocabulary_held_in_both_the_frozen_seed_and_v2
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data vocabulary_held_in_both_the_frozen_seed_and_v2: RecurringFailureMode = RecurringFailureMode {
   identity: "vocabulary_held_in_both_the_frozen_seed_and_v2" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**one closed vocabulary is held twice, once in the frozen v1 seed and once in its v2 home, and neither copy can read the other** (INVALID STATE: two declarations answer one fact, here which `from \"key\"` spellings name which output channel of a transport. HARM: DESIGN section 3's fork. If one copy gains or loses an arm or a key alias, a `from \"key\"` the v2 wall admits is realized differently by the seed, or the reverse, and nothing turns red. DISTINGUISHING FACTS: this is not an accidental fork inside one tree. The two copies sit on opposite sides of the generation boundary. The stage0 seed carries no extdeps.transports module, so v1 cannot import the v2 home without growing the frozen seed. v2's source roots exclude src/v1, so no v2 claim can import the seed's copy. A mechanical differential would need seed growth or a cross-binary harness, which is not worth building for a list deleted when v2 emits (XL-2 manager ruling, 2026-10-02, on gunbc#12974 review 74063).)",

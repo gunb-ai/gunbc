@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.verdict_measured_on_a_shared_runner_checkout
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data verdict_measured_on_a_shared_runner_checkout_moving_under_the_dispatch: RecurringFailureMode = RecurringFailureMode {
   identity: "verdict_measured_on_a_shared_runner_checkout_moving_under_the_dispatch" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**an instrument's verdict read from a REMOTE DISPATCH working tree that belongs to nobody, and which another tenant moves mid-session** (INVALID STATE: a dispatch prints its own rev-parse, runs a gate over the checkout it lands in, reports the gate's answer, and the reader takes that answer as a verdict about the revision it meant to measure. The print is honest and useless: it names the commit the checkout held at the instant of printing, not the revision the question was about, and the checkout is shared, so the tree can carry another session's UNCOMMITTED edits under a message the reporter never saw, or be re-pointed between dispatches.)",

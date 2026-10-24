@@ -7,9 +7,9 @@ import product.printed_chassis.assembly_geometry {AssemblyPart,MechanicalInterfa
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import std.process { ExitSuccess,exit_failure }
 import product.printed_chassis.cadquery_realization {realize_review_parts,ReviewCadQueryEmitted,ReviewCadQueryRefused,review_program_source}
-import product.printed_chassis.cassette_review {all_parts,manifest_for}
+import product.printed_chassis.cassette_review {rack_review_assembly}
+import product.printed_chassis.printable_assembly {PrintableAssembly,printable_manifest}
 import extdeps.languages.json.emit {serialize_json,json_string,json_object,json_kv}
-import product.printed_chassis.cassette {interfaces}
 import product.printed_chassis.assembly_review_checks {review_model_checks}
 
 // Review-only host adapter. Mechanical geometry, placements, materials and tolerances
@@ -82,7 +82,7 @@ fn adapter_source() -> String { join([
   "\n",
   "def realize(model, out):\n",
   "    assert dict(model,source_manifest_sha256=None) == dict(_expected_manifest,source_manifest_sha256=None), 'Manifest differs from the emitted geometry'\n",
-  "    assert model['schema']=='gunbc.cassette-review.v1' and model['quantum']=='micrometre'\n",
+  "    assert model['root'] and model['package'] and model['quantum']=='micrometre'\n",
   "    assert model['release']=='review-only; no print or powered-operation admission'\n",
   "    assert cq.__version__=='2.8.0', 'Use the recorded CadQuery 2.8.0 environment'\n",
   "    ids=[p['id'] for p in model['parts']];assert len(set(ids))==len(ids)\n",
@@ -134,19 +134,20 @@ fn adapter_source() -> String { join([
   "                if volume>1e-4:collisions.append(\{'a':a['id'],'b':b['id'],'volume_mm3':volume\})\n",
   "    if collisions:raise ValueError('Printed-part collisions: '+json.dumps(collisions))\n",
   "    keepout_collisions=[]\n",
-  "    for ident in globals().get('_required_keepout_ids',[]):\n",
+  "    for ident in model['required_keepouts']:\n",
   "        assert ident in world and next(p for p in model['parts'] if p['id']==ident)['kind']=='clearance', 'Required keepout absent'\n",
   "        for p in printed:\n",
   "            if overlaps(bounds[ident],bounds[p['id']]):\n",
   "                volume=world[ident].intersect(world[p['id']]).Volume()\n",
   "                if volume>1e-4:keepout_collisions.append((ident,p['id'],volume))\n",
   "    if keepout_collisions:raise ValueError('Required clearance occupied: '+json.dumps(keepout_collisions))\n",
-  "    model['validation']=\{'cadquery':cq.__version__,'printed_part_count':len(printed),'unique_print_geometries':len(groups),'printed_pair_collisions':collisions,'required_keepout_collisions':keepout_collisions,'required_keepouts':globals().get('_required_keepout_ids',[]),'source_model_checks':'DAG bed/mate/member checks','scope':'geometry only; no fastener engagement, thermal, structural or electrical qualification'\}\n",
+  "    model['validation']=\{'cadquery':cq.__version__,'printed_part_count':len(printed),'unique_print_geometries':len(groups),'printed_pair_collisions':collisions,'required_keepout_collisions':keepout_collisions,'required_keepouts':model['required_keepouts'],'source_model_checks':'DAG bed/mate/member checks','scope':'geometry only; no fastener engagement, thermal, structural or electrical qualification'\}\n",
   "    model['print_groups']=[\{'representative':items[0],'quantity':len(items),'instances':items\} for items in groups.values()]\n",
   "    assembly=cq.Assembly()\n",
   "    for p in model['parts']:\n",
-  "        if p['scope']=='cassette' and p['kind']!='clearance':assembly.add(shapes[p['id']],name=p['id'],loc=cq.Location(cq.Vector(*mm(p['at_um']))))\n",
-  "    assembly.export(str(out/'cassette-assembly.step'))\n",
+  "        if p['id'] in model['assembly_members']:assembly.add(shapes[p['id']],name=p['id'],loc=cq.Location(cq.Vector(*mm(p['at_um']))))\n",
+  "    assert set(model['assembly_members'])<=set(ids), 'Assembly member is not a part'\n",
+  "    assembly.export(str(out/(model['package']+'-assembly.step')))\n",
   "    (out/'assembly.json').write_text(json.dumps(model,indent=2)+'\\n')\n",
   "    with (out/'parts.csv').open('w') as f:\n",
   "        w=csv.writer(f);w.writerow(['id','part','kind','scope','x_mm','y_mm','z_mm','notes'])\n",
@@ -157,8 +158,8 @@ fn adapter_source() -> String { join([
   "    with (out/'print-list.csv').open('w') as f:\n",
   "        w=csv.writer(f);w.writerow(['representative','quantity','instances','print_file'])\n",
   "        for g in model['print_groups']:w.writerow([g['representative'],g['quantity'],' '.join(g['instances']),g['representative']+'.stl'])\n",
-  "    (out/'README.txt').write_text('Cassette r06 review package. Generated from product.printed_chassis.cassette_review.\\n'+model['release']+'\\nSTLs are bed-oriented; individual STEPs and assembly STEP use assembly-local axes.\\nparts.csv / print-list.csv list all parts and repeat quantities. One M fan plate is already fit-tested.\\nNo additional gauge sequence. Review assembly, fasteners and unresolved board support before scheduling cassette prints.\\n')\n",
-  "    with zipfile.ZipFile(out/'cassette-review.zip','w',zipfile.ZIP_DEFLATED) as z:\n",
+  "    (out/'README.txt').write_text(model['readme'])\n",
+  "    with zipfile.ZipFile(out/(model['package']+'-review.zip'),'w',zipfile.ZIP_DEFLATED) as z:\n",
   "        for f in sorted(out.iterdir()):\n",
   "            if f.suffix in ['.stl','.step','.csv','.txt'] or f.name=='assembly.json':z.write(f,f.name)\n",
   "\n",
@@ -178,15 +179,15 @@ fn adapter_source() -> String { join([
   "\n",
   "if __name__=='__main__':main()\n"
 ], "") }
-fn program_for(parts:List<AssemblyPart>,joints:List<MechanicalInterface>) -> CliWireResponse {
- if !review_model_checks(parts:parts,interfaces:joints) {return CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
- match realize_review_parts(parts:parts) {ReviewCadQueryRefused {reason:_}=>CliWirePrintable {bytes:"Review CAD emission refused",exit:exit_failure(reason:"Review CAD emission refused")} ReviewCadQueryEmitted {program:p}=>CliWirePrintable {bytes:join([review_program_source(p:p),"import json\n_expected_manifest = json.loads(",serialize_json(v:json_string(s:serialize_json(v:manifest_for(parts:parts,joints:joints)))),")\n",adapter_source()],""),exit:ExitSuccess}}
+fn program_for(a:PrintableAssembly) -> CliWireResponse {
+ if !review_model_checks(parts:a.parts,interfaces:a.interfaces) {return CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
+match realize_review_parts(parts:a.parts) {ReviewCadQueryRefused {reason:_}=>CliWirePrintable {bytes:"Review CAD emission refused",exit:exit_failure(reason:"Review CAD emission refused")} ReviewCadQueryEmitted {program:p}=>CliWirePrintable {bytes:join([review_program_source(p:p),"import json\n_expected_manifest = json.loads(",serialize_json(v:json_string(s:serialize_json(v:printable_manifest(a:a)))),")\n",adapter_source()],""),exit:ExitSuccess}}
 }
-fn main() -> CliWireResponse {program_for(parts:all_parts(),joints:interfaces())}
+fn main() -> CliWireResponse {program_for(a:rack_review_assembly())}
 
 // Both payloads derive from the same parts and joints. Callers cannot supply a
 // manifest from another model, and program_for owns the single admission check.
-fn bundle_for(parts:List<AssemblyPart>,joints:List<MechanicalInterface>) -> CliWireResponse {
- match program_for(parts:parts,joints:joints) {CliWirePrintable {bytes:b,exit:e}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"manifest",value:manifest_for(parts:parts,joints:joints)),json_kv(key:"program",value:json_string(s:b))])),exit:e} CliWireUnprintable {cause:c}=>CliWireUnprintable {cause:c}}
+fn bundle_for(a:PrintableAssembly) -> CliWireResponse {
+ match program_for(a:a) {CliWirePrintable {bytes:b,exit:e}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"manifest",value:printable_manifest(a:a)),json_kv(key:"program",value:json_string(s:b))])),exit:e} CliWireUnprintable {cause:c}=>CliWireUnprintable {cause:c}}
 }
-fn bundle() -> CliWireResponse {bundle_for(parts:all_parts(),joints:interfaces())}
+fn bundle() -> CliWireResponse {bundle_for(a:rack_review_assembly())}

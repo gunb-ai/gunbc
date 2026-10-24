@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.seed_admits_a_keyword_as_a_pattern_binder
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
 
 data seed_admits_a_keyword_as_a_pattern_binder: RecurringFailureMode = RecurringFailureMode {
   identity: "seed_admits_a_keyword_as_a_pattern_binder" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingNotStated },
+
   receipts: [
     "INVALID STATE: a pattern binder spelled with a language keyword -- `Present { value: loop } =>`, where `loop` is ^dag_token_kw_loop, the keyword of the `loop <expr>` form -- is ACCEPTED by the v1 seed parser and REFUSED by the v2 parser (the grammar v2.extdeps.languages.dag declares and the native route compiles). The seed is the lenient side: a keyword cannot be an identifier, so the source is invalid and the native refusal is correct.",
     "HARM: a module the seed runs green is refused WHOLE by the native route as parse_g0_tokens_remain, a file-level refusal with no locus in the census row ('whole file'), so every declaration and claim in it leaves the native index. The refusal names no keyword, so it reads as a native parser gap rather than invalid source, and the file joins the parse_g0 population (71 files at merge base 81d292e9db on gunbc#12550) with no cause attached.",

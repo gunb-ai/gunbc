@@ -1,0 +1,29 @@
+module gunbc.guarantee_stall.local_repo_wet_lane_per_row_wall_budget_unarmed_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+// A STALL, NOT A DROP. The per-row wall budget (`bin_witness_wet_per_row_wall_budget_seconds`) never
+// held on `local_repo_wet_schedule`: nothing that runs the lane arms it. `--eval-budget-ms` arms the
+// CPU/eval budget (`set_witness_eval_budget` -> `arm_eval_deadline`), not wall time; the only
+// production `set_witness_wall_budget` call is in `reach_base_standings`, which has zero callers; the
+// only live wall arming is the serve path. A guarantee that was never held on this lane has no event
+// to record, and what the floor lost when the budget-arming runners were withdrawn is already
+// declared in `gunbc.rung_drop v1_required_lanes_withdrawn`. So a member over the budget is not
+// refused `BudgetRefusedBeforeVerdict`; it runs to its verdict, and its wall is read, never enforced.
+//
+// THE MEMBER THAT PRICED THIS IN: the control of `test.claim.claim_batch_parse_gate_witness`
+// (a_parseable_imported_module_reaches_a_real_pass_verdict). A verdict needs `gunbc.output_policy`,
+// which resolves only from the `dag` root, so the child walks the whole tree. Its wall is re-derived
+// by running that function through `claim_batch --wet` and reading the child's `[pre-entry] phase=`
+// lines; no figure is copied here. The second member is the closure-error fn of
+// `test.claim.claim_batch_unobserved_exit_witness` (an_entry_with_a_closure_error_exits_1_with_a_fail_line),
+// which also passes `--source-root dag` and so also walks the whole tree.
+data local_repo_wet_lane_per_row_wall_budget_unarmed_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a local_repo_wet_schedule member whose wall exceeds bin_witness_wet_per_row_wall_budget_seconds is not refused: no path that runs the lane arms a wall budget, so the row runs to its verdict",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["claim_batch_parse_gate_witness.dag", "claim_batch_unobserved_exit_witness.dag", "claim_batch_exit_two_unobserved_witness.dag"] },
+  next_rung_trigger: climbs_when(capability: "the wet terminal arms set_witness_wall_budget from the declared bin_witness_wet_per_row_wall_budget_seconds datum and refuses an over-budget row as BudgetRefusedBeforeVerdict -- SUFFICIENT FOR deleting this row and the over-budget admission in excl_claim_batch_parse_gate_reason together"),
+}

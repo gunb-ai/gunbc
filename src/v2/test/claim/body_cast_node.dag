@@ -1,5 +1,6 @@
 module v2.test.claim.body_cast_node
 
+
 import std.types { List }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, application_binding_plan, declared_signature }
 import v2.compiler.resolve { ResolvedTree }
@@ -44,7 +45,8 @@ import v2.std.node {
   Authored,
   node_subtree_nodes,
   node_synthetic,
-  well_formed
+  well_formed,
+  NotADeclaration
 }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.runtime { RuntimeValue }
@@ -330,7 +332,7 @@ test fn bcn_infer_refuses_int_to_bool() -> Bool {
 // TRANSLATE AND EVAL are driven over the cast node the rows above establish lowering produces:
 // Transform[coerce, operand] + <cast-target>.
 fn bcn_cast_node(operator: Node, operand: Node, keep_target: Bool) -> Node {
-  let head = [Edge { label: Positional, target: operator }, Edge { label: Positional, target: operand }]
+  let head = [Edge { label: Positional, target: operator, declaration: NotADeclaration }, Edge { label: Positional, target: operand, declaration: NotADeclaration }]
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: if keep_target {
@@ -423,8 +425,8 @@ test fn bcn_eval_realizes_the_operand_value() -> Bool {
 // (13) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node
 // canonicalize_positional_then_named): the target first or last is one node.
 test fn bcn_cast_target_order_does_not_move_the_hash() -> Bool {
-  let op = Edge { label: Positional, target: bcn_coerce_wire() }
-  let operand = Edge { label: Positional, target: bcn_int(lexeme: "7") }
+  let op = Edge { label: Positional, target: bcn_coerce_wire(), declaration: NotADeclaration }
+  let operand = Edge { label: Positional, target: bcn_int(lexeme: "7"), declaration: NotADeclaration }
   let target = cast_target_edge(target_type: dag_type_atom_node(identity: ^dag_binding_type_int))
   content_hash(n: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [op, operand, target]))
     == content_hash(n: node_synthetic(kind: ComputationNode { behavior: Transform }, children: [target, op, operand]))
@@ -630,10 +632,10 @@ test fn bcn_a_foreign_label_on_a_transform_refuses() -> Bool {
   !type_binder_labels_conform(root: node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: bcn_coerce_wire() },
-      Edge { label: Positional, target: bcn_int(lexeme: "7") },
+      Edge { label: Positional, target: bcn_coerce_wire(), declaration: NotADeclaration },
+      Edge { label: Positional, target: bcn_int(lexeme: "7"), declaration: NotADeclaration },
       cast_target_edge(target_type: dag_type_atom_node(identity: ^dag_binding_type_int)),
-      Edge { label: Authored { name: ^bcn_not_a_marker }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }
+      Edge { label: Authored { name: ^bcn_not_a_marker }, target: dag_type_atom_node(identity: ^dag_binding_type_int), declaration: NotADeclaration }
     ]
   ))
 }
@@ -651,14 +653,14 @@ test fn bcn_an_unknown_named_label_refuses_at_binding() -> Bool {
     kind: TypeNode { connective: Arrow },
     children: [
       signature.domain,
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int), declaration: NotADeclaration },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int), declaration: NotADeclaration },
       signature.order
     ]
   )
   match application_binding_plan(
     arrow: callee,
-    actuals: [Edge { label: Authored { name: ^bcn_not_a_marker }, target: bcn_int(lexeme: "7") }]
+    actuals: [Edge { label: Authored { name: ^bcn_not_a_marker }, target: bcn_int(lexeme: "7"), declaration: NotADeclaration }]
   ) {
     ApplicationBindingRefused { reason: r, at: _ } => r == ^application_argument_label_unknown
     ApplicationBound { slots: _ } => false
