@@ -2328,8 +2328,9 @@ fn roster_control_homonym(prepared: PreparedGrammar, lex: PreparedLexRules) -> S
 //   wider-row-set: a free count call beside a free concat call. OnlyCall count imports collection_count_shape and NOT
 //     collection_concat_shape; the whole home imports both.
 //   wrong-row-refusal: count is a parameter in one fn and a free call in another, beside a free concat call. OnlyCall
-//     concat imports collection_concat_shape; the whole home refuses home-name-locally-bound for count, a name the
-//     concat wave never moves.
+//     concat imports collection_concat_shape and NOT collection_count_shape; the whole home also imports
+//     collection_count_shape for h's free count, a name the concat wave never moves. (This arm once expected the whole
+//     home to refuse home-name-locally-bound; that guard is deleted and the offset join leaves g's parameter alone.)
 fn roster_control_row_scope(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let wider = "module c.rowscope.wider\n\nfn f(xs: List<String>, ys: List<String>) -> Int {\n  count(xs: concat(a: xs, b: ys))\n}\n"
   let wrong = "module c.rowscope.wrong\n\nfn g(count: Int) -> Int {\n  count\n}\n\nfn h(xs: List<String>, ys: List<String>) -> Int {\n  count(xs: concat(a: xs, b: ys))\n}\n"
@@ -2337,7 +2338,7 @@ fn roster_control_row_scope(prepared: PreparedGrammar, lex: PreparedLexRules) ->
   roster_row_scope_import(name: "wider-row-set/row", text: wider, scope: OneHome { home: algebra, rows: OnlyCall { call: "count" } }, wants: "collection_count_shape", forbids: "collection_concat_shape", prepared: prepared, lex: lex)
     + roster_row_scope_import(name: "wider-row-set/home", text: wider, scope: OneHome { home: algebra, rows: EveryRowOfHome }, wants: "collection_concat_shape", forbids: "", prepared: prepared, lex: lex)
     + roster_row_scope_import(name: "wrong-row-refusal/row", text: wrong, scope: OneHome { home: algebra, rows: OnlyCall { call: "concat" } }, wants: "collection_concat_shape", forbids: "collection_count_shape", prepared: prepared, lex: lex)
-    + roster_row_scope_refusal(name: "wrong-row-refusal/home", text: wrong, scope: OneHome { home: algebra, rows: EveryRowOfHome }, refusal: "home-name-locally-bound", prepared: prepared, lex: lex)
+    + roster_row_scope_import(name: "wrong-row-refusal/home", text: wrong, scope: OneHome { home: algebra, rows: EveryRowOfHome }, wants: "collection_count_shape", forbids: "", prepared: prepared, lex: lex)
 }
 
 // A SCOPE THAT SELECTS NOTHING REFUSES, it never reads as converged (side chat on #14883). Each RED goes through the real
@@ -2397,14 +2398,6 @@ fn roster_row_scope_import_text(name: String, t: String, wants: String, forbids:
     "CONTROL-FAIL row-scope " + name + ": import " + t + " carries " + forbids + ", a row outside the run's scope\n"
   } else {
     ""
-  }
-}
-
-fn roster_row_scope_refusal(name: String, text: String, scope: RosterHomeScope, refusal: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  match roster_row_scope_outcome(name: name, text: text, scope: scope, prepared: prepared, lex: lex) {
-    RosterRefused { reason: r } =>
-      if roster_refusal_text(reason: r) == refusal { "" } else { "CONTROL-FAIL row-scope " + name + ": refused " + roster_refusal_text(reason: r) + ", expected " + refusal + "\n" }
-    _ => "CONTROL-FAIL row-scope " + name + ": expected the whole-home run to refuse " + refusal + "\n"
   }
 }
 
