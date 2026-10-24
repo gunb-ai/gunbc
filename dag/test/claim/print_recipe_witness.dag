@@ -1,0 +1,59 @@
+module test.claim.print_recipe_witness
+import std.types { Bool, String, List, NonEmptyStr }
+import extdeps.printing.fdm { Pla, Petg }
+import extdeps.languages.json.emit { JsonKeyValue, json_kv, json_string, serialize_json, json_object }
+import product.printing.print_recipe { print_recipe_from_wire, recipe_process_overrides, overlay, a1_mini_pla_prototype_v1, a1_mini_petg_functional_v1 }
+import product.printed_chassis.prepared_project_store { PreparationKey, preparation_key_digest }
+
+test fn both_recipes_resolve_and_an_unknown_one_refuses() -> Bool {
+  (match print_recipe_from_wire(s: "a1-mini-pla-prototype-v1") { Present { value: r } => (match r.material { Pla => true _ => false }) Absent => false }) &&
+  (match print_recipe_from_wire(s: "a1-mini-petg-functional-v1") { Present { value: r } => (match r.material { Petg => true _ => false }) && (r.filament as String) == "Generic PETG @BBL A1M" Absent => false }) &&
+  (match print_recipe_from_wire(s: "petg") { Present { value: _ } => false Absent => true })
+}
+
+fn value_of(members: List<JsonKeyValue>, key: String) -> String {
+  serialize_json(v: json_object(members: filter(members, m => m.key == key)))
+}
+
+// A child's key replaces its parent's, keys only the parent has survive, and nothing is duplicated.
+test fn overlay_replaces_parent_keys_and_keeps_the_rest() -> Bool {
+  let parent = [json_kv(key: "wall_loops", value: json_string(s: "2")), json_kv(key: "layer_height", value: json_string(s: "0.2"))]
+  let child = [json_kv(key: "wall_loops", value: json_string(s: "4"))]
+  let merged = overlay(base: parent, top: child)
+  count(merged) == 2 && value_of(members: merged, key: "wall_loops") == value_of(members: child, key: "wall_loops") &&
+  value_of(members: merged, key: "layer_height") == value_of(members: parent, key: "layer_height")
+}
+
+// The imposed process keys carry the recipe's process name and the support policy, each once.
+test fn recipe_overrides_name_the_process_and_carry_supports_once() -> Bool {
+  let o = recipe_process_overrides(r: a1_mini_petg_functional_v1)
+  count(filter(o, m => m.key == "name")) == 1 && count(filter(o, m => m.key == "enable_support")) == 1 &&
+  value_of(members: o, key: "name") == serialize_json(v: json_object(members: [json_kv(key: "name", value: json_string(s: "Functional 0.20 PETG supported"))]))
+}
+
+fn key(recipe: String, machine: String, filament: String, process: String, slicer: String, plan: String, revision: String, root: String) -> PreparationKey {
+  PreparationKey { root: root, source_revision: revision as NonEmptyStr, recipe: recipe as NonEmptyStr, machine_profile_sha256: machine, filament_profile_sha256: filament, process_profile_sha256: process, slicer_archive_sha256: slicer, plate_plan_sha256: plan }
+}
+
+// Equal inputs name one preparation (reuse); changing any single input names another.
+test fn every_preparation_input_changes_the_key_and_equal_inputs_share_it() -> Bool {
+  let base = preparation_key_digest(k: key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"))
+  let again = preparation_key_digest(k: key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"))
+  let variants = [
+    key(recipe: "R", machine: "m", filament: "f", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"),
+    key(recipe: "r", machine: "M", filament: "f", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"),
+    key(recipe: "r", machine: "m", filament: "F", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"),
+    key(recipe: "r", machine: "m", filament: "f", process: "P", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"),
+    key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "S", plan: "x", revision: "v", root: "a16-plug-fit-ring"),
+    key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "X", revision: "v", root: "a16-plug-fit-ring"),
+    key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "x", revision: "V", root: "a16-plug-fit-ring"),
+    key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-sleeve-fit-ring"),
+  ]
+  base == again && all(variants, k => preparation_key_digest(k: k) != base)
+}
+
+test fn the_two_recipes_differ_only_in_filament_and_process_name() -> Bool {
+  a1_mini_pla_prototype_v1.machine == a1_mini_petg_functional_v1.machine &&
+  a1_mini_pla_prototype_v1.process == a1_mini_petg_functional_v1.process &&
+  a1_mini_pla_prototype_v1.filament != a1_mini_petg_functional_v1.filament
+}

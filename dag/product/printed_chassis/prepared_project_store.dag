@@ -1,0 +1,135 @@
+module product.printed_chassis.prepared_project_store
+import std.types { String, NonEmptyStr, Bool, FilePath }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem, listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
+
+// A PREPARED PROJECT IS IDENTIFIED BY ITS BYTES, AND FOUND BY THE INPUTS THAT MADE THEM. The key is
+// every input that can change the sliced archive: the root, the source revision its geometry was
+// generated at, the recipe, the digests of the three profiles actually fed, the Orca archive digest
+// and the plate plan. Neither a request nor a printer is in it, so one preparation serves any number
+// of physical copies. The store's paths are derived from digests; a path is never an identity.
+type PreparationKey {
+  root: String
+  source_revision: NonEmptyStr
+  recipe: NonEmptyStr
+  machine_profile_sha256: String
+  filament_profile_sha256: String
+  process_profile_sha256: String
+  slicer_archive_sha256: String
+  plate_plan_sha256: String
+}
+
+fn preparation_key_digest(k: PreparationKey) -> String {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "gunbc.preparation-key.v1")),
+    json_kv(key: "root", value: json_string(s: k.root)),
+    json_kv(key: "source_revision", value: json_string(s: k.source_revision as String)),
+    json_kv(key: "recipe", value: json_string(s: k.recipe as String)),
+    json_kv(key: "machine_profile_sha256", value: json_string(s: k.machine_profile_sha256)),
+    json_kv(key: "filament_profile_sha256", value: json_string(s: k.filament_profile_sha256)),
+    json_kv(key: "process_profile_sha256", value: json_string(s: k.process_profile_sha256)),
+    json_kv(key: "slicer_archive_sha256", value: json_string(s: k.slicer_archive_sha256)),
+    json_kv(key: "plate_plan_sha256", value: json_string(s: k.plate_plan_sha256)),
+  ])))))
+}
+
+type PreparedProject sole_constructor { key_digest: String, artifact_sha256: String }
+fn prepared_key_digest(p: PreparedProject) -> String { p.key_digest }
+fn prepared_artifact_sha256(p: PreparedProject) -> String { p.artifact_sha256 }
+
+// Shared, pre-provisioned printer LAN host state, beside the start claims.
+data prepared_project_store: NonEmptyStr = "/var/lib/gunbc/prepared-projects"
+fn artifact_path(store: String, sha256: String) -> String { join([store, "/", sha256, ".3mf"], "") }
+fn prepared_artifact_path(p: PreparedProject) -> String { artifact_path(store: prepared_project_store as String, sha256: p.artifact_sha256) }
+fn key_receipt_name(key_digest: String) -> String { concat(key_digest, ".preparation.json") }
+
+type PreparedLookup
+  = PreparedFound { project: PreparedProject }
+  | PreparedAbsent
+  | PreparedLookupRefused { cause: NonEmptyStr }
+
+// Absence is established by a listing that succeeded, never by a failed read. A receipt whose
+// artifact no longer hashes to its name refuses rather than being re-prepared over.
+fn lookup_prepared(store: String, key: PreparationKey) -> PreparedLookup {
+  let kd = preparation_key_digest(k: key)
+  match listed_entry_presence(directory: store, name: key_receipt_name(key_digest: kd)) {
+    FilesystemEntryAbsent(_) => PreparedAbsent
+    FilesystemEntryPresenceIndeterminate { cause: c } => PreparedLookupRefused { cause: concat("Prepared store unreadable: ", c) as NonEmptyStr }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => PreparedLookupRefused { cause: concat("Prepared store path refused: ", c) as NonEmptyStr }
+    FilesystemEntryListed { directory: _, name: n } => {
+      let read = Filesystem.Read(path: join([store, "/", n], ""))
+      let artifact = if !read.success { "" } else { match parse_json_document(s: read.content) {
+        JsonDocumentParsed { value: v } => match json_field_string(obj: v, key: "artifact_sha256") { FieldRead { value: d } => d FieldAbsent => "" FieldMalformed { cause: _ } => "" }
+        JsonDocumentUnreadable { gap: _ } => ""
+      } }
+      if artifact == "" { return PreparedLookupRefused { cause: "Preparation receipt is listed but unreadable or malformed" } }
+      match sha256sum_file_digest_via_shell(path: artifact_path(store: store, sha256: artifact) as NonEmptyStr) {
+        Sha256FileDigestUnavailable { path: _, reason: r } => PreparedLookupRefused { cause: concat("Prepared artifact unreadable: ", r as String) as NonEmptyStr }
+        Sha256FileDigest { digest: d } => if (d.hex as String) == artifact { PreparedFound { project: PreparedProject { key_digest: kd, artifact_sha256: artifact } } }
+          else { PreparedLookupRefused { cause: "Prepared artifact no longer matches its digest" } }
+      }
+    }
+  }
+}
+
+type PreparedStoring = PreparedStored { project: PreparedProject } | PreparedStoreRefused { cause: NonEmptyStr }
+
+// The artifact is copied under its own digest and re-hashed there before the key receipt is written
+// create-new; the receipt is the commit point, so a crash before it leaves only an unreferenced file.
+fn store_prepared(store: String, key: PreparationKey, project_path: String, project_sha256: String) -> PreparedStoring {
+  let kd = preparation_key_digest(k: key)
+  let destination = artifact_path(store: store, sha256: project_sha256)
+  let copied = match listed_entry_presence(directory: store, name: concat(project_sha256, ".3mf")) {
+    FilesystemEntryListed { directory: _, name: _ } => true
+    FilesystemEntryAbsent(_) => shell.Copy.File(source: project_path as FilePath, destination: destination as FilePath).success
+    FilesystemEntryPresenceIndeterminate { cause: _ } => false
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+  if !copied { return PreparedStoreRefused { cause: "Cannot place the prepared artifact in the store" } }
+  let readback = concat(destination, ".readback.json")
+  let readback_placed = match listed_entry_presence(directory: store, name: concat(project_sha256, ".3mf.readback.json")) {
+    FilesystemEntryListed { directory: _, name: _ } => true
+    FilesystemEntryAbsent(_) => shell.Copy.File(source: concat(project_path, ".readback.json") as FilePath, destination: readback as FilePath).success
+    FilesystemEntryPresenceIndeterminate { cause: _ } => false
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+  if !readback_placed { return PreparedStoreRefused { cause: "Cannot place the readback receipt in the store" } }
+  match sha256sum_file_digest_via_shell(path: destination as NonEmptyStr) {
+    Sha256FileDigestUnavailable { path: _, reason: r } => PreparedStoreRefused { cause: r }
+    Sha256FileDigest { digest: d } => if (d.hex as String) != project_sha256 { PreparedStoreRefused { cause: "Stored artifact differs from the readback digest" } } else {
+      let receipt = serialize_json(v: json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "gunbc.prepared-project.v1")),
+        json_kv(key: "key_digest", value: json_string(s: kd)),
+        json_kv(key: "root", value: json_string(s: key.root)),
+        json_kv(key: "source_revision", value: json_string(s: key.source_revision as String)),
+        json_kv(key: "recipe", value: json_string(s: key.recipe as String)),
+        json_kv(key: "machine_profile_sha256", value: json_string(s: key.machine_profile_sha256)),
+        json_kv(key: "filament_profile_sha256", value: json_string(s: key.filament_profile_sha256)),
+        json_kv(key: "process_profile_sha256", value: json_string(s: key.process_profile_sha256)),
+        json_kv(key: "slicer_archive_sha256", value: json_string(s: key.slicer_archive_sha256)),
+        json_kv(key: "plate_plan_sha256", value: json_string(s: key.plate_plan_sha256)),
+        json_kv(key: "artifact_sha256", value: json_string(s: project_sha256)),
+      ]))
+      if Filesystem.WriteCreateNew(path: join([store, "/", key_receipt_name(key_digest: kd)], ""), content: receipt).success {
+        PreparedStored { project: PreparedProject { key_digest: kd, artifact_sha256: project_sha256 } }
+      } else { PreparedStoreRefused { cause: "Preparation receipt already exists or is not writable" } }
+    }
+  }
+}
+
+// A consumer that needs the archive at a working path gets a copy of the stored bytes and their
+// readback, re-hashed after the copy. The working path carries no authority.
+fn materialize_prepared(project: PreparedProject, path: String) -> Bool {
+  let source = prepared_artifact_path(p: project)
+  shell.Copy.File(source: source as FilePath, destination: path as FilePath).success &&
+  shell.Copy.File(source: concat(source, ".readback.json") as FilePath, destination: concat(path, ".readback.json") as FilePath).success &&
+  (match sha256sum_file_digest_via_shell(path: path as NonEmptyStr) {
+    Sha256FileDigest { digest: d } => (d.hex as String) == project.artifact_sha256
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+  })
+}

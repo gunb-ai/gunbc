@@ -177,6 +177,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.package_managers.micromamba", decl_name: "micromamba_create_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_slice_to_project_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_version_probe_command"),
+    decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_extract_bbl_profiles_command"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_run_program_command"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_import_probe_command"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),

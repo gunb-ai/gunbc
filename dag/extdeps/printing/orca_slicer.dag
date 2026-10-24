@@ -67,6 +67,9 @@ data orca_slicer_linux_aarch64_appimage: NonEmptyStr = "OrcaSlicer_Linux_AppImag
 // this module was made against THIS content and is a claim about nothing else.
 data orca_slicer_linux_aarch64_appimage_sha256: NonEmptyStr = "e1a07275a25f176626c55a5df39e91bc4476d8c28ee4a3192ff758e29dd5c3ba"
 
+// The release asset the digest above was taken from (upstream release v2.4.2, asset list).
+data orca_slicer_linux_aarch64_appimage_url: NonEmptyStr = "https://github.com/SoftFever/OrcaSlicer/releases/download/v2.4.2/OrcaSlicer_Linux_AppImage_Ubuntu2404_aarch64_V2.4.2.AppImage"
+
 // THE ABI FLOOR, MEASURED FROM THE ARTIFACT AND NOT INFERRED FROM ITS FILENAME.
 //
 // The AppImage was extracted and symbol versions read across its WHOLE ELF CLOSURE -- 150 objects,
@@ -164,4 +167,21 @@ fn with_verified_orca(appimage: FilePath, use: fn(OrcaExecutable) -> ProcessOutc
   }
   if shell.Remove.RecursiveForce(path: temp.path as FilePath).success { result }
   else { ProcessRefused { exit_code: 1, stderr: concat("Orca realization cleanup failed at ", temp.path as String) } }
+}
+
+// THE SYSTEM PROFILES SHIP INSIDE THE PINNED ARCHIVE, so a profile named here is a fact of that one
+// release and needs no second digest. Upstream layout (resources/profiles/BBL/<kind>/<name>.json):
+// each file's `name` equals its file stem; `inherits` names the parent of the same kind; a child's
+// keys replace the parent's; `instantiation` marks whether the profile is user-selectable.
+// AppImage's runtime extracts a glob into ./squashfs-root of its working directory.
+type OrcaProfileKind = OrcaMachineProfile | OrcaFilamentProfile | OrcaProcessProfile
+fn orca_profile_kind_directory(k: OrcaProfileKind) -> String {
+  match k { OrcaMachineProfile => "machine" OrcaFilamentProfile => "filament" OrcaProcessProfile => "process" }
+}
+data orca_bbl_profile_glob: NonEmptyStr = "resources/profiles/BBL/*"
+fn orca_bbl_profile_path(extracted_into: String, kind: OrcaProfileKind, name: String) -> String {
+  join([extracted_into, "/squashfs-root/resources/profiles/BBL/", orca_profile_kind_directory(k: kind), "/", name, ".json"], "")
+}
+fn orca_extract_bbl_profiles_command(executable: OrcaExecutable) -> ArgvCommand {
+  argv_command(program: uncataloged_program(invocation: executable.program), arguments: ["--appimage-extract", orca_bbl_profile_glob as String])
 }
