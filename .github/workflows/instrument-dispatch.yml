@@ -19,7 +19,7 @@ concurrency:
 jobs:
   instrument:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 240
+    timeout-minutes: 360
     permissions:
       contents: read
     steps:
