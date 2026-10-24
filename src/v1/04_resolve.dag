@@ -59,7 +59,7 @@ import v1.compiler.infer_env {
 // KIND INHABITANCE AT AN APPLIED TYPE ARGUMENT -- the wall that makes a kinded parameter position
 // mean something. It sits beside the arity check in resolve_node_bounded's generic-use-site branch
 // because that is the ONE place an applied user generic is judged, so every occurrence is reached
-// rather than only the field-access route alias_chain_arity_diagnostics covers.
+// rather than only the field-access route.
 //
 // THE ADMITTING ARMS, AND THE HONEST CEILING OF EACH; the arms themselves are read from
 // type_arg_kind_inhabitance below rather than counted here, because a count in prose rots the first
@@ -511,9 +511,10 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
 
 // A use that supplies arguments to a parameterless alias: the arguments bind to nothing, so the application is
 // refused by arity (expected 0) at the type position, not read as a use of the generic its right-hand side expands to.
+// The alias declaration's own right-hand side is the node the lookup returns (same span), so it is not a use.
 fn is_paramless_alias_use(n: Node, env: TypeEnv) -> Bool {
   n.connective == NoConnective && (n.children |> count) > 0 && match lookup_type_for(env: env, node: n) {
-    Present { value: used } => used.params |> count == 0 && used.children |> count == 0 && used.connective == NoConnective && used.inferred != none
+    Present { value: used } => used.params |> count == 0 && used.connective == NoConnective && used.span != n.span
     Absent => false
   }
 }

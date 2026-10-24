@@ -11101,8 +11101,8 @@ fn alias_chain_generic_decl(env: TypeEnv, carrier: Node, target: Node) -> Node {
 // (alias_chain_target_after_args, and the record branch's re-substitution over an
 // unresolved-parameter field) did not check at all. The repair is construction before validation:
 // the subst is now Optional and has NO spelling for a partial map, so a mismatch cannot be handed
-// downstream by any caller; and alias_chain_arity_diagnostics states the refusal ONCE, typed and
-// located, at the seam that owns both the declaration and the application. SCOPE, stated rather
+// downstream by any caller; and resolve_node_bounded states the refusal ONCE, typed and
+// located, where a type application resolves in any type position. SCOPE, stated rather
 // than implied: the refused population is exactly the state `dropped_args` already computed -- both
 // counts nonzero and unequal -- so this wall adds no refusal to a shape the code was not already
 // treating as wrong, and a zero-parameter declaration or a zero-argument use is untouched.
