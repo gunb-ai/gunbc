@@ -1,7 +1,7 @@
 module test.claim.printer_batch_workflow_validation
 import std.types {String,Bool}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
-import gunbc.fleet.printer_operator_approval {print_request,print_subject,start_claim_path}
+import gunbc.fleet.printer_actuation {print_request,print_subject,start_claim_path}
 import gunbc.fleet.fleet_asset_identity {printer_01,printer_02}
 import test.claim.print_preparation_kernel_validation {exercise_kernel}
 import product.printed_chassis.print_workflow {run}
@@ -9,10 +9,10 @@ import product.printed_chassis.print_workflow {run}
 // Boundary tests are entered individually by the witness runner, never called here.
 // End-to-end local validation entry. The production root is fixed to preparation;
 // this function cannot file an approval or start a printer.
-fn validate_preparation(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,control_script:String) -> ProcessExit {
+fn validate_preparation(plan_file:String,output:String,appimage:String,machine:String,filament:String,process:String,control_script:String,root:String) -> ProcessExit {
  if !approval_changes_with_device_bytes_version_or_attempt() {return exit_failure(reason:"Approval identity did not bind the print inputs")}
  match exercise_kernel(script:control_script) {
-  ExitSuccess=>run(plan_file:plan_file,output:output,appimage:appimage,machine:machine,filament:filament,process:process,mode:"prepare")
+  ExitSuccess=>run(plan_file:plan_file,output:output,appimage:appimage,machine:machine,filament:filament,process:process,root:root)
   other=>other
  }
 }

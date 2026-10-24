@@ -21,7 +21,8 @@ import gunbc.runner.runner_activation {
 }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable, StructurallyGuaranteed }
-import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, BoundedPopulation, stall_report_message, climbs_when }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, stall_report_message, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, ClimbableButUnbuilt, GroundingUndeclared }
 import gunbc.runner.runner_unit { runner_unit_name_of_registration }
 
 data runner_service_activation_scope_disposition: ConstructionMechanism = SingleAuthority
@@ -510,7 +511,7 @@ data runner_activation_reachability_stall: GuaranteeStall = GuaranteeStall {
   current: OutsideTheLadder,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding {
-    grounding: "no host observation transaction exists, so every production caller supplies ActivationReadinessUnobserved and the admission is never asked; BEHIND that, and only reachable once it lands, gunbc.fleet.fleet_host_budget gunbc_compile_pool_placement is CompilePoolInRunnerSlots, so gunbc.host.host_compile_pool derive_host_compile_pool_ready answers PoolNotDeclaredInTopology fleet-wide and no HostCompilePoolReady receipt can be produced for any host",
+    grounding: GroundingUndeclared,
   },
   population: BoundedPopulation {
     members: map(fleet_runner_host_deploys, d => d.host_label as String),

@@ -11,7 +11,7 @@ import v2.extdeps.languages.dag {
 import v2.extdeps.languages.swift { swift_target_model }
 import v2.std.compilers.target_model { ProducedDeclUnwired, TargetModel }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_list_has_reason }
-import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, NotADeclaration }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
@@ -41,7 +41,8 @@ fn swift_produced_decl_node() -> Outcome<Node> {
                 domain: swift_produced_decl_empty_domain(),
                 return_type_binding: dag_int_type_binding(),
                 body: literal
-              )
+              ),
+              declaration: NotADeclaration
             }
           ]
         ),
@@ -53,6 +54,7 @@ fn swift_produced_decl_node() -> Outcome<Node> {
 
 fn swift_produced_decl_unwired_target() -> TargetModel {
   TargetModel {
+    primitive_realizations: swift_target_model().primitive_realizations,
     produced_decl_support: ProducedDeclUnwired,
     bundle: swift_target_model().bundle,
     lex: swift_target_model().lex,
@@ -112,7 +114,8 @@ fn swift_produced_decl_params_text(target: TargetModel) -> String {
                 domain: dag_arrow_domain_conj_node(),
                 return_type_binding: dag_int_type_binding(),
                 body: literal
-              )
+              ),
+              declaration: NotADeclaration
             }
           ]
         ),
@@ -146,7 +149,8 @@ fn swift_produced_decl_literal_text(lexeme: String) -> String {
                 domain: swift_produced_decl_empty_domain(),
                 return_type_binding: dag_int_type_binding(),
                 body: literal
-              )
+              ),
+              declaration: NotADeclaration
             }
           ]
         ),

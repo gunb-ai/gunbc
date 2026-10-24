@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.v2_grammar_admits_a_continuation_line_data_initializer_the_host_route_refuses
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data v2_grammar_admits_a_continuation_line_data_initializer_the_host_route_refuses: RecurringFailureMode = RecurringFailureMode {
+  identity: "v2_grammar_admits_a_continuation_line_data_initializer_the_host_route_refuses" as NonEmptyStr,
+
+  // FOUND below the ladder (two parse authorities silently disagreed over one text). AFTER the fix
+  // PR it stands at Mitigatable, NOT MechanicallyPreventable (review 84387): the four-cell claim is
+  // real, discriminating, and was EXECUTED over both routes (lane invocations jfe984fd4 red at the
+  // old binding, j22ba9c6d green after the fix), but no required process runs it -- the claim lives
+  // under src/v2/test/claim/parse/, outside the three witness-discovery roots (ci_layer_roots
+  // witness_discovery_scan_dirs), and the PR checks (v2-bootstrap parses, heal regenerates) evaluate
+  // no witness (DESIGN: "Nothing on the required path evaluates a witness"). An unexecuted test
+  // prevents nothing; claiming the rung CI would give is inflation, which is worse than sitting
+  // low (§4b meta-obligation 1). The CEILING (StructurallyGuaranteed: one grammar-level line
+  // declaration read by both hosts instead of a matcher default plus an explicit call) is two
+  // rungs up, not one; both steps and their triggers are named in the receipts.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the rung-2 step: enroll v2.test.claim.parse.data_initializer_layout_parse in a population a required check EXECUTES (a witness-discovery root, or an instrument/required-gate row with an executed receipt naming this claim) -- the four cells already decide per cell, so enrollment is registration, not new test work; the rung-3 step after it: one grammar-level line declaration on the data production (an AfterLineBreak-style condition) read by the v1 host route as well as the v2 matcher, replacing matcher-default-plus-explicit-call",
+    },
+  },
+
+  receipts: [
+    "**a `data` declaration whose initializer begins on the line AFTER the `=` parses in the v2 grammar route and is REFUSED by the v1 host route** (INVALID STATE: `data t: Int =` with `  2` on the next line: `decl_facts`' walk over the v2 grammar admits it, `concept_decl_facts`' parse route refuses it fail-closed with 'expected expression, found Newline' at the `=`'s column. The same file is simultaneously grammatical and ungrammatical, so every consumer of one route silently disagrees with the other; gunbc#14608 was forced to JOIN such initializers onto the `=` line to satisfy the host after gunbc#14559 landed them in the continuation layout that the grammar route had admitted.)",
+    "WHERE, cited by symbol. The v2 side declares NOTHING about the line: `v2.extdeps.languages.dag` `dag_grammar_data_decl_expr` sequences data, ident, :, type_expr, `=`, Expect(`v2.extdeps.languages.dag.dag_production_expr`) with no `v2.std.grammar` AfterLineBreak anywhere in it, while AfterLineBreak IS the vocabulary the spec uses when it DOES condition a production on line structure (`dag_grammar_additive_newline_minus_guard`, the dual-role `-` guard) -- so the matcher's newline-skipping default accepts. The v1 side refuses by ACCIDENT, not by rule: `v1.compiler.parse` `parse_data_after_kw` fed the token right after ExpectEq straight into `parse_expr`, which refuses a Newline at expression start -- while every sibling `=` position in the same parser (`=` of a type alias, of an expression-bodied `fn`, of `let`) calls `skip_newlines` after its `=`. The data site was the odd one out INSIDE v1, and neither host's behavior was declared anywhere: a second authority by absence.",
+    "SCOPE. Only the data initializer: an initializer that continues onto a later line, in any file, read by one route and not the other. The fail-closed half is SHARED and stays shared: with no initializer at all (`data t: Int =` then a blank line or the next declaration), an expression cannot start at the `data` keyword, and BOTH routes refuse at that token (measured: the blank and dangling cells agree on both sides of the fix). Corpus census at the fix (text-shape scan of the authored tree): 32,393 joined initializers, ZERO authored continuation sites; the single text-shape match is `src/v1/stage0/tests/fixtures/fact_cardinality_split_brace.dag`, a headerless fragment whose unparseability is the subject of `extract_top_level_decls_captures_split_brace_body` (`v1_compiler.cli_run`) -- so the acceptance change reaches no authored text and only converts previously-refused VALID text into accepted text, declared here.",
+    "RUNG FOUND AT: below the floor (silent disagreement between two parse authorities over one text; each consumer of a route reads a different grammar). CEILING: one rule, both routes -- stated with its exact authority shape, because the rule is NOT centralized in a single declaration: the v2 grammar route follows it by the matcher's newline-skipping DEFAULT (the data rule itself declares no line condition; that is what the matcher does in its absence), while the v1 host route follows it by the explicit `skip_newlines` call its data site now makes like its siblings. THE UNIFIED STATEMENT of the rule is this row plus the four-cell claim, which executes the rule against BOTH routes and goes red if either side drifts. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the permissive rule (after the data `=`, the initializer is the expression production with newlines skipped, refusing only where no expression can start) holds on both routes as MEASURED by the claim -- decided by manager ruling 2026-10-21; if a future change wants the rule in a single grammar-level declaration both hosts read (an AfterLineBreak-style condition on the data production, read by the v1 host too), that unification is the next rung and its trigger is the first time one host's default and the other's call disagree -- which is exactly what the four cells detect today.",
+    "RUNG CLIMBED: found below the ladder, now at Mitigatable -- the claim catches any drift WHEN EXECUTED (this PR's lane ran it red at the old binding, jfe984fd4, and green after the fix, j22ba9c6d), but it is not yet in a population CI executes, so the rung stays Mitigatable until enrollment (rung-2 trigger named above); the StructurallyGuaranteed ceiling -- a single declaration both hosts read -- is two rungs up, its blocker and trigger are stated above (this row's fix PR). `v1.compiler.parse` `parse_data_after_kw` now calls `skip_newlines` after its ExpectEq, the same call its sibling `=` sites make, so the host route follows the declared permissive rule and the grammar route's default IS the rule; the fix is not a number or a special case -- it removes the missing call that made the data site the exception. The four-cell claim runs one text through BOTH routes in one binary (the v1 host route over the compiled-in `dag_parse_environment`, the v2 route over `dag_prepared_grammar`): joined and continuation accept on both, blank and dangling refuse on both, and the refuse string prints the per-cell verdicts, so a regression that re-splits any cell reports which one.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.parse.data_initializer_layout_parse", decl_name: "a_continuation_line_data_initializer_parses_on_both_routes", field: WholeDeclaration },
+  ],
+}

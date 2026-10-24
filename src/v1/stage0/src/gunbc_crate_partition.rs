@@ -18,13 +18,13 @@ use crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::{
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance, EmittedEdgeTarget};
 pub use crate::std_algebra::{
-    collection_concat_shape, collection_count_shape, collection_map_shape,
+    collection_concat_shape, collection_count_shape, collection_map_shape, list_push,
 };
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_graph::{
-    graph_has_multi_node_scc, graph_reverse_reachable_members, graph_strongly_connected_components,
-    CallGraph, GraphEdge,
+    build_adjacency_views, graph_has_multi_node_scc, graph_reverse_reachable_members_from_views,
+    graph_strongly_connected_components, CallGraph, CallGraphAdjacencyViews, GraphEdge,
 };
 pub use crate::std_optional::{optional_present, Optional};
 pub use crate::std_types::{brand, Bool, List, NonEmptyStr};
@@ -116,13 +116,16 @@ impl PartitionR4ValidityVerdict {
 
 pub fn list_unique_sorted_ids(items: Rc<Vec<NonEmptyStr>>) -> Rc<Vec<NonEmptyStr>> {
     Rc::new({
-        let mut __sorted: Vec<_> = items.iter().cloned().collect();
-        __sorted.sort_by(|a: &NonEmptyStr, b: &NonEmptyStr| {
-            let __ka = (|id: NonEmptyStr| id.clone())(a.clone());
-            let __kb = (|id: NonEmptyStr| id.clone())(b.clone());
-            v1_rt::canonical_key_cmp(&__ka, &__kb)
-        });
-        __sorted
+        let mut __keyed: Vec<_> = items
+            .iter()
+            .cloned()
+            .map(|__e: NonEmptyStr| {
+                let __k = (|id: NonEmptyStr| id.clone())(__e.clone());
+                (__k, __e)
+            })
+            .collect();
+        __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+        __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
     })
     .iter()
     .cloned()
@@ -248,12 +251,8 @@ pub fn string_member(set: Rc<HashMap<String, bool>>, key: String) -> bool {
     }
 }
 
-pub fn reached_set(
-    names: Rc<Vec<String>>,
-    graph: Rc<CallGraph>,
-    start: String,
-) -> Rc<HashMap<String, bool>> {
-    crate::std_graph::graph_reverse_reachable_members(names.clone(), graph.clone(), start.clone())
+pub fn reached_set(views: Rc<CallGraphAdjacencyViews>, start: String) -> Rc<HashMap<String, bool>> {
+    crate::std_graph::graph_reverse_reachable_members_from_views(views.clone(), start.clone())
         .iter()
         .cloned()
         .fold(
@@ -289,6 +288,8 @@ pub fn emitted_target_reach(
                 __result
             }),
         });
+        let transposed =
+            crate::std_graph::build_adjacency_views(names.clone(), forward_as_reverse.clone());
         emitted.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
             |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, edge: Rc<EmittedEdge>| {
@@ -300,11 +301,7 @@ pub fn emitted_target_reach(
                             std::option::Option::None => v1_rt::rc_map_insert(
                                 acc.clone(),
                                 target.clone(),
-                                reached_set(
-                                    names.clone(),
-                                    forward_as_reverse.clone(),
-                                    target.clone(),
-                                ),
+                                reached_set(transposed.clone(), target.clone()),
                             ),
                         }
                     }

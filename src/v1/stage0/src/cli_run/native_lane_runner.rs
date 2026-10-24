@@ -4908,7 +4908,7 @@ fn latest_complete_census_record(
             ));
             continue;
         }
-        if best.map_or(true, |t| started > t) {
+        if best.is_none_or(|t| started > t) {
             best = Some(started);
             choice.chosen = Some(path);
         }
@@ -5100,11 +5100,21 @@ fn run_census_scoped_with(
 /// once (v2.compiler.source_root_eval native_lane_census_scoped_ingest); its `binding_subject` lines
 /// say which subjects reach each member. One run per subject re-resolved every shared member once per
 /// subject (DESIGN §2), which on a wave of thirty rewritten modules outran the runner.
+///
+/// The compiler is built from `source_roots` (this checkout's); the subjects are read from `population_roots`, which
+/// are `source_roots` themselves unless a caller reads another tree with this checkout's compiler (the base receipt).
+/// THE KIT RUN is one more `census-scoped`, over the same prepared binary, with the kit's own root
+/// added to the source roots and the kit's fixture modules as its subjects
+/// (`gunbc.instruments.ambient_name_census_reading` `ambient_census_kit_subjects`). It is a separate
+/// run so the union above, and every row it prints, is exactly what it was without the kit. A reader that
+/// declares no kit (`None`) gets no kit run.
 pub fn run_census_controls_and_subjects(
     source_roots: &[String],
     control_root_sets: &[Vec<String>],
     subjects: &[String],
-) -> Result<(Vec<CensusInferRun>, CensusInferRun), String> {
+    population_roots: &[String],
+    kit: Option<(&str, &[String])>,
+) -> Result<(Vec<CensusInferRun>, CensusInferRun, Option<CensusInferRun>), String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let controls = control_root_sets
         .iter()
@@ -5114,8 +5124,24 @@ pub fn run_census_controls_and_subjects(
         .iter()
         .map(|subject| format!("//{}:all", subject.replace('.', "/")))
         .collect();
-    let union = run_census_scoped_with(&preparation.binary_path, &labels, source_roots)?;
-    Ok((controls, union))
+    let union = run_census_scoped_with(&preparation.binary_path, &labels, population_roots)?;
+    let kit = match kit {
+        Some((kit_root, kit_subjects)) => {
+            let kit_labels: Vec<String> = kit_subjects
+                .iter()
+                .map(|subject| format!("//{}:all", subject.replace('.', "/")))
+                .collect();
+            let mut kit_roots = source_roots.to_vec();
+            kit_roots.push(kit_root.to_string());
+            Some(run_census_scoped_with(
+                &preparation.binary_path,
+                &kit_labels,
+                &kit_roots,
+            )?)
+        }
+        None => None,
+    };
+    Ok((controls, union, kit))
 }
 
 /// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
@@ -5229,7 +5255,7 @@ pub fn measured_spawn_trampoline(receipt: std::path::PathBuf) -> i32 {
         return 2;
     };
     let started = std::time::Instant::now();
-    let child = Command::new(&binary)
+    let child = Command::new(binary)
         .args(argv)
         .env_remove(MEASURED_SPAWN_RECEIPT_ENV)
         .spawn();
@@ -7142,13 +7168,13 @@ mod emitted_build_not_clean_cause_tests {
     }
 }
 
-/// D13's DEPENDENCY-DEMAND CENSUS, RUN BY THE EMITTED COMPILER (`demand-census` verb). The seed's
-/// whole job is the preparation it shares with every native instrument; the census is the emitted
-/// binary's, which prints its own lines and decides its own exit. The child's stdout is relayed
-/// line for line and its status is returned unjudged.
-pub fn run_v2_demand_census(source_roots: &[String]) -> Result<i32, String> {
+/// A CENSUS RUN BY THE EMITTED COMPILER (`demand-census`, `decl-ref-census`: one relay, the verb is
+/// the parameter). The seed's whole job is the preparation it shares with every native instrument;
+/// the census is the emitted binary's, which prints its own lines and decides its own exit. The
+/// child's stdout is relayed line for line and its status is returned unjudged.
+pub fn run_v2_census_verb(verb: &str, source_roots: &[String]) -> Result<i32, String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
-    let mut args = vec!["demand-census".to_string()];
+    let mut args = vec![verb.to_string()];
     args.extend(source_roots.iter().cloned());
     let output = Command::new(&preparation.binary_path)
         .args(&args)
@@ -7160,7 +7186,7 @@ pub fn run_v2_demand_census(source_roots: &[String]) -> Result<i32, String> {
             )
         })?;
     let stdout = String::from_utf8(output.stdout).map_err(|cause| {
-        format!("V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — demand-census stdout: {cause}")
+        format!("V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — {verb} stdout: {cause}")
     })?;
     for line in stdout.lines() {
         println!("{line}");
@@ -7169,7 +7195,46 @@ pub fn run_v2_demand_census(source_roots: &[String]) -> Result<i32, String> {
         eprintln!("{line}");
     }
     output.status.code().ok_or_else(|| {
-        "V2-NATIVE REFUSAL cause=NativeRunKilled — the demand-census child exited without a status"
-            .to_string()
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeRunKilled — the {verb} child exited without a status"
+        )
     })
+}
+
+/// THE SPELLED-MODULE SELECTION, RUN BY THE EMITTED COMPILER (`select-spelled-modules` verb): built from the
+/// head's `build_roots`, run over `population_roots`. The child prints one module name per line and decides its own
+/// exit; the seed relays both unjudged.
+pub fn run_v2_select_spelled_modules(
+    build_roots: &[String],
+    population_roots: &[String],
+) -> Result<(i32, String), String> {
+    let preparation = prepare_emitted_compiler_for_entry(build_roots, V2_NATIVE_CLI_ENTRY)?;
+    let mut args = vec!["select-spelled-modules".to_string()];
+    for root in population_roots {
+        args.push("--source-root".to_string());
+        args.push(root.clone());
+    }
+    let output = Command::new(&preparation.binary_path)
+        .args(&args)
+        .output()
+        .map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+                preparation.binary_path.display()
+            )
+        })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — select-spelled-modules stdout: {cause}")
+    })?;
+    let code = output.status.code().ok_or_else(|| {
+        "V2-NATIVE REFUSAL cause=NativeRunKilled — the select-spelled-modules child exited without a status"
+            .to_string()
+    })?;
+    if code != 0 {
+        return Ok((
+            code,
+            format!("{stdout}{}", String::from_utf8_lossy(&output.stderr)),
+        ));
+    }
+    Ok((code, stdout))
 }

@@ -1,0 +1,106 @@
+module test.claim.extdeps.cargo_release_dir_literal_census_witness
+
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, List, String }
+import std.algebra { trim }
+import extdeps.git
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE CORPUS-WIDE RED FOR A RE-SPELLED RELEASE DIRECTORY. cargo_default_target_dir_witness pins the
+// helper against an edit of its own constant; it cannot see a consumer that spells "target/release"
+// itself, which is the second local implementation §6b forbids and the shape review found twice on
+// gunbc#14428. This census reads the tracked tree (git grep over every tracked .dag, the real
+// producer below) and refuses any non-annotation line that carries the segment outside a declared
+// disposition. The universe is discovered, not copied: no count literal appears, and each exempt
+// FILE must still carry the segment, so a stale exemption is itself red (identity join both ways).
+
+type ReleaseDirLiteralExemption = ReleaseDirLiteralExemption {
+  path_prefix: String,
+  is_single_file: Bool,
+  reason: String,
+}
+
+// Declared dispositions. Every row names WHY the spelling is not a consumer deriving the layout.
+data release_dir_literal_exemptions: List<ReleaseDirLiteralExemption> = [
+  ReleaseDirLiteralExemption { path_prefix: "dag/extdeps/rust/cargo.dag", is_single_file: false, reason: "the layout's home" },
+  ReleaseDirLiteralExemption { path_prefix: "dag/test/", is_single_file: false, reason: "witness expected values and fixtures" },
+  ReleaseDirLiteralExemption { path_prefix: "src/v2/test/", is_single_file: false, reason: "witness expected values and fixtures" },
+  ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/recurring_failure_mode/", is_single_file: false, reason: "failure-mode ledger prose" },
+  ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/v1/v1_consumer_census.dag", is_single_file: true, reason: "census lexemes that search for the spelling itself" },
+  ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/scm/scm_wet_execution_receipt.dag", is_single_file: true, reason: "a recorded receipt of a past run's path" },
+  ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/namespace_cut/namespace_step0_canary_v1_history.dag", is_single_file: true, reason: "recorded history of a past canary" },
+  ReleaseDirLiteralExemption { path_prefix: "src/v2/extdeps/languages/bash.dag", is_single_file: true, reason: "bash-fold lexeme binding for the path as scripts spell it" },
+  ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/ci/ci_layer_roots.dag", is_single_file: true, reason: "prose inside rationale strings" },
+  ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/contributor_onboarding_path.dag", is_single_file: true, reason: "prose inside onboarding instructions" },
+  ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/plans/deploy_convergence_observed_side.dag", is_single_file: true, reason: "prose inside a plan paragraph" },
+  ReleaseDirLiteralExemption { path_prefix: "dag/gunbc/repo_workspace.dag", is_single_file: true, reason: "prose inside a workspace-artifact meaning string" },
+]
+
+// A `git grep -n` line is `<path>:<line>:<text>`; tracked .dag paths carry no ':'.
+fn grep_line_path(line: String) -> String {
+  join(split(s: line, delimiter: ":").take(n: 1), "")
+}
+
+fn grep_line_text(line: String) -> String {
+  join(split(s: line, delimiter: ":").skip(n: 2), ":")
+}
+
+// An annotation line (§4c) is not program data. A literal after a trailing `//` on a code line is
+// NOT exempted: such a line is reported, which is the loud direction.
+fn is_annotation_line(text: String) -> Bool {
+  trim(s: text).starts_with(prefix: "//")
+}
+
+fn exempt_path(path: String, exemptions: List<ReleaseDirLiteralExemption>) -> Bool {
+  filter(exemptions, e => path.starts_with(prefix: e.path_prefix)) != []
+}
+
+// The pure reading: grep lines in, offending lines out. Supplied lines are the hypothesis; the live
+// claim below is the inhabitance reading over the real producer.
+fn release_dir_literal_offenders(lines: List<String>, exemptions: List<ReleaseDirLiteralExemption>) -> List<String> {
+  filter(lines, l => !is_annotation_line(text: grep_line_text(line: l)) && !exempt_path(path: grep_line_path(line: l), exemptions: exemptions))
+}
+
+fn stale_exemptions(lines: List<String>, exemptions: List<ReleaseDirLiteralExemption>) -> List<String> {
+  filter(exemptions, e => e.is_single_file && filter(lines, l => grep_line_path(line: l) == e.path_prefix) == [])
+    |> map(e => e.path_prefix)
+}
+
+test fn a_reintroduced_consumer_literal_is_reported() -> Bool {
+  release_dir_literal_offenders(
+    lines: [
+      "dag/gunbc/roadmap/roadmap_dashboard_instance.dag:1013:data x: FilePath = \"/r/target/release/gunbc\" as FilePath",
+      "dag/gunbc/roadmap/roadmap_dashboard_instance.dag:1964:// the controller's target/release/gunbc is the source",
+      "dag/test/claim/x.dag:3:  cargo_default_release_dir_rel == \"target/release\"",
+    ],
+    exemptions: release_dir_literal_exemptions,
+  ) == ["dag/gunbc/roadmap/roadmap_dashboard_instance.dag:1013:data x: FilePath = \"/r/target/release/gunbc\" as FilePath"]
+}
+
+test fn a_trailing_annotation_after_code_is_still_reported() -> Bool {
+  release_dir_literal_offenders(
+    lines: ["dag/gunbc/a.dag:7:  let p = q // see target/release"],
+    exemptions: release_dir_literal_exemptions,
+  ) == ["dag/gunbc/a.dag:7:  let p = q // see target/release"]
+}
+
+test fn an_exemption_whose_file_no_longer_spells_it_is_stale() -> Bool {
+  stale_exemptions(lines: [], exemptions: release_dir_literal_exemptions)
+    == ["dag/gunbc/v1/v1_consumer_census.dag", "dag/gunbc/scm/scm_wet_execution_receipt.dag",
+        "dag/gunbc/namespace_cut/namespace_step0_canary_v1_history.dag", "src/v2/extdeps/languages/bash.dag",
+        "dag/gunbc/ci/ci_layer_roots.dag", "dag/gunbc/contributor_onboarding_path.dag",
+        "dag/gunbc/plans/deploy_convergence_observed_side.dag", "dag/gunbc/repo_workspace.dag"]
+}
+
+// The inhabitance reading: the real producer ran (exit 0, so at least the home matched; exit 1
+// would mean the home itself lost the segment), the home is among its lines (the route, not only
+// the answer), no consumer re-spells the segment, and no exemption is stale.
+test fn no_tracked_consumer_respells_the_release_dir() -> Bool {
+  let read = git.Core.GrepFixedLinesInRepo(repository_path: ".", pattern: cargo_default_release_dir_rel, pathspec: "*.dag")
+  read.exit_code == 0
+    && filter(read.lines, l => grep_line_path(line: l) == "dag/extdeps/rust/cargo.dag") != []
+    && release_dir_literal_offenders(lines: read.lines, exemptions: release_dir_literal_exemptions) == []
+    && stale_exemptions(lines: read.lines, exemptions: release_dir_literal_exemptions) == []
+}

@@ -14,13 +14,11 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // Class: gunbc.recurring_failure_mode.record_value_escapes_declared_optional_return. Specimen: snappy-seal-211,
 // extdeps.cpu.types soc_family_architecture at e5d277c5c42 (declared Architecture?, returned a
-// CpuModelCatalogRow; compared a field against the row). Measured on a seed built from the tree under test:
-// each source below is ACCEPTED with zero blocking diagnostics, its positive control is accepted too, and
-// the liveness control proves the census refuses something. THE ORACLE IS A DIFFERENTIAL, not a bare zero: a total-zero over a fixture
+// CpuModelCatalogRow; compared a field against the row). THE ORACLE IS A DIFFERENTIAL, not a bare zero: a total-zero over a fixture
 // importing std.types is not exact evidence (compile_diagnostic_census), so each enrolled red is paired with a ONE-AXIS green source
 // and asserts red_count > green_count. Each source, red and green, also has a NON-ENROLLED census_ran control, so a
 // CensusNotRunnable (counted -1) reds the floor instead of reading as a held red. A and B are this row's class; C and C' are
-// gunbc.recurring_failure_mode cross_type_comparison_answers_instead_of_refusing (new receipt there).
+// gunbc.recurring_failure_mode cross_type_comparison_answers_instead_of_refusing.
 fn census_ran(source: String) -> Bool {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: _ } => true

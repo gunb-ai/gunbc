@@ -205,7 +205,7 @@ fn cli_argument_text(argument: CliArgument) -> String {
 // around a raw list would state the role while leaving the payload dynamically ambiguous -- the
 // same guess one level up.
 //
-// V2 CORRESPONDENCE (this is why the seed may realize it): v2.std.operation_argv already models
+// V2 CORRESPONDENCE (this is why the seed may realize it): std.operation_argv already models
 // the same distinction for DECLARATION-owned materialization -- OperationInputValue is
 // InputText | InputTextList, and binding a token list into a string position is the typed
 // refusal TokenListInStringPosition. That module's own note records that expression-valued argv

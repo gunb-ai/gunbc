@@ -323,7 +323,6 @@ fn hv_nav_hrefs(node: Fragment) -> List<String> {
     FragmentText { content: _ } => []
     RawNode { content: _ } => []
     MarkupComment { body: _ } => []
-    Document { doctype: _, root: r } => hv_nav_hrefs(node: r)
     Element { tag, attributes, children } =>
       concat(
         if tag == "a" { map(filter(attributes, a => a.name == "href"), a => a.value) } else { [] },

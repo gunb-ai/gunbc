@@ -1,5 +1,6 @@
 module gunbc.fleet.printer_project_delivery
 
+import std.decl_ref { decl_ref }
 import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential,session_resolved_version}
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
 import std.nat { Nat }
@@ -54,11 +55,10 @@ import gunbc.fleet.fleet_printer_access {
 
 // DELIVERING A PROJECT TO A PRINTER, AND DELIBERATELY NOTHING ABOUT HOW IT WAS PRODUCED.
 //
-// THE INPUT IS A PAYLOAD, NOT A SLICE PLAN. product.printed_chassis.slicing_toolchain owns whether
-// THIS repository may run OrcaSlicer; that question is currently answered "no" and its positive
-// capability is uninhabited. Coupling delivery to it would make the transport unprovable behind a
-// producer-side blocker, and would also be a category error: the printer does not care who sliced
-// the file. A project that already exists -- sliced elsewhere, by a human, months ago -- is a
+// THE INPUT IS A PAYLOAD, NOT A SLICE PLAN. This repository does slice, through the digest-verified
+// Orca boundary (product.printed_chassis.slice_run slice_profile_in) with archive readback in
+// product.printed_chassis.print_preparation. Coupling delivery to that producer would still be a
+// category error: the printer does not care who sliced the file. A project that already exists -- sliced elsewhere, by a human, months ago -- is a
 // legitimate input here and says nothing false about this repository's slicing.
 //
 // THE PAYLOAD IS NOT CALLED A BAMBU PROJECT, and that restraint is deliberate. No authority in this
@@ -637,12 +637,19 @@ fn refused_delivery(printer: PhysicalAssetIdentity, stderr: String, cleaned: Boo
   }
 }
 
+// TRANSFER-ONLY UPLOAD, a bounded exception to the actuation boundary: it proves a credential by an
+// authenticated FTPS transfer and never starts a job (a Bambu printer in LAN mode does not start on
+// upload). Its callers are the two credential runs named below and no other.
 fn deliver_project_to_printer(
   printer: PhysicalAssetIdentity,
   payload: IdentifiedProjectPayload,
   token_source: AccessTokenSource,
   materializations: List<VerifiedVersionForAttempt>,
 ) -> ProjectDelivery
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.printer_credential_migration_run", decl_name: "deliver_after_provisioning"),
+    decl_ref(module_path: "gunbc.fleet.printer_delivery_wet_run", decl_name: "run"),
+  ]
 {
   match printer_endpoint_address(printer: printer) {
     PrinterAddressUnknown { printer: p } =>
@@ -705,14 +712,24 @@ fn deliver_project_to_printer(
   }
 }
 
-fn deliver_project_with_session(session:PrinterCredentialSession,payload:IdentifiedProjectPayload) -> ProjectDelivery {
+// Upload ahead of a start: confined to gunbc.fleet.printer_actuation print_claimed_project.
+fn deliver_project_with_session(session:PrinterCredentialSession,payload:IdentifiedProjectPayload) -> ProjectDelivery
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.printer_actuation", decl_name: "print_claimed_project"),
+  ]
+{
  let printer=session_printer(s:session)
  match printer_endpoint_address(printer:printer) {
   PrinterAddressFound {address:a}=>transfer_with_credential(printer:printer,payload:payload,lan_address:a,credential:session_credential(s:session),credential_version:session_resolved_version(s:session))
   PrinterAddressUnknown {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous") PrinterAddressAmbiguous {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous") PrinterAddressWrongClass {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous")
  }
 }
-fn transfer_with_credential(printer:PhysicalAssetIdentity,payload:IdentifiedProjectPayload,lan_address:NonEmptyStr,credential:Secret,credential_version:SmResolvedVersionIdentity) -> ProjectDelivery {
+fn transfer_with_credential(printer:PhysicalAssetIdentity,payload:IdentifiedProjectPayload,lan_address:NonEmptyStr,credential:Secret,credential_version:SmResolvedVersionIdentity) -> ProjectDelivery
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.printer_project_delivery", decl_name: "deliver_project_to_printer"),
+    decl_ref(module_path: "gunbc.fleet.printer_project_delivery", decl_name: "deliver_project_with_session"),
+  ]
+{
           endpoint = bambu_lan_endpoint(host: lan_address)
           match place_netrc_binding_privately(
             machine: endpoint.host,

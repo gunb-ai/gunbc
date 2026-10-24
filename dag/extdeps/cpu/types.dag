@@ -1,13 +1,14 @@
 module extdeps.cpu.types
 
 
-import extdeps.external_authority { ExternalAuthority, FactCitation }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import std.measure { ByteSize, Celsius, HardwareThreadCount, Hertz, Watt }
 import std.types { Bool, Int, List, NonEmptyStr }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -118,6 +119,8 @@ type CpuSocket {
   contact_count: Int
 
   cooling_mount: ProcessorCoolingMount
+
+  figure_standing: CitedFigureStanding
 }
 
 // WHY THE ATTACHMENT-MODE HALF IS NOT HERE. Splitting termination from attachment is one correction
@@ -129,6 +132,10 @@ type CpuSocket {
 // coproduct in the corpus whose only caller is its own witness, which is the decorative-carrier
 // failure this repository keeps catching in review.
 
+// figure_standing is the evidentiary standing of termination and contact_count, carried with the socket they
+// are facts about rather than restated per SKU. It is NOT part of a socket's identity: a citation is not
+// the socket, so cpu_socket_eq ignores it.
+//
 // SAME SOCKET means same platform owner AND same termination AND same count. Equal counts across
 // platforms are a coincidence of scale, not a compatibility fact, and a cooler or a footprint that
 // decided on the count alone would fit a part it was never made for.
@@ -170,7 +177,6 @@ type CpuModelCatalogRow {
   threads: HardwareThreadCount
   nominal_sustained_per_thread_hz: Hertz
   socket: CpuSocket
-  socket_citations: List<FactCitation>
   tdp_watts: Watt
   l1_cache: CpuL1CacheGeometry
   l1_cache_citations: List<FactCitation>
@@ -178,6 +184,81 @@ type CpuModelCatalogRow {
   l2_cache_citations: List<FactCitation>
   l3_cache: CpuL3CacheGeometry
   l3_cache_citations: List<FactCitation>
+}
+
+// A SOC FAMILY IS THE GROUPING OF CATALOG MODELS THAT SHARE ONE SO SILICON LINE.
+//
+// The per-model CpuModelCatalogRow rows already carry the upstream-attested architecture of each
+// model. What is missing is the grouping a BOARD admits: a board is designed for a set of SoC
+// families (a dual-socket Altra/Altra Max board admits BOTH the Altra and the Altra Max lines), and
+// the firmware architecture of such a board is only a PLATFORM FACT when every admitted family maps
+// to the same architecture. Grouping the per-model rows into families lets the board edge name the
+// families it admits and lets the architecture be DERIVED from the models it cites, never inferred.
+type SoCFamily {
+  name: NonEmptyStr
+  // NON-EMPTY BY CONSTRUCTION (review 81340 F1). This was List<CpuModelCatalogRow>, which let an
+  // EMPTY family be written and then caught it at run time: soc_family_architecture answered `none`
+  // on Absent, and the refusal read the same as "the models disagree". DESIGN.md Sec 5 -- "stronger
+  // than catching a wrong state is making it unwritable" -- and Sec 3b's ruling
+  // gunbc.design_ruling nonemptiness_is_constructed_or_proved, which names FreeSemigroup as the
+  // carrier for exactly this: "Nonemptiness is constructed or proved, then consumed". A family with
+  // no model rows is not a family, so it now has no representation rather than a runtime veto.
+  models: FreeSemigroup<CpuModelCatalogRow>
+}
+
+// WHETHER TWO FAMILY ROWS ARE THE SAME SILICON LINE, tested by IDENTITY — never by name.
+//
+// A family IS the grouping of its catalog model rows ("the grouping of catalog models that share one So
+// silicon line", above), so two rows name one family exactly when they group the same models. Comparing
+// `name` would let any unrelated row that spells its name "Altra" inherit everything cited about Altra —
+// review 81149, finding 3, which was exactly how SMpro carrying was decided here. The name stays on the
+// type because upstream names families in prose and a refusal must be readable, but it decides nothing.
+//
+// The model-row comparison is on the row's IDENTITY — vendor + model number + OEM listing — which is the
+// key an OEM lists a part under. Architecture, core counts and cache geometry are cited ATTRIBUTES of
+// that key, not part of what makes the part itself; two rows agreeing on the key but disagreeing on an
+// attribute are a contradiction to fix at the citation, not two different parts.
+fn cpu_model_catalog_row_eq(a: CpuModelCatalogRow, b: CpuModelCatalogRow) -> Bool {
+  (a.vendor.legal_name as String) == (b.vendor.legal_name as String)
+    && (a.model_number as String) == (b.model_number as String)
+    // OPTIONAL EQUALITY IS COMPARISON, not a match. This used to unfold both optionals by hand --
+    // Present/Present compare, Present/Absent false, Absent/Present false, Absent/Absent true -- which is
+    // the canonical surface for Option re-derived inside an extdeps file (review 81287 F3; DESIGN §2, "net
+    // concepts must not grow by re-invention"). `==` on two Options of a comparable leaf is that surface,
+    // and it is used elsewhere in the corpus; four arms of prose became one comparison.
+    && a.oem_listing_id == b.oem_listing_id
+}
+
+fn soc_family_eq(a: SoCFamily, b: SoCFamily) -> Bool {
+  // Read through the canonical accessor, as every other FreeSemigroup field in the corpus is
+  // (extdeps.colo.types, std.goal_assessment, gunbc.witness.witness_floor_lanes): the non-emptiness is
+  // carried by the TYPE, and the folds below run on the ordinary list once that guarantee is had.
+  let am = non_empty_to_list(xs: a.models)
+  let bm = non_empty_to_list(xs: b.models)
+  count(am) == count(bm)
+    && all(am, m => any(bm, n => cpu_model_catalog_row_eq(a: m, b: n)))
+    && all(bm, m => any(am, n => cpu_model_catalog_row_eq(a: m, b: n)))
+}
+
+// THE FIRMWARE ARCHITECTURE A FAMILY ESTABLISHES, OR NONE.
+//
+// A family establishes an architecture only when every model in it reports the SAME one. A family
+// whose models disagree establishes nothing, and the answer is `none`, never "first wins". This is the
+// platform fact a board edge composes over, and the refusal is typed as "unestablished" downstream, not
+// collapsed to an absent selection.
+//
+// THE EMPTY FAMILY HAS NO ARM HERE ANY MORE (review 81340 F1). It used to: `first()` on a List could
+// answer Absent, so the function needed a branch for it and callers had to wonder whether "none" meant
+// "disagreeing models" or "nobody said anything". `models` is now FreeSemigroup, so there is always a
+// lead and the only remaining reason to refuse is the one that is a real fact.
+fn soc_family_architecture(family: SoCFamily) -> Architecture? {
+  let models = non_empty_to_list(xs: family.models)
+  let lead = family.models.head
+  if models |> all(m => m.architecture == lead.architecture) {
+    Present { value: lead.architecture }
+  } else {
+    none
+  }
 }
 
 type CpuDeploymentFacts {

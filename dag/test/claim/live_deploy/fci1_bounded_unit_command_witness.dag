@@ -1,0 +1,101 @@
+module test.claim.live_deploy.fci1_bounded_unit_command_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.measure { finite_byte_size_count }
+import extdeps.exec.command { argv_words }
+import gunbc.fabric.fci1_bounded_execution_context { fci1_bounded_execution_context, Fci1BoundedExecutionContextBuilt }
+import gunbc.live_deploy.slice_bounds { fci1_controls_slice_unit_name }
+import gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator {
+  Fci1UnitBound, Fci1UnitBounded, Fci1UnitUnbounded,
+  Fci1UnitCommandBuilt, Fci1UnitCommandRefused, fci1_unit_command,
+  Fci1BoundedControlsAccepted, fci1_verdict_line,
+  Fci1Observed, Fci1StoreAbsent, Fci1StoreObserved, Fci1StoreUnobservable,
+  fci1_store_of_walks, fci1_child_words, fci1_admit_args, Fci1Arg, Fci1ArgsAdmitted, Fci1ArgsRefused,
+}
+
+
+
+// The bounded actuator's unit argv is built by evaluating fci1_unit_command, with no systemd. A record
+// shape the extdeps union no longer has typechecks and only fails when evaluated (gunbc.recurring_failure_mode
+// changed_declaration_signature_consumer_unplanned), so this evaluates every bound arm and reads the words.
+
+fn word_hits(words: List<String>, needle: String) -> Bool {
+  any(words, w => w == needle)
+}
+
+test fn the_bounded_unit_argv_carries_the_working_directory_slice_and_memory_bounds() -> Bool {
+  match fci1_bounded_execution_context(checkout_root: ".") {
+    Fci1BoundedExecutionContextBuilt { context: c } => {
+      let high = match c.memory_high {
+        Present { value: h } => h
+        Absent => c.memory_max
+      }
+      match fci1_unit_command(unit: "fci1-t" as NonEmptyStr, working_directory: "/wt", bound: Fci1UnitBounded { max: c.memory_max, high: high }, child_words: ["true"]) {
+        Fci1UnitCommandRefused { detail: _ } => false
+        Fci1UnitCommandBuilt { command } => {
+          let words = argv_words(command: command)
+          word_hits(words: words, needle: "--property=WorkingDirectory=/wt")
+            && word_hits(words: words, needle: "--property=Slice=" + (fci1_controls_slice_unit_name as String))
+            && word_hits(words: words, needle: "--property=MemoryMax=" + to_string(finite_byte_size_count(size: c.memory_max)))
+            && word_hits(words: words, needle: "--property=MemoryHigh=" + to_string(finite_byte_size_count(size: high)))
+        }
+      }
+    }
+    _ => false
+  }
+}
+
+test fn the_unbounded_unit_argv_is_memory_max_infinity_with_no_slice() -> Bool {
+  match fci1_unit_command(unit: "fci1-u" as NonEmptyStr, working_directory: "/wt", bound: Fci1UnitUnbounded, child_words: ["true"]) {
+    Fci1UnitCommandRefused { detail: _ } => false
+    Fci1UnitCommandBuilt { command } => {
+      let words = argv_words(command: command)
+      word_hits(words: words, needle: "--property=MemoryMax=infinity")
+        && word_hits(words: words, needle: "--property=WorkingDirectory=/wt")
+        && !any(words, w => string_contains(s: w, pattern: "--property=Slice="))
+    }
+  }
+}
+
+test fn the_accepted_verdict_line_names_systemd_and_both_memory_bounds() -> Bool {
+  match fci1_bounded_execution_context(checkout_root: ".") {
+    Fci1BoundedExecutionContextBuilt { context: c } => {
+      let high = match c.memory_high {
+        Present { value: h } => h
+        Absent => c.memory_max
+      }
+      fci1_verdict_line(verdict: Fci1BoundedControlsAccepted { systemd: "systemd 255", memory_max: c.memory_max, memory_high: high })
+        == join(["FCI1BoundedExecutionControlsAccepted|systemd=systemd 255|memory_max=", to_string(finite_byte_size_count(size: c.memory_max)), "|memory_high=", to_string(finite_byte_size_count(size: high))], "")
+    }
+    _ => false
+  }
+}
+
+// THE STORE IS ABSENT ONLY WHEN THE PARENT LISTING ESTABLISHES IT. A recursive find names a vanished
+// DESCENDANT with the same "No such file or directory" a missing root gets, so a present root whose
+// walk lost a descendant must be unobservable, never absent (absent == absent would pass it as unchanged).
+test fn a_descendant_vanishing_mid_walk_is_unobservable_not_absent() -> Bool {
+  let lost = Fci1Observed { exit_code: 1, stdout: "", stderr: "find: '/var/lib/gunbc/fabric/allocation/gen/f': No such file or directory" }
+  let fine = Fci1Observed { exit_code: 0, stdout: "x", stderr: "" }
+  let metadata_lost = match fci1_store_of_walks(metadata: lost, hashes: fine) { Fci1StoreUnobservable { cause: _ } => true  _ => false }
+  let hashes_lost = match fci1_store_of_walks(metadata: fine, hashes: lost) { Fci1StoreUnobservable { cause: _ } => true  _ => false }
+  let both_ok = match fci1_store_of_walks(metadata: fine, hashes: fine) { Fci1StoreObserved { metadata: _, hashes: _ } => true  _ => false }
+  metadata_lost && hashes_lost && both_ok
+}
+
+// The child argv is the one gunbc.cli_invoke `gunbc run` shape, with the row's arguments as
+// admitted NamedArguments; a name holding the separator refuses rather than rebinding.
+test fn the_child_argv_is_the_declared_gunbc_run_shape_and_a_separator_name_refuses() -> Bool {
+  let args = match fci1_admit_args(args: [Fci1Arg { name: "max", value: "9" }, Fci1Arg { name: "high", value: "8" }]) {
+    Fci1ArgsAdmitted { arguments } => arguments
+    Fci1ArgsRefused { name: _ } => []
+  }
+  let shaped = fci1_child_words(gunbc_bin: "/g", function: "f", arguments: args) == [
+    "/g", "run", "--source-root", "dag", "--source-root", "src/v2",
+    "--entry", "dag/gunbc/instruments/fabric_ci_fci1_bounded_controls_actuator.dag",
+    "--function", "f", "--arg", "max=9", "--arg", "high=8",
+  ]
+  let refused = match fci1_admit_args(args: [Fci1Arg { name: "a=b", value: "1" }]) { Fci1ArgsRefused { name: _ } => true  _ => false }
+  shaped && refused
+}

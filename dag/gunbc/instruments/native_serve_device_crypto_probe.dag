@@ -7,6 +7,11 @@ import extdeps.standards.rfc_6979 {
   rfc6979_a25_message_sample, rfc6979_a25_message_test, rfc6979_a25_p256_sha256_sample_signature,
 }
 import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets, sample_assertion_octets, sample_client_data }
+import gunbc.instruments.app_attest_operator_device_ios_26_6_2 {
+  operator_device_attestation_octets, operator_device_client_data, operator_device_key_id_b64,
+  operator_device_team_identifier, operator_device_bundle_identifier, operator_device_observed_at,
+}
+import extdeps.apple.app_attest { AttestationExpectation, AttestKeyId, AppIdPrefix, AppAttestDevelopment, app_attest_app_id }
 import gunbc.auth.approval_device_crypto_self_check {
   octets_text, first_octet_changed, rfc6979_check, sample_attestation_expectation, sample_assertion_expectation, assertion_expectation_with,
 }
@@ -16,8 +21,8 @@ import gunbc.native_serve_probe_plan {
 }
 import extdeps.crypto.signature { SignatureVerified, SignatureInvalid }
 import gunbc.auth.approval_device_crypto_realization {
-  DeviceCryptoAdmission, NativeDeviceCryptoBound, DeviceCryptoHandlerReceipt, device_crypto_admission, device_crypto_obligations,
-  DeviceCryptoExpectation, DeviceCryptoEchoJoined, DeviceCryptoEchoRefused, device_crypto_echo_join, device_crypto_handler_identity,
+  DeviceCryptoAdmission, DeviceCryptoHandlerReceipt, device_crypto_receipt_admission, device_crypto_obligations,
+  DeviceCryptoExpectation, DeviceCryptoRequirement, DeviceCryptoEchoJoined, DeviceCryptoEchoRefused, device_crypto_echo_join, device_crypto_handler_identity,
 }
 import gunbc.auth.approval_device_crypto_client { SidecarAnswered, SidecarFailed, signature_from_answer }
 import gunbc.auth.approval_device_crypto_wire {
@@ -42,13 +47,12 @@ import gunbc.auth.approval_device_crypto_wire {
 //   - signature, the sample signature over a different message: invalid.
 //   - P-256 base point order: n*G is infinity; (n-1)*G is finite (the control that makes the first an
 //     observation: a scalar multiplication that always answered infinity fails the second).
-//   - Apple's published iOS 14.4 attestation and assertion (extdeps.apple.app_attest_sample_ios_14_4):
-//     the sample predates apple_validation_category_01, so the verdicts the folds owe are the refusals
-//     AttestationValidationCategoryAbsent and AssertionValidationCategoryAbsent -- reaching those
-//     arms on real bytes is the evidence every earlier step, the two P-384 chain links and the P-256
-//     assertion signature included, passed in the emitted binary (gunbc.instruments.native_app_attest
-//     states the same standing for the fold run directly). WHAT A WHOLE-FOLD POSITIVE CONTROL NEEDS is
-//     that instrument's named trigger, unchanged.
+//   - Apple's published iOS 14.4 attestation and assertion (extdeps.apple.app_attest_sample_ios_14_4)
+//     and the operator's iPhone attestation (gunbc.instruments.app_attest_operator_device_ios_26_6_2):
+//     none carries an authData extensions map, so the verdicts the folds owe are the success arms
+//     AttestationVerified and AssertionAuthentic, with the two P-384 chain links and the P-256
+//     assertion signature run in the emitted binary (gunbc.instruments.native_app_attest states the
+//     same standing for the fold run directly).
 //   - the same attestation with a client data that is not the one the nonce commits to: refused with
 //     AttestationNonceMismatch, which distinguishes a service that reads the request's expectation from
 //     one that answers the owed arm for any object.
@@ -105,6 +109,27 @@ fn crypto_post(path: String, body: String) -> String {
   concat("POST ", concat(path, concat(" HTTP/1.1\r\nHost: probe\r\nContent-Length: ", concat(to_string(value: string_length(s: body)), concat("\r\n\r\n", body)))))
 }
 
+// The operator iPhone's expectation as the broker sent it to the verifier (the request that was refused in production).
+fn operator_device_attestation_expectation(client_data: NonEmptyStr) -> AttestationExpectation {
+  operator_device_with(client_data: client_data, app_id: app_attest_app_id(prefix: operator_device_team_identifier as AppIdPrefix, bundle_id: operator_device_bundle_identifier))
+}
+
+fn operator_device_with_app_id(a: NonEmptyStr) -> AttestationExpectation {
+  operator_device_with(client_data: operator_device_client_data, app_id: a)
+}
+
+fn operator_device_with(client_data: NonEmptyStr, app_id: NonEmptyStr) -> AttestationExpectation {
+  AttestationExpectation {
+    key_id: operator_device_key_id_b64 as AttestKeyId,
+    client_data: client_data,
+    app_id: app_id,
+    environment: AppAttestDevelopment,
+    observed_at: operator_device_observed_at as String,
+    admitted_validation_categories: [2, 3, 4],
+    expected_bundle_version: "1" as NonEmptyStr,
+  }
+}
+
 fn answer_words(verdict: String, arm: String) -> String {
   concat("\"verdict\": \"", concat(verdict, concat("\", \"arm\": \"", concat(arm, "\""))))
 }
@@ -154,10 +179,31 @@ fn crypto_cases() -> List<DeviceCryptoProbeCase> {
       client_reading: ClientReadingNotJudged,
     },
     DeviceCryptoProbeCase {
-      identity: "attestation_ios_14_4_sample_reaches_the_validation_category_refusal",
+      identity: "attestation_ios_14_4_sample_verifies",
       request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: sample_attestation_octets, url_safe: false) as NonEmptyStr, e: sample_attestation_expectation(client_data: sample_client_data))),
       status: 200,
-      body_contains: answer_words(verdict: "refused", arm: "AttestationValidationCategoryAbsent"),
+      body_contains: answer_words(verdict: "verified", arm: "AttestationVerified"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "attestation_operator_iphone_verifies",
+      request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: operator_device_attestation_octets, url_safe: false) as NonEmptyStr, e: operator_device_attestation_expectation(client_data: operator_device_client_data))),
+      status: 200,
+      body_contains: answer_words(verdict: "verified", arm: "AttestationVerified"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "red_operator_iphone_with_another_app_id_is_an_app_id_mismatch",
+      request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: operator_device_attestation_octets, url_safe: false) as NonEmptyStr, e: operator_device_with_app_id(a: "72HGYAMBVQ.ai.gunb.other" as NonEmptyStr))),
+      status: 200,
+      body_contains: answer_words(verdict: "refused", arm: "AttestationAppIdMismatch"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "red_operator_iphone_with_another_client_data_is_a_nonce_mismatch",
+      request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: operator_device_attestation_octets, url_safe: false) as NonEmptyStr, e: operator_device_attestation_expectation(client_data: "not-the-operator-client-data" as NonEmptyStr))),
+      status: 200,
+      body_contains: answer_words(verdict: "refused", arm: "AttestationNonceMismatch"),
       client_reading: ClientReadingNotJudged,
     },
     DeviceCryptoProbeCase {
@@ -168,10 +214,10 @@ fn crypto_cases() -> List<DeviceCryptoProbeCase> {
       client_reading: ClientReadingNotJudged,
     },
     DeviceCryptoProbeCase {
-      identity: "assertion_ios_14_4_sample_reaches_the_validation_category_refusal",
+      identity: "assertion_ios_14_4_sample_is_authentic",
       request: crypto_post(path: device_crypto_assertion_path, body: assertion_check_request_json(object_b64: octets_text(octets: sample_assertion_octets, url_safe: false) as NonEmptyStr, e: sample_assertion_expectation())),
       status: 200,
-      body_contains: answer_words(verdict: "refused", arm: "AssertionValidationCategoryAbsent"),
+      body_contains: answer_words(verdict: "verified", arm: "AssertionAuthentic"),
       client_reading: ClientReadingNotJudged,
     },
     DeviceCryptoProbeCase {
@@ -229,7 +275,7 @@ fn crypto_case_failure(c: DeviceCryptoProbeCase, response: String) -> String {
 
 // The admission the broker would hold: the realization is bound over every obligation with the fixture receipt.
 fn probe_admission() -> DeviceCryptoAdmission {
-  device_crypto_admission(r: NativeDeviceCryptoBound { receipt: DeviceCryptoHandlerReceipt { handler_identity: "probe", exact_revision: "0000000", covered: device_crypto_obligations } })
+  device_crypto_receipt_admission(receipt: DeviceCryptoHandlerReceipt { handler_identity: "probe", exact_revision: "0000000", covered: device_crypto_obligations }, required: device_crypto_obligations)
 }
 
 // THE ECHO THE REAL BINARY WROTE, JOINED TO AN EXPECTATION. The positive control: the expectation naming the digest the
@@ -240,15 +286,15 @@ fn echo_join_failure(c: DeviceCryptoProbeCase, body: String) -> String {
   match decode_device_crypto_echoed_answer(text: body) {
     WireRefused { at: a, cause: x } => concat(c.identity, concat(": the answer carries no decodable echo at ", concat(a as String, concat(": ", x as String))))
     WireDecoded { value: e } =>
-      let own = DeviceCryptoExpectation { handler_identity: device_crypto_handler_identity, deployed_digest: e.echo.exact_revision }
-      let other = DeviceCryptoExpectation { handler_identity: device_crypto_handler_identity, deployed_digest: concat(e.echo.exact_revision as String, "0") as NonEmptyStr }
-      let joins_own = match device_crypto_echo_join(expectation: own, echo: e.echo) { DeviceCryptoEchoJoined => true  DeviceCryptoEchoRefused { cause: _ } => false }
-      let refuses_other = match device_crypto_echo_join(expectation: other, echo: e.echo) { DeviceCryptoEchoJoined => false  DeviceCryptoEchoRefused { cause: _ } => true }
+      let own = DeviceCryptoExpectation { requirement: DeviceCryptoRequirement { handler_identity: device_crypto_handler_identity, required: device_crypto_obligations }, deployed_digest: e.echo.exact_revision }
+      let other = DeviceCryptoExpectation { requirement: DeviceCryptoRequirement { handler_identity: device_crypto_handler_identity, required: device_crypto_obligations }, deployed_digest: concat(e.echo.exact_revision as String, "0") as NonEmptyStr }
+      let joins_own = match device_crypto_echo_join(expectation: own, echo: e.echo) { DeviceCryptoEchoJoined { admission: _ } => true  DeviceCryptoEchoRefused { cause: _ } => false }
+      let refuses_other = match device_crypto_echo_join(expectation: other, echo: e.echo) { DeviceCryptoEchoJoined { admission: _ } => false  DeviceCryptoEchoRefused { cause: _ } => true }
       let refuses_each_drop = device_crypto_obligations |> all(dropped =>
         match device_crypto_echo_join(
           expectation: own,
           echo: DeviceCryptoHandlerReceipt { handler_identity: e.echo.handler_identity, exact_revision: e.echo.exact_revision, covered: e.echo.covered |> filter(o => o != dropped) },
-        ) { DeviceCryptoEchoJoined => false  DeviceCryptoEchoRefused { cause: _ } => true })
+        ) { DeviceCryptoEchoJoined { admission: _ } => false  DeviceCryptoEchoRefused { cause: _ } => true })
       let covers_all = (e.echo.covered |> count) == (device_crypto_obligations |> count)
       if !joins_own { concat(c.identity, ": the expectation naming the echoed digest did not join") }
       else if !refuses_other { concat(c.identity, ": an expectation naming another digest joined the echo") }

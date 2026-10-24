@@ -18,7 +18,7 @@ import gunbc.crate_partition {
   list_unique_sorted_ids
 }
 
-import std.algebra { Empty, fold_list, length }
+import std.algebra { Empty, fold_list, length, list_push }
 import std.types { NonEmptyStr, List, Bool, String, Int, brand }
 import std.content_hash { Fnv1a64StructuralDigestHex }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -35,7 +35,6 @@ import v2.std.diagnostic { Accepted, Rejected, Outcome, outcome_accepted }
 import v2.std.node {
   Disj,
   Arrow,
-  Occupancy,
   Instantiation,
   ComputationNode,
   Atom,
@@ -389,7 +388,6 @@ fn type_atom_identity(node: Node) -> Optional<Symbol> {
     TypeNode { connective: Conj } => Absent
     TypeNode { connective: Disj } => Absent
     TypeNode { connective: Arrow } => Absent
-    TypeNode { connective: Occupancy } => Absent
     TypeNode { connective: Instantiation } => Absent
     ComputationNode { behavior: _ } => Absent
   }

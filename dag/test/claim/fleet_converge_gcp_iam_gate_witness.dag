@@ -40,7 +40,13 @@ fn admits_only_an_approved_delta(gate: Expression) -> Bool {
     LogicalAnd { left: l, right: r } =>
       serialize_expression(expression: l) == serialize_expression(expression: fleet_converge_dispatch_mode_is(mode: GcpIamConverge))
         && serialize_expression(expression: r) == serialize_expression(expression: approved_conjunct)
-    _ => false
+    ContextAccess { context: _, path: _ } => false
+    FunctionCall { function: _, args: _ } => false
+    StringLiteral { value: _ } => false
+    LogicalOr { left: _, right: _ } => false
+    Equals { left: _, right: _ } => false
+    NotEquals { left: _, right: _ } => false
+    LogicalNot { operand: _ } => false
   }
 }
 

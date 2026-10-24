@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.heads_only_index_counts_braces_inside_string_literals
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data heads_only_index_counts_braces_inside_string_literals: RecurringFailureMode = RecurringFailureMode {
   identity: "heads_only_index_counts_braces_inside_string_literals" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**the heads-only module index counts braces inside string literals, so a `--format` template or a shell function body ends the enclosing declaration early and the module refuses to parse** (INVALID STATE: a `.dag` source whose string literal contains `{` or `}` is treated as ending the declaration at that brace. HARM: authors route around the reader by flattening shell into three-command assignment sequences and concat-built remote programs, which is the DESIGN section 5 workaround — noticing it is the line-stop, not a landing state.",
