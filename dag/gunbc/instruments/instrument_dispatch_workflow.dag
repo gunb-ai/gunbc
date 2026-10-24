@@ -9,8 +9,9 @@ import extdeps.bazel.label { Label, render_label }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, Bash,
+  Workflow, Job, Step, RunStep, UsesStep, Bash, max_job_timeout_minutes, WorkflowTrigger,
   WorkflowDispatch, DispatchInput, InputChoice,
   WorkflowPermissions, PermRead, ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse,
 }
@@ -118,7 +119,11 @@ data instrument_dispatch_retention_days: Int = 30
 // A bound, not a budget: the census emits and builds the compiler closure (about 35 minutes measured on
 // emit-build) and then reads the whole corpus; a timeout that cut an honest run would turn its verdict
 // into silence.
-data instrument_dispatch_timeout_minutes: Int = 240
+// The bound is the platform ceiling while the census walk cost is unexplained: raising it past that
+// is not available, and the interim's terms are the typed row below, not this note.
+data instrument_dispatch_timeout_minutes: Int = max_job_timeout_minutes
+
+data instrument_dispatch_timeout_interim_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the whole-pool //gunbc/instruments:dependency-demand-census completes on the fleet inside the prior 240-minute dispatch bound once work item adhoc-c80c93d2-2b4 removes its walk cost; instrument_dispatch_timeout_minutes then returns to that bound. Raised to the extdeps.github.actions max_job_timeout_minutes ceiling under operator escalation msg_283bef99 (approved 2026-10-23) because the census was cut at the bound with no output (instrument-dispatch runs 39876983534, 39922406221, 39924275418, 39924278017) while completing on faster runners (39525096386, 39769560992, 39876986306). Binds to a DeclarationRef when that fix names the declaration it adds or retires.")
 
 // THE DISPATCHABLE LABELS: instruments whose subject is too large for any per-change lane and is run
 // on purpose. The round-trip battery is the first (its own row says it is run by name, not a merge
@@ -533,23 +538,32 @@ fn instrument_dispatch_job(seed: String, guard: String, script: String) -> Job {
   }
 }
 
+// THE TRIGGER SET IS A MODULE-LEVEL CONSTANT that the Workflow constructor reads for its 'on'
+// field, so it cannot depend on the dispatched (seed, guard, script): "workflow_dispatch-only" — the
+// reason gunbc.runner.runner_fleet_job_timeout_census omits this workflow from the drain-bound
+// population — is then a property of this constant, read directly by the census discharge and its
+// witness, not a sampling over built workflows.
+fn instrument_dispatch_workflow_triggers() -> List<WorkflowTrigger> {
+  [
+    WorkflowDispatch {
+      inputs: [
+        DispatchInput {
+          name: instrument_dispatch_label_input,
+          description: Present { value: "The rostered instrument to run (gunbc.instrument_targets); the run executes `gunbc test <label>` at the dispatched ref." },
+          required: true,
+          default: none,
+          type: InputChoice { options: instrument_dispatch_label_options() },
+        },
+      ]
+    }
+  ]
+}
+
 fn instrument_dispatch_workflow(seed: String, guard: String, script: String) -> Workflow {
   Workflow {
     name: instrument_dispatch_workflow_name,
     run_name: Present { value: join(["instrument-dispatch ", instrument_dispatch_label_expression()], "") },
-    on: [
-      WorkflowDispatch {
-        inputs: [
-          DispatchInput {
-            name: instrument_dispatch_label_input,
-            description: Present { value: "The rostered instrument to run (gunbc.instrument_targets); the run executes `gunbc test <label>` at the dispatched ref." },
-            required: true,
-            default: none,
-            type: InputChoice { options: instrument_dispatch_label_options() },
-          },
-        ]
-      }
-    ],
+    on: instrument_dispatch_workflow_triggers(),
     concurrency: Present { value: instrument_dispatch_concurrency },
     env: none,
     permissions: Present {

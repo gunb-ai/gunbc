@@ -7,7 +7,8 @@ import extdeps.posix.signal {
   linux_standard_signal_of_name,
   linux_standard_signal_wire_name,
 }
-import std.types { String, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.posix.identity { PosixOwnerNames }
 import std.optional { Present, Absent }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole, AttemptReviewerRole,
@@ -23,16 +24,20 @@ import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal,
 
 // The hook is one typed mkdir argv whose single operand is the record's name, with the four stop
 // variables spelled as systemd expansions and no shell anywhere.
+fn drain_principal() -> PosixOwnerNames {
+  PosixOwnerNames { user: "svc" as NonEmptyStr, group: "grp" as NonEmptyStr }
+}
+
 test fn exit_hook_is_a_create_only_mkdir_of_the_record_name() -> Bool {
-  match attempt_exit_hook(instance_root: "/opt/gunbc-srv2", node_id: "shell-dag-live", attempt_key: "01feb0b65dee1377", role: AttemptWorkerRole) {
+  match attempt_exit_hook(instance_root: "/opt/gunbc-srv2", node_id: "shell-dag-live", attempt_key: "01feb0b65dee1377", role: AttemptWorkerRole, record_owner: drain_principal()) {
     AttemptExitHookRendered { exec_line } =>
-      (exec_line as String) == "+mkdir -- /opt/gunbc-srv2/attempt-exit-spool/inbox/shell-dag-live+01feb0b65dee1377+worker+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}"
+      (exec_line as String) == "+install -d -m 00755 -o svc -g grp /opt/gunbc-srv2/attempt-exit-spool/inbox/shell-dag-live+01feb0b65dee1377+worker+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}"
     AttemptExitHookRefused { reason: _ } => false
   }
 }
 
 test fn exit_hook_refuses_an_instance_root_systemd_would_reinterpret() -> Bool {
-  match attempt_exit_hook(instance_root: "/opt/gunbc %n", node_id: "a", attempt_key: "b", role: AttemptWorkerRole) {
+  match attempt_exit_hook(instance_root: "/opt/gunbc %n", node_id: "a", attempt_key: "b", role: AttemptWorkerRole, record_owner: drain_principal()) {
     AttemptExitHookRefused { reason: _ } => true
     AttemptExitHookRendered { exec_line: _ } => false
   }

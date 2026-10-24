@@ -243,6 +243,14 @@ fn collected_line(c: CollectedHostReceipt) -> String {
   }
 }
 
+fn fleet_verdict_line(verdict: FleetConvergenceVerdict) -> String {
+  match verdict {
+    FleetConverged { host_count: n } => concat("fleet-verdict converged hosts=", to_string(n))
+    FleetNotConverged { standings: s } => concat("fleet-verdict not-converged standings=", to_string(length(s)))
+    FleetEnrollmentRefused { refusals: r } => concat("fleet-verdict enrollment-refused hosts=", to_string(length(r)))
+  }
+}
+
 data fleet_collect_receipt_path: String = "target/fleet-converge-collect-receipt.txt"
 
 // The wet collector run: collect every fleet target, feed ONLY collected receipts to
@@ -271,11 +279,7 @@ fn collect_fleet_convergence_wet() -> ProcessExit {
     refusals: fleet_enrollment_refusals,
     receipts: collected_receipts_only(collected: collected),
   )
-  let verdict_line = match verdict {
-    FleetConverged { host_count: n } => concat("fleet-verdict converged hosts=", to_string(n))
-    FleetNotConverged { standings: s } => concat("fleet-verdict not-converged standings=", to_string(length(s)))
-    FleetEnrollmentRefused { refusals: r } => concat("fleet-verdict enrollment-refused hosts=", to_string(length(r)))
-  }
+  let verdict_line = fleet_verdict_line(verdict: verdict)
   let body = join([enroll_lines, join(map(collected, c => collected_line(c: c)), "\n"), "\n", verdict_line, "\n"], "")
   let w = Filesystem.Write(path: fleet_collect_receipt_path, content: body)
   if w.success {
