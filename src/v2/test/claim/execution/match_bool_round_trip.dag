@@ -1,6 +1,5 @@
 module v2.test.claim.execution.match_bool_round_trip
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -153,8 +152,7 @@ data match_bool_inferred_tree: InferredTree = InferredTree {
   root: match_bool_emitted_root,
   facts: PartialFunction {
     lookup: match_bool_facts_lookup
-  },
-  arm_resolutions: constructed_root_arm_resolutions()
+  }
 }
 
 fn match_bool_emit_accepts() -> Outcome<Medium<String>> {
