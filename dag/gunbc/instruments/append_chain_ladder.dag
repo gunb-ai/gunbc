@@ -3,6 +3,8 @@ module gunbc.instruments.append_chain_ladder
 import std.types { Bool, Int, List, String }
 import std.algebra { Cons, Empty, FreeSemigroup, non_empty_append, non_empty_to_list, list_append, list_snoc_item, fold_list, list_head }
 import std.optional { Absent, Present }
+import std.measure { Nanosecond, nanosecond_count }
+import std.compiler_entry { NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 
 // THE INSTRUMENT THAT LOCATED THE SUPERLINEAR APPEND (gunbc.recurring_failure_mode
@@ -74,7 +76,7 @@ fn non_empty_append_chain(n: Int) -> ProcessExit {
 type LadderTiming {
   arm: String
   n: Int
-  best_ns: Int
+  best: Nanosecond
 }
 
 type LadderLinearity
@@ -85,12 +87,14 @@ type LadderLinearity
 fn ladder_linear_band_x100() -> Int { 250 }
 
 fn ladder_doubling_verdict(prev: LadderTiming, next: LadderTiming) -> LadderLinearity {
-  if (prev.best_ns <= 0) || (next.best_ns <= 0) {
-    LadderUnobserved { arm: prev.arm, cause: "a timing row is not positive" }
+  let p = nanosecond_count(n: prev.best)
+  let q = nanosecond_count(n: next.best)
+  if (p == 0) || (q == 0) {
+    LadderUnobserved { arm: prev.arm, cause: "a timing row read zero nanoseconds" }
   } else if next.n != 2 * prev.n {
     LadderUnobserved { arm: prev.arm, cause: concat("n=", to_string(value: next.n), " does not double n=", to_string(value: prev.n)) }
-  } else if next.best_ns * 100 > prev.best_ns * ladder_linear_band_x100() {
-    LadderSuperlinear { arm: prev.arm, from_n: prev.n, ratio_x100: (next.best_ns * 100) / prev.best_ns }
+  } else if q * 100 > p * ladder_linear_band_x100() {
+    LadderSuperlinear { arm: prev.arm, from_n: prev.n, ratio_x100: (q * 100) / p }
   } else {
     LadderLinear
   }
@@ -153,10 +157,13 @@ fn ladder_linearity(rows: List<LadderTiming>, arms: List<String>) -> LadderLinea
   }
 }
 
-fn ladder_linearity_exit(v: LadderLinearity) -> ProcessExit {
+// THE LABEL'S TERMINAL, read from ladder_linearity and nothing else: the curve verdict decides first
+// (an unreadable curve is no observation, a superlinear one is not held), and only a linear run is
+// then refused by any size row that built the wrong element count.
+fn ladder_linearity_terminal(v: LadderLinearity, sizes_not_held: Int) -> NativeClaimTerminal {
   match v {
-    LadderLinear => ExitSuccess
-    LadderSuperlinear { arm: a, from_n: n, ratio_x100: r } => ExitFailure { code: 1, reason: concat("append_chain_ladder: ", a, " grew ", to_string(value: r), "/100 per doubling from n=", to_string(value: n)) }
-    LadderUnobserved { arm: a, cause: c } => ExitFailure { code: 2, reason: concat("append_chain_ladder: no curve for ", a, ": ", c) }
+    LadderUnobserved { arm: a, cause: c } => NativeClaimNoObservation { reason: concat("no curve for ", a, ": ", c) }
+    LadderSuperlinear { arm: a, from_n: n, ratio_x100: r } => NativeClaimNotHeld { reason: concat(a, " grew ", to_string(value: r), "/100 per doubling from n=", to_string(value: n)) }
+    LadderLinear => if sizes_not_held > 0 { NativeClaimNotHeld { reason: concat(to_string(value: sizes_not_held), " size row(s) built the wrong element count") } } else { NativeClaimHeld }
   }
 }
