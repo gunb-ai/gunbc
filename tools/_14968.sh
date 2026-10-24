@@ -130,8 +130,11 @@ if [ -z "${CKPT_SKIP_C:-}" ] && [ ! -s $CKPT/jobs/C.out ]; then
   grep -m3 '"kind":"admitted"' $CKPT/C.raw | sed 's|^|  C |'
   grep -m3 '"kind":"unreached"' $CKPT/C.raw | sed 's|^|  C |'
   grep -m2 "summary\|unreached_count\|admitted_count" $CKPT/C.raw | sed 's|^|  C |'
-  echo "  C guarantee_probe admitted=$(grep -c 'guarantee_probe_corpus_witness.*admitted\|admitted.*guarantee_probe_corpus_witness' $CKPT/C.raw) unreached=$(grep -c 'unreached.*guarantee_probe_corpus_witness\|guarantee_probe_corpus_witness.*unreached' $CKPT/C.raw) anyline=$(grep -c 'guarantee_probe_corpus_witness' $CKPT/C.raw)"
-  echo "  C approval_ntfy anyline=$(grep -c 'approval_ntfy_access_readback_witness' $CKPT/C.raw)"
+  grep '"module":"test.claim.guarantee_probe_corpus_witness"' $CKPT/C.raw | sort | uniq -c | sed 's|^|  C gp-line: |' | head -6
+  echo "  C gp kinds: kind_admitted=$(grep -c '"kind":"admitted","module":"test.claim.guarantee_probe_corpus_witness"' $CKPT/C.raw) kind_unreached=$(grep -c '"kind":"unreached","module":"test.claim.guarantee_probe_corpus_witness"' $CKPT/C.raw) kind_never_admitted=$(grep -c '"kind":"never-admitted","module":"test.claim.guarantee_probe_corpus_witness"' $CKPT/C.raw)"
+  echo "  C approval_ntfy anyline=$(grep -c 'approval_ntfy_access_readback_witness' $CKPT/C.raw) kind-lines:"; grep 'approval_ntfy' $CKPT/C.raw | head -3 | sed 's|^|  C ntfy-line: |'
+  grep '"kind":"never-admitted"' $CKPT/C.raw | sort -u | head -6 | sed 's|^|  C never-admitted: |'
+  echo "  C never-admitted-count=$(grep -c '"kind":"never-admitted"' $CKPT/C.raw)"
   cp $CKPT/C.raw $CKPT/jobs/C.out
 else
   echo "ROW C SKIPPED-CHECKPOINT"
