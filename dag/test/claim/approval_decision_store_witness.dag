@@ -18,8 +18,8 @@ import gunbc.auth.approval_decision_store {
   claims_for, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
   IdentityHeaderTrustEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustNotEstablished, approval_identity_trust, approval_identity_trust_for,
   redeem_over_store, RedemptionIdentityUntrusted,
-  ObservedEscalation, EscalationPending, EscalationDecided, EscalationUnreadable, EscalationNotFiled,
-  PendingEscalationsListed, PendingEscalationsRefused, escalations_needing_attention, request_needs_attention_at,
+  EscalationSlot, EscalationPending, EscalationDecided, EscalationUnreadable, EscalationNotFiled,
+  PendingFold, pending_fold_step, request_needs_attention_at,
 }
 import gunbc.auth.approval_broker { BrokerApproved, BrokerDenied, ExecutionObligation }
 import extdeps.ietf.http_semantics { POST, GET }
@@ -168,9 +168,14 @@ test fn redemption_refuses_first_on_an_untrusted_identity_header() -> Bool {
 }
 
 // ── what the phone lists: only the requests that still need the operator ───────────────────────
-// The slots are SUPPLIED at the listing's interface (escalations_needing_attention takes observed
-// slots); the store route that produces them is executed by
+// The slots are SUPPLIED to the listing's own step (pending_fold_step, the step pending_escalations
+// folds over the store's listing); the store route that produces them is executed by
 // test.claim.approval_decision_store_wet_witness against a real store.
+
+type ObservedEscalation {
+  escalation_id: NonEmptyStr
+  slot: EscalationSlot
+}
 
 fn fx_request_named(id: NonEmptyStr) -> StoredApprovalRequest {
   StoredApprovalRequest {
@@ -187,10 +192,8 @@ fn fx_request_named(id: NonEmptyStr) -> StoredApprovalRequest {
 }
 
 fn fx_listed_ids(observed: List<ObservedEscalation>, at: Timestamp) -> String {
-  match escalations_needing_attention(observed: observed, observed_at: at) {
-    PendingEscalationsListed { pending: rows, unreadable: u } => join(map(rows, r => r.escalation_id as String), ",") + "|" + join(map(u, x => x as String), ",")
-    PendingEscalationsRefused { detail: d } => "refused: " + d
-  }
+  let f = fold(observed, init: PendingFold { pending: [], unreadable: [] }, f: (acc, o) => pending_fold_step(acc: acc, escalation_id: o.escalation_id, slot: o.slot, observed_at: at))
+  join(map(f.pending, r => r.escalation_id as String), ",") + "|" + join(map(f.unreadable, x => x as String), ",")
 }
 
 fn fx_mixed_store() -> List<ObservedEscalation> {

@@ -12,7 +12,7 @@ import gunbc.auth.approval_decision_store {
 
 // THE INHABITANCE CLAIM for the listing's membership rule (DESIGN 3, the pairing obligation):
 // test.claim.approval_decision_store_witness supplies observed slots to
-// escalations_needing_attention; this claim runs the REAL route the pending read takes --
+// pending_fold_step; this claim runs the REAL route the pending read takes --
 // file_approval_request and commit_broker_decision publishing generations into a throwaway store,
 // then pending_escalations listing it through cas_slot_keys and observe_escalation -- so the
 // supplied EscalationSlot shapes are what the store emits. Effects: shell.Mktemp.DirWithTemplate, the

@@ -798,8 +798,9 @@ fn request_needs_attention_at(request: StoredApprovalRequest, observed_at: Times
   capability_live_at(claims: claims_for(request: request, decision: ProposeApprove), observed_at: observed_at)
 }
 
-// ONE STEP OF THE LISTING, pure over an observed slot: the one place membership is decided, shared
-// by the store fold below and by escalations_needing_attention, which takes supplied slots.
+// ONE STEP OF THE LISTING, pure over an observed slot: the one place membership is decided. The
+// store fold below supplies each slot from observe_escalation; the hermetic witness supplies slots
+// to this same step (test.claim.approval_decision_store_witness).
 fn pending_fold_step(acc: PendingFold, escalation_id: NonEmptyStr, slot: EscalationSlot, observed_at: Timestamp) -> PendingFold {
   match slot {
     EscalationPending { request: r } =>
@@ -809,16 +810,6 @@ fn pending_fold_step(acc: PendingFold, escalation_id: NonEmptyStr, slot: Escalat
     EscalationDecided { decision: _ } => acc
     EscalationNotFiled => acc
   }
-}
-
-type ObservedEscalation {
-  escalation_id: NonEmptyStr
-  slot: EscalationSlot
-}
-
-fn escalations_needing_attention(observed: List<ObservedEscalation>, observed_at: Timestamp) -> PendingEscalations {
-  let f = fold(observed, init: PendingFold { pending: [], unreadable: [] }, f: (acc, o) => pending_fold_step(acc: acc, escalation_id: o.escalation_id, slot: o.slot, observed_at: observed_at))
-  PendingEscalationsListed { pending: f.pending, unreadable: f.unreadable }
 }
 
 fn pending_escalations(root: NonEmptyStr, observed_at: Timestamp) -> PendingEscalations {
