@@ -405,6 +405,32 @@ fn symbol_index_owning_module_of(index: SymbolIndex, path: QualifiedName) -> Opt
   }
 }
 
+// THE DECLARATIONS A PATH SITS IN, innermost first: the path itself and each proper prefix of it still
+// below its fill-time owning module. A variant's declaring path is its coproduct's path plus the variant
+// (v2.compiler.symbol_index_fill symbol_index_fill_containment_node), while the closure records
+// availability per module-root declaration (v2.compiler.name_resolve closure_declarations_demand), so the
+// row that publishes or refuses a variant is a proper prefix of its path. The walk stops BELOW the owning
+// module, so a nested unit (v2.p.child) is never read as a declaration of its parent (v2.p). No owning
+// module: the path alone. ONE ANSWER for every reader asking which closure row a path belongs to -- the
+// closure's own blocking walk and resolve's refused-provider lookup.
+fn symbol_index_enclosing_declaration_paths(index: SymbolIndex, path: QualifiedName) -> List<QualifiedName> {
+  match symbol_index_owning_module_of(index: index, path: path) {
+    Absent => Cons { head: path, tail: Empty }
+    Present { value: owner } => symbol_index_paths_below(owner: owner, path: path)
+  }
+}
+
+fn symbol_index_paths_below(owner: QualifiedName, path: QualifiedName) -> List<QualifiedName> {
+  if path == owner {
+    Empty
+  } else {
+    match path {
+      Empty => Empty
+      Cons { head: _, tail: _ } => Cons { head: path, tail: symbol_index_paths_below(owner: owner, path: qualified_name_init(qn: path)) }
+    }
+  }
+}
+
 fn symbol_index_binds_namespace_body_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
   map_contains_key(m: index.namespace_bodies, key: qualified_path)
 }
