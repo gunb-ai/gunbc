@@ -334,13 +334,36 @@ fn seat16_count_sharing_root_id(root: Node) -> Int {
 // call root) the spine root would carry the suffix's Minted id beside the call root's -- two
 // nodes, one occurrence. The text is BYTE-EXACT the green qualified call of
 // v2.test.claim.body_lowering_qualified_path (body_lowering_qualified_call_source), whose
-// pairing claim proves the fold door lowers THIS text to a call through the path. An earlier
-// draft added a second member (`fn peer_leaf() -> Bool = true`) to the module; the measured
-// probe at scratch head 07223f17d21b (2026-10-24) found the door answers Absent for that text
-// while answering Present for this one -- recorded as measured; the mechanism for the decline
-// was not re-derived here.
+// pairing claim proves the fold door lowers THIS text to a call through the path. That module's
+// own comment states the rule this fixture obeys: body_lower_find_captured returns the FIRST
+// postfix capture in the tree, so a sibling declaration AHEAD of the one under test hands the
+// search the wrong body with no diagnostic. An earlier draft of this fixture added exactly such
+// a leading sibling (`fn peer_leaf() -> Bool = true`) above `uses_qual_call`; its `= true` body
+// is the module's first postfix_expr, so the door captured `true`, body_lower_dotted_chain_
+// lowered_optional refused it, and seat16_door_lowered returned Absent -- the door was answering
+// correctly for the tree it was given, not declining the call. The hazard is pinned by
+// lowered_qualified_call_sibling_ahead_is_not_the_capture, not left as prose.
 
 data seat16_qualified_call_source: String = "module wall.peer\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
+
+// THE FIRST-CAPTURE CONTRACT, PINNED. seat16_door_lowered runs body_lower_find_captured for
+// ^dag_surface_postfix_expr over the WHOLE module, which returns the FIRST postfix capture in
+// pre-order. A leading sibling's `= true` body is itself a postfix_expr, so it -- not the call --
+// is what the search reaches first; the dotted-chain door then refuses `true` and the door
+// answers Absent. This claim pins that the door declines the LEADING-SIBLING fixture while it
+// answers Present for the single-fn fixture above: the fixture shape is a real constraint, so it
+// is asserted, not relied upon silently.
+data seat16_qualified_call_sibling_ahead_source: String = "module wall.peer\n\nfn peer_leaf() -> Bool = true\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
+
+test fn lowered_qualified_call_sibling_ahead_is_not_the_capture() -> Bool {
+  match seat16_door_lowered(source: seat16_qualified_call_sibling_ahead_source) {
+    Present { value: _ } => false
+    Absent => match seat16_door_lowered(source: seat16_qualified_call_source) {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
 
 fn seat16_dotted_under(node: Node) -> String {
   match qualified_name_from_node(root: node) {
