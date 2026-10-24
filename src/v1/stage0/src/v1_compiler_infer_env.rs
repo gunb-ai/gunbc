@@ -16,9 +16,8 @@ use crate::std_coercion::TypeDeclarationProvenance::{
     CorpusDeclared, DeclarationIdentityAbsent, KernelMinted,
 };
 pub use crate::std_coercion::{TextRepresentation, TypeDeclarationProvenance};
-use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{
-    decl_ref, declaration_ref_display_key, declaration_ref_eq, DeclField, DeclarationRef,
+    decl_ref, declaration_ref_display_key, declaration_ref_eq, DeclarationRef,
 };
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
@@ -3856,7 +3855,23 @@ pub fn declaration_named_in_module(
                 module_path.clone(),
                 name.clone(),
             ) {
-                Some(m) => Some(crate::std_decl_ref::decl_ref(m.clone(), name.clone())),
+                Some(m) => match (*bare_occurrence_import_terminal(
+                    env.symbol_index.clone(),
+                    m.clone(),
+                    name.clone(),
+                    16,
+                ))
+                .clone()
+                {
+                    BareOccurrenceBinding::BareOccurrenceImportedByName {
+                        module_path: declaring,
+                        ..
+                    } => Some(crate::std_decl_ref::decl_ref(
+                        declaring.clone(),
+                        name.clone(),
+                    )),
+                    _ => std::option::Option::None,
+                },
                 std::option::Option::None => match symbol_index_lookup(
                     env.symbol_index.clone(),
                     v1_rt::concat(
@@ -4077,22 +4092,6 @@ pub fn kernel_settled_agree(
                 std::option::Option::None => false,
                 Some(r) => (l.clone() == r.clone()),
             }
-        }
-    }
-}
-
-pub fn carried_declaration_ref(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<DeclarationRef>> {
-    match n.declaration.clone() {
-        Some(d) => match (*d.field.clone()).clone() {
-            DeclField::WholeDeclaration => Some(d.clone()),
-            _ => std::option::Option::None,
-        },
-        std::option::Option::None => {
-            type_reference_declaration_ref(n.clone(), source_indices.clone(), env.clone())
         }
     }
 }

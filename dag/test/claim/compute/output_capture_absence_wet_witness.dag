@@ -76,7 +76,7 @@ module test.claim.compute.output_capture_absence_wet_witness
 //   3. v2.workflow.floor_route_gap (floor_route_gap_expectation_chunk_45) -- one expectation per
 //      identity, operation DirWithTemplate, ground NoMockResponse: what the hermetic route refuses
 //      on, read from THESE identities by the hermetic claim run itself
-//      (`gunbc run --claim-run --dry-run --function <row>` reports HermeticHostEffectRefused {
+//      (`gunbc run --claim-run --dry-run --function <row>` reports HostEffectRefused {
 //      operation: "DirWithTemplate", ground: NoMockResponse }), which is the operation the case root
 //      is created through. Not copied from a sibling: copying is what chunk_21's header records as
 //      producing floor_route_gap_expectation_mismatch.

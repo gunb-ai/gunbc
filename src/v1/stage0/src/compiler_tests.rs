@@ -3826,6 +3826,63 @@ mod compiler_tests {
     }
 
     #[test]
+    fn record_literal_phantom_field_follows_the_constructed_declaration() {
+        // DISCRIMINATING RED for the class-2 emitter defect (stern-bat-401's emitter-debt list):
+        // gunbc.roadmap.roadmap_model's `Group { group: .. }` is an arm of SectionElement, but the
+        // phantom-field decision looked the constructor SPELLING up and found std.algebra's record
+        // `Group<T>`, whose T is unused, so the variant literal was emitted with `_phantom` (E0559).
+        // probe.algebra declares the record `Group<T>`; probe.sections constructs the variant arm
+        // `Group`. The control is the record literal itself, which must keep its phantom field.
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let source = |path: &str, content: &str| {
+                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.to_string(),
+                        content: content.to_string(),
+                    })
+                };
+                let sources = im::vector![
+                    source("probe_algebra.dag", "module probe.algebra\ntype Group<T> { carrier: Int }\nfn trivial_group() -> Group<Int> { Group { carrier: 1 } }\n"),
+                    source("probe_sections.dag", "module probe.sections\ntype SectionElement = Prose { text: Int } | Group { size: Int }\nfn group_of(n: Int) -> SectionElement { Group { size: n } }\n")
+                ];
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(sources),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                for d in result.diagnostics.iter() {
+                    eprintln!("DIAG {} {}", d.module_name, crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()));
+                }
+                let emitted = |suffix: &str| -> String {
+                    result.files.iter()
+                        .find(|f| f.path.ends_with(suffix))
+                        .map(|f| f.content.clone())
+                        .unwrap_or_else(|| panic!("no emitted file ending {}; files: {:?}", suffix, result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()))
+                };
+                let sections = emitted("probe_sections.rs");
+                let algebra = emitted("probe_algebra.rs");
+                assert!(
+                    !sections.contains("_phantom"),
+                    "the variant literal Group(size) constructs an arm of SectionElement, which declares no phantom field; probe.sections:\n{}",
+                    sections
+                );
+                assert!(
+                    !sections.contains("compile_error!"),
+                    "the variant literal's type resolves to one declaration; probe.sections:\n{}",
+                    sections
+                );
+                assert!(
+                    algebra.contains("_phantom: std::marker::PhantomData,"),
+                    "the record literal Group(carrier) constructs Group<T>, whose unused T owes the phantom field; probe.algebra:\n{}",
+                    algebra
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("record_literal_phantom_field_follows_the_constructed_declaration panicked");
+    }
+
+    #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn self_resolve_all_modules() {
         let result = std::thread::Builder::new()
