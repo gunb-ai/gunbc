@@ -9,7 +9,7 @@ import gunbc.instruments.append_chain_ladder {
   LadderLinear,
   LadderSuperlinear,
   LadderUnobserved,
-  ladder_linearity,
+  ladder_arm_linearity,
   ladder_piece,
   non_empty_piece,
   push_steps,
@@ -79,24 +79,61 @@ fn timed_rows() -> List<TimedRow> {
   flat_map(ladder_required_arms(), a => map(ladder_sizes(), n => best_of(arm: a, n: n, trial: 0, best: 0 - 1, held: true)))
 }
 
-fn row_text(r: TimedRow) -> String {
-  concat("append_chain_ladder arm=", r.timing.arm, " n=", to_string(value: r.timing.n), " best_ns=", to_string(value: r.timing.best_ns), " held=", if r.held { "true" } else { "false" }, "\n")
+// THE REPORT IS IN gunbc.native_claim_program's GRAMMAR: one roster line, then one `case` row per
+// roster identity. Two kinds of case: `<arm>@<n>` holds when that size built the element count it
+// owes (its observed text carries the best time), and `<arm>.linear` holds when ladder_arm_linearity
+// reads that arm's curve as linear. A superlinear arm is therefore a not_held row, which is what lets
+// the reader accept status 1; an unreadable curve is the program's own no-observation terminal.
+fn size_identity(r: TimedRow) -> String {
+  concat(r.timing.arm, "@", to_string(value: r.timing.n))
 }
 
-fn ladder_terminal(rows: List<TimedRow>) -> NativeClaimTerminal {
-  let wrong = filter(rows, r => !r.held)
-  if count(wrong) > 0 {
-    NativeClaimNotHeld { reason: concat("an arm built the wrong element count: ", join(map(wrong, r => concat(r.timing.arm, "@", to_string(value: r.timing.n))), ",")) }
-  } else {
-    match ladder_linearity(rows: map(rows, r => r.timing), arms: ladder_required_arms()) {
-      LadderLinear => NativeClaimHeld
-      LadderSuperlinear { arm: a, from_n: n, ratio_x100: x } => NativeClaimNotHeld { reason: concat(a, " grew ", to_string(value: x), "/100 per doubling from n=", to_string(value: n)) }
-      LadderUnobserved { arm: a, cause: c } => NativeClaimNoObservation { reason: concat("no curve for ", a, ": ", c) }
-    }
+fn linear_identity(arm: String) -> String { concat(arm, ".linear") }
+
+fn verdict_word(held: Bool) -> String { if held { "held" } else { "not_held" } }
+
+fn size_case(r: TimedRow) -> String {
+  concat("case ", size_identity(r: r), " ", verdict_word(held: r.held), " observed=best_ns=", to_string(value: r.timing.best_ns), "\n")
+}
+
+fn linearity_text(v: LadderLinearity) -> String {
+  match v {
+    LadderLinear => "linear"
+    LadderSuperlinear { arm: _, from_n: n, ratio_x100: x } => concat("grew_x100=", to_string(value: x), " from_n=", to_string(value: n))
+    LadderUnobserved { arm: _, cause: c } => concat("no_curve ", c)
   }
+}
+
+fn linearity_held(v: LadderLinearity) -> Bool {
+  match v {
+    LadderLinear => true
+    LadderSuperlinear { arm: _, from_n: _, ratio_x100: _ } => false
+    LadderUnobserved { arm: _, cause: _ } => false
+  }
+}
+
+fn linearity_unobserved(v: LadderLinearity) -> Bool {
+  match v {
+    LadderUnobserved { arm: _, cause: _ } => true
+    LadderSuperlinear { arm: _, from_n: _, ratio_x100: _ } => false
+    LadderLinear => false
+  }
+}
+
+fn linear_case(arm: String, v: LadderLinearity) -> String {
+  concat("case ", linear_identity(arm: arm), " ", verdict_word(held: linearity_held(v: v)), " observed=", linearity_text(v: v), "\n")
 }
 
 fn native_claim_report() -> NativeClaimReport {
   let rows = timed_rows()
-  NativeClaimReport { stdout: join(map(rows, r => row_text(r: r)), ""), terminal: ladder_terminal(rows: rows) }
+  let timings = map(rows, r => r.timing)
+  let arms = ladder_required_arms()
+  let verdicts = map(arms, a => ladder_arm_linearity(rows: timings, arm: a))
+  let identities = map(rows, r => size_identity(r: r)) + map(arms, a => linear_identity(arm: a))
+  let cases = join(map(rows, r => size_case(r: r)), "") + join(map(arms, a => linear_case(arm: a, v: ladder_arm_linearity(rows: timings, arm: a))), "")
+  let failed = count(filter(rows, r => !r.held)) + count(filter(verdicts, v => !linearity_held(v: v)))
+  let terminal = if count(filter(verdicts, v => linearity_unobserved(v: v))) > 0 { NativeClaimNoObservation { reason: "an arm's curve could not be read" } }
+    else if failed > 0 { NativeClaimNotHeld { reason: concat(to_string(value: failed), " case(s) not held") } }
+    else { NativeClaimHeld }
+  NativeClaimReport { stdout: concat("roster ", join(identities, ","), "\n", cases), terminal: terminal }
 }
