@@ -230,7 +230,7 @@ fn with_artifacts(input: UbuntuSeededInstallMediaBuildInput, artifacts: List<NoC
 
 // THE ARTIFACT'S DIGEST IS IN THE BUILD KEY AND ITS URL IS NOT: a different tarball is a different
 // image, the same bytes from another URL are the same image. (An input with no artifact keeps its
-// pre-artifact key: the census build key claim in test.claim.mtcollins1_census_medium_readback_witness
+// pre-artifact key: the census build key claim in test.claim.host.boot_medium_served_readback_witness
 // pins c001ac127d718e72.)
 test fn the_seed_artifact_digest_keys_the_build_and_its_url_does_not() -> Bool {
   match runner_host_medium_image(host: mtcollins1_runner_host) {

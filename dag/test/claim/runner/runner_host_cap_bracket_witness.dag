@@ -239,14 +239,22 @@ test fn a_drained_host_is_drained_even_when_time_is_up() -> Bool {
   is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01")], ticks_left: 0, time_up: true))
 }
 
-// THE STEP BUDGET IS THE POLICY'S THREE FIGURES, and a smaller one refuses before anything is masked.
+// THE STEP BUDGET FOLDS OVER THE POLICY'S FIGURES — INCLUDING THE DERIVED WAIT BOUND — and a smaller
+// one refuses before anything is masked. This is the operator-required proof that
+// host_cap_bracket_budget folds over wait_bound: the assertions are written as folds over the policy's
+// OWN fields, so if the budget stopped folding over the derived bound (or the bound stopped being the
+// declared-timeout fold), these go red. No literal may name the bound here.
 test fn the_budget_is_drain_plus_operations_plus_release() -> Bool {
-  second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) == 2700 + 600 + 240
+  second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy))
+    == second_count(s: runner_host_cap_drain_policy.wait_bound)
+      + second_count(s: runner_host_cap_drain_policy.operations_allowance)
+      + second_count(s: runner_host_cap_drain_policy.release_allowance)
 }
 
 test fn a_budget_short_of_the_bracket_refuses_before_masking() -> Bool {
-  (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3539)) { BudgetCannotCover { needed: n, given: g } => second_count(s: n) == 3540 && second_count(s: g) == 3539 BudgetCovers => false })
-    && (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3540)) { BudgetCovers => true BudgetCannotCover { needed: _, given: _ } => false })
+  let needed = (second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) as Int)
+  (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: needed - 1)) { BudgetCannotCover { needed: n, given: g } => (second_count(s: n) as Int) == needed && (second_count(s: g) as Int) == needed - 1 BudgetCovers => false })
+    && (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: needed)) { BudgetCovers => true BudgetCannotCover { needed: _, given: _ } => false })
 }
 
 // INTERRUPTION AFTER THE MASK. The driver is killed after masking; the release entry then meets a unit
