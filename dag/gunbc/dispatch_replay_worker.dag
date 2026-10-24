@@ -43,8 +43,12 @@ fn replay_worker_admit(worktree: String, id: RecordingId) -> ProcessExit {
   let address = GitWorktreeAt { path: worktree as FilePath }
   let tree_read = git.Plumbing.ObserveRef(address: address, ref_name: concat(recording_ref_of(id: id), recording_peel_to_tree_suffix))
   let head_read = git.Plumbing.ObserveRef(address: address, ref_name: "HEAD")
-  if trim(s: tree_read.revision) != (id.result_tree as String) {
-    replay_refused(reason: join(["the recording ref ", recording_ref_of(id: id), " does not resolve to the recorded tree ", id.result_tree as String, ": ", trim(s: tree_read.stderr)], ""))
+  if !(tree_read.exit_code == 0) {
+    replay_refused(reason: join(["the recording ref ", recording_ref_of(id: id), " could not be read (git exit ", to_string(tree_read.exit_code), "): ", trim(s: tree_read.stderr)], ""))
+  } else if trim(s: tree_read.revision) != (id.result_tree as String) {
+    replay_refused(reason: join(["the recording ref ", recording_ref_of(id: id), " does not resolve to the recorded tree ", id.result_tree as String], ""))
+  } else if !(head_read.exit_code == 0) {
+    replay_refused(reason: join(["the attempt's HEAD could not be read (git exit ", to_string(head_read.exit_code), "), so its base is not established: ", trim(s: head_read.stderr)], ""))
   } else {
     match recording_replay_admission(id: id, attempt_base: trim(s: head_read.revision)) {
       RecordingReplayBaseMismatch { recorded_base, attempt_base } =>
