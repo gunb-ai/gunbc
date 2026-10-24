@@ -722,14 +722,14 @@ fn interpolation_hole_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "interpolation-hole-census" } }
 }
 
-// THE SHARED-TYPE LEAF-COLLISION CENSUS (gunbc.recurring_failure_mode
+// THE SHARED-TYPE LEAF-NAME COINCIDENCE CENSUS (gunbc.recurring_failure_mode
 // emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer). v1.tests.claim.shared_type_leaf_collision_census
-// joins type leaves whose declarers are both in one emitted closure and classifies independent
-// sharing (v1.compiler.emit_rust maybe_mark_shared_type per declaration). Different sharing is then
-// rustc-refused (break) or rustc-accepted (silent). The host walks SelfHostProducer and
-// V2NativeCliProducer through instrument_registry (entries from native_lane_runner, witnessed
-// against self_host_entry / v2_native_cli_entry) and every NativeClaimProgramProducer entry.
-// Standing is the fixture controls, not the live population.
+// joins type leaves whose declarers are both in one emitted closure and reports an informational
+// coincidence of identities (v1.compiler.emit_rust maybe_mark_shared_type per declaration identity).
+// Different sharing builds independently (DifferentSharingIdentitiesBuildIndependently). The host
+// walks SelfHostProducer and V2NativeCliProducer through instrument_registry (entries from
+// native_lane_runner, witnessed against self_host_entry / v2_native_cli_entry) and every
+// NativeClaimProgramProducer entry. Standing is the fixture controls, not the live population.
 // `gunbc test //gunbc/instruments:shared-type-leaf-collision-census`.
 fn shared_type_leaf_collision_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "shared-type-leaf-collision-census" } }

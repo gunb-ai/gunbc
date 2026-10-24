@@ -1814,57 +1814,165 @@ pub fn qualify_borrowed_type_names(
 }
 
 pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: n.name.clone(),
-        ident: n.ident.clone(),
-        span: n.span.clone(),
-        ident_span: n.ident_span.clone(),
-        children: children.clone(),
-        connective: n.connective.clone(),
-        params: n.params.clone(),
-        inferred: n.inferred.clone(),
-        return_cardinality: n.return_cardinality.clone(),
-        uses: n.uses.clone(),
-        body: n.body.clone(),
-        transport: n.transport.clone(),
-        properties: n.properties.clone(),
-        type_annotation: n.type_annotation.clone(),
-        is_self_recursive: n.is_self_recursive.clone(),
-        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-        match_pattern: n.match_pattern.clone(),
-        module_item_kind: n.module_item_kind.clone(),
-        declaration_marker: n.declaration_marker.clone(),
-        declaration: n.declaration.clone(),
-        expr_data: n.expr_data.clone(),
-    })
+    {
+        let __rb_0_0 = Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic);
+        let __rb_1_0 = n.name.clone();
+        let __rb_2_0 = n.ident.clone();
+        let __rb_3_0 = n.span.clone();
+        let __rb_4_0 = n.ident_span.clone();
+        let __rb_5_0 = children.clone();
+        let __rb_6_0 = n.connective.clone();
+        let __rb_7_0 = n.params.clone();
+        let __rb_8_0 = n.inferred.clone();
+        let __rb_9_0 = n.return_cardinality.clone();
+        let __rb_10_0 = n.uses.clone();
+        let __rb_11_0 = n.body.clone();
+        let __rb_12_0 = n.transport.clone();
+        let __rb_13_0 = n.properties.clone();
+        let __rb_14_0 = n.type_annotation.clone();
+        let __rb_15_0 = n.is_self_recursive.clone();
+        let __rb_16_0 = n.has_non_tail_self_call.clone();
+        let __rb_17_0 = n.match_pattern.clone();
+        let __rb_18_0 = n.module_item_kind.clone();
+        let __rb_19_0 = n.declaration_marker.clone();
+        let __rb_20_0 = n.declaration.clone();
+        let __rb_21_0 = n.expr_data.clone();
+        let mut __rb_h = n;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.occurrence_identity = __rb_0_0;
+                __rb_r.name = __rb_1_0;
+                __rb_r.ident = __rb_2_0;
+                __rb_r.span = __rb_3_0;
+                __rb_r.ident_span = __rb_4_0;
+                __rb_r.children = __rb_5_0;
+                __rb_r.connective = __rb_6_0;
+                __rb_r.params = __rb_7_0;
+                __rb_r.inferred = __rb_8_0;
+                __rb_r.return_cardinality = __rb_9_0;
+                __rb_r.uses = __rb_10_0;
+                __rb_r.body = __rb_11_0;
+                __rb_r.transport = __rb_12_0;
+                __rb_r.properties = __rb_13_0;
+                __rb_r.type_annotation = __rb_14_0;
+                __rb_r.is_self_recursive = __rb_15_0;
+                __rb_r.has_non_tail_self_call = __rb_16_0;
+                __rb_r.match_pattern = __rb_17_0;
+                __rb_r.module_item_kind = __rb_18_0;
+                __rb_r.declaration_marker = __rb_19_0;
+                __rb_r.declaration = __rb_20_0;
+                __rb_r.expr_data = __rb_21_0;
+            }
+            None => {
+                __rb_h = Rc::new(Node {
+                    occurrence_identity: __rb_0_0,
+                    name: __rb_1_0,
+                    ident: __rb_2_0,
+                    span: __rb_3_0,
+                    ident_span: __rb_4_0,
+                    children: __rb_5_0,
+                    connective: __rb_6_0,
+                    params: __rb_7_0,
+                    inferred: __rb_8_0,
+                    return_cardinality: __rb_9_0,
+                    uses: __rb_10_0,
+                    body: __rb_11_0,
+                    transport: __rb_12_0,
+                    properties: __rb_13_0,
+                    type_annotation: __rb_14_0,
+                    is_self_recursive: __rb_15_0,
+                    has_non_tail_self_call: __rb_16_0,
+                    match_pattern: __rb_17_0,
+                    module_item_kind: __rb_18_0,
+                    declaration_marker: __rb_19_0,
+                    declaration: __rb_20_0,
+                    expr_data: __rb_21_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: n.name.clone(),
-        ident: n.ident.clone(),
-        span: n.span.clone(),
-        ident_span: n.ident_span.clone(),
-        children: n.children.clone(),
-        connective: n.connective.clone(),
-        params: n.params.clone(),
-        inferred: inferred.clone(),
-        return_cardinality: n.return_cardinality.clone(),
-        uses: n.uses.clone(),
-        body: n.body.clone(),
-        transport: n.transport.clone(),
-        properties: n.properties.clone(),
-        type_annotation: n.type_annotation.clone(),
-        is_self_recursive: n.is_self_recursive.clone(),
-        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-        match_pattern: n.match_pattern.clone(),
-        module_item_kind: n.module_item_kind.clone(),
-        declaration_marker: n.declaration_marker.clone(),
-        declaration: n.declaration.clone(),
-        expr_data: n.expr_data.clone(),
-    })
+    {
+        let __rb_0_0 = Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic);
+        let __rb_1_0 = n.name.clone();
+        let __rb_2_0 = n.ident.clone();
+        let __rb_3_0 = n.span.clone();
+        let __rb_4_0 = n.ident_span.clone();
+        let __rb_5_0 = n.children.clone();
+        let __rb_6_0 = n.connective.clone();
+        let __rb_7_0 = n.params.clone();
+        let __rb_8_0 = inferred.clone();
+        let __rb_9_0 = n.return_cardinality.clone();
+        let __rb_10_0 = n.uses.clone();
+        let __rb_11_0 = n.body.clone();
+        let __rb_12_0 = n.transport.clone();
+        let __rb_13_0 = n.properties.clone();
+        let __rb_14_0 = n.type_annotation.clone();
+        let __rb_15_0 = n.is_self_recursive.clone();
+        let __rb_16_0 = n.has_non_tail_self_call.clone();
+        let __rb_17_0 = n.match_pattern.clone();
+        let __rb_18_0 = n.module_item_kind.clone();
+        let __rb_19_0 = n.declaration_marker.clone();
+        let __rb_20_0 = n.declaration.clone();
+        let __rb_21_0 = n.expr_data.clone();
+        let mut __rb_h = n;
+        match Rc::get_mut(&mut __rb_h) {
+            Some(__rb_r) => {
+                __rb_r.occurrence_identity = __rb_0_0;
+                __rb_r.name = __rb_1_0;
+                __rb_r.ident = __rb_2_0;
+                __rb_r.span = __rb_3_0;
+                __rb_r.ident_span = __rb_4_0;
+                __rb_r.children = __rb_5_0;
+                __rb_r.connective = __rb_6_0;
+                __rb_r.params = __rb_7_0;
+                __rb_r.inferred = __rb_8_0;
+                __rb_r.return_cardinality = __rb_9_0;
+                __rb_r.uses = __rb_10_0;
+                __rb_r.body = __rb_11_0;
+                __rb_r.transport = __rb_12_0;
+                __rb_r.properties = __rb_13_0;
+                __rb_r.type_annotation = __rb_14_0;
+                __rb_r.is_self_recursive = __rb_15_0;
+                __rb_r.has_non_tail_self_call = __rb_16_0;
+                __rb_r.match_pattern = __rb_17_0;
+                __rb_r.module_item_kind = __rb_18_0;
+                __rb_r.declaration_marker = __rb_19_0;
+                __rb_r.declaration = __rb_20_0;
+                __rb_r.expr_data = __rb_21_0;
+            }
+            None => {
+                __rb_h = Rc::new(Node {
+                    occurrence_identity: __rb_0_0,
+                    name: __rb_1_0,
+                    ident: __rb_2_0,
+                    span: __rb_3_0,
+                    ident_span: __rb_4_0,
+                    children: __rb_5_0,
+                    connective: __rb_6_0,
+                    params: __rb_7_0,
+                    inferred: __rb_8_0,
+                    return_cardinality: __rb_9_0,
+                    uses: __rb_10_0,
+                    body: __rb_11_0,
+                    transport: __rb_12_0,
+                    properties: __rb_13_0,
+                    type_annotation: __rb_14_0,
+                    is_self_recursive: __rb_15_0,
+                    has_non_tail_self_call: __rb_16_0,
+                    match_pattern: __rb_17_0,
+                    module_item_kind: __rb_18_0,
+                    declaration_marker: __rb_19_0,
+                    declaration: __rb_20_0,
+                    expr_data: __rb_21_0,
+                });
+            }
+        }
+        __rb_h
+    }
 }
 
 pub fn qualify_borrowed_inferred(

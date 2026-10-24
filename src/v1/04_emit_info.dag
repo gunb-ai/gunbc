@@ -694,6 +694,41 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
   }
 }
 
+// A renderer that builds its EmitGraphInfo from empty_emit_graph_info() answers every declaration
+// question NotDeclared; the declaration index it was handed must travel with it.
+fn emit_info_with_type_decl_items(emit_info: EmitGraphInfo, type_decl_items: TypeDeclIndex) -> EmitGraphInfo {
+  EmitGraphInfo {
+    item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
+    type_summaries: emit_info.type_summaries,
+    type_decl_items: type_decl_items,
+    data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
+    fn_decl_identity_items: emit_info.fn_decl_identity_items,
+    fn_decl_items: emit_info.fn_decl_items,
+    fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    recursive_type_set: emit_info.recursive_type_set,
+    fielded_variants: emit_info.fielded_variants,
+    positional_payload_variants: emit_info.positional_payload_variants,
+    shared_types: emit_info.shared_types,
+    ownership_index: emit_info.ownership_index,
+    movable: emit_info.movable,
+    variant_to_enum: emit_info.variant_to_enum,
+    owned_bindings: emit_info.owned_bindings,
+    read_only_params_index: emit_info.read_only_params_index,
+    read_only_params: emit_info.read_only_params,
+    clone_bounded_type_params: emit_info.clone_bounded_type_params,
+    map_key_required_type_names: emit_info.map_key_required_type_names,
+    clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+    map_key_bounded_type_params: emit_info.map_key_bounded_type_params,
+    fn_generic_param_names: emit_info.fn_generic_param_names,
+    fn_type_env: emit_info.fn_type_env,
+    fn_return_type: emit_info.fn_return_type,
+    expected_type: emit_info.expected_type,
+    tco_cursor_params: emit_info.tco_cursor_params,
+    tco_cursor_tails: emit_info.tco_cursor_tails,
+    dying_base_sites: emit_info.dying_base_sites
+  }
+}
+
 fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> EmitGraphInfo {
   EmitGraphInfo {
     item_leaf_owner_modules: emit_info.item_leaf_owner_modules,
@@ -813,6 +848,8 @@ fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineI
         && item.connective == NoConnective
         && (item.children |> count) == 0
         && (item.params |> count) == 0
+        || (item.module_item_kind == ModuleItemTypeDeclaration
+          && realized_checkpoint(decision: declaration_realization(item: item, dag_name: authored_name_at(source_indices: source_indices, node: item), target: Rust)) != none)
   }
 }
 

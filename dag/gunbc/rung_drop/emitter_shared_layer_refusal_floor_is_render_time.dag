@@ -1,0 +1,31 @@
+module gunbc.rung_drop.emitter_shared_layer_refusal_floor_is_render_time
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP for the v1 seed emitter's shared-layer refusal (DESIGN 4b(3), 5).
+//
+// The shared-type set is keyed on declaration identity. A type position whose declaration cannot be
+// resolved to one identity answers SharedLayerRefuse, and each renderer emits a compile_error! arm for it,
+// loud at rustc. A typed pre-pass was built and deleted: no source reaches it (a union body member is a
+// variant declaration, not a type reference), so its RED could not be authored. The floor census that
+// asserted no gate closure emits the marker was dropped for the same reason: its RED is not authorable
+// from source, and a check green by construction is a decoration (DESIGN 4b).
+
+data emitter_shared_layer_refusal_floor_is_render_time: RungDrop = RungDrop {
+  identity: "emitter_shared_layer_refusal_floor_is_render_time" as NonEmptyStr,
+
+  subject: "the v1 seed emitter's shared-layer refusal causes TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotResolved, TypeDeclNotDeclared, FieldAccessDeclaringFieldAbsent, FieldAccessBaseNamesNoDeclaration (a closure parameter bound through a generic fold and left as the callee generic, an inference defect surfaced here, not an emitter one) and the needs-box answer, which refuse as compile_error! in the emitted Rust",
+
+  declared: "2026-10-23",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged { replacement: "every type position carries a resolve stamp, so the renderers never receive an unresolvable reference" },
+    population: Enumerated { members: FreeSemigroup { head: "TypeDeclLeafAmbiguous", tail: ["TypeDeclKernelSpellingUndecided", "TypeDeclNotResolved", "TypeDeclNotDeclared", "FieldAccessDeclaringFieldAbsent", "FieldAccessBaseNamesNoDeclaration", "NeedsBoxRefuse"] } },
+    restoration_trigger: "every type position carries a resolve stamp: emitter_decl_route at zero in v1.tests.claim.carrier_realization_census, which deletes the interim RouteLeafSpelling arms and the compile_error! refuse arms; FieldAccessBaseNamesNoDeclaration additionally leaves when seed inference binds a generic fold closure parameter to the actual element type (alias-spelled actuals included), so no field-access base is a bare callee generic"
+  } }
+}

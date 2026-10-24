@@ -1,9 +1,0 @@
-module stlc.silent_share
-
-type Mark
-  = None
-  | Some { n: Int }
-
-fn hold_share() -> Int {
-  0
-}

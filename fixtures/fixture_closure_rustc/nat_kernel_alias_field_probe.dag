@@ -1,0 +1,16 @@
+module fixture.closure.rustc_nat_kernel_alias_field_probe
+
+import std.nat { Nat, Zero }
+
+// A record field typed Nat. Nat is declared in std.nat as an inductive type but realized by an
+// opaque kernel alias row (pub type Nat = i64), so the field sits at the value layer. Judged as an
+// undeclared shared leaf, the emitter refused it (TypeDeclNotDeclared -> compile_error!); the
+// subject is v1.compiler.emit_rust shared_layer_of_resolution.
+type NatPair {
+  left: Nat
+  right: Nat
+}
+
+fn build_nat_pair() -> NatPair {
+  NatPair { left: Zero, right: Zero }
+}

@@ -202,7 +202,7 @@ import v1.compiler.infer_emit_info {
   TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, TypeSummaryQuestion, QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared, type_summary_lookup, empty_type_summary_index, is_enum_in_summaries,
   empty_emit_graph_info, empty_type_env, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
-  add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names
+  add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names, type_decl_index_insert
 }
 import v1.compiler.infer_items {
   ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
@@ -19007,7 +19007,20 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     let module_name = authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module)
     typed_module.items |> fold(init: state, f: (inner_state, item) =>
       if item_declares_kernel_grounded_carrier(item: item, module_name: module_name, source_indices: typed_module.type_env.source_indices) {
-        inner_state
+        // A kernel-grounded carrier (std.nat Nat) has no summary -- it realizes as the host integer --
+        // but it IS declared, and the declaration index is the authority a leaf-only reader asks: left
+        // out, every such reader answered TypeDeclNotDeclared and refused (run 6: 2 sites in std.measure).
+        let carrier_name = authored_name_at(source_indices: typed_module.type_env.source_indices, node: item)
+        if carrier_name == "" { inner_state } else {
+          EmitInfoBuildState {
+            type_summaries: inner_state.type_summaries,
+            type_decl_items: type_decl_index_insert(index: inner_state.type_decl_items, owner_module: module_name, decl_name: carrier_name, item: item),
+            fn_decl_items: inner_state.fn_decl_items,
+            fn_decl_identity_items: inner_state.fn_decl_identity_items,
+            structural_alias_fn_surface_names: inner_state.structural_alias_fn_surface_names,
+            structural_alias_direct_fn_names: inner_state.structural_alias_direct_fn_names
+          }
+        }
       } else {
         add_emit_item_summary(state: inner_state, module_name: module_name, item: item, source_indices: typed_module.type_env.source_indices)
       }

@@ -1,0 +1,20 @@
+module stlc.union_member_entry
+
+import stlc.copy_word { hold_copy }
+import stlc.shared_word { Word64, hold_shared }
+
+type Nothing {
+  tag: Int
+}
+
+type Pick = Word64 | Nothing
+
+fn pick_shared() -> Pick {
+  hold_shared()
+}
+
+fn use_both() -> Int {
+  let _c = hold_copy()
+  let _p = pick_shared()
+  0
+}
