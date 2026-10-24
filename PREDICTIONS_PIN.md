@@ -1571,3 +1571,8 @@ Date:   Thu Oct 22 23:16:13 2026 +0000
 - Gate READY: approvals ['claude'] (review 85244 APPROVE at 7894bc170a81), RC 0, checks passing, CLEAN/MERGEABLE. Parent told (msg_b252dbc5); merge ask routed (suggested jointly w/ #14056 post-#14750, or earlier per parent -- dag-only independent).
 - Non-blocking style remark (receipt length) deliberately not acted on; prior review 85203 judged receipts placement correct.
 - STANDBY: #14750 watcher (watch14750c.sh; budget ends ~10:55Z; re-arm: rm /tmp/gc16dbg/.w14750b_head + rotate log).
+
+## #14750 MONITOR 2026-10-24
+- Pushes: b2964e2e -> 26753141 -> 2df86caa4d0 (current). At 2df86caa: v2-bootstrap PASS, heal FAIL run 40077044120 converge-step: E0425 'element' + E0282 at freshly-emitted extdeps_version_semver.rs:637/641, in semver_identifier_list_parse (fold over segments building Vec<Rc<SemVerIdentifier>>; emitted 'element' = v2 List formal leaked where binding should substitute -- A2 fold_list-family signature). Reported to parent msg_6bf9eaa6. swift-lark-171 owns; Charter-1 monitoring only.
+- Row #14747 merge-ready, awaiting parent/operator routing (do not merge myself).
+- Watcher armed (budget ~15:55Z; HEAD baseline 2df86caa4d0).
