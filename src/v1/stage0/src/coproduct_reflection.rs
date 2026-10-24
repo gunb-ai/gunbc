@@ -1879,7 +1879,8 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             ItemKind::TypeItem => 1,
             ItemKind::DataItem => 2,
             ItemKind::ServiceItem => 3,
-            ItemKind::OtherItem => 4,
+            ItemKind::ResourceItem => 4,
+            ItemKind::OtherItem => 5,
         };
         (a.rel_path.as_str(), a.name.as_str(), kind_ord(a.kind)).cmp(&(
             b.rel_path.as_str(),
@@ -1905,6 +1906,9 @@ fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
         ItemKind::TypeItem => "TypeItem",
         ItemKind::DataItem => "DataItem",
         ItemKind::ServiceItem => "ServiceItem",
+        // v2.std.decl_index ItemKind has no resource arm, and its consumers read OtherItem as the
+        // census's own cannot-classify answer, which is what a resource was before v1 named it.
+        ItemKind::ResourceItem => "OtherItem",
         ItemKind::OtherItem => "OtherItem",
     };
     Value::Variant {

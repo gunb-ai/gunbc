@@ -33729,6 +33729,7 @@ pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -
         ItemKind::TypeItem => "type",
         ItemKind::DataItem => "data",
         ItemKind::ServiceItem => "service",
+        ItemKind::ResourceItem => "resource",
         ItemKind::OtherItem => "other",
     }
 }
