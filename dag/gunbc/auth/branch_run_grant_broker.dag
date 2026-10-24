@@ -12,7 +12,8 @@ import gunbc.generated_artifact { artifact_name, FleetConvergeYamlArtifact }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.heal_publisher_provision { rest_refusal_text }
 import gunbc.auth.branch_dispatch_federation {
-  branch_run_key_variable, parse_branch_run_key, branch_run_key, mode_of_run_title, run_scoped_mode_eligible,
+  branch_run_key_variable, parse_branch_run_key, branch_run_key, run_scoped_mode_eligible,
+  BranchRunKey, BranchRunAdmitted, BranchRunRefused, judge_branch_run,
 }
 
 // ── THE REQUEST FOR A RUN-SCOPED GRANT, MADE BY MAIN ────────────────────────────────────────────
@@ -52,26 +53,31 @@ fn branch_run_grant_inputs(key: String) -> Map<String, String> {
   inputs
 }
 
-// WHAT THE BROKER DOES FOR ONE RUN, decided from the run's own record. A rendered title whose mode
-// maps to no eligible row asks for nothing; a title with no mode word is not yet rendered and refuses.
+// WHAT THE BROKER DOES FOR ONE RUN, decided from the run's own record. The record is an authorization
+// input, so it is first judged to be the run the event named -- the same run id and attempt, the
+// fleet-converge workflow file, a workflow_dispatch, still live -- by the one judgment the grant run uses
+// (gunbc.auth.branch_dispatch_federation judge_branch_run); any disagreement refuses. The run is this
+// repository's because GetRun is asked of this repository's runs endpoint. Then a rendered title whose
+// mode maps to no eligible row asks for nothing, and a title with no mode word refuses.
 type BrokerDecision
   = BrokerDispatchesGrant
   | BrokerAsksForNothing
   | BrokerRefused { reason: NonEmptyStr }
 
-fn broker_decision_for(run: WorkflowRun) -> BrokerDecision {
-  match run.display_title {
-    Absent => BrokerRefused { reason: "GitHub's record of the run carries no display_title" as NonEmptyStr }
-    Present { value: title } => {
-      let mode = mode_of_run_title(title: title)
-      if mode == "" {
-        BrokerRefused { reason: concat("the run's title names no mode, so its run-name is not rendered: ", title) as NonEmptyStr }
-      } else {
-        match run_scoped_mode_eligible(mode: mode, branch: match run.head_branch { Present { value: b } => b  Absent => "" }) {
-          Absent => BrokerAsksForNothing
-          Present { value: _ } => BrokerDispatchesGrant
+fn broker_decision_for(key: BranchRunKey, run: WorkflowRun) -> BrokerDecision {
+  match judge_branch_run(run_id: key.run_id, run_attempt: key.run_attempt, run: run) {
+    BranchRunRefused { reason: r } => BrokerRefused { reason: r }
+    BranchRunAdmitted { facts: f } => match run.display_title {
+      Absent => BrokerRefused { reason: "GitHub's record of the run carries no display_title" as NonEmptyStr }
+      Present { value: title } =>
+        if f.mode == "" {
+          BrokerRefused { reason: concat("the run's title names no mode, so its run-name is not rendered: ", title) as NonEmptyStr }
+        } else {
+          match run_scoped_mode_eligible(mode: f.mode, branch: f.branch) {
+            Absent => BrokerAsksForNothing
+            Present { value: _ } => BrokerDispatchesGrant
+          }
         }
-      }
     }
   }
 }
@@ -95,7 +101,7 @@ fn broker() -> ProcessExit {
     Absent => exit_failure(reason: "branch run grant broker: BRANCH_RUN_KEY is not <run id>-<run attempt>; this entry runs only in the broker workflow")
     Present { value: k } => match github.WorkflowRuns.GetRun(auth_token: "", owner: gunbc_repository.owner, repo: gunbc_repository.name, run_id: github_workflow_run_id_wire_text(id: k.run_id)) {
       RestRefused { refusal } => exit_failure(reason: concat("branch run grant broker: the requesting run could not be read: ", rest_refusal_text(o: refusal)))
-      RestAnswered { answer: got } => match broker_decision_for(run: got.run) {
+      RestAnswered { answer: got } => match broker_decision_for(key: k, run: got.run) {
         BrokerRefused { reason: r } => exit_failure(reason: concat("branch run grant broker: ", r as String))
         BrokerAsksForNothing => ExitSuccess
         BrokerDispatchesGrant => dispatch_grant_run(key: branch_run_key(run_id: k.run_id, run_attempt: k.run_attempt))

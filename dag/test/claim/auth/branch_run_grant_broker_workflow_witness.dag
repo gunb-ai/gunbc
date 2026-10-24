@@ -8,7 +8,8 @@ import extdeps.github.actions {
   DisplayTitleIsWorkflowName, DisplayTitleIsRenderedRunName, DisplayTitleRenderingUncited,
 }
 import extdeps.github.github { GitHubUser, User }
-import extdeps.github.workflow_runs { WorkflowRun, InProgress }
+import extdeps.github.workflow_runs { WorkflowRun, InProgress, GitHubWorkflowRunId }
+import gunbc.auth.branch_dispatch_federation { BranchRunKey }
 import gunbc.fleet.branch_run_grant_broker_workflow {
   BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused,
   expected_branch_run_grant_broker_workflow_yml, branch_run_grant_broker_job, branch_run_grant_broker_job_condition,
@@ -71,10 +72,14 @@ test fn the_broker_job_refuses_a_fork_and_an_undispatched_run() -> Bool {
 }
 
 fn a_run(title: String, branch: String) -> WorkflowRun {
+  a_run_of(title: title, branch: branch, path: ".github/workflows/fleet-converge.yml", event: "workflow_dispatch")
+}
+
+fn a_run_of(title: String, branch: String, path: String, event: String) -> WorkflowRun {
   WorkflowRun {
-    id: 7, name: Present { value: title }, display_title: Present { value: title }, path: Present { value: ".github/workflows/fleet-converge.yml" },
+    id: 7, name: Present { value: title }, display_title: Present { value: title }, path: Present { value: path },
     head_sha: "0123456789abcdef0123456789abcdef01234567" as CommitSha, head_branch: Present { value: branch },
-    event: "workflow_dispatch", status: InProgress, conclusion: none,
+    event: event, status: InProgress, conclusion: none,
     workflow_id: 15, run_number: 900, run_attempt: 1,
     actor: none, triggering_actor: Present { value: GitHubUser { login: "operator", id: 1, type: User } },
     html_url: "https://github.com/gunb-ai/gunbc/actions/runs/7", created_at: "2026-10-23T03:31:33Z",
@@ -93,16 +98,30 @@ fn decision_word(d: BrokerDecision) -> String {
   }
 }
 
+data the_key: BranchRunKey = BranchRunKey { run_id: GitHubWorkflowRunId { value: 7 }, run_attempt: 1 }
+
 test fn the_broker_decides_from_the_runs_rendered_title() -> Bool {
-  decision_word(d: broker_decision_for(run: a_run(title: "fleet-converge apply srv3 nonce=", branch: "session/x"))) == "dispatch"
-    && decision_word(d: broker_decision_for(run: a_run(title: "fleet-converge apply srv3 nonce=", branch: "main"))) == "nothing"
-    && decision_word(d: broker_decision_for(run: a_run(title: "fleet-converge microvm_network_apply srv3 nonce=", branch: "session/x"))) == "nothing"
-    && decision_word(d: broker_decision_for(run: a_run(title: "fleet-converge", branch: "session/x"))) == "refused"
-    && match broker_decision_for(run: untitled(r: a_run(title: "fleet-converge apply srv3 nonce=", branch: "session/x"))) {
+  decision_word(d: broker_decision_for(key: the_key, run: a_run(title: "fleet-converge apply srv3 nonce=", branch: "session/x"))) == "dispatch"
+    && decision_word(d: broker_decision_for(key: the_key, run: a_run(title: "fleet-converge apply srv3 nonce=", branch: "main"))) == "nothing"
+    && decision_word(d: broker_decision_for(key: the_key, run: a_run(title: "fleet-converge microvm_network_apply srv3 nonce=", branch: "session/x"))) == "nothing"
+    && decision_word(d: broker_decision_for(key: the_key, run: a_run(title: "fleet-converge", branch: "session/x"))) == "refused"
+    && match broker_decision_for(key: the_key, run: untitled(r: a_run(title: "fleet-converge apply srv3 nonce=", branch: "session/x"))) {
       BrokerRefused { reason: r } => (r as String).contains("no display_title")
       BrokerDispatchesGrant => false
       BrokerAsksForNothing => false
     }
+}
+
+// RED: GetRun is an authorization input, so a record that disagrees with the run the event named refuses,
+// whatever its title says. Each control carries a granted mode on a branch, which the same record at the
+// right workflow, event and attempt dispatches (the first claim above).
+test fn the_broker_refuses_a_run_record_that_is_not_the_named_fleet_converge_dispatch() -> Bool {
+  let granted = "fleet-converge apply srv3 nonce="
+  decision_word(d: broker_decision_for(key: the_key, run: a_run_of(title: granted, branch: "session/x", path: ".github/workflows/heal.yml", event: "workflow_dispatch"))) == "refused"
+    && decision_word(d: broker_decision_for(key: the_key, run: a_run_of(title: granted, branch: "session/x", path: ".github/workflows/fleet-converge.yml", event: "pull_request"))) == "refused"
+    && decision_word(d: broker_decision_for(key: BranchRunKey { run_id: GitHubWorkflowRunId { value: 8 }, run_attempt: 1 }, run: a_run(title: granted, branch: "session/x"))) == "refused"
+    && decision_word(d: broker_decision_for(key: BranchRunKey { run_id: GitHubWorkflowRunId { value: 7 }, run_attempt: 2 }, run: a_run(title: granted, branch: "session/x"))) == "refused"
+    && decision_word(d: broker_decision_for(key: the_key, run: a_run(title: granted, branch: "session/x"))) == "dispatch"
 }
 
 fn untitled(r: WorkflowRun) -> WorkflowRun {
