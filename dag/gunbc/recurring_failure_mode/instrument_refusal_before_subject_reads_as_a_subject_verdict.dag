@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.instrument_refusal_before_subject_reads_as_a_subject_verdict
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data instrument_refusal_before_subject_reads_as_a_subject_verdict: RecurringFailureMode = RecurringFailureMode {
   identity: "instrument_refusal_before_subject_reads_as_a_subject_verdict" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an instrument's refusal before reaching its subject collapses into the same Bool as a verdict about the subject** (INVALID STATE: the instrument's report is a Bool, or a success/exit pair, and a refusal at an admission the run had to pass on the way in -- here the compiler's workspace-root admission of the staged tree -- becomes the same value a real finding about the subject would. THE GENUINELY FALSE-GREEN SHAPE IS THE EXPECT-FAILURE ARM: an assertion that 'the compile must fail' is SATISFIED by the pre-subject refusal whatever the subject is, so it passes while testing nothing. The expect-success arms fail instead, and their failure reads as a finding about the subject when the subject was never reached. HARM: both directions misattribute -- a red wall that holds nothing, and a red that sends a reader debugging a subject nobody compiled.)",

@@ -1,5 +1,6 @@
 module v2.test.claim.manual.typescript_record_task_translate
 
+
 import v2.compiler.emit { emit }
 import v2.compiler.compile {
   CompileOutput,

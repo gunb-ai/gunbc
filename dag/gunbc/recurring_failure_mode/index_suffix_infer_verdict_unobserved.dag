@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.index_suffix_infer_verdict_unobserved
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data index_suffix_infer_verdict_unobserved: RecurringFailureMode = RecurringFailureMode {
   identity: "index_suffix_infer_verdict_unobserved" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "An index suffix `xs[i]` lowers to the std element access v2.std.collection list_at_optional, so a Map base or a non-Int index SHOULD refuse at infer, but no executed claim establishes that verdict: it is below the claimed rung, and the claims in v2.test.claim.parse.index_suffix establish only parse, lowering identity with the explicit call, and the arity refusals.",

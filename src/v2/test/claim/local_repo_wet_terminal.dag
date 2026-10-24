@@ -24,7 +24,8 @@ import v2.workflow.wet_evidence {
   WetEvidenceRefusal, WetTerminalMissing, WetTerminalDuplicated, WetTerminalUnscheduled,
   WetTerminalForeignEntry, WetTerminalForeignFunction, WetTerminalVerdictNotExpected,
   WetTerminalForeignRoute, WetBindingPreparedSubjectDiffers, WetBindingSemanticSubjectDiffers,
-  WetBindingExecutorContractDiffers, WetBindingRelationMismatch, WetCrossRouteIdentityOverlap
+  WetBindingExecutorContractDiffers, WetBindingRelationMismatch, WetCrossRouteIdentityOverlap,
+  WetScheduledIdentityDuplicated, wet_scheduled_identity_duplicate_causes
 }
 import v2.workflow.local_repo_wet_terminal {
   LocalRepoWetExecution, LocalRepoWetExecutorNotInvoked, LocalRepoWetExecutorRan,
@@ -127,29 +128,33 @@ fn terminal_matching() -> WetTerminalRow {
   )
 }
 
-// THE ROSTER-UNIQUENESS CLAIM BELONGS BESIDE THESE CLAIMS AND IS NOT LANDING IN THIS CHANGE, which is a
-// deliberate call rather than an omission, recorded so the next reader does not rediscover the
-// same wall and pay for it twice.
+// THE ROSTER-UNIQUENESS CLAIM LANDED, AND THIS MEMO RECORDS BOTH THE WALL AND ITS FALL.
 //
-// WHAT IT GUARDS IS REAL AND NOTHING ELSE GUARDS IT. Two branches appending to this schedule
-// conflict textually; the correct resolution is a union, which is right only when the appended
-// rows are INDEPENDENT. A duplicated row survives that union silently, and the join cannot see
-// it: wet_forward_causes walks SCHEDULED, so a row appearing twice finds the same single terminal
-// twice, n == 1 both times, and no refusal is raised. The sibling claims cannot see it either --
-// every_roster_row_spells_its_function_the_same_way_twice reads WITHIN a row, and
-// the_local_roster_is_not_empty compares length(identities) to length(schedule), which is a map
-// and therefore equal over a roster WITH a duplicate in it.
+// WHAT IT GUARDS was real: two branches appending to this schedule conflict textually; the correct
+// resolution is a union, which is right only when the appended rows are INDEPENDENT. A duplicated
+// row survives that union silently, and no join leg could see it: wet_forward_causes walks
+// SCHEDULED, so a row appearing twice finds the same single terminal twice, n == 1 both times; the
+// reverse leg sees the name scheduled; the sibling claims read within a row or compare lengths,
+// which is a map -- equal over a duplicate. That whole hole is closed in the fold itself:
+// v2.workflow.wet_evidence wet_scheduled_identity_duplicate_causes counts occurrences through
+// std.algebra's HAMT map and refuses as WetScheduledIdentityDuplicated, naming the identity;
+// wet_evidence_validate composes it as a third cause source beside the forward and reverse legs.
+// The RED is v2.test.wet_evidence a_scheduled_identity_written_twice_refuses_naming_it; this file's
+// the_real_schedule_has_no_duplicated_identity is the control over main's schedule.
 //
-// WHY IT IS NOT HERE: it costs 346735 eval steps against a 72300 new-witness budget, and the
-// overage is the pairwise comparison itself. It is not made linear by any construction available
-// -- the substrate offers no set and no sort over String -- so the honest routes are a declared
-// ceiling or a reduced subject, and BOTH are decisions about a shared budget that belong to their
-// own change rather than riding in on a compute-lifecycle PR that is already four rounds deep.
+// THE MEMO'S OWN PREMISE WAS FALSE, and the record matters because it is what let this sit: "not
+// made linear by any construction available -- the substrate offers no set and no sort over String."
+// std.algebra has offered a HAMT map since before the memo was written (empty_map/map_insert/
+// map_lookup; production precedents v2.lens.text_string_importer_census map_over_paths and
+// v2.lens.module_impact_query build_impact_pool_index). The 346735-step figure was the PAIRWISE
+// scan's cost; the map fold is two linear passes. The claim below carries its own measured cost in
+// CI (the floor prints each claim's steps; if the fold ever needs more headroom than the new-witness
+// budget grants, the sanctioned route is a corpus_census_roster row in v2.workflow.required_floor,
+// NOT a widened budget).
 //
-// ONE MEASUREMENT WORTH CARRYING, because it falsified the obvious repair: the first version
-// rebuilt the roster projection inside the inner predicate, which looked like the cost. Hoisting
-// it moved the figure from 343406 to 346735 -- the difference being one row the roster gained, not
-// the repair. The rebuilt projection was never the expense.
+// The measurement worth carrying, which falsified the obvious repair then too: the first version
+// rebuilt the roster projection inside the inner predicate, which looked like the cost. Hoisting it
+// moved the figure from 343406 to 346735 -- one roster row's difference, not the repair.
 
 // THE ROSTER DOES NOT LAND EMPTY. An empty roster would make this lane's coverage claim vacuously
 // true and leave nothing proving the executor runs anything at all -- permanently green by
@@ -306,6 +311,7 @@ test fn an_executor_that_ran_but_skipped_a_member_still_refuses_as_missing() -> 
             WetBindingRelationMismatch { identity: _ } => false
             WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
             WetCrossRouteIdentityOverlap { identity: _ } => false
+            WetScheduledIdentityDuplicated { identity: _, occurrences: _ } => false
           }
       }
     }
@@ -357,4 +363,15 @@ test fn the_gate_predicate_admits_only_an_exact_identity_and_candidate() -> Bool
       terminals: [terminal_matching(), terminal_matching()],
       candidate: fixture_candidate
     )
+}
+
+// THE REAL SCHEDULE HAS NO DUPLICATED IDENTITY -- the control for the fold's refusal, run against
+// the schedule main actually ships. A refusal that fires on every schedule, including the good one,
+// is a wall, not a check: the RED in v2.test.wet_evidence proves the fold refuses the duplicate,
+// this claim proves it does not refuse the schedule main actually ships (its row count is measured
+// and printed in the PR, not restated here). It runs the fold alone -- two linear
+// passes over the schedule, no terminals, no requirement -- which is the shape the falsified memo
+// claimed no construction could make linear.
+test fn the_real_schedule_has_no_duplicated_identity() -> Bool {
+  length(xs: wet_scheduled_identity_duplicate_causes(scheduled: local_repo_wet_schedule())) == 0
 }

@@ -22,9 +22,9 @@ import gunbc.host_command_binding {
 }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import gunbc.host.boot_medium { BootImageExport, BootMedium }
-import gunbc.machine_intake.mtcollins1_census_image { CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, census_medium_qualification, boot_image_export_text, mtcollins1_boot_medium, census_image_stock_path, mtcollins1_census_nocloud_dir, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
+import gunbc.machine_intake.mtcollins1_census_image { CensusMediumQualified, CensusMediumNotCensus, CensusMediumExporterUnsupported, census_medium_qualification, boot_image_export_text, mtcollins1_census_boot_medium, census_image_stock_path, mtcollins1_census_nocloud_dir, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_on_iso }
-import gunbc.machine_intake.mtcollins1_census_medium_readback { census_medium_served_path, RemoteAnswer, remote_answer_of }
+import gunbc.host.boot_medium_served_readback { boot_medium_served_path, RemoteAnswer, remote_answer_of }
 
 // THE PUBLISHED IMAGE'S BOOT CHAIN, READ BACK MEMBER BY MEMBER AGAINST THE STOCK MEDIUM IT WAS
 // REMASTERED FROM. The census remaster (extdeps.provisioning.ubuntu_seeded_install_media_remaster)
@@ -467,7 +467,7 @@ fn census_member_readback(medium: BootMedium, image_stem: NonEmptyStr, volume_id
         FleetSshContextReady { context: context, receipt: _ } => {
           let target = export.target
           let stock_path = census_image_stock_path()
-          let census_path = census_medium_served_path(medium: medium)
+          let census_path = boot_medium_served_path(medium: medium)
           let gate = census_pin_gate(
             medium: medium,
             image_stem: image_stem,
@@ -499,8 +499,8 @@ fn census_member_readback(medium: BootMedium, image_stem: NonEmptyStr, volume_id
 fn mtcollins1_census_member_readback_wet() -> ProcessExit {
   // mtcollins1's attempt identity, which derives the mtcollins1 scratch prefix the run always used.
   let census_attempt = census_member_readback_attempt_raw as NonEmptyStr
-  let attempt = census_member_readback(medium: mtcollins1_boot_medium, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: census_attempt)
-  let attributes = census_member_mapped_attributes(medium: mtcollins1_boot_medium, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: census_attempt)
+  let attempt = census_member_readback(medium: mtcollins1_census_boot_medium, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: census_attempt)
+  let attributes = census_member_mapped_attributes(medium: mtcollins1_census_boot_medium, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: census_attempt)
   let rendered = concat(render_census_member_attempt(attempt: attempt), "census_mapped_attributes=\n", attributes, "\n")
   let written = Filesystem.Write(path: census_member_readback_receipt_path, content: rendered)
   if written.success == false {
@@ -527,7 +527,7 @@ fn census_member_mapped_attributes(medium: BootMedium, image_stem: NonEmptyStr, 
       match prepare_fleet_ssh_agent_context(attempt_raw: attempt as String) {
         FleetSshContextRefused { cause: c } => concat("UNREAD: no fleet SSH context: ", c)
         FleetSshContextReady { context: context, receipt: _ } =>
-          census_mapped_attributes_on(host: FleetSshCommandHost { target: export.target, context: context }, iso_path: census_medium_served_path(medium: medium))
+          census_mapped_attributes_on(host: FleetSshCommandHost { target: export.target, context: context }, iso_path: boot_medium_served_path(medium: medium))
       }
   }
 }

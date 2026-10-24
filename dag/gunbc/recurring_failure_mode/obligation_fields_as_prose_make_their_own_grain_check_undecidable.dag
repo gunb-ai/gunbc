@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.obligation_fields_as_prose_make_their_own_grain_check_undecidable
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data obligation_fields_as_prose_make_their_own_grain_check_undecidable: RecurringFailureMode = RecurringFailureMode {
   identity: "obligation_fields_as_prose_make_their_own_grain_check_undecidable" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**the facts an obligation REQUIRES are carried as one prose field, so the obligation's own consistency is not a join any consumer can run -- and the mismatch it hides is then found, if at all, by a human reading a paragraph** (INVALID STATE: a typed carrier whose record declares identity and a few labels while every fact the governing rule NAMES lives inside one `String`.",

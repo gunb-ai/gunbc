@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.an_unreached_entry_body_is_never_typechecked
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data an_unreached_entry_body_is_never_typechecked: RecurringFailureMode = RecurringFailureMode {
   identity: "an_unreached_entry_body_is_never_typechecked" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**an unreached entry body is never typechecked, so an unresolved symbol inside it is green everywhere** (INVALID STATE: a declaration body -- characteristically an effectful entry `fn` (the form spelled `func` before #10850 unified the two), invoked by an operator or a workflow rather than by any witness -- references an identifier that is neither imported nor locally declared. Resolution is CLOSURE-SCOPED: a claim run resolves the items reachable from its entry, so a body nothing reaches is never handed to the typechecker, and the defect is indistinguishable from correct code to every automated reader. ",

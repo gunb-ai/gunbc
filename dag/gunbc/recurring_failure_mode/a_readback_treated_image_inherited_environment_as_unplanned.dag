@@ -1,10 +1,13 @@
 module gunbc.recurring_failure_mode.a_readback_treated_image_inherited_environment_as_unplanned
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 data a_readback_treated_image_inherited_environment_as_unplanned: RecurringFailureMode = RecurringFailureMode {
   identity: "a_readback_treated_image_inherited_environment_as_unplanned" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable (external producer)." as NonEmptyStr } },
 
   receipts: [
     "A CONTAINER READBACK REFUSED THE IMAGE'S OWN ENVIRONMENT AS 'ASSIGNMENTS NOBODY PLANNED'. A container's Config.Env is the image's Config.Env overlaid by the create call's -e assignments, so a readback that compares the observed env against the spec alone classifies every image-declared assignment (PATH, CUDA_VERSION, LD_LIBRARY_PATH, ...) as unplanned. retired gunbc.spark.native_serving_apply (deleted #13779) spark_native_rank_readback refused on any such name, while the authority that computed them (retired gunbc.spark.serving_relaunch_transaction (deleted #13779) env_unclaimed_names) documented that list as 'not consulted by the verdict' -- the note and the verdict disagreed about what the list was for.",

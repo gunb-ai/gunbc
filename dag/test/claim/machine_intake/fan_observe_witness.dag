@@ -28,19 +28,21 @@ import v2.extdeps.languages.bash_build {
 import std.process { ExitSuccess, ExitFailure }
 import std.measure { observation_round_count, second }
 import extdeps.shell
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRefused, FanObservationTaken, FanObservationSeries }
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRefused, FanObservationTaken, FanObservationSeries, FanObservationRound, ThermalUnreadable, FanSensorsUnreadable }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { OpenBmc }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.host.managed_host { ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
+import gunbc.host.managed_host { ManagedHostFound, managed_host_binding_for, managed_host_fixture, managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_credential_fetch_status, FetchOk, FetchRefused, FetchStatusUnobserved }
 import gunbc.machine_intake.fan_observe {
   FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged, FanObservePolicy,
-  fan_boot_phase_refused_prefix, fan_boot_phase_taken_prefix, fan_observe_admission, fan_observe_authority, fan_observe_refusal_text, fan_write_boot_phase_observation,
+  fan_boot_phase_refused_prefix, fan_boot_phase_taken_prefix, fan_boot_phase_unestablished_host_off_line, fan_observe_admission, fan_observe_authority, fan_observe_refusal_text, fan_write_boot_phase_observation,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -97,8 +99,8 @@ test fn an_openbmc_bound_row_is_read_against_the_phosphor_policy() -> Bool {
       match h.access {
         BmcAccessUnobserved { endpoint: _ } => false
         BmcAccessObserved { observation: o } => {
-          let openbmc = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_as_openbmc(o: o) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-          authority_names(a: fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: openbmc) }), module_path: "extdeps.bmc.phosphor_fan_control", decl_name: "phosphor_fan_zone_policy_contract")
+          let openbmc = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_as_openbmc(o: o) }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+          authority_names(a: fan_observe_admission(lookup: ManagedHostFound { host: openbmc, control: bmc_control_binding(observed: openbmc.access, secured: openbmc.secure) }), module_path: "extdeps.bmc.phosphor_fan_control", decl_name: "phosphor_fan_zone_policy_contract")
         }
       }
   }
@@ -114,8 +116,8 @@ test fn a_row_whose_family_is_unobserved_refuses_naming_the_missing_observation(
       match h.access {
         BmcAccessUnobserved { endpoint: _ } => false
         BmcAccessObserved { observation: o } => {
-          let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-          match fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: unobserved) }) {
+          let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+          match fan_observe_admission(lookup: ManagedHostFound { host: unobserved, control: bmc_control_binding(observed: unobserved.access, secured: unobserved.secure) }) {
             FanObserveRefused { cause: FanHostFamilyUnobserved { endpoint: e } } =>
               (e.host as String) == (o.endpoint.host as String)
                 && string_contains(s: fan_observe_refusal_text(cause: FanHostFamilyUnobserved { endpoint: e }) as String, pattern: "was never observed")
@@ -371,7 +373,8 @@ fn fan_real_writer_tail_outcome(stem: String, series: FanObservationSeries) -> F
             ExitSuccess =>
               let written = Filesystem.Read(path: mtcollins1_fan_observation_receipt_path)
               let _ = Filesystem.Delete(path: mtcollins1_fan_observation_receipt_path)
-              fan_boot_phase_tail_outcome(stem: stem, receipt: written.content)
+              let t = fan_boot_phase_tail_outcome(stem: stem, receipt: written.content)
+              FanTailOutcome { exit_code: t.exit_code, output: t.output, summary: concat(t.summary, written.content) }
             ExitFailure { code: _, reason: _ } => FanTailOutcome { exit_code: 99, output: "", summary: "writer failed" }
           }
         FanObserveRefused { cause: _ } => FanTailOutcome { exit_code: 99, output: "", summary: "not admitted" }
@@ -411,6 +414,34 @@ fn fan_tail_four_refusals(stem: String, from_yml: Bool) -> Bool {
     && fan_tail_refuses(stem: concat(stem, "-garbage"), receipt: concat(fan_boot_phase_taken_prefix, "Garbage\nFanObservation rounds=3"), plant: true, from_yml: from_yml)
     && fan_tail_refuses(stem: concat(stem, "-missing"), receipt: "", plant: false, from_yml: from_yml)
     && fan_tail_refuses(stem: concat(stem, "-other"), receipt: "SomethingElse rounds=3", plant: true, from_yml: from_yml)
+    && fan_tail_refuses(stem: concat(stem, "-hostoff-near"), receipt: concat(fan_boot_phase_unestablished_host_off_line, "X\nFanObservation rounds=3"), plant: true, from_yml: from_yml)
+}
+
+fn fan_tail_admits_host_off(stem: String, from_yml: Bool) -> Bool {
+  let o = fan_boot_phase_tail_run(stem: stem, receipt: concat(fan_boot_phase_unestablished_host_off_line, "\nFanObservation rounds=3"), plant: true, from_yml: from_yml)
+  o.exit_code == 0 && string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
+}
+
+// The host-off unestablished tag is admitted as an exact first line (the boot then proceeds ONLY because
+// the post-power-on chassis-fan read gates it), from the model's tail and from the committed yml's.
+test fn a_host_off_unestablished_receipt_leaves_the_boot_eligible_by_execution() -> Bool {
+  fan_tail_admits_host_off(stem: "jc547-hostoff", from_yml: false) && fan_tail_admits_host_off(stem: "jc547-hostoff-yml", from_yml: true)
+}
+
+fn host_off_round(index: Int, power_on: Bool) -> FanObservationRound {
+  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: index, chassis: ChassisPowerRead { power_on: power_on }, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsUnreadable }
+}
+
+// The REAL writer (its receipt rides on the outcome's summary): a series whose chassis read off in every round writes the unestablished line; one round on
+// breaks it back to the taken line.
+test fn a_real_writer_host_off_series_is_unestablished_and_boots_by_execution() -> Bool {
+  let off = fan_real_writer_tail_outcome(stem: "jc547-real-off", series: FanObservationTaken { rounds: [host_off_round(index: 0, power_on: false), host_off_round(index: 1, power_on: false)], interval: second(5) })
+  let mixed = fan_real_writer_tail_outcome(stem: "jc547-real-mixed", series: FanObservationTaken { rounds: [host_off_round(index: 0, power_on: false), host_off_round(index: 1, power_on: true)], interval: second(5) })
+  off.exit_code == 0 && mixed.exit_code == 0
+    && string_contains(s: off.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
+    && string_contains(s: off.summary, pattern: concat(fan_boot_phase_unestablished_host_off_line, "\n"))
+    && !string_contains(s: mixed.summary, pattern: fan_boot_phase_unestablished_host_off_line)
+    && string_contains(s: mixed.summary, pattern: fan_boot_phase_taken_prefix)
 }
 
 // Refused first line + a verbatim controller answer carrying a forged taken line, a taken-prefixed

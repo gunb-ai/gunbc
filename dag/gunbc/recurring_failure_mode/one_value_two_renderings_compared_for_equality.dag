@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.one_value_two_renderings_compared_for_equality
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data one_value_two_renderings_compared_for_equality: RecurringFailureMode = RecurringFailureMode {
   identity: "one_value_two_renderings_compared_for_equality" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**two RENDERINGS of one value are compared for equality, and both renderings are correct** (INVALID STATE: a digest, id, key or handle is produced on one side of a comparison by one function and on the other side by a different function, and the two functions disagree about how the value is SPELLED -- a prefix, a case, a separator, a unit suffix, a zero-pad. Neither spelling is wrong: each is a faithful rendering of the same underlying value, and each is correct where it was written. The defect is that the comparison was written between the two RENDERERS rather than downstream of one. HARM: the comparison can never hold. Where it guards a wall, the wall refuses unconditionally and the refusal names a real-sounding cause it did not measure; where it selects a cached or matching element, nothing ever matches and the expensive arm always runs.",

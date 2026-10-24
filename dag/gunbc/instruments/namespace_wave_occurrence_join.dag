@@ -3,8 +3,8 @@ module gunbc.instruments.namespace_wave_occurrence_join
 import std.types { String, Bool, List, Int, Map, NonEmptyStr }
 import std.algebra { empty_map, map_insert, list_at_optional, list_snoc_item, length, fold_list, list_init, list_reverse }
 import std.bytes { bytes_octets, utf8_encode_bytes }
-import std.optional { Optional, Present, Absent }
-import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable }
+import std.optional { Optional, Present, Absent, optional_present }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable, AmbientNameKitCall, chars_kit_call, kit_int }
 import v2.compiler.parse { PreparedGrammar }
 import v2.compiler.tokenize { PreparedLexRules }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
@@ -15,6 +15,7 @@ import v2.workflow.roster_import_sweep {
   RosterClean,
   RosterEdit,
   RosterEditWithLabels,
+  EveryRowOfHome,
   OneHome,
   RosterLabelEdit,
   RosterLabelEdits,
@@ -23,6 +24,8 @@ import v2.workflow.roster_import_sweep {
   RosterHomeClosure,
   roster_applied,
   roster_home_closures,
+  roster_home_sides,
+  roster_rows_for_scope,
   roster_sweep_text_scoped
 }
 
@@ -213,7 +216,8 @@ fn proof_round(state: ProofState, path: String, prepared: PreparedGrammar, lex: 
   if state.done || (state.stuck != "") {
     state
   } else {
-    let outcome = roster_sweep_text_scoped(path: path, text: state.text, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: home) }, closures: closures)
+    let scope = OneHome { home: qualified_name_from_dotted_string(dotted: home), rows: EveryRowOfHome }
+    let outcome = roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: scope)), path: path, text: state.text, prepared: prepared, lex: lex, scope: scope, closures: closures)
     match outcome {
       RosterClean => ProofState { text: state.text, rounds: state.rounds, done: true, stuck: "" }
       RosterRefused { reason: _ } => ProofState { text: state.text, rounds: state.rounds, done: false, stuck: "the sweep generator refused the module" }
@@ -226,7 +230,7 @@ fn proof_round(state: ProofState, path: String, prepared: PreparedGrammar, lex: 
 
 // THE GENERATOR'S OWN RECOMPUTATION from a base text: sweep, splice, repeat to a fixed point (the apply step converges the same way).
 fn recompute_wave_text(path: String, base_text: String, prepared: PreparedGrammar, lex: PreparedLexRules, home: String) -> ProofState {
-  let closures = roster_home_closures(root: "", scope: OneHome { home: qualified_name_from_dotted_string(dotted: home) })
+  let closures = roster_home_closures(root: "", scope: OneHome { home: qualified_name_from_dotted_string(dotted: home), rows: EveryRowOfHome })
   fold([0, 1, 2, 3], init: ProofState { text: base_text, rounds: [], done: false, stuck: "" }, f: fn(acc, i) {
     proof_round(state: acc, path: path, prepared: prepared, lex: lex, home: home, closures: closures)
   })
@@ -727,7 +731,7 @@ fn rows_proof_scope(rows: List<AmbientNameHome>) -> String {
 }
 
 fn join_control_rows() -> List<AmbientNameHome> {
-  [AmbientNameHome { name: "chars", home: "std.host_text.chars", table: PrimitiveAuthorityTable, origin: ExistingDeclaration, authored_on_head: Absent }]
+  [AmbientNameHome { name: "chars", home: "std.host_text.chars", table: PrimitiveAuthorityTable, origin: ExistingDeclaration, retired_contract: optional_present(value: "chars_contract" as NonEmptyStr), kit_call: chars_kit_call(), authored_on_head: Absent }]
 }
 
 fn join_control_base_text() -> String {
@@ -872,11 +876,11 @@ fn generated_controls() -> String {
 // beside this one; it then enrols a real-route case here -- the generator's own recomputation of a map_get base text,
 // joined through this arm -- and these supplied cases stay as the discriminating controls.
 fn rename_rows() -> List<AmbientNameHome> {
-  [AmbientNameHome { name: "map_get", home: "std.algebra.map_lookup", table: PrimitiveAuthorityTable, origin: ExistingDeclaration, authored_on_head: Present { value: "map_lookup" } }]
+  [AmbientNameHome { name: "map_get", home: "std.algebra.map_lookup", table: PrimitiveAuthorityTable, origin: ExistingDeclaration, retired_contract: Absent, kit_call: AmbientNameKitCall { params: [], result: kit_int() }, authored_on_head: Present { value: "map_lookup" } }]
 }
 
 fn rename_unruled_rows() -> List<AmbientNameHome> {
-  [AmbientNameHome { name: "map_get", home: "std.algebra.map_lookup", table: PrimitiveAuthorityTable, origin: ExistingDeclaration, authored_on_head: Absent }]
+  [AmbientNameHome { name: "map_get", home: "std.algebra.map_lookup", table: PrimitiveAuthorityTable, origin: ExistingDeclaration, retired_contract: Absent, kit_call: AmbientNameKitCall { params: [], result: kit_int() }, authored_on_head: Absent }]
 }
 
 // One call `map_get(A, B)` at byte `o`: the head replacement and the two positional labels, in byte order.

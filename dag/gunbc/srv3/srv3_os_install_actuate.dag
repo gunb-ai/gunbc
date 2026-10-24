@@ -22,15 +22,6 @@ data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposit
   reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is a held session via host_effect_apply (systemd transient units)."
 }
 
-data srv3_os_install_actuate_shell_runner_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration,
-  }
-}
-
 data srv3_os_install_actuate_operator_runbook: NonEmptyStr = "docs/runbooks/srv3-os-install-actuate.md"
 
 fn srv3_bmcweb_login_body_content() -> String {
