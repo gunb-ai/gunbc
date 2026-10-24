@@ -46,6 +46,12 @@ import gunbc.machine_intake.megarac_media_attach {
   presented_convergence,
   presented_media,
   redirection_unread_text,
+  UnreadRowStopRefusal,
+  UnreadStopReleaseNotEvidenced,
+  UnreadStopRowUnnamed,
+  UnreadStopRowIsTheWantedImage,
+  UnreadStopImageForeign,
+  unread_row_stop_refusal_text,
 }
 
 // THE 0.45.3 MEDIA CONVERGE, as boot run 40038339650 met it: firmware 0.45.3 (the current build since the
@@ -82,9 +88,10 @@ fn step_on(configurations: String, firmware: BmcFirmwareReleaseIdentity, stems: 
   )
 }
 
-fn refused_unread(s: ConvergenceStep, name: String, want: MegaRacRedirectionUnread) -> Bool {
+// A REFUSAL IS ASSERTED BY ITS REASON: the row, the unread arm, and the condition that kept it unstopped.
+fn refused_unread(s: ConvergenceStep, name: String, want: MegaRacRedirectionUnread, why: UnreadRowStopRefusal) -> Bool {
   match s {
-    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, configurations: _ } } => n == name && u == want
+    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: r, configurations: _ } } => n == name && u == want && r == why
     _ => false
   }
 }
@@ -142,6 +149,7 @@ test fn with_only_the_runner_stem_the_census_session_refuses_on_its_code() -> Bo
     s: step_on(configurations: rows1(a: row(name: census_left as String, status: "19")), firmware: megarac_firmware_0_45_3, stems: runner_only),
     name: census_left as String,
     want: RedirectionUnreadCode { firmware: megarac_firmware_0_45_3, wire: 19 },
+    why: UnreadStopImageForeign,
   )
 }
 
@@ -150,6 +158,7 @@ test fn a_foreign_image_at_19_is_never_stopped() -> Bool {
     s: step_on(configurations: rows1(a: row(name: "someone-elses-installer.iso", status: "19")), firmware: megarac_firmware_0_45_3, stems: both_stems),
     name: "someone-elses-installer.iso",
     want: RedirectionUnreadCode { firmware: megarac_firmware_0_45_3, wire: 19 },
+    why: UnreadStopImageForeign,
   )
 }
 
@@ -158,6 +167,7 @@ test fn the_wanted_image_at_19_is_not_stopped() -> Bool {
     s: step_on(configurations: rows1(a: row(name: runner_desired as String, status: "19")), firmware: megarac_firmware_0_45_3, stems: both_stems),
     name: runner_desired as String,
     want: RedirectionUnreadCode { firmware: megarac_firmware_0_45_3, wire: 19 },
+    why: UnreadStopRowIsTheWantedImage,
   )
 }
 
@@ -166,6 +176,7 @@ test fn an_unnamed_row_at_an_unread_code_refuses() -> Bool {
     s: step_on(configurations: rows1(a: row(name: "", status: "0")), firmware: megarac_firmware_0_45_3, stems: both_stems),
     name: "",
     want: RedirectionUnreadCode { firmware: megarac_firmware_0_45_3, wire: 0 },
+    why: UnreadStopRowUnnamed,
   )
 }
 
@@ -190,11 +201,31 @@ test fn on_an_uncatalogued_release_our_census_session_refuses_with_no_stop() -> 
     s: step_on(configurations: rows1(a: row(name: census_left as String, status: "1")), firmware: firmware_0_99, stems: both_stems),
     name: census_left as String,
     want: RedirectionUnreadFirmware { firmware: firmware_0_99, wire: 1 },
+    why: UnreadStopReleaseNotEvidenced { unread: RedirectionUnreadFirmware { firmware: firmware_0_99, wire: 1 } },
   ) && refused_unread(
     s: step_on(configurations: rows1(a: row(name: census_left as String, status: "19")), firmware: firmware_0_99, stems: both_stems),
     name: census_left as String,
     want: RedirectionUnreadFirmware { firmware: firmware_0_99, wire: 19 },
+    why: UnreadStopReleaseNotEvidenced { unread: RedirectionUnreadFirmware { firmware: firmware_0_99, wire: 19 } },
   )
+}
+
+// BOOT RUN 40070230626, AS READ. The controller is admitted as 0.32 (the declared drop
+// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation), our census session
+// reports 19, and both stems are supplied. The refusal is the RELEASE arm -- not foreign, not unnamed,
+// not the wanted image -- and its text says so rather than naming the image as foreign.
+test fn the_boot_40070230626_census_session_refuses_on_the_release_not_as_foreign() -> Bool {
+  let unread = RedirectionUnreadCode { firmware: megarac_firmware_0_32, wire: 19 }
+  let why = UnreadStopReleaseNotEvidenced { unread: unread }
+  let text = unread_row_stop_refusal_text(refusal: why)
+  refused_unread(
+    s: step_on(configurations: rows1(a: row(name: census_left as String, status: "19")), firmware: megarac_firmware_0_32, stems: both_stems),
+    name: census_left as String,
+    want: unread,
+    why: why,
+  ) && string_contains(s: text, pattern: "admitted only on firmware 0.45.3")
+    && string_contains(s: text, pattern: "on firmware 0.32")
+    && string_contains(s: text, pattern: "foreign") == false
 }
 
 // The refusal text names the arm that fired and the release.
