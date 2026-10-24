@@ -9,6 +9,7 @@ module test.probe.unit_hold_proof_forged_probe
 //   - THE SKIP-THE-HOLD MUTATION: the hold-owning boot path refuses any caller but
 //     mtcollins1_boot_wet_on_srv1, and the actuation and the acquire refuse any caller outside their roots.
 import std.types { NonEmptyStr, String }
+import std.algebra { FreeSemigroup }
 import std.durable_compare_and_set { cas_generation_first }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import gunbc.host.managed_host_unit_hold { AdmittedUnitHoldSubject, UnitHoldProof }
@@ -48,7 +49,7 @@ fn power_cycle_through_the_wrapper_from_outside(s: AdmittedUnitHoldSubject, b: A
 }
 
 fn attach_through_the_wrapper_from_outside(s: AdmittedUnitHoldSubject, b: AdmittedBootSubject) -> String {
-  let _x = megarac_attach_boot_image(proof: forged_proof(s: s), subject: b, share: mtcollins1_media_share, replaceable_seeded_stem: "x", bound: MegaRacIpmiReadBound { deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after }, password_file: "/tmp/pw", attempt: "forged")
+  let _x = megarac_attach_boot_image(proof: forged_proof(s: s), subject: b, share: mtcollins1_media_share, replaceable_seeded_stems: FreeSemigroup { head: "x", tail: [] }, bound: MegaRacIpmiReadBound { deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after }, password_file: "/tmp/pw", attempt: "forged")
   ""
 }
 

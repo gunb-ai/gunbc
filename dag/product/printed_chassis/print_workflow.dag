@@ -31,7 +31,7 @@ import std.content_hash {sha256_hex_digest,Sha256Digest}
 import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
 import product.printed_chassis.assembly_inventory { inventory_report, captured_inventory_report, InventoryUnread, RequiredPart, PartReservation, ReserveParts, required_printed_parts, InspectPart, InspectionEvidence }
 import product.printed_chassis.assembly_inventory_store { initialize_inventory, mutate_inventory, observe_stored_inventory }
-import product.printed_chassis.printable_assembly { PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16InletDuct, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_from_wire, printed_assembly_root_wire }
+import product.printed_chassis.printable_assembly { PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_from_wire, printed_assembly_root_wire }
 import product.printed_chassis.printable_assembly_selection { select_printable_assembly }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 
@@ -153,7 +153,10 @@ fn inventory_root(prepared_output:String) -> InventoryRoot {
      PrintableAssemblyRefused {reason:_}=>InventoryRootRefused
     }
     CassetteRackReview=>InventoryRootRefused
-    A16InletDuct=>InventoryRootRefused
+    A16PlugDuct=>InventoryRootRefused
+    A16SleeveDuct=>InventoryRootRefused
+    A16PlugFitRing=>InventoryRootRefused
+    A16SleeveFitRing=>InventoryRootRefused
    }
   }
  }
