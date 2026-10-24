@@ -1,0 +1,30 @@
+module test.claim.arrow_field_argument_adaptation_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Executing witness for v1.compiler.emit_rust rust_call_arg_function_value_adapt. An arrow-typed
+// record field is stored as Rc<dyn Fn(..) -> ..>, and passing it to a `fn(..)` parameter (rendered
+// `impl Fn(..) -> .. + Clone`) failed rustc E0277, because Rc<dyn Fn> does not implement Fn
+// (gunbc.host_convergence_protocol inspect_via_host_effect_projection, class 5 of stern-bat-401's
+// emitter-debt list). The RED is a field-access argument at an arrow parameter, which must be wrapped
+// in the forwarding closure; the control is a literal closure argument, which must stay unwrapped.
+
+test fn arrow_field_argument_is_adapted_to_the_fn_parameter() -> Bool {
+  compile_dag_rust_emit_check(
+    "module arrow_field_witness.field\n\ntype Projection {\n  observe: fn(Int) -> Int\n}\n\nfn apply_once(x: Int, f: fn(Int) -> Int) -> Int {\n  f(x)\n}\n\nfn via_projection(x: Int, p: Projection) -> Int {\n  apply_once(x: x, f: p.observe)\n}\n",
+    "src/arrow_field_witness_field.rs",
+    ["let __adapt_f = p.observe"],
+    []
+  )
+}
+
+test fn literal_closure_argument_stays_unwrapped() -> Bool {
+  compile_dag_rust_emit_check(
+    "module arrow_field_witness.literal\n\nfn apply_once(x: Int, f: fn(Int) -> Int) -> Int {\n  f(x)\n}\n\nfn via_literal(x: Int) -> Int {\n  apply_once(x: x, f: fn(y) { y + 1 })\n}\n",
+    "src/arrow_field_witness_literal.rs",
+    ["apply_once("],
+    ["__adapt_f"]
+  )
+}
