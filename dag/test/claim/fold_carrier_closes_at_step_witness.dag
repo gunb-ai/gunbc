@@ -23,5 +23,5 @@ test fn absent_init_carrier_closes_at_the_step() -> Bool {
 
 // ACCEPTED POSITIVE CONTROL: a closed carrier keeps the annotation it always had.
 test fn concrete_init_carrier_is_judged_as_written() -> Bool {
-  compile_dag_rust_emit_check(concrete_init_source, "src/fold_carrier_witness_concrete_init.rs", ["|acc: Rc<Tally>"], ["|acc: _"])
+  compile_dag_rust_emit_check(concrete_init_source, "src/fold_carrier_witness_concrete_init.rs", ["|acc: Tally, x: i64|"], ["|acc: _"])
 }
