@@ -56,6 +56,7 @@ import gunbc.instruments.fabric_ci_calibration_actuator { fabric_ci_calibration_
 import gunbc.instruments.fabric_control_plane_live_probe { fci1_assert_checkpoint_token }
 // The canonical store's coordinates are the allocation store's own declarations, never a second spelling.
 import gunbc.fabric.fabric_allocation_store { fabric_allocation_namespace_path, fabric_allocation_store_path, fabric_allocation_store_slots }
+import gunbc.host_state_root { host_state_tree }
 
 // THE FCI-1 BOUNDED-DRIVER ONE-AXIS CONTROLS, AS A TYPED ACTUATOR. It starts no Work command and
 // takes no reservation. Every row is its own `systemd-run --wait --collect` transient unit whose
@@ -383,7 +384,7 @@ fn fci1_store_state_at(parent: String, name: String, root: String) -> Fci1StoreS
 }
 
 fn fci1_store_state() -> Fci1StoreState {
-  fci1_store_state_at(parent: fabric_allocation_namespace_path() as String, name: fabric_allocation_store_slots.member as String, root: fabric_allocation_store_path() as String)
+  fci1_store_state_at(parent: fabric_allocation_namespace_path(tree: host_state_tree()) as String, name: fabric_allocation_store_slots.member as String, root: fabric_allocation_store_path(tree: host_state_tree()) as String)
 }
 
 type Fci1RuntimeState

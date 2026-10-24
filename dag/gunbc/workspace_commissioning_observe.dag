@@ -6,6 +6,7 @@ import gunbc.workspace_commissioning { WorkspaceObligationCensus, WorkspaceNoPri
 import gunbc.runner.runner_microvm_cell_readiness { StoreRead, StoreRootOwned, record_cell }
 import gunbc.runner.runner_microvm_cell_readiness_store { read_cell_readiness_store }
 import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.fabric.fabric_control_plane { fabric_cell_allocation_key }
 import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotHeld, HoldSlotFree }
 
@@ -28,7 +29,7 @@ fn workspace_observe_commissioning_obligations(allocation: FabricAllocationStore
 // THE ENTRY THE ADMISSIONS CALL: the allocation store minted from its declaration (no argument), and a store
 // whose directory does not list read as unreadable history -- never as an empty store.
 fn workspace_observe_allocation_obligations(slot: RunnerSlotIdentity) -> WorkspaceObligationCensus {
-  match fabric_allocation_store() {
+  match fabric_allocation_store(tree: host_state_tree()) {
     FabricAllocationStoreUnready { detail } => WorkspaceObligationHistoryUnreadable { reason: join(["reservation history is unreadable; ", detail as String], "") }
     FabricAllocationStoreReady { store } => workspace_observe_commissioning_obligations(allocation: store, slot: slot)
   }

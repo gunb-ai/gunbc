@@ -2,7 +2,7 @@ module test.claim.fabric.fabric_control_plane_wet_witness
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.optional { Present, Absent }
 import std.content_hash { content_hash_of_value }
 import extdeps.currency.currency { Usd }
@@ -20,6 +20,8 @@ import gunbc.fabric.fabric_control_plane {
   HoldEndLost, HoldEndStoreUnavailable, HoldEndAttemptRefused,
   reserve_selected_cell, release_reserved_cell_at, fabric_money_reservation_ref,
 }
+import gunbc.host_state_root { isolated_host_state_tree }
+import gunbc.fabric.fabric_allocation_store { fabric_allocation_store, fabric_allocation_store_path, FabricAllocationStoreReady, FabricAllocationStoreUnready }
 
 // THE FABRIC'S RELEASE WALLS ON A REAL STORE. The release reads the slot itself
 // -- there is no form that accepts an observation -- so its walls can only be
@@ -31,8 +33,18 @@ import gunbc.fabric.fabric_control_plane {
 // store's own wet rows, which cover the protocol; these rows cover what the
 // fabric adds -- the money transition between assessment and commit.
 
+// THE THROWAWAY ROOT IS A HOST-STATE TREE (gunbc.host_state_root isolated_host_state_tree), and the store is
+// minted from it by the production mint (gunbc.fabric.fabric_allocation_store fabric_allocation_store), its
+// directory created where the substrate would create it. The readbacks below open the derived path directly,
+// as an independent referent for the bytes the sealed store wrote.
 fn fw_fresh_root() -> String {
-  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_hold.XXXXXX").path
+  let tree = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_hold.XXXXXX").path
+  let _store = shell.Mkdir.Parents(path: fw_store_path(root: tree as NonEmptyStr) as String as FilePath)
+  tree
+}
+
+fn fw_store_path(root: NonEmptyStr) -> NonEmptyStr {
+  fabric_allocation_store_path(tree: isolated_host_state_tree(dir: root))
 }
 
 fn fw_demand(key: DemandKey) -> FabricIdentity<NonEmptyStr, DemandKey> {
@@ -75,7 +87,10 @@ fn fw_held_account(demand: DemandKey) -> MoneyAccount? {
 }
 
 fn fw_reserve(root: NonEmptyStr, demand: DemandKey) -> CellReservation {
-  reserve_selected_cell(root: root, slot_key: "srv3-06", demand_id: fw_demand(key: demand), offer_id: fw_offer(), account: fw_account())
+  match fabric_allocation_store(tree: isolated_host_state_tree(dir: root)) {
+    FabricAllocationStoreUnready { detail } => AttemptRefused { slot_key: "srv3-06", detail: detail }
+    FabricAllocationStoreReady { store } => reserve_selected_cell(store: store, slot_key: "srv3-06", demand_id: fw_demand(key: demand), offer_id: fw_offer(), account: fw_account())
+  }
 }
 
 fn fw_reserved_at(r: CellReservation, generation: Int) -> Bool {
@@ -88,8 +103,10 @@ fn fw_reserved_at(r: CellReservation, generation: Int) -> Bool {
 fn fw_release(root: NonEmptyStr, demand: DemandKey, acquired_generation: Int, lease_generation: Int, reason: NonEmptyStr) -> CellHoldEnd? {
   match fw_held_account(demand: demand) {
     Absent => none
-    Present { value: a } => Present { value: release_reserved_cell_at(
-      root: root,
+    Present { value: a } => match fabric_allocation_store(tree: isolated_host_state_tree(dir: root)) {
+    FabricAllocationStoreUnready { detail: _ } => none
+    FabricAllocationStoreReady { store } => Present { value: release_reserved_cell_at(
+      store: store,
       slot_key: "srv3-06",
       acquired_generation: acquired_generation,
       lease: LeaseIdentity { lease_key: "cell-lease-1", resource_fingerprint: content_hash_of_value(value: "srv3-06"), generation: lease_generation },
@@ -98,6 +115,7 @@ fn fw_release(root: NonEmptyStr, demand: DemandKey, acquired_generation: Int, le
       released_at: "2026-08-28T02:00:00Z",
       account: a,
     ) }
+    }
   }
 }
 
@@ -123,12 +141,12 @@ fn fw_ended_at(r: CellHoldEnd?, generation: Int) -> Bool {
 }
 
 fn fw_slot_bytes(root: NonEmptyStr, generation: Int) -> String {
-  let read = Filesystem.Read(path: cas_file_slot_path(root: root, key: "srv3-06", generation: generation))
+  let read = Filesystem.Read(path: cas_file_slot_path(root: fw_store_path(root: root), key: "srv3-06", generation: generation))
   if read.success { read.content } else { "" }
 }
 
 fn fw_generation_absent(root: NonEmptyStr, generation: Int) -> Bool {
-  !Filesystem.Read(path: cas_file_slot_path(root: root, key: "srv3-06", generation: generation)).success
+  !Filesystem.Read(path: cas_file_slot_path(root: fw_store_path(root: root), key: "srv3-06", generation: generation)).success
 }
 
 // THE POSITIVE CONTROL AND THE BYTES: the right reservation at its acquisition

@@ -2,6 +2,7 @@ module gunbc.fabric.fabric_allocation_store_substrate
 
 import std.types { String, Bool, NonEmptyStr }
 import gunbc.fabric.fabric_allocation_store { fabric_allocation_store_path, fabric_allocation_namespace_path, fabric_allocation_namespace_slots, fabric_allocation_store_slots }
+import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import gunbc.fabric.fabric_cell_effect { FabricCellSubstrateOwner, CellSubstrateRootOwned }
 import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
 import extdeps.posix.path_ownership { posix_owner_spec_equal }
@@ -39,9 +40,9 @@ type AllocationStoreSubstrateSpec {
 
 fn fabric_allocation_store_substrate_spec() -> AllocationStoreSubstrateSpec {
   AllocationStoreSubstrateSpec {
-    path: fabric_allocation_store_path(),
-    namespace_path: fabric_allocation_namespace_path(),
-    presence_ancestor: "/var/lib/gunbc" as NonEmptyStr,
+    path: fabric_allocation_store_path(tree: host_state_tree()),
+    namespace_path: fabric_allocation_namespace_path(tree: host_state_tree()),
+    presence_ancestor: host_state_tree_path(tree: host_state_tree()),
     presence_parent_entry: fabric_allocation_namespace_slots.member,
     presence_target_entry: fabric_allocation_store_slots.member,
     owner: CellSubstrateRootOwned,

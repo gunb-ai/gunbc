@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
-import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store_path }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_acquisition_invocation {
   workspace_acquisition_actor_admits, workspace_cancel_unelected_actor, workspace_establish_actor_protocol,
@@ -141,7 +141,7 @@ type WorkspaceActorTakeoverOutcome
   | TakeoverRefused { reason: NonEmptyStr }
 
 fn workspace_take_over_actor(store: FabricStorageBinding, allocation: FabricAllocationStore, plan: WorkspaceReservationPlan, intent: WorkspaceActorIntent, slot: WorkspaceSlotInvocationReading) -> WorkspaceActorTakeoverOutcome {
-  if fabric_allocation_store_path() != plan.root { TakeoverRefused { reason: "prepared plan names another allocation store" } }
+  if allocation.identity != plan.root { TakeoverRefused { reason: "prepared plan names another allocation store" } }
   else { match workspace_recorded_actor(store: store, plan: plan) {
     RecordedActorAbsent => TakeoverRefused { reason: "no acquisition actor was elected for this plan" }
     RecordedActorCancelled { generation: _ } => match intent {

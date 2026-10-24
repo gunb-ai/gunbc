@@ -16,6 +16,7 @@ import product.fabric.sanitation { CellReadiness, CellQuarantined }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.floor.floor_demand { floor_execution_requirements }
 import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.fabric.fabric_witness_run {
   ExactGitSource, FabricCiWorkBinding, FabricCiWorkBound, FabricCiWorkRefused, VerifiedGitCommitTree,
 }
@@ -205,7 +206,7 @@ fn revision_job_run(
   FabricCiWorkRefused { cause: _ } => RevisionJobWorkRefused
   FabricCiWorkBound { work: work, source_tree_digest: _, environment_materialization_digest: _ } => {
     let job = revision_job_cell_job(spec: spec, work: work, at: now)
-    match fabric_allocation_store() {
+    match fabric_allocation_store(tree: host_state_tree()) {
     FabricAllocationStoreUnready { detail } => RevisionJobNotGranted { detail: join(["the allocation store is unready: ", detail as String], "") }
     FabricAllocationStoreReady { store: allocation } =>
     match microvm_job_broker_decide(store: allocation, slot: slot, field: microvm_job_candidate_field(slot: slot, job: job), issued_at: now, job: job) {

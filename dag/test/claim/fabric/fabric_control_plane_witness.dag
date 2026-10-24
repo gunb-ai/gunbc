@@ -1,7 +1,10 @@
 module test.claim.fabric.fabric_control_plane_witness
 
 import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_route, fixture_demand_for, fixture_work_for, fixture_permit_for }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import extdeps.shell
+import gunbc.host_state_root { host_state_tree, isolated_host_state_tree }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, fabric_allocation_store_path, FabricAllocationStoreReady, FabricAllocationStoreUnready }
 import std.content_hash { content_hash_of_value }
 import product.fabric.execution {
   ReservationRef, LeaseIdentity, Receipt, ReceiptPayload, SettlementReceipt, ExecutionReceipt,
@@ -45,7 +48,6 @@ import gunbc.fabric.fabric_control_plane {
   SettlementReceiptCarriesNoSpend, admit_cell_settlement,
   CellCandidateBinding, CellCandidateBound, OfferExecutorIsNotTheCell,
   fabric_cell_allocation_key, fabric_reservation_payload,
-  fabric_control_plane_store_root,
   bind_fabric_cell_candidate, broker_reserve_for_demand, FabricCellCandidate,
 }
 
@@ -130,8 +132,11 @@ fn cp_broker_for(
   demand_key: DemandKey,
   work_key: WorkKey,
 ) -> CellReservation {
+  match cp_store() {
+  Absent => AttemptRefused { slot_key: "srv3-06", detail: "the witness's isolated allocation store did not mint" }
+  Present { value: store } =>
   broker_reserve_for_demand(
-    root: fabric_control_plane_store_root(),
+    store: store,
     demand: floor_demand(
       id: cp_demand_id(key: demand_key),
       work: FabricIdentity { principal: "gunbc", key: work_key },
@@ -148,6 +153,7 @@ fn cp_broker_for(
     maximum_buy_order: money_amount_micro(count: 1000000),
     delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
   )
+  }
 }
 
 test fn an_executor_refused_on_the_capacity_line_is_reported_not_dropped() -> Bool {
@@ -184,11 +190,24 @@ test fn the_reservation_payload_names_both_the_demand_and_the_offer() -> Bool {
     && (payload as String).contains("offer-1")
 }
 
-// The deployment authority is a real absolute path rather than a relative or
+// The production store's derived root is a real absolute path rather than a relative or
 // empty one: the store does not create its root, so a root that named nothing
 // would surface as an operational refusal on every reservation.
 test fn the_store_root_is_an_absolute_deployment_path() -> Bool {
-  (fabric_control_plane_store_root() as String).starts_with("/")
+  (fabric_allocation_store_path(tree: host_state_tree()) as String).starts_with("/")
+}
+
+// THE STORE THE BROKER IS HANDED: the production mint over a host-state tree this witness owns
+// (gunbc.host_state_root isolated_host_state_tree over a temp directory, the store's directory created where the
+// substrate would create it). The claims below refuse before the store is touched; the store is supplied because
+// the broker takes nothing else, and only the mint can make one.
+fn cp_store() -> FabricAllocationStore? {
+  let tree = isolated_host_state_tree(dir: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_control_plane.XXXXXX").path as NonEmptyStr)
+  let _made = shell.Mkdir.Parents(path: fabric_allocation_store_path(tree: tree) as String as FilePath)
+  match fabric_allocation_store(tree: tree) {
+    FabricAllocationStoreReady { store } => Present { value: store }
+    FabricAllocationStoreUnready { detail: _ } => none
+  }
 }
 
 fn cp_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
@@ -331,13 +350,17 @@ fn cp_cost() -> SelectionCost {
 }
 
 fn cp_priced(account: MoneyAccount) -> CellReservation {
+  match cp_store() {
+  Absent => AttemptRefused { slot_key: "srv3-06", detail: "the witness's isolated allocation store did not mint" }
+  Present { value: store } =>
   reserve_priced_cell(
-    root: fabric_control_plane_store_root(),
+    store: store,
     demand_id: cp_demand_id(key: "demand-7"),
     offer: cp_offer_for(executor: "srv3-06"),
     cost: cp_cost(),
     account: account,
   )
+  }
 }
 
 fn cp_budget_refusal(r: CellReservation) -> List<MoneyRefusal> {

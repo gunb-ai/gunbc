@@ -110,6 +110,7 @@ import gunbc.runner.runner_microvm_shakedown {
   microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_attempt_id,
 }
 import gunbc.fabric.fabric_allocation_store { fabric_allocation_store, fabric_allocation_store_path, FabricAllocationStoreReady, FabricAllocationStoreUnready }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.fabric.fabric_required_build_cell {
   RequiredBuildCellSnapshot, RequiredBuildCellObservation, RequiredBuildCellObserved,
   ReservationAbsent, ReservationUnreadable, ReservationPayloadUndecodable, ReservationPayloadWorkMismatch,
@@ -300,7 +301,7 @@ fn guest_image_sources(spec: RunnerHostSpec) -> GuestImageSources {
 fn observe_reservation(slot: RunnerSlotIdentity) -> RequiredBuildCellObservation
   uses net: Network, fs: Filesystem
 {
-  match fabric_allocation_store() {
+  match fabric_allocation_store(tree: host_state_tree()) {
     FabricAllocationStoreUnready { detail } => ReservationUnreadable { slot_key: fabric_cell_allocation_key(slot: slot), cause: CasUnreadableReadRefused { detail: detail } }
     FabricAllocationStoreReady { store: allocation } => observe_granted_cell_wet(
       store: allocation,
@@ -810,7 +811,7 @@ fn workspace_slot_dispatch_launch(text: String, instance: String, release_dir: S
               WorkspaceStoreUnreadable { reason } => workspace_slot_refused(reason: reason)
               WorkspaceStoreReadOk { snapshot: ledger } =>
                 if workspace_launch_directive_matches(directive: directive, observed: ledger, authorized_owner: enrollment.principal,
-                  host: slot.host as NonEmptyStr, slot_instance: instance as NonEmptyStr, release_dir: release_dir as NonEmptyStr, fabric_root: fabric_allocation_store_path()) {
+                  host: slot.host as NonEmptyStr, slot_instance: instance as NonEmptyStr, release_dir: release_dir as NonEmptyStr, fabric_root: fabric_allocation_store_path(tree: host_state_tree())) {
                   workspace_slot_apply_if_needed(allocation: directive.allocation, slot: slot, store: store, release_dir: release_dir, invocation_id: invocation_id)
                 } else { workspace_slot_refused(reason: "workspace invocation contradicts its planned owner revision, allocation, host, slot or installed artifact") }
             }
@@ -844,10 +845,10 @@ fn workspace_slot_from_ledger(allocation: WorkspaceAllocation, store: FabricStor
 // the path it names, so no IO route takes its root from record content.
 fn workspace_observe_held_cell(prepared: WorkspaceReservationPlan, held: WorkspaceReservation) -> RequiredBuildCellObservation {
   let key = fabric_cell_allocation_key(slot: held.slot)
-  match fabric_allocation_store() {
+  match fabric_allocation_store(tree: host_state_tree()) {
     FabricAllocationStoreUnready { detail } => ReservationUnreadable { slot_key: key, cause: CasUnreadableReadRefused { detail: detail } }
     FabricAllocationStoreReady { store: cells } =>
-      if prepared.root != fabric_allocation_store_path() {
+      if prepared.root != cells.identity {
         ReservationUnreadable { slot_key: key, cause: CasUnreadableReadRefused { detail: "the prepared plan names another allocation store" } }
       } else {
         observe_required_build_cell_for_identity(store: cells, host: held.slot.host, slot: held.slot,
@@ -983,11 +984,11 @@ fn workspace_slot_apply_if_needed(allocation: WorkspaceAllocation, slot: RunnerS
       Absent => workspace_slot_refused(reason: "workspace has no durable reservation plan")
       Present { value: prepared } => {
         let proposed = workspace_reservation_plan_reservation(plan: prepared)
-        if proposed.slot.host != slot.host || proposed.slot.slot_index != slot.slot_index || prepared.root != fabric_allocation_store_path() {
+        if proposed.slot.host != slot.host || proposed.slot.slot_index != slot.slot_index || prepared.root != fabric_allocation_store_path(tree: host_state_tree()) {
           workspace_slot_refused(reason: "workspace plan is not bound to this host, slot and allocation authority")
         } else { match clock_now_probed_at() {
           Absent => workspace_slot_refused(reason: "workspace reservation clock is unreadable")
-          Present { value: now } => match fabric_allocation_store() {
+          Present { value: now } => match fabric_allocation_store(tree: host_state_tree()) {
           FabricAllocationStoreUnready { detail: _ } => workspace_slot_refused(reason: "the allocation store is unready; durable plan retained for recovery")
           FabricAllocationStoreReady { store: cells } => match workspace_apply_recorded_plan(store: store, allocation: cells,
             owner: allocation.request.owner, idempotency_key: allocation.request.idempotency_key, observed_at: now) {
@@ -1015,7 +1016,7 @@ fn workspace_settle_controller_outcome(reservation: WorkspaceReservation, store:
 fn workspace_settle_teardown_result(reservation: WorkspaceReservation, store: FabricStorageBinding, outcome: ControllerOutcome, teardown: TeardownRun) -> SlotControllerOutcome {
   match clock_now_probed_at() {
     Absent => workspace_slot_refused(reason: "teardown completed but release clock is unreadable; reservation remains held")
-    Present { value: now } => match fabric_allocation_store() {
+    Present { value: now } => match fabric_allocation_store(tree: host_state_tree()) {
     FabricAllocationStoreUnready { detail: _ } => workspace_slot_refused(reason: "teardown completed but the allocation store is unready; reservation remains held")
     FabricAllocationStoreReady { store: cells } => match workspace_complete_teardown(store: store, allocation: cells,
       reservation: reservation, teardown: teardown, observed_at: now) {
@@ -1031,7 +1032,7 @@ fn workspace_settle_teardown_result(reservation: WorkspaceReservation, store: Fa
 fn workspace_slot_recover_released(reservation: WorkspaceReservation, store: FabricStorageBinding) -> SlotControllerOutcome {
   match clock_now_probed_at() {
     Absent => workspace_slot_refused(reason: "release recovery clock is unreadable")
-    Present { value: now } => match fabric_allocation_store() {
+    Present { value: now } => match fabric_allocation_store(tree: host_state_tree()) {
     FabricAllocationStoreUnready { detail: _ } => workspace_slot_refused(reason: "release recovery found the allocation store unready")
     FabricAllocationStoreReady { store: cells } => match workspace_recover_release(store: store, allocation: cells, reservation: reservation, observed_at: now) {
       WorkspaceStoreWritten { allocation: observed } => if (observed.phase == WorkspaceReleased) {

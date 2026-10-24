@@ -1,7 +1,7 @@
 module test.claim.fabric.fabric_cell_grant_wet_witness
 
 import extdeps.shell
-import std.types { Bool, NonEmptyStr, String, List }
+import std.types { Bool, NonEmptyStr, String, List, FilePath }
 import std.algebra { Cons, Empty }
 import std.measure { Count, One, hardware_thread_count }
 import std.durable_compare_and_set { cas_generation_count }
@@ -20,6 +20,8 @@ import std.content_hash { content_hash_of_value }
 import std.measure { second }
 import product.fabric.selection { SelectedOffer }
 import product.fabric.grant_issue { AttemptNamesAnotherWork }
+import gunbc.host_state_root { isolated_host_state_tree }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, fabric_allocation_store_path, FabricAllocationStoreReady, FabricAllocationStoreUnready }
 import gunbc.fabric.fabric_cell_grant {
   CellGrant, CellGranted, CellAlreadyGranted, CellGrantIssueRefused,
   grant_selected_cell,
@@ -43,13 +45,33 @@ import test.claim.fabric.fabric_grant_issuance_witness {
 // the held cell), expired-reservation (a released, and then a superseded, grant), work-mismatch
 // (an attempt naming another Work writes nothing).
 
+// THE THROWAWAY ROOT IS A HOST-STATE TREE (gunbc.host_state_root isolated_host_state_tree); the grant and the
+// settlement reach the allocation store only as the sealed value the production mint answers for it
+// (gunbc.fabric.fabric_allocation_store fabric_allocation_store). The reads and the witness's own release open
+// the derived path through the hold library directly: an independent referent for what the sealed store wrote.
 fn cg_fresh_root() -> String {
-  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_cell_grant.XXXXXX").path
+  let tree = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_cell_grant.XXXXXX").path
+  let _store = shell.Mkdir.Parents(path: cg_store_path(root: tree as NonEmptyStr) as String as FilePath)
+  tree
+}
+
+fn cg_store_path(root: NonEmptyStr) -> NonEmptyStr {
+  fabric_allocation_store_path(tree: isolated_host_state_tree(dir: root))
+}
+
+fn cg_store(root: NonEmptyStr) -> FabricAllocationStore? {
+  match fabric_allocation_store(tree: isolated_host_state_tree(dir: root)) {
+    FabricAllocationStoreReady { store } => Present { value: store }
+    FabricAllocationStoreUnready { detail: _ } => none
+  }
 }
 
 fn cg_grant(root: NonEmptyStr, attempt: Attempt<NonEmptyStr>) -> List<CellGrant<Count, One>> {
+  match cg_store(root: root) {
+  Absent => []
+  Present { value: store } =>
   map(selected_for(offer: admitted_offer), selected => grant_selected_cell(
-    root: root,
+    store: store,
     work: subject_work,
     attempt: attempt,
     selected: selected,
@@ -61,6 +83,7 @@ fn cg_grant(root: NonEmptyStr, attempt: Attempt<NonEmptyStr>) -> List<CellGrant<
     evidence: fixture_evidence,
     issued_at: "2026-10-14T00:00:00Z",
   ))
+  }
 }
 
 fn cg_granted(outcomes: List<CellGrant<Count, One>>) -> List<ExecutionGrant<NonEmptyStr>> {
@@ -75,7 +98,7 @@ fn cg_granted(outcomes: List<CellGrant<Count, One>>) -> List<ExecutionGrant<NonE
 // The controller reaches the same judgement through observe_granted_cell_wet, which adds the host's
 // cell-substrate probe this temp directory cannot supply.
 fn cg_read(root: NonEmptyStr, attempt: Attempt<NonEmptyStr>) -> String {
-  match observe_file_hold(root: root, key: admitted_offer.executor) {
+  match observe_file_hold(root: cg_store_path(root: root), key: admitted_offer.executor) {
     HoldSlotAbsent => "absent"
     HoldSlotFree { generation: _, released_by: _ } => "released"
     HoldSlotHeld { generation: g, owner: o } => match judge_cell_holder(
@@ -104,7 +127,7 @@ fn cg_release(root: NonEmptyStr, grants: List<ExecutionGrant<NonEmptyStr>>) -> B
   match grants {
     Cons { head: g, tail: _ } =>
       match file_hold_release_assess(
-        root: root,
+        root: cg_store_path(root: root),
         slot_key: admitted_offer.executor,
         owner: (g.id.key as String) as DurableHoldOwnerRef,
         acquired_generation: g.context.lease.generation,
@@ -212,7 +235,10 @@ fn cg_ready() -> CellReadiness {
 }
 
 fn cg_settle(root: NonEmptyStr, receipts: List<Receipt<NonEmptyStr>>, readiness: CellReadiness) -> List<CellGrantSettlement> {
-  map(receipts, r => settle_cell_grant(root: root, work: subject_work.id, offer: admitted_offer.id, receipt: r, readiness: readiness))
+  match cg_store(root: root) {
+    Absent => []
+    Present { value: store } => map(receipts, r => settle_cell_grant(store: store, work: subject_work.id, offer: admitted_offer.id, receipt: r, readiness: readiness))
+  }
 }
 
 fn cg_settlement_label(s: List<CellGrantSettlement>) -> String {
