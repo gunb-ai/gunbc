@@ -549,8 +549,12 @@ fn container_declaration_aliases_keyed_algebra(decl: Node, env: TypeEnv) -> Bool
   }
 }
 
+// The refusal is judged by the module's own visible names (env.source_visible_names, its imports
+// and local declarations, the scope the unlisted-import check reads), never by node.ident, which can
+// carry a binding from outside the module's imports. A context with no visible-name set is judged as
+// the unlisted-import check judges it.
 fn unbound_container_diagnostics(env: TypeEnv, n: Node, name: String, span: SourceSpan, module_name: String) -> List<ErrorNode> {
-  if declaration_resolved_container(name: name) && lookup_type_for(env: env, node: n) == none {
+  if declaration_resolved_container(name: name) && map_is_empty(m: env.source_visible_names) == false && map_has(m: env.source_visible_names, key: name) == false {
     [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: name, span: span), module_name: module_name)]
   } else { [] }
 }
