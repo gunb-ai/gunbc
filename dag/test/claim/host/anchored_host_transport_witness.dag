@@ -558,14 +558,30 @@ fn anchored_runbook_mint_block() -> String {
 // itself: it reads the committed markdown file off disk and compares its fenced block to the render
 // (the fence strips the render's trailing newline, so the block is re-terminated before the equality).
 // Editing the runbook block to drift from the model -- retyping a gcloud leg, dropping the tmpfs guard,
-// widening the trap -- fails HERE, not by convention. The failure companion prints both the file's block
-// and the model render so the drift is located, not inferred.
+// widening the trap -- fails HERE, not by convention. anchored_host_key_mint_shell() returns an
+// Outcome<String> (review 85659: a rejected emission is a typed refusal, not a sentinel string inside
+// the success type), so a Rejected emission REFUSES this claim rather than being compared against -- a
+// refusal is never a pass. The failure companion prints both the file's block and the model render so
+// the drift is located, not inferred.
+fn anchored_mint_render_text() -> String {
+  match anchored_host_key_mint_shell() {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => "EMIT_REFUSED"
+  }
+}
+
 test fn the_runbook_mint_block_is_the_model_render() -> Bool {
-  concat(anchored_runbook_mint_block(), "\n") == anchored_host_key_mint_shell()
+  match anchored_host_key_mint_shell() {
+    Accepted { value: text, diagnostics: _ } => concat(anchored_runbook_mint_block(), "\n") == text
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn the_runbook_mint_block_is_the_model_render_failure_receipt() -> String {
-  concat(concat(concat("RUNBOOK_BLOCK=[", anchored_runbook_mint_block()), "] MODEL_RENDER=["), concat(anchored_host_key_mint_shell(), "]"))
+  match anchored_host_key_mint_shell() {
+    Accepted { value: text, diagnostics: _ } => concat(concat(concat("RUNBOOK_BLOCK=[", anchored_runbook_mint_block()), "] MODEL_RENDER=["), concat(text, "]"))
+    Rejected { diagnostics: _ } => "MODEL_RENDER=EMIT_REFUSED (bash_emit_stmts rejected the mint script)"
+  }
 }
 
 // CLAIM: THE MINT RENDER IS COMPOSED FROM THE BUILDERS. The shell string contains the create leg's
@@ -575,8 +591,9 @@ fn the_runbook_mint_block_is_the_model_render_failure_receipt() -> String {
 // literals, fails here. The runbook's own copy is checked against the render by
 // the_runbook_mint_block_is_the_model_render, not by this claim.
 test fn the_mint_render_is_the_builders_render() -> Bool {
-  let shell = anchored_host_key_mint_shell()
-  string_contains(s: shell, pattern: shell_command_render(command: anchored_host_key_mint_create_command()))
+  let shell = anchored_mint_render_text()
+  shell != "EMIT_REFUSED"
+  && string_contains(s: shell, pattern: shell_command_render(command: anchored_host_key_mint_create_command()))
   && string_contains(s: shell, pattern: shell_command_render(command: anchored_host_key_mint_upload_command()))
   && string_contains(s: shell, pattern: concat("'", mtcollins1_ssh_host_key_secret.secret as String, "'"))
   && string_contains(s: shell, pattern: concat("'", mtcollins1_ssh_host_key_secret.project as String, "'"))

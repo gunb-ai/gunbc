@@ -606,11 +606,11 @@ fn anchored_host_key_mint_dir() -> String {
 // SIGTERM, so a control-C mid-mint would leave the private half in the tmpfs dir -- and the fold
 // grammar has no trap-with-a-signal-list production. The body is a compound statement list, the one
 // form the emitter cannot yet build; it is named, with its trigger, on this module's census-closure
-// frontier row (anchored_host_key_mint_shell). A rejected emission yields the refuse poison, never
-// partial shell (DESIGN §5: refuse, never widen).
-fn anchored_host_key_mint_refuse_poison() -> String {
-  "__GUNBC_ANCHORED_HOST_MINT_EMIT_REFUSED__ bash_emit_stmts refused the mint script; this marker is not valid shell, so any run carrying it fails rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen)\n"
-}
+// frontier row (anchored_host_key_mint_shell). A REJECTED EMISSION IS A TYPED REFUSAL: this returns
+// v2.std.diagnostic Outcome<String> and passes the emitter's Rejected arm through untouched -- no
+// sentinel string smuggles the failure inside the success type (DESIGN §5: every path succeeds fully
+// or fails with a typed, located diagnostic; refuse, never widen). Consumers pattern-match; the
+// runbook's byte-for-byte claim refuses on Rejected rather than comparing against a marker.
 
 fn anchored_host_key_mint_cleanup_body(mint_dir: String) -> String {
   join(map(anchored_host_key_mint_cleanup_commands(mint_dir: mint_dir), c => join(argv_words(command: c), " ")), "; ")
@@ -675,11 +675,8 @@ fn anchored_host_key_mint_statements(mint_dir: String) -> List<Node> {
   ]
 }
 
-fn anchored_host_key_mint_shell() -> String {
-  match bash_emit_stmts(statements: anchored_host_key_mint_statements(mint_dir: anchored_host_key_mint_dir()), set_e: true) {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => anchored_host_key_mint_refuse_poison()
-  }
+fn anchored_host_key_mint_shell() -> Outcome<String> {
+  bash_emit_stmts(statements: anchored_host_key_mint_statements(mint_dir: anchored_host_key_mint_dir()), set_e: true)
 }
 
 // THE MINT IS AN OUT-OF-BAND HUMAN ACT, and its scaffold status is a typed carrier, not a comment
