@@ -184,8 +184,20 @@ test fn two_of_our_sessions_at_once_refuse() -> Bool {
   }
 }
 
-// AN UNCATALOGUED RELEASE: our census row is still a stop candidate (the stop is the conservative write
-// and is judged only by its read-back), and the text names the firmware arm.
+// AN UNCATALOGUED RELEASE: no row of it was ever read, so even our own census session is not stopped.
+test fn on_an_uncatalogued_release_our_census_session_refuses_with_no_stop() -> Bool {
+  refused_unread(
+    s: step_on(configurations: rows1(a: row(name: census_left as String, status: "1")), firmware: firmware_0_99, stems: both_stems),
+    name: census_left as String,
+    want: RedirectionUnreadFirmware { firmware: firmware_0_99, wire: 1 },
+  ) && refused_unread(
+    s: step_on(configurations: rows1(a: row(name: census_left as String, status: "19")), firmware: firmware_0_99, stems: both_stems),
+    name: census_left as String,
+    want: RedirectionUnreadFirmware { firmware: firmware_0_99, wire: 19 },
+  )
+}
+
+// The refusal text names the arm that fired and the release.
 test fn on_an_uncatalogued_release_the_text_names_the_firmware_arm() -> Bool {
   string_contains(s: redirection_unread_text(unread: RedirectionUnreadFirmware { firmware: firmware_0_99, wire: 19 }), pattern: "on firmware 0.99, a release whose status codes are not catalogued")
     && string_contains(s: redirection_unread_text(unread: RedirectionUnreadCode { firmware: megarac_firmware_0_45_3, wire: 19 }), pattern: "redirection_status 19 on firmware 0.45.3, a code")
