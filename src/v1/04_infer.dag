@@ -8962,7 +8962,7 @@ fn chain2_class(t: Node, scope: InferScope) -> String {
 }
 
 fn chain2_value_type(c: Node, raw: Bool) -> Node? {
-  let v = if raw { c } else { arg_value(n: c) }
+  let v = if raw { c } else { match c.expr_data { NoExprData => arg_value(n: c)  _ => c } }
   match v.inferred { Present { value: Resolved { node: _ } } => Present { value: expression_value_type(e: v) }  _ => Absent }
 }
 
