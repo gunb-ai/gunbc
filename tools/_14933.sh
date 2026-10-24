@@ -42,13 +42,28 @@ echo "BUILD_COMMIT=$HEAD_SHA"
 echo "HEAD_BIN sha256=$(sha $H/target/release/claim_batch)"
 # ---------- base tree: head tree minus PR diff (reverse-apply, guarded)
 if [ "$NEED_B" = 1 ]; then [ -d $B ] || git worktree add -q --force --detach $B $HEAD_SHA || { echo WTB_FAIL; exit 9; }; fi
-if [ "$NEED_B" = 1 ] && [ ! -s $CKPT/reverse-applied ]; then
+if [ "$NEED_B" = 1 ]; then
+  rm -rf $B 2>/dev/null; git worktree prune >/dev/null 2>&1
+  git worktree add -q --force --detach $B $HEAD_SHA || { echo WTB_FAIL; exit 9; }
   git diff origin/main...refs/verifier/f14933 > $CKPT/pr.patch
-  (cd $B && git apply -R --check $CKPT/pr.patch && git apply -R $CKPT/pr.patch && echo REVERSE_APPLY_OK) || { echo "REVERSE_APPLY_FAIL -- STOP"; exit 9; }
-  # guard: reverse-apply must actually change the subject files
-  (cd $B && git status --porcelain | wc -l) | grep -qv '^0$' || { echo "NOOP-REVERSE -- STOP"; exit 9; }
+  echo "PR_PATCH_BYTES=$(wc -c < $CKPT/pr.patch) FILES=$(grep -c '^diff --git' $CKPT/pr.patch)"
+  if (cd $B && git apply -R --check $CKPT/pr.patch 2>$CKPT/apply-err.txt); then
+    (cd $B && git apply -R $CKPT/pr.patch) && echo REVERSE_APPLY_OK || { echo REVERSE_APPLY_EXEC_FAIL -- STOP; exit 9; }
+  else
+    echo REVERSE_APPLY_CHECK_FAIL:
+    head -6 $CKPT/apply-err.txt | sed 's|^|  apply: |'
+    echo "FALLBACK: worktree at merge-base $BASE_SHA"
+    rm -rf $B; git worktree prune >/dev/null 2>&1
+    git worktree add -q --force --detach $B $BASE_SHA || { echo WTB_FALLBACK_FAIL; exit 9; }
+    echo BASE_AT_MERGE_BASE
+  fi
+  (cd $B && git status --porcelain | wc -l) | grep -qv ^0 || { echo "NOOP-REVERSE -- STOP"; exit 9; }
   touch $CKPT/reverse-applied
 fi
+HF=$(grep -c -- "--outcomes-out" $H/src/v1/stage0/src/bin/claim_batch.rs)
+BF=$(grep -c -- "--outcomes-out" $B/src/v1/stage0/src/bin/claim_batch.rs)
+echo "BASE_PROOF head-flag-lines=$HF base-flag-lines=$BF"
+[ "$BF" -lt "$HF" ] || { echo BASE_NOT_OLD -- STOP; exit 9; }
 export CARGO_TARGET_DIR=/root/workspace/.t933b
 if [ "$NEED_B" = 1 ]; then (cd $B && cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1) || { echo BUILD_FAIL_BASE; exit 9; }; fi
 if [ "$NEED_B" = 1 ]; then mkdir -p $B/target/release; cp -f $CARGO_TARGET_DIR/release/claim_batch $B/target/release/claim_batch; fi
