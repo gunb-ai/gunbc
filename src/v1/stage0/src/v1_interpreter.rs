@@ -1775,7 +1775,7 @@ impl fmt::Display for InterpError {
                     f,
                     "wet run cannot realize {operation}: a modeled operation realization is \
                      admitted only under Hermetic execution, and this run dispatches real \
-                     effects (route gap, not a verdict; re-run with --dry-run)"
+                     effects (route gap, not a verdict)"
                 ),
             },
             InterpError::HostToolRelativePathAmbiguous { name } => write!(

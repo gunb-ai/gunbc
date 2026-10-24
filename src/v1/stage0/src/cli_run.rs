@@ -16555,7 +16555,7 @@ pub fn effect_refusal_remedy(ground: &v1_interpreter::EffectRefusalGround) -> &'
         | v1_interpreter::EffectRefusalGround::NoMockResponse
         | v1_interpreter::EffectRefusalGround::FilesystemRemoval => "re-run with --wet",
         v1_interpreter::EffectRefusalGround::FrameNotRealizableUnderMode => {
-            "re-run hermetically (omit --wet)"
+            "re-run under Hermetic execution (`gunbc --dry-run run`, or claim_batch without --wet)"
         }
     }
 }
@@ -20018,7 +20018,8 @@ pub fn project_witness_cost_receipt(
                     args.push((
                         Some("error".to_string()),
                         str_value(format!(
-                            "hermetic route has no arm for {operation} ({})",
+                            "{} {operation} ({})",
+                            effect_refusal_mode_label(ground),
                             effect_refusal_ground_label(ground)
                         )),
                     ));
