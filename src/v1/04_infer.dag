@@ -7175,6 +7175,12 @@ fn builtin_result_at_call(bt: Node, scope: InferScope) -> BuiltinResultAtCall {
   }
 }
 
+// THE REFUSAL IS TERMINAL: the call is typed CompilerError, not left the roster's bare type variable,
+// so nothing downstream can bind the result to a type and report a second, derived error from it.
+fn builtin_result_declaration_absent_message(func_name: String, qualified: String) -> String {
+  concat("builtin '", concat(func_name, concat("' returns ", concat(qualified, ", which this module's closure does not declare: import the module that declares it"))))
+}
+
 type BuiltinResultArguments
   = BuiltinResultArgumentsReady { nodes: List<Node> }
   | BuiltinResultArgumentAbsent { qualified: String }
@@ -9891,13 +9897,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         } else if !callee_is_body_binding && infer_builtin_call_type(name: func_name) != none {
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
           let result_at_call = builtin_result_at_call(bt: tier2b.bt, scope: scope)
-          let bt = match result_at_call {
-            BuiltinResultReady { node: r } => r
-            BuiltinResultDeclarationAbsent { qualified: _ } => tier2b.bt
+          let call_inferred = match result_at_call {
+            BuiltinResultReady { node: r } => Present { value: Resolved { node: r } }
+            BuiltinResultDeclarationAbsent { qualified: q } => Present { value: CompilerError { message: builtin_result_declaration_absent_message(func_name: func_name, qualified: q), span: span } }
           }
           let result_declaration_diags = match result_at_call {
             BuiltinResultReady { node: _ } => []
-            BuiltinResultDeclarationAbsent { qualified: q } => [inference_error(message: concat("builtin '", concat(func_name, concat("' returns ", concat(q, ", which this module's closure does not declare: import the module that declares it")))), span: span, module_name: scope.module_name)]
+            BuiltinResultDeclarationAbsent { qualified: q } => [inference_error(message: builtin_result_declaration_absent_message(func_name: func_name, qualified: q), span: span, module_name: scope.module_name)]
           }
           let call_semantics = if func_name == "lookup" {
             Present { value: LookupCallSemantics { target: RuntimePrimitiveCall { primitive_name: func_name, projected_from: none } } }
@@ -9908,7 +9914,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: func_name, expr_data: ExprCall { call_semantics: call_semantics, descent_evidence: none },
               children: typed_arg_nodes,
-              inferred: Present { value: Resolved { node: bt } },
+              inferred: call_inferred,
               span: span,
               name_span: node_name_span(n: texpr)
             ),
