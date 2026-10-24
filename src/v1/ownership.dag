@@ -436,10 +436,14 @@ fn moved_argument_occurrence_key(name: String, span_start: Int) -> String {
   concat(name, "@", to_string(value: span_start))
 }
 
-fn build_moved_argument_occurrences(proof: OwnershipProof, param_names: Set<String>) -> Set<String> {
+// `locals_admitted` is false for a lambda's own proof: there a name that is not a parameter is a
+// capture of the enclosing frame, even when it is a local there, and a capture never moves out of an
+// Fn closure (rustc E0507 on the regen round that admitted them: separator, item, eq, xs, ys in
+// std.algebra closures handed to declared callees).
+fn build_moved_argument_occurrences(proof: OwnershipProof, param_names: Set<String>, locals_admitted: Bool) -> Set<String> {
   proof.bindings |> map_values
     |> filter(usage => moved_at_its_only_argument(usage: usage)
-      && (is_owned_local(kind: usage.binding_kind) || set_contains(param_names, usage.name)))
+      && ((locals_admitted && is_owned_local(kind: usage.binding_kind)) || set_contains(param_names, usage.name)))
     |> fold(init: empty_set(), f: (acc, usage) =>
       usage.consumers |> fold(init: acc, f: (inner, edge) => set_insert(inner, moved_argument_occurrence_key(name: usage.name, span_start: edge.span_start))))
 }

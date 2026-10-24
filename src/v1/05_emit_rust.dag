@@ -3487,7 +3487,7 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
     let movable = build_movable_set(proof: entry.proof, param_names: entry.param_names)
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, entry.name, movable),
-      moved_argument_index: map_insert(acc.moved_argument_index, entry.name, build_moved_argument_occurrences(proof: entry.proof, param_names: entry.param_names)),
+      moved_argument_index: map_insert(acc.moved_argument_index, entry.name, build_moved_argument_occurrences(proof: entry.proof, param_names: entry.param_names, locals_admitted: true)),
       read_only_params_index: map_insert(acc.read_only_params_index, entry.name, read_only)
     }
   )
@@ -13228,7 +13228,7 @@ fn user_call_lambda_emit_info(arg: Node, emit_info: EmitGraphInfo, si: Map<Strin
     ExprLambda =>
       let ps = lambda_param_names_at(texpr: arg, source_indices: si)
       let proof = analyze_ownership_of_names(func_name: "", param_names: ps, body: lambda_body(texpr: arg), si: si)
-      let moved = build_moved_argument_occurrences(proof: proof, param_names: ps |> fold(init: empty_set(), f: (acc, p) => set_insert(acc, p)))
+      let moved = build_moved_argument_occurrences(proof: proof, param_names: ps |> fold(init: empty_set(), f: (acc, p) => set_insert(acc, p)), locals_admitted: false)
       with(emit_info, { moved_argument_occurrences: set_union(emit_info.moved_argument_occurrences, moved) })
     _ => emit_info
   }
