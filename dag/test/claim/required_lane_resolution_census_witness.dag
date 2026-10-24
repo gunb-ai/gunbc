@@ -184,15 +184,19 @@ test fn never_admitted_is_a_typed_arm_carrying_its_evidence() -> Bool {
 // THE DELETING COMMIT IS DERIVED, NEVER HAND-WRITTEN (the manager's condition). A hard-coded
 // 40-hex SHA inside the query would be a hand-written attribution -- the defect class DESIGN
 // section 4b calls out (a written-down value posing as an observation). The attribution comes
-// from a git pickaxe over the module header plus a parent-contains check, and the instrument
-// carries no literal SHA.
+// from a bounded path-history query (`git log --diff-filter=D -- '*/<leaf>.dag'`, with
+// -m --full-history so a merge-commit deletion is not hidden by path simplification) plus a
+// parent-blob header check -- NOT a literal SHA written into the source. The claim pins BOTH
+// halves: the derivation is present (the query words and the typed attribution) AND the source
+// carries no literal commit SHA to pose as an observation.
 test fn the_deleting_commit_is_a_derivation_not_a_written_value() -> Bool {
   let census_rs = filesystem_read(path: "src/v1/stage0/src/cli_run/required_lane_resolution_census.rs").content
-  census_rs.contains("\"-S\"")
-    && census_rs.contains("\"log\"")
-    && census_rs.contains("\"grep\"")
+  census_rs.contains("\"log\"")
+    && census_rs.contains("--diff-filter")
+    && census_rs.contains("--full-history")
     && census_rs.contains("rev-list")
     && census_rs.contains("DeletionAttribution")
+    && !census_rs.contains("0123456789abcdef0123456789abcdef01234567")
 }
 
 // THE RECEIPT AND THE QUERY ARE PAIRED. The census header cannot keep pointing at the typed arm
