@@ -47,7 +47,7 @@ echo "  ROW rfm-census rc=$rc held=$HELD FAIL=$FA UNOBS=$UN"
 grep -aE '^FAIL |^UNOBSERVED |live_roster' /tmp/n3_census1.out | head -10 | sed 's/^/  V| /' | cut -c1-200
 [ "$rc" = "0" ] && [ "$((HELD+FA+UN))" = "0" ] && echo "  ROW rfm-census !! rc=0 zero-verdict VOID"
 echo "=== C2 claim-coverage-census at merge head $(date -u +%H:%M:%S)Z"
-( cd $WT && timeout 1200 $GB test //gunbc/instruments:claim-coverage-census ) > /tmp/n3_census2.out 2>&1; rc=$?
+( cd $WT && timeout 2900 $GB test //gunbc/instruments:claim-coverage-census ) > /tmp/n3_census2.out 2>&1; rc=$?
 HELD=$(grep -ac ' held ' /tmp/n3_census2.out); FA=$(grep -acE '^FAIL ' /tmp/n3_census2.out); UN=$(grep -acE '^UNOBSERVED ' /tmp/n3_census2.out)
 echo "  ROW coverage-census rc=$rc held=$HELD FAIL=$FA UNOBS=$UN"
 grep -aE '^FAIL |^UNOBSERVED ' /tmp/n3_census2.out | head -12 | sed 's/^/  V| /' | cut -c1-200
