@@ -214,7 +214,7 @@ test fn a_stopped_row_is_nothing_presented() -> Bool {
 
 test fn an_uncatalogued_status_on_a_named_row_refuses_keeping_the_wire() -> Bool {
   match step(configurations: presenting(name: desired_census as String, status: "16"), detach: host_off) {
-    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: _, unread: u, configurations: _ } } => redirection_unread_wire(unread: u) == 16
+    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: _, unread: u, refusal: _, configurations: _ } } => redirection_unread_wire(unread: u) == 16
     _ => false
   }
 }
@@ -814,7 +814,7 @@ test fn an_unreadable_row_in_the_readback_does_not_establish_a_detach() -> Bool 
 
 test fn an_unnamed_row_with_an_uncatalogued_status_keeps_its_wire() -> Bool {
   match step(configurations: unnamed_uncatalogued_row, detach: host_off) {
-    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, configurations: _ } } => n == "" && redirection_unread_wire(unread: u) == 16
+    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: _, configurations: _ } } => n == "" && redirection_unread_wire(unread: u) == 16
     _ => false
   }
 }
