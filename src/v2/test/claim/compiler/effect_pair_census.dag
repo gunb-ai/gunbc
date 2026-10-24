@@ -402,17 +402,20 @@ fn epc_loop_node() -> Node {
   }
 }
 
-fn epc_lambda_arg_node() -> Node {
-  Node {
-    kind: ComputationNode { behavior: Branch },
-    children: [epc_pos(target: Node { kind: TypeNode { connective: Arrow }, children: [epc_pos(target: epc_atom(s: ^lam))], occurrence_id: OccurrenceSynthetic })],
-    occurrence_id: OccurrenceSynthetic
-  }
+fn epc_lambda_node() -> Node {
+  Node { kind: TypeNode { connective: Arrow }, children: [epc_pos(target: epc_atom(s: ^lam))], occurrence_id: OccurrenceSynthetic }
 }
 
-fn epc_repeated_counts(node: Node, want: FactRepetition) -> Int {
-  match epc_walk_groups(node: node) {
-    groups => length(xs: repeated_occurrences(sites: epc_sites_in(spans: fold_list(xs: groups, empty: Empty, cons: fn(a, g) { fold_list(xs: epc_spans_of(g: g), empty: a, cons: fn(a2, sp) { list_snoc_item(xs: a2, item: sp) }) })), groups: groups, want: want))
+fn epc_fn_walk() -> Optional<DemandFactWalk> {
+  match epc_tree() {
+    Absent => optional_absent()
+    Present { value: tree } =>
+      optional_present(value: demand_fact_declaration(
+        w: DemandFactWalk { functions: Empty, operations: Empty, audited: Empty, current: Empty, value_call: false, sites: Empty, bodies: Empty, tick: 0, groups: Empty },
+        path: qualified_name_from_dotted_string(dotted: "t.f"),
+        node: epc_lambda_node(),
+        resolved: tree
+      ))
   }
 }
 
@@ -430,27 +433,28 @@ test fn a_loop_repeats_only_its_iterated_body_not_its_domain_holds() -> Bool {
   }
 }
 
-// A lambda is a typed unknown, never counted as repeated: no loop-repeated site, a lambda-unknown one.
+// A lambda walked as a value is exactly one repeated-unknown group: typed unknown, never LoopIteratedBody.
 test fn an_inline_lambda_is_a_typed_unknown_not_a_repeated_site_holds() -> Bool {
-  epc_repeated_counts(node: epc_lambda_arg_node(), want: LoopIteratedBody) == 0
-    && epc_repeated_counts(node: epc_lambda_arg_node(), want: LambdaInstantiationUnknown) == 1
-}
-
-// An ordinary fn (declaration Arrow, body one call) is not repeated: walking the declaration records no repetition group.
-test fn an_ordinary_fn_declaration_records_no_repetition_holds() -> Bool {
-  match epc_tree() {
+  match epc_single_group(node: epc_lambda_node()) {
     Absent => false
-    Present { value: tree } => {
-      let w = demand_fact_declaration(
-        w: DemandFactWalk { functions: Empty, operations: Empty, audited: Empty, current: Empty, value_call: false, sites: Empty, bodies: Empty, tick: 0, groups: Empty },
-        path: qualified_name_from_dotted_string(dotted: "t.f"),
-        node: Node { kind: TypeNode { connective: Arrow }, children: [epc_pos(target: epc_atom(s: ^body))], occurrence_id: OccurrenceSynthetic },
-        resolved: tree
-      )
-      match w.bodies {
-        Cons { head: b, tail: Empty } => length(xs: b.groups) == 0
+    Present { value: g } =>
+      match g {
+        FactRepeatedGroup { children: spans, repetition: r } =>
+          epc_nonempty(spans: spans) && (match r { LambdaInstantiationUnknown => true, _ => false })
         _ => false
       }
-    }
+  }
+}
+
+// The SAME Arrow as a declaration body is the fn's own, not repeated: one body row, no repetition group.
+// RED if the declaration's own Arrow counts as a repetition (the old whole-extent behaviour).
+test fn an_ordinary_fn_declaration_records_no_repetition_holds() -> Bool {
+  match epc_fn_walk() {
+    Absent => false
+    Present { value: w } =>
+      match w.bodies {
+        Cons { head: b, tail: Empty } => length(xs: b.groups) == 0 && length(xs: b.sites) == 1
+        _ => false
+      }
   }
 }
