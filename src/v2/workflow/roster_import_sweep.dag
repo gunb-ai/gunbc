@@ -3154,3 +3154,28 @@ fn roster_control_spellings(root_dir: String) -> String {
     "CONTROL-FAIL spellings: scratch answered " + scratch + ", subdirectory answered " + sub + "\n"
   }
 }
+
+// THE CALL-REWRITE CONTROLS (sort_by wave 1), over fixture text. A file importing std.algebra list_sort_by_key and holding one
+// identity-key site and one field-key site, with a supplied table: the plan must rewrite both calls, bind the field key as an
+// annotated let at the body top, and append the field key's order and annotation type to the existing std.content_hash
+// block. The table naming no order for a site refuses it located (RED).
+fn roster_rewrite_control_text() -> String {
+  "module c.rw\n\nimport std.algebra { list_sort_by_key, string_total_order }\nimport std.content_hash {\n  Fnv1a64Structural,\n}\n\nfn ids(xs: List<String>) -> List<String> {\n  sort_by(xs, fn(x) { x })\n}\n\nfn hs(xs: List<Fnv1a64Structural>) -> List<Fnv1a64Structural> {\n  sort_by(xs, fn(h) { h.digest })\n}\n"
+}
+
+fn roster_rewrite_control_row(orders: List<RosterSiteOrder>) -> RosterHeadRow {
+  RosterHeadRow { call: "sort_by", import_name: "list_sort_by_key", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], rewrite: DirectCallWithSuppliedOrder { home_name: "list_sort_by_key", xs_label: "xs", key_label: "key", order_label: "order", orders: orders } }
+}
+
+fn roster_rewrite_control_plan(table: String) -> String {
+  match roster_parse_site_orders(text: table) {
+    Absent => "TABLE-MALFORMED\n"
+    Present { value: orders } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: _ } => "GRAMMAR-UNPREPARED\n"
+        Accepted { value: prepared, diagnostics: _ } =>
+          let row = roster_rewrite_control_row(orders: orders)
+          roster_render_outcome(path: "control/rw.dag", outcome: roster_sweep_text_rows(sides: roster_home_sides(rows: [row]), path: "control/rw.dag", text: roster_rewrite_control_text(), prepared: prepared, lex: dag_prepared_lex(), candidates: [row], closures: roster_control_closures()))
+      }
+  }
+}
