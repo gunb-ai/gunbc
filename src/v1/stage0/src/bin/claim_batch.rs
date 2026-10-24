@@ -623,6 +623,7 @@ fn write_outcomes_ledger(
     )
     .map(|parsed| parsed.module.name.clone())
     .ok_or_else(|| format!("cannot parse --entry {entry} to read its module path"))?;
+    let resolve_started = std::time::Instant::now();
     let (graph, source_indices) =
         resolve_entry_with_index_typed(index, &wire_entry.to_string_lossy())
             .map_err(|refusal| format!("cannot resolve the wire module: {}", refusal.message()))?;
@@ -666,8 +667,14 @@ fn write_outcomes_ledger(
         ),
         (Some("rows".to_string()), list(row_values)),
     ];
+    let eval_started = std::time::Instant::now();
     let rendered = run_in_context_with_args(&ctx, "render_ledger_from_outcomes", &args, false)
         .map_err(|e| format!("render_ledger_from_outcomes did not evaluate: {e:?}"))?;
+    eprintln!(
+        "[outcomes-out] resolve_wire_closure_ms={} render_eval_ms={}",
+        (eval_started - resolve_started).as_millis(),
+        eval_started.elapsed().as_millis()
+    );
     let field = |fields: &[(v1_compiler::v1_interpreter::Symbol, Value)], name: &str| -> String {
         fields
             .iter()
@@ -1485,7 +1492,8 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod cli_path_resolution_wiring_tests {
     use super::{batch_exit_code, parse_args, validate_explicit_functions, EntryGroup};
-    use v1_compiler::cli_run::workspace_root;
+    use v1_compiler::cli_run::{workspace_root, ClaimOutcome};
+    use v1_compiler::v1_interpreter::ExecutionMode;
 
     fn args(v: &[&str]) -> Vec<String> {
         std::iter::once("claim_batch")
