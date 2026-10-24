@@ -754,7 +754,20 @@ fn translate_project_transform_surface_or_callable_in_arrow_scope(
             }
           )
       }
-    TypeNode { connective: Conj } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
+    TypeNode { connective: Conj } =>
+      match declaration_reference_path_optional(node: operator_child) {
+        Present { value: _ } =>
+          target_project_transform_callable_apply_in_arrow_scope(
+            arrow: arrow,
+            body: body,
+            target: target,
+            source_bool_form: dag_value_expression_projection().bool_literal_form,
+            handle_transform: fn(a, b, t) {
+              translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+            }
+          )
+        Absent => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
+      }
     TypeNode { connective: Disj } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     TypeNode { connective: Arrow } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
     TypeNode { connective: Instantiation } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))

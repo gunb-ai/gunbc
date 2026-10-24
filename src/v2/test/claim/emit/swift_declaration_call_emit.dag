@@ -1,0 +1,153 @@
+module v2.test.claim.emit.swift_declaration_call_emit
+
+import v2.compiler.self_host.closure_emission {
+  ClosureEmission,
+  closure_emission_json,
+  emit_closure_from_ingest_located
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.swift { swift_target_model }
+import v2.test.claim.infer_not_derived_site { nds_read }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.node { Atom, Edge, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SWIFT DECLARATION-CALL CONTROL. A two-parameter declaration and a call to it, taken through the
+// door's own route (emit_closure_from_ingest_located, what `emit --entry` runs) on the Swift target.
+// Swift labels every parameter by default, so a declaration printed `a: T, b: T` is only callable as
+// `f(a: x, b: y)`; the call this emitter prints is positional, so the declaration must print `_ a: T, _ b: T`.
+// RED is the labelled layout: a declaration without the `_` pairs a labelled parameter list with an
+// unlabelled call and swiftc refuses "missing argument label".
+//
+// The CALL refuses typed: Swift's declaration reference spells `Gunbc.<module>.<name>`, but the closure
+// emitter prints bare top-level `func` and no `enum Gunbc { enum v2 { ... } }` wrapper (gunbc#12239; gunbc.guarantee_stall.swift_declaration_reference_call_namespace_unrealized_stall), so
+// the qualified spelling does not resolve. swift_declaration_reference_form carries CalleeScopeUnrealized
+// and the callee arm rejects with target_declaration_reference_namespace_unrealized until that layout lands.
+
+fn sdc_locus() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^sdc_entry_locus } }, children: [])
+}
+
+data sdc_decl_source: String = "module v2.test.sdc_m1\n\nfn f(a: Int, b: Int) -> Int { a }\n"
+
+data sdc_call_source: String = "module v2.test.sdc_m1\n\nfn f(a: Int, b: Int) -> Int { a }\n\nfn g(x: Int, y: Int) -> Int { f(x, y) }\n"
+
+// The swift model with every scope atom of its reference row replaced by `scope`: a SUPPLIED scope
+// value at the call consumer's interface (swift_target_model is the real producer; the unmutated
+// model is the existing refusal claim below).
+fn sdc_swap_scope_edges(edges: List<Edge>, scope: Symbol) -> List<Edge> {
+  fold(edges, init: [], f: fn(acc, e) {
+    list_append(left: acc, right: [Edge { label: e.label, target: sdc_swap_scope(node: e.target, scope: scope), declaration: e.declaration }])
+  })
+}
+
+fn sdc_swap_scope(node: Node, scope: Symbol) -> Node {
+  Node {
+    kind: match node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if id == ^target_callee_scope_unrealized || id == ^target_callee_scope_realized {
+          TypeNode { connective: Atom { identity: scope } }
+        } else {
+          node.kind
+        }
+      TypeNode { connective: _ } => node.kind
+      ComputationNode { behavior: _ } => node.kind
+    },
+    children: sdc_swap_scope_edges(edges: node.children, scope: scope),
+    occurrence_id: node.occurrence_id
+  }
+}
+
+fn sdc_model_with_scope(scope: Symbol) -> TargetModel {
+  let m = swift_target_model()
+  TargetModel {
+    bundle: sdc_swap_scope(node: m.bundle, scope: scope),
+    lex: m.lex,
+    binding_spellings: m.binding_spellings,
+    token_class_emit_transforms: m.token_class_emit_transforms,
+    authority_source_text: m.authority_source_text,
+    runtime_row: m.runtime_row,
+    produced_decl_support: m.produced_decl_support,
+    primitive_realizations: m.primitive_realizations
+  }
+}
+
+fn sdc_emit_with(source: String, target: TargetModel) -> Outcome<ClosureEmission> {
+  emit_closure_from_ingest_located(
+    ingest: [nds_read(source: source, id: ^sdc_m1_read, file: "src/v2/test/fixture/sdc/m1.dag")],
+    entry: qualified_name_from_dotted_string(dotted: "v2.test.sdc_m1"),
+    entry_locus: sdc_locus(),
+    target: target
+  ).outcome
+}
+
+fn sdc_json_with(source: String, target: TargetModel) -> String {
+  match sdc_emit_with(source: source, target: target) {
+    Rejected { diagnostics: _ } => "emit_refused"
+    Accepted { value: emission, diagnostics: _ } => closure_emission_json(emission: emission)
+  }
+}
+
+fn sdc_emit(source: String) -> Outcome<ClosureEmission> {
+  emit_closure_from_ingest_located(
+    ingest: [nds_read(source: source, id: ^sdc_m1_read, file: "src/v2/test/fixture/sdc/m1.dag")],
+    entry: qualified_name_from_dotted_string(dotted: "v2.test.sdc_m1"),
+    entry_locus: sdc_locus(),
+    target: swift_target_model()
+  ).outcome
+}
+
+fn sdc_json(source: String) -> String {
+  match sdc_emit(source: source) {
+    Rejected { diagnostics: _ } => "emit_refused"
+    Accepted { value: emission, diagnostics: _ } => closure_emission_json(emission: emission)
+  }
+}
+
+data sdc_decl_expected: String = "{\"entry\": \"v2.test.sdc_m1\", \"members\": [\"v2.test.sdc_m1\"], \"modules\": [{\"module\": \"v2.test.sdc_m1\", \"emitted\": \"func f(_ a: Int32, _ b: Int32) -> Int32 { return a; }\\n\\n\"}]}"
+
+data sdc_labelled_layout: String = "{\"entry\": \"v2.test.sdc_m1\", \"members\": [\"v2.test.sdc_m1\"], \"modules\": [{\"module\": \"v2.test.sdc_m1\", \"emitted\": \"func f(a: Int32, b: Int32) -> Int32 { return a; }\\n\\n\"}]}"
+
+// GREEN: the two-parameter declaration prints `_ a: T, _ b: T`.
+test fn swift_two_parameter_declaration_prints_unlabelled_params() -> Bool {
+  sdc_json(source: sdc_decl_source) == sdc_decl_expected
+}
+
+// RED: the labelled layout (the same text without the `_` pairs) is not what the emitter prints.
+test fn swift_labelled_parameter_layout_is_not_emitted() -> Bool {
+  sdc_json(source: sdc_decl_source) != sdc_labelled_layout
+}
+
+// The call to it refuses typed and located, per module in the closure emission; the qualified call text
+// is never emitted.
+data sdc_call_refused: String = "{\"entry\": \"v2.test.sdc_m1\", \"members\": [\"v2.test.sdc_m1\"], \"modules\": [{\"module\": \"v2.test.sdc_m1\", \"refused\": \"target_declaration_reference_namespace_unrealized\"}]}"
+
+test fn swift_declaration_call_refuses_typed_namespace_unrealized() -> Bool {
+  sdc_json(source: sdc_call_source) == sdc_call_refused
+}
+
+// POSITIVE CONTROL: the same model with the scope swapped to the DECLARED realized value emits the
+// call (so the swap itself is not what refuses), and the swap to the declared unrealized value
+// reproduces the namespace-unrealized refusal above.
+test fn swift_call_with_realized_scope_is_emitted() -> Bool {
+  let json = sdc_json_with(source: sdc_call_source, target: sdc_model_with_scope(scope: ^target_callee_scope_realized))
+  json != "emit_refused" && json != sdc_call_refused
+}
+
+test fn swift_call_with_swapped_unrealized_scope_refuses_namespace_unrealized() -> Bool {
+  sdc_json_with(source: sdc_call_source, target: sdc_model_with_scope(scope: ^target_callee_scope_unrealized)) == sdc_call_refused
+}
+
+data sdc_call_scope_mutated_refused: String = "{\"entry\": \"v2.test.sdc_m1\", \"members\": [\"v2.test.sdc_m1\"], \"modules\": [{\"module\": \"v2.test.sdc_m1\", \"refused\": \"target_declaration_reference_form_absent\"}]}"
+
+// THE RED: a mutated scope value is not read as realized -- the call is never emitted, and it is not
+// the namespace-unrealized refusal either (a different, earlier, typed refusal).
+test fn swift_call_with_mutated_scope_is_refused_not_emitted() -> Bool {
+  let json = sdc_json_with(source: sdc_call_source, target: sdc_model_with_scope(scope: ^target_callee_scope_mutated))
+  json == sdc_call_scope_mutated_refused
+}

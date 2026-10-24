@@ -200,7 +200,7 @@ test fn swift_target_carries_the_projection_edge_holds() -> Bool {
   match type_expression_projection_from_target(target: swift_target_model()) {
     Accepted { value: decoded, diagnostics: _ } =>
       match decoded.declaration_reference_form {
-        ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _ } => true
+        ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _, callee_scope: _ } => true
         NoDeclarationReferenceForm => false
       }
     Rejected { diagnostics: _ } => false
