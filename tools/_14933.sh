@@ -65,7 +65,8 @@ arm_cgroup () {
 fns_of2 () { perl -0777 -ne 'while(/test fn\s+([A-Za-z0-9_]+)\s*\(/g){print "$1\n"}' $1 | sort -u; }
 runjob () { # runjob <tag> <tree> <bin> <mode wet|dry> <entry> <fns-csv> [extra args...]
   local tag=$1 tree=$2 bin=$3 mode=$4 entry=$5 fns=$6; shift 6
-  [ -s $CKPT/jobs/$tag.out ] && { echo "ROW $tag SKIPPED-CHECKPOINT"; return 0; }
+  if [ "$ARMS" != all ]; then case ",$ARMS," in *",$tag,"*) ;; *) echo "ROW $tag SKIPPED-ARGLIST"; return 0;; esac; fi
+  [ -s $CKPT/jobs/$tag.out ] && { echo "ROW $tag (checkpoint) P=$(grep -c '^PASS ' $CKPT/jobs/$tag.out) F=$(grep -c '^FAIL ' $CKPT/jobs/$tag.out) U=$(grep -c '^UNOBSERVED ' $CKPT/jobs/$tag.out)"; grep -E "^(PASS|FAIL|UNOBSERVED) " $CKPT/jobs/$tag.out | sed "s|^|  $tag |" | head -30; return 0; }
   local el; el=$(elapsed)
   [ "$el" -gt "$DEADLINE" ] && { echo "DEADLINE_REACHED ${el}s before $tag"; return 1; }
   local d=/tmp/933j-$tag; rm -rf $d; mkdir -p $d
@@ -76,7 +77,7 @@ runjob () { # runjob <tag> <tree> <bin> <mode wet|dry> <entry> <fns-csv> [extra 
     timeout 2400 $bin --claim-run $extra --source-root dag --source-root src/v2 --entry $entry --functions "$fns" "$@" ) > $d/out.txt 2>&1
   local rc=$?
   echo "ROW $tag tree=$([ $tree = $H ] && echo head || echo base) mode=$mode rc=$rc P=$(grep -c '^PASS ' $d/out.txt) F=$(grep -c '^FAIL ' $d/out.txt) U=$(grep -c '^UNOBSERVED ' $d/out.txt) el=${el}s"
-  grep -E '^(PASS|FAIL|UNOBSERVED) ' $d/out.txt | sed "s|^|  $tag |" | head -40
+  if [ $(wc -l < $d/out.txt) -le 80 ]; then sed "s|^|  $tag |" $d/out.txt; else grep -E '^(PASS|FAIL|UNOBSERVED) ' $d/out.txt | sed "s|^|  $tag |" | head -40; fi
   grep -E '\[outcomes-out\]|outcomes-out\]' $d/out.txt | head -3 | sed "s|^|  $tag |"
   mv $d/out.txt $CKPT/jobs/$tag.out
 }
