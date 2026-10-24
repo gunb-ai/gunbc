@@ -1,8 +1,10 @@
 module test.claim.ci.binwet_row_function_liveness_witness
 
 import std.types { Bool, Int, List, String }
-import std.algebra { string_contains }
+import std.algebra { string_contains, Cons, Empty }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.integer { int_to_decimal_string }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 
@@ -91,8 +93,34 @@ fn pair_names_live_declaration(row: String) -> Bool {
   }
 }
 
-test fn every_binwet_row_names_an_existing_function() -> Bool {
-  all(roster_rows(), row => pair_names_live_declaration(row))
+fn first_text(xs: List<String>) -> String {
+  match xs {
+    Cons { head: h, tail: _ } => h
+    Empty {} => "(none)"
+  }
+}
+
+fn failing_rows() -> List<String> {
+  filter(roster_rows(), row => !pair_names_live_declaration(row))
+}
+
+// PROCESS-EXIT, NOT BOOL, ON PURPOSE. claim_batch prints `FAIL <fn>` plus the typed reason for a
+// ProcessExit claim (claim_batch.rs ClaimOutcome::ExitFailure) but only the bare function name for
+// a false Bool. This join's whole value is naming WHICH row drifted; a Bool would make the operator
+// re-derive it by hand, and the falsifier run could not show the row's identity in the receipt.
+test fn every_binwet_row_names_an_existing_function() -> ProcessExit {
+  let bad = failing_rows()
+  if length(xs: bad) == 0 {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat(
+        concat("bin_wet roster rows naming a declaration their entry file does not declare: ", int_to_decimal_string(value: length(xs: bad))),
+        concat(" of ", concat(int_to_decimal_string(value: length(xs: roster_rows())), "; first: ", first_text(xs: bad)))
+      )
+    }
+  }
 }
 
 // THE JOIN READS REAL ROWS -- the anti-vacuity arm. A join over an empty parse is vacuously
@@ -101,6 +129,17 @@ test fn every_binwet_row_names_an_existing_function() -> Bool {
 // sits WELL BELOW the population on purpose: it is an anti-vacuity guard, not a second hand-kept
 // row count that rots into the drift it polices. Population on 2026-10-24: 90 rows, after this
 // PR deletes the 2 that named functions moved to another file (92 before).
-test fn the_binwet_roster_join_reads_real_rows() -> Bool {
-  (roster_rows() |> count) >= 80
+test fn the_binwet_roster_join_reads_real_rows() -> ProcessExit {
+  let read = length(xs: roster_rows())
+  if read >= 80 {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: 1,
+      reason: concat(
+        "the roster parse read only ",
+        concat(int_to_decimal_string(value: read), " rows; the authority file moved, re-quoted, or emptied")
+      )
+    }
+  }
 }
