@@ -3277,8 +3277,8 @@ fn native_traversal_census_module(w: NativeTraversalCensusFold, root: Normalized
       if native_traversal_census_in_scope(module_qn: module_qn) {
         let step = native_test_resolve_module(context: w.context, module: module_qn)
         match step.resolved {
-          Rejected { diagnostics: _ } =>
-            NativeTraversalCensusFold { context: step.context, facts: w.facts, unread: Cons { head: qualified_name_to_dotted_string(qn: module_qn), tail: w.unread } }
+          Rejected { diagnostics: d } =>
+            NativeTraversalCensusFold { context: step.context, facts: w.facts, unread: Cons { head: concat(qualified_name_to_dotted_string(qn: module_qn), concat(" cause=", symbol_lexeme(sym: d.head.reason))), tail: w.unread } }
           Accepted { value: resolved, diagnostics: _ } =>
             NativeTraversalCensusFold {
               context: step.context,
