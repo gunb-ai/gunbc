@@ -973,7 +973,15 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
           diagnostics: [make_error_node(diagnostic: InternalError { message: msg, span: sp }, module_name: module_name)]
         }
       Divergent => NodeResolveResult { resolved: divergent_type(), diagnostics: [] }
-      ArgumentsResolved => NodeResolveResult { resolved: unit_type, diagnostics: [] }
+      // ArgumentsResolved is stamped on a use-site application whose cached expansion was dropped, and is rebuilt from
+      // that use's arguments (generic_application_reapplied). A declaration's own inferred slot is not such a use, so
+      // there is nothing to rebuild here: a type is never fabricated for it, the arm refuses.
+      ArgumentsResolved =>
+        let msg = "internal: a declaration's inferred type is an applied use whose expansion was dropped and cannot be rebuilt from a declaration"
+        NodeResolveResult {
+          resolved: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: msg, span: kernel_span(name: module_name)),
+          diagnostics: [make_error_node(diagnostic: InternalError { message: msg, span: kernel_span(name: module_name) }, module_name: module_name)]
+        }
       TypeVariable { id: tv } =>
         NodeResolveResult { resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tv, span: kernel_span(name: tv), ident_span: Present { value: kernel_span(name: tv) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tv } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }, diagnostics: [] }
     }
