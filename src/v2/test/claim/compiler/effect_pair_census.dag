@@ -467,3 +467,19 @@ test fn an_ordinary_fn_declaration_records_no_repetition_holds() -> Bool {
       }
   }
 }
+
+test fn probe_fn_walk_present_holds() -> Bool {
+  match epc_fn_walk() { Absent => false, Present { value: _ } => true }
+}
+
+test fn probe_fn_one_body_holds() -> Bool {
+  match epc_fn_walk() { Absent => false, Present { value: w } => length(xs: w.bodies) == 1 }
+}
+
+test fn probe_fn_no_groups_holds() -> Bool {
+  match epc_fn_walk() { Absent => false, Present { value: w } => match w.bodies { Cons { head: b, tail: _ } => length(xs: b.groups) == 0, _ => false } }
+}
+
+test fn probe_fn_one_site_holds() -> Bool {
+  match epc_fn_walk() { Absent => false, Present { value: w } => match w.bodies { Cons { head: b, tail: _ } => length(xs: b.sites) == 1, _ => false } }
+}
