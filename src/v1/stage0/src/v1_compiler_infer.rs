@@ -17515,6 +17515,26 @@ pub fn field_base_is_in_flight_lambda_param(base: Rc<Node>, scope: Rc<InferScope
     }
 }
 
+pub fn type_node_is_ground(n: Rc<Node>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let own_ground = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: _, .. }) => false,
+            Some(InferredNode::Resolved { node: inner, .. }) => type_node_is_ground(inner.clone()),
+            _ => true,
+        };
+        ((own_ground.clone() && !cast_source_is_solver_unit_placeholder(n.clone())) && {
+            let mut __all = true;
+            for c in n.children.clone().iter().cloned() {
+                if !(type_node_is_ground(c.clone())) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        })
+    })
+}
+
 pub fn is_unsolved_empty_list_element(n: Rc<Node>) -> bool {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: id, .. }) => {
@@ -25786,6 +25806,21 @@ pub fn param_is_generic_decl(
     }
 }
 
+pub fn unify_denoted_actual(actual: Rc<Node>) -> Rc<Node> {
+    match actual.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            if ((actual.connective.clone() == Connective::Arrow)
+                || !type_node_is_ground(rt.clone()))
+            {
+                actual
+            } else {
+                rt.clone()
+            }
+        }
+        _ => actual,
+    }
+}
+
 pub fn unify_generics(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -25877,7 +25912,7 @@ pub fn unify_generic_child_pairs(
                     let __tco_3 = source_indices.clone();
                     let __tco_4 = unify_generics(
                         f.clone(),
-                        a.clone(),
+                        unify_denoted_actual(a.clone()),
                         generic_names.clone(),
                         source_indices.clone(),
                         acc,
