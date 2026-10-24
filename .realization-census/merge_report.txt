@@ -14,3 +14,5 @@ UNBACKED L3+ cells (sheet level with no instance row): 7
   gunbc.tools.review placement L4
   gunbc.spark.managed_grant_install authz L3
   gunbc.workspace_gateway_observer placement L4
+
+correction (stern-ram-763): removed finding gunbc.roadmap.roadmap_dispatch_selection|placement|codex_inventory_offers_for_instance|1 - a duplicate of gunbc.dispatch_selection|placement|codex_inventory_offers_for_instance|1 under a module name that does not exist; findings 951 -> 950
