@@ -1,5 +1,7 @@
 module test.claim.json_emit_corpus_witness
 
+import std.types { Bool, String }
+import std.algebra { string_contains }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 

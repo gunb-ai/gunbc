@@ -1,0 +1,54 @@
+module gunbc.instruments.fleet_convergence_collector_closure
+
+import std.types { List, String }
+import std.process { ExitSuccess, exit_failure }
+import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
+import gunbc.fleet.fleet_convergence_verdict {
+  FleetConverged,
+  FleetNotConverged,
+  FleetEnrollmentRefused,
+  fleet_convergence_verdict,
+}
+import gunbc.fleet.fleet_enrollment { fleet_enrollments, fleet_enrollment_refusals }
+import gunbc.fleet.fleet_receipt_collector {
+  CollectedHostReceipt,
+  collected_receipts_only,
+  fleet_verdict_line,
+}
+
+// THE CONTROL THAT THE COLLECTOR'S CLOSURE RESOLVES (`gunbc test //gunbc/instruments:fleet-convergence-collector-closure`).
+//
+// gunbc.fleet.fleet_receipt_collector collect_fleet_convergence_wet and its fold
+// gunbc.fleet.fleet_convergence_verdict sit outside the required gate's closures, so on 2026-10-23 that
+// closure stopped resolving on main (gunbc.host.host_identity_adopt: unresolved types HostIdentityKnobKey
+// and DeployedIntentV0) while v2-bootstrap stayed green. This entry imports the collector module, so it
+// loads the same import closure the wet route loads; a resolve failure there is SubjectUnreached (exit 2)
+// before any line below runs. Revert the host_identity_adopt imports and this label goes red.
+//
+// Once resolved, it runs the collector's own fold and rendering over ZERO collected receipts, the
+// state a run is in when every host collection fails. With nothing observed the fleet cannot be
+// converged, so FleetConverged here is a defect in the route (exit 1), and either other arm holds.
+// The enrolments are the committed rows (gunbc.fleet.fleet_enrollment); no host is contacted.
+//
+// RUNG: this label is on no required lane. Instrument targets have no route into the required job and
+// the job roster is closed, so a closure that stops resolving turns this red only for whoever runs it
+// (gunbc.rung_drop v1_required_lanes_withdrawn: nothing on the required path refuses a module outside
+// the two emitted closures). It is rostered in instrument-dispatch so it can be run on a fleet slot.
+fn fleet_convergence_collector_closure_wire() -> CliWireResponse {
+  let none_collected: List<CollectedHostReceipt> = []
+  let verdict = fleet_convergence_verdict(
+    enrollments: fleet_enrollments,
+    refusals: fleet_enrollment_refusals,
+    receipts: collected_receipts_only(collected: none_collected),
+  )
+  let line = concat(fleet_verdict_line(verdict: verdict), "\n")
+  match verdict {
+    FleetConverged { host_count: _ } =>
+      CliWirePrintable {
+        bytes: line,
+        exit: exit_failure(reason: "fleet-convergence-collector-closure: the collector's fold read converged with no collected receipt"),
+      }
+    FleetNotConverged { standings: _ } => CliWirePrintable { bytes: line, exit: ExitSuccess }
+    FleetEnrollmentRefused { refusals: _ } => CliWirePrintable { bytes: line, exit: ExitSuccess }
+  }
+}

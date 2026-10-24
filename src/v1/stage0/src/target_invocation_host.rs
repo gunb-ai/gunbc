@@ -679,6 +679,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("fleet-convergence-collector-closure"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/fleet_convergence_collector_closure.dag",
+                function: "fleet_convergence_collector_closure_wire",
+            },
+        ),
+        (
             instrument_label("witness-deferral-freeze-population"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/witness_deferral_freeze_population.dag",
