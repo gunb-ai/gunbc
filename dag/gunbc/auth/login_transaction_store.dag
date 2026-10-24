@@ -17,12 +17,6 @@ module gunbc.auth.login_transaction_store
 
 import gunbc.auth.auth_store_key { AuthStoreKey, auth_store_key_of }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Timestamp }
-import extdeps.filesystem.filesystem_io {
-  FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
-  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
-  FilesystemWritten, FilesystemWriteRefused,
-  FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized,
-}
 import extdeps.languages.json.emit {
   serialize_json, json_object, json_kv, json_string, JsonValue,
 }
@@ -35,6 +29,9 @@ import gunbc.auth.login_transaction_store_root {
   LoginTransactionStore, LoginTransactionConsumeWon, LoginTransactionConsumeAlreadyWon, LoginTransactionConsumeRefused,
   login_transaction_store_read_record, login_transaction_store_record_presence, login_transaction_store_write_record,
   login_transaction_store_delete_record, login_transaction_store_consume,
+  LoginTransactionRecordRead, LoginTransactionRecordAbsent, LoginTransactionRecordUnreadable,
+  LoginTransactionRecordListed, LoginTransactionRecordNotListed, LoginTransactionRecordPresenceUnreadable,
+  LoginTransactionRecordWritten, LoginTransactionRecordWriteRefused, LoginTransactionRecordDeleted, LoginTransactionRecordDeleteRefused,
 }
 
 data login_transaction_file_schema: String = "gunbc-login-transaction/v1"
@@ -192,8 +189,8 @@ fn login_transaction_store_save(store: LoginTransactionStore, transaction: OidcL
 
 fn login_transaction_store_save_keyed(store: LoginTransactionStore, key: AuthStoreKey, transaction: OidcLoginTransaction) -> LoginTransactionStoreSave {
   match login_transaction_store_write_record(store: store, key: key, content: login_transaction_json(transaction: transaction)) {
-    FilesystemWritten { path: _ } => LoginTransactionSaved { state: transaction.state }
-    FilesystemWriteRefused { path: _, error: e } => LoginTransactionSaveRefused { step: "write", reason: e }
+    LoginTransactionRecordWritten => LoginTransactionSaved { state: transaction.state }
+    LoginTransactionRecordWriteRefused { error: e } => LoginTransactionSaveRefused { step: "write", reason: e }
   }
 }
 
@@ -215,18 +212,14 @@ fn login_transaction_store_lookup(store: LoginTransactionStore, state: NonEmptyS
 fn login_transaction_store_lookup_keyed(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTransactionStoreLookup {
   let state = key.value
   match login_transaction_store_read_record(store: store, key: key) {
-    FilesystemFileAbsent(absence) =>
-      LoginTransactionStoreUnknown { state: absence.name as NonEmptyStr }
-    FilesystemFileRead { path: _, content: c } =>
+    LoginTransactionRecordAbsent { name: n } =>
+      LoginTransactionStoreUnknown { state: n as NonEmptyStr }
+    LoginTransactionRecordRead { content: c } =>
       match login_transaction_of_json(text: c) {
         LoginTransactionFileDecoded { transaction: t } => LoginTransactionStoreFound { transaction: t }
         LoginTransactionFileMalformed { detail: d } => LoginTransactionStoreEntryMalformed { state: state, detail: d }
       }
-    FilesystemFileIndeterminate { cause: c } =>
-      LoginTransactionStoreUnread { state: state, detail: c }
-    FilesystemFileObservationsDisagree { path: _, cause: c } =>
-      LoginTransactionStoreUnread { state: state, detail: c }
-    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
+    LoginTransactionRecordUnreadable { detail: c } =>
       LoginTransactionStoreUnread { state: state, detail: c }
   }
 }
@@ -246,29 +239,25 @@ fn login_transaction_store_delete(store: LoginTransactionStore, state: NonEmptyS
 // THE CONSUME: a listed transaction is deleted only by the caller that wins its consume hold, so of two
 // callbacks presenting one state at most one is told Deleted and goes on to the code exchange. The loser
 // deletes nothing. A listed file the delete then finds gone is still a refusal: the listing said it was
-// there, so something else moved it.
+// there, so something else moved it (the store answers that as a refusal).
 fn login_transaction_store_delete_keyed(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTransactionStoreDelete {
   let state = key.value
   match login_transaction_store_record_presence(store: store, key: key) {
-    FilesystemEntryAbsent(absence) =>
-      LoginTransactionNothingToDelete { state: absence.name as NonEmptyStr }
-    FilesystemEntryListed { directory: _, name: _ } => {
+    LoginTransactionRecordNotListed { name: n } =>
+      LoginTransactionNothingToDelete { state: n as NonEmptyStr }
+    LoginTransactionRecordListed => {
       match login_transaction_store_consume(store: store, key: key) {
         LoginTransactionConsumeAlreadyWon => LoginTransactionDeleteRefused { state: state, detail: "transaction consumption already won" }
         LoginTransactionConsumeRefused { detail: d } => LoginTransactionDeleteRefused { state: state, detail: join(["the transaction's consume hold could not be taken: ", d], "") }
         LoginTransactionConsumeWon => {
           match login_transaction_store_delete_record(store: store, key: key) {
-            FilesystemDeleted { path: _ } => LoginTransactionDeleted { state: state }
-            FilesystemDeleteTargetAbsent { path: p } => LoginTransactionDeleteRefused { state: state, detail: join(["the listed transaction file ", p, " was absent when it was deleted"], "") }
-            FilesystemDeleteRefused { path: _, kind: _, error: e } => LoginTransactionDeleteRefused { state: state, detail: e }
-            FilesystemDeleteKindUnrecognized { path: _, observed: _, error: e } => LoginTransactionDeleteRefused { state: state, detail: e }
+            LoginTransactionRecordDeleted => LoginTransactionDeleted { state: state }
+            LoginTransactionRecordDeleteRefused { detail: d } => LoginTransactionDeleteRefused { state: state, detail: d }
           }
         }
       }
     }
-    FilesystemEntryPresenceIndeterminate { cause: c } =>
-      LoginTransactionDeleteRefused { state: state, detail: c }
-    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } =>
+    LoginTransactionRecordPresenceUnreadable { detail: c } =>
       LoginTransactionDeleteRefused { state: state, detail: c }
   }
 }

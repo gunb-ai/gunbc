@@ -1,10 +1,10 @@
 module gunbc.auth.profile_store_root
 
-import std.types { String, NonEmptyStr, FilePath }
+import std.types { String, NonEmptyStr, FilePath, List }
 import extdeps.filesystem.filesystem_io {
-  Filesystem,
-  FilesystemFileObservation, FilesystemFileSubjectRefused, FilesystemReadOutcome, FilesystemReadRefused,
-  FilesystemWriteOutcome, FilesystemWriteRefused, FilesystemListingObservation,
+  Filesystem, filesystem_listing_entry_names,
+  FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+  FilesystemReadSucceeded, FilesystemReadRefused, FilesystemWritten, FilesystemWriteRefused, FilesystemListingObservation,
   FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
   FilesystemEntryNameAdmitted, FilesystemEntryNameRefused,
   filesystem_listing_observation, filesystem_file_observation,
@@ -59,47 +59,82 @@ fn profile_store_listing_at(root: String) -> FilesystemListingObservation {
   filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error)
 }
 
-// ── The store's operations ─────────────────────────────────────────────────────────────────────
+// ── The store's outcomes and operations ──────────────────────────────────────────────────────
+// THE STORE'S OUTCOMES, in the store's own vocabulary, so the business module (gunbc.auth.profile_projection)
+// imports nothing of the filesystem: the filesystem observations are folded once, here. Absence is established
+// from a listing, never from a failed read; every refusal keeps the host's words.
+type ProfileRecordReading
+  = ProfileRecordRead { content: String }
+  | ProfileRecordAbsent
+  | ProfileRecordUnreadable { detail: String }
 
-fn profile_store_list(store: ProfileStore) -> FilesystemListingObservation {
-  profile_store_listing_at(root: store.root as String)
+type ProfileRecordWrite
+  = ProfileRecordWritten
+  | ProfileRecordWriteRefused { error: String }
+
+type ProfileStoreEntries
+  = ProfileStoreEntriesListed { entries: List<String> }
+  | ProfileStoreEntriesRefused { reason: String }
+
+type ProfileListedEntryReading
+  = ProfileListedEntryRead { content: String }
+  | ProfileListedEntryUnreadable { error: String }
+
+fn profile_store_list(store: ProfileStore) -> ProfileStoreEntries {
+  match profile_store_listing_at(root: store.root as String) {
+    FilesystemDirectoryListed(listing) => ProfileStoreEntriesListed { entries: filesystem_listing_entry_names(listing: listing) }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => ProfileStoreEntriesRefused { reason: e }
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => ProfileStoreEntriesRefused { reason: c }
+  }
 }
 
-fn profile_store_read_record(store: ProfileStore, digest_hex: String) -> FilesystemFileObservation {
+fn profile_store_read_record(store: ProfileStore, digest_hex: String) -> ProfileRecordReading {
   let name = profile_store_file_name(digest_hex: digest_hex)
   match admit_filesystem_entry_name(name: name) {
-    FilesystemEntryNameRefused { name: n, cause: c } => FilesystemFileSubjectRefused { directory: store.root as String, name: n, cause: c }
+    FilesystemEntryNameRefused { name: _, cause: c } => ProfileRecordUnreadable { detail: c }
     FilesystemEntryNameAdmitted(_) => {
       let path = join([store.root as String, "/", name], "")
       let read = Filesystem.Read(path: path)
-      filesystem_file_observation(
-        listing: profile_store_list(store: store),
+      match filesystem_file_observation(
+        listing: profile_store_listing_at(root: store.root as String),
         name: name,
         path: path,
         read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-      )
+      ) {
+        FilesystemFileAbsent(_) => ProfileRecordAbsent
+        FilesystemFileRead { path: _, content: c } => ProfileRecordRead { content: c }
+        FilesystemFileIndeterminate { cause: c } => ProfileRecordUnreadable { detail: c }
+        FilesystemFileObservationsDisagree { path: _, cause: c } => ProfileRecordUnreadable { detail: c }
+        FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => ProfileRecordUnreadable { detail: c }
+      }
     }
   }
 }
 
-fn profile_store_write_record(store: ProfileStore, digest_hex: String, content: String) -> FilesystemWriteOutcome {
+fn profile_store_write_record(store: ProfileStore, digest_hex: String, content: String) -> ProfileRecordWrite {
   let name = profile_store_file_name(digest_hex: digest_hex)
   let path = join([store.root as String, "/", name], "")
   match admit_filesystem_entry_name(name: name) {
-    FilesystemEntryNameRefused { name: _, cause: c } => FilesystemWriteRefused { path: path, error: c }
+    FilesystemEntryNameRefused { name: _, cause: c } => ProfileRecordWriteRefused { error: c }
     FilesystemEntryNameAdmitted(_) => {
       let written = Filesystem.WriteOwnerOnly(path: path, content: content)
-      filesystem_write_outcome(path: path, success: written.success, error: written.error)
+      match filesystem_write_outcome(path: path, success: written.success, error: written.error) {
+        FilesystemWritten { path: _ } => ProfileRecordWritten
+        FilesystemWriteRefused { path: _, error: e } => ProfileRecordWriteRefused { error: e }
+      }
     }
   }
 }
 
-fn profile_store_read_listed(store: ProfileStore, entry: String) -> FilesystemReadOutcome {
+fn profile_store_read_listed(store: ProfileStore, entry: String) -> ProfileListedEntryReading {
   match admit_filesystem_entry_name(name: entry) {
-    FilesystemEntryNameRefused { name: _, cause: c } => FilesystemReadRefused { error: c }
+    FilesystemEntryNameRefused { name: _, cause: c } => ProfileListedEntryUnreadable { error: c }
     FilesystemEntryNameAdmitted(_) => {
       let read = Filesystem.Read(path: join([store.root as String, "/", entry], ""))
-      filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadSucceeded { content: c } => ProfileListedEntryRead { content: c }
+        FilesystemReadRefused { error: e } => ProfileListedEntryUnreadable { error: e }
+      }
     }
   }
 }

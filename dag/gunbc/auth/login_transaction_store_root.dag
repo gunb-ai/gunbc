@@ -10,8 +10,12 @@ import gunbc.durable_exclusive_hold_file_store {
 import gunbc.auth.auth_store_key { AuthStoreKey }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
-  FilesystemFileObservation, FilesystemEntryPresence, FilesystemWriteOutcome, FilesystemDelete, FilesystemListingObservation,
+  FilesystemWriteOutcome, FilesystemDelete, FilesystemListingObservation,
   FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  FilesystemWritten, FilesystemWriteRefused,
+  FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized,
   filesystem_listing_observation, filesystem_file_observation, filesystem_entry_presence,
   filesystem_read_outcome, filesystem_write_outcome, filesystem_delete,
 }
@@ -113,30 +117,87 @@ fn login_transaction_delete_entry(store: LoginTransactionStore, name: String) ->
   filesystem_delete(path: path, success: deleted.success, error: deleted.error, error_kind: deleted.error_kind)
 }
 
-// ── The store's operations ─────────────────────────────────────────────────────────────────────
+// ── The store's outcomes and operations ──────────────────────────────────────────────────────
+// THE STORE'S OUTCOMES, in the store's own vocabulary, so the business module
+// (gunbc.auth.login_transaction_store) and the callback route import nothing of the filesystem: the
+// filesystem observations are folded once, here. Absence is established from a listing, never from a failed
+// read, and the absent arm names the entry the listing lacked, as the business fold reported it before the
+// seal. A listed record the delete then finds gone is a refusal: the listing said it was there.
+type LoginTransactionRecordReading
+  = LoginTransactionRecordRead { content: String }
+  | LoginTransactionRecordAbsent { name: String }
+  | LoginTransactionRecordUnreadable { detail: String }
 
-fn login_transaction_store_read_record(store: LoginTransactionStore, key: AuthStoreKey) -> FilesystemFileObservation {
+type LoginTransactionRecordPresence
+  = LoginTransactionRecordListed
+  | LoginTransactionRecordNotListed { name: String }
+  | LoginTransactionRecordPresenceUnreadable { detail: String }
+
+type LoginTransactionRecordWrite
+  = LoginTransactionRecordWritten
+  | LoginTransactionRecordWriteRefused { error: String }
+
+type LoginTransactionRecordDelete
+  = LoginTransactionRecordDeleted
+  | LoginTransactionRecordDeleteRefused { detail: String }
+
+// The staged token form: written (its path is what http.Client.PostFormFromFile reads), and removed.
+type LoginTokenFormStaging
+  = LoginTokenFormStaged { path: String }
+  | LoginTokenFormStageRefused { error: String }
+
+type LoginTokenFormRemoval
+  = LoginTokenFormRemoved
+  | LoginTokenFormRemoveRefused { error: String }
+
+fn login_transaction_delete_refusal(deleted: FilesystemDelete, what: String) -> String? {
+  match deleted {
+    FilesystemDeleted { path: _ } => none
+    FilesystemDeleteTargetAbsent { path: p } => Present { value: join(["the listed ", what, " ", p, " was absent when it was deleted"], "") }
+    FilesystemDeleteRefused { path: _, kind: _, error: e } => Present { value: e }
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: e } => Present { value: e }
+  }
+}
+
+fn login_transaction_store_read_record(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTransactionRecordReading {
   let name = login_transaction_file_name(key: key)
   let path = login_transaction_entry_at(store: store, name: name)
   let read = Filesystem.Read(path: path)
-  filesystem_file_observation(
+  match filesystem_file_observation(
     listing: login_transaction_store_listing_at(root: store.root as String),
     name: name,
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  )
+  ) {
+    FilesystemFileAbsent(absence) => LoginTransactionRecordAbsent { name: absence.name }
+    FilesystemFileRead { path: _, content: c } => LoginTransactionRecordRead { content: c }
+    FilesystemFileIndeterminate { cause: c } => LoginTransactionRecordUnreadable { detail: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => LoginTransactionRecordUnreadable { detail: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => LoginTransactionRecordUnreadable { detail: c }
+  }
 }
 
-fn login_transaction_store_record_presence(store: LoginTransactionStore, key: AuthStoreKey) -> FilesystemEntryPresence {
-  filesystem_entry_presence(listing: login_transaction_store_listing_at(root: store.root as String), name: login_transaction_file_name(key: key))
+fn login_transaction_store_record_presence(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTransactionRecordPresence {
+  match filesystem_entry_presence(listing: login_transaction_store_listing_at(root: store.root as String), name: login_transaction_file_name(key: key)) {
+    FilesystemEntryAbsent(absence) => LoginTransactionRecordNotListed { name: absence.name }
+    FilesystemEntryListed { directory: _, name: _ } => LoginTransactionRecordListed
+    FilesystemEntryPresenceIndeterminate { cause: c } => LoginTransactionRecordPresenceUnreadable { detail: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => LoginTransactionRecordPresenceUnreadable { detail: c }
+  }
 }
 
-fn login_transaction_store_write_record(store: LoginTransactionStore, key: AuthStoreKey, content: String) -> FilesystemWriteOutcome {
-  login_transaction_write_owner_only(store: store, name: login_transaction_file_name(key: key), content: content)
+fn login_transaction_store_write_record(store: LoginTransactionStore, key: AuthStoreKey, content: String) -> LoginTransactionRecordWrite {
+  match login_transaction_write_owner_only(store: store, name: login_transaction_file_name(key: key), content: content) {
+    FilesystemWritten { path: _ } => LoginTransactionRecordWritten
+    FilesystemWriteRefused { path: _, error: e } => LoginTransactionRecordWriteRefused { error: e }
+  }
 }
 
-fn login_transaction_store_delete_record(store: LoginTransactionStore, key: AuthStoreKey) -> FilesystemDelete {
-  login_transaction_delete_entry(store: store, name: login_transaction_file_name(key: key))
+fn login_transaction_store_delete_record(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTransactionRecordDelete {
+  match login_transaction_delete_refusal(deleted: login_transaction_delete_entry(store: store, name: login_transaction_file_name(key: key)), what: "transaction file") {
+    Absent => LoginTransactionRecordDeleted
+    Present { value: d } => LoginTransactionRecordDeleteRefused { detail: d }
+  }
 }
 
 fn login_transaction_store_consume(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTransactionConsumeElection {
@@ -145,18 +206,27 @@ fn login_transaction_store_consume(store: LoginTransactionStore, key: AuthStoreK
 
 // THE CALLBACK'S TOKEN-REQUEST SCRATCH: one owner-only file per state, written, posted and removed in one
 // request (a scratch row, not a store), staged in this store's owner-only directory as it was before the seal.
-// The written arm carries the staged file's path because http.Client.PostFormFromFile reads its body from a
-// path; it names one scratch file, and no store can be minted from it.
+// The staged arm carries the file's path because http.Client.PostFormFromFile reads its body from a path; it
+// names one scratch file, and no store can be minted from it. A form the removal found already gone was not
+// removed by this request, so it refuses with the rest.
 fn login_transaction_token_form_name(key: AuthStoreKey) -> String {
   join([key.value as String, "-token.form"], "")
 }
 
-fn login_transaction_store_stage_token_form(store: LoginTransactionStore, key: AuthStoreKey, form: String) -> FilesystemWriteOutcome {
-  login_transaction_write_owner_only(store: store, name: login_transaction_token_form_name(key: key), content: form)
+fn login_transaction_store_stage_token_form(store: LoginTransactionStore, key: AuthStoreKey, form: String) -> LoginTokenFormStaging {
+  match login_transaction_write_owner_only(store: store, name: login_transaction_token_form_name(key: key), content: form) {
+    FilesystemWritten { path: p } => LoginTokenFormStaged { path: p }
+    FilesystemWriteRefused { path: _, error: e } => LoginTokenFormStageRefused { error: e }
+  }
 }
 
-fn login_transaction_store_remove_token_form(store: LoginTransactionStore, key: AuthStoreKey) -> FilesystemDelete {
-  login_transaction_delete_entry(store: store, name: login_transaction_token_form_name(key: key))
+fn login_transaction_store_remove_token_form(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTokenFormRemoval {
+  match login_transaction_delete_entry(store: store, name: login_transaction_token_form_name(key: key)) {
+    FilesystemDeleted { path: _ } => LoginTokenFormRemoved
+    FilesystemDeleteTargetAbsent { path: p } => LoginTokenFormRemoveRefused { error: join(["the staged form ", p, " was absent when it was removed"], "") }
+    FilesystemDeleteRefused { path: _, kind: _, error: e } => LoginTokenFormRemoveRefused { error: e }
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: e } => LoginTokenFormRemoveRefused { error: e }
+  }
 }
 
 // THE ONE MINT. It takes the instance and nothing else: the root is derived from

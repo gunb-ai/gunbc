@@ -20,14 +20,6 @@ module gunbc.auth.session_store
 
 import gunbc.auth.auth_store_key { AuthStoreKey, auth_store_key_of }
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, Timestamp, Email }
-import extdeps.filesystem.filesystem_io {
-  FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
-  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
-  FilesystemWritten, FilesystemWriteRefused,
-  FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized,
-  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
-  FilesystemReadRefused, FilesystemReadSucceeded,
-}
 import extdeps.languages.json.emit {
   serialize_json, json_object, json_kv, json_string, JsonValue, JsonKeyValue,
 }
@@ -48,6 +40,10 @@ import gunbc.principal_projection {
 }
 import gunbc.auth.session_store_root {
   SessionStore, session_store_file_suffix,
+  SessionRecordRead, SessionRecordAbsent, SessionRecordUnreadable,
+  SessionRecordListed, SessionRecordNotListed, SessionRecordPresenceUnreadable,
+  SessionRecordWritten, SessionRecordWriteRefused, SessionRecordDelete, SessionRecordDeleted, SessionRecordDeleteRefused,
+  SessionStoreEntriesListed, SessionStoreEntriesRefused, SessionListedEntryRead, SessionListedEntryUnreadable,
   session_store_list, session_store_read_record, session_store_record_presence, session_store_write_record,
   session_store_delete_record, session_store_read_listed,
 }
@@ -381,8 +377,8 @@ fn session_store_save(store: SessionStore, session: AuthenticatedSession) -> Ses
 
 fn session_store_save_keyed(store: SessionStore, key: AuthStoreKey, session: AuthenticatedSession) -> SessionStoreSave {
   match session_store_write_record(store: store, key: key, content: authenticated_session_json(session: session)) {
-    FilesystemWritten { path: _ } => SessionStoreSaved { session_id: session.session_id }
-    FilesystemWriteRefused { path: _, error: e } => SessionStoreSaveRefused { step: "write", reason: e }
+    SessionRecordWritten => SessionStoreSaved { session_id: session.session_id }
+    SessionRecordWriteRefused { error: e } => SessionStoreSaveRefused { step: "write", reason: e }
   }
 }
 
@@ -409,18 +405,14 @@ fn session_store_lookup(store: SessionStore, session_id: NonEmptyStr) -> Session
 fn session_store_lookup_keyed(store: SessionStore, key: AuthStoreKey) -> SessionStoreLookup {
   let session_id = key.value
   match session_store_read_record(store: store, key: key) {
-    FilesystemFileAbsent(absence) =>
-      SessionStoreUnknown { session_id: absence.name as NonEmptyStr }
-    FilesystemFileRead { path: _, content: c } =>
+    SessionRecordAbsent { name: n } =>
+      SessionStoreUnknown { session_id: n as NonEmptyStr }
+    SessionRecordRead { content: c } =>
       match authenticated_session_of_json(text: c) {
         SessionFileDecoded { session: s } => SessionStoreFound { session: s }
         SessionFileMalformed { detail: d } => SessionStoreEntryMalformed { session_id: session_id, detail: d }
       }
-    FilesystemFileIndeterminate { cause: c } =>
-      SessionStoreUnread { session_id: session_id, detail: c }
-    FilesystemFileObservationsDisagree { path: _, cause: c } =>
-      SessionStoreUnread { session_id: session_id, detail: c }
-    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
+    SessionRecordUnreadable { detail: c } =>
       SessionStoreUnread { session_id: session_id, detail: c }
   }
 }
@@ -442,31 +434,25 @@ fn session_store_delete(store: SessionStore, session_id: NonEmptyStr) -> Session
   }
 }
 
-// A LISTED FILE THE DELETE FOUND GONE is still a refusal here, as it was when the host's words were
-// the only answer: the listing said it was there, so something else moved it.
-fn session_store_delete_refusal(deleted: FilesystemDelete) -> String? {
+fn session_store_delete_refusal(deleted: SessionRecordDelete) -> String? {
   match deleted {
-    FilesystemDeleted { path: _ } => none
-    FilesystemDeleteTargetAbsent { path: p } => Present { value: join(["the listed session file ", p, " was absent when it was deleted"], "") }
-    FilesystemDeleteRefused { path: _, kind: _, error: e } => Present { value: e }
-    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: e } => Present { value: e }
+    SessionRecordDeleted => none
+    SessionRecordDeleteRefused { detail: d } => Present { value: d }
   }
 }
 
 fn session_store_delete_keyed(store: SessionStore, key: AuthStoreKey) -> SessionStoreDelete {
   let session_id = key.value
   match session_store_record_presence(store: store, key: key) {
-    FilesystemEntryAbsent(absence) =>
-      SessionStoreNothingToDelete { session_id: absence.name as NonEmptyStr }
-    FilesystemEntryListed { directory: _, name: _ } => {
+    SessionRecordNotListed { name: n } =>
+      SessionStoreNothingToDelete { session_id: n as NonEmptyStr }
+    SessionRecordListed => {
       match session_store_delete_refusal(deleted: session_store_delete_record(store: store, key: key)) {
         Absent => SessionStoreDeleted { session_id: session_id }
         Present { value: e } => SessionStoreDeleteRefused { session_id: session_id, detail: e }
       }
     }
-    FilesystemEntryPresenceIndeterminate { cause: c } =>
-      SessionStoreDeleteRefused { session_id: session_id, detail: c }
-    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } =>
+    SessionRecordPresenceUnreadable { detail: c } =>
       SessionStoreDeleteRefused { session_id: session_id, detail: c }
   }
 }
@@ -491,12 +477,10 @@ fn session_store_purge_principal(
   except_session_id: NonEmptyStr,
 ) -> SessionStorePurge {
   match session_store_list(store: store) {
-    FilesystemDirectoryListed(listed) =>
-      session_store_purge_listed(store: store, principal: principal, except_session_id: except_session_id, entries: split(s: listed.entries, delimiter: "\n"))
-    FilesystemDirectoryListingRefused { directory: _, error: e } =>
-      SessionStorePurgeRefused { step: "list", reason: e }
-    FilesystemDirectorySubjectRefused { directory: d, cause: c } =>
-      SessionStorePurgeRefused { step: "list-subject", reason: join(["the store directory ", d, " is not an admitted subject: ", c], "") }
+    SessionStoreEntriesListed { entries: es } =>
+      session_store_purge_listed(store: store, principal: principal, except_session_id: except_session_id, entries: es)
+    SessionStoreEntriesRefused { step: st, reason: r } =>
+      SessionStorePurgeRefused { step: st, reason: r }
   }
 }
 
@@ -557,12 +541,12 @@ fn session_store_purge_targets(
               )
             } else {
               match session_store_read_listed(store: store, entry: entry) {
-                FilesystemReadRefused { error: e } =>
+                SessionListedEntryUnreadable { error: e } =>
                   SessionStorePurgePlanRefused {
                     step: join(["read ", entry], ""),
                     reason: e,
                   }
-                FilesystemReadSucceeded { content: c } =>
+                SessionListedEntryRead { content: c } =>
                   match authenticated_session_of_json(text: c) {
                     SessionFileMalformed { detail: d } =>
                       SessionStorePurgePlanRefused {

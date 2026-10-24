@@ -7,7 +7,7 @@ import gunbc.auth.session { SessionCookieAbsent, SessionCookieUnread, SessionCoo
 import gunbc.auth.session_store_root { SessionStore, SessionStoreReady, SessionStoreUnready, session_store }
 import gunbc.auth.session_store { session_cookie_standing_of_lookup, session_store_save, session_store_delete, session_store_purge_principal, SessionStoreSaved, SessionStoreSaveRefused, SessionStoreDeleted, SessionStoreNothingToDelete, SessionStoreDeleteRefused, SessionStorePurged, SessionStorePurgeRefused }
 import gunbc.auth.oidc_deployment_config { OidcDeploymentConfig, OidcDeploymentConfigLoaded, OidcDeploymentConfigUnavailable, oidc_deployment_config_read }
-import gunbc.auth.login_transaction_store_root { LoginTransactionStore, LoginTransactionStoreReady, LoginTransactionStoreUnready, login_transaction_store, login_transaction_store_stage_token_form, login_transaction_store_remove_token_form }
+import gunbc.auth.login_transaction_store_root { LoginTransactionStore, LoginTransactionStoreReady, LoginTransactionStoreUnready, login_transaction_store, login_transaction_store_stage_token_form, login_transaction_store_remove_token_form, LoginTokenFormStaged, LoginTokenFormStageRefused, LoginTokenFormRemoval, LoginTokenFormRemoved, LoginTokenFormRemoveRefused }
 import gunbc.auth.auth_store_key { auth_store_key_of }
 import gunbc.auth.login_transaction_store { login_transaction_store_save, login_transaction_store_lookup, login_transaction_store_delete, LoginTransactionSaved, LoginTransactionSaveRefused, LoginTransactionStoreFound, LoginTransactionStoreUnknown, LoginTransactionStoreUnread, LoginTransactionStoreEntryMalformed, LoginTransactionDeleted, LoginTransactionNothingToDelete, LoginTransactionDeleteRefused }
 import gunbc.auth.oidc_id_token_verification { InstanceJwksCache, InstanceJwksCacheReady, InstanceJwksCacheUnready, instance_jwks_cache, oidc_id_token_signature_verify, oidc_id_token_wire_decode, OidcIdTokenWireDecoded, OidcIdTokenWireRefused }
@@ -17,7 +17,6 @@ import extdeps.uri.percent_encoding { uri_hex_digit_value, uri_percent_encode_co
 import extdeps.entropy { Urandom }
 import extdeps.clock { Clock }
 import extdeps.http.client
-import extdeps.filesystem.filesystem_io { FilesystemWritten, FilesystemWriteRefused, FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.languages.json.emit { json_bool }
 import extdeps.languages.json.parse { parse_json_document, json_field_string, JsonDocumentParsed, JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed }
@@ -452,9 +451,9 @@ fn auth_callback_exchange_decoded(instance: HostDashboardInstance, transaction: 
                 serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the token request could not be staged\n")
               Present { value: key } => {
                 match login_transaction_store_stage_token_form(store: transactions, key: key, form: form) {
-                  FilesystemWriteRefused { path: _, error: _ } =>
+                  LoginTokenFormStageRefused { error: _ } =>
                     serve_text_response(status: 503, content_type: text_plain_utf8, body: "login refused: the token request could not be staged\n")
-                  FilesystemWritten { path: form_path } => {
+                  LoginTokenFormStaged { path: form_path } => {
                     let got = http.Client.PostFormFromFile(url: "https://oauth2.googleapis.com/token" as NonEmptyStr, request_body_file: form_path, max_seconds: "15" as NonEmptyStr)
                     let cleanup_error = auth_token_form_cleanup_error(cleanup: login_transaction_store_remove_token_form(store: transactions, key: key))
                     match auth_token_exchange_disposition(cleanup_succeeded: cleanup_error == "", cleanup_error: cleanup_error, exchange_succeeded: got.success, exchange_body: got.body) {
@@ -470,14 +469,11 @@ fn auth_callback_exchange_decoded(instance: HostDashboardInstance, transaction: 
   }
 }
 
-// The host's words for a staged form that was not removed; empty when it was. A form the removal found
-// already gone was not removed by this request, so it refuses with the rest.
-fn auth_token_form_cleanup_error(cleanup: FilesystemDelete) -> String {
+// The host's words for a staged form that was not removed; empty when it was.
+fn auth_token_form_cleanup_error(cleanup: LoginTokenFormRemoval) -> String {
   match cleanup {
-    FilesystemDeleted { path: _ } => ""
-    FilesystemDeleteTargetAbsent { path: p } => join(["the staged form ", p, " was absent when it was removed"], "")
-    FilesystemDeleteRefused { path: _, kind: _, error: e } => e
-    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: e } => e
+    LoginTokenFormRemoved => ""
+    LoginTokenFormRemoveRefused { error: e } => e
   }
 }
 

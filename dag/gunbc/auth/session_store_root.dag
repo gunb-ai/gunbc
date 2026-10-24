@@ -1,12 +1,14 @@
 module gunbc.auth.session_store_root
 
-import std.types { String, NonEmptyStr, FilePath }
+import std.types { String, NonEmptyStr, FilePath, List }
 import gunbc.auth.auth_store_key { AuthStoreKey }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
-  FilesystemFileObservation, FilesystemEntryPresence, FilesystemReadOutcome, FilesystemReadRefused,
-  FilesystemWriteOutcome, FilesystemDelete, FilesystemListingObservation,
-  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  FilesystemWritten, FilesystemWriteRefused, FilesystemReadSucceeded, FilesystemReadRefused,
+  FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized,
   FilesystemEntryNameAdmitted, FilesystemEntryNameRefused,
   filesystem_listing_observation, filesystem_file_observation, filesystem_entry_presence,
   filesystem_read_outcome, filesystem_write_outcome, filesystem_delete, admit_filesystem_entry_name,
@@ -68,47 +70,105 @@ fn session_store_record_path(store: SessionStore, key: AuthStoreKey) -> String {
   join([store.root as String, "/", session_store_file_name(key: key)], "")
 }
 
-// THE STORE'S OPERATIONS. read_record answers absence from a listing, never from a failed read
-// (filesystem_file_observation); read_listed reads one entry a listing named (the purge's planning fold), and
-// an entry name the filesystem would not admit as a child of the root is refused as a read, never resolved
-// outside the root.
-fn session_store_list(store: SessionStore) -> FilesystemListingObservation {
-  session_store_listing_at(root: store.root as String)
+// THE STORE'S OUTCOMES, in the store's own vocabulary, so the business module (gunbc.auth.session_store) imports
+// nothing of the filesystem: these are the filesystem observations folded once, here, into what a session store
+// can answer. Each refusal keeps the host's words. Absence is established from a listing, never from a failed
+// read (filesystem_file_observation), and the absent arm names the entry the listing lacked, as the business
+// fold reported it before the seal.
+type SessionRecordReading
+  = SessionRecordRead { content: String }
+  | SessionRecordAbsent { name: String }
+  | SessionRecordUnreadable { detail: String }
+
+type SessionRecordPresence
+  = SessionRecordListed
+  | SessionRecordNotListed { name: String }
+  | SessionRecordPresenceUnreadable { detail: String }
+
+type SessionRecordWrite
+  = SessionRecordWritten
+  | SessionRecordWriteRefused { error: String }
+
+type SessionRecordDelete
+  = SessionRecordDeleted
+  | SessionRecordDeleteRefused { detail: String }
+
+type SessionStoreEntries
+  = SessionStoreEntriesListed { entries: List<String> }
+  | SessionStoreEntriesRefused { step: String, reason: String }
+
+type SessionListedEntryReading
+  = SessionListedEntryRead { content: String }
+  | SessionListedEntryUnreadable { error: String }
+
+// THE STORE'S OPERATIONS. read_listed reads one entry a listing named (the purge's planning fold), and an entry
+// name the filesystem would not admit as a child of the root is refused as a read, never resolved outside the
+// root. A listed record the delete then finds gone is a refusal: the listing said it was there, so something
+// else moved it.
+fn session_store_list(store: SessionStore) -> SessionStoreEntries {
+  match session_store_listing_at(root: store.root as String) {
+    FilesystemDirectoryListed(listed) => SessionStoreEntriesListed { entries: split(s: listed.entries, delimiter: "\n") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => SessionStoreEntriesRefused { step: "list", reason: e }
+    FilesystemDirectorySubjectRefused { directory: d, cause: c } =>
+      SessionStoreEntriesRefused { step: "list-subject", reason: join(["the store directory ", d, " is not an admitted subject: ", c], "") }
+  }
 }
 
-fn session_store_read_record(store: SessionStore, key: AuthStoreKey) -> FilesystemFileObservation {
+fn session_store_read_record(store: SessionStore, key: AuthStoreKey) -> SessionRecordReading {
   let path = session_store_record_path(store: store, key: key)
   let read = Filesystem.Read(path: path)
-  filesystem_file_observation(
-    listing: session_store_list(store: store),
+  match filesystem_file_observation(
+    listing: session_store_listing_at(root: store.root as String),
     name: session_store_file_name(key: key),
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  )
+  ) {
+    FilesystemFileAbsent(absence) => SessionRecordAbsent { name: absence.name }
+    FilesystemFileRead { path: _, content: c } => SessionRecordRead { content: c }
+    FilesystemFileIndeterminate { cause: c } => SessionRecordUnreadable { detail: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => SessionRecordUnreadable { detail: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => SessionRecordUnreadable { detail: c }
+  }
 }
 
-fn session_store_record_presence(store: SessionStore, key: AuthStoreKey) -> FilesystemEntryPresence {
-  filesystem_entry_presence(listing: session_store_list(store: store), name: session_store_file_name(key: key))
+fn session_store_record_presence(store: SessionStore, key: AuthStoreKey) -> SessionRecordPresence {
+  match filesystem_entry_presence(listing: session_store_listing_at(root: store.root as String), name: session_store_file_name(key: key)) {
+    FilesystemEntryAbsent(absence) => SessionRecordNotListed { name: absence.name }
+    FilesystemEntryListed { directory: _, name: _ } => SessionRecordListed
+    FilesystemEntryPresenceIndeterminate { cause: c } => SessionRecordPresenceUnreadable { detail: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => SessionRecordPresenceUnreadable { detail: c }
+  }
 }
 
-fn session_store_write_record(store: SessionStore, key: AuthStoreKey, content: String) -> FilesystemWriteOutcome {
+fn session_store_write_record(store: SessionStore, key: AuthStoreKey, content: String) -> SessionRecordWrite {
   let path = session_store_record_path(store: store, key: key)
   let written = Filesystem.WriteOwnerOnly(path: path, content: content)
-  filesystem_write_outcome(path: path, success: written.success, error: written.error)
+  match filesystem_write_outcome(path: path, success: written.success, error: written.error) {
+    FilesystemWritten { path: _ } => SessionRecordWritten
+    FilesystemWriteRefused { path: _, error: e } => SessionRecordWriteRefused { error: e }
+  }
 }
 
-fn session_store_delete_record(store: SessionStore, key: AuthStoreKey) -> FilesystemDelete {
+fn session_store_delete_record(store: SessionStore, key: AuthStoreKey) -> SessionRecordDelete {
   let path = session_store_record_path(store: store, key: key)
   let deleted = Filesystem.Delete(path: path)
-  filesystem_delete(path: path, success: deleted.success, error: deleted.error, error_kind: deleted.error_kind)
+  match filesystem_delete(path: path, success: deleted.success, error: deleted.error, error_kind: deleted.error_kind) {
+    FilesystemDeleted { path: _ } => SessionRecordDeleted
+    FilesystemDeleteTargetAbsent { path: p } => SessionRecordDeleteRefused { detail: join(["the listed session file ", p, " was absent when it was deleted"], "") }
+    FilesystemDeleteRefused { path: _, kind: _, error: e } => SessionRecordDeleteRefused { detail: e }
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: e } => SessionRecordDeleteRefused { detail: e }
+  }
 }
 
-fn session_store_read_listed(store: SessionStore, entry: String) -> FilesystemReadOutcome {
+fn session_store_read_listed(store: SessionStore, entry: String) -> SessionListedEntryReading {
   match admit_filesystem_entry_name(name: entry) {
-    FilesystemEntryNameRefused { name: _, cause: c } => FilesystemReadRefused { error: c }
+    FilesystemEntryNameRefused { name: _, cause: c } => SessionListedEntryUnreadable { error: c }
     FilesystemEntryNameAdmitted(_) => {
       let read = Filesystem.Read(path: join([store.root as String, "/", entry], ""))
-      filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadSucceeded { content: c } => SessionListedEntryRead { content: c }
+        FilesystemReadRefused { error: e } => SessionListedEntryUnreadable { error: e }
+      }
     }
   }
 }

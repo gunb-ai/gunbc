@@ -1,13 +1,17 @@
 module gunbc.auth.approval_assertion_counter
 
-import std.types { NonEmptyStr, String, Int, HttpStatus }
+import std.types { NonEmptyStr, String, Int, HttpStatus, FilePath }
 import std.logic { Bool }
 import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   SlotStore, file_slot_store, slot_observe, slot_commit,
 }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
-import gunbc.host_state_root { HostStateTree, host_state_tree_path }
+import gunbc.host_state_root { HostStateTree, host_state_tree, host_state_tree_path }
+import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged }
+import gunbc.ownership { Ensured }
+import std.effect_grant { Read, Write, Execute }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
@@ -44,8 +48,7 @@ import std.durable_compare_and_set {
 
 // THE ONE DECLARATION OF THE COUNTER STORE: its member under the host-state tree (gunbc.host_state_root). The
 // store is a host singleton -- one broker deployment, one counter per enrolment -- so its mint takes the tree
-// and nothing else. No directory row derives from it yet because nothing creates this directory today (the
-// broker install converges the device store and the JWKS cache only); that is recorded, not repaired, here.
+// and nothing else. The directory row (approval_assertion_counter_directory) derives from it too.
 type AssertionCounterSlotsDeclaration { member: NonEmptyStr }
 
 data assertion_counter_slots: AssertionCounterSlotsDeclaration = AssertionCounterSlotsDeclaration {
@@ -67,6 +70,25 @@ type AssertionCounterStore sole_constructor {
 type AssertionCounterStoreReading
   = AssertionCounterStoreReady { store: AssertionCounterStore }
   | AssertionCounterStoreUnready { detail: String }
+
+// THE DIRECTORY THIS STORE DEMANDS, at the path derived from assertion_counter_slots over the production tree,
+// shaped as the device store's row is (gunbc.auth.approval_device_redemption approval_device_store_directory):
+// the device routes that read and write it run as the operator's account, and the counters must survive a
+// retract, so ownership is Ensured. NOTHING ENROLS THIS ROW YET: the broker install converges the device store
+// and the JWKS cache only (gunbc.host.host_effect_realize dark_state_directories_install), so until a
+// host-singleton directory creator lands the mint answers Unready on a real host, exactly as the old
+// literal-root reads refused (gunbc.recurring_failure_mode a_store_root_nothing_creates).
+fn approval_assertion_counter_directory() -> ManagedDirectory {
+  ManagedDirectory {
+    member: "approval-assertion-counter-store" as NonEmptyStr,
+    path: assertion_counter_slots_path(tree: host_state_tree()) as String as FilePath,
+    owner: fleet_posix_operator_user,
+    group_principal: fleet_posix_operator_user,
+    dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
 
 fn assertion_counter_store(tree: HostStateTree) -> AssertionCounterStoreReading {
   let root = assertion_counter_slots_path(tree: tree)

@@ -14,6 +14,10 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
 }
 import gunbc.host_state_root { HostStateTree, host_state_tree, host_state_tree_path }
+import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged }
+import gunbc.ownership { Ensured }
+import std.effect_grant { Read, Write, Execute }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import extdeps.crypto.mac { MacKey, MacSigned, MacKeyMaterialNotHex, mac_sign }
 import extdeps.crypto.signature { SignatureVerification, SignatureInvalid, EcdsaP256Sha256 }
@@ -495,8 +499,7 @@ fn publish_new_device_notice(notice: NewDeviceNotice) -> String?
 // CAS generation does not live there: it is a last-write-wins owner-only file in a sibling directory
 // this module declares, keyed by the server-derived enrolment id (never a request-supplied string --
 // the writer passes the verified enrolment's id). THE ONE DECLARATION: its member under the host-state
-// tree (gunbc.host_state_root). No directory row derives from it yet because nothing creates this
-// directory today; that is recorded, not repaired, here.
+// tree (gunbc.host_state_root); the mint and the directory row (approval_device_push_directory) derive from it.
 type PushRegistrationSlotsDeclaration { member: NonEmptyStr }
 
 data push_registration_slots: PushRegistrationSlotsDeclaration = PushRegistrationSlotsDeclaration {
@@ -530,8 +533,29 @@ fn push_registration_store_write(store: PushRegistrationStore, enrollment_id: No
   }
 }
 
+fn push_registration_slots_path(tree: HostStateTree) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", push_registration_slots.member as String], "") as NonEmptyStr
+}
+
+// THE DIRECTORY THIS STORE DEMANDS, derived from push_registration_slots over the production tree and shaped as
+// the device store's row is (gunbc.auth.approval_device_redemption approval_device_store_directory). NOTHING
+// ENROLS THIS ROW YET (the broker install converges the device store and the JWKS cache only), so until a
+// host-singleton directory creator lands the mint answers Unready on a real host, exactly as the old
+// literal-root write refused (gunbc.recurring_failure_mode a_store_root_nothing_creates).
+fn approval_device_push_directory() -> ManagedDirectory {
+  ManagedDirectory {
+    member: "approval-device-push-store" as NonEmptyStr,
+    path: push_registration_slots_path(tree: host_state_tree()) as String as FilePath,
+    owner: fleet_posix_operator_user,
+    group_principal: fleet_posix_operator_user,
+    dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
+
 fn push_registration_store(tree: HostStateTree) -> PushRegistrationStoreReading {
-  let root = join([host_state_tree_path(tree: tree) as String, "/", push_registration_slots.member as String], "") as NonEmptyStr
+  let root = push_registration_slots_path(tree: tree)
   let listed = Filesystem.List(path: root as String)
   match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => PushRegistrationStoreUnready { detail: join(["the push registration store's directory is not admissible: ", c], "") }
