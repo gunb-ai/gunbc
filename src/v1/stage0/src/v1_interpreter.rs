@@ -23190,6 +23190,66 @@ fn emit_host_materialize_workspace_files(
     Ok(())
 }
 
+/// Which step the emit-host transport ended on: `v2.std.host_run` `EmitHostTransportPhase`.
+#[derive(Clone, Copy)]
+enum EmitHostTransportPhase {
+    StoppedAtBuild,
+    RanAfterBuild,
+    RanWithoutBuild,
+}
+
+/// Build `v2.std.host_run` `EmitHostTransportResult`, the one shape both emit-host transports
+/// return. The field set is that declaration's; a field it does not declare is not built here.
+fn emit_host_transport_result_value(
+    phase: EmitHostTransportPhase,
+    termination: Value,
+    stdout: &[u8],
+    stderr: &[u8],
+    build_log: Vec<Value>,
+    ctx: &InterpContext,
+) -> Value {
+    let phase_arm = match phase {
+        EmitHostTransportPhase::StoppedAtBuild => "StoppedAtBuild",
+        EmitHostTransportPhase::RanAfterBuild => "RanAfterBuild",
+        EmitHostTransportPhase::RanWithoutBuild => "RanWithoutBuild",
+    };
+    // std.types Bytes is a list of octets in this interpreter (expect_byte_vec reads it back).
+    let octets = |bytes: &[u8]| {
+        list_value(
+            bytes
+                .iter()
+                .map(|b| Value::Int(*b as i64))
+                .collect::<Vec<Value>>(),
+        )
+    };
+    Value::Record {
+        type_name: ctx.sym("EmitHostTransportResult"),
+        // fields_get is a binary search by Symbol id, so a multi-field record
+        // MUST be sorted at construction; declaration order is interning-order-
+        // dependent and broke .success lookups when #6904 shifted interning.
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("phase"),
+                Value::Variant {
+                    type_name: ctx.sym("EmitHostTransportPhase"),
+                    variant_name: ctx.sym(phase_arm),
+                    fields: Rc::new(Vec::new()),
+                },
+            ),
+            (ctx.sym("termination"), termination),
+            (ctx.sym("stdout"), octets(stdout)),
+            (ctx.sym("stderr"), octets(stderr)),
+            (
+                ctx.sym("build_log"),
+                Value::Record {
+                    type_name: ctx.sym("BuildLog"),
+                    fields: Rc::new(vec![(ctx.sym("lines"), list_value(build_log))]),
+                },
+            ),
+        ])),
+    }
+}
+
 fn emit_host_run_transport_cached_in_workspace(
     workspace: &std::path::Path,
     files: &[(String, String)],
@@ -23201,7 +23261,6 @@ fn emit_host_run_transport_cached_in_workspace(
 ) -> InterpResult<Value> {
     let ready_marker = workspace.join(".native_ready");
     let cold_compile_receipt = workspace.join(".native_cold_compile_nanos");
-    let artifact_lookup_started = std::time::Instant::now();
     // Cold control (falsifier cadence): widen-only — ignoring the ready marker can
     // only force a FULL cold rebuild, never skip work (the compile-clean cold-control
     // pattern). Not an escape hatch: no value of the env makes the run do less.
@@ -23226,7 +23285,6 @@ fn emit_host_run_transport_cached_in_workspace(
     let compile_skipped = !cold_control
         && ready_marker.exists()
         && (!require_transition_timing || recorded_cold_compile_nanos.is_some());
-    let artifact_lookup_nanos = artifact_lookup_started.elapsed().as_nanos();
     eprintln!(
         "[native-cache] key={} compile_skipped={} cold_control={}",
         workspace
@@ -23236,59 +23294,6 @@ fn emit_host_run_transport_cached_in_workspace(
         compile_skipped,
         cold_control
     );
-
-    let transport_result = |phase: &str,
-                            termination: Value,
-                            stdout: &[u8],
-                            stderr: &[u8],
-                            build_log: Vec<Value>,
-                            compile_skipped: bool,
-                            cold_compile_nanos: u128,
-                            native_execution_nanos: u128|
-     -> Value {
-        Value::Record {
-            type_name: ctx.sym("EmitHostTransportResult"),
-            // fields_get is a binary search by Symbol id, so a multi-field record
-            // MUST be sorted at construction; declaration order is interning-order-
-            // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), str_value(phase.to_string())),
-                (ctx.sym("termination"), termination),
-                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
-                (
-                    ctx.sym("artifact_lookup_nanos"),
-                    Value::Int(artifact_lookup_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("cold_compile_nanos"),
-                    Value::Int(cold_compile_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("native_execution_nanos"),
-                    Value::Int(native_execution_nanos.min(i64::MAX as u128) as i64),
-                ),
-                (
-                    ctx.sym("stdout_octets"),
-                    list_value(
-                        stdout
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("stderr_octets"),
-                    list_value(
-                        stderr
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (ctx.sym("build_log"), list_value(build_log)),
-            ])),
-        }
-    };
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
@@ -23316,23 +23321,19 @@ fn emit_host_run_transport_cached_in_workspace(
             )));
             if !out.status.success() {
                 build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
-                return Ok(transport_result(
-                    "build",
+                return Ok(emit_host_transport_result_value(
+                    EmitHostTransportPhase::StoppedAtBuild,
                     process_termination_value(&out.status, ctx),
                     &out.stdout,
                     &out.stderr,
                     build_log,
-                    false,
-                    compile_started.elapsed().as_nanos(),
-                    0,
+                    ctx,
                 ));
             }
         }
 
         let cold_compile_nanos = compile_started.elapsed().as_nanos();
-        let native_started = std::time::Instant::now();
         let out = run_command(run_argv)?;
-        let native_execution_nanos = native_started.elapsed().as_nanos();
         build_log.push(str_value(format!(
             "{} -> {}",
             run_argv.join(" "),
@@ -23354,36 +23355,30 @@ fn emit_host_run_transport_cached_in_workspace(
                 )
             })?;
         }
-        return Ok(transport_result(
-            "run",
+        return Ok(emit_host_transport_result_value(
+            EmitHostTransportPhase::RanAfterBuild,
             process_termination_value(&out.status, ctx),
             &out.stdout,
             &out.stderr,
             build_log,
-            false,
-            cold_compile_nanos,
-            native_execution_nanos,
+            ctx,
         ));
     }
 
-    let native_started = std::time::Instant::now();
     let out = run_command(run_argv)?;
-    let native_execution_nanos = native_started.elapsed().as_nanos();
     let mut build_log: Vec<Value> = Vec::new();
     build_log.push(str_value(format!(
         "{} -> {}",
         run_argv.join(" "),
         process_termination_label(&out.status)
     )));
-    Ok(transport_result(
-        "run_cached",
+    Ok(emit_host_transport_result_value(
+        EmitHostTransportPhase::RanWithoutBuild,
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
-        true,
-        recorded_cold_compile_nanos.unwrap_or(0),
-        native_execution_nanos,
+        ctx,
     ))
 }
 
@@ -23428,45 +23423,6 @@ fn emit_host_run_transport_in_workspace(
             .map_err(|e| host_tool_spawn_failure("emit_host_run_transport", &argv[0], &program, &e))
     };
 
-    let transport_result = |phase: &str,
-                            termination: Value,
-                            stdout: &[u8],
-                            stderr: &[u8],
-                            build_log: Vec<Value>,
-                            compile_skipped: bool|
-     -> Value {
-        Value::Record {
-            type_name: ctx.sym("EmitHostTransportResult"),
-            // fields_get is a binary search by Symbol id, so a multi-field record
-            // MUST be sorted at construction; declaration order is interning-order-
-            // dependent and broke .success lookups when #6904 shifted interning.
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("phase"), str_value(phase.to_string())),
-                (ctx.sym("termination"), termination),
-                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
-                (
-                    ctx.sym("stdout_octets"),
-                    list_value(
-                        stdout
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("stderr_octets"),
-                    list_value(
-                        stderr
-                            .iter()
-                            .map(|b| Value::Int(*b as i64))
-                            .collect::<Vec<Value>>(),
-                    ),
-                ),
-                (ctx.sym("build_log"), list_value(build_log)),
-            ])),
-        }
-    };
-
     let mut build_log: Vec<Value> = Vec::new();
     for argv in build_argvs {
         let out = run_command(argv)?;
@@ -23477,13 +23433,13 @@ fn emit_host_run_transport_in_workspace(
         )));
         if !out.status.success() {
             build_log.push(str_value(String::from_utf8_lossy(&out.stderr).to_string()));
-            return Ok(transport_result(
-                "build",
+            return Ok(emit_host_transport_result_value(
+                EmitHostTransportPhase::StoppedAtBuild,
                 process_termination_value(&out.status, ctx),
                 &out.stdout,
                 &out.stderr,
                 build_log,
-                false,
+                ctx,
             ));
         }
     }
@@ -23494,13 +23450,13 @@ fn emit_host_run_transport_in_workspace(
         run_argv.join(" "),
         process_termination_label(&out.status)
     )));
-    Ok(transport_result(
-        "run",
+    Ok(emit_host_transport_result_value(
+        EmitHostTransportPhase::RanAfterBuild,
         process_termination_value(&out.status, ctx),
         &out.stdout,
         &out.stderr,
         build_log,
-        false,
+        ctx,
     ))
 }
 
