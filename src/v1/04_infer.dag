@@ -7613,7 +7613,10 @@ fn non_text_kernel_cast_into_text_diags(source_reading: HostTextSourceReading, s
 // which kernels have no route is ONE list here rather than one per crossing.
 //   - HostTextRouteAbsentNominal: a declared product or coproduct (value_type_is_declared_nominal).
 //   - HostTextRouteAbsentKernel: a non-text kernel value -- the kernel mints Int, Float, Bool and
-//     Unit by mint provenance, and std.nat Nat by the declaration its reference resolves to.
+//     Unit by mint provenance, and std.nat Nat and std.types Bool by the declaration their reference
+//     resolves to. std.types declares Bool as the coproduct True | False, so its head exposure reads
+//     as a coproduct; value_type_is_declared_nominal exempts that exact declaration (as it exempts
+//     std.types Unit), so Bool reaches this arm and not the nominal one.
 //   - HostTextSourceAdmissible: neither; text itself, a type variable, and every other source this
 //     reading does not judge.
 type HostTextSourceReading
@@ -7625,7 +7628,8 @@ fn host_text_source_reading(t: Node, scope: InferScope) -> HostTextSourceReading
   if value_type_is_declared_nominal(t: t, scope: scope) { HostTextRouteAbsentNominal }
   else if node_is_kernel_mint_named(n: t, name: "Int") { HostTextRouteAbsentKernel { kernel: "Int" } }
   else if node_is_kernel_mint_named(n: t, name: "Float") { HostTextRouteAbsentKernel { kernel: "Float" } }
-  else if node_is_kernel_mint_named(n: t, name: "Bool") { HostTextRouteAbsentKernel { kernel: "Bool" } }
+  else if node_is_kernel_mint_named(n: t, name: "Bool")
+    || type_node_names_declaration(n: t, wanted: decl_ref(module_path: "std.types", decl_name: "Bool"), scope: scope) { HostTextRouteAbsentKernel { kernel: "Bool" } }
   else if node_is_kernel_mint_named(n: t, name: "Unit") { HostTextRouteAbsentKernel { kernel: "Unit" } }
   else if type_node_names_declaration(n: t, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope) { HostTextRouteAbsentKernel { kernel: "Nat" } }
   else { HostTextSourceAdmissible }
@@ -7657,6 +7661,7 @@ fn value_type_is_declared_nominal(t: Node, scope: InferScope) -> Bool {
       Present { value: d } =>
         !(kernel_grounding_rows |> any(r => declaration_ref_eq(a: r.carrier, b: d)))
           && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Unit"))
+          && !declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Bool"))
     }
 }
 
