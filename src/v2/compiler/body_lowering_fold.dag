@@ -5363,6 +5363,25 @@ fn body_lower_transform_call(operator: Node, args: List<Edge>) -> Node {
   )
 }
 
+// A `name(args)` CALL NODE IS NOT A SYNTHETIC ONE. It is the semantic form of the authored call
+// text, so it stands for that text and takes its occurrence -- v2.std.node node_lowered_from, closed
+// at the root with close_lowered_image exactly as the where-predicate call does and as the
+// index-read twin derives its operator. The bare node_synthetic this replaces made every
+// census fatal anchored on a primary call UNLOCATABLE: v2.compiler.source_root_eval
+// native_census_owner_key answers Absent for OccurrenceSynthetic, so the anchor could never enter
+// the loci map, and the row fell to FileRefusalAtUnresolvedNode with occurrence null. The callee
+// spine and the argument nodes are NOT this image: they were lowered from their own authored texts
+// at their own occurrences, and close_lowered_image stops at a node carrying another source.
+fn body_lower_primary_call_node(operator: Node, args: List<Edge>, source: Node) -> Node {
+  close_lowered_image(
+    root: node_lowered_from(
+      kind: ComputationNode { behavior: Transform },
+      children: list_append(left: [Edge { label: Positional, target: operator, declaration: NotADeclaration }], right: args),
+      source: source
+    )
+  )
+}
+
 fn body_lower_arg_operand_read(arg_capture: Node) -> OperandRefRead {
   match body_lower_find_captured(root: arg_capture, emitted: ^dag_surface_expr) {
     ParseSubtreeFound { captured: expr } => body_lower_operand_ref_read(node: expr)
@@ -6389,9 +6408,10 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
                     f: fn(args) {
                       outcome_accepted(
                         value: optional_present(
-                          value: body_lower_transform_call(
+                          value: body_lower_primary_call_node(
                             operator: callee_atom,
-                            args: args
+                            args: args,
+                            source: stripped
                           )
                         )
                       )
@@ -6994,6 +7014,15 @@ fn body_lower_postfix_chain_fold_step(
                 PostfixAccumSpine { segments: segments } =>
                   outcome_with_diagnostics(
                     value: PostfixAccumValue {
+                      // QUALIFIED CALL `m.f(args)` -- NOT YET ROUTED THROUGH body_lower_primary_call_node
+                      // (the one-defect generalization, stated here per DESIGN 6b rather than left implicit).
+                      // The operator here is body_lower_qualified_name_spine_node, which ALREADY stamps
+                      // source.occurrence_id on the spine root; giving the call root the same source would
+                      // place two nodes on one occurrence -- the collision body_lower_index_read_node records
+                      // for the index-read twin, which is why THAT site derives a distinct
+                      // OccurrencePending { caused_by } for its operator instead of reusing source. The same
+                      // caused_by geometry for this call root is the named follow-up PR (its trigger is this
+                      // one landing); it needs its own review because the spine shares the occurrence.
                       node: body_lower_transform_call(
                         operator: body_lower_qualified_name_spine_node(
                           segments: list_snoc_item(xs: segments, item: step_segment),
@@ -7007,6 +7036,12 @@ fn body_lower_postfix_chain_fold_step(
                 PostfixAccumValue { node: receiver } =>
                   outcome_with_diagnostics(
                     value: PostfixAccumValue {
+                      // RECEIVER CALL `recv.f(args)` -- same deferral as the qualified site above, same
+                      // reason shape: the method-name segment and the receiver each stand for text inside
+                      // the same postfix source, so stamping the call root with source without first
+                      // deriving a distinct caused_by occurrence would stack nodes on one identity. The
+                      // caused_by generalization is that same named follow-up PR; until then a census fatal
+                      // anchored on these two call shapes stays FileRefusalAtUnresolvedNode.
                       node: body_lower_transform_call(
                         operator: step_segment,
                         args: list_append(left: [Edge { label: Positional, target: receiver, declaration: NotADeclaration }], right: args)
@@ -7219,28 +7254,48 @@ fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
   )
 }
 
-// THE `is` TEST NODE. `x is V` is Transform[kw_is, x, V] where V is the arm's SOURCE SPELLING, an
-// atom and never a reference: it is not resolved here or by v2.compiler.resolve. Infer matches it
-// against the roster of x's type declaration and records the decided arm as the node's fact.
+// `x is V` IS SUGAR FOR `match x { V => true  _ => false }` and lowers to exactly that Match, the one the
+// seed parser builds for the same source (src/v1/02_parse.dag parse_is_arm_test), so there is one lowering
+// of one concept in two pipelines. V is the arm's SOURCE SPELLING, so the variant pattern IS the authored
+// atom at its own occurrence: infer's Match path reads x's roster and a misspelt or foreign V refuses
+// (infer_match_pattern_variant_not_declared) located at V, inside the `is` expression. The synthesized
+// `true`, `false` and `_` are synthetic nodes, each its own occurrence: sharing V's occurrence id would put four nodes on one identity.
+// NOT YET ROUTED THROUGH node_lowered_from + close_lowered_image like the primary call and the cast
+// (the one-defect generalization, stated here per DESIGN 6b): at those two sites the authored suffix
+// is a node DISTINCT from the members it lowers, but here the suffix's source can BE V's own authored
+// token -- stamping the Match root with it would put root and pattern on one occurrence, the collision
+// this comment already refuses for the synthesized arms. The right shape is the caused_by geometry
+// body_lower_index_read_node derives for its operator (root OccurrencePending { caused_by } keeping V
+// the only Minted), and the walker's behavior over the still-authored V pattern is the named follow-up
+// PR's review item, together with the two postfix call sites in body_lower_postfix_chain_fold_step.
 fn body_lower_is_node(operand: Node, arm: Node) -> Node {
-  node_synthetic(
-    kind: ComputationNode { behavior: Transform },
-    children: [
-      Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_is } }, children: []), declaration: NotADeclaration },
-      Edge { label: Positional, target: operand, declaration: NotADeclaration },
-      Edge { label: Positional, target: arm, declaration: NotADeclaration }
+  lower_match(
+    scrutinee: operand,
+    arms: [
+      body_lower_match_arm_wire(pat_node: arm, body: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_true } }, children: [])),
+      body_lower_match_arm_wire(
+        pat_node: node_synthetic(kind: TypeNode { connective: Atom { identity: wildcard_pattern_identity() } }, children: []),
+        body: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_false } }, children: [])
+      )
     ]
   )
 }
 
 fn body_lower_cast_node(operand: Node, target_type: Node, source: Node) -> Node {
-  node_synthetic(
-    kind: ComputationNode { behavior: Transform },
-    children: [
-      Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_as } }, children: []), declaration: NotADeclaration },
-      Edge { label: Positional, target: operand, declaration: NotADeclaration },
-      cast_target_edge(target_type: target_type)
-    ]
+  // The signature ALREADY NAMED the source and the body dropped it -- the same occurrence loss as
+  // the primary call above, one line deeper in the same builder family. The `as` keyword node is
+  // synthesized text (it is spelled, not part of the authored construct's identity), so it stays
+  // synthetic; the cast node itself stands for the authored suffix and takes its occurrence.
+  close_lowered_image(
+    root: node_lowered_from(
+      kind: ComputationNode { behavior: Transform },
+      children: [
+        Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_as } }, children: []), declaration: NotADeclaration },
+        Edge { label: Positional, target: operand, declaration: NotADeclaration },
+        cast_target_edge(target_type: target_type)
+      ],
+      source: source
+    )
   )
 }
 
