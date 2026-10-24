@@ -13,6 +13,7 @@ set -u
 cd "$(dirname "$0")/.." || exit 9
 mkdir -p /root/workspace/.c4logs968; exec > >(tee /root/workspace/.c4logs968/last.log) 2>&1
 DEADLINE=${1:-2400}
+ARMS=${2:-all}
 START=$(date +%s)
 HEAD_SHA=6f21ff1ced525d79d27cf408b0f0f20e1bbce5e8
 CKPT=/tmp/c4v/ckpt968; mkdir -p $CKPT/jobs
@@ -68,6 +69,7 @@ arm_cgroup () {
 fns_of2 () { perl -0777 -ne 'while(/^test fn\s+([A-Za-z0-9_]+)\s*\(/mg){print "$1\n"}' $1 | sort -u; }
 ce_run () { # ce_run <tag> <bin> <tree> <args...>
   local tag=$1 bin=$2 tree=$3; shift 3
+  if [ "$ARMS" != all ]; then case ",$ARMS," in *",$tag,"*) ;; *) echo "ROW $tag SKIPPED-ARGLIST"; return 0;; esac; fi
   [ -s $CKPT/jobs/$tag.out ] && { echo "ROW $tag SKIPPED-CHECKPOINT"; return 0; }
   local el; el=$(elapsed)
   [ "$el" -gt "$DEADLINE" ] && { echo "DEADLINE_REACHED ${el}s before $tag"; return 1; }
@@ -84,6 +86,7 @@ ce_run () { # ce_run <tag> <bin> <tree> <args...>
 }
 claim_run () { # claim_run <tag> <tree> <bin> <mode> <entry> <fns-csv>
   local tag=$1 tree=$2 bin=$3 mode=$4 entry=$5 fns=$6
+  if [ "$ARMS" != all ]; then case ",$ARMS," in *",$tag,"*) ;; *) echo "ROW $tag SKIPPED-ARGLIST"; return 0;; esac; fi
   [ -s $CKPT/jobs/$tag.out ] && { echo "ROW $tag SKIPPED-CHECKPOINT"; return 0; }
   local el; el=$(elapsed)
   [ "$el" -gt "$DEADLINE" ] && { echo "DEADLINE_REACHED ${el}s before $tag"; return 1; }
@@ -113,7 +116,8 @@ W=dag/test/claim/required_lane_resolution_census_witness.dag
 WF=$(fns_of2 $H/$W | paste -sd, -)
 claim_run Wd $H $CBH dry $W "$WF" || rc=$?
 echo "=== C census instrument (unbound) $(date -u +%H:%M:%S)Z"
-if [ ! -s $CKPT/jobs/C.out ]; then
+if [ "$ARMS" != all ]; then case ",$ARMS," in *,C,*) ;; *) echo "ROW C SKIPPED-ARGLIST"; CKPT_SKIP_C=1;; esac; fi
+if [ -z "${CKPT_SKIP_C:-}" ] && [ ! -s $CKPT/jobs/C.out ]; then
   ( cd $H && timeout 2400 $GBH test //gunbc/instruments:required-lane-resolution-census ) > $CKPT/C.raw 2>&1
   echo "ROW C rc=$? lines=$(wc -l < $CKPT/C.raw)"
   grep -m3 '"kind":"admitted"' $CKPT/C.raw | sed 's|^|  C |'

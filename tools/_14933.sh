@@ -95,7 +95,7 @@ runjob () { # runjob <tag> <tree> <bin> <mode wet|dry> <entry> <fns-csv> [extra 
   local rc=$?
   echo "ROW $tag tree=$([ $tree = $H ] && echo head || echo base) mode=$mode rc=$rc P=$(grep -c '^PASS ' $d/out.txt) F=$(grep -c '^FAIL ' $d/out.txt) U=$(grep -c '^UNOBSERVED ' $d/out.txt) el=${el}s"
   if [ $(wc -l < $d/out.txt) -le 80 ]; then sed "s|^|  $tag |" $d/out.txt; else grep -E '^(PASS|FAIL|UNOBSERVED) ' $d/out.txt | sed "s|^|  $tag |" | head -40; fi
-  grep -E '\[outcomes-out\]|outcomes-out\]' $d/out.txt | head -3 | sed "s|^|  $tag |"
+  grep -aE "outcomes-out" $d/out.txt | head -3 | sed "s|^|  $tag |"
   mv $d/out.txt $CKPT/jobs/$tag.out
 }
 rc=0
@@ -120,6 +120,12 @@ runjob T2 $H $CBH dry $COST $COSTFN || rc=$?
 echo "=== T2b dag+src/v2 NO --outcomes-out BASE $(date -u +%H:%M:%S)Z"
 [ -x $CBB ] || { echo "BASE_BIN_MISSING — will build next pass"; rc=7; }
 [ "$rc" = 0 ] && runjob T2b $B $CBB dry $COST $COSTFN || true
+echo "=== T4 wire entry WITH --outcomes-out (resolve re-measure) $(date -u +%H:%M:%S)Z"
+runjob T4 $H $CBH wet $WIRE "an_unrecognised_outcome_kind_refuses_located_at_the_kind" --outcomes-out /tmp/c4v/14933-ledger-wire.tsv || rc=$?
+echo "=== T1b cost claim WITH flag, targeted resolve line $(date -u +%H:%M:%S)Z"
+if [ -s $CKPT/jobs/T1b.out ]; then echo "ROW T1b (checkpoint)"; grep -aE "outcomes-out|^PASS " $CKPT/jobs/T1b.out | sed 's|^|  T1b |'; else
+runjob T1b $H $CBH dry $COST $COSTFN --outcomes-out /tmp/c4v/14933-ledger-cost.tsv || rc=$?
+fi
 echo "=== T3 --outcomes-out on BASE must refuse $(date -u +%H:%M:%S)Z"
 [ -x $CBB ] && runjob T3 $B $CBB dry $COST $COSTFN --outcomes-out /tmp/c4v/14933-ledger-base.tsv || true
 if [ -s $CKPT/jobs/T2.out ] && [ -s $CKPT/jobs/T2b.out ]; then
