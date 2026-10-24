@@ -159,6 +159,49 @@ test fn the_headers_cited_producer_is_parsed_by_the_bin_it_names() -> Bool {
     && bin.contains("admitted-module-identities:")
 }
 
+// THE PRODUCER PARSES THE QUERY FORM TOO. The header of `gunbc.required_lane_resolution_census`
+// tells a reader to settle a single identity with `claim_executor --required-ci --query-module
+// <identity>`; a citation to a flag the binary does not parse is the dead-reference defect this
+// PR exists to close (review 84624), so the flag the doc names must exist as a parser arm.
+test fn the_query_flag_the_header_names_is_parsed_by_the_bin_it_names() -> Bool {
+  let bin = filesystem_read(path: "src/v1/stage0/src/bin/claim_executor.rs").content
+  bin.contains("\"--query-module\"") && bin.contains("module-admission:")
+}
+
+// THE TYPED STATE EXISTS, WITH ITS EVIDENCE FIELDS. "never admitted" is an arm of
+// `ModuleAdmission` carrying the run's SHA and an OPTIONAL deleting commit -- not silence, and
+// not an absence a reader derives from two missing lines (DESIGN section 5). `index-refused` is
+// the third arm: an identity whose state was never observed is not reported as an absent one.
+test fn never_admitted_is_a_typed_arm_carrying_its_evidence() -> Bool {
+  let census_rs = filesystem_read(path: "src/v1/stage0/src/cli_run/required_lane_resolution_census.rs").content
+  census_rs.contains("pub enum ModuleAdmission")
+    && census_rs.contains("NeverAdmitted")
+    && census_rs.contains("run_sha")
+    && census_rs.contains("deleting_commit")
+    && census_rs.contains("IndexRefused")
+}
+
+// THE DELETING COMMIT IS DERIVED, NEVER HAND-WRITTEN (the manager's condition). A hard-coded
+// 40-hex SHA inside the query would be a hand-written attribution -- the defect class DESIGN
+// section 4b calls out (a written-down value posing as an observation). The attribution comes
+// from a git pickaxe over the module header plus a parent-contains check, and the instrument
+// carries no literal SHA.
+test fn the_deleting_commit_is_a_derivation_not_a_written_value() -> Bool {
+  let census_rs = filesystem_read(path: "src/v1/stage0/src/cli_run/required_lane_resolution_census.rs").content
+  census_rs.contains("\"-S\"")
+    && census_rs.contains("\"log\"")
+    && census_rs.contains("\"grep\"")
+    && census_rs.contains("and_then")
+}
+
+// THE RECEIPT AND THE QUERY ARE PAIRED. The census header cannot keep pointing at the typed arm
+// if the arm disappears, and the arm cannot drift from what the census calls "admitted": both
+// names live in sources that must mention each other.
+test fn the_census_header_points_at_the_typed_query_arm() -> Bool {
+  let census_dag = filesystem_read(path: "dag/gunbc/required_lane_resolution_census.dag").content
+  census_dag.contains("--query-module") && census_dag.contains("never-admitted")
+}
+
 // And the pairing the other way, on the printer: the live entry must still import the receipt
 // printer it is claimed to run, so a rename that moves the printer away from the entry (leaving
 // the header pointing at a function nothing calls) fails here rather than in a head-built run

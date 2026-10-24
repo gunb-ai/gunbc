@@ -115,11 +115,16 @@ fn json_string_list(xs: List<String>) -> String {
 // printed beneath it; one `lane` line per (job, subject) with the identities it resolved; one
 // `admitted` line per admitted identity; and one `unreached` line per unreached identity, so the
 // population is greppable by identity and a consumer never has to re-derive it from a count.
-// THE ADMITTED LINES EXIST TO SEPARATE TWO ABSENCES that were previously one: an identity that
-// appears in no line of this receipt was never admitted -- the ingestion does not know it at all
-// -- while an identity with an `admitted` line and no `unreached` line is admitted and reached.
+// THE ADMITTED LINES EXIST TO SEPARATE TWO ABSENCES that were previously one AT POPULATION
+// GRAIN: an identity with an `admitted` line and no `unreached` line is admitted and reached.
 // Without the admitted lines, "resolved by a lane" and "not a module" both read as absence from
-// the unreached list, and the census could not tell a green lane from a typo.
+// the unreached list, and the census could not tell a green lane from a typo. What absence from
+// BOTH lines MEANS for one identity is NOT left for a reader to infer -- DESIGN section 5
+// refuses absence-as-evidence -- the per-identity verdict is the TYPED ARM its named producer
+// prints: `claim_executor --required-ci --query-module <identity>` answers `never-admitted`
+// with its evidence (the run's SHA, and the deleting commit when history proves one, derived by
+// pickaxe over the module header, never hand-written), or `index-refused` when the state was
+// never observed. The receipt shows the population; the query arm PRIVES the single identity.
 fn census_receipt_lines(c: ResolutionCensus) -> List<String> {
   let summary = concat(concat(concat(concat(
     "{\"kind\":\"summary\",\"instrument\":\"required-lane-resolution-census\",\"admitted\":", to_string(c.admitted |> count)),
