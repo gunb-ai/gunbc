@@ -36,6 +36,7 @@ import gunbc.roadmap.roadmap_alignment {
   AlignmentResolution, AlignmentReady, AlignmentUnresolved, alignment_refusal_reason,
   alignment_chain_fingerprint,
 }
+import gunbc.roadmap.dispatch_worker_handed_set { dispatch_worker_source_root_words }
 import gunbc.roadmap.roadmap_supervisor { supervisor_verdict_basename }
 import gunbc.dispatch_pipe_pane_emit {
   PipePaneEmission,
@@ -2558,23 +2559,25 @@ fn gunbc_harness_spawn_argv(
   attempt_identity: String,
   alignment_chain_fingerprint: String,
 ) -> List<String> {
-  [
-    gunbc_program,
-    "run",
-    "--source-root", join([repo_root, "/dag"], ""),
-    "--source-root", join([repo_root, "/src/v2"], ""),
-    "--entry", join([repo_root, "/", gunbc_harness_worker_entry], ""),
-    "--function", gunbc_harness_worker_function,
-    "--arg", join(["worktree=", worktree_path], ""),
-    "--arg", join(["brief=", brief], ""),
-    "--arg", join(["timeout_program=", timeout_program], ""),
-    "--arg", join(["request_scratch_path=", request_scratch_path], ""),
-    "--arg", join(["events_path=", events_path], ""),
-    "--arg", join(["repo_root=", repo_root], ""),
-    "--arg", join(["gunbc_program=", gunbc_program], ""),
-    "--arg", join(["attempt_identity=", attempt_identity], ""),
-    "--arg", join(["alignment_chain_fingerprint=", alignment_chain_fingerprint], ""),
-  ]
+  concat(
+    [gunbc_program, "run"],
+    concat(
+      dispatch_worker_source_root_words(repo_root: repo_root),
+      [
+        "--entry", join([repo_root, "/", gunbc_harness_worker_entry], ""),
+        "--function", gunbc_harness_worker_function,
+        "--arg", join(["worktree=", worktree_path], ""),
+        "--arg", join(["brief=", brief], ""),
+        "--arg", join(["timeout_program=", timeout_program], ""),
+        "--arg", join(["request_scratch_path=", request_scratch_path], ""),
+        "--arg", join(["events_path=", events_path], ""),
+        "--arg", join(["repo_root=", repo_root], ""),
+        "--arg", join(["gunbc_program=", gunbc_program], ""),
+        "--arg", join(["attempt_identity=", attempt_identity], ""),
+        "--arg", join(["alignment_chain_fingerprint=", alignment_chain_fingerprint], ""),
+      ],
+    ),
+  )
 }
 
 data gunbc_harness_worker_entry: String = "dag/gunbc/harness/harness_cli.dag"
@@ -3204,7 +3207,7 @@ fn dispatch_systemd_unit_container_plan(
             detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }),
           }
         SystemdUnitNameAdmitted { name } =>
-          match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
+          match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole, record_owner: instance.directory_owner) {
             AttemptExitHookRefused { reason } =>
               DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
             AttemptExitHookRendered { exec_line } =>
