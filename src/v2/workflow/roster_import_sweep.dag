@@ -306,7 +306,10 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       home: qualified_name_from_dotted_string(dotted: "std.host_text"),
       // std.host_text declares fn chars(text: HostText); the ambient spelling's callers wrote s:.
       labels: [RosterLabelRename { from: "s", to: "text" }]
-    }
+    },
+    // NAMESPACE-XL wave 2 (operator ruling H1): std.types List and Set are the sole language-facing declaration homes. NO Map row: the kernel Map and FinitelySupportedFunction are two seed representations (algebra Map retype refuses, BuildBuddy 35e3f094-c706-497f-a642-7a07d75f4f20), pending an operator ruling on the crossing.
+    RosterHeadRow { call: "List", import_name: "List", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] },
+    RosterHeadRow { call: "Set", import_name: "Set", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] }
   ]
 }
 
