@@ -21,8 +21,7 @@ import gunbc.managed_directory {
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_user }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_with, fabric_storage_file_operations }
 import std.fabric_storage { FabricStorageOperations }
-import gunbc.filesystem_interface { local_filesystem }
-import extdeps.filesystem.filesystem_io { filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 import extdeps.access.posix { FileMode, PermissionBits, PosixUser, file_mode_bits, file_mode_octal, file_mode_of_octal_text }
 
 // WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
@@ -364,12 +363,10 @@ type FabricStoragePlacedRoot
   = FabricStoragePlacedRootReady { store: FabricStorage }
   | FabricStoragePlacedRootRefused { detail: NonEmptyStr }
 
-// THE ONE OBSERVATION BOTH MINTS MAKE: the derived root is listed through the filesystem, and a root that
+// THE ONE OBSERVATION BOTH MINTS MAKE: the derived root is listed (Filesystem.List), and a root that
 // does not list refuses with its cause rather than yielding a store whose every operation would refuse.
 fn fabric_storage_root_unlisted(root: NonEmptyStr) -> NonEmptyStr? {
-  let fs = local_filesystem
-  let fs_list = fs.list
-  let listing = fs_list(root as String)
+  let listing = Filesystem.List(path: root as String)
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => Present { value: join([root as String, " is not admissible: ", c], "") as NonEmptyStr }
     FilesystemDirectoryListingRefused { directory: _, error: e } => Present { value: join([root as String, " could not be listed: ", e], "") as NonEmptyStr }
