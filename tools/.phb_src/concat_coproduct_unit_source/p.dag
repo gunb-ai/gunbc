@@ -1,4 +1,0 @@
-module probe_host_text_concat_unit
-import std.types { String, Int, List }
-type U = Red | Blue
-fn text(u: U) -> String { concat("id=", u) }
