@@ -15017,6 +15017,8 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
     && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
+// Applied at a container's element position only (a bare top-level actual, such as an Absent or [] fold seed,
+// binds as authored: its resolved type carries the Unit placeholder, not a solution).
 // An actual that is a Resolved wrapper (a kernel container's element position, make_container_type)
 // denotes the type it resolves to, not the wrapper node, which is named for the container's own
 // parameter and so reads back as the callee's generic when bound as its solution. An Arrow actual
@@ -15038,7 +15040,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     && (generic_names |> any(g => g == bind_name)) {
 
     match map_get(acc, bind_name) {
-      Absent => map_insert(acc, bind_name, unify_denoted_actual(actual: actual))
+      Absent => map_insert(acc, bind_name, actual)
       Present { value: _ } => acc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
@@ -15064,7 +15066,7 @@ fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_n
             actuals: actuals |> skip(1),
             generic_names: generic_names,
             source_indices: source_indices,
-            acc: unify_generics(formal: f, actual: a, generic_names: generic_names, source_indices: source_indices, acc: acc)
+            acc: unify_generics(formal: f, actual: unify_denoted_actual(actual: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
           )
         Absent => acc
       }
