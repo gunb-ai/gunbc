@@ -32399,13 +32399,8 @@ pub struct FmBindAcc {
     pub out: String,
 }
 
-pub fn fm_head_bind_lets(head_binds: Rc<Vec<String>>, cursor: String) -> String {
+pub fn fm_head_bind_lets(head_binds: Rc<Vec<String>>, cursor_param: String) -> String {
     {
-        let offset = if (cursor.clone() == "".to_string()) {
-            "".to_string()
-        } else {
-            v1_rt::concat(cursor.clone(), " + ".to_string())
-        };
         let folded = head_binds.iter().cloned().fold(
             Rc::new(FmBindAcc {
                 index: 0,
@@ -32421,17 +32416,14 @@ pub fn fm_head_bind_lets(head_binds: Rc<Vec<String>>, cursor: String) -> String 
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(acc.out.clone(), "let ".to_string()),
-                                            hb.clone(),
-                                        ),
-                                        " = (*__fm)[".to_string(),
+                                        v1_rt::concat(acc.out.clone(), "let ".to_string()),
+                                        hb.clone(),
                                     ),
-                                    offset.clone(),
+                                    " = ".to_string(),
                                 ),
-                                crate::v1_compiler_emit_core_support::to_string(acc.index.clone()),
+                                fm_head_read(cursor_param.clone(), acc.index.clone()),
                             ),
-                            "].clone(); ".to_string(),
+                            ".clone(); ".to_string(),
                         )
                     },
                 })
@@ -32441,18 +32433,44 @@ pub fn fm_head_bind_lets(head_binds: Rc<Vec<String>>, cursor: String) -> String 
     }
 }
 
+pub fn fm_head_read(cursor_param: String, index: i64) -> String {
+    if (cursor_param.clone() == "".to_string()) {
+        v1_rt::concat(
+            v1_rt::concat(
+                "(*__fm)[".to_string(),
+                crate::v1_compiler_emit_core_support::to_string(index.clone()),
+            ),
+            "]".to_string(),
+        )
+    } else {
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(tco_focus_name(cursor_param.clone()), ".index(".to_string()),
+                        tco_cursor_name(cursor_param.clone()),
+                    ),
+                    " + ".to_string(),
+                ),
+                crate::v1_compiler_emit_core_support::to_string(index.clone()),
+            ),
+            ")".to_string(),
+        )
+    }
+}
+
 pub fn fm_spine_binds(
     len: i64,
     head_binds: Rc<Vec<String>>,
     tail_bind: String,
     exact: bool,
-    cursor: String,
+    cursor_param: String,
 ) -> String {
     {
-        let head_lets = fm_head_bind_lets(head_binds.clone(), cursor.clone());
+        let head_lets = fm_head_bind_lets(head_binds.clone(), cursor_param.clone());
         let tail_let = if (((exact.clone() || (tail_bind.clone() == "_".to_string()))
             || (tail_bind.clone() == "".to_string()))
-            || (cursor.clone() != "".to_string()))
+            || (cursor_param.clone() != "".to_string()))
         {
             "".to_string()
         } else {
@@ -32478,19 +32496,22 @@ pub fn fm_spine_binds(
     }
 }
 
-pub fn fm_spine_condition(len: i64, exact: bool, cursor: String) -> String {
+pub fn fm_spine_condition(len: i64, exact: bool, cursor_param: String) -> String {
     {
-        let remaining = if (cursor.clone() == "".to_string()) {
+        let remaining = if (cursor_param.clone() == "".to_string()) {
             "__fm.len()".to_string()
         } else {
             v1_rt::concat(
-                v1_rt::concat("(__fm.len() - ".to_string(), cursor.clone()),
+                v1_rt::concat(
+                    "(__fm.len() - ".to_string(),
+                    tco_cursor_name(cursor_param.clone()),
+                ),
                 ")".to_string(),
             )
         };
         if exact.clone() {
             if (len.clone() == 0) {
-                if (cursor.clone() == "".to_string()) {
+                if (cursor_param.clone() == "".to_string()) {
                     "__fm.is_empty()".to_string()
                 } else {
                     v1_rt::concat(remaining.clone(), " == 0".to_string())
@@ -32517,7 +32538,7 @@ pub fn fm_spine_condition(len: i64, exact: bool, cursor: String) -> String {
 pub fn fm_chain_piece(
     plan: Rc<FmArmPlan>,
     body: String,
-    cursor: String,
+    cursor_param: String,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FmChainPiece> {
     match (*plan.analysis.clone()).clone() {
@@ -32528,13 +32549,13 @@ pub fn fm_chain_piece(
             tail_bind: tb,
             ..
         } => Rc::new(FmChainPiece {
-            cond: fm_spine_condition(l.clone(), e.clone(), cursor.clone()),
+            cond: fm_spine_condition(l.clone(), e.clone(), cursor_param.clone()),
             binds: fm_spine_binds(
                 l.clone(),
                 hbs.clone(),
                 tb.clone(),
                 e.clone(),
-                cursor.clone(),
+                cursor_param.clone(),
             ),
             body: body.clone(),
         }),
@@ -37868,58 +37889,9 @@ pub fn emit_typed_tco_body(
                     __result
                 })
                 .join(&"".to_string());
+                let focus_lets = Rc::new({ let mut __result = Vec::new(); for cp in cursor_params.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1)), "let ".to_string()), tco_base_name(cp.clone())), " = ".to_string()), crate::v1_compiler_emit::emit_ident(crate::v1_compiler_emit::tco_loop_slot_name(cp.clone()), RenderTarget::Rust)), ".clone();\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "#[allow(unused_mut, unused_variables)]\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "let mut ".to_string()), tco_focus_name(cp.clone())), " = ".to_string()), tco_base_name(cp.clone())), ".focus();\n".to_string())); } __result }).join(&"".to_string());
                 let cursor_lets = Rc::new({ let mut __result = Vec::new(); for cp in cursor_params.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1)), "#[allow(unused_mut)]\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "let mut ".to_string()), crate::v1_compiler_emit::emit_ident(cp.clone(), RenderTarget::Rust)), " = ".to_string()), crate::v1_compiler_emit::emit_ident(crate::v1_compiler_emit::tco_loop_slot_name(cp.clone()), RenderTarget::Rust)), ".clone();\n".to_string())); } __result }).join(&"".to_string());
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "{ ".to_string(),
-                                                    cursor_decls.clone(),
-                                                ),
-                                                "\n".to_string(),
-                                            ),
-                                            crate::v1_compiler_emit_core_support::make_indent(
-                                                v1_rt::int_add(depth.clone(), 1),
-                                            ),
-                                        ),
-                                        "loop {\n".to_string(),
-                                    ),
-                                    crate::v1_compiler_emit::tco_loop_iteration_lets(
-                                        Rc::new({
-                                            let mut __result = Vec::new();
-                                            for p in params.iter().cloned() {
-                                                if !cursor_name_in(
-                                                    cursor_params.clone(),
-                                                    crate::v1_std_core::param_node_name_at(
-                                                        p.clone(),
-                                                        si.clone(),
-                                                    ),
-                                                ) {
-                                                    __result.push(p);
-                                                }
-                                            }
-                                            __result
-                                        }),
-                                        si.clone(),
-                                        v1_rt::int_add(depth.clone(), 1),
-                                    ),
-                                ),
-                                cursor_lets.clone(),
-                            ),
-                            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                                depth.clone(),
-                                1,
-                            )),
-                        ),
-                        inner.clone(),
-                    ),
-                    "\n}\n}".to_string(),
-                )
+                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{ ".to_string(), cursor_decls.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "#[allow(unused_labels)]\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "let __tco_result = ".to_string()), tco_rebase_label()), ": loop {\n".to_string()), focus_lets.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "break loop {\n".to_string()), crate::v1_compiler_emit::tco_loop_iteration_lets(Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { if !cursor_name_in(cursor_params.clone(), crate::v1_std_core::param_node_name_at(p.clone(), si.clone())) { __result.push(p); } } __result }), si.clone(), v1_rt::int_add(depth.clone(), 1))), cursor_lets.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), inner.clone()), "\n};\n};\n__tco_result\n}".to_string())
             }
         }
     }
@@ -38084,6 +38056,24 @@ pub fn tco_cursor_name(param: String) -> String {
         "__tco_cursor_".to_string(),
         crate::v1_compiler_emit::emit_ident(param.clone(), RenderTarget::Rust),
     )
+}
+
+pub fn tco_base_name(param: String) -> String {
+    v1_rt::concat(
+        "__tco_base_".to_string(),
+        crate::v1_compiler_emit::emit_ident(param.clone(), RenderTarget::Rust),
+    )
+}
+
+pub fn tco_focus_name(param: String) -> String {
+    v1_rt::concat(
+        "__tco_focus_".to_string(),
+        crate::v1_compiler_emit::emit_ident(param.clone(), RenderTarget::Rust),
+    )
+}
+
+pub fn tco_rebase_label() -> String {
+    "'__tco_rebase".to_string()
 }
 
 pub fn cursor_tail_key(param: String, tail: String) -> String {
@@ -38724,7 +38714,7 @@ pub fn tco_cursor_plan(
 
 pub fn emit_native_freemonoid_tco_match(
     scrut_str: String,
-    cursor: String,
+    cursor_param: String,
     arms: Rc<Vec<Rc<Node>>>,
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
@@ -38763,7 +38753,7 @@ pub fn emit_native_freemonoid_tco_match(
                                 shared_types.clone(),
                                 emit_info.clone(),
                             ),
-                            cursor.clone(),
+                            cursor_param.clone(),
                             si.clone(),
                         ));
                     }
@@ -38890,11 +38880,7 @@ pub fn emit_rust_tco_match(
             ) {
                 emit_native_freemonoid_tco_match(
                     scrut_str.clone(),
-                    if on_cursor.clone() {
-                        tco_cursor_name(cursor_of_scrutinee.clone())
-                    } else {
-                        "".to_string()
-                    },
+                    cursor_of_scrutinee.clone(),
                     arm_list.clone(),
                     fn_name.clone(),
                     params.clone(),
@@ -39574,6 +39560,7 @@ pub fn expr_references_var(
 pub struct TcoAssign {
     pub target: String,
     pub value: String,
+    pub rebases: bool,
 }
 
 pub fn emit_typed_tco_reassign(
@@ -39700,15 +39687,18 @@ pub fn emit_typed_tco_reassign(
                                                 depth_of_tail.clone(),
                                             ),
                                         ),
+                                        rebases: false,
                                     })]),
                                     std::option::Option::None => Rc::new(vec![
                                         Rc::new(TcoAssign {
                                             target: slot.clone(),
                                             value: arg_str.clone(),
+                                            rebases: true,
                                         }),
                                         Rc::new(TcoAssign {
                                             target: tco_cursor_name(assigned_name.clone()),
                                             value: "0".to_string(),
+                                            rebases: true,
                                         }),
                                     ]),
                                 }
@@ -39717,6 +39707,7 @@ pub fn emit_typed_tco_reassign(
                             Rc::new(vec![Rc::new(TcoAssign {
                                 target: slot.clone(),
                                 value: arg_str.clone(),
+                                rebases: false,
                             })])
                         }
                     })
@@ -39726,23 +39717,63 @@ pub fn emit_typed_tco_reassign(
             }
             __result
         });
-        let inner = crate::v1_compiler_emit::shared_tco_reassign(
-            Rc::new({
-                let mut __result = Vec::new();
-                for e in entries.iter().cloned() {
-                    __result.push(e.value.clone());
+        let rebases = {
+            let mut __found = false;
+            for e in entries.iter().cloned() {
+                if e.rebases.clone() {
+                    __found = true;
+                    break;
                 }
-                __result
-            }),
-            Rc::new({
-                let mut __result = Vec::new();
-                for e in entries.iter().cloned() {
-                    __result.push(e.target.clone());
-                }
-                __result
-            }),
-            crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust),
-        );
+            }
+            __found
+        };
+        let spec = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust);
+        let inner = if rebases.clone() {
+            crate::v1_compiler_emit::tco_reassign_core(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for e in entries.iter().cloned() {
+                        __result.push(e.value.clone());
+                    }
+                    __result
+                }),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for e in entries.iter().cloned() {
+                        __result.push(e.target.clone());
+                    }
+                    __result
+                }),
+                spec.tco.temp_var_prefix.clone(),
+                spec.tco.temp_decl_prefix.clone(),
+                spec.tco.temp_assign_op.clone(),
+                spec.block_syntax.stmt_terminator.clone(),
+                v1_rt::concat(
+                    v1_rt::concat("continue ".to_string(), tco_rebase_label()),
+                    ";".to_string(),
+                ),
+                "".to_string(),
+            )
+            .join(&"\n".to_string())
+        } else {
+            crate::v1_compiler_emit::shared_tco_reassign(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for e in entries.iter().cloned() {
+                        __result.push(e.value.clone());
+                    }
+                    __result
+                }),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for e in entries.iter().cloned() {
+                        __result.push(e.target.clone());
+                    }
+                    __result
+                }),
+                spec.clone(),
+            )
+        };
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
