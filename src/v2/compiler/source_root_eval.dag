@@ -3345,7 +3345,7 @@ fn native_traversal_import_round(c: NativeTraversalImportClosure, by_name: Map<S
 fn native_traversal_import_seed(c: NativeTraversalImportClosure, named: String) -> NativeTraversalImportClosure {
   match map_lookup(m: c.reached, key: named) {
     Present { value: _ } => c
-    Absent => NativeTraversalImportClosure { reached: map_insert(m: c.reached, key: named, value: true), frontier: list_snoc_item(xs: c.frontier, item: module) }
+    Absent => NativeTraversalImportClosure { reached: map_insert(m: c.reached, key: named, value: true), frontier: list_snoc_item(xs: c.frontier, item: named) }
   }
 }
 
