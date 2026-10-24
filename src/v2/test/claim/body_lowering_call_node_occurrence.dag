@@ -1,0 +1,671 @@
+module v2.test.claim.body_lowering_call_node_occurrence
+
+// A LOWERED PRIMARY CALL NODE KEEPS ITS SOURCE'S OCCURRENCE, AND THAT IS WHAT MAKES A FATAL ON IT
+// LOCATABLE. `leaf()` in a function body is authored text; v2.compiler.body_lowering_fold lowers it
+// to its semantic form, so the result stands for that text and takes its occurrence
+// (v2.std.node node_lowered_from) closed at the root with close_lowered_image --
+// the same contract the where-predicate call already honours and the index-read twin honours
+// through body_lower_index_read_node. Until this claim, the site built it through the bare
+// node_synthetic in body_lower_transform_call, so the node entered resolve and infer as
+// OccurrenceSynthetic while its argument nodes stayed OccurrenceMinted -- an authored tree under a
+// parent with no authored origin. The cost is observability, exactly where it hurts:
+// v2.compiler.source_root_eval native_census_owner_key answers Absent for OccurrenceSynthetic,
+// so a fatal anchored on the call node could never enter the census loci map and its row fell to
+// FileRefusalAtUnresolvedNode with occurrence null -- the uniform occurrence:null every seat
+// measured for the application_argument_does_not_inhabit class. (Refusal CAUSATION is unchanged
+// here: what an argument fails is the inhabitance relation's business, not this file's.)
+
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text }
+import v2.compiler.source_root_eval { native_census_owner_key }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.occurrence_identity { OccurrenceMinted, OccurrenceSynthetic }
+import std.optional { Absent, Optional, Present }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Match,
+  MatchArmPatternEdge,
+  Node,
+  Symbol,
+  Transform,
+  TypeNode,
+  node_subtree_nodes,
+  positional_child_target_nodes
+}
+import std.algebra { list_at_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.list { first_where }
+import v2.compiler.body_lowering_fold {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  body_lower_dotted_chain_lowered_optional,
+  body_lower_find_captured
+}
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.qualified_name { qualified_name_from_node, qualified_name_to_dotted_string }
+import v2.compiler.infer { infer }
+import v2.std.node_query { find_core_child }
+import v2.std.diagnostic { NodeLocus, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ONE CALL TEXT THIS CLAIM NEEDS: a nullary primary call in a block body -- the shape
+// body_lower_try_primary_ident_call recognizes (name, then a call suffix), the same source the
+// accepted v2.test.claim.body_lowering_block_body_call drives.
+data lowered_call_subject_source: String = "module wall.same\n\nfn leaf() -> Bool = true\n\nfn rollup() -> Bool {\n  leaf()\n}\n"
+
+// SEED DISCIPLINE (M3 msg_1e0159e5 + msg_15a64131): at the seed, a value bound out of a PATTERN --
+// a Cons/Empty element, a generic Optional's Present payload, a generic Outcome's Accepted payload,
+// and even a lambda parameter under a generic combinator -- closes as a free T, so any .field read
+// on it fails 'no field kind on type T'. EVERY field read in this module therefore lives behind a
+// helper with an ANNOTATED parameter: the annotation types the bound value at the application.
+// Accepted claims (v2.test.claim.mtcollins1_boot_acceptance_matrix et al.) rely on this pattern.
+
+// THE CALL NODE IS A TRANSFORM. Field read on the kind, typed by the annotation.
+fn lcn_is_transform(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: _ } => true
+    _ => false
+  }
+}
+
+// THE CALLEE SPINE IS THE AUTHORED `leaf` ATOM. The callee occupies the FIRST positional slot of a
+// lowered call (body_lower_transform_call builds it Positional-first), and
+// positional_child_target_nodes yields typed targets; the bound Present payload is
+// passed onward so lcn_is_leaf_atom's annotation types it.
+fn lcn_is_leaf_atom(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^leaf
+    _ => false
+  }
+}
+
+fn lcn_callee_is_leaf(n: Node) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: n), index: 0) {
+    Present { value: callee } => lcn_is_leaf_atom(n: callee)
+    Absent => false
+  }
+}
+
+fn lcn_is_call_over_leaf(n: Node) -> Bool {
+  lcn_is_transform(n: n) && lcn_callee_is_leaf(n: n)
+}
+
+// THE CALL NODE IS NO LONGER SYNTHETIC -- read off the identity itself (the companion to the
+// census-reader claim below), with the pattern-bound occurrence_id read behind the annotation.
+fn lcn_is_not_synthetic(n: Node) -> Bool {
+  match n.occurrence_id {
+    OccurrenceSynthetic => false
+    _ => true
+  }
+}
+
+fn lcn_call_node_opt(tree: Node) -> Optional<Node> {
+  first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) { lcn_is_call_over_leaf(n: n) })
+}
+
+// The Accepted payload of the normalize outcome is pattern-bound too; its .root read is typed by
+// the annotation (v2.compiler.normalized_tree NormalizedTree:59).
+fn lcn_root(tree: NormalizedTree) -> Node {
+  tree.root
+}
+
+fn lowered_call_tree() -> Optional<Node> {
+  match conserved_normalize_of_text(path: "body_lowering_call_node_occurrence_file", text: lowered_call_subject_source) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } => Present { value: lcn_root(tree: tree) }
+  }
+}
+
+// THE RED, and the property: the call node is LOCATABLE -- native_census_owner_key answers Present,
+// which is false for OccurrenceSynthetic and true for the Minted root a closed image keeps. Before
+// the fix this claim fails; the fix is the site passing its source through node_lowered_from and
+// closing the image. This asserts the census-relevant identity, not a spelling: Pending is also not
+// locatable (owner_key drops it too), so an implementation that marked the root Pending instead of
+// keeping the source's Minted at the root would not pass.
+test fn lowered_primary_call_node_is_locatable_by_the_census() -> Bool {
+  match lowered_call_tree() {
+    Absent => false
+    Present { value: root } =>
+      match lcn_call_node_opt(tree: root) {
+        Absent => false
+        Present { value: call } =>
+          match native_census_owner_key(node: call) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
+// POSITIVE -- THE CAUSATION SIDE IS UNTOUCHED: the call still lowers to a call. It is a Transform
+// over the `leaf` spine, and the tree still normalizes under the conservation admission. A repair
+// that dropped the node, or rebuilt it as something application readers no longer recognize, fails
+// this while the claim above could still pass.
+test fn lowered_primary_call_still_lowers_to_a_transform_over_its_callee() -> Bool {
+  match lowered_call_tree() {
+    Absent => false
+    Present { value: root } =>
+      match lcn_call_node_opt(tree: root) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+// POSITIVE -- THE CALL NODE IS NO LONGER SYNTHETIC. The companion to the locatability claim, read
+// off the identity itself rather than through the census reader, so a change to owner_key's table
+// cannot mask a regression here: the authored call's semantic form must not claim it has no authored
+// origin.
+test fn lowered_primary_call_node_is_not_synthetic() -> Bool {
+  match lowered_call_tree() {
+    Absent => false
+    Present { value: root } =>
+      match lcn_call_node_opt(tree: root) {
+        Absent => false
+        Present { value: call } => lcn_is_not_synthetic(n: call)
+      }
+  }
+}
+
+// THE CAST SITE GETS ITS OWN DISCRIMINATING CLAIM (M3 msg_151dfd41 option A, DESIGN 5 'done means
+// executed'): the fix at body_lower_cast_node is load-bearing, so a regression there must go red in
+// this module. `1 as Int` in a block body routes through the same postfix fold; the lowered cast
+// node is a Transform whose FIRST positional child is the `as` keyword atom (body_lower_cast_node
+// builds [as-atom, operand, cast-target]), which no other lowered shape produces -- the call spine
+// above has its callee at slot 0, never `as`. Same three-claim shape as the primary call: RED =
+// locatable by the census; POSITIVES = still a Transform over its as-spine, and not synthetic.
+data lowered_cast_subject_source: String = "module wall.same\n\nfn castme(x: Int) -> Int {\n  x as Int\n}\n"
+
+fn lcn_is_as_atom(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_as
+    _ => false
+  }
+}
+
+fn lcn_callee_is_as(n: Node) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: n), index: 0) {
+    Present { value: op } => lcn_is_as_atom(n: op)
+    Absent => false
+  }
+}
+
+fn lcn_is_cast_over_int(n: Node) -> Bool {
+  lcn_is_transform(n: n) && lcn_callee_is_as(n: n)
+}
+
+fn lcn_cast_node_opt(tree: Node) -> Optional<Node> {
+  first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) { lcn_is_cast_over_int(n: n) })
+}
+
+fn lowered_cast_tree() -> Optional<Node> {
+  match conserved_normalize_of_text(path: "body_lowering_call_node_occurrence_cast_file", text: lowered_cast_subject_source) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } => Present { value: lcn_root(tree: tree) }
+  }
+}
+
+// THE RED, cast site: without the close at body_lower_cast_node the cast root is OccurrenceSynthetic
+// and native_census_owner_key answers Absent, so this claim fails; with it the root keeps the
+// authored suffix's Minted identity and the claim passes.
+test fn lowered_cast_node_is_locatable_by_the_census() -> Bool {
+  match lowered_cast_tree() {
+    Absent => false
+    Present { value: root } =>
+      match lcn_cast_node_opt(tree: root) {
+        Absent => false
+        Present { value: cast } =>
+          match native_census_owner_key(node: cast) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
+// POSITIVE -- the cast still lowers to its semantic form: a Transform over the as-operator spine.
+test fn lowered_cast_still_lowers_to_a_transform_over_its_as_operator() -> Bool {
+  match lowered_cast_tree() {
+    Absent => false
+    Present { value: root } =>
+      match lcn_cast_node_opt(tree: root) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+// POSITIVE -- read off the identity itself, so a change to owner_key's table cannot mask a
+// regression at the cast site: the authored cast's semantic form must not claim no authored origin.
+test fn lowered_cast_node_is_not_synthetic() -> Bool {
+  match lowered_cast_tree() {
+    Absent => false
+    Present { value: root } =>
+      match lcn_cast_node_opt(tree: root) {
+        Absent => false
+        Present { value: cast } => lcn_is_not_synthetic(n: cast)
+      }
+  }
+}
+
+
+// ============================================================================
+// THE THREE DEFERRED POSTFIX SITES ARE LANDED. The qualified call (`m.f(args)`), the receiver
+// call (`recv.f(args)`) and the `is` node (`x is Pattern`) were the last postfix sites whose
+// semantic form was built through the bare node_synthetic; each now takes the authored suffix's
+// occurrence the way the primary call and the cast above do (body_lower_primary_call_node, or
+// node_lowered_from + close_lowered_image for the `is` node, whose shape stays lower_match's).
+// Each site carries the same triad as the two above: the RED -- the node is locatable by the
+// census (native_census_owner_key answers Present, so a fatal anchored on it enters the loci map
+// instead of falling to FileRefusalAtUnresolvedNode with occurrence null); the POSITIVE -- the
+// shape the lowering produces is unchanged, so no consumer's population moves; and the POSITIVE
+// collision pin -- exactly ONE node in the subtree carries the call root's own Minted id, which
+// is the stacked-identity collision the original deferrals refused to let happen. The realistic
+// regression at each site is back to the bare node_synthetic (the pre-fix shape): it reds that
+// site's RED and that site's pin alone, which is the per-site mutation control. The closes are
+// today ALSO redundant with body_lower_postfix_chain_fold_from's closing pass, so a dropped
+// close_lowered_image ALONE is masked by that pass -- recorded honestly here rather than claimed
+// as a discriminator it does not exercise.
+//
+// ROUTE: these three shapes are driven through the FOLD DOOR itself -- tokenize + parse_module,
+// then body_lower_dotted_chain_lowered_optional on the captured dag_surface_postfix_expr, the
+// same door v2.test.claim.manual.body_lowering_projection_call drives. The door is where the
+// three sites live, and calling it directly keeps the measurement about lowering alone: normalize
+// would put resolve's posture between the site and the assertion.
+
+
+// TOKENIZE, PARSE, HAND THE CAPTURED CHAIN TO THE DOOR. Absent means the pipeline refused
+// somewhere or the door declined the chain -- every claim over it then reports false rather than
+// passing vacuously.
+fn seat16_door_lowered(source: String) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^seat16_occurrence_door_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match body_lower_find_captured(root: artifact.tree, emitted: ^dag_surface_postfix_expr) {
+            ParseSubtreeAbsent => Absent
+            ParseSubtreeFound { captured: captured } =>
+              match body_lower_dotted_chain_lowered_optional(node: captured) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: found, diagnostics: _ } => found
+              }
+          }
+      }
+  }
+}
+
+// THE COLLISION PIN, SHAPED ONCE. The id the call root carries, and how many nodes in its whole
+// subtree carry THAT id. The root itself accounts for exactly one; any second is the stacked
+// identity the deferral comments refused. Members lowered from the same source that the close
+// demotes read OccurrencePending (no id) and members the one allocation pass projected carry
+// fresh ids caused_by the root's -- neither shares the root's value, so a correct close counts 1.
+fn seat16_minted_value(n: Node) -> Optional<Int> {
+  match n.occurrence_id {
+    OccurrenceMinted { id: id } => Present { value: id.value }
+    _ => Absent
+  }
+}
+
+fn seat16_count_sharing_root_id(root: Node) -> Int {
+  match seat16_minted_value(n: root) {
+    Absent => 0
+    Present { value: rid } =>
+      fold(node_subtree_nodes(root: root), init: 0, f: fn(acc, n) {
+        match seat16_minted_value(n: n) {
+          Present { value: id } => if id == rid { acc + 1 } else { acc }
+          Absent => acc
+        }
+      })
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SITE 1 -- QUALIFIED CALL `wall.peer.peer_leaf()`. Its semantic form is the call over the
+// qualified-name spine; the spine was itself lowered from the SAME suffix source, so without the
+// site's routing through body_lower_primary_call_node (whose close demotes the spine beneath the
+// call root) the spine root would carry the suffix's Minted id beside the call root's -- two
+// nodes, one occurrence. The text is BYTE-EXACT the green qualified call of
+// v2.test.claim.body_lowering_qualified_path (body_lowering_qualified_call_source), whose
+// pairing claim proves the fold door lowers THIS text to a call through the path. That module's
+// own comment states the rule this fixture obeys: body_lower_find_captured returns the FIRST
+// postfix capture in the tree, so a sibling declaration AHEAD of the one under test hands the
+// search the wrong body with no diagnostic. An earlier draft of this fixture added exactly such
+// a leading sibling (`fn peer_leaf() -> Bool = true`) above `uses_qual_call`; its `= true` body
+// is the module's first postfix_expr, so the door captured `true`, body_lower_dotted_chain_
+// lowered_optional refused it, and seat16_door_lowered returned Absent -- the door was answering
+// correctly for the tree it was given, not declining the call. The hazard is pinned by
+// lowered_qualified_call_sibling_ahead_is_not_the_capture, not left as prose.
+
+data seat16_qualified_call_source: String = "module wall.peer\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
+
+// THE FIRST-CAPTURE CONTRACT, PINNED. seat16_door_lowered runs body_lower_find_captured for
+// ^dag_surface_postfix_expr over the WHOLE module, which returns the FIRST postfix capture in
+// pre-order. A leading sibling's `= true` body is itself a postfix_expr, so it -- not the call --
+// is what the search reaches first; the dotted-chain door then refuses `true` and the door
+// answers Absent. This claim pins that the door declines the LEADING-SIBLING fixture while it
+// answers Present for the single-fn fixture above: the fixture shape is a real constraint, so it
+// is asserted, not relied upon silently.
+data seat16_qualified_call_sibling_ahead_source: String = "module wall.peer\n\nfn peer_leaf() -> Bool = true\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
+
+test fn lowered_qualified_call_sibling_ahead_is_not_the_capture() -> Bool {
+  match seat16_door_lowered(source: seat16_qualified_call_sibling_ahead_source) {
+    Present { value: _ } => false
+    Absent => match seat16_door_lowered(source: seat16_qualified_call_source) {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
+
+fn seat16_dotted_under(node: Node) -> String {
+  match qualified_name_from_node(root: node) {
+    Rejected { diagnostics: _ } => ""
+    Accepted { value: qn, diagnostics: _ } => qualified_name_to_dotted_string(qn: qn)
+  }
+}
+
+// THE QUALIFIED CALL IS A TRANSFORM OVER THE THREE-SEGMENT SPINE. Slot 0 is the operator (the
+// spine; positional_child_target_nodes yields it, the named args ride Authored labels and are
+// excluded). Its dotted reading -- not a hand-built shape check -- decides identity, so the
+// claim tracks v2.std.qualified_name's one reader rather than a second representation of a spine.
+fn seat16_is_qualified_call(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match list_at_optional(xs: positional_child_target_nodes(node: n), index: 0) {
+        Present { value: spine } => seat16_dotted_under(node: spine) == "wall.peer.peer_leaf"
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn seat16_qualified_call_opt(tree: Node) -> Optional<Node> {
+  first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) { seat16_is_qualified_call(n: n) })
+}
+
+// THE RED, qualified site: the call's semantic form must answer for an authored occurrence.
+test fn lowered_qualified_call_node_is_locatable_by_the_census() -> Bool {
+  match seat16_door_lowered(source: seat16_qualified_call_source) {
+    Absent => false
+    Present { value: lowered } =>
+      match seat16_qualified_call_opt(tree: lowered) {
+        Absent => false
+        Present { value: call } =>
+          match native_census_owner_key(node: call) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
+// THE POSITIVE, qualified site: routing through the primary-call builder changed identity, never
+// shape -- the call is still the Transform over the `wall.peer.peer_leaf` spine.
+test fn lowered_qualified_call_still_lowers_to_a_transform_over_its_spine() -> Bool {
+  match seat16_door_lowered(source: seat16_qualified_call_source) {
+    Absent => false
+    Present { value: lowered } =>
+      match seat16_qualified_call_opt(tree: lowered) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+// THE PIN, qualified site: the spine the site passes as its operator carries the SAME suffix
+// source; exactly the call root may keep the Minted id, so the count is one. A regression of
+// this site to the bare node_synthetic reds it (no minted root at all) without touching the
+// other sites' counts.
+test fn lowered_qualified_call_carries_exactly_one_minted_identity() -> Bool {
+  match seat16_door_lowered(source: seat16_qualified_call_source) {
+    Absent => false
+    Present { value: lowered } =>
+      match seat16_qualified_call_opt(tree: lowered) {
+        Absent => false
+        Present { value: call } => seat16_count_sharing_root_id(root: call) == 1
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SITE 2 -- RECEIVER CALL `recv.f(args)`. The chain `r.items[i].load(a: 7)` puts a VALUE in the
+// accumulator when the call step folds: the projection-and-index prefix lowers through the
+// index-read shape (green as v2.test.claim.parse.index_suffix chained_source), so the call arm
+// takes the PostfixAccumValue path -- the receiver site proper. The receiver was lowered from
+// the same suffix source and the method-name segment stands for text inside the chain, which is
+// exactly the stacked identity the deferral named; the site's routing through
+// body_lower_primary_call_node closes it.
+
+data seat16_receiver_call_source: String = "module probe.receiver\n\ntype R {\n  items: List<Int>\n}\n\nfn pick(r: R, i: Int) -> Int {\n  r.items[i].load(a: 7)\n}\n"
+
+// THE RECEIVER CALL IS THE TRANSFORM WHOSE OPERATOR SLOT IS THE `load` ATOM. The index call
+// beneath it is also a Transform, but its operator slot is the std.algebra.list_at_optional
+// spine, never an atom -- so operator-slot inspection, not subtree counting, identifies this
+// node uniquely in the fixture.
+fn seat16_operator_is_atom_named(n: Node, name: Symbol) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: n), index: 0) {
+    Present { value: op } =>
+      match op.kind {
+        TypeNode { connective: Atom { identity: id } } => id == name
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn seat16_is_receiver_call(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } => seat16_operator_is_atom_named(n: n, name: ^load)
+    _ => false
+  }
+}
+
+fn seat16_receiver_call_opt(tree: Node) -> Optional<Node> {
+  first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) { seat16_is_receiver_call(n: n) })
+}
+
+test fn lowered_receiver_call_node_is_locatable_by_the_census() -> Bool {
+  match seat16_door_lowered(source: seat16_receiver_call_source) {
+    Absent => false
+    Present { value: lowered } =>
+      match seat16_receiver_call_opt(tree: lowered) {
+        Absent => false
+        Present { value: call } =>
+          match native_census_owner_key(node: call) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
+// THE POSITIVE, receiver site: still a Transform over the method-name atom, and its receiver
+// sits in the first positional slot behind the operator (the deferral's shape, unchanged).
+test fn lowered_receiver_call_still_lowers_to_a_transform_over_its_method_atom() -> Bool {
+  match seat16_door_lowered(source: seat16_receiver_call_source) {
+    Absent => false
+    Present { value: lowered } =>
+      match seat16_receiver_call_opt(tree: lowered) {
+        Present { value: call } =>
+          match list_at_optional(xs: positional_child_target_nodes(node: call), index: 1) {
+            // The receiver of `r.items[i].load(a: 7)` is the lowered index read -- a Transform
+            // over the std.algebra.list_at_optional spine -- not an atom: the deferral's shape.
+            Present { value: recv } =>
+              match recv.kind {
+                ComputationNode { behavior: Transform } => true
+                _ => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+  }
+}
+
+test fn lowered_receiver_call_carries_exactly_one_minted_identity() -> Bool {
+  match seat16_door_lowered(source: seat16_receiver_call_source) {
+    Absent => false
+    Present { value: lowered } =>
+      match seat16_receiver_call_opt(tree: lowered) {
+        Absent => false
+        Present { value: call } => seat16_count_sharing_root_id(root: call) == 1
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SITE 3 -- THE `is` NODE `c is Red`. Authored text, lowered to lower_match's shape -- a Match
+// over the operand with the arm's true/false/wildcard atoms staying synthetic the way the cast
+// records for `as`. The operand was lowered from the suffix source; the close leaves exactly the
+// Match carrying the suffix's Minted id. Source shape is v2.test.claim.is_surface's green
+// `c is Red`.
+
+data seat16_is_source: String = "module probe.isdoor\n\ntype Color = Red | Green\n\nfn f(c: Color) -> Bool {\n  c is Red\n}\n"
+
+fn seat16_is_match(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Match } => true
+    _ => false
+  }
+}
+
+fn seat16_is_match_opt(tree: Node) -> Optional<Node> {
+  first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) { seat16_is_match(n: n) })
+}
+
+test fn lowered_is_node_is_locatable_by_the_census() -> Bool {
+  match seat16_door_lowered(source: seat16_is_source) {
+    Absent => false
+    Present { value: lowered } =>
+      match seat16_is_match_opt(tree: lowered) {
+        Absent => false
+        Present { value: matched } =>
+          match native_census_owner_key(node: matched) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
+// THE POSITIVE, is site: the authored `is` still lowers to the Match's shape -- lower_match
+// stays the one authority; the site only took the root's identity from the suffix.
+test fn lowered_is_node_still_lowers_to_a_match() -> Bool {
+  match seat16_door_lowered(source: seat16_is_source) {
+    Absent => false
+    Present { value: lowered } =>
+      match seat16_is_match_opt(tree: lowered) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+test fn lowered_is_node_carries_exactly_one_minted_identity() -> Bool {
+  match seat16_door_lowered(source: seat16_is_source) {
+    Absent => false
+    Present { value: lowered } =>
+      match seat16_is_match_opt(tree: lowered) {
+        Absent => false
+        Present { value: matched } => seat16_count_sharing_root_id(root: matched) == 1
+      }
+  }
+}
+
+// THE OWNERSHIP PINS, is site (review 85455 / Manager 3's is-site ruling). The collision pin above
+// CANNOT SEE MATCH-VS-PATTERN OWNERSHIP: if the Match root were stamped with V's OWN occurrence --
+// the geometry the #14891 deferral feared -- V is demoted to OccurrencePending and the root still
+// counts exactly one sharing node, so the pin reads 1 and passes. These two claims pin the
+// question the deferral named and the pin misses:
+//
+// (a) the pattern V keeps its OWN authored occurrence -- Minted, at an id DIFFERENT from the
+//     Match root's. Under the feared geometry V reads Pending (no id) and the atom test fails.
+// (b) through the REAL route (assemble + infer, the route v2.test.claim.is_surface drives and
+//     tpb_assemble shares), a foreign V refuses with infer_match_pattern_variant_not_declared
+//     located at the ARM THAT CARRIES THE USE (infer.dag's own ruling on why the locus is the arm:
+//     the resolved pattern edge can point at a foreign declaration, not the use), AND the pattern
+//     node beneath that edge still carries its OWN Minted occurrence. Under the feared geometry
+//     the pattern is demoted to Pending and this claim goes red.
+//
+// The aliasing the deferral feared was measured before routing, not assumed: the parser mints an
+// identity for EVERY production (mint_parsed_node_identity, src/v1/02_parse.dag), so the chain
+// node the site names as source, the `is` keyword pair, the operand and V hold DISTINCT Minted ids
+// and cannot alias; close_lowered_image descends only through members of the source's own image
+// and stops at a node carrying another occurrence, which is exactly what leaves V untouched.
+// These claims are that argument turned into executed fact; the fold's comment cites them by name.
+// Seed-safe form (module discipline): the atom test is an annotated-parameter fn called from the
+// first_where lambda, and every occurrence read goes through seat16_minted_value.
+fn seat16_is_red_atom(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^Red
+    _ => false
+  }
+}
+
+fn seat16_v_atom_opt(tree: Node) -> Optional<Node> {
+  first_where(xs: node_subtree_nodes(root: tree), keep: fn(n) { seat16_is_red_atom(n: n) })
+}
+
+test fn lowers_is_node_keeps_the_pattern_v_authored() -> Bool {
+  match seat16_door_lowered(source: seat16_is_source) {
+    Absent => false
+    Present { value: lowered } =>
+      match seat16_is_match_opt(tree: lowered) {
+        Absent => false
+        Present { value: matched } =>
+          match seat16_minted_value(n: matched) {
+            Absent => false
+            Present { value: rid } =>
+              match seat16_v_atom_opt(tree: matched) {
+                Absent => false
+                Present { value: v } =>
+                  match seat16_minted_value(n: v) {
+                    Absent => false
+                    Present { value: vid } => vid != rid
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The foreign-V specimen, BYTE-EXACT the green is_surface refusal text (is_src with
+// decls "type Color = Red | Green\ntype Other = Blue | Cyan\n" and body "c is Blue" -- see
+// is_foreign_arm_refuses / is_foreign_arm_refusal_is_located_at_the_arm, both green on main):
+// Blue belongs to Other, not to c's type Color.
+data seat16_is_foreign_source: String = "module p\n\ntype Color = Red | Green\ntype Other = Blue | Cyan\n\nfn f(c: Color) -> Bool {\n  c is Blue\n}\n"
+
+test fn lowers_is_node_refusal_stays_located_at_the_use() -> Bool {
+  match tpb_assemble(src: seat16_is_foreign_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          if diagnostics_fatal_reason(d: d) != ^infer_match_pattern_variant_not_declared {
+            false
+          } else {
+            match diagnostics_fatal(d: d).at {
+              NodeLocus { anchor: a } =>
+                match find_core_child(root: a.at, marker: MatchArmPatternEdge) {
+                  Rejected { diagnostics: _ } => false
+                  Accepted { value: pat, diagnostics: _ } =>
+                    match seat16_minted_value(n: pat) {
+                      Present { value: _ } => true
+                      Absent => false
+                    }
+                }
+              _ => false
+            }
+          }
+      }
+  }
+}

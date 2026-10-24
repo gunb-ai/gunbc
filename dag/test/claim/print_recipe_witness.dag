@@ -1,0 +1,51 @@
+module test.claim.print_recipe_witness
+import std.types { Bool, String, List, NonEmptyStr }
+import std.measure { micrometer, micrometre_per_second, micrometre_per_second_squared, percent }
+import extdeps.printing.orca_slicer { orca_process_setting_kv, OrcaSpeedSetting, OrcaBridgeSpeed, OrcaAccelerationSetting, OrcaOuterWallAcceleration, OrcaLengthSetting, OrcaBrimWidth, OrcaSparseInfillDensity }
+import extdeps.printing.fdm { Pla, Petg }
+import extdeps.languages.json.emit { JsonKeyValue, json_kv, json_string, serialize_json, json_object }
+import product.printing.print_recipe { print_recipe_from_wire, recipe_process_overrides, overlay, a1_mini_pla_prototype_v1, a1_mini_petg_functional_v1 }
+
+test fn both_recipes_resolve_and_an_unknown_one_refuses() -> Bool {
+  (match print_recipe_from_wire(s: "a1-mini-pla-prototype-v1") { Present { value: r } => (match r.material { Pla => true _ => false }) Absent => false }) &&
+  (match print_recipe_from_wire(s: "a1-mini-petg-functional-v1") { Present { value: r } => (match r.material { Petg => true _ => false }) && (r.filament as String) == "Generic PETG @BBL A1M" Absent => false }) &&
+  (match print_recipe_from_wire(s: "petg") { Present { value: _ } => false Absent => true })
+}
+
+fn value_of(members: List<JsonKeyValue>, key: String) -> String {
+  serialize_json(v: json_object(members: filter(members, m => m.key == key)))
+}
+
+// A child's key replaces its parent's, keys only the parent has survive, and nothing is duplicated.
+test fn overlay_replaces_parent_keys_and_keeps_the_rest() -> Bool {
+  let parent = [json_kv(key: "wall_loops", value: json_string(s: "2")), json_kv(key: "layer_height", value: json_string(s: "0.2"))]
+  let child = [json_kv(key: "wall_loops", value: json_string(s: "4"))]
+  let merged = overlay(base: parent, top: child)
+  count(merged) == 2 && value_of(members: merged, key: "wall_loops") == value_of(members: child, key: "wall_loops") &&
+  value_of(members: merged, key: "layer_height") == value_of(members: parent, key: "layer_height")
+}
+
+// The imposed process keys carry the recipe's process name and the support policy, each once.
+test fn recipe_overrides_name_the_process_and_carry_supports_once() -> Bool {
+  let o = recipe_process_overrides(r: a1_mini_petg_functional_v1)
+  count(filter(o, m => m.key == "name")) == 1 && count(filter(o, m => m.key == "enable_support")) == 1 &&
+  value_of(members: o, key: "name") == serialize_json(v: json_object(members: [json_kv(key: "name", value: json_string(s: "Functional 0.20 PETG supported"))]))
+}
+
+test fn the_two_recipes_differ_only_in_filament_and_process_name() -> Bool {
+  a1_mini_pla_prototype_v1.machine == a1_mini_petg_functional_v1.machine &&
+  a1_mini_pla_prototype_v1.process == a1_mini_petg_functional_v1.process &&
+  a1_mini_pla_prototype_v1.filament != a1_mini_petg_functional_v1.filament
+}
+
+fn rendered(kv: JsonKeyValue) -> String { serialize_json(v: json_object(members: [kv])) }
+
+// Measured settings render to the strings Orca's own profiles carry: whole mm/s, mm/s^2 and mm as
+// integers, a density with its percent sign.
+test fn measured_settings_render_as_orca_reads_them() -> Bool {
+  rendered(kv: orca_process_setting_kv(s: OrcaSpeedSetting { key: OrcaBridgeSpeed, speed: micrometre_per_second(count: 25000) })) == rendered(kv: json_kv(key: "bridge_speed", value: json_string(s: "25"))) &&
+  rendered(kv: orca_process_setting_kv(s: OrcaAccelerationSetting { key: OrcaOuterWallAcceleration, acceleration: micrometre_per_second_squared(count: 500000) })) == rendered(kv: json_kv(key: "outer_wall_acceleration", value: json_string(s: "500"))) &&
+  rendered(kv: orca_process_setting_kv(s: OrcaLengthSetting { key: OrcaBrimWidth, length: micrometer(count: 4000) })) == rendered(kv: json_kv(key: "brim_width", value: json_string(s: "4"))) &&
+  rendered(kv: orca_process_setting_kv(s: OrcaSparseInfillDensity { density: percent(count: 20) })) == rendered(kv: json_kv(key: "sparse_infill_density", value: json_string(s: "20%"))) &&
+  rendered(kv: orca_process_setting_kv(s: OrcaSpeedSetting { key: OrcaBridgeSpeed, speed: micrometre_per_second(count: 25500) })) == rendered(kv: json_kv(key: "bridge_speed", value: json_string(s: "25.5")))
+}

@@ -6,7 +6,7 @@ import gunbc.fleet.flex_pass_run { flex_pass_receipt_path }
 import product.fabric.flex_vast_template_control { flex_vast_template_receipt_path }
 import gunbc.auth.branch_dispatch_federation {
   branch_dispatch_provider_resource, hetzner_cloud_control_service_account, hetzner_cloud_control_service_account_id,
-  RunScopedMode, RunScopedMainRoute, MainUsesGrantedAccount, MainUsesFleetIdentity, run_scoped_account_id, run_scoped_modes_with_route, run_scoped_federation_named, run_scoped_modes,
+  RunScopedMode, RunScopedMainRoute, MainUsesGrantedAccount, MainUsesFleetIdentity, run_scoped_mode_eligible_on, run_scoped_account_id, run_scoped_modes_with_route, run_scoped_federation_named, run_scoped_modes,
   branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
   BootCredentialSource, BootCredentialStanding, BootCredentialSourceSelected, ReviewedMainDedicatedFederation,
   RunScopedApprovedGrant, BootCredentialSourceRefused, boot_credential_source_emit_refused_poison,
@@ -53,9 +53,10 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputBoolean, InputChoice, InputEnvironment,
   WorkflowPermissions, PermRead, PermWrite, 
-  RunnerSpec, RunsOnExpression, SelfHosted,
+  RunnerSpec, RunsOnExpression, SelfHosted, HostedRunner, Ubuntu2404Arm,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
+import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.action_use_admission {
   admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
   checkout_action, download_artifact_action, upload_artifact_action, google_auth_action,
@@ -107,7 +108,7 @@ import gunbc.fleet.fleet_workflow_steps {
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
 import gunbc.host.managed_host_unit_hold {
-  UnitHoldHostAdmission, UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired,
+  UnitHoldHostAdmission, UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired, UnitHoldHostUndecided,
   unit_hold_admission_for, unit_hold_host_admission_refusal,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
@@ -750,8 +751,8 @@ data fleet_converge_fleet_identity_step_if: String = concat(concat("!(", fleet_c
 //     shredded on every path, for curl;
 //   - extdeps.tools.env shell.Env.Get, extdeps.tools.sleep Delay.Seconds, extdeps.clock Clock.Now --
 //     no credential.
-//   - AND, SINCE CENSUS STAGE 0D, gunbc.machine_intake.mtcollins1_census_medium_readback
-//     census_medium_readback -- sha256sum over the served census image on srv2 through
+//   - AND, SINCE CENSUS STAGE 0D, gunbc.host.boot_medium_served_readback
+//     boot_medium_served_readback -- sha256sum over the served boot image on srv2 through
 //     typed_argv_exec_over_fleet_ssh as the fleet principal, before the signed subject is minted.
 //     That one leg is why the Mt. Collins boot CONSUMES the fleet key: the publication receipt in
 //     the medium row is publication-time evidence, and the bytes the BMC will mount over NFS are
@@ -4310,14 +4311,15 @@ fn fleet_converge_boot_federation_admitted() -> Bool {
 // section 5). Instead the job starts on srv1 and its credential-free admission step
 // (fleet_converge_mtcollins1_boot_admit_step, gunbc.machine_intake.mtcollins1_boot_admission
 // mtcollins1_boot_admit_executor) refuses such a dispatch with a typed reason before the WIF token
-// or the fleet key exist; the wet entry re-runs the same fold.
-data fleet_converge_mtcollins1_boot_job_if: String = fleet_converge_mtcollins1_boot_step_if
+// or the fleet key exist; the wet entry re-runs the same fold. Beside the mode it reads only whether the
+// grant wait it needs succeeded or was skipped (fleet_converge_after_grant_wait_if), never a host.
+data fleet_converge_mtcollins1_boot_job_if: String = fleet_converge_after_grant_wait_if(after_build: false, mode_if: fleet_converge_mtcollins1_boot_step_if)
 data fleet_converge_mtcollins1_boot_concurrency_group: String = join([fleet_host_mutation_group_prefix, fleet_converge_mtcollins1_boot_store_host()], "")
 
 // THE STORE HOST IS READ OFF THE UNIT'S MANAGED ROW, through the hold admission
-// (gunbc.host.managed_host_unit_hold unit_hold_admission_for): the row's hold decision names where its
-// store lives, and this job is pinned there. A unit that is not a managed host, or whose row declares
-// no hold, has no store host, and there is no label to fall back to: the reading below carries the
+// (gunbc.host.managed_host_unit_hold unit_hold_admission_for): the host's hold decision names where its
+// store lives, and this job is pinned there. A unit that is not a managed host, or whose decision is no
+// hold or absent, has no store host, and there is no label to fall back to: the reading below carries the
 // refusal in place of a host, and fleet_converge_yml_after_reset_assignment refuses to emit any yaml
 // while it stands, so the refusal text never reaches a runs-on.
 data fleet_converge_mtcollins1_boot_hold_admission: UnitHoldHostAdmission = unit_hold_admission_for(host: operator_host_mtcollins1 as NonEmptyStr)
@@ -4335,6 +4337,7 @@ fn fleet_converge_mtcollins1_boot_store_host() -> String {
     UnitHoldHostAdmitted { subject: s } => s.store_host as String
     UnitHoldHostNotManaged { host: _ } => fleet_converge_mtcollins1_boot_store_host_unread()
     UnitHoldHostNotRequired { host: _ } => fleet_converge_mtcollins1_boot_store_host_unread()
+    UnitHoldHostUndecided { host: _ } => fleet_converge_mtcollins1_boot_store_host_unread()
   }
 }
 
@@ -4440,29 +4443,6 @@ fn fleet_converge_mtcollins1_boot_wif_service_account() -> String {
   })
 }
 
-fn fleet_converge_mtcollins1_boot_grant_await_if() -> String {
-  serialize_expression(expression: NotEquals {
-    left: ContextAccess { context: Github, path: ["ref"] },
-    right: StringLiteral { value: concat("refs/heads/", gunbc_default_branch_name) },
-  })
-}
-
-fn fleet_converge_mtcollins1_boot_grant_await_step() -> Step {
-  RunStep {
-    name: Present { value: "Run-scoped grant: wait for the grant run main's broker dispatched for this boot attempt" },
-    id: Present { value: "branch_run_grant_await" },
-    run: gunbc_ci_branch_run_grant_await_invoke(),
-    shell: none,
-    env: Present { value: [
-      kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
-    ] },
-    working_directory: none,
-    if_condition: Present { value: fleet_converge_mtcollins1_boot_grant_await_if() },
-    continue_on_error: none,
-    timeout_minutes: Present { value: 50 }
-  }
-}
-
 fn fleet_converge_mtcollins1_boot_wif_auth_step() -> Step {
   ci_wif_auth_step_for(
     name: "WIF auth (OIDC -> selected mtcollins1 boot source: dedicated SA on reviewed main, run-scoped SA otherwise)",
@@ -4531,7 +4511,6 @@ fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: 
   concat(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []), [
     fleet_converge_mtcollins1_boot_pair_build_step(),
     fleet_converge_mtcollins1_boot_admit_step(),
-    fleet_converge_mtcollins1_boot_grant_await_step(),
     fleet_converge_mtcollins1_boot_wif_auth_step(),
     fleet_key_step,
     fleet_converge_fan_policy_phase_step(),
@@ -4587,7 +4566,6 @@ fn fleet_converge_credential_prelude_steps() -> List<Step> {
     [
       ci_release_bins_download_step(),
       ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
-      fleet_converge_branch_run_grant_await_step(),
       fleet_converge_fleet_identity_auth_step(if_condition: concat(concat(fleet_converge_fleet_identity_step_if, " && !("), concat(fleet_converge_any_mode_step_if(modes: [WorkspaceImageBuild, RevisionJobImageBuild, WorkspaceAllocationPlan]), ")"))),
     ],
     concat(
@@ -4749,7 +4727,7 @@ fn fleet_converge_job_with_steps(steps: List<Step>) -> Job {
     needs: fleet_converge_job_needs(id: fleet_converge_shared_job_id),
     env: none,
     outputs: none,
-    if_condition: Present { value: fleet_converge_shared_job_if },
+    if_condition: Present { value: fleet_converge_after_grant_wait_if(after_build: true, mode_if: fleet_converge_shared_job_if) },
     timeout_minutes: Present { value: fleet_converge_job_timeout_minutes() },
     continue_on_error: none,
     concurrency: Present {
@@ -4991,14 +4969,16 @@ data fleet_converge_in_job_compiler_pair_jobs: List<String> = [
 
 // EVERY JOB THAT TOUCHES A HOST HAS A DECLARED SOURCE FOR ITS BINARIES: it waits for `build`, the
 // producer of the release pack, or it is rostered in fleet_converge_in_job_compiler_pair_jobs and
-// builds the compiler pair itself. `build` and the rostered jobs are the only rows whose needs are
+// builds the compiler pair itself. `build`, the rostered jobs and the grant wait -- which touches no
+// host, runs GitHub-hosted and builds the one binary it runs -- are the only rows whose needs are
 // empty. A row added here with no edge and no roster entry is visible as exactly that rather than
 // buried in a builder.
 data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_plan_revision_job_id, needs: [] },
   FleetConvergeJobEdge { id: fleet_converge_release_bins_job_id, needs: [fleet_converge_plan_revision_job_id as String] },
-  FleetConvergeJobEdge { id: fleet_converge_shared_job_id, needs: [fleet_converge_release_bins_job_id as String] },
-  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MtCollins1Boot), needs: [] },
+  FleetConvergeJobEdge { id: fleet_converge_branch_run_grant_await_job_id, needs: [] },
+  FleetConvergeJobEdge { id: fleet_converge_shared_job_id, needs: [fleet_converge_release_bins_job_id as String, fleet_converge_branch_run_grant_await_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MtCollins1Boot), needs: [fleet_converge_branch_run_grant_await_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostResetReturn), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: DashboardDeploy), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: ApprovalBrokerDarkInstall), needs: [fleet_converge_release_bins_job_id as String] },
@@ -5039,6 +5019,7 @@ fn fleet_converge_jobs() -> List<Job> {
   [
     fleet_converge_plan_revision_job(),
     fleet_converge_build_job(),
+    fleet_converge_branch_run_grant_await_job(),
     fleet_converge_job(),
     fleet_converge_mtcollins1_boot_job(),
     fleet_converge_host_reset_return_job(),
@@ -5059,23 +5040,192 @@ fn fleet_converge_jobs() -> List<Job> {
 // A run-scoped mode first asks main for a grant naming this run and waits for the operator's tap
 // (gunbc.auth.branch_run_grant_await), then federates through the branch-dispatch pool as the
 // account the grant named. Without the grant the auth step's exchange is refused by IAM itself.
-fn fleet_converge_branch_run_grant_await_step() -> Step {
-  fleet_converge_branch_run_grant_await_step_when(if_condition: fleet_converge_run_scoped_step_if)
-}
+//
+// THE WAIT IS ITS OWN JOB, ON A GITHUB-HOSTED RUNNER, AND THE JOBS THAT NEED THE GRANT NEED IT. It was
+// a step inside the job that then used the grant, so that job held its host's runner while it waited.
+// The grant run's gcp-iam-converge job runs on srv1, and the boot job is pinned to srv1, so on a
+// one-slot srv1 the wait held the only runner the grant could run on (boot run 39895480515 held
+// srv1-01 waiting for grant run 39895564897, which queued behind it until both were cancelled,
+// 2026-10-23). A job that waits on the grant now holds no fleet runner while it waits, and
+// fleet_converge_grant_wait_placement_refusal refuses to emit a workflow in which one does.
+data fleet_converge_branch_run_grant_await_job_id: NonEmptyStr = "branch-run-grant-await" as NonEmptyStr
 
-fn fleet_converge_branch_run_grant_await_step_when(if_condition: String) -> Step {
+data fleet_converge_branch_run_grant_await_step_id: String = "branch_run_grant_await"
+
+fn fleet_converge_branch_run_grant_await_step() -> Step {
   RunStep {
     name: Present { value: "Run-scoped grant: wait for the grant run main's broker dispatched for this run attempt" },
-    id: Present { value: "branch_run_grant_await" },
+    id: Present { value: fleet_converge_branch_run_grant_await_step_id },
     run: gunbc_ci_branch_run_grant_await_invoke(),
     shell: none,
     env: Present { value: [
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
     ] },
     working_directory: none,
-    if_condition: Present { value: if_condition },
+    if_condition: none,
     continue_on_error: none,
     timeout_minutes: Present { value: 50 }
+  }
+}
+
+fn fleet_converge_branch_run_grant_await_build_step() -> Step {
+  RunStep {
+    name: Present { value: "Build the gunbc binary the grant wait runs" },
+    id: none,
+    run: concat(repo_self_build_command(bins: ["gunbc"]), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_release_build_step_timeout_minutes }
+  }
+}
+
+// WHETHER A DISPATCH OF THIS MODE AT THIS REF CLASS REQUIRES A GRANT, from the one eligibility rule
+// (gunbc.auth.branch_dispatch_federation run_scoped_mode_eligible_on), which reads run_scoped_modes and,
+// for the boot, the section 3d selection select_boot_credential_source. The wait job's condition and the
+// gates of the jobs that need it are both rendered from this one function, so "the wait was skipped" is
+// admitted only where this function says no grant was required.
+fn fleet_converge_grant_required(mode: FleetConvergeWorkflowMode, on_reviewed_main: Bool) -> Bool {
+  match run_scoped_mode_eligible_on(mode: fleet_converge_workflow_mode_wire(mode: mode), on_reviewed_main: on_reviewed_main) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn fleet_converge_on_branch_expression() -> Expression {
+  NotEquals { left: ContextAccess { context: Github, path: ["ref"] }, right: StringLiteral { value: concat("refs/heads/", gunbc_default_branch_name) } }
+}
+
+// ONE TERM PER MODE: the mode at every ref, at a branch only, at main only, or not at all.
+fn fleet_converge_grant_required_term(mode: FleetConvergeWorkflowMode) -> Expression? {
+  let at_main = fleet_converge_grant_required(mode: mode, on_reviewed_main: true)
+  let off_main = fleet_converge_grant_required(mode: mode, on_reviewed_main: false)
+  if at_main && off_main {
+    Present { value: fleet_converge_dispatch_mode_is(mode: mode) }
+  } else if off_main {
+    Present { value: LogicalAnd { left: fleet_converge_dispatch_mode_is(mode: mode), right: fleet_converge_on_branch_expression() } }
+  } else if at_main {
+    Present { value: LogicalAnd { left: fleet_converge_dispatch_mode_is(mode: mode), right: LogicalNot { operand: fleet_converge_on_branch_expression() } } }
+  } else {
+    none
+  }
+}
+
+// THE RUNS THAT REQUIRE A GRANT, as one disjunction; no mode is the empty string, which GitHub reads as
+// false.
+fn fleet_converge_grant_required_expression() -> Expression {
+  let terms = flat_map(fleet_converge_workflow_modes, m => match fleet_converge_grant_required_term(mode: m) { Present { value: t } => [t]  Absent => [] })
+  match terms.first() {
+    Absent => StringLiteral { value: "" }
+    Present { value: t } => fold(terms.skip(n: 1), init: t, f: (acc, x) => LogicalOr { left: acc, right: x })
+  }
+}
+
+fn fleet_converge_branch_run_grant_wait_if() -> String {
+  serialize_expression(expression: fleet_converge_grant_required_expression())
+}
+
+fn fleet_converge_branch_run_grant_await_steps() -> List<Step> {
+  concat(
+    ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []),
+    [fleet_converge_branch_run_grant_await_build_step(), fleet_converge_branch_run_grant_await_step()],
+  )
+}
+
+fn fleet_converge_branch_run_grant_await_job() -> Job {
+  let steps = fleet_converge_branch_run_grant_await_steps()
+  Job {
+    id: fleet_converge_branch_run_grant_await_job_id as String,
+    name: none,
+    runner: HostedRunner { label: Ubuntu2404Arm },
+    environment: none,
+    steps: steps,
+    needs: fleet_converge_job_needs(id: fleet_converge_branch_run_grant_await_job_id),
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_branch_run_grant_wait_if() },
+    timeout_minutes: Present { value: fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: Present { value: PermRead },
+        id_token: none,
+      }
+    },
+  }
+}
+
+// A JOB THAT NEEDS THE WAIT RUNS ONLY IF THE WAIT SUCCEEDED, OR WAS SKIPPED WHERE NO GRANT WAS REQUIRED.
+// "Skipped" alone says only that the wait job did not run; it is admitted only conjoined with the negation
+// of fleet_converge_grant_required_expression, so a run that required a grant and whose wait was skipped
+// refuses. A failed or cancelled wait granted nothing, so the job does not run (and IAM would refuse its
+// sign-in if it did). fleet_converge_grant_wait_admits is the same law over typed inputs.
+type GrantWaitResult
+  = GrantWaitSucceeded
+  | GrantWaitSkipped
+  | GrantWaitFailed
+  | GrantWaitCancelled
+
+fn fleet_converge_grant_wait_admits(mode: FleetConvergeWorkflowMode, on_reviewed_main: Bool, result: GrantWaitResult) -> Bool {
+  match result {
+    GrantWaitSucceeded => true
+    GrantWaitSkipped => !fleet_converge_grant_required(mode: mode, on_reviewed_main: on_reviewed_main)
+    GrantWaitFailed => false
+    GrantWaitCancelled => false
+  }
+}
+
+fn fleet_converge_grant_wait_gate(after_build: Bool) -> Expression {
+  let waited = LogicalOr {
+    left: needs_result_is(job: fleet_converge_branch_run_grant_await_job_id, result: "success"),
+    right: LogicalAnd {
+      left: needs_result_is(job: fleet_converge_branch_run_grant_await_job_id, result: "skipped"),
+      right: LogicalNot { operand: fleet_converge_grant_required_expression() },
+    },
+  }
+  let live = LogicalNot { operand: FunctionCall { function: Cancelled, args: [] } }
+  if after_build {
+    LogicalAnd { left: LogicalAnd { left: live, right: needs_result_is(job: fleet_converge_release_bins_job_id, result: "success") }, right: waited }
+  } else {
+    LogicalAnd { left: live, right: waited }
+  }
+}
+
+fn fleet_converge_after_grant_wait_if(after_build: Bool, mode_if: String) -> String {
+  join([serialize_expression(expression: fleet_converge_grant_wait_gate(after_build: after_build)), " && (", mode_if, ")"], "")
+}
+
+fn step_declared_id(st: Step) -> String? {
+  match st {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => i
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => i
+  }
+}
+
+fn job_holds_the_grant_wait(j: Job) -> Bool {
+  any(j.steps, st => match step_declared_id(st: st) { Present { value: v } => v == fleet_converge_branch_run_grant_await_step_id  Absent => false })
+}
+
+fn runner_is_github_hosted(r: RunnerSpec) -> Bool {
+  match r {
+    HostedRunner { label: _ } => true
+    SelfHosted { labels: _ } => false
+    RunsOnExpression { expression: _ } => false
+  }
+}
+
+// THE DEADLOCK AS A TYPED REFUSAL: a job that waits on the grant while placed on a fleet runner (or a
+// runner chosen by expression, which may be one) holds a slot the grant run may need. Emission refuses.
+fn fleet_converge_grant_wait_placement_refusal(jobs: List<Job>) -> String? {
+  match filter(jobs, j => job_holds_the_grant_wait(j: j) && !runner_is_github_hosted(r: j.runner)).first() {
+    Absent => none
+    Present { value: j } => Present { value: join(["REFUSED gunbc.fleet.fleet_converge_workflow: job ", j.id, " waits on the branch run grant while holding a runner that is not GitHub-hosted; the grant run's gcp-iam-converge job may need that same runner, so the wait can deadlock it. No workflow yaml was emitted."], "") }
   }
 }
 
@@ -5682,7 +5832,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
     type: InputString,
   },
   DispatchInput { name: "printer", description: Present { value: "Printer identity; required for printer mode" }, required: false, default: none, type: InputChoice { options: map(printer_access_code_loci,p=>p.printer as String) } },
-  DispatchInput { name: "printer_request", description: Present { value: "Printer operation JSON: operation (observe/print), project_path, project_sha256, credential_version, bed_clear (string true/false). The existing printer admission validates every field." }, required: false, default: none, type: InputString },
+  DispatchInput { name: "printer_request", description: Present { value: "Printer operation JSON: operation (observe or converge); for converge also request_id (one per physical copy), root (printed assembly root wire) and recipe (print recipe name). Converge prepares, waits for the attempt-bound bed-clear approval, starts once, and records completion on later passes." }, required: false, default: none, type: InputString },
   DispatchInput {
     name: "agent_state_slot",
     description: Present { value: "workspace_source_pack and workspace_transcript_rate_observe: the Claude auth slot whose agent state is packed, as <slot> in /home/briansrls/.claude@<slot> on srv1; admitted only if that directory exists, refused naming the observed slots otherwise; no default" },
@@ -5765,7 +5915,10 @@ data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet.fl
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
   match fleet_converge_unfederated_run_scoped_refusal() {
     Present { value: r } => FleetConvergeYamlGenerationRefused { reason: r }
-    Absent => fleet_converge_yml_after_run_scoped_admission()
+    Absent => match fleet_converge_grant_wait_placement_refusal(jobs: fleet_converge_jobs()) {
+      Present { value: r } => FleetConvergeYamlGenerationRefused { reason: r }
+      Absent => fleet_converge_yml_after_run_scoped_admission()
+    }
   }
 }
 
@@ -5989,6 +6142,9 @@ fn fleet_converge_namecheap_observe_job() -> Job {
 
 // The printer's identity pins this job to main and to its dedicated environment.
 // Inputs are data passed through env, never interpolated into executable shell.
+// Preparation (CAD and slicing) plus the 15-minute bed-clear approval window must fit one pass.
+data printer_converge_step_timeout_minutes: Duration = 45
+
 fn fleet_converge_printer_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
@@ -5999,7 +6155,7 @@ fn fleet_converge_printer_job() -> Job {
       ci_wif_auth_step_for(name: "WIF auth (dedicated printer credential reader)",
         provider_resource: printer_provider_resource(), service_account: printer_service_account as String),
       RunStep {
-        name: Present { value: "Printer: observe credential or deliver and start the pinned project" },
+        name: Present { value: "Printer: observe the credential or converge one print request" },
         id: Present { value: "printer" }, run: gunbc_ci_printer_workflow_invoke(), shell: none,
         env: Present { value: [
           kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
@@ -6008,13 +6164,12 @@ fn fleet_converge_printer_job() -> Job {
           kv(key:approval_store_receipt_mac_key_path_env as String,value:yaml_string(s:approval_store_receipt_mac_key_path as String)),
           kv(key: "PRINTER_TARGET", value: yaml_string(s: "${{ inputs.printer }}")),
           kv(key: "PRINTER_OPERATION", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').operation }}")),
-          kv(key: "PRINTER_PROJECT_PATH", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').project_path }}")),
-          kv(key: "PRINTER_PROJECT_SHA256", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').project_sha256 }}")),
-          kv(key: "PRINTER_CREDENTIAL_VERSION", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').credential_version }}")),
-          kv(key: "PRINTER_BED_CLEAR", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').bed_clear }}")),
+          kv(key: "PRINTER_REQUEST_ID", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').request_id }}")),
+          kv(key: "PRINTER_ROOT", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').root }}")),
+          kv(key: "PRINTER_RECIPE", value: yaml_string(s: "${{ fromJSON(inputs.printer_request || '\{}').recipe }}")),
         ] },
         working_directory: none, if_condition: none, continue_on_error: none,
-        timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes },
+        timeout_minutes: Present { value: printer_converge_step_timeout_minutes },
       },
       fleet_converge_receipt_upload_step(id: "printer_receipt", name: "Upload printer operation receipt",
         artifact: "printer-operation", path: printer_workflow_receipt_path, if_condition: "success()"),
@@ -6022,7 +6177,7 @@ fn fleet_converge_printer_job() -> Job {
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
     env: none, outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
-    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes + 20 },
+    timeout_minutes: Present { value: printer_converge_step_timeout_minutes + 20 },
     continue_on_error: none,
     concurrency: fleet_converge_exclusive_job_concurrency(group: "printer-${{ inputs.printer }}"),
     permissions: Present { value: WorkflowPermissions {

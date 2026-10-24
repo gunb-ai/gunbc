@@ -6,6 +6,7 @@ use self::ImportStripOutcome::*;
 use self::ImportStripProgress::*;
 use self::ImportStripRefusal::*;
 use self::ParsedImportStatements::*;
+pub use crate::std_algebra::{collection_join_shape, list_push};
 pub use crate::std_types::{FilePath, List, NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
