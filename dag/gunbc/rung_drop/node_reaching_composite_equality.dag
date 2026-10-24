@@ -33,6 +33,8 @@ data node_reaching_composite_equality: RungDrop = RungDrop {
     // (measured 2026-10-24: 04_infer.dag fold_terminal_expr not in scope outside the seed build). A seed
     // rename that the guard's own reference survives would leave this citation stale. Trigger for the
     // check: v1.compiler.infer resolves from a dag-tree claim, which then imports the declaration by name.
+    // Consequently the population is UNREADABLE here (gunbc.rung_drop DeclaredBy), and the rung claim
+    // rests on the seed guard alone: the guard admits exactly the cited list and refuses every other site.
     population: DeclaredBy { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_node_reaching_composite_drop_population") },
     restoration_trigger: "the language derives structural equality for a composite with a Node-leaf occurrence route; then every listed declaration compares through it and equality_node_reaching_composite_drop_population is deleted",
   } }
