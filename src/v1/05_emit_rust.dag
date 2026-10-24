@@ -8272,7 +8272,7 @@ type RecordLiteralPhantom
 fn record_literal_phantom_field(resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RecordLiteralPhantom {
   match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: resolved_type, source_indices: source_indices) {
     TypeDeclResolved { identity: _, decl: decl } =>
-      if decl.connective == Conj {
+      if (decl.connective == Conj) {
         let pnames = decl.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
         if (struct_unused_param_names(generic_param_names: pnames, children: decl.children, source_indices: source_indices) |> count) > 0 {
           RecordLiteralPhantomField
