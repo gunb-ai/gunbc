@@ -1,7 +1,7 @@
 module extdeps.proxy.openresty
 
 import std.optional { Optional, Present, Absent }
-import std.types { NonEmptyStr, brand, String, Int, List, Bool, Milliseconds }
+import std.types { NonEmptyStr, brand, String, Int, List, Bool, Milliseconds, Port, HttpStatus }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -76,8 +76,8 @@ type HeaderCopy {
 }
 
 type LuaHook
-  = CaptureSubrequest { location: NginxToken, failure_status: Int, copies: List<HeaderCopy> }
-  | LogPostToLoopback { port: Int, path: NginxToken, timeout_ms: Milliseconds, only_when_set: NginxVariable, header: NginxToken, header_value: NginxVariable }
+  = CaptureSubrequest { location: NginxToken, failure_status: HttpStatus, copies: List<HeaderCopy> }
+  | LogPostToLoopback { port: Port, path: NginxToken, timeout_ms: Milliseconds, only_when_set: NginxVariable, header: NginxToken, header_value: NginxVariable }
 
 type LuaPhase
   = | AccessPhase
@@ -93,7 +93,7 @@ type NginxDirective
   | HttpBlock { body: List<NginxDirective> }
   | AccessLogOff
   | ServerBlock { body: List<NginxDirective> }
-  | ListenLoopback { port: Int }
+  | ListenLoopback { port: Port }
   | LocationBlock { matching: LocationMatch, body: List<NginxDirective> }
   | SetEmptyVariable { variable: NginxVariable }
   | ProxyHttpVersion11
@@ -102,7 +102,7 @@ type NginxDirective
   | ProxyNextUpstreamDirective { value: ProxyNextUpstream }
   | ProxySetHeader { header: NginxToken, source: HeaderSource }
   | ProxyPassDirective { target: ProxyTarget, variable: NginxVariable }
-  | ProxyPassLoopback { port: Int, path: NginxToken }
+  | ProxyPassLoopback { port: Port, path: NginxToken }
   | InternalLocationOnly
   | ProxyMethodPost
   | ProxyPassRequestBodyOff
@@ -111,7 +111,7 @@ type NginxDirective
 fn nginx_text_is_safe(t: String) -> Bool {
   !(string_contains(t, "'") || string_contains(t, "\\") || string_contains(t, "\n") || string_contains(t, "\r")
     || string_contains(t, " ") || string_contains(t, ";") || string_contains(t, "\{") || string_contains(t, "}")
-    || string_contains(t, "$") || string_contains(t, "\"") || t == "")
+    || string_contains(t, "$") || string_contains(t, "#") || string_contains(t, "\t") || string_contains(t, "\"") || t == "")
 }
 
 fn nginx_token(text: String) -> Optional<NginxToken> {
@@ -135,7 +135,7 @@ fn lua_hook_lines(h: LuaHook) -> List<String> {
   match h {
     CaptureSubrequest { location: l, failure_status: r, copies: cs } => concat([
       "local res = ngx.location.capture('" + (l as String) + "', \{method = ngx.HTTP_POST\})",
-      "if res.status ~= 200 then return ngx.exit(" + (r as String) + ") end",
+      "if res.status ~= 200 then return ngx.exit(" + ((r as Int) as String) + ") end",
     ], map(cs, c => "ngx.var." + (c.variable as String) + " = res.header['" + (c.header as String) + "']"))
     LogPostToLoopback { port: pt, path: pa, timeout_ms: t, only_when_set: o, header: hd, header_value: hv } => [
       "if ngx.var." + (o as String) + " == '' then return end",
@@ -143,7 +143,7 @@ fn lua_hook_lines(h: LuaHook) -> List<String> {
       "ngx.timer.at(0, function(p)",
       "local s = ngx.socket.tcp()",
       "s:settimeout(" + ((t as Int) as String) + ")",
-      "if not s:connect('127.0.0.1', " + (pt as String) + ") then return end",
+      "if not s:connect('127.0.0.1', " + ((pt as Int) as String) + ") then return end",
       "s:send('POST " + (pa as String) + " HTTP/1.1\\r\\nHost: x\\r\\n" + (hd as String) + ": ' .. value .. '\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n')",
       "s:receive('*a')",
       "s:close()",
@@ -157,7 +157,7 @@ fn lua_phase_name(ph: LuaPhase) -> String {
 }
 
 fn location_match_text(m: LocationMatch) -> String {
-  match m { PrefixMatch { path: p } => p as String ExactMatch { path: p } => "= " + (p as String) }
+  match m { PrefixMatch { path: p } => p as String ExactMatch { path: p } => "= " + ((p as Int) as String) }
 }
 
 fn join_with(items: List<String>, sep: String) -> String {
@@ -177,7 +177,7 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     HttpBlock { body: b } => nginx_block(head: "http", body: b, indent: indent)
     AccessLogOff => nginx_line(text: "access_log off", indent: indent)
     ServerBlock { body: b } => nginx_block(head: "server", body: b, indent: indent)
-    ListenLoopback { port: p } => nginx_line(text: "listen 127.0.0.1:" + (p as String), indent: indent)
+    ListenLoopback { port: p } => nginx_line(text: "listen 127.0.0.1:" + ((p as Int) as String), indent: indent)
     LocationBlock { matching: m, body: b } => nginx_block(head: "location " + location_match_text(m: m), body: b, indent: indent)
     SetEmptyVariable { variable: v } => nginx_line(text: "set $" + (v as String) + " ''", indent: indent)
     ProxyHttpVersion11 => nginx_line(text: "proxy_http_version 1.1", indent: indent)
@@ -186,7 +186,7 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     ProxyNextUpstreamDirective { value: v } => match v { ProxyNextUpstreamOff => nginx_line(text: "proxy_next_upstream off", indent: indent) }
     ProxySetHeader { header: h, source: src } => nginx_line(text: "proxy_set_header " + (h as String) + " " + match src { HeaderFromVariable { variable: v } => "$" + (v as String) HeaderLiteral { text: t } => t as String }, indent: indent)
     ProxyPassDirective { target: t, variable: v } => match t { ProxyTargetFromUpstreamVariable => nginx_line(text: "proxy_pass http://$" + (v as String), indent: indent) }
-    ProxyPassLoopback { port: p, path: pa } => nginx_line(text: "proxy_pass http://127.0.0.1:" + (p as String) + (pa as String), indent: indent)
+    ProxyPassLoopback { port: p, path: pa } => nginx_line(text: "proxy_pass http://127.0.0.1:" + ((p as Int) as String) + (pa as String), indent: indent)
     InternalLocationOnly => nginx_line(text: "internal", indent: indent)
     ProxyMethodPost => nginx_line(text: "proxy_method POST", indent: indent)
     ProxyPassRequestBodyOff => nginx_line(text: "proxy_pass_request_body off", indent: indent)

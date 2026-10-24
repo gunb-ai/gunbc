@@ -1,6 +1,6 @@
 module test.claim.serving.router_proxy_config_witness
 
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int, List, Port }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.proxy.openresty {
   NginxDirective, HttpBlock, ServerBlock, LocationBlock, PrefixMatch, nginx_token, nginx_variable, ProxyPassDirective, ProxyNextUpstreamDirective,
@@ -14,7 +14,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn rows() -> List<NginxDirective> {
   match router_proxy_vocabulary() {
-    Present { value: v } => router_proxy_directives(v: v, listen_port: 8443, authz_port: 9001, stream_end_port: 9002)
+    Present { value: v } => router_proxy_directives(v: v, listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)
     Absent => [] as List<NginxDirective>
   }
 }
@@ -35,7 +35,7 @@ fn is_buffering_off(d: NginxDirective) -> Bool {
   match d { ProxyBufferingDirective { value: _ } => true ProxyRequestBufferingDirective { value: _ } => true _ => false }
 }
 fn is_authz(d: NginxDirective) -> Bool {
-  match d { LuaPhaseHook { phase: _, hook: h } => match h { CaptureSubrequest { location: _, failure_status: s, copies: _ } => s == 503 _ => false } _ => false }
+  match d { LuaPhaseHook { phase: _, hook: h } => match h { CaptureSubrequest { location: _, failure_status: s, copies: _ } => (s as Int) == 503 _ => false } _ => false }
 }
 fn is_stream_end(d: NginxDirective) -> Bool {
   match d { LuaPhaseHook { phase: _, hook: h } => match h { LogPostToLoopback { port: p, path: _, timeout_ms: _, only_when_set: _, header: _, header_value: _ } => p == 9002 _ => false } _ => false }
@@ -62,14 +62,16 @@ test fn the_vocabulary_is_accepted_and_rows_are_nonempty() -> Bool {
 
 test fn rendering_follows_the_rows() -> Bool {
   render_nginx_directives(rows: [ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff }]) == "proxy_next_upstream off;\n"
-    && text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002)) == render_nginx_directives(rows: rows())
-    && text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002)) != ""
-    && text_of(r: router_proxy_config(listen_port: 8444, authz_port: 9001, stream_end_port: 9002)) != text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002))
+    && text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)) == render_nginx_directives(rows: rows())
+    && text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)) != ""
+    && text_of(r: router_proxy_config(listen_port: 8444 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port)) != text_of(r: router_proxy_config(listen_port: 8443 as Port, authz_port: 9001 as Port, stream_end_port: 9002 as Port))
 }
 
 // An unsafe token has no constructor result: the checked constructors return Absent, so it cannot reach a row.
 test fn an_unsafe_token_is_absent() -> Bool {
   match nginx_token(text: "x'; os.execute('x") { Absent => true Present { value: _ } => false }
     && match nginx_variable(text: "a$b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "x#") { Absent => true Present { value: _ } => false }
+    && match nginx_variable(text: "a-b") { Absent => true Present { value: _ } => false }
     && match nginx_token(text: "x-seat-permit") { Absent => false Present { value: _ } => true }
 }
