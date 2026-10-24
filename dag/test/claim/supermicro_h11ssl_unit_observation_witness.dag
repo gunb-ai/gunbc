@@ -3,6 +3,7 @@ module test.claim.supermicro_h11ssl_unit_observation_witness
 import std.types { Bool }
 import std.optional { Present, Absent }
 import std.list { first_where }
+import std.measure { millisecond }
 import std.algebra { string_contains }
 import extdeps.network.mac { mac_address }
 import std.claim_evidence { EvidenceApplicable, EvidenceInsufficient, EvidenceSupports }
@@ -14,7 +15,7 @@ import gunbc.machine_intake.supermicro_h11ssl_first_contact {
 }
 import gunbc.machine_intake.supermicro_h11ssl_unit_observation {
   supermicro_h11ssl_unit_readings, supermicro_h11ssl_post_traces, supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac,
-  H11sslPostTrace, H11sslPostSample, RedfishRootReading, SelRead, ReadAtUtcMinute,
+  H11sslPostTrace, H11sslPostSample, HostLanDisabled, RedfishRootReading, SelRead, ReadAtUtcMinute,
   supermicro_h11ssl_decoded_trace, supermicro_h11ssl_code_standing, CodeSampled, CodeNotSampled, SnoopPolledEvery, SnoopPollIntervalUnrecorded,
   supermicro_h11ssl_legacy_boot_handoff_code, supermicro_h11ssl_last_progress_code, supermicro_h11ssl_shared_ordered_tail,
   supermicro_h11ssl_psb_inferences, supermicro_h11ssl_prior_stall_inference, cpu_inference,
@@ -44,6 +45,7 @@ test fn w_unit2_variant_unread_refuses_storage_projection() -> Bool {
         && (match r.redfish { RedfishRootReading { outcome: ServiceRootRefused { message_id: m }, licences_named: l, service_version: _ } => m == "Base.v1_4_0.OemLicenseNotPassed" && (l |> count) == 1  _ => false })
         && (match r.sel { SelRead { sel: s } => (s.battery_low_record_ids |> count) == 2  _ => false })
         && (match r.read_at { ReadAtUtcMinute { minute: _, standing: TranscribedUncited { read_obligation: _ } } => true  _ => false })
+        && all(r.host_lans, l => match l.state { HostLanDisabled => true  _ => false }) && (r.host_lans |> count) == 2
         && (r.cpu.cores_enabled == 64) && (r.cpu.serial_as_read == "Unknown")
     Absent => false
   }
@@ -57,7 +59,7 @@ test fn w_handoff_sampled_on_unit2_not_sampled_on_unit1() -> Bool {
     Absent => false
   }
   let u1 = match trace_of(mac_is_unit1: true) {
-    Present { value: t } => match supermicro_h11ssl_code_standing(t: t, code: supermicro_h11ssl_legacy_boot_handoff_code) { CodeNotSampled { polling: SnoopPolledEvery { milliseconds: ms, standing: _ } } => ms == 400  _ => false }
+    Present { value: t } => match supermicro_h11ssl_code_standing(t: t, code: supermicro_h11ssl_legacy_boot_handoff_code) { CodeNotSampled { polling: SnoopPolledEvery { interval: i, standing: _ } } => i == millisecond(count: 400)  _ => false }
     Absent => false
   }
   u2 && u1

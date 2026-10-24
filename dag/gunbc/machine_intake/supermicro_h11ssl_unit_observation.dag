@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import std.list { first_where }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest }
-import std.measure { mebibyte, MegatransfersPerSecond, megatransfers_per_second }
+import std.measure { mebibyte, MegatransfersPerSecond, megatransfers_per_second, Millisecond, millisecond, Bandwidth }
 import std.claim_evidence {
   RecordedFact, Claim, EvidenceProvenance, ProvAgentId, EvidenceFreshness, EvidenceFidelity,
   EvidenceSupports, EvidenceInference, insufficient_evidence_inference, EvidenceInsufficiency,
@@ -64,9 +64,11 @@ type H11sslDimmReading {
   configured_speed: MegatransfersPerSecond
 }
 
-type H11sslHostLanState = HostLanDisabled | HostLanEnabled
+// A link rate exists only for an enabled port; the BMC's SPEED="0" on a disabled port is not a rate
+// and is not carried.
+type H11sslHostLanState = HostLanDisabled | HostLanEnabled { link_speed: Bandwidth }
 
-type H11sslHostLanReading { mac: Eui48Address, state: H11sslHostLanState, link_speed: Nat }
+type H11sslHostLanReading { mac: Eui48Address, state: H11sslHostLanState }
 
 // Redfish as this reading found it. Licence-locked is the refused root's own message; a unit whose
 // Redfish answered in this reading carries the operation it served.
@@ -135,8 +137,8 @@ data supermicro_h11ssl_unit_readings: List<H11sslUnitReading> = [
       H11sslDimmReading { dimm: H11sslReportedDimm { slot: "DIMMC1", size: mebibyte(count: 16384), part_number: "HMA82GR7AFR4N-VK" }, serial_as_read: "80AD0117108184CA6D", manufacturer: "SK Hynix", configured_speed: megatransfers_per_second(count: 2667) },
     ],
     host_lans: [
-      H11sslHostLanReading { mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 247, octet6: 254), state: HostLanDisabled, link_speed: 0 },
-      H11sslHostLanReading { mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 247, octet6: 255), state: HostLanDisabled, link_speed: 0 },
+      H11sslHostLanReading { mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 247, octet6: 254), state: HostLanDisabled },
+      H11sslHostLanReading { mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 247, octet6: 255), state: HostLanDisabled },
     ],
     variant: UnitVariantUnread { read_obligation: "The FRU Board Part Number reads empty on this unit (artifact h11ssl-unit2-first-contact-fru-info.xml). Read lspci for a SAS3008, or the board label, before projecting any variant row." },
     redfish: RedfishRootReading {
@@ -208,7 +210,7 @@ type H11sslResetStimulus
   | RedfishForceRestart { standing: CitedFigureStanding }
 
 type H11sslSnoopPolling
-  = SnoopPolledEvery { milliseconds: Nat, standing: CitedFigureStanding }
+  = SnoopPolledEvery { interval: Millisecond, standing: CitedFigureStanding }
   | SnoopPollIntervalUnrecorded
 
 type H11sslPostSample { at: Rfc3339Timestamp, code: Int }
@@ -248,7 +250,7 @@ data supermicro_h11ssl_post_traces: List<H11sslPostTrace> = [
     bmc_mac: supermicro_h11ssl_unit1_bmc_mac,
     stimulus: RedfishForceRestart { standing: TranscribedUncited { read_obligation: "The trace records 'reset http 200'; that it was a Redfish ForceRestart is the observer's report." } },
     reset_issued_at: "2026-10-23T02:45:18Z",
-    polling: SnoopPolledEvery { milliseconds: 400, standing: TranscribedUncited { read_obligation: "Observer's report of the poller; the trace file does not record its interval." } },
+    polling: SnoopPolledEvery { interval: millisecond(count: 400), standing: TranscribedUncited { read_obligation: "Observer's report of the poller; the trace file does not record its interval." } },
     samples: [
       s(at: "2026-10-23T02:45:18Z", code: 0), s(at: "2026-10-23T02:45:23Z", code: 184), s(at: "2026-10-23T02:45:25Z", code: 20),
       s(at: "2026-10-23T02:45:25Z", code: 21), s(at: "2026-10-23T02:45:28Z", code: 205), s(at: "2026-10-23T02:45:28Z", code: 204),
