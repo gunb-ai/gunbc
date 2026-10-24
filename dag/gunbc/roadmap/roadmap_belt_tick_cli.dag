@@ -17,7 +17,7 @@ import gunbc.live_deploy.desired {
   DesiredDeploymentRosterRefused,
 }
 import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_attempt_unit_drain_path_unit_name }
-import gunbc.roadmap.spool_stall { spool_stall_clear_at, SpoolStallCleared, SpoolStallClearRefused }
+import gunbc.roadmap.spool_stall { spool_stall_step_text, spool_stall_clear_at, SpoolStallCleared, SpoolStallClearRefused }
 import gunbc.host.host_layout { attempt_unit_spool_stall_record_path }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -52,7 +52,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_instance_obligation_enqueue, belt_obligation_enqueue_json,
   belt_attempt_obligations_run, belt_attempt_obligation_receipt_write, belt_attempt_obligation_run_json, belt_attempt_obligation_run_failure,
   belt_exit_entries_settle, belt_exit_entries_claim, belt_exit_entries_pending_at, BeltExitClaimed, BeltExitClaimRefused, belt_exit_drain_for_instance, belt_exit_drain_json, belt_exit_drain_failures,
-  belt_exit_stall_failures, belt_exit_stall_analyze_at, belt_exit_stall_whoami, belt_exit_stall_release_at, belt_exit_entry_move_at,
+  belt_exit_stall_failures, belt_exit_stall_analyze_at, belt_exit_stall_whoami, belt_exit_stall_clear_at, BeltExitCleared, BeltExitClearFailed, belt_exit_stall_release_at, belt_exit_entry_move_at,
   BeltExitStallNotHeld, BeltExitStallReleased, BeltExitStallStillUnmovable, BeltExitStallReleaseRefused,
   belt_exit_stall_rearm_at, BeltExitStallRearmed, BeltExitStallRearmRefused,
   belt_discover_for_instance, belt_discovery_json, belt_discovery_pass_outcome,
@@ -543,6 +543,17 @@ fn belt_exit_stall_analyze_cli() -> ProcessExit {
   })
 }
 
+// THE CLEAR for an EMPTY foreign-owned entry (belt_exit_stall_clear_at). It runs as the drain's principal with no
+// privilege: it creates the entry in the recorded move's target stage and removes the foreign one, the claim's own
+// outcome, then `release` re-arms the trigger. A non-empty, unrecorded or symlinked entry is refused with a cause.
+fn belt_exit_stall_clear_cli(entry: String) -> ProcessExit {
+  belt_instance_from_env(entry: "belt_exit_stall_clear_cli", continuation: instance =>
+    match belt_exit_stall_clear_at(root: instance.instance_root as String, entry: entry, whoami: belt_exit_stall_whoami()) {
+      BeltExitClearFailed { reason } => exit_failure(reason: join(["belt_exit_stall_clear_cli: refused ", entry, ": ", reason], ""))
+      BeltExitCleared { to_path: _ } => ExitSuccess
+    })
+}
+
 fn belt_exit_stall_release_cli() -> ProcessExit {
   belt_instance_from_env(entry: "belt_exit_stall_release_cli", continuation: instance =>
     match desired_deployment_for_instance_id(instance_id: instance.instance_id as String) {
@@ -561,7 +572,7 @@ fn belt_exit_stall_release_cli() -> ProcessExit {
           BeltExitStallNotHeld => rearm()
           BeltExitStallReleased { reclaimed: _ } => rearm()
           BeltExitStallStillUnmovable { entries } =>
-            exit_failure(reason: join(["belt_exit_stall_release_cli: still unmovable, the stall record is kept: ", join(entries |> map(e => join([e.entry, " (", e.step, ": ", e.cause, ")"], "")), "; ")], ""))
+            exit_failure(reason: join(["belt_exit_stall_release_cli: still unmovable, the stall record is kept: ", join(entries |> map(e => join([e.entry, " (", spool_stall_step_text(step: e.step), ": ", e.cause, ")"], "")), "; ")], ""))
           BeltExitStallReleaseRefused { reason } => exit_failure(reason: join(["belt_exit_stall_release_cli: ", reason], ""))
         }
       }
