@@ -5,7 +5,7 @@ import gunbc.instruments.emission_entry_instrument { EmissionEmitRefused, Emissi
 import gunbc.instruments.host_prelude { WitnessBinRefusalReason }
 import std.live_tree { LiveTreeDisposition }
 import std.measure { ByteSize }
-import std.types { CommitSha, List, NonEmptyStr }
+import std.types { CommitSha, NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

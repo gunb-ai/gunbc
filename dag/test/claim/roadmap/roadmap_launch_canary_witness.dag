@@ -5,7 +5,6 @@ import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, RoadmapEdge,
   ManualAcceptance,
   SectionElement, Group, SectionGroup,
-  Dispatchable,
 }
 import gunbc.roadmap.roadmap_status {
   TicketLine, DerivableLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered,

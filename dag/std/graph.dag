@@ -7,7 +7,6 @@ import std.termination {
   TerminationProof
 }
 import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
-import std.types { List }
 
 type GraphEdge {
   caller: String

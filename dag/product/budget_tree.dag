@@ -7,7 +7,6 @@ import extdeps.accounting.budget {
   BudgetingMethod, ZeroBased,
   AdmissionState, admit_all
 }
-import std.types { List }
 
 type BudgetPriority = Guaranteed | Burstable | BestEffort
 

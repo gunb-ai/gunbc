@@ -1,6 +1,5 @@
 module test.claim.random_bytes_csprng_witness
 import std.live_tree { LiveTreeDisposition }
-import std.types { List }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -18,7 +18,6 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltTickReceipt, belt_tick_receipt_json_value, belt_tick_receipt_decode,
   BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   BeltPassRecorded,
-  TickExecuted,
 }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import gunbc.roadmap.roadmap_presentation {

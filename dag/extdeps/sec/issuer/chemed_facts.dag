@@ -4,7 +4,6 @@ import extdeps.sec.facts {
   FiledFactCitation,
   FiledMonetaryFact,
   usd_whole_dollars,
-  FiledDuration,
 }
 import extdeps.sec.issuer.chemed { chemed_issuer_catalog }
 import extdeps.sec.types { AnnualReport, IssuerCatalogRow }

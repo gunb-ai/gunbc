@@ -1,7 +1,7 @@
 module v2.extdeps.languages.rust_fixtures
 
 import v2.extdeps.languages.rust_native_driver { RustEmitHostFamilyMember, rust_family_main_suffix }
-import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel, NotADeclaration, Atom, ComputationNode, TypeNode }
+import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel, NotADeclaration }
 
 import std.algebra { Cons, Empty }
 
@@ -57,10 +57,8 @@ import v2.extdeps.languages.rust {
 }
 import v2.std.logic { bool_boolean_algebra }
 import v2.std.grammar { derive_grammar_relation_row_for_lhs, Sequence }
-import v2.std.compilers.target_model { ListIntroductionUnwired, PrimitiveRealizationsUnwired, TargetValueExpressionProjection, TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote, BoundToken, FixedToken }
+import v2.std.compilers.target_model { ListIntroductionUnwired, PrimitiveRealizationsUnwired, TargetValueExpressionProjection, TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote }
 import std.host_text { chars }
-import v2.std.compilers.lexing { ModeledLexRules }
-import v2.std.host_transport { EmittedWithSuffix, FixedText, FixedWidthBytes, HostRuntimeRowPresent, HostToolProgram, LiteralArg }
 
 // Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and
 // resolved v2.extdeps.languages.rust symbols only by pool-membership coincidence — an unrelated

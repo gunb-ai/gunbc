@@ -1,5 +1,4 @@
 module gunbc.interpreter_kernel_model
-import std.types { List }
 
 
 type InterpreterSeamClass

@@ -9,7 +9,6 @@ import extdeps.languages.css.values {
   css_font_stack_wire, SingleQuote,
 }
 import extdeps.fonts.google_fonts { roboto_source }
-import extdeps.languages.css.properties { CustomProperty }
 
 // Layer 2 token axes (design-register-library.md, the sibling axes to material/theme): spacing,
 // type, font stack, plus the dimension tokens (radius, border width, measure, fixed element

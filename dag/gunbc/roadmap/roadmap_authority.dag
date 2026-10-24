@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_authority
 
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
-import std.types { FilePath, NonEmptyStr, Set, Map, List }
+import std.types { FilePath, NonEmptyStr, Set, Map }
 import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap.roadmap_model {
@@ -49,7 +49,6 @@ import gunbc.roadmap.roadmap_model {
   MemberOf,
   AdmittedRoot,
   Closes,
-  WorkItemDispatch,
 }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
   roadmap_acceptance_event_history_carrier_repo_path,
@@ -59,7 +58,7 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
 import gunbc.roadmap.roadmap_acceptance_history_observation { current_roadmap_acceptance_history_prior_observation, acceptance_history_integrity_verdict_from_prior_observation }
-import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, closing_contract_authoring_contract, gunbc_claim_execution_contract, gunbc_claims_execution_contract, WorkItemExecutionContract }
+import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, closing_contract_authoring_contract, gunbc_claim_execution_contract, gunbc_claims_execution_contract }
 import gunbc.roadmap.roadmap_status {
   SupersededLine,
   TicketLine,

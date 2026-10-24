@@ -6,7 +6,7 @@ import v2.extdeps.languages.dag { dag_node_is_module_surface }
 import v2.lens.common.construction_justification { ConstructionJustification }
 
 import v2.std.witness { Holds }
-import v2.std.diagnostic { outcome_accepted, outcome_rejected, node_locus, Unavailable }
+import v2.std.diagnostic { outcome_accepted, outcome_rejected, node_locus }
 import v2.lens.common.construction_justification { ConstructionJustification }
 import v2.std.cardinality { NonZeroNat }
 

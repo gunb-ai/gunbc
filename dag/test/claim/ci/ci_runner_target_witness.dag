@@ -1,7 +1,7 @@
 module test.claim.ci.ci_runner_target_witness
 
 import gunbc.runner.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget }
-import gunbc.ci.ci_runner_target { ci_runner_target_spec, gunbc_ci_selected_runner_spec, GithubHostedRunner, UbicloudRunner }
+import gunbc.ci.ci_runner_target { ci_runner_target_spec, gunbc_ci_selected_runner_spec }
 import extdeps.languages.yaml.gha_workflow { runner_label_string, runner_yaml, string_list_flow }
 import gunbc.runner.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget }
 

@@ -1,8 +1,7 @@
 module gunbc.deployed_intent_v0
 import gunbc.fleet.fleet_intent { ComputeHost }
-import gunbc.host.host_identity_observation { HostIdentityObservation, HostIdentityObservationRow }
+import gunbc.host.host_identity_observation { HostIdentityObservation }
 import product.host_identity { HostIdentity }
-import std.disposition { Disposition }
 
 
 type DeployedIntentV0 {

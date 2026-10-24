@@ -6,16 +6,11 @@ import extdeps.sec.facts {
   FiledSignedMonetaryFact,
   signed_usd_negative,
   usd_whole_dollars,
-  FiledDuration,
-  FiledInstant,
-  FiledSigned,
 }
 import extdeps.sec.operating_metrics {
   ArrThresholdCustomerCountRow,
   DollarBasedNetRetentionRow,
   RegisteredUserCountRow,
-  RateExactPercent,
-  RateLowerBoundPercent,
 }
 import extdeps.sec.issuer.gitlab { gitlab_issuer_catalog }
 import extdeps.sec.types { AnnualReport, IssuerCatalogRow }

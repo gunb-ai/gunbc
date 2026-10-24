@@ -16,9 +16,6 @@ import gunbc.host.host_compile_pool_provision {
   provision_compile_pool_routes_through_host_effect_apply,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.host.host_compile_pool { CompilePoolSliceAbsent }
-import gunbc.host.host_effect { EnsureCompilePoolSlice, HostOs }
-import gunbc.systemctl_show_read { SystemdPropertyCaptureRefused, SystemdPropertyCaptured }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

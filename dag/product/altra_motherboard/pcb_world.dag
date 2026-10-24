@@ -47,7 +47,6 @@ import product.pcb.world {
   pcb_world_design,
   PcbPlanWasBuiltFromADifferentDesign,
   EstablishedEnvelopeRead,
-  NamedAttachmentTypePartUnresolved,
 }
 import product.altra_motherboard.placement {
   BoardComponentRole,

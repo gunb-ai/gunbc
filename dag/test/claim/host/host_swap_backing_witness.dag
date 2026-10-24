@@ -2,7 +2,6 @@ module test.claim.host.host_swap_backing_witness
 import extdeps.tools.free { SwapStats }
 import product.host_identity { HostIdentity }
 import std.live_tree { LiveTreeDisposition }
-import std.types { List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

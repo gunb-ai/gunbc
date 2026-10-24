@@ -1,7 +1,6 @@
 module test.claim.power_watt
 import std.live_tree { LiveTreeDisposition }
 import std.measure { Watt }
-import std.types { List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

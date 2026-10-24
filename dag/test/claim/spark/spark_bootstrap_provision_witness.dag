@@ -41,15 +41,6 @@ import gunbc.spark.bootstrap_provision {
   HostPrivilegeObservation, ServiceInstallScope, SystemUnitScope, ContainerScope,
   UserUnitScope, InstallScopeUnobserved, derive_install_scope,
   GeneratedInRun,
-  ObservedFromDevice,
-  SparkAttemptConfirmed,
-  SparkAttemptIssuedUnconfirmed,
-  SparkAttemptJournaled,
-  SparkContainerPresent,
-  SparkContainerUnreadable,
-  SparkReadbackMatched,
-  SparkReadbackMismatched,
-  SparkReadbackUnavailable,
 }
 
 import extdeps.cloud.gcp.secret_manager {

@@ -80,7 +80,6 @@ import gunbc.fleet.fleet_fan_wiring {
   srv4_fan_wiring,
   represented_fan_count_for_header,
   srv1_fan_wiring,
-  DrivenFanCountOperatorDeclared,
 }
 
 fn endpoint_headers(endpoints: List<FanHeaderIdentity>) -> List<NonEmptyStr> {

@@ -3,7 +3,6 @@ module test.claim.roadmap.roadmap_gate
 import test.claim.roadmap.roadmap_node_fixture { fx_derivable, fx_sign, fx_signed }
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.roadmap.roadmap_status { HandbackDelivered, RedControlExecuted }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

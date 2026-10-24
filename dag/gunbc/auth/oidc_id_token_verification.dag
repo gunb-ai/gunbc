@@ -35,7 +35,6 @@ import extdeps.auth.jwt {
   JwtStringOrUri, JwtAudience, JwtAudienceSingle, JwtAudienceMultiple,
   JwtCompactSerialization, jwt_string_or_uri_of_wire,
   StringOrUriDecoded, StringOrUriRefused,
-  JwtUriString,
 }
 import extdeps.auth.oidc {
   OidcIdTokenClaims, OidcStandardClaims, OidcHostedDomain, OidcAuthMethodReference,

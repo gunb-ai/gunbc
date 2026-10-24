@@ -2,7 +2,7 @@ module gunbc.cli_invoke
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { String, List }
+import std.types { String }
 import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // NARROWED 2026-08-26 with the plan/walk residue cut. What stood here named four

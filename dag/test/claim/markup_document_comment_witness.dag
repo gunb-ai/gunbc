@@ -98,7 +98,6 @@ import test.fixture.markup_render { render_html, render_markup, render_jsx }
 import std.markup {
   Fragment, Element, FragmentText, MarkupComment, MarkupDocument, MarkupMedium, MarkupBracket,
   EscapeHtml, OmitClose, attr, serialize_fragment_with,
-  DeclaresDocument,
 }
 import extdeps.languages.html {
   try_serialize_html_source, try_serialize_html_document, EmitOk, EmitRejected,

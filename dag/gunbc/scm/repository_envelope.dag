@@ -149,7 +149,6 @@ import gunbc.scm.object_store {
   WholeResidence, PartialResidence, store_unrostered_objects, store_shadowing_objects, store_rostered_rows, store_rostered_shards,
   store_rostered_lookup, store_object_index, find_object_via,
   authored_source_target_locator, scm_object_kind,
-  CorpusManifestTarget,
 }
 import std.content_hash { fnv1a64_structural_hex_digest }
 import gunbc.scm.commit_closure {

@@ -11,7 +11,6 @@ import gunbc.host.host_hygiene_liveness_observe {
   host_hygiene_slot_listening_age,
   host_hygiene_observe_slot_listening,
 }
-import gunbc.host.host_hygiene_liveness { ListeningNeverSeen, ListeningObserved }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

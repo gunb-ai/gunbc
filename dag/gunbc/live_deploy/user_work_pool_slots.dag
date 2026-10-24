@@ -1,6 +1,6 @@
 module gunbc.live_deploy.user_work_pool_slots
 
-import std.nat { Nat, Succ }
+import std.nat { Nat }
 
 // OPERATOR DECISION 2026-10-18 (msg_ad04724a via bright-moth-475), AMENDING THE 2026-10-16 RULING
 // BELOW: TWO slots, 44 GiB. Two of the four slots move to srv1-14, the revision-job slot

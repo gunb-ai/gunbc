@@ -60,7 +60,6 @@ import gunbc.auth.credentials {
   GcpAdcDocumentRefused,
   GcpAdcRefreshRefused,
 }
-import extdeps.cloud.gcp.gcp { AdcRefresh }
 
 data witness_adc_path: std.types.FilePath = "/tmp/gunbc_gcp_oauth_witness_adc.json"
 

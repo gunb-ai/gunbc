@@ -8,7 +8,7 @@ import product.host_identity { HostIdentity }
 import std.live_tree { LiveTreeDisposition }
 import std.measure { ByteSize }
 import std.nat { Nat }
-import std.types { List, NonEmptyStr }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

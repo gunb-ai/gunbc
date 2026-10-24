@@ -137,7 +137,6 @@ import extdeps.systemd.unit_file {
   AccuracySec, RandomizedDelaySec, Persistent,
   SystemdInstallDirective, WantedBy,
   serialize_systemd_unit_file,
-  EnvironmentFile,
 }
 import gunbc.live_deploy.member_identity {
   ReleaseEffectPlan, ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,

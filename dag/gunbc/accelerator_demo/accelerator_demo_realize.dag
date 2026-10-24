@@ -1,8 +1,5 @@
 module gunbc.accelerator_demo.accelerator_demo_realize
 import gunbc.accelerator_demo.accelerator_demo_plan { AcceleratorRefusalReason }
-import gunbc.accelerator_demo.accelerator_demo_program { AcceleratorDemoProgram }
-import std.numerical_contract { FmaContractionPolicy, NumericalContract }
-import std.types { List }
 
 
 type DifferentialVerdict

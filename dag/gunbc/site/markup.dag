@@ -1,7 +1,7 @@
 module gunbc.site.markup
 
 import std.markup { Fragment, Element, FragmentText, Attribute, attr }
-import std.types { String, List }
+import std.types { String }
 
 // ── HOW A REJECTED HTML EMISSION IS REPORTED ────────────────────────────────────────────────
 // THIS IS A FACT ABOUT SERIALIZING MARKUP, NOT ABOUT THE ROADMAP SITE, and it lived in

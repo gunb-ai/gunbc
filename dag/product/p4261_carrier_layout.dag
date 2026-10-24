@@ -95,8 +95,6 @@ import product.electrical.carrier_phase {
   IndicatorLit, IndicatorDark, IndicatorBlinking, SeenInPhotograph, OperatorReported, IndicatorsObserved, IndicatorsDescribed, NoIndicatorSeen,
   TransientPassing, SettledSteady, SettlingUnrecorded, PhaseNodeVoltage, HeaderBridge, DirectBridge, HeldWhileObserved,
   SwitchPolesMoved, HeaderBridgeApplied, HeaderBridgeReleased, SettlingDelay, MovedEnergized, MoveTimingUnrecorded, ClickHeard, NoSoundReported,
-  SeenInVideo,
-  TimedInVideo,
 }
 import extdeps.connector.amphenol_g97v22332hr { g97v22332hr }
 import product.electrical.connectivity {

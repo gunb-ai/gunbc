@@ -9,7 +9,7 @@ import extdeps.sec.types {
   cik_digit_width,
   xbrl_taxonomy_wire,
 }
-import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact, JsonPending, Subject }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

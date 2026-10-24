@@ -3,7 +3,7 @@ import gunbc.ci.ci_floor_measurement { CapEffective, OomdEnforcementEvidence }
 import gunbc.oomd_install { OomdEffectiveRead, OomdGroundingThresholds, SliceMembershipSignal }
 import gunbc.session_reservation_policy { ReservationBytes, ReservationBytesUnestablished }
 import std.live_tree { LiveTreeDisposition }
-import std.realization_reconcile { ReadObserved, ShowEffectiveRead }
+import std.realization_reconcile { ReadObserved }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

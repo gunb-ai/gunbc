@@ -7,8 +7,6 @@ import extdeps.sec.facts {
   signed_usd_negative,
   signed_usd_non_negative,
   usd_whole_dollars,
-  FiledDuration,
-  FiledSigned,
 }
 import extdeps.sec.issuer.atlassian { atlassian_issuer_catalog }
 import extdeps.sec.types { AnnualReport, IssuerCatalogRow }

@@ -9,7 +9,6 @@ module examples.blackjack.round
 
 import examples.blackjack.cards { Card }
 import examples.blackjack.hand { Hand, HandValue, hand_value, is_bust, is_blackjack, add_card }
-import std.types { List }
 
 type PlayerAction = PlayerHits | PlayerStands
 

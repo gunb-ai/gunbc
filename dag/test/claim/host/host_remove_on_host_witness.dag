@@ -37,9 +37,6 @@ import gunbc.host.host_effect_realize {
   RunArgvTransportObserved,
   RunArgvTransportRefused,
   ShellExecObserved,
-  RemoveEmptyDirectory,
-  RemoveForce,
-  RemoveForceRecursive,
 }
 
 // -- boundary: an EMPTY RemoveForce is a TYPE ERROR, not a runtime refusal. The leaf and the pure

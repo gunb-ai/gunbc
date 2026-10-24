@@ -4,7 +4,7 @@ import gunbc.runner.runner_unit_live_read { RunnerUnitLiveReadRow }
 import std.disposition { Disposition }
 import std.algebra { trim }
 import std.disposition { Disposition }
-import std.measure { percent_count, ByteSize, Percent }
+import std.measure { percent_count }
 import extdeps.systemd {
   MemoryLimitAbsent,
   MemoryLimitBytes,
@@ -63,7 +63,6 @@ import gunbc.systemctl_show_read {
 }
 import std.measure { percent_count }
 import std.realization_reconcile { ReadAbsent, ReadObserved, ShowEffectiveRead }
-import std.types { NonEmptyStr }
 
 
 type RunnerSliceCapLiveReadRow {

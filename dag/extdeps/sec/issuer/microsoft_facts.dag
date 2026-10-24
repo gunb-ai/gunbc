@@ -6,9 +6,6 @@ import extdeps.sec.facts {
   FiledSignedMonetaryFact,
   signed_usd_non_negative,
   usd_whole_dollars,
-  FiledDuration,
-  FiledSigned,
-  Unfiled,
 }
 import extdeps.sec.issuer.microsoft { microsoft_issuer_catalog }
 import extdeps.sec.types { AnnualReport, IssuerCatalogRow }

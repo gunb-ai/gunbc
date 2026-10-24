@@ -2,7 +2,6 @@ module gunbc.host.host_identity_access
 
 import gunbc.ci.ci_deploy_access { DeployAccess }
 import gunbc.fleet.fleet_posix_accounts { fleet_hostnamectl_command_path }
-import gunbc.host.host_effect { SshShell }
 
 data host_identity_hostnamectl_path: NonEmptyStr = fleet_hostnamectl_command_path
 

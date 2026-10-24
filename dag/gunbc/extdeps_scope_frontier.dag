@@ -1,5 +1,4 @@
 module gunbc.extdeps_scope_frontier
-import std.types { List }
 
 // Staged, fail-closed enrollment of the ExternalModelScope requirement (DESIGN §3 'External
 // upstream decomposition'; operator verdicts on gunbc#7556 and gunbc#7571): every extdeps module

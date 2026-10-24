@@ -12,7 +12,6 @@ import product.fabric.provider_route {
   ProviderPathUnread,
   DownstreamProviderPopulation, NoDownstreamProviders,
   PermittedJurisdictionsEnumerated, JurisdictionDropEnrollment,
-  ProviderPathAbsent,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction,

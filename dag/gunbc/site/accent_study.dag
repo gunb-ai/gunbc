@@ -22,8 +22,6 @@ import extdeps.astronomy.stellar_classification { stellar_color_perception_quote
 import gunbc.site.constellation { constellation_svg, layer_stars, layer_import_edges }
 import gunbc.site.moodboard { figure_rules }
 import gunbc.design.principles { register_thesis }
-import extdeps.languages.css.properties { RawProperty }
-import extdeps.languages.css.selectors { ClassSelector, ElementSelector }
 
 // Preview-only study page (ninth pass): the accent decision rendered, not debated. Each candidate
 // panel scopes the SAME four figure role vars to one stellar class's materials — identical fact rows

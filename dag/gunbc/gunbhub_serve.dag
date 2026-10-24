@@ -1,7 +1,7 @@
 module gunbc.gunbhub_serve
 
 import std.types { HttpStatus }
-import extdeps.uri_path { PathTemplate, UrlPathToken, ParamToken }
+import extdeps.uri_path { PathTemplate, UrlPathToken }
 import extdeps.uri_path {
   PathTemplateParseResult,
   ParsedPathTemplate,

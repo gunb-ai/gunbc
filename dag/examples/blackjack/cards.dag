@@ -1,5 +1,4 @@
 module examples.blackjack.cards
-import std.types { List }
 
 // FILE MARKER FOR THE ONBOARDING PROJECT. The model this module owns -- Rank, Card, the pip
 // value of a rank, the standard deck -- is specified in docs/plans/blackjack-onboarding.md

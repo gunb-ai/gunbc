@@ -22,7 +22,6 @@ import gunbc.native_scm_interaction_contract {
   native_scm_resolve_choice,
   native_scm_record_repaired_projection,
   native_scm_inspect_receipt,
-  ChoiceRequired,
 }
 import test.claim.native_scm_interaction_scenario_fixture {
   NativeScmScenario,

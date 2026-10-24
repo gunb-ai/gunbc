@@ -2,7 +2,6 @@ module gunbc.v1.v1_complexity_decl_classification_roster
 
 import gunbc.v1.v1_complexity_decl_classification { V1ComplexityDeclClassification }
 import std.types { NonEmptyStr }
-import gunbc.v1.v1_complexity_decl_classification_types { AuthorityOf, DeliberatelyOutOfScope, HelperOf, LegacyHazardOf, LegacyRealizationOf }
 
 data v1_complexity_decl_class_SizeExpr: V1ComplexityDeclClassification = V1ComplexityDeclClassification {
   decl_name: "SizeExpr",

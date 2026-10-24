@@ -1,7 +1,6 @@
 module extdeps.llm.mock_corpus
 
 import std.hermetic_replay { PublishedMockCase }
-import std.types { List }
 
 data llm_openai_mock_case_chat_completion: PublishedMockCase = PublishedMockCase {
   operation_key: "llm.OpenAI.ChatCompletion",

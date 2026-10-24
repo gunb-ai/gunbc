@@ -10,7 +10,7 @@ import extdeps.render.ansi {
   ansi_text_contains_line_feed,
 }
 import std.render { RenderFrame, Line, RenderCapability, Span, Viewport, CursorAction, Overwrite, Append, Clear, cursor_action_under }
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.symbols { Tier }
 import extdeps.unicode.display { string_display_width, truncate_text }

@@ -64,7 +64,6 @@ import extdeps.languages.json.emit { serialize_json }
 import extdeps.google.issue_tracker {
   issue_results_columns, issue_results_column_kind_wire,
 }
-import gunbc.roadmap.roadmap_status { HandbackDelivered, RedControlExecuted }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

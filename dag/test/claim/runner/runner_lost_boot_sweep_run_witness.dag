@@ -19,7 +19,7 @@ import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_declared_installat
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
 import gunbc.host.managed_host { ManagedHost, managed_hosts }
 import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved }
-import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
+import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId }
 import gunbc.runner.runner_slot_allocation { RunnerWidthDerived, RunnerWidthUnresolved, gunbc_runner_committed_width }
 import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, service_slot_unit, current_service_population, current_service_population_over, CurrentServicePopulationRefusal, CurrentServicePopulationDerived, CurrentServicePopulationRefused, CurrentPopulationWidthUnresolved }
 import gunbc.runner.runner_jit_deregistration {

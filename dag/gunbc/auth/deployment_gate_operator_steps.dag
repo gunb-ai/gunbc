@@ -82,16 +82,6 @@ import gunbc.auth.deployment_gate_authorization {
   OwnershipWasNotEstablished,
   OwnershipRefusalReason,
   ReadbackCarriedNoRules,
-  ActAddressedAnotherEnvironment,
-  ActAddressedAnotherRepository,
-  ActStandingDisagreesOnEnvironment,
-  ActStandingDisagreesOnInstallation,
-  ActStandingDisagreesOnRule,
-  ActStandingIsForAnotherAttempt,
-  ActStandingIsForAnotherBoundary,
-  ActStandingIsStale,
-  JoinWasRefused,
-  StandingWasNotRead,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.auth.github_deployment_environment {

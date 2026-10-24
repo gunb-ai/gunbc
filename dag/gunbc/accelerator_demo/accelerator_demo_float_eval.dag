@@ -1,6 +1,5 @@
 module gunbc.accelerator_demo.accelerator_demo_float_eval
 import gunbc.accelerator_demo.accelerator_demo_program { AcceleratorDemoProgram, ElementwiseArrayOp }
-import std.types { List }
 
 
 fn float_relu(x: Float) -> Float {

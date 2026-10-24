@@ -1,7 +1,5 @@
 module test.claim.realization_scale_agnostic
 import std.live_tree { LiveTreeDisposition }
-import std.measure { Measure, Milli }
-import test.fixture.phantom_marker_identity.plain_provider { Time }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

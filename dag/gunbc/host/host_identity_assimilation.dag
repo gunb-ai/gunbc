@@ -1,19 +1,14 @@
 module gunbc.host.host_identity_assimilation
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.dns.domain_name { DnsLabel }
 import gunbc.ci.ci_deploy_access { DeployAccess }
 import gunbc.deployed_intent_v0 { DeployedIntentV0 }
 import gunbc.deployed_intent_v1 { DeployedIntentV1 }
 import gunbc.fleet.fleet_intent { ComputeHost }
-import gunbc.host.host_effect { HostEffectTransport, HostOs, NodeControlPlane }
+import gunbc.host.host_effect { HostEffectTransport, NodeControlPlane }
 import gunbc.host.host_identity_knob { HostIdentityKnobKey, HostIdentityLeafVerdict }
-import gunbc.host.host_identity_observation { HostIdentityObservation }
 import product.host_identity { HostIdentity }
-import std.change { KeyedLeafVerdictFold }
 import std.content_hash { ContentHash }
-import std.disposition { Disposition }
-import std.types { NonEmptyStr }
 
 
 type HostIdentityAssimilationTarget {

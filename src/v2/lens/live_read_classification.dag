@@ -33,7 +33,7 @@ import v2.lens.module_graph {
   path_matches_touched
 }
 import std.integer { int_to_decimal_string }
-import v2.std.live_read { LiveReadUnestablished, DeclFactsReflection, FilesystemReadPath, LiteralPath, LiveReadSelectionClassified, LiveReadSelectionRefused, ParamRef, RuntimeRead }
+import v2.std.live_read { LiveReadUnestablished }
 import v2.std.text { string_eq }
 import std.algebra { list_head, skip }
 

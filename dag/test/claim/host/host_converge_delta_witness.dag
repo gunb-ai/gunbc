@@ -5,7 +5,6 @@ import gunbc.host.host_converge { ConvergeKnob, PerSlotMemoryCap }
 import gunbc.host.host_converge_delta { ConvergeKnobKey }
 import std.change { KeyedLeafVerdictFold }
 import std.live_tree { LiveTreeDisposition }
-import std.types { List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

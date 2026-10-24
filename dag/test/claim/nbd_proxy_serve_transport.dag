@@ -19,7 +19,6 @@ import gunbc.srv3.srv3_nbd_proxy_serve_intent {
   srv3_nbd_proxy_lease_key,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.systemctl_is_active_read { UnitIsActiveCaptureRefused, UnitIsActiveCaptured }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

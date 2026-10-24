@@ -1,6 +1,6 @@
 module gunbc.design.material
 
-import std.types { Milliseconds, List }
+import std.types { Milliseconds }
 import std.decimal { fixed_point_wire }
 import std.integer { uint8_channel_inclusive_max_value_derived }
 import std.measure { basis_point_unity_count }

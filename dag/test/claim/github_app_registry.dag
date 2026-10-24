@@ -3,31 +3,19 @@ module test.claim.github_app_registry
 import gunbc.auth.github_credential {
   unsatisfied_capabilities,
   GitHubCredentialAuthority, ActionsJobCredential,
-  InstallationResolved,
-  InstallationUnresolved,
-  ManagedAppInstallationCredential,
 }
 import gunbc.auth.github_apps {
   GitHubAppControlPlaneState, app_control_plane_state,
   gunbai_bot_declared, gunbai_bot_signer_custody,
   AppRegistrationReadbackUnavailable,
   InstallationReadbackUnavailable, InstallationReadbackNotAttempted,
-  AppHasRegisteredSigningKey,
-  AppRegistrationReadback,
-  InstallationHoldsPermissions,
-  InstallationReadback,
-  ObservationProducerBound,
-  SignerCustodyObserved,
-  SignerKeyRejected,
-  SignerMaterialAvailableForImport,
-  SignerReadbackFailed,
 }
 import extdeps.github.actions { WorkflowPermissions, PermWrite }
 import extdeps.github.actions_token {
   EffectiveActionsJobGrant, PullRequestEvent, SameRepositoryOrigin,
   ActionsRepositoryPolicyUnobserved,
 }
-import extdeps.github.effect { contents_write, workflows_write, AdvanceRepositoryBranch, DispatchWorkflow, GenerateOrganizationJitConfig, RegisterOrganizationRunner }
+import extdeps.github.effect { contents_write, workflows_write }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import gunbc.repository { gunbc_repository }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
@@ -87,7 +75,6 @@ import gunbc.host.host_control_route { bmc_controlled_host, BmcRouteNotBound }
 import gunbc.runner.runner_host_unit_slot {
   HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotHostNotControlled, host_unit_slot_for, AttemptSlot, host_unit_slot_listener_argv, host_unit_slot_root,
 }
-import extdeps.github.app { SelectedPermissions }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,7 +1,7 @@
 module gunbc.instruments.fabric_ci_calibration_actuator
 
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
-import std.process { ProcessExit, ExitSuccess, exit_failure, ExitFailure }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.shell.exec

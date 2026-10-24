@@ -20,7 +20,6 @@ import std.realization_measurement {
   cost_axis_add_time,
   witness_measured_rollup_differs_from_predicted_zero,
   witness_concurrent_memory_peak_per_share_divides,
-  ObserveElapsedAtSubject,
 }
 import std.realization_width { shard_balance_slot_for_cost }
 import extdeps.realization.v1_handler { v1_eval_expr_measure_handler_id }

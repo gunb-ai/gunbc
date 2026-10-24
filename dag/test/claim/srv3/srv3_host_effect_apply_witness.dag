@@ -26,7 +26,6 @@ import gunbc.host.host_effect_nbd_proxy_serve {
 }
 import gunbc.session_lease { PortObserved, PortObservedStaleExpected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.host.host_effect { EmitArtifactThenThinRun, HostOs, Srv3ReceiptEmit, SshShell }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

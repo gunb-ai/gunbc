@@ -5,10 +5,6 @@ import gunbc.compile_pool_ensure {
   compile_pool_ensure_is_converged
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.build_cache.build_cache_instance { ServerManagedUnitOwned, ServerPlacementUnknown }
-import gunbc.fleet.fleet_host_budget { CompilePoolDerived, CompilePoolUnresolved }
-import gunbc.host.host_compile_pool { CompilePoolSliceAbsent, CompilePoolSliceObserved }
-import gunbc.host.host_layout { CompilePoolSliceDeclared }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

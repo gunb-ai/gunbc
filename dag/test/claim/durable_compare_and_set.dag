@@ -1,5 +1,5 @@
 module test.claim.durable_compare_and_set
-import std.durable_compare_and_set { CasAttempt, CasExpectation, CasGeneration, CasObservedReadable, CasObservedUnreadable, CasOutcome, CasReadablePresent, CasSlotObservation, CasSlotVersion, CasUnreadableContentMissing, CasUnreadableMalformed, CasUnreadableObservationBoundExceeded, CasUnreadableReadRefused, ExpectSlotGeneration }
+import std.durable_compare_and_set { CasExpectation, CasGeneration, CasObservedReadable, CasObservedUnreadable, CasOutcome, CasReadablePresent, CasSlotVersion, CasUnreadableContentMissing, CasUnreadableMalformed, CasUnreadableObservationBoundExceeded, CasUnreadableReadRefused, ExpectSlotGeneration }
 import std.live_tree { LiveTreeDisposition }
 import std.types { NonEmptyStr }
 

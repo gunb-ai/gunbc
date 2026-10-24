@@ -1,5 +1,4 @@
 module test.claim.diverging_match_arm_join_witness
-import std.types { List }
 
 // The discriminating RED for the diverging-arm join defect, kept verbatim as the
 // reproduction that found it. Before `v1.compiler.infer` excluded diverging arms

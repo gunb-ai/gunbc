@@ -1,5 +1,4 @@
 module test.claim.match_arm_pattern_identity_emission_witness
-import std.types { List }
 
 // Migrated (partial) from src/v1/tests/claim/v1_match_pattern_identity_test.dag (dead witness tree
 // triage, dashboard node adhoc-9b80ec49-d63; that file's only historical consumer,

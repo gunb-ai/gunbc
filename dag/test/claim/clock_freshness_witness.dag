@@ -1,5 +1,4 @@
 module test.claim.clock_freshness_witness
-import std.resources { Clock }
 
 
 fn witness_clock_now_positive_epoch() -> Bool {

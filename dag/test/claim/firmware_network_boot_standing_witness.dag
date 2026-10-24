@@ -173,7 +173,6 @@ import gunbc.firmware_network_boot_standing {
   firmware_network_boot_preparation_routes,
   firmware_network_boot_standing,
   network_boot_attempt,
-  FirmwareModeUnsupportedByEdge,
 }
 import gunbc.secure_boot_observation { AuthorizationDenied, UnexpectedHttpStatus, VendorCommandRejected, ResourceNotFound, AuthenticationRequired, ReplyShapeUnrecognized, SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
 

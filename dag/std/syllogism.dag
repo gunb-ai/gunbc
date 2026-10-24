@@ -8,7 +8,6 @@ import std.graph {
   dfs_finish_order,
   graph_has_multi_node_scc
 }
-import std.types { List }
 
 type AxiomKind = LogicalAxiom | NonLogicalAxiom
 

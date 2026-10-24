@@ -1,10 +1,9 @@
 module gunbc.accelerator_demo.accelerator_demo_plan
 
-import std.numerical_contract { FmaContractionRefused, NumericalContract }
+import std.numerical_contract { FmaContractionRefused }
 import std.realization { LocalAccelerator }
 import extdeps.communication.medium { DecodeFidelity }
 import std.measure { Nano }
-import std.realization_schedule { RealizationPlan, RunnableKernelWorkload }
 
 
 type ElementwiseFoldClass

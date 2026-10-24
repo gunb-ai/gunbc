@@ -171,7 +171,6 @@ import gunbc.machine_intake.subject {
   UnitKeyRefused,
   UnitKeyStanding,
 }
-import std.algebra { Cons }
 
 data gunbc_provisioning_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -32,7 +32,7 @@ import gunbc.host.host_converge_slice1 {
   host_converge_slice1_host_result_refusal_reason,
 }
 import gunbc.host.host_runner_memory_provision { runner_memory_host_converge }
-import gunbc.host.host_runner_memory_cap_verify { runner_memory_cap_verify_run, RunnerMemoryCapVerifyRunResult }
+import gunbc.host.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
 import gunbc.host.host_converge { VerdictAbsent, fleet_converge_policy, host_converge_for_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob, HostConverge }
 import gunbc.host.host_effect {
   HostOs,

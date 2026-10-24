@@ -60,7 +60,6 @@ import gunbc.scm.object_table_json {
   object_id_key,
   position_reference,
   node_entry_member_set_refusal,
-  NodeTableEntryRefused,
 }
 import gunbc.scm.load_standing {
   LoadStanding,

@@ -65,14 +65,6 @@ import gunbc.target_binding {
   BareReferenceChannelSubjectUnreached,
   BareReferenceChannelSubjectCause,
   BareChannelFixtureRootAbsent, BareChannelEntryAbsent, BareChannelIndexRefused,
-  PrimitiveEgressCensusDagProducer,
-  PrimitiveEgressCensusProducer,
-  PrimitiveEgressCensusSeedProducer,
-  PrimitiveEgressCensusV2Producer,
-  RequiredLaneResolutionCensusProducer,
-  SelfHostProducer,
-  V2NativeCliProducer,
-  V2NativeFrontierProducer,
 }
 import gunbc.target_invocation {
   TargetInvocationRoute,

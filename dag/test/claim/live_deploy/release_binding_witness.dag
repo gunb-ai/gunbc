@@ -18,7 +18,6 @@ import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeUnobservable,
   DeployedScopeMatchesCommit,
   DeployedScopeDiverged,
-  TreeLegNotAttempted,
 }
 import gunbc.live_deploy.release_binding {
   DeployedReleaseBinding,
