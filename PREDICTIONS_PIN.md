@@ -1566,3 +1566,8 @@ Date:   Thu Oct 22 23:16:13 2026 +0000
 - Side-chat REQUEST_CHANGES at 6e736ad5 accepted (A2/A3/A4 keys prose-derived). Fixed at head 7894bc170a81: population receipt = TWO LEVELS (mechanical CLASS KEYS for A1/(C)/(D); A2/A3/A4 headers say "TEST, NOT PRODUCER-DERIVED" naming the needed extra knowledge: A2 both-sides decl identities (no producer emits), A3 callee formal header, A4 corpus alias table). (A) intro + RED sentence + (B) A2-assignment carry same distinction. Body matches + upgrade path (post-#14750 stamps -> mechanical).
 - Push lesson: killed push leaves stale index.lock in common dir (/home/briansrls/gunbc/.git/worktrees/<wt>/index.lock); pushes are SLOW (~2-3min) -> allow 300s timeouts.
 - PENDING at compaction: parent reply msg (text in /tmp/gc16dbg — resend when dashboard back: summary of R2 fix, option 2 rationale); row-gate watcher for machine-tagged APPROVE; #14750 watcher (both re-armed 03:55Z, logs /tmp/gc16dbg/watch_row_gate.log, watch14750c.log).
+
+## ROW #14747 MERGE-READY (2026-10-24 ~05:00Z)
+- Gate READY: approvals ['claude'] (review 85244 APPROVE at 7894bc170a81), RC 0, checks passing, CLEAN/MERGEABLE. Parent told (msg_b252dbc5); merge ask routed (suggested jointly w/ #14056 post-#14750, or earlier per parent -- dag-only independent).
+- Non-blocking style remark (receipt length) deliberately not acted on; prior review 85203 judged receipts placement correct.
+- STANDBY: #14750 watcher (watch14750c.sh; budget ends ~10:55Z; re-arm: rm /tmp/gc16dbg/.w14750b_head + rotate log).
