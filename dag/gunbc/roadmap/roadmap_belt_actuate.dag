@@ -1685,32 +1685,11 @@ fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id
       match session_placement_stores(instance: instance) {
         SessionStoresUnresolved { detail } => BeltPlacementRefused { detail: detail }
         SessionStoresResolved { stores } =>
-          match belt_session_slots_ensure(instance: instance, stores: stores) {
-            Present { value: why } => BeltPlacementRefused { detail: why }
-            Absent =>
-              match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key) {
-                SessionPlacementGranted { grant } => BeltPlacementHeld { held: BeltHeldPlacement { grant: grant, stores: stores } }
-                SessionPlacementRefused { detail } => BeltPlacementRefused { detail: detail }
-              }
+          match session_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key) {
+            SessionPlacementGranted { grant } => BeltPlacementHeld { held: BeltHeldPlacement { grant: grant, stores: stores } }
+            SessionPlacementRefused { detail } => BeltPlacementRefused { detail: detail }
           }
       }
-  }
-}
-
-// THE SLOT STORE IS CREATED BY THE SAME CAPABILITY THAT CREATES ATTEMPT STATE, before the settlement
-// pass reads it and before any slot is opened in it, so "the store is missing" never has to be told
-// apart from "the store could not be listed" by reading an error string. Present carries the refusal.
-fn belt_session_slots_ensure(instance: HostDashboardInstance, stores: SessionPlacementStores) -> String? {
-  match belt_exec(
-    cmd: host_exec_argv(
-      program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
-      args: ["-d", "-m", "0700", stores.slots_root as String],
-    ),
-    workdir: belt_observe_workdir as String,
-  ) {
-    ExecOk { stdout: _ } => none
-    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
-    ExecRefused { program, reason } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, "): ", reason], "") }
   }
 }
 
@@ -1723,10 +1702,7 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
   match session_placement_stores(instance: instance) {
     SessionStoresUnresolved { detail } => SessionSettlePassRefused { detail: detail }
     SessionStoresResolved { stores } =>
-      match belt_session_slots_ensure(instance: instance, stores: stores) {
-        Present { value: why } => SessionSettlePassRefused { detail: why }
-        Absent => belt_worktree_claim_ensure(instance: instance, stores: stores, settled: session_activation_ensure_after_settlement(instance: instance, stores: stores, settled: session_placement_settle_pass(instance: instance, stores: stores)))
-      }
+      belt_worktree_claim_ensure(instance: instance, stores: stores, settled: session_activation_ensure_after_settlement(instance: instance, stores: stores, settled: session_placement_settle_pass(instance: instance, stores: stores)))
   }
 }
 

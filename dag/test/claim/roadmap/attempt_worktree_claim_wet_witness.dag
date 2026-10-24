@@ -70,8 +70,11 @@ fn pass(
   match claims_at(cd: cd) {
   WorktreeClaimStoreUnready { detail: _ } => []
   WorktreeClaimStoreReady { store: claims } =>
+  match stores_at(dir: dir) {
+  Absent => []
+  Present { value: stores } =>
   match worktree_claim_ensure_pass_at(
-    stores: stores_at(dir: dir), claims: claims, host: host,
+    stores: stores, claims: claims, host: host,
     path_of: (n, k) => tree_path(td: td, n: n, k: k),
     loaded_of: u => others, lifecycle_of: lifecycle_absent, now: now,
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
@@ -80,6 +83,7 @@ fn pass(
     capture_of: (n, k) => capture) {
     WorktreeClaimPassRan { outcomes } => outcomes
     WorktreeClaimPassRefused { detail: _ } => []
+  }
   }
   }
 }
@@ -208,8 +212,11 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
   let outcomes = match claims_at(cd: cd) {
   WorktreeClaimStoreUnready { detail: _ } => []
   WorktreeClaimStoreReady { store: claims } =>
+  match stores_at(dir: dir) {
+  Absent => []
+  Present { value: stores } =>
   match worktree_claim_ensure_pass_at(
-    stores: stores_at(dir: dir), claims: claims, host: host,
+    stores: stores, claims: claims, host: host,
     path_of: (n, k) => tree_path(td: td, n: n, k: k),
     loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 1301,
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
@@ -218,6 +225,7 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
     capture_of: (n, k) => ClaimCaptureSettled) {
     WorktreeClaimPassRan { outcomes } => outcomes
     WorktreeClaimPassRefused { detail: _ } => []
+  }
   }
   }
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && only(os: outcomes, check: is_red) && tree_there(td: td, n: node_a, k: key_a))

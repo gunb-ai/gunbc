@@ -1,8 +1,6 @@
 module test.claim.roadmap.session_placement_witness
 
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
-import gunbc.filesystem_interface { local_filesystem }
-import gunbc.durable_cas_file_store { file_slot_store_over }
 import std.measure { kibibyte, kibibyte_count }
 import std.optional { Present, Absent }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first, cas_generation_count }
@@ -29,7 +27,7 @@ import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused }
 
 import gunbc.roadmap.roadmap_session_placement {
-  SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit_wire, session_attempt_record,
+  SessionPlacementGrant, session_process_bounds, session_unit_wire, session_attempt_record,
   session_placement_record_of, session_placement_record_json, session_placement_record_write,
   session_placement_record_basename, session_placement_release_basename, session_placement_note_basename,
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable,
@@ -86,16 +84,6 @@ fn unit_b() -> String {
   match session_unit_wire(node_id: node_b, attempt_key: key_b) {
     Present { value: u } => u as String
     Absent => ""
-  }
-}
-
-fn stores_at(dir: String) -> SessionPlacementStores {
-  SessionPlacementStores {
-    slots_root: dir as NonEmptyStr,
-    slots: file_slot_store_over(fs: local_filesystem, root: dir as NonEmptyStr),
-    records_dir: dir,
-    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir, "/ledger"], "") as NonEmptyStr) },
-    partition: "session-memory-srv2" as NonEmptyStr as PartitionId,
   }
 }
 
