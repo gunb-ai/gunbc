@@ -20,13 +20,14 @@ type PrintRequest {
 
 // THE REQUEST RECORD BINDS A REQUEST TO ITS ARTIFACT, once. It is written create-new after the first
 // preparation, so a later convergence on a newer source revision reuses the bytes it recorded instead
-// of preparing a different part for the same request. It carries no credential: the version a start
+// of preparing a different part for the same request. The location is a locator: every use re-hashes
+// the file against artifact_sha256, so a moved or altered file refuses rather than prints. It carries no credential: the version a start
 // uses is resolved when the start is selected and sealed into that attempt's signed subject.
 type PrintRequestRecord {
   request: PrintRequest
   source_revision: NonEmptyStr
-  preparation_key_digest: Sha256Digest
   artifact_sha256: Sha256Digest
+  artifact_location: NonEmptyStr
   attempt_id: NonEmptyStr
 }
 

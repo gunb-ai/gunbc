@@ -56,7 +56,7 @@ test fn attempts_are_per_request_artifact_and_printer() -> Bool {
 // A request id recorded for one root cannot be reused for another.
 test fn a_reused_request_id_for_another_part_does_not_match() -> Bool {
   let r = request(id: "ring-1", root: "a16-plug-fit-ring")
-  let record = PrintRequestRecord { request: r, source_revision: "abc", preparation_key_digest: digest_of(s: "k"), artifact_sha256: artifact(), attempt_id: print_attempt_id(request: r, artifact_sha256: artifact()) }
+  let record = PrintRequestRecord { request: r, source_revision: "abc", artifact_sha256: artifact(), artifact_location: "/var/lib/gunbc/print-runs/x/plate.3mf", attempt_id: print_attempt_id(request: r, artifact_sha256: artifact()) }
   record_matches(record: record, request: r) && !record_matches(record: record, request: request(id: "ring-1", root: "a16-sleeve-fit-ring"))
 }
 

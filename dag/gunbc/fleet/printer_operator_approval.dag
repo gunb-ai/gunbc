@@ -39,11 +39,13 @@ fn approve_and_print(printer: String, path: String, digest: String, version: Str
     PrinterSessionRefused {cause:c}=>return exit_failure(reason:c as String)
     PrinterSessionReady {session:s}=>s
   }
-  let state = match report_using_session(session:session) {
-    ProcessOutputPresent {text:t}=>if !report_allows_start(text:t) { return exit_failure(reason:"Printer is not ready; no approval requested") } else { match printer_state_generation(text:t) {Present {value:g}=>g Absent=>return exit_failure(reason:"Printer state cannot be identified; no approval requested")} }
+  let report = match report_using_session(session:session) {
+    ProcessOutputPresent {text:t}=>t
     ProcessOutputAbsent=>return exit_failure(reason:"Printer report empty; no approval requested")
     ProcessRefused {exit_code:_,stderr:_}=>return exit_failure(reason:"Printer report unreadable; no approval requested")
   }
+  if !report_allows_start(text:report) { return exit_failure(reason:"Printer is not ready; no approval requested") }
+  let state = match printer_state_generation(text:report) {Present {value:g}=>g Absent=>return exit_failure(reason:"Printer state cannot be identified; no approval requested")}
   match print_request(printer: p, digest: digest, version: version, attempt: attempt, printer_state: state) {
     Absent => exit_failure(reason: "Cannot identify print request")
     Present { value: request } => match approval_instant_now() {

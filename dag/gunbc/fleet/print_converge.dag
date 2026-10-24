@@ -36,7 +36,7 @@ import gunbc.fleet.print_request {
   print_standing, print_standing_name, print_action, Prepare, RequestBedClearThenStart, RecordCompletion, ObserveOnly, Stop,
 }
 import product.printed_chassis.print_workflow { prepare_request_plate, RequestPlatePrepared, RequestPlateRefused }
-import product.printed_chassis.prepared_project_store { materialize_artifact }
+import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 
 // ONE CONVERGENCE PASS OVER ONE PRINT REQUEST. Each pass reads the durable records and the printer
 // afresh, derives the standing (gunbc.fleet.print_request print_standing) and takes the one action
@@ -58,7 +58,7 @@ fn record_json(r: PrintRequestRecord) -> String {
     json_kv(key: "recipe", value: json_string(s: r.request.recipe as String)),
     json_kv(key: "printer", value: json_string(s: r.request.printer as String)),
     json_kv(key: "source_revision", value: json_string(s: r.source_revision as String)),
-    json_kv(key: "preparation_key_digest", value: json_string(s: r.preparation_key_digest.hex as String)),
+    json_kv(key: "artifact_location", value: json_string(s: r.artifact_location as String)),
     json_kv(key: "artifact_sha256", value: json_string(s: r.artifact_sha256.hex as String)),
     json_kv(key: "attempt_id", value: json_string(s: r.attempt_id as String)),
   ]))
@@ -95,12 +95,12 @@ fn read_record(request: PrintRequest) -> RecordRead {
           let recipe = match field(v: v, key: "recipe") { Present { value: x } => x Absent => return missing(name: "recipe") }
           let printer = match field(v: v, key: "printer") { Present { value: x } => x Absent => return missing(name: "printer") }
           let revision = match field(v: v, key: "source_revision") { Present { value: x } => x Absent => return missing(name: "source_revision") }
-          let key = match digest_field(v: v, key: "preparation_key_digest") { Present { value: x } => x Absent => return missing(name: "preparation_key_digest") }
+          let location = match field(v: v, key: "artifact_location") { Present { value: x } => x Absent => return missing(name: "artifact_location") }
           let artifact = match digest_field(v: v, key: "artifact_sha256") { Present { value: x } => x Absent => return missing(name: "artifact_sha256") }
           let attempt = match field(v: v, key: "attempt_id") { Present { value: x } => x Absent => return missing(name: "attempt_id") }
           let recorded = PrintRequestRecord {
             request: PrintRequest { request_id: request_id, root: root, recipe: recipe, printer: printer as PhysicalAssetIdentity },
-            source_revision: revision, preparation_key_digest: key, artifact_sha256: artifact, attempt_id: attempt,
+            source_revision: revision, artifact_sha256: artifact, artifact_location: location, attempt_id: attempt,
           }
           if !record_matches(record: recorded, request: request) { RecordRefused { cause: "This request id is recorded for a different root, recipe or printer; use a new request id" } }
           else { if recorded.attempt_id != print_attempt_id(request: request, artifact_sha256: recorded.artifact_sha256) { RecordRefused { cause: "Recorded attempt does not derive from the recorded request and artifact" } }
@@ -118,8 +118,8 @@ fn prepare_and_record(request: PrintRequest, source_revision: NonEmptyStr, run_i
   let output = join([print_run_directory, "/", request_record_name(request_id: request.request_id), "-", run_id], "")
   match prepare_request_plate(plate_file: join(["artifacts/printing/", request.root as String, "/plate.json"], ""), output: output, recipe: request.recipe as String, source_revision: source_revision as String, root: request.root as String) {
     RequestPlateRefused { cause: c } => RecordRefused { cause: concat("Preparation refused: ", c) }
-    RequestPlatePrepared { artifact: a, key: k } => {
-      let record = PrintRequestRecord { request: request, source_revision: source_revision, preparation_key_digest: k, artifact_sha256: a, attempt_id: print_attempt_id(request: request, artifact_sha256: a) }
+    RequestPlatePrepared { artifact: a, path: located } => {
+      let record = PrintRequestRecord { request: request, source_revision: source_revision, artifact_sha256: a, artifact_location: located as NonEmptyStr, attempt_id: print_attempt_id(request: request, artifact_sha256: a) }
       if !shell.Mkdir.Parents(path: request_directory() as FilePath).success || !Filesystem.WriteCreateNew(path: record_path(request: request), content: record_json(r: record)).success {
         RecordRefused { cause: "Cannot write the request record, or another pass wrote it first; re-run" }
       } else { RecordPresent { record: record } }
@@ -190,6 +190,16 @@ fn completion_matches(text: String, record: PrintRequestRecord, remote: NonEmpty
   }
 }
 
+// The recorded file is copied to this pass's working path and re-hashed there; only bytes that hash
+// to the recorded digest reach the printer.
+fn copy_verified(record: PrintRequestRecord, path: String) -> Bool {
+  shell.Copy.File(source: record.artifact_location as FilePath, destination: path as FilePath).success &&
+  (match sha256sum_file_digest_via_shell(path: path as NonEmptyStr) {
+    Sha256FileDigest { digest: d } => (d.hex as String) == (record.artifact_sha256.hex as String)
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+  })
+}
+
 fn session_report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: AccessTokenSource) -> String? {
   match read_existing_printer_session(printer: printer, version: version, token_source: token_source) {
     PrinterSessionRefused { cause: _ } => none
@@ -245,7 +255,7 @@ fn converge_print(request: PrintRequest, source_revision: NonEmptyStr, run_id: S
     }
     RequestBedClearThenStart => {
       let path = join([print_run_directory, "/", record.attempt_id as String, "-", run_id, ".3mf"], "")
-      if !shell.Mkdir.Parents(path: print_run_directory as FilePath).success || !materialize_artifact(sha256: record.artifact_sha256, path: path) { return exit_failure(reason: "Cannot materialize the recorded artifact from the prepared store") }
+      if !shell.Mkdir.Parents(path: print_run_directory as FilePath).success || !copy_verified(record: record, path: path) { return exit_failure(reason: "The recorded artifact is missing or no longer hashes to its recorded digest; prepare under a new request id") }
       approve_and_print(printer: record.request.printer as String, path: path, digest: record.artifact_sha256.hex as String, version: version as String, attempt: record.attempt_id as String, token_source: token_source)
     }
   }

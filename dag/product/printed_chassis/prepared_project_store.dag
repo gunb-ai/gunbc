@@ -160,12 +160,12 @@ fn materialize_prepared(project: PreparedProject, path: String) -> Bool {
   materialize_artifact(sha256: project.artifact_sha256, path: path)
 }
 // The same copy for a digest a durable record already names (gunbc.fleet.print_request).
-fn materialize_artifact(sha256: String, path: String) -> Bool {
+fn materialize_artifact(sha256: Sha256Digest, path: String) -> Bool {
   let source = artifact_path(store: prepared_project_store as String, sha256: sha256)
   shell.Copy.File(source: source as FilePath, destination: path as FilePath).success &&
   shell.Copy.File(source: concat(source, ".readback.json") as FilePath, destination: concat(path, ".readback.json") as FilePath).success &&
   (match sha256sum_file_digest_via_shell(path: path as NonEmptyStr) {
-    Sha256FileDigest { digest: d } => (d.hex as String) == sha256
+    Sha256FileDigest { digest: d } => same_digest(a: sha256, b: d.hex as String)
     Sha256FileDigestUnavailable { path: _, reason: _ } => false
   })
 }
