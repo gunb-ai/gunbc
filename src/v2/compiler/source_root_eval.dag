@@ -3328,8 +3328,8 @@ type NativeTraversalImportClosure {
 }
 
 fn native_traversal_import_round(c: NativeTraversalImportClosure, by_name: Map<String, DagSourceReadWitness>) -> NativeTraversalImportClosure {
-  fold_list(xs: c.frontier, empty: NativeTraversalImportClosure { reached: c.reached, frontier: [] }, cons: fn(next, module) {
-    match map_lookup(m: by_name, key: module) {
+  fold_list(xs: c.frontier, empty: NativeTraversalImportClosure { reached: c.reached, frontier: [] }, cons: fn(next, named) {
+    match map_lookup(m: by_name, key: named) {
       Absent => next
       Present { value: read } =>
         fold_list(xs: native_traversal_import_names(content: read.source.carried), empty: next, cons: fn(n, name) {
@@ -3342,10 +3342,10 @@ fn native_traversal_import_round(c: NativeTraversalImportClosure, by_name: Map<S
   })
 }
 
-fn native_traversal_import_seed(c: NativeTraversalImportClosure, module: String) -> NativeTraversalImportClosure {
-  match map_lookup(m: c.reached, key: module) {
+fn native_traversal_import_seed(c: NativeTraversalImportClosure, named: String) -> NativeTraversalImportClosure {
+  match map_lookup(m: c.reached, key: named) {
     Present { value: _ } => c
-    Absent => NativeTraversalImportClosure { reached: map_insert(m: c.reached, key: module, value: true), frontier: list_snoc_item(xs: c.frontier, item: module) }
+    Absent => NativeTraversalImportClosure { reached: map_insert(m: c.reached, key: named, value: true), frontier: list_snoc_item(xs: c.frontier, item: module) }
   }
 }
 
@@ -3357,10 +3357,10 @@ fn native_traversal_closure_reads(ingest: SourceRootIngest) -> Optional<SourceRo
     }
   })
   let staged = fold_list(xs: traversal_stage_roster, empty: NativeTraversalImportClosure { reached: empty_map(), frontier: [] }, cons: fn(c, s) {
-    native_traversal_import_seed(c: c, module: s.root.module_path)
+    native_traversal_import_seed(c: c, named: s.root.module_path)
   })
-  let primitives = fold_list(xs: traversal_primitive_seeds, empty: staged, cons: fn(c, d) { native_traversal_import_seed(c: c, module: d.module_path) })
-  let seeded = fold_list(xs: collection_roster_rows, empty: primitives, cons: fn(c, r) { native_traversal_import_seed(c: c, module: r.row.module_path) })
+  let primitives = fold_list(xs: traversal_primitive_seeds, empty: staged, cons: fn(c, d) { native_traversal_import_seed(c: c, named: d.module_path) })
+  let seeded = fold_list(xs: collection_roster_rows, empty: primitives, cons: fn(c, r) { native_traversal_import_seed(c: c, named: r.row.module_path) })
   let settled = fold_list(xs: trav_rounds(), empty: seeded, cons: fn(c, r) { native_traversal_import_round(c: c, by_name: by_name) })
   if is_empty(xs: settled.frontier) {
     optional_present(value: fold_list(xs: ingest, empty: [], cons: fn(acc, read) {
