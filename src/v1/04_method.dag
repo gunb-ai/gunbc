@@ -225,15 +225,6 @@ fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
 // inherits compile_dag_diagnostic_census_row_note's PrimitiveDefinition identity-join trigger
 // exactly -- do not mint a fresh trigger.
 
-// CLASS B binding-source observation for declared-import-closure-only compiles (#6985). Production
-// classify_unlisted_import_binding_source already exists in cli_run.rs; this row exposes it through
-// the same builtin-registry pattern as compile_dag_diagnostic_census: coproduct result (observed
-// binding vs not-runnable), registered as type_variable_node(id:
-// declared_import_closure_binding_result) rather than a kernel record. MEASUREMENT ONLY — callers
-// judge ListedImport vs PoolCoincidence vs refusal. DISSOLUTION: inherits
-// compile_dag_diagnostic_census_row_note's PrimitiveDefinition identity-join trigger exactly — one
-// additive row is linear cost against that dissolution; do not mint a fresh trigger.
-
 // `emit_map_has` WAS A ROW OF THE REGISTRY BELOW AND HAD NO RUNTIME AT ANY TIER
 // (deleted 2026-08-23; it sat between `rc_vec_ptr_eq` and `set_contains`). This note is
 // module-scope because that is the only annotation grain the language models -- a block
@@ -399,7 +390,6 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "entry_closure_module_identities": BuiltinSignature { params: [BuiltinParam { name: "source_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "entry_path", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "module_identity_population") },
   "compile_dag_call_form_leaf_guard": BuiltinSignature { params: [BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "target_leaves", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "exact_resolved_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: type_variable_node(id: "evaluation_store_address_production_coverage_result") },
   "parsed_import_statements": BuiltinSignature { params: [BuiltinParam { name: "file", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "source", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "parsed_import_statements_result") },
-  "observe_declared_import_closure_symbol_binding": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "entry_path", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "consumer_module", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "symbol", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "declared_import_closure_binding_result") },
   "witness_layer_roots_compile_clean_check": BuiltinSignature { params: [], returns: bool_type },
   "record_generated_artifact_drift_gate_failure_detail": BuiltinSignature { params: [BuiltinParam { name: "detail", ty: NamedTemplate { name: "String" } }], returns: unit_type },
   "record_generated_artifact_drift_gate_clean": BuiltinSignature { params: [], returns: unit_type },
