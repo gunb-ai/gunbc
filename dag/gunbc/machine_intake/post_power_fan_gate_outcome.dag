@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import extdeps.external_authority { cited_figure_read_obligation }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, chassis_observation_text, chassis_observation_is_off }
-import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetNotEstablished, FittedFanSetEstablished, FittedFanSetOperatorAssumed, PostPowerFanRefusal, FittedSetUnestablished, PostPowerChassisNotOn, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, PostPowerThermalReadingUnrecognised, PostPowerChassisUnreadable, PostPowerChassisUndecodable, FanReadUnreadable, FanRowsUndecoded, FittedHeaderMissing, FittedHeaderDuplicated, FittedHeaderStatusRefused, FittedHeaderZeroRpm, FittedHeaderNoReading, FittedHeaderDutyOnly, FittedHeaderReadingUnrecognised }
+import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetNotEstablished, FittedFanSetEstablished, FittedFanSetOperatorAssumed, PostPowerFanRefusal, FanFailureSensorNotNominal, FittedSetUnestablished, PostPowerChassisNotOn, PostPowerThermalUnreadable, PostPowerThermalNotPublished, PostPowerThermalRowsUndecoded, PostPowerThermalReadingUnrecognised, PostPowerChassisUnreadable, PostPowerChassisUndecodable, FanReadUnreadable, FanRowsUndecoded, FittedHeaderMissing, FittedHeaderDuplicated, FittedHeaderStatusRefused, FittedHeaderZeroRpm, FittedHeaderNoReading, FittedHeaderDutyOnly, FittedHeaderReadingUnrecognised }
 import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, render_round_block, render_thermal_publication }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
@@ -100,6 +100,7 @@ fn post_power_fan_refusal_text(cause: PostPowerFanRefusal) -> String {
     PostPowerThermalRowsUndecoded { undecoded_line_count: n } => join(["the chassis temperature read left ", to_string(n), " undecoded row(s)"], "")
     FanReadUnreadable => "the chassis fan sensors were unreadable after the settle window"
     FanRowsUndecoded { texts: t } => join(["the fan sensor read left ", to_string(t.length()), " undecoded row(s), each refused unread: ", join(t, " || ")], "")
+    FanFailureSensorNotNominal { text: t } => concat("a fan failure sensor row is not observed as not-asserted (refused unread): ", t)
     FittedHeaderMissing { header: h } => concat(h as String, " (fitted) has no sensor row")
     FittedHeaderDuplicated { header: h } => concat(h as String, " (fitted) names more than one sensor row")
     FittedHeaderStatusRefused { header: h, status: s } => concat(h as String, concat(" (fitted) row status is not ok: ", s as String))

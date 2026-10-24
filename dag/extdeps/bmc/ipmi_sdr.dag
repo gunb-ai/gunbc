@@ -134,6 +134,45 @@ fn sdr_field_at(fields: List<String>, index: Int) -> NonEmptyStr? {
   }
 }
 
+// A FIVE-CELL ROW WHOSE ONLY EMPTY CELL IS THE READING. ipmitool prints a discrete sensor that carries no reading text
+// (observed on this controller family: every FANn_Failure row of artifacts/bmc/mtcollins1-32dimm/06-sdr.txt, `status ok`,
+// reading cell empty) as exactly this shape; sdr_decode_line leaves it unstructured because all five fields must be
+// present. This parse is the STRUCTURAL reading of that shape (name plus status); it says nothing about what an empty
+// reading MEANS, which is the consumer's judgment.
+type SdrEmptyReadingRow {
+  name: NonEmptyStr
+  status: NonEmptyStr
+  text: String
+}
+
+fn sdr_empty_reading_row(text: String) -> SdrEmptyReadingRow? {
+  let fields = split(s: text, delimiter: "|") |> map(f => trim(f))
+  if fields.length() != 5 {
+    none
+  } else {
+    match sdr_field_at(fields: fields, index: 4) {
+      Present { value: _ } => none
+      Absent => sdr_empty_reading_row_named(text: text, fields: fields)
+    }
+  }
+}
+
+fn sdr_empty_reading_row_named(text: String, fields: List<String>) -> SdrEmptyReadingRow? {
+    match sdr_field_at(fields: fields, index: 0) {
+      Absent => none
+      Present { value: n } => match sdr_field_at(fields: fields, index: 1) {
+        Absent => none
+        Present { value: _ } => match sdr_field_at(fields: fields, index: 2) {
+          Absent => none
+          Present { value: st } => match sdr_field_at(fields: fields, index: 3) {
+            Absent => none
+            Present { value: _ } => Present { value: SdrEmptyReadingRow { name: n, status: st, text: text } }
+          }
+        }
+      }
+    }
+}
+
 fn sdr_decode_lines(stdout: String) -> List<SdrLineResult> {
   split(s: stdout, delimiter: "\n")
     |> filter(l => trim(l) != "")
