@@ -11,6 +11,7 @@ import std.algebra { string_contains }
 import extdeps.network.mac { mac_address }
 import std.claim_evidence { EvidenceApplicable, EvidenceInsufficient, EvidenceSupports }
 import extdeps.external_authority { TranscribedUncited }
+import extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide { supermicro_ami_aptio_v_post_codes_guide_table }
 import extdeps.firmware.ami_aptio_status_codes { Decoded, Refused, Described, BdsPhase, NoCheckpointRange }
 import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   supermicro_h11ssl_first_contact_receipt, supermicro_h11ssl_unit_storage_projection,
@@ -21,7 +22,8 @@ import gunbc.machine_intake.supermicro_h11ssl_unit_observation {
   H11sslPostTrace, H11sslPostSample, HostLanDisabled, RedfishRootReading, SelRead, ReadAtUtcMinute,
   supermicro_h11ssl_decoded_trace, supermicro_h11ssl_code_standing, CodeSampled, CodeNotSampled, SnoopPolledEvery, SnoopPollIntervalUnrecorded,
   supermicro_h11ssl_legacy_boot_handoff_code, supermicro_h11ssl_last_progress_code, supermicro_h11ssl_shared_ordered_tail,
-  supermicro_h11ssl_psb_inferences, supermicro_h11ssl_prior_stall_inference, cpu_inference,
+  supermicro_h11ssl_psb_inferences, supermicro_h11ssl_prior_stall_inference, supermicro_h11ssl_prior_stall_inference_under, cpu_inference,
+  supermicro_h11ssl_unit1_prior_stall, H11sslPriorStall,
   PartNotPsbLockedToANonSupermicroVendor, PriorStallFollowedTheFirstCpu, supermicro_h11ssl_psb_losses,
 }
 
@@ -126,15 +128,32 @@ test fn w_psb_inferences_are_supporting_bets_with_losses() -> Bool {
   })
 }
 
-// The prior-stall inference names the BIOS change as a loss: the CPU was not the only variable.
-test fn w_prior_stall_inference_names_the_bios_confounder() -> Bool {
-  match supermicro_h11ssl_prior_stall_inference() {
+// The prior-stall link is CONDITIONAL. As recorded, both premises (the historical attribution and
+// the fitted part) are the operator's account, so it is insufficient and names the attribution's
+// read obligation. With only the attribution grounded it stays insufficient (the fitted-part
+// premise). With both grounded, a supplied hypothesis, it is a Supports link that still carries
+// the BIOS confounder as a loss.
+test fn w_prior_stall_link_is_conditional_on_its_premises() -> Bool {
+  let grounded = supermicro_ami_aptio_v_post_codes_guide_table.standing
+  let stall = supermicro_h11ssl_unit1_prior_stall
+  let as_recorded = match supermicro_h11ssl_prior_stall_inference() {
+    Present { value: EvidenceInsufficient { insufficiency: x } } =>
+      x.claim.proposition == PriorStallFollowedTheFirstCpu
+        && (match stall.unit_attribution { TranscribedUncited { read_obligation: o } => x.reason == o  _ => false })
+    _ => false
+  }
+  let half = match supermicro_h11ssl_prior_stall_inference_under(stall: H11sslPriorStall { receipt: stall.receipt, held_code: stall.held_code, unit_attribution: grounded }, fitted: TranscribedUncited { read_obligation: "fitted part unread" }) {
+    Present { value: EvidenceInsufficient { insufficiency: x } } => x.reason == "fitted part unread"
+    _ => false
+  }
+  let both = match supermicro_h11ssl_prior_stall_inference_under(stall: H11sslPriorStall { receipt: stall.receipt, held_code: stall.held_code, unit_attribution: grounded }, fitted: grounded) {
     Present { value: EvidenceApplicable { link: l } } =>
-      l.freshness.maximum_conclusion.proposition == PriorStallFollowedTheFirstCpu
+      l.direction == EvidenceSupports
         && l.freshness.maximum_conclusion.subject == supermicro_h11ssl_unit1_bmc_mac
         && any(l.fidelity.losses, x => string_contains(s: x, pattern: "BIOS 3.7"))
     _ => false
   }
+  as_recorded && half && both
 }
 
 // RED: the same inference over a supplied trace that HELD at 0x22 on unit 1 is insufficient, not
@@ -151,9 +170,9 @@ test fn w_held_trace_is_insufficient_and_unknown_unit_refuses() -> Bool {
         bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 0, octet5: 0, octet6: 1),
         stimulus: real.stimulus, reset_issued_at: real.reset_issued_at, polling: SnoopPollIntervalUnrecorded, samples: real.samples, source: real.source,
       }
-      (match cpu_inference(t: held, proposition: PriorStallFollowedTheFirstCpu, rule: "red", losses: []) { Present { value: EvidenceInsufficient { insufficiency: _ } } => true  _ => false })
-        && (match cpu_inference(t: real, proposition: PriorStallFollowedTheFirstCpu, rule: "positive control", losses: []) { Present { value: EvidenceApplicable { link: _ } } => true  _ => false })
-        && (match cpu_inference(t: stranger, proposition: PriorStallFollowedTheFirstCpu, rule: "red", losses: []) { Absent => true  Present { value: _ } => false })
+      (match cpu_inference(t: held, proposition: PriorStallFollowedTheFirstCpu, rule: "red", premises: [], losses: []) { Present { value: EvidenceInsufficient { insufficiency: _ } } => true  _ => false })
+        && (match cpu_inference(t: real, proposition: PriorStallFollowedTheFirstCpu, rule: "positive control", premises: [], losses: []) { Present { value: EvidenceApplicable { link: _ } } => true  _ => false })
+        && (match cpu_inference(t: stranger, proposition: PriorStallFollowedTheFirstCpu, rule: "red", premises: [], losses: []) { Absent => true  Present { value: _ } => false })
     }
     Absent => false
   }

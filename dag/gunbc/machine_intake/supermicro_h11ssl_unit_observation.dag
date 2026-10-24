@@ -16,7 +16,7 @@ import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ami { ami }
@@ -404,12 +404,27 @@ fn passed_dxe_ipl(t: H11sslPostTrace) -> Bool {
   any(t.samples, x => x.code == supermicro_h11ssl_dxe_ipl_code) && match supermicro_h11ssl_last_progress_code(t: t) { Present { value: c } => c != supermicro_h11ssl_dxe_ipl_code && c != supermicro_h11ssl_unit1_prior_stall.held_code  Absent => false }
 }
 
-fn cpu_inference(t: H11sslPostTrace, proposition: H11sslCpuProposition, rule: NonEmptyStr, losses: List<NonEmptyStr>) -> H11sslCpuInference? {
+// The first premise standing that is not established (cited or observed), as its read obligation.
+fn first_unestablished_premise(premises: List<CitedFigureStanding>) -> NonEmptyStr? {
+  fold(premises, init: Absent, f: (acc, p) => match acc { Present { value: o } => Present { value: o }  Absent => cited_figure_read_obligation(standing: p) })
+}
+
+// A link is CONDITIONAL on its premises: while any premise standing is uncited, the inference is
+// EvidenceInsufficient naming that premise's read obligation, never a Supports link carrying the
+// premise as a loss. Losses are what an admitted link still cannot see; an unestablished premise
+// is a reason the link is not admitted at all.
+fn cpu_inference(t: H11sslPostTrace, proposition: H11sslCpuProposition, rule: NonEmptyStr, premises: List<CitedFigureStanding>, losses: List<NonEmptyStr>) -> H11sslCpuInference? {
   match unit_reading(bmc_mac: t.bmc_mac) {
     Absent => Absent
     Present { value: r } => {
       let claim = Claim { id: rule, subject: t.bmc_mac, target: r.cpu.fitted_part, proposition: proposition, scope: t.stimulus, bound: t.reset_issued_at }
       let fact = RecordedFact { id: t.source.label, value: t }
+      match first_unestablished_premise(premises: premises) {
+        Present { value: obligation } => Present { value: insufficient_evidence_inference(insufficiency: EvidenceInsufficiency {
+          fact: fact, claim: claim, inference_rule: rule, probe_independence: supermicro_h11ssl_snoop_trace_probe,
+          reason: obligation,
+        }) }
+        Absent =>
       if !passed_dxe_ipl(t: t) {
         Present { value: insufficient_evidence_inference(insufficiency: EvidenceInsufficiency {
           fact: fact, claim: claim, inference_rule: rule, probe_independence: supermicro_h11ssl_snoop_trace_probe,
@@ -427,6 +442,7 @@ fn cpu_inference(t: H11sslPostTrace, proposition: H11sslCpuProposition, rule: No
           probe: supermicro_h11ssl_snoop_trace_probe,
         ) }
       }
+      }
     }
   }
 }
@@ -441,20 +457,30 @@ data supermicro_h11ssl_psb_losses: List<NonEmptyStr> = [
 data supermicro_h11ssl_prior_stall_losses: List<NonEmptyStr> = [
   "The CPU was not the only change: unit 1 now reads BIOS 3.7 (2026-04-29) and IPMI 01.52.25 where its first contact read BIOS 2.6a and 1.52.00, and the BIOS at the 0x22 hold is not recorded.",
   "The memory changed: the 0x22 receipt's populations were ordinary ECC RDIMMs and an NVDIMM in C1; this trace had one SK Hynix HMA82GR7AFR4N-VK in DIMMC1.",
-  "That the 0x22 receipt is unit 1 with its first CPU is the operator's account (supermicro_h11ssl_unit1_prior_stall).",
   "One trace per configuration; a hold that recurs intermittently would not be excluded by one pass.",
 ]
 
 // One PSB inference per trace: each CPU that POSTed on a Supermicro board.
 fn supermicro_h11ssl_psb_inferences() -> List<H11sslCpuInference?> {
   supermicro_h11ssl_post_traces
-    |> map(t => cpu_inference(t: t, proposition: PartNotPsbLockedToANonSupermicroVendor, rule: "posted-on-supermicro-firmware-is-consistent-with-not-locked-to-another-vendor", losses: supermicro_h11ssl_psb_losses))
+    |> map(t => cpu_inference(t: t, proposition: PartNotPsbLockedToANonSupermicroVendor, rule: "posted-on-supermicro-firmware-is-consistent-with-not-locked-to-another-vendor", premises: [], losses: supermicro_h11ssl_psb_losses))
 }
 
-// The prior-stall inference reads unit 1's trace with the replacement part.
-fn supermicro_h11ssl_prior_stall_inference() -> H11sslCpuInference? {
+// The prior-stall inference reads unit 1's trace with the replacement part. Its premises are that
+// the historical 0x22 hold was this unit with its first CPU, and that the fitted part is a
+// different one; both are the operator's account today, so the link is insufficient until both
+// standings are established. The PSB links take no such premise: they are about whatever part
+// POSTed, not which one.
+fn supermicro_h11ssl_prior_stall_inference_under(stall: H11sslPriorStall, fitted: CitedFigureStanding) -> H11sslCpuInference? {
   match first_where(supermicro_h11ssl_post_traces, t => t.bmc_mac == supermicro_h11ssl_unit1_bmc_mac) {
     Absent => Absent
-    Present { value: t } => cpu_inference(t: t, proposition: PriorStallFollowedTheFirstCpu, rule: "same-board-passes-the-held-phase-with-another-part", losses: supermicro_h11ssl_prior_stall_losses)
+    Present { value: t } => cpu_inference(t: t, proposition: PriorStallFollowedTheFirstCpu, rule: "same-board-passes-the-held-phase-with-another-part", premises: [stall.unit_attribution, fitted], losses: supermicro_h11ssl_prior_stall_losses)
+  }
+}
+
+fn supermicro_h11ssl_prior_stall_inference() -> H11sslCpuInference? {
+  match unit_reading(bmc_mac: supermicro_h11ssl_unit1_bmc_mac) {
+    Absent => Absent
+    Present { value: r } => supermicro_h11ssl_prior_stall_inference_under(stall: supermicro_h11ssl_unit1_prior_stall, fitted: r.cpu.fitted_part.standing)
   }
 }
