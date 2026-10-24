@@ -1,6 +1,7 @@
 module v2.std.host_run
 
-import std.types { List }
+import std.types { Bytes, List }
+import std.process_termination { ProcessTermination }
 import v2.std.diagnostic {
   Outcome,
   Accepted,
@@ -18,6 +19,60 @@ import v2.std.witness { Witness, Holds, Violates }
 
 type BuildLog {
   lines: List<String>
+}
+
+// WHAT THE HOST EMIT TRANSPORT RETURNS, declared because the seed's interpreter built it for every
+// emit-host run while no .dag named it: v1.compiler.infer_method registered emit_host_run_transport
+// and emit_host_run_transport_cached as returning a bare type variable, so every field read of the
+// result in v2.compiler.emit_host run_host_process_admitted bound error_type and a misspelled field
+// was admitted. The seed's constructor (v1_interpreter emit_host_run_transport_in_workspace and
+// emit_host_run_transport_cached_in_workspace) now builds exactly this type, one shape for both
+// transports.
+//
+// HOMED HERE, beside EmitHostRunReceipt and BuildLog, and not in v2.compiler.emit_host or a std
+// process module, because it is the host-run layer's boundary value: the stage that calls the
+// transport is one consumer of it, and a generic process model knows nothing of a build that may
+// be skipped. The parts that ARE generic are reused rather than restated: termination is
+// std.process_termination ProcessTermination as is, the octets are std.types Bytes (the kernel
+// octet carrier the host already realizes, the same value bytes_octets reads), and the log is
+// this module's BuildLog.
+//
+// THE PHASE IS A CLOSED SET, so it is a coproduct and not the String the seed used to carry
+// ("build" | "run" | "run_cached"). It also subsumes the compile_skipped Bool the seed carried
+// beside it: run_cached held exactly when compile_skipped did, two fields for one fact, so the
+// Bool is derived from the phase (emit_host_transport_compile_skipped) instead of stored.
+type EmitHostTransportPhase
+  = EmitHostBuildStepFailed
+  | EmitHostRanCold
+  | EmitHostRanWarm
+
+// termination, stdout_bytes and stderr_bytes observe ONE process, and the phase says which: the
+// build step that failed (EmitHostBuildStepFailed, the run never started), or the run
+// (EmitHostRanCold after every build step succeeded, EmitHostRanWarm when an admitted warm
+// realization skipped the build). build_log has one line per process the transport ran, and on a
+// failed build step that step's stderr after its line.
+type EmitHostTransportResult {
+  phase: EmitHostTransportPhase
+  termination: ProcessTermination
+  stdout_bytes: Bytes
+  stderr_bytes: Bytes
+  build_log: BuildLog
+}
+
+// A PROJECTION KEPT FOR ONE MINT, NOT A SECOND HOME FOR THE FACT. Its only caller is
+// v2.compiler.emit_host run_host_process_admitted, which mints EmitHostRunReceipt.compile_skipped
+// from it. That Bool still has ~15 readers: the emit_on_demand_* and native_selected_witness_bundle
+// claims, emit_host_identity_cast_native, std.selected_witness_bundle and
+// v2.compiler.self_host.parity_window. Moving them onto the phase is a replacement migration over
+// a population mostly outside the required gate's closure, so it is not folded into the change
+// that declared the phase. TRIGGER: EmitHostRunReceipt carries phase: EmitHostTransportPhase and
+// those readers match on it; this function and the receipt's Bool are then deleted together.
+fn emit_host_transport_compile_skipped(phase: EmitHostTransportPhase) -> Bool {
+  match phase {
+    EmitHostBuildStepFailed => false
+    EmitHostRanCold => false
+    EmitHostRanWarm => true
+  }
 }
 
 type ExitOk {
