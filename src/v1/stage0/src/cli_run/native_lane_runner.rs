@@ -5108,13 +5108,26 @@ fn run_census_scoped_with(
 /// (`gunbc.instruments.ambient_name_census_reading` `ambient_census_kit_subjects`). It is a separate
 /// run so the union above, and every row it prints, is exactly what it was without the kit. A reader that
 /// declares no kit (`None`) gets no kit run.
+///
+/// `base_probe` is handed the union run and may name a further `census-scoped` over the SAME prepared binary:
+/// the subjects to read and the source roots to read them from. The host uses it to read the modules the union
+/// run refused at the merge base, so head and base are read by one compiler and only the tree differs.
 pub fn run_census_controls_and_subjects(
     source_roots: &[String],
     control_root_sets: &[Vec<String>],
     subjects: &[String],
     population_roots: &[String],
     kit: Option<(&str, &[String])>,
-) -> Result<(Vec<CensusInferRun>, CensusInferRun, Option<CensusInferRun>), String> {
+    base_probe: impl FnOnce(&CensusInferRun) -> Result<Option<(Vec<String>, Vec<String>)>, String>,
+) -> Result<
+    (
+        Vec<CensusInferRun>,
+        CensusInferRun,
+        Option<CensusInferRun>,
+        Option<CensusInferRun>,
+    ),
+    String,
+> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let controls = control_root_sets
         .iter()
@@ -5125,6 +5138,20 @@ pub fn run_census_controls_and_subjects(
         .map(|subject| format!("//{}:all", subject.replace('.', "/")))
         .collect();
     let union = run_census_scoped_with(&preparation.binary_path, &labels, population_roots)?;
+    let probe = match base_probe(&union)? {
+        Some((probe_subjects, probe_roots)) => {
+            let probe_labels: Vec<String> = probe_subjects
+                .iter()
+                .map(|subject| format!("//{}:all", subject.replace('.', "/")))
+                .collect();
+            Some(run_census_scoped_with(
+                &preparation.binary_path,
+                &probe_labels,
+                &probe_roots,
+            )?)
+        }
+        None => None,
+    };
     let kit = match kit {
         Some((kit_root, kit_subjects)) => {
             let kit_labels: Vec<String> = kit_subjects
@@ -5141,7 +5168,7 @@ pub fn run_census_controls_and_subjects(
         }
         None => None,
     };
-    Ok((controls, union, kit))
+    Ok((controls, union, kit, probe))
 }
 
 /// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in

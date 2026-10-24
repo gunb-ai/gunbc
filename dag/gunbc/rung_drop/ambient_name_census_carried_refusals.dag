@@ -1,0 +1,27 @@
+module gunbc.rung_drop.ambient_name_census_carried_refusals
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DerivedBy, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.instrument_targets { ambient_name_census_label }
+
+// Declared 2026-10-23 on the manager ruling for PR 14868 (review 85142): the ambient-name census refuses a rewritten
+// module only when it is NEWLY refused against the merge base. A module refused at the base too exits 0, so a held
+// run does not say the wave's edits to that module were judged; it says no module was newly refused. Conditions of
+// the ruling: the carried set is re-derived at each run by an identity join (never a copied count), shrinks only,
+// is printed on every run (carried_refused rows, carried_refused_count, and the summary line), and the label states
+// it is a ratchet, so one name does not silently mean two contracts.
+data ambient_name_census_carried_refusals: RungDrop = RungDrop {
+  identity: "ambient_name_census_carried_refusals" as NonEmptyStr,
+  subject: "Ambient-name census judgement of rewritten modules that the merge base also refused at resolve",
+  declared: "2026-10-23",
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "the census exiting 2 for every unjudged rewritten module, which stays red until every base refusal clears and so blocks every wave on debt it did not create; the carried set is printed instead"
+    },
+    population: DerivedBy { label: ambient_name_census_label() },
+    restoration_trigger: "THE CAPABILITY: the native compiler resolves every rewritten module the census reaches, so the census judges the occurrences of each rewritten module at occurrence grain and a carried (refused at base and head) module can no longer exist. Member by member: each carried_refused row the census prints is resolved by the native compiler or its module is deleted; the drop retires when the carried_refused_count is zero on the default branch."
+  } }
+}

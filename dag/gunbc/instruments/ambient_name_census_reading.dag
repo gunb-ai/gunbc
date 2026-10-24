@@ -123,6 +123,12 @@ fn ambient_census_fixture_expected() -> List<String> {
   ]
 }
 
+// The fixture stdout as one supplied value: the witnesses hand it to the standing fold as the boundary input,
+// and the one list above stays the single authority for the rows.
+fn ambient_census_fixture_stdout() -> String {
+  join(ambient_census_fixture_expected(), separator: "\n")
+}
+
 // THE STANDING SUBJECTS: the native test target (native-seven; gunbc.instrument_targets
 // v2_native_census_scoped_subject names the same module), whose closure is the population the
 // NAMESPACE-XL waves are ranked over. A further subject is a further row.
@@ -140,6 +146,27 @@ fn binding_lines(stdout: String) -> List<String> {
   split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t"))
 }
 
+// THE ROW KINDS THE NATIVE CENSUS PRINTS (v2.compiler.occurrence_binding_census, v2.compiler.source_root_eval), the one list
+// this reading recognises. A `binding_*` line whose kind is not here is not dropped by the prefix filters below: it is an
+// unrecognised row, printed and refused (`unrecognised_binding_failure`), because a reading that discards what it does not
+// know hid the located cause `binding_refusal_cause` from every run.
+fn known_binding_row_kinds() -> List<String> {
+  ["binding", "binding_declaration", "binding_module", "binding_partial", "binding_partial_module", "binding_refusal_cause", "binding_subject", "binding_unanswered", "binding_unbound", "binding_unbound_module", "binding_unreached", "binding_unrecorded"]
+}
+
+fn unrecognised_binding_lines(stdout: String) -> List<String> {
+  split(s: stdout, delimiter: "\n")
+    |> filter(l => starts_with(s: l, prefix: "binding"))
+    |> filter(l => count(known_binding_row_kinds() |> filter(k => k == field_at(line: l, index: 0))) == 0)
+}
+
+fn unrecognised_binding_failure(stdout: String) -> Optional<String> {
+  match first(distinct_lines(lines: unrecognised_binding_lines(stdout: stdout))) {
+    Present { value: l } => Present { value: to_string(count(distinct_lines(lines: unrecognised_binding_lines(stdout: stdout)))) + " unrecognised binding row kind(s), first: " + l + " -- this reading must learn the row, never drop it" }
+    Absent => Absent
+  }
+}
+
 fn line_fields(line: String) -> List<String> {
   split(s: line, delimiter: "\t")
 }
@@ -152,7 +179,7 @@ fn field_at(line: String, index: Int) -> String {
 }
 
 fn fixture_join_failure(stdout: String) -> Optional<String> {
-  let lines = split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unanswered\t") || starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t"))
+  let lines = split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unanswered\t") || starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t") || starts_with(s: l, prefix: "binding_refusal_cause\t"))
   let expected = ambient_census_fixture_expected()
   let missing = expected |> filter(e => count(lines |> filter(l => l == e)) == 0)
   let unexpected = lines |> filter(l => count(expected |> filter(e => e == l)) == 0)
@@ -277,7 +304,40 @@ fn census_observation_text(tree_stdout: String) -> String {
 // validity line travels with the rows, so a later reader sees a conflicting count (rows withheld) and an
 // unreadable count beside them rather than a silently shortened row set.
 fn partial_lines(stdout: String) -> List<String> {
-  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t"))
+  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_partial\t") || starts_with(s: l, prefix: "binding_partial_module\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unbound_module\t") || starts_with(s: l, prefix: "binding_refusal_cause\t"))
+}
+
+// THE REWRITTEN MODULES THE HEAD RUN REACHED AND REFUSED AT RESOLVE: what the host must probe at the merge base,
+// with the SAME binary, to tell a module this wave broke from one already refused before it. A module with
+// no binding rows is not observed, so this is the not-observed rewritten modules the refused map names.
+fn ambient_census_probe_modules(tree_stdout: String, rewritten: String) -> List<String> {
+  let refused = fold(distinct_lines(lines: unreached_lines(stdout: tree_stdout)), init: empty_map(), f: fn(m, l) { map_insert(m, field_at(line: l, index: 1), field_at(line: l, index: 2)) })
+  unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
+    |> filter(m => match map_get(refused, m) { Present { value: _ } => true  Absent => false })
+}
+
+// A head-refused rewritten module, judged against the merge base read by the same compiler over the base tree.
+// NewlyRefused: the base resolved it, or the base does not hold it at all (a module the wave added). PreviouslyRefused:
+// the base refused it too, so the wave did not break it. BaseUnread: the host probed it at the base and the probe
+// printed neither a binding_module nor a binding_unreached line for it -- no observation, never a guess.
+type RefusedStanding = NewlyRefused | PreviouslyRefused | BaseUnread
+
+fn refused_standing(module: String, base_probed: String, base_stdout: String) -> RefusedStanding {
+  let base_observed = observed_modules(tree_stdout: base_stdout)
+  let base_refused = fold(distinct_lines(lines: unreached_lines(stdout: base_stdout)), init: empty_map(), f: fn(m, l) { map_insert(m, field_at(line: l, index: 1), true) })
+  let probed = split(s: base_probed, delimiter: "\n") |> filter(l => l == module)
+  match map_get(base_refused, module) {
+    Present { value: _ } => PreviouslyRefused
+    Absent =>
+      match map_get(base_observed, module) {
+        Present { value: _ } => NewlyRefused
+        Absent => if count(probed) == 0 { NewlyRefused } else { BaseUnread }
+      }
+  }
+}
+
+fn refused_standing_text(standing: RefusedStanding) -> String {
+  match standing { NewlyRefused => "newly_refused"  PreviouslyRefused => "previously_refused"  BaseUnread => "base_unread" }
 }
 
 fn ambient_name_census_standing(
@@ -286,7 +346,9 @@ fn ambient_name_census_standing(
   unindexed_status: Int,
   tree_stdout: String,
   tree_runs: String,
-  rewritten: String
+  rewritten: String,
+  base_stdout: String,
+  base_probed: String
 ) -> CliWireResponse {
   // EVERY module-level row is printed, not only the ambient ones: this output is also the base or head
   // half the namespace-wave binding diff reads (gunbc.instruments.namespace_wave_binding_diff), which
@@ -302,6 +364,12 @@ fn ambient_name_census_standing(
   let not_observed = unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
   let refused_rewritten = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => true  Absent => false })
   let missing = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => false  Absent => true })
+  let newly_refused = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { NewlyRefused => true  _ => false })
+  let base_unread = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { BaseUnread => true  _ => false })
+  // THE CARRIED SET (gunbc.rung_drop ambient_name_census_carried_refusals): refused at the head AND at the merge base,
+  // re-derived by this identity join on every run and never copied, so it can only shrink -- a module that resolves
+  // at the head leaves refused_rewritten, and a module the base did not refuse is newly_refused, not carried.
+  let carried = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { PreviouslyRefused => true  _ => false })
   let failed = failed_subject_runs(tree_runs: tree_runs)
   let attribution = module_subject_attribution(tree_stdout: tree_stdout)
   let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "")
@@ -316,13 +384,19 @@ fn ambient_name_census_standing(
     + (unanswered |> join(separator: "\n")) + "\n"
     + "unanswered_declared_order_count\t" + to_string(count(unanswered)) + "\n"
     + (rewritten_lines |> join(separator: "\n")) + "\n"
-    + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" })) |> join(separator: "\n")) + "\n"
+    + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" }) + "\t" + refused_standing_text(standing: refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout))) |> join(separator: "\n")) + "\n"
+    + (carried |> map(m => "carried_refused\t" + m) |> join(separator: "\n")) + "\n"
+    + "carried_refused_count\t" + to_string(count(carried)) + "\n"
+    + (if count(newly_refused) == 0 { "ambient-name-census: a ratchet, no module newly refused against the merge base; " + to_string(count(carried)) + " carried (refused at the base too, their edits not judged)\n" } else { "ambient-name-census: a ratchet, " + to_string(count(newly_refused)) + " module(s) newly refused against the merge base; " + to_string(count(carried)) + " carried\n" })
     + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
     + (failed |> map(l => "unobserved_subject\t" + l) |> join(separator: "\n")) + "\n"
     + (ambient_summary_lines(stdout: tree_rows |> join(separator: "\n")) |> join(separator: "\n")) + "\n"
   match fixture_join_failure(stdout: fixture_stdout) {
     Present { value: why } => CliWirePrintable { bytes: fixture_stdout + "\n", exit: ExitFailure { code: 1, reason: "fixture control: " + why } }
     Absent =>
+     match unrecognised_binding_failure(stdout: fixture_stdout + "\n" + tree_stdout + "\n" + base_stdout) {
+      Present { value: why } => CliWirePrintable { bytes: bytes + (distinct_lines(lines: unrecognised_binding_lines(stdout: fixture_stdout + "\n" + tree_stdout + "\n" + base_stdout)) |> map(l => "unrecognised_binding_row\t" + l) |> join(separator: "\n")) + "\n", exit: ExitFailure { code: 1, reason: "unrecognised row control: " + why } }
+      Absent =>
       match duplicate_record_failure(stdout: fixture_stdout + "\n" + tree_stdout) {
         Present { value: why } => CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "exactly-one-source control: " + why } }
         Absent =>
@@ -333,10 +407,12 @@ fn ambient_name_census_standing(
                 CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "unindexed control: a module with no reference index must leave the run with no observation (status 2), got " + to_string(unindexed_status) } }
               } else if count(module_lines(stdout: tree_stdout)) == 0 {
                 CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "no subject run observed any module; an empty census is no observation, never a held one" } }
+              } else if count(newly_refused) != 0 {
+                CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: to_string(count(newly_refused)) + " rewritten module(s) refused at resolve that the merge base resolved or did not hold (refused_rewritten rows marked newly_refused above): " + join(newly_refused, separator: ", ") } }
               } else if count(missing) != 0 {
                 CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: to_string(count(missing)) + " rewritten module(s) no subject run observed (unobserved_rewritten rows above): the wave's edits were not read" } }
-              } else if count(refused_rewritten) != 0 {
-                CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: to_string(count(refused_rewritten)) + " rewritten module(s) reached but refused at resolve (refused_rewritten rows above): their occurrences have no binding rows, so the wave's edits were not judged" } }
+              } else if count(base_unread) != 0 {
+                CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: to_string(count(base_unread)) + " refused rewritten module(s) the merge-base probe did not observe (refused_rewritten rows marked base_unread above): whether the wave broke them was not judged" } }
               } else if count(failed) != 0 {
                 CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: to_string(count(failed)) + " subject run(s) did not complete (unobserved_subject rows above)" } }
               } else if count(unreadable_modules(stdout: tree_stdout)) != 0 {
@@ -346,6 +422,7 @@ fn ambient_name_census_standing(
               }
           }
       }
+     }
   }
 }
 
@@ -416,9 +493,11 @@ fn ambient_name_census_standing_with_kit(
   tree_stdout: String,
   tree_runs: String,
   rewritten: String,
+  base_stdout: String,
+  base_probed: String,
   kit_stdout: String
 ) -> CliWireResponse {
-  let base = ambient_name_census_standing(fixture_stdout: fixture_stdout, fixture_status: fixture_status, unindexed_status: unindexed_status, tree_stdout: tree_stdout, tree_runs: tree_runs, rewritten: rewritten)
+  let base = ambient_name_census_standing(fixture_stdout: fixture_stdout, fixture_status: fixture_status, unindexed_status: unindexed_status, tree_stdout: tree_stdout, tree_runs: tree_runs, rewritten: rewritten, base_stdout: base_stdout, base_probed: base_probed)
   let kit_lines = split(s: kit_stdout, delimiter: "\n")
     |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unreached\t") || starts_with(s: l, prefix: "binding_module\t"))
     |> map(l => "kit_fixture\t" + l)

@@ -3635,9 +3635,9 @@ fn native_census_module_inference(
     outcome: match step.verdict {
       NativeModuleResolveFileRefused { refusal: _ } => NativeInferCensusFileRefused
       NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
-        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, origin: NativeRefusalImportTargetFile, first: f, rest: r) }
       NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
-        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, origin: NativeRefusalOwn, first: f, rest: r) }
       NativeModuleResolveAccepted { resolved: resolved } =>
         match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: entry.module), resolved: resolved) {
           Accepted { value: prepared, diagnostics: _ } =>
@@ -3684,7 +3684,28 @@ fn native_census_binding_loci(positions: NativeCensusPositionTable, path: Symbol
 // name, as `binding_unbound <module> <spelling> <line>:<byte column>`, located by the same position table as the
 // residual rows (native_census_locate_fatal). A name with no binding has no binding row; this is its occurrence-grain
 // record, so a wave that binds it can be joined occurrence by occurrence on the source locus.
-fn native_census_unbound_lines(positions: NativeCensusPositionTable, entry: NativeCensusModule, first: NonEmptyDiagnostics, rest: List<NonEmptyDiagnostics>) -> List<String> {
+// WHERE A RESOLVE REFUSAL CAME FROM, carried from the verdict arm that decided it: the module's own resolution, or
+// an import whose target FILE the context refused (NativeModuleResolveImportTargetFileRefused). It is the typed fact a
+// consumer classifies a refused module on, so the census never asks a reader to infer the cause from zero unbound names.
+type NativeRefusalOrigin
+  = NativeRefusalOwn
+  | NativeRefusalImportTargetFile
+
+fn native_refusal_origin_label(origin: NativeRefusalOrigin) -> String {
+  match origin {
+    NativeRefusalOwn => "own"
+    NativeRefusalImportTargetFile => "import_target_file_refused"
+  }
+}
+
+// THE LOCATED CAUSE OF A REFUSED MODULE, `binding_refusal_cause <module> <origin> <fatal reason> <line>:<byte column>`:
+// the FIRST refusal chain's fatal, located by the same position table as the residual rows. A locus that does not read
+// prints `-`, as binding_unbound does.
+fn native_census_refusal_cause_line(positions: NativeCensusPositionTable, entry: NativeCensusModule, origin: NativeRefusalOrigin, first: NonEmptyDiagnostics) -> String {
+  "binding_refusal_cause\t" + entry.module + "\t" + native_refusal_origin_label(origin: origin) + "\t" + symbol_lexeme(sym: diagnostics_fatal(d: first).reason) + "\t" + occurrence_binding_locus_text(locus: native_census_at_locus(at: native_census_locate_fatal(chain: first, path: entry.path, positions: positions)))
+}
+
+fn native_census_unbound_lines(positions: NativeCensusPositionTable, entry: NativeCensusModule, origin: NativeRefusalOrigin, first: NonEmptyDiagnostics, rest: List<NonEmptyDiagnostics>) -> List<String> {
   let folded = fold_list(xs: Cons { head: first, tail: rest }, empty: NativeCensusUnbound { lines: [], unreadable: 0 }, cons: fn(acc, chain) {
     if diagnostics_fatal(d: chain).reason == ^resolve_reason_unbound_symbol {
       match native_census_unbound_spelling(at: diagnostics_fatal(d: chain).at) {
@@ -3696,7 +3717,7 @@ fn native_census_unbound_lines(positions: NativeCensusPositionTable, entry: Nati
       acc
     }
   })
-  list_snoc_item(xs: folded.lines, item: "binding_unbound_module\t" + entry.module + "\t" + int_to_decimal_string(value: length(xs: folded.lines)) + "\t" + int_to_decimal_string(value: folded.unreadable))
+  list_snoc_item(xs: list_snoc_item(xs: folded.lines, item: native_census_refusal_cause_line(positions: positions, entry: entry, origin: origin, first: first)), item: "binding_unbound_module\t" + entry.module + "\t" + int_to_decimal_string(value: length(xs: folded.lines)) + "\t" + int_to_decimal_string(value: folded.unreadable))
 }
 
 // The unbound fatals of one refused module: the rows that printed, and the count of those whose name did not read
