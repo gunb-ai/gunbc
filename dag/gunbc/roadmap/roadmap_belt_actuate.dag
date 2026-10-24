@@ -611,7 +611,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 }
 import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire }
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
-import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
+import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_store, WorktreeClaimStoreReady, WorktreeClaimStoreUnready }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimWritten, WorktreeClaimRecorded, WorktreeClaimNotRecorded, worktree_claim_new, worktree_claim_record_before_add,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved,
@@ -1651,12 +1651,16 @@ fn belt_worktree_claim_before_add(instance: HostDashboardInstance, node_id: Stri
   match now_epoch_seconds() {
     Absent => WorktreeClaimNotRecorded { detail: "the host clock could not be read, so the worktree claim has no launch deadline" }
     Present { value: now } =>
-      worktree_claim_record_before_add(
-        root: worktree_claim_slots_root_of(instance: instance),
-        claim: worktree_claim_new(
-          node_id: node_id, attempt_key: attempt_key,
-          worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
-          opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds))
+      match worktree_claim_store(instance: instance) {
+        WorktreeClaimStoreUnready { detail } => WorktreeClaimNotRecorded { detail: detail }
+        WorktreeClaimStoreReady { store: claims } =>
+          worktree_claim_record_before_add(
+            claims: claims,
+            claim: worktree_claim_new(
+              node_id: node_id, attempt_key: attempt_key,
+              worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
+              opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds))
+      }
   }
 }
 
@@ -1739,9 +1743,12 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
       match now_epoch_seconds() {
         Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the worktree claim ensure compares against the launch deadline" }
         Present { value: now } =>
+          match worktree_claim_store(instance: instance) {
+          WorktreeClaimStoreUnready { detail } => SessionSettlePassRefused { detail: detail }
+          WorktreeClaimStoreReady { store: claims } =>
           match worktree_claim_ensure_pass_at(
             stores: stores,
-            claims_root: worktree_claim_slots_root_of(instance: instance),
+            claims: claims,
             host: instance.host_identity as String,
             path_of: (n, k) => dispatch_worktree_path_for_instance(instance: instance, node_id: n as RoadmapNodeId, attempt_key: k),
             loaded_of: u => attempt_unit_observation(unit: u),
@@ -1759,6 +1766,7 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
                 SessionSettlePassRan { settlements: settlements }
               }
             WorktreeClaimPassRefused { detail } => SessionSettlePassRefused { detail: detail }
+          }
           }
       }
   }

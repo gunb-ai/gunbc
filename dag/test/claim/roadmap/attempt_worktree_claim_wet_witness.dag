@@ -1,7 +1,11 @@
 module test.claim.roadmap.attempt_worktree_claim_wet_witness
 
 import extdeps.shell
-import std.types { Bool, String, List, NonEmptyStr, EpochSecs }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_attempt_worktree_claim_root { WorktreeClaimStoreReading, WorktreeClaimStoreReady, WorktreeClaimStoreUnready, worktree_claim_store, worktree_claim_slots_path }
+import std.types { Bool, String, List, NonEmptyStr, EpochSecs, FilePath }
 import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedCauseUnknown }
 import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
@@ -28,20 +32,46 @@ fn tree_path(td: String, n: String, k: String) -> String { join([td, "/", n, "-a
 fn plant(td: String, n: String, k: String) -> Bool { Filesystem.Write(path: tree_path(td: td, n: n, k: k), content: "gitdir").success }
 fn tree_there(td: String, n: String, k: String) -> Bool { Filesystem.Read(path: tree_path(td: td, n: n, k: k)).success }
 
+// THE CLAIM STORE UNDER A DIRECTORY THE TEST OWNS: the production mint over an instance whose state root is the
+// test's, its directory created the way the instance directory row would, so the store is minted from a real
+// readiness observation exactly as the belt's is.
+fn claims_at(cd: String) -> WorktreeClaimStoreReading {
+  let instance = isolated_dashboard_instance(
+    deployment: deployment_id(name: "claim-wet" as NonEmptyStr),
+    instance_id: "claim-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: cd as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18098,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+  let _made = shell.Mkdir.Parents(path: worktree_claim_slots_path(instance: instance) as String as FilePath)
+  worktree_claim_store(instance: instance)
+}
+
 fn open_claim(cd: String, td: String, n: String, k: String, opened: EpochSecs) -> Bool {
-  match worktree_claim_record_before_add(
-    root: cd as NonEmptyStr,
-    claim: worktree_claim_new(node_id: n, attempt_key: k, worktree_path: tree_path(td: td, n: n, k: k), opened_at: opened, launch_deadline: opened + 300)) {
-    WorktreeClaimRecorded => true
-    WorktreeClaimNotRecorded { detail: _ } => false
+  match claims_at(cd: cd) {
+    WorktreeClaimStoreUnready { detail: _ } => false
+    WorktreeClaimStoreReady { store: claims } =>
+      match worktree_claim_record_before_add(
+        claims: claims,
+        claim: worktree_claim_new(node_id: n, attempt_key: k, worktree_path: tree_path(td: td, n: n, k: k), opened_at: opened, launch_deadline: opened + 300)) {
+        WorktreeClaimRecorded => true
+        WorktreeClaimNotRecorded { detail: _ } => false
+      }
   }
 }
 
 fn pass(
   dir: String, cd: String, td: String, others: AttemptUnitObservation, content: ClaimContent, capture: ClaimCapture, now: EpochSecs,
 ) -> List<WorktreeClaimOutcome> {
+  match claims_at(cd: cd) {
+  WorktreeClaimStoreUnready { detail: _ } => []
+  WorktreeClaimStoreReady { store: claims } =>
   match worktree_claim_ensure_pass_at(
-    stores: stores_at(dir: dir), claims_root: cd as NonEmptyStr, host: host,
+    stores: stores_at(dir: dir), claims: claims, host: host,
     path_of: (n, k) => tree_path(td: td, n: n, k: k),
     loaded_of: u => others, lifecycle_of: lifecycle_absent, now: now,
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
@@ -50,6 +80,7 @@ fn pass(
     capture_of: (n, k) => capture) {
     WorktreeClaimPassRan { outcomes } => outcomes
     WorktreeClaimPassRefused { detail: _ } => []
+  }
   }
 }
 
@@ -174,8 +205,11 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
   let td = fresh_dir(tag: "w10t")
   let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
   let planted = plant(td: td, n: node_a, k: key_a)
-  let outcomes = match worktree_claim_ensure_pass_at(
-    stores: stores_at(dir: dir), claims_root: cd as NonEmptyStr, host: host,
+  let outcomes = match claims_at(cd: cd) {
+  WorktreeClaimStoreUnready { detail: _ } => []
+  WorktreeClaimStoreReady { store: claims } =>
+  match worktree_claim_ensure_pass_at(
+    stores: stores_at(dir: dir), claims: claims, host: host,
     path_of: (n, k) => tree_path(td: td, n: n, k: k),
     loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 1301,
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
@@ -184,6 +218,7 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
     capture_of: (n, k) => ClaimCaptureSettled) {
     WorktreeClaimPassRan { outcomes } => outcomes
     WorktreeClaimPassRefused { detail: _ } => []
+  }
   }
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && only(os: outcomes, check: is_red) && tree_there(td: td, n: node_a, k: key_a))
 }

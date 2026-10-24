@@ -6,9 +6,10 @@ import std.types { String, NonEmptyStr, Int }
 import std.durable_compare_and_set { ExpectSlotGeneration, cas_attempt, CasPreconditionFailed, CasReadablePresent }
 import std.content_hash { content_hash_of_value }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_create_new }
+import gunbc.filesystem_interface { local_filesystem }
 import gunbc.durable_cas_file_store {
-  CasSlotProbe, ProbedHead, cas_probe_bisect, cas_outcome_from_create, observe_cas_slot_state, cas_file_slot_path,
-  CasGenerationRead, GenerationPresent, GenerationAbsent, cas_read_generation,
+  CasSlotProbe, ProbedHead, cas_probe_bisect_over, cas_outcome_from_create, observe_cas_slot_state_over, cas_file_slot_path,
+  CasGenerationRead, GenerationPresent, GenerationAbsent, cas_read_generation_over,
 }
 import gunbc.auth.approval_assertion_counter {
   AssertionCounterAdmission, AssertionCounterAdmitted, AssertionCounterReplayed, AssertionCounterRaced, AssertionCounterStoreRefused,
@@ -133,12 +134,12 @@ test fn an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writ
   let root = fresh_counter_root()
   let key: NonEmptyStr = "enr-interleave"
   let seeded = admit_sequentially(root: root as NonEmptyStr, enrollment_id: key, next: 1, last: 5)
-  let observed_present = cas_read_generation(root: root as NonEmptyStr, key: key, generation: 4)
-  let observed_absent = cas_read_generation(root: root as NonEmptyStr, key: key, generation: 6)
+  let observed_present = cas_read_generation_over(fs: local_filesystem, root: root as NonEmptyStr, key: key, generation: 4)
+  let observed_absent = cas_read_generation_over(fs: local_filesystem, root: root as NonEmptyStr, key: key, generation: 6)
   let appended = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: key, observed: 6)
   let resumed = match observed_present {
     GenerationPresent { content: v4 } => match observed_absent {
-      GenerationAbsent => Present { value: cas_probe_bisect(root: root as NonEmptyStr, key: key, present: 4, present_value: v4, absent: 6) }
+      GenerationAbsent => Present { value: cas_probe_bisect_over(fs: local_filesystem, root: root as NonEmptyStr, key: key, present: 4, present_value: v4, absent: 6) }
       _ => Absent
     }
     _ => Absent
@@ -158,7 +159,7 @@ test fn an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writ
     attempt: stale_attempt,
     target: 6,
     created: filesystem_create_new(path: stale_write.path, success: stale_write.success, error: stale_write.error, error_kind: stale_write.error_kind),
-    post: observe_cas_slot_state(root: root as NonEmptyStr, key: key),
+    post: observe_cas_slot_state_over(fs: local_filesystem, root: root as NonEmptyStr, key: key),
   )
   let refused_as_race = match classified {
     CasPreconditionFailed { expected: _, observed: o } => match o {
