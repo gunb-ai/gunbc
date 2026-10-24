@@ -155,7 +155,8 @@ fn instrument_dispatch_labels() -> List<Label> {
     // over the runner and fleet pool, so it is run on purpose on the fleet and never as a merge gate.
     roster_reach_inhabitance_label(),
     // The traversal-order census is run on purpose to print its totals and Unresolved list, never as a merge gate; the
-    // native route prepares the whole pool before it walks the stage closures, so it outlives the free remote runner's cap.
+    // native route prepares only the stage roots' import closure, but whether resolve holds on that closure alone is
+    // not yet measured (the whole-pool run was cancelled at the 360-minute ceiling), so the row keeps the whole-tree memory demand.
     traversal_order_census_label(),
   ]
 }
