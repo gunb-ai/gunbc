@@ -1,0 +1,200 @@
+module extdeps.proxy.openresty
+
+import std.optional { Optional, Present, Absent }
+import std.types { NonEmptyStr, brand, String, Int, List, Bool, Milliseconds, Port, HttpStatus }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "openresty.org/en/ngx-lua-module.html"
+  }
+}
+
+data openresty_proxy_pass_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "nginx.org/en/docs/http/ngx_http_proxy_module.html"
+  }
+}
+
+type OpenResty
+  = | OpenRestyProject
+
+data openresty: OpenResty = OpenRestyProject
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.proxy.openresty",
+      decl_name: "openresty",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.proxy.openresty.extdeps_external_authority_anchor,
+  further_citations: [extdeps.proxy.openresty.openresty_proxy_pass_authority]
+}
+
+type OpenRestyVersion = NonEmptyStr where brand("OpenRestyVersion")
+
+data openresty_1_27_1_1: OpenRestyVersion = "1.27.1.1" as OpenRestyVersion
+
+// The directives below are the ones that decide whether a response is relayed as it arrives and whether
+// the proxy may pick a second upstream. The log phase's outcome variables are not modeled: they were
+// observed unreliable on client abort in an uncommitted local run (no committed instrument yet), so release must not depend on them.
+type ProxyNextUpstream
+  = | ProxyNextUpstreamOff
+
+type ProxyBuffering
+  = | ProxyBufferingOff
+
+type ProxyRequestBuffering
+  = | ProxyRequestBufferingOff
+
+// Where proxy_pass sends a request. The only arm takes the target from a variable, so a fixed host or an
+// upstream block (balancing, health state) has no constructor in this model.
+type ProxyTarget
+  = | ProxyTargetFromUpstreamVariable
+
+// A name, path or header token interpolated into emitted text. nginx_token and nginx_variable return Absent for
+// a value holding a character that could end the literal it sits in. This is a validator at those constructors,
+// not a guarantee: the brand is not enforced, so a cast elsewhere (the two constructors cast) bypasses it.
+type NginxToken = NonEmptyStr where brand("NginxToken")
+
+// An nginx variable name, written $name in the conf and ngx.var.name in Lua.
+type NginxVariable = NonEmptyStr where brand("NginxVariable")
+
+type HeaderSource
+  = HeaderFromVariable { variable: NginxVariable }
+  | HeaderLiteral { text: NginxToken }
+
+type HeaderCopy {
+  header: NginxToken
+  variable: NginxVariable
+}
+
+type LuaHook
+  = CaptureSubrequest { location: NginxToken, failure_status: HttpStatus, copies: List<HeaderCopy> }
+  | LogPostToLoopback { port: Port, path: NginxToken, timeout_ms: Milliseconds, only_when_set: NginxVariable, header: NginxToken, header_value: NginxVariable }
+
+type LuaPhase
+  = | AccessPhase
+  | LogPhase
+
+type LocationMatch
+  = PrefixMatch { path: NginxToken }
+  | ExactMatch { path: NginxToken }
+
+type NginxDirective
+  = WorkerProcesses { count: Int }
+  | EventsBlock
+  | HttpBlock { body: List<NginxDirective> }
+  | AccessLogOff
+  | ServerBlock { body: List<NginxDirective> }
+  | ListenLoopback { port: Port }
+  | LocationBlock { matching: LocationMatch, body: List<NginxDirective> }
+  | SetEmptyVariable { variable: NginxVariable }
+  | ProxyHttpVersion11
+  | ProxyBufferingDirective { value: ProxyBuffering }
+  | ProxyRequestBufferingDirective { value: ProxyRequestBuffering }
+  | ProxyNextUpstreamDirective { value: ProxyNextUpstream }
+  | ProxySetHeader { header: NginxToken, source: HeaderSource }
+  | ProxyPassDirective { target: ProxyTarget, variable: NginxVariable }
+  | ProxyPassLoopback { port: Port, path: NginxToken }
+  | InternalLocationOnly
+  | ProxyMethodPost
+  | ProxyPassRequestBodyOff
+  | LuaPhaseHook { phase: LuaPhase, hook: LuaHook }
+
+fn nginx_text_is_safe(t: String) -> Bool {
+  !(string_contains(t, "'") || string_contains(t, "\\") || string_contains(t, "\n") || string_contains(t, "\r")
+    || string_contains(t, " ") || string_contains(t, ";") || string_contains(t, "\{") || string_contains(t, "}")
+    || string_contains(t, "$") || string_contains(t, "#") || string_contains(t, "\t") || string_contains(t, "\"") || t == "")
+}
+
+fn nginx_token(text: String) -> Optional<NginxToken> {
+  if nginx_text_is_safe(t: text) { Present { value: text as NginxToken } } else { Absent }
+}
+
+// A variable is read as ngx.var.name in Lua, so a character that is an operator there (or not part of an
+// identifier) is refused too. The refusal list is a blacklist, not an identifier whitelist: no string-character
+// helper is available to this module yet.
+fn nginx_variable_is_safe(t: String) -> Bool {
+  nginx_text_is_safe(t: t) && !(string_contains(t, "-") || string_contains(t, ".") || string_contains(t, "/")
+    || string_contains(t, "+") || string_contains(t, "*") || string_contains(t, "(") || string_contains(t, ")")
+    || string_contains(t, "[") || string_contains(t, "]") || string_contains(t, ",") || string_contains(t, "="))
+}
+
+fn nginx_variable(text: String) -> Optional<NginxVariable> {
+  if nginx_variable_is_safe(t: text) { Present { value: text as NginxVariable } } else { Absent }
+}
+
+fn lua_hook_lines(h: LuaHook) -> List<String> {
+  match h {
+    CaptureSubrequest { location: l, failure_status: r, copies: cs } => concat([
+      "local res = ngx.location.capture('" + (l as String) + "', \{method = ngx.HTTP_POST\})",
+      "if res.status ~= 200 then return ngx.exit(" + ((r as Int) as String) + ") end",
+    ], map(cs, c => "ngx.var." + (c.variable as String) + " = res.header['" + (c.header as String) + "']"))
+    LogPostToLoopback { port: pt, path: pa, timeout_ms: t, only_when_set: o, header: hd, header_value: hv } => [
+      "if ngx.var." + (o as String) + " == '' then return end",
+      "local value = ngx.var." + (hv as String),
+      "ngx.timer.at(0, function(p)",
+      "local s = ngx.socket.tcp()",
+      "s:settimeout(" + ((t as Int) as String) + ")",
+      "if not s:connect('127.0.0.1', " + ((pt as Int) as String) + ") then return end",
+      "s:send('POST " + (pa as String) + " HTTP/1.1\\r\\nHost: x\\r\\n" + (hd as String) + ": ' .. value .. '\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n')",
+      "s:receive('*a')",
+      "s:close()",
+      "end)",
+    ]
+  }
+}
+
+fn lua_phase_name(ph: LuaPhase) -> String {
+  match ph { AccessPhase => "access_by_lua_block" LogPhase => "log_by_lua_block" }
+}
+
+fn location_match_text(m: LocationMatch) -> String {
+  match m { PrefixMatch { path: p } => p as String ExactMatch { path: p } => "= " + (p as String) }
+}
+
+fn join_with(items: List<String>, sep: String) -> String {
+  fold(items, init: "", f: (acc, e) => if acc == "" { e } else { acc + sep + e })
+}
+
+fn nginx_block(head: String, body: List<NginxDirective>, indent: String) -> String {
+  indent + head + " \{\n" + join_with(map(body, x => render_nginx_directive(d: x, indent: indent + "  ")), "") + indent + "}\n"
+}
+
+fn nginx_line(text: String, indent: String) -> String { indent + text + ";\n" }
+
+fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
+  match d {
+    WorkerProcesses { count: n } => nginx_line(text: "worker_processes " + (n as String), indent: indent)
+    EventsBlock => indent + "events \{\}\n"
+    HttpBlock { body: b } => nginx_block(head: "http", body: b, indent: indent)
+    AccessLogOff => nginx_line(text: "access_log off", indent: indent)
+    ServerBlock { body: b } => nginx_block(head: "server", body: b, indent: indent)
+    ListenLoopback { port: p } => nginx_line(text: "listen 127.0.0.1:" + ((p as Int) as String), indent: indent)
+    LocationBlock { matching: m, body: b } => nginx_block(head: "location " + location_match_text(m: m), body: b, indent: indent)
+    SetEmptyVariable { variable: v } => nginx_line(text: "set $" + (v as String) + " ''", indent: indent)
+    ProxyHttpVersion11 => nginx_line(text: "proxy_http_version 1.1", indent: indent)
+    ProxyBufferingDirective { value: v } => match v { ProxyBufferingOff => nginx_line(text: "proxy_buffering off", indent: indent) }
+    ProxyRequestBufferingDirective { value: v } => match v { ProxyRequestBufferingOff => nginx_line(text: "proxy_request_buffering off", indent: indent) }
+    ProxyNextUpstreamDirective { value: v } => match v { ProxyNextUpstreamOff => nginx_line(text: "proxy_next_upstream off", indent: indent) }
+    ProxySetHeader { header: h, source: src } => nginx_line(text: "proxy_set_header " + (h as String) + " " + match src { HeaderFromVariable { variable: v } => "$" + (v as String) HeaderLiteral { text: t } => t as String }, indent: indent)
+    ProxyPassDirective { target: t, variable: v } => match t { ProxyTargetFromUpstreamVariable => nginx_line(text: "proxy_pass http://$" + (v as String), indent: indent) }
+    ProxyPassLoopback { port: p, path: pa } => nginx_line(text: "proxy_pass http://127.0.0.1:" + ((p as Int) as String) + (pa as String), indent: indent)
+    InternalLocationOnly => nginx_line(text: "internal", indent: indent)
+    ProxyMethodPost => nginx_line(text: "proxy_method POST", indent: indent)
+    ProxyPassRequestBodyOff => nginx_line(text: "proxy_pass_request_body off", indent: indent)
+    LuaPhaseHook { phase: ph, hook: h } =>
+      indent + lua_phase_name(ph: ph) + " \{\n" + indent + "  " + join_with(lua_hook_lines(h: h), "\n" + indent + "  ") + "\n" + indent + "}\n"
+  }
+}
+
+fn render_nginx_directives(rows: List<NginxDirective>) -> String {
+  join_with(map(rows, x => render_nginx_directive(d: x, indent: "")), "")
+}

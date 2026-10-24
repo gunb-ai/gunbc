@@ -1,0 +1,34 @@
+module gunbc.serving.router_proxy_scaffold
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// DECLARED SCAFFOLD. extdeps.proxy.openresty renders its closed typed directive sum directly to nginx
+// and Lua text instead of through extdeps/languages grammar rows. Authority (DESIGN section 5: operator
+// approval outside the diff): the operator's ruling of 2026-10-24, in their own words, "its fine to hand
+// write something as long as the debt is tracked", recorded on gunbc#14938 by calm-crab-645. This row is
+// that tracked debt. Basis: Envoy's documented stream-end sinks (access-log ALS, ext_proc) are gRPC, which the
+// HTTP native door does not serve (an uncommitted local run agreed; no committed instrument exists yet,
+// so the choice rests on that documented fact), and the proxy itself is scheduled to dissolve.
+data router_proxy_direct_render_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.proxy.openresty",
+    decl_name: "render_nginx_directives",
+    field: WholeDeclaration
+  }
+}
+
+// The Lua text and the raw HTTP request are concatenated strings in lua_hook_lines, a second hand-rendered
+// declaration; it is the same scaffold and dissolves with the first.
+data router_proxy_lua_hook_render_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.proxy.openresty",
+    decl_name: "lua_hook_lines",
+    field: WholeDeclaration
+  }
+}
+
+data router_proxy_direct_render_dissolution: DissolutionCondition = unbound_dissolution(description: "DISSOLVES WHEN EITHER (a) nginx-conf and Lua grammar rows exist under extdeps/languages so a directive model is emitted by the one grammar fold rather than hand-concatenated strings (none exists today), OR (b) a v2-native streaming door carries the router's bytes itself (plan gunbc.plans.fabric_serving_router section 3, named later realization); extdeps.proxy.openresty, gunbc.serving.router_proxy_config and this row are then deleted together.")

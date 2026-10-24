@@ -1,0 +1,131 @@
+module gunbc.serving.router_proxy_config
+
+import std.optional { Optional, Present, Absent }
+import std.types { String, Int, Bool, List, Milliseconds, Port, HttpStatus }
+import extdeps.proxy.openresty {
+  OpenRestyVersion, openresty_1_27_1_1, NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff,
+  ServerBlock, ListenLoopback, LocationBlock, PrefixMatch, ExactMatch, SetEmptyVariable, ProxyHttpVersion11, ProxyBufferingDirective,
+  ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxySetHeader, HeaderFromVariable, HeaderLiteral, ProxyPassDirective,
+  ProxyTargetFromUpstreamVariable, ProxyPassLoopback, InternalLocationOnly, ProxyMethodPost, ProxyPassRequestBodyOff,
+  LuaPhaseHook, AccessPhase, LogPhase, CaptureSubrequest, LogPostToLoopback, HeaderCopy,
+  ProxyBufferingOff, ProxyRequestBufferingOff, ProxyNextUpstreamOff, nginx_token, nginx_variable, render_nginx_directives,
+}
+
+// The router's byte-carrying proxy configuration (plan gunbc.plans.fabric_serving_router, S1), as
+// typed directive rows over extdeps.proxy.openresty; the text is the rendering of those rows.
+// The proxy takes its upstream only from the authz callout's answer header and holds no placement
+// policy: proxy_pass has a variable target (no upstream block, hence no balancing or health state),
+// proxy_next_upstream is off, and a non-200 authz answer refuses before any forwarding. The stream-end
+// callout fires from the log phase on every end of a request and only when a permit was issued; its
+// outcome label is not used for release because the log-phase variables were observed unreliable on client abort in an uncommitted local run.
+//
+// CONSUMER. Declared frontier: the plan's S7 live-deploy leg (gunbc.live_deploy.apply_legs) emits this
+// config onto the proxy unit; until it lands nothing but the witness reads it.
+//
+// DISSOLUTION CONDITION. This module dissolves with the proxy, when a v2-native streaming door
+// carries the bytes itself (plan section 3, named later realization).
+
+fn router_proxy_pinned_version() -> OpenRestyVersion { openresty_1_27_1_1 }
+
+// Serving-router policy over the OpenResty model: the header carrying the seat permit, the header the authz
+// answer names the upstream in, and the authz and stream-end routes are gunbc facts, not OpenResty's.
+// Every token comes from the checked constructors, so an unsafe token yields RouterProxyConfigRefused.
+type RouterProxyVocabulary {
+  seat_permit_header: NginxToken
+  upstream_answer_header: NginxToken
+  authz_internal_path: NginxToken
+  authz_upstream_path: NginxToken
+  stream_end_path: NginxToken
+  v1_prefix: NginxToken
+  content_length_header: NginxToken
+  zero_literal: NginxToken
+  upstream_variable: NginxVariable
+  permit_variable: NginxVariable
+}
+
+type RouterProxyConfig
+  = RouterProxyConfigRendered { text: String }
+  | RouterProxyConfigRefused { token: String }
+
+fn router_proxy_vocabulary() -> Optional<RouterProxyVocabulary> {
+  match nginx_token(text: "x-seat-permit") {
+    Present { value: seat_permit_header } =>
+  match nginx_token(text: "x-upstream") {
+    Present { value: upstream_answer_header } =>
+  match nginx_token(text: "/_authz") {
+    Present { value: authz_internal_path } =>
+  match nginx_token(text: "/authz") {
+    Present { value: authz_upstream_path } =>
+  match nginx_token(text: "/stream-end") {
+    Present { value: stream_end_path } =>
+  match nginx_token(text: "/v1/") {
+    Present { value: v1_prefix } =>
+  match nginx_token(text: "Content-Length") {
+    Present { value: content_length_header } =>
+  match nginx_token(text: "0") {
+    Present { value: zero_literal } =>
+  match nginx_variable(text: "up") {
+    Present { value: upstream_variable } =>
+  match nginx_variable(text: "permit") {
+    Present { value: permit_variable } =>
+  Present { value: RouterProxyVocabulary { seat_permit_header: seat_permit_header, upstream_answer_header: upstream_answer_header, authz_internal_path: authz_internal_path, authz_upstream_path: authz_upstream_path, stream_end_path: stream_end_path, v1_prefix: v1_prefix, content_length_header: content_length_header, zero_literal: zero_literal, upstream_variable: upstream_variable, permit_variable: permit_variable } }
+  Absent => Absent }
+  Absent => Absent }
+  Absent => Absent }
+  Absent => Absent }
+  Absent => Absent }
+  Absent => Absent }
+  Absent => Absent }
+  Absent => Absent }
+  Absent => Absent }
+  Absent => Absent }
+}
+
+fn router_proxy_directives(v: RouterProxyVocabulary, listen_port: Port, authz_port: Port, stream_end_port: Port) -> List<NginxDirective> {
+  [
+    WorkerProcesses { count: 1 },
+    EventsBlock,
+    HttpBlock { body: [
+      AccessLogOff,
+      ServerBlock { body: [
+        ListenLoopback { port: listen_port },
+        LocationBlock { matching: PrefixMatch { path: v.v1_prefix }, body: [
+          SetEmptyVariable { variable: v.upstream_variable },
+          SetEmptyVariable { variable: v.permit_variable },
+          LuaPhaseHook { phase: AccessPhase, hook: CaptureSubrequest {
+            location: v.authz_internal_path,
+            failure_status: 503 as HttpStatus,
+            copies: [
+              HeaderCopy { header: v.upstream_answer_header, variable: v.upstream_variable },
+              HeaderCopy { header: v.seat_permit_header, variable: v.permit_variable },
+            ],
+          } },
+          ProxyHttpVersion11,
+          ProxyBufferingDirective { value: ProxyBufferingOff },
+          ProxyRequestBufferingDirective { value: ProxyRequestBufferingOff },
+          ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff },
+          ProxySetHeader { header: v.seat_permit_header, source: HeaderFromVariable { variable: v.permit_variable } },
+          ProxyPassDirective { target: ProxyTargetFromUpstreamVariable, variable: v.upstream_variable },
+          LuaPhaseHook { phase: LogPhase, hook: LogPostToLoopback {
+            port: stream_end_port, path: v.stream_end_path, timeout_ms: 2000 as Milliseconds,
+            only_when_set: v.permit_variable, header: v.seat_permit_header, header_value: v.permit_variable,
+          } },
+        ] },
+        LocationBlock { matching: ExactMatch { path: v.authz_internal_path }, body: [
+          InternalLocationOnly,
+          ProxyPassLoopback { port: authz_port, path: v.authz_upstream_path },
+          ProxyMethodPost,
+          ProxyPassRequestBodyOff,
+          ProxySetHeader { header: v.content_length_header, source: HeaderLiteral { text: v.zero_literal } },
+        ] },
+      ] },
+    ] },
+  ]
+}
+
+fn router_proxy_config(listen_port: Port, authz_port: Port, stream_end_port: Port) -> RouterProxyConfig {
+  match router_proxy_vocabulary() {
+    Present { value: v } => RouterProxyConfigRendered { text: render_nginx_directives(rows: router_proxy_directives(v: v, listen_port: listen_port, authz_port: authz_port, stream_end_port: stream_end_port)) }
+    Absent => RouterProxyConfigRefused { token: "vocabulary" }
+  }
+}
