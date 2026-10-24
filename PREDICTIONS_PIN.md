@@ -1595,3 +1595,7 @@ Date:   Thu Oct 22 23:16:13 2026 +0000
 
 ## VEHICLE #14711 CLOSED (2026-10-24 ~19:05Z)
 - Merge-conflict nudge on never-merge vehicle -> CLOSED with documented rationale (comment 6388293427): measurements migrated to durable authorities; branch retained at 1c61e21421db UNREBASED on purpose (row #14747 dated examples cite that head; rebasing rewrites cited evidence). Told parent (msg_17cd454d). If nudge recurs for #14711: it's closed; do NOT reopen/rebase.
+
+## ALIAS-SHADOW OWNERSHIP RESOLVED (wise-lark-652 msg_0b3e2195 @19:09Z)
+- They DO NOT claim the alias-shadow closure. KEEP my Fix-3 (type_heads_agree stamp-equality-before-alias-table). Their container-alias hypothesis (unify_generics descent guard) was REFUTED by heal (same nine diagnostics without the guard); current candidate = declared-return/payload producer seam (type a position denotes returning expansion body), UNCONFIRMED. Neither touches type_heads_agree / binder_marked_type stamp comparison; no evidence it resolves alias-vs-own-RHS before the head comparison.
+- => PR-2 assembly carries Fix-3 as planned. with-vs-without test still runs: if their producer fix (separate, unconfirmed) later lands and my sites leave without Fix-3, re-measure then (their words). No action now.
