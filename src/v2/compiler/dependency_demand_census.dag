@@ -268,11 +268,23 @@ type DemandFactWalk {
 // one declaration's sites in walk order.
 type FactCallSite {
   occurrence: Optional<OccurrenceId>
-  callee: QualifiedName
+  callee: FactCallee
   enter: Int
   exit: Int
   operands: List<Optional<OccurrenceId>>
 }
+
+// WHAT A CALL SITE CALLS, decided by demand_fact_call_callee over the evaluator's own Transform/call-head
+// authority (eval_transform_has_callee_reference plus the parameter head resolve mints). A static
+// declaration call names its path, which may be outside the closure (unresolved is the consumer's reading of
+// that path); a function-value call names no declaration, only which kind of head it has.
+type FactCallee
+  = FactStaticCall { callee: QualifiedName }
+  | FactFunctionValueCall { head: FactValueHead }
+
+type FactValueHead
+  = FactLexicalHead
+  | FactParameterHead
 
 // A Branch or Match node: the preorder span of each child, selector first. Sites in different non-selector
 // children are alternatives; a selector's sites order before every arm's.
@@ -354,8 +366,17 @@ fn demand_fact_reference_or_children(w: DemandFactWalk, position: QualifiedName,
       demand_fact_note_site(
         before: w,
         node: node,
-        after: demand_fact_walk_children(w: demand_fact_note_call(w: w, node: node, resolved: resolved), position: position, node: node, resolved: resolved)
+        after: demand_fact_walk_children(w: demand_fact_reserve_site_tick(w: demand_fact_note_call(w: w, node: node, resolved: resolved), node: node), position: position, node: node, resolved: resolved)
       )
+  }
+}
+
+// One tick at a call site's entry, so its `enter` is unique among the sites of a body.
+fn demand_fact_reserve_site_tick(w: DemandFactWalk, node: Node) -> DemandFactWalk {
+  match demand_fact_call_callee(node: node) {
+    Present { value: _ } =>
+      DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: w.current, value_call: w.value_call, sites: w.sites, bodies: w.bodies, tick: w.tick + 1, groups: w.groups }
+    Absent => w
   }
 }
 
@@ -478,22 +499,53 @@ fn demand_fact_is_branching(node: Node) -> Bool {
   }
 }
 
-// A CALL SITE is a node headed by a declaration reference; its extent is the preorder interval the
-// walk spent on it, so a consumer can ask which sites a value or an arm contains. Additive: nothing
-// in this census reads it.
+// A CALL SITE is a Transform the evaluator reads as a call (demand_fact_call_callee); its extent is the
+// preorder interval the walk spent on it. The walk reserves one tick at the site's entry, so a nested site
+// never shares its parent's `enter` even when no declaration reference ticks between them. Additive:
+// nothing in this census reads it.
 fn demand_fact_note_site(before: DemandFactWalk, node: Node, after: DemandFactWalk) -> DemandFactWalk {
-  match first(node.children) {
-    Present { value: e } =>
-      match declaration_reference_path_optional(node: e.target) {
-        Present { value: callee } =>
-          DemandFactWalk {
-            functions: after.functions, operations: after.operations, audited: after.audited, current: after.current, value_call: after.value_call,
-            sites: list_snoc_item(xs: after.sites, item: FactCallSite { occurrence: node_occurrence_id_optional(node: node), callee: callee, enter: before.tick, exit: after.tick, operands: fold(node.children, init: Empty, f: fn(acc, c) { list_snoc_item(xs: acc, item: node_occurrence_id_optional(node: c.target)) }) }),
-            bodies: after.bodies, tick: after.tick + 1, groups: after.groups
-          }
-        Absent => after
+  match demand_fact_call_callee(node: node) {
+    Present { value: callee } =>
+      DemandFactWalk {
+        functions: after.functions, operations: after.operations, audited: after.audited, current: after.current, value_call: after.value_call,
+        sites: list_snoc_item(xs: after.sites, item: FactCallSite { occurrence: node_occurrence_id_optional(node: node), callee: callee, enter: before.tick, exit: after.tick, operands: fold(node.children, init: Empty, f: fn(acc, c) { list_snoc_item(xs: acc, item: node_occurrence_id_optional(node: c.target)) }) }),
+        bodies: after.bodies, tick: after.tick, groups: after.groups
       }
     Absent => after
+  }
+}
+
+// The one call-head decision both the site and the value_call flag read. A Transform is a call only where
+// eval_transform_has_callee_reference says so (a declaration reference, a lexical reference, or an Atom /
+// Arrow head, which is a kernel operator or an inline lambda and is no site: the lambda's body is read as
+// its own extent, an operator reaches no effect); a Transform headed by a resolve-minted parameter
+// reference is a function-value call that predicate does not see. A Branch/Match/Value whose first child is
+// a declaration reference is not a call.
+fn demand_fact_call_callee(node: Node) -> Optional<FactCallee> {
+  if demand_fact_is_transform(node: node) {
+    if eval_transform_has_callee_reference(node: node) {
+      match first(node.children) {
+        Present { value: e } =>
+          match declaration_reference_path_optional(node: e.target) {
+            Present { value: callee } => Present { value: FactStaticCall { callee: callee } }
+            Absent =>
+              if demand_fact_head_is_lexical(node: node) {
+                Present { value: FactFunctionValueCall { head: FactLexicalHead } }
+              } else {
+                Absent
+              }
+          }
+        Absent => Absent
+      }
+    } else {
+      if demand_fact_head_is_parameter(node: node) {
+        Present { value: FactFunctionValueCall { head: FactParameterHead } }
+      } else {
+        Absent
+      }
+    }
+  } else {
+    Absent
   }
 }
 
@@ -520,10 +572,9 @@ fn demand_fact_note_call(w: DemandFactWalk, node: Node, resolved: ResolvedTree) 
 }
 
 fn demand_fact_is_value_call(node: Node) -> Bool {
-  if eval_transform_has_callee_reference(node: node) {
-    demand_fact_head_is_lexical(node: node)
-  } else {
-    demand_fact_is_transform(node: node) && demand_fact_head_is_parameter(node: node)
+  match demand_fact_call_callee(node: node) {
+    Present { value: FactFunctionValueCall { head: _ } } => true
+    _ => false
   }
 }
 

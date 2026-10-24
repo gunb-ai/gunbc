@@ -17,7 +17,7 @@ import v2.compiler.value_use_dependency {
 import v2.compiler.primitive_execution_semantics { ActuatesHost, ExecutionSemanticsUnknown, ObservesHost, PrimitiveExecutionSemantics, Pure, ReadsBoundInput, effect_demand_operation_classifications }
 import std.primitive_projection { primitive_projection_roster }
 import v2.compiler.activation_dependency { ActivationNotDerivedReason, BranchNotConditionThenElse, MatchScrutineeAbsent, MatchArmMalformed }
-import v2.compiler.dependency_demand_census { FactCallSite, FactBodySites, FactGroup, FactActivationGroup, FactRepeatedGroup, FactSpan, FactSpanRole, FactSelector, FactAlternative, FactUnroled, FactRepetition, LoopIteratedBody, LambdaInstantiationUnknown }
+import v2.compiler.dependency_demand_census { FactCallSite, FactCallee, FactStaticCall, FactFunctionValueCall, FactLexicalHead, FactParameterHead, FactBodySites, FactGroup, FactActivationGroup, FactRepeatedGroup, FactSpan, FactSpanRole, FactSelector, FactAlternative, FactUnroled, FactRepetition, LoopIteratedBody, LambdaInstantiationUnknown }
 import v2.compiler.dependency_demand {
   CalleeOutsideClosure, DemandDerived, DemandDidNotSettle, DemandUndecided, DependencyDemandRow, FunctionFact,
   FunctionValueCalled, OpaqueOperationCalled, OperationFact, RequiresNone, RequiresOpaque, RequiresResources,
@@ -48,12 +48,18 @@ type ReachReason
 
 // One effect-reaching call OCCURRENCE (nested ones included; containment in an effectful parent
 // orders nothing).
-// `occurrence` is the walk tick, the internal join key only; `identity` is the real OccurrenceId key, Absent when
-// the callee reference carries none (reported as unlocated, never as the tick).
+// `occurrence` is the walk tick, the internal join key and NEVER printed; `locus` is the real OccurrenceId key
+// or the typed CallSiteUnlocated; `ordinal` is the site's admission order in its own function body (reset per
+// body, advanced once per admitted call site, reaching or not).
+type SiteLocus
+  = SiteLocated { occurrence_id: Int }
+  | CallSiteUnlocated
+
 type EffectSite {
   occurrence: Int
-  identity: Optional<Int>
-  callee: QualifiedName
+  locus: SiteLocus
+  ordinal: Int
+  callee: FactCallee
   reason: ReachReason
   contexts: String
 }
@@ -490,18 +496,39 @@ fn module_ordered_bodies(module: QualifiedName, bodies: List<FactBodySites>, use
   })
 }
 
+type BodySiteScan {
+  next: Int
+  found: List<EffectSite>
+}
+
+fn site_locus(o: Optional<OccurrenceId>) -> SiteLocus {
+  match extract_occurrence_key(o: o) {
+    Present { value: k } => SiteLocated { occurrence_id: k }
+    Absent => CallSiteUnlocated
+  }
+}
+
+// A static call reaches by the closure-wide table; a function-value call names no declaration, so it reaches
+// as the typed unknown it is (D13's FunctionValueCalled) and is attributed to the body that makes it.
+fn site_reach_reason(table: EffectReachTable, function: QualifiedName, callee: FactCallee) -> Optional<ReachReason> {
+  match callee {
+    FactStaticCall { callee: c } => effect_reach_reason(table: table, callee: c)
+    FactFunctionValueCall { head: _ } => Present { value: ReachesFunctionValueCall { function: function } }
+  }
+}
+
 // The body's facts under a reach table: only reaching sites are the pair population, but the order
 // graph keeps every site so a chain through a pure call still orders its ends.
 fn body_effect_facts(body: BodyOrdered, table: EffectReachTable) -> BodyEffectFacts {
   BodyEffectFacts {
     module: body.module,
     function: body.function,
-    sites: fold_list(xs: body.sites, empty: Empty, cons: fn(acc, s) {
-      match effect_reach_reason(table: table, callee: s.callee) {
-        Present { value: r } => list_snoc_item(xs: acc, item: EffectSite { occurrence: s.enter, identity: extract_occurrence_key(o: s.occurrence), callee: s.callee, reason: r, contexts: site_contexts(sites: body.sites, groups: body.groups, tick: s.enter) })
-        Absent => acc
+    sites: fold_list(xs: body.sites, empty: BodySiteScan { next: 0, found: Empty }, cons: fn(acc, s) {
+      match site_reach_reason(table: table, function: body.function, callee: s.callee) {
+        Present { value: r } => BodySiteScan { next: acc.next + 1, found: list_snoc_item(xs: acc.found, item: EffectSite { occurrence: s.enter, locus: site_locus(o: s.occurrence), ordinal: acc.next, callee: s.callee, reason: r, contexts: site_contexts(sites: body.sites, groups: body.groups, tick: s.enter) }) }
+        Absent => BodySiteScan { next: acc.next + 1, found: acc.found }
       }
-    }),
+    }).found,
     orders: body.orders,
     exclusive: body.exclusive
   }
@@ -790,15 +817,26 @@ fn epc_reason_word(r: ReachReason) -> String {
   }
 }
 
-fn epc_identity_word(i: Optional<Int>) -> String {
-  match i {
-    Present { value: k } => concat("occurrence_id=", to_string(k))
-    Absent => "unlocated"
+fn epc_locus_word(l: SiteLocus) -> String {
+  match l {
+    SiteLocated { occurrence_id: k } => concat("occurrence_id=", to_string(k))
+    CallSiteUnlocated => "call_site_unlocated"
+  }
+}
+
+fn epc_callee_word(c: FactCallee) -> String {
+  match c {
+    FactStaticCall { callee: q } => qualified_name_to_dotted_string(qn: q)
+    FactFunctionValueCall { head: h } =>
+      match h {
+        FactLexicalHead => "function_value_call(lexical)"
+        FactParameterHead => "function_value_call(parameter)"
+      }
   }
 }
 
 fn epc_site_text(s: EffectSite) -> String {
-  epc_text(parts: [qualified_name_to_dotted_string(qn: s.callee), "@", epc_identity_word(i: s.identity), " contexts=", s.contexts, " anchor=call_site_ordinal_in_function:", to_string(s.occurrence), "(", epc_reason_word(r: s.reason), ")"])
+  epc_text(parts: [epc_callee_word(c: s.callee), "@", epc_locus_word(l: s.locus), " contexts=", s.contexts, " call_ordinal_in_function=", to_string(s.ordinal), "(", epc_reason_word(r: s.reason), ")"])
 }
 
 fn epc_pair_line(p: EffectPairRow) -> String {

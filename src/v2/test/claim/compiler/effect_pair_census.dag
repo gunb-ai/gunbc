@@ -11,6 +11,10 @@ import v2.compiler.dependency_demand_census {
   DemandFactWalk,
   FactActivationGroup,
   FactCallSite,
+  FactCallee,
+  FactStaticCall,
+  FactFunctionValueCall,
+  FactParameterHead,
   FactGroup,
   FactRepeatedGroup,
   FactSelector,
@@ -20,6 +24,7 @@ import v2.compiler.dependency_demand_census {
   FactBodySites,
   LambdaInstantiationUnknown,
   LoopIteratedBody,
+  demand_census_module_facts,
   demand_fact_declaration,
   demand_fact_walk_children
 }
@@ -45,8 +50,12 @@ import v2.compiler.effect_pair_census {
   RepeatedOccurrence,
   effect_pair_census_of_module,
   effect_reach_table,
+  EffectReachTable,
+  ModuleEffectPairCensus,
   reach_reason_of_semantics,
   EffectSite,
+  CallSiteUnlocated,
+  module_ordered_bodies,
   OrderEdge,
   ReachesHostActuation,
   activation_edges,
@@ -59,7 +68,7 @@ import v2.compiler.effect_pair_census {
 // The reducer's controls over supplied body facts. The extraction that produces such facts from a
 // resolved tree is exercised by the source-snippet controls beside these.
 fn epc_site(occurrence: Int) -> EffectSite {
-  EffectSite { occurrence: occurrence, identity: Absent, callee: qualified_name_from_dotted_string(dotted: "t.shell"), reason: ReachesHostActuation, contexts: "none" }
+  EffectSite { occurrence: occurrence, locus: CallSiteUnlocated, ordinal: 0, callee: FactStaticCall { callee: qualified_name_from_dotted_string(dotted: "t.shell") }, reason: ReachesHostActuation, contexts: "none" }
 }
 
 fn epc_facts_with(sites: List<EffectSite>, orders: List<OrderEdge>, exclusive: List<OrderEdge>) -> BodyEffectFacts {
@@ -202,7 +211,7 @@ fn epc_repeat_body() -> BodyOrdered {
   BodyOrdered {
     module: qualified_name_from_dotted_string(dotted: "t"),
     function: qualified_name_from_dotted_string(dotted: "t.f"),
-    sites: list_snoc_item(xs: Empty, item: FactCallSite { occurrence: Absent, callee: qualified_name_from_dotted_string(dotted: "t.shell"), enter: 1, exit: 2, operands: Empty }),
+    sites: list_snoc_item(xs: Empty, item: FactCallSite { occurrence: Absent, callee: FactStaticCall { callee: qualified_name_from_dotted_string(dotted: "t.shell") }, enter: 1, exit: 2, operands: Empty }),
     orders: Empty,
     exclusive: Empty,
     not_derived: Empty,
@@ -291,7 +300,7 @@ fn epc_spans_of(g: FactGroup) -> List<FactSpan> {
 
 fn epc_sites_in(spans: List<FactSpan>) -> List<FactCallSite> {
   fold_list(xs: spans, empty: Empty, cons: fn(acc, sp) {
-    list_snoc_item(xs: acc, item: FactCallSite { occurrence: Absent, callee: qualified_name_from_dotted_string(dotted: "t.shell"), enter: sp.enter, exit: sp.exit, operands: Empty })
+    list_snoc_item(xs: acc, item: FactCallSite { occurrence: Absent, callee: FactStaticCall { callee: qualified_name_from_dotted_string(dotted: "t.shell") }, enter: sp.enter, exit: sp.exit, operands: Empty })
   })
 }
 
@@ -387,9 +396,11 @@ test fn a_shared_selector_and_arm_node_keeps_roles_by_slot_holds() -> Bool {
   }
 }
 
-// An absent OccurrenceId is a typed unlocated disposition; the tick (7 here) appears only as a labelled in-function anchor, never as the identity.
-test fn a_site_without_an_occurrence_identity_is_reported_unlocated_not_by_tick_holds() -> Bool {
-  epc_site_text(s: epc_site(occurrence: 7)) == "t.shell@unlocated contexts=none anchor=call_site_ordinal_in_function:7(host_actuation)"
+// An absent OccurrenceId is the typed CallSiteUnlocated, and the printed anchor is the body-local call ordinal (3 here),
+// never the walk tick (7), which is private. RED if the tick is printed.
+test fn a_site_without_an_occurrence_identity_is_reported_unlocated_with_its_ordinal_holds() -> Bool {
+  epc_site_text(s: EffectSite { occurrence: 7, locus: CallSiteUnlocated, ordinal: 3, callee: FactStaticCall { callee: qualified_name_from_dotted_string(dotted: "t.shell") }, reason: ReachesHostActuation, contexts: "none" })
+    == "t.shell@call_site_unlocated contexts=none call_ordinal_in_function=3(host_actuation)"
 }
 
 // ---- REPETITION: only a Loop's iterated body repeats --------------------------------------------------
@@ -488,4 +499,102 @@ test fn one_occurrence_in_two_contexts_lists_both_holds() -> Bool {
 test fn a_selector_site_and_an_unnested_site_report_their_own_role_holds() -> Bool {
   site_contexts(sites: Empty, groups: epc_ctx_groups(), tick: 1) == "activation:selector"
     && site_contexts(sites: Empty, groups: epc_ctx_groups(), tick: 9) == "none"
+}
+
+
+// ---- THE CALL-SITE POPULATION, THROUGH THE REAL FRONT END AND demand_fact_note_site ----------------------------
+// These controls read demand_census_module_facts over ingested source, so every site below is made by
+// demand_fact_note_site (the controls above that call demand_fact_walk_children directly never reach it).
+data epc_fv_source: String = "module acd\n\nfn an_effect() -> Int {\n  1\n}\n\nfn f(g: fn() -> Int) -> Int {\n  let a = g()\n  let b = an_effect()\n  b\n}\n"
+
+data epc_flag_source: String = "module acd\n\ndata an_flag: Bool = true\n\nfn f() -> Int {\n  if an_flag { 1 } else { 2 }\n}\n"
+
+data epc_ordinal_source: String = "module acd\n\ndata an_value: Int = 3\n\nfn an_effect() -> Int {\n  1\n}\n\nfn f() -> Int {\n  let a = an_value\n  let b = an_effect()\n  an_effect()\n}\n"
+
+fn epc_source_bodies(source: String) -> List<FactBodySites> {
+  match assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness { source: Medium { carried: source, fidelity: Lossless }, artifact: epc_fe_artifact, compilation_unit: ^epc_fe_cu, source_root: V2Tree },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^acd, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Accepted { value: tree, diagnostics: _ } => demand_census_module_facts(resolved: tree, module_qn: Cons { head: ^acd, tail: Empty }).bodies
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+fn epc_body_of_f(bodies: List<FactBodySites>) -> Optional<FactBodySites> {
+  fold_list(xs: bodies, empty: optional_absent(), cons: fn(acc, b) {
+    if b.function == qualified_name_from_dotted_string(dotted: "acd.f") { optional_present(value: b) } else { acc }
+  })
+}
+
+fn epc_f_sites(source: String) -> Optional<List<FactCallSite>> {
+  match epc_body_of_f(bodies: epc_source_bodies(source: source)) {
+    Present { value: b } => optional_present(value: b.sites)
+    Absent => optional_absent()
+  }
+}
+
+fn epc_is_function_value_site(s: FactCallSite) -> Bool {
+  match s.callee {
+    FactFunctionValueCall { head: FactParameterHead } => true
+    _ => false
+  }
+}
+
+fn epc_is_static_site_of(s: FactCallSite, dotted: String) -> Bool {
+  match s.callee {
+    FactStaticCall { callee: c } => c == qualified_name_from_dotted_string(dotted: dotted)
+    _ => false
+  }
+}
+
+fn epc_effect_table() -> EffectReachTable {
+  effect_reach_table(
+    functions: Empty,
+    operations: list_snoc_item(xs: Empty, item: OperationFact { path: qualified_name_from_dotted_string(dotted: "acd.an_effect"), requirement: RequiresOpaque })
+  )
+}
+
+fn epc_census_of(source: String) -> ModuleEffectPairCensus {
+  effect_pair_census_of_module(
+    module: qualified_name_from_dotted_string(dotted: "acd"),
+    bodies: module_ordered_bodies(module: qualified_name_from_dotted_string(dotted: "acd"), bodies: epc_source_bodies(source: source), uses: Empty, not_derived: Empty),
+    table: epc_effect_table()
+  )
+}
+
+// POSITIVE: a call through a PARAMETER beside a static effect is two sites, the function-value one typed as such,
+// and (nothing orders them) exactly ONE candidate pair. RED if the function-value arm is removed (one site, no pair).
+test fn a_function_value_call_beside_a_static_effect_is_one_candidate_pair_holds() -> Bool {
+  match epc_f_sites(source: epc_fv_source) {
+    Absent => false
+    Present { value: sites } =>
+      length(xs: sites) == 2
+        && fold_list(xs: sites, empty: false, cons: fn(a, s) { a || epc_is_function_value_site(s: s) })
+        && fold_list(xs: sites, empty: false, cons: fn(a, s) { a || epc_is_static_site_of(s: s, dotted: "acd.an_effect") })
+        && length(xs: epc_census_of(source: epc_fv_source).pairs) == 1
+  }
+}
+
+// NEGATIVE: a Branch whose selector is a bare declaration reference is no call. RED if the first-child test
+// stands without the Transform guard (the Branch is reported as a call of acd.an_flag).
+test fn a_branch_with_a_declaration_reference_selector_is_not_a_call_site_holds() -> Bool {
+  match epc_f_sites(source: epc_flag_source) {
+    Absent => false
+    Present { value: sites } => length(xs: sites) == 0
+  }
+}
+
+// ORDINAL: two calls preceded by an unrelated declaration reference read ordinals 0 and 1, while the private walk
+// tick of the first is past 0 (it advanced across the data reference and the earlier declaration). RED if the
+// tick is reported as the ordinal.
+test fn call_ordinals_reset_per_function_and_ignore_unrelated_references_holds() -> Bool {
+  match epc_census_of(source: epc_ordinal_source).pairs {
+    Cons { head: p, tail: Empty } => p.first.ordinal == 0 && p.second.ordinal == 1 && p.first.occurrence > 0
+    _ => false
+  }
 }
