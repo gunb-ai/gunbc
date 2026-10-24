@@ -31369,7 +31369,10 @@ pub fn resolve_coproduct_wire_policy(
     modules: &[Rc<TypedModule>],
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
 ) -> Option<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> {
-    use crate::v1_compiler_emit_rust::resolve_local_coproduct_wire_policy;
+    use crate::v1_compiler_emit_rust::{
+        field_value_by_name, is_coproduct_wire_contract_row, record_string_field,
+        resolve_wire_serde_policy_from_encoding_node, variant_encoding_is_string_variant,
+    };
     use crate::v1_std_core::module_imports;
     // KEYED BY THE PAIR, NOT THE BARE NAME -- parity with the typing authority.
     // `build_coproduct_wire_contract_index` (v1_interpreter.rs) indexes rows by
@@ -31379,22 +31382,77 @@ pub fn resolve_coproduct_wire_policy(
     // coproduct_wire_contract_target_not_local_in_emitted_extdeps_github: a row aimed at another
     // module's same-named coproduct was served here). A coproduct with no declaring module in the
     // index has no pair any row can name, so it resolves to the default, like the authority.
+    // The row-selection reads are the SAME primitives the emitter's own pair-keyed
+    // resolve_local_coproduct_wire_policy filters with (is_coproduct_wire_contract_row +
+    // DeclarationRef field reads + the shared encoding resolver) -- one rule, no drift; the
+    // all_unit_variants=false stance is the fold's pre-existing one (the fold has no nullary
+    // observation here, so StringVariant rows keep taking the error path and dropping out).
     let declaring_module = declaring_module?;
     let si = Rc::new(source_indices.clone());
-    let mut matches: Vec<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> = Vec::new();
+    // Collect every row in the program whose DeclarationRef is EXACTLY (declaring_module,
+    // coproduct_name) -- the same key the interpreter's index builds. The interpreter's index
+    // marks a key claimed by more than one row AmbiguousWireContract and refuses it, so more than
+    // one pair-matching row here resolves to nothing (the caller's default), never to one of them.
+    let mut candidates: Vec<Rc<Node>> = Vec::new();
     for tm in modules {
         let imports = module_imports(tm.module.clone());
-        if let Some(local) = resolve_local_coproduct_wire_policy(
-            coproduct_name.to_string(),
-            declaring_module.to_string(),
-            false,
-            tm.items.clone(),
-            imports,
-            si.clone(),
-        ) {
-            if local.error_message.is_none() {
-                matches.push(local);
+        for item in tm.items.iter() {
+            if !is_coproduct_wire_contract_row(
+                item.clone(),
+                tm.items.clone(),
+                imports.clone(),
+                si.clone(),
+            ) {
+                continue;
             }
+            let Some(body) = item.body.clone() else {
+                continue;
+            };
+            let Some(decl_ref) =
+                field_value_by_name(body.clone(), "coproduct".to_string(), si.clone())
+            else {
+                continue;
+            };
+            let row_module =
+                record_string_field(decl_ref.clone(), "module_path".to_string(), si.clone());
+            let row_name =
+                record_string_field(decl_ref.clone(), "decl_name".to_string(), si.clone());
+            // THE PAIR OR NOTHING: a row whose DeclarationRef does not name exactly this module's
+            // this-named coproduct governs nothing here (and a row with an unreadable pair is
+            // indexed nowhere by the authority either).
+            if row_module.as_deref() == Some(declaring_module)
+                && row_name.as_deref() == Some(coproduct_name)
+            {
+                candidates.push(item.clone());
+            }
+        }
+    }
+    let mut matches: Vec<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> = Vec::new();
+    if candidates.len() == 1 {
+        let body = candidates[0]
+            .body
+            .clone()
+            .expect("pair-matched row has a body");
+        let policy = match field_value_by_name(body.clone(), "encoding".to_string(), si.clone()) {
+            Some(encoding) => {
+                if variant_encoding_is_string_variant(encoding.clone(), si.clone()) {
+                    // The fold's pre-existing all_unit_variants=false stance: a StringVariant
+                    // row needs the emitter's nullary observation, which lives on the emit
+                    // side -- the fold refuses it exactly as resolve_local does for a
+                    // non-observed coproduct, and it drops out below via error_message.
+                    crate::v1_compiler_emit_rust::rust_serde_error_policy(format!(
+                        "CoproductWireContract StringVariant requires a nullary-only coproduct: {coproduct_name}"
+                    ))
+                } else {
+                    resolve_wire_serde_policy_from_encoding_node(encoding, si.clone())
+                }
+            }
+            std::option::Option::None => crate::v1_compiler_emit_rust::rust_serde_error_policy(
+                format!("CoproductWireContract missing encoding for {coproduct_name}"),
+            ),
+        };
+        if policy.error_message.is_none() {
+            matches.push(policy);
         }
     }
     if matches.is_empty() {
