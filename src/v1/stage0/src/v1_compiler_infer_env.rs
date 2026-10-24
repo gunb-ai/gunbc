@@ -252,7 +252,7 @@ pub fn effective_visible_binding(
         Some(b) => Some(b.clone()),
         std::option::Option::None => parents.iter().cloned().fold(
             std::option::Option::None,
-            |acc: _, parent: Rc<TypeEnv>| {
+            |acc: Option<Rc<TypeBinding>>, parent: Rc<TypeEnv>| {
                 if (acc.clone() != std::option::Option::None) {
                     acc.clone()
                 } else {
