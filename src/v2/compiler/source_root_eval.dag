@@ -3017,6 +3017,23 @@ type NativeDemandCensusFoldState {
   authored: List<AuthoredUsesFunction>
   file_refused: List<AuthoredUsesFunction>
   unreadable: List<DemandCensusUnreadable>
+  pn: Int
+  tok_ns: Int
+  parse_ns: Int
+  strip_ns: Int
+  norm_ns: Int
+  absorb_ns: Int
+  rtrace: List<String>
+}
+
+fn native_demand_census_rtrace(st: NativeDemandCensusFoldState) -> NativeDemandCensusFoldState {
+  if (st.pn - (st.pn / 16) * 16) == 0 {
+    NativeDemandCensusFoldState {
+      context: st.context, authored: st.authored, file_refused: st.file_refused, unreadable: st.unreadable,
+      pn: st.pn, tok_ns: st.tok_ns, parse_ns: st.parse_ns, strip_ns: st.strip_ns, norm_ns: st.norm_ns, absorb_ns: st.absorb_ns,
+      rtrace: list_snoc_item(xs: st.rtrace, item: concat("[read-trace] files=", to_string(st.pn), " tok_ms=", to_string(st.tok_ns / 1000000), " parse_ms=", to_string(st.parse_ns / 1000000), " strip_ms=", to_string(st.strip_ns / 1000000), " norm_ms=", to_string(st.norm_ns / 1000000), " absorb_ms=", to_string(st.absorb_ns / 1000000)))
+    }
+  } else { st }
 }
 
 fn native_demand_census_snoc_all(xs: List<AuthoredUsesFunction>, ys: List<AuthoredUsesFunction>) -> List<AuthoredUsesFunction> {
@@ -3045,40 +3062,56 @@ fn native_demand_census_read(
     Present { value: qn } => qn
     Absent => Empty
   }
-  match program_assembly_phase_tokenize(read: read, lex: front.lex) {
+  let t0 = observed_thread_cpu_nanos("census-read-start")
+  let tok = program_assembly_phase_tokenize(read: read, lex: front.lex)
+  let t1 = observed_thread_cpu_nanos("census-read-tokenized")
+  match tok {
     Rejected { diagnostics: d } =>
-      NativeDemandCensusFoldState {
+      native_demand_census_rtrace(st: NativeDemandCensusFoldState {
         context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
         authored: state.authored,
         file_refused: state.file_refused,
-        unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtTokenize, d: d))
-      }
+        unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtTokenize, d: d)),
+        pn: state.pn + 1, tok_ns: state.tok_ns + (t1 - t0), parse_ns: state.parse_ns, strip_ns: state.strip_ns, norm_ns: state.norm_ns, absorb_ns: state.absorb_ns, rtrace: state.rtrace
+      })
     Accepted { value: tokens, diagnostics: _ } =>
-      match parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, seed: state.context.alloc) {
+      let parsed = parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, seed: state.context.alloc)
+      let t2 = observed_thread_cpu_nanos("census-read-parsed")
+      match parsed {
         Rejected { diagnostics: d } =>
-          NativeDemandCensusFoldState {
+          native_demand_census_rtrace(st: NativeDemandCensusFoldState {
             context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
             authored: state.authored,
             file_refused: state.file_refused,
-            unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtParse, d: d))
-          }
+            unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtParse, d: d)),
+            pn: state.pn + 1, tok_ns: state.tok_ns + (t1 - t0), parse_ns: state.parse_ns + (t2 - t1), strip_ns: state.strip_ns, norm_ns: state.norm_ns, absorb_ns: state.absorb_ns, rtrace: state.rtrace
+          })
         Accepted { value: artifact, diagnostics: _ } =>
           let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
-          match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope), spans: artifact.span_index) {
+          let t3 = observed_thread_cpu_nanos("census-read-stripped")
+          let normed = normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope), spans: artifact.span_index)
+          let t4 = observed_thread_cpu_nanos("census-read-normalized")
+          match normed {
             Rejected { diagnostics: d } =>
-              NativeDemandCensusFoldState {
-                context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope)),
+              let ctx = native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope))
+              let t5 = observed_thread_cpu_nanos("census-read-absorbed")
+              native_demand_census_rtrace(st: NativeDemandCensusFoldState {
+                context: ctx,
                 authored: state.authored,
                 file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
-                unreadable: state.unreadable
-              }
+                unreadable: state.unreadable,
+                pn: state.pn + 1, tok_ns: state.tok_ns + (t1 - t0), parse_ns: state.parse_ns + (t2 - t1), strip_ns: state.strip_ns + (t3 - t2), norm_ns: state.norm_ns + (t4 - t3), absorb_ns: state.absorb_ns + (t5 - t4), rtrace: state.rtrace
+              })
             Accepted { value: scoped, diagnostics: _ } =>
-              NativeDemandCensusFoldState {
-                context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope)),
+              let ctx = native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope))
+              let t5 = observed_thread_cpu_nanos("census-read-absorbed")
+              native_demand_census_rtrace(st: NativeDemandCensusFoldState {
+                context: ctx,
                 authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
                 file_refused: state.file_refused,
-                unreadable: state.unreadable
-              }
+                unreadable: state.unreadable,
+                pn: state.pn + 1, tok_ns: state.tok_ns + (t1 - t0), parse_ns: state.parse_ns + (t2 - t1), strip_ns: state.strip_ns + (t3 - t2), norm_ns: state.norm_ns + (t4 - t3), absorb_ns: state.absorb_ns + (t5 - t4), rtrace: state.rtrace
+              })
           }
       }
   }
@@ -3240,7 +3273,7 @@ fn native_demand_census_report_timed(ingest: SourceRootIngest) -> NativeDemandCe
           let c2 = observed_thread_cpu_nanos("census-scope")
           let folded = fold_list(
             xs: ingest,
-            empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: Empty },
+            empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: Empty, pn: 0, tok_ns: 0, parse_ns: 0, strip_ns: 0, norm_ns: 0, absorb_ns: 0, rtrace: Empty },
             cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
           )
           let c3 = observed_thread_cpu_nanos("census-read-fold")
@@ -3288,7 +3321,7 @@ fn native_demand_census_report_timed(ingest: SourceRootIngest) -> NativeDemandCe
                 native_demand_census_phase_line(name: "walk(resolve+facts+readings)", start: c4, finish: c5),
                 native_demand_census_phase_line(name: "report_fold(demand_census_report)", start: c5, finish: c6)
               ],
-              right: walked.trace
+              right: list_append(left: folded.rtrace, right: walked.trace)
             )
           }
       }
