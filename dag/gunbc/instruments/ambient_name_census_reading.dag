@@ -118,6 +118,7 @@ fn ambient_census_fixture_expected() -> List<String> {
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t1\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t2\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t3\tdeclared_order",
+    "binding_refusal_cause\texamples.partial\town\tresolve_reason_unbound_symbol\t6:14",
     "binding_unbound\texamples.partial\tnot_declared_anywhere\t6:14",
     "binding_unbound_module\texamples.partial\t1\t0"
   ]
