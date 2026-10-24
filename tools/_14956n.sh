@@ -21,7 +21,8 @@ git fetch -q origin +refs/pull/14956/head:refs/verifier/f14956n || { echo FETCH_
 git cat-file -e origin/main^{commit} 2>/dev/null || git fetch -q origin main || true
 git cat-file -e $BASE_SHA^{commit} 2>/dev/null || git fetch -q origin main || true
 export CARGO_INCREMENTAL=0 RUSTC_WRAPPER= CARGO_TARGET_DIR=/root/workspace/.t956n
-H=/tmp/w956nh; P=/tmp/w956np; M=/tmp/w956nm; V=/tmp/w956nv
+H=/tmp/w956nh; P=/tmp/w956np
+MAIN_T=/tmp/w956nmain; M=/tmp/w956nm; V=/tmp/w956nv
 git worktree prune >/dev/null 2>&1 || true
 elapsed () { echo $(( $(date +%s) - START )); }
 want () { # want <tag> -> 0 if should run
@@ -30,10 +31,20 @@ want () { # want <tag> -> 0 if should run
 }
 for T in $H $P $M $V; do rm -rf $T 2>/dev/null; done
 git worktree add -q --force --detach $H $HEAD_SHA || { echo WTH_FAIL; exit 9; }
-git worktree add -q --force --detach $P $HEAD_SHA || { echo WTP_FAIL; exit 9; }
-# P = head with the PR's OWN delta reverse-applied (keeps main identical on both sides; isolates the deletion)
+git worktree add -q --force --detach $P $BASE_SHA || { echo WTP_FAIL; exit 9; }
+# (P = pre-deletion PR base 115143a4d8a; head-vs-P differ only in the PR's own files)
+git worktree add -q --force --detach $MAIN_T origin/main || { echo WTMAIN_FAIL; exit 9; }
+# GATE_RED_ON_MAIN shape proof: main carries contract + module but NOT the witness file
+grep -q "lens_contract_schedule_lens" $MAIN_T/src/v2/lens/enforcement/contract.dag && echo "MAIN_SHAPE contract-present" || echo "MAIN_SHAPE_WARN contract-absent"
+[ -f $MAIN_T/src/v2/lens/schedule_lens.dag ] && echo "MAIN_SHAPE module-present" || echo "MAIN_SHAPE_WARN module-absent"
+[ ! -f $MAIN_T/src/v2/test/claim/walk_plan_schedule_lens_test.dag ] && echo "MAIN_SHAPE witness-absent (the break)" || echo "MAIN_SHAPE_WARN witness-present"
+if [ "$ARMS" != all ]; then case ",$ARMS," in *",G7,"*) ;; *) echo "ROW G7 SKIPPED-ARGLIST"; ARMS_NO_G7=1;; esac; fi
+if [ -z "${ARMS_NO_G7:-}" ]; then echo "=== G7 gate on origin/main tree (expect FAIL = the break this PR fixes) $(date -u +%H:%M:%S)Z"; run1 G7 $MAIN_T $ELW wet $GATE $PROBE || rc=$?; fi
+if [ "$ARMS" != all ]; then case ",$ARMS," in *",G7,"*) ARMS=none-continue;; *) ;; esac; fi
+if false; then (keeps main identical on both sides; isolates the deletion)
 git diff origin/main...refs/verifier/f14956n > $CKPT/pr14956.patch
-echo "PR14956_PATCH_BYTES=$(wc -c < $CKPT/pr14956.patch) FILES=$(grep -c '^diff --git' $CKPT/pr14956.patch)"
+fi
+echo "PR14956_PATCH_BYTES-skipped=$(wc -c < $CKPT/pr14956.patch) FILES=$(grep -c '^diff --git' $CKPT/pr14956.patch)"
 if (cd $P && git apply -R --check $CKPT/pr14956.patch 2>$CKPT/rev-err.txt); then
   (cd $P && git apply -R $CKPT/pr14956.patch) && echo REVERSE_APPLY_OK || { echo REVERSE_APPLY_EXEC_FAIL -- STOP; exit 9; }
 else
