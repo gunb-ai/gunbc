@@ -1,7 +1,8 @@
 module gunbc.harness.harness_operator_route
 
-import gunbc.fleet.fleet_intent_network { srv2_host_lan_endpoint }
-import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, HttpStatus }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, HttpStatus, Port }
 import std.algebra { trim, list_init }
 import std.nat { Nat }
 import std.optional { Present, Absent }
@@ -43,11 +44,21 @@ data operator_placement_ruling: DeclarationRef = decl_ref(
 // gunbc.recurring_failure_mode the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card) is retired
 // with that card, which went away on 2026-10-17 03:28Z: there is no second path, and nothing else in this repository
 // reads the tunnel (operator_pod_launch survives only as the allocation record rented_allocation_witness imports).
-// THE LAB'S DEPLOYMENT OF THE FRONT, parameters of this binding and not upstream facts: the LAN origin, and the
+// THE LAB'S DEPLOYMENT OF THE FRONT, parameters of this binding and not upstream facts: the origin, and the
 // self-signed mkcert development certificate (notAfter 2028-09-17) the lab pins. The two paths are the front's own
 // declarations (extdeps.pool.pool_front), not a second spelling of them.
-// The host is the fleet model's srv2 LAN endpoint (written once there); the port is the front's deployment.
-data operator_pool_front_origin: NonEmptyStr = join(["https://", srv2_host_lan_endpoint.address as String, ":3737"], "") as NonEmptyStr
+// THE HOST IS SRV2'S TAILNET NAME, joined from the authorities that own its parts (gunbc.fleet.fleet_tailnet
+// tailnet_base_url_from, the host from gunbc.fleet.fleet_host_identity), not srv2's LAN address: that address is a
+// DHCP lease and moved (192.168.1.188 to .201, seen 2026-10-24), which left the origin dead. The pinned certificate
+// names the tailnet host among its subject alternative names and not the new lease, so the tailnet name is also the
+// one name that verifies. The port is the front's deployment (the dashboard listener).
+data operator_pool_front_port: Port = 3737
+
+data operator_pool_front_origin: NonEmptyStr = tailnet_base_url_from(
+  host: operator_host_srv2 as NonEmptyStr,
+  domain: fleet_tailnet_domain,
+  port: Present { value: operator_pool_front_port },
+)
 
 data operator_pinned_certificate: PoolFrontCertificate = PoolFrontCertificate {
   sha256_fingerprint: "23:34:E0:C1:03:32:F8:0C:82:CA:D8:7F:D1:32:1E:1C:DF:0C:B6:CE:CF:B2:98:73:73:A0:12:3C:A4:F7:F1:CF" as NonEmptyStr,

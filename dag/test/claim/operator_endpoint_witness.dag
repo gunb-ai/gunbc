@@ -71,7 +71,7 @@ test fn the_roster_sees_the_operator_route_when_models_answers_with_its_model() 
 
 // ── 2. AN UNANSWERED FRONT REFUSES TYPED, A REJECTED KEY IS NOT AN UNANSWERED FRONT ────────────────────────
 test fn an_unanswered_front_reads_unreachable_and_leaves_none_serving() -> Bool {
-  match w_roster_after(reading: OperatorFrontUnanswered { url: "https://192.168.1.188:3737/pool/v1/models" }) {
+  match w_roster_after(reading: OperatorFrontUnanswered { url: "https://srv2.tailecbe08.ts.net:3737/pool/v1/models" }) {
     HarnessRosterNoneServing { declined: d, unresolved: _ } =>
       count(d) == 1 && fold(d, init: false, f: (hit, x) => hit || (match x.standing {
         HarnessBackendUnreachable { url: _ } => true
@@ -84,7 +84,7 @@ test fn an_unanswered_front_reads_unreachable_and_leaves_none_serving() -> Bool 
 }
 
 test fn a_front_that_rejects_the_key_reads_unreadable_not_unreachable() -> Bool {
-  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsRefused { url: "https://192.168.1.188:3737/pool/v1/models", status: "401" }) {
+  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsRefused { url: "https://srv2.tailecbe08.ts.net:3737/pool/v1/models", status: "401" }) {
     OperatorRouteUnreadable { cause: _ } => true
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false
@@ -159,8 +159,8 @@ test fn the_floor_refuses_a_quality_sensitive_turn_with_its_consequence_and_admi
 
 // ── 6. THE ROUTE'S DECLARED FACTS ───────────────────────────────────────────────────────────────
 test fn the_route_urls_are_the_pool_fronts_origin_plus_its_declared_paths() -> Bool {
-  (match operator_models_url() { Present { value: u } => (u as String) == "https://192.168.1.188:3737/pool/v1/models"  Absent => false })
-    && (match operator_chat_completions_url() { Present { value: u } => (u as String) == "https://192.168.1.188:3737/pool/v1/chat/completions"  Absent => false })
+  (match operator_models_url() { Present { value: u } => (u as String) == "https://srv2.tailecbe08.ts.net:3737/pool/v1/models"  Absent => false })
+    && (match operator_chat_completions_url() { Present { value: u } => (u as String) == "https://srv2.tailecbe08.ts.net:3737/pool/v1/chat/completions"  Absent => false })
 }
 
 test fn the_route_carries_the_fronts_card_concurrency_and_the_served_model_id() -> Bool {
@@ -314,7 +314,7 @@ test fn an_s3_resume_of_the_same_attempt_keeps_the_same_x_pool_session() -> Bool
 // pinned certificate and public key, and never a verification-off flag.
 test fn the_real_client_argv_inhabits_the_pool_request_shape() -> Bool {
   let req = operator_pinned_post_request(
-    url: "https://192.168.1.188:3737/pool/v1/chat/completions" as NonEmptyStr,
+    url: "https://srv2.tailecbe08.ts.net:3737/pool/v1/chat/completions" as NonEmptyStr,
     request_body_file: "/s/req.json" as NonEmptyStr,
     response_headers_file: "/s/req.headers" as NonEmptyStr,
     max_seconds: "600" as NonEmptyStr,
@@ -334,7 +334,7 @@ test fn the_real_client_argv_inhabits_the_pool_request_shape() -> Bool {
       operation_argv_bind_text(name: "max_seconds", text: req.max_seconds as String),
     ]
   )), " ")
-  string_contains(s: argv, pattern: "https://192.168.1.188:3737/pool/v1/chat/completions")
+  string_contains(s: argv, pattern: "https://srv2.tailecbe08.ts.net:3737/pool/v1/chat/completions")
     && string_contains(s: argv, pattern: "-H @/s/d/authorization")
     && string_contains(s: argv, pattern: "--cacert /s/d/pinned-ca.pem")
     && string_contains(s: argv, pattern: "--pinnedpubkey /s/d/pinned-pubkey.pem")
@@ -346,7 +346,7 @@ test fn the_real_client_argv_inhabits_the_pool_request_shape() -> Bool {
 // The front-door probe's request, from the builder the probe's call site takes every field from.
 test fn the_probe_argv_trusts_the_pinned_files_beside_the_header_file() -> Bool {
   let req = operator_pinned_probe_request(
-    url: "https://192.168.1.188:3737/pool/v1/models" as NonEmptyStr,
+    url: "https://srv2.tailecbe08.ts.net:3737/pool/v1/models" as NonEmptyStr,
     dir: "/s/d" as NonEmptyStr,
     max_seconds: "10" as NonEmptyStr,
     hf: "/s/d/authorization" as NonEmptyStr
