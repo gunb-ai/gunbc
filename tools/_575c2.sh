@@ -8,8 +8,10 @@ git worktree prune >/dev/null 2>&1 || true
 rm -rf /tmp/wt575c2
 git fetch -q origin +refs/pull/14575/head:refs/verifier/f575n 2>&1 | tail -1
 [ "$(git rev-parse refs/verifier/f575n 2>/dev/null)" = "$HEADSHA" ] || { echo "PR_REF_MOVED=$(git rev-parse refs/verifier/f575n 2>/dev/null) -- STOP"; exit 9; }
-git worktree add -q --detach /tmp/wt575c2 $HEADSHA || { echo WT_FAIL; exit 9; }
-WT=/tmp/wt575c2
+git worktree prune >/dev/null 2>&1 || true
+# checkout head directly in the synced tree (no extra worktree; saves a full file checkout vs the wall)
+git checkout -q --detach $HEADSHA 2>&1 | tail -1 || { echo CO_FAIL; exit 9; }
+WT=$REPO
 sha(){ sha256sum "$1" | cut -d' ' -f1; }
 cd $WT || exit 9
 [ "$(git rev-parse HEAD)" = "$HEADSHA" ] || { echo WT_NOT_AT_HEAD; exit 9; }
@@ -19,7 +21,9 @@ cargo build --release -p v1-compiler --bin gunbc 2>&1 | tail -1
 GB=/root/workspace/repo-root/.t575c2/release/gunbc
 [ -x $GB ] || { echo "NO gunbc -- nothing below is a result"; exit 9; }
 echo "GB_SHA=$(sha $GB) built $(date -u +%H:%M:%S)Z"
-( cd $WT && timeout 2400 $GB test //gunbc/instruments:claim-coverage-census ) > /tmp/c575_c2.out 2>&1; rc=$?
+# stream case lines live (tee) so a runner-wall kill still records what was observed before the cut
+( cd $WT && timeout 2400 $GB test //gunbc/instruments:claim-coverage-census ) 2>&1 | tee /tmp/c575_c2.out | grep -a --line-buffered -E '^case |^FAIL |^UNOBSERVED |summary|unreached|admitted|rows=' | sed -u 's/^/  LIVE| /' | cut -c1-190
+rc=${PIPESTATUS[0]}
 echo "ROW coverage-census rc=$rc END $(date -u +%H:%M:%S)Z"
 if [ "$rc" = "124" ]; then
   echo "  UNOBSERVED: TIMEOUT at 2400s (attempt log: rc=124@1200s, wall@~33min). Size seen so far: $(wc -c < /tmp/c575_c2.out) bytes, $(wc -l < /tmp/c575_c2.out) lines"
