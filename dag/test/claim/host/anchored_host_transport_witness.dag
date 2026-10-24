@@ -3,6 +3,7 @@ module test.claim.host.anchored_host_transport_witness
 import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
+import extdeps.filesystem.filesystem_io { filesystem_read }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
@@ -528,13 +529,48 @@ test fn the_mint_render_carries_no_private_material() -> Bool {
   && string_contains(s: shell_command_render(command: anchored_host_key_mint_upload_command()), pattern: "--data-file=-")
 }
 
+// The operator-facing runbook (docs/runbooks/mtcollins1-ssh-host-key-mint.md, Step 1) copies the mint
+// shell into a ```bash fence. This folds the runbook text and returns the FIRST bash fence whose body
+// carries the mint's ssh-keygen leg -- the mint block -- or "" if the file no longer has one. split /
+// .skip / .take / join / fold are the claim-witness builtins (the shape at
+// dag/test/claim/action_use_admission_witness.dag); filesystem_read reads the committed file under this
+// module's SubstrateInputsOnly disposition, the same lane action_use_admission_witness reads real census
+// files.
+fn anchored_runbook_mint_block() -> String {
+  let doc = filesystem_read(path: "docs/runbooks/mtcollins1-ssh-host-key-mint.md").content
+  fold(split(s: doc, delimiter: "```bash\n").skip(n: 1), init: "", f: fn(acc, chunk) {
+    if acc != "" {
+      acc
+    } else {
+      let body = join(split(s: chunk, delimiter: "\n```").take(n: 1), "")
+      if string_contains(s: body, pattern: "ssh-keygen") { body } else { acc }
+    }
+  })
+}
+
+// CLAIM: THE RUNBOOK'S MINT BLOCK IS THE MODEL RENDER, BYTE FOR BYTE (review 85414 finding 1). The
+// runbook copies anchored_host_key_mint_shell() for a human to run during a secret mint; a hand-pasted
+// copy is a second source for the command lines an operator executes, and DESIGN §6 names "a
+// hand-authored projection the model should generate" as a scaffold tell. This is NOT the model checking
+// itself: it reads the committed markdown file off disk and compares its fenced block to the render
+// (the fence strips the render's trailing newline, so the block is re-terminated before the equality).
+// Editing the runbook block to drift from the model -- retyping a gcloud leg, dropping the tmpfs guard,
+// widening the trap -- fails HERE, not by convention. The failure companion prints both the file's block
+// and the model render so the drift is located, not inferred.
+test fn the_runbook_mint_block_is_the_model_render() -> Bool {
+  concat(anchored_runbook_mint_block(), "\n") == anchored_host_key_mint_shell()
+}
+
+fn the_runbook_mint_block_is_the_model_render_failure_receipt() -> String {
+  concat(concat(concat("RUNBOOK_BLOCK=[", anchored_runbook_mint_block()), "] MODEL_RENDER=["), concat(anchored_host_key_mint_shell(), "]"))
+}
+
 // CLAIM: THE MINT RENDER IS COMPOSED FROM THE BUILDERS. The shell string contains the create leg's
 // render, the upload leg's render, and the stdin pipe -- and the secret name and project it carries
 // are the SecretRef's OWN fields, so the literals have no second spelling INSIDE THE MODEL: change
-// the SecretRef and this render changes. HONEST SCOPE (review 85396): this checks the model against
-// itself -- no claim reads docs/runbooks/mtcollins1-ssh-host-key-mint.md, so the runbook's copied
-// block is held to the render by convention and review, not by this test; the runbook says so at
-// its own Step 1. Re-typing a gcloud leg by hand in the model, or retyping the literals, fails here.
+// the SecretRef and this render changes. Re-typing a gcloud leg by hand in the model, or retyping the
+// literals, fails here. The runbook's own copy is checked against the render by
+// the_runbook_mint_block_is_the_model_render, not by this claim.
 test fn the_mint_render_is_the_builders_render() -> Bool {
   let shell = anchored_host_key_mint_shell()
   string_contains(s: shell, pattern: shell_command_render(command: anchored_host_key_mint_create_command()))

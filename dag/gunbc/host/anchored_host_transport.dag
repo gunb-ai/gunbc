@@ -3,6 +3,15 @@ module gunbc.host.anchored_host_transport
 import std.types { String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import std.algebra { trim }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words, bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
+  bash_build_command_from_lits, bash_build_word_cmdsubst, bash_build_assign,
+  bash_build_test_bracket, bash_build_if_from_stmts, bash_build_and_then,
+  bash_build_pipe, bash_build_with_redir, bash_build_exit,
+}
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -220,28 +229,29 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
       description: "dissolves when the boot route for mtcollins1 starts sshd with HostKey pointing at exactly the custody-placed path and a live boot's presented key is read back and matched (the read obligation on this module's anchor row); a placement receipt alone does not fire this"
     )
   ),
-  // THE MINT SHELL'S HAND-ASSEMBLED BODY, registered as a declared residual (review 85232/85396;
-  // the githooks_pre_push_emit_concat_body_dissolution shape, whose frontier module states the same
-  // reasoning for its hook). WHY A RESIDUAL AND NOT NODES: the emitter path -- v2.workflow.bash_emit
-  // bash_emit_stmts over v2.extdeps.languages.bash_build nodes, serialized by
-  // bash_command_fold -- covers most of this script's forms (the pipe, || via or_else, if, the
-  // command substitution, >&2 via redir_stdout_to_stderr, [ ] tests, exit, set -e). Two forms it
-  // does NOT: the trap line (trap is absent from the fold grammar entirely -- zero productions), and
-  // the guard's brace-group then-branch ({ echo ... >&2; exit 1; } -- brace braces are
-  // ingest-recognized only, bash_fold_lex_rule classes ^bash_ingest_brace_open/close, with no fold
-  // production, the same status the githooks frontier records for while/case). Half-emitting the
-  // script and concatenating the rest is the concat shape that frontier registers as the residual,
-  // not a cutover. THE TRIGGER NAMES THE CAPABILITY, NOT A CARRIER (§4b obligation 3; review 85396):
-  // when those two grammar rows land, anchored_host_key_mint_shell is EMITTED from typed intent --
-  // bash_build_pipe over the two argv builder renders, the guard as bash_build_if (or or_else) over
-  // bash_build_word_cmdsubst + bash_build_with_redir + bash_build_exit -- and the string literals
-  // are deleted byte-identically. Provisioning an execution route that merely carries the hand
-  // bytes does NOT fire this.
+  // THE MINT SHELL'S TRAP BODY, registered as a declared residual (review 85232/85396/85414 finding 2).
+  // WHY ONLY THIS AND NOT THE WHOLE SCRIPT: the mint is EMITTED -- anchored_host_key_mint_shell builds
+  // every leg as a v2.extdeps.languages.bash_build node and runs them through v2.workflow.bash_emit
+  // bash_emit_stmts (manager decision msg_ad22e358, option A): set -e via the emitter's set_e flag, the
+  // tmpfs guard as bash_build_if_from_stmts over bash_build_test_bracket + bash_build_word_cmdsubst +
+  // bash_build_with_redir + bash_build_exit (the old brace-group { echo ...; exit 1; } was NOT required
+  // -- the fold grammar has an if/then production), the cat|gcloud leg as bash_build_pipe, and every
+  // argv leg as bash_build_command_from_lits over the argv builder's own words. The ONE arm that cannot
+  // be a node is the trap BODY: trap on EXIT, INT and TERM is load-bearing for rule Q1 (set -e does not
+  // run a trailing cleanup leg on a signal, so a control-C mid-mint would leave the private half in the
+  // tmpfs dir), and the body is a compound statement list the fold grammar has no node production that
+  // renders bare ("; "-separated commands inside the trap's single quotes). It follows the shipped lane
+  // at gunbc/ci/ci_spec.dag:3674 -- trap as a command of word_lit arms, the body passed as ONE word the
+  // emitter quotes -- and its words are the render of this module's own cleanup ArgvCommands. THE
+  // TRIGGER NAMES THE CAPABILITY, NOT A CARRIER (§4b obligation 3; review 85396): when the fold grammar
+  // gains a compound-body arm for trap, anchored_host_key_mint_trap is EMITTED (bash_build with a node
+  // list for the body) and the single string literal is deleted byte-identically. Wiring an execution
+  // route that merely carries the bytes does NOT fire this.
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_shell"),
-    reason: "gunbc.host.anchored_host_transport|anchored_host_key_mint_shell:concat-assembled shell -- the trap line (EXIT INT TERM cleanup) and the tmpfs guard's brace-group then-branch ({ echo ... >&2; exit 1; }) are spelled as string literals around the builder-rendered legs; shell control text in the medium the effect runs in, not in .dag",
+    reason: "gunbc.host.anchored_host_transport|anchored_host_key_mint_shell:the trap body is a single string literal (the '; '-joined cleanup commands passed as the trap's one quoted word); every other leg is a bash_build node emitted through bash_emit_stmts",
     dissolution: unbound_dissolution(
-      description: "dissolves when the bash fold grammar gains the two rows the emitter needs for this body: trap with a signal list, and a brace-group statement production (today ingest-recognized only); anchored_host_key_mint_shell is then EMITTED via v2.workflow.bash_emit bash_emit_stmts over v2.extdeps.languages.bash_build nodes -- bash_build_pipe for the cat|gcloud leg, the guard as bash_build_if over bash_build_word_cmdsubst + bash_build_with_redir + bash_build_exit -- and the string literals are deleted byte-identically. Wiring an execution route that only carries the hand-assembled bytes does NOT fire this"
+      description: "dissolves when the bash fold grammar gains a compound-body arm for the trap statement (a node list rendered bare inside the trap's single quotes); anchored_host_key_mint_trap is then EMITTED over that arm and the single cleanup-body string literal is deleted byte-identically. Wiring an execution route that only carries the hand-assembled bytes does NOT fire this"
     )
   ),
 ]
@@ -581,18 +591,89 @@ fn anchored_host_key_mint_dir() -> String {
   "/dev/shm/mc-hostkey"
 }
 
+// THE MINT, EMITTED -- every leg is a v2.extdeps.languages.bash_build NODE, serialized by
+// v2.workflow.bash_emit bash_emit_stmts (manager decision msg_ad22e358, option A; review 85414
+// finding 2, medium-as-string). set -e comes from the emitter's set_e flag (not a string), the
+// tmpfs guard is a bash_build_if_from_stmts over a test_bracket with a command substitution and a
+// >&2-redirection refusal (NOT the brace group { ...; exit 1; } the hand-spelled version used --
+// the grammar has an if/then production, so the brace group was never required), the cat|gcloud leg
+// is a bash_build_pipe, and every argv leg is bash_build_command_from_lits over the argv builder's
+// OWN words. The ONE residual string is the trap BODY (see the frontier row): trap on EXIT, INT and
+// TERM is load-bearing for rule Q1 -- set -e does NOT run a trailing cleanup leg on SIGINT or
+// SIGTERM, so a control-C mid-mint would leave the private half in the tmpfs dir -- and the fold
+// grammar has no trap-with-a-signal-list production. The body is a compound statement list, the one
+// form the emitter cannot yet build; it is named, with its trigger, on this module's census-closure
+// frontier row (anchored_host_key_mint_shell). A rejected emission yields the refuse poison, never
+// partial shell (DESIGN §5: refuse, never widen).
+fn anchored_host_key_mint_refuse_poison() -> String {
+  "__GUNBC_ANCHORED_HOST_MINT_EMIT_REFUSED__ bash_emit_stmts refused the mint script; this marker is not valid shell, so any run carrying it fails rather than a hand-spelled fallback masking the refusal (DESIGN section 5: refuse, never widen)\n"
+}
+
+fn anchored_host_key_mint_cleanup_body(mint_dir: String) -> String {
+  join(map(anchored_host_key_mint_cleanup_commands(mint_dir: mint_dir), c => join(argv_words(command: c), " ")), "; ")
+}
+
+fn anchored_host_key_mint_tmpfs_guard(mint_dir: String) -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_test_bracket(words: [
+      bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_tmpfs_check_command(mint_dir: mint_dir)))),
+      bash_build_word_lit(text: "!="),
+      bash_build_word_lit(text: "tmpfs"),
+    ]),
+    then_stmts: [
+      bash_build_with_redir(
+        inner: bash_build_command_from_lits(lits: ["echo", "mint dir is not tmpfs-backed; refusing to mint"]),
+        redir: ^bash_production_fold_redir_stdout_to_stderr,
+      ),
+      bash_build_exit(code: "1"),
+    ],
+  )
+}
+
+fn anchored_host_key_mint_upload_leg(mint_dir: String) -> Node {
+  bash_build_pipe(
+    left: bash_build_command_from_lits(lits: argv_words(command: cat_file_command(path: concat(mint_dir, "/mc_host")))),
+    right: bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_upload_command())),
+  )
+}
+
+// THE ONE RESIDUAL STRING: the trap body. Trap on EXIT, INT and TERM is load-bearing for rule Q1 --
+// set -e does NOT run a trailing cleanup leg on a signal, so a control-C mid-mint would leave the
+// private half in the tmpfs dir -- and the fold grammar has no trap-with-a-signal-list statement
+// production (the repo authority says so itself, fleet-converge.yml:875: "trap is an ordinary command
+// on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word").
+// So this is the ONE arm that cannot be a node. It follows the SHIPPED lane at
+// gunbc/ci/ci_spec.dag:3674 -- trap as a command of word_lit arms (the "trap" name, the body passed as
+// ONE word for the emitter to quote ONCE, and the signal list) -- and the body is the render of the
+// model's OWN cleanup ArgvCommands (each word a model literal: the fixed mint dir + a fixed file name,
+// no shell metacharacters), joined with "; " as the Q1-correct cleanup. Everything else in the script
+// is a node.
+fn anchored_host_key_mint_trap(mint_dir: String) -> Node {
+  bash_build_command_with_words(words: [
+    bash_build_word_lit(text: "trap"),
+    bash_build_word_lit(text: anchored_host_key_mint_cleanup_body(mint_dir: mint_dir)),
+    bash_build_word_lit(text: "EXIT"),
+    bash_build_word_lit(text: "INT"),
+    bash_build_word_lit(text: "TERM"),
+  ])
+}
+
+fn anchored_host_key_mint_statements(mint_dir: String) -> List<Node> {
+  [
+    anchored_host_key_mint_trap(mint_dir: mint_dir),
+    bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_directory_command(mint_dir: mint_dir))),
+    anchored_host_key_mint_tmpfs_guard(mint_dir: mint_dir),
+    bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_keygen_command(mint_dir: mint_dir))),
+    bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_create_command())),
+    anchored_host_key_mint_upload_leg(mint_dir: mint_dir),
+  ]
+}
+
 fn anchored_host_key_mint_shell() -> String {
-  let mint_dir = anchored_host_key_mint_dir()
-  let cleanup = join(map(anchored_host_key_mint_cleanup_commands(mint_dir: mint_dir), c => join(argv_words(command: c), " ")), "; ")
-  join([
-    "set -e",
-    concat(concat("trap \"", cleanup), "\" EXIT INT TERM"),
-    shell_command_render(command: anchored_host_key_mint_directory_command(mint_dir: mint_dir)),
-    join(["test \"$( ", shell_command_render(command: anchored_host_key_mint_tmpfs_check_command(mint_dir: mint_dir)), " )\" = tmpfs || { echo \"mint dir is not tmpfs-backed; refusing to mint\" >&2; exit 1; }"], ""),
-    shell_command_render(command: anchored_host_key_mint_keygen_command(mint_dir: mint_dir)),
-    shell_command_render(command: anchored_host_key_mint_create_command()),
-    join([shell_command_render(command: cat_file_command(path: concat(mint_dir, "/mc_host"))), " | ", shell_command_render(command: anchored_host_key_mint_upload_command())], ""),
-  ], "\n")
+  match bash_emit_stmts(statements: anchored_host_key_mint_statements(mint_dir: anchored_host_key_mint_dir()), set_e: true) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => anchored_host_key_mint_refuse_poison()
+  }
 }
 
 // THE MINT IS AN OUT-OF-BAND HUMAN ACT, and its scaffold status is a typed carrier, not a comment
@@ -600,12 +681,12 @@ fn anchored_host_key_mint_shell() -> String {
 // the CAPABILITY THAT RETIRES IT lands -- orchestration-to-shell bash EMISSION (v2.workflow.bash_emit
 // bash_emit_stmts over v2.extdeps.languages.bash_build nodes), NOT merely an execution route that
 // can carry hand-assembled bytes (§4b obligation 3: "the trigger names the CAPABILITY restored";
-// review 85396). The residual control forms this string still spells -- trap with a signal list, and
-// the tmpfs guard's >&2 fd redirection -- are named, with their conversion, on this module's fourth
-// census-closure frontier row (anchored_host_key_mint_shell); the argv legs and the cat|gcloud pipe
-// convert byte-identically the day the grammar lands. Until then the runbook renders it for a human,
-// and the gate is human actuation: this module's authoring session ran NOTHING; the operator or
-// merry-fox-82 executes what Step 1 renders.
+// review 85396). The ONE control form this string still spells as a literal -- the trap body -- is
+// named, with its conversion, on this module's fourth census-closure frontier row
+// (anchored_host_key_mint_shell); set -e, the tmpfs guard's if/test/cmdsubst/>&2/exit arms, the
+// cat|gcloud pipe and every argv leg are already nodes, emitted. Until the grammar gains a compound-body
+// arm for the trap, the runbook renders it for a human, and the gate is human actuation: this module's
+// authoring session ran NOTHING; the operator or merry-fox-82 executes what Step 1 renders.
 data anchored_host_key_mint_shell_bash_emit_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_shell"),
