@@ -13,6 +13,13 @@ import gunbc.recurring_failure_mode {
   StandingAdmission, StandingAdmitted, StandingNotBelowCeiling, StandingTriggerRefused, standing_admission,
 }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
+import gunbc.guarantee_stall { StallPopulation }
+import std.state_durability { LifecycleRestartMode }
+import extdeps.posix.process { ProcessSpawnOutcome }
+import gunbc.host_convergence_protocol { CanonicalProtocolLayer }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.github.pulls { PullRequestState }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
 // THE RUNG CENSUS OF THE RECURRING-FAILURE-MODE LEDGER (DESIGN section 4b, the ledger rule: rung
 // found at, ceiling with reason, next trigger). Every count below is read from the typed `rung`
