@@ -18,6 +18,7 @@ sha() { sha256sum "$1" | cut -d' ' -f1; }
 echo +memory > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
 git fetch -q origin +refs/pull/14956/head:refs/verifier/f14956n || { echo FETCH_FAIL; exit 9; }
 [ "$(git rev-parse refs/verifier/f14956n)" = "$HEAD_SHA" ] || { echo "PR_REF_MOVED got=$(git rev-parse refs/verifier/f14956n) -- STOP"; exit 9; }
+git cat-file -e origin/main^{commit} 2>/dev/null || git fetch -q origin main || true
 git cat-file -e $BASE_SHA^{commit} 2>/dev/null || git fetch -q origin main || true
 export CARGO_INCREMENTAL=0 RUSTC_WRAPPER= CARGO_TARGET_DIR=/root/workspace/.t956n
 H=/tmp/w956nh; P=/tmp/w956np; M=/tmp/w956nm; V=/tmp/w956nv
@@ -29,7 +30,24 @@ want () { # want <tag> -> 0 if should run
 }
 for T in $H $P $M $V; do rm -rf $T 2>/dev/null; done
 git worktree add -q --force --detach $H $HEAD_SHA || { echo WTH_FAIL; exit 9; }
-git worktree add -q --force --detach $P $BASE_SHA || { echo WTP_FAIL; exit 9; }
+git worktree add -q --force --detach $P $HEAD_SHA || { echo WTP_FAIL; exit 9; }
+# P = head with the PR's OWN delta reverse-applied (keeps main identical on both sides; isolates the deletion)
+git diff origin/main...refs/verifier/f14956n > $CKPT/pr14956.patch
+echo "PR14956_PATCH_BYTES=$(wc -c < $CKPT/pr14956.patch) FILES=$(grep -c '^diff --git' $CKPT/pr14956.patch)"
+if (cd $P && git apply -R --check $CKPT/pr14956.patch 2>$CKPT/rev-err.txt); then
+  (cd $P && git apply -R $CKPT/pr14956.patch) && echo REVERSE_APPLY_OK || { echo REVERSE_APPLY_EXEC_FAIL -- STOP; exit 9; }
+else
+  echo "REVERSE_APPLY_CHECK_FAIL:"; head -6 $CKPT/rev-err.txt | sed 's|^|  apply: |'
+  echo "FALLBACK: worktree at pre-merge $BASE_SHA"
+  rm -rf $P; git worktree prune >/dev/null 2>&1
+  git worktree add -q --force --detach $P $BASE_SHA || { echo WTP_FALLBACK_FAIL; exit 9; }
+  echo BASE_AT_PREMERGE
+fi
+# base proof: deleted module + its witness restored, registry has ScheduleLens arm
+[ -f $P/src/v2/lens/schedule_lens.dag ] && echo "BASE_PROOF module-restored" || { echo "BASE_NOT_OLD module-missing -- STOP"; exit 9; }
+[ -f $P/src/v2/test/claim/walk_plan_schedule_lens_test.dag ] && echo "BASE_PROOF witness-restored" || { echo "BASE_NOT_OLD witness-missing -- STOP"; exit 9; }
+grep -q "subject: ScheduleLens" $P/src/v2/lens/enforcement/gate.dag && echo "BASE_PROOF registry-arm-restored" || echo "BASE_NOTE no registry arm at base (pre-#14887 form)"
+grep -q "lens_contract_schedule_lens" $P/src/v2/lens/enforcement/contract.dag && echo "BASE_PROOF contract-restored" || { echo "BASE_NOT_OLD contract-missing -- STOP"; exit 9; }
 git worktree add -q --force --detach $M $HEAD_SHA || { echo WTM_FAIL; exit 9; }
 git worktree add -q --force --detach $V $HEAD_SHA || { echo WTV_FAIL; exit 9; }
 python3 tools/_14956mut.py $M $V || { echo MUTATION_FAIL -- STOP; exit 9; }
