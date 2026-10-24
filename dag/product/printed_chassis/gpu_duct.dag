@@ -305,8 +305,9 @@ fn card_interface(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount,
   let keep_len = um(m: d.connector_keepout_length)
   match mount {
     PlugAndFlange => {
-      let plug_w = wl - 2 * um(m: d.plug_clearance)
-      let plug_h = wd - 2 * um(m: d.plug_clearance)
+      let pc = um(m: d.plug_clearance)
+      let plug_w = wl - 2 * pc
+      let plug_h = wd - 2 * pc
       let lip = um(m: f.fin_setback) - um(m: d.fin_margin)
       let lower_lo = 0 - wd - wall
       let flange_lo_x = 0 - top
@@ -315,7 +316,7 @@ fn card_interface(f: EndFaceMeasurement, d: GpuDuctDesign, mount: DuctCardMount,
       CardInterface {
         adds: [
           block(w: plug_w, h: plug_h, d: lip, x: window_x, y: window_y, z: face_z + lip / 2),
-          block(w: plug_w + 2 * wall, h: 0 - bc - lower_lo, d: fl, x: window_x, y: (lower_lo - bc) / 2, z: face_z - fl / 2),
+          block(w: plug_w + 2 * wall, h: 0 - pc - lower_lo, d: fl, x: window_x, y: (lower_lo - pc) / 2, z: face_z - fl / 2),
           block(w: flange_hi_x - flange_lo_x, h: band - flange_lo_y, d: fl, x: (flange_hi_x + flange_lo_x) / 2, y: (band + flange_lo_y) / 2, z: face_z - fl / 2),
         ],
         cuts: [block(w: plug_w - 2 * wall, h: plug_h - 2 * wall, d: fl + lip + 2000, x: window_x, y: window_y, z: face_z + (lip - fl) / 2)],
