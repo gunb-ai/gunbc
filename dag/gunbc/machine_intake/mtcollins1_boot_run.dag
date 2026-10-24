@@ -31,7 +31,7 @@ import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal,
 }
-import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation }
+import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation, megarac_release_boot_session }
 import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
@@ -122,6 +122,7 @@ import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   BmcReachability, bmc_reachability_text, mtcollins1_boot_bmc_reachability,
   BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, mtcollins1_ipmi_endpoint,
   PowerAfterAttempt, PoweredOffAfterCensusEnd, PoweredOffWithoutCensusEnd, PoweredOnAfterAttempt, PowerAfterNotTaken, power_after_attempt, OverrideNotHandedOff, boot_override_consumption,
+  EndMediaRelease, EndReleaseKeptHostOn, EndReleaseWithheld, EndReleaseRan, EndReleaseGateKeep, EndReleaseGateWithhold, EndReleaseGateAdmit, end_release_gate, outcome_with_end_release,
 }
 import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -2457,6 +2458,12 @@ fn mtcollins1_boot_actuate(
       let p5_before_read = proc_uptime_read()
       let screen = mtcollins1_boot_screen_start(proof: proof, password_file: password_file, attempt: attempt, resolve_toolchain: resolve_toolchain)
       let before_attach = mtcollins1_sol_supervised(stage: SolLostBeforeAttach, pid_path: sol_pid_path, capture_path: sol_capture_path, password_file: password_file, last_live_at: acquired_at)
+      // BOTH STEMS THIS LANE PUBLISHES: the runner medium it boots and the census medium earlier
+      // attempts booted. A census session left on the controller is this lane's own residue, not
+      // a foreign image (boot run 40038339650 refused on exactly that after #14912 narrowed the
+      // set to the runner stem). The end-of-attempt release classifies with the same set and stops
+      // only this attempt's own image.
+      let lane_stems = FreeSemigroup { head: image_stem, tail: [mtcollins1_census_image_stem] }
       let media = match before_attach {
         SolLostAt { outcome: o } => MediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
@@ -2467,11 +2474,7 @@ fn mtcollins1_boot_actuate(
                 proof: proof,
                 subject: subject,
                 share: mtcollins1_media_share,
-                // BOTH STEMS THIS LANE PUBLISHES: the runner medium it boots and the census medium earlier
-                // attempts booted. A census session left on the controller is this lane's own residue, not
-                // a foreign image (boot run 40038339650 refused on exactly that after #14912 narrowed the
-                // set to the runner stem).
-                replaceable_seeded_stems: FreeSemigroup { head: image_stem, tail: [mtcollins1_census_image_stem] },
+                replaceable_seeded_stems: lane_stems,
                 bound: mtcollins1_boot_ipmi_read_bound,
                 password_file: password_file,
                 attempt: attempt,
@@ -2550,10 +2553,11 @@ fn mtcollins1_boot_actuate(
         }
       }
       let screen_record = megarac_kvm_observer_finish(start: screen, attempt: attempt, terminal_order: 3)
-      let end_media = if end_media_is_owed(media: media) {
-        EndMediaObserved { look: megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
+      let end_media_owed = end_media_is_owed(media: media)
+      let end_look = if end_media_owed {
+        Present { value: megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "end-of-attempt") }
       } else {
-        EndMediaNotTaken { reason: "the media attach was not attempted, so this attempt reached no media state to observe" }
+        none
       }
       let p5_after = mtcollins1_boot_param5_under_hold(password_file: password_file)
       let p5_after_read = proc_uptime_read()
@@ -2563,6 +2567,20 @@ fn mtcollins1_boot_actuate(
         remaining: mtcollins1_boot_power_after_samples,
       )
       let power_after_read = proc_uptime_read()
+      // THE RELEASE FOLLOWS THE END LOOK AND THE POWER READING, still under the hold: the look records the
+      // medium as the attempt left it, and only a host observed OFF has its own session stopped.
+      let end_media = match end_look {
+        Absent => EndMediaNotTaken { reason: "the media attach was not attempted, so this attempt reached no media state to observe" }
+        Present { value: look } =>
+          EndMediaObserved {
+            look: look,
+            end_release: match end_release_gate(power_after: power_after) {
+              EndReleaseGateKeep => EndReleaseKeptHostOn
+              EndReleaseGateWithhold { reason: why } => EndReleaseWithheld { reason: why }
+              EndReleaseGateAdmit { power: off } => EndReleaseRan { result: megarac_release_boot_session(proof: proof, image_name: subject.medium.image_name, replaceable_seeded_stems: lane_stems, power: off, password_file: password_file, attempt: attempt) }
+            },
+          }
+      }
       let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path, capture_path: sol_capture_path)
       let released = proc_uptime_read()
       actuation_after_watch(
@@ -2574,11 +2592,14 @@ fn mtcollins1_boot_actuate(
         override_before: p5_before,
         override_after: p5_after,
         power_after: power_after,
-        outcome: match observed.outcome {
-          ExitSuccess =>
-            if sol_release_is_clean(outcome: teardown) { ExitSuccess } else { exit_failure(reason: concat("mtcollins1 boot: ", sol_release_outcome_text(outcome: teardown))) }
-          other => outcome_attributing_media_loss(outcome: other, loss: media_loss_after_handoff(handoff: gated.media, end: end_media))
-        },
+        outcome: outcome_with_end_release(
+          outcome: match observed.outcome {
+            ExitSuccess =>
+              if sol_release_is_clean(outcome: teardown) { ExitSuccess } else { exit_failure(reason: concat("mtcollins1 boot: ", sol_release_outcome_text(outcome: teardown))) }
+            other => outcome_attributing_media_loss(outcome: other, loss: media_loss_after_handoff(handoff: gated.media, end: end_media))
+          },
+          end: end_media,
+        ),
         screen: screen_record,
         timing: boot_phase_timing_of(
           hold: hold_acquired,
