@@ -13,15 +13,7 @@ import std.durable_compare_and_set {
   cas_generation_count,
 }
 import std.checked_arithmetic { int_inclusive_max }
-import gunbc.filesystem_interface { local_filesystem }
-import gunbc.durable_cas_file_store {
-  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
-  admit_cas_attempt, file_compare_and_set_over, DefaultAccessCreateOnly, observe_cas_slot_state_over, cas_file_slot_path,
-  file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow,
-  cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
-  CasSlotProbe, ProbedHead, cas_probe_gallop_over, cas_reclaim_below,
-  CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted,
-}
+import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path, file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow, CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below, CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted }
 
 // Wet controls for the file-backed CAS provider. Hermetic mint and classification
 // live in test.claim.durable_cas_file_store_witness. This file reaches the host.
@@ -38,7 +30,7 @@ fn honest(key: NonEmptyStr, payload: NonEmptyStr, expected: CasExpectation) -> C
 
 fn run_cas(root: NonEmptyStr, attempt: CasAttempt<NonEmptyStr>) -> CasOutcome<NonEmptyStr> {
   match admit_cas_attempt(attempt: attempt) {
-    CasAttemptAdmitted { verified: v } => file_compare_and_set_over(fs: local_filesystem, root: root, publication: DefaultAccessCreateOnly, verified: v)
+    CasAttemptAdmitted { verified: v } => file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v)
     CasAttemptDigestMismatch { claimed: _, actual: _ } =>
       CasStoreRefused { cause: CasGenerationPublicationRefused { detail: "mint digest mismatch" as NonEmptyStr } }
     CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
@@ -86,7 +78,7 @@ test fn commit_then_independent_read_back_agrees_by_real_execution() -> Bool {
   let first = run_cas(root: root, attempt: honest(key: "cell", payload: "held-A", expected: ExpectSlotAbsent))
   let path = cas_file_slot_path(root: root, key: "cell", generation: 1)
   let bytes = Filesystem.Read(path: path)
-  let observed = observe_cas_slot_state_over(fs: local_filesystem, root: root, key: "cell")
+  let observed = observe_cas_slot_state(root: root, key: "cell")
   let digest_ok = match observed {
     CasObservedReadable { readable: r } =>
       match r {
@@ -162,12 +154,12 @@ test fn the_gallop_probes_the_int_maximum_instead_of_overflowing_by_real_executi
   let max = int_inclusive_max()
   let upper = max / 2 + 1
   let w1 = Filesystem.WriteCreateNew(path: cas_file_slot_path(root: root as NonEmptyStr, key: "slot-top", generation: upper), content: "upper")
-  let below_max = match cas_probe_gallop_over(fs: local_filesystem, root: root as NonEmptyStr, key: "slot-top", present: upper, present_value: "upper") {
+  let below_max = match cas_probe_gallop(root: root as NonEmptyStr, key: "slot-top", present: upper, present_value: "upper") {
     ProbedHead { generation: g, value: v } => g == upper && (v as String) == "upper"
     _ => false
   }
   let w2 = Filesystem.WriteCreateNew(path: cas_file_slot_path(root: root as NonEmptyStr, key: "slot-top", generation: max), content: "top")
-  let at_max = match cas_probe_gallop_over(fs: local_filesystem, root: root as NonEmptyStr, key: "slot-top", present: upper, present_value: "upper") {
+  let at_max = match cas_probe_gallop(root: root as NonEmptyStr, key: "slot-top", present: upper, present_value: "upper") {
     ProbedHead { generation: g, value: v } => g == max && (v as String) == "top"
     _ => false
   }
@@ -178,11 +170,11 @@ test fn the_gallop_probes_the_int_maximum_instead_of_overflowing_by_real_executi
 // AN UNINITIALIZED STORE IS NOT AN EMPTY ONE. The slot root is missing, so the host answers
 // NotFound for generation 1 exactly as it would for an empty slot; the observation must refuse
 // rather than read "absent", and a writer expecting absence must be refused before it publishes.
-// Before gunbc.durable_cas_file_store cas_first_generation_absent_over this read CasReadableAbsent.
+// Before gunbc.durable_cas_file_store cas_first_generation_absent this read CasReadableAbsent.
 test fn a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution() -> Bool {
   let root_path = fresh_root()
   let missing = concat(root_path, "/never-created")
-  let observed = observe_cas_slot_state_over(fs: local_filesystem, root: missing as NonEmptyStr, key: "cell")
+  let observed = observe_cas_slot_state(root: missing as NonEmptyStr, key: "cell")
   let outcome = run_cas(root: missing as NonEmptyStr, attempt: honest(key: "cell", payload: "held-A", expected: ExpectSlotAbsent))
   let unread = match observed {
     CasObservedUnreadable { cause: _ } => true
@@ -195,7 +187,7 @@ test fn a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution
 // THE POSITIVE CONTROL: an established, empty root still reads as an absent slot.
 test fn an_established_empty_root_reads_the_slot_absent_by_real_execution() -> Bool {
   let root_path = fresh_root()
-  let observed = observe_cas_slot_state_over(fs: local_filesystem, root: root_path as NonEmptyStr, key: "cell")
+  let observed = observe_cas_slot_state(root: root_path as NonEmptyStr, key: "cell")
   let absent = match observed {
     CasObservedReadable { readable: r } => match r { CasReadableAbsent => true  CasReadablePresent { version: _ } => false }
     CasObservedUnreadable { cause: _ } => false

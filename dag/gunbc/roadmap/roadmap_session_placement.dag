@@ -9,8 +9,7 @@ import product.capacity.lease { LeaseGrant }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
-import gunbc.durable_cas_file_store { SlotStore, file_slot_store_over }
-import gunbc.filesystem_interface { local_filesystem }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store }
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
@@ -236,7 +235,7 @@ fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresRes
         ComputeSubjectResolved { subject } =>
           SessionStoresResolved { stores: SessionPlacementStores {
             slots_root: session_placement_slots_root(instance: instance),
-            slots: file_slot_store_over(fs: local_filesystem, root: session_placement_slots_root(instance: instance)),
+            slots: file_slot_store(root: session_placement_slots_root(instance: instance)),
             records_dir: session_placement_records_dir(instance: instance),
             store: compute_capacity_store(subject: subject),
             partition: subject.partition,
