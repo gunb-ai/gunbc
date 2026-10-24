@@ -653,6 +653,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("last-use-move"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/last_use_move_native.dag",
+            },
+        ),
+        (
             instrument_label("claim-coverage-census"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/claim_coverage_census_live.dag",

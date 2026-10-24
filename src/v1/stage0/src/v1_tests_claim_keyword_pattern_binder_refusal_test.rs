@@ -156,7 +156,7 @@ pub fn parse_error_at_keyword(source: String, keyword: String) -> bool {
 }
 
 pub fn parsed_ok(source: String) -> bool {
-    match parse_source(source.clone()).result.error.clone() {
+    match parse_source(source).result.error.clone() {
         Some(_) => false,
         std::option::Option::None => true,
     }

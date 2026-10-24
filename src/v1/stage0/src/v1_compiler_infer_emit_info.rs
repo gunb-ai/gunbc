@@ -214,11 +214,11 @@ pub fn type_summary_lookup(index: Rc<TypeSummaryIndex>, key: String) -> Rc<TypeS
                             Some(v) => v.clone(),
                             std::option::Option::None => "".to_string(),
                         };
-                        match (*type_summary_lookup(index.clone(), enum_part.clone())).clone() {
+                        match (*type_summary_lookup(index.clone(), enum_part)).clone() {
                             TypeSummaryLookup::TypeSummaryFound { summary: owner, .. } => {
                                 type_summary_at_key(
                                     index.clone(),
-                                    variant_summary_key(owner.key.clone(), variant_part.clone()),
+                                    variant_summary_key(owner.key.clone(), variant_part),
                                 )
                             }
                             TypeSummaryLookup::TypeSummaryLeafAmbiguous { leaf: l, .. } => {
@@ -249,11 +249,9 @@ pub fn type_summary_of_reference(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypeSummaryLookup> {
-    match (*resolve_type_decl_reference(decls.clone(), type_expr.clone(), source_indices.clone()))
-        .clone()
-    {
+    match (*resolve_type_decl_reference(decls, type_expr, source_indices)).clone() {
         TypeDeclResolution::TypeDeclResolved { identity, .. } => {
-            type_summary_at_key(index.clone(), identity.clone())
+            type_summary_at_key(index, identity.clone())
         }
         TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: l, .. } => {
             Rc::new(TypeSummaryLookup::TypeSummaryLeafAmbiguous { leaf: l.clone() })
@@ -268,7 +266,7 @@ pub fn type_summary_of_reference(
 }
 
 pub fn type_summary_decided(index: Rc<TypeSummaryIndex>, key: String) -> Option<Rc<TypeSummary>> {
-    match (*type_summary_lookup(index.clone(), key.clone())).clone() {
+    match (*type_summary_lookup(index, key)).clone() {
         TypeSummaryLookup::TypeSummaryFound {
             summary: summary, ..
         } => Some(summary.clone()),
@@ -332,7 +330,7 @@ pub fn collect_type_node_import_surface_occurrences(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypeSurfaceOccurrence>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
+        let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n);
         let name = crate::v1_std_core::authored_name_at(source_indices.clone(), peeled.clone());
         let is_tv = if (peeled.inferred.clone() != std::option::Option::None) {
             is_type_variable(peeled.inferred.clone().clone().unwrap())
@@ -397,10 +395,9 @@ pub fn collect_type_node_import_surface_names(
 ) -> Rc<Vec<String>> {
     dedupe_nonempty_strings(Rc::new({
         let mut __result = Vec::new();
-        for o in
-            collect_type_node_import_surface_occurrences(n.clone(), false, source_indices.clone())
-                .iter()
-                .cloned()
+        for o in collect_type_node_import_surface_occurrences(n, false, source_indices)
+            .iter()
+            .cloned()
         {
             __result.push(o.name.clone());
         }
@@ -695,10 +692,8 @@ pub fn resolve_type_decl_routed(
                     resolution: type_decl_resolution_at_identity(index.clone(), identity.clone()),
                 }),
                 std::option::Option::None => {
-                    let authored = crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        type_expr.clone(),
-                    );
+                    let authored =
+                        crate::v1_std_core::authored_name_at(source_indices, type_expr.clone());
                     let leaf = crate::v1_std_core::qualified_last_segment(authored.clone());
                     let by_spelling = resolve_type_decl_leaf(index.clone(), leaf.clone());
                     let referencing_module_identity = match (*by_spelling.clone()).clone() {
@@ -744,10 +739,8 @@ pub fn resolve_type_decl_routed(
 }
 
 pub fn type_decl_qualifier_declarer(index: Rc<TypeDeclIndex>, authored: String) -> Option<String> {
-    match crate::v1_compiler_infer_env::symbol_index_lookup(
-        index.qualified_names.clone(),
-        authored.clone(),
-    ) {
+    match crate::v1_compiler_infer_env::symbol_index_lookup(index.qualified_names.clone(), authored)
+    {
         Some(decl) => match decl.ident_span.clone() {
             Some(sp) => v1_rt::map_get(
                 &index.identity_by_declaring_span.clone(),
@@ -762,7 +755,7 @@ pub fn type_decl_qualifier_declarer(index: Rc<TypeDeclIndex>, authored: String) 
 pub fn type_decl_kernel_mint_declarer(index: Rc<TypeDeclIndex>, leaf: String) -> Option<String> {
     match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
         kernel_mint_declaration_rows(),
-        leaf.clone(),
+        leaf,
     ))
     .clone()
     {
@@ -789,9 +782,7 @@ pub fn type_decl_spelling_route(
     if (authored.clone() != leaf.clone()) {
         TypeDeclReferenceRoute::RouteQualifiedSpelling
     } else {
-        match (*type_decl_occurrence_binding(index.clone(), leaf.clone(), reference.clone()))
-            .clone()
-        {
+        match (*type_decl_occurrence_binding(index, leaf.clone(), reference)).clone() {
             TypeDeclOccurrenceBinding::OccurrenceDeclaredHere { identity: _, .. } => {
                 TypeDeclReferenceRoute::RouteReferencingModuleDeclarer
             }
@@ -813,7 +804,7 @@ pub fn type_decl_occurrence_identity(
     leaf: String,
     reference: Rc<Node>,
 ) -> Option<String> {
-    match (*type_decl_occurrence_binding(index.clone(), leaf.clone(), reference.clone())).clone() {
+    match (*type_decl_occurrence_binding(index.clone(), leaf.clone(), reference)).clone() {
         TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
             identity: identity, ..
         } => Some(identity.clone()),
@@ -835,7 +826,7 @@ pub fn type_decl_occurrence_binding(
     match (*crate::v1_compiler_infer_env::bare_occurrence_binding(
         index.qualified_names.clone(),
         leaf.clone(),
-        reference.clone(),
+        reference,
     ))
     .clone()
     {
@@ -936,7 +927,7 @@ pub fn resolve_type_decl_reference(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypeDeclResolution> {
-    resolve_type_decl_routed(index.clone(), type_expr.clone(), source_indices.clone())
+    resolve_type_decl_routed(index, type_expr, source_indices)
         .resolution
         .clone()
 }
@@ -1371,7 +1362,7 @@ pub fn variant_has_fields(
             v1_rt::concat(enum_name.clone(), "::".to_string()),
             variant_name.clone(),
         );
-        v1_rt::set_contains(&emit_info.fielded_variants.clone(), key.clone())
+        v1_rt::set_contains(&emit_info.fielded_variants.clone(), key)
     }
 }
 
@@ -1386,7 +1377,7 @@ pub fn lookup_emit_type_summary(
     emit_info: Rc<EmitGraphInfo>,
     type_name: String,
 ) -> Option<Rc<TypeSummary>> {
-    type_summary_decided(emit_info.type_summaries.clone(), type_name.clone())
+    type_summary_decided(emit_info.type_summaries.clone(), type_name)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1402,7 +1393,7 @@ pub fn type_summary_answer(
     key: String,
     question: impl Fn(Rc<TypeSummary>) -> bool + Clone,
 ) -> Rc<TypeSummaryQuestion> {
-    match (*type_summary_lookup(index.clone(), key.clone())).clone() {
+    match (*type_summary_lookup(index.clone(), key)).clone() {
         TypeSummaryLookup::TypeSummaryFound {
             summary: summary, ..
         } => Rc::new(TypeSummaryQuestion::QuestionDecided {
@@ -1466,7 +1457,7 @@ pub fn emit_graph_records_type_decl(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match build_type_summary(item.clone(), source_indices.clone()) {
+    match build_type_summary(item.clone(), source_indices) {
         Some(_) => true,
         std::option::Option::None => {
             ((((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
@@ -1482,40 +1473,33 @@ pub fn emit_graph_records_fn_decl(item: Rc<Node>) -> bool {
 }
 
 pub fn derive_variant_to_enum(type_summaries: Rc<TypeSummaryIndex>) -> Rc<HashMap<String, String>> {
-    type_summary_values(type_summaries.clone())
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, String>(),
-            |acc: Rc<HashMap<String, String>>, summary: Rc<TypeSummary>| match (*summary
-                .repr
-                .clone())
+    type_summary_values(type_summaries).iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, summary: Rc<TypeSummary>| match (*summary.repr.clone())
             .clone()
-            {
-                TypeRepr::EnumRepr { unit_only: _, .. } => {
-                    Rc::new(v1_rt::map_keys(&summary.variant_name_set.clone()))
-                        .iter()
-                        .cloned()
-                        .fold(
-                            acc.clone(),
-                            |inner: Rc<HashMap<String, String>>, vn: String| match v1_rt::map_get(
-                                &inner,
-                                vn.clone(),
-                            ) {
-                                Some(_) => {
-                                    v1_rt::rc_map_insert(inner.clone(), vn.clone(), "".to_string())
-                                }
-                                std::option::Option::None => v1_rt::rc_map_insert(
-                                    inner.clone(),
-                                    vn.clone(),
-                                    summary.key.clone(),
-                                ),
-                            },
-                        )
-                }
-                _ => acc.clone(),
-            },
-        )
+        {
+            TypeRepr::EnumRepr { unit_only: _, .. } => {
+                Rc::new(v1_rt::map_keys(&summary.variant_name_set.clone()))
+                    .iter()
+                    .cloned()
+                    .fold(
+                        acc.clone(),
+                        |inner: Rc<HashMap<String, String>>, vn: String| match v1_rt::map_get(
+                            &inner,
+                            vn.clone(),
+                        ) {
+                            Some(_) => {
+                                v1_rt::rc_map_insert(inner.clone(), vn.clone(), "".to_string())
+                            }
+                            std::option::Option::None => {
+                                v1_rt::rc_map_insert(inner.clone(), vn.clone(), summary.key.clone())
+                            }
+                        },
+                    )
+            }
+            _ => acc.clone(),
+        },
+    )
 }
 
 pub fn is_known_variant(variant_to_enum: Rc<HashMap<String, String>>, name: String) -> bool {
@@ -1526,7 +1510,7 @@ pub fn summary_is_enum_with_variant(summary: Rc<TypeSummary>, variant_name: Stri
     match (*summary.repr.clone()).clone() {
         TypeRepr::EnumRepr { unit_only: _, .. } => crate::v1_compiler_infer_types::emit_map_has(
             summary.variant_name_set.clone(),
-            variant_name.clone(),
+            variant_name,
         ),
         _ => false,
     }
@@ -1544,8 +1528,8 @@ pub fn variant_belongs_to_enum(
     variant_name: String,
     enum_name: String,
 ) -> Rc<TypeSummaryQuestion> {
-    type_summary_answer(type_summaries.clone(), enum_name.clone(), |summary| {
-        summary_is_enum_with_variant(summary.clone(), variant_name.clone())
+    type_summary_answer(type_summaries, enum_name, |summary| {
+        summary_is_enum_with_variant(summary, variant_name.clone())
     })
 }
 
@@ -1553,8 +1537,8 @@ pub fn is_enum_in_summaries(
     type_summaries: Rc<TypeSummaryIndex>,
     type_name: String,
 ) -> Rc<TypeSummaryQuestion> {
-    type_summary_answer(type_summaries.clone(), type_name.clone(), |summary| {
-        summary_is_enum(summary.clone())
+    type_summary_answer(type_summaries, type_name, |summary| {
+        summary_is_enum(summary)
     })
 }
 
@@ -1609,7 +1593,7 @@ pub fn find_variant_parent(
 
 pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {
     {
-        let normed = crate::v1_compiler_infer_types::normalize_access_type_node(type_node.clone());
+        let normed = crate::v1_compiler_infer_types::normalize_access_type_node(type_node);
         let is_optional = (normed.return_cardinality.clone() == Cardinality::CardOptional);
         if is_optional.clone() {
             FieldValueShape::OptionalValue
@@ -1688,14 +1672,13 @@ pub fn find_first_enum_field_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match variants.clone().first().cloned() {
-        Some(variant) => match crate::v1_std_core::find_child_named(
-            variant.clone(),
-            field_name.clone(),
-            source_indices.clone(),
-        ) {
-            Some(field_child) => Some(field_child.clone()),
-            std::option::Option::None => std::option::Option::None,
-        },
+        Some(variant) => {
+            match crate::v1_std_core::find_child_named(variant.clone(), field_name, source_indices)
+            {
+                Some(field_child) => Some(field_child.clone()),
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
         std::option::Option::None => std::option::Option::None,
     }
 }
@@ -2196,7 +2179,7 @@ pub fn fn_reaching_names(
         ),
         summaries.clone(),
         structural_alias_fn_surface_names.clone(),
-        structural_alias_direct_fn_names.clone(),
+        structural_alias_direct_fn_names,
         v1_rt::rc_empty_set::<String>(),
     )
 }
@@ -2209,8 +2192,8 @@ pub fn close_fn_fields(
     {
         let reaching = fn_reaching_names(
             summaries.clone(),
-            structural_alias_fn_surface_names.clone(),
-            structural_alias_direct_fn_names.clone(),
+            structural_alias_fn_surface_names,
+            structural_alias_direct_fn_names,
         );
         Rc::new(TypeSummaryIndex {
             by_key: Rc::new(v1_rt::map_keys(&summaries.by_key.clone()))
@@ -2261,9 +2244,9 @@ pub fn structural_alias_direct_fn_names_with(
     include: bool,
 ) -> Rc<BTreeSet<String>> {
     if include.clone() {
-        v1_rt::rc_set_insert(names.clone(), name.clone())
+        v1_rt::rc_set_insert(names, name)
     } else {
-        names.clone()
+        names
     }
 }
 
@@ -2310,7 +2293,7 @@ pub fn add_emit_item_summary(
         };
         let prior_direct_fn_names = state.structural_alias_direct_fn_names.clone();
         let structural_alias_direct_fn_names = structural_alias_direct_fn_names_with(
-            prior_direct_fn_names.clone(),
+            prior_direct_fn_names,
             decl_name.clone(),
             (is_structural_alias.clone() && (alias_rhs.connective.clone() == Connective::Arrow)),
         );
@@ -2438,7 +2421,7 @@ pub fn add_emit_item_summary(
                         _ => state.type_summaries.clone(),
                     };
                 let next_summaries = type_summary_index_insert(
-                    with_variants.clone(),
+                    with_variants,
                     key.clone(),
                     summary.name.clone(),
                     summary.clone(),
