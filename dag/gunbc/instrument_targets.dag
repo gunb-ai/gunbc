@@ -915,6 +915,15 @@ fn append_chain_ladder_binding() -> TargetBinding {
   TargetBinding { target: append_chain_ladder_label() producer: NativeClaimProgramProducer { entry: append_chain_ladder_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
+fn scratch_sbw_infer_pass2_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "scratch-sbw-infer-pass2" } }
+}
+
+// SCRATCH, NEVER LANDED: the sort_by wave 1 infer.dag pass-2 dry run on a fleet runner.
+fn scratch_sbw_infer_pass2_binding() -> TargetBinding {
+  TargetBinding { target: scratch_sbw_infer_pass2_label() producer: CliWireProgramProducer { entry: "dag/gunbc/instruments/scratch_sbw_infer_pass2.dag" function: "scratch_sbw_infer_pass2_wire" } }
+}
+
 fn claim_coverage_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "claim-coverage-census" } }
 }
@@ -1353,7 +1362,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), scratch_sbw_infer_pass2_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

@@ -1,0 +1,15 @@
+module gunbc.instruments.scratch_sbw_infer_pass2
+
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ExitSuccess, ExitFailure }
+import v2.workflow.roster_import_sweep { roster_import_sweep_rewrite_exit }
+
+// SCRATCH, NEVER LANDED (branch scratch/sbw-infer-pass2): the sort_by wave 1 pass-2 dry run over infer.dag on a fleet
+// runner (BuildBuddy's 1h cap is too short). The site table is the offline P reading, generator input for this one run.
+// stdout carries the planned LABEL edit rows; the verdict is that they are the only rows.
+fn scratch_sbw_infer_pass2_wire() -> CliWireResponse {
+  match roster_import_sweep_rewrite_exit(paths_csv: "src/v2/compiler/infer.dag", home: "std.algebra", call: "sort_by", site_orders: "src/v2/compiler/infer.dag@212697=v2.std.node.symbol_total_order;src/v2/compiler/infer.dag@212755=v2.std.node.symbol_total_order;src/v2/compiler/infer.dag@214209=std.algebra.int_total_order;src/v2/compiler/infer.dag@304887=std.algebra.int_total_order") {
+    ExitSuccess => CliWirePrintable { bytes: "PLAN-CLEAN\n", exit: ExitSuccess }
+    ExitFailure { code: _, reason: r } => CliWirePrintable { bytes: "PLAN-ROWS\n" + r, exit: ExitSuccess }
+  }
+}

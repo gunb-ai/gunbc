@@ -653,6 +653,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("scratch-sbw-infer-pass2"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/scratch_sbw_infer_pass2.dag",
+                function: "scratch_sbw_infer_pass2_wire",
+            },
+        ),
+        (
             instrument_label("claim-coverage-census"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/claim_coverage_census_live.dag",
