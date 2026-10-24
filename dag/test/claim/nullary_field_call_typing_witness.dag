@@ -1,0 +1,61 @@
+module test.claim.nullary_field_call_typing_witness
+
+import std.types { Int, String }
+import gunbc.compile_census_probe { census_delta_verdict, total_blocking_census, census_exit, CensusVerdict }
+import std.process { ProcessExit }
+
+// A NULLARY CALL OF A CALLABLE-TYPED RECORD FIELD IS TYPED AS THE CALLABLE, NOT ITS APPLICATION
+// (gunbc.recurring_failure_mode a_nullary_callable_field_call_is_typed_as_the_callable). Each probe hands the
+// compiler a self-contained module -- a record with a nullary field `ask: fn() -> ProbeAnswer` and a unary field
+// `ask_with: fn(Int) -> ProbeAnswer` -- and compares its blocking census with a baseline that declares the same
+// items and makes no field call, so the shared declarations cancel (gunbc.compile_diagnostic_census).
+//
+// EXPECTING-RED PROBES, recorded as what holds TODAY, and each must flip in the change that lands the checker
+// repair (then it is inverted into that wall's discriminating RED, never deleted): the nullary call as a named
+// argument refuses, and the same call let-bound and then passed refuses. THE CONTROLS hold today and after, and
+// bound the defect to those two positions: the unary call as a named argument and the nullary call matched with
+// its own arms add no blocking diagnostic, and a match with an unrelated coproduct's arms refuses over the nullary
+// call exactly as over the unary one -- so a match scrutinee IS typed as the application (measured 2026-10-24: the
+// first cut of this witness expected the opposite and was falsified by its own run).
+
+fn blocking_delta(hostile: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: baseline_source), holds: holds)
+}
+
+data nullary_named_argument_source: String = "module probe_nullary_field_call_nullary_named_argument\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(a: o.ask())\n}\n"
+
+data nullary_let_bound_source: String = "module probe_nullary_field_call_nullary_let_bound\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  let a = o.ask()\n  answered(a: a)\n}\n"
+
+data unary_named_argument_source: String = "module probe_nullary_field_call_unary_named_argument\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(a: o.ask_with(1))\n}\n"
+
+data nullary_scrutinee_source: String = "module probe_nullary_field_call_nullary_scrutinee\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  match o.ask() {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\n"
+
+data unary_scrutinee_foreign_arms_source: String = "module probe_nullary_field_call_unary_scrutinee_foreign_arms\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  match o.ask_with(1) {\n    OtherYes => true\n    OtherNo => false\n  }\n}\n"
+
+data nullary_scrutinee_foreign_arms_source: String = "module probe_nullary_field_call_nullary_scrutinee_foreign_arms\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  match o.ask() {\n    OtherYes => true\n    OtherNo => false\n  }\n}\n"
+
+data baseline_source: String = "module probe_nullary_field_call_baseline\nimport std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype OtherAnswer = OtherYes | OtherNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn f(o: ProbeOps) -> Bool {\n  answered(a: ProbeYes)\n}\n"
+
+test fn a_nullary_field_call_as_a_named_argument_is_refused_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_named_argument_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn a_let_bound_nullary_field_call_is_refused_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_let_bound_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn a_match_over_a_nullary_field_call_refuses_foreign_arms() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_scrutinee_foreign_arms_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn a_unary_field_call_as_a_named_argument_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: unary_named_argument_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_nullary_field_call_matched_with_its_own_arms_is_admitted() -> ProcessExit {
+  census_exit(blocking_delta(hostile: nullary_scrutinee_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn a_match_over_a_unary_field_call_refuses_foreign_arms() -> ProcessExit {
+  census_exit(blocking_delta(hostile: unary_scrutinee_foreign_arms_source, holds: fn(n) { n >= 1 }))
+}
