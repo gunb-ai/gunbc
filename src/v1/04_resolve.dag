@@ -513,8 +513,8 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
 // refused by arity (expected 0) at the type position, not read as a use of the generic its right-hand side expands to.
 // The alias declaration's own right-hand side is the node the lookup returns (same span), so it is not a use.
 fn is_paramless_alias_use(n: Node, env: TypeEnv) -> Bool {
-  n.connective == NoConnective && (n.children |> count) > 0 && match lookup_type_for(env: env, node: n) {
-    Present { value: used } => used.params |> count == 0 && used.connective == NoConnective && used.span != n.span
+  n.connective == NoConnective && (n.children |> count) > 0 && n.declaration == none && match lookup_type_for(env: env, node: n) {
+    Present { value: used } => used.params |> count == 0 && used.connective == NoConnective
     Absent => false
   }
 }
