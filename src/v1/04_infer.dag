@@ -7647,7 +7647,9 @@ fn tostr_census_diags(route: String, target: String, value: Node, span: SourceSp
     Present { value: TypeVariable { id: v } } => concat("value-tyvar:", v, " card=?")
     _ => "unknown card=?"
   }
-  [inference_error(message: concat("TOSTRCENSUS ", route, " ", target, " ", reading, " binder=", binder), span: span, module_name: scope.module_name)]
+  if starts_with(s: scope.module_name, prefix: "v1.") {
+    [inference_error(message: concat("TOSTRCENSUS ", route, " ", target, " ", reading, " binder=", binder), span: span, module_name: scope.module_name)]
+  } else { [] }
 }
 
 fn tostr_census_registry(call_target: CallTargetOutcome, typed_args: List<Node>, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
@@ -7660,7 +7662,7 @@ fn tostr_census_registry(call_target: CallTargetOutcome, typed_args: List<Node>,
   }
   match typed_args |> first {
     Present { value: a } => tostr_census_diags(route: "registry", target: target, value: arg_value(n: a), span: span, scope: scope)
-    Absent => [inference_error(message: concat("TOSTRCENSUS registry ", target, " no-argument"), span: span, module_name: scope.module_name)]
+    Absent => if starts_with(s: scope.module_name, prefix: "v1.") { [inference_error(message: concat("TOSTRCENSUS registry ", target, " no-argument"), span: span, module_name: scope.module_name)] } else { [] }
   }
 }
 
