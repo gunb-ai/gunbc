@@ -277,9 +277,21 @@ data swift_toolchain_verification_instructions_authority: ExternalAuthority = Ex
 // `gpg --show-keys --with-fingerprint` over it lists this fingerprint as "Swift 6.x Release Signing Key" --
 // because that file is the upstream authority over which keys sign releases; a gpg run of ours could only say
 // which key signed one archive, not that the key is upstream's.
+//
+// THE KEYRING IS LIVE, SO THE STANDING IS NOT TIMELESS. swift.org/keys/all-keys.asc is a mutable document:
+// keys are re-signed and their expiries extended, and a 7.x release brings a new signing key. A citation to
+// it therefore proves the fingerprint only against the reading of that file it was taken from -- exactly the
+// failure `CitedFigureStanding` was minted for, one level up, when a truncated size went true forever. So the
+// record names the PIN its standing was derived for: `derived_for` is the archive subject the keyring was read
+// against, and the gate refuses a key whose `derived_for` is not the module's current pin, with the rule
+// reading `swift_toolchain_pinned_subject` inside the module (a caller cannot supply a pin to match). The
+// obligation is typed, not a comment (4c), and it binds to the pin (4d): bump `swift_toolchain_pinned_subject`
+// and the key stops being listed until someone re-derives the fingerprint against the live keyring and ships
+// the new `derived_for` with it -- the standing cannot survive a bump silently.
 type SwiftToolchainSigningKey {
   fingerprint: NonEmptyStr
   standing: CitedFigureStanding
+  derived_for: SwiftToolchainArchiveSubject
 }
 
 data swift_toolchain_signing_key: SwiftToolchainSigningKey = SwiftToolchainSigningKey {
@@ -287,15 +299,28 @@ data swift_toolchain_signing_key: SwiftToolchainSigningKey = SwiftToolchainSigni
   standing: CitedToAuthority {
     authority: swift_toolchain_signing_keyring_authority
   }
+  // The pin this reading of the live keyring was taken for, spelled as its OWN subject -- not an alias of
+  // `swift_toolchain_pinned_subject`. An alias would move with the pin silently, which is exactly the
+  // survival this field exists to forbid: bumping the pin must break `swift_toolchain_signing_key_as_listed`
+  // until a person re-runs the keyring read for the new release and ships the new subject here with it.
+  derived_for: SwiftToolchainArchiveSubject {
+    distribution: Debian13
+    version: "6.4.1" as VersionIdentity
+  }
 }
 
 // THE RULE FOR THE KEY, TAKING DATA -- the fingerprint's counterpart of swift_toolchain_archive_as_pin. A key
-// reads as listed only when its standing cites the published keyring; anything else yields nothing, so an
-// uncited fingerprint cannot become the thing a signer is compared against.
+// reads as listed only when its standing cites the published keyring AND its standing was derived against the
+// live keyring for the CURRENT PIN; anything else yields nothing, so neither an uncited fingerprint nor a
+// standing left over from a previous pin can become the thing a signer is compared against. The pin is read
+// from `swift_toolchain_pinned_subject` inside this module, so a caller cannot hand the rule a stale pin to
+// agree with.
 fn swift_toolchain_signing_key_as_listed(key: SwiftToolchainSigningKey) -> SwiftToolchainSigningKey? {
   match key.standing {
     CitedToAuthority { authority: c } =>
-      if c.uri == swift_toolchain_signing_keyring_authority.uri { Present { value: key } } else { Absent }
+      if c.uri == swift_toolchain_signing_keyring_authority.uri {
+        if key.derived_for == swift_toolchain_pinned_subject { Present { value: key } } else { Absent }
+      } else { Absent }
     TranscribedUncited { read_obligation: _ } => Absent
     ObservedByReceipt { observed: _ } => Absent
   }
@@ -304,10 +329,18 @@ fn swift_toolchain_signing_key_as_listed(key: SwiftToolchainSigningKey) -> Swift
 // Explains a "no" the rule above already reached, so it cannot disagree about whether, only say why.
 fn swift_toolchain_signing_key_absence_refusal(key: SwiftToolchainSigningKey) -> SwiftToolchainRefusal {
   match key.standing {
-    CitedToAuthority { authority: _ } => KeyStandingDoesNotCiteKeyring {
-      expected: swift_toolchain_signing_keyring_authority
-      detail: "cites an authority other than the published signing keyring"
-    }
+    CitedToAuthority { authority: c } =>
+      if c.uri == swift_toolchain_signing_keyring_authority.uri {
+        KeyStandingDerivedForOtherPin {
+          derived_for: key.derived_for
+          pinned: swift_toolchain_pinned_subject
+        }
+      } else {
+        KeyStandingDoesNotCiteKeyring {
+          expected: swift_toolchain_signing_keyring_authority
+          detail: "cites an authority other than the published signing keyring"
+        }
+      }
     TranscribedUncited { read_obligation: _ } => KeyStandingDoesNotCiteKeyring {
       expected: swift_toolchain_signing_keyring_authority
       detail: "standing is a transcription: a fingerprint read off a gpg run is not upstream listing the key"
@@ -374,6 +407,12 @@ type SwiftToolchainRefusal
   // The same defect for the key: a fingerprint whose standing does not cite the published keyring is not a
   // listed key, so a signer cannot be judged against it -- in either direction.
   | KeyStandingDoesNotCiteKeyring { expected: ExternalAuthority, detail: NonEmptyStr }
+  // The keyring swift.org publishes is LIVE: keys are re-signed, expiries extended, and a 7.x release brings
+  // a new key. A fingerprint's citation proves it only against the reading of that keyring taken for one pin,
+  // so the standing names its pin and a standing derived for any other pin is refused -- both names carried,
+  // so the reader sees which reading to re-take. This is the 4d obligation: bumping `swift_toolchain_pinned_subject`
+  // must make re-derivation a condition of the key's standing, not something a comment hopes someone does.
+  | KeyStandingDerivedForOtherPin { derived_for: SwiftToolchainArchiveSubject, pinned: SwiftToolchainArchiveSubject }
 
 // THE GATE. Returns Absent (usable) only when the signature verified against the published key's
 // fingerprint AND the digest and size both equal the pin's. Anything else is a named refusal. The key, like

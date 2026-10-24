@@ -36,6 +36,7 @@ import extdeps.swift_toolchain {
   swift_toolchain_signature_url,
   SwiftToolchainSigningKey,
   KeyStandingDoesNotCiteKeyring,
+  KeyStandingDerivedForOtherPin,
   swift_toolchain_signing_key,
   swift_toolchain_signing_key_as_listed,
   swift_toolchain_signing_key_absence_refusal,
@@ -495,14 +496,17 @@ test fn a_fingerprint_whose_standing_does_not_cite_the_keyring_is_refused() -> B
   let transcribed = SwiftToolchainSigningKey {
     fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
     standing: TranscribedUncited { read_obligation: "gpg --verify on the runner printed this key" }
+    derived_for: swift_toolchain_pinned_subject
   }
   let cites_the_signature = SwiftToolchainSigningKey {
     fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
     standing: CitedToAuthority { authority: swift_toolchain_signature_authority }
+    derived_for: swift_toolchain_pinned_subject
   }
   let cites_the_keyring = SwiftToolchainSigningKey {
     fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
     standing: CitedToAuthority { authority: swift_toolchain_signing_keyring_authority }
+    derived_for: swift_toolchain_pinned_subject
   }
   match swift_toolchain_signing_key_as_listed(key: transcribed) {
     Absent => true
@@ -536,5 +540,53 @@ test fn a_fingerprint_whose_standing_does_not_cite_the_keyring_is_refused() -> B
      }) {
        Absent => true
        Present { value: _ } => false
+     }
+}
+
+// A STANDING DERIVED FOR ANOTHER PIN IS NOT A STANDING AT ALL (4d: the keyring is live).
+// swift.org/keys/all-keys.asc is a mutable document -- keys are re-signed, expiries extended, and a 7.x
+// release brings a new key -- so a fingerprint's citation proves it only against the reading of that keyring
+// taken for one pin. This claim constructs the state that must be unreachable: a key record citing the right
+// keyring whose `derived_for` names a DIFFERENT subject than the module's current pin. It must not read as
+// listed, the refusal must be the typed `KeyStandingDerivedForOtherPin` carrying both subjects (so the reader
+// sees which reading to re-take). The control half: the shipped key, derived for the current pin, stays
+// listed -- and a second subject spelled identically re-derives to listed, because the check is equality of
+// pins, not identity of a single value.
+test fn a_key_standing_derived_for_a_different_pin_is_refused() -> Bool {
+  let stale_pin = SwiftToolchainArchiveSubject {
+    distribution: Debian13
+    version: "7.0.0" as VersionIdentity
+  }
+  let key_for_stale_pin = SwiftToolchainSigningKey {
+    fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    standing: CitedToAuthority { authority: swift_toolchain_signing_keyring_authority }
+    derived_for: stale_pin
+  }
+  let key_re_derived = SwiftToolchainSigningKey {
+    fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    standing: CitedToAuthority { authority: swift_toolchain_signing_keyring_authority }
+    derived_for: SwiftToolchainArchiveSubject {
+      distribution: Debian13
+      version: "6.4.1" as VersionIdentity
+    }
+  }
+  match swift_toolchain_signing_key_as_listed(key: key_for_stale_pin) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  && match swift_toolchain_signing_key_absence_refusal(key: key_for_stale_pin) {
+       KeyStandingDerivedForOtherPin { derived_for: d, pinned: p } =>
+         d == stale_pin
+         && p == swift_toolchain_pinned_subject
+         && d != p
+       _ => false
+     }
+  && match swift_toolchain_signing_key_as_listed(key: key_re_derived) {
+       Present { value: k } => k.fingerprint == "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+       Absent => false
+     }
+  && match swift_toolchain_signing_key_as_listed(key: swift_toolchain_signing_key) {
+       Present { value: k } => k.derived_for == swift_toolchain_pinned_subject
+       Absent => false
      }
 }
