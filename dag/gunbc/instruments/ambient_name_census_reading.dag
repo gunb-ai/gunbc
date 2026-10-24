@@ -146,6 +146,27 @@ fn binding_lines(stdout: String) -> List<String> {
   split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t"))
 }
 
+// THE ROW KINDS THE NATIVE CENSUS PRINTS (v2.compiler.occurrence_binding_census, v2.compiler.source_root_eval), the one list
+// this reading recognises. A `binding_*` line whose kind is not here is not dropped by the prefix filters below: it is an
+// unrecognised row, printed and refused (`unrecognised_binding_failure`), because a reading that discards what it does not
+// know hid the located cause `binding_refusal_cause` from every run.
+fn known_binding_row_kinds() -> List<String> {
+  ["binding", "binding_declaration", "binding_module", "binding_partial", "binding_partial_module", "binding_refusal_cause", "binding_subject", "binding_unanswered", "binding_unbound", "binding_unbound_module", "binding_unreached", "binding_unrecorded"]
+}
+
+fn unrecognised_binding_lines(stdout: String) -> List<String> {
+  split(s: stdout, delimiter: "\n")
+    |> filter(l => starts_with(s: l, prefix: "binding"))
+    |> filter(l => count(known_binding_row_kinds() |> filter(k => k == field_at(line: l, index: 0))) == 0)
+}
+
+fn unrecognised_binding_failure(stdout: String) -> Optional<String> {
+  match first(distinct_lines(lines: unrecognised_binding_lines(stdout: stdout))) {
+    Present { value: l } => Present { value: to_string(count(distinct_lines(lines: unrecognised_binding_lines(stdout: stdout)))) + " unrecognised binding row kind(s), first: " + l + " -- this reading must learn the row, never drop it" }
+    Absent => Absent
+  }
+}
+
 fn line_fields(line: String) -> List<String> {
   split(s: line, delimiter: "\t")
 }
@@ -373,6 +394,9 @@ fn ambient_name_census_standing(
   match fixture_join_failure(stdout: fixture_stdout) {
     Present { value: why } => CliWirePrintable { bytes: fixture_stdout + "\n", exit: ExitFailure { code: 1, reason: "fixture control: " + why } }
     Absent =>
+     match unrecognised_binding_failure(stdout: fixture_stdout + "\n" + tree_stdout + "\n" + base_stdout) {
+      Present { value: why } => CliWirePrintable { bytes: bytes + (distinct_lines(lines: unrecognised_binding_lines(stdout: fixture_stdout + "\n" + tree_stdout + "\n" + base_stdout)) |> map(l => "unrecognised_binding_row\t" + l) |> join(separator: "\n")) + "\n", exit: ExitFailure { code: 1, reason: "unrecognised row control: " + why } }
+      Absent =>
       match duplicate_record_failure(stdout: fixture_stdout + "\n" + tree_stdout) {
         Present { value: why } => CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "exactly-one-source control: " + why } }
         Absent =>
@@ -398,6 +422,7 @@ fn ambient_name_census_standing(
               }
           }
       }
+     }
   }
 }
 

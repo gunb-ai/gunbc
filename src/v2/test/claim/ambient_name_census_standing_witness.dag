@@ -148,3 +148,35 @@ test fn the_probe_list_is_exactly_the_head_refused_rewritten_modules() -> Bool {
   ambient_census_probe_modules(tree_stdout: healthy_head(), rewritten: both_rewritten() + "healthy\tpresent\n")
     == ["broken_by_wave", "already_refused"]
 }
+
+fn standing_over(tree_stdout: String) -> CliWireResponse {
+  ambient_name_census_standing(
+    fixture_stdout: ambient_census_fixture_stdout(),
+    fixture_status: 0,
+    unindexed_status: 2,
+    tree_stdout: tree_stdout,
+    tree_runs: "",
+    rewritten: both_rewritten(),
+    base_stdout: "binding_unreached\tbroken_by_wave\tresolve\nbinding_unreached\talready_refused\tresolve\n",
+    base_probed: "broken_by_wave\nalready_refused\n"
+  )
+}
+
+test fn an_unrecognised_binding_row_is_printed_and_refused_not_dropped() -> Bool {
+  match standing_over(tree_stdout: healthy_head() + "binding_mystery_kind\tx\t1\n") {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 1)
+        && string_contains(s: reason, pattern: "unrecognised row control")
+        && string_contains(s: reason, pattern: "binding_mystery_kind")
+        && string_contains(s: bytes, pattern: "unrecognised_binding_row\tbinding_mystery_kind\tx\t1")
+    _ => false
+  }
+}
+
+test fn a_binding_refusal_cause_row_is_a_known_kind_and_is_printed() -> Bool {
+  match standing_over(tree_stdout: healthy_head() + "binding_refusal_cause\tbroken_by_wave\town\tunresolved\t3:4\n") {
+    CliWirePrintable { bytes: bytes, exit: ExitSuccess } =>
+      string_contains(s: bytes, pattern: "binding_refusal_cause\tbroken_by_wave\town\tunresolved\t3:4")
+    _ => false
+  }
+}
