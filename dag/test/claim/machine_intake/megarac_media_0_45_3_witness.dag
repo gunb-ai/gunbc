@@ -1,0 +1,217 @@
+module test.claim.machine_intake.megarac_media_0_45_3_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, non_empty_singleton, string_contains }
+import std.optional { Present }
+import extdeps.bmc.megarac {
+  megarac_firmware_0_32,
+  megarac_firmware_0_45_3,
+  megarac_redirection_status_of_wire,
+  megarac_redirection_presentation_standing,
+  RedirectionStatusKnown,
+  RedirectionStatusFirmwareUncatalogued,
+  RedirectionStartedConnectionAccepted,
+  RedirectionStopped,
+  RedirectionConnecting,
+  RedirectionWireUncatalogued,
+  RedirectionPresenting,
+}
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq }
+import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image_stem }
+import gunbc.runner.runner_host_medium { runner_host_medium_image_stem }
+import gunbc.machine_intake.megarac_media_attach {
+  ConvergeStepDetachStale,
+  ConvergeStepRefuse,
+  ConvergenceStep,
+  CdErrorRead,
+  CdErrorNone,
+  DetachEstablished,
+  DetachNotEstablished,
+  MegaRacDetachAdmission,
+  MegaRacDetachAdmitted,
+  MegaRacDetachEvidence,
+  MegaRacRawRead,
+  MegaRacRedirectionUncatalogued,
+  MegaRacForeignImagePresented,
+  MegaRacSeveralImagesPresented,
+  MegaRacRedirectionUnread,
+  RedirectionUnreadCode,
+  RedirectionUnreadFirmware,
+  detach_verdict,
+  megarac_convergence_step,
+  megarac_write_answer,
+  presented_convergence,
+  presented_media,
+  redirection_unread_text,
+}
+
+// THE 0.45.3 MEDIA CONVERGE, as boot run 40038339650 met it: firmware 0.45.3 (the current build since the
+// 2026-10-02 reflash), the runner medium wanted, and the census session an earlier attempt left on the
+// controller reading redirection_status 19. Every input is a supplied configurations body at the
+// converge's own pure folds; the real producer of these bodies is megarac.Media.Configurations through
+// megarac_attach_remote_image, executed on the controller by the boot run, not here.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data runner_desired: NonEmptyStr = ubuntu_seeded_install_media_image_name(image_stem: runner_host_medium_image_stem, output_digest: "31aef93912ab34cd56")
+// The image boot run 40038339650 found presented, by its committed name.
+data census_left: NonEmptyStr = "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso"
+data both_stems: FreeSemigroup<NonEmptyStr> = FreeSemigroup { head: runner_host_medium_image_stem, tail: [mtcollins1_census_image_stem] }
+data runner_only: FreeSemigroup<NonEmptyStr> = non_empty_singleton(item: runner_host_medium_image_stem)
+data firmware_0_99: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.99")
+
+fn row(name: String, status: String) -> String {
+  concat("{\"id\":1,\"media_type\":1,\"media_index\":0,\"session_index\":0,\"image_name\":\"", concat(name, concat("\",\"redirection_status\":", concat(status, "}"))))
+}
+
+fn rows1(a: String) -> String { concat("[", concat(a, "]")) }
+fn rows2(a: String, b: String) -> String { concat("[", concat(a, concat(",", concat(b, "]")))) }
+
+fn step_on(configurations: String, firmware: BmcFirmwareReleaseIdentity, stems: FreeSemigroup<NonEmptyStr>) -> ConvergenceStep {
+  megarac_convergence_step(
+    convergence: presented_convergence(
+      presented: presented_media(body: configurations, image_name: runner_desired, firmware: firmware, replaceable: Present { value: stems }),
+      image_name: runner_desired,
+      replaceable_seeded_stems: stems,
+    ),
+    detach: MegaRacDetachAdmitted,
+    configurations: configurations,
+    cd_before: CdErrorRead { code: CdErrorNone },
+  )
+}
+
+fn refused_unread(s: ConvergenceStep, name: String, want: MegaRacRedirectionUnread) -> Bool {
+  match s {
+    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, configurations: _ } } => n == name && u == want
+    _ => false
+  }
+}
+
+fn stop_evidence(readback: String) -> MegaRacDetachEvidence {
+  MegaRacDetachEvidence {
+    stale_image: census_left as String,
+    media_index: "0",
+    command: megarac_write_answer(exit_code: 0, body: "{}", stderr: ""),
+    readback_read: true,
+    readback: readback,
+    cd_after_stop: CdErrorRead { code: CdErrorNone },
+    general_after_stop: MegaRacRawRead { answered: true, body: "{}", observed_at: Present { value: 1 } },
+  }
+}
+
+// THE CATALOGUE. 1 on 0.45.3 is the one code a committed 0.45.3 reading shows (boot run 38789347052).
+test fn on_0_45_3_wire_1_is_started_and_presenting() -> Bool {
+  let l = megarac_redirection_status_of_wire(firmware: megarac_firmware_0_45_3, wire: 1)
+  (match l { RedirectionStatusKnown { firmware: f, status: RedirectionStartedConnectionAccepted } => bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_45_3)  _ => false })
+    && megarac_redirection_presentation_standing(lookup: l) == RedirectionPresenting
+}
+
+// 0.32's other codes are NOT inherited: no 0.45.3 reading grounds 0 or 100, and 19 is unread.
+test fn on_0_45_3_the_0_32_codes_are_not_carried_over() -> Bool {
+  megarac_redirection_status_of_wire(firmware: megarac_firmware_0_45_3, wire: 0) == RedirectionStatusKnown { firmware: megarac_firmware_0_45_3, status: RedirectionWireUncatalogued { wire: 0 } }
+    && megarac_redirection_status_of_wire(firmware: megarac_firmware_0_45_3, wire: 100) == RedirectionStatusKnown { firmware: megarac_firmware_0_45_3, status: RedirectionWireUncatalogued { wire: 100 } }
+    && megarac_redirection_status_of_wire(firmware: megarac_firmware_0_45_3, wire: 19) == RedirectionStatusKnown { firmware: megarac_firmware_0_45_3, status: RedirectionWireUncatalogued { wire: 19 } }
+}
+
+test fn the_0_32_catalogue_is_unchanged() -> Bool {
+  megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 0) == RedirectionStatusKnown { firmware: megarac_firmware_0_32, status: RedirectionStopped }
+    && megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 1) == RedirectionStatusKnown { firmware: megarac_firmware_0_32, status: RedirectionStartedConnectionAccepted }
+    && megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 100) == RedirectionStatusKnown { firmware: megarac_firmware_0_32, status: RedirectionConnecting }
+    && megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 19) == RedirectionStatusKnown { firmware: megarac_firmware_0_32, status: RedirectionWireUncatalogued { wire: 19 } }
+}
+
+test fn an_uncatalogued_release_stays_firmware_uncatalogued() -> Bool {
+  megarac_redirection_status_of_wire(firmware: firmware_0_99, wire: 1) == RedirectionStatusFirmwareUncatalogued { firmware: firmware_0_99, wire: 1 }
+}
+
+// THE RUN 40038339650 STATE, WITH BOTH STEMS: the census session at 19 is this lane's residue and is
+// stopped.
+test fn the_left_census_session_at_19_on_0_45_3_is_stopped() -> Bool {
+  match step_on(configurations: rows1(a: row(name: census_left as String, status: "19")), firmware: megarac_firmware_0_45_3, stems: both_stems) {
+    ConvergeStepDetachStale { row: r } => r.image_name == (census_left as String) && r.redirection_wire == 19
+    _ => false
+  }
+}
+
+// THE SAME STATE WITH ONLY THE RUNNER STEM -- the set #14912 left -- refuses, and the refusal says which
+// arm (the code, not the firmware) and on which release.
+test fn with_only_the_runner_stem_the_census_session_refuses_on_its_code() -> Bool {
+  refused_unread(
+    s: step_on(configurations: rows1(a: row(name: census_left as String, status: "19")), firmware: megarac_firmware_0_45_3, stems: runner_only),
+    name: census_left as String,
+    want: RedirectionUnreadCode { firmware: megarac_firmware_0_45_3, wire: 19 },
+  )
+}
+
+test fn a_foreign_image_at_19_is_never_stopped() -> Bool {
+  refused_unread(
+    s: step_on(configurations: rows1(a: row(name: "someone-elses-installer.iso", status: "19")), firmware: megarac_firmware_0_45_3, stems: both_stems),
+    name: "someone-elses-installer.iso",
+    want: RedirectionUnreadCode { firmware: megarac_firmware_0_45_3, wire: 19 },
+  )
+}
+
+test fn the_wanted_image_at_19_is_not_stopped() -> Bool {
+  refused_unread(
+    s: step_on(configurations: rows1(a: row(name: runner_desired as String, status: "19")), firmware: megarac_firmware_0_45_3, stems: both_stems),
+    name: runner_desired as String,
+    want: RedirectionUnreadCode { firmware: megarac_firmware_0_45_3, wire: 19 },
+  )
+}
+
+test fn an_unnamed_row_at_an_unread_code_refuses() -> Bool {
+  refused_unread(
+    s: step_on(configurations: rows1(a: row(name: "", status: "0")), firmware: megarac_firmware_0_45_3, stems: both_stems),
+    name: "",
+    want: RedirectionUnreadCode { firmware: megarac_firmware_0_45_3, wire: 0 },
+  )
+}
+
+// Our census session beside a started foreign one: the foreign row decides, and nothing is stopped.
+test fn the_census_session_beside_a_foreign_one_refuses() -> Bool {
+  match step_on(configurations: rows2(a: row(name: census_left as String, status: "19"), b: row(name: "someone-elses-installer.iso", status: "1")), firmware: megarac_firmware_0_45_3, stems: both_stems) {
+    ConvergeStepRefuse { outcome: MegaRacForeignImagePresented { image_name: n, configurations: _ } } => n == "someone-elses-installer.iso"
+    _ => false
+  }
+}
+
+test fn two_of_our_sessions_at_once_refuse() -> Bool {
+  match step_on(configurations: rows2(a: row(name: census_left as String, status: "19"), b: row(name: "gunbc-runner-host-ubuntu-24.04.3-arm64-0123456789abcdef.iso", status: "1")), firmware: megarac_firmware_0_45_3, stems: both_stems) {
+    ConvergeStepRefuse { outcome: MegaRacSeveralImagesPresented { configurations: _ } } => true
+    _ => false
+  }
+}
+
+// AN UNCATALOGUED RELEASE: our census row is still a stop candidate (the stop is the conservative write
+// and is judged only by its read-back), and the text names the firmware arm.
+test fn on_an_uncatalogued_release_the_text_names_the_firmware_arm() -> Bool {
+  string_contains(s: redirection_unread_text(unread: RedirectionUnreadFirmware { firmware: firmware_0_99, wire: 19 }), pattern: "on firmware 0.99, a release whose status codes are not catalogued")
+    && string_contains(s: redirection_unread_text(unread: RedirectionUnreadCode { firmware: megarac_firmware_0_45_3, wire: 19 }), pattern: "redirection_status 19 on firmware 0.45.3, a code")
+}
+
+// THE STOP'S READ-BACK ON 0.45.3. No committed reading shows what a stopped row reads on this release,
+// so a cleared-looking row (image_name "", status 0, which IS stopped on 0.32) does not establish the
+// stop here; the reason records the wire so this attempt's receipt grounds it.
+test fn on_0_45_3_a_cleared_looking_readback_does_not_establish_the_stop_and_records_the_wire() -> Bool {
+  match detach_verdict(evidence: stop_evidence(readback: rows1(a: row(name: "", status: "0"))), image_name: runner_desired, firmware: megarac_firmware_0_45_3, replaceable_seeded_stems: both_stems) {
+    DetachNotEstablished { reason: why } => string_contains(s: why as String, pattern: "redirection_status 0 on firmware 0.45.3")
+    _ => false
+  }
+}
+
+// The positive control beside it: the same read-back on 0.32 IS an established stop.
+test fn on_0_32_the_same_cleared_readback_establishes_the_stop() -> Bool {
+  match detach_verdict(evidence: stop_evidence(readback: rows1(a: row(name: "", status: "0"))), image_name: runner_desired, firmware: megarac_firmware_0_32, replaceable_seeded_stems: both_stems) {
+    DetachEstablished => true
+    _ => false
+  }
+}
+
+test fn on_0_45_3_our_census_still_listed_after_the_stop_is_not_established() -> Bool {
+  match detach_verdict(evidence: stop_evidence(readback: rows1(a: row(name: census_left as String, status: "19"))), image_name: runner_desired, firmware: megarac_firmware_0_45_3, replaceable_seeded_stems: both_stems) {
+    DetachNotEstablished { reason: _ } => true
+    _ => false
+  }
+}
