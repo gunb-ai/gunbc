@@ -4,7 +4,8 @@
 use self::AliasKind::*;
 use self::KindInhabitance::*;
 pub use crate::std_decl_ref::{
-    decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter, DeclarationRef,
+    decl_ref, decl_type_parameter_ref, declaration_ref_eq, declaration_ref_is_type_parameter,
+    DeclarationRef,
 };
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
@@ -15,6 +16,7 @@ use crate::std_syntax::LiteralValue::LitInt;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_types::{container_param_name, SourceSpan};
 pub use crate::std_types::{is_container_type, is_kernel_type};
+use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration;
 use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
     UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
 };
@@ -23,8 +25,8 @@ pub use crate::v1_compiler_infer_env::{
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
     lookup_unit_variant_phantom_type, symbol_index_lookup, type_ref_measure_binding_authority,
-    width_resolution_declaration, TypeBinding, TypeEnv, UnitVariantContribution,
-    UnitVariantPhantomLookup,
+    type_reference_declaration_reading, width_resolution_declaration, TypeBinding, TypeEnv,
+    TypeReferenceDeclarationReading, UnitVariantContribution, UnitVariantPhantomLookup,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
@@ -810,6 +812,61 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn declaration_resolved_container(name: String) -> bool {
+    (name.clone() == "Map".to_string())
+}
+
+pub fn container_declaration_aliases_keyed_algebra(decl: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    match decl.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: target, .. }) => {
+            match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+                target.clone(),
+                env.source_indices.clone(),
+                env.clone(),
+            ))
+            .clone()
+            {
+                TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                    declaration: d,
+                    ..
+                } => crate::std_decl_ref::declaration_ref_eq(
+                    d.clone(),
+                    crate::std_decl_ref::decl_ref(
+                        "std.algebra".to_string(),
+                        "FinitelySupportedFunction".to_string(),
+                    ),
+                ),
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+pub fn unbound_container_diagnostics(
+    env: Rc<TypeEnv>,
+    n: Rc<Node>,
+    name: String,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if (declaration_resolved_container(name.clone())
+        && (crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone())
+            == std::option::Option::None))
+    {
+        Rc::new(vec![crate::v1_std_core::make_error_node(
+            crate::v1_compiler_infer_env::bare_name_miss_diagnostic(
+                env.clone(),
+                name.clone(),
+                span.clone(),
+            ),
+            module_name.clone(),
+        )])
+    } else {
+        Rc::new(vec![])
+    }
+}
+
 pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     {
         let has_structure = (n.connective.clone() != Connective::NoConnective);
@@ -819,7 +876,14 @@ pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
             {
                 let decl = resolve_generic_use_decl(env.clone(), n.clone());
                 if ((decl.params.clone().len() as i64) > 0) {
-                    if (crate::std_types::is_container_type(n.name.clone())
+                    if ((crate::std_types::is_container_type(n.name.clone())
+                        && ((declaration_resolved_container(
+                            crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()),
+                        ) == false)
+                            || container_declaration_aliases_keyed_algebra(
+                                decl.clone(),
+                                env.clone(),
+                            )))
                         || crate::v1_compiler_infer_types::node_is_keyed_algebra_spelling(
                             n.clone(),
                             env.source_indices.clone(),
@@ -2013,7 +2077,16 @@ Rc::new(NodeResolveResult {
                                         ident: None,
                                     })),
                                     diagnostics: v1_rt::concat(
-                                        key_diags.clone(),
+                                        v1_rt::concat(
+                                            unbound_container_diagnostics(
+                                                env.clone(),
+                                                n.clone(),
+                                                type_name.clone(),
+                                                n.span.clone(),
+                                                module_name.clone(),
+                                            ),
+                                            key_diags.clone(),
+                                        ),
                                         val_diags.clone(),
                                     ),
                                 })

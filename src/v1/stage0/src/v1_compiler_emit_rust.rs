@@ -389,12 +389,16 @@ pub fn render_rust_type_without_applied_binding(
                 emit_info.clone(),
             )
         } else {
-            if (((n.connective.clone() == Connective::NoConnective)
+            if ((((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) > 0))
                 && !crate::std_types::is_container_type(crate::v1_std_core::authored_name_at(
                     source_indices.clone(),
                     n.clone(),
                 )))
+                && !crate::v1_compiler_infer_types::node_is_keyed_collection(
+                    n.clone(),
+                    source_indices.clone(),
+                ))
             {
                 render_rust_applied_via_emit_info(
                     n.clone(),

@@ -10,8 +10,8 @@ use crate::std_algebra::AlgebraTypeTemplate::{
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{
     algebra_templates_for_profile, all_algebra_profiles, free_monoid_scalar_templates,
-    kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate,
-    ContainerSource,
+    kernel_algebra_profile, map_lookup, map_support_keys, AlgebraFieldTemplate, AlgebraProfile,
+    AlgebraTypeTemplate, ContainerSource,
 };
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -2082,22 +2082,25 @@ pub fn is_empty_set_constructor(name: String) -> bool {
 pub fn is_kernel_method_name(name: String) -> bool {
     {
         let mut __found = false;
-        for profile in Rc::new(v1_rt::map_values(&kernel_algebra_profile()))
+        for kind in crate::std_algebra::map_support_keys(kernel_algebra_profile())
             .iter()
             .cloned()
         {
-            if {
-                let mut __found = false;
-                for t in crate::std_algebra::algebra_templates_for_profile(profile.clone())
-                    .iter()
-                    .cloned()
-                {
-                    if (t.name.clone() == name.clone()) {
-                        __found = true;
-                        break;
+            if match v1_rt::lookup(&kernel_algebra_profile(), kind.clone()) {
+                Some(profile) => {
+                    let mut __found = false;
+                    for t in crate::std_algebra::algebra_templates_for_profile(profile.clone())
+                        .iter()
+                        .cloned()
+                    {
+                        if (t.name.clone() == name.clone()) {
+                            __found = true;
+                            break;
+                        }
                     }
+                    __found
                 }
-                __found
+                std::option::Option::None => false,
             } {
                 __found = true;
                 break;

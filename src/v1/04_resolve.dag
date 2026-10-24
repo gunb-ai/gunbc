@@ -1,6 +1,6 @@
 module v1.compiler.infer_resolve
 
-import std.decl_ref { DeclarationRef, decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter }
+import std.decl_ref { DeclarationRef, decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter, declaration_ref_eq }
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan, container_param_name }
@@ -49,7 +49,7 @@ import v1.compiler.infer_types {
 import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
+  TypeEnv, TypeBinding, declaration_ref_of_declaration_node, type_reference_declaration_reading, TypeReferenceNamesDeclaration, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
   width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
@@ -506,17 +506,40 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
   }
 }
 
-// A container spelling whose use site resolves through the declaration it names when one is in scope
-// (std.types Map = FinitelySupportedFunction), instead of being minted as the kernel container by
-// leaf name. The kernel container survives only where no declaration resolves.
+// A container spelling that is bound only through the declaration it names (std.types Map =
+// FinitelySupportedFunction). When that declaration aliases the keyed algebra (below) the use site
+// resolves as the kernel keyed container, the ONE identity the declaration's own spelling FinitelySupportedFunction<K, V> also
+// resolves to, so a `Map<K, V>` and a `FinitelySupportedFunction<K, V>` meet at a join as one type.
+// Resolving it as a user generic of the alias instead minted a second identity (the record
+// expansion) and refused the joins at v2.std.compilers.lexing lex_rule_set_insert_keyword_class.
+// With no declaration in scope it is unbound, never silently the kernel container.
 fn declaration_resolved_container(name: String) -> Bool {
   name == "Map"
 }
 
 // A declaration-resolved container spelling that reaches the kernel minting arm named no
 // declaration in scope: it is unbound, never silently the kernel container.
-fn unbound_container_diagnostics(env: TypeEnv, name: String, span: SourceSpan, module_name: String) -> List<ErrorNode> {
-  if declaration_resolved_container(name: name) {
+// The declaration a container spelling resolves to aliases THE keyed algebra (std.types
+// `type Map<key, value> = FinitelySupportedFunction<key, value>`): its use site is the kernel keyed
+// container, the same identity that declaration resolves to. Keyed on DECLARATION IDENTITY, the
+// alias target's declaration being std.algebra FinitelySupportedFunction (DESIGN 4: compatibility
+// keys on the exact declaration), never on the spelling: a local record that happens to be named
+// FinitelySupportedFunction, aliased as Map, resolves through its own declaration. A target whose
+// declaration is unreadable answers false (fail closed: it resolves through the alias and a join
+// against the kernel container refuses loudly).
+fn container_declaration_aliases_keyed_algebra(decl: Node, env: TypeEnv) -> Bool {
+  match decl.inferred {
+    Present { value: Resolved { node: target } } =>
+      match type_reference_declaration_reading(n: target, source_indices: env.source_indices, env: env) {
+        TypeReferenceNamesDeclaration { declaration: d } => declaration_ref_eq(a: d, b: decl_ref(module_path: "std.algebra", decl_name: "FinitelySupportedFunction"))
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn unbound_container_diagnostics(env: TypeEnv, n: Node, name: String, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+  if declaration_resolved_container(name: name) && lookup_type_for(env: env, node: n) == none {
     [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: name, span: span), module_name: module_name)]
   } else { [] }
 }
@@ -530,7 +553,7 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
       // RESIDUE: second consumer of the leaf-spelling classifier (the first is the emitter's
       // node_is_keyed_collection); tracked by gunbc.recurring_failure_mode
       // emitter_keyed_container_lowering_is_keyed_by_leaf_spelling, whose trigger covers both sites.
-      if (is_container_type(name: n.name) && declaration_resolved_container(name: authored_name(env: env, node: n)) == false) || node_is_keyed_algebra_spelling(n: n, source_indices: env.source_indices) { false }
+      if (is_container_type(name: n.name) && (declaration_resolved_container(name: authored_name(env: env, node: n)) == false || container_declaration_aliases_keyed_algebra(decl: decl, env: env))) || node_is_keyed_algebra_spelling(n: n, source_indices: env.source_indices) { false }
       else if decl.inferred != none { true }
       else { true }
     } else { false }
@@ -842,7 +865,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       let resolved_val_child = Node { occurrence_identity: val_child_node.occurrence_identity, name: val_param_name, span: val_child_node.span, ident_span: val_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: val_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       NodeResolveResult {
         resolved: stamp_kernel_collection(n: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_key_child, resolved_val_child], connective: n.connective, params: n.params, inferred: none, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData }),
-        diagnostics: concat(unbound_container_diagnostics(env: env, name: type_name, span: n.span, module_name: module_name), key_diags, val_diags)
+        diagnostics: concat(unbound_container_diagnostics(env: env, n: n, name: type_name, span: n.span, module_name: module_name), key_diags, val_diags)
       }
     } else if n.children |> count == 1 {
     let type_name = authored_name(env: env, node: n)
