@@ -407,9 +407,8 @@ fn whole_value_borrow_count(usage: BindingUsage) -> Int {
 
 // A binding whose ONE use is a by-value argument is moved there. One edge on the selected path means
 // nothing reads it before or after the call (a read inside a lambda or loop body surfaces here as a
-// capture Read, so a use that executes more than once is never the only edge), and branch merging
-// keeps one path's edges, so a move on each of two exclusive branches is still one. Exactly one
-// edge also keeps this disjoint from build_read_only_params, which needs a fan-out above one.
+// capture Read, so a use that executes more than once is never the only edge). Exactly one edge also
+// keeps this disjoint from build_read_only_params, which needs a fan-out above one.
 fn moved_at_its_only_argument(usage: BindingUsage) -> Bool {
   (usage.consumers |> count) == 1 && usage.consumers |> all(c => c.kind == PassedByValue)
 }
@@ -417,11 +416,32 @@ fn moved_at_its_only_argument(usage: BindingUsage) -> Bool {
 fn build_movable_set(proof: OwnershipProof, param_names: Set<String>) -> Set<String> {
   proof.bindings |> map_values
     |> filter(usage =>
-      (((match make_decision(usage: usage) { SoleOwner { binding: _, site: _ } => true, _ => false })
-        && whole_value_borrow_count(usage: usage) == 0)
-        || moved_at_its_only_argument(usage: usage))
+      (match make_decision(usage: usage) { SoleOwner { binding: _, site: _ } => true, _ => false })
+      && whole_value_borrow_count(usage: usage) == 0
       && (is_owned_local(kind: usage.binding_kind) || set_contains(param_names, usage.name)))
     |> fold(init: empty_set(), f: (acc, usage) => set_insert(acc, usage.name))
+}
+
+// THE MOVE AT A BY-VALUE ARGUMENT IS AUTHORIZED AT ONE OCCURRENCE, NOT FOR A SPELLING. The proof
+// keys a binding by its name, and a name can be bound twice in one function (a let, a lambda
+// parameter, an arm binder). A name-keyed movable set would then let the proof for one binding move
+// a different binding of the same spelling (DESIGN section 4: key on the exact declaration). An
+// ExprVar carries no declaration identity in v1, but it carries its own occurrence, and the fact
+// proved here is about one occurrence: this edge is the only use the proof saw under this spelling.
+// Every occurrence of the spelling in the scope is an edge (a nested lambda's uses surface as
+// captures), so one edge is one occurrence, and the move happens exactly there and nowhere else.
+// The emitter asks the same key (v1.compiler.emit_rust emit_rust_expr_var). The pre-existing tail
+// consume above stays keyed by name as on main; this change only makes it more conservative.
+fn moved_argument_occurrence_key(name: String, span_start: Int) -> String {
+  concat(name, "@", to_string(value: span_start))
+}
+
+fn build_moved_argument_occurrences(proof: OwnershipProof, param_names: Set<String>) -> Set<String> {
+  proof.bindings |> map_values
+    |> filter(usage => moved_at_its_only_argument(usage: usage)
+      && (is_owned_local(kind: usage.binding_kind) || set_contains(param_names, usage.name)))
+    |> fold(init: empty_set(), f: (acc, usage) =>
+      usage.consumers |> fold(init: acc, f: (inner, edge) => set_insert(inner, moved_argument_occurrence_key(name: usage.name, span_start: edge.span_start))))
 }
 
 fn build_read_only_params(proof: OwnershipProof, param_names: Set<String>) -> Set<String> {
