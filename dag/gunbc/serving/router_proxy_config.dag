@@ -126,12 +126,3 @@ fn router_proxy_config(listen_port: Int, authz_port: Int, stream_end_port: Int) 
     Absent => RouterProxyConfigRefused { token: "vocabulary" }
   }
 }
-
-// The text of the rendered config, or the empty string when the vocabulary was refused; the falsifier
-// instrument (tools/serving_proxy_falsifier) emits the config it drives through this entry.
-fn router_proxy_config_text(listen_port: Int, authz_port: Int, stream_end_port: Int) -> String {
-  match router_proxy_config(listen_port: listen_port, authz_port: authz_port, stream_end_port: stream_end_port) {
-    RouterProxyConfigRendered { text: t } => t
-    RouterProxyConfigRefused { token: _ } => ""
-  }
-}
