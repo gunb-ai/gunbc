@@ -3,15 +3,21 @@ module test.claim.serving.router_proxy_config_witness
 import std.types { String, Bool, Int, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.proxy.openresty {
-  NginxDirective, HttpBlock, ServerBlock, LocationBlock, PrefixMatch, NginxToken, ProxySetHeader, HeaderLiteral, NginxRender, Rendered, RenderRefused, ProxyPassDirective, ProxyNextUpstreamDirective,
+  NginxDirective, HttpBlock, ServerBlock, LocationBlock, PrefixMatch, nginx_token, nginx_variable, ProxyPassDirective, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, LuaPhaseHook, CaptureSubrequest, LogPostToLoopback,
   render_nginx_directives, ProxyNextUpstreamOff,
 }
-import gunbc.serving.router_proxy_config { router_proxy_directives, router_proxy_config }
+import std.optional { Optional, Present, Absent }
+import gunbc.serving.router_proxy_config { RouterProxyConfig, router_proxy_directives, router_proxy_config, router_proxy_vocabulary, RouterProxyConfigRendered, RouterProxyConfigRefused }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn rows() -> List<NginxDirective> { router_proxy_directives(listen_port: 8443, authz_port: 9001, stream_end_port: 9002) }
+fn rows() -> List<NginxDirective> {
+  match router_proxy_vocabulary() {
+    Present { value: v } => router_proxy_directives(v: v, listen_port: 8443, authz_port: 9001, stream_end_port: 9002)
+    Absent => [] as List<NginxDirective>
+  }
+}
 
 // The body of the router location (the /v1/ prefix), reached by walking http -> server -> location.
 fn v1_body(ds: List<NginxDirective>) -> List<NginxDirective> {
@@ -48,19 +54,22 @@ test fn one_authz_hook_that_refuses_with_503_and_one_stream_end_hook_on_the_give
   count(filter(v1_body(ds: rows()), d => is_authz(d: d))) == 1 && count(filter(v1_body(ds: rows()), d => is_stream_end(d: d))) == 1
 }
 
-fn text_of(r: NginxRender) -> String { match r { Rendered { text: t } => t RenderRefused { token: _ } => "" } }
+fn text_of(r: RouterProxyConfig) -> String { match r { RouterProxyConfigRendered { text: t } => t RouterProxyConfigRefused { token: _ } => "" } }
+
+test fn the_vocabulary_is_accepted_and_rows_are_nonempty() -> Bool {
+  count(rows()) > 0
+}
 
 test fn rendering_follows_the_rows() -> Bool {
-  text_of(r: render_nginx_directives(rows: [ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff }])) == "proxy_next_upstream off;\n"
-    && text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002)) == text_of(r: render_nginx_directives(rows: rows()))
+  render_nginx_directives(rows: [ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff }]) == "proxy_next_upstream off;\n"
+    && text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002)) == render_nginx_directives(rows: rows())
     && text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002)) != ""
     && text_of(r: router_proxy_config(listen_port: 8444, authz_port: 9001, stream_end_port: 9002)) != text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002))
 }
 
-// A token that could end the literal it sits in is refused, not rendered.
-test fn an_unsafe_token_is_refused_not_rendered() -> Bool {
-  match render_nginx_directives(rows: [ProxySetHeader { header: "x'; os.execute('x" as NginxToken, source: HeaderLiteral { text: "0" as NginxToken } }]) {
-    RenderRefused { token: _ } => true
-    Rendered { text: _ } => false
-  }
+// An unsafe token has no constructor result: the checked constructors return Absent, so it cannot reach a row.
+test fn an_unsafe_token_is_absent() -> Bool {
+  match nginx_token(text: "x'; os.execute('x") { Absent => true Present { value: _ } => false }
+    && match nginx_variable(text: "a$b") { Absent => true Present { value: _ } => false }
+    && match nginx_token(text: "x-seat-permit") { Absent => false Present { value: _ } => true }
 }
