@@ -1,16 +1,23 @@
 module gunbc.runner.runner_host_medium_publish
 
-import std.types { Bool, String }
+import std.types { Bool, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.tools.gnu_coreutils { ln_symbolic_force_command, readlink_command }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.host_command_binding { CommandHost, FleetSshCommandHost }
+import gunbc.host_command_binding {
+  CommandHost, FleetSshCommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
+  host_command, host_command_outcome_text,
+}
+import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.host.boot_medium { bmc_boot_image_export }
 import gunbc.machine_intake.mtcollins1_census_image {
   mtcollins1_census_machine, mtcollins1_census_console_device, mtcollins1_census_console_arg, census_image_stock_path,
 }
 import gunbc.provisioning.seeded_install_media_publish {
-  BmcExportBoundary, SeededImagePublication,
+  BmcExportBoundary, SeededImagePublication, SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused, SeededImagePublishedRecordNotWritten,
   publish_seeded_image, seeded_image_publication_holds, render_seeded_image_publication,
 }
 import gunbc.runner.runner_host_medium {
@@ -34,33 +41,102 @@ data mtcollins1_runner_host: RunnerHostMediumHost = RunnerHostMediumHost {
 
 type RunnerImagePublishAttempt
   = RunnerImageNotDerived { reason: String }
-  | RunnerImagePublishRan { publication: SeededImagePublication }
+  | RunnerImagePublishRan { publication: SeededImagePublication, link: ServedLinkReading }
+
+// THE SERVED LINK (gunbc.host.boot_medium_reader_key boot_medium_served_link_path) IS THIS PUBLISH'S TO
+// SET. The boot medium reader key is forced to sha256sum that one fixed path, so the publish that names
+// the runner image points the link at it and reads the link back. The link is set only after the
+// publication holds, so it never names an image that was not read back; the reading is readlink's
+// answer, which must be exactly the published path.
+type ServedLinkReading
+  = ServedLinkPointsAt { link_path: NonEmptyStr, target: NonEmptyStr }
+  | ServedLinkNotSet { reason: String }
+  | ServedLinkDisagrees { link_path: NonEmptyStr, expected: NonEmptyStr, read: String }
+
+fn published_image_path(p: SeededImagePublication) -> NonEmptyStr? {
+  if seeded_image_publication_holds(p: p) {
+    match p {
+      SeededImagePublished { built: _, path: path, work: _, staging_residue: _ } => Present { value: path }
+      SeededImageAlreadyPublished { built: _, path: path } => Present { value: path }
+      SeededImagePublicationRefused { reason: _, work: _ } => none
+      SeededImagePublishedRecordNotWritten { built: _, path: _, work: _, staging_residue: _, record: _ } => none
+    }
+  } else {
+    none
+  }
+}
+
+fn served_link_after(publication: SeededImagePublication, set: fn(NonEmptyStr) -> HostCommandOutcome, read: fn() -> HostCommandOutcome) -> ServedLinkReading {
+  let link = boot_medium_served_link_path()
+  match published_image_path(p: publication) {
+    Absent => ServedLinkNotSet { reason: "the publication did not hold, so the served link was left as it was" }
+    Present { value: path } =>
+      match set(path) {
+        HostCommandDone { stdout: _ } =>
+          match read() {
+            HostCommandDone { stdout: o } =>
+              if trim(s: o) == (path as String) { ServedLinkPointsAt { link_path: link, target: path } } else { ServedLinkDisagrees { link_path: link, expected: path, read: trim(s: o) } }
+            HostCommandFailed { exit_code: c, stderr: e } => ServedLinkNotSet { reason: concat("the link was set but could not be read back: ", host_command_outcome_text(e: HostCommandFailed { exit_code: c, stderr: e })) }
+            HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkNotSet { reason: concat("the link was set but its readback is unconfirmed: ", host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e })) }
+            HostCommandNotDispatched { reason: r } => ServedLinkNotSet { reason: concat("the link was set but its readback was not dispatched: ", r) }
+          }
+        HostCommandFailed { exit_code: c, stderr: e } => ServedLinkNotSet { reason: host_command_outcome_text(e: HostCommandFailed { exit_code: c, stderr: e }) }
+        HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkNotSet { reason: host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e }) }
+        HostCommandNotDispatched { reason: r } => ServedLinkNotSet { reason: concat("not dispatched: ", r) }
+      }
+  }
+}
+
+fn served_link_on(host: CommandHost, publication: SeededImagePublication) -> ServedLinkReading {
+  let link = boot_medium_served_link_path()
+  served_link_after(
+    publication: publication,
+    set: fn(path) { host_command(host: host, command: ln_symbolic_force_command(target: path as String, link_name: link as String)) },
+    read: fn() { host_command(host: host, command: readlink_command(path: link as String)) },
+  )
+}
+
+fn served_link_holds(l: ServedLinkReading) -> Bool {
+  match l {
+    ServedLinkPointsAt { link_path: _, target: _ } => true
+    ServedLinkNotSet { reason: _ } => false
+    ServedLinkDisagrees { link_path: _, expected: _, read: _ } => false
+  }
+}
+
+fn render_served_link(l: ServedLinkReading) -> String {
+  match l {
+    ServedLinkPointsAt { link_path: p, target: t } => join(["served_link=", p as String, "\nserved_link_target=", t as String, "\n"], "")
+    ServedLinkNotSet { reason: r } => join(["served_link=not set\nserved_link_reason=", r, "\n"], "")
+    ServedLinkDisagrees { link_path: p, expected: e, read: r } => join(["served_link=", p as String, "\nserved_link_disagrees=expected ", e as String, ", read ", r, "\n"], "")
+  }
+}
 
 fn runner_image_publication_on(host: CommandHost, image: RunnerHostMediumImage) -> RunnerImagePublishAttempt {
   match image {
     RunnerHostMediumRunnerUnpublished { binary_release: r } =>
       RunnerImageNotDerived { reason: concat("no arm64 runner tarball is published for release ", r.version as String) }
     RunnerHostMediumUserDataRefused { reason: r } => RunnerImageNotDerived { reason: concat("the user-data document does not render: ", r) }
-    RunnerHostMediumImageDerived { input: i, runner: _ } =>
-      RunnerImagePublishRan {
-        publication: publish_seeded_image(host: host, input: i, stock_path: census_image_stock_path(), boundary: BmcExportBoundary { export_dir: bmc_boot_image_export.dir }),
-      }
+    RunnerHostMediumImageDerived { input: i, runner: _ } => {
+      let publication = publish_seeded_image(host: host, input: i, stock_path: census_image_stock_path(), boundary: BmcExportBoundary { export_dir: bmc_boot_image_export.dir })
+      RunnerImagePublishRan { publication: publication, link: served_link_on(host: host, publication: publication) }
+    }
   }
 }
 
 fn runner_image_attempt_holds(a: RunnerImagePublishAttempt) -> Bool {
   match a {
     RunnerImageNotDerived { reason: _ } => false
-    RunnerImagePublishRan { publication: p } =>
-      seeded_image_publication_holds(p: p)
+    RunnerImagePublishRan { publication: p, link: l } =>
+      seeded_image_publication_holds(p: p) && served_link_holds(l: l)
   }
 }
 
 fn render_runner_image_attempt(a: RunnerImagePublishAttempt) -> String {
   match a {
     RunnerImageNotDerived { reason: r } => concat("publication=not attempted\npublication_reason=", r, "\n")
-    RunnerImagePublishRan { publication: p } =>
-      render_seeded_image_publication(p: p)
+    RunnerImagePublishRan { publication: p, link: l } =>
+      concat(render_seeded_image_publication(p: p), render_served_link(l: l))
   }
 }
 
