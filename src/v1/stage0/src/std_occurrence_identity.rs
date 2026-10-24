@@ -894,20 +894,25 @@ pub fn occurrence_transport_validate(
                         })
                     }
                     std::option::Option::None => {
-                        let declaration_refusal =
-                            transport.declarations.clone().iter().cloned().fold(
-                                std::option::Option::None,
-                                |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal
-                                    .clone()
-                                {
+                        let declaration_refusal = transport
+                            .declarations
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .fold(
+                            std::option::Option::None,
+                            |refusal: Option<Rc<OccurrenceTransportRefusal>>,
+                             declaration: Rc<DeclarationOccurrence>| {
+                                match refusal.clone() {
                                     Some(_) => refusal.clone(),
                                     std::option::Option::None => declaration_occurrence_refusal(
                                         index_build.entries_by_id.clone(),
                                         role_index_build.references_by_id.clone(),
                                         declaration.clone(),
                                     ),
-                                },
-                            );
+                                }
+                            },
+                        );
                         match declaration_refusal.clone() {
                             Some(refusal) => {
                                 Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
@@ -915,22 +920,10 @@ pub fn occurrence_transport_validate(
                                 })
                             }
                             std::option::Option::None => {
-                                let reference_refusal =
-                                    transport.references.clone().iter().cloned().fold(
-                                        std::option::Option::None,
-                                        |refusal: _, reference: Rc<ReferenceOccurrence>| {
-                                            match refusal.clone() {
-                                                Some(_) => refusal.clone(),
-                                                std::option::Option::None => {
-                                                    reference_occurrence_refusal(
-                                                        index_build.entries_by_id.clone(),
-                                                        role_index_build.declarations_by_id.clone(),
-                                                        reference.clone(),
-                                                    )
-                                                }
-                                            }
-                                        },
-                                    );
+                                let reference_refusal = transport.references.clone().iter().cloned().fold(std::option::Option::None, |refusal: Option<Rc<OccurrenceTransportRefusal>>, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
+    Some(_) => refusal.clone(),
+    std::option::Option::None => reference_occurrence_refusal(index_build.entries_by_id.clone(), role_index_build.declarations_by_id.clone(), reference.clone()),
+});
                                 match reference_refusal.clone() {
     Some(refusal) => Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
     refusal: refusal.clone(),
