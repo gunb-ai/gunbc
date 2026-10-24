@@ -131,6 +131,15 @@ fn effect_refusal_mode_label(mode: EffectRefusalMode) -> String {
   }
 }
 
+// The remedy depends only on the mode: a hermetic run is given a wet route, a wet run a hermetic
+// one. The Hermetic spelling names both entry points, so no caller re-spells it per CLI.
+fn effect_refusal_remedy(mode: EffectRefusalMode) -> String {
+  match mode {
+    RefusedUnderHermetic => "re-run with --wet"
+    RefusedUnderWet => "re-run under Hermetic execution (`gunbc --dry-run run`, or claim_batch without --wet)"
+  }
+}
+
 fn classify_verdict(verdict: WitnessEvalVerdict) -> VerdictClassification {
   match verdict {
     Passed =>

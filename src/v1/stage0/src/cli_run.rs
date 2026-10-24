@@ -16527,55 +16527,10 @@ enum ExpectedRedArm {
     HostEffectRefused,
 }
 
-/// One label per `EffectRefusalGround`, in one place. The ground names the REMEDY, so a
-/// caller that re-spells it per site is re-deriving the remedy per site.
-pub fn effect_refusal_ground_label(ground: &v1_interpreter::EffectRefusalGround) -> &'static str {
-    match ground {
-        v1_interpreter::EffectRefusalGround::UnpublishedMockCase { .. } => {
-            "no published mock case for a corpus-governed service"
-        }
-        v1_interpreter::EffectRefusalGround::NoMockResponse => {
-            "operation declares no mock_response"
-        }
-        v1_interpreter::EffectRefusalGround::FilesystemRemoval => {
-            "filesystem removal has no mock arm; only a wet route can run it"
-        }
-        v1_interpreter::EffectRefusalGround::FrameNotRealizableUnderMode => {
-            "a modeled witness frame is admitted only under Hermetic execution"
-        }
-    }
-}
-
-/// The mode a refusal happened under, derived from its ground so the two cannot disagree. The
-/// remedy of a route gap follows the mode: a hermetic run is given a wet route, a wet run is
-/// given a hermetic one.
-pub fn effect_refusal_remedy(ground: &v1_interpreter::EffectRefusalGround) -> &'static str {
-    match ground {
-        v1_interpreter::EffectRefusalGround::UnpublishedMockCase { .. }
-        | v1_interpreter::EffectRefusalGround::NoMockResponse
-        | v1_interpreter::EffectRefusalGround::FilesystemRemoval => "re-run with --wet",
-        v1_interpreter::EffectRefusalGround::FrameNotRealizableUnderMode => {
-            "re-run under Hermetic execution (`gunbc --dry-run run`, or claim_batch without --wet)"
-        }
-    }
-}
-
-/// The phrase naming what the refused run could not do, keyed by the same derived mode.
-pub fn effect_refusal_mode_label(ground: &v1_interpreter::EffectRefusalGround) -> &'static str {
-    match ground {
-        v1_interpreter::EffectRefusalGround::UnpublishedMockCase { .. }
-        | v1_interpreter::EffectRefusalGround::NoMockResponse
-        | v1_interpreter::EffectRefusalGround::FilesystemRemoval => "hermetic route has no arm for",
-        v1_interpreter::EffectRefusalGround::FrameNotRealizableUnderMode => {
-            "wet run cannot realize"
-        }
-    }
-}
-
 /// The seam between the hand-Rust interpreter carrier and the `.dag`-modeled roster-join
 /// carrier for the same closed ground. Total in both directions by construction — adding an
 /// arm to either side fails to compile here rather than falling through to a default.
-fn effect_refusal_ground_verdict(
+pub fn effect_refusal_ground_verdict(
     ground: &v1_interpreter::EffectRefusalGround,
 ) -> crate::v1_compiler_expected_red_roster_join::EffectRefusalGround {
     use crate::v1_compiler_expected_red_roster_join::EffectRefusalGround as Modeled;
@@ -20019,8 +19974,14 @@ pub fn project_witness_cost_receipt(
                         Some("error".to_string()),
                         str_value(format!(
                             "{} {operation} ({})",
-                            effect_refusal_mode_label(ground),
-                            effect_refusal_ground_label(ground)
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_mode_label(
+                                crate::v1_compiler_expected_red_roster_join::effect_refusal_mode(
+                                    effect_refusal_ground_verdict(ground)
+                                )
+                            ),
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_ground_label(
+                                effect_refusal_ground_verdict(ground)
+                            )
                         )),
                     ));
                     "witness_cost_seed_refused_event"
