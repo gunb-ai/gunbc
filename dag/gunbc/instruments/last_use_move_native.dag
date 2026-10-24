@@ -35,7 +35,7 @@ fn ascending(i: Int, n: Int, acc: List<Int>) -> List<Int> {
   if i >= n { acc } else { ascending(i: i + 1, n: n, acc: list_push(xs: acc, item: i)) }
 }
 
-fn input() -> List<Int> { ascending(i: 0, n: 64, acc: []) }
+fn fixture_input() -> List<Int> { ascending(i: 0, n: 64, acc: []) }
 
 fn single_use(xs: List<Int>) -> List<Int> {
   list_push(xs: xs, item: 7)
@@ -77,7 +77,7 @@ type FixtureCase {
 }
 
 fn fixture_cases() -> List<FixtureCase> {
-  let items = input()
+  let items = fixture_input()
   let n = count(items)
   let pushed = single_use(xs: items)
   [
