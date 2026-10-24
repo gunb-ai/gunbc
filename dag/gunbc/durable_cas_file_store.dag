@@ -1328,11 +1328,12 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
 // THE SLOT STORE IS THE `*_over` LOGIC ALREADY BOUND TO ITS FILESYSTEM AND ITS ROOT: the
 // `FilesystemInterface` idiom one level up. A holder can observe a slot, publish a verified attempt
 // and list the keys; it cannot get the root or the filesystem back out, because neither is a field,
-// and it cannot spell one, because the record is sole_constructor: the only expressions that build a
-// SlotStore are slot_store_of and file_slot_store_over below (seal per file on the seed route;
+// and it cannot spell one, because the record is sole_constructor (seal per file on the seed route;
 // residuals f13 coproduct variants and f19 parameter defaults, so the record is kept non-generic and
-// never a variant arm). It carries the identity of the directory declaration it was minted for, read
-// back as slot_store_declaration.
+// never a variant arm). A SlotStore is NOT an identity: the only builder below takes a root, so a
+// SlotStore says nothing about which store it is. Identity lives one level up, in a per-store sealed
+// record whose declaring module derives the root from its own declaration (for the worktree claim
+// store, gunbc.roadmap.roadmap_attempt_worktree_claim_root WorktreeClaimStore).
 //
 // It inhabits std.durable_compare_and_set (the outcomes and observations are that module's own); it
 // is not an ArtifactStore (a pure content-addressed fold) nor a StorageSurface (cache capacity
@@ -1340,65 +1341,25 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
 // are not carried: no holder of this value uses them, and a holder that does adds the field with its
 // first consumer (DESIGN section 3c).
 type SlotStore sole_constructor {
-  declaration: NonEmptyStr
   observe: fn(NonEmptyStr) -> CasSlotObservation<NonEmptyStr>
   commit: fn(CasGenerationPublication, VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>
   keys: fn() -> CasSlotKeys
 }
 
-fn slot_store_declaration(store: SlotStore) -> NonEmptyStr {
-  store.declaration
-}
-
-// READINESS IS THE EVIDENCE A STORE IS MINTED FROM: the named directory was listed through the
-// filesystem the store will use, at the root the store will use. Sealed like the store, so the only
-// readiness that exists is one an observation produced; a store's declaration, root and filesystem
-// are the readiness's own, so a readiness for one declaration can only ever mint a store for that
-// declaration (there is no second, independently supplied identity for it to disagree with).
-type SlotRootReady sole_constructor {
-  declaration: NonEmptyStr
-  root: NonEmptyStr
-  fs: FilesystemInterface
-}
-
-type SlotRootReadiness
-  = SlotRootObserved { ready: SlotRootReady }
-  | SlotRootUnready { declaration: NonEmptyStr, detail: String }
-
-fn slot_root_observe(fs: FilesystemInterface, declaration: NonEmptyStr, root: NonEmptyStr) -> SlotRootReadiness {
-  let fs_list = fs.list
-  let listing = fs_list(root as String)
-  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => SlotRootUnready { declaration: declaration, detail: join(["the ", declaration as String, " store's directory is not admissible: ", c], "") }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => SlotRootUnready { declaration: declaration, detail: join(["the ", declaration as String, " store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => SlotRootObserved { ready: SlotRootReady { declaration: declaration, root: root, fs: fs } }
-  }
-}
-
-fn slot_store_of(ready: SlotRootReady) -> SlotStore {
-  let fs = ready.fs
-  let root = ready.root
-  SlotStore {
-    declaration: ready.declaration,
-    observe: fn(key) { observe_cas_slot_state_over(fs: fs, root: root, key: key) }
-    commit: fn(publication, verified) { file_compare_and_set_over(fs: fs, root: root, publication: publication, verified: verified) }
-    keys: fn() { cas_slot_keys_over(fs: fs, root: root) }
-  }
-}
-
-// THE DECLARED LEGACY ROUTE: a store minted from ingredients, for the attempt_lifecycle cohorts that
-// still name their root as a path (gunbc.compute.work_provider_local, gunbc.compute.compute_seat_ensure,
-// gunbc.dispatch_credential_acquisition, the session-slot stores of gunbc.roadmap.roadmap_session_placement)
-// and for witnesses over those. It carries no declaration of its own ("undeclared"), and no claim store
-// can be made from it (gunbc.roadmap.roadmap_attempt_worktree_claim_root WorktreeClaimStore is minted
-// only from claim readiness). Dissolution: slot_store_legacy_root_dissolution.
+// THE ONE SLOT STORE BUILDER, AND IT TAKES A ROOT. It survives public because a per-store declaring module
+// has to build the SlotStore its sealed record holds, and the seal is per file: the worktree claim root
+// module (worktree_claim_store) is that consumer, passing a root it derived from worktree_claim_slots.
+// The other callers are the declared legacy cohorts that still name their root as a path
+// (gunbc.compute.work_provider_local, gunbc.compute.compute_seat_ensure, gunbc.dispatch_credential_acquisition,
+// the session-slot stores of gunbc.roadmap.roadmap_session_placement) and their witnesses. Holding a
+// SlotStore from it is not holding a claim store: WorktreeClaimStore cannot be spelled outside its module.
+// The legacy use dissolves under slot_store_legacy_root_dissolution.
 fn file_slot_store_over(fs: FilesystemInterface, root: NonEmptyStr) -> SlotStore {
   SlotStore {
-    declaration: "undeclared",
     observe: fn(key) { observe_cas_slot_state_over(fs: fs, root: root, key: key) }
     commit: fn(publication, verified) { file_compare_and_set_over(fs: fs, root: root, publication: publication, verified: verified) }
     keys: fn() { cas_slot_keys_over(fs: fs, root: root) }
   }
 }
 
-data slot_store_legacy_root_dissolution: DissolutionCondition = unbound_dissolution(description: "file_slot_store_over mints a SlotStore from a root path with no readiness and no declaration. It dissolves when its last caller mints through slot_root_observe + slot_store_of from a declared directory: each attempt_lifecycle cohort (compute seats, credential acquisition, session slots) gaining its own one-declaration store like gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_store. Trigger, checkable: no production caller of file_slot_store_over remains.")
+data slot_store_legacy_root_dissolution: DissolutionCondition = unbound_dissolution(description: "file_slot_store_over mints a SlotStore from a root path with no readiness and no declaration. It dissolves when its last caller mints its SlotStore inside a declaring module that derives the root from its own declaration: each attempt_lifecycle cohort (compute seats, credential acquisition, session slots) gaining its own one-declaration store like gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_store. Trigger, checkable: every production caller of file_slot_store_over is the mint of a sealed per-store record whose root it derives from its own declaration.")

@@ -2,7 +2,8 @@ module gunbc.roadmap.roadmap_attempt_worktree_claim_root
 
 import std.types { String, NonEmptyStr, FilePath }
 import gunbc.filesystem_interface { local_filesystem }
-import gunbc.durable_cas_file_store { SlotStore, slot_root_observe, slot_store_of, SlotRootObserved, SlotRootUnready }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store_over }
+import extdeps.filesystem.filesystem_io { filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
 import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
@@ -25,18 +26,17 @@ fn worktree_claim_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
   join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", worktree_claim_slots.member as String], "") as NonEmptyStr
 }
 
-// THE CLAIM STORE, A SEALED VALUE MINTED FROM EVIDENCE. WorktreeClaimStore is sole_constructor and this
-// file builds it in one place: worktree_claim_store, from the readiness an observation of THIS
-// declaration's directory produced for the instance the route received. So a claim store exists only
-// for a directory that was observed, carries the instance it was minted for, and cannot be spelled
-// (literal or cast) by claim code, the belt or a test; the claim domain
-// (gunbc.roadmap.roadmap_attempt_worktree_claim) takes this type, so a SlotStore minted for any other
-// declaration, or from a bare root (gunbc.durable_cas_file_store file_slot_store_over), is not a claim
-// store. A holder can read the instance and use the slot operations; neither carries a root. Non-generic
-// and never a variant arm, because the seal does not reach variant construction
-// (test.claim.sole_constructor_completeness_audit_probe f13). NOT established: that a store minted for
-// instance A is refused where B is required -- both are the same type, and the claim functions take no
-// instance to compare it with (the belt mints from the instance it holds).
+// THE CLAIM STORE, A SEALED VALUE MINTED FROM ITS DECLARATION. WorktreeClaimStore is sole_constructor and this
+// file builds it in one place, worktree_claim_store, which takes the instance and NOTHING ELSE: the root is
+// derived here from worktree_claim_slots and that instance (worktree_claim_slots_path), the directory is
+// listed through the filesystem the store will use, and only a listed directory yields a store. No function
+// anywhere takes a path and answers a claim store, so a module holding a literal path has no route to one;
+// spelling one (literal or cast) is a SoleConstructorViolation. The claim domain
+// (gunbc.roadmap.roadmap_attempt_worktree_claim) takes this type. A holder can read the instance and use the
+// slot operations; neither carries a root. Non-generic and never a variant arm, because the seal does not
+// reach variant construction (test.claim.sole_constructor_completeness_audit_probe f13). NOT established: a
+// store minted for instance A refused where B is required -- both are the same type, and the claim
+// functions take no instance to compare it with (the belt mints from the instance it holds).
 type WorktreeClaimStore sole_constructor {
   instance: NonEmptyStr
   slots: SlotStore
@@ -47,9 +47,14 @@ type WorktreeClaimStoreReading
   | WorktreeClaimStoreUnready { detail: String }
 
 fn worktree_claim_store(instance: HostDashboardInstance) -> WorktreeClaimStoreReading {
-  match slot_root_observe(fs: local_filesystem, declaration: worktree_claim_slots.member, root: worktree_claim_slots_path(instance: instance)) {
-    SlotRootObserved { ready } => WorktreeClaimStoreReady { store: WorktreeClaimStore { instance: instance.instance_id, slots: slot_store_of(ready: ready) } }
-    SlotRootUnready { declaration: _, detail } => WorktreeClaimStoreUnready { detail: detail }
+  let root = worktree_claim_slots_path(instance: instance)
+  let fs = local_filesystem
+  let fs_list = fs.list
+  let listing = fs_list(root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => WorktreeClaimStoreUnready { detail: join(["the worktree claim store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => WorktreeClaimStoreUnready { detail: join(["the worktree claim store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => WorktreeClaimStoreReady { store: WorktreeClaimStore { instance: instance.instance_id, slots: file_slot_store_over(fs: fs, root: root) } }
   }
 }
 
