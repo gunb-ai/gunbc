@@ -19,7 +19,7 @@ import extdeps.filesystem.filesystem_io {Filesystem}
 import extdeps.shell
 import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,json_field_string,FieldRead}
 import extdeps.languages.json.emit {json_object,json_kv,json_string,json_array,serialize_json}
-import product.printed_chassis.print_batch_plan {parse_plan,PrinterSpec,PlateSpec}
+import product.printed_chassis.print_batch_plan {parse_plan,parse_plate_plan,PrinterSpec,PlateSpec}
 import product.printed_chassis.print_preparation {prepare,StagedProfiles,stage_recipe_profiles,RecipeStaged,RecipeStagingRefused}
 import product.printing.print_recipe {PrintRecipe,print_recipe_from_wire}
 import product.printing.slicer_acquisition {acquire_orca_archive,SlicerArchiveReady,SlicerArchiveRefused}
@@ -92,6 +92,29 @@ fn run(plan_file:String,output:String,recipe:String,source_revision:String,root:
  let receipt=serialize_json(v:json_array(elements:map(queues,q=>json_object(members:[json_kv(key:"printer",value:json_string(s:q.printer as String)),json_kv(key:"version",value:json_string(s:q.version as String)),json_kv(key:"recipe",value:json_string(s:recipe)),json_kv(key:"source_revision",value:json_string(s:source_revision)),json_kv(key:"plates",value:json_array(elements:map(q.plates,p=>json_object(members:[json_kv(key:"path",value:json_string(s:p.path)),json_kv(key:"digest",value:json_string(s:p.digest.hex as String)),json_kv(key:"attempt",value:json_string(s:p.attempt))]))))]))))
  if !Filesystem.WriteCreateNew(path:concat(output,"/prepared-queues.json"),content:receipt).success {return exit_failure(reason:"Prepared queue receipt already exists or is not writable")}
  ExitSuccess
+}
+
+// ONE PLATE FOR ONE PRINT REQUEST (gunbc.fleet.print_converge). The plate plan names only objects,
+// placements, orientation and support policy; the recipe is the machine and process, and the printer
+// belongs to the request, so nothing here names a physical printer or a credential.
+type RequestPlatePreparation = RequestPlatePrepared {artifact:Sha256Digest,path:String} | RequestPlateRefused {cause:String}
+fn prepare_request_plate(plate_file:String,output:String,recipe:String,source_revision:String,root:String) -> RequestPlatePreparation {
+ match converge_runtime(receipt:concat(output,"-runtime-convergence.txt")) {ExitSuccess=>{} ExitFailure {code:_,reason:r}=>return RequestPlateRefused {cause:concat("Print runtime convergence refused: ",r)}}
+ let appimage=match acquire_orca_archive() {SlicerArchiveReady {path:p}=>p SlicerArchiveRefused {cause:c}=>return RequestPlateRefused {cause:c}}
+ let selected=match printed_assembly_root_from_wire(s:root) {Present {value:r}=>r Absent=>return RequestPlateRefused {cause:"Unknown printed assembly root"}}
+ let chosen=match print_recipe_from_wire(s:recipe) {Present {value:r}=>r Absent=>return RequestPlateRefused {cause:"Unknown print recipe"}}
+ if source_revision=="" {return RequestPlateRefused {cause:"Preparation needs the source revision its geometry is generated at"}}
+ let read=Filesystem.Read(path:plate_file)
+ if !read.success {return RequestPlateRefused {cause:concat("Cannot read the plate plan ",plate_file)}}
+ let plate=match parse_plate_plan(text:read.content) {Present {value:p}=>p Absent=>return RequestPlateRefused {cause:"Malformed plate plan or invalid placements"}}
+ if !starts_with(s:output,prefix:"/") || !shell.Mkdir.Parents(path:output as FilePath).success {return RequestPlateRefused {cause:"Preparation output must be an absolute writable directory"}}
+ let runtime=match observe_print_runtime(appimage:appimage,receipt:concat(output,"/runtime.json")) {PrintRuntimeObserved {runtime:r}=>r PrintRuntimeRefused {reason:why}=>return RequestPlateRefused {cause:why}}
+ let profiles=match stage_recipe_profiles(output:concat(output,"/inputs"),appimage:appimage,recipe:chosen) {RecipeStaged {profiles:p}=>p RecipeStagingRefused {cause:c}=>return RequestPlateRefused {cause:c as String}}
+ match check_printable_cad(cad:print_runtime_cad(r:runtime),root:selected,output:concat(output,"/cad")) {ExitSuccess=>{} ExitFailure {code:_,reason:r}=>return RequestPlateRefused {cause:concat("CAD check refused: ",r)}}
+ match prepare_plate(runtime:runtime,path:concat(output,"/plate.3mf"),plate:plate,output:output,appimage:appimage,profiles:profiles) {
+  Present {value:p}=>RequestPlatePrepared {artifact:p.digest,path:p.path}
+  Absent=>RequestPlateRefused {cause:"Pinned slicing or readback refused the plate; see the preparation output"}
+ }
 }
 
 // Explicit dependency-provisioning phase. Preparation only observes; callers
