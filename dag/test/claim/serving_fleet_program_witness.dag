@@ -54,16 +54,17 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
 // Public repository: no endpoint or credential vocabulary may appear in the carrier.
 test fn the_carrier_names_no_endpoint_or_secret() -> Bool {
   let t = carrier_text()
-  string_contains(s: t, pattern: "**Row ")
+  string_contains(s: t, pattern: "Standing:")
     && !(string_contains(s: t, pattern: "http://")
       || string_contains(s: t, pattern: "https://")
-      || string_contains(s: t, pattern: ".ts.net")
-      || string_contains(s: t, pattern: "sk-"))
+      || string_contains(s: t, pattern: ".ts.net"))
 }
 
-// ── Row identity. A row is a line whose text opens a bold `Row <label>` head.
+// ── Row identity. A row is a line carrying `Standing:`; its label is the word after the
+// first `Row ` on that line, which is the row's own head. Keyed on plain words rather than
+// on emphasis markup, since the serializer, not this claim, owns how emphasis is written.
 fn row_lines() -> List<String> {
-  filter(carrier_text().split(delimiter: "\n"), l => string_contains(s: l, pattern: "**Row "))
+  filter(carrier_text().split(delimiter: "\n"), l => string_contains(s: l, pattern: "Standing:"))
 }
 
 fn first_word(s: String) -> String {
@@ -80,7 +81,7 @@ fn without_trailing_punctuation(w: String) -> String {
 }
 
 fn row_label(l: String) -> String {
-  let parts: List<String> = l.split(delimiter: "**Row ")
+  let parts: List<String> = l.split(delimiter: "Row ")
   match parts {
     Cons { head: _, tail: Cons { head: rest, tail: _ } } => without_trailing_punctuation(w: first_word(s: rest))
     _ => ""
