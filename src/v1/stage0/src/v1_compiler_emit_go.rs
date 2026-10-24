@@ -1409,7 +1409,6 @@ pub fn emit_go_transport_body(
             )
         },
         |n, t, d, si| emit_go_shell_call(n.clone(), t.clone(), d.clone(), si.clone()),
-        |n, d| emit_go_local_call(n.clone(), d.clone()),
     )
 }
 
@@ -1572,25 +1571,6 @@ pub fn emit_go_shell_call(
             Rc::new(vec![run_lines.clone()]),
         );
         all_lines.clone().join(&"\n".to_string())
-    }
-}
-
-pub fn emit_go_local_call(op_name: String, depth: i64) -> String {
-    {
-        let prefix = crate::v1_compiler_emit_core_support::make_indent(depth.clone());
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        prefix.clone(),
-                        "// Local binding -- direct function call\n".to_string(),
-                    ),
-                    "return ".to_string(),
-                ),
-                go_export_ident(op_name.clone()),
-            ),
-            "(), nil".to_string(),
-        )
     }
 }
 
