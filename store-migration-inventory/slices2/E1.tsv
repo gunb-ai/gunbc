@@ -1,0 +1,55 @@
+module	path	subsystem	in_census	in_14944	in_14972	signals	census_classes	abs_paths
+gunbc.auth.approval_assertion_counter	dag/gunbc/auth/approval_assertion_counter.dag	auth	Y			cas:file_compare_and_set,observe_cas_slot_state	storage_root_literal	/var/lib/gunbc/approval-assertion-counters
+gunbc.auth.approval_broker_endpoint	dag/gunbc/auth/approval_broker_endpoint.dag	auth	Y				storage_root_literal	
+gunbc.auth.approval_decision_store	dag/gunbc/auth/approval_decision_store.dag	auth	Y			cas:cas_slot_keys,file_compare_and_set,observe_cas_slot_state	storage_raw_state_beside_library,storage_root_literal	/etc/gunbc-roadmap/approval-mac-key,/var/lib/gunbc/approvals
+gunbc.auth.approval_device_redemption	dag/gunbc/auth/approval_device_redemption.dag	auth	Y			cas:file_compare_and_set,observe_cas_slot_state	storage_root_literal	/var/lib/gunbc/approval-devices,/var/lib/gunbc/approval-jwks
+gunbc.auth.approval_device_routes	dag/gunbc/auth/approval_device_routes.dag	auth	Y			write:WriteOwnerOnly=1	storage_raw_state_beside_library	/var/lib/gunbc/approval-device-push
+gunbc.auth.approval_gate	dag/gunbc/auth/approval_gate.dag	auth	Y			write:WriteOwnerOnly=1,Delete=1	storage_raw_state_beside_library	
+gunbc.auth.approval_keyring_converge	dag/gunbc/auth/approval_keyring_converge.dag	auth	Y			mkdir:1	storage_root_literal	/etc,/etc/gunbc-roadmap
+gunbc.auth.approval_ntfy_converge	dag/gunbc/auth/approval_ntfy_converge.dag	auth	Y				storage_root_literal	
+gunbc.auth.approval_ntfy_deployment	dag/gunbc/auth/approval_ntfy_deployment.dag	auth	Y				storage_root_literal	/etc/gunbc-ntfy,/var/lib/gunbc-ntfy
+gunbc.auth.approval_request_submission	dag/gunbc/auth/approval_request_submission.dag	auth	Y				storage_hand_exclusion	/etc/gunbc-ntfy/publisher-token,/etc/gunbc-roadmap/approval-submission-mac-key
+gunbc.auth.approval_store_receipt	dag/gunbc/auth/approval_store_receipt.dag	auth	Y			cas:cas_read_generation	storage_root_literal	/etc/gunbc-roadmap/approval-store-receipt-mac-key
+gunbc.auth.branch_run_grant	dag/gunbc/auth/branch_run_grant.dag	auth	N			write:Write=1		
+gunbc.auth.ci_app_key_rotation	dag/gunbc/auth/ci_app_key_rotation.dag	auth	Y			write:Write=1	storage_raw_state_beside_library	
+gunbc.auth.gcp_iam_bootstrap	dag/gunbc/auth/gcp_iam_bootstrap.dag	auth	Y			write:WriteCreateNew=4	storage_relative_receipt_path	
+gunbc.auth.gcp_iam_converge_run	dag/gunbc/auth/gcp_iam_converge_run.dag	auth	Y			write:Write=1	storage_root_literal	
+gunbc.auth.github_apps	dag/gunbc/auth/github_apps.dag	auth	Y				storage_root_literal	/etc/gunbc/publication/gunbai-bot.pem
+gunbc.auth.login_transaction_store	dag/gunbc/auth/login_transaction_store.dag	auth	Y			write:WriteOwnerOnly=1,WriteCreateNewWithMode=1,Delete=1	storage_hand_exclusion	
+gunbc.auth.materialized_secret	dag/gunbc/auth/materialized_secret.dag	auth	Y			mkdir:1;write:WriteOwnerOnly=1;shell:Chmod.OwnerOnlyDirectory=1,Remove.FileForce=1;mktemp:1	storage_hand_directory_setup,storage_root_literal	
+gunbc.auth.mosquitto_options_binding	dag/gunbc/auth/mosquitto_options_binding.dag	auth	Y			write:WriteOwnerOnly=1;shell:Remove.RecursiveForce=2;mktemp:1	storage_hand_retention_sweep	
+gunbc.auth.netrc_binding	dag/gunbc/auth/netrc_binding.dag	auth	Y			write:WriteOwnerOnly=1;shell:Remove.FileForce=3;mktemp:1	storage_hand_retention_sweep	
+gunbc.auth.oidc_id_token_verification	dag/gunbc/auth/oidc_id_token_verification.dag	auth	N			write:WriteOwnerOnly=1,Write=3		
+gunbc.auth.profile_projection	dag/gunbc/auth/profile_projection.dag	auth	Y			write:WriteOwnerOnly=1	storage_raw_state_beside_library	
+gunbc.auth.session_store	dag/gunbc/auth/session_store.dag	auth	Y			write:WriteOwnerOnly=1,Delete=2	storage_hand_retention_sweep	
+gunbc.auth.tracker_web_oauth_client	dag/gunbc/auth/tracker_web_oauth_client.dag	auth	Y				storage_root_literal	/etc/gunbc-oidc/tracker-web-dev-client-secret,/etc/gunbc-oidc/tracker-web-dev.json
+gunbc.compute.attempt_lifecycle	dag/gunbc/compute/attempt_lifecycle.dag	compute	N	Y	Y	cas:file_compare_and_set,observe_cas_slot_state		
+gunbc.compute.compute_seat_ensure	dag/gunbc/compute/compute_seat_ensure.dag	compute	N	Y	Y	cas:cas_slot_keys		
+gunbc.compute.test_run	dag/gunbc/compute/test_run.dag	compute	Y			write:Write=2	storage_root_literal	
+gunbc.compute.work_provider_local	dag/gunbc/compute/work_provider_local.dag	compute	Y	Y	Y	write:WriteCreateNew=2,Write=5,Delete=2;shell:Remove.RecursiveForce=1	storage_hand_exclusion,storage_hand_retention_sweep,storage_root_literal	/run/user/
+gunbc.harness.harness_cli	dag/gunbc/harness/harness_cli.dag	harness	Y			write:Write=4	storage_raw_state_beside_library,storage_tmp_literal	/opt/homebrew/bin/gtimeout
+gunbc.harness.harness_hosted_route	dag/gunbc/harness/harness_hosted_route.dag	harness	Y			write:WriteOwnerOnly=1;shell:Remove.RecursiveForce=3;mktemp:1	storage_raw_state_beside_library	
+gunbc.harness.harness_operator_route	dag/gunbc/harness/harness_operator_route.dag	harness	Y			write:WriteOwnerOnly=1;shell:Remove.RecursiveForce=2;mktemp:1	storage_hand_retention_sweep	
+gunbc.harness.harness_turn	dag/gunbc/harness/harness_turn.dag	harness	Y			write:Write=5	storage_raw_state_beside_library,storage_root_rederived	
+gunbc.roadmap.attempt_system_unit_launch	dag/gunbc/roadmap/attempt_system_unit_launch.dag	roadmap	Y			mkdir:1;write:Write=1,WriteCreateNew=1;shell:Move.NoReplaceDirectory=1	storage_hand_exclusion	/opt/gunbc/attempt-system-unit-helpers
+gunbc.roadmap.roadmap_attempt_exit_spool	dag/gunbc/roadmap/roadmap_attempt_exit_spool.dag	roadmap	Y			mkdir:1	storage_hand_directory_setup	
+gunbc.roadmap.roadmap_attempt_metering	dag/gunbc/roadmap/roadmap_attempt_metering.dag	roadmap	Y			write:WriteCreateNew=2,Write=1	storage_hand_exclusion	
+gunbc.roadmap.roadmap_attempt_request_record	dag/gunbc/roadmap/roadmap_attempt_request_record.dag	roadmap	Y			write:WriteCreateNew=1	storage_hand_exclusion	
+gunbc.roadmap.roadmap_attempt_worktree_claim	dag/gunbc/roadmap/roadmap_attempt_worktree_claim.dag	roadmap	N	Y	Y	cas:cas_slot_keys,observe_cas_slot_state		
+gunbc.roadmap.roadmap_auth_routes	dag/gunbc/roadmap/roadmap_auth_routes.dag	roadmap	Y			write:WriteOwnerOnly=1,Delete=1	storage_raw_state_beside_library	
+gunbc.roadmap.roadmap_belt_actuate	dag/gunbc/roadmap/roadmap_belt_actuate.dag	roadmap	Y	Y	Y	write:Write=30,Delete=1	storage_raw_state_beside_library,storage_root_rederived	
+gunbc.roadmap.roadmap_belt_tick_cli	dag/gunbc/roadmap/roadmap_belt_tick_cli.dag	roadmap	Y		Y	write:Write=6	storage_raw_state_beside_library	
+gunbc.roadmap.roadmap_dashboard_instance_apply	dag/gunbc/roadmap/roadmap_dashboard_instance_apply.dag	roadmap	N			shell:Remove.RecursiveForce=1;mktemp:1		
+gunbc.roadmap.roadmap_dispatch_actuator	dag/gunbc/roadmap/roadmap_dispatch_actuator.dag	roadmap	Y			write:WriteCreateNew=1	storage_hand_exclusion	
+gunbc.roadmap.roadmap_dogfood_route	dag/gunbc/roadmap/roadmap_dogfood_route.dag	roadmap	N			cas:file_compare_and_set,observe_cas_slot_state		
+gunbc.roadmap.roadmap_event_carrier	dag/gunbc/roadmap/roadmap_event_carrier.dag	roadmap	Y			mkdir:1;write:Write=2;mktemp:1	storage_raw_state_beside_library,storage_tmp_literal	
+gunbc.roadmap.roadmap_event_snapshot_census	dag/gunbc/roadmap/roadmap_event_snapshot_census.dag	roadmap	N			write:Write=1		
+gunbc.roadmap.roadmap_launch_deployment_cli	dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag	roadmap	Y			write:Write=3,WriteOwnerOnly=1	storage_hand_directory_setup	
+gunbc.roadmap.roadmap_publication_helper	dag/gunbc/roadmap/roadmap_publication_helper.dag	roadmap	Y			write:WriteCreateNew=1,Write=1,Delete=1;shell:Move.File=1	storage_hand_exclusion	
+gunbc.roadmap.roadmap_publish_actuate	dag/gunbc/roadmap/roadmap_publish_actuate.dag	roadmap	N			shell:Remove.RecursiveForce=2;mktemp:1		
+gunbc.roadmap.roadmap_served_observation	dag/gunbc/roadmap/roadmap_served_observation.dag	roadmap	Y			write:Write=2	storage_hand_exclusion,storage_root_rederived	
+gunbc.roadmap.roadmap_session_activation_ensure	dag/gunbc/roadmap/roadmap_session_activation_ensure.dag	roadmap	N	Y	Y	cas:cas_slot_keys		
+gunbc.roadmap.roadmap_session_placement	dag/gunbc/roadmap/roadmap_session_placement.dag	roadmap	Y	Y	Y	cas:cas_slot_keys;write:Write=3	storage_hand_exclusion	
+gunbc.roadmap.roadmap_verify	dag/gunbc/roadmap/roadmap_verify.dag	roadmap	Y			write:Write=1	storage_raw_state_beside_library	
+gunbc.roadmap.roadmap_view_preference_store	dag/gunbc/roadmap/roadmap_view_preference_store.dag	roadmap	N			cas:file_compare_and_set,observe_cas_slot_state		
+gunbc.roadmap.spool_stall	dag/gunbc/roadmap/spool_stall.dag	roadmap	Y			mkdir:1;write:WriteCreateNew=1,Delete=1	storage_hand_exclusion	

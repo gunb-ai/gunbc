@@ -1,0 +1,41 @@
+gunbc.bmc.bmc_fan_program_observation_witness	dag/gunbc/bmc/bmc_fan_program_observation_witness.dag	bmc	Y				storage_relative_receipt_path	
+gunbc.bmc.bmc_netboot_serve	dag/gunbc/bmc/bmc_netboot_serve.dag	bmc	Y			mkdir:1;write:Write=1	storage_hand_directory_setup,storage_relative_receipt_path	/var/lib/gunbc/artifacts/netboot
+gunbc.bmc.bmc_virtual_media	dag/gunbc/bmc/bmc_virtual_media.dag	bmc	Y				storage_relative_receipt_path	/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv4-seeded.iso
+gunbc.devboot.build	dag/gunbc/devboot/build.dag	devboot	Y			write:Write=3	storage_relative_receipt_path	
+gunbc.devboot.produce	dag/gunbc/devboot/produce.dag	devboot	N			write:Write=2		
+gunbc.host.host_axis_caps	dag/gunbc/host/host_axis_caps.dag	host	Y			mkdir:1	storage_root_literal	
+gunbc.host.host_boot_attempt_admission	dag/gunbc/host/host_boot_attempt_admission.dag	host	Y			cas:file_compare_and_set	storage_relative_receipt_path,storage_root_literal	/var/lib/gunbc/boot-attempts
+gunbc.host.host_effect_codex_supervised_turn	dag/gunbc/host/host_effect_codex_supervised_turn.dag	host	Y			write:Write=1	storage_root_rederived	
+gunbc.host.host_effect_realize	dag/gunbc/host/host_effect_realize.dag	host	Y			mkdir:5;write:Write=1	storage_raw_state_beside_library,storage_root_literal,storage_tmp_literal	/etc/systemd/system/
+gunbc.host.host_hygiene_reaper_remediate	dag/gunbc/host/host_hygiene_reaper_remediate.dag	host	Y			shell:Remove.RecursiveForce=2	storage_hand_retention_sweep	
+gunbc.host.host_memory_envelope_observe	dag/gunbc/host/host_memory_envelope_observe.dag	host	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.host.host_reach_identity_probe	dag/gunbc/host/host_reach_identity_probe.dag	host	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.host.host_reset_return_run	dag/gunbc/host/host_reset_return_run.dag	host	N			write:Write=2		
+gunbc.host.managed_host_boot_image_fetch	dag/gunbc/host/managed_host_boot_image_fetch.dag	host	Y				storage_tmp_literal	/var/tmp
+gunbc.host.managed_host_unit_hold	dag/gunbc/host/managed_host_unit_hold.dag	host	Y				storage_root_literal	/var/lib/gunbc/unit-holds
+gunbc.host.sccache_verified_install	dag/gunbc/host/sccache_verified_install.dag	host	Y				storage_tmp_literal	
+gunbc.machine_intake.fan_observe	dag/gunbc/machine_intake/fan_observe.dag	machine_intake	Y			write:Write=2	storage_root_literal	
+gunbc.machine_intake.host_capture_envelope	dag/gunbc/machine_intake/host_capture_envelope.dag	machine_intake	N			mkdir:1		
+gunbc.machine_intake.megarac_boot_media_attach	dag/gunbc/machine_intake/megarac_boot_media_attach.dag	machine_intake	Y				storage_tmp_literal	
+gunbc.machine_intake.megarac_kvm_observer_observe	dag/gunbc/machine_intake/megarac_kvm_observer_observe.dag	machine_intake	N			write:Write=1		
+gunbc.machine_intake.megarac_kvm_still	dag/gunbc/machine_intake/megarac_kvm_still.dag	machine_intake	N			write:Write=4		
+gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle	dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag	machine_intake	Y			write:Write=2	storage_root_literal	
+gunbc.machine_intake.mtcollins1_boot_fan_gate	dag/gunbc/machine_intake/mtcollins1_boot_fan_gate.dag	machine_intake	Y			write:Write=2	storage_hand_exclusion,storage_relative_receipt_path	
+gunbc.machine_intake.mtcollins1_boot_run	dag/gunbc/machine_intake/mtcollins1_boot_run.dag	machine_intake	Y			write:Write=12,Delete=2;shell:Move.File=1	storage_raw_state_beside_library,storage_relative_receipt_path	
+gunbc.machine_intake.mtcollins1_census_image_publish	dag/gunbc/machine_intake/mtcollins1_census_image_publish.dag	machine_intake	Y			write:Write=1	storage_hand_retention_sweep,storage_tmp_literal	/var/tmp/gunbc-mtcollins1-census-regress.,/var/tmp/gunbc-mtcollins1-census-regress.XXXXXXXX
+gunbc.machine_intake.mtcollins1_census_member_readback	dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag	machine_intake	Y			write:Write=1	storage_hand_retention_sweep	
+gunbc.machine_intake.mtcollins1_census_qemu_host_observe	dag/gunbc/machine_intake/mtcollins1_census_qemu_host_observe.dag	machine_intake	Y			write:Write=1	storage_hand_directory_setup	
+gunbc.machine_intake.mtcollins1_fan_observe	dag/gunbc/machine_intake/mtcollins1_fan_observe.dag	machine_intake	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.machine_intake.mtcollins1_sol_notice	dag/gunbc/machine_intake/mtcollins1_sol_notice.dag	machine_intake	Y			write:Write=5	storage_raw_state_beside_library	
+gunbc.machine_intake.pre_os_capture_replay	dag/gunbc/machine_intake/pre_os_capture_replay.dag	machine_intake	Y				storage_relative_receipt_path	
+gunbc.spark.fabric_blob_peer	dag/gunbc/spark/fabric_blob_peer.dag	spark	N			mkdir:1		/var/lib/gunbc/blobs,/var/lib/gunbc/blobs-rsyncd.conf,/var/lib/gunbc/blobs/.staging
+gunbc.spark.fabric_rail_apply	dag/gunbc/spark/fabric_rail_apply.dag	spark	Y			mkdir:1;write:Write=1	storage_relative_receipt_path	
+gunbc.spark.grant_privileged_operation	dag/gunbc/spark/grant_privileged_operation.dag	spark	N			mkdir:1		
+gunbc.spark.managed_access_apply	dag/gunbc/spark/managed_access_apply.dag	spark	Y			mkdir:1;write:Write=2	storage_relative_receipt_path	
+gunbc.spark.managed_access_bootstrap	dag/gunbc/spark/managed_access_bootstrap.dag	spark	Y				storage_root_literal	/home/
+gunbc.spark.managed_grant_install	dag/gunbc/spark/managed_grant_install.dag	spark	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.spark.model_snapshot_acquisition	dag/gunbc/spark/model_snapshot_acquisition.dag	spark	Y				storage_root_literal	/home/briansrls/.cache/huggingface/hub,/home/briansrls/models
+gunbc.spark.model_snapshot_materialize	dag/gunbc/spark/model_snapshot_materialize.dag	spark	N			mkdir:1		
+gunbc.spark.snapshot_rail_replica	dag/gunbc/spark/snapshot_rail_replica.dag	spark	N			mkdir:1		
+gunbc.spark.spark_file_blob	dag/gunbc/spark/spark_file_blob.dag	spark	N			mkdir:1		
+gunbc.spark.systemd_execution_cell	dag/gunbc/spark/systemd_execution_cell.dag	spark	Y			mkdir:4	storage_tmp_literal	/var/tmp/

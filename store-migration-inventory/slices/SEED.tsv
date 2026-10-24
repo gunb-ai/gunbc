@@ -1,0 +1,22 @@
+src/v1/stage0/src/behavioral_receipt_host.rs	src/v1/stage0/src/behavioral_receipt_host.rs	seed	Y				storage_hand_directory_setup,storage_raw_state_beside_library	
+src/v1/stage0/src/bin/bootstrap_witness.rs	src/v1/stage0/src/bin/bootstrap_witness.rs	seed	Y				storage_hand_directory_setup,storage_hand_retention_sweep,storage_raw_state_beside_library,storage_tmp_literal	
+src/v1/stage0/src/bin/carrier_realization_census.rs	src/v1/stage0/src/bin/carrier_realization_census.rs	seed	Y				storage_raw_state_beside_library	
+src/v1/stage0/src/bin/generic_identity_census.rs	src/v1/stage0/src/bin/generic_identity_census.rs	seed	Y				storage_raw_state_beside_library	
+src/v1/stage0/src/bin/interp_recorded_fixture_witness.rs	src/v1/stage0/src/bin/interp_recorded_fixture_witness.rs	seed	Y				storage_hand_directory_setup,storage_hand_retention_sweep,storage_raw_state_beside_library,storage_tmp_literal	
+src/v1/stage0/src/cli_run.rs	src/v1/stage0/src/cli_run.rs	seed	Y				storage_hand_directory_setup,storage_hand_retention_sweep,storage_raw_state_beside_library,storage_root_literal	
+src/v1/stage0/src/cli_run/checker_dependency.rs	src/v1/stage0/src/cli_run/checker_dependency.rs	seed	Y				storage_raw_state_beside_library	
+src/v1/stage0/src/cli_run/emitted_crate_workspace_host.rs	src/v1/stage0/src/cli_run/emitted_crate_workspace_host.rs	seed	Y				storage_hand_directory_setup,storage_hand_retention_sweep,storage_raw_state_beside_library	
+src/v1/stage0/src/cli_run/native_lane_runner.rs	src/v1/stage0/src/cli_run/native_lane_runner.rs	seed	Y				storage_hand_directory_setup,storage_hand_exclusion,storage_hand_retention_sweep,storage_raw_state_beside_library	
+src/v1/stage0/src/cli_run/native_product_cache.rs	src/v1/stage0/src/cli_run/native_product_cache.rs	seed	Y				storage_hand_directory_setup,storage_hand_retention_sweep,storage_raw_state_beside_library	
+src/v1/stage0/src/cli_run/required_ci_measurement.rs	src/v1/stage0/src/cli_run/required_ci_measurement.rs	seed	Y				storage_raw_state_beside_library	
+src/v1/stage0/src/codex_app_server_stdio_session.rs	src/v1/stage0/src/codex_app_server_stdio_session.rs	seed	Y				storage_raw_state_beside_library	
+src/v1/stage0/src/emitted_closure_compile_host.rs	src/v1/stage0/src/emitted_closure_compile_host.rs	seed	Y				storage_hand_directory_setup,storage_hand_retention_sweep,storage_raw_state_beside_library	
+src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs	src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs	seed	Y				storage_hand_retention_sweep,storage_raw_state_beside_library	
+src/v1/stage0/src/memory_governor.rs	src/v1/stage0/src/memory_governor.rs	seed	Y				storage_raw_state_beside_library	
+src/v1/stage0/src/namespace_baseline.rs	src/v1/stage0/src/namespace_baseline.rs	seed	Y				storage_hand_directory_setup,storage_hand_exclusion,storage_hand_retention_sweep,storage_raw_state_beside_library	
+src/v1/stage0/src/partition_crate_boundary_host.rs	src/v1/stage0/src/partition_crate_boundary_host.rs	seed	Y				storage_hand_directory_setup,storage_raw_state_beside_library	
+src/v1/stage0/src/recorded_fixture.rs	src/v1/stage0/src/recorded_fixture.rs	seed	Y				storage_hand_directory_setup,storage_raw_state_beside_library	
+src/v1/stage0/src/required_regen_host.rs	src/v1/stage0/src/required_regen_host.rs	seed	Y				storage_hand_directory_setup,storage_hand_retention_sweep,storage_raw_state_beside_library	
+src/v1/stage0/src/target_invocation_host.rs	src/v1/stage0/src/target_invocation_host.rs	seed	Y				storage_hand_directory_setup,storage_hand_retention_sweep,storage_raw_state_beside_library	
+src/v1/stage0/src/v1_interpreter.rs	src/v1/stage0/src/v1_interpreter.rs	seed	Y				storage_hand_directory_setup,storage_hand_exclusion,storage_hand_retention_sweep,storage_raw_state_beside_library,storage_tmp_literal	
+src/v1/stage0/src/v1_rt.rs	src/v1/stage0/src/v1_rt.rs	seed	Y	Y	Y		storage_hand_exclusion	

@@ -1,0 +1,44 @@
+gunbc.actions_run_binding	dag/gunbc/actions_run_binding.dag	gunbc(top)	Y				storage_root_literal	
+gunbc.authorization_claim_slot	dag/gunbc/authorization_claim_slot.dag	gunbc(top)	N			cas:file_compare_and_set		
+gunbc.busybox_bmc_build	dag/gunbc/busybox_bmc_build.dag	gunbc(top)	Y				storage_relative_receipt_path	/var/lib/gunbc/artifacts/netboot/busybox
+gunbc.class_b_import_closure_overlay	dag/gunbc/class_b_import_closure_overlay.dag	gunbc(top)	N			mkdir:2;write:Write=1		
+gunbc.claude_code_credential	dag/gunbc/claude_code_credential.dag	gunbc(top)	Y				storage_root_literal	/etc/gunbc-claude-code/oauth-token-harness
+gunbc.claude_setup_token_enrollment	dag/gunbc/claude_setup_token_enrollment.dag	gunbc(top)	Y				storage_root_literal	/home,/var/lib/gunbc/claude-enrollment/
+gunbc.codex_app_server_press	dag/gunbc/codex_app_server_press.dag	gunbc(top)	Y				storage_tmp_literal	
+gunbc.codex_harness_credential	dag/gunbc/codex_harness_credential.dag	gunbc(top)	Y				storage_root_literal	/etc/gunbc-codex-harness,/etc/gunbc-codex-harness/auth.json,/etc/gunbc-codex-harness/turn.lock
+gunbc.codex_supervised_turn	dag/gunbc/codex_supervised_turn.dag	gunbc(top)	Y			write:Write=2	storage_hand_exclusion	
+gunbc.compiler_frontend_program_status	dag/gunbc/compiler_frontend_program_status.dag	gunbc(top)	N			write:Write=1		
+gunbc.cursor_harness_credential	dag/gunbc/cursor_harness_credential.dag	gunbc(top)	Y				storage_root_literal	/etc/gunbc-cursor-harness/api-key
+gunbc.deploy_transition	dag/gunbc/deploy_transition.dag	gunbc(top)	Y			write:WriteOwnerOnly=2,Write=1,Delete=2	storage_hand_exclusion,storage_raw_state_beside_library	
+gunbc.dispatch_credential_acquisition	dag/gunbc/dispatch_credential_acquisition.dag	gunbc(top)	Y	Y	Y	cas:cas_slot_keys,observe_cas_slot_state	storage_hand_directory_setup,storage_hand_retention_sweep	
+gunbc.dispatch_credential_snapshot	dag/gunbc/dispatch_credential_snapshot.dag	gunbc(top)	Y			write:WriteOwnerOnly=1,WriteCreateNew=1;shell:Remove.FileForce=2,Move.Replace=1;mktemp:1	storage_hand_exclusion	
+gunbc.durable_cas_file_store	dag/gunbc/durable_cas_file_store.dag	gunbc(top)	Y	Y	Y	cas:(self),(self);write:,fsfield=4	storage_root_literal	/var/lib/gunbc/authorization-claims
+gunbc.durable_exclusive_hold_file_store	dag/gunbc/durable_exclusive_hold_file_store.dag	gunbc(top)	N			cas:cas_verify_named_window_head,file_compare_and_set_retained,observe_cas_slot_state_retained		
+gunbc.durable_handoff_host	dag/gunbc/durable_handoff_host.dag	gunbc(top)	Y				storage_hand_directory_setup	
+gunbc.filesystem_interface	dag/gunbc/filesystem_interface.dag	gunbc(top)	N			write:Delete=1,WriteCreateNew=1,WriteCreateNewWithMode=1,WriteOwnerOnly=1		
+gunbc.filesystem_model	dag/gunbc/filesystem_model.dag	gunbc(top)	N			mkdir:1		
+gunbc.flex_vast_credential	dag/gunbc/flex_vast_credential.dag	gunbc(top)	Y				storage_root_literal	/etc/gunbc-flex/vast-api-key
+gunbc.github_app_acquisition	dag/gunbc/github_app_acquisition.dag	gunbc(top)	Y				storage_root_rederived	
+gunbc.github_effect_perform	dag/gunbc/github_effect_perform.dag	gunbc(top)	Y			write:Delete=4,WriteOwnerOnly=2	storage_raw_state_beside_library,storage_root_literal	/etc/gunbc/microvm-controller/app.pem,/run/gunbc-service-slot/app.pem
+gunbc.guest_image_delivery	dag/gunbc/guest_image_delivery.dag	gunbc(top)	Y			write:Write=1	storage_hand_directory_setup	
+gunbc.heal_candidate	dag/gunbc/heal_candidate.dag	gunbc(top)	Y			mkdir:1;write:Write=2;shell:Remove.RecursiveForce=1	storage_hand_directory_setup,storage_relative_receipt_path,storage_root_literal	
+gunbc.heal_publication	dag/gunbc/heal_publication.dag	gunbc(top)	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.host_command_binding	dag/gunbc/host_command_binding.dag	gunbc(top)	Y			write:Write=1	storage_raw_state_beside_library	
+gunbc.ledger_row_coherence	dag/gunbc/ledger_row_coherence.dag	gunbc(top)	Y				storage_relative_receipt_path	
+gunbc.native_product_shared_transfer	dag/gunbc/native_product_shared_transfer.dag	gunbc(top)	N			write:Write=1;shell:Remove.RecursiveForce=2;mktemp:2		
+gunbc.package_delivery	dag/gunbc/package_delivery.dag	gunbc(top)	Y			mkdir:4;write:Write=13;shell:Remove.EmptyDirectory=1,Move.NoReplaceDirectory=2,Remove.RecursiveForce=7;mktemp:10	storage_raw_state_beside_library,storage_root_literal	
+gunbc.provider_wire_evidence	dag/gunbc/provider_wire_evidence.dag	gunbc(top)	Y			mkdir:1;write:Write=1;shell:Chmod.OwnerOnlyDirectory=1,Link.Hard=1,Chmod.OwnerReadWriteFile=1,Remove.FileForce=1,Remove.RecursiveForce=5;mktemp:1	storage_hand_directory_setup	
+gunbc.regen_round_cost	dag/gunbc/regen_round_cost.dag	gunbc(top)	N			mkdir:1		
+gunbc.review_sheet_spreadsheet_actuator	dag/gunbc/review_sheet_spreadsheet_actuator.dag	gunbc(top)	Y				storage_root_literal	/etc/gunbc/review-sheet-legacy-extent-declaration.json
+gunbc.revision_job_image_delivery	dag/gunbc/revision_job_image_delivery.dag	gunbc(top)	Y				storage_hand_exclusion	
+gunbc.secret_provision_actuator	dag/gunbc/secret_provision_actuator.dag	gunbc(top)	Y			write:WriteOwnerOnly=1;shell:Remove.RecursiveForce=3,Copy.File=1;mktemp:2	storage_hand_retention_sweep	
+gunbc.srv1_tasks_preapply_observation	dag/gunbc/srv1_tasks_preapply_observation.dag	gunbc(top)	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.url_file_acquisition	dag/gunbc/url_file_acquisition.dag	gunbc(top)	Y			mkdir:1;shell:Move.File=1,Remove.RecursiveForce=2	storage_hand_directory_setup	
+gunbc.workspace_commissioning_apply_readback	dag/gunbc/workspace_commissioning_apply_readback.dag	gunbc(top)	N			write:Delete=2		
+gunbc.workspace_commissioning_executor_store	dag/gunbc/workspace_commissioning_executor_store.dag	gunbc(top)	N			cas:cas_file_slot_path,file_compare_and_set,observe_cas_slot_state		
+gunbc.workspace_commissioning_executor_submission	dag/gunbc/workspace_commissioning_executor_submission.dag	gunbc(top)	Y			write:Delete=1,WriteCreateNewWithMode=1	storage_hand_exclusion	/etc/credstore
+gunbc.workspace_commissioning_input_store	dag/gunbc/workspace_commissioning_input_store.dag	gunbc(top)	N			cas:cas_file_slot_path,file_compare_and_set,observe_cas_slot_state		
+gunbc.workspace_commissioning_store	dag/gunbc/workspace_commissioning_store.dag	gunbc(top)	N			cas:cas_file_slot_path,file_compare_and_set,observe_cas_slot_state		
+gunbc.workspace_gateway_observer	dag/gunbc/workspace_gateway_observer.dag	gunbc(top)	Y			write:WriteCreateNew=1;shell:Remove.RecursiveForce=1;mktemp:1	storage_hand_exclusion	
+gunbc.workspace_image_delivery	dag/gunbc/workspace_image_delivery.dag	gunbc(top)	Y				storage_relative_receipt_path	
+gunbc.workspace_operator_request	dag/gunbc/workspace_operator_request.dag	gunbc(top)	Y			write:Write=1	storage_relative_receipt_path	

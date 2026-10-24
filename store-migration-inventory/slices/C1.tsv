@@ -1,0 +1,45 @@
+gunbc.fleet.altra_firmware_library	dag/gunbc/fleet/altra_firmware_library.dag	fleet	N			write:Write=1		
+gunbc.fleet.app_control_plane_inspection	dag/gunbc/fleet/app_control_plane_inspection.dag	fleet	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fleet.fleet_converge_cli	dag/gunbc/fleet/fleet_converge_cli.dag	fleet	Y			write:Write=1;shell:Move.File=1	storage_raw_state_beside_library	
+gunbc.fleet.fleet_converge_plan	dag/gunbc/fleet/fleet_converge_plan.dag	fleet	Y				storage_tmp_literal	/etc/systemd/system/
+gunbc.fleet.fleet_converge_plan_cli	dag/gunbc/fleet/fleet_converge_plan_cli.dag	fleet	N			write:Write=19		/etc/systemd/system/
+gunbc.fleet.fleet_converge_plan_revision	dag/gunbc/fleet/fleet_converge_plan_revision.dag	fleet	Y			write:Write=1	storage_root_literal	
+gunbc.fleet.fleet_converge_receipt	dag/gunbc/fleet/fleet_converge_receipt.dag	fleet	Y			write:Write=2	storage_raw_state_beside_library	
+gunbc.fleet.fleet_generation_execution	dag/gunbc/fleet/fleet_generation_execution.dag	fleet	Y				storage_root_literal	/var/lib/gunbc/fleet-converge
+gunbc.fleet.fleet_generation_publication	dag/gunbc/fleet/fleet_generation_publication.dag	fleet	N			mkdir:1		
+gunbc.fleet.fleet_health	dag/gunbc/fleet/fleet_health.dag	fleet	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fleet.fleet_host_key_enrollment	dag/gunbc/fleet/fleet_host_key_enrollment.dag	fleet	Y			write:Write=6,WriteCreateNew=2	storage_hand_exclusion,storage_relative_receipt_path	
+gunbc.fleet.fleet_known_hosts_anchor	dag/gunbc/fleet/fleet_known_hosts_anchor.dag	fleet	Y			mkdir:1;write:Write=1	storage_hand_directory_setup,storage_raw_state_beside_library	
+gunbc.fleet.fleet_multi_principal_probe	dag/gunbc/fleet/fleet_multi_principal_probe.dag	fleet	Y			write:Write=5	storage_relative_receipt_path	
+gunbc.fleet.fleet_plan_artifact_location	dag/gunbc/fleet/fleet_plan_artifact_location.dag	fleet	Y				storage_tmp_literal	
+gunbc.fleet.fleet_posix_accounts	dag/gunbc/fleet/fleet_posix_accounts.dag	fleet	Y				storage_root_literal	/home/,/opt/gunbc/bin/gunbc-deploy-privileged
+gunbc.fleet.fleet_probe_identity_observe	dag/gunbc/fleet/fleet_probe_identity_observe.dag	fleet	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fleet.fleet_receipt_collector	dag/gunbc/fleet/fleet_receipt_collector.dag	fleet	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fleet.fleet_release_bins_key	dag/gunbc/fleet/fleet_release_bins_key.dag	fleet	N			mkdir:6		
+gunbc.fleet.fleet_ssh_credential_verify	dag/gunbc/fleet/fleet_ssh_credential_verify.dag	fleet	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fleet.fleet_ssh_locus	dag/gunbc/fleet/fleet_ssh_locus.dag	fleet	Y				storage_root_literal	/home/gunbc-automation
+gunbc.fleet.fleet_wireless_link_converge	dag/gunbc/fleet/fleet_wireless_link_converge.dag	fleet	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fleet.flex_pass_run	dag/gunbc/fleet/flex_pass_run.dag	fleet	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fleet.hetzner_cloud_server_control	dag/gunbc/fleet/hetzner_cloud_server_control.dag	fleet	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fleet.host_credential_custody_converge	dag/gunbc/fleet/host_credential_custody_converge.dag	fleet	Y			write:Write=1	storage_relative_receipt_path	/run
+gunbc.fleet.org_actions_inspection	dag/gunbc/fleet/org_actions_inspection.dag	fleet	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fleet.organization_runner_roster_read	dag/gunbc/fleet/organization_runner_roster_read.dag	fleet	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fleet.print_converge	dag/gunbc/fleet/print_converge.dag	fleet	N			mkdir:2;write:WriteCreateNew=2;shell:Copy.File=1		/var/lib/gunbc/print-runs
+gunbc.fleet.printer_actuation	dag/gunbc/fleet/printer_actuation.dag	fleet	N			write:Write=1,WriteCreateNew=1		
+gunbc.fleet.printer_batch	?	fleet	Y				storage_hand_exclusion	
+gunbc.fleet.printer_job_start	dag/gunbc/fleet/printer_job_start.dag	fleet	Y			shell:Remove.RecursiveForce=4;mktemp:1	storage_hand_retention_sweep	
+gunbc.fleet.printer_operator_approval	dag/gunbc/fleet/printer_operator_approval.dag	fleet	Y				storage_hand_exclusion	
+gunbc.fleet.printer_project_delivery	dag/gunbc/fleet/printer_project_delivery.dag	fleet	Y			shell:Remove.RecursiveForce=1,Copy.File=1,Remove.FileForce=4;mktemp:1	storage_hand_retention_sweep	
+gunbc.fleet.printer_receipt	dag/gunbc/fleet/printer_receipt.dag	fleet	N			write:Write=1		
+gunbc.fleet.printer_report	dag/gunbc/fleet/printer_report.dag	fleet	Y			write:Write=1;shell:Remove.RecursiveForce=1	storage_hand_retention_sweep	
+gunbc.fleet.printer_start_reconciliation	dag/gunbc/fleet/printer_start_reconciliation.dag	fleet	N			write:Write=1		
+gunbc.fleet.site_pxe_edge_converge	dag/gunbc/fleet/site_pxe_edge_converge.dag	fleet	N			mkdir:3;write:Write=1		/etc,/etc/gunbc-site-pxe-edge.dnsmasq.conf,/srv/gunbc-site-pxe-edge/tftp
+gunbc.site.gunb_ai_css	dag/gunbc/site/gunb_ai_css.dag	site	N			mkdir:1;write:Write=1		
+gunbc.site.gunb_ai_deck	dag/gunbc/site/gunb_ai_deck.dag	site	N			write:Write=1		
+gunbc.site.gunb_ai_layout_review	dag/gunbc/site/gunb_ai_layout_review.dag	site	N			write:Write=1		
+gunbc.site.gunb_ai_mark	dag/gunbc/site/gunb_ai_mark.dag	site	N			write:Write=1		
+gunbc.site.gunb_ai_page	dag/gunbc/site/gunb_ai_page.dag	site	N			mkdir:1;write:Write=1		
+gunbc.site.gunb_ai_tokens_review	dag/gunbc/site/gunb_ai_tokens_review.dag	site	N			write:Write=1		
+gunbc.srv3.srv3_actuate_shell_paths	dag/gunbc/srv3/srv3_actuate_shell_paths.dag	srv3	Y				storage_root_literal	/var/lib/gunbc/logs/srv3-install-sol-console.log
+gunbc.srv3.srv3_boot_once_cd	dag/gunbc/srv3/srv3_boot_once_cd.dag	srv3	Y			write:Write=2	storage_raw_state_beside_library	
+gunbc.srv3.srv3_os_install_actuate	dag/gunbc/srv3/srv3_os_install_actuate.dag	srv3	Y			write:Write=1	storage_tmp_literal	

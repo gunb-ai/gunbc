@@ -1,0 +1,43 @@
+gunbc.cloudflare.r2_bucket_ensure	dag/gunbc/cloudflare/r2_bucket_ensure.dag	cloudflare	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.cloudflare.r2_conditional_put_race_probe	dag/gunbc/cloudflare/r2_conditional_put_race_probe.dag	cloudflare	Y			write:Write=3;shell:Remove.RecursiveForce=1;mktemp:1	storage_hand_retention_sweep	
+gunbc.cloudflare.r2_permission_group_observe	dag/gunbc/cloudflare/r2_permission_group_observe.dag	cloudflare	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.cloudflare.r2_s3_netrc	dag/gunbc/cloudflare/r2_s3_netrc.dag	cloudflare	Y			write:WriteOwnerOnly=1;shell:Remove.RecursiveForce=6,Remove.FileForce=1;mktemp:1	storage_hand_retention_sweep	
+gunbc.cloudflare.r2_staged_transfer	dag/gunbc/cloudflare/r2_staged_transfer.dag	cloudflare	Y			shell:Remove.RecursiveForce=1;mktemp:1	storage_hand_retention_sweep	
+gunbc.cloudflare.r2_token_mint_run	dag/gunbc/cloudflare/r2_token_mint_run.dag	cloudflare	Y			mkdir:1;write:Write=4	storage_hand_directory_setup,storage_tmp_literal	
+gunbc.demo.board_artifacts	dag/gunbc/demo/board_artifacts.dag	demo	Y			write:Write=1	storage_root_literal	
+gunbc.demo.semantic_system_readout	dag/gunbc/demo/semantic_system_readout.dag	demo	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fabric.fabric_allocation_store_substrate	dag/gunbc/fabric/fabric_allocation_store_substrate.dag	fabric	Y				storage_root_literal	/var/lib/gunbc,/var/lib/gunbc/fabric
+gunbc.fabric.fabric_control_plane	dag/gunbc/fabric/fabric_control_plane.dag	fabric	Y				storage_root_literal	/var/lib/gunbc/fabric/allocation
+gunbc.fabric.fabric_object_r2	dag/gunbc/fabric/fabric_object_r2.dag	fabric	Y			write:Write=1;mktemp:1	storage_raw_state_beside_library	
+gunbc.fabric.fabric_required_build_cell	dag/gunbc/fabric/fabric_required_build_cell.dag	fabric	N			cas:observe_cas_slot_state		
+gunbc.fabric.fabric_source_snapshot	dag/gunbc/fabric/fabric_source_snapshot.dag	fabric	Y			mkdir:2;write:WriteCreateNew=1;shell:Chmod.OwnerOnlyDirectory=1,Remove.RecursiveForce=1;mktemp:2	storage_hand_exclusion	/run,/run/user,/run/user/
+gunbc.fabric.fabric_storage_file_store	dag/gunbc/fabric/fabric_storage_file_store.dag	fabric	Y			cas:file_compare_and_set,observe_cas_slot_state;mkdir:2;write:WriteCreateNew=1,WriteCreateNewWithMode=1	storage_hand_directory_setup,storage_hand_exclusion	
+gunbc.fabric.fabric_storage_r2_head	dag/gunbc/fabric/fabric_storage_r2_head.dag	fabric	Y			write:Write=1;mktemp:1	storage_raw_state_beside_library	
+gunbc.fabric.fabric_writer_identity_observe	dag/gunbc/fabric/fabric_writer_identity_observe.dag	fabric	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.fabric.workspace_checkpoint_instrument	dag/gunbc/fabric/workspace_checkpoint_instrument.dag	fabric	Y			mkdir:4;write:Write=3;shell:Remove.RecursiveForce=2,Copy.File=1;mktemp:2	storage_hand_directory_setup	
+gunbc.fabric.workspace_source	dag/gunbc/fabric/workspace_source.dag	fabric	Y			mkdir:4;write:Write=3;shell:Remove.RecursiveForce=3;mktemp:1	storage_hand_directory_setup,storage_root_literal	/home/briansrls,/home/briansrls/.codex,/home/briansrls/gunbc,~/.claude/.credentials.json,~/.codex/auth.json
+gunbc.fabric.workspace_transcript_rate	dag/gunbc/fabric/workspace_transcript_rate.dag	fabric	Y			write:Write=1	storage_root_literal	
+gunbc.frontend_eval.control	dag/gunbc/frontend_eval/control.dag	frontend_eval	Y			mkdir:1;write:Write=4;shell:Remove.RecursiveForce=1	storage_hand_directory_setup	
+gunbc.frontend_eval.instrument	dag/gunbc/frontend_eval/instrument.dag	frontend_eval	N			write:Write=1		
+gunbc.live_deploy.apply	dag/gunbc/live_deploy/apply.dag	live_deploy	Y			write:Write=1	storage_hand_directory_setup	
+gunbc.live_deploy.apply_legs	dag/gunbc/live_deploy/apply_legs.dag	live_deploy	Y				storage_root_literal	/etc/sudoers,/opt/gunbc
+gunbc.live_deploy.apply_receipt	dag/gunbc/live_deploy/apply_receipt.dag	live_deploy	Y				storage_relative_receipt_path	
+gunbc.live_deploy.deployed_tree_observation	dag/gunbc/live_deploy/deployed_tree_observation.dag	live_deploy	Y				storage_tmp_literal	
+gunbc.live_deploy.deployed_tree_report	dag/gunbc/live_deploy/deployed_tree_report.dag	live_deploy	Y			write:Write=1	storage_raw_state_beside_library	
+gunbc.live_deploy.member_observe	dag/gunbc/live_deploy/member_observe.dag	live_deploy	Y			write:Delete=1;mktemp:1	storage_tmp_literal	
+gunbc.live_deploy.pre_swap_admission	dag/gunbc/live_deploy/pre_swap_admission.dag	live_deploy	N			shell:Remove.RecursiveForce=1;mktemp:1		
+gunbc.live_deploy.repository_convergence	dag/gunbc/live_deploy/repository_convergence.dag	live_deploy	N			write:Delete=1		
+gunbc.live_deploy.repository_convergence_placement	dag/gunbc/live_deploy/repository_convergence_placement.dag	live_deploy	Y			write:Write=1	storage_raw_state_beside_library	
+gunbc.namecheap.observe	dag/gunbc/namecheap/observe.dag	namecheap	Y			write:Write=1	storage_root_literal	
+gunbc.oracle_oci.always_free_ensure	dag/gunbc/oracle_oci/always_free_ensure.dag	oracle_oci	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.oracle_oci.compartment_ensure	dag/gunbc/oracle_oci/compartment_ensure.dag	oracle_oci	Y			write:Write=1	storage_relative_receipt_path	
+gunbc.oracle_oci.instance_ensure	dag/gunbc/oracle_oci/instance_ensure.dag	oracle_oci	Y			write:Delete=2,WriteCreateNew=2	storage_hand_exclusion,storage_root_literal	/etc/gunbc/oracle-oci,/etc/gunbc/oracle-oci/instance-converge.lock
+gunbc.serving.caller_backlog	dag/gunbc/serving/caller_backlog.dag	serving	N			cas:file_compare_and_set,observe_cas_slot_state		
+product.fabric.flex_vast_template_control	dag/product/fabric/flex_vast_template_control.dag	product	Y			write:Write=1	storage_relative_receipt_path	
+product.printed_chassis.assembly_inventory_store	dag/product/printed_chassis/assembly_inventory_store.dag	product	N			cas:file_compare_and_set,observe_cas_slot_state		
+product.printed_chassis.cad_check_run	dag/product/printed_chassis/cad_check_run.dag	product	Y			write:Write=2	storage_root_literal	
+product.printed_chassis.print_preparation	dag/product/printed_chassis/print_preparation.dag	product	Y			mkdir:2;write:WriteCreateNew=4;shell:Remove.RecursiveForce=1;mktemp:1	storage_hand_exclusion	
+product.printed_chassis.print_workflow	dag/product/printed_chassis/print_workflow.dag	product	Y			mkdir:3;write:WriteCreateNew=1	storage_hand_exclusion	
+product.printing.cad_runtime_converge	dag/product/printing/cad_runtime_converge.dag	product	Y			mkdir:2;write:WriteCreateNew=1,Write=1;shell:Remove.RecursiveForce=2	storage_hand_exclusion	
+product.printing.print_runtime	dag/product/printing/print_runtime.dag	product	Y			mkdir:1;write:WriteCreateNew=1	storage_hand_exclusion,storage_root_literal	/etc/os-release,/var/lib/gunbc/print-runtime
+product.printing.runtime_converge	dag/product/printing/runtime_converge.dag	product	Y			write:Write=1	storage_raw_state_beside_library	/etc/os-release
