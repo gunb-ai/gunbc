@@ -5055,6 +5055,65 @@ pub fn equality_inadmissible_declaration_identities() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
+pub fn equality_node_reaching_composite_drop_sites() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec![])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
+pub fn equality_operand_is_inadmissible_leaf(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
+        let identity =
+            type_reference_identity(peeled.clone(), scope.type_env.source_indices.clone());
+        {
+            let mut __found = false;
+            for i in equality_inadmissible_declaration_identities()
+                .iter()
+                .cloned()
+            {
+                if (i.clone() == identity.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn equality_node_reaching_composite_dropped(
+    r: Rc<EqualityAdmissionRefusal>,
+    left: Rc<Node>,
+    right: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    ((((r.member.clone() == "declared equality-inadmissible".to_string())
+        && !equality_operand_is_inadmissible_leaf(left.clone(), scope.clone()))
+        && !equality_operand_is_inadmissible_leaf(right.clone(), scope.clone()))
+        && {
+            let mut __found = false;
+            for k in equality_node_reaching_composite_drop_sites()
+                .iter()
+                .cloned()
+            {
+                if (k.clone()
+                    == v1_rt::concat(
+                        v1_rt::concat(scope.module_name.clone(), " ".to_string()),
+                        scope.caller_decl_name.clone(),
+                    ))
+                {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        })
+}
+
 pub fn equality_inadmissible_type_refusal(
     identity: String,
     name: String,
@@ -5740,20 +5799,48 @@ pub fn equality_admission_diags(
                                 v1_rt::rc_empty_map::<String, bool>(),
                                 0,
                             ) {
-                                Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                                    equality_admission_refusal_diag(r.clone(), span.clone()),
-                                    scope.module_name.clone(),
-                                )]),
+                                Some(r) => {
+                                    if equality_node_reaching_composite_dropped(
+                                        r.clone(),
+                                        lt.clone(),
+                                        rt.clone(),
+                                        scope.clone(),
+                                    ) {
+                                        Rc::new(vec![])
+                                    } else {
+                                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                                            equality_admission_refusal_diag(
+                                                r.clone(),
+                                                span.clone(),
+                                            ),
+                                            scope.module_name.clone(),
+                                        )])
+                                    }
+                                }
                                 std::option::Option::None => match equality_operand_admission(
                                     rt.clone(),
                                     scope.clone(),
                                     v1_rt::rc_empty_map::<String, bool>(),
                                     0,
                                 ) {
-                                    Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                                        equality_admission_refusal_diag(r.clone(), span.clone()),
-                                        scope.module_name.clone(),
-                                    )]),
+                                    Some(r) => {
+                                        if equality_node_reaching_composite_dropped(
+                                            r.clone(),
+                                            lt.clone(),
+                                            rt.clone(),
+                                            scope.clone(),
+                                        ) {
+                                            Rc::new(vec![])
+                                        } else {
+                                            Rc::new(vec![crate::v1_std_core::make_error_node(
+                                                equality_admission_refusal_diag(
+                                                    r.clone(),
+                                                    span.clone(),
+                                                ),
+                                                scope.module_name.clone(),
+                                            )])
+                                        }
+                                    }
                                     std::option::Option::None => Rc::new(vec![]),
                                 },
                             }
