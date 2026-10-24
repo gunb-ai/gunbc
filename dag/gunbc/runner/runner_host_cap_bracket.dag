@@ -160,9 +160,12 @@ fn listener_restart_residual_wire() -> String {
 // a host's slots out of admission — a rare event bounded by the fleet's own declared worst job.
 //
 // THE DISPATCH-ONLY RESIDUAL IS DECLARED, NOT IMPLIED (ruled by clever-crane-830, 2026-10-23): jobs
-// whose workflows are workflow_dispatch-only (instrument-dispatch at 240 min, fleet-converge's
-// build at 95) are outside the population — GitHub cannot park them on a slot unprompted. If one is
-// running when a drain starts it can exceed the bound; the bracket then refuses TYPED (caps
+// whose workflows are workflow_dispatch-only — instrument-dispatch's census job
+// (gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_timeout_minutes) and
+// fleet-converge's build job (gunbc.fleet.fleet_converge_workflow
+// gunbc_fleet_converge_build_job_backstop_timeout_minutes) — are outside the population: GitHub
+// cannot park them on a slot unprompted. If one is running when a drain starts it can exceed the
+// bound (both are long census/release builds by design); the bracket then refuses TYPED (caps
 // withheld, drain_bound_exceeded). That is fail-closed, and the operator who dispatches both owns
 // the sequencing. The control test.claim.runner.runner_fleet_job_timeout_bound_witness goes red if
 // any population member's declared timeout exceeds the bound, so a new autonomous fleet job cannot
