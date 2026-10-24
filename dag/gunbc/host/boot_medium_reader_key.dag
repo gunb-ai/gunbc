@@ -6,10 +6,8 @@ import extdeps.ssh.keys {
   SshPublicKey, AuthorizedKeyEntry, AuthorizedKeyOption, AuthorizedKeyForcedCommand, authorized_key_forced_command,
   ForcedCommandOption, NoAgentForwardingOption, NoPortForwardingOption, NoPtyOption, NoUserRcOption, NoX11ForwardingOption,
 }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { shell_command_render }
-import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.host.boot_medium { bmc_boot_image_export }
 
 // ── A CREDENTIAL THAT CAN READ ONE DIGEST ON THE EXPORT HOST AND NOTHING ELSE ─────────────────────
@@ -30,24 +28,13 @@ import gunbc.host.boot_medium { bmc_boot_image_export }
 //
 // THE PUBLIC HALF IS ABSENT UNTIL THE KEY IS MINTED. The mint goes through the approval route and lands
 // its public key here; until then there is no authorized entry to converge and no readback over this key,
-// and both refuse by that name rather than fall back to the fleet key.
+// and both refuse by that name rather than fall back to the fleet key. The private half's Secret Manager
+// row is declared by the change that mints it, whose run is its one reader; it is not declared here.
 
 data boot_medium_served_link_name: NonEmptyStr = "served-current.iso"
 
 fn boot_medium_served_link_path() -> NonEmptyStr {
   join([bmc_boot_image_export.dir as String, "/", boot_medium_served_link_name as String], "") as NonEmptyStr
-}
-
-data boot_medium_reader_ssh_privkey_secret: SecretRef = SecretRef {
-  project: fleet_secrets_gcp_project,
-  secret: "boot-medium-reader-ssh-key" as NonEmptyStr,
-  version: "1",
-  hash_state: HashPending,
-}
-
-// The account on the export host the key is authorized for: the one the served readback already uses.
-fn boot_medium_reader_principal() -> NonEmptyStr {
-  bmc_boot_image_export.target.principal
 }
 
 data boot_medium_reader_ssh_key: SshPublicKey? = none
@@ -70,6 +57,11 @@ fn boot_medium_reader_entry_for(key: SshPublicKey) -> AuthorizedKeyEntry? {
   }
 }
 
+// CONSUMPTION (DESIGN section 3c): a declared frontier. The consumer is the srv2 managed-host file row
+// /etc/ssh/authorized_keys.d/<reader principal>, converged from main by gunbc.runner.runner_host_file_converge
+// once its subject is generalized to a managed host with declared rows; trigger: the second change of the
+// mtcollins1 approval-free branch boot plan (work item adhoc-0abea207-7ec), which also mints the key. Until
+// then the public half is absent and this answers none.
 fn boot_medium_reader_authorized_entry() -> AuthorizedKeyEntry? {
   match boot_medium_reader_ssh_key {
     Absent => none

@@ -161,26 +161,14 @@ type AuthorizedKeyEntry {
 }
 
 // THE LINE: the options field when there is one, then the key line this module already renders.
+// CONSUMPTION (DESIGN section 3c): a declared frontier. Its production reader is the managed-host file row
+// that writes an authorized_keys file from AuthorizedKeyEntry rows (gunbc.runner.runner_host_file_converge,
+// the second change of work item adhoc-0abea207-7ec); until then the boot medium reader key's witness reads
+// it.
 fn authorized_key_entry_line(e: AuthorizedKeyEntry) -> String {
   if e.options.length() == 0 {
     ssh_public_key_line(k: e.key)
   } else {
     join([join(map(e.options, o => authorized_key_option_text(o: o)), ","), " ", ssh_public_key_line(k: e.key)], "")
   }
-}
-
-// THE ONE COMMAND A KEY IS FORCED TO, when its options name one.
-fn authorized_key_entry_forced_command(e: AuthorizedKeyEntry) -> AuthorizedKeyForcedCommand? {
-  fold(e.options, init: none, f: (acc, o) => match acc {
-    Present { value: _ } => acc
-    Absent => match o {
-      ForcedCommandOption { command: c } => Present { value: c }
-      NoAgentForwardingOption => none
-      NoPortForwardingOption => none
-      NoPtyOption => none
-      NoUserRcOption => none
-      NoX11ForwardingOption => none
-      RestrictOption => none
-    }
-  })
 }

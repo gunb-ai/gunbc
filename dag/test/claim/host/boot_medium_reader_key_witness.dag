@@ -4,7 +4,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import extdeps.ssh.keys {
-  SshPublicKey, Ed25519, authorized_key_entry_line, authorized_key_forced_command, authorized_key_entry_forced_command,
+  SshPublicKey, Ed25519, authorized_key_entry_line, authorized_key_forced_command,
 }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { shell_command_render }
@@ -71,7 +71,6 @@ test fn the_reader_entry_forces_one_sha256sum_of_the_link_and_disables_the_rest(
     Absent => false
     Present { value: e } =>
       authorized_key_entry_line(e: e) == join(["command=\"", forced, "\",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc,no-X11-forwarding ssh-ed25519 ", supplied_key.material as String, " boot-medium-reader"], "")
-        && match authorized_key_entry_forced_command(e: e) { Present { value: c } => (c.text as String) == forced  Absent => false }
   }
 }
 
