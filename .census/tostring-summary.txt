@@ -2,19 +2,24 @@ TYPED to_string CENSUS (throwaway; never merge)
 Producer: the seed instrument at census-local-tostring cb53b0e38d4 (over main b129ed84b69), v1-scoped variant census-local-tostring-v1.
 Corpus population: gunbc compile --source-root dag --source-root src/v2 (primary root dag) on srv2. src/v1 population: the instrumented seed self-compile (regen round 2) on BuildBuddy.
 
- 2600  A kernel Int
+ 2743  A kernel Int
    28  A kernel Int (read by name only)
-    2  L std.integer.Int, a declared coproduct NonNegative{n: Nat} | Negative{pred: Nat}, NOT the kernel Int
- 1216  B Nat
+ 1217  B Nat
   239  C Int refinement
    29  D Nat refinement / Nat measure
     7  E machine-width integer
-   39  F Bool
+   55  F Bool
     1  G Float
     3  H text (to_string is identity)
     9  I collection (List/Map)
    88  J record / coproduct (declared nominal)
-    2  K unknown (refused and listed)
- 4263  TOTAL typed sites
+    3  K unknown (refused and listed)
+    2  L std.integer.Int, a declared coproduct NonNegative{n: Nat} | Negative{pred: Nat}, NOT the kernel Int
+ 4424  TOTAL typed sites
 
-UNCOVERED: 171 grep candidates in 35 files the dag-primary compile did not infer (mostly src/v2 modules outside dag's import closure); listed in tostring-uncovered-grep-candidates.tsv, not typed. Supplementary src/v2-primary leg pending.
+BY POPULATION:
+ 4176  corpus compile (dag primary)
+  161  src/v2 per-file entry compile (35 files outside the dag-primary population)
+   87  src/v1 self-compile
+
+UNCOVERED: none typed-missing. The 10 remaining grep candidates are not calls: to_string( inside string data (probe sources, receipts, emit templates), listed in tostring-uncovered-grep-candidates.tsv.
