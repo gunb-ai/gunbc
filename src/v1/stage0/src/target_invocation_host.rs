@@ -641,9 +641,8 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         ),
         (
             instrument_label("append-chain-ladder"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/append_chain_ladder.dag",
-                function: "append_chain_ladder_wire",
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/append_chain_ladder_native.dag",
             },
         ),
         (

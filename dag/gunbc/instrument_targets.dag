@@ -885,18 +885,14 @@ fn append_chain_ladder_label() -> Label {
 }
 
 fn append_chain_ladder_entry() -> String {
-  "dag/gunbc/instruments/append_chain_ladder.dag"
-}
-
-fn append_chain_ladder_function() -> String {
-  "append_chain_ladder_wire"
+  "dag/gunbc/instruments/append_chain_ladder_native.dag"
 }
 
 // THE INSTRUMENT gunbc.recurring_failure_mode non_empty_append_on_a_persistent_vector_is_superlinear
 // cites, as a label rather than a command in a comment. Non-gating measurement; the threshold fold
 // over its timing rows extends this same label (one instrument, not two).
 fn append_chain_ladder_binding() -> TargetBinding {
-  TargetBinding { target: append_chain_ladder_label() producer: CliWireProgramProducer { entry: append_chain_ladder_entry() function: append_chain_ladder_function() } }
+  TargetBinding { target: append_chain_ladder_label() producer: NativeClaimProgramProducer { entry: append_chain_ladder_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn claim_coverage_census_label() -> Label {
