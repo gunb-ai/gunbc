@@ -43,9 +43,7 @@ import std.primitive_identity {
   DeclarationPrimitiveCostUnmodeled,
   DeclarationProjectsNoCostedPrimitive,
   EmitRust,
-  primitive_chars,
   primitive_chars_cost,
-  primitive_list_push,
   primitive_list_push_cost,
   primitive_modeled_cost_for_declaration,
   primitive_modeled_cost_in,
@@ -69,6 +67,7 @@ import std.primitive_identity {
   primitive_index_by,
   primitive_identity_eq,
 }
+import std.primitive_projection { PrimitiveIdentity, primitive_chars, primitive_list_push }
 import std.types { Bool, Int, List, String }
 
 fn modeled_cost_bound(cost: PrimitiveModeledCost) -> CostBound? {
@@ -240,9 +239,15 @@ fn row_answers_the_coarse_question(row: PrimitiveCostFact) -> Bool {
     CarrierSensitiveCost { ephemeral: e, persistent: p } =>
       reading_answers_the_coarse_question(r: e) && reading_answers_the_coarse_question(r: p)
     StructuredCost { bound: _ } =>
-      match modeled_cost_coarse_shape(cost: row.cost) { Present { value: _ } => true Absent => false }
+      match modeled_cost_coarse_shape(cost: row.cost) {
+        Present { value: _ } => true
+        Absent => false
+      }
     CoarseCostOnly { shape: _, cause: _ } =>
-      match modeled_cost_coarse_shape(cost: row.cost) { Present { value: _ } => true Absent => false }
+      match modeled_cost_coarse_shape(cost: row.cost) {
+        Present { value: _ } => true
+        Absent => false
+      }
   }
 }
 
@@ -330,7 +335,11 @@ fn bound_is(actual: CostBound, expected: CostBound) -> Bool {
 
 fn reading_is_amortized_constant(r: CarrierCostReading) -> Bool {
   match r.amortized {
-    Present { value: a } => match a { ConstantBound => true _ => false }
+    Present { value: a } =>
+      match a {
+        ConstantBound => true
+        _ => false
+      }
     Absent => false
   }
 }
@@ -364,30 +373,29 @@ fn chars_fact_holds(cost: PrimitiveModeledCost) -> Bool {
   }
 }
 
-fn declaration_fact_holds(answer: DeclarationModeledCost, expected: PrimitiveIdentity, holds: fn(PrimitiveModeledCost) -> Bool) -> Bool {
+fn declared_cost_of(answer: DeclarationModeledCost, expected: PrimitiveIdentity) -> PrimitiveModeledCost? {
   match answer {
-    DeclarationCostModeled { primitive: p, cost: c } => primitive_identity_eq(left: p, right: expected) && holds(c)
-    DeclarationProjectsNoCostedPrimitive { declaration: _ } => false
-    DeclarationPrimitiveCostUnmodeled { primitive: _ } => false
-    DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => false
+    DeclarationCostModeled { primitive: p, cost: c } =>
+      if primitive_identity_eq(left: p, right: expected) { Present { value: c } } else { none }
+    DeclarationProjectsNoCostedPrimitive { declaration: _ } => none
+    DeclarationPrimitiveCostUnmodeled { primitive: _ } => none
+    DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => none
   }
 }
 
 // THE POSITIVE CONTROLS: the live declarations reach the live rows and the facts hold by value.
 test fn list_push_declaration_reads_its_carrier_sensitive_cost() -> Bool {
-  declaration_fact_holds(
-    answer: primitive_modeled_cost_for_declaration(declaration: list_push_declaration),
-    expected: primitive_list_push,
-    holds: fn(c) { list_push_fact_holds(cost: c) },
-  )
+  match declared_cost_of(answer: primitive_modeled_cost_for_declaration(declaration: list_push_declaration), expected: primitive_list_push) {
+    Present { value: c } => list_push_fact_holds(cost: c)
+    Absent => false
+  }
 }
 
 test fn chars_declaration_reads_its_linear_cost() -> Bool {
-  declaration_fact_holds(
-    answer: primitive_modeled_cost_for_declaration(declaration: chars_declaration),
-    expected: primitive_chars,
-    holds: fn(c) { chars_fact_holds(cost: c) },
-  )
+  match declared_cost_of(answer: primitive_modeled_cost_for_declaration(declaration: chars_declaration), expected: primitive_chars) {
+    Present { value: c } => chars_fact_holds(cost: c)
+    Absent => false
+  }
 }
 
 // THE RED FOR A WRONG FACT. The accumulator-copy lens's hand citation
