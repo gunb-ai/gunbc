@@ -110,6 +110,13 @@ test fn an_asserted_failure_row_refuses_with_its_own_arm() -> Bool {
     && string_contains(s: not_nominal_text(stdout: s), pattern: "FAN4_Failure")
 }
 
+// RED: `No Reading` is admitted only under the observed `ns` status; another status refuses.
+test fn a_failure_row_reading_no_reading_under_another_status_refuses() -> Bool {
+  let s = join(split(s: fan_rows(stdout: raw_stdout()), delimiter: "FAN4_Failure     | 1Bh | ok  | 29.0 | "), "FAN4_Failure     | 1Bh | cr  | 29.0 | No Reading")
+  read_whole() && s != fan_rows(stdout: raw_stdout()) && established(round: replay_round(stdout: s)) == false
+    && string_contains(s: not_nominal_text(stdout: s), pattern: "FAN4_Failure")
+}
+
 // RED: a structured Failure row whose reading is anything but `No Reading` refuses with the same arm.
 test fn a_structured_failure_row_with_another_reading_refuses() -> Bool {
   let s = join(split(s: fan_rows(stdout: raw_stdout()), delimiter: "FAN4_Failure     | 1Bh | ok  | 29.0 | "), "FAN4_Failure     | 1Bh | ok  | 29.0 | Asserted")
