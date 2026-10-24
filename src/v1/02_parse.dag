@@ -3831,7 +3831,7 @@ fn parse_uses_entry(tokens: TokenStream, ctx: ParseContext) -> ResUseResult {
       uses: r3.type_expr.uses, body: r3.type_expr.body,       connective: r3.type_expr.connective, transport: r3.type_expr.transport,
       properties: ar.fields, type_annotation: r3.type_expr.type_annotation,
       is_self_recursive: r3.type_expr.is_self_recursive, has_non_tail_self_call: r3.type_expr.has_non_tail_self_call,
-      match_pattern: r3.type_expr.match_pattern, module_item_kind: r3.type_expr.module_item_kind, declaration_marker: r3.type_expr.declaration_marker, declaration: r3.type_expr.declaration, expr_data: r3.type_expr.expr_data }
+      match_pattern: r3.type_expr.match_pattern, module_item_kind: r3.type_expr.module_item_kind, application_role: r3.type_expr.application_role, declaration_marker: r3.type_expr.declaration_marker, declaration: r3.type_expr.declaration, expr_data: r3.type_expr.expr_data }
     let configured_ctx = parse_context_extend_node_extent(ctx: ar.ctx, node: res_node, from: r2.tokens, to: r4.tokens)
     let minted = mint_parsed_node_identity(ctx: configured_ctx, at: ConsumedWindow { from: entry, to: r4.tokens })
     let ru = make_resource_use_node(occurrence_identity: minted.identity, name: name, resource: res_node, span: start_span, name_span: r.span)
