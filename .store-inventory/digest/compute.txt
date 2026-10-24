@@ -1,0 +1,25 @@
+## gunbc.compute.attempt_lifecycle
+  cas admit_cas_attempt @fn attempt_commit_bytes L430: attempt: cas_attempt( key: reference, expected: expected, proposed: payload, proposed_content: content_hash_of_value(value: payload), )
+  cas file_compare_and_set @fn attempt_commit_bytes L440: root: root, publication: DefaultAccessCreateOnly, verified: v
+  cas observe_cas_slot_state @fn attempt_slot_read L361: root: root, key: reference
+  cas observe_cas_slot_state @fn attempt_advance_payload L496: root: root, key: reference
+## gunbc.compute.compute_seat_ensure
+  cas cas_slot_keys @fn compute_seat_discharge_dir L384: root: seats
+## gunbc.compute.test_run
+  census storage_root_literal Literal test_pattern_cli: Filesystem.Write(path: receipt_path, content: document); also compile_entry_cli
+  effect Filesystem.Write @fn compile_entry_cli L278: path: receipt_path, content: provide_result_document(r: result)
+  effect Filesystem.Write @fn test_pattern_cli L306: path: receipt_path, content: document
+## gunbc.compute.work_provider_local
+  census storage_hand_retention_sweep Forked (target-dir cleanup): shell.Remove.RecursiveForce(path: layout.target_dir)
+  census storage_root_literal Literal (unit spawn runtime_dir): join(["/run/user/", to_string(uid)])
+  census storage_hand_exclusion Forked compute_provide_produce: Filesystem.WriteCreateNew(path: layout.lease_path, ...); compute_remove_owned_target: shell.Remove.RecursiveForce(path: layout.target_dir); 
+  effect Filesystem.WriteCreateNew @fn compute_grant_exceeded_record L1309: path: join([dir, "/", reference as String], ""), content: compute_peak_sample_wire(instance: instance, identity: work_outcome_identity(o: attempt.outcome), op: 
+  effect Filesystem.Write @fn compute_run_and_settle L1617: path: layout.consumption_path, content: join([ compute_capacity_standing_wire(s: standing), "\n", compute_peak_sample_wire(instance: instance, identity: identit
+  effect shell.Remove.RecursiveForce @fn compute_remove_owned_target L1737: path: layout.target_dir as FilePath
+  effect Filesystem.Delete @fn compute_drop_lease_at L1869: path: lease_path
+  effect Filesystem.Delete @fn compute_unstage L2142: path: p.staged as String
+  effect Filesystem.WriteCreateNew @fn compute_provide_produce L2321: path: layout.lease_path, content: join([compute_lease_holder_line(seat_dir: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner) as String), commit
+  effect Filesystem.Write @fn compute_spawn_and_collect L2758: path: layout.log_path, content: match run { ComputeExecOk { stdout, stderr } => join([stdout, stderr], "") ComputeExecFailed { exit_code: _, stdout, stderr } =>
+  effect Filesystem.Write @fn compute_request_cli L2872: path: receipt_path, content: join([provide_result_document(r: result), "\n"], "")
+  effect Filesystem.Write @fn compute_recover_exit L3178: path: receipt_path, content: join([wire, "\n"], "")
+  effect Filesystem.Write @fn compute_write_host_record_note L3206: path: path, content: join([d, "\n"], "")

@@ -1,0 +1,62 @@
+## gunbc.machine_intake.fan_observe
+  census storage_root_literal Literal fan observe receipt writer: Filesystem.Write(path: path, content: content)
+  effect Filesystem.Write @fn fan_write_observation L250: path: policy.receipt_path, content: render_observation(host: host, window: policy.transition_window, rounds: rounds, interval: interval),
+  effect Filesystem.Write @fn fan_write_boot_phase_receipt L331: path: path, content: content
+## gunbc.machine_intake.megarac_boot_media_attach
+  census storage_tmp_literal Literal megarac cookie jar path: join(["/tmp/gunbc-", host, "-megarac-jar-", attempt])
+## gunbc.machine_intake.megarac_kvm_observer_observe
+  effect Filesystem.Write @fn kvm_probe_conclude L139: path: megarac_kvm_observer_probe_receipt_path(paths: paths), content: concat(kvm_probe_receipt_text(subject: subject, verdict: verdict, rec: rec), "\n")
+## gunbc.machine_intake.megarac_kvm_still
+  effect Filesystem.Write @fn kvm_observer_trigger L772: path: concat(d as String, concat("/trigger-", concat(to_string(1000 + order), concat("-", reason)))), content: ""
+  effect Filesystem.Write @fn megarac_kvm_observer_finish L892: path: snapshot_path, content: t
+  effect Filesystem.Write @fn megarac_kvm_observer_finish L897: path: concat(d, "/workflow"), content: concat("gunbc-workflow: observer stop requested at=", concat(requested_at as String, "\n"))
+  effect Filesystem.Write @fn megarac_kvm_observer_finish L898: path: concat(d, "/stop"), content: ""
+## gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle
+  census storage_root_literal Literal mtcollins1_boot_diagnostics_path: Filesystem.Write(path: mtcollins1_boot_diagnostics_path ...)
+  effect Filesystem.Write @fn mtcollins1_boot_write_bundle L2657: path: mtcollins1_boot_diagnostics_path, content: mtcollins1_boot_bundle_text(bundle: bundle)
+  effect Filesystem.Write @fn mtcollins1_boot_hpm_check L2686: path: mtcollins1_boot_hpm_check_path(run_attempt: run_attempt), content: r.stdout
+## gunbc.machine_intake.mtcollins1_boot_fan_gate
+  census storage_hand_exclusion Forked fan gate append: Filesystem.Write(path, concat(prior.content, block))
+  census storage_relative_receipt_path Literal fan_gate_observation_path: artifacts/mtcollins1-boot-fan-gate-observation.txt
+  effect Filesystem.Write @fn fan_gate_write L106: path: path as String, content: content
+  effect Filesystem.Write @fn fan_gate_summary_append L118: path: path, content: concat(if prior.success { prior.content } else { "" }, block)
+## gunbc.machine_intake.mtcollins1_boot_run
+  census storage_raw_state_beside_library Forked mtcollins1 capture writers: Filesystem.Write(path: capture_path, content: "")
+  census storage_relative_receipt_path Literal mtcollins1_boot_receipt_path: artifacts/mtcollins1-boot-receipt.txt
+  effect Filesystem.Write @fn mtcollins1_sol_bind_capture_to_attempt L450: path: capture_path, content: ""
+  effect Filesystem.Write @fn mtcollins1_sol_bind_capture_to_attempt L451: path: mtcollins1_sol_client_diagnostic_path(capture_path: capture_path), content: ""
+  effect Filesystem.Write @fn mtcollins1_sol_bind_capture_to_attempt L452: path: mtcollins1_sol_incident_path(capture_path: capture_path), content: ""
+  effect Filesystem.Write @fn mtcollins1_sol_bind_capture_to_attempt L453: path: mtcollins1_sol_workflow_events_path(capture_path: capture_path), content: ""
+  effect Filesystem.Write @fn mtcollins1_sol_teardown_record L478: path: concat(capture_path, mtcollins1_sol_pre_teardown_suffix), content: if capture.success { capture.content } else { "" }
+  effect Filesystem.Write @fn mtcollins1_sol_teardown_record L479: path: concat(client_path, mtcollins1_sol_pre_teardown_suffix), content: if client.success { client.content } else { "" }
+  effect Filesystem.Write @fn mtcollins1_sol_teardown_record L480: path: events_path, content: concat(if events.success { events.content } else { "" }, concat(mtcollins1_sol_workflow_event_prefix, concat(act, concat(" at=", con
+  effect Filesystem.Write @fn mtcollins1_sol_activate_held L618: path: concat(pid_path, mtcollins1_sol_activation_suffix), content: ""
+  effect Filesystem.Write @fn sol_record_activation L780: path: concat(pid_path, mtcollins1_sol_activation_suffix), content: concat(identity, concat(" at=", concat(at as String, "\n")))
+  effect Filesystem.Write @fn mtcollins1_sol_loss_freeze L1541: path: staged, content: concat(sol_observation_loss_text(loss: loss), "\n")
+  effect shell.Move.File @fn mtcollins1_sol_loss_freeze L1544: source: staged as FilePath, destination: path as FilePath
+  effect Filesystem.Write @fn mtcollins1_boot_screen_boundary_report L1957: path: path, content: concat(if prior.success { prior.content } else { "" }, join(map(fresh, l => concat("reported at ", concat(clock_now_probed_at_or_unknown() 
+  effect Filesystem.Delete @fn sol_release_retire L2372: path: pid_path
+  effect Filesystem.Delete @fn sol_release_retire L2373: path: concat(pid_path, mtcollins1_sol_activation_suffix)
+  effect Filesystem.Write @fn mtcollins1_boot_conclude L3058: path: mtcollins1_boot_receipt_path, content: receipt_body
+## gunbc.machine_intake.mtcollins1_census_image_publish
+  census storage_tmp_literal Literal census_regression_template: /var/tmp/gunbc-mtcollins1-census-regress.XXXXXXXX
+  census storage_hand_retention_sweep Forked census_srv2_regression: mktemp_directory_command + rm_recursive_force_one_file_system_command; Filesystem.Write(receipt)
+  effect Filesystem.Write @fn mtcollins1_census_image_publish_wet L235: path: mtcollins1_census_image_receipt_path, content: rendered
+## gunbc.machine_intake.mtcollins1_census_member_readback
+  census storage_hand_retention_sweep Forked member readback legs: mktemp_directory_command / rm_recursive_force_one_file_system_command; Filesystem.Write(receipt)
+  effect Filesystem.Write @fn mtcollins1_census_member_readback_wet L505: path: census_member_readback_receipt_path, content: rendered
+## gunbc.machine_intake.mtcollins1_census_qemu_host_observe
+  census storage_hand_directory_setup Forked census_qemu_host_observe: mkdir_parents_command(path: census_qemu_host_observe_receipt_dir); Filesystem.Write
+  effect Filesystem.Write @fn census_qemu_host_verdict_wet L51: path: census_qemu_host_observe_receipt_path, content: concat(text, "\n")
+## gunbc.machine_intake.mtcollins1_fan_observe
+  census storage_relative_receipt_path Literal mtcollins1_fan_observation_receipt_path: target/mtcollins1-fan-observation.txt
+  effect Filesystem.Write @fn mtcollins1_fan_observe_boot_phase_receipt L146: path: mtcollins1_fan_observation_receipt_path, content: content
+## gunbc.machine_intake.mtcollins1_sol_notice
+  census storage_raw_state_beside_library Forked sol notice ledger: Filesystem.Write(path: ledger, content: concat(sol_source_text(prior), line))
+  effect Filesystem.Write @fn sol_notice_record L258: path: ledger, content: concat(sol_source_text(source: prior), line)
+  effect Filesystem.Write @fn sol_notice_channel_write L272: path: paths.live_log, content: concat(line, "\n")
+  effect Filesystem.Write @fn sol_notice_channel_write L283: path: paths.summary, content: concat(sol_source_text(source: prior), sol_notice_summary_block(notice: notice))
+  effect Filesystem.Write @fn sol_notice_deliver L299: path: marker, content: ""
+  effect Filesystem.Write @fn mtcollins1_sol_notice_wet L426: path: concat(capture, mtcollins1_sol_notice_ready_suffix), content: concat(token, "\n")
+## gunbc.machine_intake.pre_os_capture_replay
+  census storage_relative_receipt_path Literal read_verified_memory_capture call sites: artifacts/bmc/mtcollins1-topology-control-known-good-socket0-2026-09-12.txt inline

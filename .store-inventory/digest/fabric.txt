@@ -1,0 +1,69 @@
+## gunbc.fabric.fabric_allocation_store_substrate
+  census storage_root_literal Literal fabric_allocation_store_substrate: namespace_path: "/var/lib/gunbc/fabric" as NonEmptyStr, presence_ancestor: "/var/lib/gunbc" as NonEmptyStr
+## gunbc.fabric.fabric_cell_grant
+  cas cas_generation_of_digits @fn settle_cell_grant L333: s: to_string(receipt.lease.generation)
+## gunbc.fabric.fabric_control_plane
+  census storage_root_literal Literal fabric_control_plane_allocation_root: /var/lib/gunbc/fabric/allocation (data string in fabric_control_plane)
+## gunbc.fabric.fabric_object_r2
+  census storage_raw_state_beside_library Forked put_fabric_object_r2: shell.Mktemp.Dir(); Filesystem.Write(path: path, content: fabric_object_preimage(object: object) as String)
+  effect shell.Mktemp.Dir @fn put_fabric_object_r2 L163: 
+  effect Filesystem.Write @fn put_fabric_object_r2 L169: path: path, content: fabric_object_preimage(object: object) as String
+## gunbc.fabric.fabric_required_build_cell
+  cas observe_cas_slot_state @fn observe_required_build_cell_expecting L367: root: root, key: slot_key
+## gunbc.fabric.fabric_source_snapshot
+  census storage_hand_exclusion Forked establish_provider_base: shell.Mkdir.NewOwnerOnly(path: layout.base as FilePath); release_provider_workspace: shell.Remove.RecursiveForce(path: provider_workspace_ro
+  effect shell.Mkdir.NewOwnerOnly @fn establish_provider_base L966: path: layout.base as FilePath
+  effect shell.Mktemp.DirWithTemplate @fn allocate_under_admitted_root L1058: template: join([root as String, "/gunbc-provider-XXXXXX"], "") as FilePath,
+  effect shell.Chmod.OwnerOnlyDirectory @fn allocate_under_admitted_root L1067: path: root as FilePath
+  effect shell.Remove.RecursiveForce @fn release_provider_workspace L1079: path: provider_workspace_root(workspace: workspace) as FilePath
+  effect shell.Mkdir.Parents @fn snapshot_write_file L1105: path: directory as FilePath
+  effect Filesystem.WriteCreateNew @fn snapshot_write_file L1110: path: path, content: content as String
+  effect shell.Mktemp.DirWithTemplate @fn materialize_source_snapshot L1334: template: join([ provider_workspace_root(workspace: workspace) as String, "/gunbc-snapshot-XXXXXX", ], "") as FilePath,
+## gunbc.fabric.fabric_storage_file_store
+  census storage_hand_directory_setup Forked fabric_storage_file_root_ensure: shell.Mkdir.Parents(path: root.objects / root.heads)
+  census storage_hand_exclusion Forked fabric_storage_object_create: Filesystem.WriteCreateNew(path: path, content: content); Filesystem.WriteCreateNewWithMode(path: path, content: content, mode: file_mode_bit
+  effect Filesystem.WriteCreateNew @fn fabric_storage_object_create L87: path: path, content: content
+  effect Filesystem.WriteCreateNewWithMode @fn fabric_storage_object_create L91: path: path, content: content, mode: file_mode_bits(mode: m)
+  effect shell.Mkdir.Parents @fn fabric_storage_file_root_ensure L333: path: root.objects as FilePath
+  effect shell.Mkdir.Parents @fn fabric_storage_file_root_ensure L337: path: root.heads as FilePath
+  cas admit_cas_attempt_for_derived_payload @fn fabric_storage_file_advance L238: key: name, expected: fabric_storage_cas_expectation(reading: observed), proposed: fabric_object_ref_wire(object: target)
+  cas cas_key_is_slot_addressable @fn fabric_storage_head_name_admitted L192: key: name
+  cas file_compare_and_set @fn fabric_storage_file_advance L241: root: root.heads, publication: fabric_storage_head_publication(root: root), verified: v
+  cas observe_cas_slot_state @fn fabric_storage_file_head L199: root: root.heads, key: name
+## gunbc.fabric.fabric_storage_r2_head
+  census storage_raw_state_beside_library Forked r2_head_advance: shell.Mktemp.Dir(); Filesystem.Write(path: path, content: r2_head_body(reading: s) as String)
+  effect shell.Mktemp.Dir @fn r2_head_advance L376: 
+  effect Filesystem.Write @fn r2_head_advance L382: path: path, content: r2_head_body(reading: s) as String
+## gunbc.fabric.fabric_writer_identity_observe
+  census storage_relative_receipt_path Literal fabric_writer_identity_observe_wet: Filesystem.Write(path: fabric_writer_identity_receipt_path, content: text); data fabric_writer_identity_receipt_path = "target/fabric-writer
+  effect Filesystem.Write @fn fabric_writer_identity_observe_wet L177: path: fabric_writer_identity_receipt_path, content: text
+## gunbc.fabric.workspace_checkpoint_instrument
+  census storage_hand_directory_setup Forked workspace_restore_after_barrier: shell.Remove.RecursiveForce(path: dir as FilePath); workspace_write_authored: shell.Mkdir.Parents(path: workspace_dirname(path: target)) the
+  effect Filesystem.Write @fn workspace_finish L780: path: path, content: receipt
+  effect shell.Mkdir.Parents @fn kopia_place L857: path: dir as FilePath
+  effect shell.Mkdir.Parents @fn workspace_checkpoint_measure_wet L928: path: parent as FilePath
+  effect shell.Mktemp.Dir @fn workspace_measure_on_btrfs L966: 
+  effect shell.Remove.RecursiveForce @fn workspace_measure_report L1038: path: scratch as FilePath
+  effect shell.Mkdir.Parents @fn workspace_write_authored L1123: path: workspace_dirname(path: target) as FilePath
+  effect Filesystem.Write @fn workspace_write_authored L1124: path: target, content: file.content
+  effect shell.Mktemp.Dir @fn workspace_checkpoint_restore_wet L1137: 
+  effect Filesystem.Write @fn workspace_restore_after_barrier L1182: path: stray, content: join(["an upload with no head advance: ", head], "")
+  effect shell.Remove.RecursiveForce @fn workspace_restore_after_barrier L1193: path: dir as FilePath
+  effect shell.Mkdir.Parents @fn workspace_restore_entry L1262: path: workspace_dirname(path: target) as FilePath
+  effect shell.Copy.File @fn workspace_restore_entry L1263: source: fabric_blob_reading_path(reading: r) as FilePath, destination: target as FilePath
+## gunbc.fabric.workspace_source
+  census storage_hand_directory_setup Forked workspace_pack_archive: shell.Mkdir.Parents(path: placeholder_root as FilePath); Filesystem.Write(path: list_path, content: ...); workspace_source_publish: shell.Re
+  census storage_root_literal Literal workspace_source_fixed_roots: WorkspaceSourceRoot { label: "gunbc-clone", path: "/home/briansrls/gunbc", ... }; WorkspaceSourceRoot { label: "codex-state", path: "/home/b
+  effect Filesystem.Write @fn workspace_source_finish L699: path: workspace_source_receipt_path, content: receipt
+  effect shell.Mktemp.Dir @fn workspace_source_pack_readable L741: 
+  effect shell.Remove.RecursiveForce @fn workspace_source_pack_readable L750: path: staging.path
+  effect shell.Mkdir.Parents @fn workspace_stage_placeholders L792: path: parent as FilePath
+  effect shell.Mkdir.Parents @fn workspace_pack_archive L878: path: placeholder_root as FilePath
+  effect Filesystem.Write @fn workspace_pack_archive L882: path: list_path, content: concat(join(map(members, m => m as String), "\n"), "\n")
+  effect Filesystem.Write @fn workspace_pack_archive L883: path: placeholder_list_path, content: join(map(placeholders, p => concat(p.member as String, "\n")), "")
+  effect shell.Mkdir.Parents @fn workspace_archived_placeholder_digests L934: path: into as FilePath
+  effect shell.Remove.RecursiveForce @fn workspace_source_refuse_archive L986: path: staging as FilePath
+  effect shell.Remove.RecursiveForce @fn workspace_source_publish L1022: path: staging as FilePath
+## gunbc.fabric.workspace_transcript_rate
+  census storage_root_literal Literal workspace_transcript_rate_finish: Filesystem.Write(path: workspace_transcript_rate_receipt_path, content: receipt)
+  effect Filesystem.Write @fn workspace_transcript_rate_finish L542: path: workspace_transcript_rate_receipt_path, content: receipt

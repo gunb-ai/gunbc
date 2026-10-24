@@ -1,0 +1,138 @@
+## gunbc.fleet.altra_firmware_library
+  effect Filesystem.Write @fn write_reference_report L227: path: path, content: to_string(reference_report())
+## gunbc.fleet.app_control_plane_inspection
+  census storage_relative_receipt_path Literal app_control_plane_receipt_path: target/app-control-plane-observation-receipt.txt
+  effect Filesystem.Write @fn app_control_plane_inspect_wet L973: path: app_control_plane_receipt_path, content: receipt
+## gunbc.fleet.fleet_converge_cli
+  census storage_raw_state_beside_library Forked host_receipt staging write + Move.File: Filesystem.Write(staging) then shell.Move.File(final)
+  effect Filesystem.Write @fn converge_cli_atomic_receipt_write L606: path: staging, content: content
+  effect shell.Move.File @fn converge_cli_atomic_receipt_write L610: source: staging as FilePath, destination: final_path as FilePath
+## gunbc.fleet.fleet_converge_plan
+  census storage_tmp_literal Literal fleet_converge_plan_baseline_hex_path;fleet_converge_plan_content_hash_path;fleet_converge_plan_subject_host_path;fleet_converge_plan_generation_path;fleet_converge_plan_prior_generation_path;fleet_c…: /tmp/fleet-converge-plan/observed_baseline.hex
+## gunbc.fleet.fleet_converge_plan_cli
+  effect Filesystem.Write @fn write_fleet_converge_plan_artifact_wet L665: path: fleet_converge_plan_body_path, content: artifact.plan_body
+  effect Filesystem.Write @fn write_fleet_converge_plan_artifact_wet L666: path: fleet_converge_plan_baseline_hex_path, content: artifact.observed_baseline_hex
+  effect Filesystem.Write @fn write_fleet_converge_plan_artifact_wet L667: path: fleet_converge_plan_content_hash_path, content: content_hash
+  effect Filesystem.Write @fn write_fleet_converge_plan_artifact_wet L668: path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell
+  effect Filesystem.Write @fn write_fleet_converge_plan_artifact_wet L669: path: fleet_converge_plan_subject_host_path, content: artifact.subject.host as String
+  effect Filesystem.Write @fn write_fleet_converge_plan_artifact_wet L670: path: fleet_converge_plan_generation_path, content: to_string(cas_generation_count(g: artifact.plan_lease.epoch.generation))
+  effect Filesystem.Write @fn write_fleet_converge_plan_artifact_wet L671: path: fleet_converge_plan_prior_generation_path, content: to_string(artifact.prior_generation)
+  effect Filesystem.Write @fn write_fleet_converge_plan_artifact_wet L672: path: fleet_converge_plan_member_set_fp_path, content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String
+  effect Filesystem.Write @fn write_fleet_converge_plan_artifact_wet L673: path: fleet_converge_plan_subject_scope_path, content: fleet_converge_scope_wire(scope: artifact.subject.scope)
+  effect Filesystem.Write @fn fleet_converge_plan_scoped_bound_wet L979: path: fleet_converge_plan_body_path, content: artifact.plan_body
+  effect Filesystem.Write @fn fleet_converge_plan_scoped_bound_wet L980: path: fleet_converge_plan_baseline_hex_path, content: artifact.observed_baseline_hex,
+  effect Filesystem.Write @fn fleet_converge_plan_scoped_bound_wet L984: path: fleet_converge_plan_content_hash_path, content: content_hash
+  effect Filesystem.Write @fn fleet_converge_plan_scoped_bound_wet L985: path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell
+  effect Filesystem.Write @fn fleet_converge_plan_scoped_bound_wet L986: path: fleet_converge_plan_subject_host_path, content: host_short
+  effect Filesystem.Write @fn fleet_converge_plan_scoped_bound_wet L987: path: fleet_converge_plan_generation_path, content: to_string(planned_generation),
+  effect Filesystem.Write @fn fleet_converge_plan_scoped_bound_wet L991: path: fleet_converge_plan_prior_generation_path, content: to_string(prior_generation),
+  effect Filesystem.Write @fn fleet_converge_plan_scoped_bound_wet L995: path: fleet_converge_plan_member_set_fp_path, content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+  effect Filesystem.Write @fn fleet_converge_plan_scoped_bound_wet L999: path: fleet_converge_plan_subject_scope_path, content: fleet_converge_scope_wire(scope: artifact.subject.scope),
+  effect Filesystem.Write @fn fleet_converge_operator_cli_entry L1447: path: receipt_path, content: receipt_text
+## gunbc.fleet.fleet_converge_plan_revision
+  census storage_root_literal Literal revision write: Filesystem.Write(path, revision=...)
+  effect Filesystem.Write @fn resolve_plan_revision L159: path: path, content: join(["revision=", r, "\n"], "")
+## gunbc.fleet.fleet_converge_receipt
+  census storage_raw_state_beside_library Forked receipt write: /tmp/fleet-converge-apply/apply_receipt.json
+  effect Filesystem.Write @fn write_fleet_converge_plan_receipt L412: path: fleet_converge_plan_receipt_path, content: serialize_json(v: fleet_converge_plan_receipt_json(r: r))
+  effect Filesystem.Write @fn write_fleet_converge_apply_receipt L417: path: fleet_converge_apply_receipt_path, content: serialize_json(v: fleet_converge_apply_receipt_json(r: r))
+## gunbc.fleet.fleet_generation_execution
+  census storage_root_literal Literal fleet_generation_directory: /var/lib/gunbc/fleet-converge
+## gunbc.fleet.fleet_health
+  census storage_relative_receipt_path Literal write_receipt: Filesystem.Write(path: trim(path), content: rendered)
+  effect Filesystem.Write @fn write_receipt L227: path: trim(s: path), content: concat(rendered, "\n")
+## gunbc.fleet.fleet_host_key_enrollment
+  census storage_hand_exclusion Forked fleet_host_key_enroll_apply;self_enroll_apply: Filesystem.WriteCreateNew(path: cfg); mkdir_parents_command; chmod_set_mode_command; Filesystem.Write(staged)
+  census storage_relative_receipt_path Literal fleet_host_key_scan_receipt_path;fleet_host_key_enroll_receipt_path;fleet_authorized_key_enroll_receipt_path: target/fleet-host-key-scan-receipt.txt (+2 siblings)
+  effect Filesystem.Write @fn scan_host_key_lines L262: path: key_file, content: key_text
+  effect Filesystem.Write @fn fleet_host_key_scan_wet L293: path: fleet_host_key_scan_receipt_path, content: body
+  effect Filesystem.Write @fn fleet_host_key_enroll_apply L357: path: staged, content: fragment
+  effect Filesystem.WriteCreateNew @fn fleet_host_key_enroll_apply L375: path: cfg, content: ""
+  effect Filesystem.Write @fn fleet_host_key_enroll_wet L508: path: fleet_host_key_enroll_receipt_path, content: receipt
+  effect Filesystem.WriteCreateNew @fn self_enroll_apply L608: path: ak_path, content: ""
+  effect Filesystem.Write @fn fleet_authorized_key_self_enroll_wet L673: path: staged, content: concat(line, "\n")
+  effect Filesystem.Write @fn fleet_authorized_key_self_enroll_wet L689: path: fleet_authorized_key_enroll_receipt_path, content: body
+## gunbc.fleet.fleet_known_hosts_anchor
+  census storage_hand_directory_setup Forked materialize_fleet_ssh_multiplex_directory: shell.Mkdir.NewOwnerOnly(path); shell.Stat.ModeOf; shell.Stat.OwnerOf
+  census storage_raw_state_beside_library Forked materialize_known_hosts_anchor: Filesystem.Read then Filesystem.Write then Filesystem.Read at "target/fleet-ssh-attempt-<id>-known-hosts-<digest>"
+  effect Filesystem.Write @fn materialize_known_hosts_anchor L291: path: path as String, content: fragment
+  effect shell.Mkdir.NewOwnerOnly @fn materialize_fleet_ssh_multiplex_directory L905: path: path as FilePath
+## gunbc.fleet.fleet_multi_principal_probe
+  census storage_relative_receipt_path Literal fleet_multi_principal_probe_receipt_path;spark_grant_probe_receipt_path;spark_standing_receipt_path: target/spark-exact-grant-probe-receipt.txt (+2)
+  effect Filesystem.Write @fn fleet_multi_principal_probe_wet L399: path: fleet_multi_principal_probe_receipt_path, content: body
+  effect Filesystem.Write @fn fleet_multi_principal_probe_with_attempt L439: path: fleet_multi_principal_probe_receipt_path, content: body
+  effect Filesystem.Write @fn spark_exact_grant_probe_wet L573: path: spark_grant_probe_receipt_path, content: spark_grant_report_text(report: report)
+  effect Filesystem.Write @fn spark_exact_grant_probe_ci_wet L600: path: spark_grant_probe_receipt_path, content: spark_grant_report_text(report: report)
+  effect Filesystem.Write @fn spark_managed_access_standing_with_verified_credential L789: path: spark_standing_receipt_path, content: body
+## gunbc.fleet.fleet_plan_artifact_location
+  census storage_tmp_literal Literal fleet_reviewed_plan_path;fleet_reviewed_apply_path: /tmp/fleet-converge-plan/plan.txt
+## gunbc.fleet.fleet_posix_accounts
+  census storage_root_literal Literal gunbc_deploy_privileged_helper_path;fleet_posix_nologin_shell_path;fleet_posix_home_path: /opt/gunbc/bin/gunbc-deploy-privileged; join(["/home/", login]); "/usr/sbin/nologin" again as LoginShellObserved path
+## gunbc.fleet.fleet_probe_identity_observe
+  census storage_relative_receipt_path Literal fleet_probe_identity_receipt_path: target/fleet-probe-identity-observe-receipt.txt
+  effect Filesystem.Write @fn fleet_probe_identity_observe_wet L237: path: fleet_probe_identity_receipt_path, content: body
+## gunbc.fleet.fleet_receipt_collector
+  census storage_relative_receipt_path Literal fleet_collect_receipt_path: target/fleet-converge-collect-receipt.txt
+  effect Filesystem.Write @fn collect_fleet_convergence_wet L284: path: fleet_collect_receipt_path, content: body
+## gunbc.fleet.fleet_ssh_credential_verify
+  census storage_relative_receipt_path Literal agent_public_selector_path: target/fleet-ssh-attempt-<attempt>-selector-<hash>.pub
+  effect Filesystem.Write @fn materialize_agent_public_selector L207: path: path as String, content: content
+## gunbc.fleet.fleet_ssh_locus
+  census storage_root_literal Literal fleet_automation_principal_home: /home/gunbc-automation
+## gunbc.fleet.fleet_wireless_link_converge
+  census storage_relative_receipt_path Literal wireless_link_ci_receipt_path: target/spark-wireless-link-converge-receipt.txt
+  effect Filesystem.Write @fn wireless_link_receipt_exit L47: path: wireless_link_ci_receipt_path, content: receipt
+## gunbc.fleet.flex_pass_run
+  census storage_relative_receipt_path Literal flex_pass_receipt_path: target/flex-pass-receipt.txt
+  effect Filesystem.Write @fn pass L350: path: flex_pass_receipt_path, content: text
+## gunbc.fleet.hetzner_cloud_server_control
+  census storage_relative_receipt_path Literal hetzner_cloud_server_read_receipt_path: target/hetzner-cloud-server-read-receipt.txt
+  effect Filesystem.Write @fn read L96: path: hetzner_cloud_server_read_receipt_path, content: text
+## gunbc.fleet.host_credential_custody_converge
+  census storage_relative_receipt_path Literal host_credential_custody_receipt_path: target/host-credential-custody-converge-receipt.txt
+  effect Filesystem.Write @fn write_receipt_then_exit L2221: path: host_credential_custody_receipt_path, content: body
+## gunbc.fleet.org_actions_inspection
+  census storage_relative_receipt_path Literal org_actions_validation_receipt_path: target/org-actions-credential-validation-receipt.txt
+  effect Filesystem.Write @fn org_actions_inspect_with_credential L356: path: org_actions_validation_receipt_path, content: org_actions_receipt_text(organization: subject, assessment: assessment, observed_on: observed_on)
+## gunbc.fleet.organization_runner_roster_read
+  census storage_relative_receipt_path Literal organization_runner_roster_receipt_path: target/org-runner-roster-receipt.txt
+  effect Filesystem.Write @fn organization_runner_roster_observe_with_probes L1157: path: organization_runner_roster_receipt_path, content: join([ receipt, roster_page_lines(pages: report.pages), roster_registration_lines(e: report.evidence), j
+## gunbc.fleet.print_converge
+  effect shell.Mkdir.Parents @fn prepare_and_record L123: path: request_directory() as FilePath
+  effect Filesystem.WriteCreateNew @fn prepare_and_record L123: path: record_path(request: request), content: record_json(r: record)
+  effect shell.Copy.File @fn copy_verified L196: source: record.artifact_location as FilePath, destination: path as FilePath
+  effect Filesystem.WriteCreateNew @fn converge_print L253: path: concat(printer_start_claim_directory as String, concat("/", completion_name(claim_file: claim_file))), content: completion_text(record: record, remote: re
+  effect shell.Mkdir.Parents @fn converge_print L258: path: print_run_directory as FilePath
+## gunbc.fleet.printer_actuation
+  effect Filesystem.Write @fn start_authorized L199: path:concat(claim_path,".before-start.json"),content:live_text
+  effect Filesystem.WriteCreateNew @fn start_authorized L206: path: claim_path, content: request.subject
+## gunbc.fleet.printer_batch
+  census storage_hand_exclusion Forked start claim in printer_batch lane: Filesystem.Read(claim_path) then Filesystem.WriteCreateNew(..completed-awaiting-inspection.json)
+## gunbc.fleet.printer_job_start
+  census storage_hand_retention_sweep Forked acquire_pinned_ca_bundle: shell.Mktemp.Dir / shell.Remove.RecursiveForce (x4)
+  effect shell.Mktemp.Dir @fn acquire_pinned_ca_bundle L183: 
+  effect shell.Remove.RecursiveForce @fn ca_bundle_fetch_refusal L228: path: workspace
+  effect shell.Remove.RecursiveForce @fn publish_start_with_credential L355: path: workspace
+  effect shell.Remove.RecursiveForce @fn publish_start_with_credential L364: path: workspace
+  effect shell.Remove.RecursiveForce @fn publish_start_with_credential L385: path: workspace
+## gunbc.fleet.printer_operator_approval
+  census storage_hand_exclusion Forked start_claim_path: Filesystem.WriteCreateNew(start_claim_path(..), request.subject)
+## gunbc.fleet.printer_project_delivery
+  census storage_hand_retention_sweep Forked identify_project_payload: shell.Mktemp.Dir + shell.Remove.RecursiveForce bracket
+  effect shell.Remove.RecursiveForce @fn refuse_identification L146: path: workspace
+  effect shell.Mktemp.Dir @fn identify_project_payload L173: 
+  effect shell.Copy.File @fn identify_project_payload L182: source: payload.local_path as FilePath, destination: destination
+  effect shell.Remove.FileForce @fn abandon_payload L546: path: payload.realization.path
+  effect shell.Remove.FileForce @fn refuse_and_drop_carrying L573: path: payload.realization.path
+  effect shell.Remove.FileForce @fn deliver_project_to_printer L699: path: payload.realization.path
+  effect shell.Remove.FileForce @fn transfer_with_credential L772: path: payload.realization.path
+## gunbc.fleet.printer_receipt
+  effect Filesystem.Write @fn write_receipt_at L33: path: path, content: content
+## gunbc.fleet.printer_report
+  census storage_hand_retention_sweep Forked report_with_credential: shell.Remove.RecursiveForce(path: workspace)
+  effect shell.Remove.RecursiveForce @fn report_with_credential L78: path: workspace
+  effect Filesystem.Write @fn run L93: path: output, content: text
+## gunbc.fleet.printer_start_reconciliation
+  effect Filesystem.Write @fn reconcile_reads L52: path:evidence,content:text
+## gunbc.fleet.site_pxe_edge_converge
+  effect Filesystem.Write @fn site_pxe_edge_ci_wet L1162: path: site_pxe_edge_converge_receipt_path, content: body

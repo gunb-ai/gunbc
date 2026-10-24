@@ -1,0 +1,40 @@
+## extdeps.bmc.os_install_actuator_toolchain
+  census storage_root_literal Literal data gunbc_bin_dir: /var/lib/gunbc/bin
+## extdeps.crypto.seeded_filler
+  effect shell.Remove.FileForce @fn seeded_filler_write L72: path: zero as FilePath
+## extdeps.github.actions_runner
+  census storage_root_literal Literal data actions_runner_base_dir: /opt/actions-runner
+  census storage_root_literal Literal data actions_runner_cache_dir: /opt/actions-runner-cache
+  census storage_tmp_literal Literal fn actions_runner_install_script: /tmp/actions-runner.tar.gz
+## extdeps.printing.orca_slicer
+  census storage_hand_directory_setup Forked fn orca realization (temp.path; Remove.RecursiveForce): shell.Mktemp.Dir then chmod 0500 then shell.Remove.RecursiveForce
+  effect shell.Mktemp.Dir @fn with_verified_orca L152: 
+  effect shell.Copy.File @fn with_verified_orca L155: source: appimage, destination: path as FilePath
+  effect shell.Remove.RecursiveForce @fn with_verified_orca L171: path: temp.path as FilePath
+## extdeps.provisioning.ubuntu_install_media
+  census storage_root_literal Literal fn ubuntu_install_media_artifacts_dir: /var/lib/gunbc/artifacts
+## extdeps.provisioning.ubuntu_seeded_install_media_remaster
+  census storage_hand_directory_setup Forked data install_media_remaster_work_prefix; fn install_media_remaster_seed_writes: /tmp/gunbc-seeded-media.
+## extdeps.realization.artifact_store_fs
+  effect Filesystem.Write @fn artifact_fs_put L84: path: path, content: payload
+  effect Filesystem.Delete @fn artifact_fs_delete L120: path: path
+## extdeps.realization.materialization_store_local
+  effect Filesystem.WriteCreateNew @fn local_store_create_new L515: path: path, content: content
+  effect Filesystem.Delete @fn local_store_delete_attempts L1393: path: path
+  effect shell.Copy.File @fn local_store_copy_and_link L2271: source: part.staged as String, destination: copy_path
+  effect Filesystem.LinkCreateNew @fn local_store_copy_and_link L2280: source: copy_path, path: target
+  cas admit_cas_attempt @fn local_store_write_index_settled L1034: attempt: cas_attempt(key: local_store_index_key(family: family), expected: expected, proposed: content, proposed_content: content_hash_of_value(value: content))
+  cas cas_generation_window @fn local_store_index_window L860: k: local_store_index_window_k
+  cas cas_generation_window @fn local_store_settle_slot L891: k: local_store_index_window_k
+  cas cas_reclaim_below @fn local_store_settle_slot L900: root: root_path as NonEmptyStr, key: key, window: w, head: head
+  cas cas_verify_named_window_head @fn local_store_hold_check L1246: root: local_store_binding_path(b: held.binding) as NonEmptyStr, key: local_store_hold_key(family: held.family), generation: held.generation
+  cas cas_window_generations @fn local_store_settle_slot L894: root: root_path as NonEmptyStr, key: key
+  cas cas_window_generations @fn local_store_settle_slot L901: root: root_path as NonEmptyStr, key: key
+  cas file_compare_and_set_windowed @fn local_store_write_index_settled L1039: root: root_path as NonEmptyStr, publication: DefaultAccessCreateOnly, window: window, verified: v
+  cas observe_cas_slot_state_windowed @fn local_store_read_index L978: root: root_path as NonEmptyStr, key: local_store_index_key(family: family), window: window
+## extdeps.tools.sha256sum
+  census storage_hand_retention_sweep Forked fn sha256sum_verify_via_shell: Filesystem.Write(checksum_path) inside shell.Mktemp.Dir + Remove.RecursiveForce
+  effect shell.Mktemp.Dir @fn sha256sum_verify_via_shell L165: 
+  effect Filesystem.Write @fn sha256sum_verify_via_shell L171: path: checksum_path as String, content: checksum_line
+  effect shell.Remove.RecursiveForce @fn sha256sum_verify_via_shell L173: path: checksum_dir.path
+  effect shell.Remove.RecursiveForce @fn sha256sum_verify_via_shell L177: path: checksum_dir.path

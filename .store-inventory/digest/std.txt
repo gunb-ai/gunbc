@@ -1,0 +1,2 @@
+## std.emit_on_demand
+  census storage_tmp_literal Literal emit_on_demand_native_cache_root; emit_on_demand_family_cache_root: /tmp/gunbc_emit_on_demand

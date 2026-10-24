@@ -1,0 +1,8 @@
+## gunbc.devboot.build
+  census storage_relative_receipt_path Literal gunbc_build_cli_work_root / gunbc_build_cli_realization_path: .gunbc/devboot-work; ".gunbc/devboot-producer"
+  effect Filesystem.Write @fn devboot_build_entry L1346: path: receipt_path, content: render_build_outcome(outcome: outcome),
+  effect Filesystem.Write @fn gunbc_build_cli_entry L1373: path: receipt_path, content: refusal
+  effect Filesystem.Write @fn devboot_serve_entry L1413: path: receipt_path, content: render_serve_report(report: report),
+## gunbc.devboot.produce
+  effect Filesystem.Write @fn devboot_materialize_entry L1232: path: receipt_path, content: report
+  effect Filesystem.Write @fn devboot_produce_entry L1306: path: receipt_path, content: render_produce_report(report: report, caller: caller),

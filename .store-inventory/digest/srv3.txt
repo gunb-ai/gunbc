@@ -1,0 +1,9 @@
+## gunbc.srv3.srv3_actuate_shell_paths
+  census storage_root_literal Literal srv3_sol_console_log_path: /var/lib/gunbc/logs/srv3-install-sol-console.log
+## gunbc.srv3.srv3_boot_once_cd
+  census storage_raw_state_beside_library Forked srv3_boot_cd_body_path: Filesystem.Write(path: "/tmp/srv3_boot_cd_body.json")
+  effect Filesystem.Write @fn srv3_boot_once_cd_resolved L191: path: srv3_boot_cd_body_path, content: boot_body
+  effect Filesystem.Write @fn srv3_boot_once_cd_resolved L206: path: srv3_reset_body_path, content: rst_body
+## gunbc.srv3.srv3_os_install_actuate
+  census storage_tmp_literal Literal srv3_bmcweb_session_login: login body written raw to srv3_bmcweb_login_body_path
+  effect Filesystem.Write @fn srv3_bmcweb_session_login_resolved L87: path: srv3_bmcweb_login_body_path, content: body_content,

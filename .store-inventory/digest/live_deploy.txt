@@ -1,0 +1,26 @@
+## gunbc.live_deploy.apply
+  census storage_hand_directory_setup Forked live_deploy_write_apply_receipt: mkdir_parents_command + Filesystem.Write of apply receipt JSON beside store library
+  effect Filesystem.Write @fn live_deploy_write_apply_receipt L1394: path: path, content: serialize_json(v: live_deploy_apply_receipt_json(r: receipt))
+## gunbc.live_deploy.apply_legs
+  census storage_root_literal Literal apply_staged_leg: unit payload staged via "/dev/stdin" literal in install legs
+## gunbc.live_deploy.apply_receipt
+  census storage_relative_receipt_path Literal live_deploy_apply_receipt_dir_for: target/ + live_deploy_receipt.json
+## gunbc.live_deploy.deployed_tree_observation
+  census storage_tmp_literal Literal deployed_tree_index_scratch_path: /tmp/gunbc-deployed-tree-index-<attempt>
+## gunbc.live_deploy.deployed_tree_report
+  census storage_raw_state_beside_library Forked deployed_tree_report_receipt_path: Filesystem.Write of kept deployed-tree report beside store library
+  effect Filesystem.Write @fn deployed_tree_report_emit L105: path: deployed_tree_report_receipt_path, content: text
+## gunbc.live_deploy.member_observe
+  census storage_tmp_literal Literal scratch_index_directory: /tmp mktemp scratch root literal
+  effect shell.Mktemp.FileInDirectory @fn scratch_index L489: dir: scratch_index_directory as FilePath
+  effect Filesystem.Delete @fn scratch_release L502: path: path
+## gunbc.live_deploy.pre_swap_admission
+  effect shell.Mktemp.Dir @fn observe_serve_entry_compile_clean L125: 
+  effect shell.Remove.RecursiveForce @fn observe_serve_entry_compile_clean L135: path: tmp.path
+## gunbc.live_deploy.repository_convergence
+  effect Filesystem.Delete @fn retire_superseded_file L1233: path: path
+## gunbc.live_deploy.repository_convergence_placement
+  census storage_raw_state_beside_library Forked placement_finish: Filesystem.Write of kept convergence receipt beside store library
+  effect Filesystem.Write @fn placement_finish L802: path: receipt_path, content: placement_receipt_text(receipt: receipt),
+## gunbc.live_deploy.tailnet_door_cutover_host
+  cas admit_cas_attempt_for_derived_payload @fn tailnet_door_cutover_journal_write L162: key: tailnet_door_cutover_journal_key(binding: binding), expected: expected, proposed: cutover_journal_record_json(record: record)

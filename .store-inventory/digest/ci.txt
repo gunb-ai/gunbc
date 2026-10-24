@@ -1,0 +1,10 @@
+## gunbc.ci.ci_spec
+  census storage_relative_receipt_path Literal gunbc_ci_fleet_reach_probe_invoke: receipt_rel: "target/fleet-reach-probe-receipt.txt"
+  census storage_relative_receipt_path Literal gunbc_ci_multi_principal_probe_invoke: receipt_rel: "target/fleet-multi-principal-probe-receipt.txt"
+  census storage_relative_receipt_path Literal gunbc_ci_rlm_launch_deployment_receipt_invoke: receipt_rel: "target/rlm-launch-deployment-receipt/receipt.json"
+  census storage_relative_receipt_path Literal gunbc_ci_runner_guest_image_observe_invoke: receipt_rel: "target/runner-guest-image-standing.txt"
+  census storage_relative_receipt_path Literal gunbc_ci_runner_microvm_host_converge_invoke: receipt_rel: "target/runner-microvm-host-standing.txt"
+  census storage_relative_receipt_path Literal gunbc_ci_runner_microvm_network_observe_invoke: receipt_rel: "target/microvm-network-observe.txt"
+  census storage_tmp_literal Literal gunbc_fleet_converge_apply_receipt_artifact_dir: /tmp/fleet-converge-apply
+  census storage_relative_receipt_path Literal gunbc_rlm_launch_deployment_receipt_artifact_dir: target/rlm-launch-deployment-receipt
+  census storage_relative_receipt_path Literal site_pxe_edge_converge_receipt_path: target/site-pxe-edge-converge-receipt.txt

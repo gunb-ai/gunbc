@@ -1,0 +1,35 @@
+## gunbc.host.host_axis_caps
+  census storage_root_literal Literal deploy_cap_upsert_staged_stmts: ["install", "-m", "0644"]
+## gunbc.host.host_boot_attempt_admission
+  census storage_relative_receipt_path Literal boot_attempt_receipt_dir: artifacts/receipts/
+  census storage_root_literal Literal boot_attempt_slot_root: /var/lib/gunbc/boot-attempts
+  cas admit_cas_attempt_for_derived_payload @fn consume_attempt_slot L700: key: key, expected: ExpectSlotAbsent, proposed: payload
+  cas file_compare_and_set @fn consume_attempt_slot L703: root: root, publication: DefaultAccessCreateOnly, verified: v
+## gunbc.host.host_effect_codex_supervised_turn
+  census storage_root_rederived Rederived host_effect_codex_supervised_session_preamble_path: concat(client_command_id_path, ".preamble.lines") then Filesystem.Write
+  effect Filesystem.Write @fn host_effect_codex_supervised_turn_apply L132: path: preamble_path, content: preamble_body
+## gunbc.host.host_effect_realize
+  census storage_raw_state_beside_library Forked Srv3BmcwebTokenExtract arm (realize_bmcweb_token_extract_body): Filesystem.Write(path: srv3_bmcweb_token_path, content: token)
+  census storage_root_literal Literal live_deploy_ensure_ownership_marker_plan; deploy image rootfs path: /store-ownership-marker; concat(image_root, "/workspace.ext4")
+  census storage_tmp_literal Literal live_deploy_preamble_scratch_template; dark_scratch_template; live_deploy_ensure_stage_template: /tmp/gunbc-deploy-preamble.XXXXXX; "/tmp/gunbc-broker-dark-install.XXXXXX"; "/tmp/gunbc-live-deploy-ensure-XXXXXXXXXX"
+  census storage_tmp_literal Literal live_deploy_preamble_scratch_template; live_deploy_preamble_scratch_prefix: /tmp/gunbc-deploy-preamble.XXXXXX; "/tmp/gunbc-deploy-preamble."
+  effect Filesystem.Write @fn realize_bmcweb_token_extract_body L1408: path: srv3_bmcweb_token_path, content: token as String
+## gunbc.host.host_hygiene_reaper_remediate
+  census storage_hand_retention_sweep Forked RemoveOverrideDirEffect: shell.Remove.RecursiveForce(path: dir)
+  effect shell.Remove.RecursiveForce @fn apply_residual_reap_effect L78: path: dir as FilePath
+  effect shell.Remove.RecursiveForce @fn apply_residual_reap_effect L85: path: dir as FilePath
+## gunbc.host.host_memory_envelope_observe
+  census storage_relative_receipt_path Literal host_memory_envelope_receipt_path: target/host-memory-envelope-observe.txt
+  effect Filesystem.Write @fn host_memory_envelope_observe_ci_wet L367: path: host_memory_envelope_receipt_path, content: text
+## gunbc.host.host_reach_identity_probe
+  census storage_relative_receipt_path Literal fleet_reach_probe_receipt_path: target/fleet-reach-probe-receipt.txt
+  effect Filesystem.Write @fn probe_fleet_reach_wet L402: path: fleet_reach_probe_receipt_path, content: join([enroll_lines, to_string(run)], "")
+## gunbc.host.host_reset_return_run
+  effect Filesystem.Write @fn host_reset_return_preflight_exit L612: path: host_reset_return_receipt_path as String, content: join(["attempt=none-minted verdict=refused-before-attempt downtime_ms=unavailable cause=", wire, "\n"],
+  effect Filesystem.Write @fn host_reset_return_exit L840: path: host_reset_return_receipt_path as String, content: host_reset_return_receipt_line(verdict: verdict, subject: subject, attempt: attempt, consumed: consumed
+## gunbc.host.managed_host_boot_image_fetch
+  census storage_tmp_literal Literal fetch_stock_installer_wrong_pin_control: BootImageExport { dir: "/var/tmp" }
+## gunbc.host.managed_host_unit_hold
+  census storage_root_literal Literal unit_hold_store_root: /var/lib/gunbc/unit-holds
+## gunbc.host.sccache_verified_install
+  census storage_tmp_literal Literal sccache_verified_install_params: download_path "/tmp/sccache.tar.gz"; extract_root "/tmp"

@@ -1,0 +1,235 @@
+## gunbc.actions_run_binding
+  census storage_root_literal Literal PATH_ACTIONS_FILE_DIR: ACTIONS_FILE_DIR
+## gunbc.authorization_claim_slot
+  cas admit_cas_attempt @fn claim_authorization_slot L34: attempt: claim_authorization( escalation_id: escalation_id, expected: ExpectSlotAbsent, proposed: proposed, ),
+  cas admit_cas_attempt @fn settle_authorization_claim L74: attempt: claim_authorization( escalation_id: escalation_id, expected: ExpectSlotGeneration { generation: held_at }, proposed: terminal, ),
+  cas file_compare_and_set @fn claim_authorization_slot L44: root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v
+  cas file_compare_and_set @fn settle_authorization_claim L82: root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v
+## gunbc.busybox_bmc_build
+  census storage_relative_receipt_path Literal busybox build plan: /tmp/gunbc-bb-build; "/var/lib/gunbc/artifacts/netboot/busybox"
+## gunbc.class_b_import_closure_overlay
+  effect shell.Mkdir.Parents @fn class_b_materialize_stripped_entry_overlay L127: path: overlay_path
+  effect Filesystem.Write @fn class_b_materialize_stripped_entry_overlay L129: path: overlay_path, content: content
+## gunbc.claude_code_credential
+  census storage_root_literal Literal claude_code_oauth_harness_host_path: /etc/gunbc-claude-code/oauth-token-harness
+## gunbc.claude_setup_token_enrollment
+  census storage_root_literal Literal claude_enrollment_home: /var/lib/gunbc/claude-enrollment/ (+/config,/home)
+## gunbc.codex_app_server_press
+  census storage_tmp_literal Literal codex_press_hermetic_evidence_root: /tmp/gunbc-codex-press-evidence
+## gunbc.codex_harness_credential
+  census storage_root_literal Literal codex_worker_turn_codex_home: /etc/gunbc-codex-harness (+auth.json, turn.lock)
+## gunbc.codex_supervised_turn
+  census storage_hand_exclusion Forked persist_codex_supervised_turn_generation: Filesystem.Write of generation counter beside std.durable_compare_and_set (imports only cas_generation_following)
+  effect Filesystem.Write @fn persist_codex_supervised_turn_generation L376: path: codex_supervised_turn_generation_store_path(evidence_root: evidence_root), content: to_string(value: generation),
+  effect Filesystem.Write @fn persist_codex_supervised_turn_client_command_id L386: path: codex_supervised_turn_client_command_id_store_path(evidence_root: evidence_root), content: client_command_id as String,
+## gunbc.compiler_frontend_program_status
+  effect Filesystem.Write @fn where_are_we L1462: path: out, content: report()
+## gunbc.cursor_harness_credential
+  census storage_root_literal Literal cursor_worker_turn_api_key_host_path: /etc/gunbc-cursor-harness/api-key
+## gunbc.deploy_transition
+  census storage_hand_exclusion Forked deploy transition lease: Filesystem.WriteOwnerOnly(...) as "THE LEASE IS THE O_EXCL CREATE"
+  census storage_raw_state_beside_library Forked transition record writers: Filesystem.Write(...)
+  effect Filesystem.WriteOwnerOnly @fn acquire_transition_lease L527: path: path, content: transition_record_json(record: record),
+  effect Filesystem.WriteOwnerOnly @fn set_transition_inhibition L574: path: path, content: transition_record_json( record: transition_guard_record(guard: guard, phase: TransitionInForce), ),
+  effect Filesystem.Write @fn mark_transition_partial L696: path: path, content: transition_record_json( record: transition_guard_record(guard: guard, phase: TransitionPartialLeft), ),
+  effect Filesystem.Delete @fn clear_transition_records L1102: path: inhibition
+  effect Filesystem.Delete @fn clear_transition_records L1115: path: lease
+## gunbc.dispatch_credential_acquisition
+  census storage_hand_directory_setup Forked credential_create_cursor_runtime_root: run_shell_command_observe(mkdir_create_only_with_mode_command(...)) ×4
+  census storage_hand_retention_sweep Forked credential_remove_cursor_runtime_root_at: find_other_children_exec_command(... rm_recursive_force ...)
+  cas cas_slot_keys @fn credential_recover_root L1025: root: root
+  cas observe_cas_slot_state @fn credential_terminate L394: root: root, key: reference
+  cas observe_cas_slot_state @fn credential_admit_reader_or_discard L549: root: root, key: reference
+  cas observe_cas_slot_state @fn credential_slot_record L629: root: credential_acquisition_slots_root(instance_root: instance_root), key: reference
+  cas observe_cas_slot_state @fn credential_recover_slot L958: root: root, key: reference
+  cas observe_cas_slot_state @fn credential_recover_root L1035: root: root, key: k
+## gunbc.dispatch_credential_snapshot
+  census storage_hand_exclusion Forked taken_credential_snapshot_path: Read+WriteOwnerOnly copy, Mktemp+WriteCreateNew tombstone+Move.Replace election beside store library
+  effect Filesystem.WriteOwnerOnly @fn dispatch_credential_snapshot_take L502: path: snapshot as String, content: read.content
+  effect shell.Mktemp.FileInDirectory @fn credential_occupy_tombstone L548: dir: dir as FilePath
+  effect shell.Remove.FileForce @fn credential_occupy_tombstone L552: path: staged.path
+  effect Filesystem.WriteCreateNew @fn credential_occupy_tombstone L556: path: staged.path as String, content: credential_snapshot_tombstone_body
+  effect shell.Move.Replace @fn credential_occupy_tombstone L558: source: staged.path, destination: path as FilePath
+  effect shell.Remove.FileForce @fn credential_occupy_tombstone L562: path: staged.path
+## gunbc.durable_cas_file_store
+  census storage_root_literal Literal authorization_claim_store_root: /var/lib/gunbc/authorization-claims
+## gunbc.durable_exclusive_hold_file_store
+  cas admit_cas_attempt_for_derived_payload @fn file_hold_acquire_commit L326: key: plan.slot_key, expected: plan.expected, proposed: plan.held_payload
+  cas admit_cas_attempt_for_derived_payload @fn file_hold_release_commit L489: key: plan.slot_key, expected: ExpectSlotGeneration { generation: plan.generation }, proposed: plan.free_payload,
+  cas cas_verify_named_window_head @fn file_hold_release_assess_windowed_at L453: root: root, key: slot_key, generation: acquired_generation
+  cas cas_verify_named_window_head @fn file_hold_recovery_assess_windowed L566: root: root, key: slot_key, generation: report.generation
+  cas file_compare_and_set_retained @fn file_hold_acquire_commit L329: root: plan.root, publication: DefaultAccessCreateOnly, retention: plan.retention, verified: v
+  cas file_compare_and_set_retained @fn file_hold_release_commit L496: root: plan.root, publication: DefaultAccessCreateOnly, retention: plan.retention, verified: v
+  cas observe_cas_slot_state_retained @fn observe_file_hold_retained L153: root: root, key: key, retention: retention
+## gunbc.durable_handoff_host
+  census storage_hand_directory_setup Forked mkdir_create_only_command: hand-rolled create-only mkdir tree for durable handoff beside owned/managed_directory
+## gunbc.filesystem_interface
+  effect Filesystem.Delete @data local_filesystem L54: path: path
+  effect Filesystem.WriteCreateNew @data local_filesystem L58: path: path, content: content
+  effect Filesystem.WriteCreateNewWithMode @data local_filesystem L62: path: path, content: content, mode: mode
+  effect Filesystem.WriteOwnerOnly @data local_filesystem L66: path: path, content: content
+## gunbc.flex_vast_credential
+  census storage_root_literal Literal flex_vast_api_key_host_path: /etc/gunbc-flex/vast-api-key
+## gunbc.github_app_acquisition
+  census storage_root_rederived Rederived custody_handoff_path: .gunbc/github-app-<name> layout composed beside OwnedDirectory
+## gunbc.github_effect_perform
+  census storage_root_literal Literal key_material_paths: /etc/gunbc/microvm-controller/app.pem, "/run/gunbc-service-slot/app.pem"
+  census storage_raw_state_beside_library Forked stage_controller_app_key: Filesystem.WriteOwnerOnly staging of kept controller app keys + own cleanup
+  effect Filesystem.Delete @fn stage_key_file L569: path: key_path
+  effect Filesystem.WriteOwnerOnly @fn stage_key_file L570: path: key_path, content: key as String
+  effect Filesystem.Delete @fn stage_key_file L574: path: key_path
+  effect Filesystem.Delete @fn remove_staged_controller_key L605: path: key_path
+  effect Filesystem.WriteOwnerOnly @fn stage_sign_and_remove_publisher_key L659: path: key_path, content: key as String
+  effect Filesystem.Delete @fn stage_sign_and_remove_publisher_key L664: path: key_path
+## gunbc.guest_image_delivery
+  census storage_hand_directory_setup Forked guest image delivery prepare: mkdir_parents_command(path: runner_guest_base_dir(root: root))
+  effect Filesystem.Write @fn guest_image_write_digest_receipt L46: path: receipt_path, content: join([key, "=", digest.hex as String, "\n"], "")
+## gunbc.heal_candidate
+  census storage_relative_receipt_path Literal heal_candidate_directory: data heal_candidate_directory: String = "target/heal-repair-candidate"
+  census storage_hand_directory_setup Forked prepare_candidate_directory: shell.Remove.RecursiveForce(path: heal_candidate_directory) then shell.Mkdir.Parents(...)
+  census storage_root_literal Literal write_candidate_blob: Filesystem.Write(path: path, content: content)
+  effect Filesystem.Write @fn write_candidate_blob L279: path: path, content: content
+  effect Filesystem.Write @fn write_candidate_manifest L317: path: path, content: text
+  effect shell.Remove.RecursiveForce @fn prepare_candidate_directory L340: path: heal_candidate_directory as FilePath
+  effect shell.Mkdir.Parents @fn prepare_candidate_directory L344: path: heal_candidate_directory as FilePath
+## gunbc.heal_publication
+  census storage_relative_receipt_path Literal heal_publication_receipt_path: target/heal-publication-receipt.txt written by readback_wet Filesystem.Write
+  effect Filesystem.Write @fn readback_wet L476: path: heal_publication_receipt_path, content: text
+## gunbc.host_command_binding
+  census storage_raw_state_beside_library Forked host_write_file: Filesystem.Write(path, content) in LocalCommandHost arm
+  effect Filesystem.Write @fn host_write_file L140: path: path as String, content: content
+## gunbc.ledger_row_coherence
+  census storage_relative_receipt_path Literal heal_repair_declaration_artifact_path: target/heal-repair-declaration.txt
+## gunbc.native_product_shared_transfer
+  effect shell.Mktemp.Dir @fn native_product_restore_extract L106: 
+  effect shell.Remove.RecursiveForce @fn native_product_restore_extract L114: path: scratch.path
+  effect shell.Mktemp.Dir @fn native_product_save_one L164: 
+  effect Filesystem.Write @fn native_product_save_one L169: path: list_path, content: concat(join(native_product_expected_members(key: key), "\n"), "\n")
+  effect shell.Remove.RecursiveForce @fn native_product_save_one L192: path: staging.path
+## gunbc.package_delivery
+  census storage_raw_state_beside_library Forked append_text_to_file: Filesystem.Read then Filesystem.Write(existing+extra)
+  census storage_raw_state_beside_library Forked codex runtime build flow (two entry paths): shell.Mktemp.Dir staging/cache/build repeated near 2643 and 3295
+  census storage_root_literal Literal codex_runtime_lock_path: provider-runtime/codex/package-lock.json and codex_runtime_manifest_path
+  census storage_raw_state_beside_library Forked relocate_build_root_to_unique_publishing: shell.Mktemp.DirWithTemplate + Remove.EmptyDirectory + Move.NoReplaceDirectory + RecursiveForce
+  effect Filesystem.Write @fn observe_admitted_package_set_identity L1064: path: path, content: body
+  effect Filesystem.Write @fn observe_package_materialized_tree L1273: path: path, content: body
+  effect Filesystem.Write @fn append_text_to_file L1414: path: path, content: concat(existing.content, extra)
+  effect Filesystem.Write @fn protocol_schema_process_file_for_bundle L1485: path: canon_path as String, content: canon_body,
+  effect shell.Mkdir.Parents @fn observe_protocol_schema_identity L1543: path: schema_dir
+  effect shell.Mkdir.Parents @fn observe_protocol_schema_identity L1578: path: canon_staging_dir
+  effect Filesystem.Write @fn observe_protocol_schema_identity L1588: path: manifest_path, content: ""
+  effect Filesystem.Write @fn observe_codex_runtime_bundle_receipt_identity L1759: path: path, content: body
+  effect Filesystem.Write @fn write_codex_runtime_receipt_sidecar L1787: path: codex_runtime_receipt_sidecar_path(release_root: release_root) as String, content: hex,
+  effect shell.Mktemp.DirWithTemplate @fn relocate_build_root_to_unique_publishing L2003: template: template
+  effect shell.Remove.EmptyDirectory @fn relocate_build_root_to_unique_publishing L2007: path: staged.path
+  effect shell.Move.NoReplaceDirectory @fn relocate_build_root_to_unique_publishing L2011: source: build_root, destination: staged.path
+  effect shell.Remove.RecursiveForce @fn relocate_build_root_to_unique_publishing L2013: path: staged.path
+  effect shell.Move.NoReplaceDirectory @fn rename_publishing_noreplace L2026: source: publishing, destination: dest
+  effect shell.Mkdir.Parents @fn release_codex_runtime_bundle_immutable L2059: path: parent
+  effect shell.Remove.RecursiveForce @fn release_codex_runtime_bundle_immutable L2077: path: build_root
+  effect shell.Remove.RecursiveForce @fn release_codex_runtime_bundle_immutable L2110: path: publishing
+  effect shell.Remove.RecursiveForce @fn release_codex_runtime_bundle_immutable L2133: path: publishing
+  effect shell.Remove.RecursiveForce @fn release_codex_runtime_bundle_immutable L2157: path: publishing
+  effect shell.Remove.RecursiveForce @fn finish_codex_runtime_materialization_after_install L2496: path: staging_dir
+  effect shell.Remove.RecursiveForce @fn finish_codex_runtime_materialization_after_install L2497: path: cache_dir
+  effect shell.Mktemp.Dir @fn codex_runtime_install_from_prepared L2643: 
+  effect shell.Mktemp.Dir @fn codex_runtime_install_from_prepared L2654: 
+  effect shell.Mktemp.Dir @fn codex_runtime_install_from_prepared L2664: 
+  effect Filesystem.Write @fn codex_runtime_install_from_prepared L2676: path: man_dest as String, content: admitted_source.manifest_bytes,
+  effect Filesystem.Write @fn codex_runtime_install_from_prepared L2680: path: lock_dest as String, content: admitted_source.lock_bytes,
+  effect shell.Mkdir.Parents @fn finish_bisect_generate_protocol_schema_dir L2826: path: schema_dir
+  effect shell.Mktemp.Dir @fn finish_bisect_observe_package_materialized_tree_tiny_fixture L2959: 
+  effect shell.Mktemp.Dir @fn finish_bisect_observe_package_materialized_tree_tiny_fixture L2960: 
+  effect Filesystem.Write @fn finish_bisect_observe_package_materialized_tree_tiny_fixture L2966: path: path_a as String, content: "a"
+  effect Filesystem.Write @fn finish_bisect_observe_package_materialized_tree_tiny_fixture L2967: path: path_b as String, content: "bb"
+  effect shell.Mktemp.Dir @fn materialize_codex_runtime_bundle_through_pair_acquire L3167: 
+  effect shell.Mktemp.Dir @fn materialize_codex_runtime_bundle L3295: 
+  effect shell.Mktemp.Dir @fn materialize_codex_runtime_bundle L3309: 
+  effect shell.Mktemp.Dir @fn materialize_codex_runtime_bundle L3325: 
+  effect Filesystem.Write @fn materialize_codex_runtime_bundle L3339: path: man_dest as String, content: admitted_source.manifest_bytes,
+  effect Filesystem.Write @fn materialize_codex_runtime_bundle L3343: path: lock_dest as String, content: admitted_source.lock_bytes,
+## gunbc.provider_wire_evidence
+  census storage_hand_directory_setup Forked provider_wire_evidence_put: Mkdir.Parents + Chmod.OwnerOnlyDirectory + Mktemp + Hard link + Filesystem.Write + RecursiveForce sweep, own create-only commit protocol
+  effect shell.Mkdir.Parents @fn ensure_private_evidence_root L92: path: root
+  effect shell.Chmod.OwnerOnlyDirectory @fn ensure_private_evidence_root L98: path: root
+  effect shell.Mktemp.FileInDirectory @fn mktemp_file_in_dir L110: dir: dir
+  effect shell.Link.Hard @fn publish_evidence_object_exclusive L122: source: staging, destination: dest
+  effect shell.Chmod.OwnerReadWriteFile @fn publish_evidence_object_exclusive L126: path: dest
+  effect shell.Remove.FileForce @fn publish_evidence_object_exclusive L130: path: staging
+  effect Filesystem.Write @fn retain_private_evidence_bytes_detailed L182: path: staging as String, content: bytes
+  effect shell.Remove.RecursiveForce @fn retain_private_evidence_bytes_detailed L184: path: staging
+  effect shell.Remove.RecursiveForce @fn retain_private_evidence_bytes_detailed L191: path: staging
+  effect shell.Remove.RecursiveForce @fn retain_private_evidence_bytes_detailed L200: path: staging
+  effect shell.Remove.RecursiveForce @fn retain_private_evidence_bytes_detailed L204: path: staging
+  effect shell.Remove.RecursiveForce @fn retain_private_evidence_bytes_detailed L225: path: staging
+## gunbc.review_sheet_spreadsheet_actuator
+  census storage_root_literal Literal review_sheet_legacy_declaration_path: /etc/gunbc/review-sheet-legacy-extent-declaration.json
+## gunbc.revision_job_image_delivery
+  census storage_hand_exclusion Forked revision_job_image_delivery prepare: mkdir_parents_command(path: store/index/rust-dist/debs)
+## gunbc.secret_provision_actuator
+  census storage_hand_retention_sweep Forked snapshot_credential: shell.Mktemp.Dir; shell.Copy.File; shell.Remove.RecursiveForce
+  census storage_hand_retention_sweep Forked snapshot_minted_secret: shell.Mktemp.Dir; Filesystem.WriteOwnerOnly; Remove.RecursiveForce
+  effect shell.Remove.RecursiveForce @fn snapshot_refusal L87: path: workspace
+  effect shell.Mktemp.Dir @fn snapshot_credential L107: 
+  effect shell.Copy.File @fn snapshot_credential L116: source: source, destination: destination
+  effect shell.Remove.RecursiveForce @fn snapshot_credential L138: path: workspace
+  effect shell.Mktemp.Dir @fn snapshot_minted_secret L683: 
+  effect Filesystem.WriteOwnerOnly @fn snapshot_minted_secret L692: path: destination as String, content: payload as String
+  effect shell.Remove.RecursiveForce @fn snapshot_minted_secret L719: path: workspace
+## gunbc.srv1_tasks_preapply_observation
+  census storage_relative_receipt_path Literal srv1_tasks_preapply_receipt_path: target/srv1-tasks-preapply-receipt.txt via Filesystem.Write
+  effect Filesystem.Write @fn observe_srv1_tasks_preapply_wet L139: path: srv1_tasks_preapply_receipt_path, content: to_string(receipt)
+## gunbc.url_file_acquisition
+  census storage_hand_directory_setup Forked url file acquisition part file: shell.Mkdir.Parents; shell.Remove.RecursiveForce(part_path)
+  effect shell.Mkdir.Parents @fn ensure_url_file_parent L110: path: subject.parent_directory as FilePath
+  effect shell.Move.File @fn url_file_publish L147: source: part_path as FilePath, destination: subject.install_path as FilePath
+  effect shell.Remove.RecursiveForce @fn url_file_discard_mismatch L160: path: part_path as FilePath
+  effect shell.Remove.RecursiveForce @fn url_file_discard_infra_failure L165: path: part_path as FilePath
+## gunbc.workspace_acquisition_invocation
+  cas admit_cas_attempt_for_derived_payload @fn workspace_acquisition_actor_admits L62: key: key, expected: ExpectSlotAbsent, proposed: wire
+  cas admit_cas_attempt_for_derived_payload @fn workspace_cancel_unelected_actor L85: key: key, expected: ExpectSlotAbsent, proposed: tombstone
+  cas admit_cas_attempt_for_derived_payload @fn workspace_establish_actor_protocol L106: key: workspace_acquisition_protocol_key(plan: plan), expected: ExpectSlotAbsent, proposed: "actor-journal/1" as NonEmptyStr
+  cas admit_cas_attempt_for_derived_payload @fn workspace_actor_slot_replace L224: key: key, expected: ExpectSlotGeneration { generation: generation }, proposed: wire
+## gunbc.workspace_allocation_metrics
+  cas admit_cas_attempt_for_derived_payload @fn workspace_capture_runtime_metrics L82: key: key, expected: ExpectSlotAbsent, proposed: wire
+## gunbc.workspace_allocation_milestones
+  cas admit_cas_attempt_for_derived_payload @fn workspace_record_first_ready L21: key: workspace_first_ready_key(reservation: reservation), expected: ExpectSlotAbsent, proposed: observed_at as NonEmptyStr
+## gunbc.workspace_allocation_release
+  cas admit_cas_attempt_for_derived_payload @fn workspace_release_prepare L82: key: workspace_release_key(reservation: reservation), expected: ExpectSlotAbsent, proposed: workspace_release_wire(plan: prepared),
+## gunbc.workspace_allocation_store
+  cas admit_cas_attempt_for_derived_payload @fn workspace_commit_owner_transition L278: key: workspace_owner_key(owner: snapshot.owner), expected: snapshot.expected, proposed: proposed
+## gunbc.workspace_commissioning_apply_readback
+  effect Filesystem.Delete @fn workspace_commissioning_credential_remove L181: path: path
+  effect Filesystem.Delete @fn workspace_commissioning_submitter_remove L306: path: path
+## gunbc.workspace_commissioning_executor_store
+  cas admit_cas_attempt_for_derived_payload @fn workspace_executor_journal_publish L100: key: workspace_executor_journal_key(slot_key: snapshot.slot_key), expected: snapshot.expected, proposed: workspace_executor_record_text(record: record)
+  cas cas_file_slot_path @fn workspace_executor_journal_observe L53: root: root, key: key, generation: version.generation
+  cas file_compare_and_set @fn workspace_executor_journal_publish L103: root: root, publication: OwnerOnlyCreateOnly, verified: verified
+  cas observe_cas_slot_state @fn workspace_executor_journal_observe L48: root: root, key: key
+## gunbc.workspace_commissioning_executor_submission
+  census storage_hand_exclusion Forked workspace_executor_credential_publish: Filesystem.WriteCreateNewWithMode(path: path, content: desired, ...) after read_store_ownership(path: "/etc/credstore")
+  effect Filesystem.Delete @fn workspace_executor_credential_publish L74: path: path
+  effect Filesystem.WriteCreateNewWithMode @fn workspace_executor_credential_publish L82: path: path, content: desired, mode: file_mode_bits(mode: workspace_executor_credential_mode)
+## gunbc.workspace_commissioning_input_store
+  cas admit_cas_attempt_for_derived_payload @fn workspace_commissioning_input_publish L107: key: workspace_commissioning_input_key(slot: slot), expected: ExpectSlotAbsent, proposed: workspace_commissioning_input_text(bytes: bytes) as NonEmptyStr
+  cas cas_file_slot_path @fn workspace_commissioning_input_read L80: root: root, key: key, generation: version.generation
+  cas file_compare_and_set @fn workspace_commissioning_input_publish L109: root: workspace_commissioning_store_location as NonEmptyStr, publication: OwnerOnlyCreateOnly, verified: verified
+  cas observe_cas_slot_state @fn workspace_commissioning_input_read L78: root: root, key: key
+## gunbc.workspace_commissioning_store
+  cas admit_cas_attempt_for_derived_payload @fn workspace_commissioning_publish_phase L184: key: snapshot.key, expected: snapshot.expected, proposed: workspace_commissioning_record_text(record: publication.record)
+  cas cas_file_slot_path @fn workspace_commissioning_store_observe L136: root: root, key: key, generation: version.generation
+  cas file_compare_and_set @fn workspace_commissioning_publish_phase L186: root: snapshot.root, publication: OwnerOnlyCreateOnly, verified: verified
+  cas observe_cas_slot_state @fn workspace_commissioning_store_observe L130: root: root, key: key
+  cas observe_cas_slot_state @fn workspace_commissioning_committed_for_slot L294: root: workspace_commissioning_store_root, key: runner_slot_instance_name(slot: slot) as NonEmptyStr
+## gunbc.workspace_gateway_observer
+  census storage_hand_exclusion Forked workspace_observe_gateway_subject_wet: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_workspace_gateway.XXXXXX"); Filesystem.WriteCreateNew(path: selector as String, ...); she
+  effect shell.Mktemp.DirWithTemplate @fn workspace_observe_gateway_subject_wet L46: template: "/tmp/gunbc_workspace_gateway.XXXXXX"
+  effect Filesystem.WriteCreateNew @fn workspace_observe_gateway_subject_wet L50: path: selector as String, content: ssh_public_key_line(k: operator_ssh_principal.public_key) as String
+  effect shell.Remove.RecursiveForce @fn workspace_observe_gateway_subject_wet L68: path: scratch.path
+## gunbc.workspace_gateway_store
+  cas admit_cas_attempt_for_derived_payload @fn workspace_publish_gateway_at L78: key: workspace_gateway_state_key(slot: slot), expected: expected, proposed: wire
+## gunbc.workspace_image_delivery
+  census storage_relative_receipt_path Literal workspace_image_staging_root; workspace_image_build_receipt: target/workspace-image-artifact
+## gunbc.workspace_operator_request
+  census storage_relative_receipt_path Literal workspace_operator_receipt: Filesystem.Write(path: workspace_operator_receipt_path, ...); data workspace_operator_receipt_path = "target/workspace-operation.json"
+  effect Filesystem.Write @fn workspace_operator_receipt L88: path: workspace_operator_receipt_path, content: concat(serialize_json(v: workspace_allocation_json(allocation: allocation)), "\n")

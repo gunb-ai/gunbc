@@ -1,0 +1,29 @@
+## gunbc.harness.harness_cli
+  census storage_tmp_literal Literal harness_request_scratch_path: /tmp/gunbc-harness-request.json, "/tmp/gunbc-harness-probe-events.jsonl"
+  census storage_tmp_literal Literal harness_request_scratch_path; harness_probe_events_path: /tmp/gunbc-harness-request.json; "/tmp/gunbc-harness-probe-events.jsonl"
+  census storage_raw_state_beside_library Forked harness_write_receipt: direct Filesystem.Write of receipt/seat-pointer/route records beside store library
+  effect Filesystem.Write @fn harness_seat_wait_announce_and_sleep L410: path: events_path, content: concat(harness_event_placement_waiting(wait: wait, wait_cap: harness_seat_wait_cap as Int, reason: detail), "\n"),
+  effect Filesystem.Write @fn harness_place_receipt L571: path: receipt, content: line
+  effect Filesystem.Write @fn harness_seat_pointer_persist L743: path: harness_seat_pointer_path(events_path: events_path), content: harness_seat_pointer_json(pointer: p)
+  effect Filesystem.Write @fn harness_hosted_probe_cli L1263: path: join([events_path, ".route"], ""), content: concat(receipt, "\n")
+## gunbc.harness.harness_hosted_route
+  census storage_raw_state_beside_library Forked harness_open_hosted_bearer_header: mktemp dir + Filesystem.WriteOwnerOnly + RecursiveForce bearer-header materialization beside with_materialized_secret
+  effect shell.Mktemp.Dir @fn harness_hosted_bind L503: 
+  effect Filesystem.WriteOwnerOnly @fn harness_hosted_bind L508: path: header_file as String, content: openrouter_authorization_header_line(key: key_text as NonEmptyStr)
+  effect shell.Remove.RecursiveForce @fn harness_hosted_bind L510: path: dir.path
+  effect shell.Remove.RecursiveForce @fn harness_hosted_bind L515: path: dir.path
+  effect shell.Remove.RecursiveForce @fn harness_hosted_release L532: path: access.header_dir as String as FilePath
+## gunbc.harness.harness_operator_route
+  census storage_hand_retention_sweep Forked operator_open_header: hand-rolled bearer-header lifecycle (Mktemp.Dir+WriteOwnerOnly+Remove.RecursiveForce)
+  effect shell.Mktemp.Dir @fn operator_open_header L158: 
+  effect Filesystem.WriteOwnerOnly @fn operator_open_header L163: path: header_file as String, content: line as String
+  effect shell.Remove.RecursiveForce @fn operator_open_header L165: path: dir.path
+  effect shell.Remove.RecursiveForce @fn operator_close_header L179: path: header_dir as String as FilePath
+## gunbc.harness.harness_turn
+  census storage_root_rederived Rederived harness_wire_keep_path: wire-keep layout re-derived at site: join([events_path,".wire/",round,kind])
+  census storage_raw_state_beside_library Forked harness_write_events: Filesystem.Write of kept turn events/request/wire keeps beside store library
+  effect Filesystem.Write @fn harness_write_events L515: path: config.events_path as String, content: harness_events_body(events: events),
+  effect Filesystem.Write @fn harness_prepare_round L1219: path: config.request_scratch_path as String, content: body
+  effect Filesystem.Write @fn harness_prepare_round L1234: path: wire_request_path, content: body
+  effect Filesystem.Write @fn harness_send_round L1249: path: wire_response_path, content: posted.body
+  effect Filesystem.Write @fn harness_send_round L1250: path: join([config.request_scratch_path as String, ".response.json"], ""), content: posted.body,

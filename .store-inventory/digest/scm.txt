@@ -1,0 +1,13 @@
+## gunbc.scm.repository_convert
+  census storage_raw_state_beside_library Forked scm_convert_repository_cli: CLI raw Filesystem.Write of kept convert/capture receipts beside store library
+  effect Filesystem.Write @fn scm_convert_repository_cli L478: path: receipt_path, content: document
+  effect Filesystem.Write @fn scm_capture_demand_cli L569: path: receipt_path, content: document
+## gunbc.scm.repository_save
+  effect Filesystem.WriteCreateNew @fn create_repository L253: path: path, content: content
+  effect Filesystem.Write @fn save_repository L269: path: path, content: content
+  effect Filesystem.Write @fn save_object_shards L338: path: shard_path, content: object_shard_json_text(objects: shard),
+  effect Filesystem.Write @fn persist_sharded_repository L432: path: path, content: content
+## gunbc.scm.repository_slot
+  cas admit_cas_attempt_for_derived_payload @fn publish_prepared L271: key: preparation.slot.key, expected: preparation.expected, proposed: preparation.document,
+  cas file_compare_and_set @fn publish_prepared L278: root: preparation.slot.root, publication: DefaultAccessCreateOnly, verified: verified,
+  cas observe_cas_slot_state @fn read_repository_slot L311: root: slot.root, key: slot.key

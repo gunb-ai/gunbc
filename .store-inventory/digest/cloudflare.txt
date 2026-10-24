@@ -1,0 +1,36 @@
+## gunbc.cloudflare.r2_bucket_ensure
+  census storage_relative_receipt_path Literal r2_bucket_ensure_receipt_path: target/r2-bucket-ensure-receipt.txt; Filesystem.Write
+  effect Filesystem.Write @fn ensure L502: path: r2_bucket_ensure_receipt_path, content: text
+## gunbc.cloudflare.r2_conditional_put_race_probe
+  census storage_hand_retention_sweep Forked r2 race probe staging: shell.Remove.RecursiveForce(path: staged.path); Filesystem.Write(race_probe_receipt_path)
+  effect Filesystem.Write @fn race_write_body L532: path: path, content: join(["r2 conditional put race probe round ", to_string(round), " ", writer, "\n"], "")
+  effect shell.Mktemp.Dir @fn race_run_with_netrc L618: 
+  effect shell.Remove.RecursiveForce @fn race_run_with_netrc L625: path: staged.path
+  effect Filesystem.Write @fn race_run_with_netrc L627: path: race_probe_receipt_path, content: concat(receipt, "\n")
+  effect Filesystem.Write @fn race_refused_before_rounds L639: path: race_probe_receipt_path, content: concat(receipt, "\n")
+## gunbc.cloudflare.r2_permission_group_observe
+  census storage_relative_receipt_path Literal r2_mint_preflight_receipt_path: target/r2-mint-preflight-permission-groups.txt
+  effect Filesystem.Write @fn observe_account_permission_groups_wet L274: path: r2_mint_preflight_receipt_path, content: rendered,
+## gunbc.cloudflare.r2_s3_netrc
+  census storage_hand_retention_sweep Forked workspace cleanup: shell.Remove.RecursiveForce(path: workspace) x7
+  effect shell.Mktemp.Dir @fn place_r2_s3_netrc L86: 
+  effect Filesystem.WriteOwnerOnly @fn place_r2_s3_netrc L92: path: token_path as String, content: token as String
+  effect shell.Remove.RecursiveForce @fn place_r2_s3_netrc L95: path: workspace
+  effect shell.Remove.FileForce @fn place_r2_s3_netrc L98: path: token_path
+  effect shell.Remove.RecursiveForce @fn place_r2_s3_netrc L102: path: workspace
+  effect shell.Remove.RecursiveForce @fn place_r2_s3_netrc L106: path: workspace
+  effect shell.Remove.RecursiveForce @fn place_r2_s3_netrc L112: path: workspace
+  effect shell.Remove.RecursiveForce @fn place_r2_s3_netrc L125: path: workspace
+  effect shell.Remove.RecursiveForce @fn shred_r2_s3_netrc L138: path: workspace
+## gunbc.cloudflare.r2_staged_transfer
+  census storage_hand_retention_sweep Forked staging cleanup: shell.Remove.RecursiveForce(path: dir as FilePath)
+  effect shell.Remove.RecursiveForce @fn r2_release_staging L272: path: dir as FilePath
+  effect shell.Mktemp.Dir @fn r2_fetch_into_staging L314: 
+## gunbc.cloudflare.r2_token_mint_run
+  census storage_hand_directory_setup Forked r2_mint receipt writers: Filesystem.Write(path: "/tmp/r2-account-token-list.txt"); shell.Mkdir.Parents
+  census storage_tmp_literal Literal r2_mint_receipt_dir_root: /tmp/r2-mint-receipts/
+  effect Filesystem.Write @fn list_account_tokens_for_reconcile L875: path: "/tmp/r2-account-token-list.txt", content: join(lines, "\n"),
+  effect Filesystem.Write @fn revoke_unheld_object_read_token L959: path: "/tmp/r2-object-read-revoke-receipt.txt", content: join(["revoked_token_id=", token_id, "name=", request.name], "\n"),
+  effect shell.Mkdir.Parents @fn ensure_r2_mint_receipt_dir L1178: path: dir as FilePath
+  effect Filesystem.Write @fn refuse_with_orphan_receipt L1237: path: path, content: r2_orphan_receipt_content(token: token, cause: cause, custody: custody),
+  effect Filesystem.Write @fn mint_origin_token_and_store L1309: path: r2_mint_receipt_path_in(scope: r2_mint_receipt_scope_for_this_run(), request: request), content: join( [ concat("token_id=", token.id as String), concat("

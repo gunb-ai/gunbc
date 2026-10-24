@@ -1,0 +1,9 @@
+## gunbc.tools.bmc_health_reader_converge
+  census storage_raw_state_beside_library Forked bmc health reader body file: Filesystem.WriteOwnerOnly(path: body_path, content: reader_account_create_body(...)); "/tmp/bmc_health_reader_body_"
+  effect Filesystem.WriteOwnerOnly @fn bmc_health_reader_create L184: path: body_path, content: reader_account_create_body(password: credential as String)
+  effect shell.Remove.FileForce @fn bmc_health_reader_create L189: path: body_path
+## gunbc.tools.bmc_onboard
+  census storage_raw_state_beside_library Forked bmc_onboard netrc/pwbody: Filesystem.Write(...) to "/tmp/bmc_onboard_netrc","/tmp/bmc_onboard_pwbody.json"
+  effect Filesystem.Write @fn bmc_rotate_credential L225: path: bmc_onboard_pwbody_path, content: account_password_body(new_password: new_credential as String)
+## gunbc.tools.review
+  census storage_root_literal Literal review cron log path: /Users/briansrls/.local/share/gunbc-review/logs/cron.log

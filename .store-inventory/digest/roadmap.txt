@@ -1,0 +1,128 @@
+## gunbc.roadmap.attempt_system_unit_launch
+  census storage_hand_exclusion Forked attempt_system_unit_request_body_path: Mkdir.NewOwnerOnly staging + WriteCreateNew/Read/List spool drain beside durable_cas_file_store
+  effect shell.Move.NoReplaceDirectory @fn attempt_system_unit_rename_exact L615: source: source as FilePath, destination: destination as FilePath
+  effect shell.Mkdir.NewOwnerOnly @fn attempt_system_unit_enqueue_request L625: path: staging as FilePath
+  effect Filesystem.Write @fn attempt_system_unit_enqueue_request L628: path: attempt_system_unit_request_body_path(dir: staging), content: body
+  effect Filesystem.WriteCreateNew @fn attempt_system_unit_write_answer L781: path: attempt_system_unit_answer_path(instance_root: instance_root, entry: entry), content: attempt_system_unit_encode_answer(body: body, answer: answer),
+## gunbc.roadmap.roadmap_attempt_exit_spool
+  census storage_hand_directory_setup Forked attempt_exit_record_put_mkdir_name: Mkdir.Parents + Exec.RunArgv record put + List/Read matching beside store library
+  effect shell.Mkdir.Parents @fn attempt_exit_spool_prepare L352: path: dir as FilePath
+## gunbc.roadmap.roadmap_attempt_metering
+  census storage_hand_exclusion Forked metering_roster_admit: Filesystem.Write/WriteCreateNew kept metering records + launch roster beside store library
+  effect Filesystem.WriteCreateNew @fn metering_roster_admit L1212: path: join([dir, "/", name], ""), content: content
+  effect Filesystem.WriteCreateNew @fn metering_create_only L1236: path: path, content: content
+  effect Filesystem.Write @fn metering_persist_record L1456: path: path, content: attempt_metering_json(record: record)
+## gunbc.roadmap.roadmap_attempt_request_record
+  census storage_hand_exclusion Forked attempt_request_binding_create_for_instance: create-only write + occupied-read-back adjudication reimplemented beside gunbc.durable_cas_file_store
+  effect Filesystem.WriteCreateNew @fn attempt_request_binding_create_for_instance L139: path: path, content: attempt_request_binding_json(binding: binding)
+## gunbc.roadmap.roadmap_attempt_worktree_claim
+  cas cas_slot_keys @fn worktree_claim_ensure_pass_at L509: root: claims_root
+  cas observe_cas_slot_state @fn worktree_claim_read L184: root: root, key: reference
+## gunbc.roadmap.roadmap_auth_routes
+  census storage_raw_state_beside_library Forked auth_token_request_form: WriteOwnerOnly + Delete staging of token-request form (secret-bearing) beside store library
+  effect Filesystem.WriteOwnerOnly @fn auth_callback_exchange_decoded L432: path: form_path, content: form
+  effect Filesystem.Delete @fn auth_callback_exchange_decoded L437: path: form_path
+## gunbc.roadmap.roadmap_belt_actuate
+  census storage_raw_state_beside_library Forked belt_tick_receipt_write_for_instance: about 30 direct Filesystem.Write persist belt state files with no store library
+  census storage_raw_state_beside_library Forked belt_tick_receipt_write_for_instance (+~20 sibling writers): Filesystem.Write(path: join([... "/belt-last-tick.json"]))
+  census storage_root_rederived Rederived belt_worktree_claim_ensure: claims_root: worktree_claim_slots_root_of(instance: instance)
+  effect Filesystem.Write @fn belt_attempt_state_initialize_for_instance L869: path: dispatch_attempt_key_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: attempt_key,
+  effect Filesystem.Write @fn belt_attempt_state_initialize_for_instance L877: path: dispatch_attempt_continuation_turn_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: to_string(value: turn)
+  effect Filesystem.Write @fn belt_attempt_state_initialize_for_instance L885: path: dispatch_attempt_alignment_binding_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: alignment_binding_text
+  effect Filesystem.Write @fn belt_attempt_state_initialize_for_instance L908: path: dispatch_attempt_process_fingerprint_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: process_fingerprint 
+  effect Filesystem.Write @fn belt_attempt_state_initialize_for_instance L921: path: dispatch_attempt_admission_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: admission_receipt,
+  effect Filesystem.Write @fn belt_attempt_state_initialize_for_instance L935: path: dispatch_attempt_launch_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: serialize_json(v: attempt_launch_
+  effect Filesystem.Write @fn belt_attempt_state_initialize_for_instance L949: path: dispatch_attempt_events_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: "",
+  effect Filesystem.Write @fn belt_attempt_state_initialize_for_instance L958: path: dispatch_attempt_validation_receipt_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: validation_receipt_js
+  effect Filesystem.Write @fn belt_persist_spawn_origin_for_instance L1066: path: dispatch_attempt_spawn_origin_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: dispatch_spawn_origin_json(
+  effect Filesystem.Write @fn belt_persist_oracle_pin_for_instance L1393: path: dispatch_attempt_oracle_pin_refusal_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: reason,
+  effect Filesystem.Write @fn belt_persist_oracle_pin_for_instance L1410: path: dispatch_attempt_oracle_identity_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: serialize_content_hash(h
+  effect Filesystem.Write @fn belt_persist_oracle_pin_for_instance L1418: path: dispatch_attempt_oracle_revision_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: revision,
+  effect Filesystem.Write @fn belt_persist_spawn_failure_for_instance L1892: path: dispatch_attempt_spawn_failure_path_for_instance( instance: instance, node_id: node.node, attempt_key: attempt_key, ), content: evidence,
+  effect Filesystem.Write @fn belt_tick_receipt_write_for_instance L4640: path: belt_tick_receipt_path_for_instance(instance: instance), content: serialize_json(v: belt_tick_receipt_json_value(receipt: receipt)),
+  effect Filesystem.Write @fn belt_publish_current_verification_selection L6236: path: path, content: current_verification_selection_json( selection: CurrentVerificationSelection { head_sha: subject.head_sha, change_window_identity: subject.
+  effect Filesystem.Write @fn belt_capture_intent_write L8494: path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key), content: submission_capture_text(capture: capture),
+  effect Filesystem.Delete @fn belt_capture_intent_clear L8504: path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  effect Filesystem.Write @fn belt_capture_record_write L8509: path: join([ belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", submission_capture_basename(head_sha
+  effect Filesystem.Write @fn belt_commit_outcome_persist L8915: path: join([ dispatch_attempt_state_path_for_instance( instance: instance, node_id: node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId, attempt_key: attempt_k
+  effect Filesystem.Write @fn belt_prepare_diff_window_for_verification L9393: path: path, content: git_diff_window_json(window: window),
+  effect Filesystem.Write @fn belt_verify_run_and_persist L10168: path: receipt_path, content: verification_receipt_json(receipt: receipt),
+  effect Filesystem.Write @fn belt_verify_run_and_persist L10205: path: receipt_path, content: verification_receipt_json(receipt: receipt),
+  effect Filesystem.Write @fn belt_verify_run_and_persist L10300: path: receipt_path, content: verification_receipt_json(receipt: receipt),
+  effect Filesystem.Write @fn belt_integration_receipt_record L12656: path: join([dir, "/", receipt.head_sha, ".json"], ""), content: integration_receipt_text(receipt: receipt),
+  effect Filesystem.Write @fn belt_scm_intake_convert_cli L13259: path: receipt_path, content: document
+  effect Filesystem.Write @fn belt_scm_corrective_integrate_cli L13378: path: receipt_path, content: document
+  effect Filesystem.Write @fn belt_scm_recapture_cli L13565: path: receipt_path, content: document
+  effect Filesystem.Write @fn belt_publish_realize_writes L14189: path: join([worktree, "/", f.path as String], ""), content: match f.content { AuthoredSourceEmpty => "" AuthoredSourceText(t) => t as String },
+  effect Filesystem.Write @fn belt_publish_project_for_instance L14541: path: join([ belt_scm_projects_dir(instance: instance), "/", project_key, ".publication-receipt.json", ], ""), content: publication_receipt_json(receipt: receip
+  effect Filesystem.Write @fn belt_publish_attempt_adjudicate L14678: path: path, content: publication_receipt_json(receipt: receipt),
+  effect Filesystem.Write @fn belt_attempt_obligation_receipt_write L15245: path: belt_attempt_obligation_receipt_path(instance: instance, node_id: node_id, attempt_key: attempt_key), content: serialize_json(v: belt_attempt_obligation_r
+## gunbc.roadmap.roadmap_belt_tick_cli
+  census storage_raw_state_beside_library Forked belt_credential_recovery_cli: join([instance.instance_root,"/credential-acquisition-recovery.json"]) + 6 Filesystem.Write sites
+  effect Filesystem.Write @fn belt_review_head_cli L257: path: receipt_path, content: document
+  effect Filesystem.Write @fn belt_review_report_cli L268: path: receipt_path, content: document
+  effect Filesystem.Write @fn belt_verify_one_cli L314: path: receipt_path, content: document
+  effect Filesystem.Write @fn belt_escalate_one_cli L357: path: receipt_path, content: document
+  effect Filesystem.Write @fn belt_integrate_one_cli L399: path: receipt_path, content: document
+  effect Filesystem.Write @fn belt_credential_recovery_cli L630: path: receipt_path, content: receipt
+## gunbc.roadmap.roadmap_dashboard_instance_apply
+  effect shell.Mktemp.Dir @fn dashboard_instance_apply_after_preflight L2122: 
+  effect shell.Remove.RecursiveForce @fn dashboard_instance_apply_after_preflight L2139: path: temp.path
+## gunbc.roadmap.roadmap_dispatch_actuator
+  census storage_hand_exclusion Forked dispatch_attempt_identity_claim: Filesystem.WriteCreateNew ordinal-claim CAS loop beside durable_cas_file_store
+  effect Filesystem.WriteCreateNew @fn dispatch_attempt_identity_claim L1257: path: path, content: join(["minted_at: ", minted_at, "\n"], "")
+## gunbc.roadmap.roadmap_dogfood_route
+  cas admit_cas_attempt_for_derived_payload @fn dogfood_start_record_for_instance L1075: key: dogfood_start_receipt_key, expected: ExpectSlotAbsent, proposed: wire as NonEmptyStr
+  cas file_compare_and_set @fn dogfood_start_record_for_instance L1078: root: root, publication: DefaultAccessCreateOnly, verified: verified
+  cas observe_cas_slot_state @fn dogfood_start_record_for_instance L1042: root: root, key: dogfood_start_receipt_key
+  cas observe_cas_slot_state @fn dogfood_route_acceptance_holds_on L1109: root: dogfood_start_store_root(instance: instance), key: dogfood_start_receipt_key
+## gunbc.roadmap.roadmap_event_carrier
+  census storage_raw_state_beside_library Forked event_append: Filesystem.Write of kept event records + receipts beside store library
+  census storage_tmp_literal Literal roadmap_event_snapshot_stem: /tmp/gunbc-roadmap-event-snapshot.
+  effect shell.Mktemp.DirWithTemplate @fn roadmap_event_private_snapshot L254: template: roadmap_event_snapshot_template(layout: layout)
+  effect Filesystem.Write @fn roadmap_event_publish_private L465: path: concat(layout.worktree as String, concat("/", rel)), content: roadmap_event_wire_text(env: env)
+  effect Filesystem.Write @fn roadmap_event_publish_private L466: path: concat(layout.worktree as String, concat("/", receipt_path)), content: roadmap_event_wire_text(env: env)
+## gunbc.roadmap.roadmap_event_snapshot_census
+  effect Filesystem.Write @fn roadmap_snapshot_census_at L337: path: receipt_path, content: serialize_json(v: roadmap_snapshot_census_receipt_json(receipt: receipt))
+## gunbc.roadmap.roadmap_launch_deployment_cli
+  census storage_hand_directory_setup Forked rlm_receipt_staging_path: Filesystem.Write/WriteOwnerOnly kept launch-deployment receipts + mkdir staging
+  effect Filesystem.Write @fn persist_receipt L298: path: rlm_receipt_staging_path, content: document
+  effect Filesystem.Write @fn persist_receipt L305: path: rlm_receipt_staging_digest_path, content: join([digest, "\n"], "")
+  effect Filesystem.WriteOwnerOnly @fn persist_receipt L313: path: host_path, content: document
+  effect Filesystem.Write @fn rlm_launch_deployment_receipt_bound L730: path: join([rlm_receipt_staging_dir, "/summary.txt"], ""), content: join(["DeploymentComplete receipt_identity=", verdict_receipt_identity(v: verdict), " sha256
+## gunbc.roadmap.roadmap_publication_helper
+  census storage_hand_exclusion Forked publication_request_enqueue: WriteCreateNew enqueue + Filesystem.Write answer + Delete consume beside the CAS library it imports
+  effect Filesystem.WriteCreateNew @fn publication_request_enqueue L394: path: path, content: publication_request_json(subject: subject, worktree: worktree),
+  effect shell.Move.File @fn publication_helper_retire_request L753: source: join([publication_request_dir(instance_root: instance_root), "/", entry], "") as FilePath, destination: join([publication_refused_dir(instance_root: ins
+  effect Filesystem.Write @fn publication_helper_record_subject_outcome L779: path: publication_answer_path_for(instance_root: instance_root, key: key), content: publication_receipt_json(receipt: receipt),
+  effect Filesystem.Delete @fn publication_helper_record_subject_outcome L795: path: join([ publication_request_dir(instance_root: instance_root), "/", entry, ], ""),
+## gunbc.roadmap.roadmap_publish_actuate
+  effect shell.Remove.RecursiveForce @fn shred_publication_netrc_then L109: path: home
+  effect shell.Remove.RecursiveForce @fn refuse_captured_push_after_home_cleanup L117: path: home
+  effect shell.Mktemp.Dir @fn push_captured_sha_with_netrc L226: 
+## gunbc.roadmap.roadmap_served_observation
+  census storage_root_rederived Rederived served_observation_body_path_for_instance: receipts dir re-derived from instance.instance_root
+  census storage_hand_exclusion Forked served_observation_write_for_instance: Filesystem.Write of kept observation index + bodies beside store library
+  effect Filesystem.Write @fn served_observation_write_bodies_for_instance L570: path: served_observation_body_path_for_instance(instance: instance, kind: s.kind), content: s.body,
+  effect Filesystem.Write @fn served_observation_write_for_instance L589: path: served_observation_path_for_instance(instance: instance), content: served_observation_index_wire(index: served_observation_index_of_snapshot(snapshot: sna
+## gunbc.roadmap.roadmap_session_activation_ensure
+  cas cas_slot_keys @fn session_activation_ensure_pass_at L297: root: stores.slots_root
+## gunbc.roadmap.roadmap_session_placement
+  census storage_hand_exclusion Forked session_placement_record_write; session_placement_release_write; session_settle_note; session_placement_file: Filesystem.Write(path, serialize_json(...))
+  effect Filesystem.Write @fn session_placement_record_write L519: path: path, content: serialize_json(v: session_placement_record_json(r: session_placement_record_of(host: host, grant: grant, unit_properties: unit_properties))
+  effect Filesystem.Write @fn session_placement_release_write L555: path: path, content: serialize_json(v: json_object(members: concat([ json_kv(key: "schema", value: json_string(s: session_placement_schema)), json_kv(key: "node
+  effect Filesystem.Write @fn session_settle_note L1118: path: path, content: why
+  cas cas_slot_keys @fn session_placement_slot_records L1200: root: stores.slots_root
+  cas cas_slot_keys @fn session_placement_settle_pass_at L1229: root: stores.slots_root
+## gunbc.roadmap.roadmap_verify
+  census storage_raw_state_beside_library Forked verification receipt write: Filesystem.Write of kept verification receipt beside store library
+  effect Filesystem.Write @fn persist_verification_receipt L595: path: path, content: legacy_single_validation_verification_receipt_json(receipt: receipt),
+## gunbc.roadmap.roadmap_view_preference_store
+  cas admit_cas_attempt_for_derived_payload @fn issue_view_store_commit L52: key: key, expected: expected, proposed: serialize_json(v: issue_view_preferences_json(prefs: prefs)) as NonEmptyStr
+  cas file_compare_and_set @fn issue_view_store_commit L54: root: root, publication: OwnerOnlyCreateOnly, verified: verified
+  cas observe_cas_slot_state @fn issue_view_store_read L32: root: root, key: key
+## gunbc.roadmap.spool_stall
+  census storage_hand_exclusion Forked spool_stall_record_put: Mkdir.Parents + WriteCreateNew/Read/Delete stall record beside store library
+  effect shell.Mkdir.Parents @fn spool_stall_record_at L64: path: stalled_dir as FilePath
+  effect Filesystem.WriteCreateNew @fn spool_stall_record_at L68: path: record_path, content: spool_stall_record_text(unmovable: unmovable)
+  effect Filesystem.Delete @fn spool_stall_clear_at L140: path: record_path

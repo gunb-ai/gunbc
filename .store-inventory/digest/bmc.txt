@@ -1,0 +1,8 @@
+## gunbc.bmc.bmc_fan_program_observation_witness
+  census storage_relative_receipt_path Literal witness claim reading captured artifact: artifacts/bmc/srv3-config-asrr.json
+## gunbc.bmc.bmc_netboot_serve
+  census storage_relative_receipt_path Literal bmc_netboot_bootstrap_artifact_dir / bmc_netboot_local_staging_prefix: /var/lib/gunbc/artifacts/netboot; "/tmp/gunbc-bmc-"; "/tmp/netboot"
+  census storage_hand_directory_setup Forked bmc_netboot_provision: Filesystem.Write(path: l as String, content: t) + mkdir_parents_command_at
+  effect Filesystem.Write @fn bmc_netboot_apply_prepared L437: path: l as String, content: t
+## gunbc.bmc.bmc_virtual_media
+  census storage_relative_receipt_path Literal srv4_virtual_media_source: /var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv4-seeded.iso

@@ -1,0 +1,3 @@
+## gunbc.namecheap.observe
+  census storage_root_literal Literal namecheap_observation_receipt_path: Filesystem.Write(path: namecheap_observation_receipt_path)
+  effect Filesystem.Write @fn namecheap_observe_at L61: path: namecheap_observation_receipt_path, content: receipt

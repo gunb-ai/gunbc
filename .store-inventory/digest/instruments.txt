@@ -1,0 +1,264 @@
+## gunbc.instruments.brand_mark_assets_control
+  effect Filesystem.WriteBytes @fn brand_asset_write_cases L80: path: brand_asset_control_write_path, content: octets_bytes(o: octets)
+  effect Filesystem.Delete @fn brand_asset_write_cases L81: path: brand_asset_control_write_path
+  effect Filesystem.WriteBytes @fn brand_asset_write_cases L82: path: brand_asset_control_unwritable_path, content: octets_bytes(o: octets)
+## gunbc.instruments.build_step_transport
+  effect shell.Mktemp.Dir @fn corruption_probe_with_content L75: 
+  effect Filesystem.Write @fn corruption_probe_with_content L78: path: path, content: content
+  effect shell.Remove.RecursiveForce @fn corruption_probe_with_content L81: path: tmp.path
+  effect shell.Mktemp.Dir @fn witness_readiness_absent_refuses_located L116: 
+  effect shell.Remove.RecursiveForce @fn witness_readiness_absent_refuses_located L119: path: tmp.path
+  effect shell.Mktemp.Dir @fn witness_readiness_not_executable_refuses_located L126: 
+  effect Filesystem.Write @fn witness_readiness_not_executable_refuses_located L128: path: path, content: "not executable"
+  effect shell.Remove.RecursiveForce @fn witness_readiness_not_executable_refuses_located L130: path: tmp.path
+  effect shell.Mktemp.Dir @fn witness_readiness_empty_artifact_refuses_located L138: 
+  effect Filesystem.Write @fn witness_readiness_empty_artifact_refuses_located L140: path: path, content: ""
+  effect shell.Remove.RecursiveForce @fn witness_readiness_empty_artifact_refuses_located L143: path: tmp.path
+  effect shell.Mktemp.Dir @fn witness_readiness_nonempty_executable_is_ready L152: 
+  effect Filesystem.Write @fn witness_readiness_nonempty_executable_is_ready L154: path: path, content: "x"
+  effect shell.Remove.RecursiveForce @fn witness_readiness_nonempty_executable_is_ready L157: path: tmp.path
+## gunbc.instruments.cas_store_live_probe
+  cas admit_cas_attempt @fn cas_probe_run L47: attempt: cas_probe_attempt(key: key, payload: payload, expected: expected)
+  cas file_compare_and_set @fn cas_probe_run L48: root: root, publication: DefaultAccessCreateOnly, verified: v
+## gunbc.instruments.compile_phase_frontier_live_gate
+  effect Filesystem.Write @fn write_gate_report L130: path: report, content: concat( concat("subject_entry\t", concat(live_gate_entry, "\n")), concat(concat(verdict_text, "\n\n"), emission_report_text(m: m)) )
+## gunbc.instruments.compute_run_unit_cold
+  effect Filesystem.Write @fn cold_commit_and_attach L252: path: layout.log_path, content: exec_log
+## gunbc.instruments.cross_pr_contradiction_instrument
+  effect Filesystem.Write @fn scan L448: path: report, content: cross_pr_scan_text(scan: scanned)
+## gunbc.instruments.dag_compile_clean_seam_transport
+  effect Filesystem.Write @fn cross_shard_seam_break_module L71: path: target_path, content: broken_content
+  effect shell.Mktemp.Dir @fn cross_shard_seam_probe_staged L92: 
+  effect shell.Mktemp.Dir @fn cross_shard_seam_probe_staged L93: 
+  effect shell.Mktemp.Dir @fn cross_shard_seam_probe_staged L94: 
+  effect shell.Mktemp.Dir @fn cross_shard_seam_probe_staged L95: 
+  effect shell.Mktemp.Dir @fn cross_shard_seam_probe_staged L96: 
+  effect shell.Mktemp.Dir @fn cross_shard_seam_probe_staged L97: 
+  effect shell.Copy.Recursive @fn cross_shard_seam_probe_staged L100: source: concat(root, "/dag"), destination: broken_dag
+  effect shell.Copy.File @fn cross_shard_seam_probe_staged L102: source: concat(broken.path, concat("/", cross_shard_seam_importee_entry_path)), destination: stage_y.path
+  effect shell.Copy.File @fn cross_shard_seam_probe_staged L106: source: concat(broken.path, concat("/", cross_shard_seam_importer_entry_path)), destination: stage_x.path
+  effect shell.Remove.RecursiveForce @fn cross_shard_seam_probe_staged L125: path: broken.path
+  effect shell.Remove.RecursiveForce @fn cross_shard_seam_probe_staged L126: path: stage_y.path
+  effect shell.Remove.RecursiveForce @fn cross_shard_seam_probe_staged L127: path: stage_x.path
+  effect shell.Remove.RecursiveForce @fn cross_shard_seam_probe_staged L128: path: out_y.path
+  effect shell.Remove.RecursiveForce @fn cross_shard_seam_probe_staged L129: path: out_x.path
+  effect shell.Remove.RecursiveForce @fn cross_shard_seam_probe_staged L130: path: out_m.path
+## gunbc.instruments.dag_compile_clean_shard_transport
+  effect shell.Mktemp.Dir @fn single_module_shard_compile_staged L47: 
+  effect shell.Copy.File @fn single_module_shard_compile_staged L49: source: concat(root, concat("/", concat(entry_dir, concat("/", entry_file)))), destination: stage.path
+  effect shell.Remove.RecursiveForce @fn single_module_shard_compile_staged L58: path: stage.path
+## gunbc.instruments.dag_compile_clean_transport
+  effect Filesystem.Write @fn dcc_perturb_compile_with_args L103: path: concat(tmp_path, concat("/", module_file)), content: source
+  effect shell.Remove.RecursiveForce @fn dcc_perturb_compile_with_args L114: path: tmp_path
+  effect shell.Mktemp.Dir @fn dcc_perturb_compile_staged L119: 
+  effect shell.Mktemp.DirWithTemplate @fn dcc_fixture_perturb_compile_staged L145: template: concat(root, "/target/dcc_perturb_fixture_XXXXXX")
+## gunbc.instruments.direct_rust_door_transport
+  effect shell.Mktemp.Dir @fn run_direct_rust_door_emit_write_compile_smoke L39: 
+  effect shell.Mkdir.Parents @fn run_direct_rust_door_emit_write_compile_smoke L40: path: concat(dir.path, "/src")
+  effect shell.Remove.RecursiveForce @fn run_direct_rust_door_emit_write_compile_smoke L65: path: dir.path
+## gunbc.instruments.docs_projection_gate
+  effect Filesystem.Write @fn write_docs_projection L269: path: path, content: content
+## gunbc.instruments.e0599_emitter_decision_census
+  effect Filesystem.Write @fn e0599_write_census_blob L495: path: path, content: content
+## gunbc.instruments.e0599_probe_census
+  effect Filesystem.Write @fn e0599_write_blob L289: path: path, content: content
+## gunbc.instruments.emission_entry_instrument
+  effect Filesystem.Write @fn emitted_artifact_digest L397: path: digest_path, content: observed
+  effect shell.Mkdir.Parents @fn measure_cargo_half L581: path: concat(out_dir, "/src")
+  effect Filesystem.Write @fn measure_cargo_half L628: path: concat(out_dir, "/rust-toolchain.toml"), content: channel.content
+  effect shell.Mktemp.Dir @fn measure_scope_emission L835: 
+  effect Filesystem.Write @fn persist_measurement L1065: path: report, content: emission_report_text(m: m)
+## gunbc.instruments.emit_copy_qualification_transport
+  effect shell.Remove.RecursiveForce @fn run_emit_copy_qualification_shard L496: path: a.base
+  effect shell.Mkdir.Parents @fn run_emit_copy_qualification_shard L497: path: a.src_dag_dir
+  effect shell.Mkdir.Parents @fn run_emit_copy_qualification_shard L498: path: concat(a.crate_dir, "/src/bin")
+  effect Filesystem.Write @fn run_emit_copy_qualification_shard L502: path: a.fixture_path, content: fixture_module_text(c: c, mutant: mutant)
+  effect Filesystem.Write @fn run_emit_copy_qualification_shard L503: path: a.driver_path, content: driver_module_text(c: c)
+  effect Filesystem.Write @fn run_emit_copy_qualification_shard L522: path: a.manifest_path, content: manifest_isolated(manifest: emitted_manifest.content)
+  effect Filesystem.Write @fn run_emit_copy_qualification_shard L523: path: a.runner_source_path, content: runner_text
+  effect shell.Mkdir.Parents @fn run_emit_copy_qualification_shard L531: path: concat(root, "/target/emit_copy_qual/receipts")
+  effect Filesystem.Write @fn run_emit_copy_qualification_shard L533: path: static_debug_path, content: static_arm_debug_text(ok: clippy.success, stdout: clippy.stdout, stderr: clippy.stderr)
+  effect shell.Remove.RecursiveForce @fn run_emit_copy_qualification_shard L570: path: a.base
+  effect shell.Mkdir.Parents @fn run_shard_with_receipt L682: path: dir
+  effect Filesystem.Write @fn run_shard_with_receipt L683: path: concat(dir, concat("/", concat(shard_slug(c: c, mutant: mutant), ".txt"))), content: shard_receipt_text(c: c, mutant: mutant, verdicts: verdicts)
+  effect shell.Remove.RecursiveForce @fn emitted_prelude_grounds_structural_sequence L707: path: base
+  effect shell.Mkdir.Parents @fn emitted_prelude_grounds_structural_sequence L708: path: concat(base, "/src_dag")
+  effect Filesystem.Write @fn emitted_prelude_grounds_structural_sequence L710: path: fixture_path, content: fixture_module_text(c: PersistentSequenceCarrier, mutant: CleanSubject)
+  effect shell.Remove.RecursiveForce @fn emitted_prelude_grounds_structural_sequence L716: path: base
+## gunbc.instruments.emit_host_transport
+  effect shell.Mktemp.Dir @fn run_rust_smoke L104: 
+  effect shell.Mkdir.Parents @fn run_rust_smoke L105: path: concat(dir.path, "/src")
+  effect Filesystem.Write @fn run_rust_smoke L106: path: concat(dir.path, "/Cargo.toml"), content: fixture_cargo_toml
+  effect Filesystem.Write @fn run_rust_smoke L107: path: concat(dir.path, "/src/main.rs"), content: rust_stdout_fixture_source
+  effect shell.Remove.RecursiveForce @fn run_rust_smoke L120: path: dir.path
+  effect shell.Mktemp.Dir @fn run_python_smoke L127: 
+  effect Filesystem.Write @fn run_python_smoke L128: path: concat(dir.path, "/fixture.py"), content: python_stdout_fixture_source
+  effect shell.Remove.RecursiveForce @fn run_python_smoke L130: path: dir.path
+  effect shell.Mktemp.Dir @fn run_go_smoke L173: 
+  effect Filesystem.Write @fn run_go_smoke L174: path: concat(dir.path, "/main.go"), content: go_stdout_fixture_source
+  effect shell.Remove.RecursiveForce @fn run_go_smoke L176: path: dir.path
+  effect shell.Mktemp.Dir @fn run_ts_smoke L182: 
+  effect Filesystem.Write @fn run_ts_smoke L183: path: concat(dir.path, "/fixture.ts"), content: ts_host_fixture_source
+  effect shell.Remove.RecursiveForce @fn run_ts_smoke L192: path: dir.path
+  effect shell.Mktemp.Dir @fn run_node_http_serve_smoke L280: 
+  effect Filesystem.Write @fn run_node_http_serve_smoke L284: path: concat(dir.path, "/server.js"), content: gunbhub_node_http_server_source()
+  effect shell.Remove.RecursiveForce @fn run_node_http_serve_smoke L315: path: dir.path
+## gunbc.instruments.emit_subject_clean_ratchet
+  effect Filesystem.Write @fn write_ratchet_report L324: path: report, content: emit_ratchet_report_text( binding: current_observation_binding(subjects: run.subjects), selection: run.selection, r: run.ratchet )
+## gunbc.instruments.emitted_crate_harness_manifest
+  effect Filesystem.Write @fn derive_harness_manifest_in_place L147: path: path, content: content
+## gunbc.instruments.fabric_ci_calibration_actuator
+  effect Filesystem.Delete @fn fabric_ci_capture_transport L184: path: value_path
+  effect Filesystem.Write @fn fabric_ci_calibration_delete_projection_arm L271: path: path, content: mutated
+  effect Filesystem.Write @fn fabric_ci_calibration_delete_projection_arm L274: path: path, content: original.content
+  effect Filesystem.Delete @fn fabric_ci_symlink_control L340: path: link
+## gunbc.instruments.fabric_ci_evidence
+  effect Filesystem.Write @fn fabric_ci_write_wire L154: path: path, content: wire
+  effect Filesystem.Write @fn fabric_ci_calibration_transport_ignores_write_failure L170: path: "/proc/fci-evidence-ignored-write", content: fabric_ci_calibration_alpha_wire()
+## gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator
+  effect Filesystem.WriteCreateNew @fn fci1_verdict_emit L495: path: verdict_path, content: concat(line, "\n")
+## gunbc.instruments.fabric_control_plane_live_probe
+  effect Filesystem.Write @fn fci1_checkpoint_reached L215: path: path, content: join([ "CheckpointReached|checkpoint=", token as String, "|phase=", phase as String, "|status=86", ], "")
+  effect Filesystem.Write @fn fci1_write_checkpoint_terminal_receipt L224: path: path, content: join(["CheckpointNotReached|selected=", token as String], "")
+  effect Filesystem.Write @fn fci1_assert_replace_held L617: path: fci1_cleanup_authority_generation_path(path: cleanup_path, generation: expected_generation), content: fci1_reservation_cleanup_authority_wire(authority: a
+  effect Filesystem.Write @fn fci1_live_reserve_and_observe_available L740: path: fci1_cleanup_authority_generation_path(path: cleanup_path, generation: expected_generation), content: fci1_reservation_cleanup_authority_wire(authority: a
+  effect Filesystem.Write @fn fci1_write_canonical_cleanup_receipt L1127: path: path, content: to_string(disposition)
+  effect Filesystem.Write @fn fci1_write_disposable_cleanup_receipt L1143: path: path, content: join(["DisposableNoCommit|observed=", to_string(observed)], "")
+  effect Filesystem.Write @fn fci1_write_disposable_cleanup_receipt L1155: path: path, content: join(["DisposableHoldingReleased|authority=", to_string(authority), "|held=", to_string(observed), "|release=", to_string(ended), "|post=",
+  effect Filesystem.Write @fn fci1_write_disposable_cleanup_receipt L1185: path: path, content: join(["DisposableAlreadyExactFree|authority=", to_string(authority), "|observed=", to_string(observed)], "")
+  effect Filesystem.Write @fn fci1_grade_and_write_allocation_receipt L1224: path: path, content: content
+  effect Filesystem.Write @fn fci1_write_generation_changed_receipt L1359: path: path, content: join([ "before_wire=", before_wire, "\nverdict=", to_string(verdict), "\nslot_observation=", to_string(fci1_allocation_slot_observation(roo
+  effect Filesystem.Write @fn fci1_write_lifetime_dependent_receipt L1393: path: path, content: join([ "before_wire=", before_wire, "\nverdict=", to_string(verdict), "\nslot_observation=", to_string(fci1_allocation_slot_observation(roo
+  effect Filesystem.Write @fn fci1_grade_and_write_cell_receipt L1609: path: path, content: join([ "phase=", phase as String, "\nbefore=", before as String, "\nafter=", after as String, "\nmemory_max=", memory_max as String, "\nmem
+  effect Filesystem.Write @fn fci1_write_zero_work_receipt L1694: path: path, content: join(["phase=", phase as String, "\n", to_string(observation)], "")
+  effect Filesystem.Write @fn fci1_live_release_with_receipt L2112: path: path, content: join([ "root=", root as String, "\nrelease_outcome=", to_string(outcome), "\npoststate=", to_string(poststate), ], ""),
+  cas admit_cas_attempt_for_derived_payload @fn fci1_live_replace_held L502: key: slot_key, expected: ExpectSlotGeneration { generation: generation }, proposed: hold_slot_payload(state: DurableHoldHeld { owner: fabric_hold_owner(reservat
+  cas file_compare_and_set @fn fci1_live_replace_held L510: root: root, publication: DefaultAccessCreateOnly, verified: v
+  cas observe_cas_slot_state @fn fci1_allocation_prestate L790: root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())
+  cas observe_cas_slot_state @fn fci1_allocation_slot_observation L824: root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())
+## gunbc.instruments.fabric_partition_read
+  effect Filesystem.Write @fn partition_read_exit L91: path: receipt as String, content: text
+## gunbc.instruments.fabric_seat_probe
+  effect Filesystem.Write @fn fabric_seat_probe L78: path: receipt as String, content: join([line, harness_seat_release_wire(r: seat_release), "\n"], "")
+  effect Filesystem.Write @fn fabric_seat_collision_probe L106: path: receipt as String, content: join(["host=", short, " ", seat_acquisition_wire(a: outcome), "\n"], "")
+  effect Filesystem.Write @fn fabric_seat_collision_probe_from L164: path: receipt as String, content: join(["host=", short, " proposal refused before the race: ", w, "\n"], "")
+  effect Filesystem.Write @fn fabric_seat_collision_probe_from L172: path: receipt as String, content: join(["host=", short, " admitted first-push head=", h as String, "\n"], "")
+  effect Filesystem.Write @fn fabric_seat_collision_probe_from L179: path: receipt as String, content: join(["host=", short, " STALE on first push, then ", seat_acquisition_wire(a: after), "\n"], "")
+## gunbc.instruments.generated_artifact_gate
+  effect Filesystem.Write @fn main_wet_one L229: path: path, content: content
+  effect Filesystem.Write @fn main_wet L245: path: artifact_path(a: a), content: content
+  effect Filesystem.Write @fn documentation_wet L266: path: artifact_path(a: a), content: content
+  effect Filesystem.Write @fn heal_repair_declaration L363: path: heal_repair_declaration_artifact_path, content: text
+## gunbc.instruments.github_app_acquire
+  effect Filesystem.Write @fn census_app_registration_instruction_receipt L265: path: path, content: html
+  effect Filesystem.WriteOwnerOnly @fn write_secret_file L389: path: path, content: value as String
+  effect Filesystem.Write @fn persist_issued_credentials L440: path: paths.identity, content: custody_identity_document(issuance: issuance),
+  effect Filesystem.Write @fn installations_read_exit L782: path: path, content: installations_report(installations: installations)
+  effect Filesystem.Write @fn census_app_acquisition_receipt_for L827: path: acquisition_receipt_path(), content: acquisition_standing_line(standing: CensusAppAcquired { receipt: r }),
+  effect shell.Remove.RecursiveForce @fn custody_probe_cleanup L945: path: paths.pem
+  effect shell.Remove.RecursiveForce @fn custody_probe_cleanup L946: path: paths.client_secret
+  effect shell.Remove.RecursiveForce @fn custody_probe_cleanup L947: path: paths.webhook_secret
+  effect shell.Remove.RecursiveForce @fn custody_probe_cleanup L948: path: paths.identity
+  effect Filesystem.Write @fn custody_preflight_receipt L1032: path: paths.pem, content: "stale probe pem"
+  effect shell.Remove.RecursiveForce @fn custody_preflight_receipt L1038: path: paths.pem
+## gunbc.instruments.json_parse_ladder
+  effect Filesystem.Write @fn rung_written L105: path: path, content: content
+## gunbc.instruments.layout_migration
+  effect Filesystem.Write @fn layout_namespaces_emit L305: path: namespaces_module_path, content: namespaces_module_text(namespaces: namespaces)
+  effect Filesystem.Write @fn write_report L317: path: path, content: content
+  effect shell.Mkdir.Parents @fn apply_move L652: path: directory_of(path: change.new_path) as FilePath
+  effect shell.Move.File @fn apply_move L654: source: change.old_path as FilePath, destination: change.new_path as FilePath
+  effect Filesystem.Write @fn apply_rewrite L674: path: path, content: rewritten.text
+## gunbc.instruments.layout_witness_join
+  effect Filesystem.Write @fn write_text L714: path: path, content: content
+## gunbc.instruments.merge_admission_capture
+  effect shell.Remove.RecursiveForce @fn tested_subject_capture L174: path: attempt_dir as FilePath
+  effect shell.Mkdir.Parents @fn tested_subject_capture L178: path: attempt_dir as FilePath
+  effect Filesystem.Write @fn tested_subject_capture L188: path: merge_admission_tested_subject_path(root: root, attempt_id: attempt_id), content: render_tested_subject_wire(subject: subject)
+  effect Filesystem.Write @fn write_capture_refusal_wire L210: path: capture_refusal_wire_path(), content: concat(concat("cause=", tested_subject_capture_refusal_label(cause: cause)), "\n")
+  effect shell.Remove.RecursiveForce @fn capture_tested_subject L217: path: capture_refusal_wire_path()
+## gunbc.instruments.merge_admission_walk
+  effect Filesystem.Write @fn stamp_tested_floor_with_conclusion L179: path: merge_admission_floor_receipt_path(root: root, attempt_id: attempt_id), content: render_receipt_wire_v2(receipt: receipt)
+  effect shell.Remove.RecursiveForce @fn refresh_current_target_and_gate L368: path: refresh_wire_path()
+  effect Filesystem.Write @fn refresh_current_target_and_gate L372: path: refresh_wire_path(), content: concat(concat("cause=", merge_target_refresh_refusal_label(cause: cause)), "\n")
+## gunbc.instruments.namespace_import_closure_behavioral_transport
+  effect shell.Mktemp.DirWithTemplate @fn nic_emitted_crate_evidence L166: template: concat(root, "/target/namespace_import_closure_witness_XXXXXX")
+  effect shell.Mkdir.Parents @fn nic_emitted_crate_evidence L170: path: concat(src.path, "/witness/pilot")
+  effect Filesystem.Write @fn nic_emitted_crate_evidence L172: path: concat(src.path, "/witness/pilot/emit_provider.dag"), content: provider_source
+  effect Filesystem.Write @fn nic_emitted_crate_evidence L177: path: concat(src.path, consumer_rel), content: consumer_source
+  effect shell.Mktemp.Dir @fn nic_emitted_crate_evidence L182: 
+  effect shell.Remove.RecursiveForce @fn nic_emitted_crate_evidence L208: path: src.path
+  effect shell.Remove.RecursiveForce @fn nic_emitted_crate_evidence L209: path: out.path
+  effect shell.Remove.RecursiveForce @fn nic_emitted_crate_evidence L212: path: src.path
+  effect shell.Remove.RecursiveForce @fn nic_emitted_crate_evidence L213: path: out.path
+## gunbc.instruments.namespace_wave_binding_diff
+  effect Filesystem.Write @fn binding_diff_sharded L968: path: base_path, content: text
+  effect Filesystem.Write @fn binding_diff_sharded L995: path: dir + "/" + shard_receipt_file(wave: run.wave, index: i, shards: k), content: text
+  effect Filesystem.Write @fn binding_diff_sharded L1023: path: dir + "/" + verdict_file(wave: run.wave), content: verdict_text(run: run, texts: texts, exit_code: code)
+## gunbc.instruments.opaque_realization_census
+  effect shell.Mktemp.Dir @fn census_entry_emission L1036: 
+  effect Filesystem.Write @fn write_census L1292: path: report, content: census_report_text(c: c)
+## gunbc.instruments.pr_containment_instrument
+  effect Filesystem.Write @fn measure L1046: path: report, content: containment_report_text(report: measured)
+## gunbc.instruments.prose_citation_census
+  effect Filesystem.Write @fn prose_citation_census_write L794: path: report, content: concat(prose_citation_render(census: c), concat("\n", prose_citation_site_lines(sites: c.sites)))
+## gunbc.instruments.prose_row_introduction_gate
+  effect Filesystem.Write @fn run_prose_row_introduction_gate_body L133: path: prose_row_receipt_path, content: prose_row_receipt_content(observation: observation)
+## gunbc.instruments.reference_binding_provenance_calibration
+  effect Filesystem.Write @fn provenance_calibration_report_over L905: path: out, content: calibration_body_of(cells: cells)
+## gunbc.instruments.roadmap_denominator_probe
+  effect Filesystem.Write @fn probe L102: path: "target/roadmap-denominator-probe.txt", content: body
+## gunbc.instruments.roadmap_dispatch
+  effect Filesystem.Write @fn main L10: path: roadmap_dispatch_output_path, content: roadmap_dispatch_file_content()
+## gunbc.instruments.rust_item_census_instrument
+  effect Filesystem.Write @fn census L193: path: report, content: census_report_text(change: change, live: live, verdict: verdict)
+## gunbc.instruments.scm_acceptance
+  effect shell.Mkdir.Parents @fn scm_step_fold L145: path: path
+  effect Filesystem.Write @fn scm_step_fold L161: path: path, content: content
+  effect shell.Mktemp.Dir @fn prepare_scm_scenario L298: 
+  effect shell.Remove.RecursiveForce @fn finalize_scm_scenario L350: path: execution.workspace
+  effect shell.Remove.RecursiveForce @fn scm_scenario_in_fresh_workspace L873: path: prepared.workspace
+  effect shell.Remove.RecursiveForce @fn scm_scenario_in_fresh_workspace L882: path: prepared.workspace
+## gunbc.instruments.scm_acceptance_binary
+  effect shell.Remove.RecursiveForce @fn release_scm_acceptance_binary L141: path: binary.hold
+  effect shell.Copy.File @fn retain_observed_artifact L212: source: source, destination: destination
+  effect shell.Mktemp.Dir @fn acquire_scm_acceptance_binary L335: 
+  effect shell.Remove.RecursiveForce @fn acquire_scm_acceptance_binary L348: path: held
+  effect shell.Remove.RecursiveForce @fn acquire_scm_acceptance_binary L351: path: held
+## gunbc.instruments.seed_build_artifacts_regen
+  effect Filesystem.Write @fn main_wet L30: path: artifact_path(a: a), content: content
+## gunbc.instruments.self_host_curated_seed_linked_harness
+  effect shell.Mktemp.Dir @fn cssl_seed_linked_behavioral_receipt L380: 
+  effect shell.Mkdir.Parents @fn cssl_seed_linked_behavioral_receipt L399: path: concat(out_dir.path, "/src")
+  effect Filesystem.Write @fn cssl_seed_linked_behavioral_receipt L411: path: concat(out_dir.path, "/src/main.rs"), content: cssl_contract_driver_main_source( contract_module: driver.contract_module, contract_function: driver.contra
+  effect shell.Remove.RecursiveForce @fn cssl_seed_linked_behavioral_receipt L440: path: out_dir.path
+## gunbc.instruments.self_host_logic_behavioral_transport
+  effect shell.Mkdir.Parents @fn slb_comparison_observation L153: path: concat(root, "/target/wet-stage")
+  effect shell.Mktemp.DirWithTemplate @fn slb_comparison_observation L154: template: concat(root, "/target/wet-stage/logic-XXXXXX")
+  effect shell.Mkdir.Parents @fn slb_comparison_observation L157: path: concat(scratch_src.path, "/std")
+  effect Filesystem.Write @fn slb_comparison_observation L158: path: concat(scratch_src.path, "/std/logic.dag"), content: logic_read.content
+  effect shell.Mktemp.Dir @fn slb_comparison_observation L160: 
+  effect Filesystem.Write @fn slb_comparison_observation L175: path: concat(out_dir.path, "/src/main.rs"), content: slb_driver_main_source
+  effect Filesystem.Write @fn slb_comparison_observation L176: path: concat(out_dir.path, "/src/seed_std_logic.rs"), content: seed_mirror_read.content
+  effect shell.Remove.RecursiveForce @fn slb_comparison_observation L189: path: scratch_src.path
+  effect shell.Remove.RecursiveForce @fn slb_comparison_observation L190: path: out_dir.path
+## gunbc.instruments.self_host_logic_seed_unavailable_transport
+  effect shell.Mkdir.Parents @fn slbu_seed_unavailable_run L161: path: concat(root, "/target/wet-stage-seed-unavail")
+  effect shell.Mktemp.DirWithTemplate @fn slbu_seed_unavailable_run L162: template: concat(root, "/target/wet-stage-seed-unavail/logic-src-XXXXXX")
+  effect shell.Mkdir.Parents @fn slbu_seed_unavailable_run L165: path: concat(scratch_src.path, "/std")
+  effect Filesystem.Write @fn slbu_seed_unavailable_run L166: path: concat(scratch_src.path, "/std/logic.dag"), content: logic_read.content
+  effect shell.Mktemp.Dir @fn slbu_seed_unavailable_run L171: 
+  effect Filesystem.Write @fn slbu_seed_unavailable_run L192: path: concat(out_dir.path, "/src/main.rs"), content: slbu_driver_main_source
+  effect shell.Remove.RecursiveForce @fn slbu_seed_unavailable_run L222: path: out_dir.path
+  effect shell.Remove.RecursiveForce @fn slbu_seed_unavailable_run L223: path: scratch_src.path
+## gunbc.instruments.source_snapshot_handoff
+  effect shell.Mktemp.Dir @fn prepare_snapshot_workspace L288: 
+  effect shell.Mkdir.Parents @fn author_one L323: path: directory as FilePath
+  effect Filesystem.Write @fn author_one L326: path: join([directory, "/", name], ""), content: content
+  effect Filesystem.Write @fn run_corrupted_bytes_scenario L572: path: target, content: "fabric_storage.object;B7:corrupt"
+  effect shell.Remove.FileForce @fn run_missing_object_scenario L619: path: target as FilePath
+  effect shell.Mkdir.Parents @fn author_open_directory L902: path: path as FilePath
+  effect shell.Chmod.WorldWritableDirectory @fn author_open_directory L905: path: path as FilePath
+  effect shell.Remove.RecursiveForce @fn run_snapshot_scenario L1138: path: workspace.root as FilePath
+## gunbc.instruments.workspace_entry_decode_scaling
+  effect Filesystem.Write @fn decode_scaling L131: path: workspace_entry_decode_scaling_receipt_path, content: receipt

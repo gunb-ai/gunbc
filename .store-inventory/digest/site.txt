@@ -1,0 +1,12 @@
+## gunbc.site.gunb_ai_css
+  effect Filesystem.Write @fn sheet_write L1380: path: path, content: render_sheet()
+## gunbc.site.gunb_ai_deck
+  effect Filesystem.Write @fn deck_write L431: path: path, content: render_deck()
+## gunbc.site.gunb_ai_layout_review
+  effect Filesystem.Write @fn write_all L153: path: path, content: page.html
+## gunbc.site.gunb_ai_mark
+  effect Filesystem.Write @fn mark_write L200: path: path, content: b
+## gunbc.site.gunb_ai_page
+  effect Filesystem.Write @fn page_write L789: path: path, content: b
+## gunbc.site.gunb_ai_tokens_review
+  effect Filesystem.Write @fn review_write L40: path: path, content: h

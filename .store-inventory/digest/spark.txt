@@ -1,0 +1,16 @@
+## gunbc.spark.fabric_rail_apply
+  census storage_relative_receipt_path Literal fabric_rail_apply_wet: Filesystem.Write(path: fabric_rail_apply_receipt_path, content: body); data fabric_rail_apply_receipt_path = "target/fabric-rail-apply-recei
+  effect Filesystem.Write @fn fabric_rail_apply_wet L93: path: fabric_rail_apply_receipt_path, content: body
+## gunbc.spark.managed_access_apply
+  census storage_relative_receipt_path Literal spark_managed_access_apply_wet: Filesystem.Write(path: spark_apply_receipt_path, content: body); data spark_apply_receipt_path = "target/spark-managed-access-apply-receipt.
+  effect Filesystem.Write @fn spark_managed_access_apply_wet L494: path: spark_apply_receipt_path, content: body
+  effect Filesystem.Write @fn spark_managed_access_bootstrap_ci_wet L552: path: spark_apply_receipt_path, content: body
+## gunbc.spark.managed_access_bootstrap
+  census storage_root_literal Literal spark_managed_principal_home: join(["/home/", login as String], "")
+## gunbc.spark.managed_grant_install
+  census storage_relative_receipt_path Literal spark_grant_install_ci_wet: Filesystem.Write(path: spark_grant_install_receipt_path, content: body); data spark_grant_install_receipt_path = "target/spark-grant-install
+  effect Filesystem.Write @fn spark_grant_install_ci_wet L368: path: spark_grant_install_receipt_path, content: body
+## gunbc.spark.model_snapshot_acquisition
+  census storage_root_literal Literal spark_hub_cache_root: data spark_hub_cache_root = "/home/briansrls/.cache/huggingface/hub"; data spark_models_root = "/home/briansrls/models"
+## gunbc.spark.systemd_execution_cell
+  census storage_tmp_literal Literal systemd_workload_state_dir: join(["/var/tmp/", member.container_name as String, "-workload"], "")

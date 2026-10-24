@@ -1,0 +1,13 @@
+## gunbc.oracle_oci.always_free_ensure
+  census storage_relative_receipt_path Literal oci_always_free_ensure_receipt_path: target/oci-always-free-ensure-receipt.txt
+  effect Filesystem.Write @fn ensure L53: path: oci_always_free_ensure_receipt_path, content: text
+## gunbc.oracle_oci.compartment_ensure
+  census storage_relative_receipt_path Literal oci_compartment_ensure_receipt_path: target/oci-compartment-ensure-receipt.txt
+  effect Filesystem.Write @fn ensure L243: path: oci_compartment_ensure_receipt_path, content: outcome.line
+## gunbc.oracle_oci.instance_ensure
+  census storage_hand_exclusion Forked oci_instance_lock_path: Filesystem.WriteCreateNew(path: oci_instance_lock_path ...)
+  census storage_root_literal Literal oci_launch_record_dir: /etc/gunbc/oracle-oci
+  effect Filesystem.Delete @fn oci_clear_attempt L412: path: oci_launch_attempt_path(planned: planned)
+  effect Filesystem.WriteCreateNew @fn oci_start_attempt L480: path: oci_launch_attempt_path(planned: planned), content: oci_launch_record_text(sent_at: now, body: body)
+  effect Filesystem.WriteCreateNew @fn oci_free_instances L657: path: oci_instance_lock_path, content: to_string(second_count(s: now))
+  effect Filesystem.Delete @fn oci_free_instances L666: path: oci_instance_lock_path

@@ -1,0 +1,9 @@
+## gunbc.serving.caller_backlog
+  cas admit_cas_attempt_for_derived_payload @fn persist_waiting_on_store L557: key: key, expected: ExpectSlotAbsent, proposed: payload
+  cas admit_cas_attempt_for_derived_payload @fn persist_derived_phase L668: key: key, expected: ExpectSlotGeneration { generation: generation }, proposed: payload,
+  cas cas_key_is_slot_addressable @fn persist_waiting_idempotent_on_store L591: key: key
+  cas cas_key_is_slot_addressable @fn observe_durable_record L623: key: key
+  cas file_compare_and_set @fn persist_waiting_on_store L560: root: root, publication: DefaultAccessCreateOnly, verified: v
+  cas file_compare_and_set @fn persist_derived_phase L675: root: root, publication: DefaultAccessCreateOnly, verified: v
+  cas observe_cas_slot_state @fn persist_waiting_idempotent_on_store L594: root: root, key: key
+  cas observe_cas_slot_state @fn observe_durable_record L626: root: root, key: key

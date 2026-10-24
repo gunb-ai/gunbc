@@ -1,0 +1,44 @@
+## product.fabric.flex_vast_template_control
+  census storage_relative_receipt_path Literal flex_template_run: Filesystem.Write(path: flex_vast_template_receipt_path, content: text); data flex_vast_template_receipt_path = "target/flex-vast-template-re
+  effect Filesystem.Write @fn flex_template_run L126: path: flex_vast_template_receipt_path, content: text
+## product.printed_chassis.assembly_inventory_store
+  cas admit_cas_attempt_for_derived_payload @fn publish_inventory L16: key:inventory_slot,expected:expected,proposed:text as NonEmptyStr
+  cas file_compare_and_set @fn publish_inventory L18: root:printer_start_claim_directory,publication:DefaultAccessCreateOnly,verified:v
+  cas observe_cas_slot_state @fn mutate_inventory L30: root:printer_start_claim_directory,key:inventory_slot
+  cas observe_cas_slot_state @fn observe_stored_inventory L45: root:printer_start_claim_directory,key:inventory_slot
+## product.printed_chassis.cad_check_run
+  census storage_root_literal Literal check_printable_cad: Filesystem.Write(path: manifest_path, content: serialize_json(v: printable_manifest(a: a))); Filesystem.Write(path: script_path, content: so
+  effect Filesystem.Write @fn check_printable_cad L34: path:manifest_path,content:serialize_json(v:printable_manifest(a:a))
+  effect Filesystem.Write @fn check_printable_cad L34: path:script_path,content:source
+## product.printed_chassis.print_preparation
+  census storage_hand_exclusion Forked stage_profile: Filesystem.WriteCreateNew(path: destination, content: read.content); run_kernel: Filesystem.WriteCreateNew(path: script, content: concat(sou
+  effect Filesystem.WriteCreateNew @fn run_kernel L44: path:script,content:concat(source(),call)
+  effect shell.Mktemp.Dir @fn stage_recipe_profiles L64: 
+  effect shell.Remove.RecursiveForce @fn stage_recipe_profiles L68: path:temp.path
+  effect Filesystem.WriteCreateNew @fn stage_recipe_profiles_in L87: path:profiles.machine,content:machine_text
+  effect Filesystem.WriteCreateNew @fn stage_recipe_profiles_in L88: path:profiles.filament,content:filament_text
+  effect Filesystem.WriteCreateNew @fn stage_recipe_profiles_in L89: path:profiles.process,content:process_text
+  effect shell.Mkdir.Parents @fn prepare L99: path:scratch as FilePath
+  effect shell.Mkdir.Parents @fn observe_process_batch L114: path:output as FilePath
+## product.printed_chassis.print_workflow
+  census storage_hand_exclusion Forked run: shell.Mkdir.Parents(path: output); Filesystem.WriteCreateNew(path: concat(output, "/prepared-queues.json"), content: receipt)
+  effect shell.Mkdir.Parents @fn run L84: path:output as FilePath
+  effect Filesystem.WriteCreateNew @fn run L93: path:concat(output,"/prepared-queues.json"),content:receipt
+  effect shell.Mkdir.Parents @fn prepare_request_plate L110: path:output as FilePath
+  effect shell.Mkdir.Parents @fn provision_and_run L138: path:output as FilePath
+## product.printing.cad_runtime_converge
+  census storage_hand_exclusion Forked build_cad_environment: shell.Mkdir.NewOwnerOnly(path: cad_environment_lock(spec: spec)); build_locked: Filesystem.WriteCreateNew(path: cad_environment_marker(spec:
+  effect Filesystem.WriteCreateNew @fn build_locked L103: path: cad_environment_marker(spec: spec), content: cad_runtime_spec_text(spec: spec)
+  effect shell.Remove.RecursiveForce @fn build_locked L111: path: prefix as FilePath
+  effect shell.Mkdir.NewOwnerOnly @fn build_cad_environment L128: path: cad_environment_lock(spec: spec) as FilePath
+  effect shell.Remove.RecursiveForce @fn build_cad_environment L132: path: cad_environment_lock(spec: spec) as FilePath
+  effect shell.Mkdir.Parents @fn converge_cad_runtime L171: path: cad_environments_directory() as FilePath
+  effect Filesystem.Write @fn converge_cad_runtime L205: path: receipt, content: body
+## product.printing.print_runtime
+  census storage_hand_exclusion Forked observe_print_runtime: shell.Mkdir.Parents(path: scratch); Filesystem.WriteCreateNew(path: receipt, content: body)
+  census storage_root_literal Literal print_runtime_root: data print_runtime_root: String = "/var/lib/gunbc/print-runtime"
+  effect shell.Mkdir.Parents @fn observe_print_runtime L231: path: scratch as FilePath
+  effect Filesystem.WriteCreateNew @fn observe_print_runtime L251: path: receipt, content: body
+## product.printing.runtime_converge
+  census storage_raw_state_beside_library Forked converge: Filesystem.Write(path: receipt, content: body)
+  effect Filesystem.Write @fn converge L41: path:receipt,content:body

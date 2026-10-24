@@ -1,0 +1,98 @@
+## gunbc.auth.approval_assertion_counter
+  census storage_root_literal Literal approval_assertion_counter_root: /var/lib/gunbc/approval-assertion-counters
+  cas admit_cas_attempt_for_derived_payload @fn assertion_counter_commit L77: key: enrollment_id, expected: expected, proposed: to_string(observed) as NonEmptyStr
+  cas file_compare_and_set @fn assertion_counter_commit L80: root: root, publication: OwnerOnlyCreateOnly, verified: v
+  cas observe_cas_slot_state @fn observe_assertion_counter L63: root: root, key: enrollment_id
+## gunbc.auth.approval_broker_endpoint
+  census storage_root_literal Literal approval_broker_state_root: /var/lib/gunbc-roadmap/approval-broker
+## gunbc.auth.approval_decision_store
+  census storage_root_literal Literal (approvals root data row): /var/lib/gunbc/approvals
+  census storage_raw_state_beside_library Forked approval_decision_store_root: Filesystem.Write/WriteOwnerOnly of kept approval records at declared root
+  cas admit_cas_attempt_for_derived_payload @fn file_approval_request L467: key: request.escalation_id, expected: ExpectSlotAbsent, proposed: payload
+  cas admit_cas_attempt_for_derived_payload @fn commit_broker_decision L482: key: escalation_id, expected: ExpectSlotGeneration { generation: cas_generation_first() }, proposed: payload
+  cas cas_slot_keys @fn pending_escalations L785: root: root
+  cas file_compare_and_set @fn file_approval_request L470: root: root, publication: OwnerOnlyCreateOnly, verified: v
+  cas file_compare_and_set @fn commit_broker_decision L485: root: root, publication: OwnerOnlyCreateOnly, verified: v
+  cas observe_cas_slot_state @fn observe_escalation L431: root: root, key: escalation_id
+## gunbc.auth.approval_device_redemption
+  census storage_root_literal Literal approval_device_root: /var/lib/gunbc/approval-devices
+  census storage_root_literal Literal approval_jwks_cache_root: /var/lib/gunbc/approval-jwks
+  cas admit_cas_attempt_for_derived_payload @fn device_store_write L461: key: key, expected: expected, proposed: payload
+  cas file_compare_and_set @fn device_store_write L464: root: root, publication: OwnerOnlyCreateOnly, verified: v
+  cas observe_cas_slot_state @fn observe_google_enrolment L473: root: root, key: enrollment_id
+  cas observe_cas_slot_state @fn create_or_read_subject_pin L507: root: root, key: subject_pin_key(email: email)
+## gunbc.auth.approval_device_routes
+  census storage_raw_state_beside_library Forked approval_device_push_root: Filesystem.WriteOwnerOnly of kept device-push records at "/var/lib/gunbc/approval-device-push"
+  effect Filesystem.WriteOwnerOnly @fn store_push_registration L457: path: push_registration_path(enrollment_id: enrollment_id), content: push_json
+## gunbc.auth.approval_gate
+  census storage_raw_state_beside_library Forked approval_submit: ambient Filesystem.Read/WriteOwnerOnly/Delete of the submission body file
+  effect Filesystem.WriteOwnerOnly @fn approval_file_stored_request_at L293: path: body_path, content: submission_envelope_json(request: stored, tag_hex: tag)
+  effect Filesystem.Delete @fn approval_file_stored_request_at L298: path: body_path
+## gunbc.auth.approval_keyring_converge
+  census storage_root_literal Literal approval_submission_mac_key_path: /etc/gunbc-roadmap + key file names re-declared here
+## gunbc.auth.approval_ntfy_converge
+  census storage_root_literal Literal ntfy_private_key_path: /etc/ntfy/server.key, "/var/lib/ntfy/auth.db"
+## gunbc.auth.approval_ntfy_deployment
+  census storage_root_literal Literal srv1_host_root_effect: instruction literals "/var/lib/ntfy", "/etc/ntfy", "/usr/sbin/nologin"
+## gunbc.auth.approval_request_submission
+  census storage_hand_exclusion Forked approval_file_stored_request: WriteCreateNewWith of submit body + .written marker + Delete beside the CAS library
+## gunbc.auth.approval_store_receipt
+  census storage_root_literal Literal approval_store_receipt_root: /var/lib/gunbc/approval-receipts
+  cas cas_read_generation @fn store_receipt_answer L330: root: root, key: escalation_id, generation: cas_generation_first()
+## gunbc.auth.branch_run_grant
+  effect Filesystem.Write @fn mark_branch_run_grant_approved L274: path: path, content: join([branch_run_grant_approved_output, "=true\n"], "")
+## gunbc.auth.ci_app_key_rotation
+  census storage_raw_state_beside_library Forked ci_app_key_rotation_write_state: Filesystem.Write of kept rotation state beside the store library
+  effect Filesystem.Write @fn ci_app_key_version_verify_wet L458: path: app_key_verify_receipt_path, content: app_key_verify_receipt_text(requested: requested, verdict: verdict, deadline: deadline, observed_at: observed_at),
+## gunbc.auth.gcp_iam_bootstrap
+  census storage_relative_receipt_path Literal gcp_iam_bootstrap_journal_save: journals/wire captures under literal "target/" with create-only election
+  effect Filesystem.WriteCreateNew @fn iam_bootstrap_apply L770: path: concat("target/gcp-iam-bootstrap-", receipt, "-started.txt"), content: "operator bootstrap started; not a convergence receipt\n"
+  effect Filesystem.WriteCreateNew @fn iam_bootstrap_apply L779: path: concat("target/gcp-iam-bootstrap-", receipt, "-", iam_bootstrap_stage_wire(stage: stage), ".txt"), content: if outcome == "" { "stage checks completed; se
+  effect Filesystem.WriteCreateNew @fn iam_authority_pin L1040: path: concat("target/", name), content: wire
+  effect Filesystem.WriteCreateNew @fn iam_bootstrap_authority_policy_change L1155: path: concat("target/", elected_name), content: wire
+## gunbc.auth.gcp_iam_converge_run
+  census storage_root_literal Literal gcp_iam_converge_mark_approved: Filesystem.Write of approved marker to GITHUB_OUTPUT path
+  effect Filesystem.Write @fn mark_approved_as L124: path: path, content: join([output, "=true\n"], "")
+## gunbc.auth.github_apps
+  census storage_root_literal Literal SignerKeyMaterialAvailable: /etc/gunbc/publication/gunbai-bot.pem
+## gunbc.auth.login_transaction_store
+  census storage_hand_exclusion Forked login_transaction_put: Filesystem.WriteCreateNewWithMode/List/Delete of kept transaction records beside the store library
+  effect Filesystem.WriteOwnerOnly @fn login_transaction_store_save_keyed L220: path: login_transaction_file_path(layout: layout, key: key), content: login_transaction_json(transaction: transaction),
+  effect Filesystem.WriteCreateNewWithMode @fn login_transaction_store_delete_keyed L307: path: concat(login_transaction_file_path(layout: layout, key: key), ".consumed"), content: "consumed", mode: 384
+  effect Filesystem.Delete @fn login_transaction_store_delete_keyed L309: path: login_transaction_file_path(layout: layout, key: key)
+## gunbc.auth.materialized_secret
+  census storage_root_literal Literal materialized_secret_key_file_path: gunbc-private dirname under RUNNER_TEMP env literal
+  census storage_hand_directory_setup Forked with_materialized_secret_file: shell.Mkdir.Parents + Chmod.OwnerOnlyDirectory + WriteOwnerOnly + Remove.FileForce of private key files
+  effect shell.Mktemp.Dir @fn private_scoped_materialization_root L279: 
+  effect shell.Mkdir.Parents @fn ensure_gunbc_private_materialization_dir L295: path: private_dir
+  effect shell.Chmod.OwnerOnlyDirectory @fn ensure_gunbc_private_materialization_dir L299: path: private_dir
+  effect Filesystem.WriteOwnerOnly @fn with_materialized_ssh_key_file L328: path: key_path as String, content: secret_bytes as String
+  effect shell.Remove.FileForce @fn with_materialized_ssh_key_file L335: path: key_path as FilePath
+## gunbc.auth.mosquitto_options_binding
+  census storage_hand_retention_sweep Forked mosquitto_options_write: mktemp + WriteOwnerOnly + Remove.RecursiveForce for mosquitto options (password-bearing)
+  effect shell.Remove.RecursiveForce @fn shred_mosquitto_options_binding L110: path: binding.dir
+  effect shell.Mktemp.Dir @fn place_mosquitto_named_options L115: 
+  effect Filesystem.WriteOwnerOnly @fn place_mosquitto_named_options L119: path:path,content:mosquitto_options_content(login:login,password:password)
+  effect shell.Remove.RecursiveForce @fn place_mosquitto_named_options L121: path:created.path as FilePath
+## gunbc.auth.netrc_binding
+  census storage_hand_retention_sweep Forked netrc_write: Remove.FileForce + WriteOwnerOnly + mktemp netrc lifecycle beside owned_directory
+  effect shell.Remove.FileForce @fn place_netrc_binding L129: path: path
+  effect Filesystem.WriteOwnerOnly @fn place_netrc_binding L130: path: path as String, content: netrc_content(machine: machine, login: login, password: password)
+  effect shell.Remove.FileForce @fn place_netrc_binding L139: path: path
+  effect shell.Mktemp.Dir @fn place_netrc_binding_privately L155: 
+  effect shell.Remove.FileForce @fn shred_netrc_binding L174: path: binding.path
+## gunbc.auth.oidc_id_token_verification
+  effect Filesystem.WriteOwnerOnly @fn jwks_fetch_and_cache L908: path: layout.file, content: serialize_json(v: json_object(members: [ json_kv(key: "schema", value: json_string(s: jwks_cache_schema)), json_kv(key: "fetched_at"
+  effect Filesystem.Write @fn rs256_verify_over_key L958: path: key_path, content: spki_pem
+  effect Filesystem.Write @fn rs256_verify_over_key L959: path: message_path, content: signing_input
+  effect Filesystem.Write @fn rs256_verify_over_key L960: path: signature_url_path, content: join([signature_b64url, pad], "")
+## gunbc.auth.profile_projection
+  census storage_raw_state_beside_library Forked principal_profile_file_path: Filesystem.WriteOwnerOnly/List/Read of kept principal-profile records beside store library
+  effect Filesystem.WriteOwnerOnly @fn profile_store_upsert_write L329: path: path, content: principal_profile_json(profile: merged)
+## gunbc.auth.session_store
+  census storage_hand_retention_sweep Forked session_put: Filesystem.WriteOwnerOnly/List/Read/Delete of kept session records beside store library
+  effect Filesystem.WriteOwnerOnly @fn session_store_save_keyed L412: path: path, content: authenticated_session_json(session: session)
+  effect Filesystem.Delete @fn session_store_delete_keyed L506: path: session_store_file_path(layout: layout, key: key)
+  effect Filesystem.Delete @fn session_store_purge_execute L660: path: session_store_file_path(layout: layout, key: key)
+## gunbc.auth.tracker_web_oauth_client
+  census storage_root_literal Literal tracker_web_test_oauth_client_secret_host_path: /etc/gunbc-oidc/tracker-web-dev-client-secret

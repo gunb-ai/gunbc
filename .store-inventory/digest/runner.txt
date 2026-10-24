@@ -1,0 +1,126 @@
+## gunbc.runner.runner_attempt_launch
+  effect Filesystem.Write @fn write_and_read_back_bootstrap_device L727: path: device.host_path, content: device.content
+## gunbc.runner.runner_browser_toolchain
+  census storage_relative_receipt_path Literal runner_browser_toolchain_converge_receipt_path: target/runner-browser-toolchain-converge-receipt.txt written by Filesystem.Write
+  effect Filesystem.Write @fn write_digest_receipt L152: path: receipt, content: concat(line, "\n")
+  effect Filesystem.Write @fn tree_sha256_wet L565: path: manifest_path, content: tree_manifest_text_of(tree: tree, sha_lines: shas, exec_lines: execs, link_lines: links)
+  effect Filesystem.Write @fn plant_probe_wet L888: path: join([browser_toolchain_decoy_package_dir(scratch: scratch), "/package.json"], ""), content: browser_toolchain_decoy_package_json
+  effect Filesystem.Write @fn plant_probe_wet L889: path: join([browser_toolchain_decoy_package_dir(scratch: scratch), "/index.js"], ""), content: browser_toolchain_decoy_index
+  effect Filesystem.Write @fn plant_probe_wet L891: path: browser_toolchain_probe_page_path(scratch: scratch), content: h
+  effect shell.Mktemp.Dir @fn runner_browser_toolchain_readback_at_wet L917: 
+  effect shell.Remove.RecursiveForce @fn runner_browser_toolchain_readback_at_wet L926: path: scratch_dir.path
+  effect shell.Mktemp.Dir @fn place_toolchain_wet L1128: 
+  effect shell.Remove.RecursiveForce @fn place_toolchain_wet L1133: path: scratch_dir.path
+  effect shell.Mktemp.DirWithTemplate @fn stage_in_fresh_directory_wet L1170: template: join([location.base as String, "/staging.XXXXXXXX"], "") as FilePath
+  effect Filesystem.Write @fn runner_browser_toolchain_converge_ci_wet L1457: path: runner_browser_toolchain_converge_receipt_path, content: body
+## gunbc.runner.runner_claim_set_guest
+  effect Filesystem.Write @fn write_claim_set_frame L85: path: device, content: concat(frame, nul_padding(n: size - length(frame)))
+## gunbc.runner.runner_group_restriction_ensure_run
+  census storage_relative_receipt_path Literal microvm_runner_group_ensure_receipt_path: artifacts/microvm-runner-group-ensure-receipt.txt via write_receipt Filesystem.Write
+  effect Filesystem.Write @fn write_receipt L153: path: microvm_runner_group_ensure_receipt_path, content: concat(join(lines, "\n"), "\n")
+## gunbc.runner.runner_guest_image
+  effect Filesystem.Write @fn write_guest_agent_unit_for_device_wet L675: path: runner_guest_agent_unit_path(root: root, image: image), content: text
+  effect Filesystem.Write @fn write_guest_agent_unit_for_device_wet L679: path: runner_guest_agent_drop_in_path(root: root, image: image), content: serialize_systemd_drop_in(drop_in: runner_guest_agent_target_drop_in()),
+  effect Filesystem.Write @fn runner_guest_image_receipt_wet L694: path: runner_guest_image_receipt_path, content: concat(text, "\n")
+## gunbc.runner.runner_host_cap_bracket
+  census storage_root_literal Literal write_bracket_obligation: Filesystem.Write(path: path, content: bracket_obligation_text(...))
+  effect Filesystem.Write @fn write_bracket_obligation L987: path: path, content: bracket_obligation_text(o: BracketObligation { key: key, units: units }, discharged: discharged)
+## gunbc.runner.runner_host_file_converge
+  census storage_root_literal Literal runner_host_file_scope: FileTreeScope { root_path: "/etc" as NonEmptyStr }
+  effect Filesystem.Write @fn runner_host_file_ci_wet L2806: path: gunbc_ci_runner_host_file_converge_receipt_path, content: body
+  effect Filesystem.Write @fn finish_runner_host_cap_release L2918: path: gunbc_ci_runner_host_cap_release_receipt_path, content: body
+## gunbc.runner.runner_host_kernel_config
+  census storage_tmp_literal Literal runner_host_kernel_config_path: /var/tmp/gunbc-hostimage/linux-6.12.108/.config
+## gunbc.runner.runner_host_medium_publish
+  census storage_relative_receipt_path Literal mtcollins1_runner_image_receipt_path: target/mtcollins1-runner-image.txt via mtcollins1_runner_image_publish_wet Filesystem.Write
+  effect Filesystem.Write @fn mtcollins1_runner_image_publish_wet L160: path: mtcollins1_runner_image_receipt_path, content: rendered
+## gunbc.runner.runner_lost_boot_sweep_run
+  census storage_relative_receipt_path Literal lost_boot_sweep_receipt_path: artifacts/service-runner-lost-boot-sweep-receipt.txt via write_sweep_receipt Filesystem.Write
+  effect Filesystem.Write @fn write_sweep_receipt L291: path: lost_boot_sweep_receipt_path, content: concat(join(lines, "\n"), "\n")
+## gunbc.runner.runner_microvm_boot_probe
+  census storage_relative_receipt_path Literal runner_microvm_boot_probe_receipt_path: target/runner-microvm-boot-probe.txt via Filesystem.Write
+  effect Filesystem.Write @fn runner_microvm_boot_probe_wet L309: path: runner_microvm_boot_probe_jit_drive(root: root), content: jit_drive_without_credential(),
+  effect Filesystem.Write @fn runner_microvm_boot_probe_wet L313: path: runner_microvm_boot_probe_config_path(root: root), content: firecracker_vm_config_document(config: cfg),
+  effect Filesystem.Write @fn runner_microvm_boot_probe_receipt_wet L357: path: runner_microvm_boot_probe_receipt_path, content: concat(text, "\n")
+## gunbc.runner.runner_microvm_cell_readiness_store
+  census storage_raw_state_beside_library Forked persist_one_record: Filesystem.Write(path: join([cell_readiness_store_dir, "/", name]), content: encode_record_document(record))
+  effect Filesystem.Write @fn persist_one_record L973: path: path, content: encode_record_document(record: record)
+## gunbc.runner.runner_microvm_host_ready
+  census storage_relative_receipt_path Literal runner_microvm_host_standing_receipt_path: target/runner-microvm-host-standing.txt via write_host_standing_receipt
+  effect Filesystem.Write @fn write_host_standing_receipt L559: path: runner_microvm_host_standing_receipt_path, content: concat(text, "\n")
+## gunbc.runner.runner_microvm_lifecycle_realize
+  census storage_hand_retention_sweep Forked clean_attempt_resources: rm_recursive_force_one_file_system_command(path: attempt_dir)
+  census storage_raw_state_beside_library Forked stage_attempt_configuration: Filesystem.Write(path: concat(jail_root, jail_config_path), content: document)
+  effect Filesystem.Write @fn force_stop_subtree L544: path: kill_path, content: cgroup_v2_kill_trigger_value
+  effect Filesystem.Write @fn stage_attempt_configuration L1058: path: path, content: document
+## gunbc.runner.runner_microvm_network
+  census storage_root_literal Literal runner_microvm_converged_receipt_root: /var/lib/gunbc/microvm-network
+  census storage_root_literal Literal runner_microvm_networkd_dir: /etc/systemd/network
+## gunbc.runner.runner_microvm_network_apply
+  census storage_relative_receipt_path Literal runner_microvm_network_apply_receipt_path: target/microvm-network-apply-receipt.txt via runner_microvm_network_apply_ci_wet Filesystem.Write
+  census storage_relative_receipt_path Literal runner_microvm_network_plan_local_wet: Filesystem.Write(path: "target/microvm-network-local-plan.txt", content: body)
+  effect shell.Mktemp.FileInDirectory @fn write_local_staged_file L464: dir: scope.root_path as FilePath
+  effect Filesystem.Write @fn write_local_staged_file L471: path: path, content: file.content
+  effect shell.Remove.FileForce @fn local_stage_cleanup_refusal L492: path: path as FilePath
+  effect Filesystem.Write @fn runner_microvm_network_apply_ci_wet L860: path: runner_microvm_network_apply_receipt_path, content: body
+  effect Filesystem.Write @fn runner_microvm_network_plan_local_wet L924: path: "target/microvm-network-local-plan.txt", content: body
+  effect Filesystem.Write @fn runner_microvm_network_apply_local_wet L935: path: runner_microvm_network_apply_receipt_path, content: concat("execution=local-root\n", apply_run_text(run: run))
+## gunbc.runner.runner_microvm_network_converge
+  census storage_relative_receipt_path Literal runner_microvm_network_receipt_path: target/microvm-network-observe.txt (duplicated from ci_spec receipt_rel)
+  census storage_root_literal Literal runner_microvm_staging_dir: /var/lib/gunbc-microvm-network-stage
+## gunbc.runner.runner_microvm_network_observe
+  census storage_root_literal Literal record_converge_readback_wet: Filesystem.Write(path: runner_microvm_network_receipt_path, content: text)
+  effect Filesystem.Write @fn record_converge_readback_wet L170: path: runner_microvm_network_receipt_path, content: text
+  effect Filesystem.Write @fn initialize_local_network_receipt L213: path: runner_microvm_network_receipt_path, content: receipt_text(o: outcome)
+## gunbc.runner.runner_microvm_network_receipt_store
+  census storage_hand_exclusion Forked publish_initial_network_receipt: Filesystem.WriteCreateNew(path: runner_microvm_converged_receipt_path, content: text)
+  effect Filesystem.WriteCreateNew @fn publish_initial_network_receipt L83: path: runner_microvm_converged_receipt_path, content: text
+## gunbc.runner.runner_microvm_slot_controller
+  census storage_raw_state_beside_library Forked controller_exit: Filesystem.Write(path: path, content: concat(text, "\n"))
+  effect Filesystem.Write @fn controller_exit L663: path: path, content: concat(text, "\n")
+## gunbc.runner.runner_microvm_slot_reserve
+  census storage_root_literal Literal microvm_slot_reserve_ci_wet: Filesystem.Write(path: microvm_slot_reserve_receipt_path, content: body)
+  census storage_raw_state_beside_library Forked microvm_slot_reserve_main: Filesystem.Write(path: microvm_unit_receipt_path(prefix, invocation_id), content: concat(text, "\n"))
+  effect Filesystem.Write @fn microvm_slot_reserve_main L333: path: path, content: concat(text, "\n")
+  effect Filesystem.Write @fn microvm_slot_reserve_ci_wet L483: path: microvm_slot_reserve_receipt_path, content: body
+## gunbc.runner.runner_microvm_slot_start
+  census storage_root_literal Literal microvm_slot_start_ci_wet: Filesystem.Write(path: microvm_slot_start_receipt_path, content: body)
+  effect Filesystem.Write @fn microvm_slot_start_ci_wet L287: path: microvm_slot_start_receipt_path, content: body
+## gunbc.runner.runner_microvm_slot_unit
+  census storage_root_literal Literal microvm_controller_root: /opt/gunbc/microvm-controller
+  census storage_root_literal Literal microvm_slot_controller_receipt_dir: /var/lib/gunbc/microvm-slot-controller
+  census storage_relative_receipt_path Literal microvm_slot_start_receipt_path: target/microvm-slot-start-receipt.txt
+## gunbc.runner.runner_password_session_tool_converge
+  census storage_relative_receipt_path Literal runner_password_session_tool_converge_receipt_path: target/runner-password-session-tool-converge-receipt.txt via Filesystem.Write
+  effect Filesystem.Write @fn runner_password_session_tool_converge_ci_wet L250: path: runner_password_session_tool_converge_receipt_path, content: body,
+## gunbc.runner.runner_qemu_toolchain
+  effect shell.Mktemp.DirWithTemplate @fn place_qemu_toolchain_wet L158: template: join([location.base as String, "/staging.XXXXXXXX"], "") as FilePath
+## gunbc.runner.runner_revision_job_image
+  effect Filesystem.Write @fn revision_job_write_toolchain_receipt L119: path: revision_job_toolchain_receipt_path(root: root), content: concat(concat(version, "\n"), toolchain_receipt_lines(closure: closure))
+  effect Filesystem.Write @fn revision_job_image_build L171: path: concat(tree, "/etc/fstab"), content: revision_job_fstab()
+  effect Filesystem.Write @fn revision_job_image_build L172: path: join([tree, "/etc/systemd/system/", revision_job_unit_name], ""), content: serialize_systemd_unit_file(file: u)
+  effect Filesystem.Write @fn revision_job_image_build L173: path: concat(tree, revision_job_image_cargo_config), content: revision_job_cargo_config()
+  effect Filesystem.Write @fn revision_job_image_build_core L199: path: concat(i, ".sha256"), content: concat(d as String, "\n")
+## gunbc.runner.runner_revision_job_main
+  census storage_hand_exclusion Forked revision_job_await: Filesystem.WriteCreateNew(path: results_out / runtime_out, content: ...)
+  effect Filesystem.WriteCreateNew @fn revision_job_await L131: path: results_out, content: jail.content
+  effect Filesystem.WriteCreateNew @fn revision_job_await L139: path: runtime_out, content: runtime_line
+## gunbc.runner.runner_revision_job_receipt
+  census storage_hand_exclusion Forked publish_revision_job_receipt: WriteCreateNew(staging_path) then WriteCreateNew(index_entry, concat(receipt_path, "\n")) with mkdir_parents_command
+  effect Filesystem.WriteCreateNew @fn publish_revision_job_receipt L133: path: staging_path, content: body
+  effect Filesystem.LinkCreateNew @fn publish_revision_job_receipt L157: source: staging_path, path: receipt_path
+  effect Filesystem.WriteCreateNew @fn publish_revision_job_receipt L161: path: index_entry, content: concat(receipt_path, "\n")
+## gunbc.runner.runner_revision_job_stage
+  census storage_hand_exclusion Forked stage_spec_and_results: Filesystem.WriteCreateNew(path: spec, content: spec_text); WriteCreateNew(path: results, content: "")
+  effect Filesystem.WriteCreateNew @fn stage_spec_and_results L252: path: spec, content: spec_text
+  effect Filesystem.WriteCreateNew @fn stage_spec_and_results L255: path: results, content: ""
+## gunbc.runner.runner_revision_job_toolchain
+  census storage_hand_exclusion Forked prove_toolchain_rows: mkdir_parents_command(store/toolchain-closure) then Filesystem.WriteCreateNew(path, toolchain_closure_receipt_body)
+  effect Filesystem.WriteCreateNew @fn prove_toolchain_rows L276: path: path, content: toolchain_closure_receipt_body(rows_digest: h as String)
+## gunbc.runner.runner_revision_job_unit
+  census storage_relative_receipt_path Literal revision_job_image_staging_root: target/revision-job-image-artifact
+  census storage_root_literal Literal revision_job_state_root: /var/lib/gunbc/revision-job (also revision_job_spec_dir, revision_job_receipt_store)
+## gunbc.runner.workspace_guest_image
+  effect Filesystem.Write @fn workspace_image_write_tree L182: path: concat(tree, "/usr/local/sbin/gunbc-workspace-bootstrap"), content: workspace_guest_bootstrap_script()
+  effect Filesystem.Write @fn workspace_image_write_tree L183: path: concat(tree, "/etc/ssh/sshd_config.gunbc-workspace"), content: workspace_guest_sshd_config()
+  effect Filesystem.Write @fn workspace_image_write_tree L184: path: concat(tree, "/etc/systemd/system/gunbc-workspace.service"), content: serialize_systemd_unit_file(file: workspace_guest_unit())

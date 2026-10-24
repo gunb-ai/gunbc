@@ -1,0 +1,32 @@
+## v2.cli.compile_cli
+  effect Filesystem.Write @fn write_if_path L996: path: p, content: content
+## v2.compiler.self_host.candidate_generation
+  effect Filesystem.Write @fn write_rust_workspace L225: path: manifest_path, content: direct_rust_door_cargo_toml
+  effect Filesystem.Write @fn write_rust_workspace L226: path: main_rs_path, content: source.carried
+## v2.lens.text_string_importer_census
+  effect Filesystem.Write @fn text_string_importer_population L1476: path: out, content: fold_list(xs: paths, empty: "", cons: fn(acc, p) { concat(concat(acc, p), "\n") })
+  effect Filesystem.Write @fn text_string_importer_census L1497: path: out, content: lines_text(lines: list_reverse(xs: lines))
+  effect Filesystem.Write @fn text_string_importer_fixpoint L1799: path: out, content: join(list_reverse(xs: rows), "")
+  effect Filesystem.Write @fn text_string_importer_literal_sites L2185: path: out, content: lines_text(lines: list_reverse(xs: lines))
+## v2.workflow.cause_assertion_census
+  effect Filesystem.Write @fn probe L99: path: report, content: cause_source_observation_report(path: path, observation: observation)
+  effect Filesystem.Write @fn census L696: path: report, content: content
+  effect Filesystem.Write @fn bounded_census L727: path: report, content: content
+## v2.workflow.cause_identifier_cost_probe
+  effect Filesystem.Write @fn measure L17: path: join([report, to_string(n), "begin"], "."), content: "BEGIN"
+  effect Filesystem.Write @fn measure L19: path: join([report, to_string(n), "end"], "."), content: to_string(count(sorted_map_keys(counts)))
+## v2.workflow.roster_import_sweep
+  effect Filesystem.WriteCreateNew @fn roster_lock_take L586: path: roster_lock_file(root: root_dir), content: "roster_import_sweep_apply pending\n"
+  effect Filesystem.Delete @fn roster_lock_take L592: path: roster_lock_file(root: root_dir)
+  effect Filesystem.Write @fn roster_lock_take L597: path: roster_generation_file(root: root_dir), content: before + "x"
+  effect Filesystem.Write @fn roster_lock_take L597: path: roster_lock_file(root: root_dir), content: roster_lock_body(nonce: nonce)
+  effect Filesystem.Delete @fn roster_lock_take L600: path: roster_lock_file(root: root_dir)
+  effect Filesystem.Delete @fn roster_lock_release L615: path: roster_lock_file(root: held.root)
+  effect Filesystem.Write @fn roster_apply_edit L687: path: held.root + "/" + path, content: content
+  effect Filesystem.Delete @fn roster_import_sweep_lock_controls_exit L2458: path: roster_generation_file(root: root_dir)
+  effect Filesystem.WriteCreateNew @fn roster_control_unheld L2475: path: root_dir + "/" + target, content: before
+  effect Filesystem.Delete @fn roster_control_unheld L2485: path: root_dir + "/" + target
+  effect Filesystem.WriteCreateNew @fn roster_control_stale L2508: path: root_dir + "/" + target, content: before
+  effect Filesystem.Delete @fn roster_control_stale L2518: path: root_dir + "/" + target
+## v2.workflow.source_reference_repoint
+  effect Filesystem.Write @fn repoint_write L308: path: path, content: content

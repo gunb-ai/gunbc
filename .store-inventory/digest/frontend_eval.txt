@@ -1,0 +1,10 @@
+## gunbc.frontend_eval.control
+  census storage_hand_directory_setup Forked control workspace: shell.Mkdir.Parents + shell.Remove.RecursiveForce(workspace)
+  effect shell.Mkdir.Parents @fn copy_one L65: path: parent_dir(path: join([workspace, "/", rel], "")) as FilePath
+  effect Filesystem.Write @fn copy_one L66: path: join([workspace, "/", rel], ""), content: r.content
+  effect shell.Remove.RecursiveForce @fn control_task L189: path: workspace as FilePath
+  effect Filesystem.Write @fn control_task L205: path: subject_path, content: replace(subject.content, task.mutation.old, task.mutation.new)
+  effect Filesystem.Write @fn control_task L227: path: subject_path, content: subject.content
+  effect Filesystem.Write @fn control_run L272: path: receipt_path, content: concat(receipt, "\n")
+## gunbc.frontend_eval.instrument
+  effect Filesystem.Write @fn write_projection L25: path: path, content: content

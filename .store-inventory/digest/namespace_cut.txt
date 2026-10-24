@@ -1,0 +1,2 @@
+## gunbc.namespace_cut.namespace_cut_subject_observation
+  effect Filesystem.Write @fn subject_roster_report L543: path: out, content: body

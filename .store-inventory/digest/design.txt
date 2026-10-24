@@ -1,0 +1,2 @@
+## gunbc.design.brand_mark_assets_cli
+  effect Filesystem.WriteBytes @fn brand_assets_write L43: path: path, content: octets_bytes(o: octets)

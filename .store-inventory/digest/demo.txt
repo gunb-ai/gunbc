@@ -1,0 +1,6 @@
+## gunbc.demo.board_artifacts
+  census storage_root_literal Literal board artifact writer: Filesystem.Write(path: p, content: s)
+  effect Filesystem.Write @fn write_one L97: path: p, content: s
+## gunbc.demo.semantic_system_readout
+  census storage_relative_receipt_path Literal readout_path: target/demo/semantic_system_readout.txt
+  effect Filesystem.Write @fn render_demo L230: path: readout_path, content: text

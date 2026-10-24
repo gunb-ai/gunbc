@@ -1,0 +1,15 @@
+## gunbc.container.registry_image_config
+  census storage_hand_retention_sweep Forked registry image config scratch: shell.Remove.RecursiveForce(path: dir.path) on each arm
+  effect shell.Mktemp.Dir @fn read_docker_hub_image_config_at_digest L343: 
+  effect Filesystem.WriteOwnerOnly @fn read_docker_hub_image_config_at_digest L348: path: header_path as String, content: registry_authorization_header_line(token: token),
+  effect shell.Remove.RecursiveForce @fn read_docker_hub_image_config_at_digest L353: path: dir.path
+  effect shell.Remove.RecursiveForce @fn read_docker_hub_image_config_at_digest L364: path: dir.path
+  effect shell.Remove.RecursiveForce @fn read_docker_hub_image_config_at_digest L372: path: dir.path
+  effect shell.Remove.RecursiveForce @fn read_docker_hub_image_config_at_digest L382: path: dir.path
+  effect shell.Remove.RecursiveForce @fn read_docker_hub_image_config_at_digest L396: path: dir.path
+  effect shell.Remove.RecursiveForce @fn read_docker_hub_image_config_at_digest L402: path: dir.path
+  effect shell.Remove.RecursiveForce @fn read_docker_hub_image_config_at_digest L415: path: dir.path
+  effect shell.Remove.RecursiveForce @fn read_docker_hub_image_config_at_digest L426: path: dir.path
+  effect shell.Remove.RecursiveForce @fn read_docker_hub_image_config_at_digest L438: path: dir.path
+  effect shell.Remove.RecursiveForce @fn read_docker_hub_image_config_at_digest L452: path: dir.path
+  effect shell.Remove.RecursiveForce @fn read_docker_hub_image_config_at_digest L456: path: dir.path
