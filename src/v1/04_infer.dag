@@ -7121,12 +7121,15 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
   else {
     let self_params = builtin_receiver_self_host_text_param_names(name: func_name)
     let deferred_params = builtin_host_display_deferred_param_names(name: func_name)
-    let self_is_host_text = typed_args |> enumerate |> any(pair =>
+    let self_is_unestablished = typed_args |> enumerate |> any(pair =>
       self_params |> any(n => n == builtin_argument_bound_name(func_name: func_name, arg: pair.second, index: pair.first, scope: scope))
         && match arg_value(n: pair.second).inferred {
           Present { value: Resolved { node: _ } } =>
-            match argument_text_representation(value: arg_value(n: pair.second), type_env: scope.type_env) { HostText => true  _ => false }
-          _ => false
+            match type_reference_declaration_reading(n: expression_value_type(e: arg_value(n: pair.second)), source_indices: scope.type_env.source_indices, env: scope.type_env) {
+              TypeReferenceIsTypeVariable { id: _ } => true
+              _ => false
+            }
+          _ => true
         })
     typed_args |> enumerate |> flat_map(pair => {
       let arg = pair.second
@@ -7136,7 +7139,7 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
         let value = arg_value(n: arg)
         let position = concat("'", concat(bound_name, concat("' of ", func_name)))
         let route_judged = !(deferred_params |> any(n => n == bound_name))
-          && (!(self_params |> any(n => n == bound_name)) || self_is_host_text)
+          && (!(self_params |> any(n => n == bound_name)) || !self_is_unestablished)
         let route_diags = if route_judged {
           nominal_value_at_host_text_diags(t: expression_value_type(e: value), position: position, span: value.span, scope: scope)
         } else { [] }

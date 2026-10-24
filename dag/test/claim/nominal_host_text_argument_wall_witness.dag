@@ -93,6 +93,8 @@ data to_string_record_source: String = "module probe_host_text_to_string_record\
 
 data list_concat_unsolved_source: String = "module probe_host_text_list_concat\nimport std.types { String, Int, List }\nfn joined(xs: List<List<Int>>) -> List<Int> { fold(xs, init: [], f: (acc, x) => concat(acc, x)) }\n"
 
+data concat_two_records_source: String = "module probe_host_text_concat_two_records\nimport std.types { String, Int }\ntype P { value: Int }\nfn text(p: P, q: P) -> String { concat(p, q) }\n"
+
 test fn a_record_at_concat_is_refused() -> Bool {
   refusals(source: concat_record_source, subject: "nominal P at host text String formal of concat: no declared conversion") == 1
 }
@@ -189,4 +191,8 @@ test fn residual_a_record_at_to_string_is_admitted() -> Bool {
 // its ReceiverSelf formals are not established host text, so nothing is refused there.
 test fn control_a_list_concat_through_an_unsolved_accumulator_is_accepted() -> Bool {
   blocking_total(source: list_concat_unsolved_source) == 0
+}
+
+test fn two_records_at_concat_are_refused() -> Bool {
+  blocking_refusals_containing(source: concat_two_records_source, fragment: "nominal P at host text") >= 1
 }

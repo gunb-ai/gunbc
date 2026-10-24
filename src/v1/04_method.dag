@@ -539,9 +539,10 @@ fn template_renders_receiver_elements_as_host_text(template: AlgebraFieldTemplat
   template == collection_join_shape()
 }
 
-// THE HOST-TEXT FORMALS BOUND THROUGH ReceiverSelf. They are host text only when Self is: a call
-// whose ReceiverSelf arguments are not established host text (a List concat through a fold
-// accumulator whose type is unsolved at the check) has no host-text position there.
+// THE HOST-TEXT FORMALS BOUND THROUGH ReceiverSelf. Self is unknown while any ReceiverSelf argument
+// is unestablished (not resolved, or a type variable, as a List concat through a fold accumulator
+// whose type is unsolved at the check), and those formals are then unjudged; otherwise every one is
+// judged, so two records at concat refuse.
 fn builtin_receiver_self_host_text_param_names(name: String) -> List<String> {
   match builtin_signature(name: name) {
     Absent => []
