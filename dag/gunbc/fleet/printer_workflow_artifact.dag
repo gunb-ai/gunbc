@@ -1,9 +1,45 @@
 module gunbc.fleet.printer_workflow_artifact
 
-import std.types { String,NonEmptyStr }
+import std.types { String, NonEmptyStr, List, FilePath }
+import std.effect_grant { Read, Write, Execute }
+import gunbc.ownership { Ensured }
+import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 
 // The runtime writer, CI display and workflow uploader share one receipt path.
 data printer_workflow_receipt_path: String = "printer-workflow-receipt.json"
 
-// Shared, pre-provisioned LAN-host state. Claims and the controller hold use the same established directory and host access policy.
-data printer_start_claim_directory:NonEmptyStr = "/var/lib/gunbc/printer-starts"
+// THE PRINTER LAN HOST'S STATE ROOTS. Start claims, the controller hold and completion records live in
+// printer-starts; request records (gunbc.fleet.print_request PrintRequestRecord) in its requests/
+// child; each pass's prepared plate and verified copy in print-runs.
+data printer_start_claim_directory: NonEmptyStr = "/var/lib/gunbc/printer-starts"
+data printer_request_directory: NonEmptyStr = "/var/lib/gunbc/printer-starts/requests"
+data print_run_directory: NonEmptyStr = "/var/lib/gunbc/print-runs"
+
+// EACH IS A ManagedDirectory, CONVERGED BY THE PASS THAT READS IT (gunbc.fleet.print_converge
+// ensure_printer_state_directories) before anything is read. Owner and dependent are the operator
+// account the printer job runs as, and nothing else needs them, so the derived mode is owner-only.
+// Ownership is Ensured, never Owned: these hold the evidence that a request was prepared, an attempt
+// claimed and a job completed, and losing them would let a later pass mistake an earlier print for
+// none -- so no retract may remove them, and a present directory under another owner or mode refuses
+// rather than being rewritten.
+fn printer_state_directory(member: String, path: NonEmptyStr) -> ManagedDirectory {
+  ManagedDirectory {
+    member: member as NonEmptyStr,
+    path: path as String as FilePath,
+    owner: fleet_posix_operator_user,
+    group_principal: fleet_posix_operator_user,
+    dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
+
+// Parent before child: requests/ is ensured only after printer-starts converged.
+fn printer_state_directories() -> List<ManagedDirectory> {
+  [
+    printer_state_directory(member: "printer-start-claims", path: printer_start_claim_directory),
+    printer_state_directory(member: "printer-request-records", path: printer_request_directory),
+    printer_state_directory(member: "print-runs", path: print_run_directory),
+  ]
+}

@@ -1,6 +1,8 @@
 module test.claim.printer_workflow_witness
 
 import std.types { Bool, String }
+import gunbc.fleet.printer_workflow_artifact { printer_state_directories, printer_start_claim_directory, printer_request_directory, print_run_directory }
+import gunbc.managed_directory { managed_directory_admit, ManagedDirectoryAdmitted, ManagedDirectoryRefused, managed_directory_mode_octal }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_help_supports_private_options }
 import gunbc.fleet.printer_selection { print_inputs_admitted, select_printer, PrinterSelected, PrinterSelectionRefused }
 import gunbc.fleet.printer_federation { printer_claim_pins }
@@ -37,4 +39,13 @@ test fn w_tool_probe_requires_mosquitto_version_two_or_newer() -> Bool {
   !mosquitto_pub_help_supports_private_options(stdout: "mosquitto_pub version 1.6.12 running on libmosquitto 1.6.12.") &&
   !mosquitto_pub_help_supports_private_options(stdout: "") &&
   !mosquitto_pub_help_supports_private_options(stdout: "unrelated tool 2.0")
+}
+
+// The printer's state roots are converged ManagedDirectories: each admits, derives an owner-only mode
+// from its one dependent, and the claim root precedes the request root nested in it.
+test fn w_printer_state_roots_are_owner_only_and_parent_first() -> Bool {
+  let ds = printer_state_directories()
+  count(ds) == 3 &&
+  all(ds, d => (match managed_directory_admit(d: d) { ManagedDirectoryAdmitted { dir: _ } => true ManagedDirectoryRefused { member: _, path: _, writer: _ } => false }) && managed_directory_mode_octal(d: d) == "0700") &&
+  map(ds, d => d.path as String) == [printer_start_claim_directory as String, printer_request_directory as String, print_run_directory as String]
 }
