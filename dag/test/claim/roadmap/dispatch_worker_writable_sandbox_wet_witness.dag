@@ -1,5 +1,6 @@
 module test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance, dispatch_attempt_worker_log_path_for_instance, dispatch_worker_git_pointer_files, dispatch_worktree_path_for_instance, session_process_bounds }
 import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import std.measure { kibibyte }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -17,15 +18,7 @@ import extdeps.systemd.systemd_run {
   SystemdRunProperty,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_worker_unit_properties,
-  attempt_state_prepare_argvs_for_instance,
-  dispatch_attempt_state_path_for_instance,
-  dispatch_attempt_worker_log_path_for_instance,
-  dispatch_worktree_path_for_instance,
-  dispatch_worker_git_pointer_files, dispatch_attempt_private_git_dir,
-}
-import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, attempt_state_prepare_argvs_for_instance }
 import std.optional { Present }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_commit_git, ExecOk, ExecFailed, ExecRefused,
