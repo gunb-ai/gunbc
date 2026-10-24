@@ -59,7 +59,14 @@ import v1.compiler.emit_core_support { to_string }
 // as an OwnershipViolation, and `f(x)` beside `g(x)` is two ordinary reads, not a violation. A method
 // RECEIVER stays Read: receiver lowerings go through templates that are not audited for splicing the
 // receiver once, so a moved receiver could be used twice in the emitted text; that is the frontier.
-type EdgeKind = Consumed | Read | Threaded | Projected | PassedByValue
+//
+// Invoked IS THE CALLEE OF A CALL, which walk_expr never recorded: `snoc(fold_list_right(t, empty,
+// snoc), h)` read as ONE use of snoc, the argument, and once that argument moved, the call after it
+// used a moved value (rustc E0505 and E0382 in std.algebra fold_list_right and zip_map on the
+// regen round that introduced PassedByValue). It is a whole-value use, so it blocks a move; it is
+// kept out of binding_fan_out so that a function parameter that is only called does not newly
+// become a read-only parameter.
+type EdgeKind = Consumed | Read | Threaded | Projected | PassedByValue | Invoked
 
 type EdgeClassification {
   kind: EdgeKind
@@ -78,7 +85,7 @@ fn semantic_consumer_count(usage: BindingUsage) -> Int {
 }
 
 fn binding_fan_out(usage: BindingUsage) -> Int {
-  usage.consumers |> filter(c => match c.kind { Threaded => false, _ => true }) |> count
+  usage.consumers |> filter(c => match c.kind { Threaded => false, Invoked => false, _ => true }) |> count
 }
 
 type OwnershipDecision
@@ -155,6 +162,7 @@ fn max_usage_by_fan_out(a: BindingUsage, b: BindingUsage) -> BindingUsage {
     match edge.kind {
       Read => selected.consumers |> any(existing => existing.kind == Read && existing.span_start == edge.span_start && existing.site == edge.site) == false
       PassedByValue => selected.consumers |> any(existing => existing.kind == PassedByValue && existing.span_start == edge.span_start && existing.site == edge.site) == false
+      Invoked => selected.consumers |> any(existing => existing.kind == Invoked && existing.span_start == edge.span_start && existing.site == edge.site) == false
       _ => false
     }
   )
@@ -216,6 +224,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
 
     ExprCall =>
       let fname = expr_call_func_at(texpr: texpr, source_indices: si)
+      // The callee name is recorded whether or not it names a binding: a global function name only
+      // makes a binding no parameter or local matches, and an extra edge can only keep a clone.
+      let called = record_use(accum: accum, name: fname, kind: Invoked, site: "callee", binding_kind: none, span_start: texpr.span.start)
       if fname == "fold" {
         let init_arg = texpr.children |> filter(a => authored_name_at(source_indices: si, node: a) == "init") |> first
         let threaded_accum = match init_arg {
@@ -224,17 +235,17 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_indices: si)
-                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
-              _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false, si: si)
+                record_use(accum: called, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
+              _ => walk_expr(accum: called, texpr: ia_val, in_tail: false, si: si)
             }
-          Absent => accum
+          Absent => called
         }
         let non_init = texpr.children |> filter(a => authored_name_at(source_indices: si, node: a) != "init")
         non_init |> fold(init: threaded_accum, f: (acc, a) =>
           walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
         )
       } else {
-        texpr.children |> fold(init: accum, f: (acc, a) =>
+        texpr.children |> fold(init: called, f: (acc, a) =>
           walk_call_argument(accum: acc, arg: arg_value(n: a), si: si)
         )
       }
@@ -391,7 +402,7 @@ fn is_owned_local(kind: VarBindingKind?) -> Bool {
 // into the call and then return it. Leaving PassedByValue out of this count did exactly that to
 // fold_terminal_expr on the first regen round (rustc E0382, use of moved value `body`).
 fn whole_value_borrow_count(usage: BindingUsage) -> Int {
-  usage.consumers |> filter(c => match c.kind { Read => true, Threaded => true, PassedByValue => true, _ => false }) |> count
+  usage.consumers |> filter(c => match c.kind { Read => true, Threaded => true, PassedByValue => true, Invoked => true, _ => false }) |> count
 }
 
 // A binding whose ONE use is a by-value argument is moved there. One edge on the selected path means
@@ -419,7 +430,7 @@ fn build_read_only_params(proof: OwnershipProof, param_names: Set<String>) -> Se
       set_contains(param_names, usage.name)
       && is_owned_local(kind: usage.binding_kind)
       && binding_fan_out(usage: usage) > 1
-      && usage.consumers |> all(c => match c.kind { Read => true, Projected => true, Threaded => true, PassedByValue => true, _ => false })
+      && usage.consumers |> all(c => match c.kind { Read => true, Projected => true, Threaded => true, PassedByValue => true, Invoked => true, _ => false })
     )
     |> fold(init: empty_set(), f: (acc, usage) => set_insert(acc, usage.name))
 }
