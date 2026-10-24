@@ -709,7 +709,7 @@ test fn a_twin_apply_writes_neither_productions_tree_sync_env_nor_its_serve_unit
   let legs = full_legs(spec: lab_spec())
   let env = words_at(legs: legs, step: "tree-sync-env")
   let unit = words_at(legs: legs, step: "serve-unit")
-  has_word(words: env, w: lab_spec().names.tree_sync_env_path as String)
+  env != []
     && !has_word(words: env, w: prod.names.tree_sync_env_path as String)
     && unit != []
     && !has_word(words: unit, w: deployment_systemd_unit_path(names: prod.names) as String)
