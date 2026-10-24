@@ -1357,20 +1357,32 @@ type SortKeyed<T, K> {
 }
 
 // STABLE: on an equal key the left run's member is emitted first, so equal keys keep input order, as
-// the host sort_by (a stable sort over canonical_content_cmp) does.
+// the host sort_by (a stable sort over canonical_content_cmp) does. A TAIL-RECURSIVE merge into an
+// accumulator, one list_push per member and one list_append for the run left over: the head-building
+// recursion it replaced constructed a Cons per member at merge depth, a clone and a head insertion
+// each on the persistent carrier (DESIGN 6, a cost-shape defect fixed regardless of n).
 fn sort_merge_runs<T, K>(
   left: FreeMonoid<SortKeyed<T, K>>,
   right: FreeMonoid<SortKeyed<T, K>>,
   order: TotalOrder<K>
 ) -> FreeMonoid<SortKeyed<T, K>> {
+  sort_merge_into(left: left, right: right, order: order, acc: Empty)
+}
+
+fn sort_merge_into<T, K>(
+  left: FreeMonoid<SortKeyed<T, K>>,
+  right: FreeMonoid<SortKeyed<T, K>>,
+  order: TotalOrder<K>,
+  acc: FreeMonoid<SortKeyed<T, K>>
+) -> FreeMonoid<SortKeyed<T, K>> {
   match left {
-    Empty => right
+    Empty => list_append(left: acc, right: right)
     Cons { head: l, tail: lt } => match right {
-      Empty => left
+      Empty => list_append(left: acc, right: left)
       Cons { head: r, tail: rt } => match order.compare(l.key, r.key) {
-        Greater => Cons { head: r, tail: sort_merge_runs(left: left, right: rt, order: order) }
-        Less => Cons { head: l, tail: sort_merge_runs(left: lt, right: right, order: order) }
-        Equal => Cons { head: l, tail: sort_merge_runs(left: lt, right: right, order: order) }
+        Greater => sort_merge_into(left: left, right: rt, order: order, acc: list_push(xs: acc, item: r))
+        Less => sort_merge_into(left: lt, right: right, order: order, acc: list_push(xs: acc, item: l))
+        Equal => sort_merge_into(left: lt, right: right, order: order, acc: list_push(xs: acc, item: l))
       }
     }
   }
