@@ -127,3 +127,13 @@ fn apt_binary_path_of(tool: CliTool) -> FilePath? {
   )
 }
 
+
+type FixtureRec { name: String }
+
+fn fixture_recs() -> List<FixtureRec> {
+  [FixtureRec { name: "a" }]
+}
+
+fn fixture_call_result_names() -> List<String> {
+  list_map(xs: fixture_recs(), f: fn(c) { c.name })
+}
