@@ -42,6 +42,8 @@ import std.durable_exclusive_hold {
   durable_hold_acquire_assess, durable_hold_release_assess,
   DurableHoldHolderReport, DurableHoldRecoveryRefusal, DurableHoldRecoveryAssessment, HoldRecoveryEligible, HoldRecoveryRefused,
   durable_hold_recovery_assess,
+  DurableHoldNonHolderRelease, DurableHoldNonHolderReleaseRefusal, DurableHoldNonHolderReleaseBasis,
+  NonHolderReleaseEligible, NonHolderReleaseRefused, durable_hold_nonholder_release_assess,
 }
 import gunbc.durable_cas_file_store { KeepAllGenerations, KeepGenerationWindow, CasSlotRetention,
   CasGenerationWindow, DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
@@ -584,6 +586,50 @@ fn file_hold_recovery_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, 
             dead_holder: h,
             evidence: e,
           }
+      }
+  }
+}
+
+// A NON-HOLDER RELEASE FREES THROUGH THE SAME PLAN AND COMMIT AS A RELEASE AND A RECOVERY. The write is
+// identical -- held at N becomes free at N+1, compare-and-set on the generation THIS live read observed --
+// and only the eligibility differs: the protected section was observed complete, or an operator
+// authorized it. So the plan is minted here from this module's own read, bound to the subject the
+// evidence or the grant names, and committed by file_hold_release_commit, which still tells a slot that
+// moved after this read (Lost) from a store fault. The released_by is the consumer's, as on recovery.
+//
+// The evidence is a verdict about the world that only the observing consumer can take, so this mint
+// admits its callers by name, as recovery's does: a caller free to hand it an authored
+// SectionObservedComplete would be the forged-release path the plan's sole_constructor exists to close.
+// Keep-all only: no windowed consumer exists, and the consumer this is for is a lease whose generations
+// are its audit trail.
+type FileHoldNonHolderReleaseAssessment<Observation>
+  = FileHoldNonHolderReleasePlanned { plan: FileHoldReleasePlan, released_holder: DurableHoldOwnerRef, basis: DurableHoldNonHolderReleaseBasis<Observation> }
+  | FileHoldNonHolderReleaseNotEligible { slot_key: NonEmptyStr, refusal: DurableHoldNonHolderReleaseRefusal<Observation> }
+
+fn file_hold_nonholder_release_assess<Observation>(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  release: DurableHoldNonHolderRelease<Observation>,
+  released_by: DurableHoldReleaseRef,
+) -> FileHoldNonHolderReleaseAssessment<Observation>
+  admit_callers: [
+    decl_ref(module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", decl_name: "nr_assess"),
+  ]
+{
+  match durable_hold_nonholder_release_assess(observed: observe_file_hold(root: root, key: slot_key), release: release) {
+    NonHolderReleaseRefused { refusal: r } => FileHoldNonHolderReleaseNotEligible { slot_key: slot_key, refusal: r }
+    NonHolderReleaseEligible { generation: g, released_holder: h, basis: b } =>
+      FileHoldNonHolderReleasePlanned {
+        plan: FileHoldReleasePlan {
+          root: root,
+          slot_key: slot_key,
+          owner: h,
+          generation: g,
+          free_payload: hold_slot_payload(state: DurableHoldFree { released_by: released_by }),
+          retention: KeepAllGenerations,
+        },
+        released_holder: h,
+        basis: b,
       }
   }
 }
