@@ -53,23 +53,37 @@ fn roster_column(line: String, at: Int) -> String {
   join(parts.skip(n: at).take(n: 1), "")
 }
 
+// ANCHORED ON THE ROW'S INDENTED SHAPE, deliberately. A bare `bin_wet(entry: ` match also
+// catches the `fn bin_wet(...)` definition itself and the two fold lines that re-render
+// RehomedBinWetRow entries (`concat(acc, [bin_wet(entry: r.entry, ...`) -- those are not rows,
+// their quoted columns are empty, and matching them would fail this claim for the wrong reason.
+// Every real row renders at indentation two as `  bin_wet(entry: "...", f: "...")`; the
+// two-quote prefix with its leading spaces is what no other line in the file carries.
 fn roster_rows() -> List<String> {
   filter(
     split(s: read_or_empty(binwet_roster_authority), delimiter: "\n"),
-    line => string_contains(s: line, pattern: "bin_wet(entry: ")
+    line => string_contains(s: line, pattern: "  bin_wet(entry: \"")
   )
 }
 
 fn pair_names_live_declaration(row: String) -> Bool {
   let path = roster_column(row, 1)
   let name = roster_column(row, 3)
-  if path == "" || name == "" { false } else {
+  if path == "" { false } else {
     let src = read_or_empty(path)
-    // A roster row may name a `test fn` (a claim) or a plain `fn` the entry calls; both are live
-    // declarations in the named file. Anything else -- a name that exists nowhere in that file --
-    // is the drift this join catches.
-    string_contains(s: src, pattern: concat("test fn ", name, "("))
-      || string_contains(s: src, pattern: concat("fn ", name, "("))
+    if name == "" {
+      // A file-grain row (f: "") names the entry file, not one claim; the roster holds exactly
+      // one such row (roadmap_belt_actuate_witness.dag, which is a whole entry runner). It is
+      // live when the named file exists and declares claims at all -- read_or_empty is "" for a
+      // missing file, so this arm refuses a dead path without inventing a function name.
+      string_contains(s: src, pattern: "test fn ")
+    } else {
+      // A roster row may name a `test fn` (a claim) or a plain `fn` the entry calls; both are live
+      // declarations in the named file. Anything else -- a name that exists nowhere in that file --
+      // is the drift this join catches.
+      string_contains(s: src, pattern: concat("test fn ", name, "("))
+        || string_contains(s: src, pattern: concat("fn ", name, "("))
+    }
   }
 }
 
