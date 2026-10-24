@@ -4,6 +4,7 @@ import std.numerical_contract { FmaContractionRefused }
 import std.realization { LocalAccelerator }
 import extdeps.communication.medium { DecodeFidelity }
 import std.measure { Nano }
+import std.realization_schedule { RunnableKernelWorkload }
 
 
 type ElementwiseFoldClass
