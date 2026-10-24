@@ -606,18 +606,22 @@ fn native_emission_controls_entry() -> String {
   "dag/gunbc/instruments/native_emission_controls.dag"
 }
 
-// THE NATIVE FLEET CONVERGENCE VERDICT: gunbc.fleet.fleet_convergence_verdict's refused-enrolment RED,
-// its control and one inhabitance case over the live enrolment roster, emitted, built and run by the
-// NativeClaimDriver program gunbc.instruments.native_fleet_convergence_verdict. Its closure lies
-// outside both required emitted closures, so this label goes red when that closure stops resolving
-// -- for whoever runs it: run by name, not a merge gate (gunbc.emitted_subject_build_gate
-// emitted_subject_build_rows does not list it). `gunbc test //gunbc/instruments:native-fleet-convergence-verdict`.
-fn native_fleet_convergence_verdict_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "native-fleet-convergence-verdict" } }
+// THE FLEET CONVERGENCE VERDICT ROUTE (gunbc.instruments.fleet_convergence_verdict_route): resolves the
+// import closure gunbc.fleet.fleet_receipt_collector collect_fleet_convergence_wet loads, then evaluates
+// the verdict's refused-enrolment RED, its control and one inhabitance case over the live roster. A
+// closure that stops resolving is no observation. Seed-evaluated, because that closure does not emit as
+// compilable Rust today; run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:fleet-convergence-verdict-route`.
+fn fleet_convergence_verdict_route_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "fleet-convergence-verdict-route" } }
 }
 
-fn native_fleet_convergence_verdict_entry() -> String {
-  "dag/gunbc/instruments/native_fleet_convergence_verdict.dag"
+fn fleet_convergence_verdict_route_entry() -> String {
+  "dag/gunbc/instruments/fleet_convergence_verdict_route.dag"
+}
+
+fn fleet_convergence_verdict_route_function() -> String {
+  "fleet_convergence_verdict_route_wire"
 }
 
 // THE VALUE-POSITION BLOCK NEST CONTROL: native tokenize/parse/normalize of the committed
@@ -1118,8 +1122,8 @@ fn native_emission_controls_binding() -> TargetBinding {
   TargetBinding { target: native_emission_controls_label() producer: NativeClaimProgramProducer { entry: native_emission_controls_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
-fn native_fleet_convergence_verdict_binding() -> TargetBinding {
-  TargetBinding { target: native_fleet_convergence_verdict_label() producer: NativeClaimProgramProducer { entry: native_fleet_convergence_verdict_entry() deadline: native_claim_policy_child_deadline() } }
+fn fleet_convergence_verdict_route_binding() -> TargetBinding {
+  TargetBinding { target: fleet_convergence_verdict_route_label() producer: CliWireProgramProducer { entry: fleet_convergence_verdict_route_entry() function: fleet_convergence_verdict_route_function() } }
 }
 
 fn dag_emit_real_grammar_round_trips_binding() -> TargetBinding {
@@ -1334,7 +1338,7 @@ fn instrument_targets() -> List<Label> {
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), native_fleet_convergence_verdict_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
+    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
   ]
 }
 
@@ -1356,7 +1360,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), native_fleet_convergence_verdict_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
   ]
 }
 
