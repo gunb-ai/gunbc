@@ -983,7 +983,7 @@ pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
 // A right side at or below RC_LIST_CONCAT_ELEMENTWISE_MAX is pushed element by element: im Vector
 // append onto a growing left is superlinear for small right sides, and element-wise push is linear
 // (gunbc.recurring_failure_mode non_empty_append_on_a_persistent_vector_is_superlinear; the threshold
-// is read by gunbc.instruments.append_chain_ladder). Above it, append keeps its sub-linear join.
+// is a one-off bench crossover receipted there; append_chain_ladder checks linearity at 8 elements). Above it, append keeps its sub-linear join.
 pub const RC_LIST_CONCAT_ELEMENTWISE_MAX: usize = 4096;
 
 pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
