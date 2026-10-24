@@ -15,7 +15,7 @@ mkdir -p /root/workspace/.c4logs968; exec > >(tee /root/workspace/.c4logs968/las
 DEADLINE=${1:-2400}
 ARMS=${2:-all}
 START=$(date +%s)
-HEAD_SHA=6f21ff1ced525d79d27cf408b0f0f20e1bbce5e8
+HEAD_SHA=289a632418c5346f6b776650fc41f8c8a64eb80e
 CKPT=/tmp/c4v/ckpt968; mkdir -p $CKPT/jobs
 echo "CKPT=$CKPT deadline=${DEADLINE}s"
 sha() { sha256sum "$1" | cut -d' ' -f1; }
@@ -81,7 +81,8 @@ ce_run () { # ce_run <tag> <bin> <tree> <args...>
   local rc=$?
   echo "ROW $tag rc=$rc lines=$(wc -l < $d/out.txt) admitted=$(grep -c '^admitted-module-identities:' $d/out.txt) el=${el}s"
   head -4 $d/out.txt | sed "s|^|  $tag |"
-  grep -m2 "admitted-module-identities:\|unknown\|error\|refus" $d/out.txt | sed "s|^|  $tag note: |" | head -3
+  grep -m3 "admitted-module-identities:\|unknown\|error\|refus" $d/out.txt | sed "s|^|  $tag note: |" | head -3
+  grep -m2 "module-admission:\|claim_executor --query-module" $d/out.txt | sed "s|^|  $tag arm: |"
   mv $d/out.txt $CKPT/jobs/$tag.out
 }
 claim_run () { # claim_run <tag> <tree> <bin> <mode> <entry> <fns-csv>
@@ -111,6 +112,12 @@ echo "=== R3 unknown flag rc2 $(date -u +%H:%M:%S)Z"
 ce_run R3 $CEH $H --required-ci-but-typo --source-root dag --source-root src/v2 || rc=$?
 echo "=== R4 BASE dead flag $(date -u +%H:%M:%S)Z"
 [ -x "$CEB" ] && ce_run R4 $CEB $B --required-ci --source-root dag --source-root src/v2 || true
+echo "=== Q1 typed never-admitted arm (approval_ntfy) $(date -u +%H:%M:%S)Z"
+ce_run Q1 $CEH $H --required-ci --query-module approval_ntfy_access_readback_witness --source-root dag --source-root src/v2 || rc=$?
+echo "=== Q1b typed arm on a never-existent identity (sanity) $(date -u +%H:%M:%S)Z"
+ce_run Q1b $CEH $H --required-ci --query-module test.claim.this_module_does_not_exist_14968 --source-root dag --source-root src/v2 || rc=$?
+echo "=== Q2 admitted control (present module must NOT print never-admitted) $(date -u +%H:%M:%S)Z"
+ce_run Q2 $CEH $H --required-ci --query-module test.claim.guarantee_probe_corpus_witness --source-root dag --source-root src/v2 || rc=$?
 echo "=== W witness claims dry $(date -u +%H:%M:%S)Z"
 W=dag/test/claim/required_lane_resolution_census_witness.dag
 WF=$(fns_of2 $H/$W | paste -sd, -)
