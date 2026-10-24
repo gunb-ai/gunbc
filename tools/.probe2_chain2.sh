@@ -19,6 +19,7 @@ G=./target/release/gunbc
 P=.probe_src; rm -rf $P; mkdir -p $P
 HDR='import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.nat { Nat }
+import std.integer { int_to_decimal_string }
 import std.process { ProcessExit, exit_failure }
 type P { value: Int }
 type R { s: String  p: P  n: Int }
@@ -33,7 +34,7 @@ fn main() -> ProcessExit { exit_failure(reason: BODY) }'
 probe() {
   mkdir -p $P/$1; printf 'module %s\n%s\n' "$1" "${HDR/BODY/$2}" > $P/$1/p.dag
   echo "=== $1 :: $2"
-  timeout 600 $G run --source-root $P/$1 --source-root dag --entry $P/$1/p.dag --function main 2>&1 | grep -e CHAIN2 -e 'error' | head -4 | cut -c1-200
+  timeout 600 $G run --source-root $P/$1 --source-root dag --entry $P/$1/p.dag --function main 2>&1 | grep -e CHAIN2 -e 'error' | head -4 | cut -c1-200; timeout 600 $G run --source-root $P/$1 --source-root dag --entry $P/$1/p.dag --function main 2>&1 | tail -2 | cut -c1-160
 }
 for pair in 'record|mk_p()' 'coproduct_unit|mk_cr()' 'coproduct_rec|mk_c()' 'int|7' 'nat|nat()' 'bool|true' 'nes|ne()' 'string|"s"'; do
   n=${pair%%|*}; e=${pair#*|}
