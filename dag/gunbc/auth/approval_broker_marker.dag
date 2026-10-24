@@ -67,6 +67,8 @@ type ApprovalBrokerMarker
   | DeviceRequestHandlerObserved
   | DeviceEnrollmentReadbackHandlerObserved
   | DevicePushUpdateHandlerObserved
+  | DeviceListHandlerObserved
+  | DeviceRevokeHandlerObserved
   | BrokerNoRouteMatched
   | BrokerMethodNotAllowed
   | BrokerAdapterRefused
@@ -119,6 +121,8 @@ fn approval_broker_marker_token(m: ApprovalBrokerMarker) -> NonEmptyStr {
     DeviceRequestHandlerObserved => "device-request" as NonEmptyStr
     DeviceEnrollmentReadbackHandlerObserved => "device-enrollment-readback" as NonEmptyStr
     DevicePushUpdateHandlerObserved => "device-push-update" as NonEmptyStr
+    DeviceListHandlerObserved => "device-list" as NonEmptyStr
+    DeviceRevokeHandlerObserved => "device-revoke" as NonEmptyStr
     BrokerNoRouteMatched => "no-route-matched" as NonEmptyStr
     BrokerMethodNotAllowed => "method-not-allowed" as NonEmptyStr
     BrokerAdapterRefused => "adapter-refused" as NonEmptyStr
@@ -131,6 +135,7 @@ data approval_broker_markers: List<ApprovalBrokerMarker> = [
   StatusHandlerObserved, StoreReceiptHandlerObserved,
   DeviceEnrolHandlerObserved, DeviceRedeemHandlerObserved, DevicePendingHandlerObserved,
   DeviceRequestHandlerObserved, DeviceEnrollmentReadbackHandlerObserved, DevicePushUpdateHandlerObserved,
+  DeviceListHandlerObserved, DeviceRevokeHandlerObserved,
   BrokerNoRouteMatched, BrokerMethodNotAllowed, BrokerAdapterRefused,
   BrokerStaticRouteServed,
 ]

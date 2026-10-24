@@ -225,7 +225,15 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceRootUnknown,
   dashboard_instance_for_repo_root,
   dispatch_base_branch,
+  dashboard_git_subtree_readback_is_granted_under, dashboard_git_worker_granted_directory_mode,
+  dashboard_git_worker_directory_mode_octal,
+  dashboard_git_worker_entry_writes_files_in_place,
 }
+// THE GROUP ROW, IMPORTED FROM THE ACCOUNT MODEL THAT DECLARES IT. The gate below compares the group
+// find reports on every granted entry against this row, so it has to name the same declaration the
+// spawn's chgrp was told -- two spellings of a group name is how a gate starts a worker unit over a
+// tree it believes is grouped for a different account.
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 import gunbc.roadmap.roadmap_dispatch_environment {
   EnvironmentAdmitted,
   EnvironmentRefused,
@@ -3281,6 +3289,78 @@ fn belt_actuate_spawn_with_origin(
   }
 }
 
+// THE PER-ATTEMPT PROOF, run by the SPAWN and nothing else. The grant argv come in the spawn bundle
+// beside worktree_add, so the sequence is one attempt's by construction: `git worktree add` creates
+// .git/worktrees/<key> under the principal that runs the actuator (on the lab, the account the serve
+// runs as -- the entry's owner and a member of the attempt group), the two grant commands then put that
+// entry and everything under it in the attempt group at the declared arm (02770 on directories, 0664 on the
+// walked files), and the walk proves it. THE UNIT IS
+// NOT STARTED IF THE PROOF FAILS: a worker whose entry is not granted cannot commit, and starting it
+// anyway turns a named refusal into a permission error inside someone else's attempt. The decision is
+// the model's own dashboard_git_subtree_readback_is_granted_under over
+// dashboard_git_worker_granted_directory_mode -- the same figure the apply and the claims use -- so
+// there is no second definition of "granted" to drift, and an EMPTY receipt fails it rather than
+// passing it (recurring failure mode directory_ownership_assertion_stops_at_the_top_level).
+//
+// THE GROUP IS A PARAMETER, NOT A CONSTANT READ HERE, for the reason every other grant in this slice has
+// it: the fold compares find's `%g` against the token the grant was told, and a test that groups a
+// throwaway tree to a token its own host can resolve is asking the same question of a group name the CI
+// host has never heard. THE PRODUCTION CALLER BELOW BINDS fleet_posix_worker_shared_group_name, the row
+// fleet_posix_accounts declares and the same row the grant argv were built with; NO DEFAULT, so a call
+// site cannot quietly take the production name where it meant to name its own. The dry pairing claim
+// the_production_route_names_the_declared_group_in_every_grant_command keeps the production binding
+// executed, so the substituted spelling is never the only route through this gate.
+fn belt_worker_git_entry_grant_readback(
+  cmds: DispatchSpawnCommands,
+  workdir: String,
+  group: NonEmptyStr,
+) -> BeltExecStepsOutcome {
+  match belt_exec(cmd: cmds.worker_git_entry_readback, workdir: workdir) {
+    ExecOk { stdout: receipt } =>
+      if dashboard_git_subtree_readback_is_granted_under(
+        top: dashboard_git_worker_granted_directory_mode,
+        // THE GROUP HALF OF THE GRANT, ON EVERY LINE. Without this leg the gate starts the worker unit
+        // on a tree at the right MODES and the wrong GROUP -- which is exactly the pre-migration state of
+        // the lab tree this slice exists to repair (briansrls:briansrls at 0775 read as granted), and the
+        // worker's first commit dies on a permission error inside a tree the belt just certified.
+        group: group,
+        // THE ENTRY'S OWN DECISION: its files DO carry group-write, because logs/HEAD in this very entry
+        // is a reflog the worker's commit appends to (dashboard_git_worker_entry_writes_files_in_place).
+        // A receipt whose reflog came back at git's read-only 0444 therefore refuses here -- which is the
+        // state that makes the worker's first commit die on "unable to append", so the unit is not started.
+        files_group_writable: dashboard_git_worker_entry_writes_files_in_place(),
+        receipt: receipt,
+      ) {
+        ExecStepsOk
+      } else {
+        ExecStepFailed {
+          step: "worker-git-entry-readback",
+          // THE EXPECTED TOP IS NAMED BY THE ARM THE GATE DECIDES ON, not by a figure typed beside it:
+          // the same rendering the install passes to `install -d -m` and the fold compares against
+          // (dashboard_git_worker_directory_mode_octal over dashboard_git_worker_granted_directory_mode).
+          // A hand-typed mode here is a third spelling of one fact, and it is how this gate started
+          // reporting a mode its own decision no longer used.
+          detail: join(
+            [
+              "the attempt's private git entry did not read back granted (expected ",
+              dashboard_git_worker_directory_mode_octal(mode: dashboard_git_worker_granted_directory_mode),
+              " on the entry, group-writable entries beneath it; an empty or unreadable walk counts as not",
+              " granted), so the worker unit is not started",
+            ],
+            "",
+          ) as NonEmptyStr,
+        }
+      }
+    ExecFailed { program: _, exit_code, stderr } =>
+      ExecStepFailed {
+        step: "worker-git-entry-readback",
+        detail: join(["the grant walk could not run: exit ", to_string(exit_code), ": ", stderr], ""),
+      }
+    ExecRefused { program: _, reason } =>
+      ExecStepFailed { step: "worker-git-entry-readback", detail: reason }
+  }
+}
+
 // THE ADMITTED SPAWN'S HOST STEPS, carrying the session's placement grant when its container holds
 // one. Extracted from belt_actuate_spawn_with_origin so the grant's release-unless-spawned rule
 // wraps ONE outcome rather than every SpawnFailed arm separately. It addresses the prepared launch's
@@ -3320,13 +3400,19 @@ fn belt_spawn_admitted(
       }
     WorktreeClaimRecorded =>
   match belt_exec_steps(
-    steps: [
-      BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
-      BeltExecStep {
-        step: "attempt-state-prepare",
-        command: cmds.attempt_state_prepare,
-      },
-    ],
+    steps: concat(
+      [BeltExecStep { step: "worktree-add", command: cmds.worktree_add }],
+      concat(
+        map(
+          cmds.worker_git_entry_grant,
+          command => BeltExecStep { step: "worker-git-entry-grant", command: command },
+        ),
+        [BeltExecStep {
+          step: "attempt-state-prepare",
+          command: cmds.attempt_state_prepare,
+        }],
+      ),
+    ),
     workdir: workdir,
   ) {
     ExecStepFailed { step, detail } =>
@@ -3338,6 +3424,23 @@ fn belt_spawn_admitted(
         launch: launch,
       }
     ExecStepsOk =>
+      match belt_worker_git_entry_grant_readback(
+        cmds: cmds,
+        workdir: workdir,
+        // THE PRODUCTION BINDING, AT THE SPAWN THAT RUNS THIS GATE: the group the grant argv in the same
+        // bundle were told, read from the row that declares it. The gate and the grant cannot disagree,
+        // because neither of them spells a group name.
+        group: fleet_posix_worker_shared_group_name,
+      ) {
+        ExecStepFailed { step, detail } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: step,
+            detail: detail,
+            provider: provider_wire_label,
+            launch: launch,
+          }
+        ExecStepsOk =>
       match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
         AttemptWorktreeAbsent { path } =>
           SpawnFailed {
@@ -3477,6 +3580,7 @@ fn belt_spawn_admitted(
       }
   }
   }
+      }
 }
 
 // ONE ROSTER READ PER SPAWN, BOUND HERE AND CARRIED. This site preflighted and labelled a provider

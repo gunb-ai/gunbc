@@ -1,14 +1,13 @@
 module gunbc.recurring_failure_mode.a_refusal_prints_and_the_line_continues
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { MechanicallyPreventable }
-import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_refusal_prints_and_the_line_continues: RecurringFailureMode = RecurringFailureMode {
   identity: "a_refusal_prints_and_the_line_continues" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the cost partition's rows and parent are drawn from one universe so a clean run reconciles, and a Refused partition joins the batch exit at precedence 1>2>0" } },
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable: the partition is computed after the claims have already run, so the Refused verdict joins the batch exit (precedence 1>2>0) rather than preventing the state; claim_batch is the only caller of exclusive_cost_partition outside tests." as NonEmptyStr } },
 
   receipts: [
     "**a refusal that fires while the line keeps running is an escape hatch with a typed label on it.** DESIGN section 5 (stop visibly): a refusal that fires stops the line, and a toggle that proceeds as if it had not fired is an escape hatch. The class is a verdict rendered as REFUSED on a diagnostic stream that no exit status, claim verdict or gate reads, so every consumer that looks at the exit code sees a green run beside a printed Refused.",
@@ -29,7 +28,7 @@ data a_refusal_prints_and_the_line_continues: RecurringFailureMode = RecurringFa
 
     "CEILING: mechanically preventable now (the partition verdict joins batch_exit_code at precedence 1 over 2 over 0, with a planted over-attribution exiting nonzero and a clean partition exiting 0); it cannot be structurally impossible while the partition is computed after the claims have already run.",
 
-    "NEXT TRIGGER: the cost partition's rows and parent being drawn from one universe, so a Refused partition stops firing on a healthy batch and gating it does not turn every run red. Then claim_batch gates by default: RED a planted over-attribution exits nonzero, control a clean partition exits 0."
+    "RETIRED (gunbc#14893): the partition's rows and parent are drawn from one universe (#14872) and a Refused partition joins the batch exit (#14893): NoSpans exits 2, any other refusal exits 1, a Reconciled partition changes nothing. Executed evidence at the PR head: RED a planted over-attribution exits nonzero on a PASSing claim, control the same claim on the fixed tree exits 0."
   ],
 
   evidence: [],
