@@ -2,6 +2,8 @@ module v2.test.claim.refinement_discharge
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer { infer }
+import v2.test.claim.compiler.literal_refinement_judgment_witness { lrj_resolve }
+import v2.std.text { String }
 import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree, RefinementObligation }
 import v2.compiler.refinement_discharge { discharge_refinement_obligations }
 import v2.extdeps.languages.dag { dag_arrow_with_body_node, dag_int_literal_fixture_one, dag_type_atom_node }
@@ -58,31 +60,6 @@ fn rdt_false() -> Node {
   dag_type_atom_node(identity: ^dag_token_kw_false)
 }
 
-// infer's own output over the application, with ONE supplied obligation naming it.
-fn rdt_obligated(body: Node) -> Optional<ObligatedInferredTree> {
-  let app = rdt_application(body: body)
-  match infer(tree: claim_resolved_tree_without_declarations(root: app)) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: t, diagnostics: _ } =>
-      optional_present(value: ObligatedInferredTree {
-        root: t.root,
-        facts: t.facts,
-        obligations: [RefinementObligation {
-          site: app,
-          application: app,
-          target: dag_type_atom_node(identity: ^rdt_refinement)
-        }]
-      })
-  }
-}
-
-fn rdt_discharged(body: Node) -> Optional<Outcome<InferredTree>> {
-  match rdt_obligated(body: body) {
-    Absent => optional_absent()
-    Present { value: t } => optional_present(value: discharge_refinement_obligations(t: t))
-  }
-}
-
 fn rdt_refused_at_site_with(o: Optional<Outcome<InferredTree>>, reason: Symbol) -> Bool {
   match o {
     Absent => false
@@ -105,12 +82,27 @@ fn rdt_admitted(o: Optional<Outcome<InferredTree>>) -> Bool {
 // its value to exactly one arm: a `true` body admits, a `false` body refuses
 // refinement_predicate_violated at the site. The pair is the discriminator for "the value is read":
 // the two bodies must land on DIFFERENT arms.
+// The evaluator reads grounding only on nodes real ingest produced (a hand-built application is
+// GroundingNotDerived, so it is undischargeable whatever its body), so the application comes from an
+// ingested module whose predicate is a resolved declaration applied to an Int literal. The tree is
+// infer's; discharge is called DIRECTLY with the obligated form, and the pair must land on different arms.
+fn rdt_direct_over(subject: String) -> Optional<Outcome<InferredTree>> {
+  match lrj_resolve(subject: subject) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: r, diagnostics: _ } =>
+      match infer(tree: r) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: t, diagnostics: _ } => optional_present(value: discharge_refinement_obligations(t: t))
+      }
+  }
+}
+
 test fn rdt_a_holding_predicate_admits_holds() -> Bool {
-  rdt_admitted(o: rdt_discharged(body: rdt_true()))
+  rdt_admitted(o: rdt_direct_over(subject: "v2.test.lrj_int_holds"))
 }
 
 test fn rdt_a_violated_predicate_refuses_at_the_site_holds() -> Bool {
-  rdt_refused_at_site_with(o: rdt_discharged(body: rdt_false()), reason: ^refinement_predicate_violated)
+  rdt_refused_at_site_with(o: rdt_direct_over(subject: "v2.test.lrj_int_violated"), reason: ^refinement_predicate_violated)
 }
 
 // (1b) AN APPLICATION THE ONE EVALUATOR CANNOT RUN IS UNDISCHARGEABLE -- never admitted, never
@@ -172,33 +164,3 @@ test fn rdt_zero_obligations_discharge_to_the_same_tree() -> Bool {
       }
   }
 }
-
-// LOCATOR (to be deleted with the repair of the two controls above): the evaluator's own first reason BEHIND the
-// undischargeable refusal of the direct true-body application.
-fn rdt_behind_is(reason: Symbol) -> Bool {
-  match rdt_discharged(body: rdt_true()) {
-    Absent => false
-    Present { value: Accepted { value: _, diagnostics: _ } } => false
-    Present { value: Rejected { diagnostics: d } } =>
-      match d.tail {
-        Cons { head: x, tail: _ } => x.reason == reason
-        Empty => false
-      }
-  }
-}
-
-test fn rdt_locator_behind_is_type_node_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_type_node) }
-test fn rdt_locator_behind_is_grounding_not_derived_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_grounding_not_derived) }
-test fn rdt_locator_behind_is_callee_absent_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_callee_absent) }
-test fn rdt_locator_behind_is_parameter_reference_unbound_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_parameter_reference_unbound) }
-test fn rdt_locator_behind_is_unsupported_callee_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_unsupported_callee) }
-test fn rdt_locator_behind_is_argument_bind_absent_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_argument_bind_absent) }
-test fn rdt_locator_behind_is_pending_children_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_pending_children) }
-test fn rdt_locator_behind_is_invalid_node_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_invalid_node) }
-test fn rdt_locator_behind_is_resolved_type_mismatch_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_resolved_type_mismatch) }
-test fn rdt_locator_behind_is_canonical_mismatch_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_canonical_mismatch) }
-test fn rdt_locator_behind_is_bind_body_absent_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_bind_body_absent) }
-test fn rdt_locator_behind_is_argument_arity_excess_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_argument_arity_excess) }
-test fn rdt_locator_behind_is_runtime_value_node_unrepresentable_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_runtime_value_node_unrepresentable) }
-test fn rdt_locator_behind_is_inhabitance_mismatch_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_inhabitance_mismatch) }
-test fn rdt_locator_behind_is_grounding_node_mismatch_holds() -> Bool { rdt_behind_is(reason: ^eval_rejected_grounding_node_mismatch) }
