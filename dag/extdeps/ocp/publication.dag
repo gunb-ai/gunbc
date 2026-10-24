@@ -18,19 +18,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Upstream document facts and read receipts live in subject modules and
 // gunbc.specification_citation_read_provenance respectively.
 
-type Owfa1_0FinalSpecificationAgreement {}
-
-type OcpContributionLicenseAgreement {}
-
 type OcpSpecificationLicense
   = | Owfa1_0FinalSpecificationAgreement {}
 
 type OcpContributionLicense
   = | OcpContributionLicenseAgreement {}
-
-type AppendixA {}
-
-type AppendixB {}
 
 type ExcludedNonNormativeAppendix
   = AppendixA {}

@@ -886,6 +886,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         TypeArgumentKindMismatch { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
         TypeParameterInValuePosition { name: s(), span: no_span() },
         UnitVariantPhantomIdentityEvidenceUnavailable { name: s(), span: no_span() },
+        UnionMemberShadowsType { name: s(), span: no_span() },
         TypeMismatch { expected: s(), got: s(), span: no_span() },
         ArityMismatch { name: s(), expected: 0, got: 0, span: no_span() },
         VariantNotFound { variant: s(), type_name: s(), span: no_span() },
@@ -1363,6 +1364,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => {
             "UnitVariantPhantomIdentityEvidenceUnavailable"
         }
+        CompilerDiagnostic::UnionMemberShadowsType { .. } => "UnionMemberShadowsType",
         CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
         CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
         CompilerDiagnostic::VariantNotFound { .. } => "VariantNotFound",
@@ -1478,6 +1480,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name, .. } => {
             name.clone()
         }
+        CompilerDiagnostic::UnionMemberShadowsType { name, .. } => name.clone(),
         CompilerDiagnostic::TypeMismatch { got, .. } => got.clone(),
         CompilerDiagnostic::ArityMismatch { name, .. } => name.clone(),
         CompilerDiagnostic::VariantNotFound { variant, .. } => variant.clone(),

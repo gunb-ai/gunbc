@@ -3,7 +3,7 @@ module v2.test.claim.integer.interval_derivation
 import std.types { List }
 import std.algebra { Cons, Empty, FreeMonoid, Equal, Ordering, fold_list, length }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.integer { DecimalNonZeroMagnitude, IntegerBoundNegative, IntegerBoundNonNegative, IntegerIntervalBound, IntegerIntervalSpec, NonZeroD1, NonZeroD2, NonZeroD3, NonZeroD4, NonZeroD6, NonZeroD9, Signed, Unsigned, Signedness, StandardIntegerType, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, integer_concrete_bound, integer_concrete_zero, integer_interval, integer_interval_bound_compare, integer_interval_bound_less_or_equal, integer_interval_spec_node, integer_machine_interval_spec, integer_pow2_magnitude, integer_standard_integer_type_from_node, integer_standard_integer_type_interval_spec, integer_standard_integer_type_roster, integer_standard_integer_type_signedness, integer_standard_integer_type_width_bits, integer_nonzero_decimal_digit_widen }
+import v2.std.integer { DecimalNonZeroMagnitude, IntegerBoundNegative, IntegerBoundNonNegative, IntegerIntervalBound, IntegerIntervalSpec, NonZeroD1, NonZeroD2, NonZeroD3, NonZeroD4, NonZeroD6, NonZeroD9, Signed, Unsigned, Signedness, StandardIntegerType, SignedWidth8, SignedWidth16, SignedWidth32, SignedWidth64, SignedWidth128, UnsignedWidth8, UnsignedWidth16, UnsignedWidth32, UnsignedWidth64, UnsignedWidth128, integer_concrete_bound, integer_concrete_zero, integer_interval, integer_interval_bound_compare, integer_interval_bound_less_or_equal, integer_interval_spec_node, integer_machine_interval_spec, integer_pow2_magnitude, integer_standard_integer_type_from_node, integer_standard_integer_type_interval_spec, integer_standard_integer_type_roster, integer_standard_integer_type_signedness, integer_standard_integer_type_width_bits, integer_nonzero_decimal_digit_widen }
 import std.nat { D0, D1, D2, D3, D4, D5, D6, D7, D8, D9 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -79,16 +79,16 @@ fn derived_matches_legacy(standard_integer_type: StandardIntegerType, legacy: In
 }
 
 test fn interval_derivation_matches_all_legacy_spelled_bounds() -> Bool {
-  derived_matches_legacy(standard_integer_type: Int8, legacy: legacy_int8_spec)
-    && derived_matches_legacy(standard_integer_type: Int16, legacy: legacy_int16_spec)
-    && derived_matches_legacy(standard_integer_type: Int32, legacy: legacy_int32_spec)
-    && derived_matches_legacy(standard_integer_type: Int64, legacy: legacy_int64_spec)
-    && derived_matches_legacy(standard_integer_type: Int128, legacy: legacy_int128_spec)
-    && derived_matches_legacy(standard_integer_type: UInt8, legacy: legacy_uint8_spec)
-    && derived_matches_legacy(standard_integer_type: UInt16, legacy: legacy_uint16_spec)
-    && derived_matches_legacy(standard_integer_type: UInt32, legacy: legacy_uint32_spec)
-    && derived_matches_legacy(standard_integer_type: UInt64, legacy: legacy_uint64_spec)
-    && derived_matches_legacy(standard_integer_type: UInt128, legacy: legacy_uint128_spec)
+  derived_matches_legacy(standard_integer_type: SignedWidth8, legacy: legacy_int8_spec)
+    && derived_matches_legacy(standard_integer_type: SignedWidth16, legacy: legacy_int16_spec)
+    && derived_matches_legacy(standard_integer_type: SignedWidth32, legacy: legacy_int32_spec)
+    && derived_matches_legacy(standard_integer_type: SignedWidth64, legacy: legacy_int64_spec)
+    && derived_matches_legacy(standard_integer_type: SignedWidth128, legacy: legacy_int128_spec)
+    && derived_matches_legacy(standard_integer_type: UnsignedWidth8, legacy: legacy_uint8_spec)
+    && derived_matches_legacy(standard_integer_type: UnsignedWidth16, legacy: legacy_uint16_spec)
+    && derived_matches_legacy(standard_integer_type: UnsignedWidth32, legacy: legacy_uint32_spec)
+    && derived_matches_legacy(standard_integer_type: UnsignedWidth64, legacy: legacy_uint64_spec)
+    && derived_matches_legacy(standard_integer_type: UnsignedWidth128, legacy: legacy_uint128_spec)
 }
 
 data planted_wrong_int8_spec: IntegerIntervalSpec = integer_interval(
@@ -97,7 +97,7 @@ data planted_wrong_int8_spec: IntegerIntervalSpec = integer_interval(
 )
 
 test fn derivation_discriminates_planted_off_by_one() -> Bool {
-  !derived_matches_legacy(standard_integer_type: Int8, legacy: planted_wrong_int8_spec)
+  !derived_matches_legacy(standard_integer_type: SignedWidth8, legacy: planted_wrong_int8_spec)
 }
 
 test fn pow2_digit_shapes_hold() -> Bool {

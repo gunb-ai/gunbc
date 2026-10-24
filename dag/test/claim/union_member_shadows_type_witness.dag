@@ -1,0 +1,85 @@
+module test.claim.union_member_shadows_type_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_blocking_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A BARE UNION MEMBER IS A FRESH UNIT VARIANT, never a reference to a type: type position resolves
+// types first, so a variant spelled like a visible type is unreachable as a type, and the emitter
+// used to mint `pub struct <Name>;` for it beside the real item (rustc E0428 on a source accepted at
+// zero diagnostics; gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target).
+// Resolve now refuses that spelling at the member (UnionMemberShadowsType), and the emitter's marker
+// rule has no shadow guard of its own: a source that reaches it cannot contain the shape.
+//
+// The scope is the declarer's OWN: its declarations plus its listed imports. RED: the same-module and
+// listed-import shapes refuse with that class. CONTROLS: a union with no shadowing member is accepted
+// and emits its marker; the spelling declared as a type only in a module the declarer does not
+// import, and the spelling reachable only through another module's imports (the forked_spelling
+// variant_twin shape, and the relay fixture here), are accepted. DECLARED GAP
+// (gunbc.rung_drop union_member_shadow_whole_module_import_unseparated): a whole-module import
+// contributes its own interface and its transitive names to one map, so the own-interface type
+// reached that way is accepted today; the last test pins that reading and must flip to a refusal
+// when an own-interface visibility set lands.
+
+fn shadow_refusals(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: "UnionMemberShadowsType"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data same_module_src: String = "module ums_same\n\nimport std.types { Int }\n\ntype Solo {\n  n: Int\n}\n\ntype Nothing2 {\n  tag: Int\n}\n\ntype PickUnique = Solo | Nothing2\n"
+
+data imported_src: String = "module ums_imported\n\nimport std.types { Int }\nimport test.fixture.union_member_shadow.provider { UmsLeaf }\n\ntype UmsPick = UmsLeaf | UmsOther\n"
+
+data fresh_src: String = "module ums_fresh\n\ntype Pick3 = Alpha | Beta\n\nfn pick() -> Pick3 {\n  Alpha\n}\n"
+
+data out_of_scope_src: String = "module ums_out_of_scope\n\ntype UmsPick2 = UmsLeaf | UmsOther\n"
+
+test fn a_member_spelled_like_a_same_module_type_refuses_at_resolve() -> Bool {
+  shadow_refusals(same_module_src) == 2
+}
+
+test fn a_member_spelled_like_an_imported_type_refuses_at_resolve() -> Bool {
+  shadow_refusals(imported_src) == 1
+}
+
+test fn a_non_shadowing_union_is_accepted() -> Bool {
+  blocking_total(fresh_src) == 0
+}
+
+test fn a_non_shadowing_union_still_emits_its_marker() -> Bool {
+  compile_dag_rust_emit_check(fresh_src, "src/ums_fresh.rs", ["pub enum Pick3", "pub struct Alpha;"], [])
+}
+
+test fn a_member_spelled_like_a_type_outside_the_declarers_scope_is_accepted() -> Bool {
+  blocking_total(out_of_scope_src) == 0
+}
+
+data transitive_src: String = "module ums_transitive\n\nimport test.fixture.union_member_shadow.relay { ums_relay_answer }\n\ntype UmsPick3 = UmsLeaf | UmsOther\n"
+
+data whole_module_src: String = "module ums_whole_module\n\nimport test.fixture.union_member_shadow.provider\n\ntype UmsPick4 = UmsLeaf | UmsOther\n"
+
+test fn a_member_spelled_like_a_type_reachable_only_through_another_modules_imports_is_accepted() -> Bool {
+  blocking_total(transitive_src) == 0
+}
+
+test fn a_member_spelled_like_a_type_of_a_whole_module_import_is_accepted_today_a_declared_gap() -> Bool {
+  shadow_refusals(whole_module_src) == 0
+}

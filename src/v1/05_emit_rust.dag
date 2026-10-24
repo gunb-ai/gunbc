@@ -3333,13 +3333,6 @@ fn rust_phantom_zst_marker_def(vname: String, indexed: Bool) -> String {
   )
 }
 
-fn phantom_marker_name_shadowed_by_real_type_item(items: List<Node>, source_indices: Map<String, NewlineIndex>, vname: String) -> Bool {
-  items |> any(item =>
-    authored_name_at(source_indices: source_indices, node: item) == vname
-    && (is_type_alias_item(item: item, source_indices: source_indices) || is_type_decl_item(item: item, source_indices: source_indices))
-  )
-}
-
 // One marker per distinct variant name; `indexed` is decided by the declaring coproduct's identity.
 type PhantomZstMarker {
   name: String
@@ -3354,8 +3347,7 @@ fn collect_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> List<PhantomZ
         if child.children |> count == 0 {
           let vname = authored_name(env: env, node: child)
           if is_phantom_unit_variant_type_arg(env: env, variant_name: vname)
-            && !(inner |> any(m => m.name == vname))
-            && !phantom_marker_name_shadowed_by_real_type_item(items: items, source_indices: env.source_indices, vname: vname) {
+            && !(inner |> any(m => m.name == vname)) {
             concat(inner, [PhantomZstMarker { name: vname, indexed: is_static_width_index_arm(env: env, coproduct: item, variant_name: vname) }])
           } else { inner }
         } else { inner }
