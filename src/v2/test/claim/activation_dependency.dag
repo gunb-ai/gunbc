@@ -453,8 +453,7 @@ fn acd_atom(s: Symbol) -> Node {
 }
 
 fn acd_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target, d, declaration: NotADeclaration
-eclaration: NotADeclaration }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn acd_branch_of(children: List<Edge>) -> Node {
@@ -721,13 +720,11 @@ fn acd_conj_of(edges: List<Edge>) -> Node {
 }
 
 fn acd_pattern_edge(t: Symbol) -> Edge {
-  Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: acd_atom(s: t), d, declaration: NotADeclaration
-eclaration: NotADeclaration }
+  Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: acd_atom(s: t), declaration: NotADeclaration }
 }
 
 fn acd_body_edge(t: Symbol) -> Edge {
-  Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: acd_atom(s: t), d, declaration: NotADeclaration
-eclaration: NotADeclaration }
+  Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: acd_atom(s: t), declaration: NotADeclaration }
 }
 
 fn acd_arm_is_malformed(arm: Node) -> Bool {

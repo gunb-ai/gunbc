@@ -24,7 +24,7 @@ import v1.std.core {
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
   Connective, Conj, Disj, NoConnective,
-  ParsedModuleItemKind, ModuleItemTypeDeclaration,
+  ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemResource,
   node_name_span, no_span,
   NewlineIndex, authored_name_at,
   LeafOwner, SingleOwner, LeafAmbiguous,
@@ -49,7 +49,7 @@ import v1.compiler.infer_emit_info {
 }
 
 
-type ItemKind = FnItem | TypeItem | DataItem | ServiceItem | OtherItem
+type ItemKind = FnItem | TypeItem | DataItem | ServiceItem | ResourceItem | OtherItem
 
 // A DECLARATION'S RESOURCE REQUIREMENT IS PART OF ITS CALL CONTRACT, NOT A NAME LIST. One row per
 // `uses` entry: the binding name the declaration gave the resource (which is also the identifier
@@ -299,9 +299,15 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices
 // (`type X = ...` whose right side is not an anonymous record) carries NoConnective, so a connective
 // discriminator filed it as OtherItem: the host census then marshalled a unit node for it and the
 // type-declarer seam, which filters TypeItem, never saw List, Map or Set.
+// A RESOURCE IS READ THE SAME WAY. It has no transport and no body, so the structural arms below
+// filed it as OtherItem, the arm v1.compiler.infer_lookup census_declaration_identity admits as a
+// callable: in extdeps.clock, `Clock.UnixMillis()` then bound its receiver to std.resources' `resource
+// Clock` instead of the module's own `service Clock`, and every closure reaching it refused.
 fn item_kind(item: Node) -> ItemKind {
   let kind = if item.module_item_kind == ModuleItemTypeDeclaration && item.transport == none {
     TypeItem
+  } else if item.module_item_kind == ModuleItemResource {
+    ResourceItem
   } else if item.transport != none {
     ServiceItem
   } else if item.body != none && item.params |> count > 0 {
