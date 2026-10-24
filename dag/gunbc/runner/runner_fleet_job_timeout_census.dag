@@ -199,15 +199,15 @@ fn fleet_job_belongs_to_population(w: Workflow, j: Job) -> Bool {
   workflow_has_autonomous_trigger(w: w) && job_selects_fleet_pool(j: j)
 }
 
+// THE FOLD FILTERS ON THE NAMED PREDICATE, not a restatement of it: the witness exercises
+// fleet_job_belongs_to_population, and the bound it certifies is set here, so the control and the
+// production path are the same execution (DESIGN 3: each fact lives in exactly one place, and a
+// witness may never certify a copy of the real path).
 fn fleet_targeted_autonomous_jobs() -> List<Job> {
   list_flat_map(
     xs: fleet_workflow_census_rows(),
     f: fn(row) {
-      if workflow_has_autonomous_trigger(w: row.workflow) {
-        filter(xs: row.workflow.jobs, predicate: j => job_selects_fleet_pool(j: j))
-      } else {
-        []
-      }
+      filter(xs: row.workflow.jobs, predicate: j => fleet_job_belongs_to_population(w: row.workflow, j: j))
     }
   )
 }
