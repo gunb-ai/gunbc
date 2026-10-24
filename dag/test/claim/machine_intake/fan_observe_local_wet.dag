@@ -32,8 +32,8 @@ import gunbc.machine_intake.fan_observe {
 // committed fleet-converge.yml) or reads and writes real files, through shell.Exec.RunArgv and
 // extdeps.filesystem.filesystem_io Filesystem. Neither carries a mock_response, and extdeps.shell.exec
 // states why none may: the subject is what bash itself does with the bytes, so a mocked exit status or a
-// mocked file would re-check authored data. Under Hermetic each of these claims refused NoMockResponse
-// at its first effect while living beside the pure claims, and so read as red on every hermetic run.
+// mocked file would re-check authored data. Under Hermetic each of these claims refused at its first
+// effect while living beside the pure claims, and so read as red on every hermetic run.
 // They live on the local-repo wet lane instead, enrolled as the triple v2.workflow.floor_route_gap
 // requires (its expectation rows, the WetScheduledClaim rows in v2.workflow.local_repo_wet_terminal
 // local_repo_wet_schedule, and the gunbc.ci.ci_layer_roots exclusion row). The supplied-value half
