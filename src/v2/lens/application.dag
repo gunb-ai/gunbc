@@ -47,7 +47,6 @@ type DeclarationId {
 type NodeId {
   path: Path
 }
-type SourceSpan
 
 type SectionRef
   = DeclarationScope { declaration: DeclarationId }
@@ -77,13 +76,6 @@ type LensApplicationConfig<Budget>
       budget: Budget
     }
 
-type EnforcedApplication<Output, Budget, Projected> {
-  enforceable_lens: EnforceableLens<Output, Budget, Projected>
-  section: SectionRef
-  budget: Budget
-  span: SourceSpan
-}
-
 type EnforcedLensResult<Output, Projected> {
   output: Output
   projected: Projected
@@ -95,11 +87,6 @@ type LensEnforcementViolationInput<Projected, Budget> {
   declared: Budget
 }
 
-type IntrospectApplication<Output> {
-  lens: Lens<Output>
-  section: SectionRef
-  span: SourceSpan
-}
 fn path_unresolvable_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
     reason: ^path_unresolvable_reason,
