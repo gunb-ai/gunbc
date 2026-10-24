@@ -35,9 +35,13 @@ Two corollaries this runbook enforces mechanically, not by trust:
   plus page reclaim is the honest erasure (the remaining window is RAM content until reboot, which
   is the same window as any shell variable — acceptable under Q1 because the alternative, writing
   to the SSD and shredding, is strictly worse).
-- **Every failure path cleans the temp key.** A single shell `trap ... EXIT` covers all exits —
-  error, Ctrl-C, and success — so no path can strand the private half in a directory nobody
-  returns to.
+- **Every failure path the shell can see cleans the temp key.** A single shell `trap ... EXIT` covers
+  every exit the shell controls — error, Ctrl-C (SIGINT), termination (SIGTERM), and success. Its honest
+  limits: a `SIGKILL` (or any uncatchable kill) and a host crash or power loss mid-session run no shell
+  code at all, so no trap fires. On the verified tmpfs above, those cases still leave nothing on flash —
+  the key existed only in RAM, and a reboot (or `umount`/recreation of the tmpfs) clears it. The residual
+  window is RAM contents on a machine that has not rebooted since, which is why the runbook ends with a
+  rotation note: if a minting session is ever killed hard, treat the key as exposed and rotate the secret.
 
 ## Step 1 — mint and upload (operator / merry-fox-82, one shell session)
 
@@ -48,7 +52,8 @@ if [ "$(findmnt -no FSTYPE -T "$KEYDIR")" != "tmpfs" ]; then
   echo "REFUSING: $KEYDIR is not tmpfs — the private half must never reach flash" >&2
   rmdir "$KEYDIR"; exit 1
 fi
-# One trap, every exit path: the private half leaves no residue in the directory.
+# One trap for every exit the shell can see (error, INT, TERM, success). It cannot run on SIGKILL or a
+# host crash — see the honesty note above; on this tmpfs those cases still leave nothing on flash.
 trap 'rm -f "$KEYDIR/mc_host" "$KEYDIR/mc_host.pub"; rmdir "$KEYDIR" 2>/dev/null' EXIT INT TERM
 # NOTE: plain rm here is deliberate — shred -u would be theater on SSD/CoW and is pointless on a
 # verified tmpfs; the verification above is what makes it sound, not the command name.
@@ -101,9 +106,12 @@ against this row, does that (as the model says: `mtcollins1_host_key_read_obliga
 `TranscribedUncited` standing the mint carries). A runbook reader who finished step 3 and believed
 the anchor verified would be the defect; the typed standing is the guard, and it survives here.
 
-The trap from step 1 removes both halves on exit — including if this session dies here — so there
-is no separate shred step, and on a verified tmpfs plain removal is the honest erasure (shred is
-theater on SSD/CoW and pointless on RAM).
+The trap from step 1 removes both halves on every exit the shell can see (including an error here), so
+there is no separate shred step, and on a verified tmpfs plain removal is the honest erasure (shred is
+theater on SSD/CoW and pointless on RAM). If the session is killed with `SIGKILL`, or the host goes down
+mid-session, no trap runs: the key was only ever in RAM, so reboot that machine (or recreate the tmpfs)
+before continuing, and treat the key as exposed — rotate the secret — if you cannot account for how it
+died.
 
 ## Step 4 — live boot, readback, match (needs merry-fox-82's go, relayed by snappy-koi-83)
 

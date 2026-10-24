@@ -307,10 +307,59 @@ test fn an_anchor_for_another_machine_refuses_the_row() -> Bool {
         sha256_fingerprint: anchor.sha256_fingerprint,
         provenance: anchor.provenance,
       }
-      let presented = known_hosts_line(k: anchor)
-      let by_host = anchored_host_transport_against(row: row, anchor: foreign_host_anchor, transport: t, presented_key_line: presented)
-      let by_address = anchored_host_transport_against(row: row, anchor: foreign_address_anchor, transport: t, presented_key_line: presented)
+      // Each mismatched anchor presents ITS OWN rendered known_hosts line. This is what makes the RED
+      // discriminate: the sealed comparison renders its expectation from the SUPPLIED anchor
+      // (known_hosts_line(k: <supplied anchor>) == presented), so an anchor that vouches for itself always
+      // passes the key step. Presenting the original matching anchor's line instead (what the first draft
+      // did) made the host case land in PresentedKeyMismatch for the wrong reason -- delete the identity
+      // check and that claim stayed green. That is the defect merry-fox-82 caught.
+      let presented_by_host = known_hosts_line(k: foreign_host_anchor)
+      let presented_by_address = known_hosts_line(k: foreign_address_anchor)
+      let by_host = anchored_host_transport_against(row: row, anchor: foreign_host_anchor, transport: t, presented_key_line: presented_by_host)
+      let by_address = anchored_host_transport_against(row: row, anchor: foreign_address_anchor, transport: t, presented_key_line: presented_by_address)
+      // THE DISCRIMINATION, shown rather than asserted: for each mismatched anchor, the sibling call that
+      // differs in EXACTLY the component the identity check inspects (host for one, address for the other;
+      // same transport, same key material, each presenting its own rendered line) lands Bound. So the
+      // refused calls are refused by the identity check ALONE -- delete that check and both calls take the
+      // sibling's path and bind, vouching for a machine (or endpoint) the anchor says nothing about.
+      let host_sibling = KnownHostKeyRow {
+        host: row.host,
+        address: foreign_host_anchor.address,
+        key_type: foreign_host_anchor.key_type,
+        public_key_base64: foreign_host_anchor.public_key_base64,
+        sha256_fingerprint: foreign_host_anchor.sha256_fingerprint,
+        provenance: foreign_host_anchor.provenance,
+      }
+      let address_sibling = KnownHostKeyRow {
+        host: foreign_address_anchor.host,
+        address: row.address,
+        key_type: foreign_address_anchor.key_type,
+        public_key_base64: foreign_address_anchor.public_key_base64,
+        sha256_fingerprint: foreign_address_anchor.sha256_fingerprint,
+        provenance: foreign_address_anchor.provenance,
+      }
+      let host_sibling_binds = match anchored_host_transport_against(row: row, anchor: host_sibling, transport: t, presented_key_line: known_hosts_line(k: host_sibling)) {
+        AnchoredBindingBound { bound: _ } => true
+        AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+        AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingRefused { cause: _ } => false
+      }
+      let address_sibling_binds = match anchored_host_transport_against(row: row, anchor: address_sibling, transport: t, presented_key_line: known_hosts_line(k: address_sibling)) {
+        AnchoredBindingBound { bound: _ } => true
+        AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+        AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingRefused { cause: _ } => false
+      }
+      // And the host case additionally proves the refusal cannot be a key mismatch masquerading as one:
+      // the rendered line is address + key type + key material (known_hosts_line), invisible to the
+      // HostIdentity field, so the two anchors render the SAME line and only the check can tell them apart.
+      let host_case_lines_are_identical = presented_by_host == known_hosts_line(k: anchor)
       anchored_pairing_refused(b: by_host) && anchored_pairing_refused(b: by_address)
+        && host_sibling_binds && address_sibling_binds && host_case_lines_are_identical
     }
   }
 }
