@@ -31,7 +31,7 @@ import gunbc.firmware_network_boot_standing {
   Refused,
 }
 // S3, PR #14281: the pinned Ubuntu arm64 network origin an attempt fetches from.
-import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin }
+import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin }
 // S4, owner deep-ram-338: the autoinstall seed binding an attempt boots with.
 import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding, BindingBlocker }
 

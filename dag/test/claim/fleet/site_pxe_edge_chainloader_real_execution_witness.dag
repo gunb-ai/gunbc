@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.shell
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.retained_shell_script { retained_runtime }
-import gunbc.site_uefi_arm64_pxe_edge { first_onboarding_known_client_mac }
+import gunbc.site_pxe_edge { first_onboarding_known_client_mac }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderObservation,
   SitePxeEdgeEmbeddedRevision,

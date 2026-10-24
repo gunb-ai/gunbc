@@ -4,10 +4,13 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import std.content_hash { content_hash_equal }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
+import extdeps.provisioning.network_boot { NotAuthenticated, network_boot_loader_chain_is_chainloader_only }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
-import gunbc.site_uefi_arm64_pxe_edge { first_onboarding_known_client_mac }
+import gunbc.site_pxe_edge { first_onboarding_known_client_mac, site_edge_served_loader_chain }
 import extdeps.network.ipv4 { ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount }
 import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, MacWrongOctetCount }
 import gunbc.fleet.site_pxe_edge_converge {
@@ -304,16 +307,21 @@ test fn failed_sha256sum_is_unobservable_not_a_digest() -> Bool {
 
 test fn desired_config_boots_only_known_arm64_from_the_edge_tftp_root() -> Bool {
   let t = target_of(pin: pinned(digest: digest_a))
-  match site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: t, known_client_macs: known_macs(), tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196)), network: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0)).first() {
+  match site_pxe_edge_roster(target: t, known_client_macs: known_macs(), tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196)) {
     Absent => false
-    Present { value: cfg } =>
-      cfg.path == "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
-        && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
-        && contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
-        && contains(cfg.content, "dhcp-boot=tag:efi-arm64,tag:onboarding-known,snponly.efi,srv4,192.168.1.196")
-        && contains(cfg.content, "tftp-root=/srv/gunbc-site-pxe-edge/tftp")
-        && length(split(cfg.content, "dhcp-boot=")) == 2
-        && site_pxe_edge_chainloader_path(target: t) as String == "/srv/gunbc-site-pxe-edge/tftp/snponly.efi"
+    Present { value: r } =>
+      match site_pxe_edge_desired_files(roster: r, network: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0)).first() {
+        Absent => false
+        Present { value: cfg } =>
+          cfg.path == "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
+            && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
+            && contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
+            && contains(cfg.content, "pxe-service=tag:efi-arm64,tag:onboarding-known,11,\"gunbc efi-arm64\",snponly.efi,192.168.1.196")
+            && contains(cfg.content, "tftp-root=/srv/gunbc-site-pxe-edge/tftp")
+            && length(split(cfg.content, "pxe-service=")) == 2
+            && !contains(cfg.content, "dhcp-boot=")
+            && site_pxe_edge_chainloader_path(target: t) as String == "/srv/gunbc-site-pxe-edge/tftp/snponly.efi"
+      }
   }
 }
 
@@ -441,11 +449,15 @@ test fn the_rendered_dhcp_range_is_the_parsed_fleet_segment() -> Bool {
     Ipv4ParseFailed { error: _ } => false
     Ipv4Parsed { address: network } => {
       let t = target_of(pin: pinned(digest: digest_a))
-      match site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: t, known_client_macs: known_macs(), tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196)), network: network).first() {
+      match site_pxe_edge_roster(target: t, known_client_macs: known_macs(), tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196)) {
         Absent => false
-        Present { value: cfg } =>
-          network == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0)
-            && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
+        Present { value: r } =>
+          match site_pxe_edge_desired_files(roster: r, network: network).first() {
+            Absent => false
+            Present { value: cfg } =>
+              network == ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0)
+                && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
+          }
       }
     }
   }
@@ -632,4 +644,23 @@ test fn an_embedded_revision_that_differs_from_the_pin_is_a_typed_refusal() -> B
         == [ChainloaderEmbeddedRevisionMismatch { embedded: "c51cb", pinned: "c51ca" }])
     && (embedded_causes(embedded: site_pxe_edge_embedded_revision(success: false, output: ""))
         == [ChainloaderEmbeddedRevisionUnobservable { reason: "grep found no embedded iPXE revision in the image" }])
+}
+
+// THE ARM LOADER CHAIN IS UNCHANGED (control, merry-fox-82 condition 2): the roster derived from the
+// LANDED iPXE pin serves exactly one chain, for Aarch64, of exactly one member -- snponly.efi at the
+// landed digest, unauthenticated -- so the TFTP root still holds only that chainloader for this row.
+// The digest is compared to the committed artifacts/ipxe/snponly-arm64.efi's sha256, not to the pin.
+test fn the_landed_arm64_chain_is_the_single_ipxe_chainloader() -> Bool {
+  let t = target_of(pin: site_pxe_edge_chainloader_pin)
+  match site_pxe_edge_roster(target: t, known_client_macs: known_macs(), tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196)) {
+    Absent => false
+    Present { value: r } =>
+      length(r.served_chains.tail) == 0
+        && r.served_chains.head.architecture == Aarch64
+        && r.served_chains.head.client == UefiArm64
+        && network_boot_loader_chain_is_chainloader_only(chain: site_edge_served_loader_chain(chain: r.served_chains.head))
+        && (r.served_chains.head.members.head.member.served_path as String) == "snponly.efi"
+        && r.served_chains.head.members.head.member.verifier == NotAuthenticated
+        && content_hash_equal(left: r.served_chains.head.members.head.digest, right: Sha256Hash(Sha256Digest { hex: "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05" }))
+  }
 }

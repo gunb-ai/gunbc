@@ -1,4 +1,4 @@
-module test.claim.ubuntu_arm64_network_origin_witness
+module test.claim.ubuntu_network_origin_witness
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.measure { byte_size, finite_byte_size, positive_measure_count }
@@ -17,7 +17,7 @@ import extdeps.provisioning.ubuntu_install_media {
   noble_numbat_2404_5_live_server_arm64,
   ubuntu_install_media_mirror_url,
 }
-import gunbc.provisioning.ubuntu_arm64_network_origin_observation {
+import gunbc.provisioning.ubuntu_network_origin_observation {
   ArtefactRead,
   ArtefactNotFetched,
   OriginObserved,
@@ -28,7 +28,7 @@ import gunbc.provisioning.ubuntu_arm64_network_origin_observation {
   OriginInstallerFilesystem,
   verify_ubuntu_network_origin,
   ubuntu_noble_arm64_network_origin,
-  ubuntu_arm64_network_origin,
+  ubuntu_network_origin,
   pinned_artefact,
 }
 
@@ -178,7 +178,7 @@ test fn an_origin_refuses_another_architectures_media() -> Bool {
   }
   let standing = TranscribedUncited { read_obligation: "witness" }
   match pinned_artefact(sha256_hex: kernel_hex, digest_standing: standing, size: finite_byte_size(count: positive_measure_count(predecessor: 18581402)), size_standing: standing) {
-    Present { value: k } => match ubuntu_arm64_network_origin(
+    Present { value: k } => match ubuntu_network_origin(
       media: amd64_row,
       installer_size: finite_byte_size(count: positive_measure_count(predecessor: 3825512447)),
       kernel: k,

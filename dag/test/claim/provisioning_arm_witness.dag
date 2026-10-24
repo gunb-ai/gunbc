@@ -80,7 +80,7 @@ import extdeps.bmc.types { BootTargetHdd, BootTargetUefiHttp }
 import extdeps.provisioning.network_boot { UefiHttpBoot }
 import extdeps.uri { uri_https }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
-import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
+import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
 import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
 import test.claim.altra_autoinstall_seed_witness { built_seed_and_binding }
 

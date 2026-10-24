@@ -4,7 +4,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget }
 import gunbc.fleet.site_pxe_edge_converge { SitePxeEdgeChainloaderBuildReceipt }
-import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin }
+import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin }
 import gunbc.machine_intake.subject { UnitKey, IntakeAttemptId }
 import gunbc.provisioning.altra_autoinstall_seed {
   AltraAutoinstallSeed,

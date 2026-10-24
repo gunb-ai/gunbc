@@ -7,10 +7,10 @@ import extdeps.bmc.types { BootTargetPxe, BootTargetCd }
 import gunbc.os_install_mechanism { PxeHttpInstall, VirtualMediaInstall }
 import std.measure { finite_byte_size, positive_measure_count }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_5_live_server_arm64 }
-import gunbc.provisioning.ubuntu_arm64_network_origin_observation {
+import gunbc.provisioning.ubuntu_network_origin_observation {
   pinned_artefact,
   ubuntu_origin_read_obligation,
-  ubuntu_arm64_network_origin,
+  ubuntu_network_origin,
   ubuntu_noble_arm64_initrd_pin,
 }
 import gunbc.provisioning.provisioning_arm {
@@ -74,7 +74,7 @@ import gunbc.firmware_network_boot_standing {
   boot_option,
   boot_order_entry,
 }
-import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
+import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
 import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
 // REMAINING COUPLING, owed to #14306: the seed binding is sole_constructor, so the only honest fixture is
 // the one its own producer builds. Every other fixture below is owned by this witness.
@@ -223,7 +223,7 @@ fn other_origin() -> UbuntuNetworkOrigin? {
     size_standing: TranscribedUncited { read_obligation: ubuntu_origin_read_obligation(media: noble_numbat_2404_5_live_server_arm64) },
   ) {
     Present { value: k } => match ubuntu_noble_arm64_initrd_pin() {
-      Present { value: i } => ubuntu_arm64_network_origin(
+      Present { value: i } => ubuntu_network_origin(
         media: noble_numbat_2404_5_live_server_arm64,
         installer_size: finite_byte_size(count: positive_measure_count(predecessor: 3825512447)),
         kernel: k,
