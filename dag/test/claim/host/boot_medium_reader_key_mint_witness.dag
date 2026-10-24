@@ -1,0 +1,106 @@
+module test.claim.host.boot_medium_reader_key_mint_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, Secret, String }
+import std.optional { Present, Absent }
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
+import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_ed25519_type }
+import extdeps.exec.command { argv_words }
+import gunbc.host_command_binding { HostCommandDone, HostCommandFailed }
+import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_key }
+import gunbc.host.boot_medium_reader_key_mint {
+  ReaderKeypair, ReaderKeypairGeneration, ReaderKeypairGenerated, ReaderKeypairRefused,
+  ReaderKeyAddition, ReaderKeyVersionAdded, ReaderKeyAddRefused, ReaderKeyAddAmbiguous,
+  ReaderKeyMintReceipt, ReaderKeyMinted, ReaderKeyAlreadyPinned, ReaderKeyMintRefused, ReaderKeyMintOutcomeUnknown,
+  reader_key_mint_with, render_reader_key_mint_receipt, reader_key_mint_holds, reader_keypair_from,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PLANTED PRIVATE HALF with a marker no public field contains, so its absence from a rendering is
+// decidable by substring.
+data planted_private: String = "-----BEGIN OPENSSH PRIVATE KEY-----\nPLANTED-PRIVATE-MATERIAL-7f3a\n-----END OPENSSH PRIVATE KEY-----\n"
+data public_material: NonEmptyStr = "AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN"
+data public_line: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN boot-medium-reader"
+data fingerprint_line: String = "256 SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ boot-medium-reader (ED25519)"
+
+fn generated() -> ReaderKeypairGeneration {
+  reader_keypair_from(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line })
+}
+
+fn no_private_in(text: String) -> Bool {
+  !text.contains("PLANTED-PRIVATE-MATERIAL") && !text.contains("PRIVATE KEY")
+}
+
+fn receipt_word(r: ReaderKeyMintReceipt) -> String {
+  match r {
+    ReaderKeyMinted { version_name: _, public_line: _, fingerprint: _ } => "minted"
+    ReaderKeyAlreadyPinned { public_line: _ } => "pinned"
+    ReaderKeyMintRefused { cause: _ } => "refused"
+    ReaderKeyMintOutcomeUnknown { cause: _, public_line: _, fingerprint: _ } => "unknown"
+  }
+}
+
+fn gen_word(g: ReaderKeypairGeneration) -> String {
+  match g {
+    ReaderKeypairGenerated { pair: _ } => "generated"
+    ReaderKeypairRefused { cause: _ } => "refused"
+  }
+}
+
+// THE GENERATE ARGV is ssh-keygen(1)'s: quiet, ed25519, an empty passphrase, the comment, the file.
+test fn the_keypair_is_generated_by_ssh_keygen_ed25519_with_no_passphrase_into_the_named_file() -> Bool {
+  argv_words(command: ssh_keygen_generate_command(key_type: ssh_keygen_ed25519_type, key_file: "/tmp/x/key", comment: "boot-medium-reader"))
+    == ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "boot-medium-reader", "-f", "/tmp/x/key"]
+}
+
+// CONTROL: a generation that read both halves and the fingerprint, with its directory removed, yields the
+// pair; the mint adds it and the receipt names the version, the public key and the fingerprint.
+test fn a_minted_key_receipt_names_the_version_public_key_and_fingerprint() -> Bool {
+  let r = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyVersionAdded { version_name: "projects/1/secrets/boot-medium-reader-ssh-key/versions/1" } })
+  let text = render_reader_key_mint_receipt(r: r)
+  receipt_word(r: r) == "minted" && reader_key_mint_holds(r: r)
+    && text.contains("version_name=projects/1/secrets/boot-medium-reader-ssh-key/versions/1")
+    && text.contains(concat("public_key=", public_line))
+    && text.contains("fingerprint=SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ")
+}
+
+// RED: NO RENDERING CARRIES THE PRIVATE HALF. The receipt is the run's whole output -- the exit reason and
+// the uploaded file are both this rendering -- and every arm the mint can end in is rendered over a pair
+// whose private half is planted: minted, outcome unknown, refused by the store, and refused at generation.
+test fn no_receipt_the_mint_can_produce_contains_private_key_material() -> Bool {
+  let minted = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyVersionAdded { version_name: "v1" } })
+  let unknown = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddAmbiguous { detail: "timeout" } })
+  let refused = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddRefused { detail: "403" } })
+  let unremoved = reader_key_mint_with(pinned: none, generate: fn() { reader_keypair_from(removed: false, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line }) }, add: fn(p) { ReaderKeyVersionAdded { version_name: "v1" } })
+  receipt_word(r: minted) == "minted" && receipt_word(r: unknown) == "unknown" && receipt_word(r: refused) == "refused" && receipt_word(r: unremoved) == "refused"
+    && no_private_in(text: render_reader_key_mint_receipt(r: minted))
+    && no_private_in(text: render_reader_key_mint_receipt(r: unknown))
+    && no_private_in(text: render_reader_key_mint_receipt(r: refused))
+    && no_private_in(text: render_reader_key_mint_receipt(r: unremoved))
+    && !no_private_in(text: planted_private)
+}
+
+// RED: A KEY LEFT ON DISK IS NEVER ADDED. A directory that could not be removed refuses before the add is
+// asked for; an ambiguous add does not hold; a refused add does not hold.
+test fn an_unremoved_directory_refuses_and_an_unsettled_add_does_not_hold() -> Bool {
+  gen_word(g: reader_keypair_from(removed: false, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line })) == "refused"
+    && !reader_key_mint_holds(r: reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddAmbiguous { detail: "timeout" } }))
+    && !reader_key_mint_holds(r: reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddRefused { detail: "403" } }))
+}
+
+// RED: only an ed25519 public line and a SHA256 fingerprint are admitted; a failed generation refuses.
+test fn a_generation_that_is_not_one_ed25519_key_refuses() -> Bool {
+  gen_word(g: reader_keypair_from(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: "ssh-rsa AAAAB3Nza boot-medium-reader", fingerprint: HostCommandDone { stdout: fingerprint_line })) == "refused"
+    && gen_word(g: reader_keypair_from(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: "256 MD5:aa:bb boot (ED25519)" })) == "refused"
+    && gen_word(g: reader_keypair_from(removed: true, generated: HostCommandFailed { exit_code: 1, stderr: "no" }, private_read: false, private_text: "", public_text: "", fingerprint: HostCommandFailed { exit_code: 1, stderr: "no" })) == "refused"
+    && gen_word(g: reader_keypair_from(removed: true, generated: HostCommandDone { stdout: "" }, private_read: false, private_text: "", public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line })) == "refused"
+    && gen_word(g: generated()) == "generated"
+}
+
+// THE PIN IS THE IDEMPOTENCE: a pinned public key mints nothing, and generation is never reached.
+test fn a_pinned_key_mints_nothing() -> Bool {
+  let pinned = SshPublicKey { algorithm: Ed25519, material: public_material, comment: "boot-medium-reader" }
+  receipt_word(r: reader_key_mint_with(pinned: Present { value: pinned }, generate: fn() { ReaderKeypairRefused { cause: "generation must not be reached" } }, add: fn(p) { ReaderKeyAddRefused { detail: "add must not be reached" } })) == "pinned"
+    && (match boot_medium_reader_ssh_key { Present { value: _ } => false  Absent => true })
+}

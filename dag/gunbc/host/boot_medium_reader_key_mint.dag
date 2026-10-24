@@ -1,0 +1,242 @@
+module gunbc.host.boot_medium_reader_key_mint
+
+import std.types { Bool, List, NonEmptyStr, Secret, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.ssh.keys { SshPublicKey, ssh_public_key_line, ssh_ed25519_key_identity }
+import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_fingerprint_command, ssh_keygen_ed25519_type }
+import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.secret_manager { encode_sm_access_version_payload_wire }
+import extdeps.transports.rest {
+  classify_rest_refusal, RestMutationExchange, RestAnswered, RestRefused,
+  RestExchangeStatusRefused, RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
+}
+import gunbc.auth.access_token_source { WorkloadIdentityToken, ensure_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused }
+import gunbc.host_command_binding { LocalCommandHost, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched, host_command, host_command_outcome_text, HostCommandOutcome }
+import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_privkey_secret, boot_medium_reader_ssh_key, boot_medium_reader_key_comment }
+
+// ── MINTING THE BOOT MEDIUM READER KEY (gunbc.host.boot_medium_reader_key) ───────────────────────
+// A main fleet-converge run generates an ed25519 keypair and adds the private half as a version of the
+// key's custody secret, under the run's federated identity and the versionAdder cell the converge grant
+// set binds (gunbc.auth.fleet_secret_accessor_roster boot_medium_reader_key_version_adder_row). The
+// selection over this effect is FederatedScopedGrant (gunbc.auth.privileged_effect_census): it mints a
+// credential whose only reach is one forced sha256sum on the export host, and a mint is undone by
+// minting again.
+//
+// THE PRIVATE HALF EXISTS IN ONE PLACE AFTER THE RUN: the secret version. It is generated into a
+// run-owned directory, read once into a Secret, and the directory is removed BEFORE the mint is judged:
+// a removal that fails refuses, so no success leaves the private file on disk. It is never rendered --
+// no receipt arm can carry it -- so it reaches neither the log nor the uploaded receipt. The receipt
+// names the public key, its fingerprint and the version the store assigned, which is what the pin
+// commit lands in gunbc.host.boot_medium_reader_key.
+//
+// THE PIN IS THE IDEMPOTENCE. Once the public key is pinned in the corpus the mint refuses to mint
+// again (a second version beside the pin would be sprawl nothing reads). The versionAdder cell cannot
+// list versions, so a second run before the pin lands adds a second version; its receipt names it, and
+// the pin names the one whose public key it lands.
+
+type ReaderKeypair {
+  private_half: Secret
+  public_line: NonEmptyStr
+  fingerprint: NonEmptyStr
+}
+
+type ReaderKeypairGeneration
+  = ReaderKeypairGenerated { pair: ReaderKeypair }
+  | ReaderKeypairRefused { cause: NonEmptyStr }
+
+type ReaderKeyAddition
+  = ReaderKeyVersionAdded { version_name: NonEmptyStr }
+  | ReaderKeyAddRefused { detail: String }
+  | ReaderKeyAddAmbiguous { detail: String }
+
+type ReaderKeyMintReceipt
+  = ReaderKeyMinted { version_name: NonEmptyStr, public_line: NonEmptyStr, fingerprint: NonEmptyStr }
+  | ReaderKeyAlreadyPinned { public_line: NonEmptyStr }
+  | ReaderKeyMintRefused { cause: NonEmptyStr }
+  | ReaderKeyMintOutcomeUnknown { cause: NonEmptyStr, public_line: NonEmptyStr, fingerprint: NonEmptyStr }
+
+// THE PUBLIC LINE IS ADMITTED ONLY AS AN ed25519 KEY: "ssh-ed25519 <material> <comment>", the material
+// parsing as exactly one Ed25519 key blob (extdeps.ssh.keys ssh_ed25519_key_identity).
+fn reader_public_line_admitted(text: String) -> NonEmptyStr? {
+  let line = trim(s: text)
+  let words = line.split(delimiter: " ")
+  match words.first() {
+    Absent => none
+    Present { value: kind } =>
+      if kind != "ssh-ed25519" || words.length() < 2 {
+        none
+      } else {
+        match words.skip(n: 1).first() {
+          Absent => none
+          Present { value: material } =>
+            if material == "" { none } else {
+              match ssh_ed25519_key_identity(material: material as NonEmptyStr) {
+                Absent => none
+                Present { value: _ } => Present { value: line as NonEmptyStr }
+              }
+            }
+        }
+      }
+  }
+}
+
+// ssh-keygen -l prints "<bits> SHA256:<base64> <comment> (ED25519)"; the second field is the fingerprint.
+fn reader_fingerprint_admitted(text: String) -> NonEmptyStr? {
+  match trim(s: text).split(delimiter: " ").skip(n: 1).first() {
+    Absent => none
+    Present { value: f } => if f.starts_with("SHA256:") { Present { value: f as NonEmptyStr } } else { none }
+  }
+}
+
+fn command_text(o: HostCommandOutcome) -> String {
+  host_command_outcome_text(e: o)
+}
+
+// THE JUDGMENT OVER WHAT THE GENERATION READ, after the directory is gone. Pure: every input is a value
+// the producer below already holds, so a witness supplies them.
+fn reader_keypair_from(removed: Bool, generated: HostCommandOutcome, private_read: Bool, private_text: String, public_text: String, fingerprint: HostCommandOutcome) -> ReaderKeypairGeneration {
+  if !removed {
+    ReaderKeypairRefused { cause: "the run-owned key directory could not be removed, so the private key may remain on disk; refusing to add it anywhere" }
+  } else {
+    match generated {
+      HostCommandDone { stdout: _ } =>
+        if !private_read || trim(s: private_text) == "" {
+          ReaderKeypairRefused { cause: "ssh-keygen ran but the private key file could not be read" }
+        } else {
+          match reader_public_line_admitted(text: public_text) {
+            Absent => ReaderKeypairRefused { cause: "the generated public key is not one ssh-ed25519 key line" }
+            Present { value: line } =>
+              match fingerprint {
+                HostCommandDone { stdout: o } =>
+                  match reader_fingerprint_admitted(text: o) {
+                    Absent => ReaderKeypairRefused { cause: "ssh-keygen -l did not print a SHA256 fingerprint" }
+                    Present { value: fp } => ReaderKeypairGenerated { pair: ReaderKeypair { private_half: private_text as Secret, public_line: line, fingerprint: fp } }
+                  }
+                HostCommandFailed { exit_code: _, stderr: _ } => ReaderKeypairRefused { cause: concat("the fingerprint could not be read: ", command_text(o: fingerprint)) as NonEmptyStr }
+                HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => ReaderKeypairRefused { cause: concat("the fingerprint could not be read: ", command_text(o: fingerprint)) as NonEmptyStr }
+                HostCommandNotDispatched { reason: _ } => ReaderKeypairRefused { cause: concat("the fingerprint could not be read: ", command_text(o: fingerprint)) as NonEmptyStr }
+              }
+          }
+        }
+      HostCommandFailed { exit_code: _, stderr: _ } => ReaderKeypairRefused { cause: concat("ssh-keygen refused: ", command_text(o: generated)) as NonEmptyStr }
+      HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => ReaderKeypairRefused { cause: concat("ssh-keygen refused: ", command_text(o: generated)) as NonEmptyStr }
+      HostCommandNotDispatched { reason: _ } => ReaderKeypairRefused { cause: concat("ssh-keygen refused: ", command_text(o: generated)) as NonEmptyStr }
+    }
+  }
+}
+
+// THE ONE PRODUCER OF A KEYPAIR: generate, read both halves and the fingerprint, remove the directory,
+// then judge.
+fn generate_reader_keypair() -> ReaderKeypairGeneration {
+  let dir = shell.Mktemp.Dir()
+  if dir.success == false {
+    ReaderKeypairRefused { cause: "no run-owned directory could be created for the keypair" }
+  } else {
+    let key_file = join([trim(s: dir.path as String), "/key"], "")
+    let public_file = concat(key_file, ".pub")
+    let generated = host_command(host: LocalCommandHost, command: ssh_keygen_generate_command(key_type: ssh_keygen_ed25519_type, key_file: key_file, comment: boot_medium_reader_key_comment))
+    let private_read = Filesystem.Read(path: key_file)
+    let public_read = Filesystem.Read(path: public_file)
+    let fingerprint = host_command(host: LocalCommandHost, command: ssh_keygen_fingerprint_command(key_file: public_file))
+    let removed = shell.Remove.RecursiveForce(path: dir.path)
+    reader_keypair_from(
+      removed: removed.success,
+      generated: generated,
+      private_read: private_read.success,
+      private_text: if private_read.success { private_read.content } else { "" },
+      public_text: if public_read.success { public_read.content } else { "" },
+      fingerprint: fingerprint,
+    )
+  }
+}
+
+// THE ADD, under the run's federated token, exactly as the codex write-back adds (gunbc.codex_harness_credential
+// codex_harness_add_version): an answered add names the version; a refusal is definite; anything else may
+// have landed.
+fn add_reader_key_version(payload: Secret) -> ReaderKeyAddition {
+  match ensure_access_token(source: WorkloadIdentityToken) {
+    AccessTokenUpsertRequired { plan: _ } => ReaderKeyAddRefused { detail: "no Secret Manager access token: access upsert required" }
+    AccessTokenEnsureRefused { reason } => ReaderKeyAddRefused { detail: reason as String }
+    AccessTokenReady { token } =>
+      match gcp.SecretManager.AddVersion(
+        access_token: token,
+        secret_name: secret_ref_secret_resource(ref: boot_medium_reader_ssh_privkey_secret),
+        payload_b64: encode_sm_access_version_payload_wire(credential: payload),
+      ) {
+        RestAnswered { answer: added } => ReaderKeyVersionAdded { version_name: added.name as String as NonEmptyStr }
+        RestRefused { refusal } =>
+          match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+            RestExchangeStatusRefused { status: _, body } => ReaderKeyAddRefused { detail: body }
+            RestExchangeCommitAmbiguous { detail } => ReaderKeyAddAmbiguous { detail: detail as String }
+            RestExchangeUnreached { cause } => ReaderKeyAddAmbiguous { detail: cause as String }
+            RestExchangeUndecodable { status: _, cause } => ReaderKeyAddAmbiguous { detail: cause as String }
+          }
+      }
+  }
+}
+
+// THE MINT AS ONE FOLD over its two effects, so a witness supplies both.
+fn reader_key_mint_with(pinned: SshPublicKey?, generate: fn() -> ReaderKeypairGeneration, add: fn(Secret) -> ReaderKeyAddition) -> ReaderKeyMintReceipt {
+  match pinned {
+    Present { value: k } => ReaderKeyAlreadyPinned { public_line: ssh_public_key_line(k: k) as NonEmptyStr }
+    Absent =>
+      match generate() {
+        ReaderKeypairRefused { cause: c } => ReaderKeyMintRefused { cause: c }
+        ReaderKeypairGenerated { pair: p } =>
+          match add(p.private_half) {
+            ReaderKeyVersionAdded { version_name: v } => ReaderKeyMinted { version_name: v, public_line: p.public_line, fingerprint: p.fingerprint }
+            ReaderKeyAddRefused { detail: d } => ReaderKeyMintRefused { cause: concat("the store refused the version: ", d) as NonEmptyStr }
+            ReaderKeyAddAmbiguous { detail: d } => ReaderKeyMintOutcomeUnknown { cause: concat("the add may have landed: ", d) as NonEmptyStr, public_line: p.public_line, fingerprint: p.fingerprint }
+          }
+      }
+  }
+}
+
+// THE RECEIPT: public key, fingerprint, version. No arm holds the private half, so none can render it.
+fn render_reader_key_mint_receipt(r: ReaderKeyMintReceipt) -> String {
+  match r {
+    ReaderKeyMinted { version_name: v, public_line: l, fingerprint: f } =>
+      join(["reader_key=minted\nversion_name=", v as String, "\npublic_key=", l as String, "\nfingerprint=", f as String, "\n"], "")
+    ReaderKeyAlreadyPinned { public_line: l } => join(["reader_key=already pinned\npublic_key=", l as String, "\n"], "")
+    ReaderKeyMintRefused { cause: c } => join(["reader_key=refused\nreason=", c as String, "\n"], "")
+    ReaderKeyMintOutcomeUnknown { cause: c, public_line: l, fingerprint: f } =>
+      join(["reader_key=outcome unknown\nreason=", c as String, "\npublic_key=", l as String, "\nfingerprint=", f as String, "\n"], "")
+  }
+}
+
+fn reader_key_mint_holds(r: ReaderKeyMintReceipt) -> Bool {
+  match r {
+    ReaderKeyMinted { version_name: _, public_line: _, fingerprint: _ } => true
+    ReaderKeyAlreadyPinned { public_line: _ } => true
+    ReaderKeyMintRefused { cause: _ } => false
+    ReaderKeyMintOutcomeUnknown { cause: _, public_line: _, fingerprint: _ } => false
+  }
+}
+
+data boot_medium_reader_key_mint_receipt_path: String = "target/boot-medium-reader-key-mint.txt"
+
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/boot_medium_reader_key_mint.dag --function boot_medium_reader_key_mint_wet`
+// CONSUMPTION (DESIGN section 3c): invoked by the fleet-converge mode BootMediumReaderKeyMint
+// (gunbc.fleet.fleet_converge_workflow), which signs in as the fleet identity at main and holds no fleet SSH
+// key. The receipt is written whatever the outcome and uploaded by the step that follows.
+fn boot_medium_reader_key_mint_wet() -> ProcessExit {
+  let receipt = reader_key_mint_with(
+    pinned: boot_medium_reader_ssh_key,
+    generate: fn() { generate_reader_keypair() },
+    add: fn(payload) { add_reader_key_version(payload: payload) },
+  )
+  let rendered = render_reader_key_mint_receipt(r: receipt)
+  let written = Filesystem.Write(path: boot_medium_reader_key_mint_receipt_path, content: rendered)
+  if written.success == false {
+    exit_failure(reason: concat("boot medium reader key: the receipt could not be written: ", rendered))
+  } else if reader_key_mint_holds(r: receipt) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("boot medium reader key mint did not hold:\n", rendered))
+  }
+}
