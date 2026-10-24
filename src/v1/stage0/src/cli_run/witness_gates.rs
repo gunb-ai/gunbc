@@ -329,7 +329,7 @@ pub(crate) fn compile_clean_whole_tree_sources_and_index(
     Ok((sources, mei))
 }
 
-/// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
+/// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (the one home for that pair).
 /// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
 /// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
 /// In CI (`GITHUB_ACTIONS=true`) or when `GUNBC_CI_DIFF_BASE` is set, scopes to affected

@@ -1184,7 +1184,8 @@ pub(crate) fn yield_live_pool_before_building_another() {
 
 /// THE LIVE POOL'S ONE HOLDER UNDER TEST. `process_shared_index` is per-thread because the index
 /// is `Rc`-based, and libtest runs every test on a fresh thread -- so every claim that resolves an
-/// entry over the live `[dag, src/v2]` pool rebuilt the whole-pool index and re-typechecked the
+/// entry over the live witness-layer pool (`witness_layer_roots()`, the one home for that pair)
+/// rebuilt the whole-pool index and re-typechecked the
 /// shared prefix, the same fact once per claim with its least common ancestor at the PROCESS
 /// (DESIGN §2 demand minimization; gunbc#12450 measured ~18 such claims at ~90s each). The
 /// entry-scoped loader cannot stand in: bare references resolve through a census of the whole pool
