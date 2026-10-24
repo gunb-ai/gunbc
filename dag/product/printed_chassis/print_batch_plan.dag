@@ -49,6 +49,11 @@ fn printer(v:JsonValue) -> PrinterSpec? {
  if (match first_duplicate_by_key(xs:plates,key:p=>p.attempt) {Absent=>false Present {value:_}=>true}) {return none}
  Present {value:PrinterSpec {printer:identity,version:version as NonEmptyStr,plates:plates}}
 }
+// A plate plan on its own: one plate's objects, placements and support policy, with no printer row
+// and no credential version (the request and the start own those).
+fn parse_plate_plan(text:String) -> PlateSpec? {
+ match parse_json_document(s:text) {JsonDocumentParsed {value:v}=>plate(v:v) JsonDocumentUnreadable {gap:_}=>none}
+}
 fn parse_plan(text:String) -> List<PrinterSpec>? {
  let values=match parse_json_document(s:text) {JsonDocumentParsed {value:JsonArray {elements:x}}=>x JsonDocumentParsed {value:JsonNull}=>return none JsonDocumentParsed {value:JsonBool {value:_}}=>return none JsonDocumentParsed {value:JsonNumber {lexeme:_}}=>return none JsonDocumentParsed {value:JsonString {value:_}}=>return none JsonDocumentParsed {value:JsonObject {members:_}}=>return none JsonDocumentUnreadable {gap:_}=>return none}
  let parsed=map(values,v=>printer(v:v))
