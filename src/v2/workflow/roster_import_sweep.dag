@@ -436,10 +436,17 @@ fn roster_parse_site_orders(text: String) -> List<RosterSiteOrder>? {
   })
 }
 
+fn roster_split_field(xs: List<String>, index: Int, delimiter: String) -> List<String> {
+  match list_at_optional(xs: xs, index: index) {
+    Present { value: field } => split(s: field, delimiter: delimiter)
+    Absent => roster_no_strings()
+  }
+}
+
 fn roster_parse_site_order(row: String) -> RosterSiteOrder? {
   let at = split(s: row, delimiter: "@")
-  let eq = match list_at_optional(xs: at, index: 1) { Present { value: rest } => split(s: rest, delimiter: "=") Absent => [] }
-  let dotted = match list_at_optional(xs: eq, index: 1) { Present { value: q } => split(s: q, delimiter: ".") Absent => [] }
+  let eq = roster_split_field(xs: at, index: 1, delimiter: "=")
+  let dotted = roster_split_field(xs: eq, index: 1, delimiter: ".")
   if (length(xs: at) != 2) || (length(xs: eq) != 2) || (length(xs: dotted) < 2) {
     Absent
   } else {
@@ -1521,9 +1528,7 @@ fn roster_used_orders(path: String, spans: SpanIndex, heads: List<Node>, orders:
     match roster_node_start(node: head, spans: spans) {
       Absent => acc
       Present { value: st } =>
-        fold_list(xs: roster_supplied_orders_at(path: path, start: st, orders: orders), empty: acc, cons: fn(acc2, o) {
-          if for_all(xs: acc2, predicate: fn(u) { !((u.order_home == o.order_home) && (u.order_name == o.order_name)) }) { list_snoc_item(xs: acc2, item: o) } else { acc2 }
-        })
+        fold_list(xs: roster_supplied_orders_at(path: path, start: st, orders: orders), empty: acc, cons: roster_orders_add_distinct)
     }
   })
 }
@@ -1543,7 +1548,7 @@ fn roster_order_import_edits(text: String, parse_root: Node, spans: SpanIndex, i
     match acc {
       RewriteRefused { reason: r } => RewriteRefused { reason: r }
       RewriteSelected { edits: es } =>
-        let names = fold_list(xs: pending, empty: [], cons: fn(acc2, o) { if o.order_home == d.module_name { list_snoc_item(xs: acc2, item: o.order_name) } else { acc2 } })
+        let names = roster_order_names_homed(orders: pending, home: d.module_name)
         if is_empty(xs: names) {
           acc
         } else if length(xs: roster_filter_module(decls: decls, module_name: d.module_name)) != 1 {
@@ -1568,12 +1573,42 @@ fn roster_orders_all_anchored(plan: RosterRewritePlan, pending: List<RosterSiteO
   match plan {
     RewriteRefused { reason: r } => RewriteRefused { reason: r }
     RewriteSelected { edits: _ } =>
-      match list_head(xs: fold_list(xs: pending, empty: [], cons: fn(acc, o) { if is_empty(xs: roster_filter_module(decls: decls, module_name: o.order_home)) { list_snoc_item(xs: acc, item: o) } else { acc } })) {
+      match list_head(xs: roster_orders_without_block(orders: pending, decls: decls)) {
         Present { value: o } => RewriteRefused { reason: RefusalSiteOrderImportUnanchored { home: o.order_home, name: o.order_name } }
         Absent => plan
       }
   }
 }
+
+// TYPED FOLD STEPS over RosterSiteOrder: a lambda over an accumulator's members carries no derived type in this checker
+// (gunbc.recurring_failure_mode lambda_value_has_no_derived_type_in_v2_infer), so field reads go through named steps.
+fn roster_same_order(a: RosterSiteOrder, b: RosterSiteOrder) -> Bool {
+  (a.order_home == b.order_home) && (a.order_name == b.order_name)
+}
+
+fn roster_orders_add_distinct(acc: List<RosterSiteOrder>, o: RosterSiteOrder) -> List<RosterSiteOrder> {
+  if fold_list(xs: acc, empty: false, cons: fn(seen, u) { seen || roster_same_order(a: u, b: o) }) { acc } else { list_snoc_item(xs: acc, item: o) }
+}
+
+fn roster_order_names_homed(orders: List<RosterSiteOrder>, home: String) -> List<String> {
+  fold_list(xs: orders, empty: roster_no_strings(), cons: fn(acc, o) { roster_order_name_if_homed(acc: acc, o: o, home: home) })
+}
+
+fn roster_order_name_if_homed(acc: List<String>, o: RosterSiteOrder, home: String) -> List<String> {
+  if o.order_home == home { list_snoc_item(xs: acc, item: o.order_name) } else { acc }
+}
+
+fn roster_orders_without_block(orders: List<RosterSiteOrder>, decls: List<ImportDeclFact>) -> List<RosterSiteOrder> {
+  fold_list(xs: orders, empty: roster_no_site_orders(), cons: fn(acc, o) { roster_order_if_unblocked(acc: acc, o: o, decls: decls) })
+}
+
+fn roster_order_if_unblocked(acc: List<RosterSiteOrder>, o: RosterSiteOrder, decls: List<ImportDeclFact>) -> List<RosterSiteOrder> {
+  if is_empty(xs: roster_filter_module(decls: decls, module_name: o.order_home)) { list_snoc_item(xs: acc, item: o) } else { acc }
+}
+
+fn roster_no_strings() -> List<String> { [] }
+
+fn roster_no_site_orders() -> List<RosterSiteOrder> { [] }
 
 fn roster_order_bound(imported: List<AliasBindingRow>, order: RosterSiteOrder) -> Bool {
   fold_list(xs: imported, empty: false, cons: fn(found, b) {
