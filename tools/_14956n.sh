@@ -45,8 +45,8 @@ else
 fi
 # base proof: deleted module + its witness restored, registry has ScheduleLens arm
 [ -f $P/src/v2/lens/schedule_lens.dag ] && echo "BASE_PROOF module-restored" || { echo "BASE_NOT_OLD module-missing -- STOP"; exit 9; }
-[ -f $P/src/v2/test/claim/walk_plan_schedule_lens_test.dag ] && echo "BASE_PROOF witness-restored" || { echo "BASE_NOT_OLD witness-missing -- STOP"; exit 9; }
-grep -q "subject: ScheduleLens" $P/src/v2/lens/enforcement/gate.dag && echo "BASE_PROOF registry-arm-restored" || echo "BASE_NOTE no registry arm at base (pre-#14887 form)"
+[ ! -f $P/src/v2/test/claim/walk_plan_schedule_lens_test.dag ] && echo "BASE_SHAPE witness-absent-as-on-main (#8283)" || echo "BASE_NOTE witness present"
+grep -q "subject: ScheduleLens" $P/src/v2/lens/enforcement/gate.dag && echo "BASE_PROOF registry-arm-restored" || echo "BASE_NOTE no registry arm (same as main)"
 grep -q "lens_contract_schedule_lens" $P/src/v2/lens/enforcement/contract.dag && echo "BASE_PROOF contract-restored" || { echo "BASE_NOT_OLD contract-missing -- STOP"; exit 9; }
 git worktree add -q --force --detach $M $HEAD_SHA || { echo WTM_FAIL; exit 9; }
 git worktree add -q --force --detach $V $HEAD_SHA || { echo WTV_FAIL; exit 9; }
@@ -130,6 +130,7 @@ rc=0
 want G1n && { echo "=== G1n gates wet $(date -u +%H:%M:%S)Z"; run1 G1n $H $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G1n SKIPPED-ARGLIST"
 want G4n && { echo "=== G4n Blocking-repoint RED $(date -u +%H:%M:%S)Z"; run1 G4n $M $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G4n SKIPPED-ARGLIST"
 want G5n && { echo "=== G5n AuditOnly-repoint control $(date -u +%H:%M:%S)Z"; run1 G5n $V $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G5n SKIPPED-ARGLIST"
+want G7 && { echo "=== G7 gate at P = main-shape (contract+module restored, witness absent) $(date -u +%H:%M:%S)Z"; run1 G7 $P $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G7 SKIPPED-ARGLIST"
 want CENSUS && { echo "=== rfm census $(date -u +%H:%M:%S)Z"; census || rc=$?; } || echo "ROW CENSUS SKIPPED-ARGLIST"
 echo "=== sweep head $(date -u +%H:%M:%S)Z"; sweep head $H || rc=$?
 echo "=== sweep base $(date -u +%H:%M:%S)Z"; sweep base $P || rc=$?
