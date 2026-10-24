@@ -5,6 +5,7 @@ module test.claim.roadmap.roadmap_belt_recapture_wet_witness
 // the candidate against that write's generation. A planted capture of the worker commit is
 // required for the mint to proceed; a clean checkout of a different commit refuses.
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance, dispatch_worktree_path_for_instance }
 import std.logic { Bool }
 import std.algebra { string_contains }
 import std.types { String, FilePath, NonEmptyStr, List }
@@ -19,7 +20,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_worktree_path_for_instance, dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_scm_recapture, belt_commit_outcome_persist, BeltCommitOutcome, CommitSkipped, Recaptured, RecaptureRefused, RecapturePoisoned,
   belt_exec, ExecOk, ExecFailed, ExecRefused,

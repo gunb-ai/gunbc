@@ -27,10 +27,10 @@ data protect_carve_out_reopens_the_protected_subject: RecurringFailureMode = Rec
   ],
 
   evidence: [
-    decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_worker_writable_paths"),
+    decl_ref(module_path: "gunbc.roadmap.dispatch_worker_unit_confinement", decl_name: "dispatch_worker_writable_paths"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_worker_path_is_writable"),
     decl_ref(module_path: "test.claim.roadmap.dispatch_worker_confinement_witness", decl_name: "the_srv1_worker_cannot_write_the_deployed_binary_or_tree"),
-    decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_worker_git_pointer_files"),
+    decl_ref(module_path: "gunbc.roadmap.dispatch_worker_unit_confinement", decl_name: "dispatch_worker_git_pointer_files"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_commit_git_trust"),
     decl_ref(module_path: "test.claim.roadmap.roadmap_belt_actuate_witness", decl_name: "a_mismatched_gitfile_or_commondir_is_untrusted"),
     decl_ref(module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_commit_succeeds"),
