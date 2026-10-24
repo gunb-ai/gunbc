@@ -13932,6 +13932,42 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
 // them from the fold body or refuses loudly. An earlier cut of this repair instead widened the
 // "under-resolved accumulator" test to prefer the contextual type; that was a measured NON-EVENT
 // (falsifier m09: removing it reddened nothing, and the four sites stayed) and is deleted.
+// THE FOLD ACCUMULATOR'S ANNOTATION IS THE FOLD CALL'S INFERRED RESULT TYPE. By fold's own
+// signature (fold<A, B>(xs: List<A>, init: B, f: fn(B, A) -> B) -> B) the accumulator type IS the
+// call's result type, so that is the one authority read here. The init literal is not: an init that
+// names no type argument (`init: none`; a FirstDuplicateScan<T> built from its T-free arm) left
+// `|acc: _, ..|`, and rustc refused the closure body's first use of acc (E0282) at
+// gunbc.durable_cas_file_store cas_observe_window and std.list first_duplicate_by_key. When the
+// result type is unresolved or fails an admission (a type variable, an unbound or closure-unbound
+// generic, a rendered spurious generic, an applicationless parametric head, a bare container) the
+// fold refuses with that fact instead of deferring to the target's inference.
+type FoldAccumulatorAnnotation
+  = FoldAccumulatorAnnotated { rust_type: String }
+  | FoldAccumulatorUnresolved { cause: String }
+
+fn rust_fold_accumulator_annotation(fold_result_type: Node?, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo, fold_emit_info: EmitGraphInfo) -> FoldAccumulatorAnnotation {
+  let si = scope.type_env.source_indices
+  match fold_result_type {
+    Absent => FoldAccumulatorUnresolved { cause: "the fold call has no inferred result type" }
+    Present { value: t } =>
+      let rendered = render_rust_type(n: t, shared_types: shared_types, source_indices: si, emit_info: fold_emit_info)
+      let is_type_var = if t.inferred != none { is_type_variable(inferred: t.inferred.value) } else { false }
+      if is_type_var || (t.children |> any(c => type_node_child_is_type_variable(c: c))) {
+        FoldAccumulatorUnresolved { cause: concat("the fold's result type is not resolved: ", rendered) }
+      } else if type_node_has_unbound_type_variable(n: t, generic_param_names: emit_info.fn_generic_param_names, source_indices: si)
+        || type_node_has_closure_unbound_generic_atom(n: t, generic_param_names: emit_info.fn_generic_param_names, env: scope.type_env, source_indices: si)
+        || rust_fold_rendered_type_has_any_spurious_generic(type_str: rendered, generic_param_names: emit_info.fn_generic_param_names) {
+        FoldAccumulatorUnresolved { cause: concat("the fold's result type names a generic this fn does not bind: ", rendered) }
+      } else if type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: si, emit_info: fold_emit_info)
+        || ((t.children |> count) == 0 && is_container_type(name: authored_name_at(source_indices: si, node: t)))
+        || rendered == "" || rendered == "_" {
+        FoldAccumulatorUnresolved { cause: concat("the fold's result type has no complete spelling: ", rendered) }
+      } else {
+        FoldAccumulatorAnnotated { rust_type: rendered }
+      }
+  }
+}
+
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
@@ -14063,15 +14099,14 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
     }
   } else { emit_info }
   let acc_type_str = render_rust_type(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
-  let acc_type_is_type_var = if acc_type_node.inferred != none { is_type_variable(inferred: acc_type_node.inferred.value) } else { false }
-  let acc_child_is_type_var = acc_type_node.children |> any(c => type_node_child_is_type_variable(c: c))
-  let acc_has_unbound_type_var = type_node_has_unbound_type_variable(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: scope.type_env.source_indices)
-  let acc_has_closure_unbound_generic = type_node_has_closure_unbound_generic_atom(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, env: scope.type_env, source_indices: scope.type_env.source_indices)
-  let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
-  let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic || acc_carries_bare_parametric_head { "_" } else { acc_type_str }
+  let lambda_acc_type_str = rust_fold_accumulator_annotation(
+    fold_result_type: contextual_acc_type,
+    shared_types: shared_types,
+    scope: scope,
+    emit_info: emit_info,
+    fold_emit_info: fold_emit_info
+  )
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
@@ -14105,12 +14140,16 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
     Present { value: a } => rust_expr_reaches_awaited_call(n: arg_value(n: a), registry: registry, source_indices: scope.type_env.source_indices)
     Absent => false
   }
+  let acc_annotation = match lambda_acc_type_str {
+    FoldAccumulatorAnnotated { rust_type: t } => t
+    FoldAccumulatorUnresolved { cause: c } => return emit_rust_compile_error_expr(message: concat("fold accumulator type unresolved (FOLD_ACC_REFUSAL): ", c))
+  }
   if step_awaits {
-    emit_rust_effectful_fold_loop(lambda_expr: fold_lambda_node, iter_str: iter_str, init_str: init_str, acc_type_str: lambda_acc_type_str, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
+    emit_rust_effectful_fold_loop(lambda_expr: fold_lambda_node, iter_str: iter_str, init_str: init_str, acc_type_str: acc_annotation, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
   } else {
     let fold_fn = match args |> skip(1) |> first {
       Present { value: a } =>
-        emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str, elem_borrowed: elem_unused, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
+        emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: acc_annotation, elem_type_str: fold_elem_type_str, elem_borrowed: elem_unused, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
       Absent => "compile_error!(\"missing fold function argument\")"
     }
     concat(iter_str, ".fold(", init_str, ", ", fold_fn, ")")
