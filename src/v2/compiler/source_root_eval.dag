@@ -3259,11 +3259,9 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<NativeTimedC
         cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
       )
       let k1 = observed_thread_cpu_nanos("tm-fold-finish")
-      let rss1 = observed_peak_resident_bytes()
       let authored_by_owner = native_demand_census_authored_by_owner(authored: folded.authored)
       let finished = native_test_context_finish(state: folded.context, front: front, ingest: ingest)
       let k2 = observed_thread_cpu_nanos("tm-finish-finish")
-      let rss2 = observed_peak_resident_bytes()
       let walked = fold_list(
         xs: folded.context.roots,
         empty: NativeDemandCensusWalk {
@@ -3280,8 +3278,7 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<NativeTimedC
         cons: fn(w, root) { native_demand_census_module(w: w, root: root, authored: authored_by_owner) }
       )
       let k3 = observed_thread_cpu_nanos("tm-walk-finish")
-      let rss3 = observed_peak_resident_bytes()
-      outcome_accepted(value: NativeTimedCensus { timing: [demand_census_text(parts: ["[tm] modules=", to_string(length(xs: folded.context.roots)), " fold_ms=", to_string((k1 - k0) / 1000000), " finish_ms=", to_string((k2 - k1) / 1000000), " walk_ms=", to_string((k3 - k2) / 1000000), " resolve_ms=", to_string(walked.t_resolve / 1000000), " outcomes_ms=", to_string(walked.t_outcomes / 1000000), " facts_ms=", to_string(walked.t_facts / 1000000), " peak_rss_mb_after_fold=", to_string(rss1 / 1048576), " after_finish=", to_string(rss2 / 1048576), " after_walk=", to_string(rss3 / 1048576)])], report: demand_census_report(
+      outcome_accepted(value: NativeTimedCensus { timing: [demand_census_text(parts: ["[tm] modules=", to_string(length(xs: folded.context.roots)), " fold_ms=", to_string((k1 - k0) / 1000000), " finish_ms=", to_string((k2 - k1) / 1000000), " walk_ms=", to_string((k3 - k2) / 1000000), " resolve_ms=", to_string(walked.t_resolve / 1000000), " outcomes_ms=", to_string(walked.t_outcomes / 1000000), " facts_ms=", to_string(walked.t_facts / 1000000)])], report: demand_census_report(
         uses_functions: length(xs: folded.authored) + length(xs: folded.file_refused),
         functions: walked.functions,
         operations: walked.operations,
