@@ -26,7 +26,7 @@ import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRe
 import extdeps.shell
 import extdeps.network.endpoint { SocketAddress, render_network_host }
 import extdeps.dns.domain_name { DnsLabel }
-import extdeps.ssh.openssh_client_commands { ssh_keyscan_command, ssh_keygen_ed25519_mint_command }
+import extdeps.ssh.openssh_client_commands { ssh_keyscan_command, ssh_keygen_generate_command, ssh_keygen_ed25519_type }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret }
 import gunbc.fleet.fleet_host_key_enrollment {
@@ -538,9 +538,10 @@ fn anchored_host_key_mint_tmpfs_check_command(mint_dir: String) -> ArgvCommand {
 }
 
 fn anchored_host_key_mint_keygen_command(mint_dir: String) -> ArgvCommand {
-  ssh_keygen_ed25519_mint_command(
+  ssh_keygen_generate_command(
+    key_type: ssh_keygen_ed25519_type,
     key_file: concat(mint_dir, "/mc_host"),
-    comment: "mtcollins1" as NonEmptyStr,
+    comment: "mtcollins1",
   )
 }
 

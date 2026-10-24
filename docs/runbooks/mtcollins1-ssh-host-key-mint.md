@@ -51,7 +51,7 @@ Two corollaries this runbook enforces mechanically, not by trust:
 to a fresh `gunbc.host.anchored_host_transport` `anchored_host_key_mint_shell()` render — do not
 hand-edit it, and do not run a remembered copy of it. Drift between this block and the model fails the
 suite, not just review.** Every command line inside it is
-produced by an admitted argv builder (`extdeps.ssh.openssh_client_commands.ssh_keygen_ed25519_mint_command`,
+produced by an admitted argv builder (`extdeps.ssh.openssh_client_commands.ssh_keygen_generate_command`,
 `extdeps.tools.gcloud.gcloud_secrets_create_command`, `extdeps.tools.gcloud.gcloud_secrets_versions_add_stdin_command`,
 `extdeps.tools.gnu_coreutils` `mkdir_create_only_with_mode_command` / `cat_file_command` /
 `rm_force_command` / `rmdir_command`, `extdeps.tools.util_linux_findmnt.findmnt_fstype_for_path_command`);
@@ -70,7 +70,7 @@ set -e
 'trap' 'rm -f /dev/shm/mc-hostkey/mc_host; rm -f /dev/shm/mc-hostkey/mc_host.pub; rmdir /dev/shm/mc-hostkey' 'EXIT' 'INT' 'TERM'
 'mkdir' '-m' '0700' '--' '/dev/shm/mc-hostkey'
 if '[' $('findmnt' '-n' '-o' 'FSTYPE' '-T' '/dev/shm/mc-hostkey') '!=' 'tmpfs' ']'; then 'echo' 'mint dir is not tmpfs-backed; refusing to mint' >&2; exit 1; fi
-'ssh-keygen' '-t' 'ed25519' '-f' '/dev/shm/mc-hostkey/mc_host' '-N' '' '-C' 'mtcollins1' '-q'
+'ssh-keygen' '-q' '-t' 'ed25519' '-N' '' '-C' 'mtcollins1' '-f' '/dev/shm/mc-hostkey/mc_host'
 'gcloud' 'secrets' 'create' 'mtcollins1-ssh-host-key' '--project' 'gunbai-secrets'
 'cat' '--' '/dev/shm/mc-hostkey/mc_host' | 'gcloud' 'secrets' 'versions' 'add' 'mtcollins1-ssh-host-key' '--project' 'gunbai-secrets' '--data-file=-'
 ```
