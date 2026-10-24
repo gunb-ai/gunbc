@@ -11,12 +11,11 @@ import gunbc.auth.oidc_claim_pins {
 
 data project_digest: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-test fn w_print_needs_exact_version_clear_bed_and_digest() -> Bool {
-  print_inputs_admitted(version: "1", digest: project_digest, bed_clear: "true") &&
-  !print_inputs_admitted(version: "latest", digest: project_digest, bed_clear: "true") &&
-  !print_inputs_admitted(version: "pending", digest: project_digest, bed_clear: "true") &&
-  !print_inputs_admitted(version: "1", digest: "", bed_clear: "true") &&
-  !print_inputs_admitted(version: "1", digest: project_digest, bed_clear: "false")
+test fn w_print_needs_exact_version_and_digest() -> Bool {
+  print_inputs_admitted(version: "1", digest: project_digest) &&
+  !print_inputs_admitted(version: "latest", digest: project_digest) &&
+  !print_inputs_admitted(version: "pending", digest: project_digest) &&
+  !print_inputs_admitted(version: "1", digest: "")
 }
 
 test fn w_unknown_printer_never_selects_a_default_machine() -> Bool {

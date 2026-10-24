@@ -16,6 +16,9 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.gnu.libc { GlibcVersion, glibc_version }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import std.measure { Micrometer, micrometer_count, MicrometrePerSecond, micrometre_per_second_count, MicrometrePerSecondSquared, micrometre_per_second_squared_count, Percent, percent_count }
+import std.decimal { ExactDecimal, exact_decimal_wire }
+import extdeps.languages.json.emit { JsonKeyValue, json_kv, json_string }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -66,6 +69,9 @@ data orca_slicer_linux_aarch64_appimage: NonEmptyStr = "OrcaSlicer_Linux_AppImag
 // not identify bytes: a release asset can be replaced in place, and every measurement recorded in
 // this module was made against THIS content and is a claim about nothing else.
 data orca_slicer_linux_aarch64_appimage_sha256: NonEmptyStr = "e1a07275a25f176626c55a5df39e91bc4476d8c28ee4a3192ff758e29dd5c3ba"
+
+// The release asset the digest above was taken from (upstream release v2.4.2, asset list).
+data orca_slicer_linux_aarch64_appimage_url: NonEmptyStr = "https://github.com/SoftFever/OrcaSlicer/releases/download/v2.4.2/OrcaSlicer_Linux_AppImage_Ubuntu2404_aarch64_V2.4.2.AppImage"
 
 // THE ABI FLOOR, MEASURED FROM THE ARTIFACT AND NOT INFERRED FROM ITS FILENAME.
 //
@@ -164,4 +170,68 @@ fn with_verified_orca(appimage: FilePath, use: fn(OrcaExecutable) -> ProcessOutc
   }
   if shell.Remove.RecursiveForce(path: temp.path as FilePath).success { result }
   else { ProcessRefused { exit_code: 1, stderr: concat("Orca realization cleanup failed at ", temp.path as String) } }
+}
+
+// THE SYSTEM PROFILES SHIP INSIDE THE PINNED ARCHIVE, so a profile named here is a fact of that one
+// release and needs no second digest. Upstream layout (resources/profiles/BBL/<kind>/<name>.json):
+// each file's `name` equals its file stem; `inherits` names the parent of the same kind; a child's
+// keys replace the parent's; `instantiation` marks whether the profile is user-selectable.
+// AppImage's runtime extracts a glob into ./squashfs-root of its working directory.
+type OrcaProfileKind = OrcaMachineProfile | OrcaFilamentProfile | OrcaProcessProfile
+fn orca_profile_kind_directory(k: OrcaProfileKind) -> String {
+  match k { OrcaMachineProfile => "machine" OrcaFilamentProfile => "filament" OrcaProcessProfile => "process" }
+}
+data orca_bbl_profile_glob: NonEmptyStr = "resources/profiles/BBL/*"
+fn orca_bbl_profile_path(extracted_into: String, kind: OrcaProfileKind, name: String) -> String {
+  join([extracted_into, "/squashfs-root/resources/profiles/BBL/", orca_profile_kind_directory(k: kind), "/", name, ".json"], "")
+}
+fn orca_extract_bbl_profiles_command(executable: OrcaExecutable) -> ArgvCommand {
+  argv_command(program: uncataloged_program(invocation: executable.program), arguments: ["--appimage-extract", orca_bbl_profile_glob as String])
+}
+
+// PROCESS SETTINGS AS ORCA READS THEM. Orca's process profile is a flat JSON object of strings; each
+// key below has one physical meaning and unit, so a setting carries a measured value and the
+// rendering to Orca's text lives here, beside the upstream it serializes for. Speeds are mm/s,
+// accelerations mm/s^2, lengths mm, densities a percent with a trailing '%', layer counts integers.
+type OrcaSpeedKey = OrcaOuterWallSpeed | OrcaInnerWallSpeed | OrcaSparseInfillSpeed | OrcaInternalSolidInfillSpeed | OrcaBridgeSpeed
+type OrcaAccelerationKey = OrcaDefaultAcceleration | OrcaOuterWallAcceleration | OrcaInnerWallAcceleration
+type OrcaLengthKey = OrcaBrimWidth | OrcaRaftFirstLayerExpansion
+type OrcaCountKey = OrcaWallLoops | OrcaBottomShellLayers
+type OrcaInfillPattern = OrcaGyroidInfill | OrcaCrosshatchInfill
+type OrcaBrimType = OrcaOuterOnlyBrim | OrcaNoBrim
+type OrcaBedType = OrcaTexturedPeiPlate | OrcaCoolPlate
+
+type OrcaProcessSetting
+  = OrcaSpeedSetting { key: OrcaSpeedKey, speed: MicrometrePerSecond }
+  | OrcaAccelerationSetting { key: OrcaAccelerationKey, acceleration: MicrometrePerSecondSquared }
+  | OrcaLengthSetting { key: OrcaLengthKey, length: Micrometer }
+  | OrcaCountSetting { key: OrcaCountKey, count: Nat }
+  | OrcaSparseInfillDensity { density: Percent }
+  | OrcaSparseInfillPattern { pattern: OrcaInfillPattern }
+  | OrcaBrimTypeSetting { brim: OrcaBrimType }
+  | OrcaBedTypeSetting { bed: OrcaBedType }
+
+fn orca_speed_key(k: OrcaSpeedKey) -> String {
+  match k { OrcaOuterWallSpeed => "outer_wall_speed" OrcaInnerWallSpeed => "inner_wall_speed" OrcaSparseInfillSpeed => "sparse_infill_speed" OrcaInternalSolidInfillSpeed => "internal_solid_infill_speed" OrcaBridgeSpeed => "bridge_speed" }
+}
+fn orca_acceleration_key(k: OrcaAccelerationKey) -> String {
+  match k { OrcaDefaultAcceleration => "default_acceleration" OrcaOuterWallAcceleration => "outer_wall_acceleration" OrcaInnerWallAcceleration => "inner_wall_acceleration" }
+}
+fn orca_length_key(k: OrcaLengthKey) -> String { match k { OrcaBrimWidth => "brim_width" OrcaRaftFirstLayerExpansion => "raft_first_layer_expansion" } }
+fn orca_count_key(k: OrcaCountKey) -> String { match k { OrcaWallLoops => "wall_loops" OrcaBottomShellLayers => "bottom_shell_layers" } }
+
+// Micro-unit counts render as exact decimals of the milli unit Orca reads (25000 um/s -> "25").
+fn orca_milli_text(micro: Nat) -> String { exact_decimal_wire(d: ExactDecimal { units: micro as Int, fraction_digits: 3 }) }
+
+fn orca_process_setting_kv(s: OrcaProcessSetting) -> JsonKeyValue {
+  match s {
+    OrcaSpeedSetting { key: k, speed: v } => json_kv(key: orca_speed_key(k: k), value: json_string(s: orca_milli_text(micro: micrometre_per_second_count(v: v))))
+    OrcaAccelerationSetting { key: k, acceleration: a } => json_kv(key: orca_acceleration_key(k: k), value: json_string(s: orca_milli_text(micro: micrometre_per_second_squared_count(a: a))))
+    OrcaLengthSetting { key: k, length: l } => json_kv(key: orca_length_key(k: k), value: json_string(s: orca_milli_text(micro: micrometer_count(m: l))))
+    OrcaCountSetting { key: k, count: n } => json_kv(key: orca_count_key(k: k), value: json_string(s: to_string(n)))
+    OrcaSparseInfillDensity { density: p } => json_kv(key: "sparse_infill_density", value: json_string(s: concat(to_string(percent_count(p: p)), "%")))
+    OrcaSparseInfillPattern { pattern: p } => json_kv(key: "sparse_infill_pattern", value: json_string(s: match p { OrcaGyroidInfill => "gyroid" OrcaCrosshatchInfill => "crosshatch" }))
+    OrcaBrimTypeSetting { brim: b } => json_kv(key: "brim_type", value: json_string(s: match b { OrcaOuterOnlyBrim => "outer_only" OrcaNoBrim => "no_brim" }))
+    OrcaBedTypeSetting { bed: b } => json_kv(key: "curr_bed_type", value: json_string(s: match b { OrcaTexturedPeiPlate => "Textured PEI Plate" OrcaCoolPlate => "Cool Plate" }))
+  }
 }

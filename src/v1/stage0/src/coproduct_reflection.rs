@@ -482,7 +482,9 @@ thread_local! {
     /// runner with the census at 138ms of that, were all BUDGET-REFUSED at 503–512ms on the CI
     /// host. The walk is a function of the roots and the prepared tree, not of the witness, so
     /// it is the floor's shared-build attribution defect at memo grain — the same class
-    /// `compile_dag_diagnostic_census` closes with its memo — and it is closed the same way:
+    /// `compile_dag_diagnostic_census` used to close with its own memo (that memo is deleted;
+    /// the census now avoids the recomputation by reading through process-level shared state --
+    /// see its entry point's deletion story) — and it is closed the same way here:
     /// the miss is bracketed as shared-artifact fill on both clocks, which `budgeted_cpu_nanos`
     /// nets from the deadline and `run_claim_measured` reports, never drops. Same roots, same
     /// `DeclFactRaw` population (the walk sorts its output, so the key may be canonicalized),
@@ -1879,7 +1881,8 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             ItemKind::TypeItem => 1,
             ItemKind::DataItem => 2,
             ItemKind::ServiceItem => 3,
-            ItemKind::OtherItem => 4,
+            ItemKind::ResourceItem => 4,
+            ItemKind::OtherItem => 5,
         };
         (a.rel_path.as_str(), a.name.as_str(), kind_ord(a.kind)).cmp(&(
             b.rel_path.as_str(),
@@ -1905,6 +1908,9 @@ fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
         ItemKind::TypeItem => "TypeItem",
         ItemKind::DataItem => "DataItem",
         ItemKind::ServiceItem => "ServiceItem",
+        // v2.std.decl_index ItemKind has no resource arm, and its consumers read OtherItem as the
+        // census's own cannot-classify answer, which is what a resource was before v1 named it.
+        ItemKind::ResourceItem => "OtherItem",
         ItemKind::OtherItem => "OtherItem",
     };
     Value::Variant {
