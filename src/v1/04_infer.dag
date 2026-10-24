@@ -8095,9 +8095,9 @@ fn fold_carrier_closed_at_step(carrier: Node, typed_args: List<Node>, scope: Inf
 
 // THE STEP IS INFERRED AGAIN UNDER THE CLOSED CARRIER, one extra round of the same argument
 // inference, as call_needs_generic_rebinding_pass runs a call's argument fold again from the
-// substitution its first round ended with. Round 1 infers the step against an open carrier with no
-// declared return (an open carrier is not a return the step's body can be checked against: `none`
-// would type every `Present` arm as a unit optional); the carrier is closed at what round 1
+// substitution its first round ended with. Round 1 infers the step against the open carrier, whose
+// return the lambda arm does not check the body against (an open type is never a body's expected
+// type: `none` would type every `Present` arm as a unit optional); the carrier is closed at what round 1
 // produced; round 2 infers the step with the closed carrier as its accumulator and its declared
 // return, so the typed lambda the emitter reads agrees with the call's result. Bounded at two rounds:
 // round 2 runs only when the closed carrier is itself closed, and nothing is fed back from it. A
@@ -8107,13 +8107,13 @@ fn infer_fold_step_args(method_name: String?, method_args: List<Node>, fold_info
     Present { value: carrier } => fold_carrier_is_open(carrier: carrier, scope: scope)
     Absent => false
   }
-  let round_one = infer_method_args_with_fold(method_name: method_name, method_args: method_args, fold_info: fold_info, fold_acc_type: fold_acc_type, step_declares_return: !carrier_open, element_type: element_type, elem_provenance: elem_provenance, arg_contract: arg_contract, scope: scope)
+  let round_one = infer_method_args_with_fold(method_name: method_name, method_args: method_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: element_type, elem_provenance: elem_provenance, arg_contract: arg_contract, scope: scope)
   match fold_acc_type {
     Present { value: carrier } =>
       if !carrier_open { round_one } else {
         let closed = fold_carrier_closed_at_step(carrier: carrier, typed_args: round_one |> map(r => r.typed_arg), scope: scope)
         if closed != carrier && !fold_carrier_is_open(carrier: closed, scope: scope) {
-          infer_method_args_with_fold(method_name: method_name, method_args: method_args, fold_info: fold_info, fold_acc_type: Present { value: closed }, step_declares_return: true, element_type: element_type, elem_provenance: elem_provenance, arg_contract: arg_contract, scope: scope)
+          infer_method_args_with_fold(method_name: method_name, method_args: method_args, fold_info: fold_info, fold_acc_type: Present { value: closed }, element_type: element_type, elem_provenance: elem_provenance, arg_contract: arg_contract, scope: scope)
         } else { round_one }
       }
     Absent => round_one
@@ -8170,7 +8170,7 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
 // accumulator type was fully known). The lambda arm still admits the return as the body's
 // expected type only when it is established and fully resolved, so an accumulator whose own
 // type is unknown expects nothing, as before.
-fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node?, step_declares_return: Bool, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
+fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node?, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
@@ -8190,7 +8190,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       ]
       let fold_callable = Node {
         occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [],
-        connective: NoConnective, params: fold_params, inferred: if step_declares_return { Present { value: Resolved { node: fold_acc } } } else { none },
+        connective: NoConnective, params: fold_params, inferred: Present { value: Resolved { node: fold_acc } },
         return_cardinality: Required, uses: [], body: none, transport: none,
         properties: [], type_annotation: none, is_self_recursive: false,
         has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
@@ -8556,7 +8556,8 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, arg_formal_correspon
         unify_lambda_solves(
           solved: unify_generics(formal: formal_raw, actual: lambda_callable_type(lambda: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: empty_map()),
           generic_names: generic_names,
-          acc: st.subst
+          acc: st.subst,
+          scope: scope
         )
       } else { st.subst }
     } else if should_unify_record_lit_generics(formal: formal_raw, arg_expr: arg_value(n: a), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
@@ -10629,7 +10630,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           match exp.inferred {
             Present { value: Resolved { node: declared_ret } } =>
               if type_node_is_established(n: declared_ret, source_indices: scope.type_env.source_indices)
-                && is_fully_resolved(n: declared_ret, source_indices: scope.type_env.source_indices) {
+                && !fold_carrier_is_open(carrier: declared_ret, scope: scope) {
                 Present { value: declared_ret }
               } else { none }
             _ => none
@@ -15235,12 +15236,18 @@ fn unify_callable_param_pairs(formals: List<Node>, actuals: List<Node>, generic_
   }
 }
 
-// What a lambda argument may contribute in round 1: only a binding that carries information. Its
+// What a lambda argument may contribute in round 1: only a binding that carries information. AN OPEN
+// BINDING YIELDS TO IT: when an earlier argument bound the generic to an open type (`empty: none`, a
+// bare `Empty`, `[]`; v1.compiler.infer fold_carrier_is_open), the lambda's informative return is a
+// sighting of the same generic, and the binding becomes their branch join (branch_join_type), the
+// carrier first, so it moves only to a strictly more specific type. This is the kernel fold's carrier
+// rule (fold_carrier_closed_at_step) at the generic-callee seam: fold_list(xs, empty: none, cons: ..)
+// closes A at what cons produces. A closed binding is never overridden, as before. Its
 // return is computed under a substitution that may not yet bind its own parameters, so it can be
 // an unresolved type variable (callable_param), and binding a parameter to that would fix it first
 // and keep it against the informative argument that follows. Such an entry is dropped, so a later
 // argument or round 2 decides it. An entry fills only an Absent binding; it never overrides one.
-fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, acc: Map<String, Node>) -> Map<String, Node> {
+fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, acc: Map<String, Node>, scope: InferScope) -> Map<String, Node> {
   fold(generic_names, init: acc, f: (st, g) =>
     match map_get(solved, g) {
       Present { value: candidate } =>
@@ -15249,7 +15256,13 @@ fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, a
         } else {
           match map_get(st, g) {
             Absent => map_insert(st, g, candidate)
-            Present { value: _ } => st
+            Present { value: bound } =>
+              if fold_carrier_is_open(carrier: bound, scope: scope) {
+                match branch_join_type(types: [bound, candidate], scope: scope) {
+                  Present { value: joined } => map_insert(st, g, joined)
+                  Absent => st
+                }
+              } else { st }
           }
         }
       Absent => st
