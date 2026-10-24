@@ -71,8 +71,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_encode_start, attempt_system_unit_start_request_decode,
   AttemptSystemUnitStartEncoded, AttemptSystemUnitStartUnencodable,
   AttemptSystemUnitStartUnencodableCause, AttemptSystemUnitNonceUnsafe,
-  AttemptSystemUnitArgvEmpty, AttemptSystemUnitArgvWordContainsUnitSeparator,
-  AttemptSystemUnitArgvWordContainsNewline,
+  AttemptSystemUnitArgvEmpty,
   AttemptSystemUnitStartRequestDecoded, AttemptSystemUnitStartRequestMalformed,
   AttemptSystemUnitStartVerbUnknown,
   attempt_system_unit_start_verb_wire,
@@ -557,34 +556,46 @@ test fn each_unencodable_argv_refuses_at_encode() -> Bool {
   match encode_refuses_cause(request: request_with_argv(argv: [])) {
     Absent => false
     Present { value: AttemptSystemUnitArgvEmpty } => true
-    Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
-    Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
     Present { value: AttemptSystemUnitNonceUnsafe } => false
   }
-    && match encode_refuses_cause(request: request_with_argv(argv: ["a\u{1f}b"])) {
-      Absent => false
-      Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => true
-      Present { value: AttemptSystemUnitArgvEmpty } => false
-      Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
-      Present { value: AttemptSystemUnitNonceUnsafe } => false
-    }
-    && match encode_refuses_cause(request: request_with_argv(argv: ["a\nb"])) {
-      Absent => false
-      Present { value: AttemptSystemUnitArgvWordContainsNewline } => true
-      Present { value: AttemptSystemUnitArgvEmpty } => false
-      Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
-      Present { value: AttemptSystemUnitNonceUnsafe } => false
-    }
 }
 
+// A MULTI-LINE WORD IS LEGITIMATE (the node brief is passed inline). Each hostile character survives
+// encode then decode exactly, and the encoded body stays one field per line.
 test fn every_encodable_request_round_trips_exactly() -> Bool {
   let argv = ["/opt/gunbc/bin/gunbc", "run", "--arg", "k=v", "path with spaces", join(["quote", "\"", "here"], ""), "dollar$ID"]
   start_request_round_trips(verb: StartDetached, request: request_with_argv(argv: argv))
     && start_request_round_trips(verb: StartAndWait, request: request_with_argv(argv: argv))
 }
 
+test fn a_word_carrying_a_newline_or_unit_separator_round_trips_exactly() -> Bool {
+  let hostile = ["/bin/true", "brief=line one\nline two\n\nline four", "sep\u{1f}arator", "rs\u{1e}sep", "q\"uote", "back\\slash", "caf\u{e9} \u{2603}", "tab\there"]
+  start_request_round_trips(verb: StartDetached, request: request_with_argv(argv: hostile))
+    && start_request_round_trips(verb: StartAndWait, request: request_with_argv(argv: hostile))
+    && match attempt_system_unit_encode_start(verb: StartDetached, request: request_with_argv(argv: hostile)) {
+      AttemptSystemUnitStartUnencodable { cause: _ } => false
+      AttemptSystemUnitStartEncoded { body } => count(split(s: body, delimiter: "\n")) == 6
+    }
+}
+
+test fn a_malformed_argv_field_is_a_typed_malformed_refusal() -> Bool {
+  decode_with_argv_field(field: "not json")
+    && decode_with_argv_field(field: "[\"a\", 3]")
+    && decode_with_argv_field(field: "{\"a\": \"b\"}")
+    && decode_with_argv_field(field: "[]")
+    && decode_with_argv_field(field: "[\"a\"] trailing")
+}
+
+fn decode_with_argv_field(field: String) -> Bool {
+  match attempt_system_unit_start_request_decode(lines: ["start", "n1", "k1", "1", field, "n"]) {
+    AttemptSystemUnitStartRequestMalformed { reason: _ } => true
+    AttemptSystemUnitStartVerbUnknown { tag: _ } => false
+    AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
+  }
+}
+
 test fn an_unknown_verb_on_the_wire_is_a_typed_refusal() -> Bool {
-  match attempt_system_unit_start_request_decode(lines: ["stop", "n1", "k1", "1", "/bin/true"]) {
+  match attempt_system_unit_start_request_decode(lines: ["stop", "n1", "k1", "1", "[\"/bin/true\"]"]) {
     AttemptSystemUnitStartVerbUnknown { tag } => tag == "stop"
     AttemptSystemUnitStartRequestMalformed { reason: _ } => false
     AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
