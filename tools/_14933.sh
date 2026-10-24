@@ -49,6 +49,7 @@ if [ "$NEED_B" = 1 ]; then
   echo "PR_PATCH_BYTES=$(wc -c < $CKPT/pr.patch) FILES=$(grep -c '^diff --git' $CKPT/pr.patch)"
   if (cd $B && git apply -R --check $CKPT/pr.patch 2>$CKPT/apply-err.txt); then
     (cd $B && git apply -R $CKPT/pr.patch) && echo REVERSE_APPLY_OK || { echo REVERSE_APPLY_EXEC_FAIL -- STOP; exit 9; }
+    (cd $B && git status --porcelain | wc -l) | grep -qv ^0 || { echo "NOOP-REVERSE -- STOP"; exit 9; }
   else
     echo REVERSE_APPLY_CHECK_FAIL:
     head -6 $CKPT/apply-err.txt | sed 's|^|  apply: |'
