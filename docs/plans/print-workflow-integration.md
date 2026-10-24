@@ -114,9 +114,9 @@ those interfaces. The real cryptographic construction is retained in
 Plan admission rules each have their own counterexample and witness. This keeps
 all rejection cases while avoiding one cumulative budget for unrelated cases.
 
-## Printer workflow review status
+## Start authority
 
-The printer start paths share one approval and claim implementation. Dispatch input validation
+There is one start path. Dispatch input validation
 is not authorization: the common path verifies an unexpired ntfy grant, observes an explicit
 IDLE or FINISH report with zero or the vendor-confirmed spurious 0500C011 code, and acquires a durable claim keyed by the print attempt before any
 upload/start. Active/paused/unknown states, partial reports and other error codes refuse. Approval text requires the operator to
@@ -126,20 +126,18 @@ immediately before publishing the start.
 Claims live in `/var/lib/gunbc/printer-starts` on the separately modeled printer LAN host. The
 host check precedes the gate. The service account needs an owner-controlled, persistent directory
 there before this path can operate; missing/unwritable storage refuses. Do not delete a claim to
-retry an uncertain start. This review has not provisioned that directory or performed a live print.
+retry an uncertain start.
 
 One exact-version credential session covers preflight, upload, post-upload observation and start.
 It is evidence of an existing-secret read, never PrinterCredentialProvisioned. Receipt source is
 projected from the selected token source. The observed setup report is informational only.
 
 The census distinguishes separately initiated operator requests from unattended provisioning.
-Physical print starts select operator approval. Current code-enforced approval under a federated
-read and the operator-token compatibility entry have explicit, bounded divergences; neither is
-presented as a broker-minted printer credential. Token-file input does not establish credential
-custody and is not authorization to relay tokens through chat.
-
-Local approval, census and workflow-binding witnesses pass. CI is required and the PR remains
-draft. CAD and slicer preparation are split out; approval-client cutover is prerequisite #13218.
+Physical print starts select operator approval: the credential is read through the printer
+federation (`gunbc.fleet.printer_federation`, pinned to `fleet-converge` at `main` in the
+`printer-lan` environment) and the start is authorized only by the signed ntfy grant. No
+operator-token or token-file entry exists; the token-file `mode=print` and the batch controller
+were deleted (#14945).
 
 Vendor-readiness correction (2026-10-04): Bambu Studio treats FINISH as a completed
 job eligible for another print, not a cooling state. The bed may still hold a part in
@@ -152,14 +150,14 @@ readiness/approval-expiry checks remain unchanged.
 
 ### Automatic post-start reconciliation
 
-Both the Actions and operator routes now enter the same read-only reconciliation after
-an acknowledged or uncertain publish. The publisher is bounded by GNU timeout at 20 seconds
+The start path enters a read-only reconciliation after an acknowledged or uncertain
+publish. The publisher is bounded by GNU timeout at 20 seconds
 with a 2-second kill grace; every nonzero outcome remains uncertain, never permission to
 republish. The cause of the observed connection drops is not established or claimed fixed.
 
 Reconciliation reuses the credential session and makes at most eight fresh single-response
 MQTT observations, each with the existing 15-second wait, separated by 5 seconds. It retains
-each raw response (including incomplete responses) beside the durable escalation claim.
+each raw response (including incomplete responses) beside the attempt's durable start claim.
 A report confirms running only if it contains the exact attempt-derived `gcode_file`,
 `gcode_state: RUNNING`, and a nonblocking numeric `print_error` in the same JSON object.
 No display-name fallback, cached report, merged delta, FINISH or unknown state can confirm.
@@ -172,14 +170,6 @@ cleanup failure returns success. Failure/uncertainty retains the claim and forbi
 The MQTT wait budget excludes CA acquisition and local filesystem runtime. This change
 handles acknowledgement loss without manual telemetry checks; it does not promise that the
 LAN or firmware cannot fail or that MQTT provides application-level exactly-once printing.
-
-The two wave-three jobs were confirmed through the previous manual report route before this
-change: both exact digest filenames RUNNING. No physical start was issued to test this change.
-
-Validation for this change: five reconciliation witnesses, six approval/readiness witnesses,
-and 24 publisher/no-replay witnesses passed locally. Both shared entry paths typecheck through
-the common approval implementation. Live execution of the new post-start path remains for the
-next authorized print; the current jobs used the previous revision.
 
 ## Functional geometry, support geometry and print stability
 
