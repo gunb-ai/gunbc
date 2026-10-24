@@ -6,7 +6,10 @@ import extdeps.http.server { ServeWireResponse }
 import std.fabric_storage {
   FabricObject, fabric_object_decode, fabric_object_ref_of_wire, FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
   FabricReplyUndecodable, FabricHeadNameRefused,
-  FabricPutRefused, FabricHeadReadRefused, FabricHeadAdvanceRefused, FabricClosureRefused, FabricStorageOperations,
+  FabricPutRefused, FabricHeadReadRefused, FabricHeadAdvanceRefused, FabricClosureRefused,
+}
+import gunbc.fabric.fabric_storage_placement {
+  FabricStorageNamespace, fabric_namespace_head, fabric_namespace_put, fabric_namespace_advance, fabric_namespace_closure,
 }
 import gunbc.fabric.fabric_storage_wire { fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity, DoorProxied }
 import extdeps.tailscale.identity { tailnet_identity_of }
@@ -49,16 +52,16 @@ fn malformed(detail: String) -> ServeWireResponse {
 //   put       <canonical preimage>
 //   advance   <name> absent <target>   |   <name> at <expected-ref> <target>
 //   identity  (no body)
-// The store is the operations it was handed, never a root: which store they reach is the caller's
-// sealed value (gunbc.fabric.fabric_storage_serve), and this module reads no file.
-fn fabric_storage_respond(store: FabricStorageOperations, operation: String, body: String, tailscale_identity: String) -> ServeWireResponse {
+// The store is a sealed namespace store (gunbc.fabric.fabric_storage_placement FabricStorageNamespace),
+// never a root: which store it is is the caller's minted value, and this module reads no file itself.
+fn fabric_storage_respond(store: FabricStorageNamespace, operation: String, body: String, tailscale_identity: String) -> ServeWireResponse {
   let ws = words(text: body)
   match operation {
     "identity" => ok(body: fabric_storage_wire_identity(principal: DoorProxied { identity: tailnet_identity_of(header_value: tailscale_identity) }))
     "head" =>
       match head_name(w: word(ws: ws, i: 0)) {
         Absent => malformed(detail: "head names no head")
-        Present { value: n } => ok(body: fabric_storage_wire_head(read: store.head(n)))
+        Present { value: n } => ok(body: fabric_storage_wire_head(read: fabric_namespace_head(namespace: store, name: n)))
       }
     "closure" =>
       match head_name(w: word(ws: ws, i: 0)) {
@@ -68,13 +71,13 @@ fn fabric_storage_respond(store: FabricStorageOperations, operation: String, bod
             Absent => malformed(detail: "closure bound is not an integer")
             Present { value: b } =>
               if b < 1 || b > fabric_storage_closure_bound_cap { malformed(detail: "closure bound out of range") }
-              else { ok(body: fabric_storage_wire_closure(read: store.closure(n, b))) }
+              else { ok(body: fabric_storage_wire_closure(read: fabric_namespace_closure(namespace: store, name: n, bound: b))) }
           }
       }
     "put" =>
       match fabric_object_decode(preimage: body) {
         Absent => malformed(detail: "put body is not one fabric object")
-        Present { value: o } => ok(body: fabric_storage_wire_put(put: store.put(o)))
+        Present { value: o } => ok(body: fabric_storage_wire_put(put: fabric_namespace_put(namespace: store, object: o)))
       }
     "advance" =>
       match head_name(w: word(ws: ws, i: 0)) {
@@ -82,7 +85,7 @@ fn fabric_storage_respond(store: FabricStorageOperations, operation: String, bod
         Present { value: n } =>
           match advance_request(ws: ws) {
             Absent => malformed(detail: "advance expectation or target unreadable")
-            Present { value: req } => ok(body: fabric_storage_wire_advance(advance: store.advance(n, req.expected, req.target)))
+            Present { value: req } => ok(body: fabric_storage_wire_advance(advance: fabric_namespace_advance(namespace: store, name: n, expected: req.expected, target: req.target)))
           }
       }
     _ => text_response(status: 404, body: join(["fabric_storage/1 no operation ", operation, "\n"], ""))

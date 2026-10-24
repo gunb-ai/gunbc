@@ -21,7 +21,7 @@ import gunbc.workspace_slot_mutation {
   workspace_slot_mutation_acquire, workspace_slot_mutation_release,
   WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationRefused,
 }
-import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_prepare_acquire, fabric_allocation_commit_acquire, fabric_allocation_assess_release, fabric_allocation_commit_release }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
   FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
@@ -161,7 +161,7 @@ fn grant_selected_cell_under_exclusion<Q, S>(
 {
   // The owner on this first plan is never written: it is replaced by the grant key below. It names
   // the attempt so a reader of a crash trace sees whose read this was.
-  match store.prepare_acquire(slot_key, (concat("grant-issue|", attempt.id.key as String)) as DurableHoldOwnerRef) {
+  match fabric_allocation_prepare_acquire(store: store, key: slot_key, owner: (concat("grant-issue|", attempt.id.key as String)) as DurableHoldOwnerRef) {
     FileHoldAcquireNotEligible { slot_key: _, refusal: r } => match r {
       HoldAcquireOccupied { generation: g, holder: h } => CellAlreadyGranted { slot_key: slot_key, holder: h, generation: g }
       HoldAcquireSlotUndecodable { generation: g, detail: d } => CellGrantSlotUndecodable { slot_key: slot_key, generation: g, detail: d }
@@ -187,7 +187,7 @@ fn grant_selected_cell_under_exclusion<Q, S>(
       ) {
         GrantRefused { refusal: r } => CellGrantIssueRefused { slot_key: slot_key, refusal: r }
         GrantCommitted { grant: grant, account: a, ledger: l } =>
-          match store.commit_acquire(file_hold_acquire_plan_for_owner(plan: plan, owner: cell_grant_owner(grant: grant))) {
+          match fabric_allocation_commit_acquire(store: store, plan: file_hold_acquire_plan_for_owner(plan: plan, owner: cell_grant_owner(grant: grant))) {
             FileHoldAcquired { slot_key: _, owner: _, generation: g } =>
               if cas_generation_count(g: g) == cas_generation_count(g: landing) {
                 CellGranted { grant: grant, account: a, ledger: l }
@@ -344,8 +344,8 @@ fn settle_cell_grant(
         } else {
           let owner = cell_grant_owner_at(work: work, attempt: receipt.attempt, offer: offer, slot_key: slot_key, generation: generation)
           let release_ref = cell_grant_release_ref(receipt: receipt, cell: c)
-          match store.assess_release(slot_key, owner, generation, release_ref) {
-            FileHoldReleasePlanned { plan: p } => match store.commit_release(p) {
+          match fabric_allocation_assess_release(store: store, key: slot_key, owner: owner, generation: generation, released_by: release_ref) {
+            FileHoldReleasePlanned { plan: p } => match fabric_allocation_commit_release(store: store, plan: p) {
               FileHoldReleased { slot_key: _, generation: g } => CellGrantReceiptAdmitted { slot_key: slot_key, released_at: g, released_by: release_ref }
               FileHoldReleaseLost { slot_key: _ } => CellGrantSettlementLost { slot_key: slot_key }
               FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => CellGrantSettlementStoreUnavailable { slot_key: slot_key, detail: "the release write was refused by the store" }

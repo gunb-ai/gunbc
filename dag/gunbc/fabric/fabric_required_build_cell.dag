@@ -18,7 +18,7 @@ import product.fabric.sanitation { CellId }
 import product.host_identity { HostIdentity }
 import gunbc.ownership { Owned }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
-import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_observe_slot }
 import gunbc.durable_exclusive_hold_file_store { HoldPayloadDecoded, HoldPayloadUndecodable, decode_hold_slot_payload }
 import gunbc.fabric.fabric_control_plane { fabric_cell_allocation_key, fabric_money_reservation_ref, fabric_hold_owner }
 import gunbc.fabric.fabric_cell_acquire { fabric_cell_probe_wet }
@@ -364,7 +364,7 @@ fn observe_required_build_cell_expecting(
   if (executor as String) != (slot_key as String) {
     SelectedOfferCellMismatch { slot_key: slot_key, executor: executor }
   } else {
-    match store.observe_slot(slot_key) {
+    match fabric_allocation_observe_slot(store: store, key: slot_key) {
       CasObservedUnreadable { cause: c } => ReservationUnreadable { slot_key: slot_key, cause: c }
       CasObservedReadable { readable: CasReadableAbsent } => ReservationAbsent { slot_key: slot_key }
       CasObservedReadable { readable: CasReadablePresent { version: version } } =>

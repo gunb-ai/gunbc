@@ -65,7 +65,7 @@ fn acquisition_cancellation_fixture(store: FabricStorageBinding, tree_dir: NonEm
   FabricAllocationStoreReady { store: allocation } =>
   match launch_fixture_allocation() {
     Absent => false
-    Present { value: fixture } => match acquisition_rooted_plan(root: allocation.identity) {
+    Present { value: fixture } => match acquisition_rooted_plan(root: allocation.root) {
       Absent => false
       Present { value: prepared } => {
         let retired = WorkspaceAllocation { recorded_at: fixture.recorded_at, retired_at: "2026-09-27T12:30:00Z",

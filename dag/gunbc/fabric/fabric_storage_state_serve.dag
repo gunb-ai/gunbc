@@ -2,7 +2,7 @@ module gunbc.fabric.fabric_storage_state_serve
 
 import std.types { String }
 import extdeps.http.server { ServeWireResponse }
-import gunbc.fabric.fabric_storage_placement { FabricStateStorage }
+import gunbc.fabric.fabric_storage_placement { FabricStateStorage, FabricStateNamespace }
 import gunbc.fabric.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix }
 import gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }
 import gunbc.fabric.fabric_storage_state_auth { FabricStateRequestVerified, FabricStateRequestRefused }
@@ -17,6 +17,6 @@ fn fabric_storage_state_serve_over(store: FabricStateStorage, method: String, pa
   else if path != concat(concat(fabric_storage_route_prefix, fabric_storage_state_suffix), "/authenticated") { text_response(status: 403, body: "fabric state service authentication required\n") }
   else { match fabric_state_verified_request(body: body) {
     FabricStateRequestRefused => text_response(status: 403, body: "fabric state service authentication refused\n")
-    FabricStateRequestVerified { request: admitted } => fabric_storage_respond(store: store.operations, operation: admitted.operation, body: admitted.request, tailscale_identity: "")
+    FabricStateRequestVerified { request: admitted } => fabric_storage_respond(store: FabricStateNamespace { store: store }, operation: admitted.operation, body: admitted.request, tailscale_identity: "")
   } }
 }

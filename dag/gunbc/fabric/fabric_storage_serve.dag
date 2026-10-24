@@ -20,7 +20,7 @@ import gunbc.fabric.fabric_storage_binding { fabric_storage_placement }
 import gunbc.roadmap.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
 import gunbc.fabric.fabric_storage_placement {
   FabricStoragePlaced, FabricStoragePlacementRefused, FabricStorageUnplaced, fabric_storage_route_prefix,
-  FabricStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused,
+  FabricStorage, FabricPublicNamespace, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused,
   FabricStateStorage, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready,
 }
 
@@ -64,9 +64,9 @@ fn fabric_served_storage_respond(store: FabricStorage, rosters: FabricDoorRoster
       ok(body: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { refusal: refusal } }))
     } else if operation == "advance" {
       ok(body: fabric_storage_wire_advance(advance: FabricHeadAdvanceRefused { fault: FabricWriterRefused { refusal: refusal } }))
-    } else { fabric_storage_respond(store: store.operations, operation: operation, body: body, tailscale_identity: "") }
+    } else { fabric_storage_respond(store: FabricPublicNamespace { store: store }, operation: operation, body: body, tailscale_identity: "") }
     FabricDoorWriterAdmitted { principal: _ } =>
-      fabric_storage_respond(store: store.operations, operation: operation, body: body, tailscale_identity: "")
+      fabric_storage_respond(store: FabricPublicNamespace { store: store }, operation: operation, body: body, tailscale_identity: "")
   } }
 }
 

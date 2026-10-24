@@ -19,8 +19,12 @@ import gunbc.managed_directory {
   EntriesUnmanaged, EntriesReadableByDependents, managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_user }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_with, fabric_storage_file_operations }
-import std.fabric_storage { FabricStorageOperations }
+import gunbc.fabric.fabric_storage_file_store {
+  FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_with,
+  fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
+}
+import std.fabric_storage { FabricObject, FabricObjectRef, FabricHeadExpectation, FabricHeadRead, FabricPut, FabricHeadAdvance, FabricClosureRead }
+import std.nat { Nat }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 import extdeps.access.posix { FileMode, PermissionBits, PosixUser, file_mode_bits, file_mode_octal, file_mode_of_octal_text }
 
@@ -342,19 +346,21 @@ fn fabric_storage_entry_mode(instance: HostDashboardInstance) -> FabricStorageEn
 // file builds it in one place, fabric_storage_placed_store, which takes the instance and NOTHING ELSE: the
 // root is derived here from fabric_storage_slots and that instance, the entry mode from the declared
 // writers (fabric_storage_entry_mode), the directory is listed, and only a listed directory yields a
-// store. Its fields are the store's own operations (std.fabric_storage FabricStorageOperations) closed
-// over that root, so a holder can run them and has no root to read. No function anywhere takes a path
-// and answers a FabricStorage; spelling one (literal or cast) is a SoleConstructorViolation. The served
-// door (gunbc.fabric.fabric_storage_serve) takes this type. Non-generic and never a variant arm, because
-// the seal does not reach variant construction (test.claim.sole_constructor_completeness_audit_probe
-// f13). NOT established: a store minted for instance A refused where B is required (one type for both).
-// NOT closed: any module can still build the same operations over a path of its own through
-// gunbc.fabric.fabric_storage_file_store fabric_storage_file_operations, because the filesystem is
-// ambient (gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module); that
-// value is not a FabricStorage.
+// store. It holds DATA -- the instance it was minted for, the derived root and the entry mode -- and the
+// store's operations are the functions below that take it (fabric_namespace_head, _put, _advance,
+// _closure), each running the file store over the record's root. No function anywhere takes a path and
+// answers a FabricStorage; spelling one (literal or cast) is a SoleConstructorViolation. The served door
+// (gunbc.fabric.fabric_storage_serve) takes this type. Non-generic and never a variant arm, because the
+// seal does not reach variant construction (test.claim.sole_constructor_completeness_audit_probe f13).
+// WHAT IS SEALED IS CONSTRUCTION: a forged store, or one around a root its declaration did not derive,
+// does not compile. Field reads are not sealed, so a holder can read store.root; that, and any module
+// running the file store over a path of its own, is the declared residual
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module. NOT established:
+// a store minted for instance A refused where B is required (one type for both).
 type FabricStorage sole_constructor {
   instance: NonEmptyStr
-  operations: FabricStorageOperations
+  root: NonEmptyStr
+  entry_mode: FileMode
 }
 
 // THE PLACED STORE, WITH THE DERIVED ENTRY MODE, which is what the served handler binds, so every entry
@@ -381,9 +387,7 @@ fn fabric_storage_placed_store(instance: HostDashboardInstance) -> FabricStorage
     FabricStorageEntryModeDerived { mode } =>
       match fabric_storage_root_unlisted(root: root) {
         Present { value: d } => FabricStoragePlacedRootRefused { detail: join(["the fabric DB's directory ", d as String], "") as NonEmptyStr }
-        Absent => FabricStoragePlacedRootReady {
-          store: FabricStorage { instance: instance.instance_id, operations: fabric_storage_file_operations(root: fabric_storage_file_root_with(root: root, entry_mode: Present { value: mode })) },
-        }
+        Absent => FabricStoragePlacedRootReady { store: FabricStorage { instance: instance.instance_id, root: root, entry_mode: mode } }
       }
   }
 }
@@ -394,7 +398,7 @@ fn fabric_storage_placed_store(instance: HostDashboardInstance) -> FabricStorage
 // entry mode is declared for this namespace, and choosing one is not this change's.
 type FabricStateStorage sole_constructor {
   instance: NonEmptyStr
-  operations: FabricStorageOperations
+  root: NonEmptyStr
 }
 
 type FabricStateStorageReading
@@ -405,10 +409,40 @@ fn fabric_state_storage_store(instance: HostDashboardInstance) -> FabricStateSto
   let root = fabric_state_storage_root(instance: instance)
   match fabric_storage_root_unlisted(root: root) {
     Present { value: d } => FabricStateStorageUnready { detail: join(["the fabric state store's directory ", d as String], "") as NonEmptyStr }
-    Absent => FabricStateStorageReady {
-      store: FabricStateStorage { instance: instance.instance_id, operations: fabric_storage_file_operations(root: fabric_storage_file_root(root: root)) },
-    }
+    Absent => FabricStateStorageReady { store: FabricStateStorage { instance: instance.instance_id, root: root } }
   }
+}
+
+// THE STORES' OPERATIONS. The served protocol (gunbc.fabric.fabric_storage_protocol fabric_storage_respond)
+// answers either namespace, so it takes this variant, whose arms each carry a sealed store: building one
+// needs a minted store, and the variant adds no route to a root. Each operation runs the file store
+// (gunbc.fabric.fabric_storage_file_store) over the record's root, the public namespace at its declared
+// entry mode and the state namespace at none, exactly as the door bound them before the seal.
+type FabricStorageNamespace
+  = FabricPublicNamespace { store: FabricStorage }
+  | FabricStateNamespace { store: FabricStateStorage }
+
+fn fabric_namespace_files(namespace: FabricStorageNamespace) -> FabricStorageFileRoot {
+  match namespace {
+    FabricPublicNamespace { store } => fabric_storage_file_root_with(root: store.root, entry_mode: Present { value: store.entry_mode })
+    FabricStateNamespace { store } => fabric_storage_file_root(root: store.root)
+  }
+}
+
+fn fabric_namespace_head(namespace: FabricStorageNamespace, name: NonEmptyStr) -> FabricHeadRead {
+  fabric_storage_file_head(root: fabric_namespace_files(namespace: namespace), name: name)
+}
+
+fn fabric_namespace_put(namespace: FabricStorageNamespace, object: FabricObject) -> FabricPut {
+  fabric_storage_file_put(root: fabric_namespace_files(namespace: namespace), object: object)
+}
+
+fn fabric_namespace_advance(namespace: FabricStorageNamespace, name: NonEmptyStr, expected: FabricHeadExpectation, target: FabricObjectRef) -> FabricHeadAdvance {
+  fabric_storage_file_advance(root: fabric_namespace_files(namespace: namespace), name: name, expected: expected, target: target)
+}
+
+fn fabric_namespace_closure(namespace: FabricStorageNamespace, name: NonEmptyStr, bound: Nat) -> FabricClosureRead {
+  fabric_storage_file_closure(root: fabric_namespace_files(namespace: namespace), name: name, bound: bound)
 }
 
 fn fabric_storage_store_directories(instance: HostDashboardInstance) -> List<ManagedDirectory> {

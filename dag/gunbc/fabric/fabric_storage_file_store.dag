@@ -17,7 +17,7 @@ import std.fabric_storage {
   FabricHeadRead, FabricHeadObserved, FabricHeadReadRefused,
   FabricHeadAdvance, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
   FabricObjectGet, FabricObjectFetched, FabricObjectGetRefused,
-  FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused, FabricStorageOperations,
+  FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused,
 }
 import gunbc.durable_cas_file_store {
   observe_cas_slot_state, file_compare_and_set, DefaultAccessCreateOnly, DeclaredModeCreateOnly, CasGenerationPublication, cas_key_is_slot_addressable,
@@ -70,21 +70,6 @@ fn fabric_storage_file_root_with(root: NonEmptyStr, entry_mode: FileMode?) -> Fa
     objects: join([root as String, "/objects"], "") as NonEmptyStr,
     heads: join([root as String, "/heads"], "") as NonEmptyStr,
     entry_mode: entry_mode,
-  }
-}
-
-// THE FOUR OPERATIONS OVER ONE ROOT, AS ONE VALUE (std.fabric_storage FabricStorageOperations). It takes a
-// root and survives public for the reason gunbc.durable_cas_file_store file_slot_store_over does: a
-// declaring module in another file has to build the operations its sealed store holds, and the seal is
-// per file. Its production caller is gunbc.fabric.fabric_storage_placement, over roots it derives from
-// its own declarations. That any module can call it with a literal path is the declared residual
-// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module, not a discharged one.
-fn fabric_storage_file_operations(root: FabricStorageFileRoot) -> FabricStorageOperations {
-  FabricStorageOperations {
-    head: fn(name) { fabric_storage_file_head(root: root, name: name) }
-    put: fn(object) { fabric_storage_file_put(root: root, object: object) }
-    advance: fn(name, expected, target) { fabric_storage_file_advance(root: root, name: name, expected: expected, target: target) }
-    closure: fn(name, bound) { fabric_storage_file_closure(root: root, name: name, bound: bound) }
   }
 }
 

@@ -47,29 +47,21 @@ fn fabric_allocation_store_path(tree: HostStateTree) -> NonEmptyStr {
 
 // THE ALLOCATION STORE, A SEALED VALUE MINTED FROM ITS DECLARATIONS. FabricAllocationStore is sole_constructor
 // and this file builds it in one place, fabric_allocation_store, which takes the host-state tree and NOTHING
-// ELSE: the root is derived here, the directory is listed, and only a listed directory yields a store. Its fields are the store's own
-// operations closed over that root -- the hold operations (gunbc.durable_exclusive_hold_file_store) its
-// brokers use, the raw slot observation and commit its two readers below the hold vocabulary use, and the
-// root-custody read the commissioning admission requires of the directory itself -- so
-// a holder can run them and has no root to read. No function anywhere takes a path and answers an
-// allocation store. Non-generic and never a variant arm (test.claim.sole_constructor_completeness_audit_probe
-// f13). NOT closed: any module can still call the hold library over a path of its own, because the
-// filesystem is ambient (gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module).
-// IDENTITY is the derived root as text, carried for ONE consumer: the reservation plan persists which store it
-// was prepared against (gunbc.workspace_reservation_record WorkspaceReservationPlan.root) and refuses to apply
-// against another, so the persisted bytes stay what they were. It is compared, never opened: every operation
-// reaches the files through the fields below.
+// ELSE: the root is derived here, the directory is listed, and only a listed directory yields a store. It holds
+// DATA -- the derived root -- and the store's operations are the functions below that take it: the hold
+// operations (gunbc.durable_exclusive_hold_file_store) its brokers use, the raw slot observation and commit its
+// two readers below the hold vocabulary use, and the root-custody read the commissioning admission requires of the
+// directory itself. No function anywhere takes a path and answers an allocation store. Non-generic and never a
+// variant arm (test.claim.sole_constructor_completeness_audit_probe f13).
+//
+// WHAT IS SEALED IS CONSTRUCTION: a forged store, or one around a root the declarations did not derive, does not
+// compile. Field reads are not sealed, so a holder can read store.root -- and the reservation plan does, on
+// purpose: it persists which store it was prepared against (gunbc.workspace_reservation_record
+// WorkspaceReservationPlan.root) and refuses to apply against another, so the persisted bytes stay what they were.
+// That read, and any module calling the hold library over a path of its own, is the declared residual
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module.
 type FabricAllocationStore sole_constructor {
-  identity: NonEmptyStr
-  observe_hold: fn(NonEmptyStr) -> DurableHoldObservation
-  acquire_hold: fn(NonEmptyStr, DurableHoldOwnerRef) -> FileHoldAcquireOutcome
-  prepare_acquire: fn(NonEmptyStr, DurableHoldOwnerRef) -> FileHoldAcquirePreparation
-  commit_acquire: fn(FileHoldAcquirePlan) -> FileHoldAcquireOutcome
-  assess_release: fn(NonEmptyStr, DurableHoldOwnerRef, CasGeneration, DurableHoldReleaseRef) -> FileHoldReleaseAssessment
-  commit_release: fn(FileHoldReleasePlan) -> FileHoldReleaseOutcome
-  observe_slot: fn(NonEmptyStr) -> CasSlotObservation<NonEmptyStr>
-  commit_slot: fn(CasGenerationPublication, VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>
-  custody: fn() -> StoreOwnershipReading
+  root: NonEmptyStr
 }
 
 type FabricAllocationStoreReading
@@ -82,19 +74,46 @@ fn fabric_allocation_store(tree: HostStateTree) -> FabricAllocationStoreReading 
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => FabricAllocationStoreUnready { detail: join(["the allocation store's directory is not admissible: ", c], "") as NonEmptyStr }
     FilesystemDirectoryListingRefused { directory: _, error: e } => FabricAllocationStoreUnready { detail: join(["the allocation store's directory could not be listed: ", e], "") as NonEmptyStr }
-    FilesystemDirectoryListed(_) => FabricAllocationStoreReady {
-      store: FabricAllocationStore {
-        identity: root
-        observe_hold: fn(key) { observe_file_hold(root: root, key: key) }
-        acquire_hold: fn(key, owner) { file_hold_acquire(root: root, slot_key: key, requested_owner: owner) }
-        prepare_acquire: fn(key, owner) { file_hold_acquire_prepare(root: root, slot_key: key, requested_owner: owner) }
-        commit_acquire: fn(plan) { file_hold_acquire_commit(plan: plan) }
-        assess_release: fn(key, owner, generation, released_by) { file_hold_release_assess(root: root, slot_key: key, owner: owner, acquired_generation: generation, released_by: released_by) }
-        commit_release: fn(plan) { file_hold_release_commit(plan: plan) }
-        observe_slot: fn(key) { observe_cas_slot_state(root: root, key: key) }
-        commit_slot: fn(publication, verified) { file_compare_and_set(root: root, publication: publication, verified: verified) }
-        custody: fn() { read_store_ownership(path: root as String) }
-      },
-    }
+    FilesystemDirectoryListed(_) => FabricAllocationStoreReady { store: FabricAllocationStore { root: root } }
   }
+}
+
+// ── THE STORE'S OPERATIONS, each over the record's root ────────────────────────────────────────────
+
+fn fabric_allocation_observe_hold(store: FabricAllocationStore, key: NonEmptyStr) -> DurableHoldObservation {
+  observe_file_hold(root: store.root, key: key)
+}
+
+fn fabric_allocation_acquire_hold(store: FabricAllocationStore, key: NonEmptyStr, owner: DurableHoldOwnerRef) -> FileHoldAcquireOutcome {
+  file_hold_acquire(root: store.root, slot_key: key, requested_owner: owner)
+}
+
+fn fabric_allocation_prepare_acquire(store: FabricAllocationStore, key: NonEmptyStr, owner: DurableHoldOwnerRef) -> FileHoldAcquirePreparation {
+  file_hold_acquire_prepare(root: store.root, slot_key: key, requested_owner: owner)
+}
+
+// A plan carries the root it was prepared over (gunbc.durable_exclusive_hold_file_store FileHoldAcquirePlan, sole
+// constructor); the store is taken so a business module commits through this module rather than the hold library.
+fn fabric_allocation_commit_acquire(store: FabricAllocationStore, plan: FileHoldAcquirePlan) -> FileHoldAcquireOutcome {
+  file_hold_acquire_commit(plan: plan)
+}
+
+fn fabric_allocation_assess_release(store: FabricAllocationStore, key: NonEmptyStr, owner: DurableHoldOwnerRef, generation: CasGeneration, released_by: DurableHoldReleaseRef) -> FileHoldReleaseAssessment {
+  file_hold_release_assess(root: store.root, slot_key: key, owner: owner, acquired_generation: generation, released_by: released_by)
+}
+
+fn fabric_allocation_commit_release(store: FabricAllocationStore, plan: FileHoldReleasePlan) -> FileHoldReleaseOutcome {
+  file_hold_release_commit(plan: plan)
+}
+
+fn fabric_allocation_observe_slot(store: FabricAllocationStore, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+  observe_cas_slot_state(root: store.root, key: key)
+}
+
+fn fabric_allocation_commit_slot(store: FabricAllocationStore, publication: CasGenerationPublication, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
+  file_compare_and_set(root: store.root, publication: publication, verified: verified)
+}
+
+fn fabric_allocation_custody(store: FabricAllocationStore) -> StoreOwnershipReading {
+  read_store_ownership(path: store.root as String)
 }

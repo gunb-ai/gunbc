@@ -141,7 +141,7 @@ type WorkspaceActorTakeoverOutcome
   | TakeoverRefused { reason: NonEmptyStr }
 
 fn workspace_take_over_actor(store: FabricStorageBinding, allocation: FabricAllocationStore, plan: WorkspaceReservationPlan, intent: WorkspaceActorIntent, slot: WorkspaceSlotInvocationReading) -> WorkspaceActorTakeoverOutcome {
-  if allocation.identity != plan.root { TakeoverRefused { reason: "prepared plan names another allocation store" } }
+  if allocation.root != plan.root { TakeoverRefused { reason: "prepared plan names another allocation store" } }
   else { match workspace_recorded_actor(store: store, plan: plan) {
     RecordedActorAbsent => TakeoverRefused { reason: "no acquisition actor was elected for this plan" }
     RecordedActorCancelled { generation: _ } => match intent {

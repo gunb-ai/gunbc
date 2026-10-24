@@ -5,6 +5,7 @@ import std.fabric_storage { FabricObject, FabricObjectStored, FabricObjectMissin
 import gunbc.fabric.fabric_storage_placement {
   fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused,
   fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready,
+  FabricPublicNamespace, FabricStateNamespace, fabric_namespace_put, fabric_namespace_advance,
 }
 import gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }
 import test.claim.fabric.fabric_storage_fixture { fabric_fixture }
@@ -21,10 +22,8 @@ test fn witness_public_head_cannot_alias_private_state_object() -> Bool {
     FabricStateStorageReady { store: private } => match fabric_storage_placed_store(instance: f.instance) {
       FabricStoragePlacedRootRefused { detail: _ } => false
       FabricStoragePlacedRootReady { store: public } => {
-        let private_ops = private.operations
-        let public_ops = public.operations
-        match private_ops.put(FabricObject { links: [], body: "owner-private-record" }) {
-          FabricObjectStored { object: private_ref } => match public_ops.advance("public-alias", ExpectHeadAbsent, private_ref) {
+        match fabric_namespace_put(namespace: FabricStateNamespace { store: private }, object: FabricObject { links: [], body: "owner-private-record" }) {
+          FabricObjectStored { object: private_ref } => match fabric_namespace_advance(namespace: FabricPublicNamespace { store: public }, name: "public-alias", expected: ExpectHeadAbsent, target: private_ref) {
             FabricHeadAdvanceRefused { fault: FabricObjectMissing { object: _ } } => true
             _ => false
           }

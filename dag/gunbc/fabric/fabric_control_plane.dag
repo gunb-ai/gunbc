@@ -42,7 +42,7 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldReleaseOutcome, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable,
   FileHoldReleaseKeyNotSlotAddressable,
 }
-import gunbc.fabric.fabric_allocation_store { FabricAllocationStore }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_acquire_hold, fabric_allocation_assess_release, fabric_allocation_commit_release }
 import gunbc.fabric.fabric_floor_dispatch { floor_supply_selection }
 import gunbc.floor.floor_demand { floor_execution_requirements }
 import product.fabric.budget {
@@ -253,12 +253,9 @@ fn reserve_selected_cell_under_exclusion(
 ) -> CellReservation
   admit_callers: [decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "reserve_selected_cell")]
 {
-  match store.acquire_hold(
-    slot_key,
-    fabric_hold_owner(
+  match fabric_allocation_acquire_hold(store: store, key: slot_key, owner: fabric_hold_owner(
       reservation: fabric_money_reservation_ref(demand: demand_id, offer: offer_id),
-    ),
-  ) {
+    )) {
     FileHoldAcquired { slot_key: _, owner: _, generation: g } =>
       CellReserved {
         offer: offer_id,
@@ -692,12 +689,7 @@ fn end_cell_hold(
     decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "release_reserved_cell_money_generation"),
     decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "settle_reserved_cell_at"),
   ]
-  = match store.assess_release(
-    slot_key,
-    fabric_hold_owner(reservation: reservation),
-    acquired_generation,
-    fabric_hold_release_ref(reason: reason),
-  ) {
+  = match fabric_allocation_assess_release(store: store, key: slot_key, owner: fabric_hold_owner(reservation: reservation), generation: acquired_generation, released_by: fabric_hold_release_ref(reason: reason)) {
     FileHoldReleaseNotEligible { slot_key: _, refusal: r } =>
       match r {
         HoldReleaseObservationUnavailable { cause: c } =>
@@ -782,7 +774,7 @@ fn free_cell_slot(store: FabricAllocationStore, plan: FileHoldReleasePlan, accou
   admit_callers: [
     decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "commit_hold_end"),
   ]
-  = match store.commit_release(plan) {
+  = match fabric_allocation_commit_release(store: store, plan: plan) {
     FileHoldReleased { slot_key: k, generation: g } =>
       CellHoldEnded { slot_key: k, generation: cas_generation_count(g: g), account: account }
     FileHoldReleaseLost { slot_key: k } => HoldEndLost { slot_key: k }

@@ -81,7 +81,7 @@ import gunbc.durable_exclusive_hold_file_store {
   HoldPayloadDecoded, HoldPayloadUndecodable, decode_hold_slot_payload, hold_slot_payload,
 }
 import gunbc.host_state_root { host_state_tree, isolated_host_state_tree }
-import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, FabricAllocationStoreReading, fabric_allocation_store, fabric_allocation_store_path, fabric_allocation_namespace_path, FabricAllocationStoreReady, FabricAllocationStoreUnready }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, FabricAllocationStoreReading, fabric_allocation_store, fabric_allocation_store_path, fabric_allocation_namespace_path, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_slot, fabric_allocation_commit_slot }
 import gunbc.durable_cas_file_store {
   DefaultAccessCreateOnly,
   DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
@@ -513,7 +513,7 @@ fn fci1_live_replace_held(store: FabricAllocationStore) -> Fci1HeldGenerationMut
         DerivedPayloadKeyNotSlotAddressable { key: _ } =>
           Fci1HeldGenerationMutationRefused { detail: "allocation key is not slot-addressable" }
         DerivedPayloadAdmitted { verified: v } =>
-          match store.commit_slot(DefaultAccessCreateOnly, v) {
+          match fabric_allocation_commit_slot(store: store, publication: DefaultAccessCreateOnly, verified: v) {
             CasCommitted { committed: c } => Fci1HeldGenerationReplaced { slot_key: slot_key, generation: c.generation }
             CasPreconditionFailed { expected: _, observed: _ } =>
               Fci1HeldGenerationMutationRefused { detail: "the held slot moved between observation and mutation" }
@@ -684,7 +684,7 @@ fn fci1_cleanup_authority(store: FabricAllocationStore, generation: Int) -> Fci1
   let reservation = cp_probe_reservation_ref()
   let payload = hold_slot_payload(state: DurableHoldHeld { owner: fabric_hold_owner(reservation: reservation) })
   Fci1ReservationCleanupAuthority {
-    root: store.identity,
+    root: store.root,
     slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
     generation: generation,
     reservation_identity: reservation as NonEmptyStr,
@@ -793,14 +793,14 @@ fn fci1_live_binding_sample_wire_in(store: FabricAllocationStore, path: String) 
 }
 
 fn fci1_allocation_prestate(store: FabricAllocationStore) -> AllocationSlotPrestate {
-  match store.observe_slot(fabric_cell_allocation_key(slot: cp_probe_slot())) {
-    CasObservedUnreadable { cause: _ } => AllocationSlotUnreadable { path: store.identity }
-    CasObservedReadable { readable: CasReadableAbsent } => AllocationSlotAbsent { path: store.identity }
+  match fabric_allocation_observe_slot(store: store, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
+    CasObservedUnreadable { cause: _ } => AllocationSlotUnreadable { path: store.root }
+    CasObservedReadable { readable: CasReadableAbsent } => AllocationSlotAbsent { path: store.root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } =>
       match decode_hold_slot_payload(payload: version.value) {
-        HoldPayloadDecoded { state: DurableHoldFree { released_by: _ } } => AllocationSlotFree { path: store.identity, generation: version.generation }
-        HoldPayloadDecoded { state: DurableHoldHeld { owner: _ } } => AllocationSlotHeld { path: store.identity, generation: version.generation }
-        HoldPayloadUndecodable { detail: _ } => AllocationSlotUndecodable { path: store.identity, generation: version.generation }
+        HoldPayloadDecoded { state: DurableHoldFree { released_by: _ } } => AllocationSlotFree { path: store.root, generation: version.generation }
+        HoldPayloadDecoded { state: DurableHoldHeld { owner: _ } } => AllocationSlotHeld { path: store.root, generation: version.generation }
+        HoldPayloadUndecodable { detail: _ } => AllocationSlotUndecodable { path: store.root, generation: version.generation }
       }
   }
 }
@@ -827,23 +827,23 @@ type Fci1AllocationSlotObservation
   | Fci1SlotUndecodable { path: NonEmptyStr, generation: Int, payload: NonEmptyStr, content: NonEmptyStr }
 
 fn fci1_allocation_slot_observation(store: FabricAllocationStore) -> Fci1AllocationSlotObservation {
-  match store.observe_slot(fabric_cell_allocation_key(slot: cp_probe_slot())) {
-    CasObservedUnreadable { cause: _ } => Fci1SlotUnreadable { path: store.identity }
-    CasObservedReadable { readable: CasReadableAbsent } => Fci1SlotAbsent { path: store.identity }
+  match fabric_allocation_observe_slot(store: store, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
+    CasObservedUnreadable { cause: _ } => Fci1SlotUnreadable { path: store.root }
+    CasObservedReadable { readable: CasReadableAbsent } => Fci1SlotAbsent { path: store.root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } => {
       let content = serialize_content_hash(hash: version.content)
       match decode_hold_slot_payload(payload: version.value) {
         HoldPayloadDecoded { state: DurableHoldFree { released_by: released } } => Fci1SlotFree {
-          path: store.identity, generation: version.generation, released_by: (released as String) as NonEmptyStr,
+          path: store.root, generation: version.generation, released_by: (released as String) as NonEmptyStr,
           payload: version.value, content: content,
         }
         HoldPayloadDecoded { state: DurableHoldHeld { owner: owner } } => Fci1SlotHeld {
-          path: store.identity, generation: version.generation,
+          path: store.root, generation: version.generation,
           reservation_identity: (owner as String) as NonEmptyStr,
           payload: version.value, content: content,
         }
         HoldPayloadUndecodable { detail: _ } => Fci1SlotUndecodable {
-          path: store.identity, generation: version.generation, payload: version.value, content: content,
+          path: store.root, generation: version.generation, payload: version.value, content: content,
         }
       }
     }
@@ -911,12 +911,12 @@ fn fci1_assert_allocation_available_in(store: FabricAllocationStore) -> ProcessE
 
 fn fci1_allocation_restoration(store: FabricAllocationStore, before_wire: String, held_wire: String) -> AllocationStoreRestoration {
   match decode_fabric_ci_evidence_wire(wire: before_wire) {
-    FabricCiEvidenceUndecodable { cause: _ } => AllocationStoreRestorationRefused { path: store.identity }
+    FabricCiEvidenceUndecodable { cause: _ } => AllocationStoreRestorationRefused { path: store.root }
     FabricCiEvidenceDecoded { value: before } => {
       let prestate = fci1_decode_allocation_prestate(wire: before as String)
       let poststate = fci1_allocation_prestate(store: store)
       match fci1_decode_transport_sample(wire: held_wire) {
-        RequiredBuildCellLifetimeSampleUndecodable => AllocationStoreRestorationRefused { path: store.identity }
+        RequiredBuildCellLifetimeSampleUndecodable => AllocationStoreRestorationRefused { path: store.root }
         RequiredBuildCellLifetimeSampleDecoded { sample: held } => fci1_exact_allocation_restoration(
           prestate: prestate,
           held_generation: held.generation,
@@ -1057,7 +1057,7 @@ fn fci1_canonical_cleanup_disposition(
   let observed = fci1_allocation_slot_observation(store: store)
   let observed_prestate = fci1_slot_observation_prestate(observed: observed)
   let disposition = match before_decoded {
-    FabricCiEvidenceUndecodable { cause: _ } => CanonicalCleanupRefused { prestate: AllocationSlotUnreadable { path: store.identity }, observed: observed }
+    FabricCiEvidenceUndecodable { cause: _ } => CanonicalCleanupRefused { prestate: AllocationSlotUnreadable { path: store.root }, observed: observed }
     FabricCiEvidenceDecoded { value: before_value } => {
       let prestate = fci1_decode_allocation_prestate(wire: before_value as String)
       let initial_disposition = if fci1_slot_prestate_equal(a: prestate, b: observed_prestate) {
@@ -1220,7 +1220,7 @@ fn fci1_grade_and_write_allocation_receipt_in(
         )
         let content = join([
           "phase=", phase as String,
-          "\nroot=", store.identity as String,
+          "\nroot=", store.root as String,
           "\nslot_key=", held.slot_key as String,
           "\npre=", to_string(pre),
           "\nheld=", to_string(held),
@@ -2124,7 +2124,7 @@ fn fci1_live_release_with_receipt_in(store: FabricAllocationStore, path: String)
   let write = Filesystem.Write(
     path: path,
     content: join([
-      "root=", store.identity as String,
+      "root=", store.root as String,
       "\nrelease_outcome=", to_string(outcome),
       "\npoststate=", to_string(poststate),
     ], ""),

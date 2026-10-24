@@ -848,7 +848,7 @@ fn workspace_observe_held_cell(prepared: WorkspaceReservationPlan, held: Workspa
   match fabric_allocation_store(tree: host_state_tree()) {
     FabricAllocationStoreUnready { detail } => ReservationUnreadable { slot_key: key, cause: CasUnreadableReadRefused { detail: detail } }
     FabricAllocationStoreReady { store: cells } =>
-      if prepared.root != cells.identity {
+      if prepared.root != cells.root {
         ReservationUnreadable { slot_key: key, cause: CasUnreadableReadRefused { detail: "the prepared plan names another allocation store" } }
       } else {
         observe_required_build_cell_for_identity(store: cells, host: held.slot.host, slot: held.slot,

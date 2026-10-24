@@ -18,7 +18,7 @@ import gunbc.workspace_commissioning_store {
 import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
 import gunbc.runner.runner_microvm_network { SlotNetworkSanitationSubject }
 import gunbc.fabric.fabric_control_plane { fabric_cell_allocation_key }
-import gunbc.fabric.fabric_allocation_store { fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready }
+import gunbc.fabric.fabric_allocation_store { fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready, fabric_allocation_observe_hold, fabric_allocation_custody }
 import gunbc.host_state_root { host_state_tree }
 import std.durable_exclusive_hold { HoldSlotAbsent, HoldObservationUnavailable, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable }
 import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
@@ -70,8 +70,8 @@ fn workspace_observe_commissioning_admission(provenance: WorkspaceCommissioningP
 fn workspace_commissioning_no_hold_refusal(provenance: WorkspaceCommissioningProvenance) -> String? {
   match fabric_allocation_store(tree: host_state_tree()) {
   FabricAllocationStoreUnready { detail: _ } => Present { value: "allocation history root is missing, unreadable or outside root custody" }
-  FabricAllocationStoreReady { store: allocation } => match allocation.custody() {
-    OwnershipRead { ownership: StoreRootOwned } => match allocation.observe_hold(fabric_cell_allocation_key(slot: provenance.slot)) {
+  FabricAllocationStoreReady { store: allocation } => match fabric_allocation_custody(store: allocation) {
+    OwnershipRead { ownership: StoreRootOwned } => match fabric_allocation_observe_hold(store: allocation, key: fabric_cell_allocation_key(slot: provenance.slot)) {
       HoldSlotAbsent => none
       HoldSlotFree { generation: _, released_by: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
       HoldSlotHeld { generation: _, owner: _ } => Present { value: "slot has held, released or unreadable allocation history; initial commissioning cannot reset it" }
