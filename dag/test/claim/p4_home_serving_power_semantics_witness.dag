@@ -116,7 +116,7 @@ test fn the_carrier_is_registered_and_is_the_only_authority() -> Bool {
 // asserts over SERIALIZED text, so it catches a positional citation wherever it hides —
 // body prose, list items, table cells, quoted blocks, and the fenced code sample alike.
 // The suffix list below names the common shapes; the load-bearing part is
-// `p4_has_positional_citation`, which enforces the RULE rather than a list. Both are
+// `test.claim.plan_citation_census::plan_citation_has_positional_citation`, which enforces the RULE rather than a list. Both are
 // asserted because each is blind to what the other catches: a bare `-- :136` has no file
 // suffix to match, and `12:55:33Z` must survive a rule written too loosely. That is why the
 // rule tests the character BEFORE the colon as well as after it — the carrier is required to
@@ -152,7 +152,7 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
       // English ("looked at. The" contains " at."), so they could redden a correct document for
       // a prose edit while never having caught the defect they were written for. What is kept is
       // the rule that generalises: a colon introducing digits, with the character BEFORE it
-      // deciding. MUTATION CHECK: replacing `p4_last_is_digit` with one that never fires reddens
+      // deciding. MUTATION CHECK: replacing `test.claim.plan_citation_census::plan_citation_last_is_digit` with one that never fires reddens
       // this claim on the CLEAN carrier, so the rule is doing the work and is not scenery.
       || plan_citation_has_positional_citation(t: t))
 }
@@ -169,7 +169,7 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
 // `test.claim.fleet.runtime_identity_match_witness::cites`.
 //
 // WHY THE ROSTER IS DERIVED AND NEVER RESTATED (§2, and the precedent's own lesson: "the
-// list is DERIVED from the rows, so it cannot drift from them"): `p4_citation_roster` reads
+// list is DERIVED from the rows, so it cannot drift from them"): `test.claim.plan_citation_census::plan_citation_citation_roster` reads
 // the carrier's serialized text and takes every whitespace/backtick-delimited piece shaped
 // like `module::decl` or `module::decl.field`. Add a citation to the plan and it is checked
 // without touching this file; delete one and it stops being checked. Nothing here is a copy
@@ -198,7 +198,7 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
 // which is otherwise a reject character -- that bug was live in the first draft and rejected
 // every citation, which is what a measured roster catches and an assumed one does not.
 
-// Only ever reached on a string that p4_is_citation_shape accepted, so the two-arm
+// Only ever reached on a string that test.claim.plan_citation_census::plan_citation_is_citation_shape accepted, so the two-arm
 // reading is total in practice; the `_` arm exists because a match must be total, and it
 // yields the one thing that cannot resolve -- an empty module -- rather than a guess.
 

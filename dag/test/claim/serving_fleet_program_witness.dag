@@ -67,10 +67,19 @@ fn row_lines() -> List<String> {
   filter(carrier_text().split(delimiter: "\n"), l => string_contains(s: l, pattern: "Standing:"))
 }
 
+// The first word of the text, cut at a newline as well as a space: a reference that ends
+// its line (`Depends on Row D5.`) must not absorb the line after it.
 fn first_word(s: String) -> String {
-  let words: List<String> = s.split(delimiter: " ")
-  match words {
-    Cons { head: w, tail: _ } => w
+  let lines: List<String> = s.split(delimiter: "\n")
+  match lines {
+    Cons { head: line, tail: _ } =>
+      {
+      let words: List<String> = line.split(delimiter: " ")
+      match words {
+        Cons { head: w, tail: _ } => w
+        Empty => ""
+      }
+      }
     Empty => ""
   }
 }
