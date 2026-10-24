@@ -1986,14 +1986,23 @@ fn variant_literal_expected_application(owner: Node, expected: Node?, scope: Inf
   if (owner.params |> count) == 0 || owner.connective != Disj { return none }
   match expected {
     Present { value: exp } =>
-      if exp.connective != NoConnective || (exp.children |> count) == 0 { none }
-      else {
-        match lookup_type_for(env: scope.type_env, node: exp) {
-          Present { value: head } => if rc_ptr_eq(head, owner) { Present { value: with_required_cardinality(n: exp) } } else { none }
-          Absent => none
-        }
-      }
+      if type_applies_declaration(application: exp, declaration: owner, env: scope.type_env) { Present { value: with_required_cardinality(n: exp) } } else { none }
     Absent => none
+  }
+}
+
+// AN APPLICATION OF A DECLARATION is a type node with arguments and no connective whose head resolves to
+// that declaration's binding: rc identity, never a spelling comparison, and never the `declaration`
+// field, which a declared type expression (a callee's declared return, a parameter's type) does not
+// always carry. The variant-literal context above and the branch join's bare-declaration rule
+// (arm_is_bare_declaration_of_sibling) both ask this one question.
+fn type_applies_declaration(application: Node, declaration: Node, env: TypeEnv) -> Bool {
+  if application.connective != NoConnective || (application.children |> count) == 0 { false }
+  else {
+    match lookup_type_for(env: env, node: application) {
+      Present { value: head } => rc_ptr_eq(head, declaration)
+      Absent => false
+    }
   }
 }
 
@@ -3204,8 +3213,11 @@ fn type_is_kernel_optional_declaration(t: Node, owner: Node?) -> Bool {
 
 // A BARE DECLARATION ARM IS DROPPED FROM THE JOIN WHEN A SIBLING ARM INHABITS THE SAME DECLARATION.
 // A sibling inhabits a corpus declaration when it carries the same DeclarationRef at a different
-// application (the node differs), and the kernel Optional when it is `T?`: that cardinality IS that
-// declaration, so the inhabitance is established by the owner's identity.
+// application (the node differs), or is an application whose head resolves to that declaration
+// (type_applies_declaration), and the kernel Optional when it is `T?`: that cardinality IS that
+// declaration, so the inhabitance is established by the owner's identity. The head arm is what lets
+// a callee's declared-return application (PassingCandidateFold<TargetPrimitiveRealization>, which
+// carries no `declaration` field) close a fold carrier seeded by the bare `NoPassingCandidate`.
 //
 // READING OF THE CORPUS RULE: `t.connective == Disj` makes t the BARE declaration (an application of a
 // generic coproduct is not Disj). Siblings that are applications of the same DeclarationRef (Box<Int>,
@@ -3215,9 +3227,10 @@ fn type_is_kernel_optional_declaration(t: Node, owner: Node?) -> Bool {
 // payload-carrying arm typed bare would ride this rule wrongly, so that typing must not be introduced
 // without revisiting it. The kernel Optional is identified by node equality with the kernel scope's own
 // binding, so a user coproduct that spells `Present`/`Absent` arms never matches.
-fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, optional_owner: Node?) -> Bool {
+fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, optional_owner: Node?, env: TypeEnv) -> Bool {
   t.connective == Disj && (siblings |> any(s =>
     (s != t && t.declaration != none && s.declaration == t.declaration)
+      || type_applies_declaration(application: s, declaration: t, env: env)
       || (s.return_cardinality == CardOptional && type_is_kernel_optional_declaration(t: t, owner: optional_owner))
   ))
 }
@@ -3226,7 +3239,7 @@ fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, optional_ow
 // inhabits it. Dropping it leaves the sibling, which carries the type argument the declaration lacks.
 fn inhabited_join_types(types: List<Node>, scope: InferScope) -> List<Node> {
   let optional_owner = kernel_optional_owner_declaring(env: scope.type_env, name: "Absent")
-  let kept = types |> filter(t => !arm_is_bare_declaration_of_sibling(t: t, siblings: types, optional_owner: optional_owner))
+  let kept = types |> filter(t => !arm_is_bare_declaration_of_sibling(t: t, siblings: types, optional_owner: optional_owner, env: scope.type_env))
   if kept |> count == 0 { types } else { kept }
 }
 
@@ -3249,7 +3262,7 @@ fn branch_join_type(types: List<Node>, scope: InferScope) -> Node? {
 fn fold_init_joined_with_expected(init_type: Node, expected: Node?, scope: InferScope) -> Node {
   match expected {
     Present { value: exp } =>
-      if arm_is_bare_declaration_of_sibling(t: init_type, siblings: [exp], optional_owner: kernel_optional_owner_declaring(env: scope.type_env, name: "Absent")) { exp } else { init_type }
+      if arm_is_bare_declaration_of_sibling(t: init_type, siblings: [exp], optional_owner: kernel_optional_owner_declaring(env: scope.type_env, name: "Absent"), env: scope.type_env) { exp } else { init_type }
     Absent => init_type
   }
 }
