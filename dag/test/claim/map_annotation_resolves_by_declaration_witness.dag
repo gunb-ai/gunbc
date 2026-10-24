@@ -80,18 +80,18 @@ test fn a_map_annotation_without_an_import_refuses_as_unbound() -> Bool {
 // `FinitelySupportedFunction<String, Int>` arm is one type. Resolving it as a user generic of the
 // alias minted a second identity and refused the joins at v2.std.compilers.lexing
 // lex_rule_set_insert_keyword_class ('Map(...) vs Map(...)'). The fixture names the module std.algebra
-// so the target's declaration identity is the real one.
+// and std.types so both declaration identities are the real ones.
 data mad_keyed_algebra_source: String = "module std.algebra\n\ntype FinitelySupportedFunction<K, V> {\n  support: List<K>\n}\n"
 
-data mad_keyed_types_source: String = "module mad.keyed_types\n\nimport std.algebra { FinitelySupportedFunction }\n\ntype Map<key, value> = FinitelySupportedFunction<key, value>\n"
+data mad_keyed_types_source: String = "module std.types\n\nimport std.algebra { FinitelySupportedFunction }\n\ntype Map<key, value> = FinitelySupportedFunction<key, value>\n"
 
-data mad_keyed_join_source: String = "module mad.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport mad.keyed_types { Map }\n\nfn mad_join(m: Map<String, Int>, n: FinitelySupportedFunction<String, Int>, c: Bool) -> Map<String, Int> {\n  if c { m } else { n }\n}\n"
+data mad_keyed_join_source: String = "module mad.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport std.types { Map }\n\nfn mad_join(m: Map<String, Int>, n: FinitelySupportedFunction<String, Int>, c: Bool) -> Map<String, Int> {\n  if c { m } else { n }\n}\n"
 
 test fn a_map_aliasing_the_keyed_algebra_joins_its_declaration_as_one_type() -> Bool {
   match compile_fixture(MultiModuleCompileFixture {
     sources: [
       fixture_source("std/algebra.dag", mad_keyed_algebra_source),
-      fixture_source("mad/keyed_types.dag", mad_keyed_types_source),
+      fixture_source("std/types.dag", mad_keyed_types_source),
       fixture_source("mad/join.dag", mad_keyed_join_source)
     ],
     entry: "mad/join.dag"

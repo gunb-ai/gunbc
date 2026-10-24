@@ -526,8 +526,18 @@ fn declaration_resolved_container(name: String) -> Bool {
 // keys on the exact declaration), never on the spelling: a local record that happens to be named
 // FinitelySupportedFunction, aliased as Map, resolves through its own declaration. A target whose
 // declaration is unreadable answers false (fail closed: it resolves through the alias and a join
-// against the kernel container refuses loudly).
+// against the kernel container refuses loudly). The alias target is the authored node in the
+// DECLARING module's scope, which the use site's env may not read (inferred: with the target
+// reading alone, the v2.std.compilers.lexing joins still refused), so the declaration's own identity is read first,
+// through the global symbol index by declaring span: std.types Map IS the keyed algebra by the
+// ruling, one concept, two spellings.
 fn container_declaration_aliases_keyed_algebra(decl: Node, env: TypeEnv) -> Bool {
+  let decl_is_std_types_map = match declaration_ref_of_declaration_node(decl: decl, source_indices: env.source_indices, env: env) {
+    Present { value: d } => declaration_ref_eq(a: d, b: decl_ref(module_path: "std.types", decl_name: "Map"))
+    Absent => false
+  }
+  if decl_is_std_types_map { true }
+  else {
   match decl.inferred {
     Present { value: Resolved { node: target } } =>
       match type_reference_declaration_reading(n: target, source_indices: env.source_indices, env: env) {
@@ -535,6 +545,7 @@ fn container_declaration_aliases_keyed_algebra(decl: Node, env: TypeEnv) -> Bool
         _ => false
       }
     _ => false
+  }
   }
 }
 
