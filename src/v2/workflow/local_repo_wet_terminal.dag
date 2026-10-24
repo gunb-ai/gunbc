@@ -3150,6 +3150,42 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "a_session_written_before_the_seal_reads_back_and_rewrites_identically" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "a_session_written_before_the_seal_reads_back_and_rewrites_identically",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "a_login_transaction_written_before_the_seal_reads_back_and_rewrites_identically" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "a_login_transaction_written_before_the_seal_reads_back_and_rewrites_identically",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "a_profile_written_before_the_seal_reads_back_and_rewrites_identically" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "a_profile_written_before_the_seal_reads_back_and_rewrites_identically",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "a_traversal_session_id_is_unknown_and_its_delete_refuses_without_consulting_the_store" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "a_traversal_session_id_is_unknown_and_its_delete_refuses_without_consulting_the_store",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "a_traversal_state_is_unknown_and_its_consume_refuses_without_consulting_the_store" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "a_traversal_state_is_unknown_and_its_consume_refuses_without_consulting_the_store",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.auth_record_store_wet_witness", function: "every_auth_record_store_mint_refuses_a_directory_that_does_not_list" },
+      entry: "dag/test/claim/auth/auth_record_store_wet_witness.dag",
+      function: "every_auth_record_store_mint_refuses_a_directory_that_does_not_list",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.workspace_acquisition_storage_wet_witness", function: "legacy_acquiring_without_actor_journal_retains_quota" },
       entry: "dag/test/claim/workspace_acquisition_storage_wet_witness.dag",
       function: "legacy_acquiring_without_actor_journal_retains_quota",

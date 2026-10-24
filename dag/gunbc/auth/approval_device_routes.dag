@@ -89,7 +89,7 @@ import gunbc.auth.approval_device_redemption {
   DeviceCapabilityRefused, DeviceSignatureRefused, DevicePlatformProofRefused, DevicePlatformProofForOtherBytes, DevicePlatformProofWrongKey, DevicePlatformUnrealized,
 }
 import gunbc.auth.oidc_id_token_verification {
-  oidc_id_token_signature_verify, oidc_id_token_wire_decode, OidcIdTokenWireDecoded, OidcIdTokenWireRefused, JwksCacheLayout, jwks_cache_file_name,
+  oidc_id_token_signature_verify, oidc_id_token_wire_decode, OidcIdTokenWireDecoded, OidcIdTokenWireRefused, JwksCacheOps, jwks_cache_ops_over,
 }
 import extdeps.auth.oidc { OidcIdTokenSignature, OidcIdTokenSignatureRefused, oidc_id_token_refusal_reason }
 import extdeps.auth.jwt { JwtCompactSerialization, NumericDateWholeSeconds }
@@ -377,11 +377,8 @@ fn google_enrolment_keys_of(r: GoogleEnrolmentRequest) -> GoogleEnrolmentKeys {
 // THE BROKER'S OWN JWKS CACHE (ruling of clever-eagle-893, 2026-10-23: no second fetch path): the
 // one cache layout of gunbc.auth.oidc_id_token_verification, rooted at the broker's managed
 // directory instead of a dashboard instance's.
-fn approval_jwks_cache_layout() -> JwksCacheLayout {
-  JwksCacheLayout {
-    dir: approval_jwks_cache_root as String as FilePath,
-    file: join([approval_jwks_cache_root as String, "/", jwks_cache_file_name], ""),
-  }
+fn approval_jwks_cache_layout() -> JwksCacheOps {
+  jwks_cache_ops_over(root: approval_jwks_cache_root as String as FilePath)
 }
 
 // A fresh id for the signature verification's scratch files: 128 bits of entropy as lowercase hex.
@@ -497,7 +494,7 @@ fn device_enrol_response_at(realization: DeviceCryptoRealization, body: String, 
                         Present { value: verify_id } =>
                           device_enrol_admit(
                             r: r, claims: claims,
-                            signature: oidc_id_token_signature_verify(layout: approval_jwks_cache_layout(), id_token: r.id_token as JwtCompactSerialization, now_epoch: epoch, verify_id: verify_id),
+                            signature: oidc_id_token_signature_verify(ops: approval_jwks_cache_layout(), id_token: r.id_token as JwtCompactSerialization, now_epoch: epoch, verify_id: verify_id),
                             app_id: app_id, config: config, gate: admitted, observed_at: observed_at, epoch: epoch,
                           )
                       }

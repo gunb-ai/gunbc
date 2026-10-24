@@ -57,13 +57,17 @@ import extdeps.languages.json.parse {
 }
 import extdeps.http.client
 import extdeps.filesystem.filesystem_io {
-  Filesystem, filesystem_read_outcome, filesystem_listing_observation, filesystem_file_observation,
+  Filesystem, filesystem_read_outcome, filesystem_listing_observation, filesystem_file_observation, filesystem_write_outcome,
+  FilesystemFileObservation, FilesystemWriteOutcome, FilesystemWritten, FilesystemWriteRefused,
+  FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
 }
 import extdeps.gunbc
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.principal_projection { google_oidc_issuer }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
-import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_child }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
 
 // ── The Google endpoints and cache policy ──────────────────────────────────────────────────────
 // THE GOOGLE REALIZATION FACTS as data rows: the JWKS endpoint this module fetches and the
@@ -798,21 +802,93 @@ data jwks_cache_file_name: String = "cache.json"
 
 data jwks_cache_schema: String = "gunbc-jwks-cache/v1"
 
-type JwksCacheLayout {
-  dir: FilePath
-  file: String
+// THE JWKS CACHE'S OPERATIONS, ONE CARRIER FOR EVERY JWKS CACHE. Two stores hold a JWKS cache: a dashboard
+// instance's (InstanceJwksCache below) and the approval broker's (gunbc.auth.approval_device_routes). Each is
+// its own sealed identity type in its own declaring module; this record is the operations both hand to the one
+// verification code, as gunbc.durable_cas_file_store SlotStore is for the attempt stores. read_cache answers
+// the cache file's absence from a listing, never from a failed read; write_cache writes it owner-only;
+// verify runs the RS256 check with its scratch files in the cache's own owner-only directory (the
+// verification scratch row, unchanged by the seal). It is NOT sealed and NOT an identity: its builder takes a
+// root, so holding one says nothing about which cache it is, and that this builder is reachable from every
+// module with a literal path is the declared residual gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module, the same as the slot store's builder.
+type JwksCacheOps {
+  read_cache: fn() -> FilesystemFileObservation
+  write_cache: fn(String) -> FilesystemWriteOutcome
+  verify: fn(String, String, String, NonEmptyStr) -> Rs256Verification
 }
 
-// THE DIRECTORY THE JWKS CACHE DEMANDS; the layout's directory is read off it (gunbc.owned_directory).
+fn jwks_cache_ops_over(root: FilePath) -> JwksCacheOps {
+  let file = join([root as String, "/", jwks_cache_file_name], "")
+  JwksCacheOps {
+    read_cache: fn() {
+      let listed = Filesystem.List(path: root as String)
+      let read = Filesystem.Read(path: file)
+      filesystem_file_observation(
+        listing: filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error),
+        name: jwks_cache_file_name,
+        path: file,
+        read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+      )
+    }
+    write_cache: fn(content) {
+      let written = Filesystem.WriteOwnerOnly(path: file, content: content)
+      filesystem_write_outcome(path: file, success: written.success, error: written.error)
+    }
+    verify: fn(spki_pem, signing_input, signature_b64url, verify_id) {
+      rs256_verify_over_key(spki_pem: spki_pem, signing_input: signing_input, signature_b64url: signature_b64url, scratch_dir: root as String, verify_id: verify_id)
+    }
+  }
+}
+
+// THE INSTANCE'S JWKS CACHE. THE ONE DECLARATION: the member under the instance root and the mode its
+// directory is created with; the mint and the directory row both derive from it. Owner-only, as the session
+// store beside it is.
+type InstanceJwksCacheSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data instance_jwks_cache_slots: InstanceJwksCacheSlotsDeclaration = InstanceJwksCacheSlotsDeclaration {
+  member: "auth-jwks" as NonEmptyStr,
+  mode: DirectoryOwnerOnly,
+}
+
+fn instance_jwks_cache_slots_path(instance: HostDashboardInstance) -> FilePath {
+  dashboard_instance_child(root: instance.instance_root, child: instance_jwks_cache_slots.member as String)
+}
+
+// A SEALED VALUE MINTED FROM THAT DECLARATION, the identity of the instance's cache: sole_constructor,
+// non-generic, never a variant arm (test.claim.sole_constructor_completeness_audit_probe f13), built only by
+// instance_jwks_cache, which takes the instance and nothing else, lists the derived directory, and answers
+// Ready only for a listed one. Sealed in place: the cache file is the bytes the cache wrote before the seal.
+// The broker's cache is a different type (gunbc.auth.approval_device_routes), so neither stands where the
+// other is required. NOT established: a cache minted for instance A refused where B is required.
+type InstanceJwksCache sole_constructor {
+  instance: NonEmptyStr
+  ops: JwksCacheOps
+}
+
+type InstanceJwksCacheReading
+  = InstanceJwksCacheReady { cache: InstanceJwksCache }
+  | InstanceJwksCacheUnready { detail: String }
+
+fn instance_jwks_cache(instance: HostDashboardInstance) -> InstanceJwksCacheReading {
+  let root = instance_jwks_cache_slots_path(instance: instance)
+  let listed = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => InstanceJwksCacheUnready { detail: join(["the instance JWKS cache's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => InstanceJwksCacheUnready { detail: join(["the instance JWKS cache's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => InstanceJwksCacheReady { cache: InstanceJwksCache { instance: instance.instance_id, ops: jwks_cache_ops_over(root: root) } }
+  }
+}
+
+// THE DIRECTORY THE INSTANCE'S CACHE DEMANDS, derived from the same declaration as the mint and enrolled in
+// the one instance directory list (gunbc.roadmap.dashboard_instance_directories).
 fn jwks_cache_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
-  dashboard_instance_private_directory(instance: instance, member: "auth-jwks" as NonEmptyStr, child: "auth-jwks")
-}
-
-fn jwks_cache_layout_for_instance(instance: HostDashboardInstance) -> JwksCacheLayout {
-  let dir = owned_directory_path(t: jwks_cache_directory(instance: instance))
-  JwksCacheLayout {
-    dir: dir,
-    file: join([dir as String, "/", jwks_cache_file_name], ""),
+  OwnedDirectoryDeclared {
+    member: instance_jwks_cache_slots.member,
+    path: instance_jwks_cache_slots_path(instance: instance),
+    owner: instance.directory_owner,
+    mode: instance_jwks_cache_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
   }
 }
 
@@ -822,21 +898,9 @@ type JwksCacheRead
   | JwksCacheMiss
   | JwksCacheUnread { detail: String }
 
-fn jwks_cache_read(layout: JwksCacheLayout, now_epoch: Int) -> JwksCacheRead {
-  let listing_result = Filesystem.List(path: layout.dir as String)
-  let listing = filesystem_listing_observation(
-    directory: layout.dir as String,
-    success: listing_result.success,
-    entries: listing_result.entries,
-    error: listing_result.error,
-  )
-  let read_result = Filesystem.Read(path: layout.file)
-  match filesystem_file_observation(
-    listing: listing,
-    name: jwks_cache_file_name,
-    path: layout.file,
-    read: filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error),
-  ) {
+fn jwks_cache_read(ops: JwksCacheOps, now_epoch: Int) -> JwksCacheRead {
+  let read = ops.read_cache
+  match read() {
     FilesystemFileAbsent(absence) => JwksCacheMiss
     FilesystemFileIndeterminate { cause: c } => JwksCacheUnread { detail: c }
     FilesystemFileObservationsDisagree { path: _, cause: c } => JwksCacheUnread { detail: c }
@@ -884,20 +948,20 @@ type JwksServedFrom
   = JwksServedFromCache { fetched_at: Int }
   | JwksServedFromOrigin
 
-fn jwks_document_resolve(layout: JwksCacheLayout, now_epoch: Int) -> JwksResolve {
-  match jwks_cache_read(layout: layout, now_epoch: now_epoch) {
+fn jwks_document_resolve(ops: JwksCacheOps, now_epoch: Int) -> JwksResolve {
+  match jwks_cache_read(ops: ops, now_epoch: now_epoch) {
     JwksCacheFresh { body: b, fetched_at: f } =>
       JwksResolved { body: b, served_from: JwksServedFromCache { fetched_at: f } }
     JwksCacheMiss =>
-      jwks_fetch_and_cache(layout: layout, now_epoch: now_epoch)
+      jwks_fetch_and_cache(ops: ops, now_epoch: now_epoch)
     JwksCacheStale { fetched_at: _ } =>
-      jwks_fetch_and_cache(layout: layout, now_epoch: now_epoch)
+      jwks_fetch_and_cache(ops: ops, now_epoch: now_epoch)
     JwksCacheUnread { detail: _ } =>
-      jwks_fetch_and_cache(layout: layout, now_epoch: now_epoch)
+      jwks_fetch_and_cache(ops: ops, now_epoch: now_epoch)
   }
 }
 
-fn jwks_fetch_and_cache(layout: JwksCacheLayout, now_epoch: Int) -> JwksResolve {
+fn jwks_fetch_and_cache(ops: JwksCacheOps, now_epoch: Int) -> JwksResolve {
   let got = http.Client.GetWithin(url: google_oidc_jwks_uri, max_seconds: google_oidc_jwks_fetch_max_seconds)
   if !got.success {
     JwksResolveRefused { step: "fetch", reason: got.body }
@@ -905,18 +969,14 @@ fn jwks_fetch_and_cache(layout: JwksCacheLayout, now_epoch: Int) -> JwksResolve 
     match jwks_document_of_json(text: got.body) {
       JwksDocumentRefused { reason: r } => JwksResolveRefused { step: "parse", reason: r }
       JwksDocumentParsed { keys: _ } =>
-        let cache_write = Filesystem.WriteOwnerOnly(
-          path: layout.file,
-          content: serialize_json(v: json_object(members: [
-            json_kv(key: "schema", value: json_string(s: jwks_cache_schema)),
-            json_kv(key: "fetched_at", value: json_string(s: to_string(value: now_epoch))),
-            json_kv(key: "body", value: json_string(s: got.body)),
-          ])),
-        )
-        if cache_write.success {
-          JwksResolved { body: got.body, served_from: JwksServedFromOrigin }
-        } else {
-          JwksResolved { body: got.body, served_from: JwksServedFromOrigin }
+        let write = ops.write_cache
+        match write(serialize_json(v: json_object(members: [
+          json_kv(key: "schema", value: json_string(s: jwks_cache_schema)),
+          json_kv(key: "fetched_at", value: json_string(s: to_string(value: now_epoch))),
+          json_kv(key: "body", value: json_string(s: got.body)),
+        ]))) {
+          FilesystemWritten { path: _ } => JwksResolved { body: got.body, served_from: JwksServedFromOrigin }
+          FilesystemWriteRefused { path: _, error: _ } => JwksResolved { body: got.body, served_from: JwksServedFromOrigin }
         }
     }
   }
@@ -992,13 +1052,14 @@ fn rs256_verify_over_key(
 // and above; the signature now rides its base64url text to disk and decodes through the shell.)
 
 // ── The producer ───────────────────────────────────────────────────────────────────────────────
-// THE ONE PRODUCTION ENTRY: an instance (store layout), the raw token, the caller's epoch
+// THE ONE PRODUCTION ENTRY: a JWKS cache's operations (handed over by the sealed cache of the domain that
+// verifies: gunbc.auth.oidc_id_token_verification InstanceJwksCache or the broker's), the raw token, the caller's epoch
 // reading, and a fresh random verification id (the entropy draw is the caller's, so this fold
 // owns no randomness). Every arm below is a refusal with its step named — decode, resolve,
 // parse, select, assemble, verify — and the verified arm is minted ONLY from openssl's
 // affirmative answer over the assembled key and the exact signing input.
 fn oidc_id_token_signature_verify(
-  layout: JwksCacheLayout,
+  ops: JwksCacheOps,
   id_token: JwtCompactSerialization,
   now_epoch: Int,
   verify_id: NonEmptyStr,
@@ -1008,9 +1069,9 @@ fn oidc_id_token_signature_verify(
     OidcIdTokenWireDecoded { claims: c, header: h, signing_input: si } =>
       oidc_id_token_signature_of_parts(
         wire: OidcIdTokenWireDecoded { claims: c, header: h, signing_input: si },
-        resolved: jwks_document_resolve(layout: layout, now_epoch: now_epoch),
+        resolved: jwks_document_resolve(ops: ops, now_epoch: now_epoch),
         signature_segment: oidc_id_token_signature_segment(token: id_token),
-        scratch_dir: layout.dir as String,
+        ops: ops,
         verify_id: verify_id,
       )
   }
@@ -1036,7 +1097,7 @@ fn oidc_id_token_signature_of_parts(
   wire: OidcIdTokenWire,
   resolved: JwksResolve,
   signature_segment: String,
-  scratch_dir: String,
+  ops: JwksCacheOps,
   verify_id: NonEmptyStr,
 ) -> OidcIdTokenSignature {
   match wire {
@@ -1062,11 +1123,11 @@ fn oidc_id_token_signature_of_parts(
                     DerOctets { octets: spki } =>
                       oidc_id_token_signature_of_verification(
                         key: key,
-                        verification: rs256_verify_over_key(
+                        verification: verify_over_ops(
+                          ops: ops,
                           spki_pem: rsa_public_key_pem(spki: spki),
                           signing_input: signing_input,
                           signature_b64url: signature_segment,
-                          scratch_dir: scratch_dir,
                           verify_id: verify_id,
                         ),
                       )
@@ -1075,6 +1136,11 @@ fn oidc_id_token_signature_of_parts(
           }
       }
   }
+}
+
+fn verify_over_ops(ops: JwksCacheOps, spki_pem: String, signing_input: String, signature_b64url: String, verify_id: NonEmptyStr) -> Rs256Verification {
+  let verify = ops.verify
+  verify(spki_pem, signing_input, signature_b64url, verify_id)
 }
 
 // THE VERIFICATION TAIL, pure: openssl's answer becomes an OidcIdTokenSignature and nothing
