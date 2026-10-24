@@ -4879,6 +4879,7 @@ continue;
 } },
     InferredNode::CompilerError { message, .. } => { break rust_serde_error_policy(v1_rt::concat("wire_contract: ".to_string(), message.clone())); },
     InferredNode::TypeVariable { id: _, .. } => { break rust_serde_error_policy("wire_contract: unresolved type variable in wire_contract initializer".to_string()); },
+    InferredNode::ArgumentsResolved => { break rust_serde_error_policy("wire_contract: initializer type is an applied declaration whose arguments are resolved but whose expansion was not rebuilt".to_string()); },
 } },
 }
                                             }
@@ -4925,6 +4926,9 @@ continue;
                                         }
                                         InferredNode::TypeVariable { id: _, .. } => {
                                             break rust_serde_error_policy("wire_contract: unresolved type variable in wire_contract initializer".to_string());
+                                        }
+                                        InferredNode::ArgumentsResolved => {
+                                            break rust_serde_error_policy("wire_contract: initializer type is an applied declaration whose arguments are resolved but whose expansion was not rebuilt".to_string());
                                         }
                                     },
                                 },
@@ -34357,23 +34361,13 @@ pub fn rust_receiver_has_callable_method_field(
             scope.type_env.source_indices.clone(),
             receiver_type.clone(),
         );
-        if (crate::v1_compiler_infer_types::node_is_keyed_collection(
-            receiver_type.clone(),
-            scope.type_env.source_indices.clone(),
-        ) && crate::v1_compiler_emit::keyed_container_has_target_inhabitant(
-            crate::v1_std_core::qualified_last_segment(receiver_type_name.clone()),
-            RenderTarget::Rust,
-        )) {
-            false
-        } else {
-            match rust_struct_field_type_node(
-                scope.clone(),
-                receiver_type_name.clone(),
-                method_name.clone(),
-            ) {
-                Some(field_type) => (field_type.connective.clone() == Connective::Arrow),
-                std::option::Option::None => false,
-            }
+        match rust_struct_field_type_node(
+            scope.clone(),
+            receiver_type_name.clone(),
+            method_name.clone(),
+        ) {
+            Some(field_type) => (field_type.connective.clone() == Connective::Arrow),
+            std::option::Option::None => false,
         }
     }
 }
