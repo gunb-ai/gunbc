@@ -1,0 +1,50 @@
+module gunbc.guarantee_stall.approve_ios_linux_swift_receipt_not_dispatchable_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+// THE RUN THAT PRODUCES THE approve-ios SWIFT RECEIPTS HAS NO RUNG TO STAND ON: it is executed by hand,
+// on a runner, by a person following steps -- and that is declared here rather than left as a habit.
+// apps/approve-ios ships Foundation-only Swift (Approve/{Protocol,Wire,EnrolmentMachine}.swift plus the
+// two ApproveTests suites). Nothing in this repository typechecks or executes those files: CI does not
+// build Swift, no claim runs swiftc, and the Linux toolchain that could is pinned in
+// extdeps.swift_toolchain without a consumer that fetches it. Charter 5 asked for the run to be an
+// INSTRUMENT (`gunbc test //gunbc/instruments:approve-ios-linux-swift`), which is the rung that would
+// make the receipt a measurement instead of a report. It is unreachable from a .dag PR, and the reason is
+// a fact about the seed, not about this change: `gunbc test <label>` resolves an instrument ONLY through
+// the hand-written Rust table `instrument_registry` and a `match` on producer arms
+// (src/v1/stage0/src/target_invocation_host.rs), and it never consults gunbc.instrument_targets or
+// gunbc.target_binding -- so a label bound purely in .dag rows is not dispatchable no matter how many rows
+// name it. Adding the row plus the arm is Rust in the seed, which the operator ruled against growing here
+// (ruling 2026-10-19, this lane: "the seed is not grown"); the registry finding went to Charter 4.
+//
+// SO WHAT REMAINS TRUE TODAY, AND HOW IT IS KEEPT HONEST. The receipts for these files are produced by a
+// hand run, on the amd64 runner, against a pinned archive fetched over HTTPS. The hand run is worth
+// something ONLY because of the order it verifies in: signature first, against the published keyring and
+// the fingerprint, and only then the digest and size, both against the pin. That order is not a courtesy.
+// A lane that measured the digest first and compared it to whatever the pin said accepted an archive whose
+// digest had never been produced by any fetch -- the fabricated-pin incident this module's sibling
+// recurring-failure row records, where "two independent fetches agreed" was asserted of a value no log
+// contained. Both fetches agreeing is agreement between two observations, not conformance to upstream.
+// extdeps.swift_toolchain's refusal arms are what keeps the run from drifting back into that shape, and
+// dag/test/claim/swift_toolchain_pin_witness.dag is what keeps those arms honest: it refuses the fabricated
+// digest, refuses an unsigned archive, refuses a signature made by an unlisted key, and asserts the gate
+// refuses in the written order. THOSE CLAIMS EXECUTE. The manual run around them does not, and is what
+// this row is for: a run that cannot be dispatched is a receipt someone had to choose to produce, and the
+// row is what makes that choice visible instead of implied by a PR body.
+data approve_ios_linux_swift_receipt_not_dispatchable_stall: GuaranteeStall = GuaranteeStall {
+  subject: "approve-ios Linux swiftc receipts: fetching and signature-verifying the pinned toolchain, typechecking the Foundation-only file set as one module, and running both ApproveTests suites against vectors.json is executed by hand and by no dispatchable instrument",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: [
+      "apps/approve-ios/Approve/Protocol.swift, Wire.swift and EnrolmentMachine.swift typechecked as the one module Approve (the three files are one unit: Route is declared in Wire.swift, so Protocol.swift alone does not resolve)",
+      "apps/approve-ios/ApproveTests/ProtocolVectorTests.swift and EnrolmentMachineTests.swift executed through swift-corelibs-xctest against dag/test/fixture/approval_device_redemption/vectors.json",
+      "the fetch-then-verify step over extdeps.swift_toolchain's pinned archive (swift-6.4.1-RELEASE, debian13): signature against the published keyring, then digest and size against the pin"
+    ] },
+  // The capability, not its owner. SUFFICIENT FOR is written so a substitute cannot retire the row: a
+  // hand run whose output is pasted into a label's report, or a label that typechecks one file at a time,
+  // retires nothing, because the thing missing is that the machine runs the sequence -- including the
+  // verification -- and can be made to refuse.
+  next_rung_trigger: climbs_when(capability: "gunbc test //gunbc/instruments:approve-ios-linux-swift dispatches on the current head and exits nonzero when any of its legs fails, having fetched the pinned archive, verified its signature against the published keyring and fingerprint, refused any archive whose digest or size differs from the pin, typechecked the three Foundation-only files of apps/approve-ios/Approve as ONE module named Approve, and executed both ApproveTests suites against vectors.json. SUFFICIENT FOR: flipping one byte of vectors.json, or one byte of a generated wire constant, turns the label red on the named test; deleting the harness's FoundationNetworking re-export turns it red on the declared gap. A hand-produced receipt reported through a label, a label that typechecks the files separately, or one that skips the signature step retires nothing")
+}

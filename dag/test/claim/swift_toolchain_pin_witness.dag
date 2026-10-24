@@ -1,0 +1,592 @@
+module test.claim.swift_toolchain_pin_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { is_empty, string_contains }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.uri { Uri, Https }
+import extdeps.version { VersionIdentity }
+import extdeps.external_authority { CitedFigureStanding, ExternalAuthority, CitedToAuthority, TranscribedUncited }
+import extdeps.swift_toolchain {
+  SwiftToolchainArchive,
+  SwiftToolchainArchiveSubject,
+  SwiftToolchainVerifiedArchive,
+  SwiftToolchainUnverifiedArchive,
+  SwiftToolchainCandidate,
+  SwiftToolchainDistribution,
+  SignatureUnverified,
+  GoodSignature,
+  BadSignature,
+  SignedByUnlistedKey,
+  DigestDiffersFromPin,
+  SizeDiffersFromPin,
+  Debian13,
+  Ubuntu2404,
+  Verified,
+  Unverified,
+  pinned_swift_toolchain,
+  swift_toolchain_pinned_archive,
+  swift_toolchain_archive_as_pin,
+  swift_toolchain_archive_subject,
+  swift_toolchain_archive_url,
+  swift_toolchain_expected_size,
+  swift_toolchain_expected_digest,
+  swift_toolchain_signature_authority,
+  swift_toolchain_signature_authority_for,
+  swift_toolchain_signature_url,
+  SwiftToolchainSigningKey,
+  KeyStandingDoesNotCiteKeyring,
+  KeyStandingDerivedForOtherPin,
+  swift_toolchain_signing_key,
+  swift_toolchain_signing_key_as_listed,
+  swift_toolchain_signing_key_absence_refusal,
+  swift_toolchain_signing_keyring_authority,
+  swift_toolchain_pinned_subject,
+  extdeps_external_authority_anchor,
+  swift_toolchain_verify,
+  swift_toolchain_pin_absence_refusal,
+}
+
+// WHAT THIS WITNESS HOLDS.
+//
+// extdeps.swift_toolchain pins an artifact this repository does not build. Its claims are worth what the
+// checks that REFUSE are worth, so every claim below is paired with the state that would break it:
+//   - the pin is reachable only through the Verified arm (Absent would make the green claim red);
+//   - the URL is DERIVED, so the discriminating claim is that two subjects give two URLs and one subject
+//     cannot be given a contradicting URL at all -- there is no URL field to corrupt;
+//   - an unverified row is not a pin and has nowhere to put a guessed digest;
+//   - the typecheck unit is a ROW with the three files in compile order, and the gap is attributed to
+//     exactly the one file the probe observed it in.
+// No claim here is green merely because nothing in the corpus contradicts it; each constructs the
+// contradicting state as a fixture, because these states are authorable and must not be reachable.
+
+// The pin is readable, and what it says matches what upstream SIGNED. ByteSize and Sha256Digest carry the
+// size and the digest, so this claim is about their VALUES; their well-formedness is not claimable because
+// it is not falsifiable at the type (byte_size takes a count, Sha256DigestHex is 64 lower hex). The
+// standing arm is claimed too: a Verified row that could drop the authority it was verified against is
+// the exact shape this pin previously had, so its presence is asserted rather than assumed.
+// A `Verified` row for a SUBJECT I CHOOSE, carrying the standing I choose. Needed because the question the
+// rule answers is about a row, not about a standing in isolation -- "does this row cite the signature of
+// the release this row describes" only has a wrong answer if the row can be built with a subject of your
+// choosing. Values are the pinned ones so the only thing varying is subject and citation.
+fn pin_admits(archive: SwiftToolchainVerifiedArchive) -> Bool {
+  match swift_toolchain_archive_as_pin(archive: Verified { archive: archive }) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn row_for(subject: SwiftToolchainArchiveSubject, cited: CitedFigureStanding) -> SwiftToolchainVerifiedArchive {
+  SwiftToolchainVerifiedArchive {
+    subject: subject
+    observed_size: byte_size(count: 1122730813)
+    expected_identity: Sha256Digest {
+      hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex
+    }
+    standing: cited
+  }
+}
+
+test fn pinned_archive_is_verified_and_cites_the_upstream_signature() -> Bool {
+  match swift_toolchain_pinned_archive() {
+    Present { value: a } =>
+      byte_size_count(b: swift_toolchain_expected_size(archive: a)) == 1122730813
+        && a.subject.distribution == Debian13
+        && swift_toolchain_expected_digest(archive: a).hex
+             == "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47"
+        && swift_toolchain_signing_key.fingerprint == "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    Absent => false
+  }
+}
+
+// THE REFUSAL, SHOWN RATHER THAN ASSERTED -- and the discriminating half of this whole witness.
+//
+// Every candidate below is refused except the last. The first is the archive a wrong pin WOULD have
+// accepted, the second is the value this module previously pinned while claiming two fetches produced it,
+// and the third is a signature that never verified. The accepted candidate is the one gpg confirmed.
+// A verify function that ignored the signature, or compared against a caller-supplied expected value,
+// turns red here; a verify function that always returns Absent turns this red AND the green claim red,
+// which is why both directions are in one file.
+test fn verification_refuses_a_mismatched_archive_and_accepts_only_the_signed_one() -> Bool {
+  let signed_bytes = SwiftToolchainCandidate {
+    signature: GoodSignature { fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F" }
+    observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+    observed_size: byte_size(count: 1122730813)
+  }
+  // WHAT THIS CANDIDATE IS. This is the digest an earlier revision of extdeps.swift_toolchain PINNED while
+  // asserting that two independent fetches had produced it. It is fabricated: no fetch log ever printed it,
+  // and `git log --all -S` over the value returns only the commit that introduced it. It lives here, as an
+  // input the gate is handed, because that is the only place it has meaning -- the refusal is the gate's
+  // ordinary digest comparison, and a module-level "known refused value" row plus a predicate over it would
+  // be a second carrier for a digest fact and a witness asserting the row exists.
+  let the_previously_pinned_value = SwiftToolchainCandidate {
+    signature: GoodSignature { fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F" }
+    observed_digest: Sha256Digest { hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313" as Sha256DigestHex }
+    observed_size: byte_size(count: 1122730813)
+  }
+  let unsigned_bytes = SwiftToolchainCandidate {
+    signature: BadSignature { detail: "BAD signature" }
+    observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+    observed_size: byte_size(count: 1122730813)
+  }
+  let signed_by_another_key = SwiftToolchainCandidate {
+    signature: GoodSignature { fingerprint: "0000000000000000000000000000000000000000" }
+    observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+    observed_size: byte_size(count: 1122730813)
+  }
+  let truncated = SwiftToolchainCandidate {
+    signature: GoodSignature { fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F" }
+    observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+    observed_size: byte_size(count: 1122730812)
+  }
+  // The accepted candidate is refused by NOTHING -- asserted on the gate's own result rather than through
+  // a Bool "is usable" wrapper, which would be a second reader of the same Present/Absent answer.
+  match swift_toolchain_verify(candidate: signed_bytes) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // The refusal NAMES the cause, so a run cannot report "digest mismatch" for a signature failure.
+    && match swift_toolchain_verify(candidate: unsigned_bytes) {
+         // The refusal carries the authorities a reader needs to fix it, read out of the rows rather than
+         // retyped at the call site: keyring to import, instructions that define a good signature. Drop the
+         // rows' contents and this goes red -- that is those rows' consumer.
+         Present { value: SignatureUnverified { detail: d, keyring: k, instructions: i } } =>
+           !is_empty(xs: d)
+             && k.uri.locator == "swift.org/keys/all-keys.asc"
+             && i.uri.locator == "swift.org/install/linux/tarball/"
+         _ => false
+       }
+    && match swift_toolchain_verify(candidate: signed_by_another_key) {
+         Present { value: SignedByUnlistedKey { observed_fingerprint: f } } => f == "0000000000000000000000000000000000000000"
+         _ => false
+       }
+    && match swift_toolchain_verify(candidate: the_previously_pinned_value) {
+         // The pinned value must be the SIGNED one in the refusal text, not the fabricated one.
+         Present { value: DigestDiffersFromPin { observed: o, pinned: p } } =>
+           o.hex == "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313"
+             && p.hex == "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47"
+         _ => false
+       }
+    && match swift_toolchain_verify(candidate: truncated) {
+         // The unit carrier survives into the refusal: both sides are ByteSize, not bare counts.
+         Present { value: SizeDiffersFromPin { observed: o, pinned: p } } =>
+           byte_size_count(b: o) == 1122730812 && byte_size_count(b: p) == 1122730813
+         _ => false
+       }
+}
+
+// THE ORDER OF VERIFICATION, MEASURED THROUGH THE GATE RATHER THAN DESCRIBED BESIDE IT. A candidate that
+// fails every check at once is refused as the FIRST failure the gate reaches, so the sequence signature ->
+// key -> digest -> size is observable as the ARMS these come back in. This replaces a List<NonEmptyStr> of
+// step names whose only reader was a claim string-matching it -- and which already disagreed with the gate
+// (it put compare-size before compare-digest). If the gate's order is edited, one of these three arms
+// changes and this claim goes red; the roster could not do that, because nothing followed it.
+test fn the_gate_refuses_in_the_order_its_checks_are_written() -> Bool {
+  let bad_every_way = SwiftToolchainCandidate {
+    signature: BadSignature { detail: "BAD signature" }
+    observed_digest: Sha256Digest { hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313" as Sha256DigestHex }
+    observed_size: byte_size(count: 1)
+  }
+  let wrong_key_and_wrong_bytes = SwiftToolchainCandidate {
+    signature: GoodSignature { fingerprint: "0000000000000000000000000000000000000000" }
+    observed_digest: Sha256Digest { hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313" as Sha256DigestHex }
+    observed_size: byte_size(count: 1)
+  }
+  let signed_by_the_right_key_and_wrong_bytes = SwiftToolchainCandidate {
+    signature: GoodSignature { fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F" }
+    observed_digest: Sha256Digest { hex: "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313" as Sha256DigestHex }
+    observed_size: byte_size(count: 1)
+  }
+  // Signature first: swift.org says do not use the toolchain on a BAD signature, so an archive that is
+  // unsigned AND hashes wrong is refused for the signature. Hashing first would report DigestDiffersFromPin
+  // here and send a reader hunting for tampering in bytes that were never upstream's to begin with.
+  match swift_toolchain_verify(candidate: bad_every_way) {
+    Present { value: SignatureUnverified { detail: d, keyring: _, instructions: _ } } => !is_empty(xs: d)
+    _ => false
+  }
+  // Then the key: a signature that verified is checked against the listed fingerprint before any hash.
+  && match swift_toolchain_verify(candidate: wrong_key_and_wrong_bytes) {
+       Present { value: SignedByUnlistedKey { observed_fingerprint: f } } => f == "0000000000000000000000000000000000000000"
+       _ => false
+     }
+  // Then digest before size: these bytes are BOTH the wrong digest and the wrong size, and the refusal that
+  // comes back is the digest one. Swapping the two checks in the gate -- which the deleted roster claimed
+  // was already the case -- turns this red. A truncated fetch is still reported as a size refusal, but only
+  // when the digest matched, which the truncated candidate in the refusal claim above covers.
+  && match swift_toolchain_verify(candidate: signed_by_the_right_key_and_wrong_bytes) {
+       Present { value: DigestDiffersFromPin { observed: o, pinned: _ } } =>
+         o.hex == "350260329794a6009360c232d2f9303229581d8bd15187136cc11553df6cd313"
+       _ => false
+     }
+}
+
+// THE .sig AUTHORITY IS A PROJECTION OF THE SUBJECT, NOT A SECOND URL THAT CAN DRIFT. It used to be typed
+// by hand beside a derived archive URL: a bumped pin kept citing the signature of 6.4.1/debian13, so the
+// standing claim stayed green while pointing at a file the run did not verify. Discriminating: the locator
+// must be exactly the archive locator plus ".sig" for ANY subject, and for a distribution nobody pinned --
+// hand-typed, both directions go red.
+test fn the_signature_authority_follows_the_subject_it_verifies() -> Bool {
+  let debian = SwiftToolchainArchiveSubject {
+    distribution: Debian13
+    version: "6.4.1" as VersionIdentity
+  }
+  let ubuntu = SwiftToolchainArchiveSubject {
+    distribution: Ubuntu2404
+    version: "6.4.1" as VersionIdentity
+  }
+  swift_toolchain_signature_authority_for(subject: debian).uri.locator
+    == concat(swift_toolchain_archive_url(subject: debian).locator, ".sig")
+  && swift_toolchain_signature_authority_for(subject: ubuntu).uri.locator
+    == concat(swift_toolchain_archive_url(subject: ubuntu).locator, ".sig")
+  // The authority the pin cites IS this projection of the pin's own subject, so the standing cannot name an
+  // archive other than the one it claims to have verified.
+  && swift_toolchain_signature_authority.uri.locator
+    == swift_toolchain_signature_url(subject: swift_toolchain_archive_subject(archive: pinned_swift_toolchain)).locator
+  // And a different subject yields a different authority -- the function really consumes the subject.
+  && swift_toolchain_signature_authority_for(subject: ubuntu).uri.locator
+    != swift_toolchain_signature_authority_for(subject: debian).uri.locator
+}
+
+// DISCRIMINATING, AND IT IS THE DUPLICATION CHECK. The URL is a projection of the subject, so: the same
+// subject always yields the same URL (a stored URL could not promise that), a different distribution
+// yields a different URL (so the distribution really is subject material, not decoration), and the
+// derived URL is the one the archive was actually fetched from.
+test fn archive_url_is_derived_from_the_subject_and_not_stored_twice() -> Bool {
+  let debian = SwiftToolchainArchiveSubject {
+    distribution: Debian13
+    version: "6.4.1" as VersionIdentity
+  }
+  let ubuntu = SwiftToolchainArchiveSubject {
+    distribution: Ubuntu2404
+    version: "6.4.1" as VersionIdentity
+  }
+  swift_toolchain_archive_url(subject: debian).locator
+    == "download.swift.org/swift-6.4.1-release/debian13/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-debian13.tar.gz"
+    && swift_toolchain_archive_url(subject: debian).locator
+         == swift_toolchain_archive_url(subject: debian).locator
+    && swift_toolchain_archive_url(subject: debian).locator != swift_toolchain_archive_url(subject: ubuntu).locator
+    && swift_toolchain_archive_url(subject: swift_toolchain_archive_subject(archive: pinned_swift_toolchain)).locator
+         == swift_toolchain_archive_url(subject: debian).locator
+}
+
+// THE PIN BOUNDARY, DRIVEN FROM BOTH SIDES. The rule "a verified row can be read as a pin, an unverified
+// row cannot" lives in one function (swift_toolchain_archive_as_pin) and is exercised here rather than
+// asserted: an unverified row built here yields NOTHING, the real pin yields its typed archive, and the
+// fields an unverified row is missing are exactly the ones the verified arm carries. The red is
+// constructed -- a Verified row with a placeholder size and an all-zero digest, or a rule that hands out
+// the unverified row, turns this red.
+test fn an_unverified_row_cannot_be_read_as_a_pin() -> Bool {
+  let declared_only: SwiftToolchainArchive = Unverified {
+    declared: SwiftToolchainUnverifiedArchive {
+      subject: SwiftToolchainArchiveSubject {
+        distribution: Ubuntu2404
+        version: "6.4.1" as VersionIdentity
+      }
+      reason: "no fetch observed"
+    }
+  }
+  // One side of the boundary: nothing to hand out, not a zero-filled stand-in.
+  match swift_toolchain_archive_as_pin(archive: declared_only) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // The other side: the pin yields the typed archive, and the carriers that make it meaningful are there
+  // -- a positive size and a digest that is the value the signature was checked against.
+  && match swift_toolchain_archive_as_pin(archive: pinned_swift_toolchain) {
+       Present { value: a } =>
+         byte_size_count(b: swift_toolchain_expected_size(archive: a)) == 1122730813
+           && swift_toolchain_expected_digest(archive: a).hex
+                == "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47"
+          Absent => false
+     }
+  // And the unverified row says why it is unverified, because a bare absence of evidence is not a record.
+  && match declared_only {
+       Unverified { declared: d } => !is_empty(xs: d.reason)
+       Verified { archive: _ } => false
+     }
+}
+
+// EVERY DISTRIBUTION ARM PROJECTS ITS OWN URL. Four arms, four distinct locators -- Ubuntu2204 and
+// OtherLinux are reachable ONLY through this projection, so an arm added, renamed, or aliased onto a
+// neighbour shows up here instead of at a runner's fetch failure. OtherLinux in particular has to be named
+// rather than mapped onto a nearby row, and that is what the last line asserts: an unlisted distribution
+// yields its own spelling, not debian13's. All four share one version and one path layout, so a bumped
+// version moves every arm together -- which is the point of deriving the URL instead of storing it.
+test fn every_distribution_arm_projects_its_own_url() -> Bool {
+  let debian = swift_toolchain_archive_url(subject: SwiftToolchainArchiveSubject {
+    distribution: Debian13
+    version: "6.4.1" as VersionIdentity
+  }).locator
+  let ubuntu2404 = swift_toolchain_archive_url(subject: SwiftToolchainArchiveSubject {
+    distribution: Ubuntu2404
+    version: "6.4.1" as VersionIdentity
+  }).locator
+  let ubuntu2204 = swift_toolchain_archive_url(subject: SwiftToolchainArchiveSubject {
+    distribution: Ubuntu2204
+    version: "6.4.1" as VersionIdentity
+  }).locator
+  let other = swift_toolchain_archive_url(subject: SwiftToolchainArchiveSubject {
+    distribution: OtherLinux { name: "fedora40" }
+    version: "6.4.1" as VersionIdentity
+  }).locator
+  // Four distinct locators: no arm collapses onto another.
+  debian != ubuntu2404 && debian != ubuntu2204 && debian != other
+    && ubuntu2404 != ubuntu2204 && ubuntu2404 != other && ubuntu2204 != other
+    // Each arm spells its own distribution, and OtherLinux spells what it was handed.
+    && string_contains(s: debian, pattern: "debian13")
+    && string_contains(s: ubuntu2404, pattern: "ubuntu24.04")
+    && string_contains(s: ubuntu2204, pattern: "ubuntu22.04")
+    && string_contains(s: other, pattern: "fedora40")
+    // One release, one layout: only the distribution varies.
+    && string_contains(s: debian, pattern: "swift-6.4.1-release/")
+    && string_contains(s: other, pattern: "swift-6.4.1-release/")
+}
+
+// THE STANDING PREDICATE REFUSES, NOT JUST ACCEPTS. It is what stops a pin from citing ANY authority and
+// calling it verification, so its refusal arm has to be driven: a standing that cites the keyring instead
+// of the signature's own file, and a standing that cites nothing at all, are both refused. The keyring is
+// the sharp case -- it is a real swift.org authority and a plausible-looking citation, and the archive was
+// verified against neither of them until the .sig said it was upstream's. This is also the arm the
+// fabricated pin sat in: a figure cited to fetches that never ran is a transcription, and a transcription
+// is not a citation no matter how confident the prose around it is.
+test fn a_standing_that_does_not_cite_the_signature_is_not_accepted() -> Bool {
+  let pin_subject = swift_toolchain_pinned_subject
+  let sig_locator = swift_toolchain_signature_url(subject: pin_subject).locator
+  !pin_admits(
+       archive: row_for(subject: pin_subject, cited: TranscribedUncited {
+         read_obligation: "two fetches of the archive agreed on this digest"
+       }))
+    && !pin_admits(
+         archive: row_for(subject: pin_subject, cited: CitedToAuthority {
+           authority: swift_toolchain_signing_keyring_authority
+         }))
+    // Discriminating the other way: citing the signature file of the subject the row DESCRIBES IS accepted,
+    // so the two refusals above are about the citation, not about the predicate always answering false.
+    && pin_admits(
+         archive: row_for(subject: pin_subject, cited: CitedToAuthority {
+           authority: ExternalAuthority { uri: Uri { scheme: Https, locator: sig_locator } }
+         }))
+}
+
+// KNOWING THE RELEASE IS PUBLISHED IS NOT THE SAME AS UPSTREAM SIGNING THESE BYTES. The module carries the
+// conventional per-module anchor (the upstream release index) beside the .sig it verifies against, and those
+// two must not be interchangeable. Citing the index -- a real swift.org authority, and the one you would
+// consult to find the release at all -- is refused as a standing, while citing the pinned subject's .sig is
+// accepted. So an archive can never become "verified" by being listed: listing is how you find it, the
+// signature is how you trust it, and the two locators are different strings, which is what makes the check
+// discriminating rather than decorative.
+test fn the_release_index_is_not_the_authority_that_verifies_the_archive() -> Bool {
+  let pin_subject = swift_toolchain_pinned_subject
+  // The anchor and the verifying authority are different files, so "we cited the anchor" cannot satisfy
+  // a check that demands the signature.
+  extdeps_external_authority_anchor.uri.locator
+    != swift_toolchain_signature_url(subject: pin_subject).locator
+    && !pin_admits(
+         archive: row_for(subject: pin_subject, cited: CitedToAuthority {
+           authority: extdeps_external_authority_anchor
+         }))
+    && pin_admits(
+         archive: row_for(subject: pin_subject, cited: CitedToAuthority {
+           authority: ExternalAuthority {
+             uri: Uri { scheme: Https, locator: swift_toolchain_signature_url(subject: pin_subject).locator }
+           }
+         }))
+}
+
+// AN UNCITED `Verified` ROW IS NOT A PIN -- AND THE RULE, NOT A CLAIM, IS WHAT STOPS IT. `Verified { ... }`
+// is a constructor, not evidence: a row built with standing TranscribedUncited ("two fetches agreed") would
+// otherwise be handed out as the thing candidate bytes are compared against, which is the exact artifact
+// this lane shipped once. So the refusal lives in the rule: swift_toolchain_archive_as_pin yields nothing
+// for such a row, and the gate refuses it as its own named case before any candidate measurement happens.
+// Discriminating in both directions: if archive_as_pin goes back to handing out whatever it is given, the
+// first line goes red; if the rule refuses everything, the last line goes red.
+test fn an_uncited_verified_row_is_refused_as_a_pin_by_the_rule() -> Bool {
+  let verified_but_uncited: SwiftToolchainArchive = Verified {
+    archive: SwiftToolchainVerifiedArchive {
+      subject: SwiftToolchainArchiveSubject {
+        distribution: Debian13
+        version: "6.4.1" as VersionIdentity
+      }
+      observed_size: byte_size(count: 1122730813)
+      expected_identity: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+      standing: TranscribedUncited { read_obligation: "two independent fetches agreed on this digest" }
+    }
+  }
+  // (a) the rule will not hand it out...
+  match swift_toolchain_archive_as_pin(archive: verified_but_uncited) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // (b) ...and the gate says WHY, as its own named refusal rather than a digest mismatch. The candidate is
+  // the otherwise-acceptable one, so the only reason a refusal can come back is the pin's standing.
+  && match swift_toolchain_verify(candidate: SwiftToolchainCandidate {
+       signature: GoodSignature { fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F" }
+       observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+       observed_size: byte_size(count: 1122730813)
+     }) {
+       Absent => true
+       Present { value: _ } => false
+     }
+  // (c) the real pin, cited, is still handed out -- the rule is not refusing everything.
+  && match swift_toolchain_archive_as_pin(archive: pinned_swift_toolchain) {
+       Present { value: _ } => true
+       Absent => false
+     }
+}
+
+// A ROW MAY NOT WEAR ANOTHER RELEASE'S SIGNATURE. This is the drift the whole module exists to stop, and
+// until now the claims could not have caught it: every claim drove the single pinned subject, so a rule
+// that compared a row's citation against the .sig of whatever happens to be PINNED -- instead of the .sig of
+// the subject the row itself describes -- passed them all. Here the row is Ubuntu 24.04 and the citation is
+// the real Debian 13 .sig, copied verbatim: same fields, right-looking URL, signature of a release it is
+// not. The rule must refuse to hand it out as a pin, and the predicate must say no. The last line is what
+// makes the third line a discriminator rather than a constant: the SAME citation, on the row it belongs to,
+// is admitted.
+test fn a_row_cannot_wear_another_releases_signature() -> Bool {
+  let debian = swift_toolchain_pinned_subject
+  let ubuntu = SwiftToolchainArchiveSubject {
+    distribution: Ubuntu2404
+    version: "6.4.1" as VersionIdentity
+  }
+  let debian_sig = swift_toolchain_signature_authority_for(subject: debian)
+  // The two subjects really do have different signature files -- otherwise the refusal below is vacuous.
+  swift_toolchain_signature_url(subject: ubuntu).locator != swift_toolchain_signature_url(subject: debian).locator
+    // Ubuntu row, Debian citation: refused as a standing, and refused as a pin.
+    && !pin_admits(archive: row_for(subject: ubuntu, cited: CitedToAuthority {
+         authority: debian_sig
+       }))
+    && match swift_toolchain_archive_as_pin(
+         archive: Verified { archive: row_for(subject: ubuntu, cited: CitedToAuthority { authority: debian_sig }) }
+       ) {
+         Absent => true
+         Present { value: _ } => false
+       }
+    // Same citation, right subject: admitted. So the refusal above is about the subject, not about the
+    // citation being unrecognisable.
+    && pin_admits(archive: row_for(subject: debian, cited: CitedToAuthority {
+         authority: debian_sig
+       }))
+}
+
+// The refusal EXPLAINS the refusal above, so it must name the same signature the check compared against:
+// the Ubuntu row's own .sig, never the pinned Debian one. RED before the fix: it named the Debian .sig.
+test fn the_refusal_names_the_rows_own_signature_as_expected() -> Bool {
+  let debian = swift_toolchain_pinned_subject
+  let ubuntu = SwiftToolchainArchiveSubject {
+    distribution: Ubuntu2404
+    version: "6.4.1" as VersionIdentity
+  }
+  let wearing = row_for(subject: ubuntu, cited: CitedToAuthority {
+    authority: swift_toolchain_signature_authority_for(subject: debian)
+  })
+  match swift_toolchain_pin_absence_refusal(archive: Verified { archive: wearing }) {
+    PinStandingDoesNotCiteSignature { expected: e, detail: _ } =>
+      e.uri.locator == swift_toolchain_signature_url(subject: ubuntu).locator
+        && e.uri.locator != swift_toolchain_signature_url(subject: debian).locator
+    _ => false
+  }
+}
+
+// THE FINGERPRINT CARRIES ITS STANDING, AND THE GATE READS IT. Mirror of the pin's standing rule, for the key:
+// the same fingerprint whose standing is a transcription of a gpg run, or a citation of the .sig instead of
+// the keyring, is not a listed key, and the refusal names the keyring as the authority it should have cited.
+// Discriminating: the same fingerprint cited to the keyring IS listed, and the module's own key is listed and
+// lets the signed candidate through the gate -- so the refusals are about the standing, not the value.
+test fn a_fingerprint_whose_standing_does_not_cite_the_keyring_is_refused() -> Bool {
+  let transcribed = SwiftToolchainSigningKey {
+    fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    standing: TranscribedUncited { read_obligation: "gpg --verify on the runner printed this key" }
+    derived_for: swift_toolchain_pinned_subject
+  }
+  let cites_the_signature = SwiftToolchainSigningKey {
+    fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    standing: CitedToAuthority { authority: swift_toolchain_signature_authority }
+    derived_for: swift_toolchain_pinned_subject
+  }
+  let cites_the_keyring = SwiftToolchainSigningKey {
+    fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    standing: CitedToAuthority { authority: swift_toolchain_signing_keyring_authority }
+    derived_for: swift_toolchain_pinned_subject
+  }
+  match swift_toolchain_signing_key_as_listed(key: transcribed) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  && match swift_toolchain_signing_key_absence_refusal(key: transcribed) {
+       KeyStandingDoesNotCiteKeyring { expected: e, detail: d } =>
+         e.uri.locator == "swift.org/keys/all-keys.asc" && !is_empty(xs: d)
+       _ => false
+     }
+  && match swift_toolchain_signing_key_as_listed(key: cites_the_signature) {
+       Absent => true
+       Present { value: _ } => false
+     }
+  && match swift_toolchain_signing_key_absence_refusal(key: cites_the_signature) {
+       KeyStandingDoesNotCiteKeyring { expected: e, detail: _ } => e.uri.locator == "swift.org/keys/all-keys.asc"
+       _ => false
+     }
+  && match swift_toolchain_signing_key_as_listed(key: cites_the_keyring) {
+       Present { value: k } => k.fingerprint == "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+       Absent => false
+     }
+  && match swift_toolchain_signing_key_as_listed(key: swift_toolchain_signing_key) {
+       Present { value: _ } => true
+       Absent => false
+     }
+  && match swift_toolchain_verify(candidate: SwiftToolchainCandidate {
+       signature: GoodSignature { fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F" }
+       observed_digest: Sha256Digest { hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex }
+       observed_size: byte_size(count: 1122730813)
+     }) {
+       Absent => true
+       Present { value: _ } => false
+     }
+}
+
+// A STANDING DERIVED FOR ANOTHER PIN IS NOT A STANDING AT ALL (4d: the keyring is live).
+// swift.org/keys/all-keys.asc is a mutable document -- keys are re-signed, expiries extended, and a 7.x
+// release brings a new key -- so a fingerprint's citation proves it only against the reading of that keyring
+// taken for one pin. This claim constructs the state that must be unreachable: a key record citing the right
+// keyring whose `derived_for` names a DIFFERENT subject than the module's current pin. It must not read as
+// listed, the refusal must be the typed `KeyStandingDerivedForOtherPin` carrying both subjects (so the reader
+// sees which reading to re-take). The control half: the shipped key, derived for the current pin, stays
+// listed -- and a second subject spelled identically re-derives to listed, because the check is equality of
+// pins, not identity of a single value.
+test fn a_key_standing_derived_for_a_different_pin_is_refused() -> Bool {
+  let stale_pin = SwiftToolchainArchiveSubject {
+    distribution: Debian13
+    version: "7.0.0" as VersionIdentity
+  }
+  let key_for_stale_pin = SwiftToolchainSigningKey {
+    fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    standing: CitedToAuthority { authority: swift_toolchain_signing_keyring_authority }
+    derived_for: stale_pin
+  }
+  let key_re_derived = SwiftToolchainSigningKey {
+    fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+    standing: CitedToAuthority { authority: swift_toolchain_signing_keyring_authority }
+    derived_for: SwiftToolchainArchiveSubject {
+      distribution: Debian13
+      version: "6.4.1" as VersionIdentity
+    }
+  }
+  match swift_toolchain_signing_key_as_listed(key: key_for_stale_pin) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  && match swift_toolchain_signing_key_absence_refusal(key: key_for_stale_pin) {
+       KeyStandingDerivedForOtherPin { derived_for: d, pinned: p } =>
+         d == stale_pin
+         && p == swift_toolchain_pinned_subject
+         && d != p
+       _ => false
+     }
+  && match swift_toolchain_signing_key_as_listed(key: key_re_derived) {
+       Present { value: k } => k.fingerprint == "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+       Absent => false
+     }
+  && match swift_toolchain_signing_key_as_listed(key: swift_toolchain_signing_key) {
+       Present { value: k } => k.derived_for == swift_toolchain_pinned_subject
+       Absent => false
+     }
+}
