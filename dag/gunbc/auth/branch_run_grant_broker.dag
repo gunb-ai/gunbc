@@ -60,14 +60,18 @@ type BrokerDecision
   | BrokerRefused { reason: NonEmptyStr }
 
 fn broker_decision_for(run: WorkflowRun) -> BrokerDecision {
-  let title = match run.display_title { Present { value: t } => t  Absent => "" }
-  let mode = mode_of_run_title(title: title)
-  if mode == "" {
-    BrokerRefused { reason: concat("the run's title names no mode, so its run-name is not rendered: ", title) as NonEmptyStr }
-  } else {
-    match run_scoped_mode_eligible(mode: mode, branch: match run.head_branch { Present { value: b } => b  Absent => "" }) {
-      Absent => BrokerAsksForNothing
-      Present { value: _ } => BrokerDispatchesGrant
+  match run.display_title {
+    Absent => BrokerRefused { reason: "GitHub's record of the run carries no display_title" as NonEmptyStr }
+    Present { value: title } => {
+      let mode = mode_of_run_title(title: title)
+      if mode == "" {
+        BrokerRefused { reason: concat("the run's title names no mode, so its run-name is not rendered: ", title) as NonEmptyStr }
+      } else {
+        match run_scoped_mode_eligible(mode: mode, branch: match run.head_branch { Present { value: b } => b  Absent => "" }) {
+          Absent => BrokerAsksForNothing
+          Present { value: _ } => BrokerDispatchesGrant
+        }
+      }
     }
   }
 }

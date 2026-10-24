@@ -103,6 +103,19 @@ test fn the_broker_decides_from_the_runs_rendered_title() -> Bool {
     && decision_word(d: broker_decision_for(run: a_run(title: "fleet-converge apply srv3 nonce=", branch: "main"))) == "nothing"
     && decision_word(d: broker_decision_for(run: a_run(title: "fleet-converge microvm_network_apply srv3 nonce=", branch: "session/x"))) == "nothing"
     && decision_word(d: broker_decision_for(run: a_run(title: "fleet-converge", branch: "session/x"))) == "refused"
+    && match broker_decision_for(run: untitled(r: a_run(title: "fleet-converge apply srv3 nonce=", branch: "session/x"))) {
+      BrokerRefused { reason: r } => (r as String).contains("no display_title")
+      BrokerDispatchesGrant => false
+      BrokerAsksForNothing => false
+    }
+}
+
+fn untitled(r: WorkflowRun) -> WorkflowRun {
+  WorkflowRun {
+    id: r.id, name: r.name, display_title: none, path: r.path, head_sha: r.head_sha, head_branch: r.head_branch,
+    event: r.event, status: r.status, conclusion: r.conclusion, workflow_id: r.workflow_id, run_number: r.run_number, run_attempt: r.run_attempt,
+    actor: r.actor, triggering_actor: r.triggering_actor, html_url: r.html_url, created_at: r.created_at, updated_at: r.updated_at, pull_requests: r.pull_requests,
+  }
 }
 
 // THE DISPATCH CREDENTIAL IS THE BROKER'S ALONE: its job writes actions and mints no OIDC token, and
