@@ -596,6 +596,15 @@ test fn the_belt_exit_stall_rearm_selects_the_federated_grant_and_diverges_with_
       && match v.conformance { DivergesWithReason { reason: _ } => true _ => false })
 }
 
+// ONE site serves both stalled spools: attempt_unit_stall_release_cli re-arms through the same
+// belt_exit_stall_rearm_at, so the selection run for it is this row's (federated scoped grant, diverging under the
+// interim reason), and the row's subject names both path units.
+test fn the_attempt_unit_stall_release_shares_the_rearm_site_and_its_selection() -> Bool {
+  any(census_verdicts(), v =>
+    (v.site.decl_name as String) == "belt_exit_stall_rearm_at"
+      && selected_federated(s: v.selection))
+}
+
 // D3: the deploy route's root may not switch while srv1 shares its job uid with pull request jobs.
 test fn the_deploy_route_switch_is_refused_while_srv1_shares_the_job_uid() -> Bool {
   !deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: srv1_observed_job_tenancy)

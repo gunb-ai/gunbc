@@ -1531,6 +1531,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.witness_deferral_freeze_population_census" },
+      form: FreeCall,
+      authored_spelling: "witness_deferral_freeze_population_census",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.commit_witness_claim_roster_unresolvable_count" },
       form: FreeCall,
       authored_spelling: "commit_witness_claim_roster_unresolvable_count",

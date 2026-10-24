@@ -1,0 +1,65 @@
+module test.claim.cas_outcome_seal_witness
+
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_count_at_key,
+}
+
+// THE CASOUTCOME SEAL'S DELIBERATE RED, RE-HOMED from the deleted
+// approve_ios_enrolment_machine_persist_order_witness (DESIGN 4b(4): a discriminating RED stays enrolled
+// when the production machinery it was written beside is deleted). std.durable_compare_and_set does not
+// seal `CasOutcome` (the sealing change is gunbc#14447): nothing stops a caller authoring a
+// `CasCommitted` and handing it to a consumer with no store involved. The forgery is fixture source
+// handed to the compiler; the claim asserts the SoleConstructorViolation the seal will raise, which is
+// FALSE today. It is enrolled in v2.workflow.floor_expected_red `floor_expected_red_chunk_cas_outcome_seal`
+// with the seal as its trigger; when the seal lands it passes, the roster reports it stale, the row is
+// deleted and the claim stays as the permanent regression control. The census reads the live checkout,
+// so the witness declares ReadsLiveTree; a census that declined to run is -1, never a zero that would
+// read as "the seal held".
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn keyed_count(source: String, wanted_class: String, wanted_subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data no_forged_binding: String = ""
+
+data forged_cas_committed_binding: String = "let forged: CasOutcome<String> = CasCommitted { committed: CasSlotVersion { generation: cas_generation_first(), content: content_hash_of_value(value: \"forged\"), value: \"forged\" } }\n"
+
+fn cas_committed_probe_source(forged_binding: String) -> String {
+  "module probe_approve_ios_cas_committed_axis\n"
+    + "import std.types { Int, String }\n"
+    + "import std.content_hash { content_hash_of_value }\n"
+    + "import std.durable_compare_and_set { CasOutcome, CasCommitted, CasSlotVersion, cas_generation_first }\n"
+    + "fn subject() -> Int {\n  "
+    + forged_binding
+    + "  0\n}\n"
+}
+
+// RED (EXPECTED, TRIGGER gunbc#14447) — WRITING A COMMITTED OUTCOME OUTSIDE THE MODULE THAT REALIZES IT.
+test fn a_forged_cas_committed_literal_is_refused_at_compile() -> Bool {
+  keyed_count(
+    source: cas_committed_probe_source(forged_binding: forged_cas_committed_binding),
+    wanted_class: "SoleConstructorViolation",
+    wanted_subject: "CasCommitted",
+  ) == 1
+}
+
+// CONTROL — THE SAME SOURCE WITHOUT THE BINDING DRAWS NO VIOLATION, so the red above is the literal and
+// not the fixture's other lines.
+test fn the_unbound_cas_committed_source_draws_no_violation() -> Bool {
+  keyed_count(
+    source: cas_committed_probe_source(forged_binding: no_forged_binding),
+    wanted_class: "SoleConstructorViolation",
+    wanted_subject: "CasCommitted",
+  ) == 0
+}

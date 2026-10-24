@@ -15,7 +15,7 @@ import v2.std.member_declaration_kind {
 }
 import v2.std.qualified_name { QualifiedName }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Arrow, Authored, ArrowBodyEdge, Atom, Edge, Node, Positional, TypeNode, Conj, core_edge_label }
+import v2.std.node { Arrow, Authored, ArrowBodyEdge, Atom, Edge, Node, Positional, TypeNode, Conj, core_edge_label, NotADeclaration }
 import std.algebra { Cons, Empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
@@ -74,9 +74,9 @@ fn mt_candidate(codomain: Symbol, body: List<Symbol>) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: mt_domain() },
-      Edge { label: Positional, target: mt_atom(s: codomain) },
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: mt_body(atoms: body) }
+      Edge { label: Positional, target: mt_domain(), declaration: NotADeclaration },
+      Edge { label: Positional, target: mt_atom(s: codomain), declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: mt_body(atoms: body), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -85,7 +85,7 @@ fn mt_candidate(codomain: Symbol, body: List<Symbol>) -> Node {
 fn mt_body(atoms: List<Symbol>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: fold(atoms, init: [], f: fn(acc, a) { concat(acc, [Edge { label: Positional, target: mt_atom(s: a) }]) }),
+    children: fold(atoms, init: [], f: fn(acc, a) { concat(acc, [Edge { label: Positional, target: mt_atom(s: a), declaration: NotADeclaration }]) }),
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -93,7 +93,7 @@ fn mt_body(atoms: List<Symbol>) -> Node {
 fn mt_no_codomain() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    children: [Edge { label: Positional, target: mt_domain() }, Edge { label: core_edge_label(marker: ArrowBodyEdge), target: mt_body(atoms: [^Https]) }],
+    children: [Edge { label: Positional, target: mt_domain(), declaration: NotADeclaration }, Edge { label: core_edge_label(marker: ArrowBodyEdge), target: mt_body(atoms: [^Https]), declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -101,7 +101,7 @@ fn mt_no_codomain() -> Node {
 fn mt_no_body() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    children: [Edge { label: Positional, target: mt_domain() }, Edge { label: Positional, target: mt_atom(s: ^ExternalAuthority) }],
+    children: [Edge { label: Positional, target: mt_domain(), declaration: NotADeclaration }, Edge { label: Positional, target: mt_atom(s: ^ExternalAuthority), declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -163,9 +163,9 @@ fn mt_unrelated_member_nesting_anchor() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: mt_domain() },
-      Edge { label: Positional, target: mt_atom(s: ^Int) },
-      Edge { label: Authored { name: ^extdeps_external_authority_anchor }, target: mt_candidate(codomain: ^ExternalAuthority, body: [^Https]) }
+      Edge { label: Positional, target: mt_domain(), declaration: NotADeclaration },
+      Edge { label: Positional, target: mt_atom(s: ^Int), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^extdeps_external_authority_anchor }, target: mt_candidate(codomain: ^ExternalAuthority, body: [^Https]), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -176,12 +176,12 @@ fn mt_nested_anchor_module() -> Node {
 }
 
 fn mt_nested_anchor_spine() -> Node {
-  mt_spine_with(edges: [Edge { label: Authored { name: ^gate_probe_unrelated_row }, target: mt_unrelated_member_nesting_anchor() }])
+  mt_spine_with(edges: [Edge { label: Authored { name: ^gate_probe_unrelated_row }, target: mt_unrelated_member_nesting_anchor(), declaration: NotADeclaration }])
 }
 
 fn mt_direct_anchor_module() -> Node {
   namespace_graft_wrap_module_shell(
-    captured: mt_spine_with(edges: [Edge { label: Authored { name: ^extdeps_external_authority_anchor }, target: mt_candidate(codomain: ^ExternalAuthority, body: [^Https]) }]),
+    captured: mt_spine_with(edges: [Edge { label: Authored { name: ^extdeps_external_authority_anchor }, target: mt_candidate(codomain: ^ExternalAuthority, body: [^Https]), declaration: NotADeclaration }]),
     source: mt_domain()
   )
 }

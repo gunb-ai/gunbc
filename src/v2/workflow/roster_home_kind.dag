@@ -1,7 +1,9 @@
 module v2.workflow.roster_home_kind
 
-import std.algebra { FreeMonoid, fold_list, length, take_prefix }
+import std.algebra { FreeMonoid, fold_list, list_snoc_item }
+import std.filesystem { path_parent_directory }
 import std.types { Bool, List, String }
+import std.optional { Absent, Optional, Present }
 import std.occurrence_identity {
   LabelPosition,
   PatternTagPosition,
@@ -37,14 +39,14 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 // WHY THIS MODULE HOLDS IT, AND WHY IT IS THE SWEEP'S ONLY CORPUS READ. v2.workflow.roster_import_sweep has no
 // file-read primitive -- its sweep is pure over (path, text) for one file -- and the home's declared kind is a corpus
 // fact keyed by qualified name. v2.std.decl_index decl_facts_at is the one home for that question ("THE KEYED READ...
-// Both project one census"); this module is its only consumer on the roster route. The pool is the HOME MODULE'S OWN
-// STORAGE DIRECTORY, derived from the home's name by v2.compiler.source_authority module_file over
-// v2.cli.repository_layout repository_storage_layout (DESIGN 3: paths follow names, one way). The question is keyed by
-// <home>.<name>, and the layout says the one file that can be module <home>, so only that directory can hold the
-// declaration the compiler binds; a same-named module stored anywhere else is outside the layout and not compilable.
-// The pool was the whole corpus (dag, src/v1, src/v2) until Seat 7: gunbc run registers no census memo, so every keyed
-// read re-walked ~9k files (~226s each on srv1, against ~11s for dag/std, same row). A home whose name derives no file
-// gets an EMPTY pool, which reads zero rows and refuses as KindUnclassified -- never a widening back to the corpus.
+// Both project one census"); this module is its only consumer on the roster route. The declaration that classifies a
+// home is read from the HOME MODULE'S OWN FILE, the one v2.compiler.source_authority module_file assigns <home> over
+// v2.cli.repository_layout repository_storage_layout (DESIGN 3: paths follow names, one way). The census walk is rooted at
+// that file's directory (it accepts directory roots only) and its rows are then kept only where rel_path is that exact
+// file, because the walk trusts each file's own `module` line: a sibling declaring the home module is read but never
+// classifies it. The pool was the whole corpus (dag, src/v1, src/v2) until Seat 7: gunbc run registers no census memo,
+// so every keyed read re-walked ~9k files (~226s each on srv1, against ~11s for dag/std, same row). A home whose name
+// derives no file reads zero rows and refuses as KindUnclassified -- never a widening back to the corpus.
 //
 // THE BINDING FACT STAYS WHERE IT WAS. site.head is v2.compiler.reference_site_collector's own classification and this
 // module reads it, never re-decides it (DESIGN 3). What was missing, and what this file adds, is only the
@@ -154,8 +156,29 @@ fn type_ask_verdict(side: HomeKindSide) -> HomeKindVerdict {
 }
 
 // The keyed census read, opened for the sweep and the controls: the corpus facts under <home>.<import_name>.
+// THE EXACT FILE IS PART OF THE AUTHORITY, NOT ONLY THE DIRECTORY. decl_facts_at's host walk trusts each file's own
+// `module` line and reads every .dag under its root, so a sibling file in the home's directory that declares the home
+// module would contribute rows the compiler never binds. The directory bounds how much source is read; the rows that may
+// classify the home are only those whose rel_path IS the file module_file assigns <home> (side chat on #14870).
 fn roster_home_declarations(home: String, import_name: String) -> List<DeclFact> {
-  decl_facts_at(pool_roots: roster_home_pool_roots(home: home), qualified_name: home + "." + import_name)
+  match roster_home_file(home: home) {
+    Present { value: file } =>
+      roster_home_facts_in_file(
+        facts: decl_facts_at(pool_roots: [path_parent_directory(path: file)], qualified_name: home + "." + import_name),
+        file: file
+      )
+    Absent => []
+  }
+}
+
+fn roster_home_facts_in_file(facts: List<DeclFact>, file: String) -> List<DeclFact> {
+  fold_list(xs: facts, empty: [], cons: fn(acc, f) { if f.rel_path == file { list_snoc_item(xs: acc, item: f) } else { acc } })
+}
+
+// The classification of an already-read fact list against the home's exact file: the controls supply facts here (a real
+// row re-pathed to a sibling) so the exact-file filter is exercised without planting a file in the corpus.
+fn roster_home_side_of_facts(facts: List<DeclFact>, file: String) -> HomeKindSide {
+  fold_list(xs: roster_home_facts_in_file(facts: facts, file: file), empty: SideNeither, cons: fn(side, fact) { side_with_kind(side: side, kind: fact.kind) })
 }
 
 // WHICH SIDE OF THE RULE A HOME'S DECLARATION SITS ON -- the ONE classification of the keyed census rows for
@@ -256,21 +279,49 @@ fn roster_home_declaration_is_value(home: String, import_name: String) -> Bool {
   }
 }
 
-// THE POOL IS THE HOME'S STORAGE DIRECTORY (see the header): the directory of the one file the layout assigns <home>.
-fn roster_home_pool_roots(home: String) -> List<String> {
+// THE HOME'S FILE (see the header): the one file the layout assigns <home>. Its directory is the walk's root, and only
+// rows read from this exact file classify the home.
+fn roster_home_file(home: String) -> Optional<String> {
   match module_file(layout: repository_storage_layout(), name: home) {
-    ModuleFileDerived { file: f } => [roster_parent_directory(path: repository_path_of_module_file(file: f))]
-    ModuleNameUnderivable { name: _, cause: _ } => []
+    ModuleFileDerived { file: f } => Present { value: repository_path_of_module_file(file: f) }
+    ModuleNameUnderivable { name: _, cause: _ } => Absent
   }
 }
 
-fn roster_parent_directory(path: String) -> String {
-  let segments = split(s: path, delimiter: "/")
-  fold_list(xs: take_prefix(xs: segments, n: length(xs: segments) - 1), empty: "", cons: fn(acc, seg) { if acc == "" { seg } else { acc + "/" + seg } })
+// THE EXACT-FILE CONTROL (side chat on #14870). The real producer's row for std.host_text.chars, read from its own file,
+// classifies the home as a VALUE (the inhabitance half); the SAME row re-pathed to a sibling in the same directory -- the
+// shape a stray `module std.host_text` file would give the walk -- must classify nothing, so the home refuses rather than
+// being decided by a file the compiler never binds. Deleting the rel_path filter turns the second reading SideValue.
+fn roster_home_exact_file_control() -> String {
+  let file = "dag/std/host_text.dag"
+  let real = decl_facts_at(pool_roots: [path_parent_directory(path: file)], qualified_name: "std.host_text.chars")
+  let moved = fold_list(xs: real, empty: [], cons: fn(acc, f) {
+    list_snoc_item(xs: acc, item: DeclFact { qualified_name: f.qualified_name, name: f.name, kind: f.kind, node: f.node, rel_path: "dag/std/roster_seat7_sibling.dag" })
+  })
+  let own = match roster_home_side_of_facts(facts: real, file: file) {
+    SideValue => ""
+    SideBoth => "CONTROL-FAIL exact-file: std.host_text.chars read from its own file is also a type\n"
+    SideType => "CONTROL-FAIL exact-file: std.host_text.chars read from its own file is a type\n"
+    SideNeither => "CONTROL-FAIL exact-file: std.host_text.chars read from its own file classifies nothing\n"
+  }
+  let sibling = match roster_home_side_of_facts(facts: moved, file: file) {
+    SideNeither => ""
+    SideValue => "CONTROL-FAIL exact-file: a sibling file's row classified std.host_text\n"
+    SideType => "CONTROL-FAIL exact-file: a sibling file's row classified std.host_text\n"
+    SideBoth => "CONTROL-FAIL exact-file: a sibling file's row classified std.host_text\n"
+  }
+  own + sibling
 }
 
-// The roots a home's census was read under, for a failure message: a home missing from its own directory is a
-// different fact from a home whose name derives no directory at all, and the reader must be able to tell which.
+fn roster_home_pool_roots(home: String) -> List<String> {
+  match roster_home_file(home: home) {
+    Present { value: file } => [file]
+    Absent => []
+  }
+}
+
+// The file a home's census was read from, for a failure message: a home missing from its own file is a different fact
+// from a home whose name derives no file at all, and the reader must be able to tell which.
 fn roster_home_pool_roots_text(home: String) -> String {
   fold_list(xs: roster_home_pool_roots(home: home), empty: "", cons: fn(acc, r) { acc + r + " " })
 }
