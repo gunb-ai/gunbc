@@ -8,6 +8,7 @@ import std.content_hash { ContentHash, content_hash_of_value, compare_content_ha
 import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.checked_arithmetic { int_inclusive_max }
 import extdeps.access.posix { FileMode, file_mode_bits }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.filesystem_interface { FilesystemInterface, local_filesystem }
 import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
@@ -1346,14 +1347,13 @@ type SlotStore sole_constructor {
 }
 
 // THE ONE SLOT STORE BUILDER, AND IT TAKES A ROOT. It survives public because a per-store declaring module
-// has to build the SlotStore its sealed record holds, and the seal is per file: each such module derives
-// its root from its own declaration and passes it here. Its production callers are exactly those mints:
-// gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_store,
-// gunbc.roadmap.roadmap_session_attempt_slots_root session_attempt_slots_store,
-// gunbc.dispatch_credential_acquisition credential_acquisition_store and gunbc.compute.compute_attempt_slots_root
-// compute_seat_store; the rest are witnesses. Holding a SlotStore from it is not holding any of those stores:
-// each per-store record cannot be spelled outside its module. NOT closed here: any module can still build a
-// plain SlotStore over a path of its own, because Filesystem.* and local_filesystem are ambient.
+// has to build the SlotStore its sealed record holds, and the seal is per file: the worktree claim root
+// module (worktree_claim_store) is that consumer, passing a root it derived from worktree_claim_slots.
+// The other callers are the declared legacy cohorts that still name their root as a path
+// (gunbc.compute.work_provider_local, gunbc.compute.compute_seat_ensure, gunbc.dispatch_credential_acquisition,
+// the session-slot stores of gunbc.roadmap.roadmap_session_placement) and their witnesses. Holding a
+// SlotStore from it is not holding a claim store: WorktreeClaimStore cannot be spelled outside its module.
+// The legacy use dissolves under slot_store_legacy_root_dissolution.
 fn file_slot_store_over(fs: FilesystemInterface, root: NonEmptyStr) -> SlotStore {
   SlotStore {
     observe: fn(key) { observe_cas_slot_state_over(fs: fs, root: root, key: key) }
@@ -1361,3 +1361,5 @@ fn file_slot_store_over(fs: FilesystemInterface, root: NonEmptyStr) -> SlotStore
     keys: fn() { cas_slot_keys_over(fs: fs, root: root) }
   }
 }
+
+data slot_store_legacy_root_dissolution: DissolutionCondition = unbound_dissolution(description: "file_slot_store_over mints a SlotStore from a root path with no readiness and no declaration. It dissolves when its last caller mints its SlotStore inside a declaring module that derives the root from its own declaration: each attempt_lifecycle cohort (compute seats, credential acquisition, session slots) gaining its own one-declaration store like gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_store. Trigger, checkable: every production caller of file_slot_store_over is the mint of a sealed per-store record whose root it derives from its own declaration.")
