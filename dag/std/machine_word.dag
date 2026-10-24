@@ -21,10 +21,9 @@ import std.algebra { list_push }
 // authority -- a width that std.integer cannot spell must not appear here, and one it can spell but
 // this substrate cannot realize refuses by name rather than being omitted (Width64 below).
 //
-// std.bit's Word8..Word128 are a different concept again and are deliberately not reused: they are
-// bit-RECORDS (List<Byte> of List<Bit>) with no cardinality refinement, consumed as type vocabulary
-// by extdeps.languages.rust.primitives and v2.std.machine to NAME a width. They carry no value a
-// fold can compute with. Reusing the name for a computational carrier would be a meaning fork.
+// std.bit declared no word carriers once Word8..Word128 (bit-records with no consumer) were deleted:
+// the octet encoding of a Word is word_to_octets / word_from_octets below, byte order an explicit
+// Endianness argument.
 //
 // ENDIANNESS IS NOT DECLARED HERE. extdeps.toolchain.architecture_profile already owns it, and byte
 // order is one concept whether it is read off an architecture profile or supplied to a conversion.
