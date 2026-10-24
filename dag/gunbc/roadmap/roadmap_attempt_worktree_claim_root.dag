@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_attempt_worktree_claim_root
 
 import std.types { String, NonEmptyStr, FilePath }
 import gunbc.filesystem_interface { local_filesystem }
-import gunbc.durable_cas_file_store { SlotStore, file_slot_store_over }
+import gunbc.durable_cas_file_store { SlotStore, slot_root_observe, slot_store_of, SlotRootObserved, SlotRootUnready }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
 import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
@@ -25,11 +25,32 @@ fn worktree_claim_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
   join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", worktree_claim_slots.member as String], "") as NonEmptyStr
 }
 
-// THE CLAIM STORE, WHERE AND HOW SEALED TOGETHER: the instance a route received decides the location, the
-// local filesystem realization answers it, and the holder gets a SlotStore that exposes neither. A test
-// builds the same store from an instance whose state root it owns.
-fn worktree_claim_store(instance: HostDashboardInstance) -> SlotStore {
-  file_slot_store_over(fs: local_filesystem, root: worktree_claim_slots_path(instance: instance))
+// THE CLAIM STORE, A SEALED VALUE MINTED FROM EVIDENCE. WorktreeClaimStore is sole_constructor and this
+// file builds it in one place: worktree_claim_store, from the readiness an observation of THIS
+// declaration's directory produced for the instance the route received. So a claim store exists only
+// for a directory that was observed, carries the instance it was minted for, and cannot be spelled
+// (literal or cast) by claim code, the belt or a test; the claim domain
+// (gunbc.roadmap.roadmap_attempt_worktree_claim) takes this type, so a SlotStore minted for any other
+// declaration, or from a bare root (gunbc.durable_cas_file_store file_slot_store_over), is not a claim
+// store. A holder can read the instance and use the slot operations; neither carries a root. Non-generic
+// and never a variant arm, because the seal does not reach variant construction
+// (test.claim.sole_constructor_completeness_audit_probe f13). NOT established: that a store minted for
+// instance A is refused where B is required -- both are the same type, and the claim functions take no
+// instance to compare it with (the belt mints from the instance it holds).
+type WorktreeClaimStore sole_constructor {
+  instance: NonEmptyStr
+  slots: SlotStore
+}
+
+type WorktreeClaimStoreReading
+  = WorktreeClaimStoreReady { store: WorktreeClaimStore }
+  | WorktreeClaimStoreUnready { detail: String }
+
+fn worktree_claim_store(instance: HostDashboardInstance) -> WorktreeClaimStoreReading {
+  match slot_root_observe(fs: local_filesystem, declaration: worktree_claim_slots.member, root: worktree_claim_slots_path(instance: instance)) {
+    SlotRootObserved { ready } => WorktreeClaimStoreReady { store: WorktreeClaimStore { instance: instance.instance_id, slots: slot_store_of(ready: ready) } }
+    SlotRootUnready { declaration: _, detail } => WorktreeClaimStoreUnready { detail: detail }
+  }
 }
 
 // THE CLAIM STORE ROOT IS A DEMANDED DIRECTORY, declared beside the path it is and enrolled in the one instance

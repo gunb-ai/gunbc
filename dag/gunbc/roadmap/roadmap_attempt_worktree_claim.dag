@@ -10,9 +10,10 @@ import gunbc.compute.attempt_lifecycle {
   UnitLifecycle, UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended,
   attempt_state_wire, attempt_state_decode, attempt_member, attempt_member_epoch, attempt_transition_wire,
   attempt_open_payload, attempt_terminate_payload, attempt_owner_wire, DispatchOwned,
-  SlotStore, attempt_payload_read, AttemptPayloadAbsent, AttemptPayloadHeld, AttemptPayloadUnreadable,
+  attempt_payload_read, AttemptPayloadAbsent, AttemptPayloadHeld, AttemptPayloadUnreadable,
   attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
 }
+import gunbc.roadmap.roadmap_attempt_worktree_claim_root { WorktreeClaimStore }
 import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable }
 import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent,
@@ -179,8 +180,8 @@ type WorktreeClaimReading
   | WorktreeClaimHeld { claim: WorktreeClaim, generation: CasGeneration }
   | WorktreeClaimUnreadable { detail: String }
 
-fn worktree_claim_read(claims: SlotStore, reference: NonEmptyStr) -> WorktreeClaimReading {
-  match attempt_payload_read(store: claims, reference: reference, codec: worktree_claim_codec()) {
+fn worktree_claim_read(claims: WorktreeClaimStore, reference: NonEmptyStr) -> WorktreeClaimReading {
+  match attempt_payload_read(store: claims.slots, reference: reference, codec: worktree_claim_codec()) {
     AttemptPayloadAbsent => WorktreeClaimAbsent
     AttemptPayloadHeld { record: c, generation: g } => WorktreeClaimHeld { claim: c, generation: g }
     AttemptPayloadUnreadable { detail: d } => WorktreeClaimUnreadable { detail: join(["the worktree claim could not be read: ", d], "") }
@@ -189,12 +190,12 @@ fn worktree_claim_read(claims: SlotStore, reference: NonEmptyStr) -> WorktreeCla
 
 // THE CLAIM IS WRITTEN FIRST, create-only, and read back by the caller's next step. A duplicate
 // reference is a lost race, never an overwrite of another attempt's claim.
-fn worktree_claim_open(claims: SlotStore, claim: WorktreeClaim) -> AttemptTransition {
-  attempt_open_payload(store: claims, record: claim, codec: worktree_claim_codec())
+fn worktree_claim_open(claims: WorktreeClaimStore, claim: WorktreeClaim) -> AttemptTransition {
+  attempt_open_payload(store: claims.slots, record: claim, codec: worktree_claim_codec())
 }
 
-fn worktree_claim_close(claims: SlotStore, reference: NonEmptyStr, expected: CasGeneration, detail: String) -> AttemptTransition {
-  attempt_terminate_payload(store: claims, reference: reference, expected: expected, verdict: AttemptRecovered, detail: detail, codec: worktree_claim_codec())
+fn worktree_claim_close(claims: WorktreeClaimStore, reference: NonEmptyStr, expected: CasGeneration, detail: String) -> AttemptTransition {
+  attempt_terminate_payload(store: claims.slots, reference: reference, expected: expected, verdict: AttemptRecovered, detail: detail, codec: worktree_claim_codec())
 }
 
 fn worktree_claim_new(node_id: String, attempt_key: String, worktree_path: String, opened_at: EpochSecs, launch_deadline: EpochSecs) -> WorktreeClaim {
@@ -213,7 +214,7 @@ type WorktreeClaimWritten
   = WorktreeClaimRecorded
   | WorktreeClaimNotRecorded { detail: String }
 
-fn worktree_claim_record_before_add(claims: SlotStore, claim: WorktreeClaim) -> WorktreeClaimWritten {
+fn worktree_claim_record_before_add(claims: WorktreeClaimStore, claim: WorktreeClaim) -> WorktreeClaimWritten {
   match worktree_claim_open(claims: claims, claim: claim) {
     AttemptAdvanced { state: _, generation: _ } =>
       match worktree_claim_read(claims: claims, reference: claim.reference as NonEmptyStr) {
@@ -417,14 +418,14 @@ type WorktreeClaimPass
   = WorktreeClaimPassRan { outcomes: List<WorktreeClaimOutcome> }
   | WorktreeClaimPassRefused { detail: String }
 
-fn worktree_claim_close_recorded(claims: SlotStore, reference: String, generation: CasGeneration, detail: String) -> AttemptTransition {
+fn worktree_claim_close_recorded(claims: WorktreeClaimStore, reference: String, generation: CasGeneration, detail: String) -> AttemptTransition {
   worktree_claim_close(claims: claims, reference: reference as NonEmptyStr, expected: generation, detail: detail)
 }
 
 // ONE ATTEMPT: observe, decide, apply, read back. The readback of a removal is the tree observed
 // absent AFTER the remove, independent of the remove's own report.
 fn worktree_claim_ensure_one(
-  claims: SlotStore,
+  claims: WorktreeClaimStore,
   node_id: String,
   attempt_key: String,
   derived_path: String,
@@ -487,7 +488,7 @@ fn worktree_claim_ensure_one(
 // seams the activation ensure uses; this pass owns no unit.
 fn worktree_claim_ensure_pass_at(
   stores: SessionPlacementStores,
-  claims: SlotStore,
+  claims: WorktreeClaimStore,
   host: String,
   path_of: fn(String, String) -> String,
   loaded_of: fn(NonEmptyStr) -> AttemptUnitObservation,
@@ -498,7 +499,7 @@ fn worktree_claim_ensure_pass_at(
   remove_tree: fn(String) -> ClaimRemoval,
   capture_of: fn(String, String) -> ClaimCapture,
 ) -> WorktreeClaimPass {
-  match attempt_slot_keys(store: claims) {
+  match attempt_slot_keys(store: claims.slots) {
     AttemptSlotKeysListed { keys } =>
       WorktreeClaimPassRan {
         outcomes: map(keys, k =>

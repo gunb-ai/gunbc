@@ -8,6 +8,7 @@ import std.content_hash { ContentHash, content_hash_of_value, compare_content_ha
 import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.checked_arithmetic { int_inclusive_max }
 import extdeps.access.posix { FileMode, file_mode_bits }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.filesystem_interface { FilesystemInterface, local_filesystem }
 import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
@@ -324,11 +325,7 @@ fn cas_read_generation_over(fs: FilesystemInterface, root: NonEmptyStr, key: Non
   )
 }
 
-fn cas_read_generation(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasGenerationRead
-  admit_callers: [
-    decl_ref(module_path: "gunbc.auth.approval_store_receipt", decl_name: "store_receipt_answer"),
-  ]
-{
+fn cas_read_generation(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasGenerationRead {
   cas_read_generation_over(fs: local_filesystem, root: root, key: key, generation: generation)
 }
 
@@ -713,35 +710,7 @@ fn observe_cas_slot_state_over(fs: FilesystemInterface, root: NonEmptyStr, key: 
   observe_cas_slot_state_retained_over(fs: fs, root: root, key: key, retention: KeepAllGenerations)
 }
 
-fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr>
-  admit_callers: [
-    decl_ref(module_path: "gunbc.auth.approval_assertion_counter", decl_name: "observe_assertion_counter"),
-    decl_ref(module_path: "gunbc.auth.approval_decision_store", decl_name: "observe_escalation"),
-    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "create_or_read_subject_pin"),
-    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "observe_google_enrolment"),
-    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_admit_reader_or_discard"),
-    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_recover_root"),
-    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_recover_slot"),
-    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_slot_record"),
-    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_terminate"),
-    decl_ref(module_path: "gunbc.fabric.fabric_required_build_cell", decl_name: "observe_required_build_cell_expecting"),
-    decl_ref(module_path: "gunbc.fabric.fabric_storage_file_store", decl_name: "fabric_storage_file_head"),
-    decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "fci1_allocation_prestate"),
-    decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "fci1_allocation_slot_observation"),
-    decl_ref(module_path: "gunbc.roadmap.roadmap_dogfood_route", decl_name: "dogfood_route_acceptance_holds_on"),
-    decl_ref(module_path: "gunbc.roadmap.roadmap_dogfood_route", decl_name: "dogfood_start_record_for_instance"),
-    decl_ref(module_path: "gunbc.roadmap.roadmap_view_preference_store", decl_name: "issue_view_store_read"),
-    decl_ref(module_path: "gunbc.scm.repository_slot", decl_name: "read_repository_slot"),
-    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "observe_durable_record"),
-    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_idempotent_on_store"),
-    decl_ref(module_path: "gunbc.workspace_commissioning_executor_store", decl_name: "workspace_executor_journal_observe"),
-    decl_ref(module_path: "gunbc.workspace_commissioning_input_store", decl_name: "workspace_commissioning_input_read"),
-    decl_ref(module_path: "gunbc.workspace_commissioning_store", decl_name: "workspace_commissioning_committed_for_slot"),
-    decl_ref(module_path: "gunbc.workspace_commissioning_store", decl_name: "workspace_commissioning_store_observe"),
-    decl_ref(module_path: "product.printed_chassis.assembly_inventory_store", decl_name: "mutate_inventory"),
-    decl_ref(module_path: "product.printed_chassis.assembly_inventory_store", decl_name: "observe_stored_inventory"),
-  ]
-{
+fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
   observe_cas_slot_state_over(fs: local_filesystem, root: root, key: key)
 }
 
@@ -968,11 +937,7 @@ fn cas_commit_at_over(fs: FilesystemInterface, admitted: AdmittedCasPublication)
   }
 }
 
-fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr>
-  admit_callers: [
-    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_verify_named_window_head"),
-  ]
-{
+fn cas_commit_at(admitted: AdmittedCasPublication) -> CasOutcome<NonEmptyStr> {
   cas_commit_at_over(fs: local_filesystem, admitted: admitted)
 }
 
@@ -1286,29 +1251,7 @@ fn file_compare_and_set_over(fs: FilesystemInterface, root: NonEmptyStr, publica
   file_compare_and_set_retained_over(fs: fs, root: root, publication: publication, retention: KeepAllGenerations, verified: verified).outcome
 }
 
-fn file_compare_and_set(root: NonEmptyStr, publication: CasGenerationPublication, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>
-  admit_callers: [
-    decl_ref(module_path: "gunbc.auth.approval_assertion_counter", decl_name: "assertion_counter_commit"),
-    decl_ref(module_path: "gunbc.auth.approval_decision_store", decl_name: "commit_broker_decision"),
-    decl_ref(module_path: "gunbc.auth.approval_decision_store", decl_name: "file_approval_request"),
-    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "device_store_write"),
-    decl_ref(module_path: "gunbc.authorization_claim_slot", decl_name: "claim_authorization_slot"),
-    decl_ref(module_path: "gunbc.authorization_claim_slot", decl_name: "settle_authorization_claim"),
-    decl_ref(module_path: "gunbc.fabric.fabric_storage_file_store", decl_name: "fabric_storage_file_advance"),
-    decl_ref(module_path: "gunbc.host.host_boot_attempt_admission", decl_name: "consume_attempt_slot"),
-    decl_ref(module_path: "gunbc.instruments.cas_store_live_probe", decl_name: "cas_probe_run"),
-    decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "fci1_live_replace_held"),
-    decl_ref(module_path: "gunbc.roadmap.roadmap_dogfood_route", decl_name: "dogfood_start_record_for_instance"),
-    decl_ref(module_path: "gunbc.roadmap.roadmap_view_preference_store", decl_name: "issue_view_store_commit"),
-    decl_ref(module_path: "gunbc.scm.repository_slot", decl_name: "publish_prepared"),
-    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_derived_phase"),
-    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "persist_waiting_on_store"),
-    decl_ref(module_path: "gunbc.workspace_commissioning_executor_store", decl_name: "workspace_executor_journal_publish"),
-    decl_ref(module_path: "gunbc.workspace_commissioning_input_store", decl_name: "workspace_commissioning_input_publish"),
-    decl_ref(module_path: "gunbc.workspace_commissioning_store", decl_name: "workspace_commissioning_publish_phase"),
-    decl_ref(module_path: "product.printed_chassis.assembly_inventory_store", decl_name: "publish_inventory"),
-  ]
-{
+fn file_compare_and_set(root: NonEmptyStr, publication: CasGenerationPublication, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
   file_compare_and_set_over(fs: local_filesystem, root: root, publication: publication, verified: verified)
 }
 
@@ -1377,58 +1320,85 @@ fn cas_slot_keys_over(fs: FilesystemInterface, root: NonEmptyStr) -> CasSlotKeys
   }
 }
 
-fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys
-  admit_callers: [
-    decl_ref(module_path: "gunbc.auth.approval_decision_store", decl_name: "pending_escalations"),
-    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "list_google_enrolments"),
-    decl_ref(module_path: "gunbc.compute.compute_seat_ensure", decl_name: "compute_seat_discharge_dir"),
-    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_recover_root"),
-  ]
-{
+fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
   cas_slot_keys_over(fs: local_filesystem, root: root)
 }
 
 // ── The store as a value ─────────────────────────────────────────────────────────────────────
 // THE SLOT STORE IS THE `*_over` LOGIC ALREADY BOUND TO ITS FILESYSTEM AND ITS ROOT: the
 // `FilesystemInterface` idiom one level up. A holder can observe a slot, publish a verified attempt
-// and list the keys; it cannot get the root or the filesystem back out, because neither is a field.
-// Where the store lives, which filesystem answers it and what directory it needs are decided once,
-// by the module that builds the value (for the worktree claim store,
-// gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_store); the holder is handed it.
+// and list the keys; it cannot get the root or the filesystem back out, because neither is a field,
+// and it cannot spell one, because the record is sole_constructor: the only expressions that build a
+// SlotStore are slot_store_of and file_slot_store_over below (seal per file on the seed route;
+// residuals f13 coproduct variants and f19 parameter defaults, so the record is kept non-generic and
+// never a variant arm). It carries the identity of the directory declaration it was minted for, read
+// back as slot_store_declaration.
 //
 // It inhabits std.durable_compare_and_set (the outcomes and observations are that module's own); it
 // is not an ArtifactStore (a pure content-addressed fold) nor a StorageSurface (cache capacity
 // policy): neither models a generation-checked create-new slot. The windowed and retained variants
 // are not carried: no holder of this value uses them, and a holder that does adds the field with its
 // first consumer (DESIGN section 3c).
-type SlotStore {
+type SlotStore sole_constructor {
+  declaration: NonEmptyStr
   observe: fn(NonEmptyStr) -> CasSlotObservation<NonEmptyStr>
   commit: fn(CasGenerationPublication, VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>
   keys: fn() -> CasSlotKeys
 }
 
-fn file_slot_store_over(fs: FilesystemInterface, root: NonEmptyStr) -> SlotStore {
+fn slot_store_declaration(store: SlotStore) -> NonEmptyStr {
+  store.declaration
+}
+
+// READINESS IS THE EVIDENCE A STORE IS MINTED FROM: the named directory was listed through the
+// filesystem the store will use, at the root the store will use. Sealed like the store, so the only
+// readiness that exists is one an observation produced; a store's declaration, root and filesystem
+// are the readiness's own, so a readiness for one declaration can only ever mint a store for that
+// declaration (there is no second, independently supplied identity for it to disagree with).
+type SlotRootReady sole_constructor {
+  declaration: NonEmptyStr
+  root: NonEmptyStr
+  fs: FilesystemInterface
+}
+
+type SlotRootReadiness
+  = SlotRootObserved { ready: SlotRootReady }
+  | SlotRootUnready { declaration: NonEmptyStr, detail: String }
+
+fn slot_root_observe(fs: FilesystemInterface, declaration: NonEmptyStr, root: NonEmptyStr) -> SlotRootReadiness {
+  let fs_list = fs.list
+  let listing = fs_list(root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => SlotRootUnready { declaration: declaration, detail: join(["the ", declaration as String, " store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => SlotRootUnready { declaration: declaration, detail: join(["the ", declaration as String, " store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => SlotRootObserved { ready: SlotRootReady { declaration: declaration, root: root, fs: fs } }
+  }
+}
+
+fn slot_store_of(ready: SlotRootReady) -> SlotStore {
+  let fs = ready.fs
+  let root = ready.root
   SlotStore {
+    declaration: ready.declaration,
     observe: fn(key) { observe_cas_slot_state_over(fs: fs, root: root, key: key) }
     commit: fn(publication, verified) { file_compare_and_set_over(fs: fs, root: root, publication: publication, verified: verified) }
     keys: fn() { cas_slot_keys_over(fs: fs, root: root) }
   }
 }
 
-// The plain (local-files) constructor for the sibling cohorts that still name their root as a path.
-fn file_slot_store(root: NonEmptyStr) -> SlotStore
-  admit_callers: [
-    decl_ref(module_path: "gunbc.compute.compute_seat_ensure", decl_name: "compute_seat_ensure_in"),
-    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_open_attempt"),
-    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_begin_launch"),
-    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_settle_attempt"),
-    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_open_attempt_minted"),
-    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_recover_slot_present"),
-    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_recover_attempt_in"),
-    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_open"),
-    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_begin_launch"),
-    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_terminate"),
-  ]
-{
-  file_slot_store_over(fs: local_filesystem, root: root)
+// THE DECLARED LEGACY ROUTE: a store minted from ingredients, for the attempt_lifecycle cohorts that
+// still name their root as a path (gunbc.compute.work_provider_local, gunbc.compute.compute_seat_ensure,
+// gunbc.dispatch_credential_acquisition, the session-slot stores of gunbc.roadmap.roadmap_session_placement)
+// and for witnesses over those. It carries no declaration of its own ("undeclared"), and no claim store
+// can be made from it (gunbc.roadmap.roadmap_attempt_worktree_claim_root WorktreeClaimStore is minted
+// only from claim readiness). Dissolution: slot_store_legacy_root_dissolution.
+fn file_slot_store_over(fs: FilesystemInterface, root: NonEmptyStr) -> SlotStore {
+  SlotStore {
+    declaration: "undeclared",
+    observe: fn(key) { observe_cas_slot_state_over(fs: fs, root: root, key: key) }
+    commit: fn(publication, verified) { file_compare_and_set_over(fs: fs, root: root, publication: publication, verified: verified) }
+    keys: fn() { cas_slot_keys_over(fs: fs, root: root) }
+  }
 }
+
+data slot_store_legacy_root_dissolution: DissolutionCondition = unbound_dissolution(description: "file_slot_store_over mints a SlotStore from a root path with no readiness and no declaration. It dissolves when its last caller mints through slot_root_observe + slot_store_of from a declared directory: each attempt_lifecycle cohort (compute seats, credential acquisition, session slots) gaining its own one-declaration store like gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_store. Trigger, checkable: no production caller of file_slot_store_over remains.")
