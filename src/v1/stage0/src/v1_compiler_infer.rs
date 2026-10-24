@@ -5046,10 +5046,26 @@ pub fn equality_extensional_container_rows() -> Rc<HashMap<String, bool>> {
     CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EqualityInadmissibleDeclaration {
+    pub decl_file: String,
+    pub declared_name: String,
+}
+
+pub fn equality_inadmissible_declarations() -> Rc<Vec<Rc<EqualityInadmissibleDeclaration>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<EqualityInadmissibleDeclaration>>> = {
+            serde_json::from_str("[{\"decl_file\": \"src/v2/std/node.dag\", \"declared_name\": \"Edge\"}, {\"decl_file\": \"src/v2/std/node.dag\", \"declared_name\": \"Node\"}]")
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<EqualityInadmissibleDeclaration>>>| c.clone())
+}
+
 pub fn equality_inadmissible_declaration_identities() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec![crate::v1_compiler_type_head_exposure::type_declaration_identity_key("src/v2/std/node.dag".to_string(), "Edge".to_string()), crate::v1_compiler_type_head_exposure::type_declaration_identity_key("src/v2/std/node.dag".to_string(), "Node".to_string())])
+            Rc::new({ let mut __result = Vec::new(); for d in equality_inadmissible_declarations().iter().cloned() { __result.push(crate::v1_compiler_type_head_exposure::type_declaration_identity_key(d.decl_file.clone(), d.declared_name.clone())); } __result })
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -5118,7 +5134,7 @@ pub fn equality_operand_is_the_refused_type(
 pub fn equality_inadmissible_declaration_leaf_names() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["Edge".to_string(), "Node".to_string()])
+            Rc::new({ let mut __result = Vec::new(); for d in equality_inadmissible_declarations().iter().cloned() { __result.push(d.declared_name.clone()); } __result })
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -5130,7 +5146,7 @@ pub fn equality_node_reaching_composite_dropped(
     right: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> bool {
-    ((((r.member.clone() == "declared equality-inadmissible".to_string())
+    ((((r.member.clone() == equality_inadmissible_member())
         && !equality_operand_is_the_refused_type(left.clone(), r.clone(), scope.clone()))
         && !equality_operand_is_the_refused_type(right.clone(), r.clone(), scope.clone()))
         && equality_node_reaching_composite_drop_listed(v1_rt::concat(
@@ -5161,6 +5177,15 @@ pub fn equality_node_reaching_composite_drop_listed(key: String) -> bool {
         })
 }
 
+pub fn equality_inadmissible_member() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "declared equality-inadmissible".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn equality_inadmissible_type_refusal(
     identity: String,
     name: String,
@@ -5178,11 +5203,7 @@ pub fn equality_inadmissible_type_refusal(
         }
         __found
     } {
-        equality_refused(
-            name.clone(),
-            "declared equality-inadmissible".to_string(),
-            true,
-        )
+        equality_refused(name.clone(), equality_inadmissible_member(), true)
     } else {
         std::option::Option::None
     }
@@ -5705,7 +5726,7 @@ pub fn equality_admission_refusal_diag(
     r: Rc<EqualityAdmissionRefusal>,
     span: Rc<SourceSpan>,
 ) -> Rc<CompilerDiagnostic> {
-    if (r.member.clone() == "declared equality-inadmissible".to_string()) {
+    if (r.member.clone() == equality_inadmissible_member()) {
         Rc::new(CompilerDiagnostic::EqualityOnInadmissibleType {
             type_name: r.type_name.clone(),
             span: span.clone(),

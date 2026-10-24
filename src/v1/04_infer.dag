@@ -3551,10 +3551,17 @@ data equality_extensional_container_rows: Map<String, Bool> = carrier_container_
 // (identity).
 // SEED PATH ONLY: the native v2 infer has no == operand judgment; the capability that retires that
 // gap is a native v2 == operand judgment (gunbc.rung_drop native_equality_operand_judgment).
-data equality_inadmissible_declaration_identities: List<String> = [
-  type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Edge"),
-  type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Node")
+type EqualityInadmissibleDeclaration {
+  decl_file: String
+  declared_name: String
+}
+
+data equality_inadmissible_declarations: List<EqualityInadmissibleDeclaration> = [
+  EqualityInadmissibleDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "Edge" },
+  EqualityInadmissibleDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "Node" }
 ]
+
+data equality_inadmissible_declaration_identities: List<String> = equality_inadmissible_declarations |> map(d => type_declaration_identity_key(decl_file: d.decl_file, declared_name: d.declared_name))
 
 // A NARROWED, DECLARED DROP (gunbc.rung_drop.node_reaching_composite_equality, which reads its population
 // from here): each row names one declaration ("<module> <declaration>") whose `==` compares a COMPOSITE that reaches Node (a record or
@@ -3606,12 +3613,18 @@ fn equality_operand_is_the_refused_type(n: Node, r: EqualityAdmissionRefusal, sc
     || (equality_inadmissible_declaration_leaf_names |> any(l => l == qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))))
 }
 
-// The leaf spellings of the inadmissible declarations, read only to recognise an operand that IS one of
-// them; admission itself keys on declaration identity above.
-data equality_inadmissible_declaration_leaf_names: List<String> = ["Edge", "Node"]
+// WHY THE DECLARED NAME IS READ AS WELL AS THE IDENTITY (measured on the bare-Node fixture, 2026-10-24):
+// a top-level operand's type node carries no Resolved declaration, so type_reference_identity keys it by
+// the USE-SITE file ("test.dag::Node", never "src/v2/std/node.dag::Node"); the guard catches a bare Node
+// == only through Node's own fields (Edge.target: Node), whose types do resolve. So the identity test
+// alone misses a bare inadmissible operand, and its declared name is read from the SAME rows. This fails
+// closed: a user type merely named Node or Edge is refused at a listed declaration, never admitted.
+// Trigger to drop the name read: an operand type reference carries its resolved declaration, so its
+// identity is the declaring file's.
+data equality_inadmissible_declaration_leaf_names: List<String> = equality_inadmissible_declarations |> map(d => d.declared_name)
 
 fn equality_node_reaching_composite_dropped(r: EqualityAdmissionRefusal, left: Node, right: Node, scope: InferScope) -> Bool {
-  r.member == "declared equality-inadmissible"
+  r.member == equality_inadmissible_member
     && !equality_operand_is_the_refused_type(n: left, r: r, scope: scope)
     && !equality_operand_is_the_refused_type(n: right, r: r, scope: scope)
     && equality_node_reaching_composite_drop_listed(key: concat(scope.module_name, " ", scope.caller_decl_name))
@@ -3622,9 +3635,13 @@ fn equality_node_reaching_composite_drop_listed(key: String) -> Bool {
     || (equality_node_reaching_composite_drop_population.tail |> any(k => k == key))
 }
 
+// The member text an inadmissible-declaration refusal carries; the refusal's producer, its diagnostic and
+// the node-reaching-composite drop all read this one declaration.
+data equality_inadmissible_member: String = "declared equality-inadmissible"
+
 fn equality_inadmissible_type_refusal(identity: String, name: String) -> EqualityAdmissionRefusal? {
   if equality_inadmissible_declaration_identities |> any(i => i == identity) {
-    equality_refused(carrier: name, member: "declared equality-inadmissible", member_judged: true)
+    equality_refused(carrier: name, member: equality_inadmissible_member, member_judged: true)
   } else {
     none
   }
@@ -3816,7 +3833,7 @@ fn equality_operand_is_optional(n: Node, source_indices: Map<String, NewlineInde
 }
 
 fn equality_admission_refusal_diag(r: EqualityAdmissionRefusal, span: SourceSpan) -> CompilerDiagnostic {
-  if r.member == "declared equality-inadmissible" {
+  if r.member == equality_inadmissible_member {
     EqualityOnInadmissibleType { type_name: r.type_name, span: span }
   } else if r.member_judged {
     EqualityOnFunctionMember { type_name: r.type_name, member: r.member, span: span }

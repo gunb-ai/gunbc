@@ -1,9 +1,9 @@
 module gunbc.rung_drop.node_reaching_composite_equality
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeclaredBy, ReplacementStaged }
+import std.decl_ref { decl_ref }
 import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
-import v1.compiler.infer { equality_node_reaching_composite_drop_population }
 
 // DECLARED 2026-10-24 with Node joining the equality-inadmissible rows (gunbc#14842). Every bare Node ==
 // moved onto node_same_occurrence or node_equal_ignoring_provenance, and List/Optional/RuntimeValue/
@@ -27,7 +27,13 @@ data node_reaching_composite_equality: RungDrop = RungDrop {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
     reason: ReplacementStaged { replacement: "derived structural equality with a Node-leaf occurrence route, so a composite reaching Node compares through the erasure route without a per-type equality" },
-    population: Enumerated { members: equality_node_reaching_composite_drop_population },
+    // The 31 members live ONCE, in the seed the guard runs in; this row compiles without src/v1, so it
+    // cites that declaration. THE CITATION IS UNCHECKED: nothing on this side resolves a v1 symbol, and a
+    // claim that imports v1.compiler.infer from the dag tree fails resolve inside the seed module
+    // (measured 2026-10-24: 04_infer.dag fold_terminal_expr not in scope outside the seed build). A seed
+    // rename that the guard's own reference survives would leave this citation stale. Trigger for the
+    // check: v1.compiler.infer resolves from a dag-tree claim, which then imports the declaration by name.
+    population: DeclaredBy { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_node_reaching_composite_drop_population") },
     restoration_trigger: "the language derives structural equality for a composite with a Node-leaf occurrence route; then every listed declaration compares through it and equality_node_reaching_composite_drop_population is deleted",
   } }
 }
