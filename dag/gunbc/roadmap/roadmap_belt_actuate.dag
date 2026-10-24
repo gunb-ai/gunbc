@@ -3547,10 +3547,7 @@ fn belt_spawn_admitted(
           cmds.worker_git_entry_grant,
           command => BeltExecStep { step: "worker-git-entry-grant", command: command },
         ),
-        [BeltExecStep {
-          step: "attempt-state-prepare",
-          command: cmds.attempt_state_prepare,
-        }],
+        map(cmds.attempt_state_prepare, command => BeltExecStep { step: "attempt-state-prepare", command: command }),
       ),
     ),
     workdir: workdir,
