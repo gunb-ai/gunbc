@@ -1,0 +1,81 @@
+module test.claim.roster_builtin_result_declaration_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  CompileDiagnosticCensusRow,
+  census_blocking_rows,
+  census_total_count
+}
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows
+}
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTED EVIDENCE THAT A ROSTER BUILTIN'S RESULT IS ITS DECLARATION AT THE CALL, on the
+// source -> .dag-acceptance path (v1.compiler.infer builtin_result_at_call). While the registry typed
+// shell_materialize_operation_argv's result as an unsolved type variable, a match over it bound
+// `argv` as an error type with no diagnostic, so returning that binder where an Int is declared
+// compiled clean (gunbc.recurring_failure_mode
+// a_compiler_error_type_reaches_emission_without_a_blocking_diagnostic). The RED returns the binder
+// at the wrong type and must refuse; the GREEN returns it at its declared field type, List<String>
+// (std.operation_argv ArgvMaterialized), and must compile clean, so the refusal is the binder's
+// type and not the call.
+//
+// PATH SCOPE (DESIGN section 4b): this measures compile acceptance only.
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data binder_at_wrong_type_source: String = "module probe_roster_result_binder_wrong_type\nimport std.types { Int, String }\nimport std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }\nfn argv_of(op: String) -> Int {\n  match shell_materialize_operation_argv(op, \"w\", [], []) {\n    ArgvMaterialized { argv: a } => a\n    ArgvMaterializationRefused { at: _, cause: _ } => 0\n  }\n}\n"
+
+data binder_at_declared_type_source: String = "module probe_roster_result_binder_declared_type\nimport std.types { String, List }\nimport std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }\nfn argv_of(op: String) -> List<String> {\n  match shell_materialize_operation_argv(op, \"w\", [], []) {\n    ArgvMaterialized { argv: a } => a\n    ArgvMaterializationRefused { at: _, cause: _ } => []\n  }\n}\n"
+
+test fn w_a_builtin_result_binder_at_the_wrong_type_is_refused() -> Bool {
+  blocking_count(source: binder_at_wrong_type_source) >= 1
+}
+
+test fn w_a_builtin_result_binder_at_its_declared_field_type_is_accepted() -> Bool {
+  blocking_count(source: binder_at_declared_type_source) == 0
+}
+
+// THE REFUSAL IS TERMINAL. A closure that does not declare a builtin's result refuses at the call,
+// and the call is typed CompilerError rather than left the roster's bare type variable, so no use of
+// the result can bind it and report a second, derived error. The fixture compiles a caller-authored
+// manifest with no corpus roots (gunbc.instruments.multi_module_compile_fixture), so
+// gunbc.compile_diagnostic_census is genuinely absent from the closure. The probe reads the result
+// four ways -- an annotation, a field, arithmetic and a second annotation at another type -- and the
+// claim is that the ONE blocking row is this refusal, at its census subject (77 bytes and an
+// ellipsis, compile_clean_internal_error_histogram_name).
+data absent_declaration_probe_source: String = "module rbr.absent\nfn rows_of(s: String) -> Int {\n  let c = compile_dag_diagnostic_census(s)\n  let n: Int = c\n  let r = c.rows\n  let m = c + 1\n  let t: String = c\n  n\n}\n"
+
+data absent_declaration_refusal_subject: String = "builtin 'compile_dag_diagnostic_census' returns gunbc.compile_diagnostic_cens…"
+
+fn absent_declaration_blocking_rows() -> List<CompileDiagnosticCensusRow> {
+  match compile_fixture(MultiModuleCompileFixture { sources: [fixture_source("rbr/absent.dag", absent_declaration_probe_source)], entry: "rbr/absent.dag" }) {
+    FixtureInstrumentRefused { cause: _ } => []
+    FixtureCompileRefused { module_count: _, diagnostics: d, source_digest: _, compiler_digest: _ } => fixture_blocking_rows(rows: d)
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: d } => fixture_blocking_rows(rows: d)
+  }
+}
+
+test fn w_an_absent_result_declaration_refuses_once_with_no_cascade() -> Bool {
+  let rows = absent_declaration_blocking_rows()
+  census_total_count(rows: rows) == 1
+    && (rows |> any(r => r.subject_name == absent_declaration_refusal_subject))
+}
