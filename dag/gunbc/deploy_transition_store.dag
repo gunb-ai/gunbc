@@ -14,9 +14,10 @@ import extdeps.filesystem.filesystem_io {
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 
 // THE TRANSITION INHIBITION STORE, SEALED IN PLACE. gunbc.deploy_transition decides what the inhibition MEANS;
-// this leaf module is the only place that knows where it lives, and it hands the decision module a sealed value
-// whose fields are the store's own operations, already closed over the path derived here. So the inhibition's
-// decision functions take a store, never a root.
+// this leaf module is the only place that knows where it lives. It mints a sealed value from the instance alone
+// (the directory is derived here from the declaration and listed before a store exists), and the store's
+// operations are this module's functions over that value. So the inhibition's decision functions take a store,
+// never a root, and call no filesystem operation on it themselves.
 //
 // NO FORMAT CHANGE. Each operation is the exact filesystem call the decision module used to make itself -- the
 // owner-only exclusive create (Filesystem.WriteOwnerOnly, realized with create_new), the in-place rewrite of the
@@ -82,33 +83,30 @@ fn transition_marker_observe(directory: String, name: String) -> FilesystemFileO
   )
 }
 
-// THE INHIBITION STORE. `create` is exclusive for the reason gunbc.deploy_transition set_transition_inhibition
-// gives (a residue is the only evidence a partial transition happened, and an ordinary write would erase it);
-// `replace` is the one in-place write, used only to record a partial transition under the held lease.
-// Sole constructor, non-generic and never a variant arm (the seal does not reach variant construction:
-// test.claim.sole_constructor_completeness_audit_probe f13). It carries no root: a holder can read the instance
-// and use the operations. NOT established: a store minted for instance A refused where B's is required -- both
-// are this one type, and the decision functions take no instance to compare it with.
+// THE INHIBITION STORE: DATA ONLY (stern-ram-763, 2026-10-24: no closure fields, which the native emitter cannot
+// realize, E0728). Sole constructor, non-generic and never a variant arm (the seal does not reach variant
+// construction: test.claim.sole_constructor_completeness_audit_probe f13), so only transition_inhibition_store
+// below builds one, and only from a listed directory derived from transition_inhibition_slots. What is sealed is
+// CONSTRUCTION. Field READS are not sealed today, so a holder can read `root` and spell a path from it; that is the
+// same declared residual #14944 records for its claim store, and no rung is claimed for it. NOT established: a
+// store minted for instance A refused where B's is required -- both are this one type, and the decision functions
+// take no instance to compare it with.
 type TransitionInhibitionStore sole_constructor {
   instance: NonEmptyStr
-  create: fn(String) -> TransitionMarkerWrite
-  replace: fn(String) -> TransitionMarkerWrite
-  observe: fn() -> FilesystemFileObservation
-  delete_marker: fn() -> TransitionMarkerWrite
+  root: NonEmptyStr
 }
 
 type TransitionInhibitionStoreReading
   = TransitionInhibitionStoreReady { store: TransitionInhibitionStore }
   | TransitionInhibitionStoreUnready { detail: String }
 
-// THE STORE'S ONLY MINT. It takes the instance and nothing else; the path is derived from
-// transition_inhibition_slots here, and the instance root is LISTED before a store is handed out. A root that
-// does not list makes every absence unestablished, so a store over it could only ever answer indeterminate; it
-// is refused here instead, and the decision module reads the refusal as an unreadable standing.
+// THE STORE'S ONLY MINT. It takes the instance and nothing else; the directory is the instance root, and it is
+// LISTED before a store is handed out. A root that does not list makes every absence unestablished, so a store
+// over it could only ever answer indeterminate; it is refused here instead, and the decision module reads the
+// refusal as an unreadable standing.
 fn transition_inhibition_store(instance: HostDashboardInstance) -> TransitionInhibitionStoreReading {
   let root = instance.instance_root as String
   let name = transition_inhibition_slots.member as String
-  let path = transition_inhibition_path(instance: instance)
   let listing = Filesystem.List(path: root)
   match filesystem_listing_observation(directory: root, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
@@ -121,22 +119,37 @@ fn transition_inhibition_store(instance: HostDashboardInstance) -> TransitionInh
       }
     FilesystemDirectoryListed(_) =>
       TransitionInhibitionStoreReady {
-        store: TransitionInhibitionStore {
-          instance: instance.instance_id,
-          create: fn(content) {
-            let created = Filesystem.WriteOwnerOnly(path: path, content: content)
-            transition_marker_write(success: created.success, path: path, error: created.error)
-          }
-          replace: fn(content) {
-            let written = Filesystem.Write(path: path, content: content)
-            transition_marker_write(success: written.success, path: path, error: written.error)
-          }
-          observe: fn() { transition_marker_observe(directory: root, name: name) }
-          delete_marker: fn() {
-            let removed = Filesystem.Delete(path: path)
-            transition_marker_write(success: removed.success, path: path, error: removed.error)
-          }
-        },
+        store: TransitionInhibitionStore { instance: instance.instance_id, root: root as NonEmptyStr },
       }
   }
+}
+
+fn transition_inhibition_store_path(store: TransitionInhibitionStore) -> String {
+  join([store.root as String, "/", transition_inhibition_slots.member as String], "")
+}
+
+// THE STORE'S OPERATIONS. `create` is exclusive (Filesystem.WriteOwnerOnly is realized with create_new) for the
+// reason gunbc.deploy_transition set_transition_inhibition gives: a residue is the only evidence a partial
+// transition happened, and an ordinary write would erase it. `replace` is the one in-place write, used only to
+// record a partial transition under the held lease.
+fn transition_inhibition_create(store: TransitionInhibitionStore, content: String) -> TransitionMarkerWrite {
+  let path = transition_inhibition_store_path(store: store)
+  let created = Filesystem.WriteOwnerOnly(path: path, content: content)
+  transition_marker_write(success: created.success, path: path, error: created.error)
+}
+
+fn transition_inhibition_replace(store: TransitionInhibitionStore, content: String) -> TransitionMarkerWrite {
+  let path = transition_inhibition_store_path(store: store)
+  let written = Filesystem.Write(path: path, content: content)
+  transition_marker_write(success: written.success, path: path, error: written.error)
+}
+
+fn transition_inhibition_observe(store: TransitionInhibitionStore) -> FilesystemFileObservation {
+  transition_marker_observe(directory: store.root as String, name: transition_inhibition_slots.member as String)
+}
+
+fn transition_inhibition_delete(store: TransitionInhibitionStore) -> TransitionMarkerWrite {
+  let path = transition_inhibition_store_path(store: store)
+  let removed = Filesystem.Delete(path: path)
+  transition_marker_write(success: removed.success, path: path, error: removed.error)
 }

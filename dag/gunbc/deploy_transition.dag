@@ -22,6 +22,10 @@ import gunbc.deploy_transition_store {
   TransitionMarkerWritten,
   TransitionMarkerWriteRefused,
   transition_marker_observe,
+  transition_inhibition_create,
+  transition_inhibition_replace,
+  transition_inhibition_observe,
+  transition_inhibition_delete,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -438,7 +442,7 @@ fn observe_transition_lease(instance_root: String) -> TransitionFileObservation 
 }
 
 fn observe_transition_inhibition(inhibition: TransitionInhibitionStore) -> TransitionFileObservation {
-  transition_file_observation_of(observed: inhibition.observe())
+  transition_file_observation_of(observed: transition_inhibition_observe(store: inhibition))
 }
 
 // Where an inhibition refusal points an operator. The store carries no path, so the instance names
@@ -567,7 +571,7 @@ fn set_transition_inhibition(
   guard: TransitionGuard,
 ) -> TransitionActuation {
   let location = inhibition_location(inhibition: inhibition)
-  match inhibition.create(transition_record_json(
+  match transition_inhibition_create(store: inhibition, content: transition_record_json(
     record: transition_guard_record(guard: guard, phase: TransitionInForce),
   )) {
     TransitionMarkerWriteRefused { detail: create_error } =>
@@ -686,7 +690,7 @@ fn mark_transition_partial(
   guard: TransitionGuard,
   detail: String,
 ) -> TransitionActuation {
-  match inhibition.replace(transition_record_json(
+  match transition_inhibition_replace(store: inhibition, content: transition_record_json(
     record: transition_guard_record(guard: guard, phase: TransitionPartialLeft),
   )) {
     TransitionMarkerWritten => TransitionActuationCompleted { detail: detail }
@@ -1091,7 +1095,7 @@ fn clear_transition_records(
   ) {
     ClearanceRefused { reason: why } => TransitionActuationRefused { cause: why }
     ClearanceAdmitted { basis: b } =>
-      match inhibition.delete_marker() {
+      match transition_inhibition_delete(store: inhibition) {
         TransitionMarkerWriteRefused { detail: why } =>
           TransitionActuationRefused {
             cause: join([
