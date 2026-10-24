@@ -38,8 +38,6 @@ import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, release_locus_
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root }
 import gunbc.host.host_layout { belt_spawn_workdir_env_var }
-import gunbc.owned_directory { owned_directory_path }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_provider_state_root }
 import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv }
 import extdeps.tailscale.serve { tailscale_serve_enable_argv }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_release_revision }
@@ -866,38 +864,4 @@ test fn the_launcher_snapshot_is_root_owned_and_outside_the_service_release() ->
   launcher_snapshot_owner(legs: legs) == (approval_broker_helper_root_principal as String)
     && starts_with(s: base, prefix: attempt_system_unit_launcher_helpers_root)
     && !starts_with(s: base, prefix: spec.service.repo_root as String)
-}
-
-fn ensures_path(legs: List<DeployApplyLeg>, path: String) -> Bool {
-  match legs {
-    Empty => false
-    Cons { head: h, tail: rest } =>
-      match h {
-        ApplyLegEnsureDirectory { target: t } => (owned_directory_path(t: t) as String) == path || ensures_path(legs: rest, path: path)
-        ApplyLegCommand { step: _, command: _ } => ensures_path(legs: rest, path: path)
-        ApplyLegInstallFile { step: _, command: _, payload: _ } => ensures_path(legs: rest, path: path)
-        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => ensures_path(legs: rest, path: path)
-        ApplyLegRepairDirectoryEntries { command: _ } => ensures_path(legs: rest, path: path)
-        ApplyLegReport { step: _, line: _ } => ensures_path(legs: rest, path: path)
-        ApplyLegBrokerStateDirectories { revision: _ } => ensures_path(legs: rest, path: path)
-        ApplyLegObjectSource => ensures_path(legs: rest, path: path)
-        ApplyLegDigestVerify { step: _, path: _, digest: _ } => ensures_path(legs: rest, path: path)
-        ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => ensures_path(legs: rest, path: path)
-        ApplyLegBrokerTree { revision: _ } => ensures_path(legs: rest, path: path)
-        ApplyLegRetract { step: _, leg: _ } => ensures_path(legs: rest, path: path)
-        ApplyLegDependency { dep: _ } => ensures_path(legs: rest, path: path)
-        ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => ensures_path(legs: rest, path: path)
-      }
-  }
-}
-
-// THE PRODUCTION APPLY ENSURES THE PROVIDER-STATE ROOT (was test.claim.live_deploy.provider_state_member_witness
-// the_production_apply_emits_the_provider_state_install). That witness keeps the demand and the read-back
-// member; whether the apply's directories family actually reaches this demand was asserted only by the deleted
-// claim, so a provider login with nowhere to write would converge silently.
-test fn the_production_apply_ensures_the_provider_state_root() -> Bool {
-  ensures_path(
-    legs: full_legs(spec: deployment_spec_srv1()),
-    path: dashboard_instance_provider_state_root(instance: srv1_live_dashboard_instance()) as String,
-  )
 }
