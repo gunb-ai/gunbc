@@ -1585,3 +1585,10 @@ Date:   Thu Oct 22 23:16:13 2026 +0000
 - Head churn: b2964e2e -> 26753141 -> 2df86caa (heal fail 'element' semver) -> 85904b16 (cancelled) -> bdba0c3f -> 355ff7fe -> 78010072 -> 47be8009 -> 32a5a35f (current ~16:00Z, heal running).
 - 47be8009: BOTH fail. v2-bootstrap run 40104745340: EmissionRefused source_root_eval.dag [rust] 5 diagnostics (no field name/path on T resolve.dag:824/3221/3248, empty list literal infer.dag:8747:56, no field tree reference_deps.dag:35). T-binding loss family. Reported msg_455bbfbe. Log /tmp/gc16dbg/v2b_47be_full.txt.
 - d-watcher script /tmp/gc16dbg/watch14750d.sh <full-head-sha> (MERGED/CLOSED/HEADCHANGED/ALLGREEN; 7h budget). Re-arm per head.
+
+## #14750 FACTS FROM OWNER (swift-lark-171, msg_9846cde8 @18:58Z)
+- Node carrier = application_role: TypeApplicationRole? (AuthoredArguments | ResolvedArguments | ExpandedDeclarationBody; none = not a type application), REPLACING InferredNode::ArgumentsResolved. My Fix-3 reads binder_marked_type stamps + alias table only -> no conflict; retained-refusal sites list must NOT assume ArgumentsResolved exists.
+- substitute_generics_apply keys on stamped TypeVariable, never leaf name (their commitment); my shadow_formal RED = acceptance test; they haven't run it; no green head yet.
+- wise-lark-652 container-alias fix = infer-side List<Record> vs FreeMonoid<T> binding, lands as a commit inside #14750. Subsumption of my alias-shadow half UNKNOWN -> ownership ask sent to wise-lark-652 (msg_10a4d0a3) + parent may rule. DEFAULT: keep my half; at assembly test with-vs-without vs merged head; drop if RED passes without.
+- Head churn continues: 32a5a35f -> 03e7b450 (both known-sig red) -> a4a3dff0 -> e575568a (current ~19:00Z).
+- Ask to swift-lark-171: ping when heal green; assembly vs-without test runs against exact merged head.
