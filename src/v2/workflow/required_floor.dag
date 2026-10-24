@@ -956,6 +956,21 @@ fn required_gate_authored_modules() -> List<String> {
     // row would look like coverage forever. It gets its own enrolment commit, added to this list
     // when -- and only when -- its fix PR has landed and its own claim_batch run is on record.
     "v2.test.claim.compiler.infer_application_argument_inhabitance_witness",
+    // THE SIBLING, NOW OWED AND DELIVERED: the condition above is met. The lowered-call occurrence
+    // fix (v2.compiler.body_lowering_fold body_lower_primary_call_node and body_lower_cast_node
+    // minting authored nodes through node_lowered_from and close_lowered_image instead of the
+    // synthetic clone) landed on main, so its claim module
+    // v2.test.claim.body_lowering_call_node_occurrence is a FILE the required lane can execute, and
+    // its own claim_batch run is on record -- green by execution at the head the fix PR landed with
+    // (cite the run, never transcribe its output; the roster row's cost is the run's own pricing).
+    // Same exact grain
+    // as the row above, for the same reason: one module, never a family selector. This module pins
+    // what the census reader needs to be locatable at all -- native_census_owner_key answers Present
+    // for a lowered call or cast node, the node is not synthetic, and a discriminating input goes
+    // red when the occurrence clone returns. Its row is what makes that watch DECIDING rather than
+    // resident-but-unread, the harm gunbc.recurring_failure_mode
+    // witness_module_absent_from_the_executed_set records.
+    "v2.test.claim.body_lowering_call_node_occurrence",
   ]
 }
 
