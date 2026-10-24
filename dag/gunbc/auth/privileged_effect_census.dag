@@ -276,6 +276,25 @@ fn export_host_reader_rows_effect() -> PrivilegedEffect {
   }
 }
 
+// THE BOOT MEDIUM READER KEY'S MINT (gunbc.host.boot_medium_reader_key_mint). FleetOnce: one key for the
+// export host, minted again only to rotate it, which also makes it reversible. Its reach is one resource:
+// the key is authorized on the export host forced to a single sha256sum of the served link
+// (gunbc.host.boot_medium_reader_key), so MintsResourceScopedCredential. A human can attend it and owes no
+// witness, and the fleet identity at main is bindable, so the selection is the federated grant: the run
+// adds the version under its versionAdder cell, whose binding is the converge's approved apply.
+fn boot_medium_reader_key_mint_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "as the fleet identity at main, generate an ed25519 keypair in the run and add its private half as a version of boot-medium-reader-ssh-key; the receipt names only the public key, its fingerprint and the version" as NonEmptyStr,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 // A one-off accessor-cell grant (getIamPolicy + setIamPolicy on one secret).
 fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
   PrivilegedEffect {
@@ -1290,6 +1309,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: export_host_reader_rows_effect(),
     realized: RealizedAdministratorEdge,
     divergence_reason: Present { value: export_host_rows_beside_unlanded_host_file_adapter },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host.boot_medium_reader_key_mint", decl_name: "boot_medium_reader_key_mint_wet"),
+    effect: boot_medium_reader_key_mint_effect(),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.fleet.hetzner_cloud_server_control", decl_name: "read"),
