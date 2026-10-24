@@ -257,6 +257,10 @@ pub fn list_append<T: Clone>(
     v1_rt::concat(left.clone(), right.clone())
 }
 
+pub fn list_push<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
+    v1_rt::rc_list_push(xs.clone(), item.clone())
+}
+
 pub fn list_snoc_item<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
     v1_rt::rc_list_push(xs.clone(), item.clone())
 }

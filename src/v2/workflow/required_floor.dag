@@ -971,6 +971,15 @@ fn required_gate_authored_modules() -> List<String> {
     // resident-but-unread, the harm gunbc.recurring_failure_mode
     // witness_module_absent_from_the_executed_set records.
     "v2.test.claim.body_lowering_call_node_occurrence",
+    // THE NATIVE CENSUS CASCADE CONTROLS (node adhoc-40e4ae25-e94), at exact module grain for the
+    // reason the rows above give. The module was red on main with no lane executing it, the harm
+    // gunbc.recurring_failure_mode census_row_shape_moved_without_moving_its_consumer records: three
+    // sessions bisected a 'regression' that no gate would have shown going red. Admitted when green
+    // by execution at the head of the change that adjudicated it (its claim_batch run is cited on
+    // that change, never transcribed here). Neither the family v2.test.claim.native_census. nor its
+    // sibling infer_cascade is admitted: that module's provider-cascade claim stays red until resolve
+    // refuses a mention of a refused coproduct's variant, and earns its own row when it is green.
+    "v2.test.claim.native_census.cascade_root_fan_out",
   ]
 }
 
