@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, Int, HttpStatus }
 import std.logic { Bool }
 import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
-  SlotStore, file_slot_store,
+  SlotStore, file_slot_store, slot_observe, slot_commit,
 }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 import gunbc.host_state_root { HostStateTree, host_state_tree_path }
@@ -96,8 +96,7 @@ type AssertionCounterAdmission
   | AssertionCounterStoreRefused { detail: NonEmptyStr }
 
 fn observe_assertion_counter(counters: AssertionCounterStore, enrollment_id: NonEmptyStr) -> AssertionCounterObservation {
-  let observe = counters.slots.observe
-  match observe(enrollment_id) {
+  match slot_observe(store: counters.slots, key: enrollment_id) {
     CasObservedUnreadable { cause: c } => AssertionCounterUnreadable { detail: concat("assertion counter slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
     CasObservedReadable { readable: r } => match r {
       CasReadableAbsent => AssertionCounterNeverAdmitted
@@ -114,8 +113,7 @@ fn assertion_counter_commit(counters: AssertionCounterStore, enrollment_id: NonE
   match admit_cas_attempt_for_derived_payload(key: enrollment_id, expected: expected, proposed: to_string(observed) as NonEmptyStr) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => AssertionCounterStoreRefused { detail: "enrolment id is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      let commit = counters.slots.commit
-      match commit(OwnerOnlyCreateOnly, v) {
+      match slot_commit(store: counters.slots, publication: OwnerOnlyCreateOnly, verified: v) {
         CasCommitted { committed: _ } => AssertionCounterAdmitted { enrollment_id: enrollment_id, counter: observed }
         CasPreconditionFailed { expected: _, observed: _ } => AssertionCounterRaced
         CasStoreRefused { cause: _ } => AssertionCounterStoreRefused { detail: "assertion counter store refused the publication" }

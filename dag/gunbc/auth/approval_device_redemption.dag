@@ -45,7 +45,7 @@ import gunbc.auth.approval_device_wire {
 }
 import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
-  SlotStore, file_slot_store,
+  SlotStore, file_slot_store, slot_observe, slot_commit, slot_keys,
 }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 import gunbc.host_state_root { HostStateTree, host_state_tree, host_state_tree_path }
@@ -531,8 +531,7 @@ fn device_store_write(devices: ApprovalDeviceStore, key: NonEmptyStr, expected: 
   match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => DeviceStoreRefused { detail: "device store key is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      let commit = devices.slots.commit
-      match commit(OwnerOnlyCreateOnly, v) {
+      match slot_commit(store: devices.slots, publication: OwnerOnlyCreateOnly, verified: v) {
         CasCommitted { committed: _ } => DeviceStoreWritten
         CasPreconditionFailed { expected: _, observed: _ } => DeviceStoreSlotOccupied
         CasStoreRefused { cause: _ } => DeviceStoreRefused { detail: "device store refused the publication" }
@@ -541,8 +540,7 @@ fn device_store_write(devices: ApprovalDeviceStore, key: NonEmptyStr, expected: 
 }
 
 fn observe_google_enrolment(devices: ApprovalDeviceStore, enrollment_id: NonEmptyStr) -> GoogleEnrolmentSlot {
-  let observe = devices.slots.observe
-  match observe(enrollment_id) {
+  match slot_observe(store: devices.slots, key: enrollment_id) {
     CasObservedUnreadable { cause: c } => GoogleEnrolmentUnreadable { detail: concat("enrolment slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
     CasObservedReadable { readable: r } => match r {
       CasReadableAbsent => GoogleEnrolmentAbsent
@@ -576,8 +574,7 @@ fn create_or_read_subject_pin(devices: ApprovalDeviceStore, email: NonEmptyStr, 
     DeviceStoreWritten => SubjectPinCreatedForPresented
     DeviceStoreRefused { detail: d } => SubjectPinUnreadable { detail: d }
     DeviceStoreSlotOccupied => {
-      let observe = devices.slots.observe
-      match observe(subject_pin_key(email: email)) {
+      match slot_observe(store: devices.slots, key: subject_pin_key(email: email)) {
         CasObservedUnreadable { cause: c } => SubjectPinUnreadable { detail: concat("subject pin slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
         CasObservedReadable { readable: r } => match r {
           CasReadableAbsent => SubjectPinUnreadable { detail: "subject pin slot lost the create and then read absent" }
@@ -607,8 +604,7 @@ type GoogleEnrolmentListing
   | GoogleEnrolmentListingRefused { detail: NonEmptyStr }
 
 fn list_google_enrolments(devices: ApprovalDeviceStore) -> GoogleEnrolmentListing {
-  let keys_of = devices.slots.keys
-  match keys_of() {
+  match slot_keys(store: devices.slots) {
     CasSlotKeysListingRefused { root: _, detail: d } => GoogleEnrolmentListingRefused { detail: d as NonEmptyStr }
     CasSlotKeysSubjectRefused { root: r, cause: c } => GoogleEnrolmentListingRefused { detail: join(["store root ", r as String, " is not an admissible directory: ", c], "") as NonEmptyStr }
     CasSlotKeysListed { keys: keys } =>
