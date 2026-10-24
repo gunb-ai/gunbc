@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.phantom_marker_emitted_beside_a_same_named_type_definition
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data phantom_marker_emitted_beside_a_same_named_type_definition: RecurringFailureMode = RecurringFailureMode {
+  identity: "phantom_marker_emitted_beside_a_same_named_type_definition" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the unit-variant marker decision keyed on the declaration a type-position reference resolves to (the type declaration index), so a marker is emitted only for a reference that resolves to the variant and two items of one name in a module have no producer" } },
+
+  receipts: [
+    "**a unit variant's phantom ZST marker is emitted beside a type definition of the same name** (INVALID STATE: v1.compiler.emit_rust collect_phantom_zst_markers emits `pub struct X;` for a closure-unique unit variant X, skipping names its shadow predicate (phantom_marker_name_shadowed_by_real_type_item) finds declared in the module. The predicate recognized type aliases and opaque declarations but not type DEFINITIONS.",
+
+    "HARM: gunbc.roadmap.roadmap_model declares the records `type AcceptanceNodeReopensActiveFrontier {}` and `type AcceptanceNodeRemainsSuperseded {}` beside the coproduct AcceptanceRevocationDisposition whose arms carry those names, so each record was emitted twice (rustc E0428 and E0119 on every derive, 16 errors on the rfm-rung-census route; class 1 of stern-bat-401's emitter-debt list).",
+
+    "REPAIRED: the shadow predicate covers every type item of the module (definition, alias, declaration). The comparison is over the module's own items, where a name is the declaration's identity. RED/control: test.claim.phantom_marker_same_named_record_witness same_named_record_suppresses_the_variant_marker.",
+
+    "RUNG: found at and still mitigatable (the failure is rustc's). Ceiling structurally guaranteed through the marker decision reading declaration identity; climbable but unbuilt.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "phantom_marker_name_shadowed_by_real_type_item", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.phantom_marker_same_named_record_witness", decl_name: "same_named_record_suppresses_the_variant_marker", field: WholeDeclaration },
+  ],
+}
