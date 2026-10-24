@@ -4,6 +4,9 @@ import v2.extdeps.languages.dag { dag_surface_edge_label }
 
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_produced { emit_module_member }
+import v2.compiler.infer { InferredTree }
+import std.algebra { PartialFunction }
+import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.body_lowering_fold { DeclaredRefinement }
 import v2.compiler.self_host.closure_emission {
   ClosureEmissionLocated, ClosureMemberEmitted, ClosureMemberRefused, emit_closure_from_ingest_located,
@@ -171,7 +174,9 @@ fn member_emission_supplied_refinement() -> String {
     edge: member,
     target: rust_target_model(),
     realization_host: rust_target_model(),
-    kinds: [DeclaredRefinement { name: ^Pos }]
+    kinds: [DeclaredRefinement { name: ^Pos }],
+    tree: InferredTree { root: member.target, facts: PartialFunction { lookup: fn(n) { Absent } } },
+    declarations: empty_symbol_index()
   ) {
     Accepted { value: m, diagnostics: _ } => m.carried
     Rejected { diagnostics: d } => concat("REFUSED ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
@@ -286,5 +291,16 @@ test fn a_generic_member_refuses_under_its_own_reason_holds() -> Bool {
     MemberEmitted { text: _ } => false
     MemberRefused { reason: r } => r == ^emit_module_member_generic_not_realized
     MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// THE WALKER AND INFER DECLINE THE SAME WHERE-PREDICATE SET (v2.std.type_binder where_predicate_set_edge): a where-refinement
+// module is never refused at the partition closure for facts infer was not asked to derive. The claim above is
+// still judged by the member classifier; this one isolates the partition boundary so its RED is not masked by it.
+test fn a_where_refinement_is_not_refused_for_missing_facts_holds() -> Bool {
+  match member_emission_refinement_verdict() {
+    MemberEmitted { text: _ } => true
+    MemberRefused { reason: r } => r != ^partition_facts_miss
+    MemberClosureRefused { reason: r } => r != ^partition_facts_miss
   }
 }
