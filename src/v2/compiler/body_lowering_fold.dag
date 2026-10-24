@@ -7297,7 +7297,12 @@ fn body_lower_is_node(operand: Node, arm: Node, source: Node) -> Node {
       body: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_false } }, children: [])
     )
   ])
-  close_lowered_image(root: node_lowered_from(kind: built.kind, children: built.children, source: source))
+  // MUTATION CONTROL (scratch branch, NEVER MERGE): the geometry the #14891 deferral feared -- the
+  // Match root stamped from the PATTERN arm's own occurrence instead of the chain source, so the
+  // close demotes the authored V to OccurrencePending and authorship moves to the Match. Discriminates
+  // lowers_is_node_keeps_the_pattern_v_authored and lowers_is_node_refusal_stays_located_at_the_use,
+  // NOT the collision pin (root still counts 1) -- exactly the blindness review 85455 named.
+  close_lowered_image(root: node_lowered_from(kind: built.kind, children: built.children, source: arm))
 }
 
 fn body_lower_cast_node(operand: Node, target_type: Node, source: Node) -> Node {
