@@ -4463,6 +4463,55 @@ fn ct_coproduct_wire_contract_declared_target_test() -> String {
 }
 
 
+fn ct_coproduct_wire_contract_misspelled_target_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn coproduct_wire_contract_with_a_misspelled_target_refuses_at_its_importer() {\n",
+    "        // DISCRIMINATING RED for review 85587 of gunbc#14986: rows are keyed under the module their\n",
+    "        // DeclarationRef names, so a row whose module_path names no module of the closure applies\n",
+    "        // nowhere. probe.gate imports gate_state_wire_contract, whose module_path misspells it as\n",
+    "        // probe.gat; GateState would silently take the default encoding. The importer refuses.\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let source = |path: &str, content: &str| {\n",
+    "                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                        path: path.to_string(),\n",
+    "                        content: content.to_string(),\n",
+    "                    })\n",
+    "                };\n",
+    "                let contracts = \"module probe.gate_contracts\\nimport std.serialization { CoproductWireContract, StringVariant, SnakeCase }\\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\\ndata gate_state_wire_contract: CoproductWireContract = { coproduct: DeclarationRef { module_path: \\\"probe.gat\\\", decl_name: \\\"GateState\\\", field: WholeDeclaration }, encoding: StringVariant { naming: SnakeCase } }\\n\";\n",
+    "                let sources = im::vector![\n",
+    "                    source(\"std_decl_ref.dag\", \"module std.decl_ref\\ntype DeclField = WholeDeclaration | NamedField { field_name: String }\\ntype DeclarationRef { module_path: String, decl_name: String, field: DeclField }\\n\"),\n",
+    "                    source(\"std_serialization.dag\", \"module std.serialization\\nimport std.decl_ref { DeclarationRef }\\ntype VariantNaming = AsAuthored | SnakeCase\\ntype VariantEncoding = StringVariant { naming: VariantNaming } | TaggedVariant\\ntype CoproductWireContract { coproduct: DeclarationRef, encoding: VariantEncoding }\\n\"),\n",
+    "                    source(\"probe_gate_contracts.dag\", contracts),\n",
+    "                    source(\"probe_gate.dag\", \"module probe.gate\\nimport probe.gate_contracts { gate_state_wire_contract }\\ntype GateState = GateOpen | GateShut\\n\")\n",
+    "                ];\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(\n",
+    "                    std::rc::Rc::new(sources),\n",
+    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                );\n",
+    "                let gate = result.files.iter()\n",
+    "                    .find(|f| f.path.ends_with(\"probe_gate.rs\"))\n",
+    "                    .map(|f| f.content.clone())\n",
+    "                    .unwrap_or_else(|| panic!(\"no probe_gate.rs; files: {:?}\", result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()));\n",
+    "                assert!(\n",
+    "                    gate.lines().any(|l| l.contains(\"compile_error!\") && l.contains(\"gate_state_wire_contract\") && l.contains(\"probe.gat.GateState\")),\n",
+    "                    \"probe.gate imports a contract row whose target is probe.gat; it must refuse, naming the row and its target; probe.gate:\\n{}\",\n",
+    "                    gate\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    !gate.contains(\"#[serde(rename_all = \\\"snake_case\\\")]\"),\n",
+    "                    \"the misdirected row governs nothing; GateState must not take its SnakeCase encoding; probe.gate:\\n{}\",\n",
+    "                    gate\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"coproduct_wire_contract_with_a_misspelled_target_refuses_at_its_importer panicked\");\n",
+    "    }\n\n")
+}
+
 fn ct_github_contract_rows_declared_target_test() -> String {
   concat(
     "    #[test]\n",
@@ -6294,6 +6343,7 @@ fn compiler_tests_source() -> String {
     ct_record_literal_phantom_follows_declaration_test(),
     ct_coproduct_wire_contract_declared_target_test(),
     ct_github_contract_rows_declared_target_test(),
+    ct_coproduct_wire_contract_misspelled_target_test(),
     ct_self_resolve_test(),
     ct_self_compile_test(),
     ct_self_compile_cargo_check_test(),

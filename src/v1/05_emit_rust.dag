@@ -2847,7 +2847,8 @@ fn coproduct_wire_contract_targets(contract_item: Node, module_name: String, cop
 // (is_coproduct_wire_contract_row: the typed std.serialization CoproductWireContract, not a local
 // homonym), and an unreadable row is keyed under the module that declares it, so the one per-module
 // validation below refuses it there. A row whose target module is outside the closure has no
-// emission site in it and governs nothing that is emitted.
+// emission site in it; a misspelled one is refused at its importer
+// (emit_imported_coproduct_wire_contract_misdirections).
 fn build_coproduct_wire_contract_index(modules: List<TypedModule>) -> Map<String, List<Node>> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     let si = tm.type_env.source_indices
@@ -2866,6 +2867,49 @@ fn build_coproduct_wire_contract_index(modules: List<TypedModule>) -> Map<String
         }
       )
   )
+}
+
+// A ROW IS CONSUMED BY THE MODULE ITS DeclarationRef NAMES, AND THAT MODULE IMPORTS IT BY NAME
+// (extdeps.github.issues imports issue_state_wire_contract from extdeps.github.github_contracts; the
+// corpus census at this change found every one of its imported rows imported by its own target).
+// The index above keys a row under the module its target names, so a row whose module_path names no
+// module of the closure is applied nowhere -- correct for a real module outside the closure, which
+// emits nothing, and SILENT for a misspelled one (module_path: "extdeps.github.isues"), whose real
+// target would fall back to the default encoding. The misspelling is visible at the one place that
+// can see it: the importer. A module that imports a contract row whose target is another module
+// refuses, located, at the import, and the row is not applied.
+fn emit_imported_coproduct_wire_contract_misdirections(module_name: String, imports: List<Node>, module_index: ModuleIndex, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  imports |> flat_map(imp => imported_wire_contract_misdirections_of(module_name: module_name, imp: imp, module_index: module_index, source_indices: source_indices))
+}
+
+fn imported_wire_contract_misdirections_of(module_name: String, imp: Node, module_index: ModuleIndex, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  match map_get(module_index.by_name, authored_name_at(source_indices: source_indices, node: imp)) {
+    Present { value: source_module } =>
+      import_specific_names_at(n: imp, source_indices: source_indices)
+        |> flat_map(name => imported_wire_contract_row_misdirection(module_name: module_name, source_module: source_module, name: name))
+    Absent => []
+  }
+}
+
+fn imported_wire_contract_row_misdirection(module_name: String, source_module: TypedModule, name: String) -> List<String> {
+  let ssi = source_module.type_env.source_indices
+  let source_imports = module_imports(n: source_module.module)
+  source_module.items
+    |> filter(item => authored_name_at(source_indices: ssi, node: item) == name && is_coproduct_wire_contract_row(item: item, module_items: source_module.items, imports: source_imports, source_indices: ssi))
+    |> flat_map(item => wire_contract_row_target_misdirection(module_name: module_name, row_name: name, item: item, source_indices: ssi))
+}
+
+fn wire_contract_row_target_misdirection(module_name: String, row_name: String, item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  match coproduct_wire_contract_target(contract_item: item, source_indices: source_indices) {
+    ContractTargetDeclaration { module_path: module_path, decl_name: decl_name } =>
+      if module_path == module_name { [] }
+      else { [emit_rust_compile_error_item(message: concat("CoproductWireContract ", row_name, " imported by ", module_name, " targets ", module_path, ".", decl_name, ", which is not this module; a row applies to the module its DeclarationRef names"))] }
+    ContractTargetUnreadable => []
+  }
+}
+
+fn concat_with_newline_if_both(a: String, b: String) -> String {
+  if a == "" { b } else if b == "" { a } else { concat(a, "\n", b) }
 }
 
 fn coproduct_wire_contract_rows_for_module(module_name: String, module_index: ModuleIndex) -> List<Node> {
@@ -5869,7 +5913,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let local_coproduct_names = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
     |> map(item => authored_name(env: scope.type_env, node: item))
-  let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(module_name: this_module_name, contract_rows: contract_rows, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices)
+  let coproduct_wire_contract_validations = concat_with_newline_if_both(
+    a: emit_coproduct_wire_contract_validations(module_name: this_module_name, contract_rows: contract_rows, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices),
+    b: emit_imported_coproduct_wire_contract_misdirections(module_name: this_module_name, imports: module_import_items, module_index: module_index, source_indices: scope.type_env.source_indices) |> join(separator: "\n"))
   let coproduct_wire_contract_validation_section = if coproduct_wire_contract_validations == "" { "" } else { concat(coproduct_wire_contract_validations, "\n\n") }
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
