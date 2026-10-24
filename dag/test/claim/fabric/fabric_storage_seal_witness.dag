@@ -1,0 +1,101 @@
+module test.claim.fabric.fabric_storage_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE FABRIC DB'S TWO STORES ARE MINTED FROM THEIR DECLARATIONS AND CANNOT BE SPELLED OR MINTED FROM A PATH.
+// gunbc.fabric.fabric_storage_placement FabricStorage and FabricStateStorage are sole_constructor; the served door
+// (gunbc.fabric.fabric_storage_serve fabric_storage_serve_handle_over) takes FabricStorage and the state route
+// (gunbc.fabric.fabric_storage_state_serve fabric_storage_state_serve_over) takes FabricStateStorage, which only
+// fabric_storage_placed_store and fabric_state_storage_store build, from the instance alone. Each RED hands the
+// compiler a module outside the defining file and asserts the refusal on the real acceptance path:
+//   - a forged FabricStorage literal, a forged cast, and each store built around a LITERAL PATH: each EXACTLY ONE
+//     SoleConstructorViolation on its subject;
+//   - the deleted path-taking minter (fabric_storage_placed_file_root), the public store handed where the state
+//     store is required, and bare operations handed where the store is required: each at least one blocking
+//     diagnostic beyond a baseline importing the same closure (gunbc.compile_diagnostic_census).
+// The GREENS are the lawful routes, each mint into its door, which add no blocking diagnostic and draw no seal
+// violation. NOT witnessed, because it is not expressible: a store minted for instance A refused where B is
+// required (one type for both). NOT closed here: any module can still build the same operations over its own
+// path through gunbc.fabric.fabric_storage_file_store fabric_storage_file_operations and answer the protocol with
+// them (the expecting-red probe below); that value is not a FabricStorage. Seal residuals: variant construction
+// (test.claim.sole_constructor_completeness_audit_probe f13) and parameter defaults (f19), so neither record is
+// generic or a variant arm.
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+data forged_store_literal_source: String = "module probe_fabric_store_literal\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.http.server { ServeWireResponse }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_operations }\nimport gunbc.fabric.fabric_storage_placement { FabricStorage, FabricStateStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready }\nimport gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }\nimport gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }\nimport gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }\nfn f(s: FabricStorage) -> FabricStorage {\n  FabricStorage { instance: s.instance, operations: s.operations }\n}\n"
+
+data forged_store_cast_source: String = "module probe_fabric_store_cast\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.http.server { ServeWireResponse }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_operations }\nimport gunbc.fabric.fabric_storage_placement { FabricStorage, FabricStateStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready }\nimport gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }\nimport gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }\nimport gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }\nfn f(r: NonEmptyStr) -> FabricStorage {\n  r as FabricStorage\n}\n"
+
+data literal_path_store_source: String = "module probe_fabric_store_literal_path\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.http.server { ServeWireResponse }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_operations }\nimport gunbc.fabric.fabric_storage_placement { FabricStorage, FabricStateStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready }\nimport gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }\nimport gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }\nimport gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }\nfn f() -> FabricStorage {\n  FabricStorage { instance: \"srv1\", operations: fabric_storage_file_operations(root: fabric_storage_file_root(root: \"/tmp/forged-fabric-storage\")) }\n}\n"
+
+data literal_path_state_store_source: String = "module probe_fabric_state_store_literal_path\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.http.server { ServeWireResponse }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_operations }\nimport gunbc.fabric.fabric_storage_placement { FabricStorage, FabricStateStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready }\nimport gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }\nimport gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }\nimport gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }\nfn f() -> FabricStateStorage {\n  FabricStateStorage { instance: \"srv1\", operations: fabric_storage_file_operations(root: fabric_storage_file_root(root: \"/tmp/forged-fabric-storage/state\")) }\n}\n"
+
+data path_minter_source: String = "module probe_fabric_store_path_minter\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.http.server { ServeWireResponse }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_operations }\nimport gunbc.fabric.fabric_storage_placement { FabricStorage, FabricStateStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready }\nimport gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }\nimport gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }\nimport gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }\nfn f() -> String {\n  match fabric_storage_placed_file_root(store_root: \"/tmp/forged-fabric-storage\") {\n    _ => \"minted\"\n  }\n}\n"
+
+data public_store_as_state_store_source: String = "module probe_fabric_public_as_state\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.http.server { ServeWireResponse }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_operations }\nimport gunbc.fabric.fabric_storage_placement { FabricStorage, FabricStateStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready }\nimport gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }\nimport gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }\nimport gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }\nfn f(s: FabricStorage) -> ServeWireResponse {\n  fabric_storage_state_serve_over(store: s, method: \"POST\", path: \"/fabric-storage/state/authenticated\", body: \"\")\n}\n"
+
+data bare_operations_as_store_source: String = "module probe_fabric_bare_operations\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.http.server { ServeWireResponse }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_operations }\nimport gunbc.fabric.fabric_storage_placement { FabricStorage, FabricStateStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready }\nimport gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }\nimport gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }\nimport gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }\nfn f(r: NonEmptyStr, rosters: FabricDoorRosters) -> ServeWireResponse {\n  fabric_storage_serve_handle_over(store: fabric_storage_file_operations(root: fabric_storage_file_root(root: r)), rosters: rosters, method: \"POST\", path: \"/fabric-storage/head\", body: \"p\", tailscale_identity: \"\", peer_user: \"\")\n}\n"
+
+data lawful_store_source: String = "module probe_fabric_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.http.server { ServeWireResponse }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_operations }\nimport gunbc.fabric.fabric_storage_placement { FabricStorage, FabricStateStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready }\nimport gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }\nimport gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }\nimport gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }\nfn f(i: HostDashboardInstance, rosters: FabricDoorRosters) -> ServeWireResponse {\n  match fabric_storage_placed_store(instance: i) {\n    FabricStoragePlacedRootReady { store } => fabric_storage_serve_handle_over(store: store, rosters: rosters, method: \"POST\", path: \"/fabric-storage/head\", body: \"p\", tailscale_identity: \"\", peer_user: \"\")\n    FabricStoragePlacedRootRefused { detail } => text_response(status: 503, body: detail as String)\n  }\n}\n"
+
+data lawful_state_store_source: String = "module probe_fabric_state_lawful\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.http.server { ServeWireResponse }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_operations }\nimport gunbc.fabric.fabric_storage_placement { FabricStorage, FabricStateStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready }\nimport gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }\nimport gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }\nimport gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }\nfn f(i: HostDashboardInstance) -> ServeWireResponse {\n  match fabric_state_storage_store(instance: i) {\n    FabricStateStorageReady { store } => fabric_storage_state_serve_over(store: store, method: \"POST\", path: \"/fabric-storage/state/authenticated\", body: \"\")\n    FabricStateStorageUnready { detail } => text_response(status: 503, body: detail as String)\n  }\n}\n"
+
+data closure_baseline_source: String = "module probe_fabric_baseline\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.http.server { ServeWireResponse }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_operations }\nimport gunbc.fabric.fabric_storage_placement { FabricStorage, FabricStateStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready }\nimport gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }\nimport gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }\nimport gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
+
+data plain_operations_literal_path_source: String = "module probe_fabric_plain_literal_path\nimport std.types { NonEmptyStr, String }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nimport extdeps.http.server { ServeWireResponse }\nimport gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_operations }\nimport gunbc.fabric.fabric_storage_placement { FabricStorage, FabricStateStorage, fabric_storage_placed_store, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused, fabric_state_storage_store, FabricStateStorageReady, FabricStateStorageUnready }\nimport gunbc.fabric.fabric_storage_serve { fabric_storage_serve_handle_over, FabricDoorRosters }\nimport gunbc.fabric.fabric_storage_state_serve { fabric_storage_state_serve_over }\nimport gunbc.fabric.fabric_storage_protocol { fabric_storage_respond, text_response }\nfn f() -> ServeWireResponse {\n  fabric_storage_respond(store: fabric_storage_file_operations(root: fabric_storage_file_root(root: \"/any/literal\")), operation: \"head\", body: \"p\", tailscale_identity: \"\")\n}\n"
+
+test fn a_forged_fabric_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_store_literal_source, subject: "FabricStorage"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_fabric_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_store_cast_source, subject: "FabricStorage"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_fabric_store_from_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: literal_path_store_source, subject: "FabricStorage"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_fabric_state_store_from_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: literal_path_state_store_source, subject: "FabricStateStorage"), holds: fn(n) { n == 1 }))
+}
+
+test fn no_path_taking_fabric_minter_resolves() -> ProcessExit {
+  census_exit(blocking_delta(hostile: path_minter_source, safe: closure_baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn the_public_store_is_not_the_state_store() -> ProcessExit {
+  census_exit(blocking_delta(hostile: public_store_as_state_store_source, safe: closure_baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn bare_operations_are_not_a_fabric_store() -> ProcessExit {
+  census_exit(blocking_delta(hostile: bare_operations_as_store_source, safe: closure_baseline_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn the_lawful_mint_routes_are_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lawful_store_source, safe: closure_baseline_source, holds: fn(n) { n <= 0 }),
+    blocking_delta(hostile: lawful_state_store_source, safe: closure_baseline_source, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: lawful_store_source, subject: "FabricStorage"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: lawful_state_store_source, subject: "FabricStateStorage"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// AN EXPECTING-RED PROBE, recorded as what holds TODAY (gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module): a foreign module that builds the file store's operations
+// over a literal path and answers the served protocol with them is ACCEPTED -- no blocking diagnostic beyond the same
+// closure doing nothing. The per-store seals do not reach this route. When the ambient-authority lane lands, this probe
+// must go red and is then inverted into that wall's discriminating RED; it is not evidence that the route is closed.
+test fn plain_operations_over_a_literal_path_are_accepted_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: plain_operations_literal_path_source, safe: closure_baseline_source, holds: fn(n) { n <= 0 }))
+}
