@@ -208,6 +208,7 @@ pub enum InferredNode {
         id: String,
     },
     Divergent,
+    ArgumentsResolved,
 }
 
 pub fn divergent_type() -> Rc<Node> {
@@ -243,6 +244,7 @@ pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
         InferredNode::CompilerError { .. } => std::option::Option::None,
         InferredNode::TypeVariable { id: _, .. } => std::option::Option::None,
         InferredNode::Divergent => std::option::Option::None,
+        InferredNode::ArgumentsResolved => std::option::Option::None,
     }
 }
 
@@ -252,6 +254,7 @@ pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
         InferredNode::CompilerError { .. } => true,
         InferredNode::TypeVariable { id: _, .. } => false,
         InferredNode::Divergent => false,
+        InferredNode::ArgumentsResolved => false,
     }
 }
 

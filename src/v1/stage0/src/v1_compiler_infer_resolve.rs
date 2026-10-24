@@ -678,7 +678,7 @@ pub fn generic_declaration_application(
             is_self_recursive: is_recursive.clone(),
             has_non_tail_self_call: n.has_non_tail_self_call.clone(),
             match_pattern: n.match_pattern.clone(),
-            module_item_kind: n.module_item_kind.clone(),
+            module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
             declaration_marker: n.declaration_marker.clone(),
             declaration: applied_declaration.clone(),
             expr_data: n.expr_data.clone(),
@@ -808,6 +808,19 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
             }
         }
     }
+}
+
+pub fn is_paramless_alias_use(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    ((((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.clone().len() as i64) > 0))
+        && (n.declaration.clone() == std::option::Option::None))
+        && match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+            Some(used) => {
+                (((used.params.clone().len() as i64) == 0)
+                    && (used.connective.clone() == Connective::NoConnective))
+            }
+            std::option::Option::None => false,
+        })
 }
 
 pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
@@ -1595,13 +1608,19 @@ Rc::new(NodeResolveResult {
                 }
             } else {
                 if (((n.children.clone().len() as i64) > 0)
-                    && is_user_generic_use_site(n.clone(), env.clone()))
+                    && (is_user_generic_use_site(n.clone(), env.clone())
+                        || is_paramless_alias_use(n.clone(), env.clone())))
                 {
                     {
                         let type_name =
                             crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
                         let decl = resolve_generic_use_decl(env.clone(), n.clone());
-                        let expected_arity = (decl.params.clone().len() as i64);
+                        let uses_paramless_alias = is_paramless_alias_use(n.clone(), env.clone());
+                        let expected_arity = if uses_paramless_alias.clone() {
+                            0
+                        } else {
+                            (decl.params.clone().len() as i64)
+                        };
                         let actual_arity = (n.children.clone().len() as i64);
                         let arity_diags = if (expected_arity.clone() != actual_arity.clone()) {
                             Rc::new(vec![crate::v1_std_core::make_error_node(
@@ -2399,6 +2418,24 @@ pub fn resolve_optional_node(
                 resolved: crate::v1_std_core::divergent_type(),
                 diagnostics: Rc::new(vec![]),
             }),
+            InferredNode::ArgumentsResolved => {
+                let msg = "internal: a declaration's inferred type is an applied use whose expansion was dropped and cannot be rebuilt from a declaration".to_string();
+                Rc::new(NodeResolveResult {
+                    resolved: crate::v1_std_core::make_expr_error_node(
+                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                        ExprErrorKind::SemanticExprError,
+                        msg.clone(),
+                        crate::v1_std_core::kernel_span(module_name.clone()),
+                    ),
+                    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::InternalError {
+                            message: msg.clone(),
+                            span: crate::v1_std_core::kernel_span(module_name.clone()),
+                        }),
+                        module_name.clone(),
+                    )]),
+                })
+            }
             InferredNode::TypeVariable { id: tv, .. } => Rc::new(NodeResolveResult {
                 resolved: Rc::new(Node {
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -4826,6 +4863,95 @@ pub fn resolve_item_types(
             ),
         })
     })
+}
+
+pub fn is_declaration_body(n: Rc<Node>) -> bool {
+    (n.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+}
+
+pub fn is_applied_declaration_carrier(n: Rc<Node>) -> bool {
+    ((((n.connective.clone() == Connective::NoConnective)
+        && (n.declaration.clone() != std::option::Option::None))
+        && ((n.children.clone().len() as i64) > 0))
+        && !is_declaration_body(n.clone()))
+}
+
+pub fn generic_application_reapplied(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
+    {
+        let carries_resolved_target = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: _, .. }) => {
+                ((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) > 0))
+            }
+            Some(InferredNode::ArgumentsResolved) => {
+                ((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) > 0))
+            }
+            _ => false,
+        };
+        if (carries_resolved_target.clone() && is_user_generic_use_site(n.clone(), env.clone())) {
+            {
+                let type_name = crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
+                let decl = resolve_generic_use_decl(env.clone(), n.clone());
+                let is_parameterized_alias = (((decl.inferred.clone()
+                    != std::option::Option::None)
+                    && ((decl.children.clone().len() as i64) == 0))
+                    && (decl.connective.clone() == Connective::NoConnective));
+                if ((is_parameterized_alias.clone()
+                    || ((decl.params.clone().len() as i64) != (n.children.clone().len() as i64)))
+                    || is_declaration_body(n.clone()))
+                {
+                    crate::v1_compiler_infer_env::node_with_inferred(
+                        n.clone(),
+                        std::option::Option::None,
+                    )
+                } else {
+                    {
+                        let slot_bindings = Rc::new(
+                            decl.params
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .enumerate()
+                                .map(|(i, v)| (i as i64, v))
+                                .collect::<Vec<_>>(),
+                        )
+                        .iter()
+                        .cloned()
+                        .fold(
+                            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                            |acc: _, pair: (i64, Rc<Node>)| match n
+                                .children
+                                .clone()
+                                .get((pair.0.clone()) as usize)
+                                .cloned()
+                            {
+                                Some(arg) => v1_rt::rc_map_insert(
+                                    acc.clone(),
+                                    crate::v1_std_core::authored_name_at(
+                                        env.source_indices.clone(),
+                                        pair.1.clone(),
+                                    ),
+                                    arg.clone(),
+                                ),
+                                std::option::Option::None => acc.clone(),
+                            },
+                        );
+                        generic_declaration_application(
+                            n.clone(),
+                            decl.clone(),
+                            type_name.clone(),
+                            n.children.clone(),
+                            slot_bindings.clone(),
+                            env.clone(),
+                        )
+                    }
+                }
+            }
+        } else {
+            n.clone()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
