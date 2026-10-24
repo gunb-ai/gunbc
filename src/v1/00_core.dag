@@ -72,6 +72,11 @@ type FieldSummary {
   value_shape: FieldValueShape
 }
 
+// ArgumentsResolved is the producer's fact about an applied generic declaration whose cached expansion
+// substitute_generics_apply dropped: the node's children are RESOLVED type arguments (already
+// substituted), not authored type names, so generic_application_reapplied rebuilds the expansion from
+// them. Absent inferred means authored children and cannot carry this; module_item_kind cannot either.
+// It is no type: inferred_to_node answers none for it.
 // Divergent is the fourth answer to what inference knows about a node, and it is
 // deliberately NOT a shape of Resolved: an expression that never produces a value
 // has no type to resolve, and an expression whose type the walk could not establish
@@ -84,6 +89,7 @@ type InferredNode
   | CompilerError { message: String, span: SourceSpan }
   | TypeVariable { id: String }
   | Divergent
+  | ArgumentsResolved
 
 // The type of an expression that never produces a value. The divergence is carried
 // as an EXPLICIT FACT in `inferred` (InferredNode Divergent), not inferred from the
@@ -104,6 +110,7 @@ fn inferred_to_node(inferred: InferredNode) -> Node? {
     CompilerError { message: _, span: _ } => none
     TypeVariable { id: _ } => none
     Divergent => none
+    ArgumentsResolved => none
   }
 }
 
@@ -113,6 +120,7 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
     CompilerError { message: _, span: _ } => true
     TypeVariable { id: _ } => false
     Divergent => false
+    ArgumentsResolved => false
   }
 }
 
