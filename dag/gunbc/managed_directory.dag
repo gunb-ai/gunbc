@@ -85,6 +85,7 @@ type DeclaredDirectoryMode
   | DirectoryOwnerAllGroupTraverse
   | DirectoryOwnerAllEveryoneTraverse
   | DirectoryOwnerGroupWritableSetgid
+  | DirectoryOwnerGroupWritableSetgidSticky
 
 fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
   match m {
@@ -125,6 +126,28 @@ fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
       setuid: false,
       setgid: true,
       sticky: false,
+    }
+    // THE SHARED, GROUP-WRITABLE DIRECTORY THAT HOLDS OTHER PRINCIPALS' FILES (03770): 2770 plus the
+    // sticky bit. WHY THE STICKY IS NEEDED HERE AND NOT AT 2770 -- stated at its measured truth, not
+    // as a git requirement (git sets no +t under core.sharedRepository and asks for none; this is
+    // not what git mandates, it is what a group-writable directory holding two principals' files
+    // requires of its own). rename(2) and unlink(2) take their permission from the CONTAINING
+    // directory, not from the entry: in a group-writable objects/ without +t, any member of the
+    // attempt group may mv the OWNER's objects/pack aside and plant a symlink at that path, which
+    // the owner's next repack then follows and writes THROUGH -- the group member thereby writes
+    // through the owner's identity. Under +t, rename/unlink of an entry the caller does not own is
+    // EPERM, which is the refusal the wet arms measured. THE MEASURED STICKY-BOUNDARY FALSIFICATION
+    // pins both sides: unlink of the owner's file by a group peer returns EPERM under +t and
+    // succeeds WITHOUT it. This is the companion of the directory's group-writability (the same
+    // companion chmod spells as the a+t word, extdeps.tools.chmod chmod_directory_sticky_mode), so
+    // the arm that grants group writes and the arm that fences them stay one fact per directory.
+    DirectoryOwnerGroupWritableSetgidSticky => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: true, write: true, execute: true },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: true,
+      sticky: true,
     }
   }
 }

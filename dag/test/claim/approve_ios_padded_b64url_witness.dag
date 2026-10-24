@@ -1,0 +1,59 @@
+module test.claim.approve_ios_padded_b64url_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr }
+import std.measure { byte_size_count }
+import extdeps.crypto.signature {
+  VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth,
+  SignatureMalformed, verify_signature,
+}
+import gunbc.auth.approval_device_wire {
+  GoogleEnrolmentRequest, MobileIos, google_enrolment_request_json, decode_google_enrolment_request,
+  SignedRedemption, signed_redemption_json, decode_signed_redemption, WireDecoded, WireRefused, IosAppAttestAssertion,
+}
+import gunbc.auth.approval_device_redemption_fixtures { fx_signing_input }
+
+// THE APP EMITS PADDED BASE64URL (gunbc.approve_ios_swift_protocol Base64Url, std base64_encode UrlSafe), so the
+// server's decoders are claimed here on the padded spellings, through the routes' own decoders. A P-256 SEC1 point is
+// 65 octets (one '='), a P1363 signature 64 octets ('=='). The two RFC 6979 carriers are padded; their curve
+// verification through verify_signature is test.claim.signature_verify_join_witness
+// the_rfc6979_sample_verifies_through_the_seam (one interpreted P-256 verify, run by name).
+
+data padded_point: NonEmptyStr = "BGD-1LolWp0xyWHrdMY1bWjASbiSO2H6bOZpYi5g8p-2eQP-EAi4vJmkGunpVii8ZPLxsgwtfp9Rd6PClNRGIpk="
+data padded_signature: NonEmptyStr = "79SLKqy2qP0RQN2c1F6B1p0sh3tWqvmRw00OqE6vNxb3yxyULWV8QdQ2x6G24p9l8-kA27mv9AZNxKsvhDrNqA=="
+// 62 octets, padded: decodes, and is measured as one octet short of the suite's 64.
+data padded_short_signature: NonEmptyStr = "79SLKqy2qP0RQN2c1F6B1p0sh3tWqvmRw00OqE6vNxb3yxyULWV8QdQ2x6G24p9l8-kA27mv9AZNxKsvhDo="
+
+fn padded_key() -> VerifyingKey { VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: padded_point } }
+
+// (a) ENROLMENT: the decision key's padded point_b64url crosses decode_google_enrolment_request unchanged.
+test fn a_padded_decision_key_is_admitted_at_the_enrolment_decoder() -> Bool {
+  match decode_google_enrolment_request(text: google_enrolment_request_json(r: GoogleEnrolmentRequest {
+    platform: MobileIos, decision_key: padded_key(), attest_key_id: "attest-key-1", attestation_b64: "o2NmbXRvYXBwbGUtYXBwYXR0ZXN0", id_token: "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln",
+  })) {
+    WireDecoded { value: r } => r.decision_key.point_b64url == padded_point
+    WireRefused { at: _, cause: _ } => false
+  }
+}
+
+// (b) REDEMPTION: the padded signature crosses decode_signed_redemption unchanged.
+test fn a_padded_signature_is_admitted_at_the_redemption_decoder() -> Bool {
+  match decode_signed_redemption(text: signed_redemption_json(r: SignedRedemption {
+    signing_input: fx_signing_input(),
+    signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: padded_signature },
+    platform_proof: IosAppAttestAssertion { assertion_b64: "omlzaWduYXR1cmU" },
+  })) {
+    WireDecoded { value: r } => r.signature.b64url == padded_signature
+    WireRefused { at: _, cause: _ } => false
+  }
+}
+
+// verify_signature's base64url decode admits both padded carriers and MEASURES them: the padded 65-octet key passes
+// its size check, and a padded 62-octet signature is refused as Malformed at 62 (not Undecodable), before any curve
+// arithmetic. The RED is that size; an undecodable padded spelling would answer SignatureUndecodable instead.
+test fn padded_carriers_decode_and_are_measured_by_verify_signature() -> Bool {
+  match verify_signature(key: padded_key(), signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: padded_short_signature }, message: "sample") {
+    SignatureMalformed { declared: d, expected: e } => byte_size_count(b: d) == 62 && byte_size_count(b: e) == 64
+    _ => false
+  }
+}

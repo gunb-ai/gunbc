@@ -588,7 +588,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                         // happen as one that found nothing.
                         eprintln!("gunbc compile: {earlier_phase}: {cause}");
                         cli_run::pre_entry_phase::print_invocation_receipt();
-                        std::process::exit(1);
+                        end_process_without_teardown(1);
                     }
                     cli_run::CompileDisposition::Refused { phase, cause } => {
                         eprintln!(
@@ -603,7 +603,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                             render_diagnostics(&emission.result);
                         }
                         cli_run::pre_entry_phase::print_invocation_receipt();
-                        std::process::exit(1);
+                        end_process_without_teardown(1);
                     }
                     cli_run::CompileDisposition::Completed { emitted_count } => {
                         eprintln!(
@@ -647,7 +647,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                             emitted_count, total_diagnostics
                         );
                         cli_run::pre_entry_phase::print_invocation_receipt();
-                        std::process::exit(0);
+                        end_process_without_teardown(0);
                     }
                 }
             }
@@ -994,9 +994,16 @@ fn render_one_diagnostic(
     let message = diagnostic_to_message(d.diagnostic.clone());
     let span = diagnostic_to_span(d.diagnostic.clone());
 
-    let location = if !span.file.is_empty() {
-        if let Some(idx) = index_map.get(&span.file) {
+    let located = if span.file.is_empty() {
+        None
+    } else {
+        index_map.get(&span.file).map(|idx| {
             let lc = byte_to_line_col(idx.clone(), span.start);
+            (idx, lc)
+        })
+    };
+    let location = if !span.file.is_empty() {
+        if let Some((_, lc)) = &located {
             format!("{}:{}:{}", span.file, lc.line, lc.col)
         } else {
             span.file.clone()
@@ -1013,10 +1020,9 @@ fn render_one_diagnostic(
         eprintln!("{}{}[{}]: {}", indent, severity, location, message);
     }
 
-    if !span.file.is_empty() {
-        if let Some(idx) = index_map.get(&span.file) {
-            let lc = byte_to_line_col(idx.clone(), span.start);
-            let line_text = source_line_at(idx.clone(), lc.line);
+    {
+        if let Some((idx, lc)) = &located {
+            let line_text = source_line_at(Rc::clone(idx), lc.line);
             let line_num = format!("{}", lc.line);
             let gutter_width = line_num.len();
             eprintln!("{} {} |", indent, " ".repeat(gutter_width));
@@ -1131,23 +1137,31 @@ impl Verdict {
         // here, and the compile route reaches this function when writing the emitted tree is
         // refused -- exactly the failure an operator needs the receipt for.
         v1_compiler::cli_run::pre_entry_phase::print_invocation_receipt();
-        // THE PROCESS ENDS WITHOUT RUNNING EXIT-TIME DESTRUCTORS. `std::process::exit` calls libc
-        // `exit`, which runs this thread's thread-local destructors -- the interpreter's corpus-wide
-        // memos and caches -- before the process can end. Measured on the mtcollins1 SOL notice
-        // watcher (run 37102391062): 11.7 s between this line and the process ending under
-        // `exit`, 1.5 s under `_exit` (the remainder is the kernel reclaiming the address space).
-        // Nothing reads that memory after the verdict, and no thread-local or atexit hook on these
-        // paths holds a file, child, lock or lease, so the only work skipped is freeing memory the
-        // kernel reclaims anyway. Both standard streams are flushed first, because `_exit` does not.
-        {
-            use std::io::Write;
-            let _ = std::io::stdout().flush();
-            let _ = std::io::stderr().flush();
-        }
-        // SAFETY: `_exit` takes any int and does not return; no Rust invariant depends on code
-        // after this point running.
-        unsafe { libc::_exit(self.status) }
+        end_process_without_teardown(self.status)
     }
+}
+
+/// THE ONE BOUNDARY AT WHICH THE CLI ENDS THE PROCESS WITHOUT EXIT-TIME TEARDOWN, shared by
+/// `Verdict::apply` and the compile route. CLI ROUTES ONLY: in-process callers (claim_batch, tests)
+/// never reach it and release normally. The caller prints the invocation receipt FIRST, because
+/// `_exit` skips every exit hook.
+fn end_process_without_teardown(status: i32) -> ! {
+    // THE PROCESS ENDS WITHOUT RUNNING EXIT-TIME DESTRUCTORS. `std::process::exit` calls libc
+    // `exit`, which runs this thread's thread-local destructors -- the interpreter's corpus-wide
+    // memos and caches -- before the process can end. Measured on the mtcollins1 SOL notice
+    // watcher (run 37102391062): 11.7 s between this line and the process ending under
+    // `exit`, 1.5 s under `_exit` (the remainder is the kernel reclaiming the address space).
+    // Nothing reads that memory after the verdict, and no thread-local or atexit hook on these
+    // paths holds a file, child, lock or lease, so the only work skipped is freeing memory the
+    // kernel reclaims anyway. Both standard streams are flushed first, because `_exit` does not.
+    {
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+    }
+    // SAFETY: `_exit` takes any int and does not return; no Rust invariant depends on code
+    // after this point running.
+    unsafe { libc::_exit(status) }
 }
 
 /// THE FUNCTIONS ONE `gunbc run` EXECUTES, decided before anything is loaded.

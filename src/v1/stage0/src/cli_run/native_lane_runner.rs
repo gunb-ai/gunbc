@@ -4908,7 +4908,7 @@ fn latest_complete_census_record(
             ));
             continue;
         }
-        if best.map_or(true, |t| started > t) {
+        if best.is_none_or(|t| started > t) {
             best = Some(started);
             choice.chosen = Some(path);
         }
@@ -5100,11 +5100,18 @@ fn run_census_scoped_with(
 /// once (v2.compiler.source_root_eval native_lane_census_scoped_ingest); its `binding_subject` lines
 /// say which subjects reach each member. One run per subject re-resolved every shared member once per
 /// subject (DESIGN §2), which on a wave of thirty rewritten modules outran the runner.
+///
+/// THE KIT RUN is one more `census-scoped`, over the same prepared binary, with the kit's own root
+/// added to the source roots and the kit's fixture modules as its subjects
+/// (`gunbc.instruments.ambient_name_census_reading` `ambient_census_kit_subjects`). It is a separate
+/// run so the union above, and every row it prints, is exactly what it was without the kit. A reader that
+/// declares no kit (`None`) gets no kit run.
 pub fn run_census_controls_and_subjects(
     source_roots: &[String],
     control_root_sets: &[Vec<String>],
     subjects: &[String],
-) -> Result<(Vec<CensusInferRun>, CensusInferRun), String> {
+    kit: Option<(&str, &[String])>,
+) -> Result<(Vec<CensusInferRun>, CensusInferRun, Option<CensusInferRun>), String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let controls = control_root_sets
         .iter()
@@ -5115,7 +5122,23 @@ pub fn run_census_controls_and_subjects(
         .map(|subject| format!("//{}:all", subject.replace('.', "/")))
         .collect();
     let union = run_census_scoped_with(&preparation.binary_path, &labels, source_roots)?;
-    Ok((controls, union))
+    let kit = match kit {
+        Some((kit_root, kit_subjects)) => {
+            let kit_labels: Vec<String> = kit_subjects
+                .iter()
+                .map(|subject| format!("//{}:all", subject.replace('.', "/")))
+                .collect();
+            let mut kit_roots = source_roots.to_vec();
+            kit_roots.push(kit_root.to_string());
+            Some(run_census_scoped_with(
+                &preparation.binary_path,
+                &kit_labels,
+                &kit_roots,
+            )?)
+        }
+        None => None,
+    };
+    Ok((controls, union, kit))
 }
 
 /// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
@@ -5229,7 +5252,7 @@ pub fn measured_spawn_trampoline(receipt: std::path::PathBuf) -> i32 {
         return 2;
     };
     let started = std::time::Instant::now();
-    let child = Command::new(&binary)
+    let child = Command::new(binary)
         .args(argv)
         .env_remove(MEASURED_SPAWN_RECEIPT_ENV)
         .spawn();
