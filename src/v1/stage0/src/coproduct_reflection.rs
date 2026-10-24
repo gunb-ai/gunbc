@@ -732,7 +732,186 @@ fn concept_decl_node(
     match item.connective {
         Connective::Disj => marshal_disj_type_item(ctx, si, item),
         Connective::Conj => marshal_variant_arm_target(ctx, si, item),
+        Connective::NoConnective => marshal_non_connective_type_item(ctx, si, item),
         _ => Ok(unit_type_node(ctx)),
+    }
+}
+
+// THE ONE DECISION THAT A NO-CONNECTIVE TYPE DECLARATION IS A REFINEMENT, with every gate it needs:
+// the item has no connective, its right-hand side is not the bodyless self-reference, and that
+// right-hand side is a one-child Conj carrying the predicate annotation. Returns the right-hand side and
+// the predicate. marshal_non_connective_type_item reflects the refinement from it.
+fn refinement_rhs(item: &Rc<Node>) -> Option<(Rc<Node>, Rc<Node>)> {
+    if item.connective != Connective::NoConnective {
+        return None;
+    }
+    let rhs = item
+        .inferred
+        .as_ref()
+        .and_then(|inf| inferred_to_node(inf.clone()))?;
+    let bodyless = rhs.connective == Connective::NoConnective
+        && rhs.name == item.name
+        && rhs.type_annotation.is_none();
+    if bodyless || rhs.connective != Connective::Conj || rhs.children.len() != 1 {
+        return None;
+    }
+    let predicate = rhs.type_annotation.clone()?;
+    Some((rhs, predicate))
+}
+
+// A TYPE DECLARATION WITH NO CONNECTIVE IS AN ALIAS, A REFINEMENT OR A BODYLESS (OPAQUE) DECLARATION;
+// it is never an empty Conj. Each reflects as the wrapper v2.std.type_binder reads unchanged:
+// alias -> type_alias_wrapper (TypeParamsEdge binders, TypeAliasEdge carrier); bodyless ->
+// type_opaque_wrapper (TypeParamsEdge only); refinement -> Conj { <type-expr>: carrier,
+// where-clause production edge: clause } (refinement_declaration_of_node). The carrier is the
+// authored type name, the same flattening a field type gets (marshal_type_expr_ref). The host cannot
+// elaborate a where-predicate (v2 body_lower_kept_where_clause resolves calls), so the captured
+// predicates are source spellings and the fact that carries them says so on DeclFact
+// (v2.std.decl_index DeclFactProducer HostReflection, derived by the reader), never as an edge in the clause
+// tree where resolve and infer would fold it as a predicate. Dissolves when the v2 reflection route
+// elaborates where-predicates through body_lowering_fold.
+fn marshal_non_connective_type_item(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: &Rc<Node>,
+) -> InterpResult<Value> {
+    let rhs = item
+        .inferred
+        .as_ref()
+        .and_then(|inf| inferred_to_node(inf.clone()))
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!(
+                "marshal_non_connective_type_item: type `{}` has no connective and no right-hand side",
+                item.name
+            ),
+        })?;
+    let conj = |edges: Vec<Value>| {
+        node_record(
+            ctx,
+            node_kind_type_node(ctx, nullary_connective_variant(ctx, "Conj")),
+            edges,
+        )
+    };
+    let mut binder_edges = Vec::new();
+    for p in item.params.iter() {
+        let pname = authored_name_at(si.clone(), p.clone());
+        if pname.is_empty() {
+            continue;
+        }
+        binder_edges.push(edge_named(ctx, &pname, atom_identity_node(ctx, &pname)));
+    }
+    let binders = conj(binder_edges);
+    let bodyless = rhs.connective == Connective::NoConnective
+        && rhs.name == item.name
+        && rhs.type_annotation.is_none();
+    if bodyless {
+        return Ok(conj(vec![core_edge_value(ctx, "TypeParamsEdge", binders)]));
+    }
+    if let Some((_, predicate)) = refinement_rhs(item) {
+        let carrier = marshal_type_expr_ref(ctx, si, &rhs.children[0])?;
+        let mut captured = Vec::new();
+        for pred in predicate.children.iter() {
+            let spelling = predicate_spelling(pred).ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "marshal_non_connective_type_item: type `{}` has predicate `{}` with an argument that is neither a literal nor a record of literals",
+                    item.name, pred.name
+                ),
+            })?;
+            captured.push(edge_positional(ctx, atom_identity_node(ctx, &spelling)));
+        }
+        let production = conj(vec![
+            edge_named(
+                ctx,
+                "grammar_production_identity_node_projection",
+                atom_identity_node(ctx, "dag_surface_where_refinement_clause"),
+            ),
+            edge_named(
+                ctx,
+                "grammar_production_captured_node_projection",
+                conj(captured),
+            ),
+        ]);
+        let clause = conj(vec![production_edge_value(
+            ctx,
+            "dag_surface_where_refinement_clause",
+            production,
+        )]);
+        return Ok(conj(vec![
+            edge_named(ctx, "dag_surface_type_expr", carrier),
+            production_edge_value(ctx, "dag_surface_where_refinement_clause", clause),
+        ]));
+    }
+    let carrier = marshal_type_expr_ref(ctx, si, &rhs)?;
+    Ok(conj(vec![
+        core_edge_value(ctx, "TypeParamsEdge", binders),
+        core_edge_value(ctx, "TypeAliasEdge", carrier),
+    ]))
+}
+
+// A PARSED PREDICATE'S SPELLING: the parser has already folded `brand("X")` into a field-init node (name
+// Brand, one literal child) and `range(min: 1)` into one whose child is a record of literal properties,
+// both with no source span, so the spelling is the predicate name plus its arguments rendered
+// generically: a literal as itself, a record as `field: value` pairs in source order. An argument that
+// is neither refuses (None) rather than dropping to the bare name; the caller names the predicate.
+fn predicate_argument_spelling(arg: &Rc<Node>) -> Option<String> {
+    match arg.expr_data.as_ref() {
+        ExprData::ExprLiteral { value, .. } => match value.as_ref() {
+            crate::std_syntax::LiteralValue::LitStr { value: s, .. } => Some(format!("\"{s}\"")),
+            crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(n.to_string()),
+            crate::std_syntax::LiteralValue::LitBool { value: b, .. } => Some(b.to_string()),
+            crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
+            _ => None,
+        },
+        ExprData::ExprRecordLit { .. } => {
+            let mut pairs = Vec::new();
+            for property in arg.children.iter() {
+                let value = predicate_argument_spelling(property.children.first()?)?;
+                pairs.push(format!("{}: {value}", property.name));
+            }
+            Some(pairs.join(", "))
+        }
+        _ => None,
+    }
+}
+
+fn predicate_spelling(pred: &Rc<Node>) -> Option<String> {
+    match pred.children.first() {
+        None => Some(pred.name.clone()),
+        Some(arg) => Some(format!(
+            "{}({})",
+            pred.name,
+            predicate_argument_spelling(arg)?
+        )),
+    }
+}
+
+fn production_edge_value(ctx: &InterpContext, edge: &str, target: Value) -> Value {
+    Value::Record {
+        type_name: ctx.sym("Edge"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("label"),
+                Value::Variant {
+                    type_name: ctx.sym("EdgeLabel"),
+                    variant_name: ctx.sym("StructuralLabel"),
+                    fields: Rc::new(vec![(
+                        ctx.sym("label"),
+                        Value::Variant {
+                            type_name: ctx.sym("StructuralEdgeLabel"),
+                            variant_name: ctx.sym("ProductionEdge"),
+                            fields: Rc::new(sorted_fields(vec![
+                                (
+                                    ctx.sym("language"),
+                                    str_value("dag_language_model_surface_id"),
+                                ),
+                                (ctx.sym("edge"), str_value(edge)),
+                            ])),
+                        },
+                    )]),
+                },
+            ),
+            (ctx.sym("target"), target),
+        ])),
     }
 }
 
@@ -1832,6 +2011,23 @@ pub struct DeclFactsCorpusWalk {
 // dependency-pool-index / the module source index used by compile/load. Where roots
 // shadow the same module path, this producer may emit facts for both the winning
 // source and the shadowed stub; compile binds only the winner.
+// REFLECTION-LOCAL CLASSIFICATION (v1 item_kind is frozen and keeps its answer): a type declaration
+// with no connective and no body is an alias, a refinement or a bodyless declaration, so it
+// reflects as a TypeItem carrying its wrapper instead of an OtherItem with an empty node.
+fn reflected_item_kind(item: &Rc<Node>) -> ItemKind {
+    let kind = item_kind(item.clone());
+    if kind == ItemKind::OtherItem
+        && item.module_item_kind
+            == crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration
+        && item.connective == Connective::NoConnective
+        && item.transport.is_none()
+    {
+        ItemKind::TypeItem
+    } else {
+        kind
+    }
+}
+
 pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     let mut out = Vec::new();
     let mut files_scanned = 0usize;
@@ -1862,7 +2058,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             if name.is_empty() {
                 continue;
             }
-            let kind = item_kind(item.clone());
+            let kind = reflected_item_kind(item);
             out.push(DeclFactRaw {
                 qualified_name: decl_qualified_name(&module_path, &name),
                 name,
@@ -1897,6 +2093,16 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
 /// Declaration facts for `roots`; preserves the non-test corpus boundary (delegates to `decl_facts_corpus_walk`).
 pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
     decl_facts_corpus_walk(pool_roots).facts
+}
+
+// WHO PRODUCED THE FACT (v2.std.decl_index DeclFactProducer): this host walk, the only producer today. It
+// stamps every fact; whether a fact's predicates are source spellings is derived by the reader.
+fn host_reflection_producer(ctx: &InterpContext) -> Value {
+    Value::Variant {
+        type_name: ctx.sym("DeclFactProducer"),
+        variant_name: ctx.sym("HostReflection"),
+        fields: Rc::new(vec![]),
+    }
 }
 
 fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
@@ -2033,6 +2239,7 @@ pub fn eval_export_signature_facts(
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (ctx.sym("node"), node),
                 (ctx.sym("rel_path"), str_value(fact.rel_path)),
+                (ctx.sym("producer"), host_reflection_producer(ctx)),
             ])),
         });
     }
@@ -2173,6 +2380,7 @@ fn eval_decl_facts_rows(ctx: &InterpContext, facts: &[DeclFactRaw]) -> InterpRes
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (ctx.sym("node"), node),
                 (ctx.sym("rel_path"), str_value(fact.rel_path.clone())),
+                (ctx.sym("producer"), host_reflection_producer(ctx)),
             ])),
         });
     }
@@ -2797,5 +3005,129 @@ mod field_binder_default_tests {
             span_of(17, 22),
         );
         marshal_with_default(literal).expect("a literal default marshals");
+    }
+}
+
+#[cfg(test)]
+mod refinement_rhs_tests {
+    use std::rc::Rc;
+
+    use crate::v1_std_core::{
+        empty_node_list, make_named_expr_node, Connective, ExprData, InferredNode, Node, SourceSpan,
+    };
+
+    use super::{predicate_spelling, refinement_rhs};
+
+    fn span() -> Rc<SourceSpan> {
+        Rc::new(SourceSpan {
+            file: "test.dag".to_string(),
+            start: 0,
+            end: 1,
+        })
+    }
+
+    fn leaf(name: &str) -> Rc<Node> {
+        make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            Rc::new(ExprData::ExprVar { binding_kind: None }),
+            empty_node_list(),
+            None,
+            span(),
+            span(),
+        )
+    }
+
+    // A one-child Conj carrying a predicate annotation: the refinement-shaped right-hand side.
+    fn refinement_shaped_rhs() -> Rc<Node> {
+        let base = leaf("NonEmptyStr");
+        Rc::new(Node {
+            connective: Connective::Conj,
+            children: Rc::new(im::vector![leaf("String")]),
+            type_annotation: Some(leaf("predicates")),
+            ..(*base).clone()
+        })
+    }
+
+    fn item_with(connective: Connective) -> Rc<Node> {
+        let base = leaf("NonEmptyStr");
+        Rc::new(Node {
+            connective,
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: refinement_shaped_rhs(),
+            })),
+            ..(*base).clone()
+        })
+    }
+
+    // POSITIVE CONTROL: a no-connective item with the refinement-shaped rhs is a refinement.
+    #[test]
+    fn a_no_connective_item_with_a_predicated_conj_rhs_is_a_refinement() {
+        assert!(refinement_rhs(&item_with(Connective::NoConnective)).is_some());
+    }
+
+    // RED: the same Conj-shaped rhs on an item that has a connective is NOT a refinement, so the
+    // refinement predicate arm is not reached for it.
+    #[test]
+    fn a_connective_item_with_a_conj_shaped_rhs_is_not_a_refinement() {
+        assert!(refinement_rhs(&item_with(Connective::Disj)).is_none());
+        assert!(refinement_rhs(&item_with(Connective::Conj)).is_none());
+    }
+
+    fn field_init(name: &str, value: Rc<Node>) -> Rc<Node> {
+        crate::v1_std_core::make_field_init_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name.to_string(),
+            value,
+            span(),
+            span(),
+        )
+    }
+
+    fn int_literal(n: i64) -> Rc<Node> {
+        crate::v1_std_core::make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::ExprLiteral {
+                value: Rc::new(crate::std_syntax::LiteralValue::LitInt { value: n }),
+            }),
+            empty_node_list(),
+            None,
+            span(),
+        )
+    }
+
+    fn record(properties: Vec<Rc<Node>>) -> Rc<Node> {
+        crate::v1_std_core::make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
+            Rc::new(properties.into_iter().collect()),
+            None,
+            span(),
+        )
+    }
+
+    // POSITIVE CONTROL, shaped as parse_single_predicate builds std.types Port: `range(min: 1, max: 65535)`.
+    #[test]
+    fn a_record_of_literals_is_spelled_with_its_field_names_in_source_order() {
+        let range = field_init(
+            "range",
+            record(vec![
+                field_init("min", int_literal(1)),
+                field_init("max", int_literal(65535)),
+            ]),
+        );
+        assert_eq!(
+            predicate_spelling(&range).as_deref(),
+            Some("range(min: 1, max: 65535)")
+        );
+    }
+
+    // RED: an expression argument (not a literal or a record of literals) refuses, never the bare name.
+    #[test]
+    fn an_expression_argument_is_unspellable() {
+        let call = field_init("max_len", leaf("compute"));
+        assert_eq!(predicate_spelling(&call), None);
+        let nested = field_init("range", record(vec![field_init("min", leaf("x"))]));
+        assert_eq!(predicate_spelling(&nested), None);
     }
 }
