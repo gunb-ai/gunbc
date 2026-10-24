@@ -25253,6 +25253,9 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::inert_carrier_declared_count_live(),
             ))),
 
+            arm "free_call.witness_deferral_freeze_population_census" { "witness_deferral_freeze_population_census" } => Ok(Some(str_value(
+                crate::cli_run::witness_deferral_freeze_population_census(),
+            ))),
             arm "free_call.commit_witness_claim_roster_unresolvable_count" { "commit_witness_claim_roster_unresolvable_count" } => Ok(Some(Value::Int(
                 crate::cli_run::commit_witness_claim_roster_unresolvable_count(),
             ))),
