@@ -9,6 +9,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 import extdeps.github.pulls_contracts {
+  pull_request_list_state_filter_wire_contract,
   pull_request_state_wire_contract,
   review_state_wire_contract,
   review_event_wire_contract
@@ -32,6 +33,22 @@ data github_cli_pull_merge_authority: ExternalAuthority = ExternalAuthority {
 }
 
 type PullRequestState = Open | Closed
+
+// THE LIST ENDPOINT'S `state` FILTER IS NOT A PULL REQUEST'S STATE. GitHub's "List pull requests"
+// documents the query parameter as a string, "Either open, closed, or all to filter by state",
+// default open (list_pull_requests_authority, read 2026-10-24 at X-GitHub-Api-Version 2026-03-10).
+// A pull request is open or closed; a listing may ask for either or for all, so `all` is a value
+// of the filter and of no resource. Reusing PullRequestState for the filter made `all`
+// unexpressible. The arms carry a ListState prefix because Open and Closed already name
+// PullRequestState's arms in this module; the wire contract strips it.
+type PullRequestListStateFilter = ListStateOpen | ListStateClosed | ListStateAll
+
+data list_pull_requests_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/pulls/pulls#list-pull-requests"
+  }
+}
 
 type ReviewState = Pending | Commented | Approved | ChangesRequested | Dismissed
 
@@ -204,7 +221,7 @@ service github.Pulls {
       auth_token: Secret
       owner: String
       repo: String
-      state: PullRequestState = Open
+      state: PullRequestListStateFilter = ListStateOpen
       per_page: Int = default_per_page
     }
     output {
