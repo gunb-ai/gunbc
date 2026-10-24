@@ -10353,6 +10353,10 @@ pub fn builtin_result_at_call(bt: Rc<Node>, scope: Rc<InferScope>) -> Rc<Builtin
     }
 }
 
+pub fn builtin_result_declaration_absent_message(func_name: String, qualified: String) -> String {
+    v1_rt::concat("builtin '".to_string(), v1_rt::concat(func_name.clone(), v1_rt::concat("' returns ".to_string(), v1_rt::concat(qualified.clone(), ", which this module's closure does not declare: import the module that declares it".to_string()))))
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum BuiltinResultArguments {
@@ -15383,13 +15387,18 @@ match bare_s.clone() {
                                     {
                                         let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name.clone(), typed_args.clone(), scope.clone(), span.clone());
 let result_at_call = builtin_result_at_call(tier2b.bt.clone(), scope.clone());
-let bt = match (*result_at_call.clone()).clone() {
-    BuiltinResultAtCall::BuiltinResultReady { node: r, .. } => r.clone(),
-    BuiltinResultAtCall::BuiltinResultDeclarationAbsent { qualified: _, .. } => tier2b.bt.clone(),
+let call_inferred = match (*result_at_call.clone()).clone() {
+    BuiltinResultAtCall::BuiltinResultReady { node: r, .. } => Some(Rc::new(InferredNode::Resolved {
+    node: r.clone(),
+})),
+    BuiltinResultAtCall::BuiltinResultDeclarationAbsent { qualified: q, .. } => Some(Rc::new(InferredNode::CompilerError {
+    message: builtin_result_declaration_absent_message(func_name.clone(), q.clone()),
+    span: span.clone(),
+})),
 };
 let result_declaration_diags = match (*result_at_call.clone()).clone() {
     BuiltinResultAtCall::BuiltinResultReady { node: _, .. } => Rc::new(vec![]),
-    BuiltinResultAtCall::BuiltinResultDeclarationAbsent { qualified: q, .. } => Rc::new(vec![inference_error(v1_rt::concat("builtin '".to_string(), v1_rt::concat(func_name.clone(), v1_rt::concat("' returns ".to_string(), v1_rt::concat(q.clone(), ", which this module's closure does not declare: import the module that declares it".to_string())))), span.clone(), scope.module_name.clone())]),
+    BuiltinResultAtCall::BuiltinResultDeclarationAbsent { qualified: q, .. } => Rc::new(vec![inference_error(builtin_result_declaration_absent_message(func_name.clone(), q.clone()), span.clone(), scope.module_name.clone())]),
 };
 let call_semantics = if (func_name.clone() == "lookup".to_string()) {
                                             Some(Rc::new(CallSemantics::LookupCallSemantics {
@@ -15407,9 +15416,7 @@ Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: call_semantics.clone(),
     descent_evidence: std::option::Option::None,
-}), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
-    node: bt.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+}), typed_arg_nodes.clone(), call_inferred.clone(), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
     emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(result_declaration_diags.clone(), v1_rt::concat(tier2b.kernel_diags.clone(), builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone()))))),
 })
 }
