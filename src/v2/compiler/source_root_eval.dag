@@ -3259,6 +3259,11 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
   }
 }
 
+type PreClosure {
+  context: NativeTestContext
+  tm: List<Int>
+}
+
 type NativeTimedCensus {
   report: DemandCensusReport
   timing: List<String>
@@ -3275,7 +3280,16 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<NativeTimedC
       )
       let k1 = observed_thread_cpu_nanos("tm-fold-finish")
       let authored_by_owner = native_demand_census_authored_by_owner(authored: folded.authored)
-      let finished = native_test_context_finish(state: folded.context, front: front, ingest: ingest)
+      let finished0 = native_test_context_finish(state: folded.context, front: front, ingest: ingest)
+      let kc0 = observed_thread_cpu_nanos("tm-closure-start")
+      let pre = match finished0.resolution {
+        Accepted { value: rc, diagnostics: dd } => 
+          let cl = closure_declarations_demand(shared: rc)
+          PreClosure { context: native_test_context_with_resolution(context: finished0, resolution: Accepted { value: cl.context, diagnostics: dd }), tm: cl.tm }
+        Rejected { diagnostics: dd } => PreClosure { context: finished0, tm: [] }
+      }
+      let finished = pre.context
+      let kc1 = observed_thread_cpu_nanos("tm-closure-finish")
       let k2 = observed_thread_cpu_nanos("tm-finish-finish")
       let walked = fold_list(
         xs: folded.context.roots,
@@ -3294,7 +3308,7 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<NativeTimedC
         cons: fn(w, root) { native_demand_census_module(w: w, root: root, authored: authored_by_owner) }
       )
       let k3 = observed_thread_cpu_nanos("tm-walk-finish")
-      outcome_accepted(value: NativeTimedCensus { timing: [demand_census_text(parts: ["[tm] modules=", to_string(length(xs: folded.context.roots)), " fold_ms=", to_string((k1 - k0) / 1000000), " finish_ms=", to_string((k2 - k1) / 1000000), " walk_ms=", to_string((k3 - k2) / 1000000), " resolve_ms=", to_string(walked.t_resolve / 1000000), " outcomes_ms=", to_string(walked.t_outcomes / 1000000), " facts_ms=", to_string(walked.t_facts / 1000000), " absorb_ms=", to_string(folded.t_absorb / 1000000), " marks_ms=", fold_list(xs: walked.marks, empty: "", cons: fn(a, m) { concat(a, concat(to_string(m / 1000000), ",")) }), " accepted_roots=", to_string(length(xs: folded.context.roots)), " refusals=", to_string(length(xs: folded.context.file_refusals))])], report: demand_census_report(
+      outcome_accepted(value: NativeTimedCensus { timing: [demand_census_text(parts: ["[tm] modules=", to_string(length(xs: folded.context.roots)), " fold_ms=", to_string((k1 - k0) / 1000000), " finish_ms=", to_string((k2 - k1) / 1000000), " walk_ms=", to_string((k3 - k2) / 1000000), " resolve_ms=", to_string(walked.t_resolve / 1000000), " outcomes_ms=", to_string(walked.t_outcomes / 1000000), " facts_ms=", to_string(walked.t_facts / 1000000), " absorb_ms=", to_string(folded.t_absorb / 1000000), " marks_ms=", fold_list(xs: walked.marks, empty: "", cons: fn(a, m) { concat(a, concat(to_string(m / 1000000), ",")) }), " closure_ms=", to_string((kc1 - kc0) / 1000000), " cl=", fold_list(xs: pre.tm, empty: "", cons: fn(a, m) { concat(a, concat(to_string(m), ",")) }), " accepted_roots=", to_string(length(xs: folded.context.roots)), " refusals=", to_string(length(xs: folded.context.file_refusals))])], report: demand_census_report(
         uses_functions: length(xs: folded.authored) + length(xs: folded.file_refused),
         functions: walked.functions,
         operations: walked.operations,

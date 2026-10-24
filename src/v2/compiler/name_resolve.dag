@@ -1233,6 +1233,7 @@ type ClosureDeclarations {
   module_outcomes: List<ModuleOutcome>
   outcome_index: ModuleOutcomeIndex
   context: ResolutionContext
+  tm: List<Int>
 }
 
 type DeclLocalOutcome
@@ -1616,8 +1617,9 @@ fn closure_phase1_walk_module(
 // published.
 fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations {
   match shared.closure_declarations {
-    Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index, context: shared }
+    Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index, context: shared, tm: [] }
     Absent =>
+      let q0 = observed_thread_cpu_nanos("cl-start")
       let phase1 = fold_list(
         xs: shared.roots.roots,
         empty: ClosurePhase1Acc { rows: [], unavailable: [], trees: [], context: shared },
@@ -1629,8 +1631,11 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
           }
         }
       )
+      let q1 = observed_thread_cpu_nanos("cl-phase1")
       let blocked = closure_phase2_blocked(rows: phase1.rows, unavailable: phase1.unavailable)
+      let q2 = observed_thread_cpu_nanos("cl-blocked")
       let by_module = closure_rows_by_module(rows: phase1.rows)
+      let q3 = observed_thread_cpu_nanos("cl-bymodule")
       let index = fold_list(xs: phase1.trees, empty: empty_symbol_index(), cons: fn(acc, nt) {
         match qualified_name_from_module_node(root: nt.root) {
           Rejected { diagnostics: _ } => acc
@@ -1638,6 +1643,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
             closure_publish_module(nt: nt, module_qn: module_qn, rows: closure_module_rows(by_module: by_module, module_qn: module_qn), blocked: blocked, index: acc)
         }
       })
+      let q4 = observed_thread_cpu_nanos("cl-publish")
       let observed = fold_list(xs: phase1.trees, empty: phase1.unavailable, cons: fn(acc, nt) {
         match qualified_name_from_module_node(root: nt.root) {
           Rejected { diagnostics: _ } => acc
@@ -1648,8 +1654,11 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
             )
         }
       })
+      let q5 = observed_thread_cpu_nanos("cl-observed")
       let outcome_index = module_outcome_index(outcomes: observed)
+      let q6 = observed_thread_cpu_nanos("cl-oindex")
       ClosureDeclarations {
+        tm: [(q1 - q0) / 1000000, (q2 - q1) / 1000000, (q3 - q2) / 1000000, (q4 - q3) / 1000000, (q5 - q4) / 1000000, (q6 - q5) / 1000000],
         declarations: index,
         module_outcomes: observed,
         outcome_index: outcome_index,
