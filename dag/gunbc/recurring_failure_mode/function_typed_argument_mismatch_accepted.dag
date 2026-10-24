@@ -10,6 +10,7 @@ data function_typed_argument_mismatch_accepted: RecurringFailureMode = Recurring
   rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
 
   receipts: [
+    "RECEIPT (sunny-bee-153, 2026-10-24, the sort_by wave's oracle probe test.claim.sort_by_wave_oracle_probe): a generic K bound through a RECORD OF FUNCTIONS is not unified. list_sort_by_key(xs: rows, key: fn(r) { r.rank }, order: string_total_order()) binds K = Int from the key and K = String from TotalOrder<String>, and the seed accepts it -- gunbc run evaluates it and gunbc compile reports 0 blocking errors. Only rustc on the emitted crate refuses it (E0308 expected String, found i64), so in a module no emitted build compiles the mismatch passes silently. Routed by tidy-ant-251 to keen-heron-809 (infer owner).",
     "**a value that does not inhabit a function type is accepted where one is declared, and a function value is accepted where a nominal type is declared** (the v1 seed's direct-call argument checks and record-field checks in `v1.compiler.infer` use `type_node_is_callable` to EXEMPT callables from nominal brand and declared-type-obligation judgment, and no callable-specific judgment runs in their place.)",
 
     "INVALID STATE: an Accepted program binding an argument or record field whose produced type does not inhabit its declared type, where either side is a function type.",

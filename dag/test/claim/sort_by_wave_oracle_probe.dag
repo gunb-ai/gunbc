@@ -1,0 +1,14 @@
+module test.claim.sort_by_wave_oracle_probe
+
+import std.types { Bool, Int, List, String }
+import std.algebra { list_sort_by_key, string_total_order }
+
+type Row {
+  name: String
+  rank: Int
+}
+
+test fn wrong_order_for_an_int_key() -> Bool {
+  let rows = list_sort_by_key(xs: [Row { name: "a", rank: 2 }], key: fn(r) { r.rank }, order: string_total_order())
+  true
+}
