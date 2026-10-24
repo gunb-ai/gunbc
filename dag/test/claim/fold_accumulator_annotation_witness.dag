@@ -1,0 +1,34 @@
+module test.claim.fold_accumulator_annotation_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Executing witness for v1.compiler.emit_rust rust_fold_accumulator_annotation. A fold whose init
+// names no type argument (an absent optional, or an arm that does not mention the accumulator's
+// type parameter) was emitted with an unannotated accumulator, `|acc: _, x: _|`, and rustc refused
+// the closure body's first use of `acc` (E0282: cannot infer type of the type parameter T). The
+// specimens are gunbc.durable_cas_file_store cas_observe_window (`init: none`) and std.list
+// first_duplicate_by_key (a FirstDuplicateScan<T> init built from its T-free arm), class 9 of
+// stern-bat-401's emitter-debt list. The annotation is now read from the fold call's inferred type.
+// absent_init_accumulator_is_annotated_from_the_fold_type is the RED: its accumulator is an
+// optional seeded with `none`. concrete_init_accumulator_stays_annotated is the positive control:
+// a concrete seed whose spelling the emitter always admitted, which must keep its annotation.
+
+test fn absent_init_accumulator_is_annotated_from_the_fold_type() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fold_accumulator_witness.absent_init\n\ntype Probe = ProbeHit { n: Int } | ProbeMiss\n\nfn first_hit(xs: List<Int>) -> Probe? {\n  fold(xs, init: none, f: (acc, x) => match acc {\n    Present { value: p } => Present { value: p }\n    Absent => if x > 0 { Present { value: ProbeHit { n: x } } } else { none }\n  })\n}\n",
+    "src/fold_accumulator_witness_absent_init.rs",
+    ["|acc: Option<Rc<Probe>>"],
+    ["|acc: _"]
+  )
+}
+
+test fn concrete_init_accumulator_stays_annotated() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fold_accumulator_witness.concrete_init\n\ntype Tally {\n  hits: Int\n  misses: Int\n}\n\nfn tally(xs: List<Int>) -> Tally {\n  fold(xs, init: Tally { hits: 0, misses: 0 }, f: (acc, x) => if x > 0 { Tally { hits: acc.hits + 1, misses: acc.misses } } else { Tally { hits: acc.hits, misses: acc.misses + 1 } })\n}\n",
+    "src/fold_accumulator_witness_concrete_init.rs",
+    ["|acc: Rc<Tally>"],
+    ["|acc: _"]
+  )
+}

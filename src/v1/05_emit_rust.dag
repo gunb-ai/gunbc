@@ -13932,6 +13932,46 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
 // them from the fold body or refuses loudly. An earlier cut of this repair instead widened the
 // "under-resolved accumulator" test to prefer the contextual type; that was a measured NON-EVENT
 // (falsifier m09: removing it reddened nothing, and the four sites stayed) and is deleted.
+// THE FOLD ACCUMULATOR'S ANNOTATION IS READ FROM AN INFERRED TYPE, AND THE INIT LITERAL IS ONLY THE
+// FIRST CANDIDATE. Iterator::fold<B, F> fixes B from the init and the closure together, so a closure
+// parameter emitted `acc: _` leaves B to the init alone, and an init that names no type argument
+// gives rustc nothing: `fold(std::option::Option::None, |acc: _, _| match acc.clone() ..)`
+// (gunbc.durable_cas_file_store cas_observe_window) and a FirstDuplicateScan<T> init built from its
+// T-free arm `FirstDuplicateNotFound { seen: .. }` (std.list first_duplicate_by_key, on a closure
+// where the init-derived spelling was refused) are both E0282, "cannot infer type of the type
+// parameter T". The type B is not unknown there: the fold call's own inferred result type IS B, and
+// the accumulator parameter's resolved type is B again. So the annotation tries, in order, the
+// accumulator type the init or the algebra row supplied, the call's inferred result type, and the
+// accumulator parameter's resolved type, and writes the first one every admission below accepts.
+// The admissions are the ones this site already applied to its single candidate (a type
+// variable, an unbound or closure-unbound generic, a rendered spurious generic, an
+// applicationless parametric head, a bare container): a candidate that fails any of them is a
+// type this closure cannot spell, and when every candidate fails the annotation stays `_`.
+fn rust_fold_accumulator_annotation(candidates: List<Node>, shared_types: Set<String>, scope: InferScope, emit_info: EmitGraphInfo, fold_emit_info: EmitGraphInfo) -> String {
+  let si = scope.type_env.source_indices
+  let admitted = fold(candidates, init: none, f: (found, t) =>
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        let rendered = render_rust_type(n: t, shared_types: shared_types, source_indices: si, emit_info: fold_emit_info)
+        let is_type_var = if t.inferred != none { is_type_variable(inferred: t.inferred.value) } else { false }
+        let refused = is_type_var
+          || (t.children |> any(c => type_node_child_is_type_variable(c: c)))
+          || type_node_has_unbound_type_variable(n: t, generic_param_names: emit_info.fn_generic_param_names, source_indices: si)
+          || type_node_has_closure_unbound_generic_atom(n: t, generic_param_names: emit_info.fn_generic_param_names, env: scope.type_env, source_indices: si)
+          || rust_fold_rendered_type_has_any_spurious_generic(type_str: rendered, generic_param_names: emit_info.fn_generic_param_names)
+          || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: si, emit_info: fold_emit_info)
+          || ((t.children |> count) == 0 && is_container_type(name: authored_name_at(source_indices: si, node: t)))
+          || rendered == "" || rendered == "_"
+        if refused { none } else { Present { value: rendered } }
+    }
+  )
+  match admitted {
+    Present { value: annotation } => annotation
+    Absent => "_"
+  }
+}
+
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
@@ -14063,15 +14103,26 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
     }
   } else { emit_info }
   let acc_type_str = render_rust_type(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
-  let acc_type_is_type_var = if acc_type_node.inferred != none { is_type_variable(inferred: acc_type_node.inferred.value) } else { false }
-  let acc_child_is_type_var = acc_type_node.children |> any(c => type_node_child_is_type_variable(c: c))
-  let acc_has_unbound_type_var = type_node_has_unbound_type_variable(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: scope.type_env.source_indices)
-  let acc_has_closure_unbound_generic = type_node_has_closure_unbound_generic_atom(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, env: scope.type_env, source_indices: scope.type_env.source_indices)
-  let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
-  let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic || acc_carries_bare_parametric_head { "_" } else { acc_type_str }
+  let acc_param_resolved_type = match fold_lambda_node.expr_data {
+    ExprLambda =>
+      match fold_lambda_node.children |> skip(1) |> first {
+        Present { value: pn } =>
+          match pn.inferred {
+            Present { value: Resolved { node: t } } => Present { value: t }
+            _ => none
+          }
+        Absent => none
+      }
+    _ => none
+  }
+  let lambda_acc_type_str = rust_fold_accumulator_annotation(
+    candidates: concat(concat([acc_type_node], match contextual_acc_type { Present { value: t } => [t]  Absent => [] }), match acc_param_resolved_type { Present { value: t } => [t]  Absent => [] }),
+    shared_types: shared_types,
+    scope: scope,
+    emit_info: emit_info,
+    fold_emit_info: fold_emit_info
+  )
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
