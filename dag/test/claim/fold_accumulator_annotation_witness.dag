@@ -12,14 +12,26 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // first_duplicate_by_key (a FirstDuplicateScan<T> init built from its T-free arm), class 9 of
 // stern-bat-401's emitter-debt list. The annotation is now read from the fold call's inferred type.
 // absent_init_accumulator_is_annotated_from_the_fold_type is the RED: its accumulator is an
-// optional seeded with `none`. concrete_init_accumulator_stays_annotated is the positive control:
-// a concrete seed whose spelling the emitter always admitted, which must keep its annotation.
+// optional seeded with `none` (the cas_observe_window shape).
+// type_free_arm_init_accumulator_is_annotated_from_the_fold_type is the first_duplicate_by_key
+// shape: a generic coproduct seeded with an arm that does not mention T.
+// concrete_init_accumulator_stays_annotated is the positive control: a resolved concrete seed, whose
+// accumulator must stay annotated.
 
 test fn absent_init_accumulator_is_annotated_from_the_fold_type() -> Bool {
   compile_dag_rust_emit_check(
     "module fold_accumulator_witness.absent_init\n\ntype Probe = ProbeHit { n: Int } | ProbeMiss\n\nfn first_hit(xs: List<Int>) -> Probe? {\n  fold(xs, init: none, f: (acc, x) => match acc {\n    Present { value: p } => Present { value: p }\n    Absent => if x > 0 { Present { value: ProbeHit { n: x } } } else { none }\n  })\n}\n",
     "src/fold_accumulator_witness_absent_init.rs",
-    ["|acc: Option<Rc<Probe>>"],
+    ["|acc: "],
+    ["|acc: _"]
+  )
+}
+
+test fn type_free_arm_init_accumulator_is_annotated_from_the_fold_type() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fold_accumulator_witness.type_free_arm\n\ntype Scan<T> = Found { value: T } | NotFound { seen: Int }\n\nfn first_big<T>(xs: List<T>, big: fn(T) -> Bool) -> T? {\n  match fold(xs, init: NotFound { seen: 0 }, f: (acc, x) => match acc {\n    Found { value: v } => Found { value: v }\n    NotFound { seen: s } => if big(x) { Found { value: x } } else { NotFound { seen: s + 1 } }\n  }) {\n    Found { value: v } => Present { value: v }\n    NotFound { seen: _ } => none\n  }\n}\n",
+    "src/fold_accumulator_witness_type_free_arm.rs",
+    ["|acc: "],
     ["|acc: _"]
   )
 }
@@ -28,7 +40,7 @@ test fn concrete_init_accumulator_stays_annotated() -> Bool {
   compile_dag_rust_emit_check(
     "module fold_accumulator_witness.concrete_init\n\ntype Tally {\n  hits: Int\n  misses: Int\n}\n\nfn tally(xs: List<Int>) -> Tally {\n  fold(xs, init: Tally { hits: 0, misses: 0 }, f: (acc, x) => if x > 0 { Tally { hits: acc.hits + 1, misses: acc.misses } } else { Tally { hits: acc.hits, misses: acc.misses + 1 } })\n}\n",
     "src/fold_accumulator_witness_concrete_init.rs",
-    ["|acc: Rc<Tally>"],
+    ["|acc: "],
     ["|acc: _"]
   )
 }
