@@ -7614,13 +7614,15 @@ fn value_type_is_declared_nominal(t: Node, scope: InferScope) -> Bool {
     }
 }
 
-// The refusal every chain (ii) position emits, located at the value.
+// The refusal every chain (ii) position emits, located at the value. An optional layer
+// (CardOptional on the value's type) has no route into text either: the host renders
+// `Present { value: .. }`. The cast refuses the same source through optional_cast_diags.
 fn nominal_value_at_host_text_diags(t: Node, position: String, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
-  if value_type_is_declared_nominal(t: t, scope: scope) {
-    [inference_error(
-      message: concat("nominal ", authored_name_at(source_indices: scope.type_env.source_indices, node: t),
-        " at host text ", position, ": no declared conversion"),
-      span: span, module_name: scope.module_name)]
+  let name = authored_name_at(source_indices: scope.type_env.source_indices, node: t)
+  if t.return_cardinality == CardOptional {
+    [inference_error(message: concat("optional ", name, "? at host text ", position, ": no declared conversion"), span: span, module_name: scope.module_name)]
+  } else if value_type_is_declared_nominal(t: t, scope: scope) {
+    [inference_error(message: concat("nominal ", name, " at host text ", position, ": no declared conversion"), span: span, module_name: scope.module_name)]
   } else { [] }
 }
 

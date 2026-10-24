@@ -6,7 +6,7 @@ import gunbc.compile_diagnostic_census {
   // row is its message truncated at 80 bytes; every refusal below is shorter, so the subject is the
   // whole message v1.compiler.infer nominal_value_at_host_text_diags writes.
 }
-import std.types { String, Bool, Int }
+import std.types { String, Bool, Int, bool_text }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -33,8 +33,9 @@ fn refusals(source: String, subject: String) -> Int {
   }
 }
 
-// The optional REDs key on the refusal's position and verdict; the subject's type spelling is the
-// kernel Optional's authored name, which this witness does not restate.
+// Keyed on a prefix of the subject: the optional REDs because the subject's type spelling is the
+// kernel Optional's authored name, which this witness does not restate, and the imported RED because
+// its message passes the census subject's 80-byte truncation.
 fn blocking_refusals_containing(source: String, fragment: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
@@ -148,13 +149,20 @@ test fn control_a_local_parameter_spelled_join_is_not_the_builtin() -> Bool {
 }
 
 test fn an_optional_at_concat_is_refused() -> Bool {
-  blocking_refusals_containing(source: concat_optional_source, fragment: " at host text String formal of concat: no declared conversion") == 1
+  blocking_refusals_containing(source: concat_optional_source, fragment: "? at host text String formal of concat") == 1
 }
 
 test fn optional_elements_at_join_are_refused() -> Bool {
-  blocking_refusals_containing(source: join_optional_elements_source, fragment: " at host text elements of join: no declared conversion") == 1
+  blocking_refusals_containing(source: join_optional_elements_source, fragment: "? at host text elements of join") == 1
 }
 
 test fn an_imported_coproduct_at_concat_is_refused() -> Bool {
-  refusals(source: concat_imported_coproduct_source, subject: "nominal JsonDocumentGap at host text String formal of concat: no declared conversion") == 1
+  blocking_refusals_containing(source: concat_imported_coproduct_source, fragment: "nominal JsonDocumentGap at host text String formal of concat") == 1
+}
+
+// THE BYTES OF std.types bool_text, the one declared Bool-to-text route. The sites it replaced
+// (v1.dag_collect_support literal_value_fingerprint, identity material, through kernel to_string;
+// three local bool_text copies) wrote the host's `true` and `false`; these pin the same bytes.
+test fn bool_text_writes_true_and_false() -> Bool {
+  bool_text(b: true) == "true" && bool_text(b: false) == "false"
 }
