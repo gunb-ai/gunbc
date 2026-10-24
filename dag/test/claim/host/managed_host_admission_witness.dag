@@ -22,8 +22,6 @@ import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
 import gunbc.host.managed_host {
-  AdmissionHoldDecided,
-  AdmissionHoldMissing,
   MemberUnderDeclaredDrop,
   OrdinaryMember,
   managed_host_admission,
@@ -122,7 +120,6 @@ test fn w_a_superseded_subject_with_no_declared_drop_is_absent() -> Bool {
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -150,7 +147,6 @@ test fn w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties() -> Bo
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -163,31 +159,6 @@ test fn w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties() -> Bo
           )
           count(hosts) == 0 && count(reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: hosts)) == 0
         }
-      }
-  }
-}
-
-test fn w_a_missing_hold_decision_is_absent() -> Bool {
-  match mtcollins1_managed_host_admission() {
-    Absent => false
-    Present { value: r } =>
-      match project_managed_host_admission(
-        record: managed_host_admission(
-          host: r.host,
-          binding: r.binding,
-          access: r.access,
-          secure: r.secure,
-          hold: AdmissionHoldMissing,
-          smpro: r.smpro,
-          receipt: r.receipt,
-          current_subject: r.current_subject,
-          covering_drop: r.covering_drop,
-        ),
-        current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
-      ) {
-        Absent => true
-        Present { value: _ } => false
       }
   }
 }
@@ -217,7 +188,6 @@ test fn w_a_receipt_for_another_host_is_absent() -> Bool {
           binding: r.binding,
           access: r.access,
           secure: r.secure,
-          hold: r.hold,
           smpro: r.smpro,
           receipt: managed_host_admission_receipt(
             host: operator_host_srv1,
@@ -298,7 +268,6 @@ test fn w_the_membership_carries_the_record_value_identity_and_ignores_prose() -
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -336,7 +305,6 @@ test fn w_a_superseded_covering_drop_is_absent() -> Bool {
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -377,7 +345,6 @@ test fn w_a_retired_covering_drop_is_absent() -> Bool {
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -428,7 +395,6 @@ test fn w_admission_permits_a_platform_that_does_not_carry_smpro() -> Bool {
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: SmproPlatformNotCarried { family: amd_7950x3d },
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -486,7 +452,6 @@ test fn w_an_admissibly_dissolved_covering_drop_is_absent() -> Bool {
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -516,7 +481,6 @@ test fn w_a_matching_drop_whose_population_does_not_name_the_host_still_admits_m
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
