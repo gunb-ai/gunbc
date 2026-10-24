@@ -1,0 +1,128 @@
+module v2.test.claim.demand_engine.native_import_target_attribution_index
+
+import v2.compiler.source_root_eval {
+  NativeImportTargetAttribution,
+  NativeImportTargetRefused,
+  NativeTestContext,
+  native_import_target_attribution,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import std.types { Bool }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONTROL FOR native_import_target_attribution'S COST SHAPE. The attribution asks, per refused module,
+// which of its import targets the context refused at ingest. It used to scan every file refusal for each ask
+// (R x M for a corpus of R refusals and M refused modules); it now looks each import target up in the index
+// the context carries (refused_modules), so an ask costs the module's own import rows and not R.
+// The two populations below hold R = 16 and R = 32 refused files and ONE importer whose only import is the
+// LAST refused file ingested, the worst case for a scan. The verdict claims hold at both sizes; the cost
+// claim is the pair's eval_steps (claim_batch), where the importer's ask is the only term that differs.
+
+fn nia_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: DagTree
+  }
+}
+
+fn nia_importer(last: String) -> String {
+  concat("module v2.nia.importer\n\nimport v2.nia.", concat(last, " { value }\n\nfn use_it(p: Bool) -> Bool { p }\n"))
+}
+
+data nia_ingest_16: SourceRootIngest = [
+  nia_read(source: "module v2.nia.r0\n\nfn ( broken\n", id: ^nia_r0_cu, path: "dag/nia/r0.dag"),
+  nia_read(source: "module v2.nia.r1\n\nfn ( broken\n", id: ^nia_r1_cu, path: "dag/nia/r1.dag"),
+  nia_read(source: "module v2.nia.r2\n\nfn ( broken\n", id: ^nia_r2_cu, path: "dag/nia/r2.dag"),
+  nia_read(source: "module v2.nia.r3\n\nfn ( broken\n", id: ^nia_r3_cu, path: "dag/nia/r3.dag"),
+  nia_read(source: "module v2.nia.r4\n\nfn ( broken\n", id: ^nia_r4_cu, path: "dag/nia/r4.dag"),
+  nia_read(source: "module v2.nia.r5\n\nfn ( broken\n", id: ^nia_r5_cu, path: "dag/nia/r5.dag"),
+  nia_read(source: "module v2.nia.r6\n\nfn ( broken\n", id: ^nia_r6_cu, path: "dag/nia/r6.dag"),
+  nia_read(source: "module v2.nia.r7\n\nfn ( broken\n", id: ^nia_r7_cu, path: "dag/nia/r7.dag"),
+  nia_read(source: "module v2.nia.r8\n\nfn ( broken\n", id: ^nia_r8_cu, path: "dag/nia/r8.dag"),
+  nia_read(source: "module v2.nia.r9\n\nfn ( broken\n", id: ^nia_r9_cu, path: "dag/nia/r9.dag"),
+  nia_read(source: "module v2.nia.r10\n\nfn ( broken\n", id: ^nia_r10_cu, path: "dag/nia/r10.dag"),
+  nia_read(source: "module v2.nia.r11\n\nfn ( broken\n", id: ^nia_r11_cu, path: "dag/nia/r11.dag"),
+  nia_read(source: "module v2.nia.r12\n\nfn ( broken\n", id: ^nia_r12_cu, path: "dag/nia/r12.dag"),
+  nia_read(source: "module v2.nia.r13\n\nfn ( broken\n", id: ^nia_r13_cu, path: "dag/nia/r13.dag"),
+  nia_read(source: "module v2.nia.r14\n\nfn ( broken\n", id: ^nia_r14_cu, path: "dag/nia/r14.dag"),
+  nia_read(source: "module v2.nia.r15\n\nfn ( broken\n", id: ^nia_r15_cu, path: "dag/nia/r15.dag"),
+  nia_read(source: nia_importer(last: "r15"), id: ^nia_importer_cu, path: "dag/nia/importer.dag")
+]
+
+fn nia_attributed_16() -> Bool {
+  match native_test_context_from_ingest(ingest: nia_ingest_16) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: context, diagnostics: _ } =>
+      match native_import_target_attribution(context: context, module: qualified_name_from_dotted_string(dotted: "v2.nia.importer")) {
+        NativeImportTargetRefused { target: t } => t.path == ^nia_r15_cu
+        _ => false
+      }
+  }
+}
+
+test fn the_importer_is_attributed_to_its_refused_target_at_16_refusals() -> Bool {
+  nia_attributed_16()
+}
+
+data nia_ingest_32: SourceRootIngest = [
+  nia_read(source: "module v2.nia.r0\n\nfn ( broken\n", id: ^nia_r0_cu, path: "dag/nia/r0.dag"),
+  nia_read(source: "module v2.nia.r1\n\nfn ( broken\n", id: ^nia_r1_cu, path: "dag/nia/r1.dag"),
+  nia_read(source: "module v2.nia.r2\n\nfn ( broken\n", id: ^nia_r2_cu, path: "dag/nia/r2.dag"),
+  nia_read(source: "module v2.nia.r3\n\nfn ( broken\n", id: ^nia_r3_cu, path: "dag/nia/r3.dag"),
+  nia_read(source: "module v2.nia.r4\n\nfn ( broken\n", id: ^nia_r4_cu, path: "dag/nia/r4.dag"),
+  nia_read(source: "module v2.nia.r5\n\nfn ( broken\n", id: ^nia_r5_cu, path: "dag/nia/r5.dag"),
+  nia_read(source: "module v2.nia.r6\n\nfn ( broken\n", id: ^nia_r6_cu, path: "dag/nia/r6.dag"),
+  nia_read(source: "module v2.nia.r7\n\nfn ( broken\n", id: ^nia_r7_cu, path: "dag/nia/r7.dag"),
+  nia_read(source: "module v2.nia.r8\n\nfn ( broken\n", id: ^nia_r8_cu, path: "dag/nia/r8.dag"),
+  nia_read(source: "module v2.nia.r9\n\nfn ( broken\n", id: ^nia_r9_cu, path: "dag/nia/r9.dag"),
+  nia_read(source: "module v2.nia.r10\n\nfn ( broken\n", id: ^nia_r10_cu, path: "dag/nia/r10.dag"),
+  nia_read(source: "module v2.nia.r11\n\nfn ( broken\n", id: ^nia_r11_cu, path: "dag/nia/r11.dag"),
+  nia_read(source: "module v2.nia.r12\n\nfn ( broken\n", id: ^nia_r12_cu, path: "dag/nia/r12.dag"),
+  nia_read(source: "module v2.nia.r13\n\nfn ( broken\n", id: ^nia_r13_cu, path: "dag/nia/r13.dag"),
+  nia_read(source: "module v2.nia.r14\n\nfn ( broken\n", id: ^nia_r14_cu, path: "dag/nia/r14.dag"),
+  nia_read(source: "module v2.nia.r15\n\nfn ( broken\n", id: ^nia_r15_cu, path: "dag/nia/r15.dag"),
+  nia_read(source: "module v2.nia.r16\n\nfn ( broken\n", id: ^nia_r16_cu, path: "dag/nia/r16.dag"),
+  nia_read(source: "module v2.nia.r17\n\nfn ( broken\n", id: ^nia_r17_cu, path: "dag/nia/r17.dag"),
+  nia_read(source: "module v2.nia.r18\n\nfn ( broken\n", id: ^nia_r18_cu, path: "dag/nia/r18.dag"),
+  nia_read(source: "module v2.nia.r19\n\nfn ( broken\n", id: ^nia_r19_cu, path: "dag/nia/r19.dag"),
+  nia_read(source: "module v2.nia.r20\n\nfn ( broken\n", id: ^nia_r20_cu, path: "dag/nia/r20.dag"),
+  nia_read(source: "module v2.nia.r21\n\nfn ( broken\n", id: ^nia_r21_cu, path: "dag/nia/r21.dag"),
+  nia_read(source: "module v2.nia.r22\n\nfn ( broken\n", id: ^nia_r22_cu, path: "dag/nia/r22.dag"),
+  nia_read(source: "module v2.nia.r23\n\nfn ( broken\n", id: ^nia_r23_cu, path: "dag/nia/r23.dag"),
+  nia_read(source: "module v2.nia.r24\n\nfn ( broken\n", id: ^nia_r24_cu, path: "dag/nia/r24.dag"),
+  nia_read(source: "module v2.nia.r25\n\nfn ( broken\n", id: ^nia_r25_cu, path: "dag/nia/r25.dag"),
+  nia_read(source: "module v2.nia.r26\n\nfn ( broken\n", id: ^nia_r26_cu, path: "dag/nia/r26.dag"),
+  nia_read(source: "module v2.nia.r27\n\nfn ( broken\n", id: ^nia_r27_cu, path: "dag/nia/r27.dag"),
+  nia_read(source: "module v2.nia.r28\n\nfn ( broken\n", id: ^nia_r28_cu, path: "dag/nia/r28.dag"),
+  nia_read(source: "module v2.nia.r29\n\nfn ( broken\n", id: ^nia_r29_cu, path: "dag/nia/r29.dag"),
+  nia_read(source: "module v2.nia.r30\n\nfn ( broken\n", id: ^nia_r30_cu, path: "dag/nia/r30.dag"),
+  nia_read(source: "module v2.nia.r31\n\nfn ( broken\n", id: ^nia_r31_cu, path: "dag/nia/r31.dag"),
+  nia_read(source: nia_importer(last: "r31"), id: ^nia_importer_cu, path: "dag/nia/importer.dag")
+]
+
+fn nia_attributed_32() -> Bool {
+  match native_test_context_from_ingest(ingest: nia_ingest_32) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: context, diagnostics: _ } =>
+      match native_import_target_attribution(context: context, module: qualified_name_from_dotted_string(dotted: "v2.nia.importer")) {
+        NativeImportTargetRefused { target: t } => t.path == ^nia_r31_cu
+        _ => false
+      }
+  }
+}
+
+test fn the_importer_is_attributed_to_its_refused_target_at_32_refusals() -> Bool {
+  nia_attributed_32()
+}
