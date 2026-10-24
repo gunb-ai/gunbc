@@ -53,13 +53,19 @@ claim_arm () { # <name> <dry|wet> <file> <fns-csv>
   local name=$1 mode=$2 file=$3 fns=$4
   want $name || return 0
   [ -f "$file" ] || { echo "ROW $name FILE_ABSENT_AT_SHA $file"; return 0; }
-  for f in $(echo $fns | tr ',' ' '); do
-    grep -qaE "^test fn[[:space:]]+${f}[[:space:]]*\(" "$file" || { echo "ROW $name FN_NOT_IN_FILE $f ($file) -- refuse, not a result"; return 0; }
-  done
+  local fnflag="--functions $fns"
+  if [ "$fns" = "ALL" ]; then
+    fnflag=""
+    local cnt; cnt=$(grep -acE '^test fn ' "$file"); echo "  ROW $name ALL fns at SHA: count=$cnt"
+  else
+    for f in $(echo $fns | tr ',' ' '); do
+      grep -qaE "^test fn[[:space:]]+${f}[[:space:]]*\(" "$file" || { echo "ROW $name FN_NOT_IN_FILE $f ($file) -- refuse, not a result"; return 0; }
+    done
+  fi
   local el; el=$(elapsed); [ "$el" -gt "$DEADLINE" ] && { echo "DEADLINE_REACHED ${el}s before $name"; return 1; }
   local wf=""; [ "$mode" = wet ] && wf="--wet"
   arm_cgroup $name
-  run_bound /tmp/m2_$name.out /tmp/m2_$name.err 1200 $CB --claim-run $wf --source-root dag --source-root src/v2 --source-root src/v1 --entry "$file" --functions "$fns"
+  run_bound /tmp/m2_$name.out /tmp/m2_$name.err 1200 $CB --claim-run $wf --source-root dag --source-root src/v2 --source-root src/v1 --entry "$file" $fnflag
   local rc=$?
   [ "$rc" = "124" ] && { echo "ROW $name rc=124 TIMEOUT UNOBSERVED (not a result)"; return 0; }
   local NP NF NU; NP=$(grep -ac '^PASS ' /tmp/m2_$name.out); NF=$(grep -ac '^FAIL ' /tmp/m2_$name.out); NU=$(grep -ac '^UNOBSERVED ' /tmp/m2_$name.out)
@@ -100,6 +106,13 @@ compile_arm B1 "$HV" /tmp/out-b1
 claim_arm B2 dry "$RJ" "$ALL4"
 compile_arm C1 "$HV" /tmp/out-c1
 claim_arm C2 dry "$RJ" "$ALL4"
+GHA=dag/test/claim/gha_expression_roundtrip.dag
+AU=dag/test/claim/action_use_admission_witness.dag
+claim_arm A4d dry "$AU" every_executed_workflow_file_has_a_census_claim_and_no_claim_names_a_missing_file
+claim_arm A4w wet "$AU" every_executed_workflow_file_has_a_census_claim_and_no_claim_names_a_missing_file
+claim_arm A5  dry "$GHA" ALL
+claim_arm E1  dry "$GHA" ALL
+claim_arm E2  dry "$GHA" ALL
 claim_arm D1d dry "$RT" witness_accepted_parents_precede_dependents
 claim_arm D1w wet "$RT" witness_accepted_parents_precede_dependents
 claim_arm D2d dry "$RT" witness_accepted_parents_precede_dependents
