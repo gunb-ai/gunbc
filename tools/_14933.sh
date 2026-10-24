@@ -12,6 +12,7 @@
 set -u
 cd "$(dirname "$0")/.." || exit 9
 DEADLINE=${1:-2400}
+ARMS=${2:-all}
 START=$(date +%s)
 HEAD_SHA=a61ef827c9c6fe6c049d04e99cca412522af3d91
 BASE_SHA=$(git merge-base origin/main refs/verifier/f14933 2>/dev/null || echo "")

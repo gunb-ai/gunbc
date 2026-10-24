@@ -33,6 +33,8 @@ for b in claim_executor claim_batch gunbc; do
   [ -x $CARGO_TARGET_DIR/release/$b ] || { echo "MISSING_BIN $b"; exit 9; }
   echo "HEAD_BIN $b sha256=$(sha $CARGO_TARGET_DIR/release/$b)"
 done
+mkdir -p $H/target/release
+for b in claim_executor claim_batch gunbc; do cp -f $CARGO_TARGET_DIR/release/$b $H/target/release/$b; done
 echo "BUILD_COMMIT=$HEAD_SHA"
 CEH=$CARGO_TARGET_DIR/release/claim_executor
 CBH=$CARGO_TARGET_DIR/release/claim_batch
