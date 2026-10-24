@@ -1,5 +1,6 @@
 module test.claim.sessions_panel_witness
 
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltObserve, BeltSessionsObserved, ObserveRefused,
@@ -35,7 +36,7 @@ test fn witness_projection_standing_refusal_specimen_omits_wire_row() -> Bool {
   let o = BeltSessionsObserved {
     live: dispatch_live_sessions_from_entries(
       entries: [fixture_projection_standing_refusal_tmux_entry()],
-      selection: dispatch_actuator_vendor_selection(sizing_expectation: NoDerivedSizingExpectation),
+      selection: dispatch_actuator_vendor_selection(instance: srv1_live_dashboard_instance(), sizing_expectation: NoDerivedSizingExpectation),
     ),
   }
   let j = belt_sessions_observed_json(o: o)
