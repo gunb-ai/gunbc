@@ -963,6 +963,18 @@ fn required_gate_authored_modules() -> List<String> {
     // v2.test.claim.body_lowering_call_node_occurrence is a FILE the required lane can execute, and
     // its own claim_batch run is on record -- green by execution at the head the fix PR landed with
     // (cite the run, never transcribe its output; the roster row's cost is the run's own pricing).
+    // RECEIPT (this edit, per Manager 3's ruling "same approved row, not roster growth"): the
+    // executed run is claim_batch on v2.test.claim.body_lowering_call_node_occurrence, fifteen
+    // claims green by execution and zero failing, run by Manager 3 on srv1 from a clean checkout
+    // at head 861191b7717828cac7f7342cb8275c48002d3d25 on 2026-10-24; the mutation control at
+    // 46b16146351826a9ea21477a8de67209420fb870 went red ONLY on the qualified-site census-
+    // locatability claim and its one-Minted collision pin, so the pin discriminates. This
+    // citation lands at a later head than the run's: the only delta between the run's head and
+    // the head carrying this line is comment-only in THIS file, which is not inside the claim
+    // module's entry closure -- so the run executed the content this row now prices. The earlier
+    // six-claim receipt at 8f4b175e68c4 (#14946) is superseded by the fifteen-claim one; the
+    // nine additions are the postfix-site triads this fix PR brings (qualified call, receiver
+    // call, is node: census-locatability, shape-unchanged, collision pin, per site).
     // Same exact grain
     // as the row above, for the same reason: one module, never a family selector. This module pins
     // what the census reader needs to be locatable at all -- native_census_owner_key answers Present
