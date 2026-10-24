@@ -1,0 +1,294 @@
+module gunbc.host.export_host_reader_converge
+
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { argv_words }
+import extdeps.ssh.keys { authorized_key_entry_line }
+import extdeps.ssh.openssh_server_commands { sshd_test_config_argv, sshd_test_config_with_option_argv, sshd_effective_config_argv, sshd_effective_config_value }
+import extdeps.systemd.systemctl { systemctl_reload_unit_argv }
+import extdeps.tools.gnu_coreutils { rm_force_command }
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
+import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh_fresh_connection }
+import gunbc.executor_privileged_operation { EnsureSystemAccount, executor_privileged_operation_elevated_argv }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import gunbc.host.boot_medium { bmc_boot_image_export }
+import gunbc.host.boot_medium_reader_key { boot_medium_reader_authorized_entry }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of }
+import gunbc.runner.runner_host_file_converge {
+  FleetHostFileSubject, FleetHostFileDesired, FleetHostFilesApply, LegElevated,
+  run_fleet_host_leg, observe_fleet_host_administrator_privilege, fleet_host_file_result, fleet_host_file_outcome_settled,
+  AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
+}
+
+// ── THE BMC EXPORT HOST'S READER ROWS (srv2) ──────────────────────────────────────────────────────
+// The boot medium reader key (gunbc.host.boot_medium_reader_key) is forced to one sha256sum of the served
+// link. This converge puts it on the export host: a dedicated unprivileged account, the key in a root-owned
+// file sshd reads for that account, and the sshd setting that makes sshd read it. The export host has no
+// runner slot, so it is a fleet host with declared rows (gunbc.runner.runner_host_file_converge
+// FleetHostFileSubject), reached as its administrator from whichever runner executes the dispatch.
+//
+// AN sshd CHANGE CAN LOCK THE FLEET OUT OF THE EXPORT HOST, so the order is the safety:
+//   1. sshd -t -o '<the option>' against the live configuration, before anything is written;
+//   2. the account, created only when `id -u` does not find it (EnsureSystemAccount, shell /bin/sh: sshd runs
+//      a forced command through the account's login shell, and nologin would refuse it);
+//   3. the key file, root:root 0644, then the sshd_config.d drop-in, each by the converging write;
+//   4. sshd -t over the whole configuration; a refusal removes the drop-in and does NOT reload;
+//   5. sshd -T must report exactly our AuthorizedKeysFile, .ssh/authorized_keys first, so existing logins are
+//      unchanged (a drop-in sorting earlier than ours would win, sshd taking the first value); otherwise the
+//      drop-in is removed and nothing is reloaded;
+//   6. systemctl reload ssh (sshd re-reads its configuration on SIGHUP; a reload, never a restart);
+//   7. a FRESH fleet-automation login on its own connection, never the run's multiplexed master
+//      (gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_fresh_connection). If it fails, the drop-in is
+//      removed and sshd reloaded again -- the typed rollback -- and the run refuses either way.
+// The reader probe (another command under the reader key yields only the forced line) is the next change.
+
+data boot_medium_reader_login: NonEmptyStr = "boot-medium-reader"
+
+data boot_medium_reader_login_shell: NonEmptyStr = "/bin/sh"
+
+data export_host_reader_keys_path: NonEmptyStr = "/etc/ssh/authorized_keys.boot-medium-reader"
+
+data export_host_reader_drop_in_path: NonEmptyStr = "/etc/ssh/sshd_config.d/50-gunbc-boot-medium-reader.conf"
+
+data authorized_keys_file_keyword: NonEmptyStr = "authorizedkeysfile"
+
+// sshd's default is ".ssh/authorized_keys .ssh/authorized_keys2"; both stay, in order, before the reader's
+// root-owned file, and %u resolves only for the account whose file exists.
+data authorized_keys_file_value: NonEmptyStr = ".ssh/authorized_keys .ssh/authorized_keys2 /etc/ssh/authorized_keys.%u"
+
+fn authorized_keys_file_option() -> NonEmptyStr {
+  join(["AuthorizedKeysFile ", authorized_keys_file_value as String], "") as NonEmptyStr
+}
+
+// Ubuntu's openssh-server unit. A reload of a unit that is not active refuses, which the fold reads as a
+// refusal, never as a reloaded server.
+data openssh_server_unit: NonEmptyStr = "ssh"
+
+fn export_host_reader_drop_in() -> FleetHostFileDesired {
+  FleetHostFileDesired {
+    subject: "sshd_config.d drop-in: AuthorizedKeysFile adds the reader's root-owned file",
+    path: export_host_reader_drop_in_path as FilePath,
+    content: join([authorized_keys_file_option() as String, "\n"], ""),
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  }
+}
+
+fn export_host_reader_keys_file(line: String) -> FleetHostFileDesired {
+  FleetHostFileDesired {
+    subject: "the boot medium reader key's authorized_keys file",
+    path: export_host_reader_keys_path as FilePath,
+    content: concat(line, "\n"),
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  }
+}
+
+// ── the fold, over the answers its legs give ───────────────────────────────────────────────────────
+
+type ExportHostReaderOutcome
+  = ReaderRowsConverged
+  | ReaderRowsRefused { stage: NonEmptyStr, cause: String }
+  | ReaderRowsRolledBack { cause: String }
+  | ReaderRowsRollbackFailed { cause: String, rollback: String }
+
+type ExportHostReaderRun {
+  outcome: ExportHostReaderOutcome
+  stages: List<NonEmptyStr>
+}
+
+type ExportHostReaderLegs {
+  precheck: fn() -> RemoteAnswer
+  account_exists: fn() -> RemoteAnswer
+  ensure_account: fn() -> RemoteAnswer
+  write_keys: fn() -> Bool
+  write_drop_in: fn() -> Bool
+  test_config: fn() -> RemoteAnswer
+  effective_config: fn() -> RemoteAnswer
+  reload: fn() -> RemoteAnswer
+  fresh_login: fn() -> RemoteAnswer
+  remove_drop_in: fn() -> RemoteAnswer
+}
+
+// A LEG IS A FIELD OF ExportHostReaderLegs; it runs where the fold passes it here.
+fn leg(f: fn() -> RemoteAnswer) -> RemoteAnswer {
+  f()
+}
+
+fn leg_holds(f: fn() -> Bool) -> Bool {
+  f()
+}
+
+fn answer_text(a: RemoteAnswer) -> String {
+  join(["exit=", to_string(a.exit_code), " ", trim(s: a.stderr)], "")
+}
+
+fn refused_at(stages: List<NonEmptyStr>, stage: NonEmptyStr, cause: String) -> ExportHostReaderRun {
+  ExportHostReaderRun { outcome: ReaderRowsRefused { stage: stage, cause: cause }, stages: stages }
+}
+
+// THE DROP-IN COMES OUT BEFORE ANY REFUSAL AFTER IT WAS WRITTEN, so disk and the running server agree.
+fn withdrawn(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>, stage: NonEmptyStr, cause: String) -> ExportHostReaderRun {
+  let removed = leg(f: legs.remove_drop_in)
+  let s2 = concat(stages, ["remove-drop-in" as NonEmptyStr])
+  if removed.exit_code == 0 {
+    refused_at(stages: s2, stage: stage, cause: concat(cause, "; the drop-in was removed and sshd was not reloaded"))
+  } else {
+    refused_at(stages: s2, stage: stage, cause: join([cause, "; the drop-in could NOT be removed (", answer_text(a: removed), "), so it is on disk but not live: remove it before any reload"], ""))
+  }
+}
+
+fn export_host_reader_after_writes(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>) -> ExportHostReaderRun {
+  let tested = leg(f: legs.test_config)
+  let s1 = concat(stages, ["sshd-t" as NonEmptyStr])
+  if tested.exit_code != 0 {
+    withdrawn(legs: legs, stages: s1, stage: "sshd -t", cause: concat("sshd -t refused the configuration with the drop-in: ", answer_text(a: tested)))
+  } else {
+    let effective = leg(f: legs.effective_config)
+    let s2 = concat(s1, ["sshd-T" as NonEmptyStr])
+    let value = if effective.exit_code == 0 { sshd_effective_config_value(text: effective.stdout, keyword: authorized_keys_file_keyword) } else { none }
+    match value {
+      Absent => withdrawn(legs: legs, stages: s2, stage: "sshd -T", cause: concat("sshd -T reported no AuthorizedKeysFile: ", answer_text(a: effective)))
+      Present { value: v } =>
+        if trim(s: v) != (authorized_keys_file_value as String) {
+          withdrawn(legs: legs, stages: s2, stage: "sshd -T", cause: join(["the effective AuthorizedKeysFile is '", trim(s: v), "', not '", authorized_keys_file_value as String, "' (an earlier setting wins)"], ""))
+        } else {
+          let reloaded = leg(f: legs.reload)
+          let s3 = concat(s2, ["reload" as NonEmptyStr])
+          if reloaded.exit_code != 0 {
+            withdrawn(legs: legs, stages: s3, stage: "reload", cause: concat("systemctl reload ssh refused: ", answer_text(a: reloaded)))
+          } else {
+            let login = leg(f: legs.fresh_login)
+            let s4 = concat(s3, ["fresh-login" as NonEmptyStr])
+            if login.exit_code == 0 {
+              ExportHostReaderRun { outcome: ReaderRowsConverged, stages: s4 }
+            } else {
+              let removed = leg(f: legs.remove_drop_in)
+              let again = leg(f: legs.reload)
+              let s5 = concat(s4, ["remove-drop-in" as NonEmptyStr, "reload" as NonEmptyStr])
+              let cause = concat("a fresh fleet-automation login failed after the reload: ", answer_text(a: login))
+              if removed.exit_code == 0 && again.exit_code == 0 {
+                ExportHostReaderRun { outcome: ReaderRowsRolledBack { cause: cause }, stages: s5 }
+              } else {
+                ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: join(["remove ", answer_text(a: removed), "; reload ", answer_text(a: again)], "") }, stages: s5 }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn export_host_reader_apply_with(legs: ExportHostReaderLegs) -> ExportHostReaderRun {
+  let pre = leg(f: legs.precheck)
+  let s0 = ["sshd-t-option" as NonEmptyStr]
+  if pre.exit_code != 0 {
+    refused_at(stages: s0, stage: "sshd -t -o", cause: concat("sshd refuses the option against the live configuration; nothing was written: ", answer_text(a: pre)))
+  } else {
+    let exists = leg(f: legs.account_exists)
+    let s1 = concat(s0, ["account-check" as NonEmptyStr])
+    let account_ok = if exists.exit_code == 0 { Present { value: s1 } } else {
+      let ensured = leg(f: legs.ensure_account)
+      if ensured.exit_code == 0 { Present { value: concat(s1, ["account-ensure" as NonEmptyStr]) } } else { none }
+    }
+    match account_ok {
+      Absent => refused_at(stages: concat(s1, ["account-ensure" as NonEmptyStr]), stage: "account", cause: "the reader account could not be created")
+      Present { value: s2 } =>
+        if !leg_holds(f: legs.write_keys) {
+          refused_at(stages: concat(s2, ["write-keys" as NonEmptyStr]), stage: "key file", cause: "the reader's authorized_keys file did not converge")
+        } else if !leg_holds(f: legs.write_drop_in) {
+          withdrawn(legs: legs, stages: concat(s2, ["write-keys" as NonEmptyStr, "write-drop-in" as NonEmptyStr]), stage: "drop-in", cause: "the sshd drop-in did not converge")
+        } else {
+          export_host_reader_after_writes(legs: legs, stages: concat(s2, ["write-keys" as NonEmptyStr, "write-drop-in" as NonEmptyStr]))
+        }
+    }
+  }
+}
+
+fn export_host_reader_outcome_holds(o: ExportHostReaderOutcome) -> Bool {
+  match o {
+    ReaderRowsConverged => true
+    ReaderRowsRefused { stage: _, cause: _ } => false
+    ReaderRowsRolledBack { cause: _ } => false
+    ReaderRowsRollbackFailed { cause: _, rollback: _ } => false
+  }
+}
+
+fn render_export_host_reader_run(r: ExportHostReaderRun) -> String {
+  let head = match r.outcome {
+    ReaderRowsConverged => "export_host_reader=converged\n"
+    ReaderRowsRefused { stage: s, cause: c } => join(["export_host_reader=refused\nstage=", s as String, "\nreason=", c, "\n"], "")
+    ReaderRowsRolledBack { cause: c } => join(["export_host_reader=rolled back\nreason=", c, "\n"], "")
+    ReaderRowsRollbackFailed { cause: c, rollback: b } => join(["export_host_reader=ROLLBACK FAILED -- check fleet-automation login to the export host now\nreason=", c, "\nrollback=", b, "\n"], "")
+  }
+  join([head, "stages=", join(map(r.stages, s => s as String), ","), "\n"], "")
+}
+
+// ── the producer: the legs, over the administrator edge ───────────────────────────────────────────
+
+fn elevated(subject: FleetHostFileSubject, context: FleetSshExecutionContext, argv: List<String>) -> RemoteAnswer {
+  remote_answer_of(outcome: run_fleet_host_leg(subject: subject, context: context, leg: LegElevated { command: argv }))
+}
+
+fn file_converged(subject: FleetHostFileSubject, context: FleetSshExecutionContext, file: FleetHostFileDesired) -> Bool {
+  match observe_fleet_host_administrator_privilege(subject: subject, context: context) {
+    AdministratorPrivilegeRefused { reason: _ } => false
+    AdministratorPrivilegeAvailable =>
+      fleet_host_file_outcome_settled(outcome: fleet_host_file_result(subject: subject, context: context, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, file: file).outcome)
+  }
+}
+
+fn export_host_reader_legs(subject: FleetHostFileSubject, context: FleetSshExecutionContext, key_line: String) -> ExportHostReaderLegs {
+  ExportHostReaderLegs {
+    precheck: fn() { elevated(subject: subject, context: context, argv: sshd_test_config_with_option_argv(option: authorized_keys_file_option())) },
+    account_exists: fn() { elevated(subject: subject, context: context, argv: ["id", "-u", boot_medium_reader_login as String]) },
+    ensure_account: fn() { elevated(subject: subject, context: context, argv: executor_privileged_operation_elevated_argv(op: EnsureSystemAccount { login: boot_medium_reader_login, shell: boot_medium_reader_login_shell })) },
+    write_keys: fn() { file_converged(subject: subject, context: context, file: export_host_reader_keys_file(line: key_line)) },
+    write_drop_in: fn() { file_converged(subject: subject, context: context, file: export_host_reader_drop_in()) },
+    test_config: fn() { elevated(subject: subject, context: context, argv: sshd_test_config_argv()) },
+    effective_config: fn() { elevated(subject: subject, context: context, argv: sshd_effective_config_argv()) },
+    reload: fn() { elevated(subject: subject, context: context, argv: systemctl_reload_unit_argv(unit: openssh_server_unit)) },
+    fresh_login: fn() { remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh_fresh_connection(target: bmc_boot_image_export.target, context: context, argv: ["true"])) },
+    remove_drop_in: fn() { elevated(subject: subject, context: context, argv: argv_words(command: rm_force_command(path: export_host_reader_drop_in_path as String))) },
+  }
+}
+
+data export_host_reader_receipt_path: String = "target/export-host-reader-converge.txt"
+
+data export_host_reader_attempt_raw: String = "export-host-reader-converge"
+
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/export_host_reader_converge.dag --function export_host_reader_converge_wet`
+// CONSUMPTION (DESIGN section 3c): invoked by the fleet-converge mode ExportHostReaderConverge
+// (gunbc.fleet.fleet_converge_workflow). The target is the export host, never a dispatch input; the
+// receipt is written whatever the outcome.
+fn export_host_reader_converge_wet() -> ProcessExit {
+  let run = match boot_medium_reader_authorized_entry() {
+    Absent => refused_at(stages: [], stage: "reader key", cause: "the boot medium reader key is not minted and pinned (gunbc.host.boot_medium_reader_key), so there is no entry to converge")
+    Present { value: entry } =>
+      match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: operator_host_srv2 as String), principal: executor_bootstrap_principal.login) {
+        SshTargetRefused { endpoint: e, refusal: why } => refused_at(stages: [], stage: "target", cause: ssh_target_refusal_text(endpoint: e, refusal: why))
+        SshTargetResolved { target: t } =>
+          match prepare_fleet_ssh_agent_context(attempt_raw: export_host_reader_attempt_raw) {
+            FleetSshContextRefused { cause: c } => refused_at(stages: [], stage: "fleet ssh", cause: c)
+            FleetSshContextReady { context: context, receipt: _ } =>
+              export_host_reader_apply_with(legs: export_host_reader_legs(subject: FleetHostFileSubject { host: operator_host_srv2, target: t }, context: context, key_line: authorized_key_entry_line(e: entry)))
+          }
+      }
+  }
+  let rendered = render_export_host_reader_run(r: run)
+  let written = Filesystem.Write(path: export_host_reader_receipt_path, content: rendered)
+  if written.success == false {
+    exit_failure(reason: concat("export host reader converge: the receipt could not be written: ", rendered))
+  } else if export_host_reader_outcome_holds(o: run.outcome) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: rendered)
+  }
+}

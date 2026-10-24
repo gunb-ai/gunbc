@@ -1,0 +1,114 @@
+module test.claim.host.export_host_reader_converge_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.ssh.openssh_server_commands { sshd_effective_config_value }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.host.export_host_reader_converge {
+  ExportHostReaderLegs, ExportHostReaderRun, ExportHostReaderOutcome,
+  ReaderRowsConverged, ReaderRowsRefused, ReaderRowsRolledBack, ReaderRowsRollbackFailed,
+  export_host_reader_apply_with, export_host_reader_drop_in, authorized_keys_file_value, authorized_keys_file_option,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn ok(stdout: String) -> RemoteAnswer { RemoteAnswer { exit_code: 0, stdout: stdout, stderr: "" } }
+fn bad() -> RemoteAnswer { RemoteAnswer { exit_code: 1, stdout: "", stderr: "refused" } }
+
+data effective_ours: String = "port 22\nauthorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2 /etc/ssh/authorized_keys.%u\npasswordauthentication no\n"
+
+// A HEALTHY HOST: every leg answers as it should. Each test varies one leg from this.
+fn legs(precheck: RemoteAnswer, exists: RemoteAnswer, ensure: RemoteAnswer, keys: Bool, drop_in: Bool, test: RemoteAnswer, effective: RemoteAnswer, reload: RemoteAnswer, login: RemoteAnswer, remove: RemoteAnswer) -> ExportHostReaderLegs {
+  ExportHostReaderLegs {
+    precheck: fn() { precheck },
+    account_exists: fn() { exists },
+    ensure_account: fn() { ensure },
+    write_keys: fn() { keys },
+    write_drop_in: fn() { drop_in },
+    test_config: fn() { test },
+    effective_config: fn() { effective },
+    reload: fn() { reload },
+    fresh_login: fn() { login },
+    remove_drop_in: fn() { remove },
+  }
+}
+
+fn healthy() -> ExportHostReaderLegs {
+  legs(precheck: ok(stdout: ""), exists: ok(stdout: "998"), ensure: ok(stdout: ""), keys: true, drop_in: true, test: ok(stdout: ""), effective: ok(stdout: effective_ours), reload: ok(stdout: ""), login: ok(stdout: ""), remove: ok(stdout: ""))
+}
+
+fn word(o: ExportHostReaderOutcome) -> String {
+  match o {
+    ReaderRowsConverged => "converged"
+    ReaderRowsRefused { stage: _, cause: _ } => "refused"
+    ReaderRowsRolledBack { cause: _ } => "rolled-back"
+    ReaderRowsRollbackFailed { cause: _, rollback: _ } => "rollback-failed"
+  }
+}
+
+fn stages(r: ExportHostReaderRun) -> List<String> {
+  map(r.stages, s => s as String)
+}
+
+// CONDITION 1: .ssh/authorized_keys stays FIRST, so every existing login is unchanged; the drop-in is
+// exactly that one setting.
+test fn existing_authorized_keys_stays_first_in_the_drop_in() -> Bool {
+  (authorized_keys_file_value as String).starts_with(".ssh/authorized_keys ")
+    && export_host_reader_drop_in().content == concat(authorized_keys_file_option() as String, "\n")
+    && match sshd_effective_config_value(text: effective_ours, keyword: "authorizedkeysfile") { Present { value: v } => v == (authorized_keys_file_value as String)  Absent => false }
+}
+
+// CONTROL: a healthy host converges through every stage in order, reloading once.
+test fn a_healthy_host_converges_through_every_stage_in_order() -> Bool {
+  let r = export_host_reader_apply_with(legs: healthy())
+  word(o: r.outcome) == "converged"
+    && stages(r: r) == ["sshd-t-option", "account-check", "write-keys", "write-drop-in", "sshd-t", "sshd-T", "reload", "fresh-login"]
+}
+
+// RED: an option sshd refuses against the live configuration writes nothing.
+test fn a_refused_option_writes_nothing() -> Bool {
+  let r = export_host_reader_apply_with(legs: legs(precheck: bad(), exists: ok(stdout: "998"), ensure: ok(stdout: ""), keys: true, drop_in: true, test: ok(stdout: ""), effective: ok(stdout: effective_ours), reload: ok(stdout: ""), login: ok(stdout: ""), remove: ok(stdout: "")))
+  word(o: r.outcome) == "refused" && stages(r: r) == ["sshd-t-option"]
+}
+
+// CONDITION 2 RED: sshd -t refusing the configuration with the drop-in removes the drop-in and never
+// reloads.
+test fn sshd_t_failure_removes_the_drop_in_and_does_not_reload() -> Bool {
+  let r = export_host_reader_apply_with(legs: legs(precheck: ok(stdout: ""), exists: ok(stdout: "998"), ensure: ok(stdout: ""), keys: true, drop_in: true, test: bad(), effective: ok(stdout: effective_ours), reload: ok(stdout: ""), login: ok(stdout: ""), remove: ok(stdout: "")))
+  word(o: r.outcome) == "refused"
+    && stages(r: r) == ["sshd-t-option", "account-check", "write-keys", "write-drop-in", "sshd-t", "remove-drop-in"]
+    && !stages(r: r).contains("reload")
+}
+
+// RED: an effective AuthorizedKeysFile other than ours (an earlier drop-in wins) removes the drop-in and
+// never reloads.
+test fn a_shadowed_setting_removes_the_drop_in_and_does_not_reload() -> Bool {
+  let r = export_host_reader_apply_with(legs: legs(precheck: ok(stdout: ""), exists: ok(stdout: "998"), ensure: ok(stdout: ""), keys: true, drop_in: true, test: ok(stdout: ""), effective: ok(stdout: "authorizedkeysfile .ssh/authorized_keys\n"), reload: ok(stdout: ""), login: ok(stdout: ""), remove: ok(stdout: "")))
+  word(o: r.outcome) == "refused" && !stages(r: r).contains("reload") && stages(r: r).contains("remove-drop-in")
+}
+
+// CONDITIONS 3 AND 4 RED: a fresh fleet-automation login failing after the reload rolls the drop-in back
+// and reloads again; a rollback that itself fails is its own, loud arm.
+test fn a_failed_fresh_login_rolls_back_and_a_failed_rollback_is_loud() -> Bool {
+  let rolled = export_host_reader_apply_with(legs: legs(precheck: ok(stdout: ""), exists: ok(stdout: "998"), ensure: ok(stdout: ""), keys: true, drop_in: true, test: ok(stdout: ""), effective: ok(stdout: effective_ours), reload: ok(stdout: ""), login: bad(), remove: ok(stdout: "")))
+  let stuck = export_host_reader_apply_with(legs: legs(precheck: ok(stdout: ""), exists: ok(stdout: "998"), ensure: ok(stdout: ""), keys: true, drop_in: true, test: ok(stdout: ""), effective: ok(stdout: effective_ours), reload: ok(stdout: ""), login: bad(), remove: bad()))
+  word(o: rolled.outcome) == "rolled-back"
+    && stages(r: rolled) == ["sshd-t-option", "account-check", "write-keys", "write-drop-in", "sshd-t", "sshd-T", "reload", "fresh-login", "remove-drop-in", "reload"]
+    && word(o: stuck.outcome) == "rollback-failed"
+}
+
+// The account is created only when `id -u` does not find it; a creation that fails writes nothing.
+test fn the_account_is_created_only_when_absent() -> Bool {
+  let created = export_host_reader_apply_with(legs: legs(precheck: ok(stdout: ""), exists: bad(), ensure: ok(stdout: ""), keys: true, drop_in: true, test: ok(stdout: ""), effective: ok(stdout: effective_ours), reload: ok(stdout: ""), login: ok(stdout: ""), remove: ok(stdout: "")))
+  let refused = export_host_reader_apply_with(legs: legs(precheck: ok(stdout: ""), exists: bad(), ensure: bad(), keys: true, drop_in: true, test: ok(stdout: ""), effective: ok(stdout: effective_ours), reload: ok(stdout: ""), login: ok(stdout: ""), remove: ok(stdout: "")))
+  word(o: created.outcome) == "converged" && stages(r: created).contains("account-ensure")
+    && word(o: refused.outcome) == "refused" && !stages(r: refused).contains("write-keys")
+    && !stages(r: export_host_reader_apply_with(legs: healthy())).contains("account-ensure")
+}
+
+// A drop-in write that did not converge is withdrawn and nothing is tested or reloaded.
+test fn an_unconverged_drop_in_is_withdrawn() -> Bool {
+  let r = export_host_reader_apply_with(legs: legs(precheck: ok(stdout: ""), exists: ok(stdout: "998"), ensure: ok(stdout: ""), keys: true, drop_in: false, test: ok(stdout: ""), effective: ok(stdout: effective_ours), reload: ok(stdout: ""), login: ok(stdout: ""), remove: ok(stdout: "")))
+  word(o: r.outcome) == "refused" && stages(r: r).contains("remove-drop-in") && !stages(r: r).contains("reload") && !stages(r: r).contains("sshd-t")
+}
