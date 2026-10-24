@@ -10885,7 +10885,8 @@ fn field_base_is_in_flight_lambda_param(base: Node, scope: InferScope) -> Bool {
   }
 }
 
-// A type node is ground when no unsolved inference variable occurs anywhere in it. An actual is denoted
+// A type node is ground when no unsolved inference variable and no solver Unit placeholder (an Absent or
+// [] seed's element) occurs anywhere in it. An actual is denoted
 // (bound by its resolved type) only when ground; the empty-list placeholder is one such variable.
 fn type_node_is_ground(n: Node) -> Bool {
   let own_ground = match n.inferred {
@@ -10893,7 +10894,7 @@ fn type_node_is_ground(n: Node) -> Bool {
     Present { value: Resolved { node: inner } } => type_node_is_ground(n: inner)
     _ => true
   }
-  own_ground && (n.children |> all(c => type_node_is_ground(n: c)))
+  own_ground && !cast_source_is_solver_unit_placeholder(source_node: n) && (n.children |> all(c => type_node_is_ground(n: c)))
 }
 
 fn is_unsolved_empty_list_element(n: Node) -> Bool {
