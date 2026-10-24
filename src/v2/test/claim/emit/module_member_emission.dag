@@ -4,12 +4,16 @@ import v2.extdeps.languages.dag { dag_surface_edge_label }
 
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_produced { emit_module_member }
+import v2.compiler.target_serialize { serialize_facts_absent_tree }
+import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.body_lowering_fold { DeclaredRefinement }
 import v2.compiler.self_host.closure_emission {
   ClosureEmissionLocated, ClosureMemberEmitted, ClosureMemberRefused, emit_closure_from_ingest_located,
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.c { c_target_model }
+import v2.std.compilers.target_model { TargetModel }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
@@ -45,6 +49,10 @@ fn member_emission_locus() -> Node {
 }
 
 fn member_emission_of(source: String) -> ClosureEmissionLocated {
+  member_emission_for_target(source: source, target: rust_target_model())
+}
+
+fn member_emission_for_target(source: String, target: TargetModel) -> ClosureEmissionLocated {
   emit_closure_from_ingest_located(
     ingest: [
       DagSourceReadWitness {
@@ -56,7 +64,7 @@ fn member_emission_of(source: String) -> ClosureEmissionLocated {
     ],
     entry: qualified_name_from_dotted_string(dotted: "v2.test.member_emission"),
     entry_locus: member_emission_locus(),
-    target: rust_target_model()
+    target: target
   )
 }
 
@@ -94,7 +102,19 @@ fn member_emission_opaque_verdict() -> MemberEmissionVerdict {
 }
 
 fn member_emission_generic_verdict() -> MemberEmissionVerdict {
-  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Tag<T> = A | B\n\nfn f(x: Int) -> Int { x as Int }\n")
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Tag<T: Int> = A | B\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_generic_record_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Box<T> { value: T }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_generic_coproduct_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Either<A, B> = Left { value: A } | Right { value: B }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_sum_pair_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Sum = One | Two\n\ntype Pair { left: Sum, right: Sum }\n\nfn f(x: Int) -> Int { x as Int }\n")
 }
 
 fn member_emission_payload_variant_verdict() -> MemberEmissionVerdict {
@@ -171,7 +191,9 @@ fn member_emission_supplied_refinement() -> String {
     edge: member,
     target: rust_target_model(),
     realization_host: rust_target_model(),
-    kinds: [DeclaredRefinement { name: ^Pos }]
+    kinds: [DeclaredRefinement { name: ^Pos }],
+    tree: serialize_facts_absent_tree(root: member.target),
+    declarations: empty_symbol_index()
   ) {
     Accepted { value: m, diagnostics: _ } => m.carried
     Rejected { diagnostics: d } => concat("REFUSED ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
@@ -281,10 +303,61 @@ test fn a_bodyless_member_refuses_under_its_own_reason_holds() -> Bool {
   }
 }
 
-test fn a_generic_member_refuses_under_its_own_reason_holds() -> Bool {
+test fn a_generic_record_emits_with_its_declared_parameter_holds() -> Bool {
+  match member_emission_generic_record_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "struct Box<T>") && string_contains(s: t, pattern: "value: T")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+test fn a_generic_coproduct_emits_with_its_declared_parameters_holds() -> Bool {
+  match member_emission_generic_coproduct_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "enum Either<A, B>") && string_contains(s: t, pattern: "Left { value: A }") && string_contains(s: t, pattern: "Right { value: B }")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+test fn a_non_generic_coproduct_and_record_still_emit_holds() -> Bool {
+  match member_emission_sum_pair_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "enum Sum") && string_contains(s: t, pattern: "struct Pair")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+test fn a_kinded_generic_member_still_refuses_under_its_own_reason_holds() -> Bool {
   match member_emission_generic_verdict() {
     MemberEmitted { text: _ } => false
     MemberRefused { reason: r } => r == ^emit_module_member_generic_not_realized
     MemberClosureRefused { reason: _ } => false
+  }
+}
+
+fn member_emission_unused_param_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Tag<T> = A | B\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+// `enum Tag<T> { A, B }` is rejected by rustc (E0392), so the member refuses under its own reason
+// instead of reaching the target bare.
+test fn a_generic_member_with_an_unused_param_refuses_under_its_own_reason_holds() -> Bool {
+  match member_emission_unused_param_verdict() {
+    MemberEmitted { text: _ } => false
+    MemberRefused { reason: r } => r == ^emit_module_member_generic_param_unused
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// C's grammar has no generic declaration production, so its row is NotApplicable and a generic member
+// refuses for that reason, not as an unused parameter.
+test fn a_generic_member_refuses_as_unsupported_where_the_target_has_no_generic_declaration_holds() -> Bool {
+  match member_emission_for_target(source: "module v2.test.member_emission\n\ntype Box<T> { value: T }\n\nfn f(x: Int) -> Int { x as Int }\n", target: c_target_model()).outcome {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^emit_module_member_generic_unsupported_by_target
+    Accepted { value: ce, diagnostics: _ } =>
+      match first(ce.modules) {
+        Present { value: ClosureMemberRefused { module: _, diagnostics: d } } => diagnostics_fatal_reason(d: d) == ^emit_module_member_generic_unsupported_by_target
+        _ => false
+      }
   }
 }

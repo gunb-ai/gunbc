@@ -8,7 +8,7 @@ import v2.compiler.target_serialize { target_bundle_optional_child, target_seria
 import v2.compiler.target_carriers { emit_module_decl_separator, target_source_medium }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
-  ProducedDeclWired,
+  ProducedDeclWired, UnusedTypeParamAdmitted, UnusedTypeParamNotApplicable, UnusedTypeParamRefused,
   TargetModel,
   produced_decl_render_from_rows,
   render_target_text,
@@ -40,9 +40,9 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.node { Instantiation, ComputationNode, Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
+import v2.std.node { NodeFold, fold_node, Instantiation, ComputationNode, Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { declaration_reference_path_optional }
-import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
+import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, kinded_type_param_names, type_decl_view, type_param_names }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind }
@@ -378,6 +378,77 @@ fn emit_module_member_refused(reason: Symbol, at: Node) -> Outcome<Medium<String
   outcome_rejected(d: emit_produced_decl_diagnostic(reason: reason, node: at))
 }
 
+// Whether a declared type parameter is mentioned anywhere in a member body: one fold_node query over the
+// tree, never a hand-rolled walk.
+fn type_node_mentions_param(node: Node, param: Symbol) -> Bool {
+  fold_node(n: node, algebra: NodeFold {
+    init: fn(n) {
+      match n.kind {
+        TypeNode { connective: Atom { identity: id } } => id == param
+        _ => false
+      }
+    },
+    step: fn(acc, _e, child) { acc || child }
+  })
+}
+
+fn all_type_params_used(params: List<Symbol>, member: Node) -> Bool {
+  fold(params, init: true, f: fn(acc, p) { acc && type_node_mentions_param(node: member, param: p) })
+}
+
+// The target's own row decides what a generic member owes before it is emitted: a target with no generic
+// declaration production refuses it, one that rejects an unused parameter refuses a member that has one.
+// The emitter only reads the row.
+fn generic_member_target_refusal(target: TargetModel, params: List<Symbol>, member: Node) -> Symbol? {
+  match target.produced_decl_support {
+    ProducedDeclWired { render_rows: _, scaffold_relation_rule_name: _, scaffold_base_row: _, unused_type_param: u } =>
+      match u {
+        UnusedTypeParamNotApplicable => Present { value: ^emit_module_member_generic_unsupported_by_target }
+        UnusedTypeParamRefused =>
+          if all_type_params_used(params: params, member: member) { Absent } else { Present { value: ^emit_module_member_generic_param_unused } }
+        UnusedTypeParamAdmitted => Absent
+      }
+    ProducedDeclUnwired => Absent
+  }
+}
+
+// A GENERIC COPRODUCT OR RECORD THROUGH THE SAME SEMANTIC-DECLARATION ROUTE AS ITS PLAIN FORM, with the
+// declaration's own binder names as `params` (emit_semantic_type_decl spells a declared parameter by
+// identity against that list). The body's class is decided by the same reader a plain member uses
+// (module_member_conj_class), so a generic where-refinement, an undecided Conj, a resource and a
+// generic whose parameter is kinded (no target spelling of a kind bound exists) keep refusing
+// emit_module_member_generic_not_realized at the member. infer_grounding_not_derived at a parameter is
+// infer's frontier advisory, which this route does not consume.
+fn emit_generic_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>) -> Outcome<Medium<String>> {
+  let refused = emit_module_member_refused(reason: ^emit_module_member_generic_not_realized, at: edge.target)
+  match edge.label {
+    Authored { name: n } =>
+      match type_decl_view(target: edge.target) {
+        GenericTypeDecl { binders: _, member: m } =>
+          if !is_empty(xs: kinded_type_param_names(n: edge.target)) {
+            refused
+          } else {
+            match generic_member_target_refusal(target: realization_host, params: type_param_names(n: edge.target), member: m) {
+              Present { value: reason } => emit_module_member_refused(reason: reason, at: edge.target)
+              Absent => match m.kind {
+              TypeNode { connective: Disj } =>
+                emit_semantic_type_decl(header: [], imports: [], members: [], name: n, params: type_param_names(n: edge.target), node: m, target: target, realization_host: realization_host)
+              TypeNode { connective: Conj } =>
+                match module_member_conj_class(name: n, member: m, kinds: kinds) {
+                  ModuleMemberRecord { name: _, record: r } =>
+                    emit_semantic_type_decl(header: [], imports: [], members: [], name: n, params: type_param_names(n: edge.target), node: r, target: target, realization_host: realization_host)
+                  _ => refused
+                }
+              _ => refused
+              }
+            }
+          }
+        _ => refused
+      }
+    _ => refused
+  }
+}
+
 fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>, tree: InferredTree, declarations: SymbolIndex) -> Outcome<Medium<String>> {
   match module_member_class(edge: edge, kinds: kinds) {
     ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, realization_host: realization_host, tree: tree, declarations: declarations)
@@ -388,7 +459,7 @@ fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetM
     ModuleMemberRecordOrRefinement => emit_module_member_refused(reason: ^emit_module_member_record_or_refinement_undecided, at: edge.target)
     ModuleMemberAlias => emit_module_member_refused(reason: ^emit_module_member_alias_not_realized, at: edge.target)
     ModuleMemberOpaque => emit_module_member_refused(reason: ^emit_module_member_opaque_not_realized, at: edge.target)
-    ModuleMemberGeneric => emit_module_member_refused(reason: ^emit_module_member_generic_not_realized, at: edge.target)
+    ModuleMemberGeneric => emit_generic_module_member(edge: edge, target: target, realization_host: realization_host, kinds: kinds)
     ModuleMemberUnsupported => emit_module_member_refused(reason: ^emit_module_member_unsupported, at: edge.target)
   }
 }
@@ -507,7 +578,8 @@ fn emit_produced_decl_declaring(decl: Node, target: TargetModel, realization_hos
     ProducedDeclWired {
       render_rows: rows,
       scaffold_relation_rule_name: rule_name,
-      scaffold_base_row: base_row
+      scaffold_base_row: base_row,
+      unused_type_param: _
     } =>
       bind_outcome(
         o: produced_decl_render_from_rows(rows: rows, decl: decl, type_binding: produced_type_binding(target: realization_host)),
