@@ -55,8 +55,11 @@ claim_arm () { # <name> <dry|wet> <file> <fns-csv>
   [ -f "$file" ] || { echo "ROW $name FILE_ABSENT_AT_SHA $file"; return 0; }
   local fnflag="--functions $fns"
   if [ "$fns" = "ALL" ]; then
-    fnflag=""
-    local cnt; cnt=$(grep -acE '^test fn ' "$file"); echo "  ROW $name ALL fns at SHA: count=$cnt"
+    local cnt LIST
+    cnt=$(grep -acE '^test fn ' "$file")
+    LIST=$(grep -aoE '^test fn [a-z0-9_]+' "$file" | sed 's/^test fn //' | paste -sd, -)
+    fnflag="--functions $LIST"
+    echo "  ROW $name ALL fns at SHA: count=$cnt list_len=$(echo $LIST | tr -cd ',;' | wc -c)+1"
   else
     for f in $(echo $fns | tr ',' ' '); do
       grep -qaE "^test fn[[:space:]]+${f}[[:space:]]*\(" "$file" || { echo "ROW $name FN_NOT_IN_FILE $f ($file) -- refuse, not a result"; return 0; }
@@ -72,8 +75,8 @@ claim_arm () { # <name> <dry|wet> <file> <fns-csv>
   echo "ROW $name rc=$rc mode=$mode PASS=$NP FAIL=$NF UNOBS=$NU cgroup=$CGREADBACK el=${el}s"
   grep -aE '^(PASS|FAIL|UNOBSERVED) ' /tmp/m2_$name.out | sed 's/^/  V| /' | cut -c1-200
   grep -aiE 'refus|error|panic|not indexed|not found' /tmp/m2_$name.err | head -4 | sed 's/^/  E| /' | cut -c1-200
-  [ "$rc" = "0" ] && [ "$((NP+NF+NU))" = "0" ] && echo "  ROW $name !! EXIT 0 HAVING OBSERVED NOTHING -- VOID, not a pass"
-  [ "$rc" = "2" ] && [ "$((NP+NF+NU))" = "0" ] && echo "  ROW $name !! rc=2 zero-verdict VOID: $(head -3 /tmp/m2_$name.err | tr '\n' ' ' | cut -c1-200)"
+  [ "$rc" = "0" ] && [ "$((NP+NF+NU))" = "0" ] && echo "ROW $name !! EXIT 0 HAVING OBSERVED NOTHING -- VOID, not a pass"
+  [ "$rc" = "2" ] && [ "$((NP+NF+NU))" = "0" ] && echo "ROW $name !! rc=2 zero-verdict VOID: $(head -3 /tmp/m2_$name.err | tr '\n' ' ' | cut -c1-200)"
   return 0
 }
 compile_arm () { # <name> <entry-file> <outdir>
