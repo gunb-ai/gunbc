@@ -60,6 +60,7 @@ sweep_job () { # sweep_job <tag> <idx> <file> <tree>
     timeout 2100 $CB --claim-run --wet --source-root dag --source-root src/v2 --entry $f --functions "$fns" ) > $d/out.txt 2>&1
   local rc=$?
   echo "ROW SW-$tag-$i file=$f n=$n rc=$rc P=$(grep -c '^PASS ' $d/out.txt) F=$(grep -c '^FAIL ' $d/out.txt) U=$(grep -c '^UNOBSERVED ' $d/out.txt) el=${el}s"
+  grep -E '^(FAIL|UNOBSERVED) ' $d/out.txt | sed "s|^|  SW-$tag-$i |" | head -20
   mv $d/out.txt $CKPT/jobs/SW-$tag-$i.out
 }
 rc=0
