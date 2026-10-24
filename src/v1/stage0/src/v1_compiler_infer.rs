@@ -15,10 +15,12 @@ use self::GroundedShapeRefusal::*;
 use self::GroundedTest::*;
 use self::GroundedViewMatch::*;
 use self::GroundedViewShape::*;
+use self::HostTextSourceReading::*;
 use self::InhabitanceRefusalReason::*;
 use self::InhabitanceUndecidableReason::*;
 use self::InhabitanceVerdict::*;
 use self::LiteralBoundary::*;
+use self::NonTextKernel::*;
 use self::OptionalDeclarationReading::*;
 use self::PeanoPatternReading::*;
 use self::RefinementInhabitance::*;
@@ -11091,65 +11093,165 @@ pub fn type_node_names_declaration(
     }
 }
 
-pub fn is_non_text_kernel_cast_source(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
-    ((((crate::v1_compiler_infer_env::node_is_kernel_mint_named(n.clone(), "Int".to_string())
-        || crate::v1_compiler_infer_env::node_is_kernel_mint_named(
-            n.clone(),
-            "Float".to_string(),
-        ))
-        || crate::v1_compiler_infer_env::node_is_kernel_mint_named(n.clone(), "Bool".to_string()))
-        || crate::v1_compiler_infer_env::node_is_kernel_mint_named(n.clone(), "Unit".to_string()))
-        || type_node_names_declaration(
-            n.clone(),
-            crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
-            scope.clone(),
-        ))
-}
-
-pub fn non_text_kernel_cast_into_non_empty_text_diags(
+pub fn non_text_kernel_cast_into_text_diags(
+    source_reading: Rc<HostTextSourceReading>,
     source_inferred: Option<Rc<InferredNode>>,
     target_type: Rc<Node>,
     span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    match source_inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: src_node, .. }) => {
-            if (type_node_names_declaration(
-                target_type.clone(),
-                crate::std_decl_ref::decl_ref("std.types".to_string(), "NonEmptyStr".to_string()),
-                scope.clone(),
-            ) && is_non_text_kernel_cast_source(src_node.clone(), scope.clone()))
-            {
-                {
-                    let si = scope.type_env.source_indices.clone();
-                    let msg = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("invalid cast: ".to_string(), crate::v1_std_core::authored_name_at(si.clone(), src_node.clone())), " as ".to_string()), crate::v1_std_core::authored_name_at(si.clone(), target_type.clone())), " -- a non-text value has no route into text; build the text through a declared conversion (to_string, or a checked constructor over its rendering)".to_string());
-                    Rc::new(vec![crate::v1_std_core::make_error_node(
-                        Rc::new(CompilerDiagnostic::InternalError {
-                            message: msg.clone(),
-                            span: span.clone(),
-                        }),
-                        scope.module_name.clone(),
-                    )])
+    match (*source_reading.clone()).clone() {
+        HostTextSourceReading::HostTextRouteAbsentKernel { kernel: k, .. } => {
+            match source_inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: src_node, .. }) => {
+                    if crate::v1_compiler_infer_env::text_representation_is_text_arm(
+                        crate::v1_compiler_infer_env::text_representation_by_identity(
+                            target_type.clone(),
+                            scope.type_env.clone(),
+                        ),
+                    ) {
+                        {
+                            let si = scope.type_env.source_indices.clone();
+                            let msg = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("invalid cast: ".to_string(), crate::v1_std_core::authored_name_at(si.clone(), src_node.clone())), " as ".to_string()), crate::v1_std_core::authored_name_at(si.clone(), target_type.clone())), " -- a non-text value has no route into text; build the text through ".to_string()), non_text_kernel_text_route(k.clone()));
+                            Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::InternalError {
+                                    message: msg.clone(),
+                                    span: span.clone(),
+                                }),
+                                scope.module_name.clone(),
+                            )])
+                        }
+                    } else {
+                        Rc::new(vec![])
+                    }
                 }
-            } else {
-                Rc::new(vec![])
+                _ => Rc::new(vec![]),
             }
         }
-        _ => Rc::new(vec![]),
+        HostTextSourceReading::HostTextRouteAbsentNominal => Rc::new(vec![]),
+        HostTextSourceReading::HostTextSourceAdmissible => Rc::new(vec![]),
     }
 }
 
-pub fn cast_source_is_declared_nominal(
-    source_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> bool {
-    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
-        source_node.clone(),
-        source_indices.clone(),
-        env.clone(),
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum HostTextSourceReading {
+    HostTextRouteAbsentNominal,
+    HostTextRouteAbsentKernel { kernel: NonTextKernel },
+    HostTextSourceAdmissible,
+}
+impl HostTextSourceReading {
+    pub fn kernel(&self) -> NonTextKernel {
+        match self {
+            HostTextSourceReading::HostTextRouteAbsentNominal => {
+                panic!("no kernel on unit variant")
+            }
+            HostTextSourceReading::HostTextRouteAbsentKernel { kernel: __val, .. } => __val.clone(),
+            HostTextSourceReading::HostTextSourceAdmissible => panic!("no kernel on unit variant"),
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum NonTextKernel {
+    NonTextKernelInt,
+    NonTextKernelNat,
+    NonTextKernelFloat,
+    NonTextKernelBool,
+    NonTextKernelUnit,
+}
+
+pub fn non_text_kernel_text_route(kernel: NonTextKernel) -> String {
+    match kernel.clone() {
+    NonTextKernel::NonTextKernelInt => "its declared conversion, std.integer int_to_decimal_string".to_string(),
+    NonTextKernel::NonTextKernelNat => "its declared conversion, std.nat nat_to_decimal_string".to_string(),
+    NonTextKernel::NonTextKernelFloat => "a declared conversion; none exists for Float yet, so declare one before writing this crossing".to_string(),
+    NonTextKernel::NonTextKernelBool => "a declared conversion; none exists for Bool yet, so declare one before writing this crossing".to_string(),
+    NonTextKernel::NonTextKernelUnit => "a declared conversion; none exists for Unit yet, so declare one before writing this crossing".to_string(),
+}
+}
+
+pub fn host_text_source_reading(t: Rc<Node>, scope: Rc<InferScope>) -> Rc<HostTextSourceReading> {
+    if (crate::v1_compiler_infer_env::node_is_kernel_mint_named(t.clone(), "Bool".to_string())
+        || type_node_names_declaration(
+            t.clone(),
+            crate::std_decl_ref::decl_ref("std.types".to_string(), "Bool".to_string()),
+            scope.clone(),
+        ))
+    {
+        Rc::new(HostTextSourceReading::HostTextRouteAbsentKernel {
+            kernel: NonTextKernel::NonTextKernelBool,
+        })
+    } else {
+        if value_type_is_declared_nominal(t.clone(), scope.clone()) {
+            Rc::new(HostTextSourceReading::HostTextRouteAbsentNominal)
+        } else {
+            if crate::v1_compiler_infer_env::node_is_kernel_mint_named(t.clone(), "Int".to_string())
+            {
+                Rc::new(HostTextSourceReading::HostTextRouteAbsentKernel {
+                    kernel: NonTextKernel::NonTextKernelInt,
+                })
+            } else {
+                if crate::v1_compiler_infer_env::node_is_kernel_mint_named(
+                    t.clone(),
+                    "Float".to_string(),
+                ) {
+                    Rc::new(HostTextSourceReading::HostTextRouteAbsentKernel {
+                        kernel: NonTextKernel::NonTextKernelFloat,
+                    })
+                } else {
+                    if crate::v1_compiler_infer_env::node_is_kernel_mint_named(
+                        t.clone(),
+                        "Unit".to_string(),
+                    ) {
+                        Rc::new(HostTextSourceReading::HostTextRouteAbsentKernel {
+                            kernel: NonTextKernel::NonTextKernelUnit,
+                        })
+                    } else {
+                        if type_node_names_declaration(
+                            t.clone(),
+                            crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
+                            scope.clone(),
+                        ) {
+                            Rc::new(HostTextSourceReading::HostTextRouteAbsentKernel {
+                                kernel: NonTextKernel::NonTextKernelNat,
+                            })
+                        } else {
+                            Rc::new(HostTextSourceReading::HostTextSourceAdmissible)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn cast_source_host_text_reading(
+    source_inferred: Option<Rc<InferredNode>>,
+    scope: Rc<InferScope>,
+) -> Rc<HostTextSourceReading> {
+    match source_inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved {
+            node: source_node, ..
+        }) => host_text_source_reading(source_node.clone(), scope.clone()),
+        _ => Rc::new(HostTextSourceReading::HostTextSourceAdmissible),
+    }
+}
+
+pub fn value_type_is_declared_nominal(t: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    ((crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
+        expected_type_head_exposure(t.clone(), scope.clone()),
+    ) || crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(
+        expected_type_head_exposure(t.clone(), scope.clone()),
+    )) && match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+        t.clone(),
+        scope.type_env.source_indices.clone(),
+        scope.type_env.clone(),
     ) {
-        std::option::Option::None => !cast_source_is_solver_unit_placeholder(source_node.clone()),
+        std::option::Option::None => !cast_source_is_solver_unit_placeholder(t.clone()),
         Some(d) => {
             (!{
                 let mut __found = false;
@@ -11165,7 +11267,7 @@ pub fn cast_source_is_declared_nominal(
                 crate::std_decl_ref::decl_ref("std.types".to_string(), "Unit".to_string()),
             ))
         }
-    }
+    })
 }
 
 pub fn validate_cast(
@@ -11174,7 +11276,7 @@ pub fn validate_cast(
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
-    source_is_nominal: bool,
+    source_reading: Rc<HostTextSourceReading>,
 ) -> Option<Rc<ErrorNode>> {
     match source_inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: src_node, .. }) => {
@@ -11199,8 +11301,8 @@ pub fn validate_cast(
                         ))
                     }
                 } else {
-                    if source_is_nominal.clone() {
-                        {
+                    match (*source_reading.clone()).clone() {
+                        HostTextSourceReading::HostTextRouteAbsentNominal => {
                             let msg = v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
@@ -11223,47 +11325,64 @@ pub fn validate_cast(
                                 module_name.clone(),
                             ))
                         }
-                    } else {
-                        if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
-                            std::option::Option::None
-                        } else {
-                            if !crate::std_coercion::is_dag_cast_domain_type(target_name.clone()) {
-                                std::option::Option::None
-                            } else {
-                                if crate::std_coercion::dag_can_cast(
-                                    source_name.clone(),
-                                    target_name.clone(),
-                                ) {
-                                    std::option::Option::None
-                                } else {
-                                    {
-                                        let msg = v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "invalid cast: ".to_string(),
-                                                    source_name.clone(),
-                                                ),
-                                                " as ".to_string(),
-                                            ),
-                                            target_name.clone(),
-                                        );
-                                        let diag = Rc::new(CompilerDiagnostic::InternalError {
-                                            message: msg.clone(),
-                                            span: span.clone(),
-                                        });
-                                        Some(crate::v1_std_core::make_error_node(
-                                            diag.clone(),
-                                            module_name.clone(),
-                                        ))
-                                    }
-                                }
-                            }
+                        HostTextSourceReading::HostTextRouteAbsentKernel { kernel: _, .. } => {
+                            validate_cast_in_table_domain(
+                                source_name.clone(),
+                                target_name.clone(),
+                                span.clone(),
+                                module_name.clone(),
+                            )
+                        }
+                        HostTextSourceReading::HostTextSourceAdmissible => {
+                            validate_cast_in_table_domain(
+                                source_name.clone(),
+                                target_name.clone(),
+                                span.clone(),
+                                module_name.clone(),
+                            )
                         }
                     }
                 }
             }
         }
         _ => std::option::Option::None,
+    }
+}
+
+pub fn validate_cast_in_table_domain(
+    source_name: String,
+    target_name: String,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Option<Rc<ErrorNode>> {
+    if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
+        std::option::Option::None
+    } else {
+        if !crate::std_coercion::is_dag_cast_domain_type(target_name.clone()) {
+            std::option::Option::None
+        } else {
+            if crate::std_coercion::dag_can_cast(source_name.clone(), target_name.clone()) {
+                std::option::Option::None
+            } else {
+                {
+                    let msg = v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("invalid cast: ".to_string(), source_name.clone()),
+                            " as ".to_string(),
+                        ),
+                        target_name.clone(),
+                    );
+                    let diag = Rc::new(CompilerDiagnostic::InternalError {
+                        message: msg.clone(),
+                        span: span.clone(),
+                    });
+                    Some(crate::v1_std_core::make_error_node(
+                        diag.clone(),
+                        module_name.clone(),
+                    ))
+                }
+            }
+        }
     }
 }
 
@@ -17037,29 +17156,15 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let inner_emissions = inner_result.emissions.clone();
             let si = scope.type_env.source_indices.clone();
             let target_name = crate::v1_std_core::authored_name_at(si.clone(), target_type.clone());
-            let source_is_nominal = match inner_typed.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved {
-                    node: source_node, ..
-                }) => {
-                    ((crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
-                        expected_type_head_exposure(source_node.clone(), scope.clone()),
-                    ) || crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(
-                        expected_type_head_exposure(source_node.clone(), scope.clone()),
-                    )) && cast_source_is_declared_nominal(
-                        source_node.clone(),
-                        si.clone(),
-                        scope.type_env.clone(),
-                    ))
-                }
-                _ => false,
-            };
+            let source_reading =
+                cast_source_host_text_reading(inner_typed.inferred.clone(), scope.clone());
             let cast_diag = validate_cast(
                 inner_typed.inferred.clone(),
                 target_name.clone(),
                 span.clone(),
                 si.clone(),
                 scope.module_name.clone(),
-                source_is_nominal.clone(),
+                source_reading.clone(),
             );
             let cast_diags = match cast_diag.clone() {
                 Some(d) => Rc::new(vec![d.clone()]),
@@ -17077,7 +17182,8 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 span.clone(),
                 scope.clone(),
             );
-            let cast_non_text_diags = non_text_kernel_cast_into_non_empty_text_diags(
+            let cast_non_text_diags = non_text_kernel_cast_into_text_diags(
+                source_reading.clone(),
                 inner_typed.inferred.clone(),
                 target_type.clone(),
                 span.clone(),
@@ -36075,6 +36181,16 @@ pub struct RefinementWidensToDeclaredBase;
 pub struct RefinementNarrowsToDeclaredBrand;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefinementPeerChains;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NonTextKernelInt;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NonTextKernelNat;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NonTextKernelFloat;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NonTextKernelBool;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NonTextKernelUnit;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NotGroundedCarrier;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
