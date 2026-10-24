@@ -3,7 +3,7 @@ module v2.std.node
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape, TotalOrder, total_order_by, string_total_order }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape, TotalOrder, total_order_by, string_total_order, list_sort_by_key }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
