@@ -79,6 +79,7 @@ fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers:
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "matching_presented_key_binds_the_anchored_host"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_the_anchored_host"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_empty_presented_line_never_binds"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_anchor_for_another_machine_refuses_the_row"),
 ] {
   match fleet_ssh_execution_context_hermetic_witness_fixture() {
     Absent => none
@@ -146,6 +147,7 @@ fn the_present_anchor(row: AnchoredHostRow) -> KnownHostKeyRow admit_callers: [
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_the_anchored_host"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_local_shell_refuses_before_any_key_is_read"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_empty_presented_line_never_binds"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_anchor_for_another_machine_refuses_the_row"),
 ] {
   match row.anchor {
     Present { value: anchor } => anchor
@@ -537,11 +539,13 @@ test fn the_mint_render_carries_no_private_material() -> Bool {
 // files.
 fn anchored_runbook_mint_block() -> String {
   let doc = filesystem_read(path: "docs/runbooks/mtcollins1-ssh-host-key-mint.md").content
-  fold(split(s: doc, delimiter: "```bash\n").skip(n: 1), init: "", f: fn(acc, chunk) {
+  let parts = split(s: doc, delimiter: "```bash\n")
+  fold(parts.skip(n: 1), init: "", f: fn(acc, chunk) {
     if acc != "" {
       acc
     } else {
-      let body = join(split(s: chunk, delimiter: "\n```").take(n: 1), "")
+      let body_parts = split(s: chunk, delimiter: "\n```")
+      let body = join(body_parts.take(n: 1), "\n")
       if string_contains(s: body, pattern: "ssh-keygen") { body } else { acc }
     }
   })
