@@ -1,0 +1,118 @@
+candidate pinned at 4c09c5ffdfccfd0216ecc7dad19fa4c9bf9acd01 (merge-base a3b8d7dff0112686d03047395378aa86a3721704; base errors are a3b8d7dff01's)
+at 4c09c5ffdfccfd0216ecc7dad19fa4c9bf9acd01 dirty=0
+build0 exit=0     Finished `release` profile [optimized] target(s) in 7m 22s
+regen1 exit=1 16:13:02
+required-regen: elapsed_ms=655759 first_generation_equal=false planned=175 executed=175 adjudicated=175 declared_divergent=1 [main.rs]
+required-regen: first_generation_equal=false candidate=target/stage0-regen-candidate
+required-regen: FAIL generated surface drift: std_checked_arithmetic.rs, std_types.rs, v1_compiler_dag_collect_support.rs, v1_compiler_infer.rs, v1_compiler_infer_method.rs
+  installed std_checked_arithmetic.rs
+  installed std_types.rs
+  installed v1_compiler_dag_collect_support.rs
+  installed v1_compiler_infer_method.rs
+  installed v1_compiler_infer.rs
+round 1 installed 5
+build1 exit=0     Finished `release` profile [optimized] target(s) in 7m 36s
+regen2 exit=0 16:31:37
+required-regen: elapsed_ms=650328 first_generation_equal=true planned=175 executed=175 adjudicated=175 declared_divergent=1 [main.rs]
+required-regen: first_generation_equal=true candidate=target/stage0-regen-candidate
+round 2 installed 0
+FIXED POINT reached; mirror carries the wall text: 2; dirty:  M src/v1/stage0/src/std_checked_arithmetic.rs  M src/v1/stage0/src/std_types.rs  M src/v1/stage0/src/v1_compiler_dag_collect_support.rs  M src/v1/stage0/src/v1_compiler_infer.rs  M src/v1/stage0/src/v1_compiler_infer_method.rs 
+probe cand rec expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: nominal P at host text String formal of concat: no declared conversion
+probe cand cop expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: nominal C at host text String formal of concat: no declared conversion
+probe cand jrec expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: nominal P at host text elements of join: no declared conversion
+probe cand jsep expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: nominal P at host text String formal of join: no declared conversion
+probe cand str expect=SILENT wall=0 reached=1 resolve_failed=0 ok :: 
+probe cand int expect=SILENT wall=0 reached=1 resolve_failed=0 ok :: 
+probe cand bool expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: nominal Bool at host text String formal of concat: no declared conversion
+probe cand ocon expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: optional Int? at host text String formal of concat: no declared conversion
+probe cand ojoin expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: optional String? at host text elements of join: no declared conversion
+probe cand nes expect=SILENT wall=0 reached=1 resolve_failed=0 ok :: 
+probe cand bas expect=INFO wall=0 reached=0 resolve_failed=1 info :: invalid cast: Bool as String: a nominal value has no declared conversion
+probe cand ias expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+probe cand fas expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+probe cand bcon expect=INFO wall=1 reached=0 resolve_failed=1 info :: nominal Bool at host text String formal of concat: no declared conversion
+probe cand ocon expect=INFO wall=1 reached=0 resolve_failed=1 info :: optional Int? at host text String formal of concat: no declared conversion
+probe cand ojoin expect=INFO wall=1 reached=0 resolve_failed=1 info :: optional String? at host text elements of join: no declared conversion
+probe cand fcon expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+probe cand lcon expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+probe cand tsb expect=INFO wall=1 reached=0 resolve_failed=1 info :: nominal Bool at host text 'value' of to_string: no declared conversion
+probe cand tsr expect=INFO wall=1 reached=0 resolve_failed=1 info :: nominal P at host text 'value' of to_string: no declared conversion
+probe cand tsi expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+compile cand start 16:31:58
+compile cand exit=1 17:09:07 424 blocking error(s), 52190 advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)
+  cand blocking error lines: 424
+DISCRIMINATOR 'at host text' in cand errors: 112; in whole cand log: 224
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/claim/payload_arm_excess_field_admission.dag:138:76)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/gunbc/host/host_identity_assimilation.dag:229:51)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/extdeps/docker/container_inspect.dag:456:40)
+nominal HtmlEmitResult at host text 's' of string_contains: no declared conversion (dag/test/claim/brand_mark_witness.dag:51:22)
+nominal HtmlEmitResult at host text 's' of string_contains: no declared conversion (dag/test/claim/brand_mark_witness.dag:52:27)
+nominal HtmlEmitResult at host text 's' of string_contains: no declared conversion (dag/test/claim/brand_mark_witness.dag:53:27)
+nominal FreeMonoid at host text 'b' of concat: no declared conversion (src/v2/std/decl_facts_skeleton.dag:214:15)
+nominal FreeMonoid at host text 'b' of concat: no declared conversion (src/v2/std/decl_facts_skeleton.dag:228:15)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/gunbc/scm_compatibility/git.dag:571:30)
+nominal ContentHash at host text 'pattern' of string_contains: no declared conversion (dag/test/claim/artifact_store_fs_witness.dag:72:75)
+nominal ContentHash at host text 'pattern' of string_contains: no declared conversion (dag/test/claim/artifact_store_fs_witness.dag:87:76)
+nominal ContentHash at host text 'pattern' of string_contains: no declared conversion (dag/test/claim/artifact_store_fs_witness.dag:129:42)
+nominal AltraFirmwareReferenceReport at host text 'value' of to_string: no declared conversion (dag/gunbc/fleet/altra_firmware_library.dag:227:63)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/manual/git_upstream_model_execution.dag:661:45)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/manual/git_upstream_model_execution.dag:662:59)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/manual/git_upstream_model_execution.dag:664:50)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/manual/git_upstream_model_execution.dag:666:56)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/manual/git_upstream_model_execution.dag:668:52)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/manual/git_upstream_model_execution.dag:670:51)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/manual/git_upstream_model_execution.dag:672:54)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/manual/git_upstream_model_execution.dag:674:57)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/manual/git_upstream_model_execution.dag:676:63)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/manual/git_upstream_model_execution.dag:677:74)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/test/manual/git_upstream_model_execution.dag:678:45)
+nominal HostHealthDeviation at host text 'value' of to_string: no declared conversion (dag/gunbc/fleet/fleet_health.dag:176:177)
+nominal HostHealthDeviation at host text 'value' of to_string: no declared conversion (dag/gunbc/fleet/fleet_health.dag:179:92)
+nominal HostHealthUnknown at host text 'value' of to_string: no declared conversion (dag/gunbc/fleet/fleet_health.dag:179:184)
+nominal HostHealthRefusal at host text 'value' of to_string: no declared conversion (dag/gunbc/fleet/fleet_health.dag:181:107)
+nominal FleetHealthRefusal at host text 'value' of to_string: no declared conversion (dag/gunbc/fleet/fleet_health.dag:188:79)
+nominal Bool at host text 'value' of to_string: no declared conversion (dag/gunbc/instruments/emit_copy_qualification_transport.dag:313:41)
+NEW vs base: 112; GONE: 0
+=== NEW
+error[dag/extdeps/docker/container_inspect.dag:456:40]: nominal Bool at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/devboot/build.dag:1302:40]: nominal Bool at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/emit_subject_clean_frontier.dag:1004:82]: nominal Bool at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/emit_subject_clean_frontier.dag:1009:79]: nominal Bool at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/emit_subject_clean_frontier.dag:1014:81]: nominal Bool at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/fleet/altra_firmware_library.dag:227:63]: nominal AltraFirmwareReferenceReport at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/fleet/fleet_health.dag:176:177]: nominal HostHealthDeviation at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/fleet/fleet_health.dag:179:184]: nominal HostHealthUnknown at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/fleet/fleet_health.dag:179:92]: nominal HostHealthDeviation at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/fleet/fleet_health.dag:181:107]: nominal HostHealthRefusal at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/fleet/fleet_health.dag:188:79]: nominal FleetHealthRefusal at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/host/host_identity_assimilation.dag:229:51]: nominal Bool at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/host/host_reach_identity_probe.dag:402:105]: nominal FleetReachProbeRun at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/host/memory_change_report.dag:108:30]: nominal MtCollinsPopulationRoleRefusalCause at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/host/memory_change_report.dag:139:120]: nominal MemoryCaptureCoverage at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/emission_entry_instrument.dag:1004:68]: nominal Bool at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/emit_copy_qualification_transport.dag:313:41]: nominal Bool at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1127:63]: nominal Fci1CanonicalCleanupDisposition at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1143:105]: nominal Fci1AllocationSlotObservation at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1157:110]: nominal Fci1AllocationSlotObservation at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1157:144]: nominal CellHoldEnd at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1157:172]: nominal Fci1AllocationSlotObservation at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1157:78]: nominal Fci1ReservationCleanupAuthority at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1185:120]: nominal Fci1ReservationCleanupAuthority at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1185:156]: nominal Fci1AllocationSlotObservation at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1219:31]: nominal AllocationSlotPrestate at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1220:32]: nominal RequiredBuildCellLifetimeSample at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1221:32]: nominal AllocationSlotPrestate at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1222:39]: nominal AllocationStoreRestoration at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1360:58]: nominal RequiredBuildCellLifetimeVerdict at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1361:38]: nominal Fci1AllocationSlotObservation at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1394:58]: nominal RequiredBuildCellLifetimeVerdict at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1395:38]: nominal Fci1AllocationSlotObservation at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1457:37]: nominal PosixOwnerSpec at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1458:37]: nominal PosixOwnerSpec at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1459:40]: nominal PosixOwnerSpec at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1616:44]: nominal PosixOwnerSpec at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1617:44]: nominal PosixOwnerSpec at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1617:93]: nominal PosixOwnerSpec at host text 'value' of to_string: no declared conversion
+error[dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1694:102]: nominal Fci1ZeroWorkObservation at host text 'value' of to_string: no declared conversion
+=== GONE
+done
