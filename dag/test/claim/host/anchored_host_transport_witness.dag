@@ -10,12 +10,13 @@ import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefuse
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_mtcollins1 }
 import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret }
-import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstContact, known_hosts_line, known_host_row_field }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstContact, known_hosts_line, known_host_row_field, fleet_name_at_ssh_port }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
 import gunbc.host.anchored_host_transport {
   AnchoredHostRow,
   AnchoredBindingBound,
   AnchoredBindingNotTheAnchoredHost,
+  AnchoredBindingAnchorNotForRow,
   AnchoredBindingAnchorAbsent,
   AnchoredBindingPresentedKeyMismatch,
   AnchoredBindingRefused,
@@ -32,6 +33,7 @@ import gunbc.host.anchored_host_transport {
   anchored_host_token_source_citation,
   anchored_host_transport_frontier_rows,
 }
+import extdeps.dns.domain_name { DnsLabel }
 import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.auth.privileged_effect_census {
@@ -116,7 +118,8 @@ test fn a_wrong_presented_key_refuses_the_transport() -> Bool {
           expected != observed
           && string_contains(s: observed, pattern: wrong_public_key_base64)
           && !string_contains(s: observed, pattern: fixture_public_key.material as String)
-        AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
         AnchoredBindingRefused { cause: _ } => false
       }
@@ -162,7 +165,8 @@ test fn an_empty_presented_line_never_binds() -> Bool {
       match anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: t, presented_key_line: "") {
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: observed } => observed == ""
         AnchoredBindingBound { bound: _ } => false
-        AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
         AnchoredBindingRefused { cause: _ } => false
       }
@@ -182,7 +186,8 @@ test fn an_unanchored_host_refuses_the_transport() -> Bool {
         AnchoredBindingRefused { cause: cause } => string_contains(s: cause, pattern: "not the endpoint of any managed host")
         AnchoredBindingBound { bound: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
-        AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
       }
   }
@@ -201,6 +206,7 @@ test fn no_anchor_refuses_the_transport() -> Bool {
               AnchoredBindingAnchorAbsent { cause: cause } =>
                 string_contains(s: cause, pattern: "Read obligation")
                 && string_contains(s: cause, pattern: "mtcollins1-ssh-host-key")
+              AnchoredBindingAnchorNotForRow { cause: _ } => false
               AnchoredBindingBound { bound: _ } => false
               AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
               AnchoredBindingNotTheAnchoredHost { cause: _ } => false
@@ -225,7 +231,8 @@ test fn matching_presented_key_binds_the_anchored_host() -> Bool {
       match outcome {
         AnchoredBindingBound { bound: _ } => anchored_host_binding_refusal_reason(b: outcome) == "bound; not a refusal"
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
-        AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
         AnchoredBindingRefused { cause: _ } => false
       }
@@ -250,7 +257,8 @@ test fn a_transport_to_another_machine_never_binds_the_anchored_host() -> Bool {
         AnchoredBindingNotTheAnchoredHost { cause: cause } => string_contains(s: cause, pattern: "srv2") && string_contains(s: cause, pattern: "mtcollins1")
         AnchoredBindingBound { bound: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
-        AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingAnchorNotForRow { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
       }
   }
 }
@@ -263,8 +271,66 @@ test fn a_local_shell_refuses_before_any_key_is_read() -> Bool {
     AnchoredBindingRefused { cause: cause } => string_contains(s: cause, pattern: "local shell")
     AnchoredBindingBound { bound: _ } => false
     AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+    AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
     AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+  }
+}
+
+// CLAIM: AN ANCHOR FOR ANOTHER MACHINE REFUSES THE ROW (merry-fox-82 HOLD, structural anchor-to-row
+// identity). The transport is a real mtcollins1 FleetSsh and the presented line is the anchor's OWN
+// known_hosts line -- so a comparison that skipped the anchor-vs-row identity check would BIND. Two
+// mismatches are pinned, one per identity component: an anchor naming srv2's host at the row's own
+// address, and an anchor naming mtcollins1 at another address. Either must refuse at the typed
+// AnchoredBindingAnchorNotForRow arm, name both machines, and never bind. This is the wrong-pairing
+// defect the re-land closed one layer above -- an anchor authored for A vouching for B's row -- made
+// unwritable below: the check lives INSIDE the sealed comparison, so no caller can route around it.
+test fn an_anchor_for_another_machine_refuses_the_row() -> Bool {
+  let row = anchored_fixture_row()
+  let anchor = the_present_anchor(row: row)
+  match fleet_transport_to(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: t } => {
+      let foreign_host_anchor = KnownHostKeyRow {
+        host: operator_host_srv2,
+        address: anchor.address,
+        key_type: anchor.key_type,
+        public_key_base64: anchor.public_key_base64,
+        sha256_fingerprint: anchor.sha256_fingerprint,
+        provenance: anchor.provenance,
+      }
+      let foreign_address_anchor = KnownHostKeyRow {
+        host: anchor.host,
+        address: fleet_name_at_ssh_port(labels: ["srv2" as DnsLabel]),
+        key_type: anchor.key_type,
+        public_key_base64: anchor.public_key_base64,
+        sha256_fingerprint: anchor.sha256_fingerprint,
+        provenance: anchor.provenance,
+      }
+      let presented = known_hosts_line(k: anchor)
+      let by_host = anchored_host_transport_against(row: row, anchor: foreign_host_anchor, transport: t, presented_key_line: presented)
+      let by_address = anchored_host_transport_against(row: row, anchor: foreign_address_anchor, transport: t, presented_key_line: presented)
+      anchored_pairing_refused(b: by_host) && anchored_pairing_refused(b: by_address)
+    }
+  }
+}
+
+// (helper) the pairing refusal, stated once so both halves of the claim above check the same thing:
+// the typed arm fired, and its cause names the machine the anchor speaks for AND the machine the row
+// belongs to -- a refusal that hides which pairing it refused is not locatable (DESIGN sec.5).
+fn anchored_pairing_refused(b: AnchoredHostBinding) -> Bool admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_anchor_for_another_machine_refuses_the_row"),
+] {
+  match b {
+    AnchoredBindingAnchorNotForRow { cause: cause } =>
+      string_contains(s: cause, pattern: "srv2")
+      && string_contains(s: cause, pattern: "mtcollins1")
+      && !string_contains(s: cause, pattern: "PRIVATE")
+    AnchoredBindingBound { bound: _ } => false
+    AnchoredBindingNotTheAnchoredHost { cause: _ } => false
+    AnchoredBindingAnchorAbsent { cause: _ } => false
+    AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+    AnchoredBindingRefused { cause: _ } => false
   }
 }
 

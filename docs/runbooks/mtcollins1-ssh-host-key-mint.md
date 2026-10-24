@@ -26,11 +26,34 @@ and in mtcollins1's memory on each boot. It never goes on disk across boot, neve
 into a log, never into a commit. Every command below passes it via **stdin pipe**, never as an
 argument.
 
+Two corollaries this runbook enforces mechanically, not by trust:
+
+- **The mint directory MUST be verified RAM-backed (tmpfs) before the key is created there.**
+  `shred -u` is NOT erasure on SSD or copy-on-write media: the block it "overwrote" may live
+  elsewhere (FTL remapping, CoW snapshots), so shredding a file that ever touched flash leaves the
+  bytes recoverable. On a verified tmpfs the key never touches flash at all, and plain removal
+  plus page reclaim is the honest erasure (the remaining window is RAM content until reboot, which
+  is the same window as any shell variable — acceptable under Q1 because the alternative, writing
+  to the SSD and shredding, is strictly worse).
+- **Every failure path cleans the temp key.** A single shell `trap ... EXIT` covers all exits —
+  error, Ctrl-C, and success — so no path can strand the private half in a directory nobody
+  returns to.
+
 ## Step 1 — mint and upload (operator / merry-fox-82, one shell session)
 
 ```bash
-install -d -m 700 ~/keytmp
-ssh-keygen -t ed25519 -f ~/keytmp/mc_host -N '' -C mtcollins1 -q
+# Verify a memory-backed working dir FIRST; refuse to mint anywhere else.
+KEYDIR=$(mktemp -d /dev/shm/mc-hostkey.XXXXXX)
+if [ "$(findmnt -no FSTYPE -T "$KEYDIR")" != "tmpfs" ]; then
+  echo "REFUSING: $KEYDIR is not tmpfs — the private half must never reach flash" >&2
+  rmdir "$KEYDIR"; exit 1
+fi
+# One trap, every exit path: the private half leaves no residue in the directory.
+trap 'rm -f "$KEYDIR/mc_host" "$KEYDIR/mc_host.pub"; rmdir "$KEYDIR" 2>/dev/null' EXIT INT TERM
+# NOTE: plain rm here is deliberate — shred -u would be theater on SSD/CoW and is pointless on a
+# verified tmpfs; the verification above is what makes it sound, not the command name.
+
+ssh-keygen -t ed25519 -f "$KEYDIR/mc_host" -N '' -C mtcollins1 -q
 
 # Create the secret with NO --data-file: creating with --data-file=/dev/null would publish an
 # EMPTY version 1, which a reader resolving "latest" (or the pin in step 2) could then pick up as
@@ -40,7 +63,7 @@ gcloud secrets create mtcollins1-ssh-host-key --project gunbai-secrets
 #    --replication-policy=automatic. It does not prompt on gunbai-secrets' current SDK.)
 
 # The private half reaches the server ONLY over stdin — never argv, never a file path the CLI reads.
-cat ~/keytmp/mc_host | gcloud secrets versions add mtcollins1-ssh-host-key \
+cat "$KEYDIR/mc_host" | gcloud secrets versions add mtcollins1-ssh-host-key \
   --project gunbai-secrets --data-file=-
 
 # Record the printed version number for step 2 (expect 1).
@@ -55,28 +78,32 @@ version number step 1 printed — following the pinning convention of the neighb
 the guard against silent rotation). Until this happens every custody read refuses at Secret
 Manager, which is the honest state, not a failure to hide.
 
-## Step 3 — transcribe the PUBLIC half into the anchor (discharges the read obligation)
+## Step 3 — transcribe the PUBLIC half into the anchor (this does NOT discharge the read obligation)
 
-Still in the same shell, while `~/keytmp` still exists — order matters: the public half is
-transcribed BEFORE anything is shredded (shredding first leaves step 3 nothing to read):
+Still in the same shell, while `$KEYDIR` still exists — order matters: the public half is
+transcribed BEFORE the trap removes it (removing first leaves step 3 nothing to read):
 
 ```bash
-cat ~/keytmp/mc_host.pub    # "ssh-ed25519 <base64> mtcollins1"
+cat "$KEYDIR/mc_host.pub"    # "ssh-ed25519 <base64> mtcollins1"
 ```
 
 Take the two components (key type, base64 public blob) into the ONE mint,
 `anchored_host_trusted_row` (admitted callers: `mtcollins1_host_key_anchor` and the witness) —
 host, address, key type, public base64, and the `SHA256:` fingerprint computed from the real key
-(`ssh-keygen -lf ~/keytmp/mc_host.pub` prints it). The mint carries the standing
+(`ssh-keygen -lf "$KEYDIR/mc_host.pub"` prints it). The mint carries the standing
 (`TranscribedUncited`) and the read obligation as TYPED VALUES. Fabricating or guessing key
 material is forbidden (DESIGN §4d) — the components come from THIS transcription.
 
-Only after the anchor row lands in the tree:
+**WHAT THIS DOES NOT DO.** Transcribing the public half copies a figure across a boundary nothing
+in the DAG read back; it lands the anchor with its standing and its obligation INTACT. It does not
+discharge the read obligation — only step 4's live presented-key readback, matched line for line
+against this row, does that (as the model says: `mtcollins1_host_key_read_obligation`, and the
+`TranscribedUncited` standing the mint carries). A runbook reader who finished step 3 and believed
+the anchor verified would be the defect; the typed standing is the guard, and it survives here.
 
-```bash
-shred -u ~/keytmp/mc_host ~/keytmp/mc_host.pub
-rmdir ~/keytmp
-```
+The trap from step 1 removes both halves on exit — including if this session dies here — so there
+is no separate shred step, and on a verified tmpfs plain removal is the honest erasure (shred is
+theater on SSD/CoW and pointless on RAM).
 
 ## Step 4 — live boot, readback, match (needs merry-fox-82's go, relayed by snappy-koi-83)
 

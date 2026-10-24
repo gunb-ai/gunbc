@@ -221,6 +221,7 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
 type AnchoredHostBinding
   = AnchoredBindingBound { bound: HostBoundTransport }
   | AnchoredBindingNotTheAnchoredHost { cause: String }
+  | AnchoredBindingAnchorNotForRow { cause: String }
   | AnchoredBindingAnchorAbsent { cause: String }
   | AnchoredBindingPresentedKeyMismatch { expected_line: String, observed_line: String }
   | AnchoredBindingRefused { cause: String }
@@ -236,7 +237,15 @@ type AnchoredHostBinding
 //      there is no fallback path that proceeds unanchored.
 //   3. A row whose anchor is absent (the honest production state today) refuses carrying the read
 //      obligation: matching against nothing is accepting anything.
-//   4. The presented line must equal the anchor's known_hosts line exactly -- a key differing in any
+//   4. The ANCHOR MUST STAND FOR THE ROW IT IS COMPARED AGAINST: the anchor carries its own host and
+//      address (KnownHostKeyRow), and if either disagrees with the row's, a trust statement about one
+//      machine has been paired with the row of another -- the wrong-pairing defect the re-land closed at
+//      the host layer, now one layer lower. It is checked INSIDE the sealed comparison, so identity is
+//      structural, not convention: no caller, admitted or not, can hand an anchor for machine A into a
+//      comparison under row B. The production wrapper passes the row's own anchor (consistent by
+//      construction); the witness is admitted to hand in one, which is exactly where a mismatch is
+//      writable -- pinned by its own RED.
+//   5. The presented line must equal the anchor's known_hosts line exactly -- a key differing in any
 //      position is a different key. The presented line is a SUPPLIED VALUE at this boundary (the
 //      readback mints it on a live boot); the production route is the gated scan below, and the witness
 //      boundary is admitted to the comparison directly, as in the re-land's witness precedent.
@@ -278,16 +287,30 @@ fn anchored_host_transport_against(
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_the_anchored_host"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_local_shell_refuses_before_any_key_is_read"),
     decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_empty_presented_line_never_binds"),
+    decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_anchor_for_another_machine_refuses_the_row"),
   ] {
   match host_bound_transport_of(transport: transport) {
     HostBoundTransportRefused { cause: cause } => AnchoredBindingRefused { cause: cause }
     HostBoundTransportResolved { bound: bound } =>
       if host_identity_eq(a: bound.host, b: row.host) {
-        let expected = known_hosts_line(k: anchor)
-        if expected == presented_key_line {
-          AnchoredBindingBound { bound: bound }
+        if !host_identity_eq(a: anchor.host, b: row.host) || anchor.address != row.address {
+          // The trust statement names a different machine (or a different endpoint) than the row it is
+          // being compared under. Compared anyway, it would let an anchor authored for A vouch for B's
+          // row -- the wrong-pairing defect, one layer below the host binding the re-land closed.
+          AnchoredBindingAnchorNotForRow {
+            cause: join([
+              "the anchor statement names ", anchor.host as String, " at ",
+              render_network_host(host: anchor.address.host) as String,
+              "; the row is the trust record of ", row.host as String,
+              "; an anchor is admitted only for the machine and endpoint its row names, and pairing them is refused"], ""),
+          }
         } else {
-          AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: presented_key_line }
+          let expected = known_hosts_line(k: anchor)
+          if expected == presented_key_line {
+            AnchoredBindingBound { bound: bound }
+          } else {
+            AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: presented_key_line }
+          }
         }
       } else {
         AnchoredBindingNotTheAnchoredHost {
@@ -305,6 +328,7 @@ fn anchored_host_binding_refusal_reason(b: AnchoredHostBinding) -> String {
   match b {
     AnchoredBindingBound { bound: _ } => "bound; not a refusal"
     AnchoredBindingNotTheAnchoredHost { cause: cause } => cause
+    AnchoredBindingAnchorNotForRow { cause: cause } => cause
     AnchoredBindingAnchorAbsent { cause: cause } => cause
     AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: observed } =>
       join(["AnchoredBindingPresentedKeyMismatch: got `", observed as String, "`, not the anchored key `", expected as String, "`; contacting NO host"], "")
