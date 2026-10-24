@@ -4,7 +4,7 @@ import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import std.optional { Absent, Present }
 import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
-  host_reset_owner, UnitHoldSubjectAdmitted, UnitHoldNotRequired,
+  host_reset_owner, UnitHoldSubjectAdmitted, UnitHoldNotRequired, UnitHoldUndecided,
 }
 import std.decl_ref { decl_ref }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
@@ -60,6 +60,7 @@ import gunbc.host.host_reset_return {
   SubjectHasNoRosterRow,
   UnitHoldStoreNotOnObserver,
   UnitHeldForMaintenance,
+  SubjectHoldUndecided,
   reset_preflight_refusal_wire,
   ResetDispatchAdmitted,
   ResetDispatchNotThisMode,
@@ -409,6 +410,8 @@ data host_reset_back_watch_samples: Nat = 200
 fn reset_unit_hold_gate(candidate: AdmittedResetSubject, proof: UnitHoldProof?) -> NonEmptyStr? {
   match candidate.hold {
     UnitHoldNotRequired { host: _ } => none
+    UnitHoldUndecided { host: _ } =>
+      Present { value: join(["subject ", candidate.host.host as String, " has no unit hold decision, and an undecided subject is never driven as if it needed no hold; no controller write was attempted"], "") as NonEmptyStr }
     UnitHoldSubjectAdmitted { subject: _ } =>
       match proof {
         Absent => Present { value: join(["subject ", candidate.host.host as String, " is hold-gated and no unit hold proof was presented; no controller write was attempted"], "") as NonEmptyStr }
@@ -735,6 +738,11 @@ fn host_reset_return_wet(evidence: MegaRacOperationEvidence) -> ProcessExit
           match candidate.hold {
             UnitHoldNotRequired { host: _ } =>
               host_reset_return_attempt_exit(evidence: evidence, proof: none, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr)
+            UnitHoldUndecided { host: _ } =>
+              host_reset_return_preflight_exit(
+                refusal: SubjectHoldUndecided { subject: subject },
+                remedy: "the subject has no unit hold decision (gunbc.host.host_maintenance_hold_reason unit_hold_decision); decide whether driving it must take a hold before resetting it; nothing was written to its controller",
+              )
             UnitHoldSubjectAdmitted { subject: held } =>
               if (observer as String) != (held.store_host as String) {
                 host_reset_return_preflight_exit(
