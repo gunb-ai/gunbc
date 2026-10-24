@@ -10,8 +10,8 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.expressions {
-  ExpressionTemplate, LiteralText, Interpolation, ContextAccess, Github, Inputs,
-  serialize_template,
+  ExpressionTemplate, LiteralText, Interpolation, ContextAccess, Github, Inputs, Runner,
+  serialize_template, interpolate,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.actions {
@@ -139,10 +139,12 @@ data instrument_dispatch_group_prefix: String = "instrument-dispatch"
 // ContextAccess interpolations over the contexts GitHub allows at workflow level (github, inputs,
 // vars -- extdeps.github.actions documents the restriction), and the separator is a LiteralText
 // hyphen. The ${{ }} medium is produced only by extdeps.github.expressions serialize_template, so
-// no expression syntax exists as string fragments in this model (the typed-template rule; the
-// precedent this replaced -- an existing debt of the same kind at dag/gunbc/heal_workflow.dag --
-// is listed in gunbc.recurring_failure_mode as the kind of string-typed medium to retire, not
-// permission to repeat).
+// no expression syntax exists as string fragments in this model (the typed-template rule). The
+// sibling string-fragment sites this replaced -- the label display/if values, the runner.temp
+// upload path, and the heal_workflow group/env reads -- are converted through the same carrier in
+// this PR (review 85263, DESIGN section 6b: the same rule at sibling sites). Fragment sites in
+// other models (fleet_*, runner_*, witness_floor, compiler_gate, heal_publisher) are pre-existing
+// main-side debt of the same kind, untouched here and named for routing, not permission to repeat.
 data instrument_dispatch_concurrency_group_template: ExpressionTemplate = {
   segments: [
     LiteralText { text: instrument_dispatch_group_prefix },
@@ -419,8 +421,12 @@ fn instrument_dispatch_memory_guard_step(d: InstrumentDispatchMemoryDemand, guar
   }
 }
 
+// THE LABEL READ AS AN EXPRESSION, NOT AS MEDIUM TEXT. Where the emitted step carries this value it
+// is a read of the dispatch's own label input; the ${{ }} spelling exists only in the carrier that
+// types it (extdeps.github.expressions interpolate). The witness asserts the input NAME, never the
+// fixed text of the medium.
 fn instrument_dispatch_label_expression() -> String {
-  join(["${{ inputs.", instrument_dispatch_label_input, " }}"], "")
+  interpolate(expression: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] })
 }
 
 // THE RECEIPT LIVES UNDER RUNNER_TEMP, NOT THE CHECKOUT, so it exists before the checkout does: the
@@ -434,8 +440,18 @@ fn instrument_dispatch_path_word(file: String) -> Node {
   bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: join(["/", instrument_dispatch_directory, "/", file], ""))])
 }
 
+// THE UPLOAD PATH IS A TYPED TEMPLATE: the runner.temp read is a ContextAccess over the runner
+// context, the receipt directory a LiteralText, and only serialize_template spells the ${{ }}
+// medium (the same carrier as the dispatch group above; review 85263).
+data instrument_dispatch_upload_path_template: ExpressionTemplate = {
+  segments: [
+    Interpolation { expression: ContextAccess { context: Runner, path: ["temp"] } },
+    LiteralText { text: join(["/", instrument_dispatch_directory], "") }
+  ]
+}
+
 fn instrument_dispatch_upload_path() -> String {
-  join(["${{ runner.temp }}/", instrument_dispatch_directory], "")
+  serialize_template(template: instrument_dispatch_upload_path_template)
 }
 
 fn instrument_dispatch_echo_to(words: List<Node>, file: String) -> Node {
