@@ -121,6 +121,12 @@ fn ambient_census_fixture_expected() -> List<String> {
   ]
 }
 
+// The fixture stdout as one supplied value: the witnesses hand it to the standing fold as the boundary input,
+// and the one list above stays the single authority for the rows.
+fn ambient_census_fixture_stdout() -> String {
+  join(ambient_census_fixture_expected(), separator: "\n")
+}
+
 // THE STANDING SUBJECTS: the native test target (native-seven; gunbc.instrument_targets
 // v2_native_census_scoped_subject names the same module), whose closure is the population the
 // NAMESPACE-XL waves are ranked over. A further subject is a further row.

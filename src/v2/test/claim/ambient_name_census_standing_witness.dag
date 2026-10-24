@@ -14,7 +14,7 @@ import std.algebra { string_contains }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.instruments.ambient_name_census_reading {
-  ambient_name_census_standing, ambient_census_probe_modules, ambient_census_fixture_expected
+  ambient_name_census_standing, ambient_census_probe_modules, ambient_census_fixture_stdout
 }
 
 fn healthy_head() -> String {
@@ -27,7 +27,7 @@ fn both_rewritten() -> String {
 
 fn standing(base_stdout: String, base_probed: String) -> CliWireResponse {
   ambient_name_census_standing(
-    fixture_stdout: join(ambient_census_fixture_expected(), separator: "\n"),
+    fixture_stdout: ambient_census_fixture_stdout(),
     fixture_status: 0,
     unindexed_status: 2,
     tree_stdout: healthy_head(),
@@ -69,7 +69,7 @@ test fn touching_only_an_already_refused_module_does_not_refuse() -> Bool {
 
 test fn a_carried_only_run_exits_zero_and_prints_the_carried_identities_and_count() -> Bool {
   match ambient_name_census_standing(
-    fixture_stdout: join(ambient_census_fixture_expected(), separator: "\n"),
+    fixture_stdout: ambient_census_fixture_stdout(),
     fixture_status: 0,
     unindexed_status: 2,
     tree_stdout: "binding_module\thealthy\t1\t0\t0\t0\nbinding_unreached\talready_refused\tresolve\n",
@@ -88,7 +88,7 @@ test fn a_carried_only_run_exits_zero_and_prints_the_carried_identities_and_coun
 
 test fn a_carried_module_that_newly_resolves_leaves_the_carried_set() -> Bool {
   match ambient_name_census_standing(
-    fixture_stdout: join(ambient_census_fixture_expected(), separator: "\n"),
+    fixture_stdout: ambient_census_fixture_stdout(),
     fixture_status: 0,
     unindexed_status: 2,
     tree_stdout: "binding_module\thealthy\t1\t0\t0\t0\nbinding_module\twas_refused\t1\t0\t0\t0\n",
@@ -130,7 +130,7 @@ test fn a_probed_module_the_base_run_never_reported_is_no_observation() -> Bool 
 
 test fn a_finding_outranks_an_unread_base_module() -> Bool {
   match ambient_name_census_standing(
-    fixture_stdout: join(ambient_census_fixture_expected(), separator: "\n"),
+    fixture_stdout: ambient_census_fixture_stdout(),
     fixture_status: 0,
     unindexed_status: 2,
     tree_stdout: healthy_head(),
