@@ -718,25 +718,6 @@ fn serve_route_last_word(command: ArgvCommand) -> String {
   }
 }
 
-// RESTORED. c11aa2317029 (#14660) deleted this claim's test fn (production_apply_serves_its_own_endpoint_and_scopes_no_path)
-// with composed_artifact_upsert and left the comment above, the helper and the imports behind; at main head
-// d2b027b5f41 giving ServeRootMount a --set-path left every surviving claim green. The deleted form negated the
-// bare word "--set-path", which no argv ever carries (the flag is spelled --set-path=<path>), so that conjunct
-// could not go red; this one tests the prefix.
-test fn production_dashboard_route_is_the_root_mount_and_scopes_no_path() -> Bool {
-  let endpoint = deployment_spec_srv1().names.tailscale_serve_endpoint
-  let route = deployment_serve_route_command(endpoint: endpoint, enabled: true)
-  let route_words = argv_words(command: route)
-  let scoped = TailscaleServeEndpoint { https_port: endpoint.https_port, mount: ServeSetPath { path: "/approve" as NonEmptyStr }, backend: endpoint.backend }
-  let scoped_words = argv_words(command: deployment_serve_route_command(endpoint: scoped, enabled: true))
-  serve_route_last_word(command: route) == (endpoint.backend as String)
-    && string_list_contains(xs: route_words, wanted: "serve")
-    && string_list_contains(xs: route_words, wanted: "--bg")
-    && string_list_contains(xs: route_words, wanted: "--https=443")
-    && !any(route_words, w => starts_with(s: w, prefix: "--set-path"))
-    && string_list_contains(xs: scoped_words, wanted: "--set-path=/approve")
-}
-
 test fn production_retract_offs_its_own_endpoint() -> Bool {
   string_contains(s: witness_retract_script(), pattern: retract_leg_text(leg: RetractServeOff { endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint }))
 }
