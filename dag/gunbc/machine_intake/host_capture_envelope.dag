@@ -1,7 +1,7 @@
 module gunbc.machine_intake.host_capture_envelope
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_to_decimal_string }
 import std.measure {
   ByteSize,
   Gibibyte,
@@ -20,6 +20,7 @@ import extdeps.uuid { Uuid, uuid_of }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.machine_intake.terminal_transcript { terminal_transcript_lines }
+import std.integer { int_to_decimal_string }
 
 // ONE GRAMMAR, READ IN BOTH DIRECTIONS (DESIGN §4). The census program that runs on the host EMITS
 // this envelope and the boot run's verdict PARSES it. Before this module the two sides were spelled
@@ -178,10 +179,10 @@ data host_capture_workload_preflight_refused: String = "workload-preflight=refus
 fn host_capture_workload_command(workload: HostCaptureWorkloadShape) -> NonEmptyStr {
   let dir = host_capture_workload_chunk_dir
   let paths = host_capture_workload_chunk_paths(workload: workload)
-  let want = host_capture_workload_chunk_count(workload: workload) as String
-  let bs = concat(mebibyte_count(m: host_capture_workload_dd_block) as String, "M")
-  let dd_count = host_capture_workload_dd_count(workload: workload) as String
-  let need = byte_size_count(b: host_capture_workload_total_bytes(workload: workload)) as String
+  let want = int_to_decimal_string(value: host_capture_workload_chunk_count(workload: workload))
+  let bs = concat(nat_to_decimal_string(value: mebibyte_count(m: host_capture_workload_dd_block)), "M")
+  let dd_count = nat_to_decimal_string(value: host_capture_workload_dd_count(workload: workload))
+  let need = nat_to_decimal_string(value: byte_size_count(b: host_capture_workload_total_bytes(workload: workload)))
   concat(
     "need=", need, "; echo ", host_capture_workload_bytes_token, "$need; ",
     "mkdir -p ", dir, " || exit 1; ",

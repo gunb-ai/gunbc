@@ -22,6 +22,7 @@ import gunbc.serving.rented_allocation {
   rented_allocation_wire, rented_engine_served_name,
 }
 import gunbc.serving.rented_host_grant { RentedHostSubject, rented_host_authorizes_subject, rented_host_subject }
+import std.integer { int_to_decimal_string }
 
 // RELEASE OF ONE RENTED ALLOCATION: FOUR ORDERED LEGS, EACH A CONVERGENCE OVER AN INDEPENDENT READBACK (DESIGN
 // 3d), THEN THE READBACK THAT PROVES THE END. A leg never selects and never reads the world itself: it judges a
@@ -220,7 +221,7 @@ fn rented_bound_instance_id(allocation: RentedServingAllocation) -> NonEmptyStr 
 }
 
 fn rented_instance_is_bound(allocation: RentedServingAllocation, instance: VastAiInstance) -> Bool {
-  (instance.id as String) == (rented_bound_instance_id(allocation: allocation) as String)
+  (int_to_decimal_string(value: instance.id)) == (rented_bound_instance_id(allocation: allocation) as String)
 }
 
 fn rented_label_matches(instance: VastAiInstance, required: NonEmptyStr) -> Bool {

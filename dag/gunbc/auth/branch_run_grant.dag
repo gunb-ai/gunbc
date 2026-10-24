@@ -45,6 +45,7 @@ import gunbc.auth.approval_gate {
   approval_file_stored_request, ApprovalFiled, ApprovalFilingRefused,
 }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
+import std.integer { int_to_decimal_string }
 
 // ── ONE APPROVED BRANCH RUN MAY ACT AS ONE RUN-SCOPED ACCOUNT ──────────────────────────────────
 // The other half of gunbc.auth.branch_dispatch_federation. A fleet-converge run dispatched from any
@@ -85,7 +86,7 @@ type BranchRunReading
 fn judge_branch_run(run_id: GitHubWorkflowRunId, run_attempt: Int, run: WorkflowRun) -> BranchRunReading {
   let path = match run.path { Present { value: p } => p  Absent => "" }
   if github_workflow_run_id_of_wire(n: run.id) != run_id {
-    BranchRunRefused { reason: concat("GitHub answered about another run: ", run.id as String) as NonEmptyStr }
+    BranchRunRefused { reason: concat("GitHub answered about another run: ", int_to_decimal_string(value: run.id)) as NonEmptyStr }
   } else if run.run_attempt != run_attempt {
     BranchRunRefused { reason: join(["the run is at attempt ", to_string(run.run_attempt), ", not the attempt asked about (", to_string(run_attempt), ")"], "") as NonEmptyStr }
   } else if path != artifact_path(a: FleetConvergeYamlArtifact) {
