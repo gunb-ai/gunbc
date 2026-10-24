@@ -32,6 +32,16 @@ fn refusals(source: String, subject: String) -> Int {
   }
 }
 
+// The optional REDs key on the refusal's position and verdict; the subject's type spelling is the
+// kernel Optional's authored name, which this witness does not restate.
+fn blocking_refusals_containing(source: String, fragment: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: rows) |> filter(r => string_contains(s: r.subject_name, pattern: fragment)))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
 fn blocking_total(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
@@ -68,6 +78,10 @@ data control_nat_source: String = "module probe_host_text_nat\nimport std.types 
 data control_bool_source: String = "module probe_host_text_bool\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(b: Bool, bs: List<Bool>) -> String { concat(concat(\"b=\", b), join(bs, \",\")) }\n"
 
 data control_local_join_parameter_source: String = "module probe_host_text_local_join\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn combine(join: fn(P, P) -> P, p: P) -> P { join(p, p) }\n"
+
+data concat_optional_source: String = "module probe_host_text_concat_optional\nimport std.types { String, Int, List }\nfn text(o: Int?) -> String { concat(\"o=\", o) }\n"
+
+data join_optional_elements_source: String = "module probe_host_text_join_optional\nimport std.types { String, Int, List }\nfn text(o: String?) -> String { join([o], \",\") }\n"
 
 test fn a_record_at_concat_is_refused() -> Bool {
   refusals(source: concat_record_source, subject: "nominal P at host text String formal of concat: no declared conversion") == 1
@@ -127,4 +141,12 @@ test fn control_kernel_bool_is_accepted() -> Bool {
 
 test fn control_a_local_parameter_spelled_join_is_not_the_builtin() -> Bool {
   blocking_total(source: control_local_join_parameter_source) == 0
+}
+
+test fn an_optional_at_concat_is_refused() -> Bool {
+  blocking_refusals_containing(source: concat_optional_source, fragment: " at host text String formal of concat: no declared conversion") == 1
+}
+
+test fn optional_elements_at_join_are_refused() -> Bool {
+  blocking_refusals_containing(source: join_optional_elements_source, fragment: " at host text elements of join: no declared conversion") == 1
 }
