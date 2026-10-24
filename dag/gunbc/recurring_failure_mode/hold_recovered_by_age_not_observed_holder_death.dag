@@ -31,7 +31,7 @@ data hold_recovered_by_age_not_observed_holder_death: RecurringFailureMode = Rec
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "recovery_trigger"),
     decl_ref(module_path: "gunbc.process_hold_identity", decl_name: "holder_process_liveness"),
     decl_ref(module_path: "gunbc.live_deploy.belt_cadence", decl_name: "belt_tick_run_bound"),
-    decl_ref(module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_exit_running_reconcile_at"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_exit_running_reconcile_at"),
     decl_ref(module_path: "gunbc.systemd_unit_invocation_liveness", decl_name: "unit_invocation_holder_liveness"),
     decl_ref(module_path: "product.capacity.pool", decl_name: "lapse_pass"),
     decl_ref(module_path: "std.resource_release_law", decl_name: "FencedResource"),
