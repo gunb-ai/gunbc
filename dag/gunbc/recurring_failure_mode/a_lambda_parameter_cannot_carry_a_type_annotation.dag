@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_lambda_parameter_cannot_carry_a_type_annotation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_lambda_parameter_cannot_carry_a_type_annotation: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_lambda_parameter_cannot_carry_a_type_annotation" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the dag grammar admits a type annotation on a lambda parameter (fn(h: T) { .. } and (h: T) => ..), so an author can state a lambda parameter's declared type in place -- executed check = test.claim.sort_by_wave_lambda_annotation_probe's key written in place as fn(h: Fnv1a64Structural) { h.digest } parses, resolves and sorts by the digest; at that point the sort_by wave's generated annotated-let key binding (v2.workflow.roster_import_sweep RosterKeyBinding KeyLetAtBodyTop) collapses to the in-place form" } },
+
+  receipts: [
+    "INVALID STATE (an expressiveness gap, not an accepted wrong program): a lambda whose parameter type nothing at its position infers -- a field-read key passed to a declared generic such as std.algebra list_sort_by_key -- refuses (`no field 'digest' on type 'T'`), and the language offers no in-place spelling for the parameter's declared type. Both forms refuse at PARSE on the seed: fn(h: Fnv1a64Structural) { h.digest } and (h: Fnv1a64Structural) => h.digest ('expected RParen, found Colon'; probe test.claim.sort_by_wave_lambda_annotation_probe, sunny-bee-153, 2026-10-24). The expressible equivalent is an annotated let, `let key: fn(Fnv1a64Structural) -> Fnv1a64StructuralDigestHex = fn(h) { h.digest }`, which resolves and runs (the same probe returns true).",
+
+    "HARM: a cut that moves a call onto a declared generic home must restructure every field-key site into a separate binding (the sort_by wave's generated KeyLetAtBodyTop rule, tidy-ant-251's ruling), a statement-level edit rather than an in-place one, and an author reads the inference gap (gunbc.recurring_failure_mode lambda_value_has_no_derived_type_in_v2_infer) as a missing field. ATTAINABLE CEILING: structurally guaranteed once the parameter's declared type can be written where it is bound. NEXT-RUNG TRIGGER: the grammar admits annotated lambda parameters.",
+  ],
+
+  evidence: [],
+}

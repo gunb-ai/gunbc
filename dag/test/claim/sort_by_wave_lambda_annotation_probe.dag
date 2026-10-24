@@ -1,0 +1,18 @@
+module test.claim.sort_by_wave_lambda_annotation_probe
+
+import std.types { Bool, List, String }
+import std.algebra { list_sort_by_key, list_map, string_concat_join }
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, structural_content_hash, fnv1a64_structural_digest_hex_total_order }
+
+// THE sort_by WAVE'S FIELD-KEY RULE (tidy-ant-251): a field-read key lambda passed to the declared list_sort_by_key carries
+// its parameter's declared element type, so the field read is typed where the bare lambda reads `no field on type T`.
+fn hashes() -> List<Fnv1a64Structural> {
+  [structural_content_hash(digest: "ffffffffffffffff" as Fnv1a64StructuralDigestHex), structural_content_hash(digest: "0000000000000001" as Fnv1a64StructuralDigestHex)]
+}
+
+test fn annotated_field_key_sorts_by_the_digest() -> Bool {
+  let key: fn(Fnv1a64Structural) -> Fnv1a64StructuralDigestHex = fn(h) { h.digest }
+  let text: fn(Fnv1a64Structural) -> String = fn(h) { h.digest as String }
+  let sorted = list_sort_by_key(xs: hashes(), key: key, order: fnv1a64_structural_digest_hex_total_order())
+  string_concat_join(fields: list_map(xs: sorted, f: text), separator: ",") == "0000000000000001,ffffffffffffffff"
+}
