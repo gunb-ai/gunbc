@@ -15,7 +15,7 @@ import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix {
 }
 import gunbc.host.host_reset_subject_roster { reset_subject_for, reset_lookup_subject }
 import gunbc.host.host_reset_return_run { host_reset_return_attempt }
-import gunbc.host.managed_host_unit_hold { UnitHoldSubjectAdmitted, UnitHoldNotRequired }
+import gunbc.host.managed_host_unit_hold { UnitHoldSubjectAdmitted, UnitHoldNotRequired, UnitHoldUndecided }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.host.host_reset_subject_roster { reset_observer_peer_roster, reset_roster_hosts, reset_subject_roster }
@@ -1284,6 +1284,7 @@ test fn w_the_admitted_reset_subject_carries_the_unit_hold_its_row_requires() ->
     Present { value: candidate } =>
       match candidate.hold {
         UnitHoldNotRequired { host: _ } => false
+        UnitHoldUndecided { host: _ } => false
         UnitHoldSubjectAdmitted { subject: held } =>
           (held.key as String) == (operator_host_mtcollins1 as String)
             && (held.store_host as String) == (operator_host_srv1 as String)
