@@ -48,8 +48,11 @@ type ReachReason
 
 // One effect-reaching call OCCURRENCE (nested ones included; containment in an effectful parent
 // orders nothing).
+// `occurrence` is the walk tick, the internal join key only; `identity` is the real OccurrenceId key, Absent when
+// the callee reference carries none (reported as unlocated, never as the tick).
 type EffectSite {
   occurrence: Int
+  identity: Optional<Int>
   callee: QualifiedName
   reason: ReachReason
 }
@@ -474,7 +477,7 @@ fn body_effect_facts(body: BodyOrdered, table: EffectReachTable) -> BodyEffectFa
     function: body.function,
     sites: fold_list(xs: body.sites, empty: Empty, cons: fn(acc, s) {
       match effect_reach_reason(table: table, callee: s.callee) {
-        Present { value: r } => list_snoc_item(xs: acc, item: EffectSite { occurrence: s.enter, callee: s.callee, reason: r })
+        Present { value: r } => list_snoc_item(xs: acc, item: EffectSite { occurrence: s.enter, identity: extract_occurrence_key(o: s.occurrence), callee: s.callee, reason: r })
         Absent => acc
       }
     }),
@@ -766,8 +769,15 @@ fn epc_reason_word(r: ReachReason) -> String {
   }
 }
 
+fn epc_identity_word(i: Optional<Int>) -> String {
+  match i {
+    Present { value: k } => concat("occurrence_id=", to_string(k))
+    Absent => "unlocated"
+  }
+}
+
 fn epc_site_text(s: EffectSite) -> String {
-  epc_text(parts: [qualified_name_to_dotted_string(qn: s.callee), "@", to_string(s.occurrence), "(", epc_reason_word(r: s.reason), ")"])
+  epc_text(parts: [qualified_name_to_dotted_string(qn: s.callee), "@", epc_identity_word(i: s.identity), "(", epc_reason_word(r: s.reason), ")"])
 }
 
 fn epc_pair_line(p: EffectPairRow) -> String {
