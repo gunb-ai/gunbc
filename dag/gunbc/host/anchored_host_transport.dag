@@ -7,13 +7,17 @@ import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import product.host_identity { HostIdentity, host_identity_eq }
-import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.exec.command { ArgvCommand, LocalExec, argv_words, shell_command_render }
+import extdeps.tools.gcloud { gcloud_secrets_create_command, gcloud_secrets_versions_add_stdin_command }
+import extdeps.tools.gnu_coreutils { mkdir_create_only_with_mode_command, cat_file_command, rm_force_command, rmdir_command }
+import extdeps.tools.util_linux_findmnt { findmnt_fstype_for_path_command }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.shell
 import extdeps.network.endpoint { SocketAddress, render_network_host }
 import extdeps.dns.domain_name { DnsLabel }
-import extdeps.cloud.gcp.secret_ref { SecretRef }
-import extdeps.ssh.openssh_client_commands { ssh_keyscan_command }
+import extdeps.ssh.openssh_client_commands { ssh_keyscan_command, ssh_keygen_ed25519_mint_command }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret }
 import gunbc.fleet.fleet_host_key_enrollment {
@@ -25,8 +29,8 @@ import gunbc.host.host_bound_transport {
 }
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.auth.authorization_pattern_selection {
-  PrivilegedEffect, HumanSurfaceOnly, WorkloadIdentityUnbindable, MintsNoCredential,
-  ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
+  PrivilegedEffect, HumanSurfaceOnly, ApiSurface, WorkloadIdentityUnbindable, MintsNoCredential, MintsResourceScopedCredential,
+  ReversibleByReapply, IrreversibleEffect, NoBillingConsequence, NoWitnessDischarge,
   PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
   select_authorization_pattern,
@@ -93,7 +97,7 @@ data anchored_hosts: List<AnchoredHostRow> = [mtcollins1_anchored_host_row]
 // open (gunbc.runner.runner_lost_boot_sweep_plan lost_boot_sweep_effect_pairing_frontier): a boot is not
 // a boot until the minted evidence is recorded through the real dispatch. The live boot and the scan are
 // GATED on merry-fox-82's go relayed by snappy-koi-83; nothing here runs live on its own.
-data mtcollins1_host_key_read_obligation: NonEmptyStr = "scan mtcollins1 at sshd's standard port on a live boot (this module's anchored_host_key_scan_wet, GATED) and match the presented key against the anchor row; the private half lives in Secret Manager (secret name mtcollins1-ssh-host-key) and only the public half is transcribed, so an un-matched row is a figure nobody read back. Discharging this also discharges the scan's share of gunbc.runner.runner_lost_boot_sweep_plan lost_boot_sweep_effect_pairing_frontier: the minted evidence must be recorded through the real dispatch. The live boot and scan wait on merry-fox-82's go, relayed by snappy-koi-83." as NonEmptyStr
+data mtcollins1_host_key_read_obligation: NonEmptyStr = concat("scan mtcollins1 at sshd's standard port on a live boot (this module's anchored_host_key_scan_wet, GATED) and match the presented key against the anchor row; the private half lives in Secret Manager (secret name ", concat(mtcollins1_ssh_host_key_secret.secret as String, ") and only the public half is transcribed, so an un-matched row is a figure nobody read back. Discharging this also discharges the scan's share of gunbc.runner.runner_lost_boot_sweep_plan lost_boot_sweep_effect_pairing_frontier: the minted evidence must be recorded through the real dispatch. The live boot and scan wait on merry-fox-82's go, relayed by snappy-koi-83.")) as NonEmptyStr
 
 // MTCOLLINS1'S ROW. THE ANCHOR IS ABSENT AND THAT IS THE HONEST STATE, not an omission: the stable key
 // has not been generated, and generating it plus writing it into Secret Manager is a PRIVILEGED EFFECT
@@ -470,5 +474,166 @@ fn anchored_host_key_scan_wet(host: HostIdentity) -> String {
           ProcessRefused { exit_code: _, stderr: e } => join(["scan host=", row.host as String, " outcome=refused cause=", trim(s: e), "\n"], "")
         }
     }
+  }
+}
+
+// ── THE MINT ───────────────────────────────────────────────────────────────────────────────────
+//
+// The one step that CREATES the private host key existed only as hand-written shell in
+// docs/runbooks/mtcollins1-ssh-host-key-mint.md (review 85232, DESIGN §6 scaffold tells: "a
+// hand-authored workflow ... out-of-band actuation" and "raw shell implementing semantics
+// expressible in .dag"). The mint is expressible in .dag -- every leg is an argv command on an
+// admitted extdeps builder -- so the shell is now a RENDERING of this model, and the runbook cites
+// these symbols instead of re-spelling them. The literals the runbook retyped (the secret name and
+// the GCP project) are read from their single authorities here: mtcollins1_ssh_host_key_secret's
+// SecretRef fields and fleet_secrets_gcp_project; a drift between them and the render is impossible
+// because there is no second spelling left to drift from (§3, "each fact lives in exactly one place").
+
+// THE MINT SHELL'S LAYOUT, as data. The working dir is created mode 0700 (never world- or
+// group-readable, and never under $HOME -- an SSD with no TRIM guarantee leaves deleted blocks
+// recoverable, which is why Step 1 verifies the dir is tmpfs-backed before any key is minted
+// there; see the runbook's honest-limits note). The cleanup is a trap on EXIT, INT and TERM, so
+// every failure path removes the key; plain rm is used, not shred, because shred's overwrite is
+// a no-op on SSD/CoW filesystems and pretending otherwise would be a false comfort.
+fn anchored_host_key_mint_directory_command(mint_dir: String) -> ArgvCommand {
+  mkdir_create_only_with_mode_command(path: mint_dir, octal_mode: "0700" as NonEmptyStr)
+}
+
+fn anchored_host_key_mint_tmpfs_check_command(mint_dir: String) -> ArgvCommand {
+  findmnt_fstype_for_path_command(path: mint_dir)
+}
+
+fn anchored_host_key_mint_keygen_command(mint_dir: String) -> ArgvCommand {
+  ssh_keygen_ed25519_mint_command(
+    key_file: concat(mint_dir, "/mc_host"),
+    comment: "mtcollins1" as NonEmptyStr,
+  )
+}
+
+// The two Secret Manager legs, read from the SecretRef's own fields -- the secret NAME and the
+// PROJECT are never retyped here (review 85232, "duplicated literals"). The create leg carries no
+// --data-file at all (an empty version 1 would be a lie the server happily serves); the add leg is
+// the stdin form.
+fn anchored_host_key_mint_create_command() -> ArgvCommand {
+  gcloud_secrets_create_command(
+    project: mtcollins1_ssh_host_key_secret.project,
+    secret: mtcollins1_ssh_host_key_secret.secret,
+  )
+}
+
+fn anchored_host_key_mint_upload_command() -> ArgvCommand {
+  gcloud_secrets_versions_add_stdin_command(
+    project: mtcollins1_ssh_host_key_secret.project,
+    secret: mtcollins1_ssh_host_key_secret.secret,
+  )
+}
+
+fn anchored_host_key_mint_cleanup_commands(mint_dir: String) -> List<ArgvCommand> {
+  [
+    rm_force_command(path: concat(mint_dir, "/mc_host")),
+    rm_force_command(path: concat(mint_dir, "/mc_host.pub")),
+    rmdir_command(path: mint_dir),
+  ]
+}
+
+// THE MINT, RENDERED -- the runbook's Step 1 block IS this function's output, not a hand copy.
+// The mint dir is a fixed path created with mkdir -m 0700 CREATE-ONLY: it refuses outright when the
+// dir already exists, which means a previous minting session died mid-run. The trap then removes any
+// key found there -- removing a stale private half is the Q1-CORRECT action, not evidence loss (the
+// exposure is the fact the dir existed, which is why the runbook's rotation note says: a minting
+// session killed hard means the key is exposed, rotate the secret). The cat leg carries the private
+// half to gcloud's stdin; the word
+// naming the key PATH is the only place the private file is named, and a path is not key material
+// -- the private key material crosses into the shell as file content on stdin, never as a plain
+// string in any argv word, rendered line, or log line (the class in
+// dag/gunbc/recurring_failure_mode/a_secret_crosses_into_shell_stdin_as_a_plain_string.dag).
+// The trap body joins the cleanup builders' argv WORDS directly rather than through
+// shell_command_render: they sit inside the trap's double quotes here, and every word is a model
+// literal (the fixed mint dir + a fixed file name) with no shell metacharacters -- re-quoting them
+// would nest quotes and corrupt the very cleanup that protects the key.
+fn anchored_host_key_mint_dir() -> String {
+  "/dev/shm/mc-hostkey"
+}
+
+fn anchored_host_key_mint_shell() -> String {
+  let mint_dir = anchored_host_key_mint_dir()
+  let cleanup = join(map(anchored_host_key_mint_cleanup_commands(mint_dir: mint_dir), c => join(argv_words(command: c), " ")), "; ")
+  join([
+    "set -e",
+    concat(concat("trap \"", cleanup), "\" EXIT INT TERM"),
+    shell_command_render(command: anchored_host_key_mint_directory_command(mint_dir: mint_dir)),
+    join(["test \"$( ", shell_command_render(command: anchored_host_key_mint_tmpfs_check_command(mint_dir: mint_dir)), " )\" = tmpfs || { echo \"mint dir is not tmpfs-backed; refusing to mint\" >&2; exit 1; }"], ""),
+    shell_command_render(command: anchored_host_key_mint_keygen_command(mint_dir: mint_dir)),
+    shell_command_render(command: anchored_host_key_mint_create_command()),
+    join([shell_command_render(command: cat_file_command(path: concat(mint_dir, "/mc_host"))), " | ", shell_command_render(command: anchored_host_key_mint_upload_command())], ""),
+  ], "\n")
+}
+
+// THE MINT IS AN OUT-OF-BAND HUMAN ACT, and its scaffold status is a typed carrier, not a comment
+// (DESIGN §4c; review 85232's hand-shell gate). The bash above dissolves to a real dispatch once
+// an execution route that can carry it exists -- the trigger is named on the marker, mirroring
+// verified_binary_install_shell_bash_emit_dissolution_trigger. Until then the runbook renders it
+// for a human, and the gate is human actuation: this module's authoring session ran NOTHING; the
+// operator or merry-fox-82 executes what Step 1 renders.
+data anchored_host_key_mint_shell_bash_emit_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_shell"),
+}
+
+// THE MINTER'S STEP, typed (review 85232, "model it the same way as the neighbouring mint rows
+// (for example approval_ntfy_publisher_token_mint_intervention)"). The instruction NAMES the model
+// symbols the operator runs rather than transcribing shell -- the render and the model cannot
+// drift because the instruction points at the single source, exactly as the ntfy mint instruction
+// points at its broker. The mint is FleetOnce: the stable key is minted once per fleet, not per
+// boot (per boot is the DELIVERY, and delivery is the custody arm's job, not this step's).
+fn anchored_host_key_mint_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: "mtcollins1_ssh_host_key_mint" as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "mint the stable ed25519 host keypair in a verified tmpfs directory and publish the private half as one new Secret Manager version of the row's host_key_secret" as NonEmptyStr,
+    instruction: join([
+      "run Step 1 of docs/runbooks/mtcollins1-ssh-host-key-mint.md, which renders this module's anchored_host_key_mint_shell() -- the tmpfs-backed 0700 dir, ssh-keygen, gcloud secrets create WITHOUT a data file, then the key over stdin into versions add; nothing here puts the private half in any argv word, and the trap removes the key on every path",
+      " -- and read the public half back with ", ssh_keygen_public_key_command_label(),
+      " for the anchor transcription in Step 3",
+    ], "") as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+fn ssh_keygen_public_key_command_label() -> String {
+  "ssh-keygen -y -f <mint-dir>/ssh_host_ed25519_key (extdeps.ssh.openssh_client_commands.ssh_keygen_public_key_command)"
+}
+
+// THE MINT'S PRIVILEGED EFFECT (review 85232: "no PrivilegedEffect ... and no PrivilegedEffectSite.
+// That is the kind of gap the census exists to close"). It is built exactly as the census's
+// manual_operator_api_effect builds the ntfy mint row -- ApiSurface, because gcloud IS the
+// (human-driven) API; the frequency is read FROM the intervention, not restated; and
+// IRREVERSIBLE with the loss named, which is the difference from the scan's ReversibleByReapply:
+// the version-destroy/rotation route cannot undo losing the private half while the RAM image
+// holds it and no copy exists -- a destroyed version is gone, and the fleet's anchor and every
+// transport seated on it go with it. MintsResourceScopedCredential: what the mint mints is a key
+// PAIR scoped to one host -- its private half is a credential in the sense that matters (theft
+// impersonates mtcollins1's sshd), and that is why the fold treats the mint like the token mints
+// rather than like a no-reach edit.
+// The irreversibility ACTIVATES the witness gate (an irreversible effect with no witness discharge
+// demands a human who consented to THIS effect), which excludes the patterns with no human behind
+// them; the unbindable workload identity excludes the federated grant. What is left standing when
+// the fold runs -- anchored_host_key_mint_effect through select_authorization_pattern, never
+// hand-picked -- is OperatorApprovedCapability, so the row diverges for exactly the stated reason
+// the ntfy mint row diverges for; nothing is claimed that the fold does not compute.
+fn anchored_host_key_mint_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "create the mtcollins1 stable SSH host keypair and publish its private half as a new Secret Manager version" as NonEmptyStr,
+    frequency: anchored_host_key_mint_intervention().frequency,
+    reversibility: IrreversibleEffect {
+      what_is_lost: "the private half: the mint dir is RAM-backed and trap-deleted, the sole durable copy is the Secret Manager version, and version destroy (or rotation) removes it unrecoverably -- with it the anchor this key grounds and every transport seated on that anchor" as NonEmptyStr,
+    },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable {
+      cause: "no fleet principal holds Secret Manager create/addVersion for this secret; the mint runs under the operator's own human authority, and no workload identity on any host can be bound to it" as NonEmptyStr,
+    },
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
   }
 }

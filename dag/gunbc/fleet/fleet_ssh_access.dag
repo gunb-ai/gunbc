@@ -54,10 +54,12 @@ data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
 // that rides over it stays what the selectors choose (gunbc.auth.authorization_pattern_selection
 // select_authorization_pattern, gunbc.auth.access_token_source select_access_token_source).
 // NOT YET MINTED, honestly: the keypair does not exist yet and generating it plus writing it into
-// Secret Manager is itself a privileged effect the operator or merry-fox-82 runs — the exact
-// procedure is prepared, unrun, in docs/runbooks/mtcollins1-ssh-host-key-mint.md (create the
-// secret WITHOUT --data-file so no empty version 1 can be resolved as "latest"; the key reaches
-// Secret Manager over stdin only). Until the secret
+// Secret Manager is itself a privileged effect the operator or merry-fox-82 runs — and it is a
+// MODEL, not prose: anchored_host_key_mint_intervention / anchored_host_key_mint_effect /
+// anchored_host_key_mint_shell (gunbc.host.anchored_host_transport), censused in
+// gunbc.auth.privileged_effect_census, rendered into
+// docs/runbooks/mtcollins1-ssh-host-key-mint.md Step 1 (the runbook copies the render; the model is
+// the authority and its witness refuses drift). Until the secret
 // exists every read of this ref refuses at Secret Manager, which is what custody must do; nothing
 // here fabricates key material (§4d). The version stays "pending" for the same reason the BMC and
 // harness rows do: there is no published version to pin until the mint lands.

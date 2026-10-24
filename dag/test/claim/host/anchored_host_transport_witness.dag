@@ -32,14 +32,24 @@ import gunbc.host.anchored_host_transport {
   anchored_host_pattern_citation,
   anchored_host_token_source_citation,
   anchored_host_transport_frontier_rows,
+  anchored_host_key_mint_effect,
+  anchored_host_key_mint_intervention,
+  anchored_host_key_mint_shell,
+  anchored_host_key_mint_shell_bash_emit_dissolution_trigger,
+  anchored_host_key_mint_create_command,
+  anchored_host_key_mint_upload_command,
 }
 import extdeps.dns.domain_name { DnsLabel }
 import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import extdeps.exec.command { argv_words, shell_command_render }
+import std.disposition { Scaffold, RealizationDispatch }
+import std.human_intervention { FleetOnce, NoDischargeSiteModeled }
 import gunbc.auth.privileged_effect_census {
   privileged_effect_census, site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
+  manual_api_effect_beside_unlanded_approval_adapter,
 }
-import gunbc.auth.authorization_pattern_selection { HumanSurfaceOnly }
+import gunbc.auth.authorization_pattern_selection { HumanSurfaceOnly, OperatorApprovedCapability, PatternSelected }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture {
   fleet_ssh_execution_context_hermetic_witness_fixture,
   fixture_public_key,
@@ -449,4 +459,104 @@ test fn the_open_gaps_are_frontier_rows_and_registered() -> Bool {
   count(anchored_host_transport_frontier_rows) == 3
   && frontier_rows_well_formed(rows: anchored_host_transport_frontier_rows)
   && all(anchored_host_transport_frontier_rows, row => anchored_census_has_frontier_subject(row: row))
+}
+
+// ── THE MINT (review 85232: the step that CREATES the secret was unmodeled hand shell) ────────
+//
+// The mint is now a model: argv builders on admitted extdeps programs, a rendered shell the runbook
+// copies from the render, a HumanIntervention, a PrivilegedEffect in the census, and a Scaffold
+// marker naming the trigger that dissolves the hand execution. These claims pin each of those at
+// the edge that matters -- and one of them is the Q1 RED: no mint argv word, and no rendered line,
+// may carry private key material; the private half moves only as file CONTENTS through the cat pipe.
+
+fn mint_word_is_clean(w: String) -> Bool {
+  !string_contains(s: w, pattern: "PRIVATE KEY")
+  && !string_contains(s: w, pattern: "ssh-ed25519 ")
+  && !string_contains(s: w, pattern: "--data-file=/")
+}
+
+// CLAIM: THE MINT EFFECT IS CENSUS-CLASSIFIED AND THE FOLD DIVERGES WITH THE STATED REASON. Exactly
+// one row stands for the mint site; the fold EXECUTED over the effect selects the operator-approval
+// pattern (the witness gate fires -- irreversible with no discharge -- and the unbindable workload
+// identity excludes the federated grant), while the row realizes the named human step; so the
+// conformance is DivergesWithReason carrying the manual-API-beside-unlanded-adapter reason -- the
+// same reason the ntfy publisher-token mint row carries, because the situation is the same: an
+// ApiSurface gcloud effect no fleet principal is allowed to perform. The claim fails if the row is
+// absent (an unclassified mint), if it diverges UNreasoned (an unexplained hole), if it silently
+// conforms (the fold would have to be rigged), or if the effect's frequency drifts from the step's.
+fn anchored_mint_verdict_selected_approval(v: SiteVerdict) -> Bool {
+  match v.selection {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    _ => false
+  }
+}
+
+fn anchored_mint_verdict_stated_divergence(v: SiteVerdict) -> Bool {
+  match v.conformance {
+    DivergesWithReason { reason: reason } => reason.statement == manual_api_effect_beside_unlanded_approval_adapter.statement
+    Conforms => false
+    Diverges => false
+    SiteNotDecidable { standing: _ } => false
+  }
+}
+
+test fn the_mint_effect_is_censused_and_diverges_with_reason() -> Bool {
+  let rows = filter(privileged_effect_census, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_intervention")))
+  count(rows) == 1
+  && all(rows, r => anchored_mint_verdict_selected_approval(v: site_verdict(row: r)))
+  && all(rows, r => anchored_mint_verdict_stated_divergence(v: site_verdict(row: r)))
+  && anchored_host_key_mint_effect().frequency == anchored_host_key_mint_intervention().frequency
+}
+
+// CLAIM: NO MINT LEG CARRIES PRIVATE MATERIAL (rule Q1; the class in
+// dag/gunbc/recurring_failure_mode/a_secret_crosses_into_shell_stdin_as_a_plain_string.dag). Every
+// word of every mint argv command -- the keygen leg, both gcloud legs, the cleanup legs -- is free
+// of key material: no PRIVATE KEY marker, no public-key line, and NO --data-file PATH that could
+// make the CLI read the key from disk on a server-bound leg. The create leg has no --data-file word
+// at all (an empty version 1 would be a lie the server serves), and the upload leg's only
+// --data-file word is exactly "--data-file=-": the key reaches the server as stdin CONTENTS from
+// cat and in no other way. Delete the stdin rule and the upload leg gains a path form here; widen
+// the keygen leg with key material and this refuses.
+test fn the_mint_render_carries_no_private_material() -> Bool {
+  all(argv_words(command: anchored_host_key_mint_create_command()), w => mint_word_is_clean(w: w))
+  && all(argv_words(command: anchored_host_key_mint_upload_command()), w => mint_word_is_clean(w: w))
+  && all(argv_words(command: anchored_host_key_mint_keygen_command(mint_dir: "/dev/shm/mc-hostkey")), w => mint_word_is_clean(w: w))
+  && all(anchored_host_key_mint_cleanup_commands(mint_dir: "/dev/shm/mc-hostkey"), c => all(argv_words(command: c), w => mint_word_is_clean(w: w)))
+  && !string_contains(s: shell_command_render(command: anchored_host_key_mint_create_command()), pattern: "--data-file")
+  && string_contains(s: shell_command_render(command: anchored_host_key_mint_upload_command()), pattern: "--data-file=-")
+}
+
+// CLAIM: THE RUNBOOK'S STEP 1 IS THE RENDER, NOT A HAND COPY. The shell string is composed from the
+// builder renders -- the create leg's render, the upload leg's render, and the stdin pipe appear in
+// it -- and the secret name and project it carries are the SecretRef's own fields (there is no
+// second spelling to drift from: change the SecretRef and this render changes). Re-typing a gcloud
+// leg by hand in the model, or retyping the literals, fails here.
+test fn the_runbook_step_is_the_model_render() -> Bool {
+  let shell = anchored_host_key_mint_shell()
+  string_contains(s: shell, pattern: shell_command_render(command: anchored_host_key_mint_create_command()))
+  && string_contains(s: shell, pattern: shell_command_render(command: anchored_host_key_mint_upload_command()))
+  && string_contains(s: shell, pattern: concat("'", mtcollins1_ssh_host_key_secret.secret as String, "'"))
+  && string_contains(s: shell, pattern: concat("'", mtcollins1_ssh_host_key_secret.project as String, "'"))
+  && string_contains(s: shell, pattern: " | ")
+}
+
+// CLAIM: THE HAND EXECUTION IS A DECLARED SCAFFOLD WITH A NAMED TRIGGER, AND THE STEP IS ONCE PER
+// FLEET. The render's disposition is Scaffold dissolving to a real dispatch bound to
+// anchored_host_key_mint_shell itself (the bash_emit precedent), and the operator-facing step is
+// FleetOnce with no discharge site modeled yet -- the mint happens once per fleet, not per boot
+// (per boot is the DELIVERY, the custody arm's job), and no witness standing discharges it.
+test fn the_mint_is_a_declared_scaffold_and_a_fleet_once_step() -> Bool {
+  match anchored_host_key_mint_shell_bash_emit_dissolution_trigger {
+    Scaffold { dissolves_to: RealizationDispatch, bind: bind } =>
+      declaration_ref_eq(a: bind, b: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_shell"))
+    _ => false
+  }
+  && match anchored_host_key_mint_intervention().frequency {
+    FleetOnce => true
+    _ => false
+  }
+  && match anchored_host_key_mint_intervention().completion_evidence {
+    NoDischargeSiteModeled => true
+    _ => false
+  }
 }
