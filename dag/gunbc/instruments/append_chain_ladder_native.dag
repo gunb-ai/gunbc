@@ -1,7 +1,7 @@
 module gunbc.instruments.append_chain_ladder_native
 
 import std.types { Int, List, String, Bool }
-import std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list, list_append }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import gunbc.instruments.append_chain_ladder {
   LadderTiming,
@@ -129,8 +129,8 @@ fn native_claim_report() -> NativeClaimReport {
   let timings = map(rows, r => r.timing)
   let arms = ladder_required_arms()
   let verdicts = map(arms, a => ladder_arm_linearity(rows: timings, arm: a))
-  let identities = map(rows, r => size_identity(r: r)) + map(arms, a => linear_identity(arm: a))
-  let cases = join(map(rows, r => size_case(r: r)), "") + join(map(arms, a => linear_case(arm: a, v: ladder_arm_linearity(rows: timings, arm: a))), "")
+  let identities = list_append(left: map(rows, r => size_identity(r: r)), right: map(arms, a => linear_identity(arm: a)))
+  let cases = concat(join(map(rows, r => size_case(r: r)), ""), join(map(arms, a => linear_case(arm: a, v: ladder_arm_linearity(rows: timings, arm: a))), ""))
   let failed = count(filter(rows, r => !r.held)) + count(filter(verdicts, v => !linearity_held(v: v)))
   let terminal = if count(filter(verdicts, v => linearity_unobserved(v: v))) > 0 { NativeClaimNoObservation { reason: "an arm's curve could not be read" } }
     else if failed > 0 { NativeClaimNotHeld { reason: concat(to_string(value: failed), " case(s) not held") } }
