@@ -1,6 +1,7 @@
 module test.claim.roadmap.session_placement_wet_witness
 
-import gunbc.durable_cas_file_store { file_slot_store }
+import gunbc.filesystem_interface { local_filesystem }
+import gunbc.durable_cas_file_store { file_slot_store_over }
 import extdeps.shell
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
 import std.measure { kibibyte, kibibyte_count }
@@ -98,6 +99,7 @@ fn subject_at(dir: String) -> ComputeCapacitySubject {
 fn stores_at(dir: String) -> SessionPlacementStores {
   SessionPlacementStores {
     slots_root: dir as NonEmptyStr,
+    slots: file_slot_store_over(fs: local_filesystem, root: dir as NonEmptyStr),
     records_dir: dir,
     store: compute_capacity_store(subject: subject_at(dir: dir)),
     partition: subject_at(dir: dir).partition,
@@ -248,7 +250,7 @@ fn kept(s: SessionSettlement) -> Bool {
 }
 
 fn slot_is_terminal(dir: String) -> Bool {
-  match attempt_slot_read(store: file_slot_store(root: dir as NonEmptyStr), reference: unit_a() as NonEmptyStr) {
+  match attempt_slot_read(store: file_slot_store_over(fs: local_filesystem, root: dir as NonEmptyStr), reference: unit_a() as NonEmptyStr) {
     AttemptSlotHeld { record, generation: _ } => match record.state { AttemptTerminal { verdict: _, detail: _ } => true  AttemptReserved => false  AttemptLaunching => false }
     AttemptSlotAbsent => false
     AttemptSlotUnreadable { detail: _ } => false
@@ -256,7 +258,7 @@ fn slot_is_terminal(dir: String) -> Bool {
 }
 
 fn opened_ok(dir: String, rec: AttemptRecord) -> Bool {
-  match attempt_open(store: file_slot_store(root: dir as NonEmptyStr), record: rec) {
+  match attempt_open(store: file_slot_store_over(fs: local_filesystem, root: dir as NonEmptyStr), record: rec) {
     AttemptAdvanced { state: _, generation: _ } => true
     AttemptLostRace { expected: _, observed: _ } => false
     AttemptTransitionRefused { detail: _ } => false
@@ -264,9 +266,9 @@ fn opened_ok(dir: String, rec: AttemptRecord) -> Bool {
 }
 
 fn launched_ok(dir: String, rec: AttemptRecord) -> Bool {
-  match attempt_open(store: file_slot_store(root: dir as NonEmptyStr), record: rec) {
+  match attempt_open(store: file_slot_store_over(fs: local_filesystem, root: dir as NonEmptyStr), record: rec) {
     AttemptAdvanced { state: _, generation: g } =>
-      match attempt_begin_launch(store: file_slot_store(root: dir as NonEmptyStr), reference: rec.reference as NonEmptyStr, expected: g) {
+      match attempt_begin_launch(store: file_slot_store_over(fs: local_filesystem, root: dir as NonEmptyStr), reference: rec.reference as NonEmptyStr, expected: g) {
         AttemptAdvanced { state: _, generation: _ } => true
         AttemptLostRace { expected: _, observed: _ } => false
         AttemptTransitionRefused { detail: _ } => false
@@ -389,9 +391,9 @@ fn launched_with_real_seat(dir: String) -> SessionPlacementGrant? {
     Absent => none
     Present { value: lease } => {
       let rec = slot_a(opened: 1000)
-      match attempt_open(store: file_slot_store(root: dir as NonEmptyStr), record: rec) {
+      match attempt_open(store: file_slot_store_over(fs: local_filesystem, root: dir as NonEmptyStr), record: rec) {
         AttemptAdvanced { state: _, generation: g1 } =>
-          match attempt_begin_launch(store: file_slot_store(root: dir as NonEmptyStr), reference: rec.reference as NonEmptyStr, expected: g1) {
+          match attempt_begin_launch(store: file_slot_store_over(fs: local_filesystem, root: dir as NonEmptyStr), reference: rec.reference as NonEmptyStr, expected: g1) {
             AttemptAdvanced { state: _, generation: _ } => Present { value: real_grant(dir: dir, lease: lease, slot: rec, generation: g1) }
             AttemptLostRace { expected: _, observed: _ } => none
             AttemptTransitionRefused { detail: _ } => none
@@ -404,7 +406,7 @@ fn launched_with_real_seat(dir: String) -> SessionPlacementGrant? {
 }
 
 fn slot_is_launching(dir: String) -> Bool {
-  match attempt_slot_read(store: file_slot_store(root: dir as NonEmptyStr), reference: unit_a() as NonEmptyStr) {
+  match attempt_slot_read(store: file_slot_store_over(fs: local_filesystem, root: dir as NonEmptyStr), reference: unit_a() as NonEmptyStr) {
     AttemptSlotHeld { record, generation: _ } => match record.state { AttemptLaunching => true  AttemptReserved => false  AttemptTerminal { verdict: _, detail: _ } => false }
     AttemptSlotAbsent => false
     AttemptSlotUnreadable { detail: _ } => false

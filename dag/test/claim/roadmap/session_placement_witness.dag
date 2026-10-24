@@ -1,6 +1,8 @@
 module test.claim.roadmap.session_placement_witness
 
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
+import gunbc.filesystem_interface { local_filesystem }
+import gunbc.durable_cas_file_store { file_slot_store_over }
 import std.measure { kibibyte, kibibyte_count }
 import std.optional { Present, Absent }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first, cas_generation_count }
@@ -90,6 +92,7 @@ fn unit_b() -> String {
 fn stores_at(dir: String) -> SessionPlacementStores {
   SessionPlacementStores {
     slots_root: dir as NonEmptyStr,
+    slots: file_slot_store_over(fs: local_filesystem, root: dir as NonEmptyStr),
     records_dir: dir,
     store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir, "/ledger"], "") as NonEmptyStr) },
     partition: "session-memory-srv2" as NonEmptyStr as PartitionId,

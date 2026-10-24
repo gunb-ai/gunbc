@@ -159,6 +159,7 @@ fn worktree_claim_launch_deadline_of(c: WorktreeClaim) -> EpochSecs { c.launch_d
 fn worktree_claim_codec() -> AttemptPayloadCodec<WorktreeClaim>
   admit_callers: [
     decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_open"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_read"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_close"),
   ]
 {
