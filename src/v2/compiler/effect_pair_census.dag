@@ -1,6 +1,6 @@
 module v2.compiler.effect_pair_census
 
-import std.algebra { list_head, list_tail, Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, empty_map, map_insert, map_lookup }
+import std.algebra { list_head, list_tail, Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, empty_map, map_insert, map_lookup, map_contains_key }
 import std.types { Bool, List, Map }
 import std.optional { Absent, Optional, Present }
 import v2.std.integer { Int }
@@ -138,9 +138,10 @@ fn pair_reach_set(adj: Map<Int, List<Int>>, frontier: List<Int>, seen: Map<Int, 
     let step = fold_list(xs: frontier, empty: PairFrontier { next: Empty, seen: seen }, cons: fn(st, n) {
       match map_lookup(m: adj, key: n) {
         Present { value: tos } => fold_list(xs: tos, empty: st, cons: fn(s2, t) {
-          match map_lookup(m: s2.seen, key: t) {
-            Present { value: _ } => s2
-            Absent => PairFrontier { next: list_snoc_item(xs: s2.next, item: t), seen: map_insert(m: s2.seen, key: t, value: true) }
+          if map_contains_key(m: s2.seen, key: t) {
+            s2
+          } else {
+            PairFrontier { next: list_snoc_item(xs: s2.next, item: t), seen: map_insert(m: s2.seen, key: t, value: true) }
           }
         })
         Absent => st
@@ -152,11 +153,7 @@ fn pair_reach_set(adj: Map<Int, List<Int>>, frontier: List<Int>, seen: Map<Int, 
 
 fn pair_reach_has(reach: Map<Int, Map<Int, Bool>>, from: Int, to: Int) -> Bool {
   match map_lookup(m: reach, key: from) {
-    Present { value: seen } =>
-      match map_lookup(m: seen, key: to) {
-        Present { value: _ } => true
-        Absent => false
-      }
+    Present { value: seen } => map_contains_key(m: seen, key: to)
     Absent => false
   }
 }
