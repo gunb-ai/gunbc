@@ -1,0 +1,18 @@
+module gunbc.claim_batch_outcomes_out_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for claim_batch --outcomes-out. HAND-ITEM DELTA: +3 declarations in v1_compiler.bin.claim_batch (claim_outcome_kind, outcome_row_tail, write_outcomes_ledger); no deletion is netted. None of them holds a tag, a disposition or a row grammar: those are derived once in v2.workflow.floor_terminal_ledger_wire derive_outcome_row, which write_outcomes_ledger calls by symbol.
+data claim_batch_outcomes_out_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.bin.claim_batch", decl_name: "claim_outcome_kind", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.claim_batch", decl_name: "outcome_row_tail", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.claim_batch", decl_name: "write_outcomes_ledger", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: a ClaimOutcome is a seed-host Rust value that exists only inside the claim_batch process, so the process must name its variant and hand the carried strings to the .dag wire, then write the rendered bytes atomically. claim_outcome_kind is an exhaustive wildcard-free match returning the variant NAME only; an executed test renders a row for every ClaimOutcome variant through the wire, which declares the kind sum. outcome_row_tail copies carried fields as strings. write_outcomes_ledger resolves the wire module, calls render_ledger_from_outcomes and performs the host write. The outcome-to-tag-and-disposition mapping is NOT here: it is one authority in .dag (manager ruling B), and an unrecognized kind refuses with a typed located reason rather than a default tag.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the three declarations when claim_batch's verdict fold is the .dag fold over the floor terminal ledger and the ledger is rendered from the .dag outcome values directly, with no ClaimOutcome match in Rust.",
+  current_boundary: "One --entry group only (the ledger header names one prepared subject); a field containing a tab or newline refuses as unrenderable; any refusal prints NO OBSERVATION, removes any prior ledger at the path, and the process exits 2."
+}

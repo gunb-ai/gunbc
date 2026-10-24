@@ -6,6 +6,7 @@ import v2.workflow.required_floor {
   ClaimPreemptionReachability,
   CooperativelyPollable,
   OpaqueHostCallUnbounded,
+  ReachabilityUnobserved,
   ClaimSafetyOutcome,
   CompletedWithinSafetyLimits,
   SafetyInterrupted,
@@ -81,6 +82,7 @@ test fn w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_pree
       (cpu == 60317)
         && match p {
           CooperativelyPollable => false
+          ReachabilityUnobserved => false
           OpaqueHostCallUnbounded { operation: op } => (op) == "compile_dag_rust_emit_check"
         }
   }
@@ -173,6 +175,12 @@ test fn w_new_opaque_operation_is_refused() -> Bool {
 
 test fn w_cooperatively_pollable_is_always_admitted() -> Bool {
   claim_preemption_admission(CooperativelyPollable) == true
+}
+
+// RED: a reachability nobody observed is never admitted as protection (review 85191 on
+// gunbc#14933); admitting it would fabricate the `CooperativelyPollable` standing.
+test fn w_unobserved_reachability_is_never_admitted() -> Bool {
+  claim_preemption_admission(ReachabilityUnobserved) == false
 }
 
 // ── THE POPULATION IS GROUNDED, AND THE WALL IS JUDGED AGAINST THE LIVE SURFACE ─────────────
