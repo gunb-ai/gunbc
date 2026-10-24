@@ -72,7 +72,7 @@ import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbse
 import gunbc.runner.runner_host_file_converge {
   CapPhaseObserved,
   runner_host_cap_phase_not_owed,
-  RunnerHostFileDesired,
+  FleetHostFileDesired,
   RunnerHostFilesDesired,
   RunnerHostFilesDesiredRefused,
   RunnerHostFileDesiredPopulation,
@@ -149,11 +149,11 @@ import gunbc.runner.runner_host_file_converge {
   SlotFabricMemberNotARunner,
   SlotFabricMemberRunsARunner,
   classify_root_only_paths,
-  RunnerHostFileObservation,
+  FleetHostFileObservation,
   HostFileLeaveInPlace,
   HostFileWrite,
   HostFileActionRefused,
-  RunnerHostFileAction,
+  FleetHostFileAction,
   runner_host_file_action,
   runner_host_file_action_wire,
   RunnerSlotUnitReading,
@@ -185,8 +185,8 @@ import gunbc.runner.runner_host_file_converge {
   runner_slot_population_owes_reload,
   runner_slot_population_effective,
   runner_slot_population_read_completely,
-  RunnerHostFilePlanned,
-  RunnerHostFileResult,
+  FleetHostFilePlanned,
+  FleetHostFileResult,
   HostFileLeftInPlace,
   RunnerHostFileOutcome,
   HostFileConvergedByWrite,
@@ -194,9 +194,9 @@ import gunbc.runner.runner_host_file_converge {
   HostFileNotAttempted,
   HostFileNotAppliedObserveOnly,
   RunnerHostFileRun,
-  RunnerHostFileConvergeMode,
-  RunnerHostFilesObserveOnly,
-  RunnerHostFilesApply,
+  FleetHostFileConvergeMode,
+  FleetHostFilesObserveOnly,
+  FleetHostFilesApply,
   AdministratorPrivilegeAvailable,
   AdministratorPrivilegeRefused,
   RunnerHostManagerReload,
@@ -223,7 +223,7 @@ fn fixture_unread_job_user_uid() -> RunnerJobUserUidReading {
 // THE PER-SLOT ROLE DROP-INS ARE A FOURTH POPULATION THE HOST-WIDE COUNTS DO NOT OWN. Their number is the
 // deploy-slot population of the host, so the host-wide literals above count the files with the role
 // subject removed, and the role population is joined by role_population_joins against the declared deploy-slot set.
-fn not_role_files(fs: List<RunnerHostFileDesired>) -> List<RunnerHostFileDesired> {
+fn not_role_files(fs: List<FleetHostFileDesired>) -> List<FleetHostFileDesired> {
   filter(fs, f => (f.subject as String) != "runner-slot-role-dropin")
 }
 
@@ -248,7 +248,7 @@ fn expected_role_dropin_paths(host: HostIdentity) -> List<String> {
   )
 }
 
-fn role_population_joins(expected: List<String>, files: List<RunnerHostFileDesired>, withheld: List<RunnerHostFileWithheld>) -> Bool {
+fn role_population_joins(expected: List<String>, files: List<FleetHostFileDesired>, withheld: List<RunnerHostFileWithheld>) -> Bool {
   let roles = filter(files, f => (f.subject as String) == "runner-slot-role-dropin")
   let role_withheld = filter(withheld, x => (x.subject as String) == "runner-slot-role-dropin")
   all(roles, f => any(expected, e => e == (f.path as String)) && starts_with(s: f.content, prefix: "[Service]\n"))
@@ -272,15 +272,15 @@ type RoleJoinResidualRetirement {
 
 data role_join_residual_retirement: RoleJoinResidualRetirement = RoleJoinResidualRetirement { requires_withheld_entries_to_carry_slot_identity: true }
 
-fn role_join_residual(expected: List<String>, files: List<RunnerHostFileDesired>, withheld: List<RunnerHostFileWithheld>) -> RoleJoinResidual {
+fn role_join_residual(expected: List<String>, files: List<FleetHostFileDesired>, withheld: List<RunnerHostFileWithheld>) -> RoleJoinResidual {
   let rendered = map(filter(files, f => (f.subject as String) == "runner-slot-role-dropin"), f => f.path as String)
   let without = filter(expected, e => !any(rendered, r => r == e))
   let anonymous = length(filter(withheld, x => (x.subject as String) == "runner-slot-role-dropin"))
   if length(without) == 0 && anonymous == 0 { RoleJoinFullyAttributed } else { RoleJoinWithheldCountedNotAttributed { anonymous_withheld: anonymous, slots_without_a_file: without } }
 }
 
-fn role_file_at(path: String) -> RunnerHostFileDesired {
-  RunnerHostFileDesired { subject: "runner-slot-role-dropin" as NonEmptyStr, path: path as FilePath, content: "[Service]\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
+fn role_file_at(path: String) -> FleetHostFileDesired {
+  FleetHostFileDesired { subject: "runner-slot-role-dropin" as NonEmptyStr, path: path as FilePath, content: "[Service]\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
 }
 
 fn role_withheld_entry() -> RunnerHostFileWithheld {
@@ -634,7 +634,7 @@ test fn a_stat_that_exited_zero_and_printed_nothing_is_unread() -> Bool {
     && !reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "  File: /etc/default/ctrl-jobserver\n  Size: 12\n", stderr: ""))
 }
 
-// INHABITANCE (DESIGN section 3): the words observe_runner_host_file_content actually sends are the
+// INHABITANCE (DESIGN section 3): the words observe_fleet_host_file_content actually sends are the
 // ones extdeps.tools.stat derives from its cited GNU authority, over the production path of a
 // production desired file -- not a boolean test, and not a literal spelled here. The remote leg
 // itself is not executed hermetically (gunbc.rung_drop runner_host_file_apply_route_hermetic), so
@@ -689,13 +689,13 @@ test fn a_path_find_did_not_print_is_not_root_only() -> Bool {
   all_safe && one_unsafe && missing
 }
 
-fn action_of(content: RunnerHostFileStanding, file_metadata: RunnerHostPathMetadata, ancestors: RunnerHostPathMetadata) -> RunnerHostFileAction {
-  runner_host_file_action(observation: RunnerHostFileObservation { content: content, file_metadata: file_metadata, ancestors: ancestors })
+fn action_of(content: RunnerHostFileStanding, file_metadata: RunnerHostPathMetadata, ancestors: RunnerHostPathMetadata) -> FleetHostFileAction {
+  runner_host_file_action(observation: FleetHostFileObservation { content: content, file_metadata: file_metadata, ancestors: ancestors })
 }
 
-fn is_leave(a: RunnerHostFileAction) -> Bool { match a { HostFileLeaveInPlace => true HostFileWrite => false HostFileActionRefused { reason: _ } => false } }
-fn is_write(a: RunnerHostFileAction) -> Bool { match a { HostFileWrite => true HostFileLeaveInPlace => false HostFileActionRefused { reason: _ } => false } }
-fn is_refused(a: RunnerHostFileAction) -> Bool { match a { HostFileActionRefused { reason: _ } => true HostFileWrite => false HostFileLeaveInPlace => false } }
+fn is_leave(a: FleetHostFileAction) -> Bool { match a { HostFileLeaveInPlace => true HostFileWrite => false HostFileActionRefused { reason: _ } => false } }
+fn is_write(a: FleetHostFileAction) -> Bool { match a { HostFileWrite => true HostFileLeaveInPlace => false HostFileActionRefused { reason: _ } => false } }
+fn is_refused(a: FleetHostFileAction) -> Bool { match a { HostFileActionRefused { reason: _ } => true HostFileWrite => false HostFileLeaveInPlace => false } }
 
 data unsafe_file_metadata: RunnerHostPathMetadata = PathsNotRootOnly { paths: ["/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"], detail: "owned by ghrunner" }
 
@@ -849,7 +849,7 @@ test fn a_reload_is_owed_by_a_stale_unit_even_when_nothing_was_written() -> Bool
 
 // ── Terminal ─────────────────────────────────────────────────────────────────────────────────────
 
-fn teardown_desired() -> RunnerHostFileDesired? {
+fn teardown_desired() -> FleetHostFileDesired? {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => none
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
@@ -864,7 +864,7 @@ fn witness_subject() -> RunnerHostFileSubject? {
   }
 }
 
-fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload, slots: RunnerSlotPopulation) -> Bool {
+fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload, slots: RunnerSlotPopulation) -> Bool {
   match witness_subject() {
     Absent => false
     Present { value: s } =>
@@ -875,13 +875,13 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
             subject: s,
             mode: mode,
             privilege: AdministratorPrivilegeAvailable,
-            results: [RunnerHostFileResult {
-              planned: RunnerHostFilePlanned {
+            results: [FleetHostFileResult {
+              planned: FleetHostFilePlanned {
                 file: f,
-                observation: RunnerHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly },
+                observation: FleetHostFileObservation { content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly },
                 action: HostFileLeaveInPlace,
               },
-              outcome: match mode { RunnerHostFilesObserveOnly => HostFileNotAppliedObserveOnly RunnerHostFilesApply => HostFileLeftInPlace },
+              outcome: match mode { FleetHostFilesObserveOnly => HostFileNotAppliedObserveOnly FleetHostFilesApply => HostFileLeftInPlace },
             }],
             withheld: [],
             pre_actuation_reload: ManagerReloadNotOwed,
@@ -896,8 +896,8 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
             // the base's two-valued answer -- would now refuse, and this claim would be lying about
             // what production produces). Apply still accepts a settled NotOwed phase (unchanged path).
             cap_phase: match mode {
-              RunnerHostFilesObserveOnly => CapPhaseObserved { readings: [SlotCapUnitStanding { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: SlotCapsAtDesired }] }
-              RunnerHostFilesApply => runner_host_cap_phase_not_owed
+              FleetHostFilesObserveOnly => CapPhaseObserved { readings: [SlotCapUnitStanding { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: SlotCapsAtDesired }] }
+              FleetHostFilesApply => runner_host_cap_phase_not_owed
             },
           })
       }
@@ -912,12 +912,12 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
 test fn observe_reports_what_apply_refuses() -> Bool {
   let old = population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }])
   let good = population_of(standings: [SlotTeardownEffective, SlotTeardownEffective])
-  settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: old)
-    && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadNotOwed, slots: old)
-    && settled_run(mode: RunnerHostFilesApply, reload: ManagerReloaded, slots: good)
-    && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadRefused { reason: "exit=1" }, slots: good)
-    && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadOwedNotAttempted { reason: "privilege refused" }, slots: good)
-    && !settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: population_of(standings: [SlotUnitUnread]))
+  settled_run(mode: FleetHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: old)
+    && !settled_run(mode: FleetHostFilesApply, reload: ManagerReloadNotOwed, slots: old)
+    && settled_run(mode: FleetHostFilesApply, reload: ManagerReloaded, slots: good)
+    && !settled_run(mode: FleetHostFilesApply, reload: ManagerReloadRefused { reason: "exit=1" }, slots: good)
+    && !settled_run(mode: FleetHostFilesApply, reload: ManagerReloadOwedNotAttempted { reason: "privilege refused" }, slots: good)
+    && !settled_run(mode: FleetHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: population_of(standings: [SlotUnitUnread]))
 }
 
 // ── The population joined against the retirement authority ──────────────────────────────────────
@@ -1465,7 +1465,7 @@ fn is_retirement_withheld(r: RetiredResidueResult?) -> Bool {
 test fn a_withheld_fragment_with_residue_present_refuses_and_leaves_the_residue() -> Bool {
   let gate = residue_retirement_gate(withheld: fixture_withheld_fragment(), fragment_delivered: false, slots_effective: true)
   let present = ResiduePresent { unit_known: true, present: ["/usr/local/sbin/ctrl-jobserver"] }
-  let result = retired_residue_precheck(observed: present, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: gate)
+  let result = retired_residue_precheck(observed: present, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: gate)
   is_retirement_withheld(r: result)
     && (match result { Present { value: r } => !retired_residue_settled(result: r) Absent => false })
 }
@@ -1475,9 +1475,9 @@ test fn a_withheld_fragment_with_residue_present_refuses_and_leaves_the_residue(
 test fn retirement_proceeds_only_once_the_fragment_holds_and_absent_is_a_noop() -> Bool {
   let present = ResiduePresent { unit_known: true, present: [] }
   let admitted = residue_retirement_gate(withheld: [], fragment_delivered: true, slots_effective: true)
-  (match retired_residue_precheck(observed: present, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: admitted) { Absent => true Present { value: _ } => false })
-    && is_retirement_withheld(r: retired_residue_precheck(observed: present, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: residue_retirement_gate(withheld: [], fragment_delivered: true, slots_effective: false)))
-    && (match retired_residue_precheck(observed: ResidueAbsent, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: residue_retirement_gate(withheld: fixture_withheld_fragment(), fragment_delivered: false, slots_effective: false)) {
+  (match retired_residue_precheck(observed: present, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: admitted) { Absent => true Present { value: _ } => false })
+    && is_retirement_withheld(r: retired_residue_precheck(observed: present, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: residue_retirement_gate(withheld: [], fragment_delivered: true, slots_effective: false)))
+    && (match retired_residue_precheck(observed: ResidueAbsent, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: residue_retirement_gate(withheld: fixture_withheld_fragment(), fragment_delivered: false, slots_effective: false)) {
       Present { value: v } => result_is_already_absent(r: v)
       Absent => false
     })
@@ -1490,7 +1490,7 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
     Present { value: s } =>
       !runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
-        mode: RunnerHostFilesApply,
+        mode: FleetHostFilesApply,
         privilege: AdministratorPrivilegeAvailable,
         results: [],
         withheld: fixture_withheld_fragment(),
@@ -1525,7 +1525,7 @@ fn crosses_the_edge(argv: List<String>) -> Bool {
 // legs that host's run issues -- privilege probe, list-units, slot show, the job-user getent, every
 // file's metadata / root-only / ancestor reads, the residue reads and every elevated retire and reload
 // leg -- plus the retiree events read built by the real builder over a supplied show answer. Every
-// leg must cross the edge, and the legs must cover every arm of RunnerHostRemoteLeg, so a new remote
+// leg must cross the edge, and the legs must cover every arm of FleetHostRemoteLeg, so a new remote
 // call cannot skip this check. The typed_remote_file_write legs and the parent listing, which run
 // through their own modules' builders, are checked over the same files.
 fn host_legs_cross(host: String) -> Bool {
@@ -1619,11 +1619,11 @@ fn admission_is_skipped(a: RunnerHostActuationAdmission) -> Bool {
   match a { ActuationSkipped { cause: _ } => true ActuationAdmitted => false }
 }
 
-fn fixture_result(outcome: RunnerHostFileOutcome) -> List<RunnerHostFileResult> {
+fn fixture_result(outcome: RunnerHostFileOutcome) -> List<FleetHostFileResult> {
   match teardown_desired() {
     Absent => []
-    Present { value: f } => [RunnerHostFileResult {
-      planned: RunnerHostFilePlanned { file: f, observation: RunnerHostFileObservation { content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly }, action: HostFileWrite },
+    Present { value: f } => [FleetHostFileResult {
+      planned: FleetHostFilePlanned { file: f, observation: FleetHostFileObservation { content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly }, action: HostFileWrite },
       outcome: outcome,
     }]
   }
@@ -1648,7 +1648,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
     Present { value: s } =>
       !runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
-        mode: RunnerHostFilesApply,
+        mode: FleetHostFilesApply,
         privilege: AdministratorPrivilegeAvailable,
         results: [],
         withheld: [],
@@ -1662,7 +1662,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
       })
       && runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
-        mode: RunnerHostFilesApply,
+        mode: FleetHostFilesApply,
         privilege: AdministratorPrivilegeAvailable,
         results: [],
         withheld: [],
@@ -1679,7 +1679,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
 
 // ── The sudoers install row (msg_b6241e41) ────────────────────────────────────────────────────────
 
-fn sudoers_desired() -> RunnerHostFileDesired? {
+fn sudoers_desired() -> FleetHostFileDesired? {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => none
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
@@ -1790,7 +1790,7 @@ fn readback_refused(m: RunnerHostPathMetadata) -> Bool {
 // Controls run the PROCESS RESULT through the result classifier and then the action fold, never a
 // supplied PathsUnobservable.
 
-fn result_action(content: RunnerHostFileStanding, exit_code: Int, stdout: String) -> RunnerHostFileAction {
+fn result_action(content: RunnerHostFileStanding, exit_code: Int, stdout: String) -> FleetHostFileAction {
   action_of(
     content: content,
     file_metadata: classify_root_only_paths(requested: ["/p"], exit_code: exit_code, stdout: stdout, stderr: "find: '/p': Permission denied"),
