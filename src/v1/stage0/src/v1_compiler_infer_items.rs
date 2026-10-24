@@ -23,15 +23,14 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
-use crate::v1_std_core::ExprErrorKind::SemanticExprError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
 use crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration;
 pub use crate::v1_std_core::{
-    authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_expr_error_node,
-    make_field_node, make_param_node, no_span, node_name_span, param_node_name_at,
-    param_node_type_expr, resource_use_name_at, resource_use_resource, Cardinality, Connective,
-    ErrorNode, ExprErrorKind, InferredNode, LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
+    authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
+    make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
+    resource_use_name_at, resource_use_resource, Cardinality, Connective, ErrorNode, InferredNode,
+    LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -191,37 +190,88 @@ pub fn inferred_to_outputs(
         Rc::new(vec![])
     } else {
         match (*inferred.clone().unwrap()).clone() {
-    InferredNode::CompilerError { .. } => Rc::new(vec![]),
-    InferredNode::TypeVariable { id: _, .. } => Rc::new(vec![]),
-    InferredNode::Divergent => Rc::new(vec![]),
-    InferredNode::ArgumentsResolved => Rc::new(vec![crate::v1_std_core::make_field_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "value".to_string(), crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::SemanticExprError, "internal: an operation output type is an applied use whose expansion was dropped".to_string(), span.clone()), Cardinality::Required, std::option::Option::None, Rc::new(vec![]), span.clone(), crate::v1_std_core::no_span())]),
-    InferredNode::Resolved { node: rt, .. } => {
-            let has_structure = (rt.connective.clone() != Connective::NoConnective);
-if has_structure.clone() {
-                {
-                    let is_product = (rt.connective.clone() == Connective::Conj);
-if is_product.clone() {
-                        if (rt.ident_span.clone() == std::option::Option::None) {
-                            Rc::new({ let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
-                                let child_type = crate::v1_compiler_infer_types::child_type_node(child.clone());
-crate::v1_std_core::make_field_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone()), child_type.clone(), Cardinality::Required, std::option::Option::None, Rc::new(vec![]), span.clone(), crate::v1_std_core::node_name_span(child.clone()))
-}); } __result })
+            InferredNode::CompilerError { .. } => Rc::new(vec![]),
+            InferredNode::TypeVariable { id: _, .. } => Rc::new(vec![]),
+            InferredNode::Divergent => Rc::new(vec![]),
+            InferredNode::Resolved { node: rt, .. } => {
+                let has_structure = (rt.connective.clone() != Connective::NoConnective);
+                if has_structure.clone() {
+                    {
+                        let is_product = (rt.connective.clone() == Connective::Conj);
+                        if is_product.clone() {
+                            if (rt.ident_span.clone() == std::option::Option::None) {
+                                Rc::new({
+                                    let mut __result = Vec::new();
+                                    for child in rt.children.clone().iter().cloned() {
+                                        __result.push({
+                                            let child_type =
+                                                crate::v1_compiler_infer_types::child_type_node(
+                                                    child.clone(),
+                                                );
+                                            crate::v1_std_core::make_field_node(
+                                                Rc::new(
+                                                    NodeOccurrenceIdentity::OccurrenceSynthetic,
+                                                ),
+                                                crate::v1_std_core::authored_name_at(
+                                                    source_indices.clone(),
+                                                    child.clone(),
+                                                ),
+                                                child_type.clone(),
+                                                Cardinality::Required,
+                                                std::option::Option::None,
+                                                Rc::new(vec![]),
+                                                span.clone(),
+                                                crate::v1_std_core::node_name_span(child.clone()),
+                                            )
+                                        });
+                                    }
+                                    __result
+                                })
+                            } else {
+                                Rc::new(vec![crate::v1_std_core::make_field_node(
+                                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                    "value".to_string(),
+                                    rt.clone(),
+                                    Cardinality::Required,
+                                    std::option::Option::None,
+                                    Rc::new(vec![]),
+                                    span.clone(),
+                                    crate::v1_std_core::no_span(),
+                                )])
+                            }
                         } else {
-                            Rc::new(vec![crate::v1_std_core::make_field_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "value".to_string(), rt.clone(), Cardinality::Required, std::option::Option::None, Rc::new(vec![]), span.clone(), crate::v1_std_core::no_span())])
+                            Rc::new(vec![crate::v1_std_core::make_field_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                "value".to_string(),
+                                rt.clone(),
+                                Cardinality::Required,
+                                std::option::Option::None,
+                                Rc::new(vec![]),
+                                span.clone(),
+                                crate::v1_std_core::no_span(),
+                            )])
                         }
-                    } else {
-                        Rc::new(vec![crate::v1_std_core::make_field_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "value".to_string(), rt.clone(), Cardinality::Required, std::option::Option::None, Rc::new(vec![]), span.clone(), crate::v1_std_core::no_span())])
                     }
-}
-            } else {
-                if ((rt.connective.clone() == Connective::Conj) && ((rt.children.clone().len() as i64) == 0)) {
-                    Rc::new(vec![])
                 } else {
-                    Rc::new(vec![crate::v1_std_core::make_field_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), "value".to_string(), rt.clone(), Cardinality::Required, std::option::Option::None, Rc::new(vec![]), span.clone(), crate::v1_std_core::no_span())])
+                    if ((rt.connective.clone() == Connective::Conj)
+                        && ((rt.children.clone().len() as i64) == 0))
+                    {
+                        Rc::new(vec![])
+                    } else {
+                        Rc::new(vec![crate::v1_std_core::make_field_node(
+                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                            "value".to_string(),
+                            rt.clone(),
+                            Cardinality::Required,
+                            std::option::Option::None,
+                            Rc::new(vec![]),
+                            span.clone(),
+                            crate::v1_std_core::no_span(),
+                        )])
+                    }
                 }
             }
-},
-}
+        }
     }
 }
 
