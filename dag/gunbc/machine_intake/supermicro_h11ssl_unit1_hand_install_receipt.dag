@@ -1,9 +1,10 @@
 module gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt
 
 import std.types { List, NonEmptyStr }
+import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent }
 import extdeps.external_authority { TranscribedUncited }
-import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import gunbc.fleet.provider_acquisition { AcquisitionRealization, OperatorPerformed }
 import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedFigure }
 
 // THE HAND OS INSTALL OF SUPERMICRO H11SSL UNIT 1, RECORDED AS A RECEIPT OF AN OPERATOR-PERFORMED
@@ -24,19 +25,16 @@ import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedF
 // reading obligation attached -- never a default, never a plausible value.
 //
 // THE EXISTING HOMES THIS RECORD REUSES, checked before inventing anything:
+//   - WHO PERFORMED a step outside an automated route: gunbc.fleet.provider_acquisition
+//     AcquisitionRealization OperatorPerformed -- imported and used directly, not mirrored. It times
+//     a step at the day granularity the operator actually relays ("2026-10-24"), which is the
+//     provider_acquisition precedent's own granularity ("2026-10-07"); an earlier draft of this
+//     record carried a second OperatorPerformed branded as an Rfc3339 INSTANT, but the operator gave
+//     a day, not a time, and the instant that filled the field would have been fabricated (§5), so
+//     the shared carrier at day granularity is the honest one (review 85697);
 //   - the operator-relayed figure: gunbc.machine_intake.supermicro_h11ssl_unit_observation
 //     H11sslReportedFigure { value, standing: CitedFigureStanding }, imported here for the relayed
 //     arm of HandInstallRecordedField;
-//   - the human-performed-step shape: gunbc.fleet.provider_acquisition AcquisitionRealization
-//     OperatorPerformed is the corpus's existing spelling of a human-performed step. InstallRealization
-//     is NOT a second name for that concept and does not reuse it, for a stated reason (§3b,
-//     "diverges with a stated reason"): an AcquisitionRealization times a step in a PROVIDER ACCOUNT
-//     at the day granularity the operator states ("2026-10-07"), and its authority is the provider
-//     console it was performed in; an InstallRealization times a physical act at a physical console,
-//     branded as an Rfc3339 instant because the install's timing is machine-checkable against the
-//     BMC's own clocks at intake, and its reconciliation path is a read-only BMC intake, not a
-//     provider console. Same SHAPE (date + relay), different concept (who holds a cloud resource vs
-//     what was done to a machine); a shared carrier would force one granularity on both;
 //   - the arrival/provisioning phase vocabulary: gunbc.machine_intake.phase (the receipt NAMES the
 //     phase the operator believes the install reached; it does not CONVERGE that phase --
 //     convergence remains the fold's, and its evidence rules are why the arms stay reported here);
@@ -52,25 +50,22 @@ import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedF
 // below. The post-upgrade BMC intake row this receipt anticipates lands in
 // gunbc.machine_intake.supermicro_h11ssl_unit_observation as its own reading, not here.
 
+// THE DAY, at the granularity the operator relays. Spelled as the non-empty day string
+// provider_acquisition's OperatorPerformed performed_on already carries ("2026-10-07"); the witness
+// for this receipt refuses anything shaped like an instant (containing 'T' or ':'), so a fabricated
+// midnight-UTC can never be reintroduced without the claim going red (review 85697).
+type RelayedDay = NonEmptyStr
+
 // A FIELD THE OPERATOR RELAYED, OR ITS EXPLICIT UNKNOWN WITH THE READ IT OWES. This is deliberately
 // NOT std.optional: std.optional::Optional<T>'s Absent carries nothing, while §4d requires every
-// unrelayed field here to carry the reading obligation that will close it (the gunbc.machine_intake
-// .supermicro_h11ssl_unit_observation precedent attaches its obligations inside the standing of a
-// PRESENT figure only -- its Absent fields, like bmc_address_reservation on unit 1, state the gap but
-// the gap text lives in prose; this record's checklist needs the obligation IN the type, because the
-// checklist's completeness is a checked claim, not a comment). Presence is still decided through
-// std.optional via hand_install_field_figure, never through a hand-rolled Bool predicate.
+// unrelayed field here to carry the reading obligation that will close it (the observation module's
+// own Absent fields state the gap in prose only; this record's checklist needs the obligation IN the
+// type, because the checklist's completeness is a checked claim, not a comment). Presence is still
+// decided through std.optional via hand_install_field_figure, never through a hand-rolled Bool
+// predicate. The as_of is a RelayedDay -- the date of the relay, not a fabricated instant.
 type HandInstallRecordedField
   = OperatorRelayed { figure: H11sslReportedFigure }
-  | NotRelayed { as_of: Rfc3339Timestamp, read_obligation: NonEmptyStr }
-
-// WHO PERFORMED THE INSTALL AND ITS STEPS. Diverges from gunbc.fleet.provider_acquisition
-// AcquisitionRealization with the stated reason in the header (physical-console act timed as an
-// Rfc3339 instant vs provider-account step timed at day granularity). An arm for a route-performed
-// install is absent by design: no producer exists, and an arm nothing writes is vocabulary
-// (the provider_acquisition precedent).
-type InstallRealization
-  = OperatorPerformed { performed_on: Rfc3339Timestamp, relayed: NonEmptyStr }
+  | NotRelayed { as_of_relayed_day: RelayedDay, read_obligation: NonEmptyStr }
 
 // The medium the OS was installed from, as the operator relays it. The digest is the operator's
 // transcribed string, never a recomputed claim: nothing in this repository observed the bytes.
@@ -108,7 +103,7 @@ type SupermicroH11sslUnit1HandInstall {
   unit_key: NonEmptyStr
   bmc_ipv4: NonEmptyStr
   ruling: NonEmptyStr
-  realization: InstallRealization
+  realization: AcquisitionRealization
   install_media: InstallMedia
   disk_layout: InstallDiskLayout
   system_state: InstallSystemState
@@ -126,7 +121,7 @@ type SupermicroH11sslUnit1HandInstall {
 fn hand_install_field_figure(field: HandInstallRecordedField) -> Optional<H11sslReportedFigure> {
   match field {
     OperatorRelayed { figure: f } => Present { value: f }
-    NotRelayed { as_of: _, read_obligation: _ } => Absent
+    NotRelayed { as_of_relayed_day: _, read_obligation: _ } => Absent
   }
 }
 
@@ -145,49 +140,49 @@ data supermicro_h11ssl_unit1_hand_install: SupermicroH11sslUnit1HandInstall = Su
   bmc_ipv4: "192.168.1.252",
   ruling: "operator, 2026-10-24: install by hand this time; record the gaps, fill them afterwards",
   realization: OperatorPerformed {
-    performed_on: "2026-10-24T00:00:00Z",
+    performed_on: "2026-10-24",
     relayed: "OS install performed by the operator at the physical console, outside any modeled route",
   },
   install_media: InstallMedia {
     iso_name: NotRelayed {
-      as_of: "2026-10-24T00:00:00Z",
+      as_of_relayed_day: "2026-10-24",
       read_obligation: "the operator names the ISO the install booted from",
     },
     version: NotRelayed {
-      as_of: "2026-10-24T00:00:00Z",
+      as_of_relayed_day: "2026-10-24",
       read_obligation: "the operator states the ISO's version",
     },
     sha256: NotRelayed {
-      as_of: "2026-10-24T00:00:00Z",
+      as_of_relayed_day: "2026-10-24",
       read_obligation: "the operator relays the sha256 they hold for that ISO",
     },
   },
   disk_layout: InstallDiskLayout {
     boot_drive_report: NotRelayed {
-      as_of: "2026-10-24T00:00:00Z",
+      as_of_relayed_day: "2026-10-24",
       read_obligation: "the operator names the SSD boot drive added 2026-10-24 and which disk it is on the board",
     },
     partition_layout_report: NotRelayed {
-      as_of: "2026-10-24T00:00:00Z",
+      as_of_relayed_day: "2026-10-24",
       read_obligation: "the operator relays the partition layout written to the boot drive",
     },
   },
   system_state: InstallSystemState {
     hostname: NotRelayed {
-      as_of: "2026-10-24T00:00:00Z",
+      as_of_relayed_day: "2026-10-24",
       read_obligation: "the operator states the hostname the install answers to",
     },
     accounts_and_ssh_keys_report: NotRelayed {
-      as_of: "2026-10-24T00:00:00Z",
+      as_of_relayed_day: "2026-10-24",
       read_obligation: "the operator lists the accounts installed and which authorized keys they carry (fingerprints only; no key material)",
     },
     network_config_report: NotRelayed {
-      as_of: "2026-10-24T00:00:00Z",
+      as_of_relayed_day: "2026-10-24",
       read_obligation: "the operator states the host's address assignment (DHCP lease or static, address, gateway, DNS)",
     },
   },
   operator_stated_phase: NotRelayed {
-    as_of: "2026-10-24T00:00:00Z",
+    as_of_relayed_day: "2026-10-24",
     read_obligation: "the operator states what the install reached (installer finished, rebooted to the installed system, reachable) -- a stated phase is a relay, not a converged gunbc.machine_intake.phase standing",
   },
   companion_hardware_report: OperatorRelayed {
@@ -217,23 +212,61 @@ fn supermicro_h11ssl_unit1_install_media_held(media: InstallMedia) -> Optional<I
   }
 }
 
+// THE TRACKED FIELDS OF EACH SUBSTRUCTURE, bound BY NAME from the record pattern -- not typed out as
+// a parallel list (review 85697: a hand-enumerated checklist can silently miss a field). Each fold
+// destructures its record and names every field; the checklist below visits exactly what these folds
+// return, and the witness pins each substructure's tracked count to the record's arity, so a field
+// added without joining the checklist goes red there rather than reading as complete.
+fn supermicro_h11ssl_unit1_install_media_tracked_fields(media: InstallMedia) -> List<HandInstallRecordedField> {
+  match media {
+    InstallMedia { iso_name: i, version: v, sha256: s } => [i, v, s]
+  }
+}
+
+fn supermicro_h11ssl_unit1_disk_layout_tracked_fields(layout: InstallDiskLayout) -> List<HandInstallRecordedField> {
+  match layout {
+    InstallDiskLayout { boot_drive_report: b, partition_layout_report: p } => [b, p]
+  }
+}
+
+fn supermicro_h11ssl_unit1_system_state_tracked_fields(state: InstallSystemState) -> List<HandInstallRecordedField> {
+  match state {
+    InstallSystemState { hostname: h, accounts_and_ssh_keys_report: a, network_config_report: n } => [h, a, n]
+  }
+}
+
+// Every tracked field of the record, gathered through the by-name folds above plus the record's own
+// stated-phase field. This is the single source the checklist derives from.
+fn supermicro_h11ssl_unit1_tracked_fields() -> List<HandInstallRecordedField> {
+  concat(
+    supermicro_h11ssl_unit1_install_media_tracked_fields(supermicro_h11ssl_unit1_hand_install.install_media),
+    concat(
+      supermicro_h11ssl_unit1_disk_layout_tracked_fields(supermicro_h11ssl_unit1_hand_install.disk_layout),
+      concat(
+        supermicro_h11ssl_unit1_system_state_tracked_fields(supermicro_h11ssl_unit1_hand_install.system_state),
+        [supermicro_h11ssl_unit1_hand_install.operator_stated_phase],
+      ),
+    ),
+  )
+}
+
 // THE UNCLOSED FIELDS OF THE RECORD -- the checklist the post-upgrade intake and the operator's next
-// relay work through. Presence is tested through std.optional (hand_install_field_figure); each
-// entry kept is a NotRelayed's read_obligation, so the deficit is countable and never defaults.
+// relay work through, DERIVED from supermicro_h11ssl_unit1_tracked_fields (the by-name folds), so it
+// cannot drift from the record's shape. Presence is tested through std.optional; each entry kept is
+// a NotRelayed's read_obligation, so the deficit is countable and never defaults.
 fn supermicro_h11ssl_unit1_hand_install_open_obligations() -> List<NonEmptyStr> {
-  let fields: List<HandInstallRecordedField> = [
-    supermicro_h11ssl_unit1_hand_install.install_media.iso_name,
-    supermicro_h11ssl_unit1_hand_install.install_media.version,
-    supermicro_h11ssl_unit1_hand_install.install_media.sha256,
-    supermicro_h11ssl_unit1_hand_install.disk_layout.boot_drive_report,
-    supermicro_h11ssl_unit1_hand_install.disk_layout.partition_layout_report,
-    supermicro_h11ssl_unit1_hand_install.system_state.hostname,
-    supermicro_h11ssl_unit1_hand_install.system_state.accounts_and_ssh_keys_report,
-    supermicro_h11ssl_unit1_hand_install.system_state.network_config_report,
-    supermicro_h11ssl_unit1_hand_install.operator_stated_phase,
-  ]
-  flat_map(fields, f => match f {
-    NotRelayed { as_of: _, read_obligation: o } => [o]
+  flat_map(supermicro_h11ssl_unit1_tracked_fields(), f => match f {
+    NotRelayed { as_of_relayed_day: _, read_obligation: o } => [o]
     OperatorRelayed { figure: _ } => [] as List<NonEmptyStr>
   })
+}
+
+// THE DAY GUARD (review 85697): a relayed day is the operator's day, spelled as a date -- an
+// instant, with its 'T' or ':', is a precision nobody relayed, and an instant here could only be
+// fabricated. Consumers (witness, and the intake when it reconciles BMC-side logs against this
+// receipt) get this to check the day shape with, rather than trusting a spelling.
+fn supermicro_h11ssl_unit1_relayed_day_is_day_granularity(day: RelayedDay) -> Bool {
+  !string_contains(s: day as String, pattern: "T")
+    && !string_contains(s: day as String, pattern: ":")
+    && string_contains(s: day as String, pattern: "-")
 }

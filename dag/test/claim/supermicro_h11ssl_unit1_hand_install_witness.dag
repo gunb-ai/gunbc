@@ -2,38 +2,44 @@ module test.claim.supermicro_h11ssl_unit1_hand_install_witness
 
 import std.types { Bool }
 import std.optional { Present, Absent }
+import gunbc.fleet.provider_acquisition { OperatorPerformed }
 import gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt {
-  OperatorPerformed,
   supermicro_h11ssl_unit1_hand_install,
   supermicro_h11ssl_unit1_install_media_held,
   supermicro_h11ssl_unit1_hand_install_open_obligations,
+  supermicro_h11ssl_unit1_tracked_fields,
+  supermicro_h11ssl_unit1_install_media_tracked_fields,
+  supermicro_h11ssl_unit1_disk_layout_tracked_fields,
+  supermicro_h11ssl_unit1_system_state_tracked_fields,
+  supermicro_h11ssl_unit1_relayed_day_is_day_granularity,
   hand_install_field_figure,
 }
 
 // THE HAND-INSTALL RECEIPT'S CLAIMS (gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt).
 // What this witness holds the record TO is the §4d/§5 line the ruling drew: the install is an
 // operator-performed effect OUTSIDE any modeled route -- so it must be a receipt of a human act, it
-// must NOT read as a converged state, and every field the operator has not relayed must stay an
-// explicit unknown with a reading obligation rather than a default.
+// must NOT read as a converged state, every field the operator has not relayed must stay an explicit
+// unknown with a reading obligation rather than a default, and no timestamp nobody reported may
+// stand in for the day the operator did report (review 85697).
 
-// THE REALIZATION IS THE HUMAN ACT. The record's install is OperatorPerformed, carrying the
-// performed-on instant and the relay -- the shape diverges from gunbc.fleet.provider_acquisition
-// AcquisitionRealization with the stated reason in the receipt's header (physical-console act timed
-// as an Rfc3339 instant vs a provider-account step at day granularity). A future arm for a
-// route-performed install is absent by design (no producer); this row fails the day someone records
-// a modeled-route install through this receipt, because then it is not the hand-install record any
-// more.
-test fn w_the_install_is_recorded_as_an_operator_performed_act() -> Bool {
+// THE REALIZATION IS THE SHARED HUMAN-ACT CARRIER, AT THE DAY THE OPERATOR RELAYED. The receipt uses
+// gunbc.fleet.provider_acquisition AcquisitionRealization OperatorPerformed directly (imported, not
+// mirrored), performed_on is the relayed day "2026-10-24", and the day guard refuses anything
+// instant-shaped -- 'T' or ':' would be a precision nobody reported, fillable only by fabrication.
+// A future arm for a route-performed install is absent by design (no producer); this row fails the
+// day someone records a modeled-route install through this receipt.
+test fn w_the_install_is_recorded_as_an_operator_performed_day() -> Bool {
   match supermicro_h11ssl_unit1_hand_install.realization {
-    OperatorPerformed { performed_on: _, relayed: r } => !(r as String == "")
+    OperatorPerformed { performed_on: d, relayed: r } =>
+      d == "2026-10-24"
+        && !(r as String == "")
+        && supermicro_h11ssl_unit1_relayed_day_is_day_granularity(d)
   }
 }
 
 // NOTHING RELAYED YET READS AS COMPLETE. The ISO's identity is not held (name, version, digest all
 // unrelayed as of 2026-10-24), so the held-media fold must say Absent -- the empty picture has to be
-// SAYABLE, not readable as a figure. If someone fills the iso/version/digest fields WITHOUT a relay,
-// this row goes red; the type makes the relay carry its standing, and standing is checked where it
-// is made.
+// SAYABLE, not readable as a figure.
 test fn w_unrelayed_media_reads_absent_not_default() -> Bool {
   match supermicro_h11ssl_unit1_install_media_held(supermicro_h11ssl_unit1_hand_install.install_media) {
     Absent => true
@@ -42,15 +48,28 @@ test fn w_unrelayed_media_reads_absent_not_default() -> Bool {
 }
 
 // EVERY UNRELAYED FIELD CARRIES ITS READING OBLIGATION, AND THE SET IS THE FULL CHECKLIST. The nine
-// fields a completed hand-install record needs from the operator (ISO name, version, sha256, boot
-// drive, partition layout, hostname, accounts/keys, network, and the stated phase) are unrelayed as
-// of 2026-10-24 and each must carry a non-empty read_obligation. This pins the checklist's size: a
-// field that gained a default arm, or an obligation silently dropped, fails here rather than
-// completing the picture.
+// tracked fields (media three, disk two, system three, stated phase one) are unrelayed as of
+// 2026-10-24 and each must carry a non-empty read_obligation -- AND the checklist must visit exactly
+// what the by-name record-pattern folds return: a field added to a substructure without joining its
+// tracked fold, or to the record without joining tracked_fields, goes red here (review 85697's
+// drift hole closed with the forcing function the type itself does not give).
 test fn w_open_fields_are_the_checklist_each_with_an_obligation() -> Bool {
   let open = supermicro_h11ssl_unit1_hand_install_open_obligations()
+  let tracked = supermicro_h11ssl_unit1_tracked_fields()
   count(open) == 9
     && all(open, o => !(o as String == ""))
+    && count(tracked) == 9
+    && count(supermicro_h11ssl_unit1_install_media_tracked_fields(supermicro_h11ssl_unit1_hand_install.install_media)) == 3
+    && count(supermicro_h11ssl_unit1_disk_layout_tracked_fields(supermicro_h11ssl_unit1_hand_install.disk_layout)) == 2
+    && count(supermicro_h11ssl_unit1_system_state_tracked_fields(supermicro_h11ssl_unit1_hand_install.system_state)) == 3
+}
+
+// THE DAY GUARD REFUSES AN INSTANT, PASSES A DAY. The guard that keeps the fabricated midnight-UTC
+// out must itself be checked in both directions: a relayed day passes, an instant is refused -- so
+// reintroducing an instant-shaped performed_on or as_of is a red claim, not a silent pass.
+test fn w_the_day_guard_refuses_instant_shapes() -> Bool {
+  supermicro_h11ssl_unit1_relayed_day_is_day_granularity("2026-10-24")
+    && !supermicro_h11ssl_unit1_relayed_day_is_day_granularity("2026-10-24T00:00:00Z")
 }
 
 // THE ONE RELAYED FIELD IS RELAYED WITH ITS FIGURE; THE UNKNOWNS HAVE NONE. Presence goes through
