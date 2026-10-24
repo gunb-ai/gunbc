@@ -4654,9 +4654,42 @@ fn native_census_subject_modules(labels: List<String>) -> NativeCensusSubjectMod
   })
 }
 
-// ONE ACQUISITION OVER EVERY SUBJECT: the entries are all the subject modules, so a member two closures
-// share is read, resolved and inferred once. The population is exactly the union of the named subjects'
-// closures; the scope's subject is the first label's module, and `reach` attributes each member.
+// THE ACQUISITION ENTRIES FOR A SCOPED CENSUS: THE SUBJECT MODULES, EXACTLY, in argv order. This is
+// the ONE boundary a per-name ambient disposition would be admitted at, and the reason it is a named
+// function rather than `subjects` inlined at the call site: the resolver's ambient primitive-authority
+// tier binds an unimported spelling (list_push, first, contains, ...) by reading the LOADED
+// POPULATION's symbol index (v2.compiler.resolve resolve_atom_primitive_authority), so ANY module
+// appended here changes which ambient names bind for every subject. Two closure attempts were
+// executed and reversed; the measurements, the direction that survived, and what still open-closes
+// this live in the ledger row gunbc.recurring_failure_mode.census_rows_read_the_loaded_population --
+// read it before changing this function. The surviving ruling: NEITHER acquisition path admits the
+// ambient primitive contracts as a resolution authority -- the route's entries come from
+// native_lane_candidate_entries with no contract module, and neither do these. THE CLASS IS OPEN
+// (runs of different subject lists still load different populations); it closes at Seat 12's per-name
+// dispositions, added HERE and nowhere else, naming the tier each serves. NO CLAIM FORM GUARDS THIS
+// BOUNDARY TODAY, ON MAIN OR AT THIS HEAD -- measured, four probe rounds
+// (banked scratch/qc503-boundary-probe1 through probe4, causes recorded in the ledger row): every
+// claim shape, from `==` over lists down to a bare String-literal equality in a module importing
+// nothing but std.types, refuses at prepare/eval with the grounding-not-derived chain. The control:
+// the same minimal module refuses identically ON MAIN (scratch/qc503-probe4-on-main @ 7b954f7182cc,
+// cause=eval_rejected_grounding_not_derived) -- this is the claim lane's own grounding requirement,
+// NOT an effect of this rework. An un-executed
+// claim is not a guard (DESIGN section 5), so none is landed. THE GUARD IS THE EXECUTED RUN-PAIR:
+// //gunbc/instruments:v2-native-census-scoped (its census report, baseline-diffed by census_run_diff)
+// run in ONE dispatch at ONE identity beside the route's own parse-label run, as in the acceptance
+// runs recorded in the ledger row; an append inside this function shows up there as a census-side
+// divergence in rows or first fatal against the route's. It does not catch a bypass at the call site below or a second
+// acquisition route; that prevention is the row's open ceiling, not this comment's claim.
+fn native_census_scoped_entries(subjects: List<String>) -> List<String> {
+  subjects
+}
+
+// ONE ACQUISITION OVER EVERY SUBJECT: the entries are THE SUBJECTS AND NOTHING ELSE (see
+// native_census_scoped_entries -- no ambient contract module rides the population on either acquisition
+// path), so a member two closures share is read, resolved and inferred once, and every ambient primitive
+// the subjects do not import stays as unbound in the rows as it is on the route. The population is the
+// union of the named subjects' closures; the scope's subject is the first label's module, and `reach`
+// attributes each member.
 fn native_lane_census_scoped_ingest(label: String, rest: List<String>, source_roots: FreeMonoid<String>) -> Outcome<NativeCensusScoped> {
   match native_census_subject_modules(labels: Cons { head: label, tail: rest }) {
     NativeCensusSubjectModulesUnavailable { label: bad, reason: reason } => native_lane_refused(reason: reason, detail: bad)
@@ -4669,7 +4702,7 @@ fn native_lane_census_scoped_ingest(label: String, rest: List<String>, source_ro
             Cons { head: first, tail: others } =>
               native_census_scoped_from(
                 subjects: FreeSemigroup { head: first, tail: others },
-                acquisition: acquire_census_closure_of(layout: repository_storage_layout(), bindings: bindings, entries: subjects)
+                acquisition: acquire_census_closure_of(layout: repository_storage_layout(), bindings: bindings, entries: native_census_scoped_entries(subjects: subjects))
               )
           }
         SourceRootsUnrecognized { argument: _ } => native_lane_roots_refusal(bindings: resolved)
