@@ -1540,9 +1540,9 @@ pub enum InterpError {
     /// publishing it, a missing `mock_response` by authoring one, a filesystem REMOVAL by a wet
     /// route (removal has no mock arm). One sentence for all three is the state-space
     /// conflation DESIGN's recurring-failure list names.
-    HermeticHostEffectRefused {
+    HostEffectRefused {
         operation: String,
-        ground: HermeticEffectGround,
+        ground: EffectRefusalGround,
     },
     /// A HOST FILESYSTEM EFFECT FAILED: the realization asked the host to create or write a path
     /// and the host refused. Its own variant, never a `TypeError`: nothing about the program's
@@ -1572,10 +1572,10 @@ impl InterpError {
     }
 }
 
-/// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION. Closed, and each arm names a
-/// different remedy — see `InterpError::HermeticHostEffectRefused`.
+/// WHY A RUN COULD NOT REALIZE ONE OPERATION. Closed, and each arm names a
+/// different remedy — see `InterpError::HostEffectRefused`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HermeticEffectGround {
+pub enum EffectRefusalGround {
     /// The service is corpus-governed and no published mock case names this operation.
     /// `published_cases` carries the cases that DO exist for the service, so the refusal
     /// states its own remedy rather than sending the reader to look for it.
@@ -1586,6 +1586,10 @@ pub enum HermeticEffectGround {
     /// A filesystem REMOVAL. Distinct from the two above because there is no mock arm to
     /// author: the operation's whole content is the effect, so only a wet route can run it.
     FilesystemRemoval,
+    /// A witness frame whose modeled realization is admitted only under Hermetic execution,
+    /// reached by a run that dispatches real effects. The one ground refused UNDER a non-hermetic
+    /// mode, so its remedy is the opposite of the three above: run it hermetically.
+    FrameNotRealizableUnderMode,
 }
 
 impl fmt::Display for InterpError {
@@ -1750,22 +1754,28 @@ impl fmt::Display for InterpError {
                 name,
                 probed.join(", ")
             ),
-            InterpError::HermeticHostEffectRefused { operation, ground } => match ground {
-                HermeticEffectGround::UnpublishedMockCase { published_cases } => write!(
+            InterpError::HostEffectRefused { operation, ground } => match ground {
+                EffectRefusalGround::UnpublishedMockCase { published_cases } => write!(
                     f,
                     "hermetic mode: operation {operation} is not a published mock case for its \
                      corpus-governed service \u{2014} refusing to realize (published cases: \
                      {published_cases:?})"
                 ),
-                HermeticEffectGround::NoMockResponse => write!(
+                EffectRefusalGround::NoMockResponse => write!(
                     f,
                     "hermetic mode: no mock_response for operation {operation} \u{2014} refusing \
                      to fabricate Unit"
                 ),
-                HermeticEffectGround::FilesystemRemoval => write!(
+                EffectRefusalGround::FilesystemRemoval => write!(
                     f,
                     "hermetic mode: {operation} refuses filesystem removal (no mock arm; the \
                      operation's whole content is the effect, so only a wet route can run it)"
+                ),
+                EffectRefusalGround::FrameNotRealizableUnderMode => write!(
+                    f,
+                    "wet run cannot realize {operation}: a modeled operation realization is \
+                     admitted only under Hermetic execution, and this run dispatches real \
+                     effects (route gap, not a verdict; re-run with --dry-run)"
                 ),
             },
             InterpError::HostToolRelativePathAmbiguous { name } => write!(
@@ -9836,10 +9846,14 @@ fn admit_modeled_realization(
         false,
     )?;
     if !matches!(admitted, Value::Bool(true)) {
-        return Err(modeled_refused(
-            "(frame)",
-            "a modeled operation realization is admitted only under Hermetic execution; this run dispatches real effects",
-        ));
+        // A ROUTE GAP, NOT A VERDICT: the run was never given a route that can realize this
+        // frame, so the claim did not reach its subject. Returned as the typed route-gap error and
+        // not as `modeled_refused`, which the frame builtin turns into a `WitnessRefused` value a
+        // claim can map to false.
+        return Err(InterpError::HostEffectRefused {
+            operation: "(frame)".to_string(),
+            ground: EffectRefusalGround::FrameNotRealizableUnderMode,
+        });
     }
     let envelope = record_field(ctx, frame, "envelope")
         .ok_or_else(|| modeled_refused("(frame)", "the frame carries no envelope"))?;
@@ -10468,6 +10482,7 @@ fn try_witness_evaluation_dispatch(
             let absent_state = || variant_value(ctx, "Optional", "Absent", vec![]);
             let admitted = match admit_modeled_realization(&frame, env, ctx) {
                 Ok(slot) => slot,
+                Err(error @ InterpError::HostEffectRefused { .. }) => return Some(Err(error)),
                 Err(error) => {
                     return Some(Ok(variant_value(
                         ctx,
@@ -10493,6 +10508,11 @@ fn try_witness_evaluation_dispatch(
                     .with(|slots| slots.borrow_mut().last_mut().and_then(|s| s.take()));
                 (evaluated, slot)
             };
+            // A route gap raised inside the subject is no observation either, so it leaves the
+            // frame as the error and never as a `WitnessRefused` verdict value.
+            if let Err(error @ InterpError::HostEffectRefused { .. }) = evaluated {
+                return Some(Err(error));
+            }
             let (route, state, interrupted, clock) = match slot {
                 Some(slot) => (
                     list_value(slot.route),
@@ -14670,7 +14690,7 @@ fn hermetic_checkout_input_disposition_under(
     // path to exist, so it failed identically for three dispositions with different remedies —
     // a file the commit says is NOT THERE, a path RESOLVING OUTSIDE the root, and one
     // UNRESOLVABLE otherwise. One error string for three states is the conflation
-    // `HermeticEffectGround` was split to prevent, twenty lines above the enum recording it.
+    // `EffectRefusalGround` was split to prevent, twenty lines above the enum recording it.
     //
     // The commit determines absence as it determines contents: "no such file" is read OFF THE
     // INPUT, not host state, so it belongs on the same wet arm as a successful read, not in the
@@ -14868,9 +14888,9 @@ fn eval_service_call(
                 })
                 .collect();
             cases.sort();
-            return Err(InterpError::HermeticHostEffectRefused {
+            return Err(InterpError::HostEffectRefused {
                 operation: key.clone(),
-                ground: HermeticEffectGround::UnpublishedMockCase {
+                ground: EffectRefusalGround::UnpublishedMockCase {
                     published_cases: cases.into_iter().cloned().collect(),
                 },
             });
@@ -22009,9 +22029,9 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
         }
     }
     let op_name = authored_name_at(ctx.si(), op_node.clone());
-    Err(InterpError::HermeticHostEffectRefused {
+    Err(InterpError::HostEffectRefused {
         operation: op_name.to_string(),
-        ground: HermeticEffectGround::NoMockResponse,
+        ground: EffectRefusalGround::NoMockResponse,
     })
 }
 
@@ -22581,9 +22601,9 @@ fn eval_emit_host_native_cache_evict_builtin(
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     if ctx.execution_mode.is_hermetic() {
-        return Err(InterpError::HermeticHostEffectRefused {
+        return Err(InterpError::HostEffectRefused {
             operation: "emit_host_native_cache_evict".to_string(),
-            ground: HermeticEffectGround::FilesystemRemoval,
+            ground: EffectRefusalGround::FilesystemRemoval,
         });
     }
     let workspace_dir =

@@ -450,14 +450,16 @@ fn report_outcome(
             *any_failed = true;
         }
         // A ROUTE GAP, NOT A VERDICT (`RouteGapBeforeVerdict` in `v2.workflow.floor_terminal_ledger`).
-        // The hermetic route has no arm for the capability the claim requested, so the claim never
+        // The run's route has no arm for the capability the claim requested, so the claim never
         // reached its subject: it is unobserved, not a false assertion, and reads as exit 2.
         ClaimOutcome::HostEffectRefused { operation, ground } => {
             println!(
-                "UNOBSERVED {} (hermetic route has no arm for {}: {} — route gap; re-run with --wet)",
+                "UNOBSERVED {} ({} {}: {} — route gap; {})",
                 function,
+                v1_compiler::cli_run::effect_refusal_mode_label(&ground),
                 operation,
-                v1_compiler::cli_run::hermetic_effect_ground_label(&ground)
+                v1_compiler::cli_run::effect_refusal_ground_label(&ground),
+                v1_compiler::cli_run::effect_refusal_remedy(&ground)
             );
             *any_unobserved = true;
         }

@@ -78,7 +78,7 @@ import std.algebra { Cons, Empty, contains, list_reverse }
 // WHAT REPLACES IT: nothing here. Every non-long, non-fixture identity is routed and executed,
 // its route carried by the claim that runs it
 // (`RequiredFloorClaim.execution_mode` — one route per identity, not a second vocabulary
-// restating it), and the interpreter's own typed `HermeticHostEffectRefused` classifies the
+// restating it), and the interpreter's own typed `HostEffectRefused` classifies the
 // residue that genuinely has no hermetic arm. That residue reaches the receipt as
 // `RequiredFloorOutcome.route_gap`, which BLOCKS: a claim that never reached its subject is
 // not green, and it is not a failure either — the two have different remedies and are
