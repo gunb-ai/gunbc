@@ -537,7 +537,7 @@ pub enum TransportKind {
     RestTransport,
     ShellTransport,
     FileTransport,
-    LocalTransport,
+    UndeclaredTransport,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -3222,7 +3222,7 @@ pub fn make_transport_node(
     })
 }
 
-pub fn local_transport_node(
+pub fn undeclared_transport_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
@@ -3648,7 +3648,7 @@ pub fn classify_transport(
                 Some(TransportKind::FileTransport)
             } else {
                 if is_bare_transport(t.clone()) {
-                    Some(TransportKind::LocalTransport)
+                    Some(TransportKind::UndeclaredTransport)
                 } else {
                     std::option::Option::None
                 }
@@ -3657,12 +3657,12 @@ pub fn classify_transport(
     }
 }
 
-pub fn is_local_transport(
+pub fn is_undeclared_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match classify_transport(t.clone(), source_indices.clone()) {
-        Some(TransportKind::LocalTransport) => true,
+        Some(TransportKind::UndeclaredTransport) => true,
         _ => false,
     }
 }
@@ -5714,7 +5714,7 @@ pub struct ShellTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LocalTransport;
+pub struct UndeclaredTransport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SeverityError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

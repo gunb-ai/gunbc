@@ -26,7 +26,7 @@ import v1.std.core { Unmarked, TestMarked,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   UnaryOpKind, Not, Neg,
   StringPart, Text, Interpolation,
-  local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
+  undeclared_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
   transport_url_key, transport_path_key,
   transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, transport_headers_key,
   transport_auth_basic_key, transport_tls_key,
@@ -3935,7 +3935,7 @@ fn parse_service_body(tokens: TokenStream, ctx: ParseContext) -> ServiceBodyResu
   parse_service_entries(
     tokens: tokens, ctx: ctx,
     config: none,
-    transport: local_transport_node(occurrence_identity: OccurrenceSynthetic, span: token_span(tok: token_stream_first(stream: tokens))),
+    transport: undeclared_transport_node(occurrence_identity: OccurrenceSynthetic, span: token_span(tok: token_stream_first(stream: tokens))),
     operations: []
   )
 }
@@ -4028,7 +4028,7 @@ fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, 
 
 fn parse_transport_binding(tokens: TokenStream, ctx: ParseContext) -> TransportResult {
   let span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = local_transport_node(occurrence_identity: OccurrenceSynthetic, span: span)
+  let dummy = undeclared_transport_node(occurrence_identity: OccurrenceSynthetic, span: span)
   let tok = token_stream_first(stream: tokens)
   let tok_text = match tok { Present { value: t } => t.text  Absent => "" }
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
@@ -4076,7 +4076,7 @@ fn parse_rest_binding_body(tokens: TokenStream, ctx: ParseContext) -> TransportR
 fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, method: Node?, path_template: Node?, query: Node?, request_body: Node?, response_format: Node?, headers: List<Node>) -> TransportResult {
   let tokens = skip_newlines(tokens: tokens)
   let span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = local_transport_node(occurrence_identity: OccurrenceSynthetic, span: span)
+  let dummy = undeclared_transport_node(occurrence_identity: OccurrenceSynthetic, span: span)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     let bu = match base_url {
       Present { value: e } => e
@@ -4131,7 +4131,7 @@ fn parse_shell_binding_body(tokens: TokenStream, ctx: ParseContext) -> Transport
 fn parse_shell_fields(tokens: TokenStream, ctx: ParseContext, argv: List<Node>, stdin: Node?) -> TransportResult {
   let tokens = skip_newlines(tokens: tokens)
   let span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = local_transport_node(occurrence_identity: OccurrenceSynthetic, span: span)
+  let dummy = undeclared_transport_node(occurrence_identity: OccurrenceSynthetic, span: span)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     let minted = mint_parsed_node_identity(ctx: ctx, at: CompletedLater)
     TransportResult { transport: shell_transport_node(occurrence_identity: minted.identity, argv: argv, env: [], stdin: stdin, span: span), tokens: tokens, ctx: minted.ctx, err: none }
@@ -4170,7 +4170,7 @@ fn parse_file_binding_body(tokens: TokenStream, ctx: ParseContext) -> TransportR
 fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, verb: Node?) -> TransportResult {
   let tokens = skip_newlines(tokens: tokens)
   let span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = local_transport_node(occurrence_identity: OccurrenceSynthetic, span: span)
+  let dummy = undeclared_transport_node(occurrence_identity: OccurrenceSynthetic, span: span)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     match base_path {
       Present { value: bp } =>

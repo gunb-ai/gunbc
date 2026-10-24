@@ -1334,7 +1334,6 @@ pub fn emit_py_transport_body(
             )
         },
         |n, t, d, si| emit_py_shell_call(n.clone(), t.clone(), si.clone()),
-        |n, d| emit_py_local_call(n.clone()),
     )
 }
 
@@ -1479,19 +1478,6 @@ pub fn emit_py_shell_call(
             "return result.stdout".to_string(),
         )
     }
-}
-
-pub fn emit_py_local_call(op_name: String) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                "# Local binding -- direct function call\n".to_string(),
-                "return ".to_string(),
-            ),
-            crate::v1_compiler_emit::emit_ident(op_name.clone(), RenderTarget::Python),
-        ),
-        "()".to_string(),
-    )
 }
 
 pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
