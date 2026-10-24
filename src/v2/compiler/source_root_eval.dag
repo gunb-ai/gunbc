@@ -4373,7 +4373,7 @@ type NativeCensusChainFiling {
 // fan-out) and any later own-account chain None, as a module without declarers files them.
 fn native_census_cause_groups_add_chains_by_chain(
   groups: NativeCensusCauseGroups,
-  positions: NativeCensusPositionTable,
+  positions: NativeCensusPositions,
   closure: NativeCensusClosureIndex,
   entry: NativeCensusModule,
   first: NonEmptyDiagnostics,

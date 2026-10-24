@@ -14,6 +14,7 @@ import v2.compiler.native_test_vocabulary { FileRefusalAtPositionsNotBuilt, nati
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.test.claim.native_census.whole_tree_census_resolve {
   census_clean_source,
+  census_poison_source,
   census_probe_read
 }
 import v2.std.diagnostic { ByteRange, Textual }
@@ -45,7 +46,15 @@ fn positions_probe_ingest() -> SourceRootIngest {
       unit: ^positions_probe_clean_cu,
       path: "dag/census_probe_clean.dag"
     ),
-    tail: Empty
+    tail: Cons {
+      head: census_probe_read(
+        source: census_poison_source,
+        id: ^positions_probe_poison_artifact,
+        unit: ^positions_probe_poison_cu,
+        path: "dag/census_probe_poison.dag"
+      ),
+      tail: Empty
+    }
   }
 }
 
@@ -91,7 +100,8 @@ test fn the_demand_does_not_change_the_census_answer_holds() -> Bool {
       match positions_locates_context {
         Absent => false
         Present { value: l } =>
-          length(xs: n.file_refusals) == length(xs: l.file_refusals)
+          length(xs: n.file_refusals) == 1
+            && length(xs: n.file_refusals) == length(xs: l.file_refusals)
             && length(xs: n.accepted_file_advisories) == length(xs: l.accepted_file_advisories)
       }
   }
