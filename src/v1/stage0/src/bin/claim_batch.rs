@@ -1491,8 +1491,9 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod cli_path_resolution_wiring_tests {
+    use super::OutcomeRowFacts;
     use super::{batch_exit_code, parse_args, validate_explicit_functions, EntryGroup};
-    use v1_compiler::cli_run::{workspace_root, ClaimOutcome};
+    use v1_compiler::cli_run::{process_shared_index, workspace_root, ClaimOutcome};
     use v1_compiler::v1_interpreter::ExecutionMode;
 
     fn args(v: &[&str]) -> Vec<String> {

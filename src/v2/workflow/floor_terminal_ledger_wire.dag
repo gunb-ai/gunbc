@@ -54,16 +54,14 @@ import v2.workflow.floor_terminal_ledger {
   Returned,
   RouteGap,
   RuntimeErrored,
+  ClaimSafetyOutcome,
+  CompletedPastSafetyLimit,
+  CompletedWithinSafetyLimits,
+  SafetyInterrupted,
   ClaimPreemptionReachability,
   CooperativelyPollable,
   OpaqueHostCallUnbounded,
   ReachabilityUnobserved
-}
-import v2.workflow.required_floor {
-  ClaimSafetyOutcome,
-  CompletedPastSafetyLimit,
-  CompletedWithinSafetyLimits,
-  SafetyInterrupted
 }
 
 // ONE GRAMMAR, READ IN BOTH DIRECTIONS, FOR THE ARTIFACT THE SCHEMA ALREADY DESCRIBES.
@@ -1085,7 +1083,11 @@ type OutcomeRowDerivation
   = OutcomeRowDerived { row: SeedLedgerRow }
   | OutcomeRowRefused { reason: Symbol, offending: String }
 
-// `cpu_ms` / `wall_ms` are the measured claim cost the seed's receipt carries, as Ints. `reach` and
+// `cpu_ms` / `wall_ms` are the measured claim cost the seed's receipt carries, as Ints because the
+// sum fields they fill (`ClaimSafetyOutcome` observed_cpu / observed_wall / elapsed_*_at_least) are
+// Int today: the declared gap `required_floor` `flat_scalar_millisecond_fields_dissolve_on` (no
+// verified Int/Nat bridge to `std.measure` Millisecond). They convert together with those fields
+// when that condition is met; converting only here would add an unverified bridge (review 85268). `reach` and
 // `reach_operations` are the receipt's reachability observation (see `parse_preemption_reach`).
 type OutcomeRow {
   qualified: String
