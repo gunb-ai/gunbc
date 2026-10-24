@@ -3333,48 +3333,97 @@ fn rust_phantom_zst_marker_def(vname: String, indexed: Bool) -> String {
   )
 }
 
-// A UNIT VARIANT'S PHANTOM MARKER IS SHADOWED BY ANY TYPE THE SAME MODULE DECLARES UNDER THAT NAME,
-// and the type DEFINITION is one of them. The marker stands for the variant at a type position; a
-// type-position reference to a name the module declares as a type resolves to that declaration, so
-// the marker names nothing and is a second item of one name. gunbc.roadmap.roadmap_model declares
-// the records `type AcceptanceNodeReopensActiveFrontier {}` and `type AcceptanceNodeRemainsSuperseded {}`
-// and the coproduct AcceptanceRevocationDisposition whose arms carry those names; the predicate
-// recognized aliases and opaque declarations but not definitions, so each record was emitted twice
-// (rustc E0428, and E0119 on every derive; class 1 of stern-bat-401's emitter-debt list). The
-// comparison is over this module's own items, where a name is the declaration's identity.
-fn phantom_marker_name_shadowed_by_real_type_item(items: List<Node>, source_indices: Map<String, NewlineIndex>, vname: String) -> Bool {
-  items |> any(item =>
-    authored_name_at(source_indices: source_indices, node: item) == vname
-    && (is_type_def_item(item: item) || is_type_alias_item(item: item, source_indices: source_indices) || is_type_decl_item(item: item, source_indices: source_indices))
-  )
+// WHETHER A COPRODUCT ARM OWES A PHANTOM ZST MARKER IS DECIDED BY IDENTITY, NEVER BY SPELLING. The
+// marker (`pub struct X;`) stands for a unit variant at a type position, so it is owed exactly when
+// the arm IS a unit variant: its reference resolves to no type declaration
+// (resolve_type_decl_reference over EmitGraphInfo.type_decl_items, the identity-keyed index class 2's
+// record_literal_phantom_field reads), AND the closure's unit-variant index names this very arm, by
+// its declaring span, as the one variant of that name used at a type position. An arm that resolves
+// to a declaration denotes that declaration, which is emitted where it is declared, so a marker would
+// be a second item of one name: gunbc.roadmap.roadmap_model's coproduct
+// AcceptanceRevocationDisposition has arms naming its own records AcceptanceNodeReopensActiveFrontier
+// and AcceptanceNodeRemainsSuperseded, and each record was emitted twice (rustc E0428, and E0119 on
+// every derive; class 1 of stern-bat-401's emitter-debt list). The name comparison this replaces
+// treated "no same-named item" as proof the marker was valid. An ambiguous or kernel-undecided
+// reference, unavailable variant evidence, or variant evidence naming a different node is not that
+// proof either: each refuses, located, rather than emitting or dropping the marker.
+type PhantomMarkerDecision
+  = PhantomMarkerOwed { indexed: Bool }
+  | PhantomMarkerArmDenotesDeclaration
+  | PhantomMarkerNotDemanded
+  | PhantomMarkerUndecided { cause: String }
+
+fn phantom_marker_decision(coproduct: Node, arm: Node, vname: String, env: TypeEnv, emit_info: EmitGraphInfo) -> PhantomMarkerDecision {
+  match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: arm, source_indices: env.source_indices) {
+    TypeDeclResolved { identity: _, decl: _ } => PhantomMarkerArmDenotesDeclaration
+    TypeDeclLeafAmbiguous { leaf: leaf } => PhantomMarkerUndecided { cause: concat("more than one declaration of ", leaf) }
+    TypeDeclKernelSpellingUndecided { leaf: leaf } => PhantomMarkerUndecided { cause: concat("kernel spelling undecided for ", leaf) }
+    TypeDeclNotDeclared =>
+      match lookup_unit_variant_phantom_type(env: env, variant_name: vname) {
+        UnitVariantPhantomPresent { variant: variant } =>
+          if declaring_span_key(sp: variant.span) == declaring_span_key(sp: arm.span) {
+            PhantomMarkerOwed { indexed: is_static_width_index_arm(env: env, coproduct: coproduct, variant_name: vname) }
+          } else { PhantomMarkerUndecided { cause: "the unit-variant index names a different variant of this name" } }
+        UnitVariantPhantomAbsent => PhantomMarkerNotDemanded
+        UnitVariantPhantomEvidenceUnavailable => PhantomMarkerUndecided { cause: "unit-variant evidence unavailable" }
+      }
+  }
 }
 
-// One marker per distinct variant name; `indexed` is decided by the declaring coproduct's identity.
-type PhantomZstMarker {
-  name: String
-  indexed: Bool
+// One row per distinct variant name: the marker it owes, or the located refusal.
+type PhantomZstMarker
+  = PhantomZstMarkerOwed { name: String, indexed: Bool }
+  | PhantomZstMarkerRefused { name: String, cause: String }
+
+fn phantom_zst_marker_name(marker: PhantomZstMarker) -> String {
+  match marker {
+    PhantomZstMarkerOwed { name: name, indexed: _ } => name
+    PhantomZstMarkerRefused { name: name, cause: _ } => name
+  }
 }
 
-fn collect_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> List<PhantomZstMarker> {
+fn collect_phantom_zst_markers(items: List<Node>, env: TypeEnv, emit_info: EmitGraphInfo) -> List<PhantomZstMarker> {
   items
     |> filter(item => is_type_def_item(item: item) && item.children |> all(c => c.children |> count == 0))
     |> fold(init: [], f: (acc, item) =>
       fold(item.children, init: acc, f: (inner, child) =>
         if child.children |> count == 0 {
           let vname = authored_name(env: env, node: child)
-          if is_phantom_unit_variant_type_arg(env: env, variant_name: vname)
-            && !(inner |> any(m => m.name == vname))
-            && !phantom_marker_name_shadowed_by_real_type_item(items: items, source_indices: env.source_indices, vname: vname) {
-            concat(inner, [PhantomZstMarker { name: vname, indexed: is_static_width_index_arm(env: env, coproduct: item, variant_name: vname) }])
-          } else { inner }
+          if inner |> any(m => phantom_zst_marker_name(marker: m) == vname) { inner }
+          else {
+            match phantom_marker_decision(coproduct: item, arm: child, vname: vname, env: env, emit_info: emit_info) {
+              PhantomMarkerOwed { indexed: indexed } => concat(inner, [PhantomZstMarkerOwed { name: vname, indexed: indexed }])
+              PhantomMarkerUndecided { cause: cause } => concat(inner, [PhantomZstMarkerRefused { name: vname, cause: cause }])
+              PhantomMarkerArmDenotesDeclaration => inner
+              PhantomMarkerNotDemanded => inner
+            }
+          }
         } else { inner }
       )
     )
 }
 
-fn emit_module_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> String {
-  collect_phantom_zst_markers(items: items, env: env)
-    |> map(m => rust_phantom_zst_marker_def(vname: m.name, indexed: m.indexed))
+fn phantom_zst_marker_owed_name(marker: PhantomZstMarker) -> List<String> {
+  match marker {
+    PhantomZstMarkerOwed { name: name, indexed: _ } => [name]
+    PhantomZstMarkerRefused { name: _, cause: _ } => []
+  }
+}
+
+fn phantom_zst_marker_owed_names(markers: List<PhantomZstMarker>) -> List<String> {
+  markers |> flat_map(m => phantom_zst_marker_owed_name(marker: m))
+}
+
+fn rust_phantom_zst_marker_item(marker: PhantomZstMarker) -> String {
+  match marker {
+    PhantomZstMarkerOwed { name: name, indexed: indexed } => rust_phantom_zst_marker_def(vname: name, indexed: indexed)
+    PhantomZstMarkerRefused { name: name, cause: cause } => emit_rust_compile_error_item(message: concat("whether unit variant ", name, " owes a phantom marker is undecided: ", cause))
+  }
+}
+
+fn emit_module_phantom_zst_markers(items: List<Node>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+  collect_phantom_zst_markers(items: items, env: env, emit_info: emit_info)
+    |> map(m => rust_phantom_zst_marker_item(marker: m))
     |> join(separator: "\n")
 }
 
@@ -5742,7 +5791,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
         || is_type_decl_item(item: item, source_indices: scope.type_env.source_indices)
       )
       |> map(item => authored_name(env: scope.type_env, node: item)),
-    collect_phantom_zst_markers(items: typed_module.items, env: scope.type_env) |> map(m => m.name)
+    phantom_zst_marker_owed_names(markers: collect_phantom_zst_markers(items: typed_module.items, env: scope.type_env, emit_info: emit_info))
   )
   let module_import_items = module_imports(n: m)
   let this_module_name = authored_name(env: scope.type_env, node: m)
@@ -5822,7 +5871,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let coproduct_wire_contract_validation_section = if coproduct_wire_contract_validations == "" { "" } else { concat(coproduct_wire_contract_validations, "\n\n") }
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
-  let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env)
+  let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env, emit_info: emit_info)
   let phantom_section = if phantom_zst_markers == "" { "" } else { concat("\n\n", phantom_zst_markers) }
   let module_emit_path = rust_module_emit_path(module_name: authored_name(env: scope.type_env, node: m))
   let module_attrs = if authored_name(env: scope.type_env, node: m) == "std.error_primitives" {
