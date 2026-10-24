@@ -1,10 +1,16 @@
 module test.claim.compute.attempt_discharge_wet_witness
 
-import gunbc.filesystem_interface { local_filesystem }
-import gunbc.durable_cas_file_store { file_slot_store_over }
+import gunbc.durable_cas_file_store { SlotStore }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.compute.compute_attempt_slots_root {
+  ComputeSeat, ComputeDispatchSeat, compute_seat_path, compute_seat_holder_line,
+  ComputeSeatStore, compute_seat_store, ComputeSeatStoreReady, ComputeSeatStoreUnready,
+}
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.algebra { trim, string_contains }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.durable_compare_and_set { cas_generation_first }
@@ -21,8 +27,8 @@ import gunbc.compute.attempt_lifecycle {
   AttemptTransition, AttemptAdvanced, attempt_open, attempt_begin_launch, attempt_terminate,
 }
 import gunbc.compute.work_provider_local {
-  UnitLifecycleSource, SuppliedUnitLifecycle, SuppliedStoppableUnit, compute_lease_holder_line, compute_reservation_reference, compute_seat_dir,
-  compute_open_attempt_minted, ComputeLayout, ComputeRecoverRoots, RecoverRootsFound, RecoverRootsUnreadable, compute_recover_roots, AttemptGate, AttemptGateReady, AttemptGateRefused, compute_open_retry_attempt,
+  UnitLifecycleSource, SuppliedUnitLifecycle, SuppliedStoppableUnit, compute_reservation_reference,
+  compute_open_attempt_minted, ComputeRecoverSeats, RecoverSeatsFound, RecoverSeatsUnreadable, compute_recover_seats, AttemptGate, AttemptGateReady, AttemptGateRefused, compute_open_retry_attempt,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
@@ -67,13 +73,44 @@ fn subject_at(root: String) -> ComputeCapacitySubject {
   }
 }
 
-// THE SEAT LOCATION FOLLOWS THE OWNER: the dispatch attempt's slot store is its own directory.
+// THE SEAT LOCATION FOLLOWS THE OWNER: the dispatch attempt's slot store is its own directory. The stores are
+// the production mint (gunbc.compute.compute_attempt_slots_root compute_seat_store) over an instance rooted in
+// the witness's own directory, so every step reads a store minted from a real observation of its seat.
+fn instance_at(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "seat-discharge-wet" as NonEmptyStr),
+    instance_id: "seat-discharge-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
 fn attempts_at(root: String) -> NonEmptyStr {
   seat_dir_of(root: root, key: "key-a")
 }
 
 fn seat_dir_of(root: String, key: String) -> NonEmptyStr {
-  compute_seat_dir(attempts_dir: trim(s: root), owner: DispatchOwned { node_id: "node-a", attempt_key: key })
+  compute_seat_path(instance: instance_at(root: root), seat: ComputeDispatchSeat { attempt_key: key })
+}
+
+fn seat_at(root: String, key: String) -> ComputeSeatStore? {
+  match compute_seat_store(instance: instance_at(root: root), seat: ComputeDispatchSeat { attempt_key: key }) {
+    ComputeSeatStoreReady { store } => Present { value: store }
+    ComputeSeatStoreUnready { detail: _ } => none
+  }
+}
+
+// A seat whose store the mint refuses answers false, so no control reads an unready store as green.
+fn with_seat(root: String, key: String, f: fn(SlotStore) -> Bool) -> Bool {
+  match seat_at(root: root, key: key) {
+    Absent => false
+    Present { value: seat } => f(seat.slots)
+  }
 }
 
 fn made(path: String) -> Bool {
@@ -130,25 +167,25 @@ fn committed(subject: ComputeCapacitySubject) -> Int {
 }
 
 fn opened(root: String, reference: String, owner: AttemptOwner) -> Bool {
-  made(path: attempts_at(root: root) as String) && match attempt_open(store: file_slot_store_over(fs: local_filesystem, root: attempts_at(root: root)), record: record_of(reference: reference, state: AttemptReserved, owner: owner)) {
+  made(path: attempts_at(root: root) as String) && with_seat(root: root, key: "key-a", f: slots => match attempt_open(store: slots, record: record_of(reference: reference, state: AttemptReserved, owner: owner)) {
     AttemptAdvanced { state: _, generation: _ } => true
     _ => false
-  }
+  })
 }
 
 fn launching(root: String, reference: String) -> Bool {
-  launching_in(dir: attempts_at(root: root), reference: reference)
+  launching_in(root: root, key: "key-a", reference: reference)
 }
 
-fn launching_in(dir: NonEmptyStr, reference: String) -> Bool {
-  match attempt_slot_read(store: file_slot_store_over(fs: local_filesystem, root: dir), reference: reference as NonEmptyStr) {
+fn launching_in(root: String, key: String, reference: String) -> Bool {
+  with_seat(root: root, key: key, f: slots => match attempt_slot_read(store: slots, reference: reference as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: g } =>
-      match attempt_begin_launch(store: file_slot_store_over(fs: local_filesystem, root: dir), reference: rec.reference as NonEmptyStr, expected: g) {
+      match attempt_begin_launch(store: slots, reference: rec.reference as NonEmptyStr, expected: g) {
         AttemptAdvanced { state: _, generation: _ } => true
         _ => false
       }
     _ => false
-  }
+  })
 }
 
 fn ended() -> UnitLifecycleSource {
@@ -173,7 +210,7 @@ fn leases_at(root: String) -> String {
 
 // THE PRODUCER LEASE of the fixture record (identity feedfacefeedface), written as the provider writes it.
 fn lease_held(root: String) -> Bool {
-  lease_written(root: root, content: join([compute_lease_holder_line(seat_dir: attempts_at(root: root) as String), "abc 1\n"], ""))
+  lease_written(root: root, content: join([compute_seat_holder_line(instance: instance_at(root: root), seat: ComputeDispatchSeat { attempt_key: "key-a" }), "abc 1\n"], ""))
 }
 
 fn lease_written(root: String, content: String) -> Bool {
@@ -186,7 +223,10 @@ fn lease_listed(root: String) -> Bool {
 
 fn ensure_owner(root: String, reference: String, source: UnitLifecycleSource, owner: SeatOwnerStanding) -> SeatEnsureOutcome {
   if made(path: leases_at(root: root)) {
-    compute_seat_ensure_in(attempts_root: attempts_at(root: root), leases_dir: leases_at(root: root), subject: subject_at(root: root), reference: reference as NonEmptyStr, source: source, owner: owner)
+    match seat_at(root: root, key: "key-a") {
+      Absent => SeatEnsureRefused { reference: reference, reason: "the fixture's seat store could not be minted" }
+      Present { value: seat } => compute_seat_ensure_in(instance: instance_at(root: root), store: seat, leases_dir: leases_at(root: root), subject: subject_at(root: root), reference: reference as NonEmptyStr, source: source, owner: owner)
+    }
   } else {
     SeatEnsureRefused { reference: reference, reason: "the fixture could not create its leases directory" }
   }
@@ -209,10 +249,7 @@ fn is_refused(o: SeatEnsureOutcome) -> Bool {
 }
 
 fn is_terminal(root: String, reference: String) -> Bool {
-  match attempt_slot_read(store: file_slot_store_over(fs: local_filesystem, root: attempts_at(root: root)), reference: reference as NonEmptyStr) {
-    AttemptSlotHeld { record: rec, generation: _ } => match rec.state { AttemptTerminal { verdict: _, detail: _ } => true  _ => false }
-    _ => false
-  }
+  is_terminal_in(root: root, key: "key-a", reference: reference)
 }
 
 // THE REGRESSION CONTROL, ENROLLED AND PERMANENT: the failure state itself. A killed attempt's seat is
@@ -335,14 +372,14 @@ fn a_kill_after_settle_before_release_is_discharged_from_the_terminal_record_cel
   let ok = opened(root: root, reference: "r-set", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-set")
     && launching(root: root, reference: "r-set")
-  let settled = match attempt_slot_read(store: file_slot_store_over(fs: local_filesystem, root: attempts_at(root: root)), reference: "r-set" as NonEmptyStr) {
+  let settled = with_seat(root: root, key: "key-a", f: slots => match attempt_slot_read(store: slots, reference: "r-set" as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: g } =>
-      match attempt_terminate(store: file_slot_store_over(fs: local_filesystem, root: attempts_at(root: root)), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
+      match attempt_terminate(store: slots, reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
         AttemptAdvanced { state: _, generation: _ } => true
         _ => false
       }
     _ => false
-  }
+  })
   ok && settled
     && committed(subject: subject) == granted_kib
     && is_released(o: ensure(root: root, reference: "r-set", source: ended()))
@@ -382,7 +419,7 @@ fn a_reference_no_record_names_is_refused_and_nothing_is_released_cell(root: Str
 }
 
 fn driver_outcomes(root: String, source: UnitLifecycleSource) -> List<SeatEnsureOutcome> {
-  match compute_seat_discharge_all(instance_root: root, attempts_dir: trim(s: root), leases_dir: leases_at(root: root), subject: subject_at(root: root), source: source) {
+  match compute_seat_discharge_all(instance: instance_at(root: root), leases_dir: leases_at(root: root), subject: subject_at(root: root), source: source) {
     SeatDischargeRan { outcomes: os } => os
     SeatDischargeSkipped { why: _ } => [] as List<SeatEnsureOutcome>
     SeatDischargeRefused { reason: r } => [SeatEnsureRefused { reference: "", reason: r }]
@@ -459,14 +496,14 @@ fn a_terminal_record_releases_only_when_the_unit_is_proven_ended_cell(root: Stri
   let ok = opened(root: root, reference: "r-tm", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-tm")
     && launching(root: root, reference: "r-tm")
-  let settled = match attempt_slot_read(store: file_slot_store_over(fs: local_filesystem, root: attempts_at(root: root)), reference: "r-tm" as NonEmptyStr) {
+  let settled = with_seat(root: root, key: "key-a", f: slots => match attempt_slot_read(store: slots, reference: "r-tm" as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: g } =>
-      match attempt_terminate(store: file_slot_store_over(fs: local_filesystem, root: attempts_at(root: root)), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
+      match attempt_terminate(store: slots, reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
         AttemptAdvanced { state: _, generation: _ } => true
         _ => false
       }
     _ => false
-  }
+  })
   ok && settled
     && is_refused(o: ensure(root: root, reference: "r-tm", source: unknown()))
     && committed(subject: subject) == granted_kib
@@ -506,27 +543,27 @@ fn a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory_cel
   let subject = subject_at(root: root)
   let other_dir = seat_dir_of(root: root, key: "key-b") as String
   let other_open = made(path: other_dir)
-    && match attempt_open(store: file_slot_store_over(fs: local_filesystem, root: seat_dir_of(root: root, key: "key-b")), record: record_of(reference: "r-b", state: AttemptReserved, owner: DispatchOwned { node_id: "node-a", attempt_key: "key-b" })) {
+    && with_seat(root: root, key: "key-b", f: slots => match attempt_open(store: slots, record: record_of(reference: "r-b", state: AttemptReserved, owner: DispatchOwned { node_id: "node-a", attempt_key: "key-b" })) {
       AttemptAdvanced { state: _, generation: _ } => true
       _ => false
-    }
+    })
   opened(root: root, reference: "r-a", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-a")
     && launching(root: root, reference: "r-a")
     && other_open
     && reserved(subject: subject, reference: "r-b")
-    && launching_in(dir: seat_dir_of(root: root, key: "key-b"), reference: "r-b")
+    && launching_in(root: root, key: "key-b", reference: "r-b")
     && exit_recorded(root: root, key: "key-a")
     && count(driver_outcomes(root: root, source: stoppable())) == 2
     && committed(subject: subject) == granted_kib
-    && !is_terminal_in(dir: seat_dir_of(root: root, key: "key-b"), reference: "r-b")
+    && !is_terminal_in(root: root, key: "key-b", reference: "r-b")
 }
 
-fn is_terminal_in(dir: NonEmptyStr, reference: String) -> Bool {
-  match attempt_slot_read(store: file_slot_store_over(fs: local_filesystem, root: dir), reference: reference as NonEmptyStr) {
+fn is_terminal_in(root: String, key: String, reference: String) -> Bool {
+  with_seat(root: root, key: key, f: slots => match attempt_slot_read(store: slots, reference: reference as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: _ } => match rec.state { AttemptTerminal { verdict: _, detail: _ } => true  _ => false }
     _ => false
-  }
+  })
 }
 
 // THE RESERVATION REFERENCE IS THE OWNER'S IDENTITY PLUS A RECORDED ORDINAL, NEVER A CLOCK: the same
@@ -696,7 +733,7 @@ fn another_attempts_lease_survives_this_attempts_discharge_cell(root: String) ->
     && reserved(subject: subject, reference: "r-oa")
     && launching(root: root, reference: "r-oa")
     && is_released(o: ensure(root: root, reference: "r-oa", source: ended()))
-    && lease_written(root: root, content: join([compute_lease_holder_line(seat_dir: seat_dir_of(root: root, key: "key-b") as String), "abc 1\n"], ""))
+    && lease_written(root: root, content: join([compute_seat_holder_line(instance: instance_at(root: root), seat: ComputeDispatchSeat { attempt_key: "key-b" }), "abc 1\n"], ""))
     && is_noop(o: ensure(root: root, reference: "r-oa", source: ended()))
     && lease_listed(root: root)
 }
@@ -729,7 +766,7 @@ test fn a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed()
 }
 
 fn a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed_cell(root: String) -> Bool {
-  match compute_seat_discharge_all(instance_root: root, attempts_dir: join([trim(s: root), "/no-such-attempts-dir"], ""), leases_dir: leases_at(root: root), subject: subject_at(root: root), source: ended()) {
+  match compute_seat_discharge_all(instance: instance_at(root: absent_of(root: root)), leases_dir: leases_at(root: root), subject: subject_at(root: root), source: ended()) {
     SeatDischargeRefused { reason: _ } => true
     SeatDischargeRan { outcomes: _ } => false
     SeatDischargeSkipped { why: _ } => false
@@ -744,15 +781,8 @@ test fn a_refused_pass_is_its_own_standing_not_a_seat_refusal() -> Bool {
   }
 }
 
-fn layout_at(root: String) -> ComputeLayout {
-  ComputeLayout {
-    root: root, work_dir: "", checkout: "", out_dir: "", leases_dir: "", lease_path: "", staging_dir: "",
-    target_dir: "", log_path: "", consumption_path: "", attempts_dir: trim(s: root),
-  }
-}
-
 fn retried(root: String, first: AttemptGate) -> AttemptGate {
-  compute_open_retry_attempt(layout: layout_at(root: root), identity: "feedfacefeedface", reference: "r-a#2" as NonEmptyStr, granted: kibibyte(count: granted_kib), first: first)
+  compute_open_retry_attempt(instance: instance_at(root: root), identity: "feedfacefeedface", reference: "r-a#2" as NonEmptyStr, granted: kibibyte(count: granted_kib), first: first)
 }
 
 // A CEILING RETRY INHERITS THE FIRST ATTEMPT'S RECORDED OWNER OR IS REFUSED: it never mints one.
@@ -780,7 +810,7 @@ fn a_ceiling_retry_inherits_the_recorded_owner_and_is_refused_without_one_cell(r
 }
 
 fn minted_reference(root: String, key: String) -> String {
-  match compute_open_attempt_minted(layout: layout_at(root: root), identity: "feedfacefeedface", granted: kibibyte(count: granted_kib), owner: DispatchOwned { node_id: "node-a", attempt_key: key }, ordinal: 1) {
+  match compute_open_attempt_minted(instance: instance_at(root: root), identity: "feedfacefeedface", granted: kibibyte(count: granted_kib), owner: DispatchOwned { node_id: "node-a", attempt_key: key }, ordinal: 1) {
     AttemptGateReady { record: r, generation: _ } => r.reference as String
     AttemptGateRefused { detail: _ } => ""
   }
@@ -829,18 +859,17 @@ test fn the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadab
 fn the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadable_attempts_directory_cell(root: String) -> Bool {
   let made_dirs = made(path: seat_dir_of(root: root, key: "key-a") as String) && made(path: seat_dir_of(root: root, key: "key-b") as String)
   let a = minted_reference(root: root, key: "key-a")
-  let want = seat_dir_of(root: root, key: "key-a") as String
-  let found = made_dirs && a != "" && match compute_recover_roots(attempts_root: root, reference: a as NonEmptyStr) {
-    RecoverRootsFound { at_flat: f, dispatch_roots: rs } => !f && count(rs) == 1 && any(rs, r => r == want)
-    RecoverRootsUnreadable { reason: _ } => false
+  let found = made_dirs && a != "" && match compute_recover_seats(instance: instance_at(root: root), reference: a as NonEmptyStr) {
+    RecoverSeatsFound { holders: hs } => count(hs) == 1 && all(hs, h => match h.seat { ComputeDispatchSeat { attempt_key: k } => k == "key-a"  _ => false })
+    RecoverSeatsUnreadable { reason: _ } => false
   }
-  let nothing = match compute_recover_roots(attempts_root: root, reference: "no-such#1" as NonEmptyStr) {
-    RecoverRootsFound { at_flat: f, dispatch_roots: rs } => !f && count(rs) == 0
-    RecoverRootsUnreadable { reason: _ } => false
+  let nothing = match compute_recover_seats(instance: instance_at(root: root), reference: "no-such#1" as NonEmptyStr) {
+    RecoverSeatsFound { holders: hs } => count(hs) == 0
+    RecoverSeatsUnreadable { reason: _ } => false
   }
-  let refused = match compute_recover_roots(attempts_root: absent_of(root: root), reference: a as NonEmptyStr) {
-    RecoverRootsUnreadable { reason: _ } => true
-    RecoverRootsFound { at_flat: _, dispatch_roots: _ } => false
+  let refused = match compute_recover_seats(instance: instance_at(root: absent_of(root: root)), reference: a as NonEmptyStr) {
+    RecoverSeatsUnreadable { reason: _ } => true
+    RecoverSeatsFound { holders: _ } => false
   }
   found && nothing && refused
 }

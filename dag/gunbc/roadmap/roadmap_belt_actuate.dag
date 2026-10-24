@@ -390,7 +390,7 @@ import gunbc.compute.compute_seat_ensure {
 import gunbc.compute.work_provider_local {
   compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
   provide_result_host_record, host_record_was_written, host_record_wire,
-  compute_attempts_root, compute_leases_root, ObserveUnitLifecycle,
+  compute_leases_root, ObserveUnitLifecycle,
 }
 import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
   SharedComputationCitation, ComputationAttached, ComputationComputed,
@@ -1843,8 +1843,7 @@ fn belt_compute_seat_discharge_pass(instance: HostDashboardInstance) -> SeatDisc
     ComputeSubjectHostUnresolved { host: h } => SeatDischargeRefused { reason: join(["no capacity subject resolves for host ", h as String], "") }
     ComputeSubjectResolved { subject: subj } =>
       compute_seat_discharge_all(
-        instance_root: instance.instance_root as String,
-        attempts_dir: compute_attempts_root(instance: instance) as String,
+        instance: instance,
         leases_dir: compute_leases_root(instance: instance),
         subject: subj,
         source: ObserveUnitLifecycle)
