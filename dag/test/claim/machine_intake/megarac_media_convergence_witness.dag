@@ -981,14 +981,16 @@ test fn an_unconfirmed_handoff_is_reported_as_attempted() -> Bool {
   count(findings) == 1 && (match findings.first() { Present { value: f } => string_contains(s: f, pattern: "attempted and not confirmed")  Absent => false })
 }
 
-// The raw, timed settings read reaches the rendered artifact.
+// The raw, timed settings read reaches the rendered artifact, bound to readiness: the code before any
+// write differs (16), so a render that swapped the two fields or dropped the timestamp reds. A nonzero
+// code renders as observed with no meaning, the standing MegaRacCdErrorCode gives every nonzero value.
 test fn the_rendered_artifact_keeps_the_raw_timed_settings_at_readiness() -> Bool {
   let rendered = media_attach_text(record: attempted(result: MegaRacAttachResult {
-    outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_42, cd_at_ready: cd_42, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) },
+    outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_16, cd_at_ready: cd_42, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) },
     session_release: SessionReleased,
     baseline: none,
   }))
-  string_contains(s: rendered, pattern: "13100") && string_contains(s: rendered, pattern: "42 (uncatalogued)")
+  string_contains(s: rendered, pattern: "and at readiness 42 (observed; no meaning established) (general settings answered at 13100: ")
 }
 
 // THE VERDICT IS THE TYPED EXIT CODE, NOT STDERR WORDING (review 71971): a complete HTTP error with
