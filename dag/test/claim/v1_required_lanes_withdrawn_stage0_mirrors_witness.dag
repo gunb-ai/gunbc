@@ -1,0 +1,36 @@
+module test.claim.v1_required_lanes_withdrawn_stage0_mirrors_witness
+
+import std.types { Bool, List, String }
+import std.algebra { length }
+import gunbc.rung_drop.v1_required_lanes_withdrawn { v1_required_lanes_withdrawn_stage0_partition_mirrors }
+import gunbc.stage0.stage0_rust_source_lifecycle_scaffold { stage0_src_repo_prefix }
+import gunbc.stage0.stage0_crate_partition_generated { generated_partition_crate_rows }
+
+// THE DEFECT THIS EXISTS FOR: `std_decimal.rs` sat behind its `.dag` source on main because the one
+// verdict that compares stage0 mirrors with a seed emission (`claim_executor --required-regen`) runs
+// in no job, and the drop that declares the loss named the class in prose without its members. A
+// reader of `v1_required_lanes_withdrawn` could not tell which files nothing judges.
+
+fn population_mentions(path: String) -> Bool {
+  length(xs: filter(v1_required_lanes_withdrawn_stage0_partition_mirrors(), e => e.repo_path == path)) == 1
+}
+
+// RED: the partition mirror whose drift motivated the enrolment is a member BY NAME, exactly once.
+// Deleting the derivation, or reading a roster that lost the module, makes this false.
+test fn the_drifted_partition_mirror_is_enrolled_by_name() -> Bool {
+  population_mentions(path: "src/v1/stage0/src/std_decimal.rs")
+}
+
+// CONTROL: a hand-maintained stage0 file is not a partition module and must not be enrolled. A
+// derivation that enrolled the directory instead of the roster would make this false, so the
+// first claim cannot be satisfied by listing every file.
+test fn a_hand_maintained_stage0_file_is_not_enrolled() -> Bool {
+  length(xs: filter(v1_required_lanes_withdrawn_stage0_partition_mirrors(), e => e.repo_path == "src/v1/stage0/src/main.rs")) == 0
+}
+
+// THE JOIN IS TOTAL: every roster module is a member EXACTLY ONCE, though several crates list the
+// same module (a module listed twice in the roster must stay one mirror, not two members).
+test fn every_roster_module_is_enrolled_exactly_once() -> Bool {
+  let mods = flat_map(generated_partition_crate_rows, r => r.modules)
+  length(xs: filter(mods, m => population_mentions(path: concat(stage0_src_repo_prefix, concat(m, ".rs"))))) == length(xs: mods)
+}
