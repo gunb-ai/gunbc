@@ -24,9 +24,9 @@
 //     runs between counter snapshots and requires the delta to be zero. The positive control in
 //     `a_whole_graph_render_really_moves_the_counter` proves neither counter is stuck at zero: it
 //     drives all three shapes through the same seam -- the census's own empty-selection shape
-//     (moves neither, emits nothing), a whole-graph request (moves the whole-graph counter by
-//     exactly one), and a non-empty selected-basenames request (moves the selected counter by
-//     exactly one) -- so a counter wired to nothing cannot pass this file either.
+//     (moves neither counter), a whole-graph request (moves the whole-graph counter by exactly
+//     one), and a non-empty selected-basenames request (moves the selected counter by exactly
+//     one) -- so a counter wired to nothing cannot pass this file either.
 //
 // RUNG, stated honestly (same rule this branch's measurement test learned; review 84038): this is
 // a cargo integration test in the v1 seed, and NO CI STEP RUNS IT -- the required path runs no v1
@@ -245,10 +245,15 @@ fn a_whole_graph_render_really_moves_the_counter() {
 
     // Leg 1: the census route's own shape -- a `RenderSelectedMirrors` with no basenames -- moves
     // NEITHER counter. This is the request `compile_fixture_rendering_nothing` makes, so the
-    // census-side zeros above are the same shape proven here, not an absence of evidence.
+    // census-side zeros above are the same shape proven here, not an absence of evidence. No file
+    // assertion here on purpose: an empty selection still emits the artifact scaffold (the
+    // selection gates which MODULES render, not whether the artifact exists -- see
+    // `selected_artifact_plan`), so "the census emitted no module files" is a claim about the
+    // census rows' content, which the per-census tests already pin, not about these counters.
+    // Legs 2 and 3 carry the not-stuck-at-zero proof by moving their counters exactly one.
     let before = every_module_render_calls();
     let selected_before = non_empty_selected_render_calls();
-    let empty_selected = emit_resolved_for_target_counting(
+    let _empty_selected = emit_resolved_for_target_counting(
         resolved.clone(),
         RenderTarget::Rust,
         Rc::new(RustModuleRenderSelection::RenderSelectedMirrors {
@@ -265,11 +270,6 @@ fn a_whole_graph_render_really_moves_the_counter() {
         non_empty_selected_render_calls() - selected_before,
         0,
         "an empty-basenames render moved the non-empty-selected counter"
-    );
-    assert!(
-        empty_selected.files.is_empty(),
-        "the census route's own render shape emitted files, so the route's zero-file claim is \
-         false and the counters would be counting a render that emits"
     );
 
     // Leg 2: a whole-graph request through the same seam moves the whole-graph counter by exactly
