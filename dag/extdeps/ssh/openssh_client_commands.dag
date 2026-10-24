@@ -63,6 +63,17 @@ fn ssh_keygen_public_key_command(identity_file: String) -> ArgvCommand {
   argv_command(program: ssh_keygen_program(), arguments: ["-y", "-f", identity_file])
 }
 
+// THE MINT LEG of a keypair: ed25519, no passphrase (-N '') and quiet. The minting party supplies
+// ONLY the destination path and a comment; the private half is what the tool writes there and what
+// the operator then feeds to upload over stdin -- it never enters any argument of this command
+// (rule Q1). The comment is the key's label, not key material.
+fn ssh_keygen_ed25519_mint_command(key_file: String, comment: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: ssh_keygen_program(),
+    arguments: ["-t", "ed25519", "-f", key_file, "-N", "", "-C", comment as String, "-q"],
+  )
+}
+
 // -l prints the FINGERPRINT of the key in the named file, rather than the key. A fingerprint is what
 // a human compares and what a receipt records; the key itself is what gets installed. Two different
 // products, so two different builders.
