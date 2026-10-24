@@ -14,6 +14,8 @@ import gunbc.host.physical_machine_binding {
   PhysicalMachineRefused,
   PhysicalMachineHostAllocationMismatch,
   PhysicalMachineControlSubjectMismatch,
+  PhysicalMachineAllocationVerified,
+  PhysicalMachineAllocationUnobserved,
   physical_machine_admission,
   receipt_applies_to_binding,
 }
@@ -29,6 +31,7 @@ import gunbc.machine_intake.subject {
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
 import gunbc.fleet.fleet_host_backing { OwnedMachine, OwnedProvisioning, Bmc, InstalledViaVirtualMedia }
+import gunbc.fleet.fleet_host_backing { HostUnitUnobserved, resolve_host_unit }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_key_standing,
   mtcollins1_assembly,
@@ -72,6 +75,17 @@ data red2_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   backing: OwnedMachine {
     provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
     unit: Present { value: UnitKeyBound { key: unit_b } },
+  },
+}
+
+// The SAME host enrolled with its allocation RESOLVED to the very unit being admitted: the RED2
+// check ran on real data and passed. The discriminating control for the frontier-carrier claims.
+data red2_enrollment_resolved_same: HostEnrollmentIntent = HostEnrollmentIntent {
+  host: operator_host_mtcollins1,
+  participation: [],
+  backing: OwnedMachine {
+    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    unit: Present { value: UnitKeyBound { key: unit_a } },
   },
 }
 
@@ -203,5 +217,73 @@ test fn positive_mtcollins1_seals_with_bound_control_route() -> Bool {
         _ => false
       }
     Absent => false
+  }
+}
+
+// ---- the allocation frontier carrier (DESIGN section 4b: a class below ceiling names its
+// next-rung trigger, ON A CARRIER a consumer can read) ----
+
+// An enrolled host whose owned-machine allocation has NO board-serial observation yet -- the state
+// every srv row is actually in. The seal must still stand, and the owed read must be VISIBLE inside
+// the sealed subject, not dropped at the fold.
+data srv_style_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+  host: operator_host_mtcollins1,
+  participation: [],
+  backing: OwnedMachine {
+    provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia },
+    unit: Absent,
+  },
+}
+
+// The frontier TRAVELS: admission on an unobserved allocation admits, and the sealed fleet axis
+// carries the Unobserved standing with THE trigger the backing's own fold minted (the route, not a
+// phrase), so no consumer can mistake this seal for a passed allocation check.
+test fn w_the_unobserved_allocation_frontier_travels_inside_the_sealed_subject() -> Bool {
+  match resolve_host_unit(backing: srv_style_enrollment.backing) {
+    HostUnitUnobserved { trigger: minted } =>
+      match physical_machine_admission(
+        host: operator_host_mtcollins1,
+        unit_standing: UnitKeyBound { key: unit_a },
+        current_subject: Present { value: subject_for(unit_a) },
+        fleet: Present { value: srv_style_enrollment },
+        control: Absent,
+      ) {
+        PhysicalMachineAdmitted { binding } =>
+          match binding.fleet {
+            Present { value: axis } =>
+              match axis.allocation {
+                PhysicalMachineAllocationUnobserved { trigger } =>
+                  trigger.capability == minted.capability && trigger.awaiting == minted.awaiting
+                PhysicalMachineAllocationVerified => false
+              }
+            Absent => false
+          }
+        PhysicalMachineRefused { cause: _ } => false
+      }
+    _ => false
+  }
+}
+
+// The discrimination is real: when the allocation RESOLVES to this unit, RED2 actually ran and
+// passed, and the sealed fleet axis says Verified -- not a stale trigger, and not the Absent that
+// RED3 reserves for an unenrolled machine.
+test fn w_a_resolved_allocation_seals_with_no_owed_frontier() -> Bool {
+  match physical_machine_admission(
+    host: operator_host_mtcollins1,
+    unit_standing: UnitKeyBound { key: unit_a },
+    current_subject: Present { value: subject_for(unit_a) },
+    fleet: Present { value: red2_enrollment_resolved_same },
+    control: Absent,
+  ) {
+    PhysicalMachineAdmitted { binding } =>
+      match binding.fleet {
+        Present { value: axis } =>
+          match axis.allocation {
+            PhysicalMachineAllocationVerified => binding.unit_key == unit_a
+            PhysicalMachineAllocationUnobserved { trigger: _ } => false
+          }
+        Absent => false
+      }
+    PhysicalMachineRefused { cause: _ } => false
   }
 }
