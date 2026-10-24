@@ -109,10 +109,10 @@ pub use native_lane_runner::{
     run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
     run_self_host, run_type_declaration_use_census_runs, run_v2_census_verb, run_v2_native_census,
     run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier,
-    CensusInferRun, MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord,
-    NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun,
-    NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases,
-    NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
+    run_v2_select_spelled_modules, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
+    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
+    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
+    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
     TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
     MEASURED_SPAWN_RECEIPT_ENV,
 };
@@ -10853,7 +10853,7 @@ impl BudgetKind {
 /// the seam.
 ///
 /// FIVE `InterpError` VARIANTS ARE DELIBERATELY ABSENT. `HostToolUnresolved`,
-/// `HermeticHostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
+/// `HostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
 /// pre-mapped `EvaluationBudgetExceeded` each have their OWN `ClaimOutcome` arm and are consumed
 /// by earlier arms of the match in `run_claim`, so they cannot reach this classifier. They are
 /// not silently folded into a neighbour: all five map to `MappedOutcomeEscaped`, a typed,
@@ -10977,7 +10977,7 @@ impl WitnessRuntimeCause {
             E::FixtureRenderRefused { .. } => WitnessRuntimeCause::FixtureRenderRefused,
             // The five that should never arrive. See the type comment.
             E::HostToolUnresolved { .. }
-            | E::HermeticHostEffectRefused { .. }
+            | E::HostEffectRefused { .. }
             | E::EvalBudgetExceeded { .. }
             | E::WitnessWallBudgetExceeded { .. }
             | E::EvaluationBudgetExceeded { .. }
@@ -11067,7 +11067,7 @@ pub enum ClaimOutcome {
     /// execute it.
     HostEffectRefused {
         operation: String,
-        ground: v1_interpreter::HermeticEffectGround,
+        ground: v1_interpreter::EffectRefusalGround,
     },
     /// THE HOST UNWOUND. Not a `RuntimeError`: that arm carries an `InterpError` the evaluator
     /// RAISED and this runner CAUGHT, a value held in hand. A panic is the evaluator failing to
@@ -12857,8 +12857,14 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 // `_inner`), `CostPartitionRow`, `InclusiveCostRow`, `CostAccountingVerdict`,
 // `CostAccountingRefusal`, `ExclusiveCostPartition`, `exclusive_cost_partition`,
 // `exclusive_cost_partition_from`, `render_exclusive_cost_partition_json`, `json_num`, the
-// `exclusive_cost_partition_law` test module, and the three `[cost-partition]` emissions
-// (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`) — ~700 LOC incl. tests.
+// `exclusive_cost_partition_law` test module, `out_of_span_rows`, and the three
+// `[cost-partition]` emissions (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`)
+// — ~700 LOC incl. tests. The probe is no longer print-only in `claim_batch`: a Refused
+// verdict decides the batch exit (`NoSpans` -> 2, any other refusal -> 1), through the
+// third parameter of `claim_batch`'s `batch_exit_code` (an already-admitted declaration; no
+// new one), its call site in `main`, and the `a_refused_partition_joins_the_batch_exit` test.
+// At deletion the parameter, call-site argument and test go with the probe, and removing the
+// probe while they stand fails to compile.
 // Receipt: `rg -c cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs`
 // returns 4 while the scaffold stands (this block, the const, and its declaration test)
 // and must return 0 at deletion — the deletion is what the receipt checks, not a fixed
@@ -12968,6 +12974,13 @@ pub enum CostAccountingRefusal {
     NestedSpanAttribution { nested_spans: u64 },
     /// No resolve span ran on this thread — there is nothing to partition.
     NoSpans,
+    /// A stage's span-captured total exceeds the thread's total for it, so the two slot
+    /// accounts disagree and the out-of-span remainder does not exist.
+    InSpanExceedsThread {
+        stage: &'static str,
+        in_span_nanos: u128,
+        thread_nanos: u128,
+    },
 }
 
 /// An exclusive, non-overlapping accounting of the measured parent work.
@@ -12982,6 +12995,10 @@ pub struct ExclusiveCostPartition {
     pub spans: u64,
     pub nested_spans: u64,
     pub exclusive: Vec<CostPartitionRow>,
+    /// Stage time recorded outside every top-level resolve span (e.g. the whole-corpus
+    /// parse the edge index build forces before the first span opens). It is not part of
+    /// the parent, so it is never a row of the partition, but it is reported here, typed.
+    pub out_of_span: Vec<CostPartitionRow>,
     pub inclusive: Vec<InclusiveCostRow>,
     /// Parent minus the exclusive rows: the work inside a resolve span that no row claims.
     pub remainder_nanos: u128,
@@ -13035,14 +13052,84 @@ impl ExclusiveCostPartition {
 /// separate reason that they corrupt the slot the rows come from.
 pub fn exclusive_cost_partition() -> ExclusiveCostPartition {
     let account = resolve_span_account();
-    exclusive_cost_partition_from(
-        &resolve_stage_totals(),
-        "summed_top_level_resolve_span_nanos",
-        account.span_nanos,
-        account.spans,
-        account.nested_spans,
-        resolve_span_rows_by_entry(),
-    )
+    // THE ROWS ARE DRAWN FROM THE SAME UNIVERSE AS THE PARENT: the per-entry rows each
+    // span captured at its own exit. `resolve_stage_totals()` also holds every stage add
+    // made OUTSIDE a top-level span (the whole-corpus `pool_parse` is forced by the edge
+    // index build before the first span opens, so every in-span `pool_parse` is 0), and a
+    // child drawn from a larger universe than its parent is not a partition of it: the
+    // exclusive rows then summed past the span total by exactly the out-of-span parse.
+    let mut in_span = ResolveStageNanos::default();
+    for entry_rows in resolve_stage_rows_by_entry().values() {
+        in_span.accumulate(entry_rows);
+    }
+    let totals = resolve_stage_totals();
+    let basis = "summed_top_level_resolve_span_nanos";
+    let args = |st: &ResolveStageNanos| {
+        exclusive_cost_partition_from(
+            st,
+            basis,
+            account.span_nanos,
+            account.spans,
+            account.nested_spans,
+            resolve_span_rows_by_entry(),
+        )
+    };
+    let partition = args(&in_span);
+    // The out-of-span cost does not vanish by narrowing the universe: it is carried as its
+    // own typed rows beside the partition (totals minus the span-captured rows), never a
+    // child of the parent span and never summed into `sum_exclusive`.
+    let whole = args(&totals);
+    // A reversed universe is a refusal naming the stage, never a clamp to "no out-of-span
+    // cost": it outranks a reconciled verdict and leaves an already-refused one in place.
+    let (out_of_span, verdict) = match out_of_span_rows(&whole.exclusive, &partition.exclusive) {
+        Ok(rows) => (rows, partition.verdict),
+        Err(cause) => (
+            Vec::new(),
+            match partition.verdict {
+                CostAccountingVerdict::Reconciled { .. } => {
+                    CostAccountingVerdict::Refused { cause }
+                }
+                refused => refused,
+            },
+        ),
+    };
+    // Counts and volumes (builds, modules, scan bytes) are events of the whole thread, not
+    // span-bound durations, so they and the inclusive observations keep the totals.
+    ExclusiveCostPartition {
+        exclusive: partition.exclusive,
+        remainder_nanos: partition.remainder_nanos,
+        verdict,
+        out_of_span,
+        ..whole
+    }
+}
+
+/// Stage time the thread recorded that no top-level span captured: thread totals minus the
+/// span-captured rows, per stage. The span-captured rows are a subset of the thread totals by
+/// construction, so a stage whose in-span total exceeds the thread total is two slot accounts
+/// disagreeing and refuses naming that stage.
+fn out_of_span_rows(
+    thread: &[CostPartitionRow],
+    in_span: &[CostPartitionRow],
+) -> Result<Vec<CostPartitionRow>, CostAccountingRefusal> {
+    let mut rows = Vec::new();
+    for (all, inside) in thread.iter().zip(in_span.iter()) {
+        match all.nanos.checked_sub(inside.nanos) {
+            Some(0) => {}
+            Some(outside) => rows.push(CostPartitionRow {
+                name: all.name,
+                nanos: outside,
+            }),
+            None => {
+                return Err(CostAccountingRefusal::InSpanExceedsThread {
+                    stage: all.name,
+                    in_span_nanos: inside.nanos,
+                    thread_nanos: all.nanos,
+                })
+            }
+        }
+    }
+    Ok(rows)
 }
 
 /// Same law over a caller-supplied parent/children pair drawn from ONE universe.
@@ -13313,6 +13400,7 @@ pub fn exclusive_cost_partition_from(
         spans: account.spans,
         nested_spans: account.nested_spans,
         exclusive,
+        out_of_span: Vec::new(),
         inclusive,
         remainder_nanos,
         verdict,
@@ -13359,6 +13447,18 @@ pub fn render_exclusive_cost_partition_json(
 
     out.push_str(",\"exclusive\":{");
     for (i, row) in p.exclusive.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push('"');
+        out.push_str(&esc(row.name.to_string()));
+        out.push_str("\":");
+        out.push_str(&json_num(row.nanos));
+    }
+    out.push('}');
+
+    out.push_str(",\"out_of_span\":{");
+    for (i, row) in p.out_of_span.iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
@@ -13469,6 +13569,21 @@ pub fn render_exclusive_cost_partition_json(
                 }
                 CostAccountingRefusal::NoSpans => {
                     out.push_str("{\"kind\":\"NoSpans\"}");
+                }
+                CostAccountingRefusal::InSpanExceedsThread {
+                    stage,
+                    in_span_nanos,
+                    thread_nanos,
+                } => {
+                    out.push_str("{\"kind\":\"InSpanExceedsThread\",\"stage\":");
+                    out.push('"');
+                    out.push_str(&esc(stage.to_string()));
+                    out.push('"');
+                    out.push_str(",\"in_span_nanos\":");
+                    out.push_str(&json_num(*in_span_nanos));
+                    out.push_str(",\"thread_nanos\":");
+                    out.push_str(&json_num(*thread_nanos));
+                    out.push('}');
                 }
             }
             out.push_str(",\"shares_quotable\":false}");
@@ -16532,7 +16647,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             v1_interpreter::InterpError::HostToolUnresolved { name, probed } => {
                 ClaimOutcome::HostToolUnresolved { name, probed }
             }
-            v1_interpreter::InterpError::HermeticHostEffectRefused { operation, ground } => {
+            v1_interpreter::InterpError::HostEffectRefused { operation, ground } => {
                 ClaimOutcome::HostEffectRefused { operation, ground }
             }
             v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
@@ -16644,35 +16759,22 @@ enum ExpectedRedArm {
     HostEffectRefused,
 }
 
-/// One label per `HermeticEffectGround`, in one place. The ground names the REMEDY, so a
-/// caller that re-spells it per site is re-deriving the remedy per site.
-pub fn hermetic_effect_ground_label(ground: &v1_interpreter::HermeticEffectGround) -> &'static str {
-    match ground {
-        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
-            "no published mock case for a corpus-governed service"
-        }
-        v1_interpreter::HermeticEffectGround::NoMockResponse => {
-            "operation declares no mock_response"
-        }
-        v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
-            "filesystem removal has no mock arm; only a wet route can run it"
-        }
-    }
-}
-
 /// The seam between the hand-Rust interpreter carrier and the `.dag`-modeled roster-join
 /// carrier for the same closed ground. Total in both directions by construction — adding an
 /// arm to either side fails to compile here rather than falling through to a default.
-fn hermetic_effect_ground_verdict(
-    ground: &v1_interpreter::HermeticEffectGround,
-) -> crate::v1_compiler_expected_red_roster_join::HermeticEffectGround {
-    use crate::v1_compiler_expected_red_roster_join::HermeticEffectGround as Modeled;
+pub fn effect_refusal_ground_verdict(
+    ground: &v1_interpreter::EffectRefusalGround,
+) -> crate::v1_compiler_expected_red_roster_join::EffectRefusalGround {
+    use crate::v1_compiler_expected_red_roster_join::EffectRefusalGround as Modeled;
     match ground {
-        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+        v1_interpreter::EffectRefusalGround::UnpublishedMockCase { .. } => {
             Modeled::UnpublishedMockCase
         }
-        v1_interpreter::HermeticEffectGround::NoMockResponse => Modeled::NoMockResponse,
-        v1_interpreter::HermeticEffectGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+        v1_interpreter::EffectRefusalGround::NoMockResponse => Modeled::NoMockResponse,
+        v1_interpreter::EffectRefusalGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+        v1_interpreter::EffectRefusalGround::FrameNotRealizableUnderMode => {
+            Modeled::FrameNotRealizableUnderMode
+        }
     }
 }
 
@@ -18736,10 +18838,12 @@ fn serve_write_response(
 }
 
 /// One `.dag` `ServeWireHeader { name, value }` rendered as a header line. The name is the
-/// closed `ServeWireHeaderName` coproduct -- the framing headers this seam writes itself
-/// (Content-Length, Content-Type, Connection) have no constructor there -- and this match is its
-/// RFC 9110 spelling. The value is handler data, so the realization boundary refuses one carrying
-/// CR, LF or NUL rather than writing a split header. None = wrong shape or refused value.
+/// RFC 9110 field-name String `extdeps.http.server` `serve_response_header_wire` chose, written
+/// verbatim: this seam keeps no per-header table and no name grammar. A name is already a token
+/// that is no framing or typed-arm field, because `ServeWireHeader` is `sole_constructor` and its
+/// open arm carries the sealed `HttpExtensionFieldName`. A value is handler data, so one carrying
+/// CR, LF or NUL is refused rather than written as a split header. None = wrong shape or refused
+/// value.
 fn serve_wire_header_line(
     item: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
@@ -18751,17 +18855,7 @@ fn serve_wire_header_line(
         return None;
     }
     let name = match ctx.field(fields, "name") {
-        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
-            if ctx.sym_eq(*variant_name, "WireHeaderLocation") {
-                "Location"
-            } else if ctx.sym_eq(*variant_name, "WireHeaderSetCookie") {
-                "Set-Cookie"
-            } else if ctx.sym_eq(*variant_name, "WireHeaderCacheControl") {
-                "Cache-Control"
-            } else {
-                return None;
-            }
-        }
+        Some(Value::Str(s)) => s.to_string(),
         _ => return None,
     };
     let value = match ctx.field(fields, "value") {
@@ -20111,8 +20205,15 @@ pub fn project_witness_cost_receipt(
                     args.push((
                         Some("error".to_string()),
                         str_value(format!(
-                            "hermetic route has no arm for {operation} ({})",
-                            hermetic_effect_ground_label(ground)
+                            "{} {operation} ({})",
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_mode_label(
+                                crate::v1_compiler_expected_red_roster_join::effect_refusal_mode(
+                                    effect_refusal_ground_verdict(ground)
+                                )
+                            ),
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_ground_label(
+                                effect_refusal_ground_verdict(ground)
+                            )
                         )),
                     ));
                     "witness_cost_seed_refused_event"
@@ -21098,6 +21199,38 @@ fn read_frozen_roster_at_commit(
         ));
     }
     Ok(Some(String::from_utf8_lossy(&shown.stdout).into_owned()))
+}
+
+/// THE INSTRUMENT'S THIN READOUT over the SAME authority the required floor consults:
+/// `collect_frozen_path_deferral_additions`, which joins the live tree's typed
+/// FrozenPathDeferral entries (via `frozen_path_deferral_head_keys`) against the resolved diff
+/// baseline. This function adds NO judgment of its own — no second parser, no second comparison
+/// (DESIGN §5: a check restating a constraint the model already carries is a second representation
+/// of it). It renders the join's verdict as one tagged String for the dag instrument program
+/// `dag/gunbc/instruments/witness_deferral_freeze_population.dag`:
+/// * `refused|<cause>` — the join itself could not run (the baseline or a file read failed); the
+///   instrument refuses with a located diagnostic, never a silent pass (§5: every path succeeds
+///   fully or fails with a typed, located diagnostic).
+/// * `bounded` — no live identity sits outside the baseline population: the frozen list is bounded
+///   and shrinking only (an identity REMOVED from the roster shrinks the live set, so the join
+///   still holds — this is the removal arm's permit).
+/// * `unbounded|<identity>;;...` — at least one identity is outside the baseline population: a
+///   deferral was ADDED without its identity being in the drop row's declared population, which is
+///   the additions arm's refusal.
+/// Fixture determinism comes from the resolver's operator-override input (GUNBC_CI_DIFF_BASE), not
+/// from a test-only code path: a head-built run with the override pinned at HEAD self-compares, so
+/// the join reduces to exactly the working-tree identities — the planted entry, or its absence.
+pub fn witness_deferral_freeze_population_census() -> String {
+    match collect_frozen_path_deferral_additions() {
+        Err(reason) => format!("refused|{reason}"),
+        Ok(additions) => {
+            if additions.is_empty() {
+                "bounded".to_string()
+            } else {
+                format!("unbounded|{}", additions.join(";;"))
+            }
+        }
+    }
 }
 
 fn refuse_frozen_path_deferral_additions(additions: &[String]) -> Result<(), String> {
@@ -27201,9 +27334,19 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommitWitnessClaimPairResolvability {
     Resolvable,
-    EntryMissing { detail: String },
-    EntryResolveFailed { detail: String },
+    EntryMissing {
+        detail: String,
+    },
+    EntryResolveFailed {
+        detail: String,
+    },
     FunctionNotFound,
+    /// A file-grain row (`check_fns: []`) whose entry file carries no TEST MARKER: the sentinel
+    /// promises every marked declaration in the file, and a marked-empty file promises nothing,
+    /// so the row holds no witness. Its own cause, distinct from a named function going missing.
+    FileGrainEntryHasNoMarkedDeclarations,
+    /// A file-grain row whose entry file cannot be read to enumerate markers.
+    FileGrainEntryUnreadable,
 }
 
 #[derive(Debug, Clone)]
@@ -32004,7 +32147,7 @@ mod peel_alias_fixpoint_termination {
                 ),
             );
             // No files in this probe: the peel tree is synthetic, module_path is empty.
-            // file_modules / module_named_imports therefore come from empty_symbol_index,
+            // file_modules / module_named_imports / alias_cycles therefore come from empty_symbol_index,
             // the same constructor every other empty SymbolIndex uses.
             let empty_index = crate::v1_compiler_infer_env::empty_symbol_index();
             let symbol_index = std::rc::Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
@@ -32012,6 +32155,7 @@ mod peel_alias_fixpoint_termination {
                 global_bare,
                 services: empty_index.services.clone(),
                 transparent_alias_rep: empty_index.transparent_alias_rep.clone(),
+                alias_cycles: empty_index.alias_cycles.clone(),
                 type_head_exposures: empty_index.type_head_exposures.clone(),
                 file_modules: empty_index.file_modules.clone(),
                 module_named_imports: empty_index.module_named_imports.clone(),
@@ -32469,6 +32613,69 @@ mod exclusive_cost_partition_law {
             load,
             typecheck_compute: typecheck,
             ..ResolveStageNanos::default()
+        }
+    }
+
+    /// A stage add made outside every top-level span (the pool parse forced by the edge
+    /// index build) is in `resolve_stage_totals()` and in no span's parent, so the
+    /// partition over the totals refused OverAttributed by exactly that add.
+    /// RED WITHOUT THE FIX: the partition is drawn from the totals and refuses.
+    /// POSITIVE CONTROL: the same span with nothing outside it reconciles.
+    #[test]
+    fn a_stage_add_outside_every_span_is_not_a_row_of_the_partition() {
+        let in_span = |outside_pool_parse: u128| {
+            std::thread::spawn(move || {
+                resolve_stage_slot_add(|st| st.pool_parse += outside_pool_parse);
+                let depth = resolve_span_enter();
+                resolve_stage_slot_reset();
+                resolve_stage_slot_add(|st| st.typecheck_compute += 400);
+                resolve_span_exit(depth, "dag/probe.dag", 1_000);
+                exclusive_cost_partition()
+            })
+            .join()
+            .expect("partition thread")
+        };
+        assert!(
+            matches!(in_span(0).verdict, CostAccountingVerdict::Reconciled { .. }),
+            "control: a span with no outside add must reconcile"
+        );
+        let outside = in_span(5_000);
+        assert!(
+            matches!(outside.verdict, CostAccountingVerdict::Reconciled { .. }),
+            "a 5000ns pool parse outside the span must not enter the partition"
+        );
+        assert_eq!(
+            outside
+                .out_of_span
+                .iter()
+                .map(|r| (r.name, r.nanos))
+                .collect::<Vec<_>>(),
+            vec![("pool_parse", 5_000)],
+            "the out-of-span parse must be reported, typed, not dropped"
+        );
+        assert!(in_span(0).out_of_span.is_empty());
+    }
+
+    /// RED: a stage whose in-span total exceeds the thread total is two slot accounts
+    /// disagreeing; it refuses naming the stage instead of clamping to "no out-of-span cost".
+    /// POSITIVE CONTROL: the same rows with in-span <= thread yield the remainder.
+    #[test]
+    fn an_in_span_total_above_the_thread_total_refuses_naming_the_stage() {
+        let row = |name: &'static str, nanos: u128| CostPartitionRow { name, nanos };
+        let thread = [row("load", 100), row("pool_parse", 50)];
+        let rows = out_of_span_rows(&thread, &[row("load", 100), row("pool_parse", 20)])
+            .expect("in-span within thread totals");
+        assert_eq!(
+            rows.iter().map(|r| (r.name, r.nanos)).collect::<Vec<_>>(),
+            vec![("pool_parse", 30)]
+        );
+        match out_of_span_rows(&thread, &[row("load", 100), row("pool_parse", 51)]) {
+            Err(CostAccountingRefusal::InSpanExceedsThread {
+                stage,
+                in_span_nanos,
+                thread_nanos,
+            }) => assert_eq!((stage, in_span_nanos, thread_nanos), ("pool_parse", 51, 50)),
+            other => panic!("expected InSpanExceedsThread, got {other:?}"),
         }
     }
 
@@ -33854,6 +34061,7 @@ pub fn item_kind_census_label(kind: &crate::v1_compiler_infer_items::ItemKind) -
         ItemKind::TypeItem => "type",
         ItemKind::DataItem => "data",
         ItemKind::ServiceItem => "service",
+        ItemKind::ResourceItem => "resource",
         ItemKind::OtherItem => "other",
     }
 }
@@ -35065,7 +35273,7 @@ fn witness_eval_verdict_from_claim_outcome(
         ClaimOutcome::HostEffectRefused { operation, ground } => {
             crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::HostEffectRefused {
                 operation: operation.clone(),
-                ground: hermetic_effect_ground_verdict(ground),
+                ground: effect_refusal_ground_verdict(ground),
             }
         }
         // THE WIRE VERDICT STILL CARRIES THE AXIS AS DATA, which is why `BudgetCompletion`

@@ -5,7 +5,7 @@ import std.optional { Optional, Present, Absent }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonString, JsonObject, JsonKeyValue }
 import gunbc.auth.approval_device_wire {
-  push_registration_json, read_authentication_json_value, enrolment_request_json, signing_input_json, verifying_key_json,
+  push_registration_json, read_authentication_json_value, google_enrolment_request_json, signing_input_json, verifying_key_json,
 }
 import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body }
 import gunbc.auth.wire_strict_reader {
@@ -114,7 +114,7 @@ fn vector_body(name: String) -> String {
 test fn the_encoders_emit_the_declared_member_order_and_admitted_spellings() -> Bool {
   conforms(deviation(shape: read_auth_shape(), v: read_authentication_json_value(a: fx_read_auth), path: ""))
     && conforms(deviation(shape: push_shape(), v: push_registration_json(p: fx_push), path: ""))
-    && conforms(deviation(shape: enrolment_shape(), v: parsed(text: enrolment_request_json(r: fx_enrolment())), path: ""))
+    && conforms(deviation(shape: enrolment_shape(), v: parsed(text: google_enrolment_request_json(r: fx_enrolment())), path: ""))
     && conforms(deviation(shape: signing_input_shape(), v: signing_input_json(i: fx_redemption().signing_input), path: ""))
     && conforms(deviation(shape: key_shape(), v: verifying_key_json(k: fx_enrolment().decision_key), path: ""))
 }

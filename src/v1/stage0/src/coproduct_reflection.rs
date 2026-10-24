@@ -451,16 +451,6 @@ pub fn marshal_disj_type_item(
     ))
 }
 
-fn logical_qualified_name(module_name: &str, name: &str) -> String {
-    // Concept-index reflection keeps the authored module path (including `v2.`).
-    // Decl-index uses `decl_logical_qualified_name` instead (strips `v2.`).
-    if module_name.is_empty() {
-        name.to_string()
-    } else {
-        format!("{module_name}.{name}")
-    }
-}
-
 #[derive(Debug, Clone)]
 struct ParsedTypeDecl {
     module_path: String,
@@ -768,7 +758,7 @@ fn concept_decl_record(
     name: &str,
     item: &Rc<Node>,
 ) -> InterpResult<Value> {
-    let qualified_name = logical_qualified_name(module_name, name);
+    let qualified_name = decl_qualified_name(module_name, name);
     let node = concept_decl_node(ctx, si, item)?;
     Ok(Value::Record {
         type_name: ctx.sym("ConceptDecl"),
@@ -806,7 +796,7 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
     let files_parsed = module_count;
     let mut rows: Vec<Value> = Vec::new();
     for decl in type_decls {
-        let qualified_name = logical_qualified_name(&decl.module_path, &decl.name);
+        let qualified_name = decl_qualified_name(&decl.module_path, &decl.name);
         let row = concept_decl_record(
             ctx,
             &decl.source_indices,
@@ -1458,7 +1448,7 @@ fn fn_arrow_decl_record(
         .iter()
         .map(|pn| fn_arrow_param_record(ctx, pn))
         .collect();
-    let qualified_name = logical_qualified_name(module_name, name);
+    let qualified_name = decl_qualified_name(module_name, name);
     Some(Value::Record {
         type_name: ctx.sym("FnArrowDecl"),
         fields: Rc::new(sorted_fields(vec![
@@ -1597,7 +1587,7 @@ fn data_init_decl_record(
 ) -> Option<Value> {
     let body = item.body.as_ref()?;
     let literal_fp = data_init_literal_fingerprint(body, si)?;
-    let qualified_name = logical_qualified_name(module_name, name);
+    let qualified_name = decl_qualified_name(module_name, name);
     Some(Value::Record {
         type_name: ctx.sym("DataInitDecl"),
         fields: Rc::new(sorted_fields(vec![
@@ -1648,15 +1638,14 @@ pub struct DeclFactRaw {
     pub source_indices: SourceIndices,
 }
 
-/// Qualified name for `decl_facts` / `decl_index` — strips the `v2.` layer prefix to match
-/// `v2.std.decl_index.logical_qualified_name_from_module` (concept reflection keeps the
-/// full module path including `v2.` for `concept_index` consumers).
-fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
-    let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
-    if logical.is_empty() {
+/// Qualified name for `decl_facts` / `decl_index`: the module's OWN qualified name, `v2.` included,
+/// matching `v2.std.decl_index.qualified_name_from_module`. Stripping the layer prefix made
+/// `v2.std.integer.Int` and `std.integer.Int` share one key (two declarations, one identity).
+pub(crate) fn decl_qualified_name(module_name: &str, name: &str) -> String {
+    if module_name.is_empty() {
         name.to_string()
     } else {
-        format!("{logical}.{name}")
+        format!("{module_name}.{name}")
     }
 }
 
@@ -1877,7 +1866,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             }
             let kind = item_kind(item.clone());
             out.push(DeclFactRaw {
-                qualified_name: decl_logical_qualified_name(&module_path, &name),
+                qualified_name: decl_qualified_name(&module_path, &name),
                 name,
                 kind,
                 node: item.clone(),
@@ -1892,7 +1881,8 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             ItemKind::TypeItem => 1,
             ItemKind::DataItem => 2,
             ItemKind::ServiceItem => 3,
-            ItemKind::OtherItem => 4,
+            ItemKind::ResourceItem => 4,
+            ItemKind::OtherItem => 5,
         };
         (a.rel_path.as_str(), a.name.as_str(), kind_ord(a.kind)).cmp(&(
             b.rel_path.as_str(),
@@ -1918,6 +1908,9 @@ fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
         ItemKind::TypeItem => "TypeItem",
         ItemKind::DataItem => "DataItem",
         ItemKind::ServiceItem => "ServiceItem",
+        // v2.std.decl_index ItemKind has no resource arm, and its consumers read OtherItem as the
+        // census's own cannot-classify answer, which is what a resource was before v1 named it.
+        ItemKind::ResourceItem => "OtherItem",
         ItemKind::OtherItem => "OtherItem",
     };
     Value::Variant {

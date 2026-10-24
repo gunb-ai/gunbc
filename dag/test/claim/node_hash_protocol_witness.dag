@@ -32,6 +32,7 @@ import v2.std.node {
   ArrowBodyEdge,
   LoopBoundEdge,
   core_edge,
+  NotADeclaration
 }
 
 // FNV1A64-STRUCTURAL-NODE-PROTOCOL-0 -- the conformance corpus for the node identity rule.
@@ -94,11 +95,11 @@ fn comp(b: Behavior, children: List<Edge>) -> Node {
 }
 
 fn named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 // ================================================================================================

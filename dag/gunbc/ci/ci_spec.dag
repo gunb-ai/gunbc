@@ -139,6 +139,7 @@ import gunbc.auth.heal_publisher_federation {
   heal_publisher_token_refused_message
 }
 import extdeps.github.app { GitHubAppInstallationId }
+import gunbc.fleet.organization_runner_roster_read_credential { organization_runner_roster_read_token_request_body }
 import gunbc.ci.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
@@ -1059,11 +1060,6 @@ data gunbc_ci_approval_keyring_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "approval_keyring_converge_wet",
 }
 
-data gunbc_ci_approval_device_enrolment_code_issue_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/auth/approval_device_enrolment_code_issue.dag",
-  function: "approval_device_enrolment_code_issue_wet",
-}
-
 data gunbc_ci_gcp_iam_converge_request_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/auth/gcp_iam_converge_run.dag",
   function: "gcp_iam_converge_request_wet",
@@ -1486,7 +1482,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_publication_admit_target,
     gunbc_ci_heal_publication_publish_target,
     gunbc_ci_approval_keyring_converge_target,
-    gunbc_ci_approval_device_enrolment_code_issue_target,
     gunbc_ci_mtcollins1_boot_target,
     gunbc_ci_mtcollins1_sol_notice_target,
     gunbc_ci_microvm_runner_group_ensure_target,
@@ -2552,7 +2547,7 @@ fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List
   )
 }
 
-fn org_admin_app_token_mint() -> AppInstallationTokenMint {
+fn org_installation_token_mint(request_body: String?, scope_note: String) -> AppInstallationTokenMint {
   AppInstallationTokenMint {
     file_stem: "org-admin",
     key_secret: gunbai_ci_app_pem_secret,
@@ -2573,15 +2568,32 @@ fn org_admin_app_token_mint() -> AppInstallationTokenMint {
       gunbai_ci_declared.slug as String,
       " installation ",
       to_string(gunbai_ci_declared_installation_id.value),
-      " (one-hour lifetime; key wiped; token held in this step's environment only)"
+      " (", scope_note, "one-hour lifetime; key wiped; token held in this step's environment only)"
     ], ""),
-    request_body: none,
+    request_body: request_body,
     observation_record: none
   }
 }
 
+fn org_admin_app_token_mint() -> AppInstallationTokenMint {
+  org_installation_token_mint(request_body: none, scope_note: "")
+}
+
+// THE ROSTER READER'S MINT: the same implementation, down-scoped at the mint to
+// organization_self_hosted_runners read (gunbc.fleet.organization_runner_roster_read_credential).
+fn org_roster_read_app_token_mint() -> AppInstallationTokenMint {
+  org_installation_token_mint(
+    request_body: Present { value: organization_runner_roster_read_token_request_body(installation: gunbai_ci_declared_installation_id) },
+    scope_note: "organization_self_hosted_runners read only; "
+  )
+}
+
 fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
   github_app_installation_token_prelude(spec: org_admin_app_token_mint())
+}
+
+fn gunbc_ci_org_roster_read_app_token_prelude() -> List<PipelineStep> {
+  github_app_installation_token_prelude(spec: org_roster_read_app_token_mint())
 }
 
 // THE APP-KEY VERSION VERIFIER, as two steps: a mint over the EXACT version the dispatch names,
@@ -3090,8 +3102,11 @@ fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
 data gunbc_ci_runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
 data gunbc_ci_runner_host_cap_release_receipt_path: String = "target/runner-host-cap-release-receipt.txt"
 
+// THE BRACKET'S ADMISSION READS THE ORG ROSTER (organization_runner_roster_live_read), so this step needs the same
+// org-scoped installation token as the roster observe step, minted in-run and held only in this step's environment.
 fn gunbc_ci_runner_host_file_converge_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_org_roster_read_app_token_prelude(),
     source_roots: witness_layer_roots,
     entry: gunbc_ci_runner_host_file_converge_target.entry,
     function: gunbc_ci_runner_host_file_converge_target.function,
@@ -3616,19 +3631,6 @@ fn gunbc_ci_mtcollins1_boot_rendered(stmts: List<Node>, set_e: Bool) -> String {
 // captured from $!.
 fn gunbc_ci_mtcollins1_boot_watcher_background_line() -> String {
   concat(gunbc_run_command(source_roots: witness_layer_roots, entry: gunbc_ci_mtcollins1_sol_notice_target.entry, function: gunbc_ci_mtcollins1_sol_notice_target.function, claim_run: false), " & SOL_NOTICE_WATCH=$!")
-}
-
-// The enrolment-code step has no prelude: no secret is fetched on the runner, the host holds
-// everything the verb reads, and the step's stdout is the remote receipt line alone.
-fn gunbc_ci_approval_device_enrolment_code_issue_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: [],
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_approval_device_enrolment_code_issue_target.entry,
-    function: gunbc_ci_approval_device_enrolment_code_issue_target.function,
-    claim_run: false,
-    receipt_rel: none
-  )
 }
 
 // THE D0 DOOR'S PRELUDE materializes the submission MAC key alone (the door signs one filing; it

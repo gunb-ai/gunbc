@@ -1,6 +1,6 @@
 module test.claim.host.managed_host_admission_witness
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, CommitSha }
 import std.content_hash { content_hash_equal }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
@@ -9,19 +9,19 @@ import gunbc.rung_drop {
   AuthoredProse,
   RungDrop,
   RungDropStanding,
-  Standing,
-  Superseded,
-  Retired,
-  Dissolved,
+  Standing, Superseded, Retired, Dissolved,
   TypedDeclaration, population_from_list,
-  PopulationDeleted,
+  EndedTypedDeclaration, RetiredTypedDeclaration, DeletedWithoutReplacement,
 }
+
+import std.algebra { FreeSemigroup }
+import std.removal_tombstone { RemovalTombstone }
+import v2.lens.module_impact_query { ModuleIdentity }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
 import gunbc.host.managed_host {
-  AdmissionHoldDecided,
-  AdmissionHoldMissing,
   MemberUnderDeclaredDrop,
   OrdinaryMember,
   managed_host_admission,
@@ -120,7 +120,6 @@ test fn w_a_superseded_subject_with_no_declared_drop_is_absent() -> Bool {
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -148,7 +147,6 @@ test fn w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties() -> Bo
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -161,31 +159,6 @@ test fn w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties() -> Bo
           )
           count(hosts) == 0 && count(reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: hosts)) == 0
         }
-      }
-  }
-}
-
-test fn w_a_missing_hold_decision_is_absent() -> Bool {
-  match mtcollins1_managed_host_admission() {
-    Absent => false
-    Present { value: r } =>
-      match project_managed_host_admission(
-        record: managed_host_admission(
-          host: r.host,
-          binding: r.binding,
-          access: r.access,
-          secure: r.secure,
-          hold: AdmissionHoldMissing,
-          smpro: r.smpro,
-          receipt: r.receipt,
-          current_subject: r.current_subject,
-          covering_drop: r.covering_drop,
-        ),
-        current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
-      ) {
-        Absent => true
-        Present { value: _ } => false
       }
   }
 }
@@ -215,7 +188,6 @@ test fn w_a_receipt_for_another_host_is_absent() -> Bool {
           binding: r.binding,
           access: r.access,
           secure: r.secure,
-          hold: r.hold,
           smpro: r.smpro,
           receipt: managed_host_admission_receipt(
             host: operator_host_srv1,
@@ -244,22 +216,26 @@ test fn w_mtjade1_has_no_record_and_is_not_managed() -> Bool {
 
 fn drop_with_identity_and_population(identity: NonEmptyStr, population: List<String>) -> RungDrop {
   let base = mtcollins1_bmc_secure_standing_predates_reflash
-  match base.declaration {
-    AuthoredProse { legacy: _, authored: _ } => base
-    TypedDeclaration { previous: p, temporary: t, reason: r, population: _, restoration_trigger: rt } =>
+  match base.standing {
+    Standing { declaration: TypedDeclaration { previous: p, temporary: t, reason: r, population: _, restoration_trigger: rt } } =>
       RungDrop {
         identity: identity,
         subject: base.subject,
         declared: base.declared,
-        standing: Standing,
-        declaration: TypedDeclaration {
-          previous: p,
-          temporary: t,
-          reason: r,
-          population: population_from_list(xs: population),
-          restoration_trigger: rt,
+        standing: Standing {
+          declaration: TypedDeclaration {
+            previous: p,
+            temporary: t,
+            reason: r,
+            population: population_from_list(xs: population),
+            restoration_trigger: rt,
+          },
         },
       }
+    Standing { declaration: AuthoredProse { legacy: _, authored: _ } } => base
+    Retired { trigger_fired: _, declaration: _ } => base
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => base
+    Dissolved { removal: _, declaration: _ } => base
   }
 }
 
@@ -270,36 +246,6 @@ fn drop_with_standing(standing: RungDropStanding) -> RungDrop {
     subject: base.subject,
     declared: base.declared,
     standing: standing,
-    declaration: base.declaration,
-  }
-}
-
-// Dissolved (main's #14181 fourth standing, sharpened by #14476): admissible ONLY over a TYPED
-// PopulationDeleted declaration; every other shape (including a list-derived NotYetCounted) is
-// invalid and FAILS CLOSED -- still standing, counted live, never erased. The helpers let the two
-// companion REDs mint each shape from the record's own cited value.
-fn drop_dissolved_with_population(population: List<String>) -> RungDrop {
-  let base = mtcollins1_bmc_secure_standing_predates_reflash
-  match base.declaration {
-    AuthoredProse { legacy: _, authored: _ } => base
-    TypedDeclaration { previous: p, temporary: t, reason: r, population: _, restoration_trigger: rt } =>
-      RungDrop {
-        identity: base.identity,
-        subject: base.subject,
-        declared: base.declared,
-        standing: Dissolved {
-          ruling: "test: a ruling declaring the rung's population gone" as NonEmptyStr,
-          decision_record: "test.claim.host.managed_host_admission_witness" as NonEmptyStr,
-          population_gone: "test: the typed population is declared gone" as NonEmptyStr,
-        },
-        declaration: TypedDeclaration {
-          previous: p,
-          temporary: t,
-          reason: r,
-          population: population_from_list(xs: population),
-          restoration_trigger: rt,
-        },
-      }
   }
 }
 
@@ -322,7 +268,6 @@ test fn w_the_membership_carries_the_record_value_identity_and_ignores_prose() -
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -360,7 +305,6 @@ test fn w_a_superseded_covering_drop_is_absent() -> Bool {
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -369,6 +313,13 @@ test fn w_a_superseded_covering_drop_is_absent() -> Bool {
             ruling: "test: a ruling that ended the row without its trigger firing" as NonEmptyStr,
             decision_record: "test.claim.host.managed_host_admission_witness" as NonEmptyStr,
             loss_holder: mtcollins1_bmc_secure_standing_predates_reflash.identity,
+            declaration: TypedDeclaration {
+              previous: MechanicallyPreventable,
+              temporary: Mitigatable,
+              reason: DeletedWithoutReplacement,
+              population: population_from_list(xs: ["test.population"]),
+              restoration_trigger: "test restoration trigger",
+            },
           }),
         },
       ) {
@@ -394,13 +345,19 @@ test fn w_a_retired_covering_drop_is_absent() -> Bool {
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
         covering_drop: Present {
           value: drop_with_standing(standing: Retired {
             trigger_fired: "test: trigger fired after the standing was read" as NonEmptyStr,
+            declaration: RetiredTypedDeclaration {
+              previous: MechanicallyPreventable,
+              temporary: Mitigatable,
+              reason: DeletedWithoutReplacement,
+              population_at_retirement: population_from_list(xs: ["test.population"]),
+              restoration_trigger: "test restoration trigger",
+            },
           }),
         },
       ) {
@@ -412,46 +369,6 @@ test fn w_a_retired_covering_drop_is_absent() -> Bool {
           ) {
             Absent => true
             Present { value: _ } => false
-          }
-      }
-  }
-}
-
-// DISSOLVED FAILS CLOSED (main's #14181 law, adopted into the value classifier): a Dissolved row
-// whose typed population is NOT empty is an invalid dissolution -- the row is still standing,
-// counted live and outstanding, never erased -- so it still covers the subject and membership holds.
-test fn w_a_dissolved_covering_drop_with_a_live_typed_population_still_covers() -> Bool {
-  match mtcollins1_managed_host_admission() {
-    Absent => false
-    Present { value: r } =>
-      match managed_host_admission(
-        host: r.host,
-        binding: r.binding,
-        access: r.access,
-        secure: r.secure,
-        hold: r.hold,
-        smpro: r.smpro,
-        receipt: r.receipt,
-        current_subject: r.current_subject,
-        covering_drop: Present {
-          value: drop_dissolved_with_population(population: [
-            "test: this typed population is still live, so the dissolution is invalid",
-          ]),
-        },
-      ) {
-        fail_closed =>
-          match project_managed_host_admission(
-            record: fail_closed,
-            current_subject: mtcollins1_current_intake_subject(),
-            allocations: gunbc_fleet_hostname_allocations,
-          ) {
-            Absent => false
-            Present { value: m } =>
-              match m {
-                MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: _ } =>
-                  d.identity == mtcollins1_bmc_secure_standing_predates_reflash.identity
-                _ => false
-              }
           }
       }
   }
@@ -478,7 +395,6 @@ test fn w_admission_permits_a_platform_that_does_not_carry_smpro() -> Bool {
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: SmproPlatformNotCarried { family: amd_7950x3d },
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -500,37 +416,32 @@ test fn w_admission_permits_a_platform_that_does_not_carry_smpro() -> Bool {
   }
 }
 
-// #14476 SHARPENED THE LAW: an admissible dissolution is a TYPED PopulationDeleted declaration --
-// an EMPTY LIST IS NOT ONE (population_from_list([]) is a typed NotYetCounted, which stays
-// inadmissible and keeps covering). The helper mints the admissible shape from the record's own
-// cited value so the companion RED does not accidentally test the wrong arm.
+// A Dissolved row is the only form of a loss whose members no longer exist: it carries a
+// RemovalTombstone and no population field. The helper mints one from the record's own cited value.
 fn drop_dissolved_population_deleted() -> RungDrop {
   let base = mtcollins1_bmc_secure_standing_predates_reflash
-  match base.declaration {
-    AuthoredProse { legacy: _, authored: _ } => base
-    TypedDeclaration { previous: p, temporary: t, reason: r, population: _, restoration_trigger: rt } =>
-      RungDrop {
-        identity: base.identity,
-        subject: base.subject,
-        declared: base.declared,
-        standing: Dissolved {
-          ruling: "test: a ruling declaring the rung's population deleted" as NonEmptyStr,
-          decision_record: "test.claim.host.managed_host_admission_witness" as NonEmptyStr,
-          population_gone: "test: the typed population is deleted" as NonEmptyStr,
-        },
-        declaration: TypedDeclaration {
-          previous: p,
-          temporary: t,
-          reason: r,
-          population: PopulationDeleted,
-          restoration_trigger: rt,
-        },
-      }
+  RungDrop {
+    identity: base.identity,
+    subject: base.subject,
+    declared: base.declared,
+    standing: Dissolved {
+      removal: RemovalTombstone {
+        removed_modules: FreeSemigroup { head: ModuleIdentity { name: "test.claim.host.removed_module" }, tail: [] },
+        removed_at: "fa44b9810259b88f721e55ae0a3bd3cf7bc9b46f" as CommitSha,
+        ruling: "test: a ruling declaring the rung's modules removed" as NonEmptyStr,
+        decision_record: "test.claim.host.managed_host_admission_witness" as NonEmptyStr,
+      },
+      declaration: EndedTypedDeclaration {
+        previous: MechanicallyPreventable,
+        temporary: Mitigatable,
+        reason: DeletedWithoutReplacement,
+        restoration_trigger: "test restoration trigger",
+      },
+    },
   }
 }
 
-// A DISSOLUTION ADMITTED ONLY OVER A TYPED PopulationDeleted (#14476) erases the drop from live
-// accounting (dissolved_is_admissible), so it can no longer qualify a subject: the declared-drop
+// A DISSOLUTION erases the drop from live accounting, so it can no longer qualify a subject: the declared-drop
 // arm is gone and the stale-subject host drops out of the projection entirely.
 test fn w_an_admissibly_dissolved_covering_drop_is_absent() -> Bool {
   match mtcollins1_managed_host_admission() {
@@ -541,7 +452,6 @@ test fn w_an_admissibly_dissolved_covering_drop_is_absent() -> Bool {
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
@@ -571,7 +481,6 @@ test fn w_a_matching_drop_whose_population_does_not_name_the_host_still_admits_m
         binding: r.binding,
         access: r.access,
         secure: r.secure,
-        hold: r.hold,
         smpro: r.smpro,
         receipt: r.receipt,
         current_subject: r.current_subject,
