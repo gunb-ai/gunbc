@@ -358,17 +358,10 @@ fn attempt_state_decode(word: String, detail: String) -> AttemptState? {
 }
 
 fn attempt_slot_read(store: SlotStore, reference: NonEmptyStr) -> AttemptSlotReading {
-  match store.observe(reference) {
-    CasObservedUnreadable { cause: c } => AttemptSlotUnreadable { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
-    CasObservedReadable { readable: r } =>
-      match r {
-        CasReadableAbsent => AttemptSlotAbsent
-        CasReadablePresent { version: v } =>
-          match attempt_record_decode(text: v.value as String) {
-            Absent => AttemptSlotUnreadable { detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], "") }
-            Present { value: rec } => AttemptSlotHeld { record: rec, generation: v.generation }
-          }
-      }
+  match attempt_payload_read(store: store, reference: reference, codec: attempt_record_codec()) {
+    AttemptPayloadAbsent => AttemptSlotAbsent
+    AttemptPayloadHeld { record: rec, generation: g } => AttemptSlotHeld { record: rec, generation: g }
+    AttemptPayloadUnreadable { detail: d } => AttemptSlotUnreadable { detail: d }
   }
 }
 
