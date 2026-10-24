@@ -1,0 +1,62 @@
+module test.claim.orchestration_tier2_retirement_red
+
+import std.types { String, Int, Bool }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+}
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE RETIREMENT OF THE TIER-2 Procedure TYPE AND THE Call STEP, AS AN EXECUTED RED. Deleting a
+// variant is only a wall if a source that still names it is refused; the emit witnesses that cover
+// the surviving Let/cmdsubst arms cannot observe that. Each red is a single-module source compiled
+// through the real acceptance path, and the claim requires a BLOCKING row whose subject is the
+// retired name, so a source that refuses for some unrelated reason does not satisfy it. The
+// control differs from the Call red only in the step it constructs (a kept Let arm) and must
+// compile with no blocking row, which is what makes the reds about the retirement.
+//
+// At a tree where Call and Procedure still exist both reds go false and the control stays true.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// NOT-RUNNABLE IS NOT ZERO: 0 - 1 satisfies neither the red (>= 1) nor the control (== 0).
+fn blocking_count_at_subject(source: String, subject: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: rows) |> filter(r => r.subject_name == subject))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_count(source: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data red_call_step_source: String = "module probe_retired_call\nimport v2.std.orchestration { PipelineStep, Call }\nfn probe() -> PipelineStep { Call { callee: \"f\", args: [] } }\n"
+
+data red_procedure_import_source: String = "module probe_retired_procedure\nimport v2.std.orchestration { Procedure, Pipeline }\nfn probe(p: Procedure) -> Pipeline { p.body }\n"
+
+data green_let_step_source: String = "module probe_kept_let\nimport v2.std.orchestration { PipelineStep, Let, ExprLit }\nfn probe() -> PipelineStep { Let { name: \"X\", value: ExprLit { spelling: \"1\" } } }\n"
+
+test fn constructing_the_retired_call_step_is_refused_at_call() -> Bool {
+  blocking_count_at_subject(source: red_call_step_source, subject: "Call") >= 1
+}
+
+test fn importing_the_retired_procedure_type_is_refused_at_procedure() -> Bool {
+  blocking_count_at_subject(source: red_procedure_import_source, subject: "Procedure") >= 1
+}
+
+test fn the_same_source_constructing_a_kept_let_step_is_accepted() -> Bool {
+  blocking_count(source: green_let_step_source) == 0
+}

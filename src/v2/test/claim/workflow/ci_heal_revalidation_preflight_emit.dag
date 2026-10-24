@@ -20,3 +20,17 @@ test fn preflight_absent_input_is_ordinary_manual_ci() -> Bool {
   let script = ci_heal_revalidation_preflight_script()
   string_contains(s: script, pattern: "[ -n \"$EXPECTED_HEALED_SHA\" ]")
 }
+
+// Substring pins cannot see what a let row APPENDS after the pinned text: a
+// medium that spelled the value as `"${{ inputs.expected_healed_sha }}"_mut`
+// still contains every pinned substring. These whole-line pins wrap the script
+// so each assignment must occupy exactly one line, byte for byte, so the value
+// side of realize_let_assign (v2.extdeps.languages.bash_orch_tier2
+// orch_let_assign_target_model, reached through v2.compiler.emit_orchestration
+// orch_emit_let_step via orch_bash_emit_pipeline) is under test, not just its
+// name side.
+test fn preflight_let_rows_are_whole_assigned_lines() -> Bool {
+  let wrapped = concat("\n", concat(ci_heal_revalidation_preflight_script(), "\n"))
+  string_contains(s: wrapped, pattern: "\nEXPECTED_HEALED_SHA=\"${{ inputs.expected_healed_sha }}\"\n")
+    && string_contains(s: wrapped, pattern: "\nRUN_SUBJECT_HEAD=\"${{ github.sha }}\"\n")
+}
