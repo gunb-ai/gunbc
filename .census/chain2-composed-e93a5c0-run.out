@@ -1,0 +1,66 @@
+start 18:10:14
+candidate pinned at e93a5c0214244513ff46e4a40a25835cec395421 (merge-base 44c027aef4135fb017d1ac106349f995b4c7c90f; the base leg below runs at this merge base)
+at e93a5c0214244513ff46e4a40a25835cec395421 dirty=0
+build0 exit=0     Finished `release` profile [optimized] target(s) in 7m 27s
+regen1 exit=1 18:27:36
+required-regen: elapsed_ms=586466 first_generation_equal=false planned=175 executed=175 adjudicated=175 declared_divergent=1 [main.rs]
+required-regen: first_generation_equal=false candidate=target/stage0-regen-candidate
+required-regen: FAIL generated surface drift: std_checked_arithmetic.rs, std_types.rs, v1_compiler_dag_collect_support.rs, v1_compiler_infer.rs, v1_compiler_infer_method.rs, v1_compiler_runtime_rust.rs, v1_rt.rs
+  installed std_checked_arithmetic.rs
+  installed std_types.rs
+  installed v1_compiler_dag_collect_support.rs
+  installed v1_compiler_infer_method.rs
+  installed v1_compiler_infer.rs
+  installed v1_compiler_runtime_rust.rs
+  installed v1_rt.rs
+round 1 installed 7
+build1 exit=0     Finished `release` profile [optimized] target(s) in 7m 19s
+regen2 exit=1 18:45:25
+required-regen: elapsed_ms=621931 first_generation_equal=false planned=175 executed=175 adjudicated=175 declared_divergent=1 [main.rs]
+required-regen: first_generation_equal=false candidate=target/stage0-regen-candidate
+required-regen: FAIL generated surface drift: v1_rt.rs
+  installed v1_rt.rs
+round 2 installed 1
+build2 exit=0     Finished `release` profile [optimized] target(s) in 7m 12s
+regen3 exit=0 19:02:52
+required-regen: elapsed_ms=607427 first_generation_equal=true planned=175 executed=175 adjudicated=175 declared_divergent=1 [main.rs]
+required-regen: first_generation_equal=true candidate=target/stage0-regen-candidate
+round 3 installed 0
+FIXED POINT reached; mirror carries the wall text: 2; dirty:  M src/v1/stage0/src/std_checked_arithmetic.rs  M src/v1/stage0/src/std_types.rs  M src/v1/stage0/src/v1_compiler_dag_collect_support.rs  M src/v1/stage0/src/v1_compiler_infer.rs  M src/v1/stage0/src/v1_compiler_infer_method.rs  M src/v1/stage0/src/v1_compiler_runtime_rust.rs  M src/v1/stage0/src/v1_rt.rs 
+probe cand rec expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: nominal P at host text String formal of concat: no declared conversion
+probe cand cop expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: nominal C at host text String formal of concat: no declared conversion
+probe cand jrec expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: nominal P at host text elements of join: no declared conversion
+probe cand jsep expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: nominal P at host text String formal of join: no declared conversion
+probe cand str expect=SILENT wall=0 reached=1 resolve_failed=0 ok :: 
+probe cand int expect=SILENT wall=0 reached=1 resolve_failed=0 ok :: 
+probe cand bool expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: nominal Bool at host text String formal of concat: no declared conversion
+probe cand ocon expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: optional Int? at host text String formal of concat: no declared conversion
+probe cand ojoin expect=FIRE wall=1 reached=0 resolve_failed=1 ok :: optional String? at host text elements of join: no declared conversion
+probe cand nes expect=SILENT wall=0 reached=1 resolve_failed=0 ok :: 
+probe cand tsr expect=SILENT wall=0 reached=1 resolve_failed=0 ok :: 
+probe cand bas expect=INFO wall=0 reached=0 resolve_failed=1 info :: invalid cast: Bool as String: a nominal value has no declared conversion
+probe cand ias expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+probe cand fas expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+probe cand bcon expect=INFO wall=1 reached=0 resolve_failed=1 info :: nominal Bool at host text String formal of concat: no declared conversion
+probe cand ocon expect=INFO wall=1 reached=0 resolve_failed=1 info :: optional Int? at host text String formal of concat: no declared conversion
+probe cand ojoin expect=INFO wall=1 reached=0 resolve_failed=1 info :: optional String? at host text elements of join: no declared conversion
+probe cand fcon expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+probe cand lcon expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+probe cand tsb expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+probe cand tsr expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+probe cand tsi expect=INFO wall=0 reached=1 resolve_failed=0 info :: 
+compile cand start 19:03:14
+compile cand exit=1 19:38:37 316 blocking error(s), 47990 advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)
+  cand blocking error lines: 316
+DISCRIMINATOR 'at host text' in cand errors: 0; in whole cand log: 0
+=== base leg at merge base 44c027aef4135fb017d1ac106349f995b4c7c90f
+base at 44c027aef4135fb017d1ac106349f995b4c7c90f dirty=0
+buildb exit=0     Finished `release` profile [optimized] target(s) in 7m 20s
+compile base start 19:45:57
+compile base exit=1 20:22:54 316 blocking error(s), 47987 advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)
+  base blocking error lines: 316
+NEW vs base: 0 (with wall text: 0); GONE: 0
+=== NEW
+=== GONE
+done
+srv2 converged tree vs 53dd63e515e: mirror files differing 7
