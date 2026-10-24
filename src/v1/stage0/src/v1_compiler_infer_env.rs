@@ -1840,6 +1840,38 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
     })
 }
 
+pub fn node_with_children_params_inferred_basis(
+    n: Rc<Node>,
+    children: Rc<Vec<Rc<Node>>>,
+    params: Rc<Vec<Rc<Node>>>,
+    inferred: Option<Rc<InferredNode>>,
+) -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        name: n.name.clone(),
+        ident: n.ident.clone(),
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: children.clone(),
+        connective: n.connective.clone(),
+        params: params.clone(),
+        inferred: inferred.clone(),
+        return_cardinality: n.return_cardinality.clone(),
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive.clone(),
+        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        match_pattern: n.match_pattern.clone(),
+        module_item_kind: n.module_item_kind.clone(),
+        declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
+        expr_data: n.expr_data.clone(),
+    })
+}
+
 pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -2072,7 +2104,35 @@ pub fn declaration_substitution_basis(
             }
             __result
         });
-        let with_children = node_with_children(n.clone(), children.clone());
+        let params = Rc::new({
+            let mut __result = Vec::new();
+            for p in n.params.clone().iter().cloned() {
+                __result.push(declaration_substitution_basis(
+                    p.clone(),
+                    env.clone(),
+                    generic_names.clone(),
+                ));
+            }
+            __result
+        });
+        let stamped_inferred = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                Some(Rc::new(InferredNode::Resolved {
+                    node: declaration_substitution_basis(
+                        rt.clone(),
+                        env.clone(),
+                        generic_names.clone(),
+                    ),
+                }))
+            }
+            _ => n.inferred.clone(),
+        };
+        let with_children = node_with_children_params_inferred_basis(
+            n.clone(),
+            children.clone(),
+            params.clone(),
+            stamped_inferred.clone(),
+        );
         let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
         let generic_leaf = ((((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))

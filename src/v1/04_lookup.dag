@@ -56,7 +56,7 @@ import v1.compiler.infer_env {
   listed_import_required_bare_call_blocked
 }
 
-import v1.compiler.infer_resolve { fn_type_param_names, expand_nominal_alias_rhs }
+import v1.compiler.infer_resolve { fn_type_param_names, expand_nominal_alias_rhs, generic_application_reapplied, is_cache_dropped_application }
 
 import v1.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
@@ -890,7 +890,14 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
   if n_is_type_var { return n }
   let normed = normalize_access_type_node(n: n)
-  if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
+  if is_cache_dropped_application(n: normed) && normed.connective == NoConnective && normed.children |> count > 0 {
+    // A substituted application dropped its cached expansion: the consumer rebuilds it from the arguments.
+    let reapplied = generic_application_reapplied(n: normed, env: env)
+    match reapplied.inferred {
+      Present { value: Resolved { node: target } } => preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
+      _ => normed
+    }
+  } else if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
     match normed.inferred {
       Present { value: Resolved { node: target } } => preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
       _ => normed
