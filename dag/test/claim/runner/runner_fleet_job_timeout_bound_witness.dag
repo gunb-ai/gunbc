@@ -33,6 +33,7 @@ import std.measure { second, second_count }
 import extdeps.github.actions {
   Job,
   Workflow,
+  WorkflowTrigger,
   Push,
   WorkflowDispatch,
   max_job_timeout_minutes,
@@ -49,6 +50,7 @@ import gunbc.runner.runner_fleet_job_timeout_census {
   fleet_workflow_census_rows,
   fleet_workflow_census_omissions,
   fleet_census_domain_is_explained,
+  fleet_workflow_omissions_are_discharged,
   job_selects_fleet_pool,
   workflow_has_autonomous_trigger,
   workflow_trigger_is_autonomous,
@@ -65,8 +67,8 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_runner_host_cap_release_receipt_upload_step,
   step_declared_timeout_minutes,
 }
-import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow }
-import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow }
+import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow, instrument_dispatch_workflow_triggers }
+import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow, microvm_shakedown_workflow_triggers }
 
 fn bound_seconds() -> Int {
   (second_count(s: runner_host_cap_drain_policy.wait_bound) as Int)
@@ -192,54 +194,40 @@ test fn the_bracket_step_budget_grows_with_the_bound_and_the_job_covers_it() -> 
 // 6. THE DOMAIN IS EXPLAINED, and the rows carry the authorities' OWN Workflow values (the fold is
 // recomputable from the authorities; here: compiler_gate_workflow itself is a row's workflow).
 // THE THREE OMITTED WORKFLOW ARTIFACTS ARE FORCED THERE, not merely declared there (review of
-// 2026-10-24: an identity check alone proves nothing about the reasons). Each omission is proven at
-// the level its reason states:
-//   - fleet_converge_workflow IS a constant Workflow and its MODELED 'on' set really carries no
-//     autonomous trigger; if it ever grows one (a schedule, a push), it must join the fold and this
-//     goes red;
-//   - instrument_dispatch_workflow's 'on' set is PROVEN INPUT-INDEPENDENT: three stated
-//     instantiations of its (seed, guard, script) parameters share one fingerprint with zero
-//     autonomous triggers, so the reason holds for every input, not just one;
-//   - microvm_shakedown_workflow likewise across three instantiations of its script parameter.
-// The fingerprint folds only Ints over the modeled triggers — never structural equality on a
-// Workflow (forbidden), and it is the witness's OWN recomputation from the 'on' model, not the
-// census fold being measured against itself.
-fn omission_autonomous_count(w: Workflow) -> Int {
-  length(filter(w.on, t => workflow_trigger_is_autonomous(t: t)))
+// 2026-10-24: an identity check alone proves nothing about the reasons). The proof reads each
+// omission reason AT THE LEVEL IT IS STATED, by construction (side-chat ruling, 2026-10-24):
+//   - fleet_converge_workflow is a constant Workflow whose modeled 'on' set carries no autonomous
+//     trigger; if it ever grows one (a schedule, a push), it must join the fold and this goes red;
+//   - the two function-built omissions discharge on their MODULE-LEVEL TRIGGER CONSTANTS
+//     (instrument_dispatch_workflow_triggers / microvm_shakedown_workflow_triggers), which the
+//     Workflow constructors read for their 'on' field — so the 'on' set cannot depend on any
+//     dispatched input, and the discharge is a property of the constant itself, not a sampling of
+//     built workflows. The census's own production claim, fleet_workflow_omissions_are_discharged,
+//     reads the same constants.
+fn omission_autonomous_count_triggers(ts: List<WorkflowTrigger>) -> Int {
+  length(filter(ts, t => workflow_trigger_is_autonomous(t: t)))
 }
 
 test fn fleet_converge_workflow_is_genuinely_dispatch_only_so_its_omission_holds() -> Bool {
   length(fleet_converge_workflow.jobs) > 0
     && length(fleet_converge_workflow.on) > 0
-    && omission_autonomous_count(w: fleet_converge_workflow) == 0
+    && omission_autonomous_count_triggers(ts: fleet_converge_workflow.on) == 0
     && any(fleet_workflow_census_omissions(), o => artifact_eq(a: o.artifact, b: FleetConvergeYamlArtifact))
 }
 
-test fn instrument_dispatch_workflow_omission_holds_for_every_instantiation() -> Bool {
-  let a = instrument_dispatch_workflow(seed: "a", guard: "b", script: "c")
-  let b = instrument_dispatch_workflow(seed: "a", guard: "b", script: "def")
-  let c = instrument_dispatch_workflow(seed: "xyz", guard: "q", script: "")
-  length(a.on) > 0
-    && omission_autonomous_count(w: a) == 0
-    && omission_autonomous_count(w: b) == 0
-    && omission_autonomous_count(w: c) == 0
-    // input-independence of the 'on' set: same trigger COUNT and zero autonomous triggers in every
-    // stated instantiation, so no input can turn this workflow autonomous.
-    && length(b.on) == length(a.on)
-    && length(c.on) == length(a.on)
+test fn the_function_built_omissions_discharge_on_their_trigger_constants() -> Bool {
+  // Production-side proof: the census reads the constants itself.
+  fleet_workflow_omissions_are_discharged()
+    // Witness-side, against the SAME constants the Workflow constructors read for 'on':
+    && length(instrument_dispatch_workflow_triggers()) > 0
+    && omission_autonomous_count_triggers(ts: instrument_dispatch_workflow_triggers()) == 0
+    && length(microvm_shakedown_workflow_triggers()) > 0
+    && omission_autonomous_count_triggers(ts: microvm_shakedown_workflow_triggers()) == 0
+    // the constructors genuinely read the constants:
+    && length(instrument_dispatch_workflow(seed: "a", guard: "b", script: "c").on) == length(instrument_dispatch_workflow_triggers())
+    && length(microvm_shakedown_workflow(script: "true").on) == length(microvm_shakedown_workflow_triggers())
+    // each constant is tied to the omission row that exempts it:
     && any(fleet_workflow_census_omissions(), o => artifact_eq(a: o.artifact, b: InstrumentDispatchYamlArtifact))
-}
-
-test fn microvm_shakedown_workflow_omission_holds_for_every_instantiation() -> Bool {
-  let a = microvm_shakedown_workflow(script: "true")
-  let b = microvm_shakedown_workflow(script: "set -euo pipefail\ntrue\n")
-  let c = microvm_shakedown_workflow(script: "")
-  length(a.on) > 0
-    && omission_autonomous_count(w: a) == 0
-    && omission_autonomous_count(w: b) == 0
-    && omission_autonomous_count(w: c) == 0
-    && length(b.on) == length(a.on)
-    && length(c.on) == length(a.on)
     && any(fleet_workflow_census_omissions(), o => artifact_eq(a: o.artifact, b: MicrovmShakedownYamlArtifact))
 }
 

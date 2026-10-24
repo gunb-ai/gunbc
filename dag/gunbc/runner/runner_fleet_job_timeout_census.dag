@@ -79,6 +79,8 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
 import gunbc.heal_workflow { heal_workflow }
 import gunbc.heal_publisher_workflow { heal_publisher_workflow }
 import gunbc.drift_watch_workflow { drift_watch_workflow }
+import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow_triggers }
+import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow_triggers }
 import gunbc.fleet.branch_run_grant_broker_workflow { branch_run_grant_broker_workflow }
 import gunbc.ci.ci_fleet { gunbc_ci_fleet_offer }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
@@ -161,13 +163,29 @@ fn fleet_workflow_census_omissions() -> List<FleetWorkflowCensusOmission> {
     },
     FleetWorkflowCensusOmission {
       artifact: InstrumentDispatchYamlArtifact,
-      reason: "the Workflow value is a function of the dispatch inputs (instrument_dispatch_workflow(seed, guard, script)) so no constant folds; and the workflow is workflow_dispatch-only, so the autonomous predicate excludes it regardless.",
+      reason: "the Workflow value is a function of the dispatch inputs (instrument_dispatch_workflow(seed, guard, script)); its trigger set is the module constant instrument_dispatch_workflow_triggers (input independence by construction), which carries only WorkflowDispatch — fleet_workflow_omissions_are_discharged proves the constant is autonomous-free, so the autonomous predicate excludes it regardless.",
     },
     FleetWorkflowCensusOmission {
       artifact: MicrovmShakedownYamlArtifact,
-      reason: "the Workflow value is a function of the dispatch input (microvm_shakedown_workflow(script), gunbc.runner.runner_microvm_shakedown_workflow) so no constant folds, and its only trigger is WorkflowDispatch, so the autonomous predicate excludes it regardless; its 10-minute job timeout is under the bound either way.",
+      reason: "the Workflow value is a function of the dispatch input (microvm_shakedown_workflow(script), gunbc.runner.runner_microvm_shakedown_workflow); its trigger set is the module constant microvm_shakedown_workflow_triggers (input independence by construction), which carries only WorkflowDispatch — fleet_workflow_omissions_are_discharged proves the constant is autonomous-free, so the autonomous predicate excludes it regardless; its 10-minute job timeout is under the bound either way.",
     },
   ]
+}
+
+// THE OMISSION DISCHARGE, IN PRODUCTION: the two function-built omissions cannot be censused as
+// Workflows (no constant to fold), but their omission reason — workflow_dispatch-only — is a claim
+// about a module-level CONSTANT trigger set, and this reads that constant directly, not a workflow
+// built from sampled inputs. Each discharged trigger set must be non-empty and carry no autonomous
+// trigger; if either authority ever grows a scheduled/pushed trigger, the bound witness claim
+// the_function_built_omissions_discharge_on_their_trigger_constants (and this function inside it)
+// goes RED in the native claim lane, and the workflow must join the fold instead.
+// (fleet_converge_workflow cannot be read here — it imports the bracket, and the census is imported
+// BY the bracket; its constant 'on' set is discharged in the witness, which has no such cycle.)
+fn fleet_workflow_omissions_are_discharged() -> Bool {
+  length(instrument_dispatch_workflow_triggers()) > 0
+    && !any(instrument_dispatch_workflow_triggers(), t => workflow_trigger_is_autonomous(t: t))
+    && length(microvm_shakedown_workflow_triggers()) > 0
+    && !any(microvm_shakedown_workflow_triggers(), t => workflow_trigger_is_autonomous(t: t))
 }
 
 // THE DOMAIN CONTROL: every committed workflow artifact is either censused or exempted with a
@@ -191,6 +209,8 @@ fn fleet_census_domain_is_explained() -> Bool {
     ),
     a => fleet_census_workflow_artifact_is_explained(a: a)
   )
+    // the omissions are not mere declarations: each is discharged where its reason lives
+    && fleet_workflow_omissions_are_discharged()
 }
 
 // THE FOLD. Every job of every censused workflow that both selects the fleet pool and belongs to a
