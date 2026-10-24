@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<IPMI>
+  <BIOS VENDOR="American Megatrends Inc." VER="2.6a" REL_DATE="10/06/2023"/>
+  <SYSTEM MANUFACTURER="Supermicro" PN="Super Server" SN="0123456789" SKUN="To be filled by O.E.M."/>
+  <CPU TYPE="03h" SPEED="2000 MHz" PROC_UPGRADE="37h" CORE="64" CORE_ENABLED="64" SOCKET="CPU" MANUFACTURER="Advanced Micro Devices, Inc." VER="AMD EPYC 7702P 64-Core Processor               " SN="Unknown" ASSET="Unknown" PN="Unknown"/>
+  <DIMM TYPE="1ah" SPEED="2667 MHz" CFG_SPEED="2667 MHz" SIZE="16384 MiB" LOCATION="DIMMC1" SN="80AD0117108184CA6D" PN="HMA82GR7AFR4N-VK    " BANK_LOCATION="P0_Node0_Channel2_Dimm0" ASSET="DIMMC1_AssetTag (date:17/10)" MANUFACTURER="SK Hynix"/>
+  <PowerSupply TYPE="Switching" STATUS="Unknown" IVRS="Auto-switch" UNPLUGGED="NO" PRESENT="NO" HOTREP="NO" MAXPOWER="Unknown" GROUP="2" LOCATION="PSU2" SN="To Be Filled By O.E.M." PN="To Be Filled By O.E.M." ASSET="To Be Filled By O.E.M." MANUFACTURER="To Be Filled By O.E.M." NAME="To Be Filled By O.E.M." REV="To Be Filled By O.E.M."/>
+  <PowerSupply TYPE="Switching" STATUS="Unknown" IVRS="Auto-switch" UNPLUGGED="NO" PRESENT="NO" HOTREP="NO" MAXPOWER="Unknown" GROUP="1" LOCATION="PSU1" SN="To Be Filled By O.E.M." PN="To Be Filled By O.E.M." ASSET="To Be Filled By O.E.M." MANUFACTURER="To Be Filled By O.E.M." NAME="To Be Filled By O.E.M." REV="To Be Filled By O.E.M."/>
+  <LAN ETH_INTERFACE="EthernetInterface 1" ID="1" ETH_NAME="OnBoard LAN 1" DESC="" STATE="Disabled" HEALTH="OK" MAC="ac:1f:6b:e3:f7:fe" SPEED="0" FQDN=""/>
+  <LAN ETH_INTERFACE="EthernetInterface 2" ID="2" ETH_NAME="OnBoard LAN 2" DESC="" STATE="Disabled" HEALTH="OK" MAC="ac:1f:6b:e3:f7:ff" SPEED="0" FQDN=""/>
+</IPMI>

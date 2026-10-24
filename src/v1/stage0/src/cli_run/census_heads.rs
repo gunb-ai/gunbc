@@ -380,7 +380,10 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
             node: project_node(node, base, relabel)?,
         })),
         // Every remaining variant is a leaf with no nested node to project.
-        Some(InferredNode::CompilerError { message: _, span: _ })
+        Some(InferredNode::CompilerError {
+            message: _,
+            span: _,
+        })
         | Some(InferredNode::TypeVariable { id: _ })
         | Some(InferredNode::Divergent)
         | Some(InferredNode::ArgumentsResolved) => inferred.clone(),
