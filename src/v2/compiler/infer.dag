@@ -10509,8 +10509,20 @@ fn infer_fold_bind_check(node: Node, entries: Map<Node, List<InferredFacts>>, re
   }
 }
 
+// THE CARRIER IS AN ARM OF THE FOLD, and an open one (`init: none`, `Absent`, `[]`) is closed once at the type the
+// step produces, by the one closing relation every declared position and every branch join uses
+// (infer_arm_type_closed_at): the step body declares, the init is the open arm. A carrier that is already
+// closed is judged as written.
+fn infer_fold_carrier_closed_at(declared: Node, produced: Node, resolved: ResolvedTree) -> Node {
+  if infer_type_is_open(t: declared) {
+    infer_arm_type_closed_at(t: declared, declaring: Present { value: produced }, resolved: resolved)
+  } else {
+    declared
+  }
+}
+
 fn infer_fold_judge(declared: Node, produced: Node, at: Node, step: Node, resolved: ResolvedTree) -> Outcome<Bool> {
-  let obligation = infer_declared_type_obligation(position: position_declared_return(), parameter_identity: ^fold_carrier, declared: infer_declared_type_denotation(declared: declared), produced: produced, application: at, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations, bindings: resolved.symbol_index)
+  let obligation = infer_declared_type_obligation(position: position_declared_return(), parameter_identity: ^fold_carrier, declared: infer_declared_type_denotation(declared: infer_fold_carrier_closed_at(declared: declared, produced: produced, resolved: resolved)), produced: produced, application: at, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations, bindings: resolved.symbol_index)
   match declared_type_inhabitance(obligation: obligation) {
     Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
     InhabitanceUndecidable { reason: reason } => infer_inhabitance_undecidable_accepted(application: at, reason: reason)
