@@ -589,9 +589,9 @@ type EmitGraphInfo {
   ownership_index: Map<String, Set<String>>
   // Per function, the occurrences v1.compiler.ownership build_moved_argument_occurrences proved to be
   // a binding's only use, at a by-value argument: keyed by occurrence, never by spelling.
-  moved_argument_index: Map<String, Set<String>>
+  moved_argument_index: Map<String, Set<Int>>
   movable: Set<String>
-  moved_argument_occurrences: Set<String>
+  moved_argument_occurrences: Set<Int>
   variant_to_enum: Map<String, String>
   owned_bindings: Set<String>
 

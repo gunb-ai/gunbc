@@ -1,7 +1,7 @@
 module v1.compiler.emit_rust
 
 import std.unicode.scalar { ascii_lowercase }
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceSynthetic, authored_occurrence_of }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
   VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
@@ -253,7 +253,7 @@ import v1.compiler.resolve { get_exported_names }
 import v1.compiler.infer_resolve {
   resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position,
 }
-import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_moved_argument_occurrences, moved_argument_occurrence_key, build_read_only_params, collect_callable_refs, analyze_dying_base_sites }
+import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_moved_argument_occurrences, build_read_only_params, collect_callable_refs, analyze_dying_base_sites }
 import std.induction { SubValueUnknown, InductiveField }
 
 import v1.compiler.emit {
@@ -3461,7 +3461,7 @@ type OwnershipProofEntry {
 
 type OwnershipBuildResult {
   ownership_index: Map<String, Set<String>>
-  moved_argument_index: Map<String, Set<String>>
+  moved_argument_index: Map<String, Set<Int>>
   read_only_params_index: Map<String, Set<String>>
 }
 
@@ -12383,9 +12383,13 @@ fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types:
     ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: expr, source_indices: source_indices)
       // THIS occurrence was proved to be its binding's only use, at a by-value argument
-      // (v1.compiler.ownership moved_argument_occurrence_key says why the key is the occurrence).
+      // (v1.compiler.ownership build_moved_argument_occurrences says why the key is the occurrence).
       // The move is granted for this one emission and for no other occurrence of the spelling.
-      let occurrence_info = if set_contains(emit_info.moved_argument_occurrences, moved_argument_occurrence_key(name: n, span_start: expr.span.start)) {
+      let moved_here = match authored_occurrence_of(identity: expr.occurrence_identity) {
+        Present { value: id } => set_contains(emit_info.moved_argument_occurrences, id.value)
+        Absent => false
+      }
+      let occurrence_info = if moved_here {
         with(emit_info, { movable: set_insert(emit_info.movable, n) })
       } else { emit_info }
       emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: occurrence_info, source_indices: source_indices, module_name: module_name)

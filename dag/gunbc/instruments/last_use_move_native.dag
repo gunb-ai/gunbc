@@ -6,7 +6,7 @@ import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimR
 
 // THE MOVE-AT-LAST-USE FIXTURES, ON THE EMITTED PATH. v1.compiler.ownership moves a binding at a
 // by-value call argument only when that argument is the binding's one use, and authorizes the move at
-// that one OCCURRENCE (moved_argument_occurrence_key), never for the spelling. Each fixture below is
+// that one OCCURRENCE (its std.occurrence_identity authored occurrence), never for the spelling. Each fixture below is
 // emitted by the seed, compiled by rustc and run, so a move the rule should not have made is a rustc
 // refusal (use of a moved value) before any case prints, and a case is held when the emitted function
 // returns the value an independently written reference computes. Which occurrences moved is read from
