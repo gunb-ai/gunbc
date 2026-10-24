@@ -6,10 +6,6 @@ import gunbc.host.host_effect_realize {
   DarkInstallRefused,
   DarkInstallConverged,
   DarkStepOwner,
-  DarkStepSudoersCheck,
-  DarkStepSudoersCompare,
-  DarkStepSudoersStage,
-  DarkStepSudoersReadback,
   DarkStepSnapshotReadback,
   DarkStepSliceUnit,
   DarkStepBrokerUnit,
@@ -24,11 +20,9 @@ import gunbc.host.host_effect_realize {
   DarkLegArgv,
   DarkLegStdin,
   DarkLegExpectEmpty,
-  DarkLegSameHash,
   dark_run_legs,
   dark_run_leg,
   dark_expect_empty_state,
-  dark_same_hash_state,
   dark_unit_legs,
   dark_slice_control_legs,
   approval_broker_dark_install,
@@ -41,7 +35,7 @@ import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_l
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
-import gunbc.host.host_effect_realize { Sha256Agreement, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved, Sha256Agrees, Sha256SideUnobserved, SourceSide, Sha256RunFailed }
+import gunbc.host.host_effect_realize { RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved }
 import gunbc.host.host_effect { LocalShell, HostEffectTransport, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation }
 import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, slice_control_plan_for }
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
@@ -74,7 +68,6 @@ fn leg_step(l: DarkLeg) -> DarkInstallStep {
     DarkLegArgv { step: s, command: _ } => s
     DarkLegStdin { step: s, command: _, payload: _ } => s
     DarkLegExpectEmpty { step: s, command: _ } => s
-    DarkLegSameHash { step: s, left: _, right: _ } => s
   }
 }
 
@@ -106,19 +99,12 @@ fn failed_exit(code: Int) -> RunArgvTransportOutcome {
 
 test fn a_failing_leg_stops_the_line_at_its_step() -> Bool {
   let first = dark_expect_empty_state(step: DarkStepSnapshotReadback, outcome: failed_exit(code: 1))
-  let after = dark_run_leg(state: first, leg: DarkLegSameHash { step: DarkStepSudoersCompare, left: "a", right: "b" }, transport: LocalShell)
+  let after = dark_run_leg(state: first, leg: DarkLegArgv { step: DarkStepEnable, command: sudo_elevate_command(command: systemctl_enable_argv(unit: gunbc_approval_broker_unit_name)) }, transport: LocalShell)
   step_of(s: first) == Present { value: DarkStepSnapshotReadback } && after == first
 }
 
-test fn an_unhashable_pair_fails_the_compare() -> Bool {
-  step_of(s: dark_same_hash_state(step: DarkStepSudoersCompare, left: "a", right: "b",
-    agreement: Sha256SideUnobserved { side: SourceSide, cause: Sha256RunFailed { stderr: "no such file" } }))
-    == Present { value: DarkStepSudoersCompare }
-}
-
-test fn an_agreeing_pair_and_an_empty_clean_run_are_ok() -> Bool {
-  step_of(s: dark_same_hash_state(step: DarkStepSudoersCompare, left: "a", right: "b", agreement: Sha256Agrees)) == none
-    && step_of(s: dark_expect_empty_state(step: DarkStepSnapshotReadback,
+test fn an_empty_clean_run_is_ok() -> Bool {
+  step_of(s: dark_expect_empty_state(step: DarkStepSnapshotReadback,
       outcome: RunArgvTransportObserved { observed: ShellExecObserved { success: true, exit_code: 0, stdout: "", stderr: "" } })) == none
 }
 
@@ -138,9 +124,8 @@ fn refused_step(l: DarkLeg) -> DarkInstallStep? {
 test fn dark_run_leg_routes_each_leg_through_the_transport_to_its_own_step() -> Bool {
   let cmd = find_untrusted_entries_command(roots: ["/nonexistent-w6b/none"], top_only: true, owner: "root")
   refused_step(l: DarkLegArgv { step: DarkStepEnable, command: cmd }) == Present { value: DarkStepEnable }
-    && refused_step(l: DarkLegStdin { step: DarkStepSudoersStage, command: cmd, payload: "x" }) == Present { value: DarkStepSudoersStage }
+    && refused_step(l: DarkLegStdin { step: DarkStepSidecarEnv, command: cmd, payload: "x" }) == Present { value: DarkStepSidecarEnv }
     && refused_step(l: DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: cmd }) == Present { value: DarkStepSnapshotReadback }
-    && refused_step(l: DarkLegSameHash { step: DarkStepSudoersCompare, left: "a", right: "b" }) == Present { value: DarkStepSudoersCompare }
 }
 
 test fn an_empty_leg_list_is_ok() -> Bool {
@@ -261,7 +246,6 @@ fn ancestor_readback_args(legs: List<DarkLeg>) -> List<String> {
         DarkLegExpectEmpty { step: _, command: _ } => []
         DarkLegArgv { step: _, command: _ } => []
         DarkLegStdin { step: _, command: _, payload: _ } => []
-        DarkLegSameHash { step: _, left: _, right: _ } => []
       }
   }
 }
