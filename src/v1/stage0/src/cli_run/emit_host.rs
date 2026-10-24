@@ -92,50 +92,91 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-/// `(hits, misses)` for the `compile_dag_diagnostic_census` memo across the whole process.
-/// Report-only; no consumer branches on it. Same accounting shape, and the same reason for it,
-/// as [`compile_dag_rust_emit_check_memo_counts`]: a hit count with no denominator is not a
-/// measurement.
-pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
+// CENSUS COST COUNTERS (census cost-shape fix). One process-wide set of atomic counters at the
+// seams where a census call can pay for the corpus: (1) the module-path index entry (which used
+// to clone the whole corpus index on every cache hit -- asserted at zero by
+// tests/census_cost_step0_measurement.rs, a LOCAL cargo test: the required path runs no v1 unit
+// tests (gunbc.rung_drop v1_required_lanes_withdrawn), so the assertion holds when that file is
+// executed and is not what a green required job establishes), (2) the scratch's source-file map clone, and
+// (3) every real disk read the census's resolve path performs. Exposed as a pub fn read by an
+// in-process observer, so a receipt is process-differential (deltas around calls in one
+// process), never a claim about another process.
+pub fn compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, u64, u64) {
     (
-        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed),
-        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_INDEX_CLONES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_CLONES.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_LEN.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READS.load(std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READ_BYTES.load(std::sync::atomic::Ordering::Relaxed),
+        // The identity proof's verdict, as an OBSERVABLE: zero over warm calls is what says the
+        // read-through is actually being taken (a false refusal would silently put the ~10 s back
+        // and only show up here), and the drifted-facts RED in cli_run's own tests drives it
+        // nonzero -- which is what keeps the proof from being code that never runs.
+        crate::cli_run::CENSUS_COST_IDENTITY_REFUSALS.load(std::sync::atomic::Ordering::Relaxed),
     )
 }
 
-/// Memoized entry point for the census, mirroring [`compile_dag_rust_emit_check`]'s memo rather
-/// than inventing a second caching discipline beside it (DESIGN §3 — the two builtins compile the
-/// same program through the same pipeline and differ only in what they report, so they must not
-/// disagree about when a compile may be reused).
-///
-/// WHY THIS EXISTS, stated as the measurement that produced it rather than as a general
-/// preference: `compile_dag_rust_emit_check` was memoized and this sibling was not, so a witness
-/// asking two QUESTIONS about one source paid for two full compiles of it. `neither_green_source_
-/// refuses_and_neither_mis_resolves` (`test.claim.callable_candidate_ambiguity_witness`) is the
-/// specimen — four census calls over two distinct sources, so half of its compiles recomputed a
-/// pure function of an input already compiled in the same run. That is the DESIGN §6
-/// bare-minimum-cost class ("a proven cost-shape defect is ALWAYS fixed, regardless of the
-/// realized n"), and its n stopped being small: the row reached 5437ms CPU against the 5000ms CPU
-/// safety deadline standing at the time, a FAIL-STOP protecting the executor and explicitly "never
-/// a budget, tolerance, or target" — so the admissible repair is to stop recomputing, never to
-/// raise the line. That deadline is gone (the claim ceiling gates on
-/// `claim_eval_step_budget_for_identity` since 2026-09-12 and CPU is observed-only), which does
-/// NOT retire this memo: the defect it repairs is a recomputation, and a recomputation costs the
-/// same whether or not a clock refuses on it.
-///
-/// PURITY, and it is the whole reason for the guard: the memo is armed ONLY under the floor's
-/// prepared-inventory snapshot and keyed on the source TOGETHER WITH that inventory's content
-/// digest, because `build_module_path_index_from_witness_roots` reads those bytes and the census
-/// is therefore a function of the corpus as well as of the source. Outside the guard there is no
-/// snapshot, so a hit would be a claim about disk that nothing established — DESIGN's
-/// cache-impurity rule (key on declared-input content), and the reason this is not simply a
-/// `HashMap` on the source string.
-pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
-    // The floor prepared-inventory guard that armed the content-keyed memo is deleted
-    // with `run_required_floor`. Disk is the only remaining source.
-    compile_dag_diagnostic_census_uncached(source)
+/// Zero the seven cost counters and return them (read-and-reset, so a caller brackets one
+/// census call or a run of them without subtracting an earlier snapshot).
+pub fn reset_compile_dag_diagnostic_census_cost_counts() -> (u64, u64, u64, u64, u64, u64, u64) {
+    (
+        crate::cli_run::CENSUS_COST_INDEX_CLONES.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES
+            .swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_CLONES.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_SHARED_VEC_LEN.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READS.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_DISK_READ_BYTES.swap(0, std::sync::atomic::Ordering::Relaxed),
+        crate::cli_run::CENSUS_COST_IDENTITY_REFUSALS.swap(0, std::sync::atomic::Ordering::Relaxed),
+    )
 }
 
+/// THIS IS THE BUILTIN'S ONLY ENTRY POINT, and there is no separate uncached body. It used to be
+/// a memoized wrapper over a `pub(crate)` `_uncached` function, and BOTH halves of that split are
+/// gone: the memo is deleted (see the deletion story below), and a wrapper that only forwards is
+/// authored duplication (§3, one fact one home; the sibling `compile_dag_rust_emit_check` keeps
+/// its split for a reason this one never had -- its `_uncached` returns `EmitCheckRead`, a
+/// different type, while these two had identical signatures).
+///
+/// THE DELETION STORY, because a future reader must not re-add what is deleted here. A memo
+/// once sat on top of this function, and it was NOT arbitrary caching: it was the repair for a
+/// measured cost-shape defect (when that memo was written, the sibling `compile_dag_rust_emit_check`
+/// had a live memo and this did not, so `neither_green_source_refuses_and_neither_mis_resolves` in
+/// `test.claim.callable_candidate_ambiguity_witness` recomputed half its compiles -- 5437 ms CPU
+/// against the then-standing 5000 ms claim CPU refusal). The memo then lost its soundness
+/// precondition: it keyed on source PLUS the floor's prepared-inventory content digest, because
+/// `build_module_path_index_from_witness_roots` reads those bytes. When `run_required_floor` was
+/// deleted (in the earlier floor-residue chain-delete, not on this branch) the guard went with it
+/// and the cell stopped being consulted AT THAT POINT; what reached this PR was the residue -- a
+/// `HashMap` nobody consulted, two atomics still reporting (0, 0), and an entry point whose only
+/// job was forwarding. And the work each call redid is measured here rather than guessed: it was
+/// CPU-bound pool-cache rebuild (~10 s of a 12.9 s warm call), NOT disk -- the fixture's import
+/// closure reads 3 files and 89,436 bytes, closure-scale, identical before and after
+/// (`census_cost_step0_measurement`).
+///
+/// WHY DELETION AND NOT A RE-ARMED GUARD. The deleted key was complete ONLY under the frozen
+/// floor snapshot -- with the snapshot gone, a content-keyed memo would have to declare every
+/// input it reads (corpus bytes, floor inventory, and the process-level cache state this
+/// function now reads through), which is a stronger claim than anything here can establish.
+/// DESIGN's cache-impurity rule forbids a hit that asserts a fact about its inputs that nothing
+/// established. So the recomputation is not
+/// cached, it is DELETED at its two sources, which is the same defect class the memo was
+/// invented for and is strictly cheaper than the memo ever was: a warm census call measured
+/// 12.9 s before this change and 0.34 s after it (Step 0 series, `census_cost_step0_measurement`,
+/// which asserts the corpus-index clone count at zero -- executed locally, not on the required
+/// path; see that file's execution-locus block). Where the memo made the repeat call
+/// free by asserting its key was complete, these make the repeat call cheap by not doing the work.
+/// The `hits/misses` atomics and the memo cell went with it; nothing ever branched on them.
+///
+/// THE SIBLING IS NOT CITED AS A HEALTHY MIRROR. It is in the state this function was in: its
+/// entry point forwards to `compile_dag_rust_emit_check_uncached`, its `..._MEMO` cell is declared
+/// and `forget`-ed but never consulted, and its two atomics are read only by
+/// `compile_dag_rust_emit_check_memo_counts`. That residue is pre-existing and outside this PR's
+/// named accusation (the census's cost shape), and it is declared here rather than left for a
+/// reader to find it contradicting the asymmetry above. The sibling's split survives on its own
+/// merits (the different return type); its cache does not exist.
+///
 /// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
 /// `.dag` program through the v1 pipeline to the Rust render target (the same pipeline
 /// [`compile_dag_rust_emit_check`] uses), and report the full per-class diagnostic census the
@@ -157,17 +198,42 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
 /// fail-open / `UnlistedImportUse` advisory path. Census receipts therefore must not be read as
 /// production compile-clean behavior for those type positions. It observes nothing about the
 /// interpreter's disposition of the same program and nothing about other emission targets.
-pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDiagnosticCensus {
-    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
-            let module_index = build_module_path_index_from_witness_roots();
-            let sources =
-                resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index)
-                    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
-            record_fixture_closure(&sources);
-            compile_fixture_rendering_only_what_is_read(sources, None, &module_index)
-        })
-    }));
+pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        || -> Result<_, FixtureRenderRefusal> {
+            crate::v1_rt::with_type_ref_hit_ne_bind_measure(
+                || -> Result<_, FixtureRenderRefusal> {
+                    // THE MODULE-PATH INDEX IS LENT, NOT COPIED (CENSUS COST). This asked for the
+                    // whole corpus index as an owned map, which clones all 9003 entries out of the
+                    // thread-local memo on EVERY census call; the resolve below only ever asks it
+                    // keyed questions (`module_index.get(&module_path)`), one entry at a time.
+                    // `with_module_path_index` is the same memo, borrowed for the duration. A
+                    // re-entrant demand on the same memo would double-borrow and panic -- that is
+                    // caught here and surfaces as `NotRunnable`, so the digest equality the census
+                    // control asserts is what keeps this borrow honest, not an argument.
+                    let roots = default_source_roots();
+                    // THE COMPILE JOINS THE BORROW TOO. A caller merged after this fix removed the
+                    // index from this signature, so the compile here must take the SAME lent index
+                    // the resolve got -- threading it as a borrow, never a clone: building a second
+                    // owned index (build_module_path_index_from_witness_roots) would clone every
+                    // corpus entry per census call, exactly the cost this change deleted. The
+                    // double-borrow hazard is the one the comment above already accepts: a re-entrant
+                    // demand panics and lands in NotRunnable, and the digest-equality control is what
+                    // keeps the borrow honest.
+                    crate::cli_run::entry_resolve::with_module_path_index(&roots, |module_index| {
+                        let sources = resolve_virtual_source_with_imports(
+                            FIXTURE_SOURCE_PATH,
+                            source,
+                            module_index,
+                        )
+                        .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
+                        record_fixture_closure(&sources);
+                        compile_fixture_rendering_only_what_is_read(sources, None, module_index)
+                    })
+                },
+            )
+        },
+    ));
     let result = match compiled {
         Ok(Ok(r)) => r,
         Ok(Err(refusal)) => {
