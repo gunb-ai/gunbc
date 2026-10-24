@@ -176,7 +176,7 @@ import std.termination {
   proportional_divisor_from_int_at_least_two,
   OneStep
 }
-import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
+import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral, NamedTemplate, ReceiverSelf }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
@@ -7619,8 +7619,10 @@ fn nominal_value_at_host_text_diags(t: Node, position: String, span: SourceSpan,
 }
 
 // THE HOST-TEXT POSITIONS OF AN ALGEBRA METHOD: each formal its template declares as the kernel
-// String (NamedTemplate String; index 0 is the receiver), and each receiver element when the
-// template renders them (v1.compiler.method template_renders_receiver_elements_as_host_text).
+// String (NamedTemplate String), each ReceiverSelf formal when the receiver is itself host text
+// (the rule v1.compiler.method builtin_host_text_param_names applies to the registry; a bare
+// `concat("id=", p)` resolves here, to the scalar free-monoid concat, before the registry is asked),
+// and each receiver element when the template renders them (v1.compiler.method template_renders_receiver_elements_as_host_text).
 // `args` are the call's argument nodes after the receiver.
 fn algebra_method_host_text_crossing_diags(method_name: String, semantics: MethodSemantics?, receiver: Node, args: List<Node>, scope: InferScope) -> List<ErrorNode> {
   match semantics {
@@ -7629,11 +7631,16 @@ fn algebra_method_host_text_crossing_diags(method_name: String, semantics: Metho
         AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
           match at {
             Present { value: t } =>
-              let formal_diags = t.param_types |> skip(1) |> enumerate |> flat_map(pr =>
-                match pr.second {
-                  NamedTemplate { name: n } =>
-                    if n != "String" { [] }
-                    else {
+              let receiver_type = resolved_type(n: receiver)
+              let receiver_is_host_text = match text_representation_by_identity(n: receiver_type, env: scope.type_env) { HostText => true  _ => false }
+              let formal_diags = t.param_types |> skip(1) |> enumerate |> flat_map(pr => {
+                let host_text_formal = match pr.second {
+                  NamedTemplate { name: n } => n == "String"
+                  ReceiverSelf => receiver_is_host_text
+                  _ => false
+                }
+                if !host_text_formal { [] }
+                else {
                       match args |> skip(pr.first) |> first {
                         Present { value: a } =>
                           let v = arg_value(n: a)
@@ -7644,10 +7651,8 @@ fn algebra_method_host_text_crossing_diags(method_name: String, semantics: Metho
                           }
                         Absent => []
                       }
-                    }
-                  _ => []
-                })
-              let receiver_type = resolved_type(n: receiver)
+                }
+              })
               let element_diags = if template_renders_receiver_elements_as_host_text(template: t)
                   && node_is_element_collection(n: receiver_type, source_indices: scope.type_env.source_indices) {
                 receiver_type.children |> flat_map(ch => nominal_value_at_host_text_diags(t: child_type_node(ch: ch), position: concat("elements of ", method_name), span: receiver.span, scope: scope))
