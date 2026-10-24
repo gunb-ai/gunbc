@@ -127,14 +127,6 @@ data session_placement_schema: String = "gunbc.session-placement/v1"
 // carried as EpochSecs (SessionPlacementRecord.granted_at / expires_at), so they are not part of it.
 data session_placement_term_seconds: Nat = 14400
 
-// THE BOUNDS A GRANT DOES NOT CARRY. product.capacity.pool grants memory only, so CPU and task
-// ceilings are stated beside it rather than pretended to come from it (DESIGN 3b: a divergence with
-// its reason). They are policy budgets for the dogfood capped unit (operator ruling 2026-10-03: a
-// capped systemd unit plus a lease is sufficient): eight cores and 4096 tasks bound a runaway
-// session without throttling the single `gunbc run` a harness worker is. Falsifiable: a worker unit
-// ending in Result=resources, or a throughput regression attributed to CPUQuota, re-derives them.
-data session_process_bounds: UnitProcessBounds = UnitProcessBounds { cpu_quota: millicore(count: 8000), tasks_max: 4096 }
-
 // THE SESSION POOL'S SLOTS ARE THE BELT'S WORKER COUNT, derived rather than chosen: the belt already
 // admits at most max_concurrent workers, so a pool of that many ceilings refuses only for memory the
 // machine lacks, never for a count launch admission did not impose.
