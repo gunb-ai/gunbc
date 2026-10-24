@@ -1,0 +1,131 @@
+module gunbc.auth.profile_store_root
+
+import std.types { String, NonEmptyStr, FilePath }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation, FilesystemFileSubjectRefused, FilesystemReadOutcome, FilesystemReadRefused,
+  FilesystemWriteOutcome, FilesystemWriteRefused, FilesystemListingObservation,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  FilesystemEntryNameAdmitted, FilesystemEntryNameRefused,
+  filesystem_listing_observation, filesystem_file_observation,
+  filesystem_read_outcome, filesystem_write_outcome, admit_filesystem_entry_name,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_child }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
+
+// THE PRINCIPAL PROFILE STORE'S ROOT (the store's business is gunbc.auth.profile_projection), a leaf module
+// for the reason gunbc.auth.session_store_root is one. THE ONE DECLARATION OF THE STORE: the member under the
+// instance root and the mode its directory is created with; the mint and the directory row both derive from
+// it.
+type ProfileStoreSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data profile_store_slots: ProfileStoreSlotsDeclaration = ProfileStoreSlotsDeclaration {
+  member: "auth-profiles" as NonEmptyStr,
+  mode: DirectoryOwnerOnly,
+}
+
+data profile_store_file_suffix: String = ".json"
+
+fn profile_store_slots_path(instance: HostDashboardInstance) -> FilePath {
+  dashboard_instance_child(root: instance.instance_root, child: profile_store_slots.member as String)
+}
+
+// THE FILE NAME is the sha256 of the principal's ruling label: deterministic and filesystem-safe (the label
+// itself carries ':' and '/').
+fn profile_store_file_name(digest_hex: String) -> String {
+  join([digest_hex, profile_store_file_suffix], "")
+}
+
+// THE PROFILE STORE, A SEALED VALUE MINTED FROM ITS DECLARATION, as gunbc.auth.session_store_root SessionStore
+// is: its fields are the store's operations closed over the derived root, there is no root field, and the
+// files are the bytes the store wrote before it was sealed. read_record and write_record take the digest
+// that names a principal's file; read_listed takes an entry a listing named. A name the filesystem would not
+// admit as a child of the root is refused, never resolved outside it. sole_constructor, non-generic and never
+// a variant arm (test.claim.sole_constructor_completeness_audit_probe f13). NOT established: a store minted
+// for instance A refused where B is required.
+type ProfileStore sole_constructor {
+  instance: NonEmptyStr
+  read_record: fn(String) -> FilesystemFileObservation
+  write_record: fn(String, String) -> FilesystemWriteOutcome
+  list: fn() -> FilesystemListingObservation
+  read_listed: fn(String) -> FilesystemReadOutcome
+}
+
+type ProfileStoreReading
+  = ProfileStoreReady { store: ProfileStore }
+  | ProfileStoreUnready { detail: String }
+
+fn profile_store_listing(root: FilePath) -> FilesystemListingObservation {
+  let listed = Filesystem.List(path: root as String)
+  filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error)
+}
+
+fn profile_store_read_record_at(root: FilePath, digest_hex: String) -> FilesystemFileObservation {
+  let name = profile_store_file_name(digest_hex: digest_hex)
+  match admit_filesystem_entry_name(name: name) {
+    FilesystemEntryNameRefused { name: n, cause: c } => FilesystemFileSubjectRefused { directory: root as String, name: n, cause: c }
+    FilesystemEntryNameAdmitted(_) => {
+      let path = join([root as String, "/", name], "")
+      let read = Filesystem.Read(path: path)
+      filesystem_file_observation(
+        listing: profile_store_listing(root: root),
+        name: name,
+        path: path,
+        read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+      )
+    }
+  }
+}
+
+fn profile_store_write_record_at(root: FilePath, digest_hex: String, content: String) -> FilesystemWriteOutcome {
+  let name = profile_store_file_name(digest_hex: digest_hex)
+  let path = join([root as String, "/", name], "")
+  match admit_filesystem_entry_name(name: name) {
+    FilesystemEntryNameRefused { name: _, cause: c } => FilesystemWriteRefused { path: path, error: c }
+    FilesystemEntryNameAdmitted(_) => {
+      let written = Filesystem.WriteOwnerOnly(path: path, content: content)
+      filesystem_write_outcome(path: path, success: written.success, error: written.error)
+    }
+  }
+}
+
+fn profile_store_read_listed_at(root: FilePath, entry: String) -> FilesystemReadOutcome {
+  match admit_filesystem_entry_name(name: entry) {
+    FilesystemEntryNameRefused { name: _, cause: c } => FilesystemReadRefused { error: c }
+    FilesystemEntryNameAdmitted(_) => {
+      let read = Filesystem.Read(path: join([root as String, "/", entry], ""))
+      filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
+    }
+  }
+}
+
+// THE ONE MINT. It takes the instance and nothing else: the root is derived from profile_store_slots, the
+// directory is listed, and only a listed directory yields a store.
+fn profile_store(instance: HostDashboardInstance) -> ProfileStoreReading {
+  let root = profile_store_slots_path(instance: instance)
+  match profile_store_listing(root: root) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => ProfileStoreUnready { detail: join(["the profile store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => ProfileStoreUnready { detail: join(["the profile store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => ProfileStoreReady { store: ProfileStore {
+      instance: instance.instance_id,
+      read_record: fn(digest_hex) { profile_store_read_record_at(root: root, digest_hex: digest_hex) }
+      write_record: fn(digest_hex, content) { profile_store_write_record_at(root: root, digest_hex: digest_hex, content: content) }
+      list: fn() { profile_store_listing(root: root) }
+      read_listed: fn(entry) { profile_store_read_listed_at(root: root, entry: entry) }
+    } }
+  }
+}
+
+// THE DIRECTORY THIS STORE DEMANDS, derived from the same declaration as the mint and enrolled in the one
+// instance directory list (gunbc.roadmap.dashboard_instance_directories). Its writer is the serving process
+// alone, so ownership is never adopted.
+fn profile_store_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: profile_store_slots.member,
+    path: profile_store_slots_path(instance: instance),
+    owner: instance.directory_owner,
+    mode: profile_store_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}

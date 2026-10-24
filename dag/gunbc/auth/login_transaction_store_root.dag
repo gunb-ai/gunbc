@@ -1,0 +1,174 @@
+module gunbc.auth.login_transaction_store_root
+
+import std.types { String, NonEmptyStr, FilePath }
+import std.durable_compare_and_set { CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted, cas_unreadable_slot_detail }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import gunbc.durable_exclusive_hold_file_store {
+  file_hold_acquire, FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
+  FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
+}
+import gunbc.auth.auth_store_key { AuthStoreKey }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation, FilesystemEntryPresence, FilesystemWriteOutcome, FilesystemDelete, FilesystemListingObservation,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation, filesystem_file_observation, filesystem_entry_presence,
+  filesystem_read_outcome, filesystem_write_outcome, filesystem_delete,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_child }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
+
+// THE LOGIN TRANSACTION STORE'S ROOT (the store's business is gunbc.auth.login_transaction_store), a leaf
+// module for the reason gunbc.auth.session_store_root is one. THE ONE DECLARATION OF THE STORE: the member
+// under the instance root and the mode its directory is created with; the mint and the directory row both
+// derive from it. Owner-only: a transaction carries its PKCE verifier.
+type LoginTransactionStoreSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data login_transaction_store_slots: LoginTransactionStoreSlotsDeclaration = LoginTransactionStoreSlotsDeclaration {
+  member: "auth-login-transactions" as NonEmptyStr,
+  mode: DirectoryOwnerOnly,
+}
+
+data login_transaction_file_suffix: String = ".json"
+
+fn login_transaction_store_slots_path(instance: HostDashboardInstance) -> FilePath {
+  dashboard_instance_child(root: instance.instance_root, child: login_transaction_store_slots.member as String)
+}
+
+// A file is named only by an AuthStoreKey (gunbc.auth.auth_store_key): a request-supplied state that is
+// not one cannot name a file under the store.
+fn login_transaction_file_name(key: AuthStoreKey) -> String {
+  join([key.value as String, login_transaction_file_suffix], "")
+}
+
+fn login_transaction_entry_path(root: FilePath, name: String) -> String {
+  join([root as String, "/", name], "")
+}
+
+// ── The single-consume election ─────────────────────────────────────────────────────────────────
+// A TRANSACTION IS CONSUMED BY WINNING ITS HOLD, never by a hand-written marker. Consumption is an
+// exclusion: of every callback that presents one state, exactly one may go on to the code exchange. That is
+// std.durable_exclusive_hold, realized over the file CAS by gunbc.durable_exclusive_hold_file_store, so the
+// store acquires the hold keyed by the state and never releases it: a consumed transaction stays held. A
+// second acquirer is refused as Occupied, including one presenting the same owner, because the protocol
+// refuses re-entry (the same spelling does not prove the first consumer is gone). The hold slots live in
+// the store's own directory beside the records: a slot is named <state>.<generation> and a record
+// <state>.json, so neither reading mistakes one for the other.
+data login_transaction_consume_owner: DurableHoldOwnerRef = "login-callback" as DurableHoldOwnerRef
+
+type LoginTransactionConsumeElection
+  = LoginTransactionConsumeWon
+  | LoginTransactionConsumeAlreadyWon
+  | LoginTransactionConsumeRefused { detail: String }
+
+fn login_transaction_store_failure_detail(cause: CasStoreFailure) -> String {
+  match cause {
+    CasSlotObservationRefused { cause: c } => cas_unreadable_slot_detail(cause: c)
+    CasGenerationPublicationRefused { detail: d } => d as String
+    CasGenerationSpaceExhausted { head: _ } => "the consume hold's generation space is exhausted"
+  }
+}
+
+fn login_transaction_consume_election_of(outcome: FileHoldAcquireOutcome) -> LoginTransactionConsumeElection {
+  match outcome {
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => LoginTransactionConsumeWon
+    FileHoldOccupied { slot_key: _, holder: _, generation: _ } => LoginTransactionConsumeAlreadyWon
+    FileHoldAcquireLost { slot_key: _ } => LoginTransactionConsumeAlreadyWon
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: c } => LoginTransactionConsumeRefused { detail: login_transaction_store_failure_detail(cause: c) }
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => LoginTransactionConsumeRefused { detail: join(["the consume hold does not decode: ", d as String], "") }
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => LoginTransactionConsumeRefused { detail: "the transaction state does not address a hold slot" }
+  }
+}
+
+// THE LOGIN TRANSACTION STORE, A SEALED VALUE MINTED FROM ITS DECLARATION, as gunbc.auth.session_store_root
+// SessionStore is: its fields are the store's operations closed over the derived root, there is no root
+// field, and the records are the bytes the store wrote before it was sealed. sole_constructor, non-generic
+// and never a variant arm (test.claim.sole_constructor_completeness_audit_probe f13). NOT established: a store
+// minted for instance A refused where B is required.
+//
+// stage_token_form / remove_token_form are the callback's token-request scratch (one owner-only file per
+// state, written, posted and removed in one request; a scratch row, not a store), staged in this store's
+// owner-only directory as it was before the seal. The written arm carries the staged file's path because
+// http.Client.PostFormFromFile reads its body from a path; it names one scratch file, not the store root,
+// and no store can be minted from it.
+type LoginTransactionStore sole_constructor {
+  instance: NonEmptyStr
+  read_record: fn(AuthStoreKey) -> FilesystemFileObservation
+  record_presence: fn(AuthStoreKey) -> FilesystemEntryPresence
+  write_record: fn(AuthStoreKey, String) -> FilesystemWriteOutcome
+  delete_record: fn(AuthStoreKey) -> FilesystemDelete
+  consume: fn(AuthStoreKey) -> LoginTransactionConsumeElection
+  stage_token_form: fn(AuthStoreKey, String) -> FilesystemWriteOutcome
+  remove_token_form: fn(AuthStoreKey) -> FilesystemDelete
+}
+
+type LoginTransactionStoreReading
+  = LoginTransactionStoreReady { store: LoginTransactionStore }
+  | LoginTransactionStoreUnready { detail: String }
+
+fn login_transaction_store_listing(root: FilePath) -> FilesystemListingObservation {
+  let listed = Filesystem.List(path: root as String)
+  filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error)
+}
+
+fn login_transaction_read_record_at(root: FilePath, key: AuthStoreKey) -> FilesystemFileObservation {
+  let name = login_transaction_file_name(key: key)
+  let path = login_transaction_entry_path(root: root, name: name)
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(
+    listing: login_transaction_store_listing(root: root),
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+fn login_transaction_write_owner_only_at(root: FilePath, name: String, content: String) -> FilesystemWriteOutcome {
+  let path = login_transaction_entry_path(root: root, name: name)
+  let written = Filesystem.WriteOwnerOnly(path: path, content: content)
+  filesystem_write_outcome(path: path, success: written.success, error: written.error)
+}
+
+fn login_transaction_delete_at(root: FilePath, name: String) -> FilesystemDelete {
+  let path = login_transaction_entry_path(root: root, name: name)
+  let deleted = Filesystem.Delete(path: path)
+  filesystem_delete(path: path, success: deleted.success, error: deleted.error, error_kind: deleted.error_kind)
+}
+
+fn login_transaction_token_form_name(key: AuthStoreKey) -> String {
+  join([key.value as String, "-token.form"], "")
+}
+
+// THE ONE MINT. It takes the instance and nothing else: the root is derived from
+// login_transaction_store_slots, the directory is listed, and only a listed directory yields a store.
+fn login_transaction_store(instance: HostDashboardInstance) -> LoginTransactionStoreReading {
+  let root = login_transaction_store_slots_path(instance: instance)
+  match login_transaction_store_listing(root: root) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => LoginTransactionStoreUnready { detail: join(["the login transaction store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => LoginTransactionStoreUnready { detail: join(["the login transaction store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => LoginTransactionStoreReady { store: LoginTransactionStore {
+      instance: instance.instance_id,
+      read_record: fn(key) { login_transaction_read_record_at(root: root, key: key) }
+      record_presence: fn(key) { filesystem_entry_presence(listing: login_transaction_store_listing(root: root), name: login_transaction_file_name(key: key)) }
+      write_record: fn(key, content) { login_transaction_write_owner_only_at(root: root, name: login_transaction_file_name(key: key), content: content) }
+      delete_record: fn(key) { login_transaction_delete_at(root: root, name: login_transaction_file_name(key: key)) }
+      consume: fn(key) { login_transaction_consume_election_of(outcome: file_hold_acquire(root: root as String as NonEmptyStr, slot_key: key.value, requested_owner: login_transaction_consume_owner)) }
+      stage_token_form: fn(key, form) { login_transaction_write_owner_only_at(root: root, name: login_transaction_token_form_name(key: key), content: form) }
+      remove_token_form: fn(key) { login_transaction_delete_at(root: root, name: login_transaction_token_form_name(key: key)) }
+    } }
+  }
+}
+
+// THE DIRECTORY THIS STORE DEMANDS, derived from the same declaration as the mint and enrolled in the one
+// instance directory list (gunbc.roadmap.dashboard_instance_directories). Its writer is the serving process
+// alone, so ownership is never adopted.
+fn login_transaction_store_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: login_transaction_store_slots.member,
+    path: login_transaction_store_slots_path(instance: instance),
+    owner: instance.directory_owner,
+    mode: login_transaction_store_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}

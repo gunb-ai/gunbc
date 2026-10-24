@@ -1,0 +1,136 @@
+module gunbc.auth.session_store_root
+
+import std.types { String, NonEmptyStr, FilePath }
+import gunbc.auth.auth_store_key { AuthStoreKey }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation, FilesystemEntryPresence, FilesystemReadOutcome, FilesystemReadRefused,
+  FilesystemWriteOutcome, FilesystemDelete, FilesystemListingObservation,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  FilesystemEntryNameAdmitted, FilesystemEntryNameRefused,
+  filesystem_listing_observation, filesystem_file_observation, filesystem_entry_presence,
+  filesystem_read_outcome, filesystem_write_outcome, filesystem_delete, admit_filesystem_entry_name,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_child }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
+
+// THE SESSION STORE'S ROOT (the store's business is gunbc.auth.session_store), kept in a leaf module for
+// the reason the worktree claim root is (gunbc.roadmap.roadmap_attempt_worktree_claim_root): the instance
+// directory list imports the directory row, and the business functions must not be able to build the store.
+// THE ONE DECLARATION OF THE STORE: the member it lives under in the instance root and the mode its
+// directory is created with. The mint (session_store) and the directory row (session_store_directory) both
+// derive from it. Owner-only: a session file carries its CSRF token.
+type SessionStoreSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data session_store_slots: SessionStoreSlotsDeclaration = SessionStoreSlotsDeclaration {
+  member: "auth-sessions" as NonEmptyStr,
+  mode: DirectoryOwnerOnly,
+}
+
+data session_store_file_suffix: String = ".json"
+
+fn session_store_slots_path(instance: HostDashboardInstance) -> FilePath {
+  dashboard_instance_child(root: instance.instance_root, child: session_store_slots.member as String)
+}
+
+// One file per session, named by its AuthStoreKey (gunbc.auth.auth_store_key): a request-supplied id that
+// is not one cannot name a file under the store.
+fn session_store_file_name(key: AuthStoreKey) -> String {
+  join([key.value as String, session_store_file_suffix], "")
+}
+
+// THE SESSION STORE, A SEALED VALUE MINTED FROM ITS DECLARATION. Its fields are the store's own operations,
+// closed over the root derived from session_store_slots; there is no root field. Sealed in place: the
+// files are the bytes the store wrote before it was sealed (one JSON object per session, owner-only), so
+// nothing on disk moves. sole_constructor, non-generic and never a variant arm, because the seal does not
+// reach variant construction (test.claim.sole_constructor_completeness_audit_probe f13). NOT established, as
+// for the claim store: a store minted for instance A refused where B is required.
+//
+// read_record answers absence from a listing, never from a failed read (filesystem_file_observation);
+// read_listed reads one entry a listing named (the purge's planning fold); an entry name the filesystem
+// would not admit as a child of the root is refused as a read, never resolved outside the root.
+type SessionStore sole_constructor {
+  instance: NonEmptyStr
+  read_record: fn(AuthStoreKey) -> FilesystemFileObservation
+  record_presence: fn(AuthStoreKey) -> FilesystemEntryPresence
+  write_record: fn(AuthStoreKey, String) -> FilesystemWriteOutcome
+  delete_record: fn(AuthStoreKey) -> FilesystemDelete
+  list: fn() -> FilesystemListingObservation
+  read_listed: fn(String) -> FilesystemReadOutcome
+}
+
+type SessionStoreReading
+  = SessionStoreReady { store: SessionStore }
+  | SessionStoreUnready { detail: String }
+
+fn session_store_listing(root: FilePath) -> FilesystemListingObservation {
+  let listed = Filesystem.List(path: root as String)
+  filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error)
+}
+
+fn session_store_read_record_at(root: FilePath, key: AuthStoreKey) -> FilesystemFileObservation {
+  let name = session_store_file_name(key: key)
+  let path = join([root as String, "/", name], "")
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(
+    listing: session_store_listing(root: root),
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+fn session_store_write_record_at(root: FilePath, key: AuthStoreKey, content: String) -> FilesystemWriteOutcome {
+  let path = join([root as String, "/", session_store_file_name(key: key)], "")
+  let written = Filesystem.WriteOwnerOnly(path: path, content: content)
+  filesystem_write_outcome(path: path, success: written.success, error: written.error)
+}
+
+fn session_store_delete_record_at(root: FilePath, key: AuthStoreKey) -> FilesystemDelete {
+  let path = join([root as String, "/", session_store_file_name(key: key)], "")
+  let deleted = Filesystem.Delete(path: path)
+  filesystem_delete(path: path, success: deleted.success, error: deleted.error, error_kind: deleted.error_kind)
+}
+
+fn session_store_read_listed_at(root: FilePath, entry: String) -> FilesystemReadOutcome {
+  match admit_filesystem_entry_name(name: entry) {
+    FilesystemEntryNameRefused { name: _, cause: c } => FilesystemReadRefused { error: c }
+    FilesystemEntryNameAdmitted(_) => {
+      let read = Filesystem.Read(path: join([root as String, "/", entry], ""))
+      filesystem_read_outcome(content: read.content, success: read.success, error: read.error)
+    }
+  }
+}
+
+// THE ONE MINT. It takes the instance and nothing else: the root is derived here from session_store_slots,
+// the directory is listed, and only a listed directory yields a store.
+fn session_store(instance: HostDashboardInstance) -> SessionStoreReading {
+  let root = session_store_slots_path(instance: instance)
+  match session_store_listing(root: root) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => SessionStoreUnready { detail: join(["the session store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => SessionStoreUnready { detail: join(["the session store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => SessionStoreReady { store: SessionStore {
+      instance: instance.instance_id,
+      read_record: fn(key) { session_store_read_record_at(root: root, key: key) }
+      record_presence: fn(key) { filesystem_entry_presence(listing: session_store_listing(root: root), name: session_store_file_name(key: key)) }
+      write_record: fn(key, content) { session_store_write_record_at(root: root, key: key, content: content) }
+      delete_record: fn(key) { session_store_delete_record_at(root: root, key: key) }
+      list: fn() { session_store_listing(root: root) }
+      read_listed: fn(entry) { session_store_read_listed_at(root: root, entry: entry) }
+    } }
+  }
+}
+
+// THE DIRECTORY THIS STORE DEMANDS, derived from the same declaration as the mint and enrolled in the one
+// instance directory list (gunbc.roadmap.dashboard_instance_directories). Its writer is the serving process
+// alone, so ownership is never adopted.
+fn session_store_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: session_store_slots.member,
+    path: session_store_slots_path(instance: instance),
+    owner: instance.directory_owner,
+    mode: session_store_slots.mode,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}

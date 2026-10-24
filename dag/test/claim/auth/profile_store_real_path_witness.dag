@@ -8,11 +8,15 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken, SessionProfile }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
+import gunbc.auth.profile_store_root { ProfileStoreReading, ProfileStoreReady, ProfileStoreUnready, profile_store, profile_store_slots_path }
 import gunbc.auth.profile_projection {
-  ProfileStoreLayout, PrincipalProfile,
+  PrincipalProfile,
   ProfileStoreUpsert, ProfileStoreUpserted, ProfileStoreUpsertRefused,
   ProfileStoreReadAll, ProfileStoreRead, ProfileStoreUnread,
-  profile_store_upsert_from_session, profile_store_read_all,
+  profile_store_upsert_from_session, profile_store_read_all, profile_store_roster,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -23,7 +27,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // it because no claim ran the real store path: every consumer supplied profiles as values. These
 // claims execute the REAL upsert (sha256 file name, owner-only write) and the REAL read-all
 // (Filesystem.List through filesystem_listing_observation, then Filesystem.Read and the decoder)
-// against a directory the claim creates with shell.Mktemp.Dir and removes afterwards. Each asserts
+// against a directory the claim creates with shell.Mktemp.Dir and removes afterwards, through the production
+// mint (gunbc.auth.profile_store_root profile_store) over an instance whose root is that directory. Each asserts
 // the ROUTE's result shape -- the one principal and name that was written comes back -- so a read
 // that answers an empty roster, or refuses, is red.
 
@@ -34,8 +39,26 @@ fn ps_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
   dir.success && observed && cleaned.success
 }
 
-fn ps_layout(dir: FilePath) -> ProfileStoreLayout {
-  ProfileStoreLayout { root: dir }
+fn ps_instance(dir: FilePath) -> HostDashboardInstance {
+  isolated_dashboard_instance(deployment: deployment_id(name: "profile-store-fixture" as NonEmptyStr), instance_id: "profile-store-fixture", layout: srv1_host_layout(), root: dir,
+    serve_function: "unused", listen_port: 18746, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
+}
+
+// The store's directory, created the way the instance directory row would create it.
+fn ps_store_dir(dir: FilePath) -> FilePath {
+  profile_store_slots_path(instance: ps_instance(dir: dir))
+}
+
+fn ps_store(dir: FilePath) -> ProfileStoreReading {
+  let made = shell.Mkdir.Parents(path: ps_store_dir(dir: dir))
+  profile_store(instance: ps_instance(dir: dir))
+}
+
+fn ps_upserted_into(reading: ProfileStoreReading, session: AuthenticatedSession) -> Bool {
+  match reading {
+    ProfileStoreUnready { detail: _ } => false
+    ProfileStoreReady { store: st } => ps_upserted(u: profile_store_upsert_from_session(store: st, session: session))
+  }
 }
 
 fn ps_principal() -> PrincipalRef {
@@ -82,9 +105,9 @@ fn ps_read_exactly_one(r: ProfileStoreReadAll, name: String) -> Bool {
 // directory returns that one profile.
 test fn profile_store_read_all_returns_the_upserted_profile_by_real_execution() -> Bool {
   ps_with_temp_dir(scenario: fn(dir) {
-    let upsert = profile_store_upsert_from_session(layout: ps_layout(dir: dir), session: ps_session(name: "Ada Witness", authenticated_at: "2026-09-30T00:00:00Z"))
-    ps_upserted(u: upsert)
-      && ps_read_exactly_one(r: profile_store_read_all(layout: ps_layout(dir: dir)), name: "Ada Witness")
+    let reading = ps_store(dir: dir)
+    ps_upserted_into(reading: reading, session: ps_session(name: "Ada Witness", authenticated_at: "2026-09-30T00:00:00Z"))
+      && ps_read_exactly_one(r: profile_store_roster(reading: reading), name: "Ada Witness")
   })
 }
 
@@ -94,19 +117,20 @@ test fn profile_store_read_all_returns_the_upserted_profile_by_real_execution() 
 // profile with zero skipped.
 test fn profile_store_read_all_ignores_a_non_json_entry_by_real_execution() -> Bool {
   ps_with_temp_dir(scenario: fn(dir) {
-    let stray = Filesystem.Write(path: concat(dir as String, "/README.txt"), content: "not a profile")
-    let upsert = profile_store_upsert_from_session(layout: ps_layout(dir: dir), session: ps_session(name: "Ada Witness", authenticated_at: "2026-09-30T00:00:00Z"))
+    let reading = ps_store(dir: dir)
+    let stray = Filesystem.Write(path: concat(ps_store_dir(dir: dir) as String, "/README.txt"), content: "not a profile")
     stray.success
-      && ps_upserted(u: upsert)
-      && ps_read_exactly_one(r: profile_store_read_all(layout: ps_layout(dir: dir)), name: "Ada Witness")
+      && ps_upserted_into(reading: reading, session: ps_session(name: "Ada Witness", authenticated_at: "2026-09-30T00:00:00Z"))
+      && ps_read_exactly_one(r: profile_store_roster(reading: reading), name: "Ada Witness")
   })
 }
 
 // 3. A MISSING STORE DIRECTORY IS AN UNREAD STORE AT STEP "list" -- never an empty roster, which
-// would be indistinguishable from a store nobody has logged into.
+// would be indistinguishable from a store nobody has logged into. The mint refuses (Unready), and the roster
+// the serve routes read (profile_store_roster) carries that refusal as Unread.
 test fn profile_store_read_all_of_a_missing_directory_is_unread_at_list_by_real_execution() -> Bool {
   ps_with_temp_dir(scenario: fn(dir) {
-    match profile_store_read_all(layout: ps_layout(dir: concat(dir as String, "/absent-store") as FilePath)) {
+    match profile_store_roster(reading: profile_store(instance: ps_instance(dir: dir))) {
       ProfileStoreUnread { step: s, reason: _ } => s == "list"
       ProfileStoreRead { profiles: _, skipped: _ } => false
     }
