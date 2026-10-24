@@ -1,0 +1,154 @@
+module v2.test.claim.compiler.infer_refinement_carrier_grounding_witness
+
+// INTERIM CARRIER GROUNDING AT DECLARED TYPE POSITIONS (rung gunbc.rung_drop
+// non_literal_crossings_ground_to_the_refinement_carrier, authorized by that row; dissolution via
+// gunbc.design_ruling where_refinements_retire_for_checked_constructors #14869).
+//
+// THE RULE: at a declared TYPE position, `T where p` grounds to its carrier `T` for inference with
+// NO predicate judgment; every NON-LITERAL value crossing into such a position is accepted with one
+// counted, located advisory ^refinement_carrier_grounding_crossing, never silently; LITERALS keep
+// refusing with the position's own inhabitance reason (the admitted-literal judgment is a separate
+// lane's program); and a
+// refinement-declaration MISS keeps today's refusal untouched. The witness carries the RED and the
+// positive on the real native route (assemble + resolve_in_context + infer), the census being the
+// inhabitance reading and these claims the discriminating RED (DESIGN 5: done means executed).
+//
+// THE FIXTURES USE A LOCAL REFINEMENT (`type RcfMarked = String where rcf_non_empty`), the shape
+// measured to resolve natively at stub scale (the same shape as std.types NonEmptyStr). The predicate
+// is NEVER JUDGED: claims assert its irrelevance by accepting a crossing whose predicate could not
+// decide it.
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_in_context
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_has_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
+  RcfInferAccepted,
+  RcfInferRefused,
+  RcfResolveRefused,
+  rcf_refuses_with,
+  rcf_verdict,
+  rcf_read_in
+}
+
+fn rcg_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  rcf_read_in(tree: V2Tree, source: source, id: id, unit: unit, path: path)
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A STRING LITERAL AT A REFINED DECLARED RETURN: the literal arm refuses, with today's reason and
+// NO advisory. The admitted-literal judgment is a separate lane's program, not this path.
+data rcg_literal_return_source: String = "module v2.test.rcg_literal_return\n\nfn rcf_non_empty(value: String) -> Bool { true }\n\ntype RcfMarked = String where rcf_non_empty\n\nfn rcg_f() -> RcfMarked { \"s\" }\n"
+
+// A NON-LITERAL (fn parameter) CROSSING INTO A REFINED RECORD FIELD: ACCEPTED, carrying exactly the
+// counted advisory. This is the ruling's condition (2): never silent.
+data rcg_field_crossing_source: String = "module v2.test.rcg_field_crossing\n\nfn rcf_non_empty(value: String) -> Bool { true }\n\ntype RcfMarked = String where rcf_non_empty\n\ntype RcfBox {\n  v: RcfMarked\n}\n\nfn rcg_mk(s: String) -> RcfBox { RcfBox { v: s } }\n"
+
+// A NON-LITERAL CROSSING WHOSE CARRIER DOES NOT INHABIT: the re-judgment against the carrier still
+// refuses with the position's own reason. Grounding admits the CARRIER, not anything.
+data rcg_field_wrong_source: String = "module v2.test.rcg_field_wrong\n\nfn rcf_non_empty(value: String) -> Bool { true }\n\ntype RcfMarked = String where rcf_non_empty\n\ntype RcfBox {\n  v: RcfMarked\n}\n\nfn rcg_mk(n: Int) -> RcfBox { RcfBox { v: n } }\n"
+
+// THE CONTROL: the same record field crossing against an UNREFINED alias declaration accepts with
+// NO advisory -- the advisory belongs to refinements, not to records, and never rides an ordinary
+// accepted obligation.
+data rcg_plain_control_source: String = "module v2.test.rcg_plain_control\n\ntype RcfPlain = String\n\ntype RcfBox {\n  v: RcfPlain\n}\n\nfn rcg_mk(s: String) -> RcfBox { RcfBox { v: s } }\n"
+
+data rcg_ingest: SourceRootIngest = [
+  rcg_read(source: rcg_literal_return_source, id: ^rcg_literal_return_read, unit: ^rcg_literal_return_cu, path: "src/v2/test/fixture/refinement_carrier_grounding/literal_return.dag"),
+  rcg_read(source: rcg_field_crossing_source, id: ^rcg_field_crossing_read, unit: ^rcg_field_crossing_cu, path: "src/v2/test/fixture/refinement_carrier_grounding/field_crossing.dag"),
+  rcg_read(source: rcg_field_wrong_source, id: ^rcg_field_wrong_read, unit: ^rcg_field_wrong_cu, path: "src/v2/test/fixture/refinement_carrier_grounding/field_wrong.dag"),
+  rcg_read(source: rcg_plain_control_source, id: ^rcg_plain_control_read, unit: ^rcg_plain_control_cu, path: "src/v2/test/fixture/refinement_carrier_grounding/plain_control.dag")
+]
+
+fn rcg_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: rcg_ingest, lm: dag_language_model())
+}
+
+fn rcg_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match rcg_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn rcg_resolved_literal_return() -> Outcome<ResolvedTree> { rcg_resolve_subject(subject: "v2.test.rcg_literal_return") }
+fn rcg_resolved_field_crossing() -> Outcome<ResolvedTree> { rcg_resolve_subject(subject: "v2.test.rcg_field_crossing") }
+fn rcg_resolved_field_wrong() -> Outcome<ResolvedTree> { rcg_resolve_subject(subject: "v2.test.rcg_field_wrong") }
+fn rcg_resolved_plain_control() -> Outcome<ResolvedTree> { rcg_resolve_subject(subject: "v2.test.rcg_plain_control") }
+
+fn rcg_accepted_with(resolved: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match rcf_verdict(resolved: resolved) {
+    RcfInferAccepted { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: reason)
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+fn rcg_accepted_without(resolved: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match rcf_verdict(resolved: resolved) {
+    RcfInferAccepted { diagnostics: ds } => !diagnostics_has_reason(d: ds, reason: reason)
+    RcfInferRefused { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+// THE ROUTE RED, LITERAL: a string literal at the refined declared return REFUSES with the position's
+// own reason -- grounding did not admit a literal, and no advisory exists on a refusal.
+test fn rcg_a_literal_at_a_refined_declared_return_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: rcg_resolved_literal_return(), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+// THE ROUTE POSITIVE, NON-LITERAL CROSSING: a fn parameter (a String, the carrier) crossing into a
+// field declared by the refinement is ACCEPTED AND COUNTED -- the advisory is there, located, exactly
+// once by name. Without HOOK B this fixture refuses (measured: record_field_value_does_not_inhabit at
+// exactly this shape), so the claim is RED against base.
+test fn rcg_a_non_literal_crossing_into_a_refined_field_is_accepted_and_counted_holds() -> Bool {
+  rcg_accepted_with(resolved: rcg_resolved_field_crossing(), reason: ^refinement_carrier_grounding_crossing)
+}
+
+// THE CARRIER IS THE CEILING: an Int at the same refined field still REFUSES, with the field's own
+// reason -- the re-judgment against the carrier refuses what the carrier rejects.
+test fn rcg_a_wrong_carrier_at_a_refined_field_still_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: rcg_resolved_field_wrong(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// THE CONTROL: the ordinary unrefined alias crossing accepts with NO advisory -- the counted advisory
+// belongs to refinement crossings only and never rides an ordinary accepted obligation.
+test fn rcg_an_unrefined_control_crossing_carries_no_advisory_holds() -> Bool {
+  rcg_accepted_without(resolved: rcg_resolved_plain_control(), reason: ^refinement_carrier_grounding_crossing)
+}
+
+// THE R2 ASSERTION: a LITERAL at a let annotation over a refinement is NOT counted as
+// a non-literal crossing -- it refuses today with the annotation's own reason, exactly as before this
+// change. The advisory keys on literalness, never on demand-absence.
+data rcg_literal_let_source: String = "module v2.test.rcg_literal_let\n\nfn rcf_non_empty(value: String) -> Bool { true }\n\ntype RcfMarked = String where rcf_non_empty\n\nfn rcg_f(s: String) -> String {\n  let x: RcfMarked = \"s\"\n  s\n}\n"
+
+fn rcg_resolved_literal_let() -> Outcome<ResolvedTree> { rcg_resolve_subject(subject: "v2.test.rcg_literal_let") }
+
+test fn rcg_b_literal_at_a_let_annotation_refuses_not_counted_holds() -> Bool {
+  rcf_refuses_with(resolved: rcg_resolved_literal_let(), reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
+}
