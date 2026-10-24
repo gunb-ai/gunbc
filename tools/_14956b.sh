@@ -15,6 +15,8 @@ if [ "$PHASE" = b1 ]; then
 fi
 build_head || exit 9
 CB=$CARGO_TARGET_DIR/release/claim_batch
+CKPT=/root/workspace/.c4ckpt956; mkdir -p $CKPT/gates 2>/dev/null || { CKPT=$CKPT; mkdir -p $CKPT/gates; }
+echo "CKPT=$CKPT"
 ELW=src/v2/test/claim/enforcement_live_witness.dag
 GATE=enforcement_consistency_gate_holds
 PROBE=only_cost_contract_carries_red_control_probe
@@ -34,15 +36,15 @@ run1 () { # run1 <tag> <tree> <entry> <wet|dry> <fn1> [fn2..]
   echo "ROW $tag tree=$(branch_of $tree) entry=$entry mode=$mode rc=$rc P=$(grep -c '^PASS ' $d/out.txt) F=$(grep -c '^FAIL ' $d/out.txt) U=$(grep -c '^UNOBSERVED ' $d/out.txt) lines=$(wc -l < $d/out.txt)"
   grep -E '^(PASS|FAIL|UNOBSERVED) ' $d/out.txt | sed "s|^|  $tag |" | head -20
   grep -E 'runtime error|\[resolve|cannot|refus' $d/out.txt | head -4 | sed "s|^|  $tag note: |"
-  mkdir -p $REPO/.c4ckpt956/gates; cp $d/out.txt $REPO/.c4ckpt956/gates/$tag.out
+  mkdir -p $CKPT/gates; cp $d/out.txt $CKPT/gates/$tag.out
 }
 sweep () { # sweep <tag> <tree>
   local tag=$1 tree=$2 i=0
   while read -r f; do
     i=$((i+1))
-    mkdir -p $REPO/.c4ckpt956/$tag
-    if [ -s $REPO/.c4ckpt956/$tag/$i.out ]; then
-      echo "ROW SWEEP-$tag-$i file=$f SKIPPED-CHECKPOINT P=$(grep -c '^PASS ' $REPO/.c4ckpt956/$tag/$i.out) F=$(grep -c '^FAIL ' $REPO/.c4ckpt956/$tag/$i.out) U=$(grep -c '^UNOBSERVED ' $REPO/.c4ckpt956/$tag/$i.out)"
+    mkdir -p $CKPT/$tag
+    if [ -s $CKPT/$tag/$i.out ]; then
+      echo "ROW SWEEP-$tag-$i file=$f SKIPPED-CHECKPOINT P=$(grep -c '^PASS ' $CKPT/$tag/$i.out) F=$(grep -c '^FAIL ' $CKPT/$tag/$i.out) U=$(grep -c '^UNOBSERVED ' $CKPT/$tag/$i.out)"
       continue
     fi
     local fns; fns=$(fns_of2 $tree/$f | paste -sd, -)
@@ -55,7 +57,7 @@ sweep () { # sweep <tag> <tree>
       timeout 1800 $CB --claim-run --wet --source-root dag --source-root src/v2 --entry $f --functions "$fns" ) > $d/out.txt 2>&1
     local rc=$?
     echo "ROW SWEEP-$tag-$i file=$f n=$n rc=$rc P=$(grep -c '^PASS ' $d/out.txt) F=$(grep -c '^FAIL ' $d/out.txt) U=$(grep -c '^UNOBSERVED ' $d/out.txt)"
-    mv $d/out.txt $REPO/.c4ckpt956/$tag/$i.out
+    mv $d/out.txt $CKPT/$tag/$i.out
   done < tools/_14956files.txt
 }
 case "$PHASE" in
@@ -68,16 +70,16 @@ b1)
   echo "=== G6 probe alone $(date -u +%H:%M:%S)Z"; run1 G6 $H $ELW wet $PROBE
   ;;
 b2) echo "=== SWEEP head $(date -u +%H:%M:%S)Z"; sweep head $H
-  echo "files-done=$(ls $REPO/.c4ckpt956/head 2>/dev/null | wc -l)/14" ;;
+  echo "files-done=$(ls $CKPT/head 2>/dev/null | wc -l)/14" ;;
 b3)
   echo "=== SWEEP base $(date -u +%H:%M:%S)Z"; sweep base $P
-  n=$(ls $REPO/.c4ckpt956/base 2>/dev/null | wc -l); m=$(ls $REPO/.c4ckpt956/head 2>/dev/null | wc -l)
+  n=$(ls $CKPT/base 2>/dev/null | wc -l); m=$(ls $CKPT/head 2>/dev/null | wc -l)
   { [ "$n" = 14 ] && [ "$m" = 14 ]; } || { echo "INCOMPLETE_SWEEP base=$n head=$m of 14 -- re-run phases"; exit 8; }
   echo "=== SET COMPARE $(date -u +%H:%M:%S)Z"
   for side in head base; do
-    cat $REPO/.c4ckpt956/$side/*.out 2>/dev/null | grep '^FAIL ' | awk '{print $2}' | sort > /tmp/956-fail-$side.txt
-    cat $REPO/.c4ckpt956/$side/*.out 2>/dev/null | grep '^PASS ' | awk '{print $2}' | sort > /tmp/956-pass-$side.txt
-    cat $REPO/.c4ckpt956/$side/*.out 2>/dev/null | grep '^UNOBSERVED ' | awk '{print $2}' | sort > /tmp/956-unobs-$side.txt
+    cat $CKPT/$side/*.out 2>/dev/null | grep '^FAIL ' | awk '{print $2}' | sort > /tmp/956-fail-$side.txt
+    cat $CKPT/$side/*.out 2>/dev/null | grep '^PASS ' | awk '{print $2}' | sort > /tmp/956-pass-$side.txt
+    cat $CKPT/$side/*.out 2>/dev/null | grep '^UNOBSERVED ' | awk '{print $2}' | sort > /tmp/956-unobs-$side.txt
     echo "SIDE $side PASS=$(wc -l < /tmp/956-pass-$side.txt) FAIL=$(wc -l < /tmp/956-fail-$side.txt) UNOBSERVED=$(wc -l < /tmp/956-unobs-$side.txt)"
   done
   echo "--- FAIL-set diff (head vs base), EMPTY means identical by name:"
