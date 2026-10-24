@@ -7586,12 +7586,12 @@ fn type_node_names_declaration(n: Node, wanted: DeclarationRef, scope: InferScop
 
 fn non_text_kernel_cast_into_text_diags(source_reading: HostTextSourceReading, source_inferred: InferredNode?, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   match source_reading {
-    HostTextRouteAbsentKernel { kernel: _ } =>
+    HostTextRouteAbsentKernel { kernel: k } =>
       match source_inferred {
         Present { value: Resolved { node: src_node } } =>
           if text_representation_is_text_arm(r: text_representation_by_identity(n: target_type, env: scope.type_env)) {
             let si = scope.type_env.source_indices
-            let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through a declared conversion (std.integer int_to_decimal_string, std.nat nat_to_decimal_string, or a checked constructor over its rendering)")
+            let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through ", non_text_kernel_text_route(kernel: k))
             [make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: scope.module_name)]
           } else { [] }
         _ => []
@@ -7621,17 +7621,37 @@ fn non_text_kernel_cast_into_text_diags(source_reading: HostTextSourceReading, s
 //     reading does not judge.
 type HostTextSourceReading
   = HostTextRouteAbsentNominal
-  | HostTextRouteAbsentKernel { kernel: String }
+  | HostTextRouteAbsentKernel { kernel: NonTextKernel }
   | HostTextSourceAdmissible
+
+// THE NON-TEXT KERNELS, closed, so the refusal names the route that kernel actually has: Int and Nat
+// each have one declared decimal conversion, and Float, Bool and Unit have none yet, so their
+// refusal says a conversion must be declared rather than pointing at one that does not apply.
+type NonTextKernel
+  = NonTextKernelInt
+  | NonTextKernelNat
+  | NonTextKernelFloat
+  | NonTextKernelBool
+  | NonTextKernelUnit
+
+fn non_text_kernel_text_route(kernel: NonTextKernel) -> String {
+  match kernel {
+    NonTextKernelInt => "its declared conversion, std.integer int_to_decimal_string"
+    NonTextKernelNat => "its declared conversion, std.nat nat_to_decimal_string"
+    NonTextKernelFloat => "a declared conversion; none exists for Float yet, so declare one before writing this crossing"
+    NonTextKernelBool => "a declared conversion; none exists for Bool yet, so declare one before writing this crossing"
+    NonTextKernelUnit => "a declared conversion; none exists for Unit yet, so declare one before writing this crossing"
+  }
+}
 
 fn host_text_source_reading(t: Node, scope: InferScope) -> HostTextSourceReading {
   if node_is_kernel_mint_named(n: t, name: "Bool")
-    || type_node_names_declaration(n: t, wanted: decl_ref(module_path: "std.types", decl_name: "Bool"), scope: scope) { HostTextRouteAbsentKernel { kernel: "Bool" } }
+    || type_node_names_declaration(n: t, wanted: decl_ref(module_path: "std.types", decl_name: "Bool"), scope: scope) { HostTextRouteAbsentKernel { kernel: NonTextKernelBool } }
   else if value_type_is_declared_nominal(t: t, scope: scope) { HostTextRouteAbsentNominal }
-  else if node_is_kernel_mint_named(n: t, name: "Int") { HostTextRouteAbsentKernel { kernel: "Int" } }
-  else if node_is_kernel_mint_named(n: t, name: "Float") { HostTextRouteAbsentKernel { kernel: "Float" } }
-  else if node_is_kernel_mint_named(n: t, name: "Unit") { HostTextRouteAbsentKernel { kernel: "Unit" } }
-  else if type_node_names_declaration(n: t, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope) { HostTextRouteAbsentKernel { kernel: "Nat" } }
+  else if node_is_kernel_mint_named(n: t, name: "Int") { HostTextRouteAbsentKernel { kernel: NonTextKernelInt } }
+  else if node_is_kernel_mint_named(n: t, name: "Float") { HostTextRouteAbsentKernel { kernel: NonTextKernelFloat } }
+  else if node_is_kernel_mint_named(n: t, name: "Unit") { HostTextRouteAbsentKernel { kernel: NonTextKernelUnit } }
+  else if type_node_names_declaration(n: t, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope) { HostTextRouteAbsentKernel { kernel: NonTextKernelNat } }
   else { HostTextSourceAdmissible }
 }
 
