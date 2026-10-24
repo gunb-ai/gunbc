@@ -1580,3 +1580,8 @@ Date:   Thu Oct 22 23:16:13 2026 +0000
 ## ROW #14747 CLOSED OUT (2026-10-24 ~13:45Z)
 - Parent msg_7ba25253: side-chat approved at 7894bc17; merge grant requested from calm-eagle-670 (batchable). NOTHING FURTHER from me on #14747.
 - #14750 heal diagnosis forwarded by parent to swift-lark-171. Standby continues on watcher (head 2df86caa4d0 heal-red).
+
+## #14750 MONITOR PART 2 (2026-10-24 ~16:05Z)
+- Head churn: b2964e2e -> 26753141 -> 2df86caa (heal fail 'element' semver) -> 85904b16 (cancelled) -> bdba0c3f -> 355ff7fe -> 78010072 -> 47be8009 -> 32a5a35f (current ~16:00Z, heal running).
+- 47be8009: BOTH fail. v2-bootstrap run 40104745340: EmissionRefused source_root_eval.dag [rust] 5 diagnostics (no field name/path on T resolve.dag:824/3221/3248, empty list literal infer.dag:8747:56, no field tree reference_deps.dag:35). T-binding loss family. Reported msg_455bbfbe. Log /tmp/gc16dbg/v2b_47be_full.txt.
+- d-watcher script /tmp/gc16dbg/watch14750d.sh <full-head-sha> (MERGED/CLOSED/HEADCHANGED/ALLGREEN; 7h budget). Re-arm per head.
