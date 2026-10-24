@@ -241,8 +241,9 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
   // run a trailing cleanup leg on a signal, so a control-C mid-mint would leave the private half in the
   // tmpfs dir), and the body is a compound statement list the fold grammar has no node production that
   // renders bare ("; "-separated commands inside the trap's single quotes). It follows the shipped lane
-  // at gunbc/ci/ci_spec.dag:3674 -- trap as a command of word_lit arms, the body passed as ONE word the
-  // emitter quotes -- and its words are the render of this module's own cleanup ArgvCommands. THE
+  // gunbc.ci.ci_spec gunbc_ci_submission_key_trap_body -- trap as a command of word_lit arms, the body
+  // passed as ONE word the emitter quotes -- and its words are the render of this module's own cleanup
+  // ArgvCommands. THE
   // TRIGGER NAMES THE CAPABILITY, NOT A CARRIER (§4b obligation 3; review 85396): when the fold grammar
   // gains a compound-body arm for trap, anchored_host_key_mint_trap is EMITTED (bash_build with a node
   // list for the body) and the single string literal is deleted byte-identically. Wiring an execution
@@ -642,14 +643,17 @@ fn anchored_host_key_mint_upload_leg(mint_dir: String) -> Node {
 // THE ONE RESIDUAL STRING: the trap body. Trap on EXIT, INT and TERM is load-bearing for rule Q1 --
 // set -e does NOT run a trailing cleanup leg on a signal, so a control-C mid-mint would leave the
 // private half in the tmpfs dir -- and the fold grammar has no trap-with-a-signal-list statement
-// production (the repo authority says so itself, fleet-converge.yml:875: "trap is an ordinary command
-// on that route, and the trap body is itself built from nodes and passed as one grammar-quoted word").
-// So this is the ONE arm that cannot be a node. It follows the SHIPPED lane at
-// gunbc/ci/ci_spec.dag:3674 -- trap as a command of word_lit arms (the "trap" name, the body passed as
-// ONE word for the emitter to quote ONCE, and the signal list) -- and the body is the render of the
-// model's OWN cleanup ArgvCommands (each word a model literal: the fixed mint dir + a fixed file name,
-// no shell metacharacters), joined with "; " as the Q1-correct cleanup. Everything else in the script
-// is a node.
+// production: the emit-lane's own authority row, gunbc.ci.ci_spec
+// gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger, lists the arms that ARE ordinary commands
+// on that route ("set -euo pipefail, umask, export and trap are ordinary commands on that route, and
+// the trap body is itself built from nodes and passed as one grammar-quoted word") -- the body word is
+// built, but a SIGNAL LIST after it has no grammar arm, so a multi-signal trap cannot be emitted.
+// So this is the ONE arm that cannot be a node. It follows the SHIPPED lane
+// gunbc.ci.ci_spec gunbc_ci_submission_key_trap_body -- trap as a command of word_lit arms (the "trap"
+// name, the body passed as ONE word for the emitter to quote ONCE, and the signal list) -- and the body
+// is the render of the model's OWN cleanup ArgvCommands (each word a model literal: the fixed mint dir +
+// a fixed file name, no shell metacharacters), joined with "; " as the Q1-correct cleanup. Everything
+// else in the script is a node.
 fn anchored_host_key_mint_trap(mint_dir: String) -> Node {
   bash_build_command_with_words(words: [
     bash_build_word_lit(text: "trap"),
