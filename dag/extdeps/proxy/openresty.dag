@@ -58,9 +58,9 @@ type ProxyRequestBuffering
 type ProxyTarget
   = | ProxyTargetFromUpstreamVariable
 
-// A name, path or header token interpolated into emitted text. The renderer refuses any token holding a
-// character that could end the literal it sits in: the only constructors are nginx_token and nginx_variable,
-// which return Absent for such a value, so no value can break the output.
+// A name, path or header token interpolated into emitted text. nginx_token and nginx_variable return Absent for
+// a value holding a character that could end the literal it sits in. This is a validator at those constructors,
+// not a guarantee: the brand is not enforced, so a cast elsewhere (the two constructors cast) bypasses it.
 type NginxToken = NonEmptyStr where brand("NginxToken")
 
 // An nginx variable name, written $name in the conf and ngx.var.name in Lua.
@@ -118,8 +118,17 @@ fn nginx_token(text: String) -> Optional<NginxToken> {
   if nginx_text_is_safe(t: text) { Present { value: text as NginxToken } } else { Absent }
 }
 
+// A variable is read as ngx.var.name in Lua, so a character that is an operator there (or not part of an
+// identifier) is refused too. The refusal list is a blacklist, not an identifier whitelist: no string-character
+// helper is available to this module yet.
+fn nginx_variable_is_safe(t: String) -> Bool {
+  nginx_text_is_safe(t: t) && !(string_contains(t, "-") || string_contains(t, ".") || string_contains(t, "/")
+    || string_contains(t, "+") || string_contains(t, "*") || string_contains(t, "(") || string_contains(t, ")")
+    || string_contains(t, "[") || string_contains(t, "]") || string_contains(t, ",") || string_contains(t, "="))
+}
+
 fn nginx_variable(text: String) -> Optional<NginxVariable> {
-  if nginx_text_is_safe(t: text) { Present { value: text as NginxVariable } } else { Absent }
+  if nginx_variable_is_safe(t: text) { Present { value: text as NginxVariable } } else { Absent }
 }
 
 fn lua_hook_lines(h: LuaHook) -> List<String> {
