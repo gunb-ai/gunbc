@@ -9081,7 +9081,14 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   if shared |> count == 0 { return "" }
   let accessor_fns = shared |> map(fname =>
     let ty = match first_fielded.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
-      Present { value: f } => rust_field_stored_layer_type(rt_field: resolved_type(n: f), ty: render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env, type_decl_items: emit_info.type_decl_items), shared_types: shared_types, source_indices: env.source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: generic_param_names)
+      Present { value: f } =>
+        // Same identity-keyed host-scalar read as rust_field_carrier_final_type: the accessor returns the stored
+        // layer, and a kernel-grounded carrier (std.nat Nat) has none, so it must not reach the shared-layer refusal.
+        if field_position_is_host_scalar(n: resolved_type(n: f), env: env, source_indices: env.source_indices) {
+          render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env, type_decl_items: emit_info.type_decl_items)
+        } else {
+          rust_field_stored_layer_type(rt_field: resolved_type(n: f), ty: render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env, type_decl_items: emit_info.type_decl_items), shared_types: shared_types, source_indices: env.source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: generic_param_names)
+        }
       Absent => "compile_error!(\"enum shared accessor missing field metadata\")"
     }
     let arms = children |> map(child =>
