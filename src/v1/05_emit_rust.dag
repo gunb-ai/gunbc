@@ -13940,7 +13940,12 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
 // gunbc.durable_cas_file_store cas_observe_window and std.list first_duplicate_by_key. When the
 // result type is unresolved or fails an admission (a type variable, an unbound or closure-unbound
 // generic, a rendered spurious generic, an applicationless parametric head, a bare container) the
-// fold refuses with that fact instead of deferring to the target's inference.
+// annotation is `_`: the target's inference then binds the accumulator from the init and the body,
+// or refuses loudly at compile (DESIGN section 5: nothing wrong passes silently). The unresolved
+// population is a measured frontier, not a guess: FoldAccumulatorUnresolved carries its cause, and
+// its two triggers are named on gunbc.recurring_failure_mode
+// fold_accumulator_annotated_from_the_init_literal (result types that do not resolve, and the
+// spurious-generic admission refusing a type that names no generic).
 type FoldAccumulatorAnnotation
   = FoldAccumulatorAnnotated { rust_type: String }
   | FoldAccumulatorUnresolved { cause: String }
@@ -14142,7 +14147,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   }
   let acc_annotation = match lambda_acc_type_str {
     FoldAccumulatorAnnotated { rust_type: t } => t
-    FoldAccumulatorUnresolved { cause: c } => return emit_rust_compile_error_expr(message: concat("fold accumulator type unresolved (FOLD_ACC_REFUSAL): ", c))
+    FoldAccumulatorUnresolved { cause: _ } => "_"
   }
   if step_awaits {
     emit_rust_effectful_fold_loop(lambda_expr: fold_lambda_node, iter_str: iter_str, init_str: init_str, acc_type_str: acc_annotation, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
