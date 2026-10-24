@@ -24,13 +24,13 @@ git cat-file -e origin/main^{commit} 2>/dev/null || git fetch -q origin main || 
 [ -n "$BASE_SHA" ] || BASE_SHA=$(git merge-base origin/main refs/verifier/f14933)
 echo "BASE_SHA=$BASE_SHA (merge-base main..head; base tree = head - reverse(PR diff))"
 export CARGO_INCREMENTAL=0 RUSTC_WRAPPER=
+CKPT=/tmp/c4v/ckpt933; mkdir -p $CKPT/jobs
+echo "CKPT=$CKPT deadline=${DEADLINE}s"
 H=/tmp/w933h; B=/tmp/w933b
 git worktree prune >/dev/null 2>&1 || true
 NEED_B=1; ls $CKPT/jobs/T1.out $CKPT/jobs/T2.out >/dev/null 2>&1 && ls $CKPT/jobs/T2b.out $CKPT/jobs/T3.out >/dev/null 2>&1 && NEED_B=0
 echo "NEED_B=$NEED_B"
 elapsed () { echo $(( $(date +%s) - START )); }
-CKPT=/tmp/c4v/ckpt933; mkdir -p $CKPT/jobs
-echo "CKPT=$CKPT deadline=${DEADLINE}s"
 # ---------- head tree + build
 [ -d $H ] || git worktree add -q --force --detach $H $HEAD_SHA || { echo WTH_FAIL; exit 9; }
 export CARGO_TARGET_DIR=/root/workspace/.t933h
