@@ -5,7 +5,7 @@ import std.durable_compare_and_set { CasSlotObservation, CasGeneration, CasOutco
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldObservation }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly }
 import gunbc.host_state_root { HostStateTree, host_state_tree_path }
-import gunbc.durable_cas_file_store { observe_cas_slot_state, file_compare_and_set, CasGenerationPublication, VerifiedCasAttempt }
+import gunbc.durable_cas_file_store { file_slot_store, slot_observe, slot_commit, CasGenerationPublication, VerifiedCasAttempt }
 import gunbc.durable_exclusive_hold_file_store {
   observe_file_hold, file_hold_acquire, file_hold_acquire_prepare, file_hold_acquire_commit, file_hold_release_assess, file_hold_release_commit,
   FileHoldAcquireOutcome, FileHoldAcquirePreparation, FileHoldAcquirePlan, FileHoldReleaseAssessment, FileHoldReleasePlan, FileHoldReleaseOutcome,
@@ -107,11 +107,11 @@ fn fabric_allocation_commit_release(store: FabricAllocationStore, plan: FileHold
 }
 
 fn fabric_allocation_observe_slot(store: FabricAllocationStore, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
-  observe_cas_slot_state(root: store.root, key: key)
+  slot_observe(store: file_slot_store(root: store.root), key: key)
 }
 
 fn fabric_allocation_commit_slot(store: FabricAllocationStore, publication: CasGenerationPublication, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
-  file_compare_and_set(root: store.root, publication: publication, verified: verified)
+  slot_commit(store: file_slot_store(root: store.root), publication: publication, verified: verified)
 }
 
 fn fabric_allocation_custody(store: FabricAllocationStore) -> StoreOwnershipReading {
