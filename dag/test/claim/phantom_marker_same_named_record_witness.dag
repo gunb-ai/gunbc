@@ -9,13 +9,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // AcceptanceNodeReopensActiveFrontier) had the record emitted twice: once as its declaration and once
 // as the unit variant's phantom ZST marker, whose derive list carries Eq (rustc E0428 and E0119; class
 // 1 of stern-bat-401's emitter-debt list). The RED is the marker's derive line on the record's name;
-// the control is a unit variant with no same-named type, which keeps its marker.
+// the control, asserted in the same row, is DispositionPending: a unit variant with no same-named
+// type, which keeps its marker.
 
 test fn same_named_record_suppresses_the_variant_marker() -> Bool {
   compile_dag_rust_emit_check(
-    "module phantom_marker_witness.shadowed\n\ntype ReopensFrontier {}\ntype RemainsSuperseded {}\n\ntype Disposition = ReopensFrontier | RemainsSuperseded\n\nfn reopens(d: Disposition) -> Bool {\n  match d {\n    ReopensFrontier {} => true\n    RemainsSuperseded {} => false\n  }\n}\n",
+    "module phantom_marker_witness.shadowed\n\ntype ReopensFrontier {}\ntype RemainsSuperseded {}\n\ntype Disposition = ReopensFrontier | RemainsSuperseded | DispositionPending\n\nfn reopens(d: Disposition) -> Bool {\n  match d {\n    ReopensFrontier {} => true\n    RemainsSuperseded {} => false\n    DispositionPending => false\n  }\n}\n",
     "src/phantom_marker_witness_shadowed.rs",
-    ["pub struct ReopensFrontier;"],
+    ["pub struct ReopensFrontier;", "PartialEq, Eq, serde::Serialize, serde::Deserialize)]\npub struct DispositionPending;"],
     ["PartialEq, Eq, serde::Serialize, serde::Deserialize)]\npub struct ReopensFrontier;"]
   )
 }
