@@ -28,9 +28,9 @@ import gunbc.review_sheet_format_actuator { FormatRule, ColumnWidth }
 
 // WHO WRITES A TAB'S ROWS IS PART OF THE KIND, BECAUSE TWO ANSWERS EXIST TODAY. The realization
 // census supplies its rows as typed data, so this converge writes them. The CI prospect sheet's rows
-// are written by a consumer in another repository (strategy.ci_prospect_sheet_write, gunbc-private)
-// under its own transaction; this converge must not write them, and saying so is a typed arm rather
-// than an empty projection, because an empty projection is a different instruction -- it says the
+// have no producer in this corpus (they were written once from outside it, and the planned writer
+// is gunbc-private's, not yet landed); this converge must not write them, and saying so is a typed
+// arm rather than an empty projection, because an empty projection is a different instruction -- it says the
 // tab should hold no derived rows -- and would read as one.
 type ReviewTabRows
   = TabRowsProjected { rows: List<ProjectionRow> }

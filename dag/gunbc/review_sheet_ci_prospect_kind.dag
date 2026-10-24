@@ -55,7 +55,7 @@ fn ci_prospect_review_sheet_kind() -> ReviewSheetKind {
         schema: ci_prospect_sheet_schema(),
         rules: ci_prospect_format_rules(),
         content: [],
-        rows: TabRowsWrittenElsewhere { writer: "strategy.ci_prospect_sheet_write (gunbc-private), under its own transaction and readback" as NonEmptyStr },
+        rows: TabRowsWrittenElsewhere { writer: "a writer outside this converge: the live rows were written once from outside the corpus, and the planned writer strategy.ci_prospect_sheet_write (gunbc-private) has not landed" as NonEmptyStr },
       },
       tail: [],
     },
