@@ -198,7 +198,7 @@ fn proof_round(state: ProofState, path: String, prepared: PreparedGrammar, lex: 
 
 // THE GENERATOR'S OWN RECOMPUTATION from a base text: sweep, splice, repeat to a fixed point (the apply step converges the same way).
 fn recompute_wave_text(path: String, base_text: String, prepared: PreparedGrammar, lex: PreparedLexRules, scopes: List<RosterHomeScope>) -> ProofState {
-  let closures = fold_list(xs: scopes, empty: [], cons: fn(acc, scope) { list_append(xs: acc, ys: roster_home_closures(root: "", scope: scope)) })
+  let closures = fold_list(xs: scopes, empty: [], cons: fn(acc, scope) { list_append(left: acc, right: roster_home_closures(root: "", scope: scope)) })
   fold([0, 1, 2, 3], init: ProofState { text: base_text, rounds: [], done: false, stuck: "" }, f: fn(acc, i) {
     proof_round(state: acc, path: path, prepared: prepared, lex: lex, scopes: scopes, closures: closures)
   })
