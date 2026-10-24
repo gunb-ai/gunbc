@@ -1592,3 +1592,6 @@ Date:   Thu Oct 22 23:16:13 2026 +0000
 - wise-lark-652 container-alias fix = infer-side List<Record> vs FreeMonoid<T> binding, lands as a commit inside #14750. Subsumption of my alias-shadow half UNKNOWN -> ownership ask sent to wise-lark-652 (msg_10a4d0a3) + parent may rule. DEFAULT: keep my half; at assembly test with-vs-without vs merged head; drop if RED passes without.
 - Head churn continues: 32a5a35f -> 03e7b450 (both known-sig red) -> a4a3dff0 -> e575568a (current ~19:00Z).
 - Ask to swift-lark-171: ping when heal green; assembly vs-without test runs against exact merged head.
+
+## VEHICLE #14711 CLOSED (2026-10-24 ~19:05Z)
+- Merge-conflict nudge on never-merge vehicle -> CLOSED with documented rationale (comment 6388293427): measurements migrated to durable authorities; branch retained at 1c61e21421db UNREBASED on purpose (row #14747 dated examples cite that head; rebasing rewrites cited evidence). Told parent (msg_17cd454d). If nudge recurs for #14711: it's closed; do NOT reopen/rebase.
