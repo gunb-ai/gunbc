@@ -127,8 +127,9 @@ test fn every_binwet_row_names_an_existing_function() -> ProcessExit {
 // green: if the roster were ever renamed, re-quoted, or moved out of this file's view, the claim
 // above would "pass" over zero rows, which is the silence this file exists to refuse. The bound
 // sits WELL BELOW the population on purpose: it is an anti-vacuity guard, not a second hand-kept
-// row count that rots into the drift it polices. Population on 2026-10-24: 90 rows, after this
-// PR deletes the 2 that named functions moved to another file (92 before).
+// row count that rots into the drift it polices. Population measured by this claim at head-built
+// runs on 2026-10-24: 91 rows read here (PR head), 93 at base 3390986a with the 2 stale rows
+// still present -- the receipts are posted on this PR.
 test fn the_binwet_roster_join_reads_real_rows() -> ProcessExit {
   let read = length(xs: roster_rows())
   if read >= 80 {
