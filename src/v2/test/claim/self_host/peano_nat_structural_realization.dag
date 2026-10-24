@@ -108,6 +108,7 @@ test fn nat_to_decimal_converts_nontrivial_values() -> Bool {
     && nat_to_decimal_string(value: 9) == "9"
     && nat_to_decimal_string(value: 19) == "19"
     && nat_to_decimal_string(value: 100) == "100"
+    && nat_to_decimal_string(value: 85899345920) == "85899345920"
 }
 
 test fn decimal_digit_nat_supplies_the_peano_value() -> Bool {

@@ -76,6 +76,7 @@ import extdeps.realization.materialization_store_local {
   store_read_observation,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.nat { nat_to_decimal_string }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -544,7 +545,7 @@ fn budget_row(family: String, bytes: Int) -> LocalStoreFamilyBudget {
 }
 
 fn catalog_text(c: List<LocalStoreFamilyBudget>) -> List<String> {
-  c |> map(b => concat(concat(b.family as String, " -> "), measure_count(m: b.budget) as String))
+  c |> map(b => concat(concat(b.family as String, " -> "), nat_to_decimal_string(value: measure_count(m: b.budget))))
 }
 
 fn decodes_to(root: MaterializationStoreRoot, content: String, expected: List<LocalStoreFamilyBudget>) -> Bool {
