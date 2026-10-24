@@ -2186,7 +2186,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, application_role: none, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -2749,8 +2749,6 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                             rust_serde_error_policy(message: concat("wire_contract: ", message))
                           TypeVariable { id: _ } =>
                             rust_serde_error_policy(message: "wire_contract: unresolved type variable in wire_contract initializer")
-                          ArgumentsResolved =>
-                            rust_serde_error_policy(message: "wire_contract: initializer type is an applied declaration whose arguments are resolved but whose expansion was not rebuilt")
                         }
                     }
                 }
@@ -2779,8 +2777,6 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                         rust_serde_error_policy(message: concat("wire_contract: ", message))
                       TypeVariable { id: _ } =>
                         rust_serde_error_policy(message: "wire_contract: unresolved type variable in wire_contract initializer")
-                      ArgumentsResolved =>
-                        rust_serde_error_policy(message: "wire_contract: initializer type is an applied declaration whose arguments are resolved but whose expansion was not rebuilt")
                     }
                 }
             }
@@ -11411,7 +11407,7 @@ fn field_binding_with_pattern(field_binding: Node, pattern: MatchPattern) -> Nod
     transport: field_binding.transport, properties: field_binding.properties, type_annotation: field_binding.type_annotation,
     is_self_recursive: field_binding.is_self_recursive, has_non_tail_self_call: field_binding.has_non_tail_self_call,
     match_pattern: Present { value: pattern }, module_item_kind: field_binding.module_item_kind,
-    declaration_marker: field_binding.declaration_marker, declaration: field_binding.declaration, expr_data: field_binding.expr_data
+    application_role: field_binding.application_role, declaration_marker: field_binding.declaration_marker, declaration: field_binding.declaration, expr_data: field_binding.expr_data
   }
 }
 
