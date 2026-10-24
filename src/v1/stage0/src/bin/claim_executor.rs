@@ -118,6 +118,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut emit_partition_crates_write = false;
     let mut regen_round_cost_mode = false;
     let mut regen_affected_set_mode = false;
+    let mut required_admitted_set_mode = false;
     let mut regen_affected_scope = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
@@ -205,6 +206,22 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--regen-receipt" => {
                 i += 1;
                 regen_receipt_path = require_value(&args, i, "--regen-receipt")?;
+            }
+            "--required-ci" => {
+                required_admitted_set_mode = true;
+            }
+            // Accepted so every command form this repository cites parses. The lane selector
+            // distinguished the two withdrawn measurement lanes (build vs witnesses) that this
+            // mode does not reproduce: the denominator here is the ingestion's admitted set,
+            // which no lane choice changes. Stored and ignored; an unknown value is a
+            // non-parsing argument (rc 2), which is what rc 2 is for.
+            "--required-lane" => {
+                i += 1;
+                let lane = require_value(&args, i, "--required-lane")?;
+                if lane != "build" && lane != "witnesses" {
+                    eprintln!("claim_executor: unknown --required-lane value: {}", lane);
+                    return Err(ExitCode::from(2));
+                }
             }
             other => {
                 eprintln!("claim_executor: unknown argument: {}", other);
@@ -303,6 +320,35 @@ fn run() -> Result<ExitCode, ExitCode> {
     if source_roots.is_empty() {
         eprintln!("claim_executor: provide at least one --source-root");
         return Err(ExitCode::from(2));
+    }
+
+    // THE ADMITTED-SET PRODUCER, AS ITS OWN ENTRY POINT. This is the command the required-lane
+    // resolution census header names (`claim_executor --required-ci ... prints as
+    // admitted-module-identities`): the census reads the SAME producer in-process
+    // (`source_root_ingest_module_identities_for_ci`), and this mode prints what that call
+    // returns, so a reader can hold the census's denominator in their hands and tell
+    // "resolved by a lane" from "never admitted" apart by set membership. The flag died in
+    // 1f6b4107a046 (#13932) while 48 files kept citing it, and every one of those
+    // citations had been a lie about a binary that would exit 2 on an unknown argument.
+    // Read-only: prints, changes nothing. Refusal of the ingestion is rc 1 with the cause,
+    // never rc 2 -- rc 2 is reserved for arguments this binary does not parse.
+    if required_admitted_set_mode {
+        match v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(&source_roots) {
+            Ok(identities) => {
+                for identity in &identities {
+                    println!("admitted-module-identities: {identity}");
+                }
+                eprintln!(
+                    "claim_executor --required-ci: admitted {} module identities",
+                    identities.len()
+                );
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(cause) => {
+                eprintln!("claim_executor --required-ci: ingestion refused: {cause}");
+                Err(ExitCode::FAILURE)
+            }
+        }
     }
 
     let _phase_profile = PhaseProfile::install_from_env();
