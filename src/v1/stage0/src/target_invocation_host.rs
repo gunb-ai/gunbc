@@ -507,6 +507,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("fleet-convergence-verdict-route"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/fleet_convergence_verdict_route.dag",
+                function: "fleet_convergence_verdict_route_wire",
+            },
+        ),
+        (
             instrument_label("native-allocation-observation"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_allocation_observation.dag",
