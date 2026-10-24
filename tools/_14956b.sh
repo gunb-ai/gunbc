@@ -15,7 +15,7 @@ if [ "$PHASE" = b1 ]; then
 fi
 build_head || exit 9
 CB=$CARGO_TARGET_DIR/release/claim_batch
-CKPT=/root/workspace/.c4ckpt956; mkdir -p $CKPT/gates 2>/dev/null || { CKPT=$CKPT; mkdir -p $CKPT/gates; }
+CKPT=/root/workspace/.c4ckpt956; mkdir -p $CKPT/gates 2>/dev/null || { CKPT=$REPO/.c4ckpt956; mkdir -p $CKPT/gates; }
 echo "CKPT=$CKPT"
 ELW=src/v2/test/claim/enforcement_live_witness.dag
 GATE=enforcement_consistency_gate_holds
