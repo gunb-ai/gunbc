@@ -3,7 +3,8 @@ module test.claim.ci.binwet_row_function_liveness_witness
 import std.types { Bool, Int, List, String }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.filesystem.filesystem_io { filesystem_read, FilesystemReadSucceeded, FilesystemReadRefused }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -35,11 +36,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the roster parse ever yields (almost) nothing.
 data binwet_roster_authority: String = "dag/gunbc/ci/ci_layer_roots.dag"
 
-fn read_or_empty(path: String) -> String {
-  match filesystem_read(path: path) {
-    FilesystemReadSucceeded { content: c } => c
-    FilesystemReadRefused { error: _ } => ""
-  }
+// LOUD ON A DEAD PATH, BY DESIGN. The filesystem_read builtin panics when the host cannot read
+// the file (v1_rt.rs filesystem_read), so a roster row naming a MISSING entry file aborts this
+// claim with the host's "failed to read <path>" message rather than comparing against an empty
+// string -- the wrong kind of green. A row naming a file that exists but not the function fails
+// below with the row's identity in the FAIL line.
+fn read_file_source(path: String) -> String {
+  filesystem_read(path: path).content
 }
 
 // The roster's two quoted columns, read positionally off its own source. Each row renders on one
@@ -61,7 +64,7 @@ fn roster_column(line: String, at: Int) -> String {
 // two-quote prefix with its leading spaces is what no other line in the file carries.
 fn roster_rows() -> List<String> {
   filter(
-    split(s: read_or_empty(binwet_roster_authority), delimiter: "\n"),
+    split(s: read_file_source(binwet_roster_authority), delimiter: "\n"),
     line => string_contains(s: line, pattern: "  bin_wet(entry: \"")
   )
 }
@@ -70,12 +73,13 @@ fn pair_names_live_declaration(row: String) -> Bool {
   let path = roster_column(row, 1)
   let name = roster_column(row, 3)
   if path == "" { false } else {
-    let src = read_or_empty(path)
+    let src = read_file_source(path)
     if name == "" {
       // A file-grain row (f: "") names the entry file, not one claim; the roster holds exactly
       // one such row (roadmap_belt_actuate_witness.dag, which is a whole entry runner). It is
-      // live when the named file exists and declares claims at all -- read_or_empty is "" for a
-      // missing file, so this arm refuses a dead path without inventing a function name.
+      // live when the named file exists and declares claims at all; a dead path aborts loudly
+      // through read_file_source's host panic (see above), so this arm only judges files that
+      // exist -- no invented function name is needed here.
       string_contains(s: src, pattern: "test fn ")
     } else {
       // A roster row may name a `test fn` (a claim) or a plain `fn` the entry calls; both are live
