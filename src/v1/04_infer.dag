@@ -7584,8 +7584,9 @@ fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?
 // host realization would write its debug rendering. Chain (i) asks this at `as` (validate_cast);
 // chain (ii) asks it at every host-text position a builtin or algebra method declares
 // (builtin_text_argument_crossing_diags, algebra_method_host_text_crossing_diags). Kernel Int, Nat
-// and Bool are not refused here: they are no nominal, and whether they inhabit host text implicitly
-// is gunbc.recurring_failure_mode two_admission_authorities_keyed_on_different_relations SPECIMEN 3.
+// and Bool are no nominal and are not refused here: at a host-text formal they follow the cast's
+// admission of the same source, and a refusal of a kernel source into text joins this judgment so
+// that `as` and the host-text formals give one answer.
 //
 // A type is a nominal value with no declared conversion unless its DECLARATION is grounded onto
 // a kernel type or is the std.types `Unit` placeholder. Both exemptions are keyed on the exact

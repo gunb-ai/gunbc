@@ -19,9 +19,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // one and failed at runtime with a TypeError. The REDs cover concat, join's elements and join's
 // separator, for a record and for a coproduct, and string_length as the one sibling of the
 // registry's host-text formals. The controls: String and NonEmptyStr pass, a declared conversion
-// passes, and kernel Int, Nat and Bool stay accepted at concat and join BY DECISION (arm (a) of this
-// chain): whether they inhabit host text implicitly is gunbc.recurring_failure_mode
-// two_admission_authorities_keyed_on_different_relations SPECIMEN 3, not this class. PATH SCOPE:
+// passes, and kernel Int, Nat and Bool stay accepted at concat and join: at a host-text formal they
+// follow the cast's admission of the same source, and each is its own control so that a kernel
+// refusal joining v1.compiler.infer value_type_is_declared_nominal's judgment turns it RED in one edit. PATH SCOPE:
 // compile acceptance on the seed only; the v2 native route is unmeasured.
 
 fn refusals(source: String, subject: String) -> Int {
@@ -61,7 +61,11 @@ data control_non_empty_source: String = "module probe_host_text_non_empty\nimpor
 
 data control_declared_conversion_source: String = "module probe_host_text_declared_conversion\nimport std.types { String, Int, List }\nimport extdeps.languages.json.parse { JsonDocumentGap, json_document_gap_text }\nfn text(g: JsonDocumentGap) -> String { concat(\"gap=\", json_document_gap_text(gap: g)) }\n"
 
-data control_kernel_scalars_source: String = "module probe_host_text_kernel_scalars\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(i: Int, n: Nat, b: Bool, is: List<Int>, ns: List<Nat>, bs: List<Bool>) -> String { concat(concat(concat(\"i=\", i), concat(\"n=\", n)), concat(concat(\"b=\", b), concat(join(is, \",\"), concat(join(ns, \",\"), join(bs, \",\"))))) }\n"
+data control_int_source: String = "module probe_host_text_int\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(i: Int, is: List<Int>) -> String { concat(concat(\"i=\", i), join(is, \",\")) }\n"
+
+data control_nat_source: String = "module probe_host_text_nat\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(n: Nat, ns: List<Nat>) -> String { concat(concat(\"n=\", n), join(ns, \",\")) }\n"
+
+data control_bool_source: String = "module probe_host_text_bool\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(b: Bool, bs: List<Bool>) -> String { concat(concat(\"b=\", b), join(bs, \",\")) }\n"
 
 data control_local_join_parameter_source: String = "module probe_host_text_local_join\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn combine(join: fn(P, P) -> P, p: P) -> P { join(p, p) }\n"
 
@@ -109,8 +113,16 @@ test fn control_declared_conversion_is_accepted() -> Bool {
   blocking_total(source: control_declared_conversion_source) == 0
 }
 
-test fn control_kernel_int_nat_bool_stay_accepted_by_decision() -> Bool {
-  blocking_total(source: control_kernel_scalars_source) == 0
+test fn control_kernel_int_is_accepted() -> Bool {
+  blocking_total(source: control_int_source) == 0
+}
+
+test fn control_kernel_nat_is_accepted() -> Bool {
+  blocking_total(source: control_nat_source) == 0
+}
+
+test fn control_kernel_bool_is_accepted() -> Bool {
+  blocking_total(source: control_bool_source) == 0
 }
 
 test fn control_a_local_parameter_spelled_join_is_not_the_builtin() -> Bool {
