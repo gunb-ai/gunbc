@@ -4917,8 +4917,12 @@ fn refinement_carrier_grounding_crossing_reason() -> Symbol {
 
 // THE ADVISORY IS LOCATED AND COUNTED: anchored at the crossing value itself, correction Unavailable --
 // the fix is the checked constructor at the value's producer (the ruling's dissolution), not an edit at
-// this position. It is NOT an error: a module carrying crossings ACCEPTS, and the count is read from the
-// diagnostics by the native census ([native-census-infer] refinement_carrier_grounding_crossings).
+// this position. It is NOT an error: a module carrying crossings ACCEPTS, and the count is the emitted
+// reading: the native census serializes the accepted diagnostics into the [native-census-infer] line's
+// accepted_frontier.advisories list as {reason, count} rows (NativeInferAcceptedFrontier /
+// native_infer_advisory_counts, v2.compiler.source_root_eval), so this advisory appears there as the
+// row with reason refinement_carrier_grounding_crossing -- the same generic fold that counts every
+// other accepted-path advisory, no per-reason emitter change.
 fn refinement_carrier_grounding_crossing_diagnostic(
   obligation: DeclaredTypeObligation,
   crossing: Node

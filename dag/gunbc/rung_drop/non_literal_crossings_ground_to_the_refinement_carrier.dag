@@ -21,10 +21,13 @@ import gunbc.instrument_targets { v2_native_census_scoped_label }
 // standing between such a crossing and silence is this advisory plus this row. That is the prior rung's
 // whole content, and it is declared, not hidden.
 //
-// WHY THE POPULATION IS A CENSUS ROW AND NOT A TRANSCRIPTION. The members are exactly the modules with
-// a non-zero refinement_carrier_grounding_crossing count on the [native-census-infer] line of the
-// scoped census -- re-derived, never transcribed (DESIGN 6), so this row states no count of its own and
-// no member list that could go stale between this file and the next merge.
+// WHY THE POPULATION IS A CENSUS ROW AND NOT A TRANSCRIPTION. The members are exactly the modules whose
+// [native-census-infer] line carries a non-zero row {reason: "refinement_carrier_grounding_crossing",
+// count: N} inside accepted_frontier.advisories -- the list the native census builds from every accepted
+// module's diagnostics (NativeInferAcceptedFrontier / native_infer_advisory_counts,
+// v2.compiler.source_root_eval; the generic {reason, count} fold, so no per-reason emitter exists and
+// none is needed) of the scoped census -- re-derived, never transcribed (DESIGN 6), so this row states
+// no count of its own and no member list that could go stale between this file and the next merge.
 //
 // THE LITERAL ARM IS NOT THIS ROW'S POPULATION. A LITERAL at a refined position stays a REFUSAL with
 // the position's own inhabitance reason -- witnessed by the claims rcg_a_literal_at_a_refined_declared_return_refuses
