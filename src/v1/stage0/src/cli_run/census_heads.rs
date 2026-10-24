@@ -379,8 +379,13 @@ fn project_node(n: &Rc<Node>, base: i64, relabel: &[i64]) -> Result<Rc<Node>, St
         Some(InferredNode::Resolved { node }) => Some(Rc::new(InferredNode::Resolved {
             node: project_node(node, base, relabel)?,
         })),
-        // Every other inferred fact is a leaf with no nested node to project.
-        Some(_) => inferred.clone(),
+        Some(InferredNode::CompilerError {
+            message: _,
+            span: _,
+        })
+        | Some(InferredNode::TypeVariable { id: _ })
+        | Some(InferredNode::Divergent)
+        | Some(InferredNode::ArgumentsResolved) => inferred.clone(),
     };
     let match_pattern = match match_pattern.as_deref() {
         None => None,
