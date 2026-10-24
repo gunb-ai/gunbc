@@ -3278,6 +3278,54 @@ pub fn callable_signatures_agree(
     }
 }
 
+pub fn applied_head_identity_agrees(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    {
+        let both_stamped = match left.declaration.clone() {
+            Some(ld) => match right.declaration.clone() {
+                Some(rd) => Some(
+                    ((ld.module_path.clone() == rd.module_path.clone())
+                        && (ld.decl_name.clone() == rd.decl_name.clone())),
+                ),
+                std::option::Option::None => std::option::Option::None,
+            },
+            std::option::Option::None => std::option::Option::None,
+        };
+        match both_stamped.clone() {
+            Some(stamped_agree) => stamped_agree.clone(),
+            std::option::Option::None => match (*text.clone()).clone() {
+                TextJudgment::TextJudgedIn { env: e, .. } => {
+                    match crate::v1_compiler_infer_env::settled_type(
+                        left.clone(),
+                        source_indices.clone(),
+                        e.clone(),
+                        16,
+                    ) {
+                        std::option::Option::None => false,
+                        Some(ls) => match crate::v1_compiler_infer_env::settled_type(
+                            right.clone(),
+                            source_indices.clone(),
+                            e.clone(),
+                            16,
+                        ) {
+                            std::option::Option::None => false,
+                            Some(rs) => {
+                                ((ls.head.module_path.clone() == rs.head.module_path.clone())
+                                    && (ls.head.decl_name.clone() == rs.head.decl_name.clone()))
+                            }
+                        },
+                    }
+                }
+                TextJudgment::TextNotAsked { reason: _, .. } => false,
+            },
+        }
+    }
+}
+
 pub fn node_type_equals_core(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -3469,7 +3517,41 @@ pub fn node_type_equals_core(
                                                             },
                                                         )
                                                     } else {
-                                                        false
+                                                        if applied_head_identity_agrees(
+                                                            left.clone(),
+                                                            right.clone(),
+                                                            source_indices.clone(),
+                                                            text.clone(),
+                                                        ) {
+                                                            (((left.children.clone().len() as i64)
+                                                                == (right.children.clone().len()
+                                                                    as i64))
+                                                                && {
+                                                                    let mut __all = true;
+                                                                    for pair in Rc::new(
+                                                                        left.children
+                                                                            .clone()
+                                                                            .iter()
+                                                                            .cloned()
+                                                                            .enumerate()
+                                                                            .map(|(i, v)| {
+                                                                                (i as i64, v)
+                                                                            })
+                                                                            .collect::<Vec<_>>(),
+                                                                    )
+                                                                    .iter()
+                                                                    .cloned()
+                                                                    {
+                                                                        if !(match right.children.clone().get((pair.0.clone()) as usize).cloned() {
+    Some(right_child) => node_type_equals(child_type_node(pair.1.clone()), child_type_node(right_child.clone()), source_indices.clone(), text.clone()),
+    std::option::Option::None => false,
+}) { __all = false; break; }
+                                                                    }
+                                                                    __all
+                                                                })
+                                                        } else {
+                                                            false
+                                                        }
                                                     }
                                                 }
                                             }
