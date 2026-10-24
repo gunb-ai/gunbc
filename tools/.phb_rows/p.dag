@@ -8,7 +8,7 @@ fn row_text(r: CompileDiagnosticCensusRow) -> String {
 }
 fn rows_text(name: String, source: String) -> String {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => concat("ROWS ", name, ": ", fold(census_blocking_rows(rows: rows), init: "", f: (acc: String, r: CompileDiagnosticCensusRow) => concat(acc, " ;; ", row_text(r: r))))
+    CensusObserved { rows: rows } => concat("ROWS ", name, ": ", fold(census_blocking_rows(rows: rows), init: "", f: (acc, r) => concat(acc, " ;; ", row_text(r: r))))
     CensusNotRunnable { cause: c } => concat("ROWS ", name, ": NOTRUNNABLE ", c)
   }
 }
