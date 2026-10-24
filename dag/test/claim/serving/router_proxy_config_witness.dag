@@ -3,8 +3,8 @@ module test.claim.serving.router_proxy_config_witness
 import std.types { String, Bool, Int, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.proxy.openresty {
-  NginxDirective, HttpBlock, ServerBlock, LocationBlock, PrefixV1, ProxyPassDirective, ProxyNextUpstreamDirective,
-  ProxyBufferingDirective, ProxyRequestBufferingDirective, LuaPhaseHook, AuthzCapture, StreamEndCallout,
+  NginxDirective, HttpBlock, ServerBlock, LocationBlock, PrefixMatch, NginxToken, ProxySetHeader, HeaderLiteral, NginxRender, Rendered, RenderRefused, ProxyPassDirective, ProxyNextUpstreamDirective,
+  ProxyBufferingDirective, ProxyRequestBufferingDirective, LuaPhaseHook, CaptureSubrequest, LogPostToLoopback,
   render_nginx_directives, ProxyNextUpstreamOff,
 }
 import gunbc.serving.router_proxy_config { router_proxy_directives, router_proxy_config }
@@ -18,7 +18,7 @@ fn v1_body(ds: List<NginxDirective>) -> List<NginxDirective> {
   fold(ds, init: [] as List<NginxDirective>, f: (acc, d) => concat(acc, match d {
     HttpBlock { body: b } => v1_body(ds: b)
     ServerBlock { body: b } => v1_body(ds: b)
-    LocationBlock { matching: m, body: b } => match m { PrefixV1 => b _ => [] as List<NginxDirective> }
+    LocationBlock { matching: m, body: b } => match m { PrefixMatch { path: _ } => b _ => [] as List<NginxDirective> }
     _ => [] as List<NginxDirective>
   }))
 }
@@ -29,10 +29,10 @@ fn is_buffering_off(d: NginxDirective) -> Bool {
   match d { ProxyBufferingDirective { value: _ } => true ProxyRequestBufferingDirective { value: _ } => true _ => false }
 }
 fn is_authz(d: NginxDirective) -> Bool {
-  match d { LuaPhaseHook { phase: _, hook: h } => match h { AuthzCapture { location: _, refuse_status: s } => s == 503 _ => false } _ => false }
+  match d { LuaPhaseHook { phase: _, hook: h } => match h { CaptureSubrequest { location: _, failure_status: s, copies: _ } => s == 503 _ => false } _ => false }
 }
 fn is_stream_end(d: NginxDirective) -> Bool {
-  match d { LuaPhaseHook { phase: _, hook: h } => match h { StreamEndCallout { loopback_port: p, timeout_ms: _ } => p == 9002 _ => false } _ => false }
+  match d { LuaPhaseHook { phase: _, hook: h } => match h { LogPostToLoopback { port: p, path: _, timeout_ms: _, only_when_set: _, header: _, header_value: _ } => p == 9002 _ => false } _ => false }
 }
 
 // The model has no constructor for a fixed upstream, so the router location has exactly one proxy_pass and it is the variable one.
@@ -48,8 +48,19 @@ test fn one_authz_hook_that_refuses_with_503_and_one_stream_end_hook_on_the_give
   count(filter(v1_body(ds: rows()), d => is_authz(d: d))) == 1 && count(filter(v1_body(ds: rows()), d => is_stream_end(d: d))) == 1
 }
 
+fn text_of(r: NginxRender) -> String { match r { Rendered { text: t } => t RenderRefused { token: _ } => "" } }
+
 test fn rendering_follows_the_rows() -> Bool {
-  render_nginx_directives(rows: [ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff }]) == "proxy_next_upstream off;\n"
-    && router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002) == render_nginx_directives(rows: rows())
-    && router_proxy_config(listen_port: 8444, authz_port: 9001, stream_end_port: 9002) != router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002)
+  text_of(r: render_nginx_directives(rows: [ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff }])) == "proxy_next_upstream off;\n"
+    && text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002)) == text_of(r: render_nginx_directives(rows: rows()))
+    && text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002)) != ""
+    && text_of(r: router_proxy_config(listen_port: 8444, authz_port: 9001, stream_end_port: 9002)) != text_of(r: router_proxy_config(listen_port: 8443, authz_port: 9001, stream_end_port: 9002))
+}
+
+// A token that could end the literal it sits in is refused, not rendered.
+test fn an_unsafe_token_is_refused_not_rendered() -> Bool {
+  match render_nginx_directives(rows: [ProxySetHeader { header: "x'; os.execute('x" as NginxToken, source: HeaderLiteral { text: "0" as NginxToken } }]) {
+    RenderRefused { token: _ } => true
+    Rendered { text: _ } => false
+  }
 }

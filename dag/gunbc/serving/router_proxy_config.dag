@@ -2,13 +2,23 @@ module gunbc.serving.router_proxy_config
 
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import extdeps.proxy.openresty {
-  OpenRestyVersion, openresty_1_27_1_1, NginxDirective, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock,
-  ListenLoopback, LocationBlock, PrefixV1, ExactAuthz, SetEmptyVariable, ProxyHttpVersion11, ProxyBufferingDirective,
-  ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxySetSeatPermitHeader, ProxyPassDirective,
-  ProxyTargetFromUpstreamVariable, ProxyPassLoopbackAuthz, InternalLocationOnly, ProxyMethodPost, ProxyPassRequestBodyOff,
-  ProxySetContentLengthZero, LuaPhaseHook, AccessPhase, LogPhase, AuthzCapture, AuthzInternalLocation, StreamEndCallout,
-  ProxyBufferingOff, ProxyRequestBufferingOff, ProxyNextUpstreamOff, render_nginx_directives,
+  OpenRestyVersion, openresty_1_27_1_1, NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff,
+  ServerBlock, ListenLoopback, LocationBlock, PrefixMatch, ExactMatch, SetEmptyVariable, ProxyHttpVersion11, ProxyBufferingDirective,
+  ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxySetHeader, HeaderFromVariable, HeaderLiteral, ProxyPassDirective,
+  ProxyTargetFromUpstreamVariable, ProxyPassLoopback, InternalLocationOnly, ProxyMethodPost, ProxyPassRequestBodyOff,
+  LuaPhaseHook, AccessPhase, LogPhase, CaptureSubrequest, LogPostToLoopback, HeaderCopy,
+  ProxyBufferingOff, ProxyRequestBufferingOff, ProxyNextUpstreamOff, NginxRender, render_nginx_directives,
 }
+
+// Serving-router policy over the OpenResty model: the header carrying the seat permit, the header the authz
+// answer names the upstream in, and the authz and stream-end routes are gunbc facts, not OpenResty's.
+data seat_permit_header: NginxToken = "x-seat-permit" as NginxToken
+data upstream_answer_header: NginxToken = "x-upstream" as NginxToken
+data authz_internal_path: NginxToken = "/_authz" as NginxToken
+data authz_upstream_path: NginxToken = "/authz" as NginxToken
+data stream_end_path: NginxToken = "/stream-end" as NginxToken
+data upstream_variable: NginxVariable = "up" as NginxVariable
+data permit_variable: NginxVariable = "permit" as NginxVariable
 
 // The router's byte-carrying proxy configuration (plan gunbc.plans.fabric_serving_router, S1), as
 // typed directive rows over extdeps.proxy.openresty; the text is the rendering of those rows.
@@ -31,30 +41,40 @@ fn router_proxy_directives(listen_port: Int, authz_port: Int, stream_end_port: I
       AccessLogOff,
       ServerBlock { body: [
         ListenLoopback { port: listen_port },
-        LocationBlock { matching: PrefixV1, body: [
-          SetEmptyVariable { name: "up" as NonEmptyStr },
-          SetEmptyVariable { name: "permit" as NonEmptyStr },
-          LuaPhaseHook { phase: AccessPhase, hook: AuthzCapture { location: AuthzInternalLocation, refuse_status: 503 } },
+        LocationBlock { matching: PrefixMatch { path: "/v1/" as NginxToken }, body: [
+          SetEmptyVariable { variable: upstream_variable },
+          SetEmptyVariable { variable: permit_variable },
+          LuaPhaseHook { phase: AccessPhase, hook: CaptureSubrequest {
+            location: authz_internal_path,
+            failure_status: 503,
+            copies: [
+              HeaderCopy { header: upstream_answer_header, variable: upstream_variable },
+              HeaderCopy { header: seat_permit_header, variable: permit_variable },
+            ],
+          } },
           ProxyHttpVersion11,
           ProxyBufferingDirective { value: ProxyBufferingOff },
           ProxyRequestBufferingDirective { value: ProxyRequestBufferingOff },
           ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff },
-          ProxySetSeatPermitHeader,
-          ProxyPassDirective { target: ProxyTargetFromUpstreamVariable },
-          LuaPhaseHook { phase: LogPhase, hook: StreamEndCallout { loopback_port: stream_end_port, timeout_ms: 2000 } },
+          ProxySetHeader { header: seat_permit_header, source: HeaderFromVariable { variable: permit_variable } },
+          ProxyPassDirective { target: ProxyTargetFromUpstreamVariable, variable: upstream_variable },
+          LuaPhaseHook { phase: LogPhase, hook: LogPostToLoopback {
+            port: stream_end_port, path: stream_end_path, timeout_ms: 2000,
+            only_when_set: permit_variable, header: seat_permit_header, header_value: permit_variable,
+          } },
         ] },
-        LocationBlock { matching: ExactAuthz, body: [
+        LocationBlock { matching: ExactMatch { path: authz_internal_path }, body: [
           InternalLocationOnly,
-          ProxyPassLoopbackAuthz { port: authz_port },
+          ProxyPassLoopback { port: authz_port, path: authz_upstream_path },
           ProxyMethodPost,
           ProxyPassRequestBodyOff,
-          ProxySetContentLengthZero,
+          ProxySetHeader { header: "Content-Length" as NginxToken, source: HeaderLiteral { text: "0" as NginxToken } },
         ] },
       ] },
     ] },
   ]
 }
 
-fn router_proxy_config(listen_port: Int, authz_port: Int, stream_end_port: Int) -> String {
+fn router_proxy_config(listen_port: Int, authz_port: Int, stream_end_port: Int) -> NginxRender {
   render_nginx_directives(rows: router_proxy_directives(listen_port: listen_port, authz_port: authz_port, stream_end_port: stream_end_port))
 }

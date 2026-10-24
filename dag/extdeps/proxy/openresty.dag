@@ -1,5 +1,6 @@
 module extdeps.proxy.openresty
 
+import std.optional { Present, Absent }
 import std.types { NonEmptyStr, brand, String, Int, List, Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -57,23 +58,34 @@ type ProxyRequestBuffering
 type ProxyTarget
   = | ProxyTargetFromUpstreamVariable
 
-// The loopback callout targets the model can express: the authz capture goes to an internal location,
-// and the stream-end callout is a POST to a loopback port. No free-text host, path or header reaches the
-// emitted Lua; every interpolated value below is an Int or a closed arm.
-type CalloutLocation
-  = | AuthzInternalLocation
+// A name, path or header token interpolated into emitted text. The renderer refuses any token holding a
+// character that could end the literal it sits in (see nginx_token_is_safe), so no value can break the
+// output silently.
+type NginxToken = NonEmptyStr where brand("NginxToken")
+
+// An nginx variable name, written $name in the conf and ngx.var.name in Lua.
+type NginxVariable = NonEmptyStr where brand("NginxVariable")
+
+type HeaderSource
+  = HeaderFromVariable { variable: NginxVariable }
+  | HeaderLiteral { text: NginxToken }
+
+type HeaderCopy {
+  header: NginxToken
+  variable: NginxVariable
+}
 
 type LuaHook
-  = AuthzCapture { location: CalloutLocation, refuse_status: Int }
-  | StreamEndCallout { loopback_port: Int, timeout_ms: Int }
+  = CaptureSubrequest { location: NginxToken, failure_status: Int, copies: List<HeaderCopy> }
+  | LogPostToLoopback { port: Int, path: NginxToken, timeout_ms: Int, only_when_set: NginxVariable, header: NginxToken, header_value: NginxVariable }
 
 type LuaPhase
   = | AccessPhase
   | LogPhase
 
 type LocationMatch
-  = | PrefixV1
-  | ExactAuthz
+  = PrefixMatch { path: NginxToken }
+  | ExactMatch { path: NginxToken }
 
 type NginxDirective
   = WorkerProcesses { count: Int }
@@ -83,42 +95,69 @@ type NginxDirective
   | ServerBlock { body: List<NginxDirective> }
   | ListenLoopback { port: Int }
   | LocationBlock { matching: LocationMatch, body: List<NginxDirective> }
-  | SetEmptyVariable { name: NonEmptyStr }
+  | SetEmptyVariable { variable: NginxVariable }
   | ProxyHttpVersion11
   | ProxyBufferingDirective { value: ProxyBuffering }
   | ProxyRequestBufferingDirective { value: ProxyRequestBuffering }
   | ProxyNextUpstreamDirective { value: ProxyNextUpstream }
-  | ProxySetSeatPermitHeader
-  | ProxyPassDirective { target: ProxyTarget }
-  | ProxyPassLoopbackAuthz { port: Int }
+  | ProxySetHeader { header: NginxToken, source: HeaderSource }
+  | ProxyPassDirective { target: ProxyTarget, variable: NginxVariable }
+  | ProxyPassLoopback { port: Int, path: NginxToken }
   | InternalLocationOnly
   | ProxyMethodPost
   | ProxyPassRequestBodyOff
-  | ProxySetContentLengthZero
   | LuaPhaseHook { phase: LuaPhase, hook: LuaHook }
 
-data seat_permit_header: String = "x-seat-permit"
-data upstream_answer_header: String = "x-upstream"
+type NginxRender
+  = Rendered { text: String }
+  | RenderRefused { token: String }
 
-fn authz_location_path(l: CalloutLocation) -> String {
-  match l { AuthzInternalLocation => "/_authz" }
+fn nginx_token_is_safe(t: String) -> Bool {
+  !(string_contains(t, "'") || string_contains(t, "\\") || string_contains(t, "\n") || string_contains(t, "\r")
+    || string_contains(t, " ") || string_contains(t, ";") || string_contains(t, "\{") || string_contains(t, "}")
+    || string_contains(t, "$") || string_contains(t, "\""))
+}
+
+fn lua_hook_tokens(h: LuaHook) -> List<String> {
+  match h {
+    CaptureSubrequest { location: l, failure_status: _, copies: cs } =>
+      concat([l as String], fold(cs, init: [] as List<String>, f: (acc, c) => concat(acc, [c.header as String, c.variable as String])))
+    LogPostToLoopback { port: _, path: pa, timeout_ms: _, only_when_set: o, header: hd, header_value: hv } =>
+      [pa as String, o as String, hd as String, hv as String]
+  }
+}
+
+fn directive_tokens(d: NginxDirective) -> List<String> {
+  match d {
+    HttpBlock { body: b } => body_tokens(ds: b)
+    ServerBlock { body: b } => body_tokens(ds: b)
+    LocationBlock { matching: m, body: b } => concat(match m { PrefixMatch { path: p } => [p as String] ExactMatch { path: p } => [p as String] }, body_tokens(ds: b))
+    SetEmptyVariable { variable: v } => [v as String]
+    ProxySetHeader { header: h, source: src } => concat([h as String], match src { HeaderFromVariable { variable: v } => [v as String] HeaderLiteral { text: t } => [t as String] })
+    ProxyPassDirective { target: _, variable: v } => [v as String]
+    ProxyPassLoopback { port: _, path: p } => [p as String]
+    LuaPhaseHook { phase: _, hook: h } => lua_hook_tokens(h: h)
+    _ => [] as List<String>
+  }
+}
+
+fn body_tokens(ds: List<NginxDirective>) -> List<String> {
+  fold(ds, init: [] as List<String>, f: (acc, d) => concat(acc, directive_tokens(d: d)))
 }
 
 fn lua_hook_lines(h: LuaHook) -> List<String> {
   match h {
-    AuthzCapture { location: l, refuse_status: r } => [
-      "local res = ngx.location.capture('" + authz_location_path(l: l) + "', \{method = ngx.HTTP_POST\})",
+    CaptureSubrequest { location: l, failure_status: r, copies: cs } => concat([
+      "local res = ngx.location.capture('" + (l as String) + "', \{method = ngx.HTTP_POST\})",
       "if res.status ~= 200 then return ngx.exit(" + (r as String) + ") end",
-      "ngx.var.up = res.header['" + upstream_answer_header + "']",
-      "ngx.var.permit = res.header['" + seat_permit_header + "']",
-    ]
-    StreamEndCallout { loopback_port: pt, timeout_ms: t } => [
-      "if ngx.var.permit == '' then return end",
+    ], map(cs, c => "ngx.var." + (c.variable as String) + " = res.header['" + (c.header as String) + "']"))
+    LogPostToLoopback { port: pt, path: pa, timeout_ms: t, only_when_set: o, header: hd, header_value: hv } => [
+      "if ngx.var." + (o as String) + " == '' then return end",
       "ngx.timer.at(0, function(p)",
       "local s = ngx.socket.tcp()",
       "s:settimeout(" + (t as String) + ")",
       "if not s:connect('127.0.0.1', " + (pt as String) + ") then return end",
-      "s:send('POST /stream-end HTTP/1.1\\r\\nHost: x\\r\\n" + seat_permit_header + ": ' .. ngx.var.permit .. '\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n')",
+      "s:send('POST " + (pa as String) + " HTTP/1.1\\r\\nHost: x\\r\\n" + (hd as String) + ": ' .. ngx.var." + (hv as String) + " .. '\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n')",
       "s:receive('*a')",
       "s:close()",
       "end)",
@@ -131,7 +170,7 @@ fn lua_phase_name(ph: LuaPhase) -> String {
 }
 
 fn location_match_text(m: LocationMatch) -> String {
-  match m { PrefixV1 => "/v1/" ExactAuthz => "= /_authz" }
+  match m { PrefixMatch { path: p } => p as String ExactMatch { path: p } => "= " + (p as String) }
 }
 
 fn join_with(items: List<String>, sep: String) -> String {
@@ -153,23 +192,26 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     ServerBlock { body: b } => nginx_block(head: "server", body: b, indent: indent)
     ListenLoopback { port: p } => nginx_line(text: "listen 127.0.0.1:" + (p as String), indent: indent)
     LocationBlock { matching: m, body: b } => nginx_block(head: "location " + location_match_text(m: m), body: b, indent: indent)
-    SetEmptyVariable { name: n } => nginx_line(text: "set $" + (n as String) + " ''", indent: indent)
+    SetEmptyVariable { variable: v } => nginx_line(text: "set $" + (v as String) + " ''", indent: indent)
     ProxyHttpVersion11 => nginx_line(text: "proxy_http_version 1.1", indent: indent)
     ProxyBufferingDirective { value: v } => match v { ProxyBufferingOff => nginx_line(text: "proxy_buffering off", indent: indent) }
     ProxyRequestBufferingDirective { value: v } => match v { ProxyRequestBufferingOff => nginx_line(text: "proxy_request_buffering off", indent: indent) }
     ProxyNextUpstreamDirective { value: v } => match v { ProxyNextUpstreamOff => nginx_line(text: "proxy_next_upstream off", indent: indent) }
-    ProxySetSeatPermitHeader => nginx_line(text: "proxy_set_header " + seat_permit_header + " $permit", indent: indent)
-    ProxyPassDirective { target: t } => match t { ProxyTargetFromUpstreamVariable => nginx_line(text: "proxy_pass http://$up", indent: indent) }
-    ProxyPassLoopbackAuthz { port: p } => nginx_line(text: "proxy_pass http://127.0.0.1:" + (p as String) + "/authz", indent: indent)
+    ProxySetHeader { header: h, source: src } => nginx_line(text: "proxy_set_header " + (h as String) + " " + match src { HeaderFromVariable { variable: v } => "$" + (v as String) HeaderLiteral { text: t } => t as String }, indent: indent)
+    ProxyPassDirective { target: t, variable: v } => match t { ProxyTargetFromUpstreamVariable => nginx_line(text: "proxy_pass http://$" + (v as String), indent: indent) }
+    ProxyPassLoopback { port: p, path: pa } => nginx_line(text: "proxy_pass http://127.0.0.1:" + (p as String) + (pa as String), indent: indent)
     InternalLocationOnly => nginx_line(text: "internal", indent: indent)
     ProxyMethodPost => nginx_line(text: "proxy_method POST", indent: indent)
     ProxyPassRequestBodyOff => nginx_line(text: "proxy_pass_request_body off", indent: indent)
-    ProxySetContentLengthZero => nginx_line(text: "proxy_set_header Content-Length 0", indent: indent)
     LuaPhaseHook { phase: ph, hook: h } =>
       indent + lua_phase_name(ph: ph) + " \{\n" + indent + "  " + join_with(lua_hook_lines(h: h), "\n" + indent + "  ") + "\n" + indent + "}\n"
   }
 }
 
-fn render_nginx_directives(rows: List<NginxDirective>) -> String {
-  join_with(map(rows, x => render_nginx_directive(d: x, indent: "")), "")
+// Refuses, naming the first unsafe token, before any text is produced.
+fn render_nginx_directives(rows: List<NginxDirective>) -> NginxRender {
+  match first(filter(body_tokens(ds: rows), t => !nginx_token_is_safe(t: t))) {
+    Present { value: t } => RenderRefused { token: t }
+    Absent => Rendered { text: join_with(map(rows, x => render_nginx_directive(d: x, indent: "")), "") }
+  }
 }
