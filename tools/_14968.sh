@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.." || exit 9
 mkdir -p /root/workspace/.c4logs968; exec > >(tee /root/workspace/.c4logs968/last.log) 2>&1
 DEADLINE=${1:-2400}
 START=$(date +%s)
-HEAD_SHA=6f21ff1ced52d035d6ac7399db1612650e5d1a47
+HEAD_SHA=6f21ff1ced525d79d27cf408b0f0f20e1bbce5e8
 CKPT=/tmp/c4v/ckpt968; mkdir -p $CKPT/jobs
 echo "CKPT=$CKPT deadline=${DEADLINE}s"
 sha() { sha256sum "$1" | cut -d' ' -f1; }
