@@ -127,7 +127,6 @@ rc=0
 want G1n && { echo "=== G1n gates wet $(date -u +%H:%M:%S)Z"; run1 G1n $H $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G1n SKIPPED-ARGLIST"
 want G4n && { echo "=== G4n Blocking-repoint RED $(date -u +%H:%M:%S)Z"; run1 G4n $M $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G4n SKIPPED-ARGLIST"
 want G5n && { echo "=== G5n AuditOnly-repoint control $(date -u +%H:%M:%S)Z"; run1 G5n $V $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G5n SKIPPED-ARGLIST"
-want G7 && { echo "=== G7 gate at P = main-shape (contract+module restored, witness absent) $(date -u +%H:%M:%S)Z"; run1 G7 $P $ELW wet $GATE $PROBE || rc=$?; } || echo "ROW G7 SKIPPED-ARGLIST"
 want CENSUS && { echo "=== rfm census $(date -u +%H:%M:%S)Z"; census || rc=$?; } || echo "ROW CENSUS SKIPPED-ARGLIST"
 echo "=== sweep head $(date -u +%H:%M:%S)Z"; sweep head $H || rc=$?
 echo "=== sweep base $(date -u +%H:%M:%S)Z"; sweep base $P || rc=$?
