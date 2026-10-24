@@ -7,6 +7,7 @@ import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureEstablished,
   ReferenceDerivedClosureRefused,
   ReferenceDerivedClosureUnavailable,
+  ReferenceDerivedClosureBindingRefused,
   RepeatedMentionsCollapseDependency,
   UnrelatedLoadedFileExcluded,
   SameFileEarlierNeighbourVisible,
@@ -66,11 +67,13 @@ fn closure_missing_capabilities(
         ReferenceDerivedClosureEstablished { receipt } => receipt.capability == required_capability
         ReferenceDerivedClosureRefused { capability: _, failure: _ } => false
         ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
+        ReferenceDerivedClosureBindingRefused { capability: _, cause: _ } => false
       }))
         || admissions |> any(admission => match admission {
           ReferenceDerivedClosureEstablished { receipt: _ } => false
           ReferenceDerivedClosureRefused { capability, failure: _ } => capability == required_capability
           ReferenceDerivedClosureUnavailable { capability, trigger: _ } => capability == required_capability
+          ReferenceDerivedClosureBindingRefused { capability, cause: _ } => capability == required_capability
         })
     )
 }

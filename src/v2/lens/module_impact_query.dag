@@ -14,6 +14,7 @@ import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureEstablished,
   ReferenceDerivedClosureRefused,
+  ReferenceDerivedClosureBindingRefused,
   ReferenceDerivedClosureUnavailable,
   ReferenceDerivedClosureTrigger,
   UnrelatedLoadedFileExcluded,
@@ -481,6 +482,7 @@ fn impact_admission_pool_independence_trigger(
           }
         ReferenceDerivedClosureEstablished { receipt: _ } => acc
         ReferenceDerivedClosureRefused { capability: _, failure: _ } => acc
+        ReferenceDerivedClosureBindingRefused { capability: _, cause: _ } => acc
       }
     }
   )
@@ -504,6 +506,7 @@ fn impact_admission_pool_independence_established(
           }
         ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
         ReferenceDerivedClosureRefused { capability: _, failure: _ } => false
+        ReferenceDerivedClosureBindingRefused { capability: _, cause: _ } => false
       }
     }
   )

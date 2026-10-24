@@ -18,9 +18,12 @@ use crate::std_reference_binding_observation::ReferenceBindingObservation::{
     SameFileNeighbourObservation, SameFileNeighbourProductionRefused, SiblingBranchObservation,
     SiblingBranchProductionRefused, UnrelatedLoadedFileObservation,
 };
-use crate::std_reference_binding_observation::StructuralBindingResolution::StructuralBindingResolved;
+use crate::std_reference_binding_observation::StructuralBindingRefusal::*;
+use crate::std_reference_binding_observation::StructuralBindingResolution::{
+    StructuralBindingRefused, StructuralBindingResolved,
+};
 pub use crate::std_reference_binding_observation::{
-    ReferenceBindingObservation, StructuralBindingResolution,
+    ReferenceBindingObservation, StructuralBindingRefusal, StructuralBindingResolution,
 };
 pub use crate::std_types::{Bool, FilePath, List};
 use crate::v1_rt;
@@ -80,6 +83,10 @@ pub enum ReferenceDerivedClosureAdmission {
         capability: ReferenceDerivedClosureCapability,
         trigger: ReferenceDerivedClosureTrigger,
     },
+    ReferenceDerivedClosureBindingRefused {
+        capability: ReferenceDerivedClosureCapability,
+        cause: Rc<StructuralBindingRefusal>,
+    },
 }
 
 #[derive(
@@ -130,16 +137,16 @@ pub fn refused(
     )
 }
 
-pub fn binding_outcome_from_resolution(
-    resolution: Rc<StructuralBindingResolution>,
-) -> Option<Rc<OccurrenceReferenceBindingOutcome>> {
-    match (*resolution.clone()).clone() {
-        StructuralBindingResolution::StructuralBindingResolved {
-            binding_outcome: binding_outcome,
-            ..
-        } => Some(binding_outcome.clone()),
-        _ => std::option::Option::None,
-    }
+pub fn binding_refused(
+    capability: ReferenceDerivedClosureCapability,
+    cause: Rc<StructuralBindingRefusal>,
+) -> Rc<ReferenceDerivedClosureAdmission> {
+    Rc::new(
+        ReferenceDerivedClosureAdmission::ReferenceDerivedClosureBindingRefused {
+            capability: capability.clone(),
+            cause: cause.clone(),
+        },
+    )
 }
 
 pub fn assess_reference_binding_observation(
@@ -147,9 +154,9 @@ pub fn assess_reference_binding_observation(
 ) -> Rc<ReferenceDerivedClosureAdmission> {
     match (*observation.clone()).clone() {
     ReferenceBindingObservation::SameFileNeighbourProductionRefused { gap: _, .. } => refused(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible, ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing),
-    ReferenceBindingObservation::SameFileNeighbourObservation { neighbour, resolution, .. } => match binding_outcome_from_resolution(resolution.clone()) {
-    std::option::Option::None => refused(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible, ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing),
-    Some(binding_outcome) => match (*binding_outcome.clone()).clone() {
+    ReferenceBindingObservation::SameFileNeighbourObservation { neighbour, resolution, .. } => match (*resolution.clone()).clone() {
+    StructuralBindingResolution::StructuralBindingRefused { cause: cause, .. } => binding_refused(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible, cause.clone()),
+    StructuralBindingResolution::StructuralBindingResolved { binding_outcome: binding_outcome, .. } => match (*binding_outcome.clone()).clone() {
     OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided { ref result, .. } => { match result.as_ref() {
     OccurrenceBindingResult::OccurrenceBound { binding: binding, .. } => if (binding.candidate.containment.terminal.value.clone() == neighbour.value.clone()) {
         established(ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible)
@@ -163,9 +170,9 @@ pub fn assess_reference_binding_observation(
 },
 },
     ReferenceBindingObservation::SiblingBranchProductionRefused { gap: _, .. } => refused(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded, ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked),
-    ReferenceBindingObservation::SiblingBranchObservation { own_branch_declaration, sibling_branch_declaration, resolution, .. } => match binding_outcome_from_resolution(resolution.clone()) {
-    std::option::Option::None => refused(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded, ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked),
-    Some(binding_outcome) => match (*binding_outcome.clone()).clone() {
+    ReferenceBindingObservation::SiblingBranchObservation { own_branch_declaration, sibling_branch_declaration, resolution, .. } => match (*resolution.clone()).clone() {
+    StructuralBindingResolution::StructuralBindingRefused { cause: cause, .. } => binding_refused(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded, cause.clone()),
+    StructuralBindingResolution::StructuralBindingResolved { binding_outcome: binding_outcome, .. } => match (*binding_outcome.clone()).clone() {
     OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided { ref result, .. } => { match result.as_ref() {
     OccurrenceBindingResult::OccurrenceBound { binding: binding, .. } => if ((binding.candidate.containment.terminal.value.clone() == own_branch_declaration.value.clone()) && (binding.candidate.containment.terminal.value.clone() != sibling_branch_declaration.value.clone())) {
         established(ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded)
@@ -179,9 +186,9 @@ pub fn assess_reference_binding_observation(
 },
 },
     ReferenceBindingObservation::LaterDeclarationProductionRefused { gap: _, .. } => refused(ReferenceDerivedClosureCapability::LaterDeclarationExcluded, ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked),
-    ReferenceBindingObservation::LaterDeclarationObservation { resolution, .. } => match binding_outcome_from_resolution(resolution.clone()) {
-    std::option::Option::None => refused(ReferenceDerivedClosureCapability::LaterDeclarationExcluded, ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked),
-    Some(binding_outcome) => match (*binding_outcome.clone()).clone() {
+    ReferenceBindingObservation::LaterDeclarationObservation { resolution, .. } => match (*resolution.clone()).clone() {
+    StructuralBindingResolution::StructuralBindingRefused { cause: cause, .. } => binding_refused(ReferenceDerivedClosureCapability::LaterDeclarationExcluded, cause.clone()),
+    StructuralBindingResolution::StructuralBindingResolved { binding_outcome: binding_outcome, .. } => match (*binding_outcome.clone()).clone() {
     OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided { ref result, .. } => { match result.as_ref() {
     OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => established(ReferenceDerivedClosureCapability::LaterDeclarationExcluded),
     OccurrenceBindingResult::OccurrenceBound { binding: _, .. } => refused(ReferenceDerivedClosureCapability::LaterDeclarationExcluded, ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked),
@@ -191,9 +198,9 @@ pub fn assess_reference_binding_observation(
 },
 },
     ReferenceBindingObservation::DistinctHomonymProductionRefused { gap: _, .. } => refused(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved, ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed),
-    ReferenceBindingObservation::DistinctHomonymObservation { first_declaration, second_declaration, resolution, .. } => match binding_outcome_from_resolution(resolution.clone()) {
-    std::option::Option::None => refused(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved, ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed),
-    Some(binding_outcome) => match (*binding_outcome.clone()).clone() {
+    ReferenceBindingObservation::DistinctHomonymObservation { first_declaration, second_declaration, resolution, .. } => match (*resolution.clone()).clone() {
+    StructuralBindingResolution::StructuralBindingRefused { cause: cause, .. } => binding_refused(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved, cause.clone()),
+    StructuralBindingResolution::StructuralBindingResolved { binding_outcome: binding_outcome, .. } => match (*binding_outcome.clone()).clone() {
     OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided { ref result, .. } => { match result.as_ref() {
     OccurrenceBindingResult::OccurrenceAmbiguous { candidates: candidates, .. } => if ((({ let __fm = candidates.rest.clone(); if __fm.is_empty() { true } else { false } } && (first_declaration.value.clone() != second_declaration.value.clone())) && (candidates.first.containment.terminal.value.clone() == first_declaration.value.clone())) && (candidates.second.containment.terminal.value.clone() == second_declaration.value.clone())) {
         established(ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved)

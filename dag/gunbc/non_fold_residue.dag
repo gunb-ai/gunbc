@@ -32,9 +32,7 @@ data nfr_reason_landed_after_typed_census: String = "a top-level wildcard arm ov
 
 data nfr_reason_trait_derive_shape_table: String = "trait-shape→derive-trait capability table (nested match on ReprGroundingDeriveElemShape × ReprGroundingDeriveTrait with off-trait wildcard arms returning false) landed with Gate-1 sub-wall #2 predicate scaffold (#7174); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
 
-data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms"
 
-data nfr_dissolve_binding_outcome_resolution_wildcard: DissolutionCondition = unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT: a declaration ref cannot name an arm that does not exist yet, and binding to a fabricated constructor is the DESIGN §3 fabricated-citation class. THE CAPABILITY: gunbc.namespace_cut.namespace_reference_derived_closure_admission ReferenceDerivedClosureAdmission gains an arm whose payload is the StructuralBindingResolution refusal cause — the six closed off-Resolved variants std.reference_binding_observation already distinguishes (StructuralBindingIndexTransportRefused, StructuralBindingIndexModulePathRefused, StructuralBindingIndexExposureRefused, StructuralBindingIndexAuthoredOrderRefused, StructuralBindingIndexDeclarationBucketRefused, StructuralBindingProductionRefused) — so a program matches the cause rather than option-absence. SUFFICIENT FOR: assess_reference_binding_observation routes each of those variants to a distinct assessment without Absent collapse, binding_outcome_from_resolution becomes a total match, and this row deletes with the wildcard. CONSUMERS ARE NOT LISTED HERE (DESIGN §6: name the instrument, never transcribe its output; DESIGN §3c: a declaration's consumers are already a fact of the namespace tree). The producer that re-derives the dependent set is v2.lens.module_impact_query DependentsOf over ModuleIdentity { name: gunbc.namespace_cut.namespace_reference_derived_closure_admission }. The v1 seed mirror of that same module is the emitted file whose path follows the module name (src/v1/stage0/src/gunbc_namespace_cut_namespace_reference_derived_closure_admission.rs); its dependents are that file's, not a second hand census.")
 
 // Seed-mirrored subjects and extdeps coverage receipts: lists stay here.
 data non_fold_residue_frontier: List<FrontierRow> = [
@@ -42,11 +40,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       subject: PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict" },
       reason: nfr_reason_trait_derive_shape_table,
       dissolution: unbound_dissolution(description: "DISSOLVE-ON: OccurrenceCategory×OccurrenceCategory compatibility becomes a total derived table (or inhabitance-derived admissibility) and the nested wildcard arms delete with the row"),
-    },
-  FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/namespace_cut/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
-      reason: nfr_reason_binding_outcome_resolution_wildcard,
-      dissolution: nfr_dissolve_binding_outcome_resolution_wildcard,
     },
   FrontierRow {
       subject: PathSubject { path: "dag/extdeps/git.dag::git_diff_name_status_pending_after_status" },

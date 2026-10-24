@@ -1,0 +1,131 @@
+module test.claim.binding_refusal_admission
+
+import std.types { Bool, Int, List, list_length }
+import std.reference_binding_observation {
+  StructuralBindingRefusal,
+  StructuralBindingIndexTransportRefused,
+  StructuralBindingIndexModulePathRefused,
+  StructuralBindingIndexExposureRefused,
+  StructuralBindingIndexAuthoredOrderRefused,
+  StructuralBindingIndexDeclarationBucketRefused,
+  StructuralBindingProductionRefused,
+}
+import gunbc.instruments.reference_binding_provenance_calibration {
+  CalibrationObservationKind,
+  CalibrationResolutionArm,
+  SameFileNeighbourKind,
+  SiblingBranchKind,
+  LaterDeclarationKind,
+  DistinctHomonymKind,
+  ResolvedArm,
+  IndexTransportRefusedArm,
+  IndexModulePathRefusedArm,
+  IndexExposureRefusedArm,
+  IndexAuthoredOrderRefusedArm,
+  IndexDeclarationBucketRefusedArm,
+  ProductionRefusedArm,
+  observation_for,
+  resolution_for_arm,
+}
+import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureEstablished,
+  ReferenceDerivedClosureRefused,
+  ReferenceDerivedClosureUnavailable,
+  ReferenceDerivedClosureBindingRefused,
+  assess_reference_binding_observation,
+}
+
+// The real acceptance path: assess_reference_binding_observation over observations whose
+// resolution carries each of the six refusal causes. Inputs are supplied values at that boundary;
+// the inhabitance of those shapes by the real producer is std.reference_binding_observation's.
+
+fn cause_ordinal(c: StructuralBindingRefusal) -> Int {
+  match c {
+    StructuralBindingIndexTransportRefused { refusal: _ } => 0
+    StructuralBindingIndexModulePathRefused { refusal: _ } => 1
+    StructuralBindingIndexExposureRefused { refusal: _ } => 2
+    StructuralBindingIndexAuthoredOrderRefused { refusal: _ } => 3
+    StructuralBindingIndexDeclarationBucketRefused { occurrence: _ } => 4
+    StructuralBindingProductionRefused { gap: _ } => 5
+  }
+}
+
+fn assess(kind: CalibrationObservationKind, arm: CalibrationResolutionArm) -> ReferenceDerivedClosureAdmission {
+  assess_reference_binding_observation(
+    observation: observation_for(kind: kind, resolution: resolution_for_arm(kind: kind, arm: arm)),
+  )
+}
+
+// -1 when the admission is not a BindingRefused; otherwise the carried cause's ordinal.
+fn carried_cause(a: ReferenceDerivedClosureAdmission) -> Int {
+  match a {
+    ReferenceDerivedClosureBindingRefused { capability: _, cause } => cause_ordinal(c: cause)
+    ReferenceDerivedClosureEstablished { receipt: _ } => 0 - 1
+    ReferenceDerivedClosureRefused { capability: _, failure: _ } => 0 - 1
+    ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => 0 - 1
+  }
+}
+
+fn refusal_arms() -> List<CalibrationResolutionArm> {
+  [
+    IndexTransportRefusedArm,
+    IndexModulePathRefusedArm,
+    IndexExposureRefusedArm,
+    IndexAuthoredOrderRefusedArm,
+    IndexDeclarationBucketRefusedArm,
+    ProductionRefusedArm,
+  ]
+}
+
+fn arm_at(i: Int) -> CalibrationResolutionArm {
+  match i {
+    0 => IndexTransportRefusedArm
+    1 => IndexModulePathRefusedArm
+    2 => IndexExposureRefusedArm
+    3 => IndexAuthoredOrderRefusedArm
+    4 => IndexDeclarationBucketRefusedArm
+    _ => ProductionRefusedArm
+  }
+}
+
+fn each_cause_survives_for(kind: CalibrationObservationKind) -> Bool {
+  carried_cause(a: assess(kind: kind, arm: arm_at(i: 0))) == 0
+    && carried_cause(a: assess(kind: kind, arm: arm_at(i: 1))) == 1
+    && carried_cause(a: assess(kind: kind, arm: arm_at(i: 2))) == 2
+    && carried_cause(a: assess(kind: kind, arm: arm_at(i: 3))) == 3
+    && carried_cause(a: assess(kind: kind, arm: arm_at(i: 4))) == 4
+    && carried_cause(a: assess(kind: kind, arm: arm_at(i: 5))) == 5
+}
+
+// RED/discriminating: each of the six causes yields its own assessment, in every kind that
+// carries a resolution. A wildcard collapse makes carried_cause -1 for all six.
+test fn each_refusal_cause_yields_its_own_assessment_in_every_kind() -> Bool {
+  list_length(items: refusal_arms()) == 6
+    && each_cause_survives_for(kind: SameFileNeighbourKind)
+    && each_cause_survives_for(kind: SiblingBranchKind)
+    && each_cause_survives_for(kind: LaterDeclarationKind)
+    && each_cause_survives_for(kind: DistinctHomonymKind)
+}
+
+// Perturbation: changing only the cause changes the assessment (no two causes agree).
+test fn perturbing_only_the_cause_changes_the_assessment() -> Bool {
+  carried_cause(a: assess(kind: SameFileNeighbourKind, arm: IndexTransportRefusedArm))
+    != carried_cause(a: assess(kind: SameFileNeighbourKind, arm: IndexModulePathRefusedArm))
+    && carried_cause(a: assess(kind: SameFileNeighbourKind, arm: IndexExposureRefusedArm))
+      != carried_cause(a: assess(kind: SameFileNeighbourKind, arm: IndexAuthoredOrderRefusedArm))
+    && carried_cause(a: assess(kind: SameFileNeighbourKind, arm: IndexDeclarationBucketRefusedArm))
+      != carried_cause(a: assess(kind: SameFileNeighbourKind, arm: ProductionRefusedArm))
+}
+
+// Positive control: a Resolved binding is never a BindingRefused, and a matching one still
+// establishes (so the refusal arm is not an unconditional refuser).
+test fn a_resolved_binding_is_not_a_binding_refusal_and_matching_still_establishes() -> Bool {
+  carried_cause(a: assess(kind: SameFileNeighbourKind, arm: ResolvedArm)) == 0 - 1
+    && match assess(kind: SameFileNeighbourKind, arm: ResolvedArm) {
+      ReferenceDerivedClosureEstablished { receipt: _ } => true
+      ReferenceDerivedClosureRefused { capability: _, failure: _ } => false
+      ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
+      ReferenceDerivedClosureBindingRefused { capability: _, cause: _ } => false
+    }
+}
