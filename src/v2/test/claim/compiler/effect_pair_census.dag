@@ -385,9 +385,9 @@ test fn a_shared_selector_and_arm_node_keeps_roles_by_slot_holds() -> Bool {
   }
 }
 
-// An absent OccurrenceId is a typed unlocated disposition in the output, never the walk tick (7 here).
+// An absent OccurrenceId is a typed unlocated disposition; the tick (7 here) appears only as a labelled in-function anchor, never as the identity.
 test fn a_site_without_an_occurrence_identity_is_reported_unlocated_not_by_tick_holds() -> Bool {
-  epc_site_text(s: epc_site(occurrence: 7)) == "t.shell@unlocated(host_actuation)"
+  epc_site_text(s: epc_site(occurrence: 7)) == "t.shell@unlocated anchor=call_site_ordinal_in_function:7(host_actuation)"
 }
 
 // ---- REPETITION: only a Loop's iterated body repeats --------------------------------------------------

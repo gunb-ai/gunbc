@@ -777,7 +777,7 @@ fn epc_identity_word(i: Optional<Int>) -> String {
 }
 
 fn epc_site_text(s: EffectSite) -> String {
-  epc_text(parts: [qualified_name_to_dotted_string(qn: s.callee), "@", epc_identity_word(i: s.identity), "(", epc_reason_word(r: s.reason), ")"])
+  epc_text(parts: [qualified_name_to_dotted_string(qn: s.callee), "@", epc_identity_word(i: s.identity), " anchor=call_site_ordinal_in_function:", to_string(s.occurrence), "(", epc_reason_word(r: s.reason), ")"])
 }
 
 fn epc_pair_line(p: EffectPairRow) -> String {
