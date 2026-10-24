@@ -4,7 +4,7 @@ import product.printed_chassis.preparation_identity {PreparedSlot,PreparedAssemb
 import extdeps.languages.json.parse {FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
 import std.process {ExitFailure}
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
-import product.printing.print_runtime {PrintRuntimeReady,observe_print_runtime,PrintRuntimeObserved,PrintRuntimeRefused,print_runtime_cad}
+import product.printing.print_runtime {PrintRuntimeReady,print_runtime_receipt_sha256,observe_print_runtime,PrintRuntimeObserved,PrintRuntimeRefused,print_runtime_cad}
 import product.printing.runtime_converge {converge}
 import product.printing.cad_runtime_converge {converge_cad_runtime}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
@@ -27,40 +27,43 @@ import product.printed_chassis.prepared_project_store {PreparationKey,lookup_pre
 import extdeps.printing.orca_slicer {orca_slicer_linux_aarch64_appimage_sha256}
 import product.printed_chassis.cad_check_run {check_printable_cad}
 import gunbc.fleet.printer_selection {select_printer,PrinterSelected,PrinterSelectionRefused}
-import std.content_hash {sha256_hex_digest}
+import std.content_hash {sha256_hex_digest,Sha256Digest}
 import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
 import product.printed_chassis.assembly_inventory { inventory_report, captured_inventory_report, InventoryUnread, RequiredPart, PartReservation, ReserveParts, required_printed_parts, InspectPart, InspectionEvidence }
 import product.printed_chassis.assembly_inventory_store { initialize_inventory, mutate_inventory, observe_stored_inventory }
-import product.printed_chassis.printable_assembly { PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16InletDuct, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_from_wire, printed_assembly_root_wire }
+import product.printed_chassis.printable_assembly { PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_from_wire, printed_assembly_root_wire }
 import product.printed_chassis.printable_assembly_selection { select_printable_assembly }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 
 
 // A single invocation prepares every requested plate and writes one receipt. It starts nothing:
 // gunbc.fleet.printer_actuation is the only start authority.
-type PreparedPlate {path:String,digest:String,key_digest:String,attempt:String}
+type PreparedPlate {path:String,digest:Sha256Digest,key_digest:Sha256Digest,attempt:String}
 type PreparedQueue {printer:PhysicalAssetIdentity,version:NonEmptyStr,plates:List<PreparedPlate>}
 type QueuePrepared = QueueReadyForApproval {queue:PreparedQueue} | QueuePreparationRefused {reason:String}
 // Plan shape (unique printers and attempts, numeric versions) is product.printed_chassis.print_batch_plan
-// parse_plan's; this checks only what preparation added: a known printer and a digest per plate.
+// parse_plan's, and each plate's digest is typed; this checks only that the printer is known and
+// every plate has a working path.
 fn queue_valid(queue:PreparedQueue) -> Bool {
  (match select_printer(name:queue.printer as String) {PrinterSelected {printer:_}=>true PrinterSelectionRefused=>false}) &&
- all(queue.plates,p=>p.path!="" && (match sha256_hex_digest(hex:p.digest) {Present {value:_}=>true Absent=>false}))
+ all(queue.plates,p=>p.path!="")
 }
 fn queues_valid(queues:List<PreparedQueue>) -> Bool {all(queues,q=>queue_valid(queue:q))}
 fn plate_path(output:String,printer:PrinterSpec,plate:PlateSpec) -> String {
  let key=serialize_json(v:json_array(elements:[json_string(s:printer.printer as String),json_string(s:plate.attempt)]))
  join([output,"/",sha256_hex(message:bytes_octets(b:utf8_encode_bytes(s:key))) as String,".3mf"],"")
 }
-fn plate_key(selection:PreparationSelection,profiles:StagedProfiles,plate:PlateSpec) -> PreparationKey {
- PreparationKey {root:selection.root_wire,source_revision:selection.source_revision,recipe:selection.recipe.name,machine_profile_sha256:staged_machine_sha256(p:profiles),filament_profile_sha256:staged_filament_sha256(p:profiles),process_profile_sha256:staged_process_sha256(p:profiles),slicer_archive_sha256:orca_slicer_linux_aarch64_appimage_sha256 as String,plate_plan_sha256:plate_plan_sha256(plan:plate.plan)}
+fn plate_key(runtime:PrintRuntimeReady,selection:PreparationSelection,profiles:StagedProfiles,plate:PlateSpec) -> PreparationKey? {
+ let runtime_digest=match sha256_hex_digest(hex:print_runtime_receipt_sha256(r:runtime)) {Present {value:d}=>d Absent=>return none}
+ let slicer=match sha256_hex_digest(hex:orca_slicer_linux_aarch64_appimage_sha256 as String) {Present {value:d}=>d Absent=>return none}
+ Present {value:PreparationKey {root:selection.root_wire,source_revision:selection.source_revision,recipe:selection.recipe.name,machine_profile_sha256:staged_machine_sha256(p:profiles),filament_profile_sha256:staged_filament_sha256(p:profiles),process_profile_sha256:staged_process_sha256(p:profiles),slicer_archive_sha256:slicer,plate_plan_sha256:plate_plan_sha256(plan:plate.plan),runtime_receipt_sha256:runtime_digest}}
 }
 type PreparationSelection {root_wire:String,source_revision:NonEmptyStr,recipe:PrintRecipe}
 // A plate whose key is already in the store is materialized from it, not re-sliced; otherwise it
 // is prepared and stored. Either way the plate's identity is the stored bytes' digest.
 fn prepare_plate(runtime:PrintRuntimeReady,selection:PreparationSelection,spec:PrinterSpec,plate:PlateSpec,output:String,appimage:String,profiles:StagedProfiles) -> PreparedPlate? {
  let path=plate_path(output:output,printer:spec,plate:plate)
- let key=plate_key(selection:selection,profiles:profiles,plate:plate)
+ let key=match plate_key(runtime:runtime,selection:selection,profiles:profiles,plate:plate) {Present {value:k}=>k Absent=>return none}
  match lookup_prepared(store:prepared_project_store as String,key:key) {
   PreparedLookupRefused {cause:_}=>none
   PreparedFound {project:found}=>if materialize_prepared(project:found,path:path) {Present {value:PreparedPlate {path:path,digest:prepared_artifact_sha256(p:found),key_digest:prepared_key_digest(p:found),attempt:plate.attempt}}} else {none}
@@ -68,8 +71,8 @@ fn prepare_plate(runtime:PrintRuntimeReady,selection:PreparationSelection,spec:P
    ExitFailure {code:_,reason:_}=>none
    ExitSuccess=>{
     let read=Filesystem.Read(path:concat(path,".readback.json"))
-    let digest=if read.success {match parse_json_document(s:read.content) {JsonDocumentParsed {value:v}=>match json_field_string(obj:v,key:"project_sha256") {FieldRead {value:d}=>d FieldAbsent=>"" FieldMalformed {cause:_}=>""} JsonDocumentUnreadable {gap:_}=>""}} else {""}
-    if digest=="" {none} else {match store_prepared(store:prepared_project_store as String,key:key,project_path:path,project_sha256:digest) {
+    let read_digest=if read.success {match parse_json_document(s:read.content) {JsonDocumentParsed {value:v}=>match json_field_string(obj:v,key:"project_sha256") {FieldRead {value:d}=>sha256_hex_digest(hex:d) FieldAbsent=>none FieldMalformed {cause:_}=>none} JsonDocumentUnreadable {gap:_}=>none}} else {none}
+    match read_digest {Absent=>none Present {value:digest}=>match store_prepared(store:prepared_project_store as String,key:key,project_path:path,project_sha256:digest) {
      PreparedStored {project:stored}=>Present {value:PreparedPlate {path:path,digest:digest,key_digest:prepared_key_digest(p:stored),attempt:plate.attempt}}
      PreparedStoreRefused {cause:_}=>none
     }}
@@ -99,7 +102,7 @@ fn run(plan_file:String,output:String,recipe:String,source_revision:String,root:
  if any(results,r=>match r {QueuePreparationRefused {reason:_}=>true QueueReadyForApproval {queue:_}=>false}) {return exit_failure(reason:"Fleet preparation refused; inspect per-plate preparation logs; nothing was started")}
  let queues=flat_map(results,r=>match r {QueueReadyForApproval {queue:q}=>[q] QueuePreparationRefused {reason:_}=>[]})
  if !queues_valid(queues:queues) {return exit_failure(reason:"Prepared fleet queues failed final admission")}
- let receipt=serialize_json(v:json_array(elements:map(queues,q=>json_object(members:[json_kv(key:"printer",value:json_string(s:q.printer as String)),json_kv(key:"version",value:json_string(s:q.version as String)),json_kv(key:"recipe",value:json_string(s:recipe)),json_kv(key:"source_revision",value:json_string(s:source_revision)),json_kv(key:"plates",value:json_array(elements:map(q.plates,p=>json_object(members:[json_kv(key:"path",value:json_string(s:p.path)),json_kv(key:"digest",value:json_string(s:p.digest)),json_kv(key:"key_digest",value:json_string(s:p.key_digest)),json_kv(key:"attempt",value:json_string(s:p.attempt))]))))]))))
+ let receipt=serialize_json(v:json_array(elements:map(queues,q=>json_object(members:[json_kv(key:"printer",value:json_string(s:q.printer as String)),json_kv(key:"version",value:json_string(s:q.version as String)),json_kv(key:"recipe",value:json_string(s:recipe)),json_kv(key:"source_revision",value:json_string(s:source_revision)),json_kv(key:"plates",value:json_array(elements:map(q.plates,p=>json_object(members:[json_kv(key:"path",value:json_string(s:p.path)),json_kv(key:"digest",value:json_string(s:p.digest.hex as String)),json_kv(key:"key_digest",value:json_string(s:p.key_digest.hex as String)),json_kv(key:"attempt",value:json_string(s:p.attempt))]))))]))))
  if !Filesystem.WriteCreateNew(path:concat(output,"/prepared-queues.json"),content:receipt).success {return exit_failure(reason:"Prepared queue receipt already exists or is not writable")}
  ExitSuccess
 }
@@ -150,7 +153,10 @@ fn inventory_root(prepared_output:String) -> InventoryRoot {
      PrintableAssemblyRefused {reason:_}=>InventoryRootRefused
     }
     CassetteRackReview=>InventoryRootRefused
-    A16InletDuct=>InventoryRootRefused
+    A16PlugDuct=>InventoryRootRefused
+    A16SleeveDuct=>InventoryRootRefused
+    A16PlugFitRing=>InventoryRootRefused
+    A16SleeveFitRing=>InventoryRootRefused
    }
   }
  }
