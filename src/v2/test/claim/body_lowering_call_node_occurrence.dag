@@ -35,11 +35,15 @@ import v2.std.node {
 import std.algebra { list_at_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.list { first_where }
-import v2.compiler.body_lowering_fold { body_lower_dotted_chain_lowered_optional, body_lower_unwrap_captured }
+import v2.compiler.body_lowering_fold {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  body_lower_dotted_chain_lowered_optional,
+  body_lower_find_captured
+}
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.qualified_name { qualified_name_from_node, qualified_name_to_dotted_string }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -270,32 +274,6 @@ test fn lowered_cast_node_is_not_synthetic() -> Bool {
 // would put resolve's posture between the site and the assertion.
 
 
-// THE ONE FIND THE DOOR ROUTE NEEDS FROM THE PARSE TREE: the postfix expression production,
-// which is what body_lower_unwrap_captured unwraps to the chain the door reads. Copied shape
-// from v2.test.claim.manual.body_lowering_projection_call, where it is green.
-fn seat16_find_postfix_expr(root: Node) -> Optional<Node> {
-  match parse_production_emitted_identity_optional(node: root) {
-    Present { value: emitted } =>
-      match emitted == ^dag_surface_postfix_expr {
-        true => Present { value: root }
-        false =>
-          fold(root.children, init: Absent, f: fn(acc, e) {
-            match acc {
-              Present { value: _ } => acc
-              Absent => seat16_find_postfix_expr(root: e.target)
-            }
-          })
-      }
-    Absent =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => seat16_find_postfix_expr(root: e.target)
-        }
-      })
-  }
-}
-
 // TOKENIZE, PARSE, HAND THE CAPTURED CHAIN TO THE DOOR. Absent means the pipeline refused
 // somewhere or the door declined the chain -- every claim over it then reports false rather than
 // passing vacuously.
@@ -307,16 +285,12 @@ fn seat16_door_lowered(source: String) -> Optional<Node> {
       match parse_module(tokens: ts, grammar: lm.grammar) {
         Rejected { diagnostics: _ } => Absent
         Accepted { value: artifact, diagnostics: _ } =>
-          match seat16_find_postfix_expr(root: artifact.tree) {
-            Absent => Absent
-            Present { value: postfix } =>
-              match body_lower_unwrap_captured(shell: postfix) {
-                Absent => Absent
-                Present { value: captured } =>
-                  match body_lower_dotted_chain_lowered_optional(node: captured) {
-                    Rejected { diagnostics: _ } => Absent
-                    Accepted { value: found, diagnostics: _ } => found
-                  }
+          match body_lower_find_captured(root: artifact.tree, emitted: ^dag_surface_postfix_expr) {
+            ParseSubtreeAbsent => Absent
+            ParseSubtreeFound { captured: captured } =>
+              match body_lower_dotted_chain_lowered_optional(node: captured) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: found, diagnostics: _ } => found
               }
           }
       }
