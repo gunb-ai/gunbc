@@ -7385,7 +7385,16 @@ pub fn shared_layer_of_resolution(
                     } else {
                         Rc::new(SharedLayerAnswer::SharedLayerRefuse {
                             leaf: leaf.clone(),
-                            cause: "TypeDeclNotDeclared".to_string(),
+                            cause: format!(
+                                "TypeDeclNotDeclared DIAG nident={} natkeys={:?} byleaf={:?}",
+                                type_decl_items.by_identity.len(),
+                                type_decl_items
+                                    .by_identity
+                                    .keys()
+                                    .filter(|k| k.ends_with("Nat"))
+                                    .collect::<Vec<_>>(),
+                                type_decl_items.leaf_owners.get(&leaf).is_some()
+                            ),
                         })
                     }
                 }
