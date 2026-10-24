@@ -13,13 +13,13 @@ import std.temporal_effect {
   LeaseInaccessible,
   held_lease_observed_verdict,
 }
-import std.algebra { trim }
+import std.algebra { trim, FreeSemigroup }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond, measure_add, measure_le, Minute, minute, HardwareThreadCount, hardware_thread_count_value, ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
 import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text, runner_host_boot_medium }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_image_stem }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_stem }
 import gunbc.host.boot_medium_served_readback { boot_medium_served_readback, boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach, boot_medium_served_attempt_raw }
 import gunbc.host.managed_host_boot {
@@ -2467,7 +2467,11 @@ fn mtcollins1_boot_actuate(
                 proof: proof,
                 subject: subject,
                 share: mtcollins1_media_share,
-                replaceable_seeded_stem: image_stem,
+                // BOTH STEMS THIS LANE PUBLISHES: the runner medium it boots and the census medium earlier
+                // attempts booted. A census session left on the controller is this lane's own residue, not
+                // a foreign image (boot run 40038339650 refused on exactly that after #14912 narrowed the
+                // set to the runner stem).
+                replaceable_seeded_stems: FreeSemigroup { head: image_stem, tail: [mtcollins1_census_image_stem] },
                 bound: mtcollins1_boot_ipmi_read_bound,
                 password_file: password_file,
                 attempt: attempt,

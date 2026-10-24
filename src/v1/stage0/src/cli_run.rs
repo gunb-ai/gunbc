@@ -10771,7 +10771,7 @@ impl BudgetKind {
 /// the seam.
 ///
 /// FIVE `InterpError` VARIANTS ARE DELIBERATELY ABSENT. `HostToolUnresolved`,
-/// `HermeticHostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
+/// `HostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
 /// pre-mapped `EvaluationBudgetExceeded` each have their OWN `ClaimOutcome` arm and are consumed
 /// by earlier arms of the match in `run_claim`, so they cannot reach this classifier. They are
 /// not silently folded into a neighbour: all five map to `MappedOutcomeEscaped`, a typed,
@@ -10895,7 +10895,7 @@ impl WitnessRuntimeCause {
             E::FixtureRenderRefused { .. } => WitnessRuntimeCause::FixtureRenderRefused,
             // The five that should never arrive. See the type comment.
             E::HostToolUnresolved { .. }
-            | E::HermeticHostEffectRefused { .. }
+            | E::HostEffectRefused { .. }
             | E::EvalBudgetExceeded { .. }
             | E::WitnessWallBudgetExceeded { .. }
             | E::EvaluationBudgetExceeded { .. }
@@ -10985,7 +10985,7 @@ pub enum ClaimOutcome {
     /// execute it.
     HostEffectRefused {
         operation: String,
-        ground: v1_interpreter::HermeticEffectGround,
+        ground: v1_interpreter::EffectRefusalGround,
     },
     /// THE HOST UNWOUND. Not a `RuntimeError`: that arm carries an `InterpError` the evaluator
     /// RAISED and this runner CAUGHT, a value held in hand. A panic is the evaluator failing to
@@ -16415,7 +16415,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             v1_interpreter::InterpError::HostToolUnresolved { name, probed } => {
                 ClaimOutcome::HostToolUnresolved { name, probed }
             }
-            v1_interpreter::InterpError::HermeticHostEffectRefused { operation, ground } => {
+            v1_interpreter::InterpError::HostEffectRefused { operation, ground } => {
                 ClaimOutcome::HostEffectRefused { operation, ground }
             }
             v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
@@ -16527,35 +16527,22 @@ enum ExpectedRedArm {
     HostEffectRefused,
 }
 
-/// One label per `HermeticEffectGround`, in one place. The ground names the REMEDY, so a
-/// caller that re-spells it per site is re-deriving the remedy per site.
-pub fn hermetic_effect_ground_label(ground: &v1_interpreter::HermeticEffectGround) -> &'static str {
-    match ground {
-        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
-            "no published mock case for a corpus-governed service"
-        }
-        v1_interpreter::HermeticEffectGround::NoMockResponse => {
-            "operation declares no mock_response"
-        }
-        v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
-            "filesystem removal has no mock arm; only a wet route can run it"
-        }
-    }
-}
-
 /// The seam between the hand-Rust interpreter carrier and the `.dag`-modeled roster-join
 /// carrier for the same closed ground. Total in both directions by construction — adding an
 /// arm to either side fails to compile here rather than falling through to a default.
-fn hermetic_effect_ground_verdict(
-    ground: &v1_interpreter::HermeticEffectGround,
-) -> crate::v1_compiler_expected_red_roster_join::HermeticEffectGround {
-    use crate::v1_compiler_expected_red_roster_join::HermeticEffectGround as Modeled;
+pub fn effect_refusal_ground_verdict(
+    ground: &v1_interpreter::EffectRefusalGround,
+) -> crate::v1_compiler_expected_red_roster_join::EffectRefusalGround {
+    use crate::v1_compiler_expected_red_roster_join::EffectRefusalGround as Modeled;
     match ground {
-        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+        v1_interpreter::EffectRefusalGround::UnpublishedMockCase { .. } => {
             Modeled::UnpublishedMockCase
         }
-        v1_interpreter::HermeticEffectGround::NoMockResponse => Modeled::NoMockResponse,
-        v1_interpreter::HermeticEffectGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+        v1_interpreter::EffectRefusalGround::NoMockResponse => Modeled::NoMockResponse,
+        v1_interpreter::EffectRefusalGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+        v1_interpreter::EffectRefusalGround::FrameNotRealizableUnderMode => {
+            Modeled::FrameNotRealizableUnderMode
+        }
     }
 }
 
@@ -19986,8 +19973,15 @@ pub fn project_witness_cost_receipt(
                     args.push((
                         Some("error".to_string()),
                         str_value(format!(
-                            "hermetic route has no arm for {operation} ({})",
-                            hermetic_effect_ground_label(ground)
+                            "{} {operation} ({})",
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_mode_label(
+                                crate::v1_compiler_expected_red_roster_join::effect_refusal_mode(
+                                    effect_refusal_ground_verdict(ground)
+                                )
+                            ),
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_ground_label(
+                                effect_refusal_ground_verdict(ground)
+                            )
                         )),
                     ));
                     "witness_cost_seed_refused_event"
@@ -34952,7 +34946,7 @@ fn witness_eval_verdict_from_claim_outcome(
         ClaimOutcome::HostEffectRefused { operation, ground } => {
             crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::HostEffectRefused {
                 operation: operation.clone(),
-                ground: hermetic_effect_ground_verdict(ground),
+                ground: effect_refusal_ground_verdict(ground),
             }
         }
         // THE WIRE VERDICT STILL CARRIES THE AXIS AS DATA, which is why `BudgetCompletion`

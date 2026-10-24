@@ -2,8 +2,10 @@
 
 The entrypoint is `product.printed_chassis.print_workflow.run`. One invocation accepts
 multiple printer queues, each containing multiple plate attempts. It owns CAD execution,
-named-object realization, pinned Orca execution, sliced-file readback, approval filing,
-start publication, acknowledgement reconciliation, and completion observation.
+named-object realization, pinned Orca execution and sliced-file readback. It starts nothing:
+`gunbc.fleet.printer_actuation` `start_authorized` is the only boundary that uploads to or
+starts a printer, reached through `fleet-converge` `mode=printer`
+(`gunbc.fleet.printer_workflow_run` `run`).
 
 This is the explicit-plate execution foundation of CAS-8. It is **not** the completed
 arbitrary desired-set optimizer, accepted-part inventory, or automatic crash recovery
@@ -19,18 +21,17 @@ Attempt identities are unique across the entire fleet request. Keep those identi
 when changing output directories or assigning work to another printer.
 
 The CLI entry takes `plan_file`, `output`, `appimage`, `machine`, `filament`, `process`,
-`mode` and `root`. Paths are explicit tool/artifact inputs, not shell fragments. `root` is
+and `root`. Paths are explicit tool/artifact inputs, not shell fragments. `root` is
 the wire spelling of a `product.printed_chassis.printable_assembly` `PrintedAssemblyRoot`
 (`residential-cassette`, `cassette-rack-review`, `a16-plug-duct`, `a16-sleeve-duct`,
 `a16-plug-fit-ring`, `a16-sleeve-fit-ring`); an unknown spelling
 refuses. `product.printed_chassis.printable_assembly_selection` `select_printable_assembly`
 is the one place a root becomes parts, keep-outs and assembly membership.
 
-- `mode=prepare` performs all preparation and writes `prepared-queues.json`; it does
-  not acquire credentials, file approvals, contact printers, or start anything.
-- `mode=print` performs the same preparation, initializes one pinned credential
-  session per printer, acquires the fleet controller hold, then drives all queues.
-  It currently uses the existing operator-token route on the modeled printer LAN host.
+- Preparation writes `prepared-queues.json`; it does not acquire credentials, file
+  approvals, contact printers, or start anything. The token-file `mode=print` and the
+  multi-printer batch controller (`gunbc.fleet.printer_batch`) were deleted so that one
+  start route remains.
 - Use a fresh absolute output directory. Existing realization/script/project outputs refuse;
   preparation does not silently reuse a possibly stale success file.
 
@@ -70,49 +71,19 @@ The current process policy is the unpowered PLA prototype: A1 mini/0.4 mm, 220 Â
 65 Â°C textured bed, four walls, 20% infill, by-layer printing, AMS slot 1. Geometric
 admission does not qualify loaded joints, creep, powered operation, or thermal behavior.
 
-## One fleet controller, independent printer progress
+## Starting a print
 
-A fleet pass first files **all** ready approval requests, then advances each lane once.
-Pending approval on one printer does not create a polling sleep before the other request
-is sent. Publication returns to the controller; exact-file reconciliation happens on
-later passes instead of holding up the second printer through a retry loop. The fold is
-paced once per fleet pass, with a bounded observation budget.
-
-The underlying upload/publish/read operations remain bounded synchronous operations.
-This is overlapping printer lifetimes and interleaved observations, not parallel threads
-for every network call or simultaneous CPU-heavy slicing.
-
-The controller retains the initialized LAN credentials in memory. It does not fetch
-Secret Manager again on each observation or require a fresh GCP token for every plate.
-Every physical start still consumes a new job-bound approval and a fresh readiness
-observation. FINISH neither accepts parts into inventory nor clears the bed. Completion
-queues the next bed-clear approval for that printer; another printer can continue running.
-Approval expiry/denial, pause/failure, or repeated unresolved observations place that lane
-in attention. Existing 15-minute approval windows are retained.
-
-There are three durable boundaries:
-
-- The existing compare-and-set exclusive hold prevents competing fleet controllers.
-  Single-printer starts also acquire it, so an old entrypoint cannot race the batch.
-- A stable batch-attempt slot is independent of printer, output directory and sliced
-  digest. Reassigning or re-slicing the same attempt cannot admit another physical start.
-- The existing approval-derived start claim remains bound to the exact printer, bytes,
-  credential version, feed and approval identity. No lost acknowledgement causes a resend.
-
-Per-start receipts and observations live beside their claim under
-`/var/lib/gunbc/printer-starts`. The timestamped fleet projection is
-`batch-state.json`. The old single-printer receipt filename remains a
-compatibility projection; the batch consumes the per-start records instead.
-
-On uncertainty or process death, holds/claims remain. Same-owner text does not prove the
-old process is dead and cannot reacquire its hold. Dead-holder recovery and resuming the
-remaining inventory are still separate work; do not delete claims or invent new attempt
-IDs to get past a refusal. Partial acceptance and replacement demands remain CAS-8 work.
+One route: `fleet-converge` `mode=printer` runs `gunbc.fleet.printer_workflow_run` `run`, whose
+approval adapter (`gunbc.fleet.printer_operator_approval`) obtains a job-bound grant and hands it
+to `gunbc.fleet.printer_actuation` `start_authorized`. That boundary holds the fleet controller
+hold, re-checks the grant and a fresh IDLE/FINISH report, writes the approval-keyed claim under
+`/var/lib/gunbc/printer-starts`, uploads under a digest-derived name, re-checks, starts once and
+reconciles by observation. No lost acknowledgement causes a resend.
 
 ## Validation
 
 `test.claim.printer_batch_workflow_validation.validate_preparation` first checks real approval-request construction (including SHA-256, input binding and the durable claim path), executes the archive/G-code positive and negative controls, and calls
-the production entrypoint with `mode=prepare`. It cannot start a printer. The controls
+the production entrypoint. It cannot start a printer. The controls
 include extra plates, wrong membership, scaled objects, bad checksums, out-of-bed XY/Z,
 forbidden support, leading-dot motion words and full-circle arcs.
 

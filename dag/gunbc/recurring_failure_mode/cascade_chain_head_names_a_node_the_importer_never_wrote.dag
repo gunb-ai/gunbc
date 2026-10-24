@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.cascade_chain_head_names_a_node_the_importer_never_wrote
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data cascade_chain_head_names_a_node_the_importer_never_wrote: RecurringFailureMode = RecurringFailureMode {
+  identity: "cascade_chain_head_names_a_node_the_importer_never_wrote" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "resolve reports the declarer refusal first and locates the declarer's node in its own module, so no importer diagnostic heads its chain with a node from another module." } },
+
+  receipts: [
+    "INVALID STATE: when an importer references a name whose declaring module refused, v2.compiler.resolve declarer_refused_diagnostics builds the importer's chain as rejected_with_pending(pending: provider.refusal, rejected: [declarer_refused]). The chain HEAD is therefore the declarer's own diagnostic, whose node is one the importer never wrote, reported against the importer's file at the importer's call line; declarer_refused, the importer's actual cause, is the LAST link.",
+
+    "HARM: any reader of the head, not only a census, sees a diagnostic located in the wrong module: an unbound name the importer never spelled, at the importer's line. A filing keyed on the head reason counts every such importer as an own-account root. Before gunbc#14902 the N7 census did exactly that (about 137 roots against about 84 own-account ones).",
+
+    "RECEIPT, 2026-10-24, royal-seal-415 (Seat 12), main 637f9c1f2d4, `gunbc test //gunbc/instruments:v2-native-census-scoped` run remotely, exit 0. The row at src/v2/std/node.dag line 528 (the list_snoc_item call inside an f: lambda) has chain.head resolve_reason_unbound_symbol whose node is Atom list_push, occurrence 25447, a name only std.algebra list_snoc_item's body writes, and chain.tail ending resolve_reason_declarer_refused with declarer std.algebra. The same occurrence 25447 heads hundreds of rows across many importers (390 in v2.std.compilers.target_model, 126 in v2.compiler.body_lowering_fold, 105 in v2.compiler.infer), each located at that importer's own line. After gunbc#14902 the census files by the last link (native_census_chain_ends_at_declarer), and census_root std.algebra at dag/std/algebra.dag line 180 now carries it, so the census attributes correctly: rung mitigatable.",
+
+    "CONTROL: v2.test.claim.name_resolve.declarer_refused a_declarer_body_refusal_heads_the_importer_chain_and_declarer_refused_is_last pins today's order (head unbound_symbol on the declarer's node dr_body_nowhere, last link declarer_refused naming v2.test.dr.body_decl). It goes red on any reorder, so the climb is deliberate and the control is rewritten with it.",
+  ],
+
+  evidence: [],
+}
