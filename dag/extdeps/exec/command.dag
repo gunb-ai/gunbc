@@ -215,6 +215,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_one_file_system_command"),
     decl_ref(module_path: "extdeps.tools.util_linux_umount", decl_name: "umount_command"),
+    decl_ref(module_path: "extdeps.tools.util_linux_findmnt", decl_name: "findmnt_fstype_for_path_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ln_symbolic_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "timeout_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "printf_command"),
