@@ -44,6 +44,22 @@ import gunbc.dispatch_credential_acquisition {
   CredentialLaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
+import gunbc.roadmap.dispatch_unit_created_paths {
+  DispatchUnitCreatedPathVerdict,
+  DispatchUnitCreatedPathConsumable,
+  DispatchUnitCreatedPathUnconsumable,
+  dispatch_worker_created_paths,
+  dispatch_unit_created_paths_judge,
+  dispatch_unit_created_path_wire,
+}
+import gunbc.roadmap.dispatch_worker_traversal {
+  dispatch_worker_traversal_for_plan,
+  dispatch_worker_traversal_wire,
+  DispatchWorkerTraversal,
+  DispatchWorkerTraversalAdmitted,
+  DispatchWorkerAncestorNotTraversable,
+  DispatchWorkerTraversalCouldNotLook,
+}
 import gunbc.dispatch_attempt_launch {
   PreparedAttemptLaunch,
   SnapshotLaunch,
@@ -1529,6 +1545,44 @@ fn belt_credential_admit_before_spawn(prepared: PreparedAttemptLaunch) -> BeltCr
         LaunchLostDiscardFailed { reason: r } =>
           BeltCredentialAdmitLost { detail: r as String }
       }
+  }
+}
+
+// THE WORKER'S REACH IS ESTABLISHED BEFORE ANYTHING IS CLAIMED FOR THE UNIT. A unit whose worker uid
+// cannot traverse an ancestor of a handed path fails at start (200/CHDIR) with the worker never
+// having run, after the credential snapshot, placement grant and request have been consumed. This
+// refuses first, so no placement record is written and no start request is enqueued.
+// The tmux container runs as the controller itself and hands no User=, so only a unit container
+// climbs.
+fn belt_worker_traversal_outcome(reach: DispatchWorkerTraversal) -> BeltExecStepsOutcome {
+  match reach {
+    DispatchWorkerTraversalAdmitted => ExecStepsOk
+    DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: _, observed_owner: _, observed_mode: _ } =>
+      ExecStepFailed { step: "worker-traversal", detail: dispatch_worker_traversal_wire(reach: reach) }
+    DispatchWorkerTraversalCouldNotLook { worker: _, handed_path: _, subject: _, reason: _ } =>
+      ExecStepFailed { step: "worker-traversal", detail: dispatch_worker_traversal_wire(reach: reach) }
+  }
+}
+
+fn belt_worker_traversal_before_spawn(instance: HostDashboardInstance, container: DispatchSessionContainer) -> BeltExecStepsOutcome {
+  match container {
+    TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => ExecStepsOk
+    SystemdUnitContainer { plan } =>
+      match belt_worker_traversal_outcome(reach: dispatch_worker_traversal_for_plan(instance: instance, plan: plan)) {
+        ExecStepFailed { step: s, detail: d } => ExecStepFailed { step: s, detail: d }
+        ExecStepsOk => belt_worker_created_paths_outcome(verdict: dispatch_unit_created_paths_judge(created: dispatch_worker_created_paths(instance: instance, plan: plan)))
+      }
+  }
+}
+
+// The producer-side half of the same boundary: the paths the system manager creates for the unit must
+// be usable by their consumers (gunbc.roadmap.dispatch_unit_created_paths). Pure over declared
+// principals, so it needs no observation; it refuses before the placement record and the enqueue.
+fn belt_worker_created_paths_outcome(verdict: DispatchUnitCreatedPathVerdict) -> BeltExecStepsOutcome {
+  match verdict {
+    DispatchUnitCreatedPathConsumable => ExecStepsOk
+    DispatchUnitCreatedPathUnconsumable { created: _ } =>
+      ExecStepFailed { step: "worker-created-path", detail: dispatch_unit_created_path_wire(verdict: verdict) }
   }
 }
 
@@ -3085,7 +3139,7 @@ fn belt_supervisor_convene(
                 launch: launch,
               }
             WorktreeHeadObserved { revision } =>
-              match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: escalation.node_id, attempt_key: escalation.attempt_key, role: AttemptSupervisorRole { turn: escalation.turn }) {
+              match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: escalation.node_id, attempt_key: escalation.attempt_key, role: AttemptSupervisorRole { turn: escalation.turn }, record_owner: instance.directory_owner) {
               AttemptExitHookRefused { reason: hook_reason } => SpawnFailed { node_id: node.node as String, step: "supervisor-exit-hook", detail: join(["the supervisor was not launched: its exit hook could not be rendered: ", hook_reason as String], ""), provider: provider_wire_label, launch: launch }
               AttemptExitHookRendered { exec_line: hook_line } =>
               match metering_roster_admit(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, role: MeteredSupervisor { turn: escalation.turn }) {
@@ -3545,6 +3599,16 @@ fn belt_spawn_admitted(
             launch: launch,
           }
         AttemptWorktreePresent { path: _ } =>
+      match belt_worker_traversal_before_spawn(instance: instance, container: cmds.session_container) {
+        ExecStepFailed { step, detail } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: step,
+            detail: detail,
+            provider: provider_wire_label,
+            launch: launch,
+          }
+        ExecStepsOk =>
       match belt_attempt_state_initialize_for_instance(
         instance: instance,
         node: node,
@@ -3662,6 +3726,7 @@ fn belt_spawn_admitted(
               }
               }
           }
+      }
       }
       }
   }
@@ -12240,7 +12305,7 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
                 verdict_path: dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head),
               )
               let unit = dispatch_audit_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key)
-              match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: progress.node_id, attempt_key: progress.attempt_key, role: AttemptAuditorRole { head_sha: head }) {
+              match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: progress.node_id, attempt_key: progress.attempt_key, role: AttemptAuditorRole { head_sha: head }, record_owner: instance.directory_owner) {
                 AttemptExitHookRefused { reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: its exit hook could not be rendered: ", reason as String], "") }
                 AttemptExitHookRendered { exec_line } =>
               match metering_roster_admit(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, role: MeteredAuditor { head: head as NonEmptyStr }) {
@@ -12540,7 +12605,7 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
       let verdict_path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: key)
       let brief = join([call.brief, review_verdict_instruction(verdict_path: verdict_path)], "")
       let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: key)
-      match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptReviewerRole { criterion_key: key, head_sha: head }) {
+      match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptReviewerRole { criterion_key: key, head_sha: head }, record_owner: instance.directory_owner) {
         AttemptExitHookRefused { reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: its exit hook could not be rendered: ", reason as String], "") }
         AttemptExitHookRendered { exec_line } =>
       match metering_roster_admit(instance: instance, node_id: nid, attempt_key: attempt_key, role: MeteredReviewer { criterion_key: key as NonEmptyStr, head: head as NonEmptyStr }) {
@@ -15376,7 +15441,7 @@ data belt_instance_obligation_function: String = "belt_instance_obligation_cli"
 // costs one drain and starts nothing, which is why it cannot loop.
 fn belt_attempt_obligations_enqueue(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltObligationEnqueue {
   let unit = belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key)
-  match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptObligationRole) {
+  match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptObligationRole, record_owner: instance.directory_owner) {
     AttemptExitHookRefused { reason } => BeltObligationEnqueueRefused { unit: unit, reason: join(["the attempt unit's stop hook could not be rendered: ", reason as String], "") }
     AttemptExitHookRendered { exec_line } =>
       belt_obligation_enqueue(
