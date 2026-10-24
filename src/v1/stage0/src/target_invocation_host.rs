@@ -256,6 +256,9 @@ pub enum V2NativeCensusReading {
     TypeDeclarationUse,
     /// `gunbc.instruments.ambient_name_census_reading`: the occurrence-binding rows census-infer prints.
     OccurrenceBinding,
+    /// `gunbc.instruments.ambient_operation_disposition_reading`: the same run, read for each ambient
+    /// primitive spelling's disposition.
+    AmbientOperationDisposition,
     /// `gunbc.instruments.namespace_wave_binding_diff`: those rows on base and on head, joined.
     BindingDiff,
     NativeProcessMemory {
@@ -439,6 +442,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("ambient-name-census"),
             TargetProducer::V2NativeCensus {
                 reading: V2NativeCensusReading::OccurrenceBinding,
+            },
+        ),
+        (
+            instrument_label("ambient-operation-disposition-census"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::AmbientOperationDisposition,
             },
         ),
         (
@@ -667,6 +676,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/roster_reach_inhabitance.dag",
                 function: "roster_reach_inhabitance_exit",
+            },
+        ),
+        (
+            instrument_label("witness-deferral-freeze-population"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/witness_deferral_freeze_population.dag",
+                function: "witness_deferral_freeze_population_exit",
             },
         ),
         (
@@ -1101,7 +1117,20 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
         } => run_census_infer_reading(&self_host_source_roots(), &TYPE_DECLARATION_USE_READING),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::OccurrenceBinding,
-        } => run_ambient_name_census(&self_host_source_roots()),
+        } => run_ambient_name_census(
+            &self_host_source_roots(),
+            "ambient-name-census",
+            "dag/gunbc/instruments/ambient_name_census_reading.dag",
+            "ambient_name_census_standing",
+        ),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::AmbientOperationDisposition,
+        } => run_ambient_name_census(
+            &self_host_source_roots(),
+            "ambient-operation-disposition-census",
+            "dag/gunbc/instruments/ambient_operation_disposition_reading.dag",
+            "ambient_operation_disposition_standing",
+        ),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::BindingDiff,
         } => run_namespace_wave_binding_diff(&self_host_source_roots()),
@@ -1800,8 +1829,12 @@ fn census_rewritten_modules(merge_base: &str, head: &str) -> Result<Vec<(String,
 /// base ref; a rewritten module this checkout lacks is reported, not run. The host writes the two
 /// control roots, runs them and the subjects over ONE prepared binary, and hands every run to
 /// `ambient_name_census_standing`, which decides. The host decides nothing.
-fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
-    let label_name = "ambient-name-census";
+fn run_ambient_name_census(
+    source_roots: &[String],
+    label_name: &str,
+    reader: &str,
+    standing_function: &str,
+) -> InvocationOutcome {
     let unreached = |message: String| InvocationOutcome {
         termination: Termination::SubjectUnreached,
         message: format!("{label_name}: {message}"),
@@ -1812,11 +1845,10 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
-    const READER: &str = "dag/gunbc/instruments/ambient_name_census_reading.dag";
     let roots = cli_run::default_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, reader) {
         Ok(resolved) => resolved,
-        Err(cause) => return unreached(format!("resolve failed for {READER}: {cause}")),
+        Err(cause) => return unreached(format!("resolve failed for {reader}: {cause}")),
     };
     let ctx = cli_run::make_eval_context(
         graph.as_ref(),
@@ -1926,15 +1958,8 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
         (Some("tree_runs".to_string()), text(&tree_runs)),
         (Some("rewritten".to_string()), text(&rewritten_text)),
     ];
-    match crate::v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "ambient_name_census_standing",
-        &args,
-        true,
-    ) {
-        Ok(value) => {
-            reader_standing_outcome(&ctx, &value, label_name, "ambient_name_census_standing")
-        }
+    match crate::v1_interpreter::run_in_context_with_args(&ctx, standing_function, &args, true) {
+        Ok(value) => reader_standing_outcome(&ctx, &value, label_name, standing_function),
         Err(cause) => unreached(format!("the reader failed: {cause}")),
     }
 }
@@ -2012,14 +2037,34 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         Ok(head) => head,
         Err(cause) => return unreached(format!("head commit: {cause}")),
     };
+    // PHASE PRINTS (Lane 3, census hermeticity): the base and head censuses are each a long silent
+    // block (their measured cost is a receipt in the ledger row
+    // gunbc.recurring_failure_mode.census_rows_read_the_loaded_population, never restated here) -- a
+    // runner watching the log cannot tell a live census from a hang. These markers name the phase
+    // boundary; the transport stamps each line with its own UTC time, so the duration is the gap
+    // between two markers. They change no decision: the census still decides its own standing.
+    eprintln!(
+        "namespace-wave-binding-diff: phase=base-census start base_ref={base_ref} head={head}"
+    );
     let base = match run_base_ambient_name_census(&scratch, &base_ref, &head) {
         Ok(base) => base,
         Err(cause) => return unreached(format!("base: {cause}")),
     };
+    eprintln!(
+        "namespace-wave-binding-diff: phase=base-census done exit={:?} bytes={}",
+        base.1,
+        base.0.len()
+    );
+    eprintln!("namespace-wave-binding-diff: phase=head-census start head={head}");
     let head_run = match run_head_ambient_name_census(&head) {
         Ok(run) => run,
         Err(cause) => return unreached(format!("head: {cause}")),
     };
+    eprintln!(
+        "namespace-wave-binding-diff: phase=head-census done exit={:?} bytes={}",
+        head_run.1,
+        head_run.0.len()
+    );
     let runs = match cli_run::run_census_infer_root_sets(
         source_roots,
         &[vec![rebind_base], vec![rebind_head]],

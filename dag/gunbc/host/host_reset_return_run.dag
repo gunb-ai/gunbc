@@ -428,9 +428,10 @@ fn host_reset_return_attempt(
 ) -> ResetAttemptMint
 {
   let subject = candidate.host.host as NonEmptyStr
+  let subjects = reset_roster_hosts(entries: reset_subject_roster(evidence: evidence))
   let selection = select_reset_observer(
-    subject_roster: reset_roster_hosts(entries: reset_subject_roster(evidence: evidence)),
-    peer_roster: reset_observer_peer_roster(),
+    subject_roster: subjects,
+    peer_roster: reset_observer_peer_roster(subjects: subjects),
     subject: subject,
     observer: observer,
   )
@@ -708,9 +709,10 @@ fn host_reset_return_wet(evidence: MegaRacOperationEvidence) -> ProcessExit
       )
     RouteEstablished { route: r } => r
   }
+  let subjects = reset_roster_hosts(entries: reset_subject_roster(evidence: evidence))
   let assignment = reset_dispatch_pairings(
-    subject_roster: reset_roster_hosts(entries: reset_subject_roster(evidence: evidence)),
-    peer_roster: reset_observer_peer_roster(),
+    subject_roster: subjects,
+    peer_roster: reset_observer_peer_roster(subjects: subjects),
   )
   return match subject_for_observer(assignment: assignment, observer: observer) {
     Absent =>

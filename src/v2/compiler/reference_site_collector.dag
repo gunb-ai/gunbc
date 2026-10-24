@@ -29,6 +29,7 @@ import v2.std.qualified_name {
 }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import std.occurrence_identity {
+  NodeOccurrenceIdentity,
   ReferencePosition,
   ValuePosition
 }
@@ -42,6 +43,7 @@ import v2.compiler.lexical_scope {
   ChildValueScope,
   arrow_slot,
   arrow_slot_is_carried,
+  child_is_declaring_occurrence,
   child_value_scope,
   declaration_names_value,
   module_root_bindings,
@@ -263,7 +265,10 @@ fn reference_sites_in_children(
   let frame = node_value_frame(n: node)
   fold(node.children, init: SiteChildWalk { acc: acc, ordinal: 0, positional_ordinal: 0 }, f: fn(walk, edge) {
     SiteChildWalk {
-      acc: reference_sites_in_edge(
+      acc: if child_is_declaring_occurrence(frame: frame, edge: edge, positional_ordinal: walk.positional_ordinal) {
+        walk.acc
+      } else {
+      reference_sites_in_edge(
         acc: walk.acc,
         position: position,
         // ONE STEP OF THE SOLE POSITION AUTHORITY, taken as the walk descends: the issuer gets the
@@ -276,7 +281,8 @@ fn reference_sites_in_children(
           seen: child_value_scope(frame: frame, edge: edge, ordinal: walk.ordinal, positional_ordinal: walk.positional_ordinal)
         ),
         edge: edge
-      ),
+      )
+      },
       ordinal: walk.ordinal + 1,
       positional_ordinal: match edge.label {
         Positional => walk.positional_ordinal + 1
@@ -291,6 +297,7 @@ fn collection_snoc_site(
   acc: ScopedReferenceSiteCollection,
   scope: SiteScope,
   position: ReferencePosition,
+  occurrence: NodeOccurrenceIdentity,
   site: ReferenceSite
 ) -> ScopedReferenceSiteCollection {
   ScopedReferenceSiteCollection {
@@ -299,6 +306,7 @@ fn collection_snoc_site(
     item: ScopedReferenceSite {
       site: site,
       position: position,
+      occurrence: occurrence,
       head: site_head_binding(scope: scope, spelling: site.spelling)
     }
   ),
@@ -340,6 +348,7 @@ fn reference_sites_in_node(
           acc: acc,
           scope: scope,
           position: issued,
+            occurrence: node.occurrence_id,
             site: ReferenceSite { position: position, spelling: qn }
         )
       }
@@ -360,6 +369,7 @@ fn reference_sites_in_node(
               acc: acc,
               scope: scope,
               position: issued,
+                    occurrence: node.occurrence_id,
                     site: ReferenceSite {
                 position: position,
                 spelling: Cons { head: sym, tail: Empty }
@@ -463,6 +473,9 @@ type SiteHeadBinding
 type ScopedReferenceSite {
   site: ReferenceSite
   position: ReferencePosition
+  // The occurrence of the node the mention was read at: the identity a consumer joins to its own tree's node, where `site.position`
+  // is only a path in the normalized tree.
+  occurrence: NodeOccurrenceIdentity
   head: SiteHeadBinding
 }
 
