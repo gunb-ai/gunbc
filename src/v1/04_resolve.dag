@@ -506,6 +506,21 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
   }
 }
 
+// A container spelling whose use site resolves through the declaration it names when one is in scope
+// (std.types Map = FinitelySupportedFunction), instead of being minted as the kernel container by
+// leaf name. The kernel container survives only where no declaration resolves.
+fn declaration_resolved_container(name: String) -> Bool {
+  name == "Map"
+}
+
+// A declaration-resolved container spelling that reaches the kernel minting arm named no
+// declaration in scope: it is unbound, never silently the kernel container.
+fn unbound_container_diagnostics(env: TypeEnv, name: String, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+  if declaration_resolved_container(name: name) {
+    [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: name, span: span), module_name: module_name)]
+  } else { [] }
+}
+
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }
@@ -515,7 +530,7 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
       // RESIDUE: second consumer of the leaf-spelling classifier (the first is the emitter's
       // node_is_keyed_collection); tracked by gunbc.recurring_failure_mode
       // emitter_keyed_container_lowering_is_keyed_by_leaf_spelling, whose trigger covers both sites.
-      if is_container_type(name: n.name) || node_is_keyed_algebra_spelling(n: n, source_indices: env.source_indices) { false }
+      if (is_container_type(name: n.name) && declaration_resolved_container(name: authored_name(env: env, node: n)) == false) || node_is_keyed_algebra_spelling(n: n, source_indices: env.source_indices) { false }
       else if decl.inferred != none { true }
       else { true }
     } else { false }
@@ -827,7 +842,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       let resolved_val_child = Node { occurrence_identity: val_child_node.occurrence_identity, name: val_param_name, span: val_child_node.span, ident_span: val_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: val_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       NodeResolveResult {
         resolved: stamp_kernel_collection(n: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_key_child, resolved_val_child], connective: n.connective, params: n.params, inferred: none, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData }),
-        diagnostics: concat(key_diags, val_diags)
+        diagnostics: concat(unbound_container_diagnostics(env: env, name: type_name, span: n.span, module_name: module_name), key_diags, val_diags)
       }
     } else if n.children |> count == 1 {
     let type_name = authored_name(env: env, node: n)
