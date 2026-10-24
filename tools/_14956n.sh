@@ -41,24 +41,9 @@ grep -q "lens_contract_schedule_lens" $MAIN_T/src/v2/lens/enforcement/contract.d
 if [ "$ARMS" != all ]; then case ",$ARMS," in *",G7,"*) ;; *) echo "ROW G7 SKIPPED-ARGLIST"; ARMS_NO_G7=1;; esac; fi
 if [ -z "${ARMS_NO_G7:-}" ]; then echo "=== G7 gate on origin/main tree (expect FAIL = the break this PR fixes) $(date -u +%H:%M:%S)Z"; run1 G7 $MAIN_T $ELW wet $GATE $PROBE || rc=$?; fi
 if [ "$ARMS" != all ]; then case ",$ARMS," in *",G7,"*) ARMS=none-continue;; *) ;; esac; fi
-if false; then (keeps main identical on both sides; isolates the deletion)
-git diff origin/main...refs/verifier/f14956n > $CKPT/pr14956.patch
-fi
-echo "PR14956_PATCH_BYTES-skipped=$(wc -c < $CKPT/pr14956.patch) FILES=$(grep -c '^diff --git' $CKPT/pr14956.patch)"
-if (cd $P && git apply -R --check $CKPT/pr14956.patch 2>$CKPT/rev-err.txt); then
-  (cd $P && git apply -R $CKPT/pr14956.patch) && echo REVERSE_APPLY_OK || { echo REVERSE_APPLY_EXEC_FAIL -- STOP; exit 9; }
-else
-  echo "REVERSE_APPLY_CHECK_FAIL:"; head -6 $CKPT/rev-err.txt | sed 's|^|  apply: |'
-  echo "FALLBACK: worktree at pre-merge $BASE_SHA"
-  rm -rf $P; git worktree prune >/dev/null 2>&1
-  git worktree add -q --force --detach $P $BASE_SHA || { echo WTP_FALLBACK_FAIL; exit 9; }
-  echo BASE_AT_PREMERGE
-fi
-# base proof: deleted module + its witness restored, registry has ScheduleLens arm
-[ -f $P/src/v2/lens/schedule_lens.dag ] && echo "BASE_PROOF module-restored" || { echo "BASE_NOT_OLD module-missing -- STOP"; exit 9; }
-[ ! -f $P/src/v2/test/claim/walk_plan_schedule_lens_test.dag ] && echo "BASE_SHAPE witness-absent-as-on-main (#8283)" || echo "BASE_NOTE witness present"
-grep -q "subject: ScheduleLens" $P/src/v2/lens/enforcement/gate.dag && echo "BASE_PROOF registry-arm-restored" || echo "BASE_NOTE no registry arm (same as main)"
-grep -q "lens_contract_schedule_lens" $P/src/v2/lens/enforcement/contract.dag && echo "BASE_PROOF contract-restored" || { echo "BASE_NOT_OLD contract-missing -- STOP"; exit 9; }
+# base shape proof on P (= pre-merge 115143a4d8a):
+[ -f $P/src/v2/lens/schedule_lens.dag ] && echo "BASE_PROOF module-present-at-premerge" || { echo "BASE_NOT_OLD module-missing -- STOP"; exit 9; }
+grep -q "lens_contract_schedule_lens" $P/src/v2/lens/enforcement/contract.dag && echo "BASE_PROOF contract-present-at-premerge" || { echo "BASE_NOT_OLD contract-missing -- STOP"; exit 9; }
 git worktree add -q --force --detach $M $HEAD_SHA || { echo WTM_FAIL; exit 9; }
 git worktree add -q --force --detach $V $HEAD_SHA || { echo WTV_FAIL; exit 9; }
 python3 tools/_14956mut.py $M $V || { echo MUTATION_FAIL -- STOP; exit 9; }
