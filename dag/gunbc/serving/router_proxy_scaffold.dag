@@ -20,4 +20,15 @@ data router_proxy_direct_render_scaffold: Disposition = Scaffold {
   }
 }
 
+// The Lua text and the raw HTTP request are concatenated strings in lua_hook_lines, a second hand-rendered
+// declaration; it is the same scaffold and dissolves with the first.
+data router_proxy_lua_hook_render_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.proxy.openresty",
+    decl_name: "lua_hook_lines",
+    field: WholeDeclaration
+  }
+}
+
 data router_proxy_direct_render_dissolution: DissolutionCondition = unbound_dissolution(description: "DISSOLVES WHEN a v2-native streaming door carries the router's bytes itself (plan gunbc.plans.fabric_serving_router section 3, named later realization); extdeps.proxy.openresty, gunbc.serving.router_proxy_config and this row are then deleted together.")
