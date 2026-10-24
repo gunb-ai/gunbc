@@ -110,8 +110,11 @@ pub enum DeletionAttribution {
     /// A commit was found whose diff removed the module header, verified to have had it in its
     /// parent. Derived, never hand-written.
     Attributed { commit: String },
-    /// The probes ran and answered: the reachable history contains no commit that removed the
-    /// header -- the identity never existed here. The verdict stands without an attribution.
+    /// The probes ran and answered: the reachable history contains no commit that DELETED a
+    /// file declaring this header -- the identity never existed here. The verdict stands
+    /// without an attribution. `probed_commits` says how much was consulted: the reachable
+    /// commit count when no same-stem file was ever deleted, or the number of same-stem
+    /// candidates examined (and rejected for declaring a different module) otherwise.
     NoDeletionInHistory { probed_commits: usize },
     /// A probe could not be consulted, so attribution is UNKNOWN, not empty. The verdict stands
     /// only for the tree at the run's SHA; how the identity disappeared is unobserved.
@@ -172,15 +175,113 @@ fn git_probe(args: &[&str]) -> GitProbe {
     }
 }
 
-fn regex_escape_identity(module: &str) -> String {
-    let mut out = String::new();
-    for c in module.chars() {
-        if ".^$*+?()[]{}|\\".contains(c) {
-            out.push('\\');
-        }
-        out.push(c);
+// THE DELETION ATTRIBUTION SEARCH, bounded by the file-name convention rather than by a
+// whole-tree content pickaxe. THE OLD PROBE was `git log -1 -S "module <id>"` over the whole
+// tree: measured at 60-72s LOCAL for a missing identity (PD7: over 600s on the remote runner,
+// where it TIMED OUT), because a `-S` miss walks every reachable diff. That cost makes the
+// never-existent arm unusable on any scheduled lane. This query is path-bounded instead:
+// `git log -m --full-history --diff-filter=D -- '*/<leaf>.dag'` costs ~2s for a hit AND for a
+// miss (measured on a 3.6k-commit checkout). BOUND, STATED: the search space is files named
+// <leaf>.dag, where <leaf> is the identity's last dot-segment -- the repo's naming convention
+// (2993/2993 .dag files under dag/ and src/v2 match it), NOT a compiler-enforced invariant.
+// A hit is NOT taken on the name alone: the deleted file's PARENT BLOB must declare exactly
+// `git show <commit>^:<path>` must declare exactly `module <identity>` (the parent-blob check
+// below), so a same-stem file belonging to another module cannot be attributed here. A module
+// living at a file named after a different leaf evades BOTH arms of this search and prints
+// NoDeletionInHistory -- the bound of this instrument, not an invented fact; the content pickaxe
+// (`git log -S`) is the exhaustive fallback and its measured cost is recorded above so nobody
+// re-adds it blind.
+fn deletion_attribution(identity: &str) -> Result<DeletionAttribution, String> {
+    let leaf = identity.rsplit('.').next().unwrap_or(identity);
+    if leaf.is_empty() {
+        return Err(format!(
+            "identity '{identity}' has no file-name leaf to search history by"
+        ));
     }
-    out
+    let pathspec = format!("*/{leaf}.dag");
+    // -m --full-history: without these two, path simplification HIDES deletions that sit on
+    // merge commits -- the same silence `git log --follow` is warned about in this repo's
+    // drift probes. A hidden deletion would print as "never existed": absence-as-evidence.
+    let probe = git_probe(&[
+        "log",
+        "-m",
+        "--full-history",
+        "--diff-filter=D",
+        "-n",
+        "8",
+        "--format=%H",
+        "--name-only",
+        "--",
+        &pathspec,
+    ]);
+    let out = match probe {
+        GitProbe::ProbeFailed(cause) => {
+            return Err(format!(
+                "the deletion-history query (`git log --diff-filter=D -- {pathspec}`) could not be consulted: {cause}"
+            ))
+        }
+        GitProbe::Ran(out) => out,
+    };
+    // The output alternates a commit line with its deleted path(s), blank-separated.
+    let mut candidates: Vec<(String, String)> = Vec::new();
+    {
+        let mut sha: Option<String> = None;
+        for line in out.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            if line.bytes().all(|b| b.is_ascii_hexdigit()) && line.len() >= 7 {
+                sha = Some(line.to_string());
+            } else if let Some(s) = sha.clone() {
+                candidates.push((s, line.to_string()));
+            }
+        }
+    }
+    if candidates.is_empty() {
+        // No reachable commit deleted ANY file named <leaf>.dag. Confirm the history was
+        // actually consultable before answering "never existed here": a probe over zero
+        // reachable commits is ignorance, not an answer.
+        return match git_probe(&["rev-list", "--count", "HEAD"]) {
+            GitProbe::Ran(count) if count == "0" => {
+                Err("the reachable history has zero commits to search for a deletion".to_string())
+            }
+            GitProbe::Ran(count) => Ok(DeletionAttribution::NoDeletionInHistory {
+                probed_commits: count.parse().unwrap_or(0),
+            }),
+            GitProbe::ProbeFailed(cause) => Err(format!(
+                "the reachable-commit count could not be consulted: {cause}"
+            )),
+        };
+    }
+    // Exact confirmation against each candidate's PARENT BLOB, not the name: the file git
+    // says was deleted must have declared this very header in the commit before the deletion.
+    // With `-m` a deletion can be reported against EITHER parent of a merge, so parent 1 is
+    // tried first and parent 2 only when parent 1 cannot be read (the file never existed
+    // there). Neither reading is ever silently skipped: an unreadable pair refuses.
+    let want = format!("module {identity}");
+    let mut rejected = 0usize;
+    for (sha, path) in &candidates {
+        let p1 = git_probe(&["show", &format!("{sha}^:{path}")]);
+        let blob = match p1 {
+            GitProbe::Ran(blob) => GitProbe::Ran(blob),
+            GitProbe::ProbeFailed(_) => git_probe(&["show", &format!("{sha}^2:{path}")]),
+        };
+        match blob {
+            GitProbe::Ran(blob)
+                if blob.lines().any(|l| l.trim_start().trim_end() == want) =>
+            {
+                return Ok(DeletionAttribution::Attributed { commit: sha.clone() });
+            }
+            GitProbe::Ran(_) => rejected += 1,
+            GitProbe::ProbeFailed(cause) => {
+                return Err(format!(
+                    "neither parent blob of `{sha}` (`{sha}^:{path}` nor `{sha}^2:{path}`) could be read to verify the header: {cause}"
+                ))
+            }
+        }
+    }
+    // Candidates existed but every deleted same-stem file declared a DIFFERENT module: this
+    // identity's own file was never deleted in reachable history.
+    Ok(DeletionAttribution::NoDeletionInHistory {
+        probed_commits: rejected,
+    })
 }
 
 /// Query ONE identity against the ingestion, deriving the never-admitted evidence at run time.
@@ -218,43 +319,9 @@ pub fn module_admission(source_roots: &[String], identity: &str) -> ModuleAdmiss
             }
         }
     };
-    let header = format!("module {identity}\n");
-    let pattern = format!("^module {}\\s*$", regex_escape_identity(identity));
-    let attribution = match git_probe(&["log", "-1", "--format=%H", "-S", &header, "--"]) {
-        GitProbe::ProbeFailed(cause) => DeletionAttribution::ProbeRefused { cause },
-        GitProbe::Ran(sha) if sha.is_empty() => {
-            // The pickaxe answered "nothing". Confirm the probe was actually able to see
-            // history before reading that as "never existed here": a probe over zero commits
-            // is ignorance, not an answer.
-            match git_probe(&["rev-list", "--count", "HEAD"]) {
-                GitProbe::Ran(count) if count == "0" => DeletionAttribution::ProbeRefused {
-                    cause: "the reachable history has zero commits to pick over".to_string(),
-                },
-                GitProbe::Ran(count) => DeletionAttribution::NoDeletionInHistory {
-                    probed_commits: count.parse().unwrap_or(0),
-                },
-                GitProbe::ProbeFailed(cause) => DeletionAttribution::ProbeRefused { cause },
-            }
-        }
-        GitProbe::Ran(sha) => {
-            // Only a commit whose PARENT still contained the header deleted it; without this
-            // check a commit that merely ADDED the header elsewhere would be accused.
-            let parent = format!("{sha}^");
-            match git_probe(&["grep", "-l", "-E", &pattern, &parent, "--"]) {
-                GitProbe::Ran(found) if !found.is_empty() => {
-                    DeletionAttribution::Attributed { commit: sha }
-                }
-                // The newest history change to this header was an ADDITION (its parent lacks
-                // it), so no deletion is attributable; count the probed history honestly.
-                GitProbe::Ran(_) => match git_probe(&["rev-list", "--count", "HEAD"]) {
-                    GitProbe::Ran(count) => DeletionAttribution::NoDeletionInHistory {
-                        probed_commits: count.parse().unwrap_or(0),
-                    },
-                    GitProbe::ProbeFailed(cause) => DeletionAttribution::ProbeRefused { cause },
-                },
-                GitProbe::ProbeFailed(cause) => DeletionAttribution::ProbeRefused { cause },
-            }
-        }
+    let attribution = match deletion_attribution(identity) {
+        Ok(a) => a,
+        Err(cause) => DeletionAttribution::ProbeRefused { cause },
     };
     ModuleAdmission::NeverAdmitted {
         module: identity.to_string(),
@@ -313,17 +380,5 @@ mod tests {
                 "a 40-hex literal appears in the instrument source"
             );
         }
-    }
-
-    /// The escape class is real: an identity with regex metacharacters cannot crash or spoof
-    /// the `git grep` pattern used for the parent-contains check.
-    #[test]
-    fn identity_escaping_neutralises_metacharacters() {
-        // A regex metacharacter inside an identity must not reach `git grep -E` raw: `a.b*c`
-        // must match ONLY itself, so every metacharacter is escaped -- dots included.
-        let escaped = super::regex_escape_identity("a.b*c");
-        assert_eq!(escaped, "a\\.b\\*c");
-        // An identity with no metacharacters passes through untouched.
-        assert_eq!(super::regex_escape_identity("plainname"), "plainname");
     }
 }
