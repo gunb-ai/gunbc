@@ -20,6 +20,9 @@ import std.durable_exclusive_hold {
   NonHolderReleasedOnEvidence, NonHolderReleasedByOperator,
   durable_hold_nonholder_release_assess,
 }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { fold_frontier_expiry, frontier_rows_well_formed }
+import gunbc.durable_exclusive_hold_file_store { durable_hold_nonholder_release_consumer_frontier_rows }
 
 // THE PURE ARM TABLE OF THE NON-HOLDER RELEASE. Every row decides from a supplied hold observation and
 // a supplied release, over std.durable_exclusive_hold durable_hold_nonholder_release_assess alone.
@@ -156,4 +159,17 @@ test fn a_slot_that_is_not_observed_held_releases_nothing_on_either_basis() -> B
     && nrp(observed: undecodable, request: nrp_not_granted) == "undecodable"
     && nrp(observed: unavailable, request: evidence) == "unavailable"
     && nrp(observed: unavailable, request: operator) == "unavailable"
+}
+
+
+// THE CONSUMER FRONTIER'S TRIGGER DISCRIMINATES. With deploy_transition's exclusive-create outcome
+// present the row is pending; with it retired the row has fired, so the census refuses a row left
+// standing after the lease migrates. The live-tree reading is the dissolution census's own.
+test fn the_consumer_frontier_is_pending_while_the_exclusive_create_lease_stands_and_fires_when_it_retires() -> Bool {
+  let rows = durable_hold_nonholder_release_consumer_frontier_rows
+  let standing = fold_frontier_expiry(rows: rows, present_decls: [decl_ref(module_path: "gunbc.deploy_transition", decl_name: "LeaseCreateOutcome")])
+  let retired = fold_frontier_expiry(rows: rows, present_decls: [])
+  frontier_rows_well_formed(rows: rows)
+    && standing.pending_count == 1 && standing.fired_still_present_count == 0 && standing.unbound_count == 0
+    && retired.pending_count == 0 && retired.fired_still_present_count == 1
 }

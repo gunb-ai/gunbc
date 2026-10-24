@@ -24,6 +24,8 @@ module gunbc.durable_exclusive_hold_file_store
 
 import std.types { NonEmptyStr, String }
 import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { retires_dissolution }
 import std.durable_compare_and_set {
   CasExpectation, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasStoreFailure, CasSlotObservationRefused,
@@ -633,3 +635,17 @@ fn file_hold_nonholder_release_assess<Observation>(
       }
   }
 }
+
+// THE NON-HOLDER RELEASE'S PRODUCTION CONSUMER IS A DECLARED FRONTIER (DESIGN 3c), folded by
+// gunbc.census_closure_frontier. gunbc.deploy_transition clears its transition lease on exactly the
+// two bases modeled here, over a hand-rolled exclusive create whose outcome type is LeaseCreateOutcome.
+// The trigger is that type RETIRING: it exists today, so the trigger is verifiable now, and it cannot
+// survive the lease moving onto this hold library, so the census reports this row fired-but-present
+// the moment the migration lands and the row must be deleted with it.
+data durable_hold_nonholder_release_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_nonholder_release_assess"),
+    reason: "file_hold_nonholder_release_assess (and std.durable_exclusive_hold durable_hold_nonholder_release_assess beneath it) is consumed in its introducing change only by test.claim.durable_exclusive_hold_nonholder_release_witness and test.claim.durable_exclusive_hold_nonholder_release_wet_witness. Named production consumer: gunbc.deploy_transition's transition lease, whose ClearedByEvidence becomes ReleasedOnEvidence and whose ClearedByAbandonment becomes ReleasedByOperator when acquire_transition_lease moves off its exclusive-create lock onto this hold library (the change after gunb-ai/gunbc#15061). That change also types the lease's Observation (today ResidueEvidence.observed_head is a caller-supplied String) and adds itself to this function's admit_callers.",
+    dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.deploy_transition", decl_name: "LeaseCreateOutcome")),
+  ),
+]
