@@ -1,0 +1,11 @@
+module p_p_box
+import std.process { ProcessExit, ExitSuccess }
+import std.types { String, Int, Bool, List }
+import std.nat { Nat }
+import std.integer { int_to_decimal_string }
+type Box = { count: Nat }
+fn g(a: Box) -> String { int_to_decimal_string(value: a) }
+fn main() -> ProcessExit {
+  let s = g(a: Box { count: 1 })
+  ExitSuccess
+}

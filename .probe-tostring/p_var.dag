@@ -1,5 +1,0 @@
-module p_var
-import std.types { String, Int }
-import std.integer { int_to_decimal_string }
-fn f(n: Int) -> String { int_to_decimal_string(value: n) }
-fn main() -> String { f(n: 1) }
