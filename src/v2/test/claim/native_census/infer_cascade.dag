@@ -1,11 +1,16 @@
 module v2.test.claim.native_census.infer_cascade
 
-import v2.compiler.native_test_vocabulary { FileRefusalAtUnresolvedNode }
+import v2.compiler.native_test_vocabulary { FileRefusalAtDeclaration, FileRefusalAtInvariant, FileRefusalAtLine, FileRefusalAtOtherFile, FileRefusalAtUnresolvedNode, FileRefusalAtWholeFile, FileRefusalAt }
 import v2.compiler.source_root_eval {
   NativeCensusCascadeMemberOf,
   NativeCensusCascadeNone,
   NativeCensusCascadeUnattributed,
   NativeCensusCascadeRoot,
+  NativeInferCensusFileRefused,
+  NativeInferCensusResolveRefused,
+  NativeInferCensusInferred,
+  NativeInferCensusInferRefused,
+  NativeInferCensusStep,
   NativeCensusCauseFrontEnd,
   NativeCensusCauseInfer,
   NativeCensusCauseResolve,
@@ -52,7 +57,10 @@ import std.types { List, Map }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, ScopedOccurrenceRef }
 import std.content_hash { structural_content_hash }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
+import v2.std.node { symbol_lexeme }
+import std.integer { int_to_decimal_string }
+import std.process { ExitFailure, ProcessExit }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
@@ -460,4 +468,138 @@ test fn census_occurrence_keying_rule_is_the_authored_one_holds() -> Bool {
       Absent => true
       Present { value: _ } => false
     }
+}
+
+// ---- TEMPORARY MEASUREMENT PROBES (swift-bear-39): print actual infer census ----
+fn probe_at_text(at: FileRefusalAt) -> String {
+  match at {
+    FileRefusalAtLine { line: l, byte_column: _ } => concat("line:", int_to_decimal_string(value: l))
+    FileRefusalAtWholeFile => "whole"
+    FileRefusalAtOtherFile { file: f } => concat("otherFile:", symbol_lexeme(sym: f))
+    FileRefusalAtInvariant { invariant: i } => concat("invariant:", symbol_lexeme(sym: i))
+    FileRefusalAtDeclaration { declaration: d } => concat("decl:", qualified_name_to_dotted_string(qn: d))
+    FileRefusalAtUnresolvedNode => "unresolvedNode"
+  }
+}
+
+fn probe_stage_text(stage: NativeCensusCauseStage) -> String {
+  match stage {
+    NativeCensusCauseFrontEnd => "frontEnd"
+    NativeCensusCauseResolve => "resolve"
+    NativeCensusCauseInfer => "infer"
+  }
+}
+
+fn probe_member_text(m: NativeCensusCauseMember) -> String {
+  concat(
+    concat(
+      concat(concat(symbol_lexeme(sym: m.path), "|"), probe_stage_text(stage: m.stage)),
+      "|"
+    ),
+    concat(
+      symbol_lexeme(sym: m.head_reason),
+      concat(
+        "|at=",
+        concat(
+          probe_at_text(at: m.at),
+          match m.cascade {
+            NativeCensusCascadeMemberOf { root: r, root_reason: rr } =>
+              concat(concat(concat(",memberOf=", symbol_lexeme(sym: r)), "/"), symbol_lexeme(sym: rr))
+            NativeCensusCascadeNone => ",none"
+            NativeCensusCascadeUnattributed { reason: u } => concat(",unattributed:", symbol_lexeme(sym: u))
+            NativeCensusCascadeRoot { closure_fan_out: f, resolve_refused_importers: o } =>
+              concat(
+                ",root{",
+                concat(
+                  match f {
+                    NativeCensusClosureFanOutAtLeast { modules: n, unread_refused_files: u } =>
+                      concat(concat(concat("atLeast ", int_to_decimal_string(value: n)), " unread "), int_to_decimal_string(value: u))
+                    NativeCensusClosureFanOutCounted { modules: n } =>
+                      concat("counted ", int_to_decimal_string(value: n))
+                    NativeCensusClosureFanOutUnavailable { reason: r } =>
+                      concat("unavailable:", symbol_lexeme(sym: r))
+                  },
+                  concat(
+                    match o {
+                      Absent => " o=-"
+                      Present { value: k } => concat(" o=", int_to_decimal_string(value: k))
+                    },
+                    "}"
+                  )
+                )
+              )
+          }
+        )
+      )
+    )
+  )
+}
+
+fn probe_members_text(ms: List<NativeCensusCauseMember>) -> String {
+  fold_list(
+    xs: ms,
+    empty: "",
+    cons: fn(acc, m) { if acc == "" { probe_member_text(m: m) } else { concat(acc, concat(" ;; ", probe_member_text(m: m))) } }
+  )
+}
+
+test fn probe_infer_provider_actual_dump() -> ProcessExit {
+  match infer_cascade_census() {
+    InferCensusContextRefused => ExitFailure { code: 1, reason: "PROBE-INFER: context refused" }
+    InferCensusReported { walls: w, roots: roots, a_members: a } =>
+      ExitFailure {
+        code: 1,
+        reason: concat(
+          concat(concat("PROBE-INFER walls=", int_to_decimal_string(value: w)), " roots=["),
+          concat(
+            probe_members_text(ms: roots),
+            concat("] a=[", concat(probe_members_text(ms: a), "]"))
+          )
+        )
+      }
+  }
+}
+
+fn probe_infer_step_text(step: NativeInferCensusStep) -> String {
+  match step.outcome {
+    NativeInferCensusFileRefused => "FileRefused"
+    NativeInferCensusResolveRefused { first: f, rest: _, observation: _, partial: _, loci: _, unbound: _ } =>
+      concat("ResolveRefused-head=", concat(symbol_lexeme(sym: f.head.reason), ""))
+    NativeInferCensusInferred { resolved: _, inferred: _, frontier: _, loci: _ } => "Inferred"
+    NativeInferCensusInferRefused { resolved: _, chain: c, loci: _ } =>
+      concat("InferRefused-head=", concat(symbol_lexeme(sym: c.head.reason), ""))
+  }
+}
+
+fn probe_infer_cascade_text(step: NativeInferCensusStep) -> String {
+  match step.cascade {
+    NativeCensusCascadeMemberOf { root: r, root_reason: rr } =>
+      concat(concat("MemberOf(", symbol_lexeme(sym: r)), concat(",", symbol_lexeme(sym: rr)))
+    NativeCensusCascadeNone => "None"
+    NativeCensusCascadeUnattributed { reason: u } => concat("Unattributed(", symbol_lexeme(sym: u))
+    NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => "Root"
+  }
+}
+
+test fn probe_infer_outcomes_dump() -> ProcessExit {
+  match native_test_context_from_ingest(ingest: infer_ingest(b_source: infer_b_unresolvable_source)) {
+    Rejected { diagnostics: _ } => ExitFailure { code: 1, reason: "PROBE-OUT: context refused" }
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        let modules = native_census_modules(ingest: infer_ingest(b_source: infer_b_unresolvable_source))
+        let per = fold_list(
+          xs: modules,
+          empty: "",
+          cons: fn(acc, entry) {
+            let line = concat(
+              concat(concat(symbol_lexeme(sym: entry.path), ":"), probe_infer_step_text(step: native_census_module_inference(context: context, refusal_index: refusal_index, entry: entry))),
+              probe_infer_cascade_text(step: native_census_module_inference(context: context, refusal_index: refusal_index, entry: entry))
+            )
+            if acc == "" { line } else { concat(acc, concat(" ;; ", line)) }
+          }
+        )
+        ExitFailure { code: 1, reason: concat("PROBE-OUT ", per) }
+      }
+  }
 }

@@ -1,6 +1,11 @@
 module v2.test.claim.native_census.cascade_root_fan_out
 
 import v2.compiler.source_root_eval {
+  native_module_resolve_verdict,
+  NativeModuleResolveFileRefused,
+  NativeModuleResolveImportTargetFileRefused,
+  NativeModuleResolveRefused,
+  NativeModuleResolveAccepted,
   NativeCensusCascadeMemberOf,
   NativeCensusCascadeNone,
   NativeCensusCascadeUnattributed,
@@ -26,11 +31,15 @@ import std.algebra { Cons, Empty, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, NonEmptyDiagnostics, Textual }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_lexeme }
 import std.optional { Absent, Present }
+import std.integer { int_to_decimal_string }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.compiler.native_test_vocabulary { FileRefusalAtDeclaration, FileRefusalAtInvariant, FileRefusalAtLine, FileRefusalAtOtherFile, FileRefusalAtUnresolvedNode, FileRefusalAtWholeFile }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -243,4 +252,171 @@ test fn census_hidden_refused_importer_makes_fan_out_a_lower_bound_holds() -> Bo
         && cascade_root_is_at_least(roots: roots, path: ^census_cascade_a_cu, modules: 0, unread: 1)
         && cascade_root_is_at_least(roots: roots, path: ^census_cascade_b_cu, modules: 1, unread: 1)
   }
+}
+
+// ---- TEMPORARY MEASUREMENT PROBES (swift-bear-39): print actual census shape ----
+fn probe_at_text(at: FileRefusalAt) -> String {
+  match at {
+    FileRefusalAtLine { line: l, byte_column: _ } => concat("line:", int_to_decimal_string(value: l))
+    FileRefusalAtWholeFile => "whole"
+    FileRefusalAtOtherFile { file: f } => concat("otherFile:", symbol_lexeme(sym: f))
+    FileRefusalAtInvariant { invariant: i } => concat("invariant:", symbol_lexeme(sym: i))
+    FileRefusalAtDeclaration { declaration: d } => concat("decl:", qualified_name_to_dotted_string(qn: d))
+    FileRefusalAtUnresolvedNode => "unresolvedNode"
+  }
+}
+
+fn probe_stage_text(stage: NativeCensusCauseStage) -> String {
+  match stage {
+    NativeCensusCauseFrontEnd => "frontEnd"
+    NativeCensusCauseResolve => "resolve"
+    NativeCensusCauseInfer => "infer"
+  }
+}
+
+fn probe_member_text(m: NativeCensusCauseMember) -> String {
+  concat(
+    concat(
+      concat(concat(symbol_lexeme(sym: m.path), "|"), probe_stage_text(stage: m.stage)),
+      "|"
+    ),
+    concat(
+      symbol_lexeme(sym: m.head_reason),
+      concat(
+        "|at=",
+        concat(
+          probe_at_text(at: m.at),
+          match m.cascade {
+            NativeCensusCascadeMemberOf { root: r, root_reason: rr } =>
+              concat(concat(concat(",memberOf=", symbol_lexeme(sym: r)), "/"), symbol_lexeme(sym: rr))
+            NativeCensusCascadeNone => ",none"
+            NativeCensusCascadeUnattributed { reason: u } => concat(",unattributed:", symbol_lexeme(sym: u))
+            NativeCensusCascadeRoot { closure_fan_out: f, resolve_refused_importers: o } =>
+              concat(
+                ",root{",
+                concat(
+                  match f {
+                    NativeCensusClosureFanOutAtLeast { modules: n, unread_refused_files: u } =>
+                      concat(concat(concat("atLeast ", int_to_decimal_string(value: n)), " unread "), int_to_decimal_string(value: u))
+                    NativeCensusClosureFanOutCounted { modules: n } =>
+                      concat("counted ", int_to_decimal_string(value: n))
+                    NativeCensusClosureFanOutUnavailable { reason: r } =>
+                      concat("unavailable:", symbol_lexeme(sym: r))
+                  },
+                  concat(
+                    match o {
+                      Absent => " o=-"
+                      Present { value: k } => concat(" o=", int_to_decimal_string(value: k))
+                    },
+                    "}"
+                  )
+                )
+              )
+          }
+        )
+      )
+    )
+  )
+}
+
+fn probe_members_text(ms: List<NativeCensusCauseMember>) -> String {
+  fold_list(
+    xs: ms,
+    empty: "",
+    cons: fn(acc, m) { if acc == "" { probe_member_text(m: m) } else { concat(acc, concat(" ;; ", probe_member_text(m: m))) } }
+  )
+}
+
+test fn probe_linear_actual_dump() -> ProcessExit {
+  match cascade_linear_census().single {
+    CascadeCensusContextRefused => ExitFailure { code: 1, reason: "PROBE-LINEAR: context refused" }
+    CascadeCensusReported { walls: w, roots: roots, cascade_members_of_a: c } =>
+      ExitFailure {
+        code: 1,
+        reason: concat(
+          concat(
+            concat(concat("PROBE-LINEAR walls=", int_to_decimal_string(value: w)), " membersOfA="),
+            int_to_decimal_string(value: c)
+          ),
+          concat(" roots=[", concat(probe_members_text(ms: roots), "]"))
+        )
+      }
+  }
+}
+
+test fn probe_linear_double_actual_dump() -> ProcessExit {
+  match cascade_linear_census().double_refused {
+    CascadeCensusContextRefused => ExitFailure { code: 1, reason: "PROBE-LINEAR2: context refused" }
+    CascadeCensusReported { walls: w, roots: roots, cascade_members_of_a: c } =>
+      ExitFailure {
+        code: 1,
+        reason: concat(
+          concat(
+            concat(concat("PROBE-LINEAR2 walls=", int_to_decimal_string(value: w)), " membersOfA="),
+            int_to_decimal_string(value: c)
+          ),
+          concat(" roots=[", concat(probe_members_text(ms: roots), "]"))
+        )
+      }
+  }
+}
+
+test fn probe_diamond_actual_dump() -> ProcessExit {
+  match cascade_diamond_census() {
+    CascadeCensusContextRefused => ExitFailure { code: 1, reason: "PROBE-DIAMOND: context refused" }
+    CascadeCensusReported { walls: w, roots: roots, cascade_members_of_a: c } =>
+      ExitFailure {
+        code: 1,
+        reason: concat(
+          concat(
+            concat(concat("PROBE-DIAMOND walls=", int_to_decimal_string(value: w)), " membersOfA="),
+            int_to_decimal_string(value: c)
+          ),
+          concat(" roots=[", concat(probe_members_text(ms: roots), "]"))
+        )
+      }
+  }
+}
+
+fn probe_diag_locus_text(d: NonEmptyDiagnostics) -> String {
+  match d.head.at {
+    Textual { file: f, extent: _ } =>
+      concat(symbol_lexeme(sym: d.head.reason), concat("@", symbol_lexeme(sym: f)))
+    _ => symbol_lexeme(sym: d.head.reason)
+  }
+}
+
+fn probe_verdict_dump_ingest(ingest: SourceRootIngest, tag: String) -> ProcessExit {
+  match native_test_context_from_ingest(ingest: ingest) {
+    Rejected { diagnostics: _ } => ExitFailure { code: 1, reason: concat(tag, ": context refused") }
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        let per = fold_list(
+          xs: native_census_modules(ingest: ingest),
+          empty: "",
+          cons: fn(acc, entry) {
+            let step = native_module_resolve_verdict(context: context, refusal_index: refusal_index, module: entry.module, path: entry.path)
+            let line = match step.verdict {
+              NativeModuleResolveFileRefused { refusal: _ } => concat(entry.module, ":FileRefused")
+              NativeModuleResolveImportTargetFileRefused { target: t, first: f, rest: _, observation: _ } =>
+                concat(entry.module, concat(":ImportTargetFileRefused target=", concat(symbol_lexeme(sym: t.path), concat(" head=", probe_diag_locus_text(d: f)))))
+              NativeModuleResolveRefused { first: f, rest: r, observation: _ } =>
+                concat(entry.module, concat(":ResolveRefused head=", concat(probe_diag_locus_text(d: f), concat(" n=", int_to_decimal_string(value: length(xs: r))))))
+              NativeModuleResolveAccepted { resolved: _ } => concat(entry.module, ":Accepted")
+            }
+            if acc == "" { line } else { concat(acc, concat(" ;; ", line)) }
+          }
+        )
+        ExitFailure { code: 1, reason: concat(tag, " ", per) }
+      }
+  }
+}
+
+test fn probe_linear_verdict_dump() -> ProcessExit {
+  probe_verdict_dump_ingest(ingest: cascade_linear_ingest, tag: "PROBE-LIN-VERDICT")
+}
+
+test fn probe_diamond_verdict_dump() -> ProcessExit {
+  probe_verdict_dump_ingest(ingest: cascade_diamond_ingest, tag: "PROBE-DIA-VERDICT")
 }
