@@ -23,7 +23,7 @@ import gunbc.roadmap.roadmap_publish {
   adjudicate_publication,
 }
 import extdeps.github.github { Repository, github_https_clone_url }
-import extdeps.github.pulls { PullRequestState, ListStateOpen }
+import extdeps.github.pulls { ListStateOpen }
 import extdeps.github.rate_limits { github_core_rate_limit }
 import extdeps.tools.hostname
 import std.algebra { trim }
