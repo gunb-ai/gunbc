@@ -1,0 +1,197 @@
+module gunbc.rung_drop_removal
+
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, GitRef }
+import std.algebra { trim, FreeSemigroup, non_empty_to_list }
+import std.integer { int_to_decimal_string }
+import extdeps.git.plumbing
+import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
+import extdeps.git.inspect
+import extdeps.git.inspect { MergeBaseOutcome, MergeBaseReported, NoCommonAncestor, MergeBaseRefused, merge_base_outcome }
+
+// A POSITIVE RECORD OF WHAT A DROP'S CITED ARTIFACTS WERE REMOVED BY. A rung drop's prose cites the
+// artifact whose deletion caused the loss (a gate module, a workflow, a binary), and once that
+// artifact is gone the citation resolves against nothing and no census can say whether it was
+// deleted or never existed. This carrier is the answer a reader needs: the deleting COMMIT, the
+// PR as a secondary citation, and the paths that commit removed.
+//
+// A REMOVAL IS EVIDENCE, NOT A STANDING. It does not end a drop (gunbc.rung_drop RungDropStanding
+// owns that: a Standing drop whose cited artifact was deleted still has its loss) and it does not
+// change a Retired row's trigger_fired receipt. Superseded.loss_holder stays the place a loss that
+// genuinely ended is accounted for.
+//
+// WHY A SIBLING CARRIER AND NOT A FIELD ON RungDrop: the reasons gunbc.rung_drop_amendment states
+// hold unchanged. Most drops cite no deleted artifact, a field would rewrite every row file in one
+// diff, and a removal is appended by a different change from the one that declared the drop. The
+// join is walled: every record names a rostered drop (every_removal_names_a_rostered_drop).
+//
+// WHY gunbc.deleted_cadence_reference_census IS NOT THIS CARRIER. Its unit is a CITING SITE
+// classified by what the site claims, keyed on one hardcoded subject whose deleting PR is prose in
+// a String, and its truth is derived from std.witness_admission witness_cadence_has_scheduled_route.
+// This carrier is keyed by the DROP, holds the deleting commit as data, and its truth is two git
+// facts. Different shape and different oracle, so there is nothing to generalize into std.
+//
+// THE COMMIT IS THE KEY, NOT THE PR. A commit is resolvable in the repository's own history,
+// offline and deterministically; a PR number would make the law depend on an external service.
+// `pr` is a secondary citation and is not checked.
+//
+// CONSUMER (DESIGN 3c). gunbc.design_ledgers rung_drop_blocks joins each drop to its removals
+// (removals_for_drop) and renders rung_drop_removal_message, so the rung-drop projection a reader opens
+// states the deleting commit and paths. The projection states the record; the LAW (observed_removal_verdict)
+// is executed by test.claim.rung_drop_removal_witness, which is not on the required path, so it is not yet
+// enforced per PR. ENFORCEMENT TRIGGER: the native compiler judging witness-bearing modules on the required
+// path (gunbc.rung_drop v1_required_lanes_withdrawn); until then observed_removal_verdict is consumed only
+// by the witness. The standing/debt fold does not read removals: removal is evidence, not a standing.
+
+// DECLARATION GRAIN IS A NAMED FRONTIER, NOT A SILENT GAP. `removed_paths` are file paths, absent at
+// head by `git cat-file -e HEAD:<path>`. A removal of a symbol inside a surviving file needs the
+// native declaration index (neat-crab-340's DeclarationRef resolution); until that lands, such a
+// removal has no spelling here rather than a weaker one.
+
+type SubjectRemoval {
+  drop_identity: NonEmptyStr
+  commit: NonEmptyStr
+  pr: Int
+  // A removal naming no path asserts nothing, so the field is nonempty by construction.
+  removed_paths: FreeSemigroup<NonEmptyStr>
+}
+
+// WHAT GIT SAID, supplied to the pure verdict so every refusal arm is authorable from values
+// (DESIGN section 3, a witness discriminates at one interface). The paired inhabitance claim runs
+// the observer below against a real fixture repository.
+type PathProbe {
+  path: String
+  exit_code: Int
+}
+
+type RemovalObservation {
+  head_exit_code: Int
+  head_stderr: String
+  commit_exit_code: Int
+  commit_stderr: String
+  ancestry: MergeBaseOutcome
+  head_history_is_shallow: Bool
+  paths: List<PathProbe>
+}
+
+type RemovalVerdict
+  = RemovalHolds
+  | RemovalHeadUnreadable { detail: String }
+  | RemovalCommitUnresolved { commit: String, detail: String }
+  | RemovalCommitOutsideHeadHistory { commit: String }
+  | RemovalHistoryNotObservable { commit: String, detail: String }
+  | RemovedPathStillAtHead { path: String }
+  | RemovalPathProbeRefused { path: String, exit_code: Int }
+
+data cat_file_object_present_exit: Int = 0
+
+data cat_file_object_absent_exit: Int = 128
+
+// Total over every exit code: a path probe is PRESENT, ABSENT, or a refusal carrying the code.
+fn removal_path_verdict(p: PathProbe) -> RemovalVerdict {
+  if p.exit_code == cat_file_object_present_exit {
+    RemovedPathStillAtHead { path: p.path }
+  } else {
+    if p.exit_code == cat_file_object_absent_exit {
+      RemovalHolds
+    } else {
+      RemovalPathProbeRefused { path: p.path, exit_code: p.exit_code }
+    }
+  }
+}
+
+fn removal_verdict_is_holds(v: RemovalVerdict) -> Bool {
+  match v {
+    RemovalHolds => true
+    RemovalHeadUnreadable { detail: _ } => false
+    RemovalCommitUnresolved { commit: _, detail: _ } => false
+    RemovalCommitOutsideHeadHistory { commit: _ } => false
+    RemovalHistoryNotObservable { commit: _, detail: _ } => false
+    RemovedPathStillAtHead { path: _ } => false
+    RemovalPathProbeRefused { path: _, exit_code: _ } => false
+  }
+}
+
+fn first_failing_path_verdict(probes: List<PathProbe>) -> RemovalVerdict {
+  fold(probes, init: RemovalHolds, f: fn(acc, p) {
+    if removal_verdict_is_holds(v: acc) { removal_path_verdict(p: p) } else { acc }
+  })
+}
+
+// ORDER IS THE DIAGNOSIS. A head that cannot be read makes every later fact meaningless; a commit
+// that does not exist is a different defect from one that exists off this history; an ancestry the
+// repository cannot answer (a shallow clone) is NOT a verdict and is never read as one in either
+// direction; only then are the paths judged.
+fn removal_verdict(r: SubjectRemoval, obs: RemovalObservation) -> RemovalVerdict {
+  if obs.head_exit_code != 0 {
+    RemovalHeadUnreadable { detail: obs.head_stderr }
+  } else {
+    if obs.commit_exit_code != 0 {
+      RemovalCommitUnresolved { commit: (r.commit as String), detail: obs.commit_stderr }
+    } else {
+      match obs.ancestry {
+        MergeBaseReported { base_hex: b } =>
+          if b == (r.commit as String) {
+            first_failing_path_verdict(probes: obs.paths)
+          } else {
+            RemovalCommitOutsideHeadHistory { commit: (r.commit as String) }
+          }
+        NoCommonAncestor =>
+          if obs.head_history_is_shallow {
+            RemovalHistoryNotObservable { commit: (r.commit as String), detail: "shallow clone: no merge base is reachable" }
+          } else {
+            RemovalCommitOutsideHeadHistory { commit: (r.commit as String) }
+          }
+        MergeBaseRefused { exit_code: c, stderr: e } =>
+          RemovalHistoryNotObservable { commit: (r.commit as String), detail: e }
+      }
+    }
+  }
+}
+
+fn path_probe_at_head(address: GitRepositoryAddress, path: String) -> PathProbe {
+  let probe = git.Plumbing.CatFileExists(address: address, object: concat("HEAD:", path))
+  PathProbe { path: path, exit_code: probe.exit_code }
+}
+
+// THE EFFECT. Every fact is read from the repository at `repo`, at its HEAD: the commit by
+// `cat-file -e <sha>^{commit}`, its place in history by `merge-base <sha> HEAD` equalling <sha>, and
+// each path by `cat-file -e HEAD:<path>`.
+fn observe_removal(repo: FilePath, r: SubjectRemoval) -> RemovalObservation {
+  let address = GitWorktreeAt { path: repo }
+  let head = git.Plumbing.CatFileExists(address: address, object: "HEAD^\{commit\}")
+  let commit = git.Plumbing.CatFileExists(address: address, object: concat(r.commit as String, "^\{commit\}"))
+  let base = git.Inspect.MergeBase(repository_path: repo as String, left: (r.commit as String) as GitRef, right: "HEAD" as GitRef)
+  let shallow = git.Inspect.IsShallowRepository(repository_path: repo)
+  RemovalObservation {
+    head_exit_code: head.exit_code,
+    head_stderr: trim(s: head.stderr),
+    commit_exit_code: commit.exit_code,
+    commit_stderr: trim(s: commit.stderr),
+    ancestry: merge_base_outcome(exit_code: base.exit_code, stdout: (base.sha as String), stderr: base.stderr),
+    head_history_is_shallow: trim(s: shallow.answer) == "true",
+    paths: map(non_empty_to_list(xs: r.removed_paths), p => path_probe_at_head(address: address, path: (p as String))),
+  }
+}
+
+fn observed_removal_verdict(repo: FilePath, r: SubjectRemoval) -> RemovalVerdict {
+  removal_verdict(r: r, obs: observe_removal(repo: repo, r: r))
+}
+
+// THE JOIN, as a predicate over both populations so a witness can hand it a record naming no drop.
+fn every_removal_names_a_rostered_drop(removals: List<SubjectRemoval>, drop_identities: List<String>) -> Bool {
+  fold(removals, init: true, f: fn(acc, r) {
+    acc && length(xs: filter(drop_identities, i => i == (r.drop_identity as String))) == 1
+  })
+}
+
+fn removed_paths_text(r: SubjectRemoval) -> String {
+  fold(non_empty_to_list(xs: r.removed_paths), init: "", f: fn(acc, p) {
+    if acc == "" { concat("`", concat(p as String, "`")) } else { concat(acc, concat(", `", concat(p as String, "`"))) }
+  })
+}
+
+// WHAT THE LEDGER PRINTS FOR A REMOVAL. It states the record, not the verification: the law is
+// observed_removal_verdict, executed by test.claim.rung_drop_removal_witness against a repository.
+fn rung_drop_removal_message(r: SubjectRemoval) -> String {
+  join(["**Cited artifacts removed** by commit `", r.commit as String, "` (gunbc#", int_to_decimal_string(value: r.pr), "): ", removed_paths_text(r: r)], "")
+}

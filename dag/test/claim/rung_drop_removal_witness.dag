@@ -1,0 +1,176 @@
+module test.claim.rung_drop_removal_witness
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath, GitRef }
+import std.algebra { trim, FreeSemigroup }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.git
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import gunbc.rung_drop_removal {
+  SubjectRemoval, RemovalVerdict, RemovalHolds, RemovalCommitUnresolved, RemovedPathStillAtHead,
+  RemovalCommitOutsideHeadHistory, observed_removal_verdict, every_removal_names_a_rostered_drop,
+}
+import gunbc.rung_drop_removal.roster { rung_drop_removal_roster }
+import gunbc.rung_drop.roster { rung_drop_roster }
+import gunbc.rung_drop { RungDrop }
+import gunbc.design_ledgers { rung_drop_removal_blocks }
+import std.markdown { MarkdownDocument }
+import extdeps.languages.markdown { serialize_markdown_source }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE EXPERIMENT IS A REAL REPOSITORY, because the law is two git facts and a constructed
+// observation would assert the verdict's arithmetic while proving nothing about the reader.
+// History: C1 adds keep.txt and gone.txt; C2 (the removing commit, and HEAD) deletes gone.txt.
+// A side commit S on another branch is a real commit that is NOT an ancestor of HEAD.
+
+fn repo_file(repo: FilePath, name: String) -> String {
+  concat(concat(repo as String, "/"), name)
+}
+
+fn commit_all(repo: FilePath, message: String) -> String {
+  let staged = git.Core.AddAllInRepo(repo: repo).exit_code
+  let committed = git.Core.CommitInRepo(repo: repo, message: message).exit_code
+  let resolved = git.Core.RevParseInRepo(repo: repo, target: "HEAD" as GitRef)
+  if staged == 0 && committed == 0 && resolved.exit_code == 0 { trim(s: resolved.revision) } else { "" }
+}
+
+type RemovalFixture {
+  removing_commit: String
+  side_commit: String
+  setup_ok: Bool
+}
+
+fn build_fixture(repo: FilePath) -> RemovalFixture {
+  let initialized = git.Core.InitInRepo(repo: repo)
+  let email = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.email", value: "witness@gunbc.invalid")
+  let name = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.name", value: "rung drop removal witness")
+  let w1 = Filesystem.Write(path: repo_file(repo: repo, name: "keep.txt"), content: "keep")
+  let w2 = Filesystem.Write(path: repo_file(repo: repo, name: "gone.txt"), content: "gone")
+  let c1 = commit_all(repo: repo, message: "c1")
+  let side = git.Core.CheckoutNewBranchInRepo(repo: repo, branch: "side")
+  let w3 = Filesystem.Write(path: repo_file(repo: repo, name: "side.txt"), content: "side")
+  let s = commit_all(repo: repo, message: "side")
+  let back = git.Core.CheckoutNewBranchAtInRepo(repo: repo, branch: "head2", start_point: c1 as GitRef)
+  let rm = shell.Remove.RecursiveForce(path: repo_file(repo: repo, name: "gone.txt") as FilePath)
+  let c2 = commit_all(repo: repo, message: "c2")
+  RemovalFixture {
+    removing_commit: c2,
+    side_commit: s,
+    setup_ok: initialized.success && email.success && name.success && w1.success && w2.success
+      && w3.success && side.exit_code == 0 && back.exit_code == 0 && rm.success && c1 != "" && s != "" && c2 != ""
+      && c1 != c2 && s != c2,
+  }
+}
+
+fn removal_of(commit: String, path: String) -> SubjectRemoval {
+  SubjectRemoval {
+    drop_identity: "control.drop" as NonEmptyStr,
+    commit: commit as NonEmptyStr,
+    pr: 0,
+    removed_paths: FreeSemigroup { head: path as NonEmptyStr, tail: [] },
+  }
+}
+
+type Experiment {
+  holds: RemovalVerdict
+  nonexistent_commit: RemovalVerdict
+  path_still_present: RemovalVerdict
+  commit_off_history: RemovalVerdict
+  setup_ok: Bool
+}
+
+fn run_experiment() -> Experiment {
+  let dir = shell.Mktemp.Dir()
+  let f = build_fixture(repo: dir.path)
+  let ex = Experiment {
+    holds: observed_removal_verdict(repo: dir.path, r: removal_of(commit: f.removing_commit, path: "gone.txt")),
+    nonexistent_commit: observed_removal_verdict(
+      repo: dir.path,
+      r: removal_of(commit: "0123456789abcdef0123456789abcdef01234567", path: "gone.txt"),
+    ),
+    path_still_present: observed_removal_verdict(repo: dir.path, r: removal_of(commit: f.removing_commit, path: "keep.txt")),
+    commit_off_history: observed_removal_verdict(repo: dir.path, r: removal_of(commit: f.side_commit, path: "gone.txt")),
+    setup_ok: dir.success && f.setup_ok,
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  Experiment { holds: ex.holds, nonexistent_commit: ex.nonexistent_commit, path_still_present: ex.path_still_present,
+    commit_off_history: ex.commit_off_history, setup_ok: ex.setup_ok && cleaned.success }
+}
+
+// POSITIVE CONTROL: a real removing commit in HEAD's history whose path is really absent holds.
+test fn a_removal_by_a_real_commit_with_the_path_absent_holds() -> Bool {
+  let e = run_experiment()
+  e.setup_ok && match e.holds { RemovalHolds => true  _ => false }
+}
+
+// RED 1: a removal naming a commit that does not exist is refused as unresolved.
+test fn a_removal_naming_a_nonexistent_commit_is_refused() -> Bool {
+  let e = run_experiment()
+  e.setup_ok && match e.nonexistent_commit { RemovalCommitUnresolved { commit: _, detail: _ } => true  _ => false }
+}
+
+// RED 2: a path claimed deleted that is still at HEAD is refused, naming the path.
+test fn a_deleted_path_still_present_at_head_is_refused() -> Bool {
+  let e = run_experiment()
+  e.setup_ok && match e.path_still_present { RemovedPathStillAtHead { path: p } => p == "keep.txt"  _ => false }
+}
+
+// RED 3: a real commit that is not in HEAD's history is a different defect from a missing one.
+test fn a_real_commit_outside_head_history_is_refused() -> Bool {
+  let e = run_experiment()
+  e.setup_ok && match e.commit_off_history { RemovalCommitOutsideHeadHistory { commit: _ } => true  _ => false }
+}
+
+data control_dangling_removal: SubjectRemoval = SubjectRemoval {
+  drop_identity: "control.no.such.drop" as NonEmptyStr,
+  commit: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr,
+  pr: 0,
+  removed_paths: FreeSemigroup { head: "x" as NonEmptyStr, tail: [] },
+}
+
+fn rostered_drop_identities() -> List<String> {
+  map(rung_drop_roster, d => (d.identity as String))
+}
+
+// THE JOIN, both directions: the live roster joins and a dangling record does not.
+test fn removals_join_to_rostered_drops() -> Bool {
+  every_removal_names_a_rostered_drop(removals: rung_drop_removal_roster, drop_identities: rostered_drop_identities())
+    && !every_removal_names_a_rostered_drop(removals: [control_dangling_removal], drop_identities: rostered_drop_identities())
+}
+
+// THE LIVE ROSTER AGAINST THE REAL REPOSITORY (inhabitance of the real route). Runs from the checkout root.
+fn live_repo() -> FilePath {
+  git.Inspect.Toplevel().path
+}
+
+test fn every_rostered_removal_holds_at_head() -> Bool {
+  all(rung_drop_removal_roster, r => match observed_removal_verdict(repo: live_repo(), r: r) {
+    RemovalHolds => true
+    _ => false
+  })
+}
+
+fn rendered_removals_of(identity: String) -> String {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: flat_map(
+    filter(rung_drop_roster, d => (d.identity as String) == identity),
+    d => rung_drop_removal_blocks(d: d),
+  ) })
+}
+
+// THE LEDGER CONSUMES THE ROSTER, one assertion per test so a failure names its axis.
+test fn the_ledger_renders_the_deleting_commit() -> Bool {
+  rendered_removals_of(identity: "regen_producer").contains("3b431f34a9e829809e07621d80ae9429e80f2e17")
+}
+
+test fn the_ledger_renders_the_removed_path() -> Bool {
+  rendered_removals_of(identity: "regen_producer").contains("regen_stage0")
+}
+
+test fn the_ledger_does_not_render_another_drops_commit() -> Bool {
+  !rendered_removals_of(identity: "regen_producer").contains("d3bebd0072feed2afeb7e45f07aa7fc6da69453b")
+}
+
+test fn a_drop_without_a_record_renders_no_removal_line() -> Bool {
+  !rendered_removals_of(identity: "floor_cut_heal").contains("Cited artifacts removed")
+}

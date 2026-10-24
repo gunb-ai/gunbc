@@ -1,0 +1,49 @@
+module gunbc.rung_drop_removal.roster
+
+import std.types { String, List, NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop_removal { SubjectRemoval }
+
+// One record per drop whose cited artifacts were deleted. Each commit is the full 40-hex deleting
+// commit, read back through git when the record was written; `pr` is the secondary citation.
+//
+// floor_cut_merge_admission_stamping: the row prose attributes the deletion to the 2026-08-15 floor
+// cut, but the commit that removed these two modules is the one below (#7522, 2026-08-02). The
+// record states the commit that git says, not the date the prose says.
+data rung_drop_removal_roster: List<SubjectRemoval> = [
+  SubjectRemoval {
+    drop_identity: "regen_producer",
+    commit: "3b431f34a9e829809e07621d80ae9429e80f2e17",
+    pr: 8406,
+    removed_paths: FreeSemigroup { head: "src/v1/stage0/src/bin/regen_stage0.rs", tail: [] },
+  },
+  SubjectRemoval {
+    drop_identity: "measurement_bankruptcy",
+    commit: "d3bebd0072feed2afeb7e45f07aa7fc6da69453b",
+    pr: 9132,
+    removed_paths: FreeSemigroup { head: "docs/probes/curated_cargo_probe_one.sh", tail: ["docs/probes/cross_module_mechanism_weighting.py", "docs/probes/e0308_classify_sites.py"] },
+  },
+  SubjectRemoval {
+    drop_identity: "lens_enforcement_censuses",
+    commit: "210efd510b2fa6c34957f7ec8b23aea2ca042ecd",
+    pr: 8141,
+    removed_paths: FreeSemigroup { head: "src/v2/lens/inert_lens.dag", tail: ["dag/test/claim/long/inert_lens_hygiene_witness_test.dag"] },
+  },
+  SubjectRemoval {
+    drop_identity: "floor_cut_merge_admission_stamping",
+    commit: "87a4af3ad01b4b938fa460c66b7c5c9ecf8cbb11",
+    pr: 7522,
+    removed_paths: FreeSemigroup { head: "dag/tools/merge_admission_gate.dag", tail: ["dag/tools/merge_admission_stamp.dag"] },
+  },
+  SubjectRemoval {
+    drop_identity: "floor_cut_fmt_gate",
+    commit: "611fd027708211a0c435d937ed3e45b8b936e28a",
+    pr: 8283,
+    removed_paths: FreeSemigroup { head: ".github/workflows/ci.yml", tail: [] },
+  },
+]
+
+// THE JOIN THE PROJECTION FOLDS, so a drop's removals are selected in one place (as amendments_for_drop).
+fn removals_for_drop(identity: NonEmptyStr) -> List<SubjectRemoval> {
+  filter(rung_drop_removal_roster, r => (r.drop_identity as String) == (identity as String))
+}
