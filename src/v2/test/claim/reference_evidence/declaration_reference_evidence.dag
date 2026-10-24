@@ -17,7 +17,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { positional_child_target_nodes, Node, NodeFold, TypeNode, Atom, Arrow, ComputationNode, Transform, fold_node }
+import v2.std.node { positional_child_target_nodes, Node, NodeFold, TypeNode, Atom, Arrow, ComputationNode, Transform, fold_node, NotADeclaration }
 import v2.std.node_query { find_named_child }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
@@ -211,7 +211,7 @@ fn dre_supplied_reading(callee: Symbol, params: List<ClaimParam>, codomain: Node
       params: params,
       codomain: codomain,
       body: body,
-      actuals: [Edge { label: Authored { name: ^only_arg }, target: actual }],
+      actuals: [Edge { label: Authored { name: ^only_arg }, target: actual, declaration: NotADeclaration }],
       reference_site: 21
     )),
     wanted: callee
@@ -274,9 +274,10 @@ fn dre_lowered_same_leaf_module() -> ClaimLoweredModule {
           params: [ClaimLoweredParam { name: ^alpha, type_node: claim_lowered_atom(identity: ^Int, n: 21) }],
           codomain: claim_lowered_atom(identity: ^Int, n: 22),
           body: claim_lowered_atom(identity: ^alpha, n: 23)
-        )
+        ),
+        declaration: NotADeclaration
       },
-      Edge { label: Authored { name: ^Wrap }, target: claim_lowered_record(fields: [ClaimLoweredParam { name: ^shared, type_node: claim_lowered_atom(identity: ^Int, n: 11) }], site: 10) },
+      Edge { label: Authored { name: ^Wrap }, target: claim_lowered_record(fields: [ClaimLoweredParam { name: ^shared, type_node: claim_lowered_atom(identity: ^Int, n: 11) }], site: 10), declaration: NotADeclaration },
       Edge {
         label: Authored { name: ^consumer },
         target: claim_lowered_function(
@@ -286,12 +287,13 @@ fn dre_lowered_same_leaf_module() -> ClaimLoweredModule {
           body: Node {
             kind: ComputationNode { behavior: Transform },
             children: [
-              Edge { label: Positional, target: claim_lowered_atom(identity: ^shared, n: 33) },
-              Edge { label: Authored { name: ^alpha }, target: claim_lowered_atom(identity: ^y, n: 34) }
+              Edge { label: Positional, target: claim_lowered_atom(identity: ^shared, n: 33), declaration: NotADeclaration },
+              Edge { label: Authored { name: ^alpha }, target: claim_lowered_atom(identity: ^y, n: 34), declaration: NotADeclaration }
             ],
             occurrence_id: OccurrenceSynthetic
           }
-        )
+        ),
+        declaration: NotADeclaration
       }
     ],
     records: [^Wrap],
@@ -326,7 +328,7 @@ fn dre_same_leaf_resolved() -> ResolvedTree {
     params: dre_only_alpha(),
     codomain: dre_int_type(),
     body: parameter_reference_node(qn: [^p, ^shared, ^alpha], occurrence_id: claim_minted(n: 4)),
-    actuals: [Edge { label: Authored { name: ^alpha }, target: claim_int_literal(lexeme: "3", n: 23) }],
+    actuals: [Edge { label: Authored { name: ^alpha }, target: claim_int_literal(lexeme: "3", n: 23), declaration: NotADeclaration }],
     reference_site: 21
   )
   ResolvedTree {

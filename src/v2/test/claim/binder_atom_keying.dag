@@ -1,0 +1,174 @@
+module v2.test.claim.binder_atom_keying
+
+import std.algebra { fold_list, list_snoc_item }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { authored_occurrence_of, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, DeclarationRole, ReferenceRole }
+import std.optional { Absent, Optional, Present }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import std.types { List, Map }
+import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_env_over, acquisition_front_end }
+import v2.compiler.occurrence_role { AtomOccurrenceRole, OccurrenceRolesRead, OccurrenceRoleTableRefused, dag_name_table_admission, occurrence_role_index, occurrence_roles_of_admitted }
+import v2.compiler.parse { PreparedGrammar, prepare_grammar }
+import v2.compiler.source_authority { ModuleFileRef }
+import v2.compiler.tokenize { prepare_lex_rules }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.integer { Int }
+import v2.std.node { DeclaresAt, NotADeclaration, Authored, Edge, Node, Positional, StructuralLabel, ProductionEdge, CoreMarker, symbol_lexeme, ComputationNode, TypeNode, Atom, Conj, Disj, Arrow, Instantiation, Value, Transform, Branch, Loop, Bind, Match }
+import v2.std.text { String }
+import std.algebra { map_lookup, string_contains }
+import std.integer { int_to_decimal_string }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BINDER ATOM IS BUILT FROM THE BINDER TOKEN, NOT ITS ENCLOSING CONSTRUCT. For each binder kind
+// whose normalized tree carries an atom, the role index built over the parse tree must answer
+// DeclarationRole for the binder atom through authored_occurrence_of. (The use side's ReferenceRole
+// is a separate finding: the use atoms miss in the role index in both arms.) Carrying the construct's id instead lands on a non-key (a miss).
+
+fn probe_env(prepared: PreparedGrammar) -> AcquisitionEnv {
+  acquisition_env_over(
+    layout: repository_storage_layout(),
+    bindings: [],
+    lex: prepare_lex_rules(rules: dag_language_model().lex),
+    grammar: prepared
+  )
+}
+
+fn variant_text(node: Node) -> String {
+  identity_text(identity: node.occurrence_id)
+}
+
+fn identity_text(identity: NodeOccurrenceIdentity) -> String {
+  match identity {
+    OccurrenceMinted { id: i } => "minted#" + int_to_decimal_string(value: i.value)
+    OccurrenceProjected { id: i, caused_by: c } => "projected#" + int_to_decimal_string(value: i.value) + "<-" + int_to_decimal_string(value: c.occurrence.value)
+    OccurrencePending { caused_by: c } => "pending<-" + int_to_decimal_string(value: c.value)
+    OccurrenceSynthetic => "synthetic"
+  }
+}
+
+fn role_text(index: Map<OccurrenceId, AtomOccurrenceRole>, node: Node) -> String {
+  match authored_occurrence_of(identity: node.occurrence_id) {
+    Absent => "unkeyable"
+    Present { value: id } =>
+      match map_lookup(m: index, key: id) {
+        Absent => "miss"
+        Present { value: r } =>
+          match r.role {
+            DeclarationRole => "DECL"
+            ReferenceRole => "REF"
+          }
+      }
+  }
+}
+
+fn edge_text(edge: Edge) -> String {
+  match edge.label {
+    Authored { name: n } => "@" + symbol_lexeme(sym: n)
+    StructuralLabel { label: _ } => "#"
+    Positional => ""
+  }
+}
+
+fn edge_declaration_row(edge: Edge, depth: Int, spelling: String, index: Map<OccurrenceId, AtomOccurrenceRole>) -> List<String> {
+  match edge.declaration {
+    NotADeclaration => []
+    DeclaresAt { occurrence: occ } =>
+      match edge.label {
+        Authored { name: n } =>
+          if symbol_lexeme(sym: n) == spelling {
+            match authored_occurrence_of(identity: occ) {
+              Absent => ["E" + int_to_decimal_string(value: depth) + "/unkeyable"]
+              Present { value: id } =>
+                match map_lookup(m: index, key: id) {
+                  Absent => ["E" + int_to_decimal_string(value: depth) + "/miss:" + identity_text(identity: occ)]
+                  Present { value: r } =>
+                    match r.role {
+                      DeclarationRole => ["E" + int_to_decimal_string(value: depth) + "/DECL"]
+                      ReferenceRole => ["E" + int_to_decimal_string(value: depth) + "/REF"]
+                    }
+                }
+            }
+          } else {
+            []
+          }
+        StructuralLabel { label: _ } => []
+        Positional => []
+      }
+  }
+}
+
+fn atoms_of(acc: List<String>, node: Node, depth: Int, via: String, spelling: String, index: Map<OccurrenceId, AtomOccurrenceRole>) -> List<String> {
+  let here = match node_atom_identity_optional(node: node) {
+    Present { value: sym } =>
+      if symbol_lexeme(sym: sym) == spelling {
+        ["d" + int_to_decimal_string(value: depth) + via + ":" + variant_text(node: node) + "/" + role_text(index: index, node: node)]
+      } else {
+        []
+      }
+    Absent => []
+  }
+  fold(node.children, init: fold_list(xs: here, empty: acc, cons: fn(a, x) { list_snoc_item(xs: a, item: x) }), f: fn(inner, edge) { atoms_of(acc: fold_list(xs: edge_declaration_row(edge: edge, depth: depth, spelling: spelling, index: index), empty: inner, cons: fn(a, x) { list_snoc_item(xs: a, item: x) }), node: edge.target, depth: depth + 1, via: edge_text(edge: edge), spelling: spelling, index: index) })
+}
+
+fn joined(xs: List<String>) -> String {
+  fold_list(xs: xs, empty: "", cons: fn(acc, x) { acc + " " + x })
+}
+
+fn probe_norm(content: String, spelling: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_front_end(env: probe_env(prepared: prepared), file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content) {
+        Rejected { diagnostics: _ } => "front-end-refused"
+        Accepted { value: front, diagnostics: _ } =>
+          match occurrence_roles_of_admitted(tree: front.parse_root, admission: dag_name_table_admission()) {
+            OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => "table-refused"
+            OccurrenceRolesRead { roles: roles } =>
+              let index = occurrence_role_index(roles: roles)
+              "NORM:" + joined(xs: atoms_of(acc: [], node: front.tree.root, depth: 0, via: "", spelling: spelling, index: index))
+          }
+      }
+  }
+}
+
+
+fn has_role(row: String, role: String) -> Bool {
+  string_contains(s: row, pattern: "/" + role)
+}
+
+fn expect_binder_declaration(kind: String, row: String) -> ProcessExit {
+  if has_role(row: row, role: "DECL") {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: kind + " binder atom is not keyed DeclarationRole: " + row }
+  }
+}
+
+test fn let_binder_atom_is_keyed_declaration() -> ProcessExit {
+  expect_binder_declaration(kind: "let", row: probe_norm(content: "module v2.test.subject\nfn f() -> Int { let alpha = 1  alpha }\n", spelling: "alpha"))
+}
+
+test fn generic_binder_atom_is_keyed_declaration() -> ProcessExit {
+  expect_binder_declaration(kind: "generic", row: probe_norm(content: "module v2.test.subject\ntype T<Alpha> { x: Alpha }\n", spelling: "Alpha"))
+}
+
+test fn fn_name_atom_is_keyed_declaration() -> ProcessExit {
+  expect_binder_declaration(kind: "fn name", row: probe_norm(content: "module v2.test.subject\nfn alpha() -> Int { 1 }\n", spelling: "alpha"))
+}
+
+test fn typed_param_atom_is_keyed_declaration() -> ProcessExit {
+  expect_binder_declaration(kind: "param", row: probe_norm(content: "module v2.test.subject\nfn f(alpha: Int) -> Int { 1 }\n", spelling: "alpha"))
+}
+
+test fn type_name_atom_is_keyed_declaration() -> ProcessExit {
+  expect_binder_declaration(kind: "type name", row: probe_norm(content: "module v2.test.subject\ntype Alpha { x: Int }\n", spelling: "Alpha"))
+}
+
+test fn data_name_atom_is_keyed_declaration() -> ProcessExit {
+  expect_binder_declaration(kind: "data name", row: probe_norm(content: "module v2.test.subject\ndata alpha: Int = 1\n", spelling: "alpha"))
+}

@@ -1,0 +1,20 @@
+module gunbc.guarantee_stall.removal_tombstone_commit_resolution_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+// A NEW CLASS STARTING BELOW ITS CEILING, not a lowered rung: the commit half of a
+// std.removal_tombstone RemovalTombstone was never checked by any route before it was declared, so
+// there is no previous rung to drop from. A claim has no git, so inside a witness the half answers
+// CommitUnobservable, a typed outcome that contains the harm without establishing that removed_at
+// resolves; the module-absence half is the part that executes today.
+data removal_tombstone_commit_resolution_stall: GuaranteeStall = GuaranteeStall {
+  subject: "std.removal_tombstone RemovalTombstone removed_at resolves to a commit",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation {
+    members: ["gunbc.rung_drop.d0_store_walls_single_lifecycle", "gunbc.rung_drop.sha256_span_program_serialize_new_witness_eval_step_cost"]
+  },
+  next_rung_trigger: climbs_when(capability: "a git-reading instrument label, run in a checkout, resolves every removed_at sha of every Dissolved tombstone in the rung_drop roster, with a RED where a bogus sha is refused and a positive control where a real one resolves")
+}

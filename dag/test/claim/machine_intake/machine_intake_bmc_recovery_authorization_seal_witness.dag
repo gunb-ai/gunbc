@@ -1,0 +1,143 @@
+module test.claim.machine_intake.machine_intake_bmc_recovery_authorization_seal_witness
+
+import gunbc.compile_census_probe { blocking_subject_count_for }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, Int, String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE WALLS AROUND THE RECOVERY PRIVILEGED-WRITE AUTHORIZATIONS, ENROLLED RATHER THAN RUN ONCE (side-chat
+// HOLD blocker 1: "seal authorization-bearing payloads bound to subject+operation ... probe direct AND
+// indirect").
+//
+// gunbc.machine_intake.bmc_recovery_route claims that a password or a reset admission cannot be spelled
+// outside the module, and that its two ticket mints cannot be called by anybody the roster does not name.
+// Those were claims. A claim about a compiler refusal that nobody re-runs is transcribed output (DESIGN
+// section 6), and it decays the moment someone removes the annotation -- so this file holds the refusals,
+// direct and indirect.
+//
+// WHY THE SEALS ARE ON RECORDS AND NOT ON THE SUMS, stated here because getting this wrong produces a
+// wall that is green by construction: sole_constructor on a COPRODUCT does not refuse cross-module
+// variant construction -- the measured hole at test.claim.sole_constructor_completeness_audit_probe
+// f13_variant_construction_refuses is RED. Sealing PasswordWriteAuthorization directly would have been
+// permanently satisfied by nothing. What the compiler refuses is constructing a sealed RECORD in another
+// module, which is the arrangement test.claim.fleet_observation_seal documents and uses; the admitted arms
+// carry these tickets, so spelling an arm requires one.
+//
+// COUNTS ARE KEYED BY (class, subject_name) AND NEVER BY CLASS ALONE, per gunbc.compile_diagnostic_census:
+// CensusObserved carries every diagnostic in THE IMPORTED CLOSURE, so a class-only count over a fixture
+// that imports production modules can be satisfied by an unrelated refusal elsewhere. Each probe names its
+// own subject, and EXACTLY ONE refusal is the proposition -- `>= 1` would let a second, unintended refusal
+// on the same key pass the probe for the wrong reason.
+//
+// WHAT THESE PROBES DO NOT ESTABLISH, so the file cannot be cited for more: they establish that the
+// tickets cannot be SPELLED and that the mints cannot be CALLED outside the roster. They say nothing about
+// whether a caller can reach an admitted arm through some other path that itself takes caller-authored
+// inputs; the fold's own checks on ticket.subject and ticket.operation (asserted in the route module's
+// claims) are the other half, and a probe that could not see them would be silent rather than wrong.
+fn refusal_count(source: String, wanted_class: String, subject: String) -> Int {
+  blocking_subject_count_for(source: source, wanted_class: wanted_class as NonEmptyStr, wanted_subject: subject)
+}
+
+// THE CENSUS RAN AT ALL. blocking_subject_count_for answers -1 when the census did not run and never 0, so
+// a non-negative count is the ran-check, and a probe whose census died is not a passing probe.
+fn census_ran(source: String) -> Bool {
+  blocking_subject_count_for(
+    source: source,
+    wanted_class: "SoleConstructorViolation" as NonEmptyStr,
+    wanted_subject: "PasswordWriteAdmissionTicket",
+  ) >= 0
+}
+
+// ── RED 1 (direct): the password ticket spelled from another module ─────────────────────────────────
+// The forgery is the one that matters: an admission naming the RIGHT gate, for a chassis of the forger's
+// choosing, without either gate being consulted. It cannot be spelled, because the arm carries a sealed
+// record and the record has one mint.
+data forged_password_ticket_source: String = "module probe_recovery_forged_password_ticket\nimport gunbc.machine_intake.bmc_recovery_route {\n  PasswordWriteAdmissionTicket, PasswordWriteAuthorization, PasswordWriteAdmitted, RecoveryActuationKind, recovery_in_band_password_actuation,\n}\nimport gunbc.machine_intake.subject { MachineIntakeSubject, QualificationSubject }\nimport std.content_hash { content_hash_of_value }\nimport std.decl_ref { decl_ref }\nfn forged() -> PasswordWriteAuthorization {\n  PasswordWriteAdmitted {\n    ticket: PasswordWriteAdmissionTicket {\n      subject: QualificationSubject {\n        unit_key: \"somebody-elses-chassis\",\n        assembly_manifest_digest: content_hash_of_value(value: \"forged-assembly-digest\"),\n        firmware_manifest_digest: content_hash_of_value(value: \"forged-firmware-digest\"),\n      },\n      attempt_id: \"forged-attempt\",\n      operation: recovery_in_band_password_actuation(),\n      authorized_by: decl_ref(module_path: \"gunbc.machine_intake.bmc_recovery_route\", decl_name: \"admit_recovery_in_band_password_write\"),\n    },\n  }\n}\n"
+
+test fn a_forged_password_admission_is_refused_at_compile() -> Bool {
+  refusal_count(
+    source: forged_password_ticket_source,
+    wanted_class: "SoleConstructorViolation",
+    subject: "PasswordWriteAdmissionTicket",
+  ) == 1
+    && census_ran(source: forged_password_ticket_source)
+}
+
+// ── RED 2 (direct): the reset ticket spelled from another module ────────────────────────────────────
+// Same forgery on the DESTRUCTIVE write, where the stakes are a chassis wiped: the forger names ResetAll
+// and cites an operator ruling they were never given.
+data forged_reset_ticket_source: String = "module probe_recovery_forged_reset_ticket\nimport gunbc.machine_intake.bmc_recovery_route {\n  ResetWriteAdmissionTicket, ResetWriteAuthorization, ResetWriteAdmitted, RecoveryActuationKind, recovery_reset_actuation, recovery_reset_operator_ruling,\n}\nimport gunbc.machine_intake.subject { MachineIntakeSubject, QualificationSubject }\nimport std.content_hash { content_hash_of_value }\nimport std.decl_ref { decl_ref }\nimport extdeps.bmc.redfish { RedfishResetToDefaultsType, ResetAll }\nfn forged() -> ResetWriteAuthorization {\n  ResetWriteAdmitted {\n    ticket: ResetWriteAdmissionTicket {\n      subject: QualificationSubject {\n        unit_key: \"somebody-elses-chassis\",\n        assembly_manifest_digest: content_hash_of_value(value: \"forged-assembly-digest\"),\n        firmware_manifest_digest: content_hash_of_value(value: \"forged-firmware-digest\"),\n      },\n      attempt_id: \"forged-attempt\",\n      operation: recovery_reset_actuation(),\n      reset_type: ResetAll,\n      authorized_by: decl_ref(module_path: \"gunbc.machine_intake.bmc_recovery_route\", decl_name: \"admit_recovery_manager_reset_to_defaults\"),\n      operator_ruling: recovery_reset_operator_ruling,\n    },\n  }\n}\n"
+
+test fn a_forged_reset_admission_is_refused_at_compile() -> Bool {
+  refusal_count(
+    source: forged_reset_ticket_source,
+    wanted_class: "SoleConstructorViolation",
+    subject: "ResetWriteAdmissionTicket",
+  ) == 1
+    && census_ran(source: forged_reset_ticket_source)
+}
+
+// ── RED 3 (indirect): the same forgery behind a wrapper ─────────────────────────────────────────────
+// PROBE DIRECT AND INDIRECT. A wrapper is how a seal actually gets defeated in review: the forgery moves
+// one level down, the wrapper is "just plumbing", and the refusal is attributed to the wrong place. The
+// count is asserted over the WRAPPER'S source, so it is the wrapper's compile that has to refuse -- the
+// nested construction is not exempt for being buried.
+data forged_behind_wrapper_source: String = "module probe_recovery_forged_behind_wrapper\nimport gunbc.machine_intake.bmc_recovery_route {\n  PasswordWriteAdmissionTicket, PasswordWriteAuthorization, PasswordWriteAdmitted, RecoveryActuationKind, recovery_in_band_password_actuation,\n}\nimport gunbc.machine_intake.subject { MachineIntakeSubject, QualificationSubject }\nimport std.content_hash { content_hash_of_value }\nimport std.decl_ref { decl_ref }\nfn build_ticket(unit: String) -> PasswordWriteAdmissionTicket {\n  PasswordWriteAdmissionTicket {\n    subject: QualificationSubject {\n      unit_key: unit,\n      assembly_manifest_digest: content_hash_of_value(value: \"wrapper-assembly-digest\"),\n      firmware_manifest_digest: content_hash_of_value(value: \"wrapper-firmware-digest\"),\n    },\n    attempt_id: \"wrapper-attempt\",\n    operation: recovery_in_band_password_actuation(),\n    authorized_by: decl_ref(module_path: \"gunbc.machine_intake.bmc_recovery_route\", decl_name: \"admit_recovery_in_band_password_write\"),\n  }\n}\nfn forged(unit: String) -> PasswordWriteAuthorization {\n  PasswordWriteAdmitted { ticket: build_ticket(unit: unit) }\n}\n"
+
+test fn a_forged_admission_behind_a_wrapper_is_still_refused() -> Bool {
+  refusal_count(
+    source: forged_behind_wrapper_source,
+    wanted_class: "SoleConstructorViolation",
+    subject: "PasswordWriteAdmissionTicket",
+  ) == 1
+    && census_ran(source: forged_behind_wrapper_source)
+}
+
+// ── RED 4 (direct): calling the ticket mint without being on its roster ─────────────────────────────
+// The seal alone is half the wall: an unsealed mint beside a sealed record reproduces the hole exactly,
+// and this is the arm that catches someone "just adding a helper". The mint is admitted to the gate and to
+// the two fixtures, so a fourth caller is a compile refusal naming the class the roster enforces.
+data unrostered_mint_call_source: String = "module probe_recovery_unrostered_mint\nimport gunbc.machine_intake.bmc_recovery_route {\n  PasswordWriteAdmissionTicket, RecoveryActuationKind, recovery_in_band_password_actuation, recovery_mint_password_admission_ticket,\n}\nimport gunbc.machine_intake.subject { MachineIntakeSubject, QualificationSubject }\nimport std.content_hash { content_hash_of_value }\nimport std.decl_ref { decl_ref }\nfn forged() -> PasswordWriteAdmissionTicket {\n  recovery_mint_password_admission_ticket(\n    subject: MachineIntakeSubject {\n      subject: QualificationSubject {\n        unit_key: \"somebody-elses-chassis\",\n        assembly_manifest_digest: content_hash_of_value(value: \"forged-assembly-digest\"),\n        firmware_manifest_digest: content_hash_of_value(value: \"forged-firmware-digest\"),\n      },\n      attempt_id: \"forged-attempt\",\n    },\n    operation: recovery_in_band_password_actuation(),\n    authorized_by: decl_ref(module_path: \"gunbc.machine_intake.bmc_recovery_route\", decl_name: \"admit_recovery_in_band_password_write\"),\n  )\n}\n"
+
+test fn calling_the_ticket_mint_from_outside_the_roster_is_refused() -> Bool {
+  refusal_count(
+    source: unrostered_mint_call_source,
+    wanted_class: "ConstructorCallAdmissionRefused",
+    subject: "recovery_mint_password_admission_ticket",
+  ) == 1
+    && census_ran(source: unrostered_mint_call_source)
+}
+
+// ── RED 5 (indirect): the unrostered call behind a wrapper ──────────────────────────────────────────
+data unrostered_mint_behind_wrapper_source: String = "module probe_recovery_unrostered_mint_wrapper\nimport gunbc.machine_intake.bmc_recovery_route {\n  PasswordWriteAdmissionTicket, RecoveryActuationKind, recovery_in_band_password_actuation, recovery_mint_password_admission_ticket,\n}\nimport gunbc.machine_intake.subject { MachineIntakeSubject, QualificationSubject }\nimport std.content_hash { content_hash_of_value }\nimport std.decl_ref { decl_ref }\nfn obtain_ticket(unit: String) -> PasswordWriteAdmissionTicket {\n  recovery_mint_password_admission_ticket(\n    subject: MachineIntakeSubject {\n      subject: QualificationSubject {\n        unit_key: unit,\n        assembly_manifest_digest: content_hash_of_value(value: \"wrapper-assembly-digest\"),\n        firmware_manifest_digest: content_hash_of_value(value: \"wrapper-firmware-digest\"),\n      },\n      attempt_id: \"wrapper-attempt\",\n    },\n    operation: recovery_in_band_password_actuation(),\n    authorized_by: decl_ref(module_path: \"gunbc.machine_intake.bmc_recovery_route\", decl_name: \"admit_recovery_in_band_password_write\"),\n  )\n}\nfn forged() -> PasswordWriteAdmissionTicket {\n  obtain_ticket(unit: \"via-wrapper\")\n}\n"
+
+test fn calling_the_ticket_mint_from_outside_through_a_wrapper_is_refused() -> Bool {
+  refusal_count(
+    source: unrostered_mint_behind_wrapper_source,
+    wanted_class: "ConstructorCallAdmissionRefused",
+    subject: "recovery_mint_password_admission_ticket",
+  ) == 1
+    && census_ran(source: unrostered_mint_behind_wrapper_source)
+}
+
+// ── THE GREEN CONTROL ───────────────────────────────────────────────────────────────────────────────
+// A probe that refuses everything is indistinguishable from a probe that measures nothing, so each RED
+// above is paired here with the sanctioned route: the same construction, through the admitted fixture,
+// drawing neither a seal violation nor a roster refusal. census_ran is asked of the GREEN source too --
+// a zero that came from a census that never ran is not evidence of anything.
+data sanctioned_ticket_source: String = "module probe_recovery_sanctioned_ticket\nimport gunbc.machine_intake.bmc_recovery_route {\n  PasswordWriteAuthorization, recovery_admitted_in_band_write,\n}\nfn sanctioned() -> PasswordWriteAuthorization {\n  recovery_admitted_in_band_write()\n}\n"
+
+test fn the_admitted_fixture_route_draws_no_violation() -> Bool {
+  census_ran(source: sanctioned_ticket_source)
+    && refusal_count(
+      source: sanctioned_ticket_source,
+      wanted_class: "SoleConstructorViolation",
+      subject: "PasswordWriteAdmissionTicket",
+    ) == 0
+    && refusal_count(
+      source: sanctioned_ticket_source,
+      wanted_class: "ConstructorCallAdmissionRefused",
+      subject: "recovery_mint_password_admission_ticket",
+    ) == 0
+}
