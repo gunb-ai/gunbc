@@ -43,7 +43,7 @@ data openresty_1_27_1_1: OpenRestyVersion = "1.27.1.1" as OpenRestyVersion
 
 // The directives below are the ones that decide whether a response is relayed as it arrives and whether
 // the proxy may pick a second upstream. The log phase's outcome variables are not modeled: they were
-// unreliable on client abort in the S1 falsifier, so release must not depend on them.
+// observed unreliable on client abort in an uncommitted local run (no committed instrument yet), so release must not depend on them.
 type ProxyNextUpstream
   = | ProxyNextUpstreamOff
 

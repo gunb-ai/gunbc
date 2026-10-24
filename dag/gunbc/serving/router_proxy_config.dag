@@ -17,7 +17,10 @@ import extdeps.proxy.openresty {
 // policy: proxy_pass has a variable target (no upstream block, hence no balancing or health state),
 // proxy_next_upstream is off, and a non-200 authz answer refuses before any forwarding. The stream-end
 // callout fires from the log phase on every end of a request and only when a permit was issued; its
-// outcome label is not used for release because the log-phase variables were unreliable on client abort.
+// outcome label is not used for release because the log-phase variables were observed unreliable on client abort in an uncommitted local run.
+//
+// CONSUMER. Declared frontier: the plan's S7 live-deploy leg (gunbc.live_deploy.apply_legs) emits this
+// config onto the proxy unit; until it lands nothing but the witness reads it.
 //
 // DISSOLUTION CONDITION. This module dissolves with the proxy, when a v2-native streaming door
 // carries the bytes itself (plan section 3, named later realization).

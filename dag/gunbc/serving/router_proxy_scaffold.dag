@@ -8,8 +8,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // and Lua text instead of through extdeps/languages grammar rows. Authority (DESIGN section 5: operator
 // approval outside the diff): the operator's ruling of 2026-10-24, in their own words, "its fine to hand
 // write something as long as the debt is tracked", recorded on gunbc#14938 by calm-crab-645. This row is
-// that tracked debt. Basis: the Envoy candidate failed the stream-end falsifier (its only stream-end
-// sinks are gRPC), and the proxy itself is scheduled to dissolve.
+// that tracked debt. Basis: Envoy's documented stream-end sinks (access-log ALS, ext_proc) are gRPC, which the
+// HTTP native door does not serve (an uncommitted local run agreed; no committed instrument exists yet,
+// so the choice rests on that documented fact), and the proxy itself is scheduled to dissolve.
 data router_proxy_direct_render_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
