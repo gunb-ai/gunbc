@@ -1,5 +1,7 @@
 module gunbc.serving.rented_instance_offer
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_wildcard_found_by_join_measurement }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { List, Int, String, Bool, NonEmptyStr }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.nat { Nat, NatQuotientRemainder, NatDivisionByZero, nat_div_rem }
@@ -182,3 +184,7 @@ fn rented_replica_offer_reading(
   }
 }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "rented_per_gpu_hourly" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+]

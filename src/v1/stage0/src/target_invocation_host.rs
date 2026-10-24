@@ -620,6 +620,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("nfr-wildcard-census"),
+            TargetProducer::NativeCensusVerb {
+                verb: "nfr-wildcard-census",
+            },
+        ),
+        (
             instrument_label("generic-identity-census"),
             TargetProducer::GenericIdentityCensus,
         ),

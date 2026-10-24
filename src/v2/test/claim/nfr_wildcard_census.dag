@@ -1,0 +1,146 @@
+module v2.test.claim.nfr_wildcard_census
+
+import std.algebra { fold_list, list_at_optional }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Present }
+import std.types { List }
+import v2.compiler.decl_ref_census { ImportPair }
+import v2.compiler.nfr_wildcard_census { Classified, Site, SiteRead, Unread, declares_coproduct_named, head_module_optional, roster_join_keys, root_member_reads, site_join_key }
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { symbol_intern_lexeme }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2.compiler.nfr_wildcard_census over a module's normalized tree. BOUNDARY: source text in,
+// normalized tree out (the tokenize, prepared-grammar parse and normalize the native route runs), so the
+// input is supplied text and the lexer, parser and normalize still execute. The inhabitance claim for the
+// real corpus is the native `nfr-wildcard-census` run recorded on the PR.
+
+fn nfr_normalized(text: String) -> Outcome<NormalizedTree> {
+  match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: "test/nfr.dag"), prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: stream, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: prepared, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: artifact, diagnostics: _ } => normalize(parse_tree: artifact.tree)
+          }
+      }
+  }
+}
+
+data nfr_src: String = "module m.t\n\ntype C = A | B\n\ntype R { x: Int }\n\nfn pick(c: C, n: Int) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n\nfn closed(c: C) -> Int {\n  match c {\n    A => 1\n    B => 0\n  }\n}\n\nfn local(n: Int) -> Int {\n  match n {\n    1 => 1\n    _ => 0\n  }\n}\n"
+
+fn nfr_reads_of(text: String) -> List<SiteRead> {
+  match nfr_normalized(text: text) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: nt, diagnostics: _ } => root_member_reads(root: nt.root)
+  }
+}
+
+fn nfr_count_sites(reads: List<SiteRead>) -> Int {
+  fold_list(xs: reads, empty: 0, cons: fn(acc, r) { match r { Site { fn_name: _, type_head: _ } => acc + 1  Classified { fn_name: _, cause: _ } => acc  Unread { fn_name: _, cause: _ } => acc } })
+}
+
+fn nfr_count_classified(reads: List<SiteRead>, want: String) -> Int {
+  fold_list(xs: reads, empty: 0, cons: fn(acc, r) { match r { Site { fn_name: _, type_head: _ } => acc  Classified { fn_name: _, cause: c } => if c == want { acc + 1 } else { acc }  Unread { fn_name: _, cause: _ } => acc } })
+}
+
+fn nfr_count_unread(reads: List<SiteRead>) -> Int {
+  fold_list(xs: reads, empty: 0, cons: fn(acc, r) { match r { Site { fn_name: _, type_head: _ } => acc  Classified { fn_name: _, cause: _ } => acc  Unread { fn_name: _, cause: _ } => acc + 1 } })
+}
+
+test fn nfr_census_finds_the_wildcard_site_on_a_parameter() -> Bool {
+  nfr_count_sites(reads: nfr_reads_of(text: nfr_src)) == 2
+}
+
+test fn nfr_census_site_is_the_param_fn_and_head() -> Bool {
+  match list_at_optional(xs: nfr_reads_of(text: nfr_src), index: 0) {
+    Present { value: Site { fn_name: f, type_head: h } } => f == "pick" && h == "C"
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+// RED for the dropped-without-a-trace class: a wildcard Match whose scrutinee is an expression, and one
+// over a local rather than a parameter, are each READ and counted by cause, never skipped; and a fully
+// readable source has no Unread.
+data nfr_classify_src: String = "module m.k\n\nfn expr(n: Int) -> Int {\n  match n + 1 {\n    1 => 1\n    _ => 0\n  }\n}\n\nfn local(n: Int) -> Int {\n  let k = n\n  match k {\n    1 => 1\n    _ => 0\n  }\n}\n"
+
+test fn nfr_expression_scrutinee_is_classified_not_skipped() -> Bool {
+  nfr_count_classified(reads: nfr_reads_of(text: nfr_classify_src), want: "scrutinee-is-an-expression") == 1
+}
+
+test fn nfr_local_scrutinee_is_classified_not_skipped() -> Bool {
+  nfr_count_classified(reads: nfr_reads_of(text: nfr_classify_src), want: "scrutinee-is-not-a-parameter") == 1
+}
+
+test fn nfr_readable_source_has_no_unread() -> Bool {
+  nfr_count_unread(reads: nfr_reads_of(text: nfr_classify_src)) == 0 && nfr_count_unread(reads: nfr_reads_of(text: nfr_src)) == 0
+}
+
+test fn nfr_census_coproduct_declared_in_module() -> Bool {
+  match nfr_normalized(text: nfr_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: nt, diagnostics: _ } =>
+      declares_coproduct_named(root: nt.root, name: "C") && (declares_coproduct_named(root: nt.root, name: "R") == false)
+  }
+}
+
+data nfr_roster_src: String = "module m.r\n\nimport std.roster_frontier { FrontierRow, PathSubject }\n\ndata non_fold_residue_frontier: List<FrontierRow> = [\n  FrontierRow { subject: PathSubject { path: \"pick\" }, reason: \"r\", dissolution: d },\n  FrontierRow { subject: PathSubject { path: \"dag/x.dag::other#arm2\" }, reason: \"r\", dissolution: d }\n]\n"
+
+fn nfr_roster_keys() -> List<String> {
+  match nfr_normalized(text: nfr_roster_src) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: nt, diagnostics: _ } => roster_join_keys(file: "dag/m/r.dag", root: nt.root)
+  }
+}
+
+test fn nfr_roster_bare_subject_takes_the_host_file_prefix() -> Bool {
+  match list_at_optional(xs: nfr_roster_keys(), index: 0) {
+    Present { value: k } => k == "dag/m/r.dag::pick"
+    Absent => false
+  }
+}
+
+test fn nfr_roster_qualified_subject_keeps_its_file_and_drops_the_arm() -> Bool {
+  (count(nfr_roster_keys()) == 2) && (match list_at_optional(xs: nfr_roster_keys(), index: 1) {
+    Present { value: k } => k == "dag/x.dag::other"
+    Absent => false
+  })
+}
+
+test fn nfr_head_module_is_the_import_target_minus_the_declaration() -> Bool {
+  match head_module_optional(pairs: [ImportPair { binding: "Optional", target: "std.optional.Optional" }], head: "Optional") {
+    Present { value: m } => m == "std.optional"
+    Absent => false
+  }
+}
+
+test fn nfr_unbound_head_has_no_module() -> Bool {
+  match head_module_optional(pairs: [], head: "Optional") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn nfr_site_key_joins_file_and_fn() -> Bool {
+  site_join_key(file: "dag/m/r.dag", fn_name: "pick") == "dag/m/r.dag::pick"
+}
+
+data nfr_zero_arity_src: String = "module m.z\n\ntype C = A | B\n\nfn pick() -> C {\n  A\n}\n\nfn zero() -> Int {\n  match pick() {\n    A => 1\n    _ => 0\n  }\n}\n"
+
+// A fn with no parameters is read, not unread: its empty Conj domain is the accessor's "no binding", and the
+// scrutinee (necessarily not a parameter) is classified. Before the fix this was Unread parameters-unreadable
+// (8 production fns at the first exact-head run); the RED is that Unread count being 1.
+test fn nfr_zero_arity_fn_is_classified_not_unread() -> Bool {
+  nfr_count_unread(reads: nfr_reads_of(text: nfr_zero_arity_src)) == 0 && nfr_count_classified(reads: nfr_reads_of(text: nfr_zero_arity_src), want: "scrutinee-is-an-expression") == 1
+}

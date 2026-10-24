@@ -1,5 +1,7 @@
 module gunbc.instruments.native_crypto_cost
 
+import gunbc.non_fold_residue { nfr_dissolve_derived_variant_test, nfr_reason_variant_test_predicate }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { Int, List, String, Bool, NonEmptyStr }
 import std.measure { Nanosecond, nanosecond }
 import std.bignat { BigNat, bignat_one, bignat_sub, bignat_zero_limbs, bignat_add_scaled, bignat_pad, bignat_drop_lowest, montgomery_step }
@@ -224,4 +226,8 @@ data native_crypto_cost_expected_identities: List<String> = [
   "signature_verify_p256",
   "app_attest_verify_attestation",
   "app_attest_verify_assertion"
+]
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "signature_verified" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
 ]

@@ -1,5 +1,7 @@
 module gunbc.auth.approval_device_crypto_wire
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_wildcard_found_by_join_measurement }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.algebra { trim, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
@@ -1065,3 +1067,8 @@ fn assertion_check_request_json(object_b64: NonEmptyStr, e: AssertionExpectation
     json_kv(key: "expected_bundle_version", value: json_string(s: e.expected_bundle_version as String)),
   ]))
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "decode_device_crypto_payload" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "decode_non_verified_payload" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+]
