@@ -1,0 +1,4 @@
+module probe_host_text_concat_record
+import std.types { String, Int, List }
+type P { value: Int }
+fn text(p: P) -> String { concat("id=", p) }

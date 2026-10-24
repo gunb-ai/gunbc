@@ -1,0 +1,4 @@
+module probe_host_text_kernel_scalars
+import std.types { String, Int, Bool, List }
+import std.nat { Nat }
+fn text(i: Int, n: Nat, b: Bool, is: List<Int>, ns: List<Nat>, bs: List<Bool>) -> String { concat(concat(concat("i=", i), concat("n=", n)), concat(concat("b=", b), concat(join(is, ","), concat(join(ns, ","), join(bs, ","))))) }

@@ -1,0 +1,4 @@
+module probe_host_text_join_record
+import std.types { String, Int, List }
+type P { value: Int }
+fn text(ps: List<P>) -> String { join(ps, ",") }
