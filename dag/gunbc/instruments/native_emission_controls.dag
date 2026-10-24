@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, Map, NonEmptyStr, Set, String }
 import std.algebra { length, fold_list }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_from_dotted_string }
 import v2.std.node { Symbol, symbol_intern_lexeme }
-import gunbc.instruments.native_emission_controls_alias { ControlWords, control_words_of }
+import gunbc.instruments.native_emission_controls_alias { ControlWords, control_words_of, control_words_groups_add }
 import std.list { duplicated_by_key }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
 import std.resource_contract { Observation, Read }
@@ -686,6 +686,7 @@ data native_emission_expected_identities: List<String> = [
   "generic_callee_lambda_param_bound_by_list_alias_actual_field_read",
   "generic_callee_lambda_param_red_list_alias_actual_absent_key_is_zero",
   "generic_callee_fold_empty_list_seed_keeps_later_solve",
+  "generic_callee_item_bound_by_list_alias_element_actual",
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
   "set_struct_eq_red_set_member_differs",
@@ -880,7 +881,8 @@ fn list_alias_actual_fold_closure_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "generic_callee_lambda_param_bound_by_list_alias_actual_field_read", held: control_row_weight_of(rows: [ControlRow { key: 1, weight: 10 }, ControlRow { key: 2, weight: 20 }], key: 2) == 20 },
     NativeEmissionCase { identity: "generic_callee_lambda_param_red_list_alias_actual_absent_key_is_zero", held: control_row_weight_of(rows: [ControlRow { key: 1, weight: 10 }], key: 9) == 0 },
-    NativeEmissionCase { identity: "generic_callee_fold_empty_list_seed_keeps_later_solve", held: (control_row_keys_of(rows: [ControlRow { key: 1, weight: 10 }, ControlRow { key: 2, weight: 20 }]) |> count) == 2 }
+    NativeEmissionCase { identity: "generic_callee_fold_empty_list_seed_keeps_later_solve", held: (control_row_keys_of(rows: [ControlRow { key: 1, weight: 10 }, ControlRow { key: 2, weight: 20 }]) |> count) == 2 },
+    NativeEmissionCase { identity: "generic_callee_item_bound_by_list_alias_element_actual", held: (control_words_groups_add(groups: [control_words_of(name: "a")], item: control_words_of(name: "b")) |> count) == 2 }
   ]
 }
 

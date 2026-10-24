@@ -15082,7 +15082,16 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
 // diagnostics at every [] fold seed).
 fn unify_denoted_actual(actual: Node) -> Node {
   match actual.inferred {
-    Present { value: Resolved { node: rt } } => if actual.connective == Arrow || !type_node_is_ground(n: rt) { actual } else { rt }
+    Present { value: Resolved { node: rt } } =>
+      if actual.connective == Arrow || !type_node_is_ground(n: rt) { actual }
+      else {
+        // An alias declaration element denotes its authored right-hand side (a type expression carrying its declaration), so T
+        // settles by declaration identity with every other spelling of the alias; every other declaration denotes itself.
+        match transparent_alias_rhs(pre: rt) {
+          Present { value: rhs } => rhs
+          Absent => rt
+        }
+      }
     _ => actual
   }
 }
