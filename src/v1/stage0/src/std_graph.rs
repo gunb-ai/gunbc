@@ -2,7 +2,7 @@
 // Source module: std.graph
 
 pub use crate::std_algebra::{
-    collection_concat_shape, collection_count_shape, collection_map_shape,
+    collection_concat_shape, collection_count_shape, collection_map_shape, list_push,
 };
 pub use crate::std_optional::Optional;
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};

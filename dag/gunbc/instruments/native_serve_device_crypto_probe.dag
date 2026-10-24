@@ -7,6 +7,11 @@ import extdeps.standards.rfc_6979 {
   rfc6979_a25_message_sample, rfc6979_a25_message_test, rfc6979_a25_p256_sha256_sample_signature,
 }
 import extdeps.apple.app_attest_sample_ios_14_4 { sample_attestation_octets, sample_assertion_octets, sample_client_data }
+import gunbc.instruments.app_attest_operator_device_ios_26_6_2 {
+  operator_device_attestation_octets, operator_device_client_data, operator_device_key_id_b64,
+  operator_device_team_identifier, operator_device_bundle_identifier, operator_device_observed_at,
+}
+import extdeps.apple.app_attest { AttestationExpectation, AttestKeyId, AppIdPrefix, AppAttestDevelopment, app_attest_app_id }
 import gunbc.auth.approval_device_crypto_self_check {
   octets_text, first_octet_changed, rfc6979_check, sample_attestation_expectation, sample_assertion_expectation, assertion_expectation_with,
 }
@@ -42,13 +47,12 @@ import gunbc.auth.approval_device_crypto_wire {
 //   - signature, the sample signature over a different message: invalid.
 //   - P-256 base point order: n*G is infinity; (n-1)*G is finite (the control that makes the first an
 //     observation: a scalar multiplication that always answered infinity fails the second).
-//   - Apple's published iOS 14.4 attestation and assertion (extdeps.apple.app_attest_sample_ios_14_4):
-//     the sample predates apple_validation_category_01, so the verdicts the folds owe are the refusals
-//     AttestationValidationCategoryAbsent and AssertionValidationCategoryAbsent -- reaching those
-//     arms on real bytes is the evidence every earlier step, the two P-384 chain links and the P-256
-//     assertion signature included, passed in the emitted binary (gunbc.instruments.native_app_attest
-//     states the same standing for the fold run directly). WHAT A WHOLE-FOLD POSITIVE CONTROL NEEDS is
-//     that instrument's named trigger, unchanged.
+//   - Apple's published iOS 14.4 attestation and assertion (extdeps.apple.app_attest_sample_ios_14_4)
+//     and the operator's iPhone attestation (gunbc.instruments.app_attest_operator_device_ios_26_6_2):
+//     none carries an authData extensions map, so the verdicts the folds owe are the success arms
+//     AttestationVerified and AssertionAuthentic, with the two P-384 chain links and the P-256
+//     assertion signature run in the emitted binary (gunbc.instruments.native_app_attest states the
+//     same standing for the fold run directly).
 //   - the same attestation with a client data that is not the one the nonce commits to: refused with
 //     AttestationNonceMismatch, which distinguishes a service that reads the request's expectation from
 //     one that answers the owed arm for any object.
@@ -105,6 +109,27 @@ fn crypto_post(path: String, body: String) -> String {
   concat("POST ", concat(path, concat(" HTTP/1.1\r\nHost: probe\r\nContent-Length: ", concat(to_string(value: string_length(s: body)), concat("\r\n\r\n", body)))))
 }
 
+// The operator iPhone's expectation as the broker sent it to the verifier (the request that was refused in production).
+fn operator_device_attestation_expectation(client_data: NonEmptyStr) -> AttestationExpectation {
+  operator_device_with(client_data: client_data, app_id: app_attest_app_id(prefix: operator_device_team_identifier as AppIdPrefix, bundle_id: operator_device_bundle_identifier))
+}
+
+fn operator_device_with_app_id(a: NonEmptyStr) -> AttestationExpectation {
+  operator_device_with(client_data: operator_device_client_data, app_id: a)
+}
+
+fn operator_device_with(client_data: NonEmptyStr, app_id: NonEmptyStr) -> AttestationExpectation {
+  AttestationExpectation {
+    key_id: operator_device_key_id_b64 as AttestKeyId,
+    client_data: client_data,
+    app_id: app_id,
+    environment: AppAttestDevelopment,
+    observed_at: operator_device_observed_at as String,
+    admitted_validation_categories: [2, 3, 4],
+    expected_bundle_version: "1" as NonEmptyStr,
+  }
+}
+
 fn answer_words(verdict: String, arm: String) -> String {
   concat("\"verdict\": \"", concat(verdict, concat("\", \"arm\": \"", concat(arm, "\""))))
 }
@@ -154,10 +179,31 @@ fn crypto_cases() -> List<DeviceCryptoProbeCase> {
       client_reading: ClientReadingNotJudged,
     },
     DeviceCryptoProbeCase {
-      identity: "attestation_ios_14_4_sample_reaches_the_validation_category_refusal",
+      identity: "attestation_ios_14_4_sample_verifies",
       request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: sample_attestation_octets, url_safe: false) as NonEmptyStr, e: sample_attestation_expectation(client_data: sample_client_data))),
       status: 200,
-      body_contains: answer_words(verdict: "refused", arm: "AttestationValidationCategoryAbsent"),
+      body_contains: answer_words(verdict: "verified", arm: "AttestationVerified"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "attestation_operator_iphone_verifies",
+      request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: operator_device_attestation_octets, url_safe: false) as NonEmptyStr, e: operator_device_attestation_expectation(client_data: operator_device_client_data))),
+      status: 200,
+      body_contains: answer_words(verdict: "verified", arm: "AttestationVerified"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "red_operator_iphone_with_another_app_id_is_an_app_id_mismatch",
+      request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: operator_device_attestation_octets, url_safe: false) as NonEmptyStr, e: operator_device_with_app_id(a: "72HGYAMBVQ.ai.gunb.other" as NonEmptyStr))),
+      status: 200,
+      body_contains: answer_words(verdict: "refused", arm: "AttestationAppIdMismatch"),
+      client_reading: ClientReadingNotJudged,
+    },
+    DeviceCryptoProbeCase {
+      identity: "red_operator_iphone_with_another_client_data_is_a_nonce_mismatch",
+      request: crypto_post(path: device_crypto_attestation_path, body: attestation_check_request_json(object_b64: octets_text(octets: operator_device_attestation_octets, url_safe: false) as NonEmptyStr, e: operator_device_attestation_expectation(client_data: "not-the-operator-client-data" as NonEmptyStr))),
+      status: 200,
+      body_contains: answer_words(verdict: "refused", arm: "AttestationNonceMismatch"),
       client_reading: ClientReadingNotJudged,
     },
     DeviceCryptoProbeCase {
@@ -168,10 +214,10 @@ fn crypto_cases() -> List<DeviceCryptoProbeCase> {
       client_reading: ClientReadingNotJudged,
     },
     DeviceCryptoProbeCase {
-      identity: "assertion_ios_14_4_sample_reaches_the_validation_category_refusal",
+      identity: "assertion_ios_14_4_sample_is_authentic",
       request: crypto_post(path: device_crypto_assertion_path, body: assertion_check_request_json(object_b64: octets_text(octets: sample_assertion_octets, url_safe: false) as NonEmptyStr, e: sample_assertion_expectation())),
       status: 200,
-      body_contains: answer_words(verdict: "refused", arm: "AssertionValidationCategoryAbsent"),
+      body_contains: answer_words(verdict: "verified", arm: "AssertionAuthentic"),
       client_reading: ClientReadingNotJudged,
     },
     DeviceCryptoProbeCase {
