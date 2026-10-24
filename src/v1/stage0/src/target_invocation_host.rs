@@ -507,6 +507,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("fleet-convergence-verdict-route"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/fleet_convergence_verdict_route.dag",
+                function: "fleet_convergence_verdict_route_wire",
+            },
+        ),
+        (
             instrument_label("native-allocation-observation"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_allocation_observation.dag",
@@ -2083,14 +2090,29 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         crate::v1_interpreter::ExecutionMode::Wet,
     );
     let scratch = std::path::Path::new("target").join(label_name);
-    let write_root = |name: &str, function: &str| -> Result<String, String> {
+    // THE RUN'S ONE FILLED HOME CLOSURE, computed here once and handed to every wave entry point (the three head-file
+    // providers and the standing), so the acquisition door (v2.compiler.module_acquisition) opens ONCE per run instead
+    // of once per proof: within one door start the known/absent memos make re-reads impossible, so a run that recomputed
+    // the closures per proof re-read the substrate per proof (fleet probe 39758520315: 21 starts x 10 substrate files).
+    let roster_closures =
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, "wave_run_closures", &[], true)
+        {
+            Ok(value) => value,
+            Err(cause) => return unreached(format!("wave_run_closures failed: {cause}")),
+        };
+    let closures_arg = vec![(Some("closures".to_string()), roster_closures.clone())];
+    let write_root = |name: &str,
+                      function: &str,
+                      entry_args: &[(Option<String>, crate::v1_interpreter::Value)]|
+     -> Result<String, String> {
         // A NATIVE SOURCE ROOT IS A GOVERNED TREE'S DIRECTORY (v2.cli.repository_layout
         // repository_root_argument_names_tree): the fixture is written as a `dag` tree under its own
         // directory, so `examples.decls` lands at <root>/dag/examples/decls.dag and the driver binds the root.
         let _ = std::fs::remove_dir_all(scratch.join(name));
         let root = scratch.join(name).join("dag");
-        let files = crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
-            .map_err(|cause| format!("{function} failed: {cause}"))?;
+        let files =
+            crate::v1_interpreter::run_in_context_with_args(&ctx, function, entry_args, true)
+                .map_err(|cause| format!("{function} failed: {cause}"))?;
         for (path, content) in fixture_file_rows(&ctx, &files)? {
             let target = root.join(&path);
             if let Some(parent) = target.parent() {
@@ -2227,20 +2249,33 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         Err(cause) => return unreached(format!("the merge preflight failed: {cause}")),
     }
     // The control fixtures are written only past the preflight: a refused merge never reads them.
-    let fixture_roots = write_root("rebind_base", "binding_diff_rebind_base_files")
-        .and_then(|b| write_root("rebind_head", "binding_diff_rebind_head_files").map(|h| (b, h)));
+    let fixture_roots =
+        write_root("rebind_base", "binding_diff_rebind_base_files", &[]).and_then(|b| {
+            write_root("rebind_head", "binding_diff_rebind_head_files", &[]).map(|h| (b, h))
+        });
     let (rebind_base, rebind_head) = match fixture_roots {
         Ok(pair) => pair,
         Err(cause) => return unreached(cause),
     };
-    let wave_roots = write_root("wave_base", "binding_diff_wave_base_files")
-        .and_then(|b| write_root("wave_admit", "binding_diff_wave_head_files").map(|a| (b, a)))
+    let wave_roots = write_root("wave_base", "binding_diff_wave_base_files", &[])
+        .and_then(|b| {
+            write_root("wave_admit", "binding_diff_wave_head_files", &closures_arg).map(|a| (b, a))
+        })
         .and_then(|(b, a)| {
-            write_root("wave_moved", "binding_diff_wave_moved_head_files").map(|m| (b, a, m))
+            write_root(
+                "wave_moved",
+                "binding_diff_wave_moved_head_files",
+                &closures_arg,
+            )
+            .map(|m| (b, a, m))
         })
         .and_then(|(b, a, m)| {
-            write_root("wave_wrong_home", "binding_diff_wave_wrong_home_head_files")
-                .map(|w| (b, a, m, w))
+            write_root(
+                "wave_wrong_home",
+                "binding_diff_wave_wrong_home_head_files",
+                &closures_arg,
+            )
+            .map(|w| (b, a, m, w))
         });
     let (wave_base, wave_admit, wave_moved, wave_wrong_home) = match wave_roots {
         Ok(roots) => roots,
@@ -2348,6 +2383,7 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         (Some("instr_rev".to_string()), text(&instr_rev)),
         (Some("rewritten".to_string()), text(&rewritten_text)),
         (Some("shard_mode".to_string()), text(&shard_mode)),
+        (Some("closures".to_string()), roster_closures),
     ];
     match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
