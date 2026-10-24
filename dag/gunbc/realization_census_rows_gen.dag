@@ -53,7 +53,17 @@ import gunbc.realization_census {
   realization_level_text,
   realization_dimension_text,
   census_module_class_text,
+  CensusPhase,
+  PhaseP0,
+  PhaseP0Random,
+  PhaseP2,
+  PhaseP2Parent,
+  PhaseP3,
+  EvidenceCitation,
+  EvidenceDeclaration,
+  EvidenceUncited,
 }
+import std.decl_ref { decl_ref }
 
 // THE INTERIM PRODUCER OF THE REALIZATION CENSUS ROWS. The census was read by hand by a sibling
 // lane and handed over as three TSVs, kept as the dated receipt under
@@ -77,12 +87,41 @@ import gunbc.realization_census {
 // with the projection of the findings that name it. Those counts are then dropped, because a count
 // the findings determine is not a second fact.
 
+// WHICH CLOSED VOCABULARY A CELL FELL OUTSIDE.
+type CensusVocabulary
+  = VocabDecisionSite
+  | VocabDecisionSites
+  | VocabRealizationLevel
+  | VocabRealizationDimension
+  | VocabModuleClass
+  | VocabCount
+  | VocabClassRung
+  | VocabCeilingRung
+  | VocabPhase
+
+type CensusRefusalCause
+  = CauseNoHeaderRow
+  | CauseHeaderMissingColumn
+  | CauseHeaderUndeclaredColumn
+  | CauseHeaderDoubledColumn
+  | CauseCellCount { header_cells: Int }
+  | CauseIdentityEmpty
+  | CauseIdentityDuplicated { first_line: Int }
+  | CauseReferenceEmpty
+  | CauseOutsideVocabulary { vocabulary: CensusVocabulary }
+  | CauseEmptyCitation
+  | CauseUnknownModule
+  | CauseUnknownClass
+  | CauseCountDisagrees { projected: Int }
+  | CauseReceiptUnreadable { error: String }
+  | CauseRowsModuleUnwritable
+
 type CensusCellRefusal {
   table: String
   line: Int
   column: String
   value: String
-  cause: String
+  cause: CensusRefusalCause
 }
 
 type CensusRowAdmission<T>
@@ -134,12 +173,46 @@ data realization_census_class_columns: List<String> = [
   "owning_authority", "wall", "red_control", "residual", "next_trigger",
 ]
 
-fn census_refusal(table: String, line: Int, column: String, value: String, cause: String) -> CensusCellRefusal {
+fn census_vocabulary_text(v: CensusVocabulary) -> String {
+  match v {
+    VocabDecisionSite => "not a decision-site class"
+    VocabDecisionSites => "not one or more decision-site classes joined by /"
+    VocabRealizationLevel => "not a realization level L0-L5"
+    VocabRealizationDimension => "not a realization dimension"
+    VocabModuleClass => "not a census module class"
+    VocabCount => "not a non-negative count"
+    VocabClassRung => "not a rung 0-4"
+    VocabCeilingRung => "does not begin with a ladder rung 1-4"
+    VocabPhase => "not a census phase"
+  }
+}
+
+fn census_refusal_cause_text(c: CensusRefusalCause) -> String {
+  match c {
+    CauseNoHeaderRow => "the file has no header row"
+    CauseHeaderMissingColumn => "the header has no such column"
+    CauseHeaderUndeclaredColumn => "the header names a column this census does not declare"
+    CauseHeaderDoubledColumn => "the header names this column more than once"
+    CauseCellCount { header_cells: n } => concat("the row has this many cells; the header has ", to_string(n))
+    CauseIdentityEmpty => "the identity column is empty"
+    CauseIdentityDuplicated { first_line: l } => concat("duplicates the identity first written at line ", to_string(l))
+    CauseReferenceEmpty => "a finding names no module"
+    CauseOutsideVocabulary { vocabulary: v } => census_vocabulary_text(v: v)
+    CauseEmptyCitation => "an evidence citation is empty"
+    CauseUnknownModule => "a finding names a module the modules tab does not have"
+    CauseUnknownClass => "a finding names a class the classes tab does not have"
+    CauseCountDisagrees { projected: n } => concat("the findings naming this class project ", to_string(n))
+    CauseReceiptUnreadable { error: e } => concat("the receipt file could not be read: ", e)
+    CauseRowsModuleUnwritable => "the rows module could not be written"
+  }
+}
+
+fn census_refusal(table: String, line: Int, column: String, value: String, cause: CensusRefusalCause) -> CensusCellRefusal {
   CensusCellRefusal { table: table, line: line, column: column, value: value, cause: cause }
 }
 
 fn census_refusal_text(r: CensusCellRefusal) -> String {
-  concat(r.table, ":", to_string(r.line), " column ", r.column, " value `", r.value, "`: ", r.cause)
+  concat(r.table, ":", to_string(r.line), " column ", r.column, " value `", r.value, "`: ", census_refusal_cause_text(c: r.cause))
 }
 
 // ── TSV structure ──────────────────────────────────────────────────────────────────────────────
@@ -155,7 +228,7 @@ fn census_table_of_text(name: String, text: String) -> CensusTableAdmission {
   }
   let lines = if terminated { take_prefix(raw_lines, count(raw_lines) - 1) } else { raw_lines }
   match first(lines) {
-    Absent => CensusTableRefused { refusal: census_refusal(table: name, line: 1, column: "", value: "", cause: "the file has no header row") }
+    Absent => CensusTableRefused { refusal: census_refusal(table: name, line: 1, column: "", value: "", cause: CauseNoHeaderRow) }
     Present { value: header_line } =>
       CensusTableRead {
         table: CensusTable {
@@ -177,13 +250,13 @@ fn census_column_index(table: CensusTable, column: String) -> Int? {
 fn census_header_refusals(table: CensusTable, expected: List<String>) -> List<CensusCellRefusal> {
   let missing = expected
     |> filter(c => count(filter(table.header, h => h == c)) == 0)
-    |> map(c => census_refusal(table: table.name, line: 1, column: c, value: "", cause: "the header has no such column"))
+    |> map(c => census_refusal(table: table.name, line: 1, column: c, value: "", cause: CauseHeaderMissingColumn))
   let unexpected = table.header
     |> filter(h => count(filter(expected, c => c == h)) == 0)
-    |> map(h => census_refusal(table: table.name, line: 1, column: h, value: h, cause: "the header names a column this census does not declare"))
+    |> map(h => census_refusal(table: table.name, line: 1, column: h, value: h, cause: CauseHeaderUndeclaredColumn))
   let doubled = expected
     |> filter(c => count(filter(table.header, h => h == c)) > 1)
-    |> map(c => census_refusal(table: table.name, line: 1, column: c, value: c, cause: "the header names this column more than once"))
+    |> map(c => census_refusal(table: table.name, line: 1, column: c, value: c, cause: CauseHeaderDoubledColumn))
   append(append(missing, unexpected), doubled)
 }
 
@@ -195,7 +268,7 @@ fn census_width_refusals(table: CensusTable) -> List<CensusCellRefusal> {
       line: r.line,
       column: "",
       value: to_string(count(r.cells)),
-      cause: concat("the row has this many cells; the header has ", to_string(count(table.header))),
+      cause: CauseCellCount { header_cells: count(table.header) },
     ))
 }
 
@@ -274,6 +347,66 @@ fn admit_census_class_rung(t: String) -> CensusClassRung? {
   }
 }
 
+fn admit_census_phase(t: String) -> CensusPhase? {
+  if t == "P0" { Present { value: PhaseP0 } }
+  else if t == "P0-random" { Present { value: PhaseP0Random } }
+  else if t == "P2" { Present { value: PhaseP2 } }
+  else if t == "P2-parent" { Present { value: PhaseP2Parent } }
+  else if t == "P3" { Present { value: PhaseP3 } }
+  else { none }
+}
+
+// A declaration name is letters, digits and `_`, not starting with a digit: what is left after
+// deleting every such character is empty.
+data identifier_characters: List<String> = [
+  "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+  "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+  "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "_",
+]
+
+data digit_characters: List<String> = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+fn is_declaration_name(t: String) -> Bool {
+  let lead = substring(s: t, start: 0, end: 1)
+  string_length(s: t) > 0
+    && count(filter(digit_characters, d => d == lead)) == 0
+    && fold(identifier_characters, init: t, f: fn(rest, c) { replace(rest, c, "") }) == ""
+}
+
+fn without_keyword(t: String) -> String {
+  if starts_with(s: t, prefix: "data ") { substring(s: t, start: 5, end: string_length(s: t)) }
+  else if starts_with(s: t, prefix: "type ") { substring(s: t, start: 5, end: string_length(s: t)) }
+  else if starts_with(s: t, prefix: "fn ") { substring(s: t, start: 3, end: string_length(s: t)) }
+  else { t }
+}
+
+// A row module named by a path (a Rust seed file) is not a .dag module, so nothing in it is a
+// declaration reference; its citations stay text.
+fn admit_evidence_citation(module: NonEmptyStr, t: String) -> EvidenceCitation? {
+  let entry = trim(s: t)
+  let name = without_keyword(t: entry)
+  if string_length(s: entry) == 0 {
+    none
+  } else if !string_contains(s: module as String, pattern: "/") && is_declaration_name(t: name) {
+    Present { value: EvidenceDeclaration { ref: decl_ref(module_path: module as String, decl_name: name) } }
+  } else {
+    Present { value: EvidenceUncited { text: entry as NonEmptyStr } }
+  }
+}
+
+fn admit_evidence_citations(module: NonEmptyStr, t: String) -> List<EvidenceCitation>? {
+  if string_length(s: t) == 0 {
+    Present { value: [] }
+  } else {
+    let admitted = split(s: t, delimiter: ";") |> map(part => admit_evidence_citation(module: module, t: part))
+    if count(filter(admitted, a => a == none)) > 0 {
+      none
+    } else {
+      Present { value: admitted |> flat_map(a => match a { Present { value: c } => [c]  Absent => [] }) }
+    }
+  }
+}
+
 fn admit_nonempty(t: String) -> NonEmptyStr? {
   if string_length(s: t) > 0 { Present { value: t as NonEmptyStr } } else { none }
 }
@@ -308,7 +441,7 @@ fn ceiling_reason_of(t: String) -> String {
 
 // ── rows ───────────────────────────────────────────────────────────────────────────────────────
 
-fn vocab_refusal<T>(table: CensusTable, row: CensusTableRow, column: String, cause: String) -> CensusRowAdmission<T> {
+fn vocab_refusal<T>(table: CensusTable, row: CensusTableRow, column: String, cause: CensusRefusalCause) -> CensusRowAdmission<T> {
   CensusRowRefused { refusal: census_refusal(table: table.name, line: row.line, column: column, value: census_cell(table: table, row: row, column: column), cause: cause) }
 }
 
@@ -316,10 +449,10 @@ fn admit_dimension_reading(table: CensusTable, row: CensusTableRow, dimension: S
   let site_column = concat(dimension, "_site")
   let level_column = concat(dimension, "_level")
   match admit_decision_site(t: census_cell(table: table, row: row, column: site_column)) {
-    Absent => vocab_refusal(table: table, row: row, column: site_column, cause: "not a decision-site class")
+    Absent => vocab_refusal(table: table, row: row, column: site_column, cause: CauseOutsideVocabulary { vocabulary: VocabDecisionSite })
     Present { value: site } =>
       match admit_realization_level(t: census_cell(table: table, row: row, column: level_column)) {
-        Absent => vocab_refusal(table: table, row: row, column: level_column, cause: "not a realization level L0-L5")
+        Absent => vocab_refusal(table: table, row: row, column: level_column, cause: CauseOutsideVocabulary { vocabulary: VocabRealizationLevel })
         Present { value: level } => CensusRowAdmitted { reading: DimensionReading { site: site, level: level } }
       }
   }
@@ -327,10 +460,10 @@ fn admit_dimension_reading(table: CensusTable, row: CensusTableRow, dimension: S
 
 fn admit_module_row(table: CensusTable, row: CensusTableRow) -> CensusRowAdmission<ModuleCensusReading> {
   match admit_nonempty(t: census_cell(table: table, row: row, column: "module")) {
-    Absent => vocab_refusal(table: table, row: row, column: "module", cause: "the identity column is empty")
+    Absent => vocab_refusal(table: table, row: row, column: "module", cause: CauseIdentityEmpty)
     Present { value: module } =>
       match admit_census_module_class(t: census_cell(table: table, row: row, column: "class")) {
-        Absent => vocab_refusal(table: table, row: row, column: "class", cause: "not a census module class")
+        Absent => vocab_refusal(table: table, row: row, column: "class", cause: CauseOutsideVocabulary { vocabulary: VocabModuleClass })
         Present { value: module_class } =>
           match admit_dimension_reading(table: table, row: row, dimension: "storage") {
             CensusRowRefused { refusal: r } => CensusRowRefused { refusal: r }
@@ -348,11 +481,17 @@ fn admit_module_row(table: CensusTable, row: CensusTableRow) -> CensusRowAdmissi
                             CensusRowRefused { refusal: r } => CensusRowRefused { refusal: r }
                             CensusRowAdmitted { reading: placement } =>
                               match admit_count(t: census_cell(table: table, row: row, column: "ambient_calls")) {
-                                Absent => vocab_refusal(table: table, row: row, column: "ambient_calls", cause: "not a non-negative count")
+                                Absent => vocab_refusal(table: table, row: row, column: "ambient_calls", cause: CauseOutsideVocabulary { vocabulary: VocabCount })
                                 Present { value: ambient } =>
                                   match admit_decision_site(t: census_cell(table: table, row: row, column: "worst_site")) {
-                                    Absent => vocab_refusal(table: table, row: row, column: "worst_site", cause: "not a decision-site class")
+                                    Absent => vocab_refusal(table: table, row: row, column: "worst_site", cause: CauseOutsideVocabulary { vocabulary: VocabDecisionSite })
                                     Present { value: worst } =>
+                                      match admit_census_phase(t: census_cell(table: table, row: row, column: "phase")) {
+                                       Absent => vocab_refusal(table: table, row: row, column: "phase", cause: CauseOutsideVocabulary { vocabulary: VocabPhase })
+                                       Present { value: phase } =>
+                                      match admit_evidence_citations(module: module, t: census_cell(table: table, row: row, column: "evidence_symbols")) {
+                                       Absent => vocab_refusal(table: table, row: row, column: "evidence_symbols", cause: CauseEmptyCitation)
+                                       Present { value: evidence } =>
                                       CensusRowAdmitted {
                                         reading: ModuleCensusReading {
                                           module: module,
@@ -365,9 +504,11 @@ fn admit_module_row(table: CensusTable, row: CensusTableRow) -> CensusRowAdmissi
                                           ambient_calls: ambient,
                                           worst_site: worst,
                                           worst_finding: census_cell(table: table, row: row, column: "worst_finding"),
-                                          evidence_symbols: census_cell(table: table, row: row, column: "evidence_symbols"),
-                                          phase: census_cell(table: table, row: row, column: "phase"),
+                                          evidence_symbols: evidence,
+                                          phase: phase,
                                         }
+                                      }
+                                      }
                                       }
                                   }
                               }
@@ -382,22 +523,22 @@ fn admit_module_row(table: CensusTable, row: CensusTableRow) -> CensusRowAdmissi
 
 fn admit_finding_row(table: CensusTable, row: CensusTableRow) -> CensusRowAdmission<FindingCensusReading> {
   match admit_nonempty(t: census_cell(table: table, row: row, column: "finding_id")) {
-    Absent => vocab_refusal(table: table, row: row, column: "finding_id", cause: "the identity column is empty")
+    Absent => vocab_refusal(table: table, row: row, column: "finding_id", cause: CauseIdentityEmpty)
     Present { value: finding_id } =>
       match admit_nonempty(t: census_cell(table: table, row: row, column: "module")) {
-        Absent => vocab_refusal(table: table, row: row, column: "module", cause: "a finding names no module")
+        Absent => vocab_refusal(table: table, row: row, column: "module", cause: CauseReferenceEmpty)
         Present { value: module } =>
           match admit_census_module_class(t: census_cell(table: table, row: row, column: "class")) {
-            Absent => vocab_refusal(table: table, row: row, column: "class", cause: "not a census module class")
+            Absent => vocab_refusal(table: table, row: row, column: "class", cause: CauseOutsideVocabulary { vocabulary: VocabModuleClass })
             Present { value: module_class } =>
               match admit_realization_dimension(t: census_cell(table: table, row: row, column: "dimension")) {
-                Absent => vocab_refusal(table: table, row: row, column: "dimension", cause: "not a realization dimension")
+                Absent => vocab_refusal(table: table, row: row, column: "dimension", cause: CauseOutsideVocabulary { vocabulary: VocabRealizationDimension })
                 Present { value: dimension } =>
                   match admit_decision_site(t: census_cell(table: table, row: row, column: "site")) {
-                    Absent => vocab_refusal(table: table, row: row, column: "site", cause: "not a decision-site class")
+                    Absent => vocab_refusal(table: table, row: row, column: "site", cause: CauseOutsideVocabulary { vocabulary: VocabDecisionSite })
                     Present { value: site } =>
                       match admit_realization_level(t: census_cell(table: table, row: row, column: "level")) {
-                        Absent => vocab_refusal(table: table, row: row, column: "level", cause: "not a realization level L0-L5")
+                        Absent => vocab_refusal(table: table, row: row, column: "level", cause: CauseOutsideVocabulary { vocabulary: VocabRealizationLevel })
                         Present { value: level } =>
                           CensusRowAdmitted {
                             reading: FindingCensusReading {
@@ -425,19 +566,19 @@ fn admit_finding_row(table: CensusTable, row: CensusTableRow) -> CensusRowAdmiss
 
 fn admit_class_row(table: CensusTable, row: CensusTableRow) -> CensusRowAdmission<ClassCensusReading> {
   match admit_nonempty(t: census_cell(table: table, row: row, column: "class_id")) {
-    Absent => vocab_refusal(table: table, row: row, column: "class_id", cause: "the identity column is empty")
+    Absent => vocab_refusal(table: table, row: row, column: "class_id", cause: CauseIdentityEmpty)
     Present { value: class_id } =>
       match admit_realization_dimension(t: census_cell(table: table, row: row, column: "dimension")) {
-        Absent => vocab_refusal(table: table, row: row, column: "dimension", cause: "not a realization dimension")
+        Absent => vocab_refusal(table: table, row: row, column: "dimension", cause: CauseOutsideVocabulary { vocabulary: VocabRealizationDimension })
         Present { value: dimension } =>
           match admit_decision_sites(t: census_cell(table: table, row: row, column: "decision_site")) {
-            Absent => vocab_refusal(table: table, row: row, column: "decision_site", cause: "not one or more decision-site classes joined by /")
+            Absent => vocab_refusal(table: table, row: row, column: "decision_site", cause: CauseOutsideVocabulary { vocabulary: VocabDecisionSites })
             Present { value: sites } =>
               match admit_census_class_rung(t: census_cell(table: table, row: row, column: "current_rung")) {
-                Absent => vocab_refusal(table: table, row: row, column: "current_rung", cause: "not a rung 0-4")
+                Absent => vocab_refusal(table: table, row: row, column: "current_rung", cause: CauseOutsideVocabulary { vocabulary: VocabClassRung })
                 Present { value: current } =>
                   match admit_guarantee_rung_digit(t: substring(s: census_cell(table: table, row: row, column: "attainable_ceiling"), start: 0, end: 1)) {
-                    Absent => vocab_refusal(table: table, row: row, column: "attainable_ceiling", cause: "does not begin with a ladder rung 1-4")
+                    Absent => vocab_refusal(table: table, row: row, column: "attainable_ceiling", cause: CauseOutsideVocabulary { vocabulary: VocabCeilingRung })
                     Present { value: ceiling } =>
                       CensusRowAdmitted {
                         reading: ClassCensusReading {
@@ -484,7 +625,7 @@ fn duplicate_identity_refusals(table: CensusTable, column: String) -> List<Censu
       Present { value: first_line } =>
         IdentityScan {
           seen: acc.seen,
-          refusals: append(acc.refusals, [census_refusal(table: table.name, line: row.line, column: column, value: key, cause: concat("duplicates the identity first written at line ", to_string(first_line)))]),
+          refusals: append(acc.refusals, [census_refusal(table: table.name, line: row.line, column: column, value: key, cause: CauseIdentityDuplicated { first_line: first_line })]),
         }
       Absent => IdentityScan { seen: map_insert(acc.seen, key, row.line), refusals: acc.refusals }
     }
@@ -520,10 +661,10 @@ fn finding_reference_refusals(
   let class_keys = key_set(keys: classes_table.rows |> map(r => census_cell(table: classes_table, row: r, column: "class_id")))
   let orphan_modules = table.rows
     |> filter(r => !map_contains_key(module_keys, census_cell(table: table, row: r, column: "module")))
-    |> map(r => census_refusal(table: table.name, line: r.line, column: "module", value: census_cell(table: table, row: r, column: "module"), cause: "a finding names a module the modules tab does not have"))
+    |> map(r => census_refusal(table: table.name, line: r.line, column: "module", value: census_cell(table: table, row: r, column: "module"), cause: CauseUnknownModule))
   let orphan_classes = table.rows
     |> filter(r => string_length(s: census_cell(table: table, row: r, column: "class_id")) > 0 && !map_contains_key(class_keys, census_cell(table: table, row: r, column: "class_id")))
-    |> map(r => census_refusal(table: table.name, line: r.line, column: "class_id", value: census_cell(table: table, row: r, column: "class_id"), cause: "a finding names a class the classes tab does not have"))
+    |> map(r => census_refusal(table: table.name, line: r.line, column: "class_id", value: census_cell(table: table, row: r, column: "class_id"), cause: CauseUnknownClass))
   append(orphan_modules, orphan_classes)
 }
 
@@ -557,7 +698,7 @@ fn class_count_refusals(table: CensusTable, findings: List<FindingCensusReading>
     ]
     derived
       |> filter(d => census_cell(table: table, row: r, column: d.column) != to_string(d.projected))
-      |> map(d => census_refusal(table: table.name, line: r.line, column: d.column, value: census_cell(table: table, row: r, column: d.column), cause: concat("the findings naming this class project ", to_string(d.projected))))
+      |> map(d => census_refusal(table: table.name, line: r.line, column: d.column, value: census_cell(table: table, row: r, column: d.column), cause: CauseCountDisagrees { projected: d.projected }))
   })
 }
 
@@ -660,6 +801,24 @@ fn guarantee_rung_constructor(r: GuaranteeRung) -> String {
   }
 }
 
+fn census_phase_constructor(p: CensusPhase) -> String {
+  match p {
+    PhaseP0 => "PhaseP0"
+    PhaseP0Random => "PhaseP0Random"
+    PhaseP2 => "PhaseP2"
+    PhaseP2Parent => "PhaseP2Parent"
+    PhaseP3 => "PhaseP3"
+  }
+}
+
+fn evidence_citation_constructor(c: EvidenceCitation) -> String {
+  match c {
+    EvidenceDeclaration { ref: r } =>
+      concat("EvidenceDeclaration { ref: decl_ref(module_path: ", dag_string_literal(t: r.module_path as String), ", decl_name: ", dag_string_literal(t: r.decl_name as String), ") }")
+    EvidenceUncited { text: t } => concat("EvidenceUncited { text: ", dag_nonempty_literal(t: t), " }")
+  }
+}
+
 fn dimension_reading_text(d: DimensionReading) -> String {
   concat("DimensionReading { site: ", decision_site_constructor(s: d.site), ", level: ", realization_level_constructor(l: d.level), " }")
 }
@@ -676,8 +835,8 @@ fn module_reading_text(m: ModuleCensusReading) -> String {
     ", ambient_calls: ", to_string(m.ambient_calls),
     ", worst_site: ", decision_site_constructor(s: m.worst_site),
     ", worst_finding: ", dag_string_literal(t: m.worst_finding),
-    ", evidence_symbols: ", dag_string_literal(t: m.evidence_symbols),
-    ", phase: ", dag_string_literal(t: m.phase),
+    ", evidence_symbols: [", join(m.evidence_symbols |> map(c => evidence_citation_constructor(c: c)), ", "), "]",
+    ", phase: ", census_phase_constructor(p: m.phase),
     " },",
   ], "")
 }
@@ -738,7 +897,10 @@ import gunbc.realization_census {
   ClassProduction, ClassSeedGenerated, ClassSeed, ClassRoster, ClassTest, ClassExtdeps,
   DimensionStorage, DimensionCaching, DimensionAccess, DimensionAuthz, DimensionPlacement, DimensionOther,
   RungUnmodeled, RungOnLadder,
-}"
+  PhaseP0, PhaseP0Random, PhaseP2, PhaseP2Parent, PhaseP3,
+  EvidenceDeclaration, EvidenceUncited,
+}
+import std.decl_ref { decl_ref }"
 
 fn realization_census_rows_module_text(
   pin: String,
@@ -781,7 +943,7 @@ fn read_receipt_file(dir: String, name: String) -> FilesystemReadOutcome {
 }
 
 fn read_refusal(name: String, error: String) -> CensusCellRefusal {
-  census_refusal(table: name, line: 0, column: "", value: "", cause: concat("the receipt file could not be read: ", error))
+  census_refusal(table: name, line: 0, column: "", value: "", cause: CauseReceiptUnreadable { error: error })
 }
 
 fn realization_census_rows_generate(receipt_dir: String, pin: String, census_commit: String) -> RealizationCensusGeneration {
@@ -802,7 +964,7 @@ fn realization_census_rows_generate(receipt_dir: String, pin: String, census_com
                   if write.success {
                     RealizationCensusRowsWritten { path: path, modules: count(m), findings: count(f), classes: count(c) }
                   } else {
-                    RealizationCensusGenerationRefused { refusals: [census_refusal(table: path, line: 0, column: "", value: "", cause: "the rows module could not be written")] }
+                    RealizationCensusGenerationRefused { refusals: [census_refusal(table: path, line: 0, column: "", value: "", cause: CauseRowsModuleUnwritable)] }
                   }
                 }
               }

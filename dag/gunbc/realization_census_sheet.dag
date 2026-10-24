@@ -82,6 +82,9 @@ import gunbc.realization_census {
   realization_levels_all,
   realization_dimensions_all,
   census_module_classes_all,
+  census_phases_all,
+  census_phase_text,
+  evidence_citation_text,
 }
 import gunbc.realization_census_rows {
   realization_census_pin,
@@ -226,8 +229,8 @@ fn module_projection_row(m: ModuleCensusReading) -> ProjectionRow {
         cell(column: "ambient_calls", value: to_string(m.ambient_calls)),
         cell(column: "worst_site", value: decision_site_text(s: m.worst_site)),
         cell(column: "worst_finding", value: m.worst_finding),
-        cell(column: "evidence_symbols", value: m.evidence_symbols),
-        cell(column: "phase", value: m.phase),
+        cell(column: "evidence_symbols", value: join(m.evidence_symbols |> map(c => evidence_citation_text(c: c)), "; ")),
+        cell(column: "phase", value: census_phase_text(p: m.phase)),
       ]),
   }
 }
@@ -438,7 +441,7 @@ fn module_tab_content() -> List<ColumnContent> {
       content(column: "worst_site", class: site_vocabulary()),
       content(column: "worst_finding", class: ContentProse),
       content(column: "evidence_symbols", class: ContentProse),
-      content(column: "phase", class: ContentCode),
+      content(column: "phase", class: vocabulary(texts: map(census_phases_all, p => census_phase_text(p: p)))),
     ])
 }
 

@@ -1,11 +1,16 @@
 module test.claim.realization_census_admission_witness
 
 import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import gunbc.realization_census { ModuleCensusReading, EvidenceDeclaration, EvidenceUncited, PhaseP2 }
 import gunbc.realization_census_rows_gen {
   RealizationCensusAdmission,
   RealizationCensusAdmitted,
   RealizationCensusRefused,
   CensusCellRefusal,
+  CauseOutsideVocabulary,
+  VocabPhase,
+  CauseIdentityDuplicated,
   admit_realization_census_text,
   dag_string_literal,
 }
@@ -98,3 +103,41 @@ test fn interpolation_brace_and_quote_are_escaped_in_the_rendered_literal() -> B
 }
 
 
+
+test fn phase_outside_its_vocabulary_refuses_with_the_typed_cause() -> Bool {
+  let bad = replace(m1, "\tP2", "\tP9")
+  let rs = refusals(a: admit(modules: [mh, bad, m2], findings: [fh, f1, f2], classes: [ch, c1]))
+  count(rs) == 1 && count(filter(rs, r => r.column == "phase" && match r.cause { CauseOutsideVocabulary { vocabulary: VocabPhase } => true  _ => false })) == 1
+}
+
+test fn duplicated_identity_carries_the_first_line_as_data() -> Bool {
+  let rs = refusals(a: admit(modules: [mh, m1, m1, m2], findings: [fh, f1, f2], classes: [ch, c1]))
+  count(filter(rs, r => r.line == 3 && match r.cause { CauseIdentityDuplicated { first_line: l } => l == 2  _ => false })) == 1
+}
+
+fn first_module(a: RealizationCensusAdmission) -> List<ModuleCensusReading> {
+  match a {
+    RealizationCensusAdmitted { modules: ms, findings: _, classes: _ } => ms
+    RealizationCensusRefused { refusals: _ } => []
+  }
+}
+
+// A bare name and a keyword-prefixed name are declarations of the row's module; an effect
+// operation and a parenthetical are kept as text; the phase is the constructor.
+test fn evidence_citations_split_into_references_and_text() -> Bool {
+  let row = replace(m1, "\tdata_root\t", "\tdata data_root; root_dir; Filesystem.Write; anchor (Open Group)\t")
+  match first(first_module(a: admit(modules: [mh, row, m2], findings: [fh, f1, f2], classes: [ch, c1]))) {
+    Present { value: m } =>
+      count(m.evidence_symbols) == 4
+        && count(filter(m.evidence_symbols, c => match c {
+             EvidenceDeclaration { ref: r } => (r.module_path as String) == "gunbc.a" && ((r.decl_name as String) == "data_root" || (r.decl_name as String) == "root_dir")
+             EvidenceUncited { text: _ } => false
+           })) == 2
+        && count(filter(m.evidence_symbols, c => match c {
+             EvidenceUncited { text: t } => (t as String) == "Filesystem.Write" || (t as String) == "anchor (Open Group)"
+             EvidenceDeclaration { ref: _ } => false
+           })) == 2
+        && match m.phase { PhaseP2 => true  _ => false }
+    Absent => false
+  }
+}
