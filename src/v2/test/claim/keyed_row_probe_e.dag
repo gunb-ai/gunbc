@@ -4,7 +4,7 @@ import v2.test.claim.type_param_binder_frame { tpb_artifact, tpb_std_optional_wi
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer }
 import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_has_reason }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, diagnostics_has_reason, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { Cons }
 import extdeps.communication.medium { Lossless, Medium }
@@ -82,10 +82,32 @@ fn kp_advisory(src: String) -> Bool {
   }
 }
 
-data kp_y: String = "module p\n\nimport std.probe_seq { Seq }\n\ntype Num\n  = N\n\nfn y(rows: Seq<Num>) -> Num {\n  N\n}\n"
+fn kp_fatal_is(src: String, reason: Symbol) -> Bool {
+  match kp_assemble(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: nd } => diagnostics_fatal_reason(d: nd) == reason
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+fn kp_rejected_with(src: String, reason: Symbol) -> Bool {
+  match kp_assemble(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: nd } => diagnostics_has_reason(d: Some { diagnostics: nd }, reason: reason)
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+data kp_y: String = "module p\n\nimport std.probe_seq { Seq }\n\ntype Num\n  = N\n  | M\n\nfn y(rows: Seq<Num>) -> Num {\n  N\n}\n"
 data kp_e: String = "module p\n\nimport std.optional { Optional, Present }\nimport std.probe_seq { Seq }\n\ntype Sw\n  = On\n  | Off\n\ntype R<K, V> {\n  row_key: K\n  value: V\n}\n\nfn f<K, V>(rows: Seq<R<K, V>>, s: Sw) -> Optional<R<K, V>> {\n  fold(rows, init: none, f: fn(acc, row) {\n    match s {\n      On => Present { value: row }\n      Off => acc\n    }\n  })\n}\n"
 data kp_e_absent: String = "module p\n\nimport std.optional { Optional, Present, Absent }\nimport std.probe_seq { Seq }\n\ntype Sw\n  = On\n  | Off\n\ntype R<K, V> {\n  row_key: K\n  value: V\n}\n\nfn f<K, V>(rows: Seq<R<K, V>>, s: Sw) -> Optional<R<K, V>> {\n  fold(rows, init: Absent, f: fn(acc, row) {\n    match s {\n      On => Present { value: row }\n      Off => acc\n    }\n  })\n}\n"
-data kp_e_ctl: String = "module p\n\nimport std.optional { Optional, Present }\nimport std.probe_seq { Seq }\n\ntype Sw\n  = On\n  | Off\n\ntype Num\n  = N\n\nfn f(rows: Seq<Num>, s: Sw) -> Optional<Num> {\n  fold(rows, init: none, f: fn(acc, row) {\n    match s {\n      On => Present { value: row }\n      Off => acc\n    }\n  })\n}\n"
+data kp_e_ctl: String = "module p\n\nimport std.optional { Optional, Present }\nimport std.probe_seq { Seq }\n\ntype Sw\n  = On\n  | Off\n\ntype Num\n  = N\n  | M\n\nfn f(rows: Seq<Num>, s: Sw) -> Optional<Num> {\n  fold(rows, init: none, f: fn(acc, row) {\n    match s {\n      On => Present { value: row }\n      Off => acc\n    }\n  })\n}\n"
 data kp_f: String = "module p\n\nimport std.optional { Optional, Present, Absent }\n\ntype Ch\n  = Out\n  | Err\n\ntype Sw\n  = On\n  | Off\n\nfn op<T>(value: T) -> Optional<T> {\n  Present { value: value }\n}\n\nfn none_of<T>() -> Optional<T> {\n  Absent\n}\n\nfn g(s: Sw) -> Optional<Ch> {\n  match s {\n    On => op(value: Out)\n    Off => none_of()\n  }\n}\n"
 data kp_f_ctl: String = "module p\n\nimport std.optional { Optional, Present, Absent }\n\ntype Ch\n  = Out\n  | Err\n\ntype Sw\n  = On\n  | Off\n\nfn g(s: Sw) -> Optional<Ch> {\n  match s {\n    On => Present { value: Out }\n    Off => Absent\n  }\n}\n"
 
@@ -120,3 +142,21 @@ test fn kp_f_advisory() -> Bool { kp_advisory(src: kp_f) }
 test fn kp_f_ctl_resolves() -> Bool { kp_resolved(src: kp_f_ctl) }
 test fn kp_f_ctl_rejected() -> Bool { kp_rejected(src: kp_f_ctl) }
 test fn kp_f_ctl_advisory() -> Bool { kp_advisory(src: kp_f_ctl) }
+test fn kp_e_fatal_grounding_not_derived() -> Bool { kp_fatal_is(src: kp_e, reason: ^infer_grounding_not_derived) }
+test fn kp_e_has_grounding_not_derived() -> Bool { kp_rejected_with(src: kp_e, reason: ^infer_grounding_not_derived) }
+test fn kp_e_fatal_reason_fold_carrier_type() -> Bool { kp_fatal_is(src: kp_e, reason: ^infer_reason_fold_carrier_type_not_derived) }
+test fn kp_e_has_reason_fold_carrier_type() -> Bool { kp_rejected_with(src: kp_e, reason: ^infer_reason_fold_carrier_type_not_derived) }
+test fn kp_e_fatal_branch_cond_not_bool() -> Bool { kp_fatal_is(src: kp_e, reason: ^infer_branch_cond_not_bool) }
+test fn kp_e_has_branch_cond_not_bool() -> Bool { kp_rejected_with(src: kp_e, reason: ^infer_branch_cond_not_bool) }
+test fn kp_e_absent_fatal_grounding_not_derived() -> Bool { kp_fatal_is(src: kp_e_absent, reason: ^infer_grounding_not_derived) }
+test fn kp_e_absent_has_grounding_not_derived() -> Bool { kp_rejected_with(src: kp_e_absent, reason: ^infer_grounding_not_derived) }
+test fn kp_e_absent_fatal_reason_fold_carrier_type() -> Bool { kp_fatal_is(src: kp_e_absent, reason: ^infer_reason_fold_carrier_type_not_derived) }
+test fn kp_e_absent_has_reason_fold_carrier_type() -> Bool { kp_rejected_with(src: kp_e_absent, reason: ^infer_reason_fold_carrier_type_not_derived) }
+test fn kp_e_absent_fatal_branch_cond_not_bool() -> Bool { kp_fatal_is(src: kp_e_absent, reason: ^infer_branch_cond_not_bool) }
+test fn kp_e_absent_has_branch_cond_not_bool() -> Bool { kp_rejected_with(src: kp_e_absent, reason: ^infer_branch_cond_not_bool) }
+test fn kp_f_fatal_grounding_not_derived() -> Bool { kp_fatal_is(src: kp_f, reason: ^infer_grounding_not_derived) }
+test fn kp_f_has_grounding_not_derived() -> Bool { kp_rejected_with(src: kp_f, reason: ^infer_grounding_not_derived) }
+test fn kp_f_fatal_reason_fold_carrier_type() -> Bool { kp_fatal_is(src: kp_f, reason: ^infer_reason_fold_carrier_type_not_derived) }
+test fn kp_f_has_reason_fold_carrier_type() -> Bool { kp_rejected_with(src: kp_f, reason: ^infer_reason_fold_carrier_type_not_derived) }
+test fn kp_f_fatal_branch_cond_not_bool() -> Bool { kp_fatal_is(src: kp_f, reason: ^infer_branch_cond_not_bool) }
+test fn kp_f_has_branch_cond_not_bool() -> Bool { kp_rejected_with(src: kp_f, reason: ^infer_branch_cond_not_bool) }
