@@ -4,6 +4,9 @@ import std.types { Bool }
 import std.optional { Present, Absent }
 import std.list { first_where }
 import std.measure { millisecond }
+import extdeps.vendor.ami { ami }
+import extdeps.vendor.amd { amd }
+import extdeps.vendor.sk_hynix { sk_hynix }
 import std.algebra { string_contains }
 import extdeps.network.mac { mac_address }
 import std.claim_evidence { EvidenceApplicable, EvidenceInsufficient, EvidenceSupports }
@@ -46,6 +49,7 @@ test fn w_unit2_variant_unread_refuses_storage_projection() -> Bool {
         && (match r.sel { SelRead { sel: s } => (s.battery_low_record_ids |> count) == 2  _ => false })
         && (match r.read_at { ReadAtUtcMinute { minute: _, standing: TranscribedUncited { read_obligation: _ } } => true  _ => false })
         && all(r.host_lans, l => match l.state { HostLanDisabled => true  _ => false }) && (r.host_lans |> count) == 2
+        && r.cpu.manufacturer == amd && r.bios_vendor == ami && all(r.dimms, d => d.manufacturer == sk_hynix)
         && (r.cpu.cores_enabled == 64) && (r.cpu.serial_as_read == "Unknown")
     Absent => false
   }

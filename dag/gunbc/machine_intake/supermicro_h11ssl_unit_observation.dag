@@ -17,6 +17,11 @@ import gunbc.machine_intake.receipt { EvidenceRef }
 import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ami { ami }
+import extdeps.vendor.amd { amd }
+import extdeps.vendor.sk_hynix { sk_hynix }
 import extdeps.firmware.ami_aptio_status_codes { PostCodeDecode, ami_aptio_decode }
 import extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide { supermicro_ami_aptio_v_post_codes_guide_table }
 import gunbc.machine_intake.supermicro_h11ssl_first_contact {
@@ -50,7 +55,9 @@ type H11sslReadInstant
 // The CPU the unit reported at its last POST. SMBIOS gives the model and cores but reads its
 // serial as "Unknown", so WHICH physical part is fitted is the operator's account, never a read.
 type H11sslCpuReading {
-  model: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+  manufacturer_as_read: NonEmptyStr
+  model_as_read: NonEmptyStr
   cores: Nat
   cores_enabled: Nat
   serial_as_read: NonEmptyStr
@@ -60,7 +67,8 @@ type H11sslCpuReading {
 type H11sslDimmReading {
   dimm: H11sslReportedDimm
   serial_as_read: NonEmptyStr
-  manufacturer: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+  manufacturer_as_read: NonEmptyStr
   configured_speed: MegatransfersPerSecond
 }
 
@@ -94,7 +102,8 @@ type H11sslUnitReading {
   ipmi_firmware_version: NonEmptyStr
   ipmi_firmware_build_date: NonEmptyStr
   cpld_version: H11sslReportedFigure?
-  bios_vendor: NonEmptyStr
+  bios_vendor: Vendor<Hardware>
+  bios_vendor_as_read: NonEmptyStr
   bios_version: NonEmptyStr
   bios_release_date: NonEmptyStr
   cpu: H11sslCpuReading
@@ -123,18 +132,21 @@ data supermicro_h11ssl_unit_readings: List<H11sslUnitReading> = [
     ipmi_firmware_version: "015200",
     ipmi_firmware_build_date: "11/18/2019",
     cpld_version: Present { value: H11sslReportedFigure { value: "02.b4.02", standing: TranscribedUncited { read_obligation: "Observer's report; no committed artifact carries the CPLD version. Commit the web-interface page or ipmitool reading that shows it." } } },
-    bios_vendor: "American Megatrends Inc.",
+    bios_vendor: ami,
+    bios_vendor_as_read: "American Megatrends Inc.",
     bios_version: "2.6a",
     bios_release_date: "10/06/2023",
     cpu: H11sslCpuReading {
-      model: "AMD EPYC 7702P 64-Core Processor",
+      manufacturer: amd,
+      manufacturer_as_read: "Advanced Micro Devices, Inc.",
+      model_as_read: "AMD EPYC 7702P 64-Core Processor",
       cores: 64,
       cores_enabled: 64,
       serial_as_read: "Unknown",
       fitted_part: H11sslReportedFigure { value: "a claimed-unlocked EPYC 7702P", standing: TranscribedUncited { read_obligation: "Which physical part this is (and whether it is the part that held unit 1 at POST 0x22) is the operator's account. SMBIOS reads the serial as Unknown; read the package marking or the PSP serial to ground it." } },
     },
     dimms: [
-      H11sslDimmReading { dimm: H11sslReportedDimm { slot: "DIMMC1", size: mebibyte(count: 16384), part_number: "HMA82GR7AFR4N-VK" }, serial_as_read: "80AD0117108184CA6D", manufacturer: "SK Hynix", configured_speed: megatransfers_per_second(count: 2667) },
+      H11sslDimmReading { dimm: H11sslReportedDimm { slot: "DIMMC1", size: mebibyte(count: 16384), part_number: "HMA82GR7AFR4N-VK" }, serial_as_read: "80AD0117108184CA6D", manufacturer: sk_hynix, manufacturer_as_read: "SK Hynix", configured_speed: megatransfers_per_second(count: 2667) },
     ],
     host_lans: [
       H11sslHostLanReading { mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 247, octet6: 254), state: HostLanDisabled },
@@ -171,18 +183,21 @@ data supermicro_h11ssl_unit_readings: List<H11sslUnitReading> = [
     ipmi_firmware_version: "015225",
     ipmi_firmware_build_date: "03/27/2026",
     cpld_version: Absent,
-    bios_vendor: "American Megatrends Inc.",
+    bios_vendor: ami,
+    bios_vendor_as_read: "American Megatrends Inc.",
     bios_version: "3.7",
     bios_release_date: "04/29/2026",
     cpu: H11sslCpuReading {
-      model: "AMD EPYC 7702P 64-Core Processor",
+      manufacturer: amd,
+      manufacturer_as_read: "Advanced Micro Devices, Inc.",
+      model_as_read: "AMD EPYC 7702P 64-Core Processor",
       cores: 64,
       cores_enabled: 64,
       serial_as_read: "Unknown",
       fitted_part: H11sslReportedFigure { value: "the second claimed-unlocked EPYC 7702P, replacing the part that held this unit at POST 0x22", standing: TranscribedUncited { read_obligation: "The operator's account of the swap. SMBIOS reads the serial as Unknown; read the package marking or the PSP serial to ground it." } },
     },
     dimms: [
-      H11sslDimmReading { dimm: H11sslReportedDimm { slot: "DIMMC1", size: mebibyte(count: 16384), part_number: "HMA82GR7AFR4N-VK" }, serial_as_read: "80AD011634716CAB6E", manufacturer: "SK Hynix", configured_speed: megatransfers_per_second(count: 2667) },
+      H11sslDimmReading { dimm: H11sslReportedDimm { slot: "DIMMC1", size: mebibyte(count: 16384), part_number: "HMA82GR7AFR4N-VK" }, serial_as_read: "80AD011634716CAB6E", manufacturer: sk_hynix, manufacturer_as_read: "SK Hynix", configured_speed: megatransfers_per_second(count: 2667) },
     ],
     host_lans: [],
     variant: UnitVariantUnread { read_obligation: "Not re-read here; the first-contact receipt's variant standing stands." },
