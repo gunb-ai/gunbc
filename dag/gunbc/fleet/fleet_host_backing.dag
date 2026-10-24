@@ -1,12 +1,14 @@
 module gunbc.fleet.fleet_host_backing
 
 import std.types { Bool, NonEmptyStr }
+import std.optional { Absent, Present }
 import std.decl_ref { DeclarationRef }
 import std.measure { ByteSize, HardwareThreadCount }
 import extdeps.toolchain.types { Architecture }
 import product.fabric.provider_route { ProviderRoute }
 import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
 import gunbc.machine_intake.subject { UnitKey, UnitKeyRefusalCause, UnitKeyStanding }
+import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
 
 // WHAT SUPPLIES A FLEET HOST, as a fact separate from what the host is FOR. Backing, provisioning and
 // service intent were one fact in practice -- a CI host was assumed to be an owned machine with a BMC
@@ -143,7 +145,18 @@ fn backing_microvm_forbidding_offer(backing: HostBacking) -> DeclarationRef? {
 type HostUnitAllocationStanding
   = HostUnitResolved { unit: UnitKey }
   | HostUnitRefused { cause: UnitKeyRefusalCause }
-  | HostUnitUnobserved { read_obligation: NonEmptyStr }
+  | HostUnitUnobserved {
+      // §4b: A FRONTIER BELOW CEILING NAMES ITS NEXT-RUNG TRIGGER ON A CARRIER, NOT IN PROSE.
+      // The old field was a NonEmptyStr the fold matched with `_` -- an obligation only a reader
+      // of this file could see. The carrier is the repository's own NextRungTrigger (gunbc.guarantee_stall):
+      // the capability names the observation that lifts the row out of unobserved, and `awaiting`
+      // stays empty because no OTHER LANE is owed -- the producer is the machine-intake arrival lane:
+      // the same identity_bind_provisional derivation gunbc.machine_intake.arrival_converge runs for
+      // mtcollins1/mtjade1 (it derives the UnitKey from committed FRU and SMBIOS captures). srv1-4's
+      // serials are NOT invented (their observation is the named frontier); when that read lands, the
+      // row flips from Unobserved{trigger} to Resolved/Refused at the next bind_unit_key.
+      trigger: NextRungTrigger,
+    }
   | HostUnitNotOwned
 
 // Provider guests are not physical machines: they carry no UnitKey, and that is correct -- there is
@@ -153,10 +166,14 @@ fn resolve_host_unit(backing: HostBacking) -> HostUnitAllocationStanding {
     OwnedMachine { provisioning: _, unit: unit_standing } =>
       match unit_standing {
         Absent => HostUnitUnobserved {
-          // The read that would bind the unit: the board serial, read from SMBIOS type 2 on the owned
-          // host, or from the FRU through its controller. Naming it keeps the unobserved row a tracked
-          // frontier (a real follow-up observation) rather than a bare state.
-          read_obligation: "read the board serial (SMBIOS type 2 on the owned host, or the FRU through its controller) and bind it to a unit",
+          // THE TRAVELLING FORM OF THE OBLIGATION: what observation lifts this row out of
+          // unobserved, and who produces it. The capability names the read; the producer is the
+          // machine-intake arrival lane -- gunbc.machine_intake.arrival_converge's
+          // identity_bind_provisional derives the UnitKey from committed FRU and SMBIOS captures
+          // (that is how mtcollins1/mtjade1 got theirs), and srv1-4 reach it the same way once
+          // their observation is taken. `awaiting: []` because no other lane is owed first
+          // (climbs_when, not climbs_when_awaiting); NO SRV SERIAL IS INVENTED meanwhile.
+          trigger: climbs_when("read the owned host's board serial (SMBIOS type 2, or the FRU through its controller) and run bind_unit_key on it, as gunbc.machine_intake.arrival_converge identity_bind_provisional does for the enrolled machines that already have one"),
         }
         Present { value: standing } =>
           match standing {

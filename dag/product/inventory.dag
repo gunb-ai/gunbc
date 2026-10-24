@@ -15,6 +15,7 @@ import std.minted_identity {
   minted_id_ordinal,
 }
 import product.placement_supply { PhysicalAssetIdentity, ProcurementReceiptIdentity, physical_asset_identity_eq }
+import std.algebra { collection_concat_shape, collection_count_shape, list_push }
 
 // INVENTORY-0: the generic product-layer authority for procurement lots and the append-only
 // event ledger over them. It answers, for one lot of fungible stock: how much was acquired, what
