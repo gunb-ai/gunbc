@@ -601,6 +601,7 @@ fn project_resolved_rust_fn_signatures(
                 ItemKind::TypeItem
                 | ItemKind::DataItem
                 | ItemKind::ServiceItem
+                | ItemKind::ResourceItem
                 | ItemKind::OtherItem => {}
             }
         }
