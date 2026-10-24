@@ -1576,3 +1576,7 @@ Date:   Thu Oct 22 23:16:13 2026 +0000
 - Pushes: b2964e2e -> 26753141 -> 2df86caa4d0 (current). At 2df86caa: v2-bootstrap PASS, heal FAIL run 40077044120 converge-step: E0425 'element' + E0282 at freshly-emitted extdeps_version_semver.rs:637/641, in semver_identifier_list_parse (fold over segments building Vec<Rc<SemVerIdentifier>>; emitted 'element' = v2 List formal leaked where binding should substitute -- A2 fold_list-family signature). Reported to parent msg_6bf9eaa6. swift-lark-171 owns; Charter-1 monitoring only.
 - Row #14747 merge-ready, awaiting parent/operator routing (do not merge myself).
 - Watcher armed (budget ~15:55Z; HEAD baseline 2df86caa4d0).
+
+## ROW #14747 CLOSED OUT (2026-10-24 ~13:45Z)
+- Parent msg_7ba25253: side-chat approved at 7894bc17; merge grant requested from calm-eagle-670 (batchable). NOTHING FURTHER from me on #14747.
+- #14750 heal diagnosis forwarded by parent to swift-lark-171. Standby continues on watcher (head 2df86caa4d0 heal-red).
