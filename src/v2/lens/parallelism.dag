@@ -38,7 +38,7 @@ import v2.std.diagnostic {
   WholeFile,
   node_locus
 }
-import v2.std.node { Symbol }
+import v2.std.node { node_same_occurrence, Symbol }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional, optional_present_witness }
 
 type ParallelismFact {
@@ -190,7 +190,7 @@ fn parallelism_classified_eq(
   a: ClassifiedDependencyView<ParallelismRelation>,
   b: ClassifiedDependencyView<ParallelismRelation>
 ) -> Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: fn(a, b) { a == b })
+  classified_dependency_view_eq(a: a, b: b, classification_eq: fn(a, b) { node_same_occurrence(a: a, b: b) })
 }
 
 fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {

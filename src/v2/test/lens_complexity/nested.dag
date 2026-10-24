@@ -26,7 +26,7 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Loop,
   LoopBoundEdge,
@@ -125,11 +125,11 @@ fn nested_actual_complexity() -> ComplexityAssessment {
 
 test fn nested_cost_projection_holds() -> Bool {
   match nested_actual_cost() {
-    Holds { value: actual } => actual == nested_claim.expected_cost
+    Holds { value: actual } => node_same_occurrence(a: actual, b: nested_claim.expected_cost)
     Violates { diagnostic: _ } => false
   }
 }
 
 test fn nested_complexity_projection_holds() -> Bool {
-  nested_actual_complexity() == established_complexity(bound: nested_claim.expected_complexity)
+  node_same_occurrence(a: nested_actual_complexity(), b: established_complexity(bound: nested_claim.expected_complexity))
 }

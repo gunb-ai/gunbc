@@ -1,5 +1,6 @@
 module v2.test.claim.callexec.kinded_type_param_instances
 
+import v2.std.node { node_same_occurrence }
 import v2.test.claim.callexec.declaration_reference_eval { cref_assemble, cref_inferred_of, cref_the_call_to }
 import v2.extdeps.runtimes.v2_evaluator { v2_eval_is_literal_shaped_node }
 import v2.std.inhabitance { type_variable_instance_lookup }
@@ -52,7 +53,7 @@ test fn kti_non_generic_call_carries_no_instances() -> Bool {
         Present { value: call } =>
           match inferred.facts.lookup(call) {
             Absent => false
-            Present { value: facts } => facts.type_instances == Empty
+            Present { value: facts } => node_same_occurrence(a: facts.type_instances, b: Empty)
           }
       }
   }

@@ -31,7 +31,7 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile
 }
-import v2.std.node { Symbol }
+import v2.std.node { node_same_occurrence, Symbol }
 import v2.std.witness { Holds, Violates, Witness, optional_present_witness }
 
 type IdempotencyFact {
@@ -108,7 +108,7 @@ fn idempotency_classified_eq(
   a: ClassifiedDependencyView<IdempotencyVerdict>,
   b: ClassifiedDependencyView<IdempotencyVerdict>
 ) -> Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: fn(a, b) { a == b })
+  classified_dependency_view_eq(a: a, b: b, classification_eq: fn(a, b) { node_same_occurrence(a: a, b: b) })
 }
 
 fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {

@@ -25,7 +25,7 @@ import v2.std.compilers.body_lowering { MatchArmPatternEdge, MatchArmBodyEdge }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.dependency { ActivationAlternative, ActivationDemand, SelectedByBranchSlot, SelectedByPattern }
 import v2.std.diagnostic { Accepted, Diagnostic, Locus, LocusAnchor, NodeLocus, Rejected, diagnostics_fatal }
-import v2.std.node {
+import v2.std.node { node_same_occurrence, node_list_same_occurrence, node_optional_same_occurrence,
   NotADeclaration,
   Atom,
   Branch,
@@ -116,7 +116,7 @@ data acd_nested_source: String = "module acd\n\n\ntype Shade = Dark | Light\n\nf
 // ---- claim-side judgements -------------------------------------------------------------------------
 
 fn acd_in(xs: List<Node>, n: Node) -> Bool {
-  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == n })
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || node_same_occurrence(a: x, b: n) })
 }
 
 fn acd_within(n: Node, root: Node) -> Bool {
@@ -193,9 +193,9 @@ fn acd_rows_total(d: ActivationDependencies) -> Int {
 }
 
 fn acd_rows_at(d: ActivationDependencies, site: Node) -> Int {
-  fold_list(xs: d.demands, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: x.site == site) })
-    + fold_list(xs: d.not_derived, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: x.site == site) })
-    + fold_list(xs: d.zero_alternatives, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: x.site == site) })
+  fold_list(xs: d.demands, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: node_same_occurrence(a: x.site, b: site)) })
+    + fold_list(xs: d.not_derived, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: node_same_occurrence(a: x.site, b: site)) })
+    + fold_list(xs: d.zero_alternatives, empty: 0, cons: fn(acc, x) { acc + acd_hit(b: node_same_occurrence(a: x.site, b: site)) })
 }
 
 fn acd_hit(b: Bool) -> Int {
@@ -203,7 +203,7 @@ fn acd_hit(b: Bool) -> Int {
 }
 
 fn acd_occurrences(root: Node, n: Node) -> Int {
-  fold_list(xs: node_subtree_nodes(root: root), empty: 0, cons: fn(acc, x) { acc + acd_hit(b: x == n) })
+  fold_list(xs: node_subtree_nodes(root: root), empty: 0, cons: fn(acc, x) { acc + acd_hit(b: node_same_occurrence(a: x, b: n)) })
 }
 
 fn acd_branch_slots_are_then_else(demand: ActivationDemand<Node>) -> Bool {
@@ -228,9 +228,9 @@ fn acd_branch_demand_reads_the_slots(demand: ActivationDemand<Node>) -> Bool {
         Present { value: t } =>
           match branch_slot_target(n: demand.site, slot: BranchElseSlot) {
             Present { value: e } =>
-              demand.selector == c
-                && demand.alternatives.head.root == t
-                && acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1) == optional_present(value: e)
+              node_same_occurrence(a: demand.selector, b: c)
+                && node_same_occurrence(a: demand.alternatives.head.root, b: t)
+                && node_same_occurrence(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: e))
             Absent => false
           }
         Absent => false
@@ -270,7 +270,7 @@ fn acd_demand_for(d: ActivationDependencies, site: Node) -> Optional<ActivationD
 fn acd_pick_demand(acc: Optional<ActivationDemand<Node>>, x: ActivationDemand<Node>, site: Node) -> Optional<ActivationDemand<Node>> {
   match acc {
     Present { value: y } => optional_present(value: y)
-    Absent => if x.site == site { optional_present(value: x) } else { optional_absent() }
+    Absent => if node_same_occurrence(a: x.site, b: site) { optional_present(value: x) } else { optional_absent() }
   }
 }
 
@@ -312,7 +312,7 @@ test fn acd_b_untaken_arm_contributes_no_prerequisite_holds() -> Bool {
             Present { value: then_root } =>
               match acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1) {
                 Present { value: else_root } =>
-                  then_root != else_root
+                  !node_same_occurrence(a: then_root, b: else_root)
                     && acd_in(xs: acd_waits_on(demand: demand, chosen: 0), n: then_root)
                     && !acd_in(xs: acd_waits_on(demand: demand, chosen: 0), n: else_root)
                     && acd_in(xs: acd_waits_on(demand: demand, chosen: 1), n: else_root)
@@ -362,7 +362,7 @@ test fn acd_d_match_selects_one_arm_by_pattern_holds() -> Bool {
         Present { value: demand } =>
           acd_alternative_count(demand: demand) == 2
             && acd_match_ordinals_are(demand: demand, first: 1, second: 2)
-            && match_slot_target(n: demand.site, slot: MatchScrutineeSlot) == optional_present(value: demand.selector)
+            && node_same_occurrence(a: match_slot_target(n: demand.site, slot: MatchScrutineeSlot), b: optional_present(value: demand.selector))
       }
   }
 }
@@ -490,9 +490,9 @@ test fn acd_f_branch_condition_equal_to_arm_resolves_by_slot_holds() -> Bool {
         Absent => false
         Present { value: demand } =>
           acd_branch_slots_are_then_else(demand: demand)
-            && demand.selector == acd_atom(s: ^acd_shared)
-            && demand.alternatives.head.root == acd_atom(s: ^acd_then)
-            && acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1) == optional_present(value: acd_atom(s: ^acd_shared))
+            && node_same_occurrence(a: demand.selector, b: acd_atom(s: ^acd_shared))
+            && node_same_occurrence(a: demand.alternatives.head.root, b: acd_atom(s: ^acd_then))
+            && node_same_occurrence(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: acd_atom(s: ^acd_shared)))
       }
   }
 }
@@ -509,10 +509,10 @@ test fn acd_g_match_scrutinee_equal_to_arm_body_resolves_by_slot_holds() -> Bool
       match acd_first_demand(d: d) {
         Absent => false
         Present { value: demand } =>
-          demand.selector == acd_atom(s: ^acd_shared)
+          node_same_occurrence(a: demand.selector, b: acd_atom(s: ^acd_shared))
             && acd_match_ordinals_are(demand: demand, first: 1, second: 2)
-            && demand.alternatives.head.root == acd_atom(s: ^acd_shared)
-            && acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1) == optional_present(value: acd_atom(s: ^acd_other))
+            && node_same_occurrence(a: demand.alternatives.head.root, b: acd_atom(s: ^acd_shared))
+            && node_same_occurrence(a: acd_nth_root(alts: acd_alternative_list(demand: demand), index: 1), b: optional_present(value: acd_atom(s: ^acd_other)))
       }
   }
 }
@@ -522,14 +522,14 @@ test fn acd_g_match_scrutinee_equal_to_arm_body_resolves_by_slot_holds() -> Bool
 // in the other, so reordering changes which arm is selected and the derivation reports that change, and it
 // does so without relating the arms.
 test fn acd_k_match_arm_order_is_selection_priority_holds() -> Bool {
-  acd_head_pattern_of(arms: [
+  node_optional_same_occurrence(a: acd_head_pattern_of(arms: [
     acd_arm(pattern: acd_atom(s: ^acd_specific), body: acd_atom(s: ^acd_b1)),
     acd_arm(pattern: acd_atom(s: ^acd_wild), body: acd_atom(s: ^acd_b2))
-  ]) == optional_present(value: acd_atom(s: ^acd_specific))
-    && acd_head_pattern_of(arms: [
+  ]), b: optional_present(value: acd_atom(s: ^acd_specific)))
+    && node_optional_same_occurrence(a: acd_head_pattern_of(arms: [
       acd_arm(pattern: acd_atom(s: ^acd_wild), body: acd_atom(s: ^acd_b2)),
       acd_arm(pattern: acd_atom(s: ^acd_specific), body: acd_atom(s: ^acd_b1))
-    ]) == optional_present(value: acd_atom(s: ^acd_wild))
+    ]), b: optional_present(value: acd_atom(s: ^acd_wild)))
 }
 
 fn acd_head_pattern_of(arms: List<Node>) -> Optional<Node> {
@@ -610,17 +610,17 @@ data acd_ill_typed_source: String = "module acd\n\nfn f(c: Bool, a: Int) -> Int 
 // body edges stored in the opposite order. The selector, each arm's pattern, ordinal and alternative root are
 // the same. (Reordering whole arms is a different thing and is acd_k.)
 test fn acd_m_arm_edge_storage_order_does_not_change_the_alternative_holds() -> Bool {
-  acd_match_summary(arms: [
+  acd_summary_optional_same(a: acd_match_summary(arms: [
     acd_arm(pattern: acd_atom(s: ^acd_p1), body: acd_atom(s: ^acd_b1)),
     acd_arm(pattern: acd_atom(s: ^acd_p2), body: acd_atom(s: ^acd_b2))
-  ]) == acd_match_summary(arms: [
+  ]), b: acd_match_summary(arms: [
     acd_arm(pattern: acd_atom(s: ^acd_p1), body: acd_atom(s: ^acd_b1)),
     acd_arm_body_first(pattern: acd_atom(s: ^acd_p2), body: acd_atom(s: ^acd_b2))
-  ])
-    && acd_match_summary(arms: [
+  ]))
+    && acd_summary_present(o: acd_match_summary(arms: [
       acd_arm(pattern: acd_atom(s: ^acd_p1), body: acd_atom(s: ^acd_b1)),
       acd_arm_body_first(pattern: acd_atom(s: ^acd_p2), body: acd_atom(s: ^acd_b2))
-    ]) != optional_absent()
+    ]))
 }
 
 fn acd_arm_body_first(pattern: Node, body: Node) -> Node {
@@ -631,6 +631,34 @@ fn acd_arm_body_first(pattern: Node, body: Node) -> Node {
       Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn acd_summary_present(o: Optional<AcdSummary>) -> Bool {
+  match o {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// AcdSummary carries Nodes, so it is compared field-wise: the Node fields ask the identity question
+// derived `==` asked, the ordinals stay `==`.
+fn acd_summary_optional_same(a: Optional<AcdSummary>, b: Optional<AcdSummary>) -> Bool {
+  match a {
+    Absent =>
+      match b {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } =>
+          node_same_occurrence(a: x.selector, b: y.selector)
+            && node_list_same_occurrence(xs: x.roots, ys: y.roots)
+            && node_list_same_occurrence(xs: x.patterns, ys: y.patterns)
+            && (x.ordinals == y.ordinals)
+      }
   }
 }
 
@@ -750,7 +778,7 @@ fn acd_zero_alternatives_then_infers(src: String, check_inference: Bool, accepte
             && acd_total(d: d, root: tree.root)
             && match d.zero_alternatives {
               Cons { head: z, tail: Empty } =>
-                match_slot_target(n: z.site, slot: MatchScrutineeSlot) == optional_present(value: z.selector)
+                node_same_occurrence(a: match_slot_target(n: z.site, slot: MatchScrutineeSlot), b: optional_present(value: z.selector))
                   && length(xs: z.site.children) == 1
               _ => false
             }

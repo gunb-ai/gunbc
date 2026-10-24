@@ -962,7 +962,7 @@ fn re_exec_frontier_from_diff(
 fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt {
   match find_child_by_name(root: node, name: ^affected_set_boundary_pure_receipt_edge) {
     Accepted { value: receipt, diagnostics: _ } =>
-      if receipt == affected_set_boundary_pure_receipt_node() {
+      if node_same_occurrence(a: receipt, b: affected_set_boundary_pure_receipt_node()) {
         BoundaryPruned {
           proof: UnchangedPureBoundary {
             content_hash: h
@@ -1177,7 +1177,7 @@ fn canonical_propagation_receipt(
   } else {
     match find_child_by_name(root: dependency.usage_site, name: ^affected_set_dimension_not_read_receipt_edge) {
       Accepted { value: receipt, diagnostics: _ } =>
-        if receipt == affected_set_dimension_not_read_receipt_node(dimension: edit_dimension.dimension) {
+        if node_same_occurrence(a: receipt, b: affected_set_dimension_not_read_receipt_node(dimension: edit_dimension.dimension)) {
           DoesNotPropagate {
             proof: DimensionNotRead {
               usage_site: dependency.usage_site,

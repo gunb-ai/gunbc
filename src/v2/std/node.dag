@@ -682,6 +682,40 @@ fn node_edge_same_occurrence(x: Edge, y: Edge) -> Bool {
   (x.label == y.label) && node_same_occurrence(a: x.target, b: y.target)
 }
 
+// The identity question lifted through the two carriers a Node most often sits in, so a List<Node> or
+// Optional<Node> operand asks it once here rather than each call site re-folding it.
+fn node_list_same_occurrence(xs: List<Node>, ys: List<Node>) -> Bool {
+  match xs {
+    Empty =>
+      match ys {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: x, tail: xrest } =>
+      match ys {
+        Empty => false
+        Cons { head: y, tail: yrest } =>
+          node_same_occurrence(a: x, b: y)
+            && node_list_same_occurrence(xs: xrest, ys: yrest)
+      }
+  }
+}
+
+fn node_optional_same_occurrence(a: Optional<Node>, b: Optional<Node>) -> Bool {
+  match a {
+    Absent =>
+      match b {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => node_same_occurrence(a: x, b: y)
+      }
+  }
+}
+
 type Node {
   kind: NodeKind
   children: List<Edge>

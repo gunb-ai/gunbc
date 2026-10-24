@@ -50,7 +50,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
   Conj,
@@ -281,7 +281,7 @@ fn emit_fold_eval_closure_arg(args: List<RuntimeValue>, node: Node) -> Outcome<N
 // allocates only 0..3, so the search is closed.
 fn emit_fold_eval_decode(v: RuntimeValue) -> Optional<Int> {
   fold([0, 1, 2, 3], init: optional_absent(), f: fn(acc, n) {
-    if v == emit_fold_eval_octet_value(n: n) { optional_present(value: n) } else { acc }
+    if node_same_occurrence(a: v, b: emit_fold_eval_octet_value(n: n)) { optional_present(value: n) } else { acc }
   })
 }
 

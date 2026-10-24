@@ -10,7 +10,7 @@ import std.algebra { Cons, Empty, FreeMonoid, fold_list, empty_map, map_insert }
 import v2.std.namespace_alias { CapturedImportTarget }
 import v2.std.diagnostic { Accepted, ByteRange, None, Outcome, Rejected, bind_outcome, outcome_accepted, Textual, diagnostics_eq, non_empty_diagnostics_eq }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node, NotADeclaration }
+import v2.std.node { node_same_occurrence, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node, NotADeclaration }
 import v2.std.resolution_policy { ImportScoped }
 
 test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
@@ -520,7 +520,7 @@ test fn namespace_provider_builds_each_module_at_most_once_per_context() -> Bool
         Accepted { value: a1, diagnostics: _ } =>
           match again.resolved {
             Rejected { diagnostics: _ } => false
-            Accepted { value: a2, diagnostics: _ } => a1.root == a2.root
+            Accepted { value: a2, diagnostics: _ } => node_same_occurrence(a: a1.root, b: a2.root)
           }
       }
   })
@@ -566,7 +566,7 @@ test fn validated_subject_index_matches_general_lookup() -> Bool {
     match validate_module_roots(roots: roots) {
       Rejected { diagnostics: _ } => false
       Accepted { value: validated, diagnostics: _ } =>
-        validated.roots == roots && fold_list(
+        node_same_occurrence(a: validated.roots, b: roots) && fold_list(
           xs: [^fc_subject_a_seg, ^fc_subject_b_seg, ^fc_missing_seg],
           empty: true,
           cons: fn(ok, segment) {
@@ -575,7 +575,7 @@ test fn validated_subject_index_matches_general_lookup() -> Bool {
               Accepted { value: expected, diagnostics: expected_diag } =>
                 match validated_module_root_for_name(roots: validated, name: name) {
                   Accepted { value: actual, diagnostics: actual_diag } =>
-                    actual == expected && diagnostics_eq(a: actual_diag, b: expected_diag)
+                    node_same_occurrence(a: actual, b: expected) && diagnostics_eq(a: actual_diag, b: expected_diag)
                   Rejected { diagnostics: _ } => false
                 }
               Rejected { diagnostics: expected } =>

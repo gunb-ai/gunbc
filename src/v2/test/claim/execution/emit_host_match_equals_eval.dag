@@ -56,7 +56,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.text { String }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Conj,
   Edge,
@@ -159,11 +159,11 @@ fn emit_match_eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 }
 
 fn emit_match_eval_bool_true(value: RuntimeValue) -> Bool {
-  value == emit_match_eval_octet_value(n: 1)
+  node_same_occurrence(a: value, b: emit_match_eval_octet_value(n: 1))
 }
 
 fn emit_match_eval_bool_false(value: RuntimeValue) -> Bool {
-  value == emit_match_eval_octet_value(n: 0)
+  node_same_occurrence(a: value, b: emit_match_eval_octet_value(n: 0))
 }
 
 fn emit_match_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {

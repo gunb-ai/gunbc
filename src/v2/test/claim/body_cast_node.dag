@@ -31,7 +31,7 @@ import v2.std.diagnostic {
   diagnostics_list_has_reason
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   Atom,
   ComputationNode,
@@ -374,8 +374,11 @@ fn bcn_emitted_cast_without_target() -> Outcome<String> {
 // (10) TRANSLATE REALIZES THE CAST AS ITS OPERAND (the rust extdep's OperandUnchanged row -- how v1
 // spells a representation-preserving crossing, not Rust `as`) ...
 test fn bcn_rust_realizes_the_cast_as_its_operand() -> Bool {
-  bcn_emitted_cast()
-    == Accepted { value: "fn add(x: i32, y: i32) -> i32 { x }", diagnostics: None }
+  match bcn_emitted_cast() {
+    Accepted { value: v, diagnostics: None } => v == "fn add(x: i32, y: i32) -> i32 { x }"
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // (11) ... and THE MUTANT THAT DROPS THE CAST TARGET is refused, typed: a coercion with no target is
@@ -418,8 +421,8 @@ fn bcn_coerce_wire() -> Node {
 // and not to the value `8` does -- the result is the operand's, not a constant.
 test fn bcn_eval_realizes_the_operand_value() -> Bool {
   let seven = bcn_eval(root: bcn_int(lexeme: "7"))
-  (bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "7"), keep_target: true)) == seven)
-    && (bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "8"), keep_target: true)) != seven)
+  (node_same_occurrence(a: bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "7"), keep_target: true)), b: seven))
+    && (!node_same_occurrence(a: bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "8"), keep_target: true)), b: seven))
 }
 
 // (13) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node

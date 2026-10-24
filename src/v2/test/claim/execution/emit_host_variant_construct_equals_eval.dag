@@ -44,7 +44,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Conj,
   ConstructTagEdge,
@@ -265,11 +265,11 @@ fn emit_variant_construct_eval_arm_body_node(arm_wire: Node) -> Outcome<Node> {
 }
 
 fn emit_variant_construct_eval_scrutinee_is_holds(value: RuntimeValue) -> Bool {
-  value == emit_variant_construct_eval_octet_value(n: 1)
+  node_same_occurrence(a: value, b: emit_variant_construct_eval_octet_value(n: 1))
 }
 
 fn emit_variant_construct_eval_scrutinee_is_true(value: RuntimeValue) -> Bool {
-  value == emit_variant_construct_eval_octet_value(n: 0)
+  node_same_occurrence(a: value, b: emit_variant_construct_eval_octet_value(n: 0))
 }
 
 fn emit_variant_construct_eval_choose_arm(

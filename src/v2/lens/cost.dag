@@ -22,7 +22,7 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   node_equal_ignoring_provenance,
   Arrow,
   Atom,
@@ -382,7 +382,7 @@ fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
           }
       }
     UnknownCost { diagnostic: _ } =>
-          if a == b {
+          if node_same_occurrence(a: a, b: b) {
             a
           } else {
             if symbolic_cost_dominates(a: a, b: b) {
@@ -396,7 +396,7 @@ fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
             }
           }
     LinearCost { variable: _ } =>
-          if a == b {
+          if node_same_occurrence(a: a, b: b) {
             a
           } else {
             if symbolic_cost_dominates(a: a, b: b) {
@@ -410,7 +410,7 @@ fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
             }
           }
     LogCost { variable: _ } =>
-          if a == b {
+          if node_same_occurrence(a: a, b: b) {
             a
           } else {
             if symbolic_cost_dominates(a: a, b: b) {
@@ -424,7 +424,7 @@ fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
             }
           }
     PolynomialCost { variable: _, degree: _ } =>
-          if a == b {
+          if node_same_occurrence(a: a, b: b) {
             a
           } else {
             if symbolic_cost_dominates(a: a, b: b) {
@@ -438,7 +438,7 @@ fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
             }
           }
     PolyLogCost { variable: _, exponent: _ } =>
-          if a == b {
+          if node_same_occurrence(a: a, b: b) {
             a
           } else {
             if symbolic_cost_dominates(a: a, b: b) {
@@ -452,7 +452,7 @@ fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
             }
           }
     ExponentialCost { variable: _, base: _ } =>
-          if a == b {
+          if node_same_occurrence(a: a, b: b) {
             a
           } else {
             if symbolic_cost_dominates(a: a, b: b) {
@@ -466,7 +466,7 @@ fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
             }
           }
     FactorialCost { variable: _ } =>
-          if a == b {
+          if node_same_occurrence(a: a, b: b) {
             a
           } else {
             if symbolic_cost_dominates(a: a, b: b) {
@@ -480,7 +480,7 @@ fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
             }
           }
     SumCost { lhs: _, rhs: _ } =>
-          if a == b {
+          if node_same_occurrence(a: a, b: b) {
             a
           } else {
             if symbolic_cost_dominates(a: a, b: b) {
@@ -494,7 +494,7 @@ fn symbolic_max_rhs(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
             }
           }
     ProductCost { lhs: _, rhs: _ } =>
-          if a == b {
+          if node_same_occurrence(a: a, b: b) {
             a
           } else {
             if symbolic_cost_dominates(a: a, b: b) {
