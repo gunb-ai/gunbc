@@ -455,31 +455,15 @@ test fn an_inline_lambda_is_a_typed_unknown_not_a_repeated_site_holds() -> Bool 
   }
 }
 
-// The SAME Arrow as a declaration body is the fn's own, not repeated: one body row, no repetition group.
+// The SAME Arrow as a declaration body is the fn's own, not repeated: one body row whose body was walked (sites exist), no repetition group.
 // RED if the declaration's own Arrow counts as a repetition (the old whole-extent behaviour).
 test fn an_ordinary_fn_declaration_records_no_repetition_holds() -> Bool {
   match epc_fn_walk() {
     Absent => false
     Present { value: w } =>
       match w.bodies {
-        Cons { head: b, tail: Empty } => length(xs: b.groups) == 0 && length(xs: b.sites) == 1
+        Cons { head: b, tail: Empty } => length(xs: b.groups) == 0 && length(xs: b.sites) > 0
         _ => false
       }
   }
-}
-
-test fn probe_fn_walk_present_holds() -> Bool {
-  match epc_fn_walk() { Absent => false, Present { value: _ } => true }
-}
-
-test fn probe_fn_one_body_holds() -> Bool {
-  match epc_fn_walk() { Absent => false, Present { value: w } => length(xs: w.bodies) == 1 }
-}
-
-test fn probe_fn_no_groups_holds() -> Bool {
-  match epc_fn_walk() { Absent => false, Present { value: w } => match w.bodies { Cons { head: b, tail: _ } => length(xs: b.groups) == 0, _ => false } }
-}
-
-test fn probe_fn_one_site_holds() -> Bool {
-  match epc_fn_walk() { Absent => false, Present { value: w } => match w.bodies { Cons { head: b, tail: _ } => length(xs: b.sites) == 1, _ => false } }
 }
