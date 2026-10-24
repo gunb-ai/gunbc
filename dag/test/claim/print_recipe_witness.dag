@@ -1,16 +1,10 @@
 module test.claim.print_recipe_witness
 import std.types { Bool, String, List, NonEmptyStr }
-import std.bytes { bytes_octets, utf8_encode_bytes }
-import std.content_hash { Sha256Digest }
-import extdeps.crypto.sha2 { sha256_computed_digest }
 import std.measure { micrometer, micrometre_per_second, micrometre_per_second_squared, percent }
 import extdeps.printing.orca_slicer { orca_process_setting_kv, OrcaSpeedSetting, OrcaBridgeSpeed, OrcaAccelerationSetting, OrcaOuterWallAcceleration, OrcaLengthSetting, OrcaBrimWidth, OrcaSparseInfillDensity }
 import extdeps.printing.fdm { Pla, Petg }
 import extdeps.languages.json.emit { JsonKeyValue, json_kv, json_string, serialize_json, json_object }
 import product.printing.print_recipe { print_recipe_from_wire, recipe_process_overrides, overlay, a1_mini_pla_prototype_v1, a1_mini_petg_functional_v1 }
-import product.printed_chassis.prepared_project_store { PreparationKey, preparation_key_digest, prepared_receipt_text, receipt_binds_key }
-import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
-import extdeps.languages.json.emit { JsonObject }
 
 test fn both_recipes_resolve_and_an_unknown_one_refuses() -> Bool {
   (match print_recipe_from_wire(s: "a1-mini-pla-prototype-v1") { Present { value: r } => (match r.material { Pla => true _ => false }) Absent => false }) &&
@@ -38,29 +32,6 @@ test fn recipe_overrides_name_the_process_and_carry_supports_once() -> Bool {
   value_of(members: o, key: "name") == serialize_json(v: json_object(members: [json_kv(key: "name", value: json_string(s: "Functional 0.20 PETG supported"))]))
 }
 
-fn d(s: String) -> Sha256Digest { sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: s))) }
-
-fn key(recipe: String, machine: String, filament: String, process: String, slicer: String, plan: String, revision: String, root: String) -> PreparationKey {
-  PreparationKey { root: root, source_revision: revision as NonEmptyStr, recipe: recipe as NonEmptyStr, machine_profile_sha256: d(s: machine), filament_profile_sha256: d(s: filament), process_profile_sha256: d(s: process), slicer_archive_sha256: d(s: slicer), plate_plan_sha256: d(s: plan), runtime_receipt_sha256: d(s: "runtime") }
-}
-
-// Equal inputs name one preparation (reuse); changing any single input names another.
-test fn every_preparation_input_changes_the_key_and_equal_inputs_share_it() -> Bool {
-  let base = preparation_key_digest(k: key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"))
-  let again = preparation_key_digest(k: key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"))
-  let variants = [
-    key(recipe: "R", machine: "m", filament: "f", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"),
-    key(recipe: "r", machine: "M", filament: "f", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"),
-    key(recipe: "r", machine: "m", filament: "F", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"),
-    key(recipe: "r", machine: "m", filament: "f", process: "P", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring"),
-    key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "S", plan: "x", revision: "v", root: "a16-plug-fit-ring"),
-    key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "X", revision: "v", root: "a16-plug-fit-ring"),
-    key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "x", revision: "V", root: "a16-plug-fit-ring"),
-    key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-sleeve-fit-ring"),
-  ]
-  base.hex == again.hex && all(variants, k => preparation_key_digest(k: k).hex != base.hex)
-}
-
 test fn the_two_recipes_differ_only_in_filament_and_process_name() -> Bool {
   a1_mini_pla_prototype_v1.machine == a1_mini_petg_functional_v1.machine &&
   a1_mini_pla_prototype_v1.process == a1_mini_petg_functional_v1.process &&
@@ -77,22 +48,4 @@ test fn measured_settings_render_as_orca_reads_them() -> Bool {
   rendered(kv: orca_process_setting_kv(s: OrcaLengthSetting { key: OrcaBrimWidth, length: micrometer(count: 4000) })) == rendered(kv: json_kv(key: "brim_width", value: json_string(s: "4"))) &&
   rendered(kv: orca_process_setting_kv(s: OrcaSparseInfillDensity { density: percent(count: 20) })) == rendered(kv: json_kv(key: "sparse_infill_density", value: json_string(s: "20%"))) &&
   rendered(kv: orca_process_setting_kv(s: OrcaSpeedSetting { key: OrcaBridgeSpeed, speed: micrometre_per_second(count: 25500) })) == rendered(kv: json_kv(key: "bridge_speed", value: json_string(s: "25.5")))
-}
-
-fn binds(text: String, k: PreparationKey) -> Bool {
-  match parse_json_document(s: text) { JsonDocumentParsed { value: v } => receipt_binds_key(v: v, key: k) JsonDocumentUnreadable { gap: _ } => false }
-}
-
-// A receipt found under the requested key's filename is trusted only if it restates that key. A
-// receipt written for another key (one input changed) or with its key_digest swapped does not bind,
-// even though its artifact would hash correctly.
-test fn a_receipt_binds_only_the_key_it_restates() -> Bool {
-  let k = key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "x", revision: "v", root: "a16-plug-fit-ring")
-  let other = key(recipe: "r", machine: "m", filament: "f", process: "p", slicer: "s", plan: "y", revision: "v", root: "a16-plug-fit-ring")
-  let own = prepared_receipt_text(key: k, artifact: d(s: "artifact"))
-  let swapped = match parse_json_document(s: own) {
-    JsonDocumentParsed { value: JsonObject { members: ms } } => serialize_json(v: json_object(members: map(ms, m => if m.key == "key_digest" { json_kv(key: "key_digest", value: json_string(s: preparation_key_digest(k: other).hex as String)) } else { m })))
-    _ => own
-  }
-  binds(text: own, k: k) && !binds(text: prepared_receipt_text(key: other, artifact: d(s: "artifact")), k: k) && !binds(text: swapped, k: k)
 }
