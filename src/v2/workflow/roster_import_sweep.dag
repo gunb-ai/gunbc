@@ -92,16 +92,32 @@ type RosterLabelRename {
   to: String
 }
 
-// WHICH HOMES ONE RUN MAY TOUCH. A wave moves one name, so its run is OneHome; AllHomes is the generator's whole table.
-// A closed sum, so "every home" is not an in-band spelling a typo could collide with (review 82002).
+// WHICH ROWS ONE RUN MAY TOUCH. A wave moves one NAME, and one home can hold several rows (std.algebra holds four), so a
+// one-home run selects its rows too: EveryRowOfHome is the whole home, OnlyCall the wave's own row. Selecting by home
+// alone made a one-name wave write, and refuse for, every other row of that home
+// (gunbc.recurring_failure_mode a_one_home_sweep_moves_every_row_of_that_home). The selection lives INSIDE OneHome, so a
+// mutating run still names exactly one home by construction, which the cycle verdict relies on. A closed sum, so "every
+// home" is not an in-band spelling a typo could collide with (review 82002).
 type RosterHomeScope
   = AllHomes
-  | OneHome { home: QualifiedName }
+  | OneHome { home: QualifiedName, rows: RosterRowSelection }
 
-fn roster_scope_admits(scope: RosterHomeScope, home: QualifiedName) -> Bool {
+type RosterRowSelection
+  = EveryRowOfHome
+  | OnlyCall { call: String }
+
+fn roster_scope_admits(scope: RosterHomeScope, row: RosterHeadRow) -> Bool {
   match scope {
     AllHomes => true
-    OneHome { home: h } => roster_qn_text(qn: h) == roster_qn_text(qn: home)
+    OneHome { home: h, rows: sel } =>
+      roster_qn_text(qn: h) == roster_qn_text(qn: row.home) && roster_selection_admits(selection: sel, row: row)
+  }
+}
+
+fn roster_selection_admits(selection: RosterRowSelection, row: RosterHeadRow) -> Bool {
+  match selection {
+    EveryRowOfHome => true
+    OnlyCall { call: c } => c == row.call
   }
 }
 
@@ -147,6 +163,10 @@ type RosterRefusalReason
   | RefusalHomeClosureUnread { home: String }
   | RefusalModuleNameUnread
   | RefusalApplyNeedsOneHome
+  // A ONE-HOME SCOPE THAT SELECTS NO ROW, OR AN OnlyCall SELECTING MORE THAN ONE (side chat on #14883, DESIGN 5): a
+  // misspelled call or a wrong home would otherwise sweep nothing and report converged. Located by home and selection.
+  | RefusalScopeSelectsNoRow { home: String, selection: String }
+  | RefusalScopeSelectsSeveralRows { home: String, call: String, count: Int }
 
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
@@ -181,6 +201,8 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalHomeClosureUnread { home: h } => "home-closure-unread home=" + h
     RefusalModuleNameUnread => "module-name-unread"
     RefusalApplyNeedsOneHome => "apply-needs-one-home"
+    RefusalScopeSelectsNoRow { home: h, selection: sel } => "scope-selects-no-row home=" + h + " " + sel
+    RefusalScopeSelectsSeveralRows { home: h, call: c, count: n } => "scope-selects-several-rows home=" + h + " call=" + c + " rows=" + int_to_decimal_string(value: n)
   }
 }
 
@@ -299,7 +321,7 @@ fn roster_import_sweep_exit(paths_csv: String) -> ProcessExit {
 // a file's pending rows for other homes are another wave's and are neither emitted nor applied here). The dotted argument is
 // read into a QualifiedName at this boundary, once.
 fn roster_import_sweep_home_exit(paths_csv: String, home: String) -> ProcessExit {
-  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: home) }
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: home), rows: EveryRowOfHome }
   let rows = match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared)
     Accepted { value: prepared, diagnostics: _ } => roster_sweep_all(paths_csv: paths_csv, prepared: prepared, lex: dag_prepared_lex(), scope: scope)
@@ -308,7 +330,23 @@ fn roster_import_sweep_home_exit(paths_csv: String, home: String) -> ProcessExit
 }
 
 fn roster_import_sweep_apply_home_exit(root_dir: String, paths_csv: String, home: String) -> ProcessExit {
-  let report = roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, home: qualified_name_from_dotted_string(dotted: home))
+  let report = roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, home: qualified_name_from_dotted_string(dotted: home), rows: EveryRowOfHome)
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+// ONE WAVE'S ROW: the run and the apply restricted to the row whose home is `home` AND whose call is `call` -- the grain a
+// wave actually moves. A file's other rows of the same home are another wave's and are neither emitted nor applied here.
+fn roster_import_sweep_row_exit(paths_csv: String, home: String, call: String) -> ProcessExit {
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: home), rows: OnlyCall { call: call } }
+  let rows = match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared)
+    Accepted { value: prepared, diagnostics: _ } => roster_sweep_all(paths_csv: paths_csv, prepared: prepared, lex: dag_prepared_lex(), scope: scope)
+  }
+  if (rows == "") { ExitSuccess } else { exit_failure(reason: rows) }
+}
+
+fn roster_import_sweep_apply_row_exit(root_dir: String, paths_csv: String, home: String, call: String) -> ProcessExit {
+  let report = roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, home: qualified_name_from_dotted_string(dotted: home), rows: OnlyCall { call: call })
   if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
 }
 
@@ -319,7 +357,35 @@ fn roster_home_sides(rows: List<RosterHeadRow>) -> List<RosterHomeSide> {
 }
 
 fn roster_rows_for_scope(scope: RosterHomeScope) -> List<RosterHeadRow> {
-  fold_list(xs: roster_head_rows(), empty: [], cons: fn(acc, r) { if roster_scope_admits(scope: scope, home: r.home) { list_snoc_item(xs: acc, item: r) } else { acc } })
+  roster_rows_for_scope_in(table: roster_head_rows(), scope: scope)
+}
+
+fn roster_rows_for_scope_in(table: List<RosterHeadRow>, scope: RosterHomeScope) -> List<RosterHeadRow> {
+  fold_list(xs: table, empty: [], cons: fn(acc, r) { if roster_scope_admits(scope: scope, row: r) { list_snoc_item(xs: acc, item: r) } else { acc } })
+}
+
+// THE SCOPE MUST SELECT WHAT IT NAMES, checked once before any read, lock or write (side chat on #14883). A one-home scope
+// selecting no row of the table is a typo or a wrong home, never a converged wave; an OnlyCall selecting several rows is a
+// table defect the wave cannot resolve. AllHomes names no row and selects the table as it is. Pure over the supplied table so
+// the several-rows arm has an authorable RED (the production table holds no duplicate).
+fn roster_scope_selection_refusal_in(table: List<RosterHeadRow>, scope: RosterHomeScope) -> Optional<RosterRefusalReason> {
+  let selected = roster_rows_for_scope_in(table: table, scope: scope)
+  match scope {
+    AllHomes => Absent
+    OneHome { home: h, rows: sel } =>
+      match sel {
+        EveryRowOfHome =>
+          if is_empty(xs: selected) { Present { value: RefusalScopeSelectsNoRow { home: roster_qn_text(qn: h), selection: "every-row" } } } else { Absent }
+        OnlyCall { call: c } =>
+          if is_empty(xs: selected) {
+            Present { value: RefusalScopeSelectsNoRow { home: roster_qn_text(qn: h), selection: "call=" + c } }
+          } else if length(xs: selected) > 1 {
+            Present { value: RefusalScopeSelectsSeveralRows { home: roster_qn_text(qn: h), call: c, count: length(xs: selected) } }
+          } else {
+            Absent
+          }
+      }
+  }
 }
 
 // The grammar and lex rules are prepared ONCE per run and passed down: preparing them per file
@@ -333,6 +399,13 @@ fn roster_import_sweep_for_paths(paths_csv: String) -> String {
 }
 
 fn roster_sweep_all(paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
+  match roster_scope_selection_refusal_in(table: roster_head_rows(), scope: scope) {
+    Present { value: reason } => roster_refuse_row(path: "*", reason: reason)
+    Absent => roster_sweep_selected(paths_csv: paths_csv, prepared: prepared, lex: lex, scope: scope)
+  }
+}
+
+fn roster_sweep_selected(paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
   let closures = roster_home_closures(root: "", scope: scope)
   let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
   fold_list(
@@ -542,14 +615,18 @@ fn roster_lock_release(held: RosterHeldLock) -> Bool {
   roster_lock_still_held(held: held) && Filesystem.Delete(path: roster_lock_file(root: held.root)).success
 }
 
-fn roster_apply_for_paths(root_dir: String, paths_csv: String, home: QualifiedName) -> String {
-  let scope = OneHome { home: home }
-  match roster_lock_acquire(root_dir: root_dir) {
-    RosterLockRefused { reason: reason } => roster_refuse_row(path: "*", reason: reason)
-    RosterLockAcquired { held: held } => {
-      let report = roster_apply_locked(held: held, paths_csv: paths_csv, scope: scope)
-      if roster_lock_release(held: held) { report } else { report + roster_refuse_row(path: "*", reason: RefusalApplyLockNotReleased) }
-    }
+fn roster_apply_for_paths(root_dir: String, paths_csv: String, home: QualifiedName, rows: RosterRowSelection) -> String {
+  let scope = OneHome { home: home, rows: rows }
+  match roster_scope_selection_refusal_in(table: roster_head_rows(), scope: scope) {
+    Present { value: reason } => roster_refuse_row(path: "*", reason: reason)
+    Absent =>
+      match roster_lock_acquire(root_dir: root_dir) {
+        RosterLockRefused { reason: reason } => roster_refuse_row(path: "*", reason: reason)
+        RosterLockAcquired { held: held } => {
+          let report = roster_apply_locked(held: held, paths_csv: paths_csv, scope: scope)
+          if roster_lock_release(held: held) { report } else { report + roster_refuse_row(path: "*", reason: RefusalApplyLockNotReleased) }
+        }
+      }
   }
 }
 
@@ -1542,6 +1619,8 @@ fn roster_controls_report() -> String {
         + roster_control_no_import_anchor(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_import_closes_cycle(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_closure_inhabited()
+        + roster_control_row_scope(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_scope_selects_its_row()
         + roster_home_exact_file_control()
         + roster_control_apply_needs_one_home()
         + roster_control_label_local_call(prepared: prepared, lex: dag_prepared_lex())
@@ -1882,11 +1961,97 @@ fn roster_control_homonym(prepared: PreparedGrammar, lex: PreparedLexRules) -> S
   }
 }
 
+// A ONE-NAME WAVE TOUCHES ONLY ITS ROW (gunbc.recurring_failure_mode a_one_home_sweep_moves_every_row_of_that_home).
+// Each fixture is swept twice over std.algebra: OnlyCall is the wave's grain and must be narrow; EveryRowOfHome is the
+// old one-home grain and must show the defect, so the pair discriminates.
+//   wider-row-set: a free count call beside a free concat call. OnlyCall count imports collection_count_shape and NOT
+//     collection_concat_shape; the whole home imports both.
+//   wrong-row-refusal: count is a parameter in one fn and a free call in another, beside a free concat call. OnlyCall
+//     concat imports collection_concat_shape; the whole home refuses home-name-locally-bound for count, a name the
+//     concat wave never moves.
+fn roster_control_row_scope(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let wider = "module c.rowscope.wider\n\nfn f(xs: List<String>, ys: List<String>) -> Int {\n  count(xs: concat(a: xs, b: ys))\n}\n"
+  let wrong = "module c.rowscope.wrong\n\nfn g(count: Int) -> Int {\n  count\n}\n\nfn h(xs: List<String>, ys: List<String>) -> Int {\n  count(xs: concat(a: xs, b: ys))\n}\n"
+  let algebra = qualified_name_from_dotted_string(dotted: "std.algebra")
+  roster_row_scope_import(name: "wider-row-set/row", text: wider, scope: OneHome { home: algebra, rows: OnlyCall { call: "count" } }, wants: "collection_count_shape", forbids: "collection_concat_shape", prepared: prepared, lex: lex)
+    + roster_row_scope_import(name: "wider-row-set/home", text: wider, scope: OneHome { home: algebra, rows: EveryRowOfHome }, wants: "collection_concat_shape", forbids: "", prepared: prepared, lex: lex)
+    + roster_row_scope_import(name: "wrong-row-refusal/row", text: wrong, scope: OneHome { home: algebra, rows: OnlyCall { call: "concat" } }, wants: "collection_concat_shape", forbids: "collection_count_shape", prepared: prepared, lex: lex)
+    + roster_row_scope_refusal(name: "wrong-row-refusal/home", text: wrong, scope: OneHome { home: algebra, rows: EveryRowOfHome }, refusal: "home-name-locally-bound", prepared: prepared, lex: lex)
+}
+
+// A SCOPE THAT SELECTS NOTHING REFUSES, it never reads as converged (side chat on #14883). Each RED goes through the real
+// entry; the apply RED runs at a nonexistent root, so a selection refusal (and not apply-lock-unavailable) proves the check
+// precedes the lock. The positive control is the same entry with a selecting call reaching the files.
+fn roster_control_scope_selects_its_row() -> String {
+  let algebra = qualified_name_from_dotted_string(dotted: "std.algebra")
+  let count_row = RosterHeadRow { call: "count", import_name: "collection_count_shape", home: algebra, labels: [] }
+  roster_scope_exit_refuses(name: "misspelled-call", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "cuont"), refusal: RefusalScopeSelectsNoRow { home: "std.algebra", selection: "call=cuont" })
+    + roster_scope_exit_refuses(name: "wrong-home", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.host_text", call: "count"), refusal: RefusalScopeSelectsNoRow { home: "std.host_text", selection: "call=count" })
+    + roster_scope_exit_refuses(name: "unknown-home", exit: roster_import_sweep_home_exit(paths_csv: "control/none.dag", home: "std.no_such_home"), refusal: RefusalScopeSelectsNoRow { home: "std.no_such_home", selection: "every-row" })
+    + roster_scope_exit_refuses(name: "apply-before-lock", exit: roster_import_sweep_apply_row_exit(root_dir: "/nonexistent-roster-control-root", paths_csv: "control/none.dag", home: "std.algebra", call: "cuont"), refusal: RefusalScopeSelectsNoRow { home: "std.algebra", selection: "call=cuont" })
+    + roster_scope_exit_refuses(name: "selecting-call", exit: roster_import_sweep_row_exit(paths_csv: "control/none.dag", home: "std.algebra", call: "count"), refusal: RefusalUnreadable)
+    + match roster_scope_selection_refusal_in(table: [count_row, count_row], scope: OneHome { home: algebra, rows: OnlyCall { call: "count" } }) {
+        Present { value: r } =>
+          if roster_refusal_text(reason: r) == roster_refusal_text(reason: RefusalScopeSelectsSeveralRows { home: "std.algebra", call: "count", count: 2 }) { "" } else { "CONTROL-FAIL scope-selection several-rows: refused " + roster_refusal_text(reason: r) + "\n" }
+        Absent => "CONTROL-FAIL scope-selection several-rows: an OnlyCall over two rows was admitted\n"
+      }
+    + match roster_scope_selection_refusal_in(table: [count_row], scope: OneHome { home: algebra, rows: OnlyCall { call: "count" } }) {
+        Present { value: r } => "CONTROL-FAIL scope-selection one-row: refused " + roster_refusal_text(reason: r) + "\n"
+        Absent => ""
+      }
+}
+
+// The refusal row the entry must exit with, compared as the exact rendered reason (the run's verdict IS its rows).
+fn roster_scope_exit_refuses(name: String, exit: ProcessExit, refusal: RosterRefusalReason) -> String {
+  let path = match refusal {
+    RefusalUnreadable => "control/none.dag"
+    _ => "*"
+  }
+  if roster_exit_reason_is(exit: exit, reason: roster_refuse_row(path: path, reason: refusal)) { "" } else {
+    match exit {
+      ExitSuccess => "CONTROL-FAIL scope-selection " + name + ": succeeded, expected " + roster_refusal_text(reason: refusal) + "\n"
+      ExitFailure { code: _, reason: r } => "CONTROL-FAIL scope-selection " + name + ": exited " + r + ", expected " + roster_refusal_text(reason: refusal) + "\n"
+    }
+  }
+}
+
+fn roster_row_scope_outcome(name: String, text: String, scope: RosterHomeScope, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+  roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: scope)), path: "control/" + name + ".dag", text: text, prepared: prepared, lex: lex, scope: scope, closures: roster_control_closures())
+}
+
+fn roster_row_scope_import(name: String, text: String, scope: RosterHomeScope, wants: String, forbids: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_row_scope_outcome(name: name, text: text, scope: scope, prepared: prepared, lex: lex) {
+    RosterEdit { start: _, end: _, text: t, own_line: _ } => roster_row_scope_import_text(name: name, t: t, wants: wants, forbids: forbids)
+    RosterEditWithLabels { start: _, end: _, text: t, own_line: _, labels: _ } => roster_row_scope_import_text(name: name, t: t, wants: wants, forbids: forbids)
+    RosterRefused { reason: r } => "CONTROL-FAIL row-scope " + name + ": refused " + roster_refusal_text(reason: r) + "\n"
+    RosterClean => "CONTROL-FAIL row-scope " + name + ": Clean, no import planned\n"
+    RosterLabelEdits { edits: _ } => "CONTROL-FAIL row-scope " + name + ": only label edits\n"
+  }
+}
+
+fn roster_row_scope_import_text(name: String, t: String, wants: String, forbids: String) -> String {
+  if !string_contains(s: t, pattern: wants) {
+    "CONTROL-FAIL row-scope " + name + ": import " + t + " lacks " + wants + "\n"
+  } else if forbids != "" && string_contains(s: t, pattern: forbids) {
+    "CONTROL-FAIL row-scope " + name + ": import " + t + " carries " + forbids + ", a row outside the run's scope\n"
+  } else {
+    ""
+  }
+}
+
+fn roster_row_scope_refusal(name: String, text: String, scope: RosterHomeScope, refusal: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_row_scope_outcome(name: name, text: text, scope: scope, prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } =>
+      if roster_refusal_text(reason: r) == refusal { "" } else { "CONTROL-FAIL row-scope " + name + ": refused " + roster_refusal_text(reason: r) + ", expected " + refusal + "\n" }
+    _ => "CONTROL-FAIL row-scope " + name + ": expected the whole-home run to refuse " + refusal + "\n"
+  }
+}
+
 // AN IMPORT THAT WOULD CLOSE A CYCLE IS REFUSED, NAMED, AND NEVER EMITTED. The pair differs only in whether the swept
 // module is in the home's closure: inside it, the refusal names home and module; outside it, the same text gets its import.
 fn roster_control_import_closes_cycle(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let text = "module c.cyc\n\nimport std.algebra { Cons }\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n"
-  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text"), rows: EveryRowOfHome }
   let cyclic = [RosterClosureRead { home: "std.host_text", modules: ["std.host_text", "c.cyc"] }]
   let inside = match roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: scope)), path: "control/cyc.dag", text: text, prepared: prepared, lex: lex, scope: scope, closures: cyclic) {
     RosterRefused { reason: r } =>
@@ -1949,12 +2114,12 @@ fn roster_control_edit_row_round_trip(outcome: RosterOutcome) -> String {
 fn roster_control_no_import_anchor(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let before = "module c.bare\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n"
   let after = "module c.bare\n\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  count(xs: chars(text: x))\n}\n"
-  let outcome = roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") })), path: "control/bare.dag", text: before, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }, closures: roster_control_closures())
+  let outcome = roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text"), rows: EveryRowOfHome })), path: "control/bare.dag", text: before, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text"), rows: EveryRowOfHome }, closures: roster_control_closures())
   let applied = match roster_applied(before: before, outcome: outcome) {
     RosterApplyRefused { reason: r } => "CONTROL-FAIL no-import-anchor: pass 1 refused " + roster_refusal_text(reason: r) + "\n"
     RosterApplyWritten { content: c1 } =>
       if c1 != after { "CONTROL-FAIL no-import-anchor: pass 1 did not write exactly one import after the module header\n" } else {
-        match roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") })), path: "control/bare.dag", text: c1, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text") }, closures: roster_control_closures()) {
+        match roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text"), rows: EveryRowOfHome })), path: "control/bare.dag", text: c1, prepared: prepared, lex: lex, scope: OneHome { home: qualified_name_from_dotted_string(dotted: "std.host_text"), rows: EveryRowOfHome }, closures: roster_control_closures()) {
           RosterClean => ""
           _ => "CONTROL-FAIL no-import-anchor: pass 2 is not Clean\n"
         }

@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.generated_reference_rows_carry_no_causing_authored_locus
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data generated_reference_rows_carry_no_causing_authored_locus: RecurringFailureMode = RecurringFailureMode {
+  identity: "generated_reference_rows_carry_no_causing_authored_locus" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the native census carries the causing authored locus for each generated reference, so the occurrence join is per occurrence for generated rows too -- executed check = a generated reference moved between two authored constructs with an equal multiset refuses on the join" } },
+
+  receipts: [
+    "generated reference rows carry no causing authored locus: the native occurrence-binding census prints a compiler-generated reference (an elided record head, a list literal's generated head) with locus `-`, so it cannot be joined to an authored occurrence by position. The wave binding-diff admission gate (gunbc.instruments.namespace_wave_occurrence_join, PR #14324) therefore compares those rows only as a MULTISET of (spelling, source, target), admitted ONLY under the proven byte-equality of the head with the generator's own recomputation from base, and any differing triple refuses (GeneratedChanged); without that proof they stay unobserved. A deletion extent that removes a construct causing a generated reference changes the multiset and refuses (control: a deleted extent holding a list literal).",
+
+    "HARM: a generated row that moved between two authored constructs, or one that changed its cause while the multiset stayed equal, is invisible to the gate. The byte-equality proof bounds the edits to import lines and argument labels, which cause no generated reference, so the multiset comparison is sound for the wave-1 edit kinds only; a future edit kind that can move a generated-reference-causing construct widens the gap.",
+
+    "ATTAINABLE CEILING: structurally guaranteed once the census names the cause; today mechanically preventable (multiset equality under the edit proof). NEXT-RUNG TRIGGER, at capability grain: the native census carries the causing authored locus for each generated reference, so the join is per occurrence for generated rows too. Owner routing: Manager 2 (census producer).",
+  ],
+
+  evidence: [],
+}

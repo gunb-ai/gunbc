@@ -9,7 +9,7 @@ test fn physical_print_requires_an_approval_pattern() -> Bool {
  match select_authorization_pattern(e:printer_start_effect()) { PatternSelected {pattern:OperatorApprovedCapability,receipt:_}=>true _=>false }
 }
 test fn every_new_printer_credential_binding_is_censused() -> Bool {
- let names=["product.printed_chassis.print_workflow","gunbc.fleet.printer_workflow_run","gunbc.fleet.printer_operator_approval","gunbc.fleet.printer_operator_run","gunbc.fleet.printer_report"]
+ let names=["gunbc.fleet.printer_workflow_run","gunbc.fleet.printer_operator_run","gunbc.fleet.printer_report"]
  all(names,n=>{
   let rows=filter(privileged_effect_census,r=>r.site.module_path==n)
   length(rows)==1 && all(rows,r=>match site_verdict(row:r).conformance {Conforms=>true DivergesWithReason {reason:_}=>true _=>false})
@@ -17,4 +17,10 @@ test fn every_new_printer_credential_binding_is_censused() -> Bool {
 }
 test fn receipt_source_comes_from_the_selected_credential() -> Bool {
  execution_source(token_source:WorkloadIdentityToken)=="github-actions" && execution_source(token_source:GcloudPrintToken)=="operator-gcloud"
+}
+// One entry may start a printer. The token-file starts (print_workflow mode=print and the operator
+// approval run) were deleted; a second start entry must be censused here and turns this red.
+test fn exactly_one_entry_may_start_a_printer() -> Bool {
+ let starts=filter(privileged_effect_census,r=>r.effect.subject==printer_start_effect().subject)
+ length(starts)==1 && all(starts,r=>r.site.module_path=="gunbc.fleet.printer_workflow_run" && r.site.decl_name=="run")
 }

@@ -109,10 +109,10 @@ pub use native_lane_runner::{
     run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
     run_self_host, run_type_declaration_use_census_runs, run_v2_census_verb, run_v2_native_census,
     run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier,
-    CensusInferRun, MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord,
-    NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun,
-    NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases,
-    NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
+    run_v2_select_spelled_modules, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
+    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
+    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
+    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
     TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
     MEASURED_SPAWN_RECEIPT_ENV,
 };
@@ -10771,7 +10771,7 @@ impl BudgetKind {
 /// the seam.
 ///
 /// FIVE `InterpError` VARIANTS ARE DELIBERATELY ABSENT. `HostToolUnresolved`,
-/// `HermeticHostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
+/// `HostEffectRefused`, `EvalBudgetExceeded`, `WitnessWallBudgetExceeded` and the
 /// pre-mapped `EvaluationBudgetExceeded` each have their OWN `ClaimOutcome` arm and are consumed
 /// by earlier arms of the match in `run_claim`, so they cannot reach this classifier. They are
 /// not silently folded into a neighbour: all five map to `MappedOutcomeEscaped`, a typed,
@@ -10895,7 +10895,7 @@ impl WitnessRuntimeCause {
             E::FixtureRenderRefused { .. } => WitnessRuntimeCause::FixtureRenderRefused,
             // The five that should never arrive. See the type comment.
             E::HostToolUnresolved { .. }
-            | E::HermeticHostEffectRefused { .. }
+            | E::HostEffectRefused { .. }
             | E::EvalBudgetExceeded { .. }
             | E::WitnessWallBudgetExceeded { .. }
             | E::EvaluationBudgetExceeded { .. }
@@ -10985,7 +10985,7 @@ pub enum ClaimOutcome {
     /// execute it.
     HostEffectRefused {
         operation: String,
-        ground: v1_interpreter::HermeticEffectGround,
+        ground: v1_interpreter::EffectRefusalGround,
     },
     /// THE HOST UNWOUND. Not a `RuntimeError`: that arm carries an `InterpError` the evaluator
     /// RAISED and this runner CAUGHT, a value held in hand. A panic is the evaluator failing to
@@ -12665,8 +12665,14 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 // `_inner`), `CostPartitionRow`, `InclusiveCostRow`, `CostAccountingVerdict`,
 // `CostAccountingRefusal`, `ExclusiveCostPartition`, `exclusive_cost_partition`,
 // `exclusive_cost_partition_from`, `render_exclusive_cost_partition_json`, `json_num`, the
-// `exclusive_cost_partition_law` test module, and the three `[cost-partition]` emissions
-// (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`) — ~700 LOC incl. tests.
+// `exclusive_cost_partition_law` test module, `out_of_span_rows`, and the three
+// `[cost-partition]` emissions (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`)
+// — ~700 LOC incl. tests. The probe is no longer print-only in `claim_batch`: a Refused
+// verdict decides the batch exit (`NoSpans` -> 2, any other refusal -> 1), through the
+// third parameter of `claim_batch`'s `batch_exit_code` (an already-admitted declaration; no
+// new one), its call site in `main`, and the `a_refused_partition_joins_the_batch_exit` test.
+// At deletion the parameter, call-site argument and test go with the probe, and removing the
+// probe while they stand fails to compile.
 // Receipt: `rg -c cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs`
 // returns 4 while the scaffold stands (this block, the const, and its declaration test)
 // and must return 0 at deletion — the deletion is what the receipt checks, not a fixed
@@ -16409,7 +16415,7 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
             v1_interpreter::InterpError::HostToolUnresolved { name, probed } => {
                 ClaimOutcome::HostToolUnresolved { name, probed }
             }
-            v1_interpreter::InterpError::HermeticHostEffectRefused { operation, ground } => {
+            v1_interpreter::InterpError::HostEffectRefused { operation, ground } => {
                 ClaimOutcome::HostEffectRefused { operation, ground }
             }
             v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
@@ -16521,35 +16527,22 @@ enum ExpectedRedArm {
     HostEffectRefused,
 }
 
-/// One label per `HermeticEffectGround`, in one place. The ground names the REMEDY, so a
-/// caller that re-spells it per site is re-deriving the remedy per site.
-pub fn hermetic_effect_ground_label(ground: &v1_interpreter::HermeticEffectGround) -> &'static str {
-    match ground {
-        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
-            "no published mock case for a corpus-governed service"
-        }
-        v1_interpreter::HermeticEffectGround::NoMockResponse => {
-            "operation declares no mock_response"
-        }
-        v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
-            "filesystem removal has no mock arm; only a wet route can run it"
-        }
-    }
-}
-
 /// The seam between the hand-Rust interpreter carrier and the `.dag`-modeled roster-join
 /// carrier for the same closed ground. Total in both directions by construction — adding an
 /// arm to either side fails to compile here rather than falling through to a default.
-fn hermetic_effect_ground_verdict(
-    ground: &v1_interpreter::HermeticEffectGround,
-) -> crate::v1_compiler_expected_red_roster_join::HermeticEffectGround {
-    use crate::v1_compiler_expected_red_roster_join::HermeticEffectGround as Modeled;
+pub fn effect_refusal_ground_verdict(
+    ground: &v1_interpreter::EffectRefusalGround,
+) -> crate::v1_compiler_expected_red_roster_join::EffectRefusalGround {
+    use crate::v1_compiler_expected_red_roster_join::EffectRefusalGround as Modeled;
     match ground {
-        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+        v1_interpreter::EffectRefusalGround::UnpublishedMockCase { .. } => {
             Modeled::UnpublishedMockCase
         }
-        v1_interpreter::HermeticEffectGround::NoMockResponse => Modeled::NoMockResponse,
-        v1_interpreter::HermeticEffectGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+        v1_interpreter::EffectRefusalGround::NoMockResponse => Modeled::NoMockResponse,
+        v1_interpreter::EffectRefusalGround::FilesystemRemoval => Modeled::FilesystemRemoval,
+        v1_interpreter::EffectRefusalGround::FrameNotRealizableUnderMode => {
+            Modeled::FrameNotRealizableUnderMode
+        }
     }
 }
 
@@ -19980,8 +19973,15 @@ pub fn project_witness_cost_receipt(
                     args.push((
                         Some("error".to_string()),
                         str_value(format!(
-                            "hermetic route has no arm for {operation} ({})",
-                            hermetic_effect_ground_label(ground)
+                            "{} {operation} ({})",
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_mode_label(
+                                crate::v1_compiler_expected_red_roster_join::effect_refusal_mode(
+                                    effect_refusal_ground_verdict(ground)
+                                )
+                            ),
+                            crate::v1_compiler_expected_red_roster_join::effect_refusal_ground_label(
+                                effect_refusal_ground_verdict(ground)
+                            )
                         )),
                     ));
                     "witness_cost_seed_refused_event"
@@ -20967,6 +20967,38 @@ fn read_frozen_roster_at_commit(
         ));
     }
     Ok(Some(String::from_utf8_lossy(&shown.stdout).into_owned()))
+}
+
+/// THE INSTRUMENT'S THIN READOUT over the SAME authority the required floor consults:
+/// `collect_frozen_path_deferral_additions`, which joins the live tree's typed
+/// FrozenPathDeferral entries (via `frozen_path_deferral_head_keys`) against the resolved diff
+/// baseline. This function adds NO judgment of its own — no second parser, no second comparison
+/// (DESIGN §5: a check restating a constraint the model already carries is a second representation
+/// of it). It renders the join's verdict as one tagged String for the dag instrument program
+/// `dag/gunbc/instruments/witness_deferral_freeze_population.dag`:
+/// * `refused|<cause>` — the join itself could not run (the baseline or a file read failed); the
+///   instrument refuses with a located diagnostic, never a silent pass (§5: every path succeeds
+///   fully or fails with a typed, located diagnostic).
+/// * `bounded` — no live identity sits outside the baseline population: the frozen list is bounded
+///   and shrinking only (an identity REMOVED from the roster shrinks the live set, so the join
+///   still holds — this is the removal arm's permit).
+/// * `unbounded|<identity>;;...` — at least one identity is outside the baseline population: a
+///   deferral was ADDED without its identity being in the drop row's declared population, which is
+///   the additions arm's refusal.
+/// Fixture determinism comes from the resolver's operator-override input (GUNBC_CI_DIFF_BASE), not
+/// from a test-only code path: a head-built run with the override pinned at HEAD self-compares, so
+/// the join reduces to exactly the working-tree identities — the planted entry, or its absence.
+pub fn witness_deferral_freeze_population_census() -> String {
+    match collect_frozen_path_deferral_additions() {
+        Err(reason) => format!("refused|{reason}"),
+        Ok(additions) => {
+            if additions.is_empty() {
+                "bounded".to_string()
+            } else {
+                format!("unbounded|{}", additions.join(";;"))
+            }
+        }
+    }
 }
 
 fn refuse_frozen_path_deferral_additions(additions: &[String]) -> Result<(), String> {
@@ -26970,9 +27002,19 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommitWitnessClaimPairResolvability {
     Resolvable,
-    EntryMissing { detail: String },
-    EntryResolveFailed { detail: String },
+    EntryMissing {
+        detail: String,
+    },
+    EntryResolveFailed {
+        detail: String,
+    },
     FunctionNotFound,
+    /// A file-grain row (`check_fns: []`) whose entry file carries no TEST MARKER: the sentinel
+    /// promises every marked declaration in the file, and a marked-empty file promises nothing,
+    /// so the row holds no witness. Its own cause, distinct from a named function going missing.
+    FileGrainEntryHasNoMarkedDeclarations,
+    /// A file-grain row whose entry file cannot be read to enumerate markers.
+    FileGrainEntryUnreadable,
 }
 
 #[derive(Debug, Clone)]
@@ -34898,7 +34940,7 @@ fn witness_eval_verdict_from_claim_outcome(
         ClaimOutcome::HostEffectRefused { operation, ground } => {
             crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::HostEffectRefused {
                 operation: operation.clone(),
-                ground: hermetic_effect_ground_verdict(ground),
+                ground: effect_refusal_ground_verdict(ground),
             }
         }
         // THE WIRE VERDICT STILL CARRIES THE AXIS AS DATA, which is why `BudgetCompletion`
