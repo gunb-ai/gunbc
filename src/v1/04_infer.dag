@@ -7616,10 +7616,11 @@ fn value_type_is_declared_nominal(t: Node, scope: InferScope) -> Bool {
 
 // The refusal every chain (ii) position emits, located at the value. An optional layer
 // (CardOptional on the value's type) has no route into text either: the host renders
-// `Present { value: .. }`. The cast refuses the same source through optional_cast_diags.
+// `Present { value: .. }`. The cast refuses the same source through optional_cast_diags; both read
+// the layer through value_type_carries_optional_layer.
 fn nominal_value_at_host_text_diags(t: Node, position: String, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let name = authored_name_at(source_indices: scope.type_env.source_indices, node: t)
-  if t.return_cardinality == CardOptional {
+  if value_type_carries_optional_layer(t: t, source_indices: scope.type_env.source_indices) {
     [inference_error(message: concat("optional ", name, "? at host text ", position, ": no declared conversion"), span: span, module_name: scope.module_name)]
   } else if value_type_is_declared_nominal(t: t, scope: scope) {
     [inference_error(message: concat("nominal ", name, " at host text ", position, ": no declared conversion"), span: span, module_name: scope.module_name)]
@@ -7739,6 +7740,15 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
 // pattern destructuring long before any comparison runs, so reconciling the two carriers
 // HERE would not clear those sites. That was measured and the repair withdrawn rather than
 // shipped on a plausible story.
+// AN OPTIONAL LAYER ON A VALUE'S TYPE, read once for every crossing that refuses it: the cast
+// (optional_cast_diags) and the host-text positions (nominal_value_at_host_text_diags). The layer is
+// either the cardinality mark (`T?`) or the Optional carrier written out (`Optional<T>`, read by its
+// last segment so a qualified std.optional.Optional spelling is the same carrier).
+fn value_type_carries_optional_layer(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  t.return_cardinality == CardOptional
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: t)) == "Optional"
+}
+
 fn optional_cast_diags(
   source_inferred: InferredNode?,
   target_type: Node,
@@ -7749,8 +7759,7 @@ fn optional_cast_diags(
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
-      let source_is_optional = src_node.return_cardinality == CardOptional
-        || qualified_last_segment(name: source_name) == "Optional"
+      let source_is_optional = value_type_carries_optional_layer(t: src_node, source_indices: source_indices)
       let target_is_optional = target_type.return_cardinality == CardOptional
       if source_is_optional && !target_is_optional {
         [make_error_node(

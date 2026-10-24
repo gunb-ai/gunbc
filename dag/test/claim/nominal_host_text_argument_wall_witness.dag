@@ -87,6 +87,8 @@ data join_optional_elements_source: String = "module probe_host_text_join_option
 
 data concat_imported_coproduct_source: String = "module probe_host_text_concat_imported\nimport std.types { String, Int, List }\nimport extdeps.languages.json.parse { JsonDocumentGap }\nfn text(g: JsonDocumentGap) -> String { concat(\"gap=\", g) }\n"
 
+data concat_optional_carrier_source: String = "module probe_host_text_concat_optional_carrier\nimport std.types { String, Int, List }\nimport std.optional { Optional }\nfn text(o: Optional<Int>) -> String { concat(\"o=\", o) }\n"
+
 test fn a_record_at_concat_is_refused() -> Bool {
   refusals(source: concat_record_source, subject: "nominal P at host text String formal of concat: no declared conversion") == 1
 }
@@ -150,6 +152,10 @@ test fn control_a_local_parameter_spelled_join_is_not_the_builtin() -> Bool {
 
 test fn an_optional_at_concat_is_refused() -> Bool {
   blocking_refusals_containing(source: concat_optional_source, fragment: "? at host text String formal of concat") == 1
+}
+
+test fn an_optional_carrier_written_out_at_concat_is_refused() -> Bool {
+  blocking_refusals_containing(source: concat_optional_carrier_source, fragment: "? at host text String formal of concat") == 1
 }
 
 test fn optional_elements_at_join_are_refused() -> Bool {
