@@ -7140,8 +7140,9 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
   }
 }
 
-// A ROSTER RESULT NAMED BY ITS DECLARATION (v1.compiler.method declared_result_type) IS THAT
-// DECLARATION AT THE CALL, joined through the closure's symbol index by declaring module and name
+// A ROSTER RESULT NAMED BY ITS DECLARATION (a v1.compiler.infer_method registry row whose result is
+// nominal_type_ref of a qualified name) IS THAT DECLARATION AT THE CALL, joined through the
+// closure's symbol index by declaring module and name
 // (v1.compiler.infer_env declaration_node_of_ref) and never by a homonym elsewhere. A non-generic
 // result is the declaration node itself, the shape a match reads its variants from and a field read
 // its fields from; a generic result is the use node with each argument joined the same way and the
@@ -7155,7 +7156,7 @@ type BuiltinResultAtCall
 
 fn builtin_result_at_call(bt: Node, scope: InferScope) -> BuiltinResultAtCall {
   let module_path = qualified_all_but_last(name: bt.name)
-  if bt.ident_span != none || bt.inferred != none || bt.connective != NoConnective || module_path == "" {
+  if bt.inferred != none || bt.connective != NoConnective || module_path == "" {
     BuiltinResultReady { node: bt }
   } else {
     match declaration_node_of_ref(d: decl_ref(module_path: module_path, decl_name: qualified_last_segment(name: bt.name)), env: scope.type_env) {
