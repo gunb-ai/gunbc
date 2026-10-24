@@ -23,6 +23,7 @@ import gunbc.design_ruling {
   v2_better_than_the_seed,
   v1_withdrawn_one_required_job,
   memory_envelope_is_part_of_the_verdict,
+  instrument_measurement_queues_run_in_parallel,
   project_documentation_projections_are_not_checkout_artifacts,
 }
 import gunbc.documentary_refs {
@@ -563,6 +564,21 @@ fn building_checks_blocks() -> List<MarkdownBlock> {
         tx(text: " bound through "),
         cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.target_binding", decl_name: "TargetProducer") }),
         tx(text: ", never a flag on `claim_executor`. Exit 0 means the observation held, 1 that it did not, 2 that there was no observation (an unknown label refuses with 2)."),
+      ]),
+      li_inlines(inlines: [
+        tx(text: "**Instrument measurements queue per dispatch, not one behind all** (ruling "),
+        cite(symbol: DeclarationSymbol { reference: instrument_measurement_queues_run_in_parallel.reference }),
+        tx(text: "). "),
+        cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.instruments.instrument_dispatch_workflow", decl_name: "instrument_dispatch_concurrency_group") }),
+        tx(text: " keys the workflow's concurrency group on the dispatch ref plus the dispatch label, so two unrelated measurements proceed at once while one measurement on one ref cannot run twice against itself; the queue is `max` and cancellation stays off, so a pending run is never dropped -- a queued run cancelled without signal was the failure the instrument fleet recorded on 2026-10-03 ("),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.instruments.instrument_dispatch_workflow" } }),
+        tx(text: ", the scalar-cancel history). The global group never isolated one run from another, so removing it costs no guarantee: the authority that keeps an instrument run from harming another job on the shared self-hosted pool is the SLOT, not the queue -- "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.runner.runner_slot_desired" } }),
+        tx(text: " declares the per-slot shape and "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.host.memory_envelope" } }),
+        tx(text: " enforces it (memory.high throttles early, memory.max refuses late, `MemorySwapMax: 0` refuses an overrun rather than paging it) -- per the operator's ruling recorded in that row's provenance. That is what isolation MEANS for an instrument run; it is not a claim that the live fleet carries it today. Live runner units drift from the declared shape -- a `MemorySwapMax` of 32 GiB where the slot declares 0, read on the fleet 2026-10-21 -- the class at "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.recurring_failure_mode" } }),
+        tx(text: " `the_live_runner_unit_memory_shape_drifts_from_the_declared_slot`, whose next-rung trigger is a scheduled live read of every fleet slot against the slot declared for that host, refusing on drift. Until that trigger runs, parallel instrument measurements rest on a declared authority that is not fully installed, and this document records that instead of assuming it holds."),
       ]),
     ]),
   ]

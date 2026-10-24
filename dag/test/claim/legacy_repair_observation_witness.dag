@@ -392,7 +392,7 @@ test fn a_moved_repairer_module_refuses() -> Bool {
     semantic_source_digest: base.semantic_source_digest,
     source_set_digest: base.source_set_digest,
     compiler_artifact_digest: base.compiler_artifact_digest,
-    repairer_identity: decl_ref(module_path: "std.observation", decl_name: "OccurrenceId"),
+    repairer_identity: decl_ref(module_path: "std.observation", decl_name: "AttemptOccurrenceId"),
     repair_site_roster_digest: base.repair_site_roster_digest,
     resolution_registry_digest: base.resolution_registry_digest
   }) == (repair_subject_field_label(f: RepairerIdentityModulePathField) as String)

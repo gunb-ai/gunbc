@@ -257,6 +257,10 @@ pub fn list_append<T: Clone>(
     v1_rt::concat(left.clone(), right.clone())
 }
 
+pub fn list_push<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
+    v1_rt::rc_list_push(xs.clone(), item.clone())
+}
+
 pub fn list_snoc_item<T: Clone>(xs: Rc<FreeMonoid<T>>, item: T) -> Rc<FreeMonoid<T>> {
     v1_rt::rc_list_push(xs.clone(), item.clone())
 }
@@ -296,11 +300,10 @@ pub struct PartialFunction<K, V> {
 #[derive(Clone)]
 pub struct FinitelySupportedFunction<K: std::cmp::Eq + std::hash::Hash, V> {
     pub lookup: Rc<dyn Fn(K) -> Option<V>>,
-    pub empty: Rc<FinitelySupportedFunction<K, V>>,
+    pub empty: Rc<HashMap<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,
-    pub insert: Rc<dyn Fn(K, V) -> Rc<FinitelySupportedFunction<K, V>>>,
-    pub merge:
-        Rc<dyn Fn(Rc<FinitelySupportedFunction<K, V>>) -> Rc<FinitelySupportedFunction<K, V>>>,
+    pub insert: Rc<dyn Fn(K, V) -> Rc<HashMap<K, V>>>,
+    pub merge: Rc<dyn Fn(Rc<HashMap<K, V>>) -> Rc<HashMap<K, V>>>,
     pub map_keys: Rc<dyn Fn() -> Rc<FreeMonoid<K>>>,
     pub map_values: Rc<dyn Fn() -> Rc<FreeMonoid<V>>>,
     pub map_has: Rc<dyn Fn(K) -> bool>,
@@ -2385,31 +2388,38 @@ pub fn fold_list<T: Clone, A: Clone>(
 ) -> A {
     {
         let mut __tco_cursor_xs: usize = 0;
-        loop {
-            #[allow(unused_mut)]
-            let mut empty = __tco_loop_empty;
-            #[allow(unused_mut)]
-            let mut cons = __tco_loop_cons;
-            #[allow(unused_mut)]
-            let mut xs = __tco_loop_xs.clone();
-            {
-                let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor_xs) == 0 {
-                    break empty.clone();
-                } else {
-                    let h = (*__fm)[__tco_cursor_xs + 0].clone();
-                    {
-                        let __tco_0 = __tco_cursor_xs + 1;
-                        let __tco_1 = cons(empty, h.clone());
-                        let __tco_2 = cons;
-                        __tco_cursor_xs = __tco_0;
-                        __tco_loop_empty = __tco_1;
-                        __tco_loop_cons = __tco_2;
-                        continue;
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut empty = __tco_loop_empty;
+                #[allow(unused_mut)]
+                let mut cons = __tco_loop_cons;
+                #[allow(unused_mut)]
+                let mut xs = __tco_loop_xs.clone();
+                {
+                    let __fm = xs.clone();
+                    if (__fm.len() - __tco_cursor_xs) == 0 {
+                        break empty.clone();
+                    } else {
+                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
+                        {
+                            let __tco_0 = __tco_cursor_xs + 1;
+                            let __tco_1 = cons(empty, h.clone());
+                            let __tco_2 = cons;
+                            __tco_cursor_xs = __tco_0;
+                            __tco_loop_empty = __tco_1;
+                            __tco_loop_cons = __tco_2;
+                            continue;
+                        }
                     }
                 }
-            }
-        }
+            };
+        };
+        __tco_result
     }
 }
 
@@ -2906,31 +2916,38 @@ pub fn list_find_first<T: Clone>(
 ) -> Option<T> {
     {
         let mut __tco_cursor_xs: usize = 0;
-        loop {
-            #[allow(unused_mut)]
-            let mut predicate = __tco_loop_predicate;
-            #[allow(unused_mut)]
-            let mut xs = __tco_loop_xs.clone();
-            {
-                let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor_xs) == 0 {
-                    break crate::std_optional::optional_absent();
-                } else {
-                    let h = (*__fm)[__tco_cursor_xs + 0].clone();
-                    if predicate(h.clone()) {
-                        break crate::std_optional::optional_present(h.clone());
+        #[allow(unused_labels)]
+        let __tco_result = '__tco_rebase: loop {
+            let __tco_base_xs = __tco_loop_xs.clone();
+            #[allow(unused_mut, unused_variables)]
+            let mut __tco_focus_xs = __tco_base_xs.focus();
+            break loop {
+                #[allow(unused_mut)]
+                let mut predicate = __tco_loop_predicate;
+                #[allow(unused_mut)]
+                let mut xs = __tco_loop_xs.clone();
+                {
+                    let __fm = xs.clone();
+                    if (__fm.len() - __tco_cursor_xs) == 0 {
+                        break crate::std_optional::optional_absent();
                     } else {
-                        {
-                            let __tco_0 = __tco_cursor_xs + 1;
-                            let __tco_1 = predicate;
-                            __tco_cursor_xs = __tco_0;
-                            __tco_loop_predicate = __tco_1;
-                            continue;
+                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
+                        if predicate(h.clone()) {
+                            break crate::std_optional::optional_present(h.clone());
+                        } else {
+                            {
+                                let __tco_0 = __tco_cursor_xs + 1;
+                                let __tco_1 = predicate;
+                                __tco_cursor_xs = __tco_0;
+                                __tco_loop_predicate = __tco_1;
+                                continue;
+                            }
                         }
                     }
                 }
-            }
-        }
+            };
+        };
+        __tco_result
     }
 }
 
