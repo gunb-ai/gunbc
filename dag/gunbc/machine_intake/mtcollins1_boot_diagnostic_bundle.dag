@@ -144,6 +144,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacStaleDetachNotAdmitted,
   MegaRacStaleDetachUnconfirmed,
   MegaRacRedirectionUncatalogued,
+  redirection_unread_text,
   MegaRacRefreshClockUnreadable,
   MegaRacListingUnparseableAfterDetach,
   MegaRacOfferedAmbiguouslyAfterDetach,
@@ -577,7 +578,7 @@ fn readiness_reading_text(r: AttachReadiness) -> String {
     ReadinessStartedUnbound { row: w } => concat("started with no bound session, session_index ", optional_text(v: w.session_index))
     ReadinessNotPresented { configurations: c } => concat("not presented: ", c)
     ReadinessUnanswered { detail: d } => concat("configurations GET unanswered: ", d)
-    ReadinessUncatalogued { image_name: n, wire: w, configurations: c } => concat("UNCATALOGUED redirection_status ", concat(to_string(w), concat(" on '", concat(n, concat("': ", c)))))
+    ReadinessUncatalogued { image_name: n, unread: u, configurations: c } => join(["UNCATALOGUED ", redirection_unread_text(unread: u), " on '", n, "': ", c], "")
     ReadinessMalformed { detail: d } => concat("MALFORMED configurations: ", d)
     ReadinessDuplicate { configurations: c } => concat("DUPLICATE rows present the image: ", c)
     ReadinessWrongPresentation { image_name: n, configurations: c } => concat("WRONG presentation '", concat(n, concat("': ", c)))
@@ -630,8 +631,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: concat("the stale census image '", concat(n, concat("' is presented and was NOT stopped: ", why as String))) }
     MegaRacStaleDetachUnconfirmed { detach: d, reason: why } =>
       Present { value: concat("the stale census image was not established as detached: ", concat(why as String, concat(" (", concat(detach_evidence_text(detach: d), ")")))) }
-    MegaRacRedirectionUncatalogued { image_name: n, wire: w, configurations: c } =>
-      Present { value: join(["the row presenting '", n, "' reports redirection_status ", to_string(w), ", which is uncatalogued for this firmware; refusing before any write or power action: ", c], "") }
+    MegaRacRedirectionUncatalogued { image_name: n, unread: u, configurations: c } =>
+      Present { value: join(["the row naming '", n, "' reports ", redirection_unread_text(unread: u), ", and the row is not a stale image this lane publishes (it is foreign, unnamed, or the wanted image itself), so nothing may be stopped on an unread status; refusing before any write or power action: ", c], "") }
     MegaRacRefreshClockUnreadable { detail: d, detach: x } => Present { value: join(["the clock could not be read, so the re-enumeration window could not be declared or judged: ", d, " (the detach had been executed: ", detach_evidence_text(detach: x), ")"], "") }
     MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
     MegaRacOfferedAmbiguouslyAfterDetach { image_name: n, image_indices: ids, detach: x } =>

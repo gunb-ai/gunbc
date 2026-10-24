@@ -5103,12 +5103,18 @@ fn run_census_scoped_with(
 ///
 /// The compiler is built from `source_roots` (this checkout's); the subjects are read from `population_roots`, which
 /// are `source_roots` themselves unless a caller reads another tree with this checkout's compiler (the base receipt).
+/// THE KIT RUN is one more `census-scoped`, over the same prepared binary, with the kit's own root
+/// added to the source roots and the kit's fixture modules as its subjects
+/// (`gunbc.instruments.ambient_name_census_reading` `ambient_census_kit_subjects`). It is a separate
+/// run so the union above, and every row it prints, is exactly what it was without the kit. A reader that
+/// declares no kit (`None`) gets no kit run.
 pub fn run_census_controls_and_subjects(
     source_roots: &[String],
     control_root_sets: &[Vec<String>],
     subjects: &[String],
     population_roots: &[String],
-) -> Result<(Vec<CensusInferRun>, CensusInferRun), String> {
+    kit: Option<(&str, &[String])>,
+) -> Result<(Vec<CensusInferRun>, CensusInferRun, Option<CensusInferRun>), String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let controls = control_root_sets
         .iter()
@@ -5119,7 +5125,23 @@ pub fn run_census_controls_and_subjects(
         .map(|subject| format!("//{}:all", subject.replace('.', "/")))
         .collect();
     let union = run_census_scoped_with(&preparation.binary_path, &labels, population_roots)?;
-    Ok((controls, union))
+    let kit = match kit {
+        Some((kit_root, kit_subjects)) => {
+            let kit_labels: Vec<String> = kit_subjects
+                .iter()
+                .map(|subject| format!("//{}:all", subject.replace('.', "/")))
+                .collect();
+            let mut kit_roots = source_roots.to_vec();
+            kit_roots.push(kit_root.to_string());
+            Some(run_census_scoped_with(
+                &preparation.binary_path,
+                &kit_labels,
+                &kit_roots,
+            )?)
+        }
+        None => None,
+    };
+    Ok((controls, union, kit))
 }
 
 /// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
