@@ -9,6 +9,10 @@ import extdeps.bazel.label { Label, render_label }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.expressions {
+  ExpressionTemplate, LiteralText, Interpolation, ContextAccess, Github, Inputs,
+  serialize_template,
+}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, Bash, max_job_timeout_minutes,
@@ -131,12 +135,26 @@ data instrument_dispatch_label_input: String = "label"
 // ref part and the label part independently, and so no consumer has to re-derive the prefix.
 data instrument_dispatch_group_prefix: String = "instrument-dispatch"
 
-// ONE GROUP PER (REF, LABEL). The two parts are GitHub expressions, both in the contexts GitHub allows
-// at workflow level (github, inputs, vars -- extdeps.github.actions documents the restriction), and the
-// form is already in production at workflow level in heal.yml, whose group reads inputs.pull_number.
-// The separator is a literal hyphen rather than an expression so the rendered shape is fixed text the
-// witness can assert exactly.
-data instrument_dispatch_concurrency_group: String = join([instrument_dispatch_group_prefix, "-${{ github.ref }}-${{ inputs.", instrument_dispatch_label_input, " }}"], "")
+// ONE GROUP PER (REF, LABEL), TYPED THROUGH THE GITHUB-EXPRESSION MODEL. Both dynamic parts are
+// ContextAccess interpolations over the contexts GitHub allows at workflow level (github, inputs,
+// vars -- extdeps.github.actions documents the restriction), and the separator is a LiteralText
+// hyphen. The ${{ }} medium is produced only by extdeps.github.expressions serialize_template, so
+// no expression syntax exists as string fragments in this model (the typed-template rule; the
+// precedent this replaced -- an existing debt of the same kind at dag/gunbc/heal_workflow.dag --
+// is listed in gunbc.recurring_failure_mode as the kind of string-typed medium to retire, not
+// permission to repeat).
+data instrument_dispatch_concurrency_group_template: ExpressionTemplate = {
+  segments: [
+    LiteralText { text: instrument_dispatch_group_prefix },
+    LiteralText { text: "-" },
+    Interpolation { expression: ContextAccess { context: Github, path: ["ref"] } },
+    LiteralText { text: "-" },
+    Interpolation { expression: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] } }
+  ]
+}
+
+data instrument_dispatch_concurrency_group: String =
+  serialize_template(template: instrument_dispatch_concurrency_group_template)
 
 data instrument_dispatch_concurrency: ConcurrencySpec = ConcurrencyMappingQueueMax {
   group: instrument_dispatch_concurrency_group,

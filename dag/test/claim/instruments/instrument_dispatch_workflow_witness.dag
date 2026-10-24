@@ -15,7 +15,11 @@ import gunbc.instruments.instrument_dispatch_workflow {
   instrument_dispatch_memory_demands_fit_selected_target, instrument_dispatch_memory_demands_are_dispatchable,
   instrument_dispatch_whole_tree_memory_demand, instrument_dispatch_stage0_regen_memory_demand,
   instrument_dispatch_compute_run_unit_cold_memory_demand,
-  instrument_dispatch_group_prefix, instrument_dispatch_concurrency_group,
+  instrument_dispatch_group_prefix, instrument_dispatch_label_input,
+  instrument_dispatch_concurrency_group, instrument_dispatch_concurrency_group_template,
+}
+import extdeps.github.expressions {
+  ExpressionTemplate, LiteralText, Interpolation, ContextAccess, Github, Inputs, serialize_template,
 }
 import gunbc.ci.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.ci.ci_runner_target { selected_ci_runner_target, ci_runner_target_ram_speed_budget }
@@ -212,13 +216,22 @@ test fn the_compute_run_unit_cold_dispatch_carries_its_own_memory_demand_holds()
 // vs declared slot shape) is gunbc.recurring_failure_mode
 // the_live_runner_unit_memory_shape_drifts_from_the_declared_slot.
 
-// THE RENDERED GROUP IS THE JOIN OF THE DECLARED PARTS, AND CARRIES BOTH EXPRESSIONS. The witness
-// pins the parts rather than one opaque literal, so a consumer can ask which half changed.
+// THE GROUP IS TYPED THROUGH THE EXPRESSION MODEL, AND THE EMITTED TEXT IS ITS PROJECTION. The
+// witness pins the SEGMENT STRUCTURE (prefix, hyphen, ref interpolation over Github, hyphen, label
+// interpolation over Inputs) and asserts the emitted yml carries the serializer's rendering of
+// exactly that structure -- the ${{ }} medium lives only in extdeps.github.expressions, never in a
+// string fragment here (the typed-template rule review 85263 enforces). A consumer can ask which
+// half changed: prefix, context, or path.
 test fn the_emitted_group_carries_the_ref_and_label_expressions_holds() -> Bool {
   let t = generated_text()
-  contains(instrument_dispatch_concurrency_group, instrument_dispatch_group_prefix)
-    && contains(instrument_dispatch_concurrency_group, "${{ github.ref }}")
-    && contains(instrument_dispatch_concurrency_group, "${{ inputs.label }}")
+  instrument_dispatch_concurrency_group == serialize_template(template: instrument_dispatch_concurrency_group_template)
+    && instrument_dispatch_concurrency_group_template.segments == [
+        LiteralText { text: instrument_dispatch_group_prefix },
+        LiteralText { text: "-" },
+        Interpolation { expression: ContextAccess { context: Github, path: ["ref"] } },
+        LiteralText { text: "-" },
+        Interpolation { expression: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] } }
+      ]
     && contains(t, concat(concat("group: ", instrument_dispatch_concurrency_group), "\n"))
 }
 
