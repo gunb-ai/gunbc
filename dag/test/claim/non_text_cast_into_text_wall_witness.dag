@@ -50,7 +50,7 @@ data user_declared_int_source: String = "module probe_user_declared_int\nimport 
 
 // THE SIBLING TARGET: `as String`. The same five kernel sources into the kernel String mint, which
 // validate_cast left unjudged because String is outside dag_cast_rules; the emitter then fabricated a
-// runtime panic for it. The declared route is the kernel to_string, accepted as the control.
+// runtime panic for it. The declared route, std.integer int_to_decimal_string, is accepted as the control.
 data int_as_string_source: String = "module probe_non_text_cast_int_string\nimport std.types { Int, String }\nfn label(n: Int) -> String { n as String }\n"
 
 data bool_as_string_source: String = "module probe_non_text_cast_bool_string\nimport std.types { Bool, String }\nfn label(b: Bool) -> String { b as String }\n"
@@ -61,7 +61,7 @@ data unit_as_string_source: String = "module probe_non_text_cast_unit_string\nim
 
 data nat_as_string_source: String = "module probe_non_text_cast_nat_string\nimport std.types { String }\nimport std.nat { Nat }\nfn label(k: Nat) -> String { k as String }\n"
 
-data declared_route_source: String = "module probe_int_to_text_declared_route\nimport std.types { Int, String }\nfn label(n: Int) -> String { to_string(n) }\n"
+data declared_route_source: String = "module probe_int_to_text_declared_route\nimport std.types { Int, String }\nimport std.integer { int_to_decimal_string }\nfn label(n: Int) -> String { int_to_decimal_string(value: n) }\n"
 
 data bool_as_int_source: String = "module probe_bool_as_int_still_refused\nimport std.types { Bool, Int }\nfn indicator(b: Bool) -> Int { b as Int }\n"
 

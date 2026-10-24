@@ -7544,7 +7544,9 @@ fn cast_source_is_solver_unit_placeholder(source_node: Node) -> Bool {
 // reached the target emitter's unsupported-cast arm: gunbc.durable_cas_file_store's
 // `cas_generation_count(...) as String` emitted three `panic!("unsupported cast from i64 to String")`
 // arms, a runtime abort standing where a located refusal belonged (DESIGN section 5). The declared
-// Int-to-text route is the kernel `to_string`, which the refusal names.
+// Int-to-text route is std.integer int_to_decimal_string (std.nat nat_to_decimal_string for a Nat),
+// which the refusal names (operator ruling via stern-bat-401, 2026-10-24: Int-to-String needs a
+// declared, imported conversion).
 // test.claim.non_text_cast_into_text_wall_witness holds the REDs, the GREENs, and the RED that a
 // user-declared type SPELLED Int is not the kernel Int.
 //
@@ -7594,7 +7596,7 @@ fn non_text_kernel_cast_into_text_diags(source_inferred: InferredNode?, target_t
       if text_representation_is_text_arm(r: text_representation_by_identity(n: target_type, env: scope.type_env))
         && is_non_text_kernel_cast_source(n: src_node, scope: scope) {
         let si = scope.type_env.source_indices
-        let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through a declared conversion (to_string, or a checked constructor over its rendering)")
+        let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through a declared conversion (std.integer int_to_decimal_string, std.nat nat_to_decimal_string, or a checked constructor over its rendering)")
         [make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: scope.module_name)]
       } else { [] }
     _ => []
