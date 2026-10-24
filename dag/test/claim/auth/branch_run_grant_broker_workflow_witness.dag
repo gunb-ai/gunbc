@@ -13,7 +13,7 @@ import gunbc.fleet.branch_run_grant_broker_workflow {
   BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused,
   expected_branch_run_grant_broker_workflow_yml, branch_run_grant_broker_job, branch_run_grant_broker_job_condition,
   branch_run_grant_broker_activity, branch_run_grant_broker_requesting_workflow, branch_run_grant_broker_prefilter,
-  broker_prefilter_admits, BrokerPayloadReading, DispatchedRunTerm, RunOfThisRepositoryTerm, TitleNamesModeTerm,
+  broker_prefilter_admits, BrokerPayloadReading,
 }
 import gunbc.auth.branch_run_grant_broker { broker_decision_for, BrokerDecision, BrokerDispatchesGrant, BrokerAsksForNothing, BrokerRefused }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_job }
@@ -40,39 +40,34 @@ test fn the_broker_is_triggered_by_a_requested_fleet_converge_run() -> Bool {
     && y.contains("${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}")
 }
 
-// THE PAYLOAD A REQUESTED EVENT DELIVERS for one dispatch, with its title as the broker's activity
-// renders it (extdeps.github.actions workflow_run_display_title_at): at `requested`, the workflow's name.
-fn requested_payload(rendered_title: String, event: String, same_repository: Bool) -> BrokerPayloadReading {
-  BrokerPayloadReading {
-    originating_event: event,
-    head_repository_is_this_repository: same_repository,
-    display_title: match workflow_run_display_title_at(activity: branch_run_grant_broker_activity) {
-      DisplayTitleIsWorkflowName { ground: _ } => branch_run_grant_broker_requesting_workflow
-      DisplayTitleIsRenderedRunName { ground: _ } => rendered_title
-      DisplayTitleRenderingUncited => branch_run_grant_broker_requesting_workflow
-    },
+// THE TITLE A REQUESTED EVENT CARRIES for one dispatch, as the broker's activity renders it
+// (extdeps.github.actions workflow_run_display_title_at): at `requested`, the workflow's name.
+fn requested_title(rendered_title: String) -> String {
+  match workflow_run_display_title_at(activity: branch_run_grant_broker_activity) {
+    DisplayTitleIsWorkflowName { ground: _ } => branch_run_grant_broker_requesting_workflow
+    DisplayTitleIsRenderedRunName { ground: _ } => rendered_title
+    DisplayTitleRenderingUncited => branch_run_grant_broker_requesting_workflow
   }
 }
 
-fn boot_dispatch_payload() -> BrokerPayloadReading {
-  requested_payload(rendered_title: "fleet-converge mtcollins1_boot srv1 nonce=mc1boot-br-20261023033132", event: "workflow_dispatch", same_repository: true)
+fn payload(event: String, same_repository: Bool) -> BrokerPayloadReading {
+  BrokerPayloadReading { originating_event: event, head_repository_is_this_repository: same_repository }
 }
 
 // THE RED FOR THE BROKER THAT NEVER FIRED (run 39895483109, skipped for boot run 39895480515): a requested
-// event for a same-repository mtcollins1_boot dispatch reaches the broker job. The control is the shape
-// that shipped, a title term for the mode, which refuses the same payload: the claim discriminates.
+// event for a same-repository mtcollins1_boot dispatch reaches the broker job, and the job condition reads
+// no title. The control is the shape that shipped: the title such an event carries does not contain the
+// mode word, so a title filter refuses it.
 test fn a_requested_mtcollins1_boot_dispatch_reaches_the_broker_job() -> Bool {
-  broker_prefilter_admits(terms: branch_run_grant_broker_prefilter(), p: boot_dispatch_payload())
-    && !broker_prefilter_admits(
-      terms: [DispatchedRunTerm, RunOfThisRepositoryTerm, TitleNamesModeTerm { mode: "mtcollins1_boot" }],
-      p: boot_dispatch_payload(),
-    )
+  broker_prefilter_admits(p: payload(event: "workflow_dispatch", same_repository: true))
+    && !branch_run_grant_broker_job_condition().contains("display_title")
+    && !requested_title(rendered_title: "fleet-converge mtcollins1_boot srv1 nonce=mc1boot-br-20261023033132").contains(" mtcollins1_boot ")
 }
 
 // THE PREFILTER STILL REFUSES WHAT IT MUST: a fork's dispatch and a run that was not dispatched.
 test fn the_broker_job_refuses_a_fork_and_an_undispatched_run() -> Bool {
-  !broker_prefilter_admits(terms: branch_run_grant_broker_prefilter(), p: requested_payload(rendered_title: "fleet-converge mtcollins1_boot srv1 nonce=x", event: "workflow_dispatch", same_repository: false))
-    && !broker_prefilter_admits(terms: branch_run_grant_broker_prefilter(), p: requested_payload(rendered_title: "fleet-converge mtcollins1_boot srv1 nonce=x", event: "push", same_repository: true))
+  !broker_prefilter_admits(p: payload(event: "workflow_dispatch", same_repository: false))
+    && !broker_prefilter_admits(p: payload(event: "push", same_repository: true))
 }
 
 fn a_run(title: String, branch: String) -> WorkflowRun {

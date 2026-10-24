@@ -122,14 +122,6 @@ fn workflow_run_display_title_at(activity: WorkflowRunActivity) -> WorkflowRunDi
   }
 }
 
-fn workflow_run_display_title_is_rendered_at(activity: WorkflowRunActivity) -> Bool {
-  match workflow_run_display_title_at(activity: activity) {
-    DisplayTitleIsRenderedRunName { ground: _ } => true
-    DisplayTitleIsWorkflowName { ground: _ } => false
-    DisplayTitleRenderingUncited => false
-  }
-}
-
 type Workflow {
   name: String
   run_name: String?
