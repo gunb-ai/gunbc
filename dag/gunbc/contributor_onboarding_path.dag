@@ -63,7 +63,7 @@ import gunbc.instruments.docs_projection_agreement { docs_projection_regen_comma
 // the honest standing for prose that no fold consumes.
 //
 // Single authority for the ordered path from a bare clone to one landed reviewed change, and for
-// the obstacles that path hits. It is the projection source for docs/onboarding.md. The steps
+// the obstacles that path hits. It is the projection source for `expected_contributor_onboarding_md`. The steps
 // carry DERIVED commands rather than typed ones: the build argv is gunbc.repo.repo_self_build, the
 // witness argv is gunbc.fabric.fabric_witness_run, the source roots are gunbc.ci.ci_layer_roots, the regen
 // recipe is gunbc.instruments.docs_projection_agreement. The only literal argv words here are git and rustup

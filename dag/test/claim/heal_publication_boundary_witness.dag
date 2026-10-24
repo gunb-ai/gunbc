@@ -5,6 +5,7 @@ import std.optional { Present, Absent }
 import std.types { String, NonEmptyStr, Bool, Int, CommitSha, List }
 import std.content_hash { Sha1Digest, Sha1DigestHex }
 import extdeps.github.effect { RepositoryPath }
+import test.claim.heal_witness_fixture_paths { heal_fixture_committed_paths }
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success, Failure }
 import extdeps.github.git_database { GitTreeItemWire }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitTreeMode, GitRegularBlobMode, GitExecutableBlobMode }
@@ -66,7 +67,7 @@ fn good_candidate() -> HealRepairCandidate {
 
 // Main's committed artifact paths, including a workflow projection the publisher must never admit.
 fn main_policy() -> PublisherPathPolicy {
-  publisher_path_policy(committed_artifact_paths: ["DESIGN.md", "ROADMAP.md", ".github/workflows/witnesses.yml"])
+  publisher_path_policy(committed_artifact_paths: heal_fixture_committed_paths())
 }
 
 fn good_run() -> TriggeringRunFacts {
@@ -478,7 +479,7 @@ test fn witness_a_published_commit_with_another_parent_is_unverified() -> Bool {
 // EXACTLY THE ADMITTED DELTA. A published head that also changed a path nobody admitted is not the
 // publication this transaction built.
 test fn witness_a_changed_population_wider_than_the_admission_is_unverified() -> Bool {
-  verdict_token(readback: readback_with(branch_head: created_commit_hex, parents: [head_hex], tree: created_tree_hex, changed: ["DESIGN.md", "ROADMAP.md"], head_tree: [published_design_item()])) == "unverified"
+  verdict_token(readback: readback_with(branch_head: created_commit_hex, parents: [head_hex], tree: created_tree_hex, changed: ["DESIGN.md", ".gitignore"], head_tree: [published_design_item()])) == "unverified"
 }
 
 test fn witness_a_published_path_holding_another_blob_is_unverified() -> Bool {

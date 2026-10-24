@@ -8,6 +8,7 @@ import gunbc.seed_build_artifact_emit { seed_build_artifacts }
 import gunbc.heal_candidate_stage0 { seed_build_artifact_paths, mirror_paths_of, stage0_round_writes_among }
 import gunbc.heal_publication_boundary { path_is_stage0_mirror }
 import gunbc.tier_o_artifact_emit { tier_o_artifacts }
+import test.claim.heal_witness_fixture_paths { heal_fixture_committed_paths }
 
 // THE TWO REGENERATION ROSTERS ARE SUBSETS OF THE REGISTRY, JOINED BY PATH.
 // gunbc.seed_build_artifact_emit and gunbc.tier_o_artifact_emit list the artifacts they produce
@@ -37,6 +38,19 @@ test fn witness_every_tier_o_artifact_is_a_committed_registry_artifact() -> Bool
 test fn witness_the_design_document_is_in_neither_roster() -> Bool {
   !any(seed_build_artifacts(), a => artifact_path(a: a) == "DESIGN.md")
     && !any(tier_o_artifacts(), a => artifact_path(a: a) == "DESIGN.md")
+}
+
+// INHABITANCE PAIRING for the heal witnesses, which SUPPLY committed artifact paths rather than derive them.
+// The real producer commits the design document, the gitignore and the workflow projections, and does
+// NOT commit the documentation projections gunbc.generated_artifact marks NotCommitted. A supplied
+// list naming one of those would be a hypothesis the real path contradicts; deleting this claim
+// would let the fixtures drift from committed_generated_artifact_paths again.
+test fn witness_the_committed_paths_the_heal_witnesses_supply_inhabit_the_real_producer() -> Bool {
+  heal_fixture_committed_paths().length() > 0
+    && all(heal_fixture_committed_paths(), p => registry_commits(path: p))
+    && !registry_commits(path: "ROADMAP.md")
+    && !registry_commits(path: "docs/design-rung-drops.md")
+    && !registry_commits(path: "docs/onboarding.md")
 }
 
 test fn witness_the_two_rosters_share_no_artifact() -> Bool {

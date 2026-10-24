@@ -89,7 +89,7 @@ Witnesses under `test.claim.spark.*`, `test.claim.serving.*`, `test.claim.harnes
 
 ### Prose that will not refuse (manual grep at deletion)
 
-`docs/design-rung-drops.md`, `docs/runbooks/glm-kv-allocation-plan-image-rebuild.md`, `docs/plans/serving-capacity-home-ruling.md`, `docs/plans/shell-to-dag-residual-census-and-arc-completion.md`, plus `gunbc.rung_drop` rows that name Spark serving symbols.
+`gunbc.design_ledgers` `expected_design_rung_drops_md`, `docs/runbooks/glm-kv-allocation-plan-image-rebuild.md`, `docs/plans/serving-capacity-home-ruling.md`, `docs/plans/shell-to-dag-residual-census-and-arc-completion.md`, plus `gunbc.rung_drop` rows that name Spark serving symbols.
 
 ### Required gate
 

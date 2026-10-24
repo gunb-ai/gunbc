@@ -17,6 +17,7 @@ import gunbc.heal_publication_boundary {
 import gunbc.generated_artifact_registry { committed_generated_artifact_paths }
 import extdeps.github.effect { RepositoryPath, is_workflow_projection_path }
 import gunbc.heal_candidate_registry { candidate_proposable_paths }
+import test.claim.heal_witness_fixture_paths { fixture_design_document_path, fixture_gitignore_path, fixture_witnesses_workflow_path }
 
 // NO CLAIM HERE TOUCHES THE REAL REGISTRY, AND THE REASON IS MEASURED RATHER THAN ASSUMED.
 // committed_generated_artifact_paths() costs ~43,000 eval steps and ~119ms to produce AT ALL -- the
@@ -96,7 +97,7 @@ test fn witness_an_empty_listing_is_an_absence() -> Bool {
 }
 
 test fn witness_a_listing_for_another_path_refuses() -> Bool {
-  match base_index_observation(path: "ROADMAP.md", raw: design_record(mode: "100644", stage: "0")) {
+  match base_index_observation(path: ".gitignore", raw: design_record(mode: "100644", stage: "0")) {
     BaseIndexRefused { detail: _ } => true
     BaseIndexAbsent => false
     BaseIndexBlob { mode: _, oid: _ } => false
@@ -192,10 +193,10 @@ test fn witness_an_unreadable_base_refuses_rather_than_adding() -> Bool {
 // real list to be established: given a list containing a workflow projection and an ordinary
 // artifact, the filter must drop the former and keep the latter.
 test fn witness_the_filter_drops_workflow_paths_and_keeps_others() -> Bool {
-  let supplied = [".github/workflows/heal.yml", "DESIGN.md", ".github/workflows/witnesses.yml", "ROADMAP.md"]
+  let supplied = [".github/workflows/heal.yml", fixture_design_document_path, fixture_witnesses_workflow_path, fixture_gitignore_path]
   let kept = proposable_paths_of(paths: supplied)
   count(kept) == 2
     && all(kept, p => !is_workflow_projection_path(path: RepositoryPath { value: p as NonEmptyStr }))
-    && any(kept, p => p == "DESIGN.md")
-    && any(kept, p => p == "ROADMAP.md")
+    && any(kept, p => p == fixture_design_document_path)
+    && any(kept, p => p == fixture_gitignore_path)
 }

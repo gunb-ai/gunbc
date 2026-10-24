@@ -8,7 +8,7 @@ import std.effects {
 }
 
 // v2.std.effects DISSOLVED onto the single std.effects authority (dag-v2 de-fork,
-// docs/plans/dag-v2-defork-audit.md). The EffectShape<K> / CreateCause<K> TYPE is imported from
+// `gunbc.plans.dag_v2_defork_audit`). The EffectShape<K> / CreateCause<K> TYPE is imported from
 // std, never re-defined here -- what was the v2 fork (EffectShape = IsIdempotent | IsBreaking, a
 // 2-level idempotency-class partition) is GONE: idempotency is DERIVED from the one flat
 // EffectShape (DESIGN 4, ops from inhabitance). This module instantiates the type at K =
