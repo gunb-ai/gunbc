@@ -2947,7 +2947,32 @@ pub fn type_applies_declaration(
         false
     } else {
         match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), application.clone()) {
-            Some(head) => v1_rt::rc_ptr_eq(head.clone(), declaration.clone()),
+            Some(head) => {
+                if v1_rt::rc_ptr_eq(head.clone(), declaration.clone()) {
+                    true
+                } else {
+                    match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
+                        head.clone(),
+                        env.source_indices.clone(),
+                        env.clone(),
+                    ) {
+                        Some(head_ref) => {
+                            match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
+                                declaration.clone(),
+                                env.source_indices.clone(),
+                                env.clone(),
+                            ) {
+                                Some(declaration_ref) => crate::std_decl_ref::declaration_ref_eq(
+                                    head_ref.clone(),
+                                    declaration_ref.clone(),
+                                ),
+                                std::option::Option::None => false,
+                            }
+                        }
+                        std::option::Option::None => false,
+                    }
+                }
+            }
             std::option::Option::None => false,
         }
     }
