@@ -7259,16 +7259,28 @@ fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
 // seed parser builds for the same source (src/v1/02_parse.dag parse_is_arm_test), so there is one lowering
 // of one concept in two pipelines. V is the arm's SOURCE SPELLING, so the variant pattern IS the authored
 // atom at its own occurrence: infer's Match path reads x's roster and a misspelt or foreign V refuses
-// (infer_match_pattern_variant_not_declared) located at V, inside the `is` expression. The synthesized
-// `true`, `false` and `_` are synthetic nodes, each its own occurrence: sharing V's occurrence id would put four nodes on one identity.
-// NOT YET ROUTED THROUGH node_lowered_from + close_lowered_image like the primary call and the cast
-// (the one-defect generalization, stated here per DESIGN 6b): at those two sites the authored suffix
-// is a node DISTINCT from the members it lowers, but here the suffix's source can BE V's own authored
-// token -- stamping the Match root with it would put root and pattern on one occurrence, the collision
-// this comment already refuses for the synthesized arms. The right shape is the caused_by geometry
-// body_lower_index_read_node derives for its operator (root OccurrencePending { caused_by } keeping V
-// the only Minted), and the walker's behavior over the still-authored V pattern is the named follow-up
-// PR's review item, together with the two postfix call sites in body_lower_postfix_chain_fold_step.
+// (infer_match_pattern_variant_not_declared) located at the arm that carries the use, inside the `is`
+// expression. The synthesized `true`, `false` and `_` are synthetic nodes, each its own occurrence:
+// sharing V's occurrence id would put four nodes on one identity.
+// THE DEFERRAL THIS SITE CARRIED (#14891) ASKED, AND THIS BLOCK RECORDS THE ANSWER: it feared that
+// "the suffix's source can BE V's own authored token" -- stamping the Match root with it would put root
+// and pattern on one occurrence, so it prescribed root-Pending/V-Minted and named the walker's behavior
+// over the still-authored V pattern the follow-up's review item. The route was first taken on the
+// traced argument below (review 85455 correctly held that an argument is not an executed fact and that
+// the site's collision pin could not see this question at all); the two claims named at the end make
+// it one. At this site `source` is the whole postfix-chain node -- the parser mints
+// an identity for EVERY production (mint_parsed_node_identity, src/v1/02_parse.dag), so the chain node,
+// the `is` keyword pair, the operand and V each hold a DISTINCT Minted id; V reaches the builder as the
+// arm, lowered from the parsed V node's own mint by body_lower_param_binding_atom_optional. They cannot
+// alias, and close_lowered_image's walk proves what that means for the walker: it stops at a node
+// carrying ANOTHER source's occurrence, so V (and any subtree under it) is left exactly as authored --
+// V keeps its own OccurrenceMinted; only the operand, lowered from this same source, is demoted to
+// OccurrencePending { caused_by }. The two facts are pinned mechanically, not by this prose:
+// v2.test.claim.body_lowering_call_node_occurrence lowers_is_node_keeps_the_pattern_v_authored
+// (V's atom is Minted and its id differs from the Match root's -- red under the geometry the deferral
+// feared, which stamps the root with V's own occurrence and demotes V) and
+// lowers_is_node_refusal_stays_located_at_the_use (a foreign V refuses with
+// infer_match_pattern_variant_not_declared through the real assemble+infer route).
 fn body_lower_is_node(operand: Node, arm: Node, source: Node) -> Node {
   // `x is Pattern` IS AN AUTHORED CONSTRUCT, so its Match stands for that text and takes the
   // suffix's occurrence the way the primary call and the cast do. The arms' true/false/wildcard
