@@ -155,6 +155,21 @@ type ArrowSlotScope
   | SlotScopeParamsOverTypeParams
   | SlotScopeParamsOverOuter
 
+// WHETHER RESOLVE CARRIES THE SLOT'S TARGET UNCHANGED AND NEVER WALKS IT: the declared order and the
+// contract metadata. Nothing under it is resolved, so nothing under it is a mention; the reference-site
+// collector asks this and keeps no list of such edges.
+fn arrow_slot_is_carried(slot: ArrowSlot) -> Bool {
+  match slot {
+    ArrowTypeParamsSlot => false
+    ArrowCarriedSlot => true
+    ArrowResourceRequirementsSlot => false
+    ArrowDomainSlot => false
+    ArrowCodomainSlot => false
+    ArrowBodyOrNamedSlot => false
+    ArrowAuthoredSlot => false
+  }
+}
+
 fn arrow_slot_scope(slot: ArrowSlot) -> ArrowSlotScope {
   match slot {
     ArrowTypeParamsSlot => SlotScopeOuter
@@ -358,6 +373,25 @@ fn child_value_scope(frame: ValueFrame, edge: Edge, ordinal: Int, positional_ord
           StructuralLabel { label: _ } => ChildSeesParentValues
         }
     }
+  }
+}
+
+// A DECLARING OCCURRENCE IS NOT A MENTION: the atom a `let` binds is where the name is introduced, so a walk that lists the
+// mentions of a spelling must not list it (a sweep read it as a free call of the spelling it declares). Decided from the same
+// slot table child_value_scope reads, as a fact of the syntax. An Arrow's parameters are already carried
+// (arrow_slot_is_carried) and a match arm's pattern atoms are UNDECIDED, not declared, until resolution has the symbol
+// index, so the `let` binder is the only declaring occurrence a walk can name here.
+fn child_is_declaring_occurrence(frame: ValueFrame, edge: Edge, positional_ordinal: Int) -> Bool {
+  match frame {
+    BindValueFrame { binder: _, exits_arm: _ } =>
+      match edge.label {
+        Positional => bind_positional_slot(ordinal: positional_ordinal) == BindBinderSlot
+        Authored { name: _ } => false
+        StructuralLabel { label: _ } => false
+      }
+    NoValueFrame => false
+    ArrowValueFrame { params: _ } => false
+    MatchValueFrame => false
   }
 }
 

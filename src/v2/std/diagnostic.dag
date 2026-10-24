@@ -39,6 +39,10 @@ type NoCorrectionReason
   | AmbiguousIntent
   | ExternalContractUnknown
   | CorrectionNotModeled
+  // THE FIX LIVES IN ANOTHER DECLARATION: the refused declarer this diagnostic's subject depends on.
+  // The identity is the declarer's qualified path as segments, exactly as DeclarationLocus carries
+  // one, so a census joins on it rather than reading the refusal's reason text.
+  | DeclarerRefused { declarer: FreeMonoid<Symbol> }
 
 type Correction
   = Suggested { node: Node }

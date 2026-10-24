@@ -13846,9 +13846,6 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             Value::Float(n) => Ok(str_value(n.to_string())),
             Value::Bool(b) => Ok(str_value(b.to_string())),
             Value::Str(ref s) => Ok(Value::Str(s.clone())),
-            // Corpus wire/debug casts for structured values — not the blanket Display
-            // fallback that silently stringified List/Map (§5 fabricated plausible output).
-            Value::Variant { .. } | Value::Record { .. } => Ok(str_value(format!("{}", val))),
             v => Err(refused(&v, "String")),
         },
         t => Err(refused(&val, t)),
@@ -24753,6 +24750,15 @@ macro_rules! v1_builtin_arms {
                                         .collect::<Vec<_>>(),
                                 ),
                             ),
+                            (
+                                $ctx.sym("executable_input_refs"),
+                                list_value(
+                                    row.executable_input_refs
+                                        .into_iter()
+                                        .map(str_value)
+                                        .collect::<Vec<_>>(),
+                                ),
+                            ),
                         ])),
                     });
                 }
@@ -25247,6 +25253,9 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::inert_carrier_declared_count_live(),
             ))),
 
+            arm "free_call.witness_deferral_freeze_population_census" { "witness_deferral_freeze_population_census" } => Ok(Some(str_value(
+                crate::cli_run::witness_deferral_freeze_population_census(),
+            ))),
             arm "free_call.commit_witness_claim_roster_unresolvable_count" { "commit_witness_claim_roster_unresolvable_count" } => Ok(Some(Value::Int(
                 crate::cli_run::commit_witness_claim_roster_unresolvable_count(),
             ))),

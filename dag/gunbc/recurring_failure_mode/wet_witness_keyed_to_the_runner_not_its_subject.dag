@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.wet_witness_keyed_to_the_runner_not_its_subject
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data wet_witness_keyed_to_the_runner_not_its_subject: RecurringFailureMode = RecurringFailureMode {
   identity: "wet_witness_keyed_to_the_runner_not_its_subject" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a wet witness keyed to the runner rather than to its subject: a claim whose verdict depends on which runner executes it. The primary cause is a claim that reads a fact about the EXECUTING HOST (its hostname, its fleet membership, whether a user manager answers) and asserts ONE fixed arm of the decision that fact selects, so its verdict is decided by which runner dequeues the job. The required floor then goes red or green by runner assignment while the subject under test is unchanged. DESIGN section 3 (a witness discriminates at one interface) names the remedy: either supply the host fact as data and assert the decision, keeping one inhabitance claim on the real host, or read the host and assert the RELATION between the host fact and the arm, never a fixed arm.",

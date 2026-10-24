@@ -28,13 +28,14 @@ pub use crate::v1_compiler_infer_env::{
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
-    node_is_collection, node_is_keyed_collection, resolved_type,
+    node_is_collection, node_is_keyed_algebra_spelling, node_is_keyed_collection, resolved_type,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    ArityMismatch, InternalError, TypeArgumentKindMismatch, UnlistedImportUse, UnresolvedType,
+    ArityMismatch, InternalError, TypeAliasCycle, TypeArgumentKindMismatch, UnlistedImportUse,
+    UnresolvedType,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -818,7 +819,12 @@ pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
             {
                 let decl = resolve_generic_use_decl(env.clone(), n.clone());
                 if ((decl.params.clone().len() as i64) > 0) {
-                    if crate::std_types::is_container_type(n.name.clone()) {
+                    if (crate::std_types::is_container_type(n.name.clone())
+                        || crate::v1_compiler_infer_types::node_is_keyed_algebra_spelling(
+                            n.clone(),
+                            env.source_indices.clone(),
+                        ))
+                    {
                         false
                     } else {
                         if (decl.inferred.clone() != std::option::Option::None) {
@@ -4320,6 +4326,22 @@ pub fn resolve_item_types(
 }), module_name.clone())]),
     std::option::Option::None => Rc::new(vec![]),
 };
+        let alias_cycle_diags = match v1_rt::map_get(
+            &env.symbol_index.alias_cycles.clone(),
+            v1_rt::concat(
+                v1_rt::concat(module_name.clone(), ".".to_string()),
+                crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
+            ),
+        ) {
+            Some(members) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::TypeAliasCycle {
+                    members: members.clone(),
+                    span: item.span.clone(),
+                }),
+                module_name.clone(),
+            )]),
+            std::option::Option::None => Rc::new(vec![]),
+        };
         let env = crate::v1_compiler_infer_env::env_with_type_variable_bindings(
             env.clone(),
             tp_names.clone(),
@@ -4781,7 +4803,13 @@ pub fn resolve_item_types(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(collision_diags.clone(), param_diags.clone()),
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                collision_diags.clone(),
+                                                alias_cycle_diags.clone(),
+                                            ),
+                                            param_diags.clone(),
+                                        ),
                                         ret_diags.clone(),
                                     ),
                                     use_diags.clone(),
