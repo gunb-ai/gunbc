@@ -52,6 +52,13 @@ type SdrTypeLine {
   reading_text: NonEmptyStr
 }
 
+// THE SAME SHAPE READ BACKWARD: the five fields in order, separated as the tool separates them. The
+// tool pads each column to a width; sdr_decode_line trims every field, so the padding is not part of
+// what any reader may depend on, and a line rendered here decodes to the record it was rendered from.
+fn sdr_type_line_text(line: SdrTypeLine) -> String {
+  join([line.name as String, line.sensor_number as String, line.status as String, line.entity_id as String, line.reading_text as String], " | ")
+}
+
 // A LINE THAT DID NOT HAVE FIVE FIELDS IS NOT AN EMPTY LINE AND NOT A ZERO READING.
 //
 // ipmitool prints header noise, blank lines and, on some builds, continuation text. Dropping those
