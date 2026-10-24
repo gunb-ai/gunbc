@@ -41,8 +41,7 @@ import gunbc.machine_intake.mtcollins1_boot_run {
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
   SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission,
 }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, CensusImageDerived, mtcollins1_census_boot_medium }
-import gunbc.machine_intake.mtcollins1_census_medium_readback { census_record_path }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, CensusImageDerived, mtcollins1_census_boot_medium, census_record_path }
 import gunbc.host.boot_medium_served_readback { boot_medium_served_path }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }
 import gunbc.runner.runner_browser_toolchain {
@@ -713,6 +712,52 @@ test fn a_runner_without_runner_temp_stops_before_any_controller_write() -> Bool
         && reached_no_power_action(route: route)
     _ => false
   }
+}
+
+// THE CENSUS MEDIUM IS READ BACK RECORD FIRST ON THE PRODUCTION ROUTE (gunbc.machine_intake.mtcollins1_census_image
+// census_served_check, applied by the boot run to the generic gunbc.host.boot_medium_served_readback). srv2 serves
+// the image bytes the row names, but the derivation record beside them names other bytes, or is gone: the
+// boot refuses on the record before filing, with no controller write. The healthy census claims above are
+// the positive control -- the same route reads the record healthy_srv2 serves -- so deleting the record leg
+// from the boot run makes this claim, not those, go red.
+fn srv2_with_record(content: String?) -> ModeledRemoteHost {
+  ModeledRemoteHost { endpoint: "srv2", files: match mtcollins1_census_image {
+    CensusImageDerived { input: input } => [
+      ModeledRemoteFile { path: census_record_path(input: input) as String, content: content, sha256: none },
+      ModeledRemoteFile { path: boot_medium_served_path(medium: mtcollins1_census_boot_medium) as String, content: Present { value: "<image bytes>" }, sha256: Present { value: selected_digest() } },
+    ]
+    _ => []
+  } }
+}
+
+fn with_srv2(w: MtCollins1BootWorld, srv2: ModeledRemoteHost) -> MtCollins1BootWorld {
+  MtCollins1BootWorld {
+    bmc: w.bmc, fs: w.fs, environment: w.environment,
+    agent: w.agent, remote_hosts: [srv2], clock: w.clock, worker: w.worker, console: w.console, media: w.media,
+  }
+}
+
+fn refuses_on_the_record_before_any_controller_write(srv2: ModeledRemoteHost, pattern: String) -> Bool {
+  match run_attempt(world: with_srv2(w: healthy_census_world(), srv2: srv2)) {
+    WitnessReturned { value, route } =>
+      !census_ended(a: value)
+        && string_contains(s: outcome_reason(a: value), pattern: pattern)
+        && string_contains(s: outcome_reason(a: value), pattern: "controller untouched")
+        && count(filter(route, r => is_controller_write(r: r))) == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+test fn a_census_boot_whose_derivation_record_names_other_bytes_refuses_before_any_controller_write() -> Bool {
+  refuses_on_the_record_before_any_controller_write(
+    srv2: srv2_with_record(content: Present { value: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555\n" }),
+    pattern: "the row does not describe the current derivation",
+  )
+}
+
+test fn a_census_boot_whose_derivation_record_is_gone_refuses_before_any_controller_write() -> Bool {
+  refuses_on_the_record_before_any_controller_write(srv2: srv2_with_record(content: none), pattern: "could not be read on")
 }
 
 test fn a_controller_with_no_modeled_sdr_refuses_at_the_fan_gate_rather_than_booting() -> Bool {
