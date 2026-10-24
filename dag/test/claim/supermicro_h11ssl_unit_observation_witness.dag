@@ -112,8 +112,8 @@ test fn w_decoded_traces_carry_the_emitter_bet() -> Bool {
 
 // Both PSB inferences are applicable SUPPORTS links (bets), each carrying the not-read loss.
 test fn w_psb_inferences_are_supporting_bets_with_losses() -> Bool {
-  let is = supermicro_h11ssl_psb_inferences()
-  (is |> count) == 2 && all(is, i => match i {
+  let infs = supermicro_h11ssl_psb_inferences()
+  (infs |> count) == 2 && all(infs, i => match i {
     Present { value: EvidenceApplicable { link: l } } =>
       l.direction == EvidenceSupports
         && l.freshness.maximum_conclusion.proposition == PartNotPsbLockedToANonSupermicroVendor
