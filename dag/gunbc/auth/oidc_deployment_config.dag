@@ -32,7 +32,7 @@ module gunbc.auth.oidc_deployment_config
 // secrets, and gunbc.auth.oidc_id_token_verification owns the JWKS row the same way).
 
 import std.types { String, NonEmptyStr, Int, List, Secret }
-import std.algebra { trim }
+import std.algebra { trim, collection_count_shape, collection_join_shape, list_push }
 import std.nat { Nat }
 import std.measure { Second, second }
 import std.checked_arithmetic { checked_int_to_nat }
