@@ -58,12 +58,16 @@ import v2.workflow.floor_terminal_ledger_wire {
   render_row,
   render_terminal_detail,
   render_terminal_tag,
-  render_expectation
+  render_expectation,
+  parse_preemption_reach
 }
 import v2.workflow.required_floor {
   CompletedPastSafetyLimit,
   CompletedWithinSafetyLimits,
   OpaqueHostCallUnbounded,
+  CooperativelyPollable,
+  ReachabilityUnobserved,
+  claim_preemption_admission,
   SafetyInterrupted
 }
 
@@ -675,7 +679,26 @@ fn outcome_fields(kind: String, code: String, ground: String) -> OutcomeRow {
     kind: kind,
     detail: "why",
     exit_code: code,
-    ground: ground
+    ground: ground,
+    reach: "cooperatively-pollable",
+    reach_operations: "",
+    cpu_ms: 1,
+    wall_ms: 2
+  }
+}
+
+fn outcome_with_reach(reach: String, operations: String) -> OutcomeRow {
+  OutcomeRow {
+    qualified: "a.b.c.f",
+    expectation_wire: "expect-hold",
+    kind: "CompletedOverBudget",
+    detail: "",
+    exit_code: "",
+    ground: "",
+    reach: reach,
+    reach_operations: operations,
+    cpu_ms: 7,
+    wall_ms: 9
   }
 }
 
@@ -722,10 +745,46 @@ test fn a_ledger_over_no_rows_refuses_instead_of_rendering_empty() -> Bool {
   }
 }
 
-// CODE 2 IS THE EXIT CONTRACT'S "NO OBSERVATION"; any other code is a failing verdict.
-test fn exit_failure_code_two_is_unreadable_and_other_codes_are_exit_failure() -> Bool {
+// CODE 2 IS THE EXIT CONTRACT'S "NO OBSERVATION" (unreadable); CODE 1 IS "DID NOT HOLD", which the
+// terminal sum spells as a returned false verdict; ANY OTHER CODE HAS NO ARM IN THE SUM AND
+// REFUSES TYPED, located at the code (review 85191 / manager ruling on gunbc#14933).
+test fn exit_failure_codes_map_to_the_sum_or_refuse() -> Bool {
   outcome_tag_of(fields: outcome_fields(kind: "ExitFailure", code: "2", ground: "")) == "returned-unreadable"
-    && outcome_tag_of(fields: outcome_fields(kind: "ExitFailure", code: "1", ground: "")) == "exit-failure"
+    && outcome_tag_of(fields: outcome_fields(kind: "ExitFailure", code: "1", ground: "")) == "returned-false"
+    && outcome_tag_of(fields: outcome_fields(kind: "ExitFailure", code: "3", ground: "")) == "outcome-exit-code-unrecognized"
+}
+
+// THE DISCRIMINATING RED for the unobserved arm: a claim whose reachability the seed did not
+// observe (SurfaceUnarmed) lands in the passed-over-budget terminal carrying `ReachabilityUnobserved`
+// and is REFUSED by the migration wall -- it is never admitted as CooperativelyPollable. The
+// POSITIVE CONTROL is the observed cooperative claim beside it, which the wall admits.
+test fn an_unobserved_reachability_lands_in_its_own_arm_and_is_not_admitted() -> Bool {
+  let unobserved = BudgetRefused { safety: CompletedPastSafetyLimit {
+    observed_cpu: 7, observed_wall: 9, preemption: ReachabilityUnobserved } }
+  let observed = BudgetRefused { safety: CompletedPastSafetyLimit {
+    observed_cpu: 7, observed_wall: 9, preemption: CooperativelyPollable } }
+  match parse_preemption_reach(name: "unobserved", operations: "") {
+    Absent => false
+    Present { value: p } =>
+      claim_preemption_admission(preemption: p) == false
+        && claim_preemption_admission(preemption: CooperativelyPollable) == true
+        && render_terminal_tag(terminal: unobserved) == "passed-over-budget"
+        && render_terminal_tag(terminal: observed) == "passed-over-budget"
+  }
+    && outcome_tag_of(fields: outcome_with_reach(reach: "unobserved", operations: "")) == "passed-over-budget"
+    && outcome_tag_of(fields: outcome_with_reach(reach: "cooperatively-pollable", operations: "")) == "passed-over-budget"
+    && outcome_tag_of(fields: outcome_with_reach(reach: "guessed", operations: "")) == "outcome-reach-unrecognized"
+}
+
+test fn the_reach_names_parse_to_the_declared_sum() -> Bool {
+  (match parse_preemption_reach(name: "opaque-host-call-unbounded", operations: "a,b") {
+    Present { value: OpaqueHostCallUnbounded { operation: o } } => o == "a,b"
+    _ => false
+  })
+    && (match parse_preemption_reach(name: "cooperatively-pollable", operations: "") {
+      Present { value: CooperativelyPollable } => true
+      _ => false
+    })
 }
 
 test fn a_held_and_a_failed_outcome_keep_their_tags() -> Bool {

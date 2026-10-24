@@ -33,10 +33,10 @@ struct ResolveTimings {
     /// terminal; no reader decodes the printed UNOBSERVED line into it yet (declared frontier).
     any_unobserved: bool,
     /// One entry per claim run, in run order: the function name and what its `ClaimOutcome`
-    /// carried, as plain strings (`outcome_row_tail`). Collected only to be handed to
+    /// carried, as plain strings (`outcome_row_facts`). Collected only to be handed to
     /// `v2.workflow.floor_terminal_ledger_wire render_ledger_from_outcomes` under `--outcomes-out`;
     /// nothing in this crate decodes it.
-    outcome_rows: Vec<(String, Vec<String>)>,
+    outcome_rows: Vec<(String, OutcomeRowFacts)>,
 }
 
 /// Exit composition, 1 (a finding) > 2 (no observation) > 0 (clean): the batch verdict is a
@@ -515,11 +515,26 @@ fn claim_outcome_kind(outcome: &ClaimOutcome) -> &'static str {
     }
 }
 
-/// The four trailing wire fields of a ledger row — kind, detail, exit code, ground — as the
-/// strings the variant carries. A field a variant does not carry is empty. Nothing here decides
-/// a tag or a disposition; that is the wire's.
-fn outcome_row_tail(outcome: &ClaimOutcome) -> Vec<String> {
-    use v1_compiler::v1_interpreter::HermeticEffectGround;
+/// The facts one claim contributes to a wire row beyond its name, as the values the seed holds.
+/// A field a variant does not carry is empty. Nothing here decides a tag or a disposition; that
+/// is the wire's. `reach` is the receipt's reachability observation spelled as the wire's
+/// `parse_preemption_reach` names it; `cpu_ms` / `wall_ms` are the receipt's measured cost.
+struct OutcomeRowFacts {
+    kind: String,
+    detail: String,
+    exit_code: String,
+    ground: String,
+    reach: &'static str,
+    reach_operations: String,
+    cpu_ms: i64,
+    wall_ms: i64,
+}
+
+fn outcome_row_facts(
+    outcome: &ClaimOutcome,
+    receipt: &v1_compiler::v1_interpreter::PerformanceReceipt,
+) -> OutcomeRowFacts {
+    use v1_compiler::v1_interpreter::{HermeticEffectGround, OpaqueHostCallReach};
     let kind = claim_outcome_kind(outcome).to_string();
     let (detail, code, ground) = match outcome {
         ClaimOutcome::Pass | ClaimOutcome::Fail | ClaimOutcome::CompletedOverBudget { .. } => {
@@ -557,7 +572,23 @@ fn outcome_row_tail(outcome: &ClaimOutcome) -> Vec<String> {
             String::new(),
         ),
     };
-    vec![kind, detail, code, ground]
+    let (reach, reach_operations) = match &receipt.opaque_host_call_reach {
+        OpaqueHostCallReach::SurfaceUnarmed => ("unobserved", String::new()),
+        OpaqueHostCallReach::CooperativelyPollable => ("cooperatively-pollable", String::new()),
+        OpaqueHostCallReach::OpaqueHostCallUnbounded { operations } => {
+            ("opaque-host-call-unbounded", operations.join(","))
+        }
+    };
+    OutcomeRowFacts {
+        kind,
+        detail,
+        exit_code: code,
+        ground,
+        reach,
+        reach_operations,
+        cpu_ms: (receipt.cpu_nanos / 1_000_000) as i64,
+        wall_ms: (receipt.wall_nanos / 1_000_000) as i64,
+    }
 }
 
 /// RENDER THROUGH THE ONE WIRE AUTHORITY AND WRITE THE BYTES. The render is
@@ -573,7 +604,7 @@ fn write_outcomes_ledger(
     index: &MultiEntryIndex,
     entry: &str,
     closure_subject: &str,
-    rows: &[(String, Vec<String>)],
+    rows: &[(String, OutcomeRowFacts)],
     execution_mode: ExecutionMode,
     out: &str,
 ) -> Result<(), String> {
@@ -599,27 +630,29 @@ fn write_outcomes_ledger(
         make_eval_context_with_runtime_options(&graph, source_indices, execution_mode, None, None);
     let list = |items: Vec<Value>| Value::List(Rc::new(items.into_iter().collect()));
     // The wire declares `OutcomeRow`; the record is built whole, so a row of the wrong shape cannot
-    // be sent. `tail` is exactly [kind, detail, exit_code, ground] (see `outcome_row_tail`).
+    // be sent. The facts are the typed `OutcomeRowFacts` (see `outcome_row_facts`).
     let row_values: Vec<Value> = rows
         .iter()
-        .map(|(function, tail)| {
-            let [kind, detail, exit_code, ground] = tail.as_slice() else {
-                unreachable!("outcome_row_tail returns exactly four fields")
-            };
-            Value::Record {
-                type_name: ctx.sym("OutcomeRow"),
-                fields: Rc::new(sorted_fields(vec![
-                    (
-                        ctx.sym("qualified"),
-                        str_value(format!("{module_path}.{function}")),
-                    ),
-                    (ctx.sym("expectation_wire"), str_value("expect-hold")),
-                    (ctx.sym("kind"), str_value(kind)),
-                    (ctx.sym("detail"), str_value(detail)),
-                    (ctx.sym("exit_code"), str_value(exit_code)),
-                    (ctx.sym("ground"), str_value(ground)),
-                ])),
-            }
+        .map(|(function, facts)| Value::Record {
+            type_name: ctx.sym("OutcomeRow"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("qualified"),
+                    str_value(format!("{module_path}.{function}")),
+                ),
+                (ctx.sym("expectation_wire"), str_value("expect-hold")),
+                (ctx.sym("kind"), str_value(&facts.kind)),
+                (ctx.sym("detail"), str_value(&facts.detail)),
+                (ctx.sym("exit_code"), str_value(&facts.exit_code)),
+                (ctx.sym("ground"), str_value(&facts.ground)),
+                (ctx.sym("reach"), str_value(facts.reach)),
+                (
+                    ctx.sym("reach_operations"),
+                    str_value(&facts.reach_operations),
+                ),
+                (ctx.sym("cpu_ms"), Value::Int(facts.cpu_ms)),
+                (ctx.sym("wall_ms"), Value::Int(facts.wall_ms)),
+            ])),
         })
         .collect();
     let args = vec![
@@ -747,7 +780,7 @@ fn run_claim_timed(
     let (outcome, receipt) = run_claim_measured(ctx, closure_subject, function);
     timings
         .outcome_rows
-        .push((function.to_string(), outcome_row_tail(&outcome)));
+        .push((function.to_string(), outcome_row_facts(&outcome, &receipt)));
     report_outcome(
         function,
         outcome,
@@ -1520,10 +1553,15 @@ mod cli_path_resolution_wiring_tests {
             .join("dag/test/claim/discovery_census_witness.dag")
             .to_string_lossy()
             .into_owned();
-        let rows: Vec<(String, Vec<String>)> = one_of_every_claim_outcome()
+        let rows: Vec<(String, OutcomeRowFacts)> = one_of_every_claim_outcome()
             .iter()
             .enumerate()
-            .map(|(i, o)| (format!("w{i}"), super::outcome_row_tail(o)))
+            .map(|(i, o)| {
+                (
+                    format!("w{i}"),
+                    super::outcome_row_facts(o, &unarmed_receipt()),
+                )
+            })
             .collect();
         let out = std::env::temp_dir().join(format!("outcomes-wire-{}.tsv", std::process::id()));
         let out = out.to_string_lossy().into_owned();
@@ -1545,11 +1583,27 @@ mod cli_path_resolution_wiring_tests {
         );
     }
 
-    #[test]
-    fn outcome_row_tail_has_exactly_the_four_wire_fields() {
-        for o in one_of_every_claim_outcome() {
-            assert_eq!(super::outcome_row_tail(&o).len(), 4, "{o:?}");
+    fn unarmed_receipt() -> v1_compiler::v1_interpreter::PerformanceReceipt {
+        v1_compiler::v1_interpreter::PerformanceReceipt {
+            opaque_host_call_reach:
+                v1_compiler::v1_interpreter::OpaqueHostCallReach::SurfaceUnarmed,
+            subject_key: "s".to_string(),
+            work_shape: "claim".to_string(),
+            wall_nanos: 2_000_000,
+            cpu_nanos: 1_000_000,
+            eval_self_nanos: 0,
+            eval_steps: 0,
+            sample_count: 1,
         }
+    }
+
+    // The receipt's reachability is carried as observed: an unarmed surface is "unobserved",
+    // never "cooperatively-pollable".
+    #[test]
+    fn unarmed_receipt_reach_is_carried_as_unobserved() {
+        let f = super::outcome_row_facts(&ClaimOutcome::Pass, &unarmed_receipt());
+        assert_eq!(f.reach, "unobserved");
+        assert_eq!((f.cpu_ms, f.wall_ms), (1, 2));
     }
 
     #[test]

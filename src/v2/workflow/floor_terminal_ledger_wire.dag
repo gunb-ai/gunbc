@@ -53,7 +53,11 @@ import v2.workflow.floor_terminal_ledger {
   ObservedVerdict,
   Returned,
   RouteGap,
-  RuntimeErrored
+  RuntimeErrored,
+  ClaimPreemptionReachability,
+  CooperativelyPollable,
+  OpaqueHostCallUnbounded,
+  ReachabilityUnobserved
 }
 import v2.workflow.required_floor {
   ClaimSafetyOutcome,
@@ -1041,11 +1045,6 @@ type OutcomeKind
   | OutcomeKindNotAttempted
   | OutcomeKindExitFailure
 
-type OutcomeGround
-  = OutcomeGroundUnpublishedMockCase
-  | OutcomeGroundNoMockResponse
-  | OutcomeGroundFilesystemRemoval
-
 fn parse_outcome_kind(name: String) -> OutcomeKind? {
   if name == "Pass" { Present { value: OutcomeKindPass } } else {
   if name == "Fail" { Present { value: OutcomeKindFail } } else {
@@ -1061,10 +1060,24 @@ fn parse_outcome_kind(name: String) -> OutcomeKind? {
   }}}}}}}}}}
 }
 
-fn parse_outcome_ground(name: String) -> OutcomeGround? {
-  if name == "UnpublishedMockCase" { Present { value: OutcomeGroundUnpublishedMockCase } } else {
-  if name == "NoMockResponse" { Present { value: OutcomeGroundNoMockResponse } } else {
-  if name == "FilesystemRemoval" { Present { value: OutcomeGroundFilesystemRemoval } } else { none }
+fn parse_route_gap_ground(name: String) -> FloorRouteGapGround? {
+  if name == "UnpublishedMockCase" { Present { value: UnpublishedMockCase } } else {
+  if name == "NoMockResponse" { Present { value: NoMockResponse } } else {
+  if name == "FilesystemRemoval" { Present { value: FilesystemRemoval } } else { none }
+  }}
+}
+
+// THE SEED'S REACHABILITY OBSERVATION CROSSES AS A NAME PLUS THE OPERATIONS IT NAMES, parsed once
+// into the existing `ClaimPreemptionReachability`. `unobserved` is the seed's `SurfaceUnarmed`: no
+// reachability surface was armed, which lands in `ReachabilityUnobserved` and is never read as
+// `CooperativelyPollable`. Several operations travel comma-joined in the one `operation` field the
+// existing arm carries.
+fn parse_preemption_reach(name: String, operations: String) -> ClaimPreemptionReachability? {
+  if name == "unobserved" { Present { value: ReachabilityUnobserved } } else {
+  if name == "cooperatively-pollable" { Present { value: CooperativelyPollable } } else {
+  if name == "opaque-host-call-unbounded" {
+    Present { value: OpaqueHostCallUnbounded { operation: operations } }
+  } else { none }
   }}
 }
 
@@ -1072,6 +1085,8 @@ type OutcomeRowDerivation
   = OutcomeRowDerived { row: SeedLedgerRow }
   | OutcomeRowRefused { reason: Symbol, offending: String }
 
+// `cpu_ms` / `wall_ms` are the measured claim cost the seed's receipt carries, as Ints. `reach` and
+// `reach_operations` are the receipt's reachability observation (see `parse_preemption_reach`).
 type OutcomeRow {
   qualified: String
   expectation_wire: String
@@ -1079,6 +1094,10 @@ type OutcomeRow {
   detail: String
   exit_code: String
   ground: String
+  reach: String
+  reach_operations: String
+  cpu_ms: Int
+  wall_ms: Int
 }
 
 type OutcomeRefusal {
@@ -1086,44 +1105,60 @@ type OutcomeRefusal {
   offending: String
 }
 
+// THE ROW BECOMES A `ClaimAttemptTerminal`, the one terminal sum, and tag and detail are then
+// rendered by `render_terminal_tag` / `render_terminal_detail` -- no second outcome-to-tag mapping
+// lives here (DESIGN section 3, review 85191 on gunbc#14933). `ExitFailure` maps by its code: 1 is
+// the process's own "did not hold" (verdict false), 2 is the harness's no-observation exit
+// (unrepresentable), and any other code has no arm in the sum and refuses typed.
 type OutcomeTerminalDerivation
-  = OutcomeTerminalDerived { tag: String, detail: String }
-  | OutcomeTerminalRefused { reason: Symbol }
+  = OutcomeTerminalDerived { terminal: ClaimAttemptTerminal }
+  | OutcomeTerminalRefused { reason: Symbol, offending: String }
 
-fn outcome_ground_tag(ground: OutcomeGround) -> String {
-  match ground {
-    OutcomeGroundUnpublishedMockCase => "route-gap-unpublished-mock-case"
-    OutcomeGroundNoMockResponse => "route-gap-no-mock-response"
-    OutcomeGroundFilesystemRemoval => "route-gap-filesystem-removal"
-  }
-}
-
-fn derive_outcome_terminal(kind: OutcomeKind, detail: String, exit_code: String, ground: String) -> OutcomeTerminalDerivation {
+fn derive_outcome_terminal(kind: OutcomeKind, row: OutcomeRow) -> OutcomeTerminalDerivation {
   match kind {
-    OutcomeKindPass => OutcomeTerminalDerived { tag: "returned-true", detail: "" }
-    OutcomeKindFail => OutcomeTerminalDerived { tag: "returned-false", detail: "" }
+    OutcomeKindPass =>
+      OutcomeTerminalDerived { terminal: Returned { observation: ObservedVerdict { holds: true } } }
+    OutcomeKindFail =>
+      OutcomeTerminalDerived { terminal: Returned { observation: ObservedVerdict { holds: false } } }
     OutcomeKindNotBool =>
-      OutcomeTerminalDerived { tag: "returned-unreadable", detail: join(["returned a non-Bool value: ", detail], "") }
-    OutcomeKindRuntimeError => OutcomeTerminalDerived { tag: "runtime-errored", detail: detail }
-    OutcomeKindBudgetInterrupted => OutcomeTerminalDerived { tag: "budget-refused", detail: detail }
+      OutcomeTerminalDerived { terminal: Returned { observation: ObservationUnrepresentable { reason: "returned-non-bool" } } }
+    OutcomeKindRuntimeError =>
+      OutcomeTerminalDerived { terminal: RuntimeErrored { message: row.detail } }
+    OutcomeKindBudgetInterrupted =>
+      OutcomeTerminalDerived { terminal: BudgetRefused { safety: SafetyInterrupted {
+        raised_by: row.detail,
+        elapsed_cpu_at_least: row.cpu_ms,
+        elapsed_wall_at_least: row.wall_ms
+      } } }
     OutcomeKindCompletedOverBudget =>
-      OutcomeTerminalDerived { tag: "passed-over-budget", detail: "completed-past-limit" }
-    OutcomeKindHostToolUnresolved => OutcomeTerminalDerived { tag: "host-tool-unresolved", detail: detail }
-    OutcomeKindHostEffectRefused =>
-      match parse_outcome_ground(name: ground) {
-        Present { value: g } => OutcomeTerminalDerived { tag: outcome_ground_tag(ground: g), detail: detail }
-        Absent => OutcomeTerminalRefused { reason: "outcome-ground-unrecognized" }
+      match parse_preemption_reach(name: row.reach, operations: row.reach_operations) {
+        Absent => OutcomeTerminalRefused { reason: "outcome-reach-unrecognized", offending: row.reach }
+        Present { value: reach } =>
+          OutcomeTerminalDerived { terminal: BudgetRefused { safety: CompletedPastSafetyLimit {
+            observed_cpu: row.cpu_ms,
+            observed_wall: row.wall_ms,
+            preemption: reach
+          } } }
       }
-    OutcomeKindPanicked => OutcomeTerminalDerived { tag: "panicked", detail: detail }
-    OutcomeKindNotAttempted => OutcomeTerminalDerived { tag: "not-attempted", detail: detail }
+    OutcomeKindHostToolUnresolved =>
+      OutcomeTerminalDerived { terminal: HostToolUnresolved { name: row.detail, probed: [] } }
+    OutcomeKindHostEffectRefused =>
+      match parse_route_gap_ground(name: row.ground) {
+        Present { value: g } =>
+          OutcomeTerminalDerived { terminal: RouteGap { operation: row.detail, ground: g } }
+        Absent => OutcomeTerminalRefused { reason: "outcome-ground-unrecognized", offending: row.ground }
+      }
+    OutcomeKindPanicked => OutcomeTerminalDerived { terminal: Panicked { payload: row.detail } }
+    OutcomeKindNotAttempted => OutcomeTerminalDerived { terminal: NotAttempted { halted_by: row.detail } }
     OutcomeKindExitFailure =>
-      if exit_code == "2" {
-        OutcomeTerminalDerived {
-          tag: "returned-unreadable",
-          detail: join(["returned ExitFailure code 2: ", detail], "")
-        }
+      if row.exit_code == "1" {
+        OutcomeTerminalDerived { terminal: Returned { observation: ObservedVerdict { holds: false } } }
       } else {
-        OutcomeTerminalDerived { tag: "exit-failure", detail: join(["code ", exit_code, ": ", detail], "") }
+        if row.exit_code == "2" {
+          OutcomeTerminalDerived { terminal: Returned { observation: ObservationUnrepresentable { reason: "exit-failure-code-2" } } }
+        } else {
+          OutcomeTerminalRefused { reason: "outcome-exit-code-unrecognized", offending: row.exit_code }
+        }
       }
   }
 }
@@ -1132,25 +1167,25 @@ fn derive_outcome_row(row: OutcomeRow) -> OutcomeRowDerivation {
   match parse_outcome_kind(name: row.kind) {
     Absent => OutcomeRowRefused { reason: "outcome-kind-unrecognized", offending: row.kind }
     Present { value: parsed_kind } =>
-      match derive_outcome_terminal(kind: parsed_kind, detail: row.detail, exit_code: row.exit_code, ground: row.ground) {
-        OutcomeTerminalRefused { reason: r } => OutcomeRowRefused { reason: r, offending: row.ground }
-        OutcomeTerminalDerived { tag: t, detail: td } =>
+      match derive_outcome_terminal(kind: parsed_kind, row: row) {
+        OutcomeTerminalRefused { reason: r, offending: o } => OutcomeRowRefused { reason: r, offending: o }
+        OutcomeTerminalDerived { terminal: terminal } =>
           match parse_expectation(wire: row.expectation_wire) {
             Absent => OutcomeRowRefused { reason: "seed-expectation-unrecognized", offending: row.qualified }
             Present { value: expectation } =>
               match readback_disposition(row: LedgerReadbackRow {
                 qualified: row.qualified,
                 expectation: expectation,
-                terminal_tag: t,
-                terminal_detail: td
+                terminal_tag: render_terminal_tag(terminal: terminal),
+                terminal_detail: render_terminal_detail(terminal: terminal)
               }) {
                 Absent => OutcomeRowRefused { reason: "seed-terminal-tag-unrecognized", offending: row.qualified }
                 Present { value: disposition } =>
                   OutcomeRowDerived { row: SeedLedgerRow {
                     qualified: row.qualified,
                     expectation_wire: row.expectation_wire,
-                    terminal_tag: t,
-                    terminal_detail: td,
+                    terminal_tag: render_terminal_tag(terminal: terminal),
+                    terminal_detail: render_terminal_detail(terminal: terminal),
                     seed_disposition_wire: render_disposition(disposition: disposition)
                   } }
               }
