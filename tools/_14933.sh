@@ -31,7 +31,7 @@ CKPT=/tmp/c4v/ckpt933; mkdir -p $CKPT/jobs
 echo "CKPT=$CKPT deadline=${DEADLINE}s"
 # ---------- head tree + build
 [ -d $H ] || git worktree add -q --force --detach $H $HEAD_SHA || { echo WTH_FAIL; exit 9; }
-CARGO_TARGET_DIR=$H/.t933
+export CARGO_TARGET_DIR=/root/workspace/.t933h
 (cd $H && cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1) || { echo BUILD_FAIL; exit 9; }
 mkdir -p $H/target/release
 cp -f $CARGO_TARGET_DIR/release/claim_batch $H/target/release/claim_batch
@@ -46,7 +46,7 @@ if [ ! -s $CKPT/reverse-applied ]; then
   (cd $B && git status --porcelain | wc -l) | grep -qv '^0$' || { echo "NOOP-REVERSE -- STOP"; exit 9; }
   touch $CKPT/reverse-applied
 fi
-CARGO_TARGET_DIR=$B/.t933b
+export CARGO_TARGET_DIR=/root/workspace/.t933b
 (cd $B && cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1) || { echo BUILD_FAIL_BASE; exit 9; }
 mkdir -p $B/target/release
 cp -f $CARGO_TARGET_DIR/release/claim_batch $B/target/release/claim_batch
