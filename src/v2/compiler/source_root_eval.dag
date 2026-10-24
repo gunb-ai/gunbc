@@ -239,6 +239,7 @@ import v2.compiler.native_test_vocabulary {
   FileRefusalAtLine,
   FileRefusalAtWholeFile,
   FileRefusalAtOtherFile,
+  FileRefusalAtPositionsNotBuilt,
   FileRefusalAtInvariant,
   FileRefusalAtDeclaration,
   FileRefusalAtUnresolvedNode,
@@ -539,7 +540,7 @@ type NativeTestContext {
   resolution: Outcome<ResolutionContext>
   file_refusals: FreeMonoid<NativeTestFileRefusal>
   accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
-  positions: NativeCensusPositionTable
+  positions: NativeCensusPositions
 }
 
 type NativeTestPreparedModule {
@@ -667,13 +668,24 @@ fn native_infer_advisory_count_for(frontier: NativeInferAcceptedFrontier, reason
 // (`gunbc.compiler_frontend_program_status`) joins this route's refusals "to occurrence identity
 // where an id is minted", which is an occurrence-keyed join over a key that was not unique in the
 // scope it was joined across -- a silent wrong answer rather than a missing one (DESIGN section 5).
+// WHETHER ANYTHING DOWNSTREAM OF THIS FOLD WILL LOCATE A FATAL IN AN ACCEPTED FILE. The position
+// table (NativeCensusPositionTable) exists only to answer native_census_locate for a resolve or
+// infer fatal, and it holds a span index and a line index for EVERY accepted file until the verb
+// ends -- measured as the dominant share of the front-end census's peak resident memory at the
+// whole-tree grain (gunbc test //gunbc/instruments:native-process-memory-census). A verb that never
+// locates has no reuse obligation (DESIGN section 2), so it builds no table: the demand is a
+// declared property of the verb that opens the fold; the table lives only in NativeCensusPositionsBuilt, so no locate can run against a table that was not built.
+type NativeLocateDemand
+  = NativeLocatesFatals
+  | NativeNeverLocates
+
 type NativeTestContextFoldState {
   roots: FreeMonoid<NormalizedTree>
   index: SourceRootIndex
   file_refusals: FreeMonoid<NativeTestFileRefusal>
   accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
   alloc: OccurrenceIdAllocator
-  positions: NativeCensusPositionTable
+  positions: NativeCensusPositions
 }
 
 // The LAST diagnostic is the cause that actually refused the file; the head is the advisory
@@ -777,6 +789,21 @@ fn native_census_position_table_empty() -> NativeCensusPositionTable {
   NativeCensusPositionTable { owners: Empty, owner_strides: sorted_floor_strides_empty(), last_owned: 0 - 1, files: empty_map() }
 }
 
+// THE TABLE EXISTS ONLY IN THE ARM THAT BUILT IT. A fold opened with NativeNeverLocates holds
+// NativeCensusPositionsNotBuilt, so no empty table exists to locate against. The readers that need a
+// table (native_census_owner_of, native_node_authored_locus, native_census_binding_loci) take
+// NativeCensusPositionTable, so a NotBuilt value cannot be passed to them; the holder of the
+// NativeCensusPositions decides, and each decision is typed: native_census_locate answers
+// FileRefusalAtPositionsNotBuilt, the prepare lane refuses with reason positions_not_built, and the
+// census-infer walk answers NativeInferCensusPositionsNotBuilt.
+type NativeCensusPositions
+  = NativeCensusPositionsBuilt { table: NativeCensusPositionTable }
+  | NativeCensusPositionsNotBuilt
+
+fn native_census_positions_empty() -> NativeCensusPositions {
+  NativeCensusPositionsBuilt { table: native_census_position_table_empty() }
+}
+
 type NativeCensusIdBounds {
   first: Int
   last: Int
@@ -852,7 +879,14 @@ fn native_census_owner_key(node: Node) -> Optional<OccurrenceId> {
   }
 }
 
-fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
+fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPositions) -> FileRefusalAt {
+  match positions {
+    NativeCensusPositionsNotBuilt => FileRefusalAtPositionsNotBuilt
+    NativeCensusPositionsBuilt { table: t } => native_census_locate_in(at: at, path: path, positions: t)
+  }
+}
+
+fn native_census_locate_in(at: Locus, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
   match at {
     Textual { file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
     SourcePortLocus { anchor: _, file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
@@ -887,7 +921,7 @@ fn native_census_locate_textual(file: Symbol, extent: Extent, path: Symbol, posi
   }
 }
 
-fn native_census_locate_fatal(chain: NonEmptyDiagnostics, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
+fn native_census_locate_fatal(chain: NonEmptyDiagnostics, path: Symbol, positions: NativeCensusPositions) -> FileRefusalAt {
   native_census_locate(at: diagnostics_fatal(d: chain).at, path: path, positions: positions)
 }
 
@@ -969,12 +1003,18 @@ fn native_test_context_absorb(
               advisories: advisories
             ),
             alloc: alloc,
-            positions: native_census_positions_absorb_accepted(
-              table: state.positions,
-              path: read.compilation_unit,
-              spans: spans,
-              text: read.source.carried
-            )
+            positions: match state.positions {
+              NativeCensusPositionsNotBuilt => NativeCensusPositionsNotBuilt
+              NativeCensusPositionsBuilt { table: t } =>
+                NativeCensusPositionsBuilt {
+                  table: native_census_positions_absorb_accepted(
+                    table: t,
+                    path: read.compilation_unit,
+                    spans: spans,
+                    text: read.source.carried
+                  )
+                }
+            }
           }
       }
   }
@@ -1046,13 +1086,20 @@ fn native_test_front_end_prepare() -> Outcome<NativeTestFrontEnd> {
 }
 
 fn native_test_context_state_empty() -> NativeTestContextFoldState {
+  native_test_context_state_empty_for(locate: NativeLocatesFatals)
+}
+
+fn native_test_context_state_empty_for(locate: NativeLocateDemand) -> NativeTestContextFoldState {
   NativeTestContextFoldState {
     roots: Empty,
     index: source_root_index_empty(),
     file_refusals: Empty,
     accepted_file_advisories: Empty,
     alloc: occurrence_id_allocator_initial(),
-    positions: native_census_position_table_empty()
+    positions: match locate {
+      NativeLocatesFatals => native_census_positions_empty()
+      NativeNeverLocates => NativeCensusPositionsNotBuilt
+    }
   }
 }
 
@@ -1079,6 +1126,10 @@ fn native_test_context_finish(
 // does not own a clock keep calling this, and it is DEFINED BY the same parts the driver enters
 // separately rather than restating the fold beside them.
 fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTestContext> {
+  native_test_context_from_ingest_for(ingest: ingest, locate: NativeLocatesFatals)
+}
+
+fn native_test_context_from_ingest_for(ingest: SourceRootIngest, locate: NativeLocateDemand) -> Outcome<NativeTestContext> {
   bind_outcome(
     o: native_test_front_end_prepare(),
     f: fn(front) {
@@ -1086,7 +1137,7 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
       outcome_accepted(value: native_test_context_finish(
         state: fold_list(
           xs: ingest,
-          empty: native_test_context_state_empty(),
+          empty: native_test_context_state_empty_for(locate: locate),
           cons: fn(state, read) {
             native_test_context_fold_step(
               state: state,
@@ -2804,7 +2855,15 @@ fn native_diagnostics_report_first_cause(d: NonEmptyDiagnostics, positions: Nati
   }
 }
 
-fn native_prepare_resolve_refused(diagnostics: NonEmptyDiagnostics, positions: NativeCensusPositionTable) -> NativeTestVerdict {
+fn native_prepare_resolve_refused(diagnostics: NonEmptyDiagnostics, positions: NativeCensusPositions, path: Symbol) -> NativeTestVerdict {
+  match positions {
+    NativeCensusPositionsNotBuilt =>
+      native_test_refused_located(stage: NativeTestStagePrepare, reason: ^positions_not_built, at: Textual { file: path, extent: WholeFile })
+    NativeCensusPositionsBuilt { table: t } => native_prepare_resolve_refused_located(diagnostics: diagnostics, positions: t)
+  }
+}
+
+fn native_prepare_resolve_refused_located(diagnostics: NonEmptyDiagnostics, positions: NativeCensusPositionTable) -> NativeTestVerdict {
   NativeTestRefused {
     stage: NativeTestStagePrepare,
     diagnostics: native_diagnostics_report_first_cause(d: diagnostics, positions: positions)
@@ -2846,7 +2905,8 @@ fn native_lane_module_resolution(
             entry: entry,
             verdict: native_prepare_resolve_refused(
               diagnostics: native_import_target_refusal_diagnostics(target: t, resolver: d),
-              positions: step.context.positions
+              positions: step.context.positions,
+              path: entry.path
             )
           )
         }
@@ -2854,7 +2914,7 @@ fn native_lane_module_resolution(
         NativeLaneModuleResolveRowsDecided {
           rows: native_lane_module_refusal_rows(
             entry: entry,
-            verdict: native_prepare_resolve_refused(diagnostics: d, positions: step.context.positions)
+            verdict: native_prepare_resolve_refused(diagnostics: d, positions: step.context.positions, path: entry.path)
           )
         }
       NativeModuleResolveAccepted { resolved: resolved } =>
@@ -3595,6 +3655,7 @@ fn native_census_import_cascade(attribution: NativeImportTargetAttribution) -> N
 // them -- for the duration of one call; the loop keeps none of them past it.
 type NativeInferCensusOutcome
   = NativeInferCensusFileRefused
+  | NativeInferCensusPositionsNotBuilt
   | NativeInferCensusResolveRefused {
       first: NonEmptyDiagnostics
       rest: List<NonEmptyDiagnostics>
@@ -3632,23 +3693,27 @@ fn native_census_module_inference(
     path: entry.path
   )
   NativeInferCensusStep {
-    outcome: match step.verdict {
-      NativeModuleResolveFileRefused { refusal: _ } => NativeInferCensusFileRefused
-      NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
-        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
-      NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
-        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
-      NativeModuleResolveAccepted { resolved: resolved } =>
-        match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: entry.module), resolved: resolved) {
-          Accepted { value: prepared, diagnostics: _ } =>
-            NativeInferCensusInferred {
-              resolved: resolved,
-              inferred: prepared.inferred,
-              frontier: prepared.frontier,
-              loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings))
-            }
-          Rejected { diagnostics: d } =>
-            NativeInferCensusInferRefused { resolved: resolved, chain: d, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings)) }
+    outcome: match context.positions {
+      NativeCensusPositionsNotBuilt => NativeInferCensusPositionsNotBuilt
+      NativeCensusPositionsBuilt { table: t } =>
+        match step.verdict {
+        NativeModuleResolveFileRefused { refusal: _ } => NativeInferCensusFileRefused
+        NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
+          NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: t, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
+        NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
+          NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: t, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
+        NativeModuleResolveAccepted { resolved: resolved } =>
+          match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: entry.module), resolved: resolved) {
+            Accepted { value: prepared, diagnostics: _ } =>
+              NativeInferCensusInferred {
+                resolved: resolved,
+                inferred: prepared.inferred,
+                frontier: prepared.frontier,
+                loci: native_census_binding_loci(positions: t, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings))
+              }
+            Rejected { diagnostics: d } =>
+              NativeInferCensusInferRefused { resolved: resolved, chain: d, loci: native_census_binding_loci(positions: t, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings)) }
+          }
         }
     },
     context: step.context,
@@ -3684,7 +3749,7 @@ fn native_census_binding_loci(positions: NativeCensusPositionTable, path: Symbol
 // name, as `binding_unbound <module> <spelling> <line>:<byte column>`, located by the same position table as the
 // residual rows (native_census_locate_fatal). A name with no binding has no binding row; this is its occurrence-grain
 // record, so a wave that binds it can be joined occurrence by occurrence on the source locus.
-fn native_census_unbound_lines(positions: NativeCensusPositionTable, entry: NativeCensusModule, first: NonEmptyDiagnostics, rest: List<NonEmptyDiagnostics>) -> List<String> {
+fn native_census_unbound_lines(positions: NativeCensusPositions, entry: NativeCensusModule, first: NonEmptyDiagnostics, rest: List<NonEmptyDiagnostics>) -> List<String> {
   let folded = fold_list(xs: Cons { head: first, tail: rest }, empty: NativeCensusUnbound { lines: [], unreadable: 0 }, cons: fn(acc, chain) {
     if diagnostics_fatal(d: chain).reason == ^resolve_reason_unbound_symbol {
       match native_census_unbound_spelling(at: diagnostics_fatal(d: chain).at) {
@@ -3727,6 +3792,7 @@ fn native_census_at_locus(at: FileRefusalAt) -> Optional<SourceLineCol> {
 fn native_census_infer_binding_lines(entry: NativeCensusModule, outcome: NativeInferCensusOutcome) -> List<String> {
   match outcome {
     NativeInferCensusFileRefused => ["binding_unreached\t" + entry.module + "\tfront_end"]
+    NativeInferCensusPositionsNotBuilt => ["binding_unreached\t" + entry.module + "\tpositions_not_built"]
     NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: p, loci: l, unbound: u } =>
       list_snoc_item(xs: list_append(left: occurrence_binding_partial_lines(module: entry.module, entries: p, loci: l), right: u), item: "binding_unreached\t" + entry.module + "\tresolve")
     NativeInferCensusInferred { resolved: r, inferred: _, frontier: _, loci: l } =>
@@ -3749,6 +3815,8 @@ fn native_census_infer_type_contribution(
   match outcome {
     NativeInferCensusFileRefused =>
       type_census_unreached(module: entry.module, stage: "front_end", cause: "file refused by the context")
+    NativeInferCensusPositionsNotBuilt =>
+      type_census_unreached(module: entry.module, stage: "positions", cause: "position table not built")
     NativeInferCensusResolveRefused { first: f, rest: _, observation: _, partial: _ } =>
       type_census_unreached(module: entry.module, stage: "resolve", cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: f)))
     NativeInferCensusInferred { resolved: r, inferred: i, frontier: _ } =>
@@ -3800,7 +3868,7 @@ type NativeCensusResidualRow {
 }
 
 fn native_census_residual_row(
-  positions: NativeCensusPositionTable,
+  positions: NativeCensusPositions,
   entry: NativeCensusModule,
   chain: NonEmptyDiagnostics
 ) -> NativeCensusResidualRow {
@@ -3813,7 +3881,7 @@ fn native_census_residual_row(
 }
 
 fn native_census_residual_rows(
-  positions: NativeCensusPositionTable,
+  positions: NativeCensusPositions,
   entry: NativeCensusModule,
   first: NonEmptyDiagnostics,
   rest: List<NonEmptyDiagnostics>
@@ -4184,7 +4252,7 @@ fn native_census_cause_groups_add_cascade_member(
 // chains it refused at; the rest of its chains are its own refusals and read None.
 fn native_census_cause_groups_add_chains(
   groups: NativeCensusCauseGroups,
-  positions: NativeCensusPositionTable,
+  positions: NativeCensusPositions,
   entry: NativeCensusModule,
   first: NonEmptyDiagnostics,
   rest: List<NonEmptyDiagnostics>,
@@ -4305,7 +4373,7 @@ type NativeCensusChainFiling {
 // fan-out) and any later own-account chain None, as a module without declarers files them.
 fn native_census_cause_groups_add_chains_by_chain(
   groups: NativeCensusCauseGroups,
-  positions: NativeCensusPositionTable,
+  positions: NativeCensusPositions,
   closure: NativeCensusClosureIndex,
   entry: NativeCensusModule,
   first: NonEmptyDiagnostics,
@@ -4395,7 +4463,7 @@ fn native_census_declarer_scan_step(scan: NativeCensusDeclarerScan, d: Diagnosti
 
 fn native_census_cause_groups_add_resolve_refused(
   groups: NativeCensusCauseGroups,
-  positions: NativeCensusPositionTable,
+  positions: NativeCensusPositions,
   closure: NativeCensusClosureIndex,
   entry: NativeCensusModule,
   first: NonEmptyDiagnostics,
@@ -4466,6 +4534,7 @@ fn native_census_cause_groups_add_infer_module(
 ) -> NativeCensusCauseGroups {
   match step.outcome {
     NativeInferCensusFileRefused => groups
+    NativeInferCensusPositionsNotBuilt => groups
     NativeInferCensusResolveRefused { first: f, rest: r, observation: _, partial: _ } =>
       native_census_cause_groups_add_resolve_refused(groups: groups, positions: step.context.positions, closure: closure, entry: entry, first: f, rest: r, cascade: step.cascade, attribution: fn(provider) { native_import_target_attribution(context: step.context, module: provider) })
     NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } => groups
@@ -4476,7 +4545,7 @@ fn native_census_cause_groups_add_infer_module(
 
 fn native_census_infer_member(
   groups: NativeCensusCauseGroups,
-  positions: NativeCensusPositionTable,
+  positions: NativeCensusPositions,
   fatal_reason: Symbol,
   entry: NativeCensusModule,
   chain: NonEmptyDiagnostics,
@@ -4504,6 +4573,8 @@ fn native_census_infer_completeness(outcome: NativeInferCensusOutcome) -> Native
   match outcome {
     NativeInferCensusFileRefused =>
       NativeCensusCompletenessUnavailable { reason: ^native_census_file_never_reached_resolve }
+    NativeInferCensusPositionsNotBuilt =>
+      NativeCensusCompletenessUnavailable { reason: ^native_census_positions_not_built }
     NativeInferCensusResolveRefused { first: _, rest: _, observation: o, partial: _ } =>
       NativeCensusCompletenessObserved { observation: o }
     NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } =>
@@ -4517,6 +4588,7 @@ fn native_census_infer_accepted_frontier(outcome: NativeInferCensusOutcome) -> O
   match outcome {
     NativeInferCensusInferred { resolved: _, inferred: _, frontier: f } => Present { value: f }
     NativeInferCensusFileRefused => Absent
+    NativeInferCensusPositionsNotBuilt => Absent
     NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: _ } => Absent
     NativeInferCensusInferRefused { resolved: _, chain: _ } => Absent
   }
@@ -6506,7 +6578,8 @@ fn census_unobserved_behind(stage: NativeCensusCauseStage) -> CensusObligationOu
 // ONE MODULE'S NativeInferCensusOutcome PROJECTS TO THREE OBLIGATION ROWS. A front-end refused
 // file is FrontEnd refused; Resolve and Infer are unobserved behind FrontEnd. A resolve refusal
 // leaves FrontEnd passed and Infer unobserved behind Resolve. An inferred module passed every
-// stage. An infer refusal passed FrontEnd and Resolve.
+// stage. An infer refusal passed FrontEnd and Resolve. A context that never built positions
+// observed no stage: all three rows are refused with the cause, never attributed to the front end.
 fn census_obligation_rows_from_infer(
   module: String,
   outcome: NativeInferCensusOutcome,
@@ -6524,6 +6597,14 @@ fn census_obligation_rows_from_infer(
         resolve: census_unobserved_behind(stage: NativeCensusCauseFrontEnd),
         infer: census_unobserved_behind(stage: NativeCensusCauseFrontEnd)
       )
+    NativeInferCensusPositionsNotBuilt =>
+      let not_built = CensusObligationRefused {
+        reason: ^census_positions_not_built,
+        at: FileRefusalAtUnresolvedNode,
+        evidence: CensusRefusalUnlocated,
+        occurrence: optional_absent()
+      }
+      census_three_stage_rows(module: module, front_end: not_built, resolve: not_built, infer: not_built)
     NativeInferCensusResolveRefused { first: first, rest: rest, observation: _, partial: _ } =>
       census_three_stage_rows(
         module: module,
@@ -6598,6 +6679,7 @@ fn census_file_refusal_at_text(at: FileRefusalAt) -> String {
     FileRefusalAtInvariant { invariant: i } => concat("invariant ", symbol_lexeme(sym: i))
     FileRefusalAtDeclaration { declaration: d } => concat("declaration ", qualified_name_to_dotted_string(qn: d))
     FileRefusalAtUnresolvedNode => "unresolved-node"
+    FileRefusalAtPositionsNotBuilt => "positions-not-built"
   }
 }
 

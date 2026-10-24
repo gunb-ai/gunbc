@@ -1,0 +1,72 @@
+module v2.test.claim.native_census.positions_reader_signature
+
+import v2.compiler.source_root_eval {
+  CensusObligationRefused,
+  CensusObligationRow,
+  NativeInferCensusPositionsNotBuilt,
+  census_obligation_rows_from_infer
+}
+import v2.std.decl_index { DeclFact, export_signature_facts }
+import v2.std.node { Atom, Authored, Edge, Found, Node, TypeNode, named_edge_target_lookup, positional_child_target_nodes, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.integer { Int }
+import std.types { List }
+import std.algebra { fold_list, length, list_at_optional, list_find_first }
+import std.optional { Absent, Present, optional_absent }
+import v2.std.text { String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE REAL SIGNATURES, READ FROM THE LIVE TREE. The reader boundary is not a property of any fixture:
+// native_census_owner_of and its siblings are declared to take NativeCensusPositionTable, and the
+// NativeCensusPositions holder (whose NotBuilt arm is the unbuilt state) is the type only
+// native_census_locate takes. Loosening a reader's parameter to the holder changes the atom read
+// here, so these claims go red on the real declaration, not on a copy of its shape.
+data compiler_signatures: List<DeclFact> = export_signature_facts(pool_roots: ["src/v2/compiler"])
+
+fn param_type_atom(arrow: Node, param: String) -> String {
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
+    Absent => "no_domain"
+    Present { value: domain } =>
+      match named_edge_target_lookup(children: domain.children, name: symbol_intern_lexeme(lexeme: param)) {
+        Found { target: t } =>
+          match t.kind {
+            TypeNode { connective: Atom { identity: i } } => symbol_lexeme(sym: i)
+            _ => "not_an_atom"
+          }
+        _ => "no_param"
+      }
+  }
+}
+
+fn is_named(f: DeclFact, name: String) -> Bool { f.name == name }
+
+fn declared_positions_type(name: String) -> String {
+  match list_find_first(xs: compiler_signatures, predicate: fn(f) { is_named(f: f, name: name) }) {
+    Absent => "no_declaration"
+    Present { value: f } => param_type_atom(arrow: f.node, param: "positions")
+  }
+}
+
+test fn the_census_readers_take_the_built_table_holds() -> Bool {
+  (declared_positions_type(name: "native_census_owner_of") == "NativeCensusPositionTable")
+    && (declared_positions_type(name: "native_node_authored_locus") == "NativeCensusPositionTable")
+    && (declared_positions_type(name: "native_census_binding_loci") == "NativeCensusPositionTable")
+    && (declared_positions_type(name: "native_census_locate_in") == "NativeCensusPositionTable")
+}
+
+test fn only_the_locating_entry_takes_the_unbuilt_capable_holder_holds() -> Bool {
+  declared_positions_type(name: "native_census_locate") == "NativeCensusPositions"
+}
+
+fn refused_not_built(row: CensusObligationRow) -> Bool {
+  match row.outcome {
+    CensusObligationRefused { reason: r, at: _, evidence: _, occurrence: _ } => r == ^census_positions_not_built
+    _ => false
+  }
+}
+
+test fn an_unbuilt_positions_infer_outcome_refuses_all_three_stages_with_the_cause_holds() -> Bool {
+  let rows = census_obligation_rows_from_infer(module: "v2.cl.m", outcome: NativeInferCensusPositionsNotBuilt, file_refusal: optional_absent())
+  (length(rows) == 3) && fold_list(xs: rows, empty: true, cons: fn(acc, r) { acc && refused_not_built(row: r) })
+}

@@ -866,6 +866,17 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // (cross-claim-share-store-declined cause=ServeCacheValueNotPortable). Trigger: the served-value tier admits
 // an InferredTree as a portable value, SUFFICIENT FOR a one-claim inference fixture to be netted like an
 // assembly -- or the shared_precondition_re_derived_once_per_claim_frame trigger above, whichever lands first.
+// gunbc#14443 (positions are built only for a verb that declares it locates): the ONE real-path inhabitance
+// claim for each shape of v2.test.claim.native_census.positions_demand (NotBuilt through the never-locates
+// whole-ingest fold, Built through the locating fold; DESIGN section 3 pairing) and the two arms of
+// v2.test.claim.native_census.positions_reader_boundary (the RED a reader handed the Built | NotBuilt holder is
+// refused by native inference, and its accepted control). Measured marginal eval steps by claim_batch --entry
+// <module file> --functions <claim>: 153,373 and 156,527 for the two folds, 988,438 and 385,323 for the
+// reader arms, against the 72,300 new-witness budget. Cause: the fixed whole-ingest fold over one file (and
+// native inference of a one-module fixture), not the test's own work. Trigger: shared_precondition_re_derived_once_per_claim_frame,
+// as above. v2.test.claim.native_census.positions_reader_signature reads the REAL reader declarations from
+// src/v2/compiler (the reader boundary on the live signature, 280,590 and 69,528 eval steps; the
+// three-refused-rows claim is 83 and carries no debt). Cause: the fixed keyed signature census over one directory.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.body_lowering_data_literal_door",
@@ -1006,6 +1017,27 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.native_census.cascade_root_fan_out",
     claims: [
       SingleClaimFillDebtClaim { claim: "census_diamond_cascade_counts_modules_not_paths_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.native_census.positions_demand",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "never_locates_builds_no_position_table_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "locating_demand_still_holds_the_accepted_file_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.native_census.positions_reader_boundary",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_reader_given_the_unbuilt_capable_holder_refuses_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_same_reader_given_the_built_table_infers_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.native_census.positions_reader_signature",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "the_census_readers_take_the_built_table_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "only_the_locating_entry_takes_the_unbuilt_capable_holder_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {

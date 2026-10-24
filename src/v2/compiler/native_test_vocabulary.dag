@@ -261,6 +261,7 @@ type FileRefusalAt
   | FileRefusalAtInvariant { invariant: Symbol }
   | FileRefusalAtDeclaration { declaration: QualifiedName }
   | FileRefusalAtUnresolvedNode
+  | FileRefusalAtPositionsNotBuilt
 
 
 // AN ACCEPTED FILE'S ADVISORIES, COUNTED RATHER THAN DROPPED. An Accepted front-end outcome may

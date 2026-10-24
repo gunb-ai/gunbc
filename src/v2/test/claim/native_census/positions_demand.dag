@@ -1,0 +1,121 @@
+module v2.test.claim.native_census.positions_demand
+
+import v2.compiler.source_root_eval {
+  NativeCensusPositions,
+  NativeCensusPositionsBuilt,
+  NativeCensusPositionsNotBuilt,
+  NativeLocatesFatals,
+  NativeNeverLocates,
+  native_census_locate,
+  NativeTestContext,
+  native_test_context_from_ingest_for
+}
+import v2.compiler.native_test_vocabulary { FileRefusalAtPositionsNotBuilt, native_test_file_refusal_fatal_reason }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.test.claim.native_census.whole_tree_census_resolve {
+  census_clean_source,
+  census_poison_source,
+  census_probe_read
+}
+import v2.std.diagnostic { ByteRange, Textual }
+import v2.std.integer { Int }
+import std.algebra { Cons, Empty, fold_list, length }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import std.optional { Optional, Present, Absent, optional_absent }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE POSITION TABLE IS BUILT ONLY FOR A VERB THAT DECLARES IT WILL LOCATE. The front-end census
+// verb opens its fold with NativeNeverLocates and so holds no span or line index per accepted file
+// (the whole-tree resident-memory share the census-peak instrument measures); a verb that can
+// locate a resolve or infer fatal opens with NativeLocatesFatals and gets exactly the table it had.
+//
+// THE REAL ROUTE EXECUTES: both contexts are the production whole-ingest fold over the same
+// supplied bytes (one accepted file, one poisoned file), differing only in the declared demand.
+// The discriminating RED is the table size under the never-locates demand (the pre-change fold
+// built it unconditionally); the positive control is the same fold under the locating demand,
+// whose table must still hold the accepted file, and whose file refusals must match.
+fn positions_probe_ingest() -> SourceRootIngest {
+  Cons {
+    head: census_probe_read(
+      source: census_clean_source,
+      id: ^positions_probe_clean_artifact,
+      unit: ^positions_probe_clean_cu,
+      path: "dag/census_probe_clean.dag"
+    ),
+    tail: Cons {
+      head: census_probe_read(
+        source: census_poison_source,
+        id: ^positions_probe_poison_artifact,
+        unit: ^positions_probe_poison_cu,
+        path: "dag/census_probe_poison.dag"
+      ),
+      tail: Empty
+    }
+  }
+}
+
+// ONE DATA PER FOLD: each claim pays only the fold it reads, so the real-path claim is the
+// never-locates fold alone and the locating control is a separate, separately-budgeted run.
+data positions_never_context: Optional<NativeTestContext> = match native_test_context_from_ingest_for(ingest: positions_probe_ingest(), locate: NativeNeverLocates) {
+  Rejected { diagnostics: _ } => optional_absent()
+  Accepted { value: c, diagnostics: _ } => Present { value: c }
+}
+
+data positions_locates_context: Optional<NativeTestContext> = match native_test_context_from_ingest_for(ingest: positions_probe_ingest(), locate: NativeLocatesFatals) {
+  Rejected { diagnostics: _ } => optional_absent()
+  Accepted { value: c, diagnostics: _ } => Present { value: c }
+}
+
+fn positions_probe_files(context: NativeTestContext) -> Int {
+  match context.positions {
+    NativeCensusPositionsNotBuilt => -1
+    NativeCensusPositionsBuilt { table: t } => count(sorted_map_keys(t.files))
+  }
+}
+
+test fn never_locates_builds_no_position_table_holds() -> Bool {
+  match positions_never_context {
+    Absent => false
+    Present { value: n } => positions_probe_files(context: n) == -1
+  }
+}
+
+test fn locating_demand_still_holds_the_accepted_file_holds() -> Bool {
+  match positions_locates_context {
+    Absent => false
+    Present { value: l } => positions_probe_files(context: l) == 1
+  }
+}
+
+// The demand changes the table and nothing else: the census's own answer (file refusals and
+// advisories) is equal under both demands over the same bytes.
+test fn the_demand_does_not_change_the_census_answer_holds() -> Bool {
+  match positions_never_context {
+    Absent => false
+    Present { value: n } =>
+      match positions_locates_context {
+        Absent => false
+        Present { value: l } =>
+          length(xs: n.file_refusals) == 1
+            && length(xs: n.file_refusals) == length(xs: l.file_refusals)
+            && length(xs: n.accepted_file_advisories) == length(xs: l.accepted_file_advisories)
+      }
+  }
+}
+
+// THE RED THE DEMAND OWES: a fatal located against a context that never built its table refuses with the
+// typed not-built site, never the ordinary unresolved-node answer a miss in a real table gives.
+test fn locating_against_a_never_locates_context_refuses_visibly_holds() -> Bool {
+  match native_census_locate(
+    at: Textual { file: ^positions_probe_clean_cu, extent: ByteRange { start: 0, end: 1 } },
+    path: ^positions_probe_clean_cu,
+    positions: NativeCensusPositionsNotBuilt
+  ) {
+    FileRefusalAtPositionsNotBuilt => true
+    _ => false
+  }
+}

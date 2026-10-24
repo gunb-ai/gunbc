@@ -8,6 +8,9 @@ import v2.compiler.source_root_eval {
   native_census_owner_of,
   native_census_position_table_empty,
   native_census_positions_absorb_accepted,
+  NativeCensusPositions,
+  NativeCensusPositionsBuilt,
+  NativeCensusPositionsNotBuilt,
   native_test_context_from_ingest
 }
 import v2.compiler.native_test_vocabulary { FileRefusalAtLine, FileRefusalAtUnresolvedNode }
@@ -652,13 +655,15 @@ test fn a_projected_node_from_real_assembly_recovers_its_bytes_holds() -> Bool {
   }
 }
 
-fn attribution_census_positions() -> NativeCensusPositionTable {
-  native_census_positions_absorb_accepted(
-    table: native_census_position_table_empty(),
-    path: ^attribution_file_a,
-    spans: attribution_index_in_scope_a(),
-    text: attribution_source_a
-  )
+fn attribution_census_positions() -> NativeCensusPositions {
+  NativeCensusPositionsBuilt {
+    table: native_census_positions_absorb_accepted(
+      table: native_census_position_table_empty(),
+      path: ^attribution_file_a,
+      spans: attribution_index_in_scope_a(),
+      text: attribution_source_a
+    )
+  }
 }
 
 // THE CENSUS LOCATOR USES THE SAME SCOPED DOOR. A foreign projected cause must not become a line
@@ -699,7 +704,7 @@ test fn census_owner_ranges_attribute_each_root_to_its_own_file_holds() -> Bool 
         Accepted { value: shared, diagnostics: _ } =>
           attribution_census_owner_is(context: context, roots: shared.roots, module: "v2.test.fixture.attribution_a", expected: ^attribution_file_a)
             && attribution_census_owner_is(context: context, roots: shared.roots, module: "v2.test.fixture.attribution_b", expected: ^attribution_file_b)
-            && match native_census_owner_of(positions: context.positions, id: OccurrenceId { value: 1000000000 }) {
+            && match attribution_owner(context: context, id: OccurrenceId { value: 1000000000 }) {
               Absent => true
               Present { value: _ } => false
             }
@@ -714,10 +719,17 @@ fn attribution_census_owner_is(context: NativeTestContext, roots: ValidatedModul
       match node_occurrence_id_optional(node: tree.root) {
         Absent => false
         Present { value: id } =>
-          match native_census_owner_of(positions: context.positions, id: id) {
+          match attribution_owner(context: context, id: id) {
             Present { value: p } => p == expected
             Absent => false
           }
       }
+  }
+}
+
+fn attribution_owner(context: NativeTestContext, id: OccurrenceId) -> Optional<Symbol> {
+  match context.positions {
+    NativeCensusPositionsNotBuilt => Absent
+    NativeCensusPositionsBuilt { table: t } => native_census_owner_of(positions: t, id: id)
   }
 }
