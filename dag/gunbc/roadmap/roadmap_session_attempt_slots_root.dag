@@ -28,10 +28,10 @@ fn session_attempt_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
 
 // THE SESSION SLOT STORE, A SEALED VALUE MINTED FROM ITS DECLARATION, as WorktreeClaimStore is: sole_constructor,
 // built in one place (session_attempt_slots_store), which takes the instance and no path: the root is derived
-// here from session_attempt_slots, and only a directory listed through the filesystem the store will use yields
-// a store. Session placement takes this type, so a SlotStore
-// minted for another declaration or from a bare root is not a session slot store, and no holder can read a
-// root out of it. Non-generic and never a variant arm (test.claim.sole_constructor_completeness_audit_probe
+// here from session_attempt_slots, and only a directory listed (Filesystem.List) yields a store. Session placement takes this type, so a SlotStore
+// minted for another declaration or from a bare root is not a session slot store; the root is a field of the SlotStore it holds and field reads are not
+// module-private, so a holder CAN read it (declared residual:
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module). Non-generic and never a variant arm (test.claim.sole_constructor_completeness_audit_probe
 // f13). NOT established, as for the claim store: that a store minted for instance A is refused where B is
 // required.
 type SessionAttemptSlotsStore sole_constructor {
