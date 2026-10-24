@@ -976,10 +976,15 @@ fn required_gate_authored_modules() -> List<String> {
     // gunbc.recurring_failure_mode census_row_shape_moved_without_moving_its_consumer records: three
     // sessions bisected a 'regression' that no gate would have shown going red. Admitted when green
     // by execution at the head of the change that adjudicated it (its claim_batch run is cited on
-    // that change, never transcribed here). Neither the family v2.test.claim.native_census. nor its
-    // sibling infer_cascade is admitted: that module's provider-cascade claim stays red until resolve
-    // refuses a mention of a refused coproduct's variant, and earns its own row when it is green.
+    // that change, never transcribed here). The family v2.test.claim.native_census. is not admitted.
     "v2.test.claim.native_census.cascade_root_fan_out",
+    // ITS SIBLING infer_cascade AND THE RESOLVE CONTROLS IT RESTS ON, admitted once resolve refused a
+    // mention of a refused coproduct's variant (gunbc#14985) and both were green by execution at that
+    // change's head. infer_cascade's variant claim is the census half of that repair and declarer_refused
+    // carries its discriminating REDs (a variant of a refused coproduct, and a declaration relaying one
+    // to its users); with the repair reverted, both go red, so neither may sit outside an executing lane.
+    "v2.test.claim.native_census.infer_cascade",
+    "v2.test.claim.name_resolve.declarer_refused",
   ]
 }
 
