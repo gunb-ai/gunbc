@@ -6002,8 +6002,14 @@ pub fn parse_type_body_after_eq(
                     }
                     __result
                 });
-                let minted = mint_parsed_node_identity(
+                let sole = parsed_sole_constructor_properties(
                     rest.ctx.clone(),
+                    is_sole_constructor.clone(),
+                    start_span.clone(),
+                    sole_at.clone(),
+                );
+                let minted = mint_parsed_node_identity(
+                    sole.ctx.clone(),
                     Rc::new(ParsedExtentAt::FromToken {
                         start: start_span.clone(),
                         to: rest.tokens.clone(),
@@ -6022,7 +6028,7 @@ pub fn parse_type_body_after_eq(
                     uses: Rc::new(vec![]),
                     body: std::option::Option::None,
                     transport: std::option::Option::None,
-                    properties: Rc::new(vec![]),
+                    properties: sole.properties.clone(),
                     type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
@@ -6099,8 +6105,14 @@ pub fn parse_type_body_after_eq(
                                     }
                                     __result
                                 });
-                                let minted = mint_parsed_node_identity(
+                                let sole = parsed_sole_constructor_properties(
                                     rest.ctx.clone(),
+                                    is_sole_constructor.clone(),
+                                    start_span.clone(),
+                                    sole_at.clone(),
+                                );
+                                let minted = mint_parsed_node_identity(
+                                    sole.ctx.clone(),
                                     Rc::new(ParsedExtentAt::FromToken {
                                         start: start_span.clone(),
                                         to: rest.tokens.clone(),
@@ -6119,7 +6131,7 @@ pub fn parse_type_body_after_eq(
                                     uses: Rc::new(vec![]),
                                     body: std::option::Option::None,
                                     transport: std::option::Option::None,
-                                    properties: Rc::new(vec![]),
+                                    properties: sole.properties.clone(),
                                     type_annotation: std::option::Option::None,
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,

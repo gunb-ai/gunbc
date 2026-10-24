@@ -23,8 +23,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // The measured consequence, which is why this is stated here rather than assumed: the repository's
 // own audit probe for coproduct-variant construction,
-// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, is RED on
-// main right now and nothing catches it -- it sits in the same declined arm (26 identities). A red
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, WAS RED on
+// main when this was written (now green) and nothing caught it -- it sits in the same declined arm (26 identities). A red
 // witness invisible to CI is how the first cut of the handler came to declare a sealed coproduct and
 // assert in a comment that it closed the bare-geometry route while a foreign variant literal
 // compiled clean.

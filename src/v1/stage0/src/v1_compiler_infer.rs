@@ -18204,52 +18204,64 @@ pub fn record_lit_expansion_declares_union(
     }
 }
 
-pub fn type_has_sole_constructor(type_name: String, scope: Rc<InferScope>) -> bool {
-    match crate::v1_compiler_infer_env::lookup_type_by_name(
-        scope.type_env.clone(),
-        type_name.clone(),
-    ) {
-        Some(decl) => {
-            let mut __found = false;
-            for p in decl.properties.clone().iter().cloned() {
-                if (p.name.clone() == "sole_constructor".to_string()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        }
-        std::option::Option::None => false,
-    }
-}
-
 pub fn sole_constructor_construction_diags(
     type_name: String,
     span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    if type_has_sole_constructor(type_name.clone(), scope.clone()) {
-        match crate::v1_compiler_infer_env::lookup_type_by_name(
-            scope.type_env.clone(),
-            type_name.clone(),
-        ) {
-            Some(decl) => {
-                if (decl.span.file.clone() == span.file.clone()) {
-                    Rc::new(vec![])
-                } else {
-                    Rc::new(vec![crate::v1_std_core::make_error_node(
-                        Rc::new(CompilerDiagnostic::SoleConstructorViolation {
-                            type_name: type_name.clone(),
-                            span: span.clone(),
-                        }),
-                        scope.module_name.clone(),
-                    )])
+    match crate::v1_compiler_infer_env::lookup_binding_by_name(
+        scope.type_env.clone(),
+        type_name.clone(),
+    ) {
+        Some(binding) => {
+            if {
+                let mut __found = false;
+                for p in binding.resolved.properties.clone().iter().cloned() {
+                    if (p.name.clone() == "sole_constructor".to_string()) {
+                        __found = true;
+                        break;
+                    }
                 }
+                __found
+            } {
+                match crate::v1_compiler_infer_env::symbol_index_lookup(
+                    scope.type_env.symbol_index.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(scope.module_name.clone(), ".".to_string()),
+                        crate::v1_std_core::authored_name_at(
+                            scope.type_env.source_indices.clone(),
+                            binding.resolved.clone(),
+                        ),
+                    ),
+                ) {
+                    Some(declared) => {
+                        if (declared.span.clone() == binding.resolved.span.clone()) {
+                            Rc::new(vec![])
+                        } else {
+                            Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::SoleConstructorViolation {
+                                    type_name: type_name.clone(),
+                                    span: span.clone(),
+                                }),
+                                scope.module_name.clone(),
+                            )])
+                        }
+                    }
+                    std::option::Option::None => {
+                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::SoleConstructorViolation {
+                                type_name: type_name.clone(),
+                                span: span.clone(),
+                            }),
+                            scope.module_name.clone(),
+                        )])
+                    }
+                }
+            } else {
+                Rc::new(vec![])
             }
-            std::option::Option::None => Rc::new(vec![]),
         }
-    } else {
-        Rc::new(vec![])
+        std::option::Option::None => Rc::new(vec![]),
     }
 }
 

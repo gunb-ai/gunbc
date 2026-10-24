@@ -27,9 +27,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // EXACTLY ONE refusal is the proposition in each case, so each assertion says one. `>= 1` would hide a
 // second, unintended refusal on the same key and let a probe pass for the wrong reason.
 //
-// WHY THE SEALS ARE ON RECORDS AND NOT ON THE SUMS: sole_constructor on a COPRODUCT does not refuse
-// cross-module variant construction -- the declared hole measured by
-// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, which is red.
+// WHY THE SEALS ARE ON RECORDS AND NOT ON THE SUMS: sole_constructor on a COPRODUCT did not refuse
+// cross-module variant construction when this was written -- the hole measured by
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses, which was red
+// then and is now green (v1 parse carries the seal on coproducts; the probe stays as a regression control).
 // Sealing SourceByteFact or LocalCommitStanding directly would have been permanently green by
 // construction, which is worse than absent. The records the arms CARRY are the form the wall refuses.
 //

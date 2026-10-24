@@ -8291,8 +8291,8 @@ fn struct_needs_serde(name: String, emit_info: EmitGraphInfo) -> Bool {
 
 // SEALED CONSTRUCTION, DERIVED FROM THE DECLARATION ITSELF. `sole_constructor` is
 // parsed onto the type declaration as a property (v1.compiler.parse) and consumed by
-// inference to refuse a cross-module record literal (v1.compiler.infer
-// type_has_sole_constructor). Until this seam the RUST EMITTER read that fact zero
+// inference to refuse a cross-module record literal or coproduct arm literal
+// (v1.compiler.infer sole_constructor_construction_diags). Until this seam the RUST EMITTER read that fact zero
 // times, so the model's seal did not survive lowering: DESIGN section 4b records the
 // executed receipt -- `extdeps.uri.percent_encoding` `UriValidatedScalar` emits byte-identical to the
 // plain record beside it, public field and derived Deserialize, and both a direct

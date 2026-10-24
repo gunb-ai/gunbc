@@ -1,0 +1,7 @@
+module test.fixture.sole_constructor_arm_seal.definer
+
+type SealedArms sole_constructor = ArmA { n: Int } | ArmB { s: String } | ArmU
+
+fn mk() -> SealedArms {
+  ArmA { n: 1 }
+}
