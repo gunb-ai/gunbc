@@ -1,0 +1,97 @@
+module test.claim.append_chain_ladder_linearity_witness
+
+import std.types { Bool, Int, List, String }
+import gunbc.instruments.append_chain_ladder {
+  LadderTiming,
+  LadderLinear,
+  LadderSuperlinear,
+  LadderUnobserved,
+  ladder_linearity,
+  ladder_linearity_terminal
+}
+import std.measure { nanosecond }
+import std.compiler_entry { NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
+
+// THE THRESHOLD FOLD AT ITS OWN INTERFACE, over SUPPLIED timing rows (DESIGN 3, a witness discriminates at
+// one interface). The values are shaped like the 2026-10-24 bench: a linear arm near 2.0 per doubling, the
+// pre-fix append near 2.3 to 3.4. The paired inhabitance claim (the label's timing producer emitting these
+// rows from a real run of the emitted arms) is the label extension's other half and is not here yet.
+
+fn t(arm: String, n: Int, ns: Int) -> LadderTiming { LadderTiming { arm: arm, n: n, best: nanosecond(count: ns) } }
+
+fn linear_rows() -> List<LadderTiming> {
+  [t(arm: "concat_chain", n: 2000, ns: 172000), t(arm: "concat_chain", n: 4000, ns: 341000), t(arm: "concat_chain", n: 8000, ns: 686000)]
+}
+
+fn superlinear_rows() -> List<LadderTiming> {
+  [t(arm: "concat_chain", n: 2000, ns: 16024000), t(arm: "concat_chain", n: 4000, ns: 40373000), t(arm: "concat_chain", n: 8000, ns: 111718000)]
+}
+
+test fn a_linear_curve_holds() -> Bool {
+  match ladder_linearity(rows: linear_rows(), arms: ["concat_chain"]) {
+    LadderLinear => true
+    _ => false
+  }
+}
+
+// THE RED: the pre-fix curve (2.52 per doubling at the first step) is superlinear, and the verdict names it.
+test fn the_pre_fix_curve_is_superlinear() -> Bool {
+  match ladder_linearity(rows: superlinear_rows(), arms: ["concat_chain"]) {
+    LadderSuperlinear { arm: a, from_n: n, ratio_x100: r } => (a == "concat_chain") && (n == 2000) && (r == 251)
+    _ => false
+  }
+}
+
+// UNOBSERVED IS NOT A PASS: a required arm with no rows, or one row, reads no curve.
+test fn a_required_arm_with_no_rows_is_unobserved() -> Bool {
+  match ladder_linearity(rows: linear_rows(), arms: ["concat_chain", "non_empty_append_chain"]) {
+    LadderUnobserved { arm: a, cause: _ } => a == "non_empty_append_chain"
+    _ => false
+  }
+}
+
+test fn a_step_that_is_not_a_doubling_is_unobserved() -> Bool {
+  match ladder_linearity(rows: [t(arm: "concat_chain", n: 2000, ns: 172000), t(arm: "concat_chain", n: 3000, ns: 260000)], arms: ["concat_chain"]) {
+    LadderUnobserved { arm: _, cause: _ } => true
+    _ => false
+  }
+}
+
+// A run that could not read every curve never reports a defect it did not see: unobserved wins over superlinear.
+test fn unobserved_outranks_superlinear() -> Bool {
+  match ladder_linearity(rows: superlinear_rows(), arms: ["concat_chain", "push_chain"]) {
+    LadderUnobserved { arm: a, cause: _ } => a == "push_chain"
+    _ => false
+  }
+}
+
+// THE LABEL'S TERMINAL IS THIS FOLD'S VERDICT (append_chain_ladder_native native_claim_report calls
+// ladder_linearity_terminal over ladder_linearity): breaking either turns one of these red.
+test fn a_linear_run_with_every_size_held_is_held() -> Bool {
+  match ladder_linearity_terminal(v: ladder_linearity(rows: linear_rows(), arms: ["concat_chain"]), sizes_not_held: 0) {
+    NativeClaimHeld => true
+    _ => false
+  }
+}
+
+test fn a_superlinear_run_is_not_held() -> Bool {
+  match ladder_linearity_terminal(v: ladder_linearity(rows: superlinear_rows(), arms: ["concat_chain"]), sizes_not_held: 0) {
+    NativeClaimNotHeld { reason: _ } => true
+    _ => false
+  }
+}
+
+// A fast wrong answer is never a time: a linear curve whose size row built the wrong count is not held.
+test fn a_linear_run_with_a_wrong_size_row_is_not_held() -> Bool {
+  match ladder_linearity_terminal(v: ladder_linearity(rows: linear_rows(), arms: ["concat_chain"]), sizes_not_held: 1) {
+    NativeClaimNotHeld { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unreadable_curve_is_no_observation() -> Bool {
+  match ladder_linearity_terminal(v: ladder_linearity(rows: linear_rows(), arms: ["concat_chain", "push_chain"]), sizes_not_held: 1) {
+    NativeClaimNoObservation { reason: _ } => true
+    _ => false
+  }
+}

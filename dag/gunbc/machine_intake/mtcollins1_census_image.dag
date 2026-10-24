@@ -11,6 +11,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   UbuntuSeededInstallMediaBuildInput,
   ubuntu_seeded_install_media_grub_kernel_cmdline,
   ubuntu_seeded_install_media_image_name,
+  ubuntu_seeded_install_media_record_path,
 }
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
@@ -24,6 +25,7 @@ import gunbc.machine_intake.host_capture_envelope {
 }
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
+import gunbc.host.boot_medium_served_readback { BootMediumServedCheck, BootMediumServedMeasureOnly, BootMediumServedRecordFirst, BootMediumServedCheckRefused }
 
 // THE CENSUS IMAGE FOR MT. COLLINS UNIT 1: the 24.04.3 arm64 live-server medium with a NoCloud seed
 // that runs the host-capture census in the LIVE environment and powers off. It is a derived artifact
@@ -344,6 +346,39 @@ fn boot_image_export_text(export: BootImageExport) -> String {
   concat(export.target.principal as String, "@", known_hosts_host_field(address: export.target.address) as String, ":", export.dir as String)
 }
 
+// THE CENSUS DERIVATION RECORD: the publish writes the output digest of the current build input beside
+// the served image, keyed by the build key, in the one export the census is published to.
+fn census_record_path(input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
+  ubuntu_seeded_install_media_record_path(dir: bmc_boot_image_export.dir, input: input)
+}
+
+// WHAT A BOOT OF THIS MEDIUM OWES BEFORE ITS SERVED BYTES ARE MEASURED (gunbc.host.boot_medium_served_readback).
+// A medium whose terminal is the census volume label is a census medium: that terminal is printed by the
+// census program and nothing else (gunbc.host.boot_medium BootMediumTerminal). Its row describes the
+// current derivation only if the derivation record of the current build input repeats its digest, so it
+// is read back record first. It is qualified against the image first, so a mismatched binding (a medium
+// naming another stem or volume label) and a census medium naming an exporter the census is not
+// published to refuse before either leg, never read back from the supported export; and a census build
+// input with no derivation has no build key to find a record by. Any other medium owes the measurement
+// alone.
+fn census_served_check(medium: BootMedium, image: CensusImage) -> BootMediumServedCheck {
+  match medium.terminal {
+    BootMediumVolumeLabel { label: _ } =>
+      match image {
+        CensusImageRefused { reason: why } => BootMediumServedCheckRefused { cause: concat("the census build input has no derivation (", why, "), so there is no build key to find a record by; refusing") }
+        CensusImageDerived { input: input } =>
+          match census_medium_qualification(image_stem: input.image_stem, volume_id: input.volume_id, medium: medium) {
+            CensusMediumQualified { digest: _, export: _ } => BootMediumServedRecordFirst { record_path: census_record_path(input: input) }
+            CensusMediumNotCensus => BootMediumServedCheckRefused { cause: concat("the medium ", medium.image_name as String, " carries a census volume label but is not the census image of the current derivation, so there is no derivation record to read back") }
+            CensusMediumExporterUnsupported { supported: sup, named: n } =>
+              BootMediumServedCheckRefused { cause: concat("the census medium names the exporter ", boot_image_export_text(export: n), " but the census is published to and read back from ", boot_image_export_text(export: sup), "; refusing rather than reading back bytes the medium does not name") }
+          }
+      }
+    BootMediumNoTerminal { reason: _ } => BootMediumServedMeasureOnly
+    BootMediumRunnerHostUp { label: _ } => BootMediumServedMeasureOnly
+  }
+}
+
 // CENSUS STAGE 0D: THE MEDIUM MT. COLLINS UNIT 1 BOOTS. The digest is the publish receipt of the gated
 // create-only publication run 36651495873 (main, fleet SSH to srv2 as gunbc-fleet; receipt artifact
 // sha256 ca40bf02982bb1dd71d9adf4663aa74e97b99b03109d9c8626dc9ff53f9ddbcf): gate (a) the srv2 rebuild
@@ -354,10 +389,11 @@ fn boot_image_export_text(export: BootImageExport) -> String {
 // because #12594 bumped builder_revision, so the previous image (30ca88d4..., build_key
 // 8d357a525f078cb4) no longer describes the current derivation and the boot refuses it (run
 // 36660907341). This row is publication-time evidence only:
-// gunbc.machine_intake.mtcollins1_census_medium_readback re-measures the served path on srv2 before
-// the boot subject is admitted, every run. Switching it to stock_installer_boot_medium makes every
+// the mtcollins1 boot run selects the runner medium, re-measured by
+// gunbc.host.boot_medium_served_readback; a boot that selects this one is read back record first
+// (census_served_check) before the boot subject is admitted. Switching it to stock_installer_boot_medium makes every
 // census verdict refuse at the gate, before any controller write.
-data mtcollins1_boot_medium: BootMedium = census_boot_medium(
+data mtcollins1_census_boot_medium: BootMedium = census_boot_medium(
   image_stem: mtcollins1_census_image_stem,
   volume_id: mtcollins1_census_volume_id,
   output_digest: "161b98b9bb389a803805b582203fe73fa9a3ec421e3783b6463528124c2bd513",

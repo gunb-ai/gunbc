@@ -14,8 +14,9 @@ import gunbc.auth.github_apps {
   gunbai_ci_declared_installation_id,
   gunbai_ci_app_pem_secret
 }
-import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
-import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.cache.sccache { sccache_release_0_15_0 }
+import extdeps.crypto.hash { sha256_digest }
+import gunbc.host.sccache_verified_install { sccache_verified_install_script }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
 import product.host_identity { HostIdentity }
@@ -414,12 +415,38 @@ fn runner_host_docker_provision_script() -> String {
   docker_ce_repo_install_script(repo: docker_ce_apt_repo_noble_arm64, packages: docker_ce_packages)
 }
 
+// THE SCCACHE PREREQ USES THE GENERIC VERIFIED DOWNLOAD-PLUS-INSTALL EFFECT, run with sccache's
+// boundary values (gunbc.host.sccache_verified_install). It used to call
+// extdeps.cache.sccache.sccache_install_script, a script body concatenated in an extdeps module; that
+// declaration is deleted with this swap, and the url, digest, member path, destination and mode are now
+// PARAMETERS supplied here.
+//
+// THIS CALL SITE STILL OWES THE SHELL LEAF, AND THE DEBT IS TRACKED HERE RATHER THAN ELSEWHERE.
+// `sccache_verified_install_script` renders a `set -e` script string (through
+// gunbc.host.verified_binary_install.verified_binary_install_shell), so what this prereq returns is a
+// script, not an effect: it is one of the three consumers named in that function's
+// `verified_binary_install_shell_dissolution_trigger` and in
+// gunbc.host.sccache_verified_install.`sccache_verified_install_script_dissolution_trigger`, and those two
+// rows -- not this paragraph -- are the record of what is owed. Deleting the old trigger together with its
+// declaration, as an earlier revision of this comment claimed, would have turned tracked debt into
+// untracked debt: DESIGN 4b allows a rung to be lowered only by declaring previous rung, temporary rung,
+// reason, bounded population and restoration trigger, and DESIGN 5 forbids hiding a deficit by installing a
+// second path. WHAT RETIRES THE DEBT is this prereq binding
+// gunbc.host.verified_binary_install.verified_binary_install_admitted_plan through typed argv, WITHOUT THE
+// SHELL LEAF; when it does, `verified_binary_install_shell` and `sccache_verified_install_script` are
+// deleted. Until then, do not read the deletion of `sccache_install_script` as this site being clean.
+// (The build-cache consumer, by contrast, IS discharged: gunbc.host.build_cache_daemon_ensure sequences the
+// typed plan with no shell leaf anywhere.)
 fn runner_host_sccache_provision_script(arch: NonEmptyStr, sha256: NonEmptyStr) -> String {
-  sccache_install_script(rel: sccache_release_0_15_0, arch: arch, digest: sha256_digest(hex: sha256))
+  sccache_verified_install_script(
+    rel: sccache_release_0_15_0,
+    arch: arch,
+    digest: sha256_digest(hex: sha256),
+  )
 }
 
 fn runner_host_sccache_provision_aarch64() -> String {
-  sccache_install_script(
+  sccache_verified_install_script(
     rel: sccache_release_0_15_0,
     arch: "aarch64",
     digest: sccache_release_0_15_0.digest_aarch64,
