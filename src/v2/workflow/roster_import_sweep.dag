@@ -304,7 +304,11 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       home: qualified_name_from_dotted_string(dotted: "std.host_text"),
       // std.host_text declares fn chars(text: HostText); the ambient spelling's callers wrote s:.
       labels: [RosterLabelRename { from: "s", to: "text" }]
-    }
+    },
+    // NAMESPACE-XL Map wave (tidy-ant-251, 2026-10-23): Map is the TYPE std.types declares (Map<key, value> =
+    // FinitelySupportedFunction<key, value>), so its users import it there; the kind axis (v2.workflow.roster_home_kind)
+    // admits its type-annotation and return positions.
+    RosterHeadRow { call: "Map", import_name: "Map", home: qualified_name_from_dotted_string(dotted: "std.types"), labels: [] }
   ]
 }
 

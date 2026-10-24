@@ -34,7 +34,11 @@ type AmbientNameHome {
   origin: AmbientNameHomeOrigin
 }
 
-// Empty until wave 1 adds its row: wave 0 lands the census and the diff, and moves no name.
+// One row per name a landed or landing wave moves.
 fn ambient_name_homes() -> List<AmbientNameHome> {
-  []
+  [
+    // Map is a kernel TYPE TOKEN the spelling table answers, not a contract: there is no std.primitives row to retire.
+    // Its one home is the type std.types already declares, Map<key, value> = FinitelySupportedFunction<key, value>.
+    AmbientNameHome { name: "Map" as NonEmptyStr, home: "std.types.Map" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration }
+  ]
 }
