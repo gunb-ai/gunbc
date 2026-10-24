@@ -80,7 +80,6 @@ import gunbc.heal_workflow { heal_workflow }
 import gunbc.heal_publisher_workflow { heal_publisher_workflow }
 import gunbc.drift_watch_workflow { drift_watch_workflow }
 import gunbc.fleet.branch_run_grant_broker_workflow { branch_run_grant_broker_workflow }
-import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow }
 import gunbc.ci.ci_fleet { gunbc_ci_fleet_offer }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 
@@ -151,7 +150,6 @@ fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
     FleetWorkflowCensusRow { artifact: HealPublisherWorkflowYamlArtifact, workflow: heal_publisher_workflow },
     FleetWorkflowCensusRow { artifact: DriftWatchWorkflowYamlArtifact, workflow: drift_watch_workflow },
     FleetWorkflowCensusRow { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: branch_run_grant_broker_workflow },
-    FleetWorkflowCensusRow { artifact: MicrovmShakedownYamlArtifact, workflow: microvm_shakedown_workflow },
   ]
 }
 
@@ -164,6 +162,10 @@ fn fleet_workflow_census_omissions() -> List<FleetWorkflowCensusOmission> {
     FleetWorkflowCensusOmission {
       artifact: InstrumentDispatchYamlArtifact,
       reason: "the Workflow value is a function of the dispatch inputs (instrument_dispatch_workflow(seed, guard, script)) so no constant folds; and the workflow is workflow_dispatch-only, so the autonomous predicate excludes it regardless.",
+    },
+    FleetWorkflowCensusOmission {
+      artifact: MicrovmShakedownYamlArtifact,
+      reason: "the Workflow value is a function of the dispatch input (microvm_shakedown_workflow(script), gunbc.runner.runner_microvm_shakedown_workflow) so no constant folds, and its only trigger is WorkflowDispatch, so the autonomous predicate excludes it regardless; its 10-minute job timeout is under the bound either way.",
     },
   ]
 }

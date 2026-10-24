@@ -55,6 +55,7 @@ import gunbc.runner.runner_fleet_job_timeout_census {
   fleet_pool_runner_spec,
 }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow, compiler_gate_required_job_id, compiler_gate_emit_build_timeout_minutes }
+import gunbc.generated_artifact { artifact_eq, WitnessFloorYamlArtifact }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_job_timeout_minutes,
   fleet_converge_mtcollins1_probe_step_timeout_minutes,
@@ -178,9 +179,14 @@ test fn the_bracket_step_budget_grows_with_the_bound_and_the_job_covers_it() -> 
 test fn the_census_domain_is_explained_and_reads_the_authorities() -> Bool {
   fleet_census_domain_is_explained()
     && length(fleet_workflow_census_rows()) > 0
-    && length(fleet_workflow_census_omissions()) == 2
+    && length(fleet_workflow_census_omissions()) > 0
+    // A row and an omission can never name the same artifact: the domain is a partition.
+    && all(
+      fleet_workflow_census_rows(),
+      r => all(fleet_workflow_census_omissions(), o => !artifact_eq(a: r.artifact, b: o.artifact))
+    )
     && all(fleet_workflow_census_rows(), r => length(r.workflow.jobs) > 0)
-    && any(fleet_workflow_census_rows(), r => r.workflow == compiler_gate_workflow)
+    && any(fleet_workflow_census_rows(), r => artifact_eq(a: r.artifact, b: WitnessFloorYamlArtifact) && workflow_has_autonomous_trigger(w: r.workflow))
     && all(
       fleet_targeted_autonomous_jobs(),
       j => any(
