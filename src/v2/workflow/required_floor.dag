@@ -963,18 +963,17 @@ fn required_gate_authored_modules() -> List<String> {
     // v2.test.claim.body_lowering_call_node_occurrence is a FILE the required lane can execute, and
     // its own claim_batch run is on record -- green by execution at the head the fix PR landed with
     // (cite the run, never transcribe its output; the roster row's cost is the run's own pricing).
-    // RECEIPT (this edit, per Manager 3's ruling "same approved row, not roster growth"): the
-    // executed run is claim_batch on v2.test.claim.body_lowering_call_node_occurrence, fifteen
-    // claims green by execution and zero failing, run by Manager 3 on srv1 from a clean checkout
-    // at head 861191b7717828cac7f7342cb8275c48002d3d25 on 2026-10-24; the mutation control at
-    // 46b16146351826a9ea21477a8de67209420fb870 went red ONLY on the qualified-site census-
-    // locatability claim and its one-Minted collision pin, so the pin discriminates. This
-    // citation lands at a later head than the run's: the only delta between the run's head and
-    // the head carrying this line is comment-only in THIS file, which is not inside the claim
-    // module's entry closure -- so the run executed the content this row now prices. The earlier
-    // six-claim receipt at 8f4b175e68c4 (#14946) is superseded by the fifteen-claim one; the
-    // nine additions are the postfix-site triads this fix PR brings (qualified call, receiver
-    // call, is node: census-locatability, shape-unchanged, collision pin, per site).
+    // RECEIPT (this edit, per Manager 3's ruling "same approved row, not roster growth"). Instrument:
+    // gunbc claim_batch over this module. The runs the row waited for are on record: the green run
+    // executed on the pre-merge battery for this fix PR, and the mutation-control runs on the two
+    // never-merge scratch branches -- lane16/scratch-mutation-qualified-synthetic (the qualified call
+    // site back to its pre-fix bare node_synthetic shape) and lane16/scratch-mutation-is-rejected-
+    // geometry (the is site back to the ownership geometry the #14891 deferral rejected, Match root
+    // stamped from the pattern's own occurrence). Each control goes red exactly on the checks it
+    // discriminates -- the instrument's output says where, and it stays there: transcribing counts,
+    // verdicts per claim or commit SHAs into this comment would break the line above and DESIGN §6
+    // ("a transcribed number rots unreachably"), and §4c says an annotation is never evidence. The
+    // citation this row carried at #14946's landing is retired by these runs.
     // Same exact grain
     // as the row above, for the same reason: one module, never a family selector. This module pins
     // what the census reader needs to be locatable at all -- native_census_owner_key answers Present
