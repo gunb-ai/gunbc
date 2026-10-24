@@ -31,7 +31,7 @@ fn worktree_claim_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
 // for a directory that was observed, carries the instance it was minted for, and cannot be spelled
 // (literal or cast) by claim code, the belt or a test; the claim domain
 // (gunbc.roadmap.roadmap_attempt_worktree_claim) takes this type, so a SlotStore minted for any other
-// declaration, or from a bare root (gunbc.durable_cas_file_store file_slot_store_over), is not a claim
+// declaration, is not a claim
 // store. A holder can read the instance and use the slot operations; neither carries a root. Non-generic
 // and never a variant arm, because the seal does not reach variant construction
 // (test.claim.sole_constructor_completeness_audit_probe f13). NOT established: that a store minted for
