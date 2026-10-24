@@ -48,6 +48,25 @@ data identity_source: String = "module probe_text_cast_identity\nimport std.type
 
 data user_declared_int_source: String = "module probe_user_declared_int\nimport std.types { String, NonEmptyStr }\ntype Int { label: String }\nfn label(x: Int) -> NonEmptyStr { x as NonEmptyStr }\n"
 
+// THE SIBLING TARGET: `as String`. The same five kernel sources into the kernel String mint, which
+// validate_cast left unjudged because String is outside dag_cast_rules; the emitter then fabricated a
+// runtime panic for it. The declared route is the kernel to_string, accepted as the control.
+data int_as_string_source: String = "module probe_non_text_cast_int_string\nimport std.types { Int, String }\nfn label(n: Int) -> String { n as String }\n"
+
+data bool_as_string_source: String = "module probe_non_text_cast_bool_string\nimport std.types { Bool, String }\nfn label(b: Bool) -> String { b as String }\n"
+
+data float_as_string_source: String = "module probe_non_text_cast_float_string\nimport std.types { Float, String }\nfn label(x: Float) -> String { x as String }\n"
+
+data unit_as_string_source: String = "module probe_non_text_cast_unit_string\nimport std.types { Unit, String }\nfn label(u: Unit) -> String { u as String }\n"
+
+data nat_as_string_source: String = "module probe_non_text_cast_nat_string\nimport std.types { String }\nimport std.nat { Nat }\nfn label(k: Nat) -> String { k as String }\n"
+
+data declared_route_source: String = "module probe_int_to_text_declared_route\nimport std.types { Int, String }\nfn label(n: Int) -> String { to_string(n) }\n"
+
+data bool_as_int_source: String = "module probe_bool_as_int_still_refused\nimport std.types { Bool, Int }\nfn indicator(b: Bool) -> Int { b as Int }\n"
+
+data non_empty_text_as_string_source: String = "module probe_non_empty_text_as_string\nimport std.types { String, NonEmptyStr }\nfn widen(s: NonEmptyStr) -> String { s as String }\n"
+
 data non_text_target_source: String = "module probe_non_text_cast_float_target\nimport std.types { Int, Float }\nfn widen(n: Int) -> Float { n as Float }\n"
 
 test fn w_int_as_non_empty_text_is_refused() -> Bool { blocking_count(source: int_source) >= 1 }
@@ -88,3 +107,26 @@ test fn w_user_declared_type_spelled_int_is_not_the_kernel_int() -> Bool {
     && refusals_at(source: user_declared_int_source, subject: "invalid cast: Int as NonEmptyStr: a nominal value has no declared conversion") == 1
 }
 
+
+test fn w_int_as_string_is_refused() -> Bool { blocking_count(source: int_as_string_source) >= 1 }
+
+test fn w_bool_as_string_is_refused() -> Bool { blocking_count(source: bool_as_string_source) >= 1 }
+
+test fn w_float_as_string_is_refused() -> Bool { blocking_count(source: float_as_string_source) >= 1 }
+
+test fn w_unit_as_string_is_refused() -> Bool { blocking_count(source: unit_as_string_source) >= 1 }
+
+test fn w_nat_as_string_is_refused() -> Bool { blocking_count(source: nat_as_string_source) >= 1 }
+
+// The refusal is THIS wall's, at the subject that names the cast the author wrote.
+test fn w_int_as_string_refusal_names_the_cast() -> Bool {
+  refusals_at(source: int_as_string_source, subject: "invalid cast: Int as String -- a non-text value has no route into text; build th") == 1
+}
+
+test fn w_declared_int_to_text_route_is_accepted() -> Bool { blocking_count(source: declared_route_source) == 0 }
+
+test fn w_non_empty_text_as_string_is_accepted() -> Bool { blocking_count(source: non_empty_text_as_string_source) == 0 }
+
+// `true as Int` still refuses: the Bool row was withdrawn from dag_cast_rules and this change adds
+// no route (DESIGN section 4).
+test fn w_bool_as_int_is_still_refused() -> Bool { blocking_count(source: bool_as_int_source) >= 1 }

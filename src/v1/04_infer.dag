@@ -7538,11 +7538,24 @@ fn cast_source_is_solver_unit_placeholder(source_node: Node) -> Bool {
   }
 }
 
-// A NON-TEXT KERNEL SOURCE HAS NO ROUTE INTO TEXT. The cast table names no row into NonEmptyStr, and
-// validate_cast passes a source outside the table's domain unjudged, so `n as NonEmptyStr` over an Int,
-// Bool, Float, Unit or Nat compiled clean and re-typed a number as text;
-// test.claim.non_text_cast_into_text_wall_witness holds the five REDs, the GREENs, and the RED that a
+// A NON-TEXT KERNEL SOURCE HAS NO ROUTE INTO TEXT. The cast table names no row into any text type,
+// and validate_cast passes a target outside the table's domain unjudged, so `n as NonEmptyStr` and
+// `n as String` over an Int, Bool, Float, Unit or Nat compiled clean, re-typed a number as text, and
+// reached the target emitter's unsupported-cast arm: gunbc.durable_cas_file_store's
+// `cas_generation_count(...) as String` emitted three `panic!("unsupported cast from i64 to String")`
+// arms, a runtime abort standing where a located refusal belonged (DESIGN section 5). The declared
+// Int-to-text route is the kernel `to_string`, which the refusal names.
+// test.claim.non_text_cast_into_text_wall_witness holds the REDs, the GREENs, and the RED that a
 // user-declared type SPELLED Int is not the kernel Int.
+//
+// THE TARGET IS TEXT BY ITS REPRESENTATION, read by the one classifier text crossings already use
+// (v1.compiler.infer_env text_representation_by_identity): host text (the kernel String mint, and
+// std.types NonEmptyStr because a where-refinement has its base's representation) or a code-point
+// sequence (std.algebra FreeMonoid<Char>, directly or through aliases). This was first a
+// NonEmptyStr-only leaf (#14822); `as String` was the same rule at its sibling target, so the rule is
+// the least general one covering both, not a second leaf beside the first. An UNIDENTIFIED target is
+// not judged here: that population is gunbc.rung_drop text_boundary_identity_wall's, and refusing it
+// would be a verdict this classifier declares it cannot give.
 //
 // KEYED ON IDENTITY, NEVER ON SPELLING (DESIGN section 4). Int, Float, Bool and Unit are read by their
 // mint provenance (node_is_kernel_mint_named over the resolved node). Nat is not a kernel mint: a binder
@@ -7561,8 +7574,7 @@ fn cast_source_is_solver_unit_placeholder(source_node: Node) -> Bool {
 // and is_dag_cast_domain_type are to be deleted or derived), and DESIGN section 3 admits no new rows on
 // a frozen authority's growth surfaces. Both leaves dissolve on that stall's trigger, when every
 // cast consumer asks its own inhabitance judgment, and the out-of-domain arm then judges all
-// targets, not one. String as a target is deliberately out of scope here: this change refuses only
-// into NonEmptyStr, as ruled.
+// targets, not one.
 fn type_node_names_declaration(n: Node, wanted: DeclarationRef, scope: InferScope) -> Bool {
   match type_reference_declaration_ref(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env) {
     Present { value: d } => declaration_ref_eq(a: d, b: wanted)
@@ -7576,10 +7588,10 @@ fn is_non_text_kernel_cast_source(n: Node, scope: InferScope) -> Bool {
     || type_node_names_declaration(n: n, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope)
 }
 
-fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+fn non_text_kernel_cast_into_text_diags(source_inferred: InferredNode?, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
-      if type_node_names_declaration(n: target_type, wanted: decl_ref(module_path: "std.types", decl_name: "NonEmptyStr"), scope: scope)
+      if text_representation_is_text_arm(r: text_representation_by_identity(n: target_type, env: scope.type_env))
         && is_non_text_kernel_cast_source(n: src_node, scope: scope) {
         let si = scope.type_env.source_indices
         let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through a declared conversion (to_string, or a checked constructor over its rendering)")
@@ -10672,7 +10684,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         module_name: scope.module_name
       )
       let cast_sole_ctor_diags = sole_constructor_construction_diags(type_name: target_name, span: span, scope: scope)
-      let cast_non_text_diags = non_text_kernel_cast_into_non_empty_text_diags(source_inferred: inner_typed.inferred, target_type: target_type, span: span, scope: scope)
+      let cast_non_text_diags = non_text_kernel_cast_into_text_diags(source_inferred: inner_typed.inferred, target_type: target_type, span: span, scope: scope)
       let cast_refinement_diags = where_refinement_mismatch_diags(
         formal: target_type,
         value_expr: inner_typed,
