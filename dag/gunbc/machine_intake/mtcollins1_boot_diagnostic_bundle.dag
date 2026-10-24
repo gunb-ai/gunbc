@@ -1,6 +1,11 @@
 module gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle
 
 import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }
+import gunbc.host.bmc_release_capability_catalog {
+  MegaRacVersionEstablishment, MegaRacReleaseEstablishedByRead, MegaRacReleaseEstablishedByAttestation,
+  MegaRacReleaseEstablishmentRefused, MegaRacVersionFromFirmwareRead, megarac_version_establishment,
+  megarac_version_refusal_text,
+}
 import gunbc.host.host_boot_attempt_admission {
   PrePowerFirmware, PrePowerFirmwareUnread, pre_power_firmware_observed, BootAttemptClearance,
 }
@@ -144,7 +149,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacStaleDetachNotAdmitted,
   MegaRacStaleDetachUnconfirmed,
   MegaRacRedirectionUncatalogued,
-  redirection_unread_text,
+  redirection_unread_text, unread_row_stop_refusal_text,
   MegaRacRefreshClockUnreadable,
   MegaRacListingUnparseableAfterDetach,
   MegaRacOfferedAmbiguouslyAfterDetach,
@@ -631,8 +636,8 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
       Present { value: concat("the stale census image '", concat(n, concat("' is presented and was NOT stopped: ", why as String))) }
     MegaRacStaleDetachUnconfirmed { detach: d, reason: why } =>
       Present { value: concat("the stale census image was not established as detached: ", concat(why as String, concat(" (", concat(detach_evidence_text(detach: d), ")")))) }
-    MegaRacRedirectionUncatalogued { image_name: n, unread: u, configurations: c } =>
-      Present { value: join(["the row naming '", n, "' reports ", redirection_unread_text(unread: u), ", and the row is not a stale image this lane publishes (it is foreign, unnamed, or the wanted image itself), so nothing may be stopped on an unread status; refusing before any write or power action: ", c], "") }
+    MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: why, configurations: c } =>
+      Present { value: join(["the row naming '", n, "' reports ", redirection_unread_text(unread: u), ", and it was not stopped: ", unread_row_stop_refusal_text(refusal: why), "; refusing before any write or power action: ", c], "") }
     MegaRacRefreshClockUnreadable { detail: d, detach: x } => Present { value: join(["the clock could not be read, so the re-enumeration window could not be declared or judged: ", d, " (the detach had been executed: ", detach_evidence_text(detach: x), ")"], "") }
     MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
     MegaRacOfferedAmbiguouslyAfterDetach { image_name: n, image_indices: ids, detach: x } =>
@@ -2575,10 +2580,63 @@ fn mtcollins1_boot_hpm_check(username: NonEmptyStr, password_file: NonEmptyStr, 
     kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
   )
   if r.success {
+    let retained = Filesystem.Write(path: mtcollins1_boot_hpm_check_path(run_attempt: run_attempt), content: r.stdout)
     pre_power_firmware_observed(clearance: clearance, run_attempt: run_attempt, table: hpm_check_table_of(stdout: r.stdout), source: join(["ipmitool hpm check on ", mtcollins1_endpoint.host as String, " at ", at as String], "") as NonEmptyStr)
   } else {
     PrePowerFirmwareUnread { reason: concat("hpm check was not read: ", bmc_read_cause_text(cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: r.exit_code, stderr: r.transport_stderr))) as NonEmptyStr }
   }
+}
+
+// THE BUILD READING, FROM THE RETAINED BYTES. The pre-power read above keeps the controller's own hpm check
+// output as a boot artifact, verbatim, so the file the run uploads is the file a later change commits to
+// artifacts/bmc/ and names in a MegaRacVersionFromFirmwareRead standing. This reads that file BACK and runs
+// the catalogue's one derivation over it (gunbc.host.bmc_release_capability_catalog
+// megarac_version_establishment, component APP), so what the receipt reports is what those bytes establish,
+// not a second reading of the tool. It is evidence for the restoration trigger of
+// gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation and changes no
+// admission: production still admits operations through the observed build until that cutover lands.
+// THE FILE IS NAMED BY THE RUN THAT READ IT. The runner's work tree outlives a run, so a fixed name could
+// hand this run's readback a previous run's bytes after a failed read; keyed by GITHUB_RUN_ID (the
+// run_attempt the boot passes, and the attempt identity the conclusion reads), a run reads back only what
+// it wrote. It stays inside mtcollins1_boot_artifact_glob, so the run uploads it.
+fn mtcollins1_boot_hpm_check_path(run_attempt: NonEmptyStr) -> NonEmptyStr {
+  join(["artifacts/mtcollins1-boot-hpm-check-", run_attempt as String, ".txt"], "") as NonEmptyStr
+}
+
+type MtCollins1BuildReading
+  = BuildReadRetained { path: NonEmptyStr, established: MegaRacVersionEstablishment }
+  | BuildReadNotRetained { reason: NonEmptyStr }
+
+fn mtcollins1_build_reading_of(path: NonEmptyStr, read_ok: Bool, content: String, error: String) -> MtCollins1BuildReading {
+  if !read_ok {
+    BuildReadNotRetained { reason: concat("the retained hpm check could not be read back: ", error) as NonEmptyStr }
+  } else if content == "" {
+    BuildReadNotRetained { reason: "no hpm check output was retained for this attempt" }
+  } else {
+    BuildReadRetained { path: path, established: megarac_version_establishment(standing: MegaRacVersionFromFirmwareRead { artifact_path: path, component: "APP", stdout: content }) }
+  }
+}
+
+fn mtcollins1_boot_build_reading(attempt: AttemptIdentityReading) -> MtCollins1BuildReading {
+  match attempt {
+    AttemptIdentityUnavailable { variable: v, detail: _ } => BuildReadNotRetained { reason: concat("the run identity is unavailable, so no retained file is this run's: ", v as String) as NonEmptyStr }
+    AttemptRunId { run_id: id } => {
+      let path = mtcollins1_boot_hpm_check_path(run_attempt: id)
+      let r = Filesystem.Read(path: path as String)
+      mtcollins1_build_reading_of(path: path, read_ok: r.success, content: r.content, error: r.error)
+    }
+  }
+}
+
+fn build_reading_receipt_line(r: MtCollins1BuildReading) -> String {
+  concat("build=", match r {
+    BuildReadNotRetained { reason: why } => concat("not read: ", why as String)
+    BuildReadRetained { path: p, established: e } => match e {
+      MegaRacReleaseEstablishedByRead { firmware: f } => join(["machine-read APP ", f.raw_version as String, " from ", p as String, " (uncommitted; commit it to ground the current build)"], "")
+      MegaRacReleaseEstablishedByAttestation { firmware: f } => join(["attested ", f.raw_version as String, " from ", p as String], "")
+      MegaRacReleaseEstablishmentRefused { standing: _, cause: c } => join(["retained at ", p as String, " but establishes no release: ", megarac_version_refusal_text(cause: c)], "")
+    }
+  })
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [

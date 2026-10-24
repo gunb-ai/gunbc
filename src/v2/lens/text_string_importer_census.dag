@@ -17,7 +17,7 @@ import v2.std.diagnostic { Accepted, Rejected, Textual, ByteRange, WholeFile }
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
 import std.types { Map, List, NonEmptyStr }
-import std.algebra { empty_map, map_insert, map_lookup, Cons, Empty, FreeMonoid, contains, fold_list, length, list_reverse }
+import std.algebra { empty_map, map_insert, map_lookup, Cons, Empty, FreeMonoid, contains, fold_list, length, list_reverse, collection_concat_shape, collection_join_shape, list_push }
 import v2.std.source_position { source_newline_byte_offsets }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
