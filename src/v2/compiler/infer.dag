@@ -7187,6 +7187,25 @@ fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, kinds: List<Rost
 // -- a grounding this fold does not derive -- and it takes that arm. Deriving the reference's type
 // FROM its declaration by path is the end-state the roster lookups above already name as their
 // dissolution, not this arm.
+// THE ONE TYPE-SIDE DECISION OF THE INTERIM CARRIER GROUNDING (rung
+// gunbc.rung_drop.non_literal_crossings_ground_to_the_refinement_carrier; the crossing side is
+// infer_refinement_carrier_grounding_decision at the one declared-position judge). A fold-init type
+// position whose node declares a refinement grounds to the carrier row; a miss takes today's
+// not-derived refusal. Both reference-shaped arms of infer_gather_fold_init consult THIS one block --
+// no second spelling of the decision (DESIGN 3, one concept one home).
+fn infer_gather_fold_refinement_carrier_or_not_derived(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>, rigid_binders: List<Symbol>) -> InferGatherFoldAcc {
+  match refinement_declaration(index: resolved.resolved_declarations, reference: n) {
+    Present { value: refinement } =>
+      infer_gather_formed_facts_row(
+        node: n,
+        formed: infer_refinement_carrier_grounding_row(node: n, carrier: refinement.carrier),
+        entries: empty_map(),
+        pending: None
+      )
+    Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)
+  }
+}
+
 fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>, rigid_binders: List<Symbol>) -> InferGatherFoldAcc {
   match n.kind {
     ComputationNode { behavior: Branch } =>
@@ -7290,29 +7309,11 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
       }
       }
     TypeNode { connective: Atom { identity: _ } } =>
-      match refinement_declaration(index: resolved.resolved_declarations, reference: n) {
-        Present { value: refinement } =>
-          infer_gather_formed_facts_row(
-            node: n,
-            formed: infer_refinement_carrier_grounding_row(node: n, carrier: refinement.carrier),
-            entries: empty_map(),
-            pending: None
-          )
-        Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)
-      }
+      infer_gather_fold_refinement_carrier_or_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)
     TypeNode { connective: Conj } =>
       match declaration_reference_path_optional(node: n) {
         Present { value: _ } =>
-          match refinement_declaration(index: resolved.resolved_declarations, reference: n) {
-            Present { value: refinement } =>
-              infer_gather_formed_facts_row(
-                node: n,
-                formed: infer_refinement_carrier_grounding_row(node: n, carrier: refinement.carrier),
-                entries: empty_map(),
-                pending: None
-              )
-            Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)
-          }
+          infer_gather_fold_refinement_carrier_or_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)
         Absent =>
       match parameter_reference_path_optional(node: n) {
         Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types, rigid_binders: rigid_binders)
