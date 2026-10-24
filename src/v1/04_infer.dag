@@ -33,7 +33,7 @@ import v1.compiler.type_head_exposure {
   type_declaration_identity_key,
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
-import v1.std.core { Unmarked, ModuleItemTypeDeclaration, declaration_provenance_of,
+import v1.std.core { Unmarked, ModuleItemTypeDeclaration, ParsedModuleItemKind, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
@@ -205,7 +205,7 @@ import v1.compiler.infer_emit_info {
   add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names
 }
 import v1.compiler.infer_items {
-  ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
+  ItemKind, FnItem, TypeItem, DataItem, ServiceItem, ResourceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface, leaf_owner_modules_from_registry,
   ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
   inferred_to_outputs, item_kind, item_is_effectful_callee,
@@ -608,7 +608,10 @@ fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Set<String
 // declaration's own span and ident_span, so the census join (v1.compiler.infer_env
 // declaration_ref_of_type_node) recovers the same DeclarationRef from either spelling, and nothing
 // kernel-minted stands where a corpus declaration exists.
-fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> Node {
+// THE REFERENCE ALSO CARRIES THE DECLARATION'S FORM. It is the binding the symbol-index census
+// serves for that declaration, and v1.compiler.infer_lookup census_declaration_identity reads its
+// kind off it; stamped NotAModuleItem, a resource read as OtherItem and was admitted as a callable.
+fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?, module_item_kind: ParsedModuleItemKind) -> Node {
   let declared_leaf = Node {
     occurrence_identity: OccurrenceSynthetic, name: name, span: span, ident_span: ident_span, children: [],
     connective: NoConnective, params: [], inferred: none, return_cardinality: Required,
@@ -621,7 +624,7 @@ fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> 
     inferred: Present { value: Resolved { node: declared_leaf } },
     return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: module_item_kind, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
   }
 }
 
@@ -15084,13 +15087,19 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc)
-  } else if formal.children |> count > 0 && (formal.children |> count) == (actual.children |> count) {
+  } else if formal.children |> count > 0 && formal.connective == actual.connective && (formal.children |> count) == (actual.children |> count) {
     unify_generic_child_pairs(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else { acc }
 }
 
 // A generic carries one child per type argument (List<T>, Map<K, V>), so its arguments unify
-// positionally; one rule serves every arity. A position is read RAW, not through child_type_node:
+// positionally; one rule serves every arity. THE TWO SIDES MUST HAVE ONE FORM. A child means a type
+// argument only under an application; under a coproduct declaration it is a variant, under a record a
+// field. A list element read through `.last()` arrives as the coproduct's declaration (Disj, one child
+// per variant), and against an application of the same arity the pairing bound R to the variant
+// StepEstablished: gunbc.machine_intake.arrival_converge then refused `variant not found in type
+// StepOutcome` on every arm of a match over the receipt. Unequal forms bind nothing, as unequal arity
+// does. A position is read RAW, not through child_type_node:
 // a formal child is a type expression whose inferred is its own TypeVariable, and child_type_node
 // answers error_type for anything not Resolved, so reading it through that would drop the very
 // binding site (measured: heal refused source_annotation.dag, list_at_optional(xs: List<T>) left T
@@ -15611,6 +15620,7 @@ fn export_kind_of_item_kind(kind: ItemKind) -> ExportKind? {
     TypeItem => Present { value: ExportType }
     DataItem => Present { value: ExportData }
     ServiceItem => Present { value: ExportService }
+    ResourceItem => Absent
     OtherItem => Absent
   }
 }
@@ -15739,7 +15749,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.transport == none && item.children |> count > 0 {
-    let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
+    let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span, module_item_kind: item.module_item_kind)
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown, alias_rhs: none } }
   } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
     let bare_node = Node {
@@ -16915,7 +16925,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
       let alias_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown, alias_rhs: none })
     } else if item.transport == none && item.children |> count > 0 {
-      let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
+      let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span, module_item_kind: item.module_item_kind)
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown, alias_rhs: none })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))

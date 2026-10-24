@@ -33,6 +33,8 @@ data a_witness_population_reds_on_main_with_nothing_gating_it: RecurringFailureM
     "RUNG FOUND AT 1, mitigatable: the harm is bounded only by someone running the file by hand. CEILING 3, structurally guaranteed, and not 4: the invalid state is a relation between a change and the witnesses its closure reaches, which can be refused at merge but not made unconstructible -- a production edit must stay writable. The interim rung-2 step, short of the trigger, is a witness that the realization covers its entry's demand: an entry's effect demand is a fact of its import closure (the services it reaches), so a census that every operation the entry can reach is bound by the realization that claims to realize all of it would turn this specimen's reds into one located refusal naming the unbound operations, whether or not anyone ran the matrix.",
 
     "RECOGNITION RULE: when a witness is red on main and its own file did not change, bisect its import closure, not its file; and when you find a realization short of its entry, extend the realization the claims share -- never a frame only your claims use.",
+
+    "SECOND SPECIMEN, TWO POPULATIONS, TWO COMPILER CAUSES (2026-10-24, found by #14980). test.claim.machine_intake.machine_intake_prior_life_boundary_witness 0/10 and machine_intake_arrival_converge_witness 0/49 went red with no change to either file. #13925 (2026-10-15) made every closure reaching extdeps.clock refuse; #14594 (2026-10-21) refused arrival_converge on a generic binding, masked behind the first for anyone reading only the first diagnostic. Neither PR touched machine_intake. Each was bisected with a minimal fixture over the closure rather than the witness file, as this row's recognition rule says",
   ],
 
   evidence: [
