@@ -4,9 +4,6 @@ module gunbc.deploy_transition
 import std.types { String, Bool, Int, List }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
-  FilesystemReadOutcome,
-  FilesystemReadSucceeded,
-  FilesystemReadRefused,
   FilesystemEstablishedAbsence,
   FilesystemFileObservation,
   FilesystemFileAbsent,
@@ -14,10 +11,17 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
-  filesystem_read_outcome,
-  filesystem_listing_observation,
-  filesystem_file_observation,
   filesystem_established_absence_detail,
+}
+import gunbc.deploy_transition_store {
+  TransitionInhibitionStore,
+  TransitionInhibitionStoreReading,
+  TransitionInhibitionStoreReady,
+  TransitionInhibitionStoreUnready,
+  TransitionMarkerWrite,
+  TransitionMarkerWritten,
+  TransitionMarkerWriteRefused,
+  transition_marker_observe,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -103,16 +107,18 @@ data deploy_transition_schema: String = "gunbc.deploy_transition/1"
 // The durable records live beside the deployment, never inside the repository being transitioned.
 // A file written under `repo_root` would be untracked residue in the tree the convergence reads
 // back, so the convergence's own residue check would refuse on the artifact protecting it.
+//
+// THE INHIBITION IS A SEALED STORE; THE LEASE IS STILL A PATH. The inhibition's location is declared
+// once, in gunbc.deploy_transition_store transition_inhibition_slots, and every inhibition function
+// below takes the TransitionInhibitionStore minted from it, never a root. The lease is a hand lock
+// held back from that pattern (Blocked: hold-release-model, stern-ram-763 2026-10-24): it moves onto
+// gunbc.durable_exclusive_hold_file_store once std.durable_exclusive_hold models a non-holder release
+// typed by its evidence, because ClearedByEvidence and ClearedByAbandonment below are not holder
+// liveness observations. LINE-STOP: an ingress that binds acquire_transition_lease before that move.
 data transition_lease_file_name: String = "transition-lease.json"
-
-data transition_inhibition_file_name: String = "transition-inhibition.json"
 
 fn transition_lease_path(instance_root: String) -> String {
   join([instance_root, "/", transition_lease_file_name], "")
-}
-
-fn transition_inhibition_path(instance_root: String) -> String {
-  join([instance_root, "/", transition_inhibition_file_name], "")
 }
 
 // The subject of one transition: which repository, moving which ref, to which candidate.
@@ -394,10 +400,7 @@ type TransitionFileObservation
 // lands in the indeterminate arm here because a transition that cannot be observed must not proceed
 // either way -- but the cause names the ARGUMENT rather than the host, so the two remedies stay
 // separable to whoever reads the refusal.
-fn transition_file_observation_of(
-  observed: FilesystemFileObservation,
-  path: String,
-) -> TransitionFileObservation {
+fn transition_file_observation_of(observed: FilesystemFileObservation) -> TransitionFileObservation {
   match observed {
     FilesystemFileAbsent(absence) => TransitionFileAbsent(absence)
     FilesystemFileIndeterminate { cause: why } =>
@@ -415,39 +418,33 @@ fn transition_file_observation_of(
           ", which is not a directory subject, so the supplied outcomes establish no observation of it -- ", why,
         ], ""),
       }
-    FilesystemFileRead { path: _, content: c } =>
+    FilesystemFileRead { path: p, content: c } =>
       match transition_record_decode(text: c) {
         TransitionRecordUndecodable { cause: why } =>
           TransitionFileIndeterminate {
-            cause: join([why, " (at ", path, ")"], ""),
+            cause: join([why, " (at ", p, ")"], ""),
           }
         TransitionRecordDecoded { record: r } => TransitionFilePresent { record: r }
       }
   }
 }
 
-fn observe_transition_file(instance_root: String, name: String) -> TransitionFileObservation {
-  let path = join([instance_root, "/", name], "")
-  let listing = Filesystem.List(path: instance_root)
-  let read = Filesystem.Read(path: path)
+// The lease's observation (the inhibition's is its store's `observe`). Both go through the one
+// listing-joined fold, gunbc.deploy_transition_store transition_marker_observe.
+fn observe_transition_lease(instance_root: String) -> TransitionFileObservation {
   transition_file_observation_of(
-    observed: filesystem_file_observation(
-      listing: filesystem_listing_observation(
-        directory: instance_root,
-        success: listing.success,
-        entries: listing.entries,
-        error: listing.error,
-      ),
-      name: name,
-      path: path,
-      read: filesystem_read_outcome(
-        content: read.content,
-        success: read.success,
-        error: read.error,
-      ),
-    ),
-    path: path,
+    observed: transition_marker_observe(directory: instance_root, name: transition_lease_file_name),
   )
+}
+
+fn observe_transition_inhibition(inhibition: TransitionInhibitionStore) -> TransitionFileObservation {
+  transition_file_observation_of(observed: inhibition.observe())
+}
+
+// Where an inhibition refusal points an operator. The store carries no path, so the instance names
+// it; a host error from the store's own write already names the path.
+fn inhibition_location(inhibition: TransitionInhibitionStore) -> String {
+  join(["the transition inhibition of instance ", inhibition.instance as String], "")
 }
 
 type LeaseAcquisition
@@ -536,10 +533,7 @@ fn acquire_transition_lease(
     } else {
       LeaseCreateRefused {
         error: created.error,
-        observed: observe_transition_file(
-          instance_root: subject.instance_root,
-          name: transition_lease_file_name,
-        ),
+        observed: observe_transition_lease(instance_root: subject.instance_root),
       }
     },
   )
@@ -568,69 +562,65 @@ type TransitionActuation
 // AND THE WRITE IS READ BACK. A successful write means the host accepted the bytes, never that the
 // marker now reads as the record intended -- the same distinction the convergence this protects
 // makes about its own steps.
-fn set_transition_inhibition(guard: TransitionGuard) -> TransitionActuation {
-  let root = guard.subject.instance_root
-  let path = transition_inhibition_path(instance_root: root)
-  let created = Filesystem.WriteOwnerOnly(
-    path: path,
-    content: transition_record_json(
-      record: transition_guard_record(guard: guard, phase: TransitionInForce),
-    ),
-  )
-  if !created.success {
-    TransitionActuationRefused {
-      cause: set_inhibition_refusal_cause(
-        path: path,
-        create_error: created.error,
-        observed: observe_transition_file(
-          instance_root: root,
-          name: transition_inhibition_file_name,
+fn set_transition_inhibition(
+  inhibition: TransitionInhibitionStore,
+  guard: TransitionGuard,
+) -> TransitionActuation {
+  let location = inhibition_location(inhibition: inhibition)
+  match inhibition.create(transition_record_json(
+    record: transition_guard_record(guard: guard, phase: TransitionInForce),
+  )) {
+    TransitionMarkerWriteRefused { detail: create_error } =>
+      TransitionActuationRefused {
+        cause: set_inhibition_refusal_cause(
+          location: location,
+          create_error: create_error,
+          observed: observe_transition_inhibition(inhibition: inhibition),
         ),
-      ),
-    }
-  } else {
-    match observe_transition_file(instance_root: root, name: transition_inhibition_file_name) {
-      TransitionFilePresent { record: back } =>
-        if transition_record_same_subject(
-          a: back,
-          b: transition_guard_record(guard: guard, phase: TransitionInForce),
-        ) {
-          TransitionActuationCompleted { detail: path }
-        } else {
+      }
+    TransitionMarkerWritten =>
+      match observe_transition_inhibition(inhibition: inhibition) {
+        TransitionFilePresent { record: back } =>
+          if transition_record_same_subject(
+            a: back,
+            b: transition_guard_record(guard: guard, phase: TransitionInForce),
+          ) {
+            TransitionActuationCompleted { detail: location }
+          } else {
+            TransitionActuationRefused {
+              cause: join([
+                "gunbc.deploy_transition: ",
+                location,
+                " read back names ",
+                back.actor,
+                "/",
+                back.invocation,
+                " rather than this transition; something else is writing this marker",
+              ], ""),
+            }
+          }
+        TransitionFileAbsent(absence) =>
           TransitionActuationRefused {
             cause: join([
-              "gunbc.deploy_transition: the inhibition read back at ",
-              path,
-              " names ",
-              back.actor,
-              "/",
-              back.invocation,
-              " rather than this transition; something else is writing this marker",
+              "gunbc.deploy_transition: the inhibition write succeeded and the marker is not there on readback -- ",
+              filesystem_established_absence_detail(absence: absence),
             ], ""),
           }
-        }
-      TransitionFileAbsent(absence) =>
-        TransitionActuationRefused {
-          cause: join([
-            "gunbc.deploy_transition: the inhibition write succeeded and the marker is not there on readback -- ",
-            filesystem_established_absence_detail(absence: absence),
-          ], ""),
-        }
-      TransitionFileObservationsDisagree { cause: why } =>
-        TransitionActuationRefused {
-          cause: join([
-            "gunbc.deploy_transition: the inhibition write succeeded and the readback disagreed with the listing -- ",
-            why,
-          ], ""),
-        }
-      TransitionFileIndeterminate { cause: why } =>
-        TransitionActuationRefused {
-          cause: join([
-            "gunbc.deploy_transition: the inhibition write succeeded and could not be read back -- ",
-            why,
-          ], ""),
-        }
-    }
+        TransitionFileObservationsDisagree { cause: why } =>
+          TransitionActuationRefused {
+            cause: join([
+              "gunbc.deploy_transition: the inhibition write succeeded and the readback disagreed with the listing -- ",
+              why,
+            ], ""),
+          }
+        TransitionFileIndeterminate { cause: why } =>
+          TransitionActuationRefused {
+            cause: join([
+              "gunbc.deploy_transition: the inhibition write succeeded and could not be read back -- ",
+              why,
+            ], ""),
+          }
+      }
   }
 }
 
@@ -639,16 +629,16 @@ fn set_transition_inhibition(guard: TransitionGuard) -> TransitionActuation {
 // the directory itself refused the write. The third is a host problem and the first is a clearance
 // problem, and an operator sent to the wrong one loses the time this whole lane is about.
 fn set_inhibition_refusal_cause(
-  path: String,
+  location: String,
   create_error: String,
   observed: TransitionFileObservation,
 ) -> String {
   match observed {
     TransitionFilePresent { record: prior } =>
       join([
-        "gunbc.deploy_transition: an inhibition already stands at ",
-        path,
-        " for ",
+        "gunbc.deploy_transition: ",
+        location,
+        " already stands for ",
         prior.actor,
         "/",
         prior.invocation,
@@ -660,23 +650,23 @@ fn set_inhibition_refusal_cause(
       ], "")
     TransitionFileIndeterminate { cause: why } =>
       join([
-        "gunbc.deploy_transition: the inhibition could not be created at ",
-        path,
-        " and what stands there could not be established -- ",
+        "gunbc.deploy_transition: ",
+        location,
+        " could not be created and what stands there could not be established -- ",
         why,
       ], "")
     TransitionFileObservationsDisagree { cause: why } =>
       join([
-        "gunbc.deploy_transition: the inhibition could not be created at ",
-        path,
-        " and what stands there is being written or removed while it is read -- ",
+        "gunbc.deploy_transition: ",
+        location,
+        " could not be created and what stands there is being written or removed while it is read -- ",
         why,
       ], "")
     TransitionFileAbsent(absence) =>
       join([
-        "gunbc.deploy_transition: the inhibition could not be created at ",
-        path,
-        " and ",
+        "gunbc.deploy_transition: ",
+        location,
+        " could not be created and ",
         filesystem_established_absence_detail(absence: absence),
         ", so the directory refused the write -- ",
         create_error,
@@ -691,25 +681,24 @@ fn set_inhibition_refusal_cause(
 // lease. The lease is NOT released afterwards either: a partial transition is not a finished
 // critical section, and handing the next converge a free lease over an advanced ref and an
 // untransitioned tree is the interleaving this module exists to prevent.
-fn mark_transition_partial(guard: TransitionGuard, detail: String) -> TransitionActuation {
-  let path = transition_inhibition_path(instance_root: guard.subject.instance_root)
-  let written = Filesystem.Write(
-    path: path,
-    content: transition_record_json(
-      record: transition_guard_record(guard: guard, phase: TransitionPartialLeft),
-    ),
-  )
-  if written.success {
-    TransitionActuationCompleted { detail: detail }
-  } else {
-    TransitionActuationRefused {
-      cause: join([
-        "gunbc.deploy_transition: partial-transition record could not be written at ",
-        path,
-        " -- ",
-        written.error,
-      ], ""),
-    }
+fn mark_transition_partial(
+  inhibition: TransitionInhibitionStore,
+  guard: TransitionGuard,
+  detail: String,
+) -> TransitionActuation {
+  match inhibition.replace(transition_record_json(
+    record: transition_guard_record(guard: guard, phase: TransitionPartialLeft),
+  )) {
+    TransitionMarkerWritten => TransitionActuationCompleted { detail: detail }
+    TransitionMarkerWriteRefused { detail: why } =>
+      TransitionActuationRefused {
+        cause: join([
+          "gunbc.deploy_transition: partial-transition record could not be written to ",
+          inhibition_location(inhibition: inhibition),
+          " at ",
+          why,
+        ], ""),
+      }
   }
 }
 
@@ -736,13 +725,16 @@ fn actuation_standing_of(observed: TransitionFileObservation) -> ActuationStandi
   }
 }
 
-fn transition_actuation_standing(instance_root: String) -> ActuationStanding {
-  actuation_standing_of(
-    observed: observe_transition_file(
-      instance_root: instance_root,
-      name: transition_inhibition_file_name,
-    ),
-  )
+// THE STANDING TAKES THE MINT'S READING, because every caller holds an instance and nothing else, and
+// an unready store is a standing too: an instance root that does not list establishes no absence, so it
+// is unreadable and refuses -- the answer the unsealed read gave for the same root.
+fn transition_actuation_standing(inhibition: TransitionInhibitionStoreReading) -> ActuationStanding {
+  match inhibition {
+    TransitionInhibitionStoreUnready { detail: d } =>
+      ActuationStandingUnreadable { cause: join(["gunbc.deploy_transition: ", d], "") }
+    TransitionInhibitionStoreReady { store: s } =>
+      actuation_standing_of(observed: observe_transition_inhibition(inhibition: s))
+  }
 }
 
 type ActuationAdmission
@@ -1083,49 +1075,49 @@ fn clearance_admission(
 //
 // THE MARKER IS RE-READ HERE rather than at the caller, so the compare and the delete sit in one
 // fold with nothing between them that a caller could reorder or skip.
+//
+// TWO SUBJECTS, ONE PER STORE: the inhibition is its sealed store, the lease is still its instance
+// root (Blocked: hold-release-model, above). NOT established: that both name one instance.
 fn clear_transition_records(
   instance_root: String,
+  inhibition: TransitionInhibitionStore,
   basis: ClearanceBasis,
   readback_converged: Bool,
 ) -> TransitionActuation {
-  let inhibition = transition_inhibition_path(instance_root: instance_root)
   match clearance_admission(
     basis: basis,
     readback_converged: readback_converged,
-    observed: observe_transition_file(
-      instance_root: instance_root,
-      name: transition_inhibition_file_name,
-    ),
+    observed: observe_transition_inhibition(inhibition: inhibition),
   ) {
     ClearanceRefused { reason: why } => TransitionActuationRefused { cause: why }
-    ClearanceAdmitted { basis: b } => {
-      let removed = Filesystem.Delete(path: inhibition)
-      if !removed.success {
-        TransitionActuationRefused {
-          cause: join([
-            "gunbc.deploy_transition: inhibition at ",
-            inhibition,
-            " could not be removed -- ",
-            removed.error,
-            "; the lease is deliberately left held so nothing is admitted while the inhibition stands",
-          ], ""),
-        }
-      } else {
-        let lease = transition_lease_path(instance_root: instance_root)
-        let released = Filesystem.Delete(path: lease)
-        if released.success {
-          TransitionActuationCompleted { detail: b }
-        } else {
+    ClearanceAdmitted { basis: b } =>
+      match inhibition.delete_marker() {
+        TransitionMarkerWriteRefused { detail: why } =>
           TransitionActuationRefused {
             cause: join([
-              "gunbc.deploy_transition: inhibition cleared but the lease at ",
-              lease,
-              " could not be released -- ",
-              released.error,
+              "gunbc.deploy_transition: ",
+              inhibition_location(inhibition: inhibition),
+              " could not be removed at ",
+              why,
+              "; the lease is deliberately left held so nothing is admitted while the inhibition stands",
             ], ""),
+          }
+        TransitionMarkerWritten => {
+          let lease = transition_lease_path(instance_root: instance_root)
+          let released = Filesystem.Delete(path: lease)
+          if released.success {
+            TransitionActuationCompleted { detail: b }
+          } else {
+            TransitionActuationRefused {
+              cause: join([
+                "gunbc.deploy_transition: inhibition cleared but the lease at ",
+                lease,
+                " could not be released -- ",
+                released.error,
+              ], ""),
+            }
           }
         }
       }
-    }
   }
 }

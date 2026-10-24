@@ -1,6 +1,6 @@
 module test.claim.deploy_transition_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, NonEmptyStr, FilePath }
 import extdeps.filesystem.filesystem_io {
   FilesystemReadOutcome,
   FilesystemReadSucceeded,
@@ -9,6 +9,10 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation,
   filesystem_file_observation,
 }
+import gunbc.deploy_transition_store { transition_inhibition_slots, transition_inhibition_path }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
 import gunbc.deploy_transition {
   TransitionSubject,
   TransitionActor,
@@ -55,12 +59,10 @@ import gunbc.deploy_transition {
   ClearanceAdmitted,
   ClearanceRefused,
   transition_lease_path,
-  transition_inhibition_path,
   transition_record_json,
   transition_record_decode,
   transition_file_observation_of,
   transition_lease_file_name,
-  transition_inhibition_file_name,
   transition_record_same_subject,
   lease_acquisition_from_create,
   actuation_standing_of,
@@ -215,14 +217,33 @@ fn acquired_guard() -> TransitionGuard? {
 // `repo_root` would be untracked residue in the tree the convergence reads back, so the
 // convergence's own residue check would refuse on the artifact that exists to protect it. This
 // witness is what makes that a checked property rather than a habit.
+// The inhibition's path is the sealed store's own derivation from its declaration and the instance,
+// so the instance's own repo_root is the tree it must stay out of.
+fn opt_instance() -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "transition-dry" as NonEmptyStr),
+    instance_id: "transition-dry" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: "/opt/gunbc" as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
 test fn the_durable_records_sit_outside_the_repository_they_protect() -> Bool {
-  let lease = transition_lease_path(instance_root: "/opt/gunbc")
-  let inhibition = transition_inhibition_path(instance_root: "/opt/gunbc")
+  let instance = opt_instance()
+  let root = instance.instance_root as String
+  let repo = instance.repo_root as String
+  let lease = transition_lease_path(instance_root: root)
+  let inhibition = transition_inhibition_path(instance: instance)
   lease != inhibition
-    && !string_contains(s: lease, pattern: "/opt/gunbc/gunbc")
-    && !string_contains(s: inhibition, pattern: "/opt/gunbc/gunbc")
-    && string_contains(s: lease, pattern: "/opt/gunbc/")
-    && string_contains(s: inhibition, pattern: "/opt/gunbc/")
+    && !string_contains(s: lease, pattern: join([repo, "/"], ""))
+    && !string_contains(s: inhibition, pattern: join([repo, "/"], ""))
+    && string_contains(s: lease, pattern: join([root, "/"], ""))
+    && string_contains(s: inhibition, pattern: join([root, "/"], ""))
 }
 
 // ALL FOUR ACQUISITION ARMS ARE DISTINCT, driven through one function over inputs that differ only
@@ -324,11 +345,10 @@ fn observe(listed: Bool, listing: String, read: FilesystemReadOutcome) -> Transi
         entries: listing,
         error: "Permission denied (os error 13)",
       ),
-      name: transition_inhibition_file_name,
+      name: transition_inhibition_slots.member as String,
       path: "/opt/gunbc/transition-inhibition.json",
       read: read,
     ),
-    path: "/opt/gunbc/transition-inhibition.json",
   )
 }
 
@@ -352,7 +372,7 @@ fn observation_arm(o: TransitionFileObservation) -> String {
 
 // THROUGH THE PRODUCER, NOT AROUND IT. These used to be hand-built `FilesystemReadSucceeded` /
 // `FilesystemReadRefused` literals, which meant the witnesses started one step DOWNSTREAM of where
-// production starts: `observe_transition_file` feeds the raw (content, success, error) channels to
+// production starts: `transition_marker_observe` feeds the raw (content, success, error) channels to
 // `filesystem_read_outcome` and consumes what that returns. A literal skips the arm assignment
 // entirely, so the mapping production depends on was exercised by nothing here. Same
 // asserted-not-produced defect this PR found twice already; found the third time by checking every
@@ -450,7 +470,7 @@ test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool {
     listing: "transition-inhibition.json.tmp",
     read: read_refused(e: "No such file or directory"),
   )) == "absent"
-    && transition_lease_file_name != transition_inhibition_file_name
+    && transition_lease_file_name != transition_inhibition_slots.member as String
 }
 
 // ONLY ONE STANDING ADMITS. An unreadable inhibition refuses, which is the direction that matters:
