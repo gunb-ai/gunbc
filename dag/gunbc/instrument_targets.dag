@@ -261,8 +261,10 @@ fn v2_native_frontier_label() -> Label {
 // reaching one more stage). Every front-end, resolve and infer refusal is GROUPED BY THE FATAL REASON
 // (v2.compiler.source_root_eval native_census_cause_groups_add), with the stage and head kept as member
 // fields. An import cascade is collapsed to its root (census C): each cascaded module is one member
-// under the root's reason. At infer the only cascade is a refused closure provider leading an
-// importer's chain (native_census_infer_cascade). The roots are ranked by closure fan-out
+// under the root's reason. A module refused through a refused provider's declaration is filed at resolve,
+// as a member of that provider's root (native_census_chain_cascade), and every infer refusal is a root of
+// its own: no cross-module refusal reaches infer (the census part 2 header in
+// v2.compiler.source_root_eval says why). The roots are ranked by closure fan-out
 // (native_census_roots_ranked), and each is marked against the native test target's closure
 // (native_census_subject_closure). The receipt's stderr names the host memory budget's source. It is
 // THE route to that census: the binary's `census` / `census-resolve` / `census-infer` verbs remain
@@ -606,6 +608,24 @@ fn native_emission_controls_entry() -> String {
   "dag/gunbc/instruments/native_emission_controls.dag"
 }
 
+// THE FLEET CONVERGENCE VERDICT ROUTE (gunbc.instruments.fleet_convergence_verdict_route): resolves the
+// import closure gunbc.fleet.fleet_receipt_collector collect_fleet_convergence_wet loads, then evaluates
+// the verdict's refused-enrolment RED, its control and one inhabitance case over the live roster. A
+// closure that stops resolving is no observation. Seed-evaluated, because that closure does not emit as
+// compilable Rust today; run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:fleet-convergence-verdict-route`.
+fn fleet_convergence_verdict_route_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "fleet-convergence-verdict-route" } }
+}
+
+fn fleet_convergence_verdict_route_entry() -> String {
+  "dag/gunbc/instruments/fleet_convergence_verdict_route.dag"
+}
+
+fn fleet_convergence_verdict_route_function() -> String {
+  "fleet_convergence_verdict_route_wire"
+}
+
 // THE VALUE-POSITION BLOCK NEST CONTROL: native tokenize/parse/normalize of the committed
 // docs/measurements/value_position_block_nests/{single,multi}_d14 fixtures, as a NativeClaimDriver
 // program. Seed emit of this entry does not lower those sources (they are files the child reads),
@@ -885,18 +905,23 @@ fn append_chain_ladder_label() -> Label {
 }
 
 fn append_chain_ladder_entry() -> String {
-  "dag/gunbc/instruments/append_chain_ladder.dag"
-}
-
-fn append_chain_ladder_function() -> String {
-  "append_chain_ladder_wire"
+  "dag/gunbc/instruments/append_chain_ladder_native.dag"
 }
 
 // THE INSTRUMENT gunbc.recurring_failure_mode non_empty_append_on_a_persistent_vector_is_superlinear
 // cites, as a label rather than a command in a comment. Non-gating measurement; the threshold fold
 // over its timing rows extends this same label (one instrument, not two).
 fn append_chain_ladder_binding() -> TargetBinding {
-  TargetBinding { target: append_chain_ladder_label() producer: CliWireProgramProducer { entry: append_chain_ladder_entry() function: append_chain_ladder_function() } }
+  TargetBinding { target: append_chain_ladder_label() producer: NativeClaimProgramProducer { entry: append_chain_ladder_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn member_home_cost_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "member-home-cost" } }
+}
+
+// The N7 member wall's cost receipt: each ambient member against its std.algebra home on the emitted path.
+fn member_home_cost_binding() -> TargetBinding {
+  TargetBinding { target: member_home_cost_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/member_home_cost_native.dag" deadline: native_claim_policy_child_deadline() } }
 }
 
 fn claim_coverage_census_label() -> Label {
@@ -943,6 +968,27 @@ fn roster_reach_inhabitance_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "roster-reach-inhabitance" } }
 }
 
+// THE OFFLINE WITNESS DEFERRAL DROP'S INSTRUMENT. Its subject is the live corpus's typed
+// FrozenPathDeferral identities joined against the declared population of
+// gunbc.rung_drop.witness_deferral_freeze_population_rung_drop — the same gate the required floor
+// consults, rendered for a process boundary. It is dispatch-only like the whole-tree censuses: the
+// additions gate parses every .dag under both roots, so a run is hours of interpreter time and is
+// cited as a receipt, never spent on the merge floor.
+fn witness_deferral_freeze_population_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "witness-deferral-freeze-population" } }
+}
+
+fn witness_deferral_freeze_population_entry() -> String {
+  "dag/gunbc/instruments/witness_deferral_freeze_population.dag"
+}
+
+fn witness_deferral_freeze_population_function() -> String {
+  "witness_deferral_freeze_population_exit"
+}
+
+fn witness_deferral_freeze_population_binding() -> TargetBinding {
+  TargetBinding { target: witness_deferral_freeze_population_label() producer: CliWireProgramProducer { entry: witness_deferral_freeze_population_entry() function: witness_deferral_freeze_population_function() } }
+}
 fn roster_reach_inhabitance_entry() -> String {
   "dag/gunbc/instruments/roster_reach_inhabitance.dag"
 }
@@ -1081,6 +1127,10 @@ fn native_xl2_rehearsal_binding() -> TargetBinding {
 
 fn native_emission_controls_binding() -> TargetBinding {
   TargetBinding { target: native_emission_controls_label() producer: NativeClaimProgramProducer { entry: native_emission_controls_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn fleet_convergence_verdict_route_binding() -> TargetBinding {
+  TargetBinding { target: fleet_convergence_verdict_route_label() producer: CliWireProgramProducer { entry: fleet_convergence_verdict_route_entry() function: fleet_convergence_verdict_route_function() } }
 }
 
 fn dag_emit_real_grammar_round_trips_binding() -> TargetBinding {
@@ -1290,12 +1340,12 @@ fn instrument_targets() -> List<Label> {
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
-    known_red_derivation_label(), roster_reach_inhabitance_label(), claim_coverage_census_label(), append_chain_ladder_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
+    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
   ]
 }
 
@@ -1312,12 +1362,12 @@ fn instrument_bindings() -> List<TargetBinding> {
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
   ]
 }
 

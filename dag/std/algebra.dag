@@ -176,6 +176,17 @@ fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
 // carrier); routing through list_append paid a full O(n) right-fold per snoc, which made
 // every build-by-appending accumulator quadratic — measured on the first-set union fold in
 // the self-hosted parser (2026-09-09, required-v2-native lane work).
+// `list_push` is FreeMonoid's own snoc: the one declared home of the primitive single-item append.
+// Its template row is `free_monoid_collection_templates` list_push; this fn is the importable
+// callable for it, so a caller reaches it by `import std.algebra { list_push }` and not through the
+// ambient primitive tier; the std.primitives list_push_contract row that admitted the bare name is
+// retired. std.algebra imports neither std.primitives nor std.types (a cycle). Realization:
+// HostRealizedSeam self-call (rt_function_registry list_push), selected by this declaration's
+// projection row.
+fn list_push<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
+  list_push(xs: xs, item: item)
+}
+
 fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   xs |> list_push(item)
 }
@@ -1284,16 +1295,19 @@ fn list_reverse<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
   })
 }
 
+// LEFT FOLD, ONE PUSH PER ELEMENT. The right fold this replaced rebuilt the accumulator with a
+// head insertion per element and recursed at list depth, a cost-shape defect (DESIGN 6); fold_list
+// emits as a cursor loop and list_push appends in place, so map is one linear pass.
 fn list_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> U) -> FreeMonoid<U> {
-  fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
-    Cons { head: f(item), tail: acc }
+  fold_list(xs: xs, empty: Empty, cons: fn(acc, item) {
+    list_push(xs: acc, item: f(item))
   })
 }
 
 fn list_flat_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> FreeMonoid<U>) -> FreeMonoid<U> {
-  fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
-    fold_list_right(xs: f(item), empty: acc, snoc: fn(inner, produced) {
-      Cons { head: produced, tail: inner }
+  fold_list(xs: xs, empty: Empty, cons: fn(acc, item) {
+    fold_list(xs: f(item), empty: acc, cons: fn(inner, produced) {
+      list_push(xs: inner, item: produced)
     })
   })
 }
@@ -1343,20 +1357,32 @@ type SortKeyed<T, K> {
 }
 
 // STABLE: on an equal key the left run's member is emitted first, so equal keys keep input order, as
-// the host sort_by (a stable sort over canonical_content_cmp) does.
+// the host sort_by (a stable sort over canonical_content_cmp) does. A TAIL-RECURSIVE merge into an
+// accumulator, one list_push per member and one list_append for the run left over: the head-building
+// recursion it replaced constructed a Cons per member at merge depth, a clone and a head insertion
+// each on the persistent carrier (DESIGN 6, a cost-shape defect fixed regardless of n).
 fn sort_merge_runs<T, K>(
   left: FreeMonoid<SortKeyed<T, K>>,
   right: FreeMonoid<SortKeyed<T, K>>,
   order: TotalOrder<K>
 ) -> FreeMonoid<SortKeyed<T, K>> {
+  sort_merge_into(left: left, right: right, order: order, acc: Empty)
+}
+
+fn sort_merge_into<T, K>(
+  left: FreeMonoid<SortKeyed<T, K>>,
+  right: FreeMonoid<SortKeyed<T, K>>,
+  order: TotalOrder<K>,
+  acc: FreeMonoid<SortKeyed<T, K>>
+) -> FreeMonoid<SortKeyed<T, K>> {
   match left {
-    Empty => right
+    Empty => list_append(left: acc, right: right)
     Cons { head: l, tail: lt } => match right {
-      Empty => left
+      Empty => list_append(left: acc, right: left)
       Cons { head: r, tail: rt } => match order.compare(l.key, r.key) {
-        Greater => Cons { head: r, tail: sort_merge_runs(left: left, right: rt, order: order) }
-        Less => Cons { head: l, tail: sort_merge_runs(left: lt, right: right, order: order) }
-        Equal => Cons { head: l, tail: sort_merge_runs(left: lt, right: right, order: order) }
+        Greater => sort_merge_into(left: left, right: rt, order: order, acc: list_push(xs: acc, item: r))
+        Less => sort_merge_into(left: lt, right: right, order: order, acc: list_push(xs: acc, item: l))
+        Equal => sort_merge_into(left: lt, right: right, order: order, acc: list_push(xs: acc, item: l))
       }
     }
   }
