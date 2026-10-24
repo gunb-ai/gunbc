@@ -86,7 +86,7 @@ compile_arm () { # <name> <entry-file> <outdir>
   local el; el=$(elapsed); [ "$el" -gt "$DEADLINE" ] && { echo "DEADLINE_REACHED ${el}s before $name"; return 1; }
   rm -rf $od; mkdir -p $od
   arm_cgroup $name
-  run_bound /tmp/m2_$name.out /tmp/m2_$name.err 1650 $GB compile --source-root dag --source-root src/v2 --entry "$file" --output-dir $od --target rust
+  run_bound /tmp/m2_$name.out /tmp/m2_$name.err ${COMPILE_T:-1650} $GB compile --source-root dag --source-root src/v2 --entry "$file" --output-dir $od --target rust
   local rc=$?
   [ "$rc" = "124" ] && { echo "ROW $name rc=124 TIMEOUT UNOBSERVED (not a result)"; return 0; }
   local nout; nout=$(find $od -type f | wc -l)
