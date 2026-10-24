@@ -1,39 +1,37 @@
-set -uo pipefail
-REPO=/root/workspace/repo-root
-HEADSHA=f6030923ad79163132a78a45cc18d0d05875bbd7  # gh pr view 14613 headRefOid (manager-confirmed final)
-WIT=dag/test/claim/instruments/instrument_dispatch_workflow_witness.dag
-GATE=dag/gunbc/instruments/generated_artifact_gate.dag
-YML=.github/workflows/instrument-dispatch.yml
-cd $REPO
-git fetch --force origin $HEADSHA 2>&1 | tail -1
-git worktree add -f /tmp/wt613j $HEADSHA 2>&1 | tail -1
-cd /tmp/wt613j
-git rev-parse HEAD | grep -q "^$HEADSHA" || { echo "PR_REF_MOVED/GUARD FAIL"; exit 9; }
-export CARGO_TARGET_DIR=$REPO/.t613j
-CG=/sys/fs/cgroup/ver613j; mkdir -p $CG
-if [ -f $CG/cgroup.subtree_control ]; then echo +memory > $CG/cgroup.subtree_control 2>/dev/null || true; fi
-echo 51539607552 > $CG/memory.max
-RB=$(cat $CG/memory.max); [ "$RB" != "max" ] || { echo "WRAPPER NOT BOUNDED"; exit 9; }
-echo "CGROUP_WRAPPER=$CG memory.max=$RB (read-back, bounded)"
-exec 12>>$CG/cgroup.procs 2>/dev/null && echo $BASHPID >&12 2>/dev/null || echo "NOTE: fd join unavailable; runner ExternallyBounded (BUILDBUDDY_RUN_ID=$BUILDBUDDY_RUN_ID)"
-cargo build --release -p v1-compiler --bin claim_batch 2>&1 | tail -1
-CB=$REPO/.t613j/release/claim_batch
-echo "BUILD_COMMIT=$(git rev-parse HEAD) CB_SHA=$(sha256sum $CB|cut -c1-12) $(date -u +%H:%M:%SZ)"
-FNS=$(grep -oE '^test fn [A-Za-z_0-9]+' $WIT | awk '{print $3}' | paste -sd, -)
-echo "CLAIM_COUNT=$(echo $FNS | tr ',' '\n' | wc -l)"
-timeout 2400 $CB --claim-run --wet --source-root dag --source-root src/v2 --entry $WIT --functions "$FNS" > /tmp/c613j.out 2>&1; echo "[head] rc=$?"
-grep -aE '^(PASS|FAIL|UNOBS) ' /tmp/c613j.out | sed 's/^/  | /'
-grep -ac '^PASS ' /tmp/c613j.out | sed 's/^/PASS_COUNT=/'; grep -ac '^FAIL ' /tmp/c613j.out | sed 's/^/FAIL_COUNT=/'
+set -u
+cd /root/workspace/repo-root 2>/dev/null || true
+# #14613 @b7854d98d76 census re-arm with corrected extraction (manager check: census ADMITS the edited row).
+OID=b7854d98d76584c65b04df7ce1a971b1ab7322fc
+echo "HEADSHA_from_gh=$OID START $(date -u +%H:%M:%S)Z"
+git worktree prune >/dev/null 2>&1 || true
+rm -rf /tmp/w613j
+git fetch -q origin +refs/pull/14613/head:refs/verifier/14613g 2>&1 | tail -1
+[ "$(git rev-parse refs/verifier/14613g 2>/dev/null)" = "$OID" ] || { echo "PR_REF_MOVED=$(git rev-parse refs/verifier/14613g 2>/dev/null) -- STOP"; exit 9; }
+git worktree add -q --detach /tmp/w613j $OID || { echo WT_FAILED; exit 9; }
+WT=/tmp/w613j
+[ "$(git -C $WT rev-parse HEAD)" = "$OID" ] || { echo WT_MISMATCH; exit 9; }
+cd $WT || exit 9
+sha() { sha256sum "$1" | cut -d' ' -f1; }
+echo "BUILD_COMMIT=$(git rev-parse HEAD)"
+export CARGO_TARGET_DIR=/root/workspace/repo-root/.t14613j CARGO_INCREMENTAL=0 RUSTC_WRAPPER=
 cargo build --release -p v1-compiler --bin gunbc 2>&1 | tail -1
-GB=$REPO/.t613j/release/gunbc
-echo "GB_SHA=$(sha256sum $GB|cut -c1-12)"
-echo "=== REGEN idempotency/NO-DRIFT for $YML ==="
-cp $YML /tmp/committed613j.yml
-timeout 1500 $GB run --source-root dag --source-root src/v2 --entry $GATE --function main_wet_one --arg path=$YML > /tmp/c613j_regen.out 2>&1; echo "[regen] rc=$?"; grep -aE 'Filesystem.Write|refus|error' /tmp/c613j_regen.out | tail -3 | cut -c1-200 | sed 's/^/  | /'
-if diff -q /tmp/committed613j.yml $YML >/dev/null 2>&1; then echo "NO-DRIFT=YES"; else echo "DRIFT=YES:"; diff /tmp/committed613j.yml $YML | head -15 | sed 's/^/  D| /'; fi
-echo "=== REGEN idempotency/NO-DRIFT for DESIGN.md (declared route, same gate) ==="
-cp DESIGN.md /tmp/committed613j_design.md
-timeout 1500 $GB run --source-root dag --source-root src/v2 --entry $GATE --function main_wet_one --arg path=DESIGN.md > /tmp/c613j_regen_design.out 2>&1; echo "[regen DESIGN.md] rc=$?"; grep -aE 'Filesystem.Write|refus|error' /tmp/c613j_regen_design.out | tail -3 | cut -c1-200 | sed 's/^/  | /'
-if diff -q /tmp/committed613j_design.md DESIGN.md >/dev/null 2>&1; then echo "DESIGN_NO_DRIFT=YES"; else echo "DESIGN_DRIFT=YES:"; diff /tmp/committed613j_design.md DESIGN.md | head -20 | sed 's/^/  D| /'; fi
-sha256sum DESIGN.md | sed 's/^/DESIGN_SHA=/'
-echo DONE_613J $(date -u +%H:%M:%SZ)
+GB=/root/workspace/repo-root/.t14613j/release/gunbc
+[ -x $GB ] || { echo "NO gunbc -- nothing below is a result"; exit 9; }
+echo "GB_SHA=$(sha $GB)"
+echo "-------- census full capture $(date -u +%H:%M:%S)Z"
+( cd $WT && timeout 2400 $GB test //gunbc/instruments:rfm-rung-census ) > /tmp/c613j_census.out 2>&1; rc=$?
+LINES=$(wc -l < /tmp/c613j_census.out); BYTES=$(wc -c < /tmp/c613j_census.out)
+HELD=$(grep -ac ' held' /tmp/c613j_census.out); REFUSED=$(grep -ac 'refused' /tmp/c613j_census.out)
+NP=$(grep -ac '^PASS ' /tmp/c613j_census.out); NF=$(grep -ac '^FAIL ' /tmp/c613j_census.out); NU=$(grep -ac '^UNOBSERVED ' /tmp/c613j_census.out)
+echo "  ROW census rc=$rc lines=$LINES bytes=$BYTES PASS=$NP FAIL=$NF UNOBS=$NU held=$HELD refused=$REFUSED"
+grep -aE '^(PASS|FAIL|UNOBSERVED) |held|refused' /tmp/c613j_census.out | head -25 | sed 's/^/  V| /' | cut -c1-190
+grep -aiE 'rows=|read=|roster |cases|summary' /tmp/c613j_census.out | tail -8 | sed 's/^/  S| /' | cut -c1-195
+echo "  -- lines naming the EDITED row (identity or file):"
+grep -a 'workflow_expressions_assembled_from_string_fragments' /tmp/c613j_census.out | head -6 | sed 's/^/  R| /' | cut -c1-230
+echo "  edited-name census line count=$(grep -ac 'workflow_expressions_assembled_from_string_fragments' /tmp/c613j_census.out)"
+[ "$rc" = "0" ] && [ "$((NP+NF+NU+HELD))" = "0" ] && echo "  ROW census !! rc=0 with ZERO case lines -- VOID"
+tail -6 /tmp/c613j_census.out | sed 's/^/  T| /' | cut -c1-195
+echo DONE_613_J
+cd /root/workspace/repo-root
+git worktree remove --force $WT >/dev/null 2>&1 || true
+git worktree prune >/dev/null 2>&1 || true
