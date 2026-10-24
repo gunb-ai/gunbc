@@ -1007,12 +1007,7 @@ fn native_test_context_absorb(
               advisories: advisories
             ),
             alloc: alloc,
-            positions: native_census_positions_absorb_accepted(
-              table: state.positions,
-              path: read.compilation_unit,
-              spans: spans,
-              text: read.source.carried
-            )
+            positions: state.positions
           }
       }
   }
