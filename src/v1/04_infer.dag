@@ -11214,7 +11214,14 @@ fn alias_chain_carrier(n: Node) -> Node {
 fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> NodeResolveResult {
   let application = generic_application_reapplied(n: n, env: env)
   let peel_result = if needs_alias_field_expansion(n: application, env: env) {
-    peel_alias_once_for_field_access(n: application, env: env, module_name: module_name)
+    let applied_carrier = alias_chain_carrier(n: application)
+    let applied_name = if applied_carrier.name != "" { applied_carrier.name } else { authored_name_at(source_indices: env.source_indices, node: applied_carrier) }
+    // The application is judged against its own declaration before the peel replaces it with the alias's target.
+    let peeled_once = peel_alias_once_for_field_access(n: application, env: env, module_name: module_name)
+    NodeResolveResult {
+      resolved: peeled_once.resolved,
+      diagnostics: concat(peeled_once.diagnostics, alias_chain_arity_diagnostics(carrier: applied_carrier, carrier_name: applied_name, env: env, module_name: module_name))
+    }
   } else {
     NodeResolveResult { resolved: application, diagnostics: [] }
   }
