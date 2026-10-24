@@ -1330,3 +1330,48 @@ fn cas_slot_keys_over(fs: FilesystemInterface, root: NonEmptyStr) -> CasSlotKeys
 fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
   cas_slot_keys_over(fs: local_filesystem, root: root)
 }
+
+// ── The store as a value ─────────────────────────────────────────────────────────────────────
+// THE SLOT STORE IS THE `*_over` LOGIC ALREADY BOUND TO ITS FILESYSTEM AND ITS ROOT: the
+// `FilesystemInterface` idiom one level up. A holder can observe a slot, publish a verified attempt
+// and list the keys; it cannot get the root or the filesystem back out, because neither is a field.
+// Where the store lives, which filesystem answers it and what directory it needs are decided once,
+// by the module that builds the value (for the worktree claim store,
+// gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_store); the holder is handed it.
+//
+// It inhabits std.durable_compare_and_set (the outcomes and observations are that module's own); it
+// is not an ArtifactStore (a pure content-addressed fold) nor a StorageSurface (cache capacity
+// policy): neither models a generation-checked create-new slot. The windowed and retained variants
+// are not carried: no holder of this value uses them, and a holder that does adds the field with its
+// first consumer (DESIGN section 3c).
+type SlotStore {
+  observe: fn(NonEmptyStr) -> CasSlotObservation<NonEmptyStr>
+  commit: fn(CasGenerationPublication, VerifiedCasAttempt) -> CasOutcome<NonEmptyStr>
+  keys: fn() -> CasSlotKeys
+}
+
+fn file_slot_store_over(fs: FilesystemInterface, root: NonEmptyStr) -> SlotStore {
+  SlotStore {
+    observe: fn(key) { observe_cas_slot_state_over(fs: fs, root: root, key: key) }
+    commit: fn(publication, verified) { file_compare_and_set_over(fs: fs, root: root, publication: publication, verified: verified) }
+    keys: fn() { cas_slot_keys_over(fs: fs, root: root) }
+  }
+}
+
+// The plain (local-files) constructor for the sibling cohorts that still name their root as a path.
+fn file_slot_store(root: NonEmptyStr) -> SlotStore
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.compute_seat_ensure", decl_name: "compute_seat_ensure_in"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_open_attempt"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_begin_launch"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_settle_attempt"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_open_attempt_minted"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_recover_slot_present"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_recover_attempt_in"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_open"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_begin_launch"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_terminate"),
+  ]
+{
+  file_slot_store_over(fs: local_filesystem, root: root)
+}

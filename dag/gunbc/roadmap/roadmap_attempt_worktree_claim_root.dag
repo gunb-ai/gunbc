@@ -1,24 +1,35 @@
 module gunbc.roadmap.roadmap_attempt_worktree_claim_root
 
 import std.types { String, NonEmptyStr, FilePath }
+import gunbc.filesystem_interface { local_filesystem }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store_over }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
-import gunbc.managed_directory { DirectoryOwnerOnly }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
 
 // THE WORKTREE CLAIM STORE'S ROOT (the store itself is gunbc.roadmap.roadmap_attempt_worktree_claim), kept in a
 // leaf module because the instance directory list must import its declaration and the claim store sits above
 // the belt, which the list's own importers reach.
-data worktree_claim_slots_dirname: String = "worktree-claims"
+// THE ONE DECLARATION OF THE CLAIM STORE: the member it lives under in the instance's dispatch attempt state
+// root, and the mode its directory is created with. The store (worktree_claim_store) and the directory row
+// (worktree_claim_slots_directory) are both derived from it, so deleting this declaration removes both and
+// there is no second place to enroll a directory. Owner-only: the claims record which attempt owns which tree.
+type WorktreeClaimSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
 
-fn worktree_claim_slots_root(records_dir: String) -> NonEmptyStr {
-  join([records_dir, "/", worktree_claim_slots_dirname], "") as NonEmptyStr
+data worktree_claim_slots: WorktreeClaimSlotsDeclaration = WorktreeClaimSlotsDeclaration {
+  member: "worktree-claims" as NonEmptyStr,
+  mode: DirectoryOwnerOnly,
 }
 
-// THE ONE DERIVATION OF THE ROOT FOR AN INSTANCE: the declaration below and both belt consumer sites
-// (belt_worktree_claim_before_add, the settlement pass's claims_root) use this expression, so the path the
-// store is read under and the path the directory list creates are one expression, not two that happen to agree.
-fn worktree_claim_slots_root_of(instance: HostDashboardInstance) -> NonEmptyStr {
-  worktree_claim_slots_root(records_dir: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String)
+fn worktree_claim_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", worktree_claim_slots.member as String], "") as NonEmptyStr
+}
+
+// THE CLAIM STORE, WHERE AND HOW SEALED TOGETHER: the instance a route received decides the location, the
+// local filesystem realization answers it, and the holder gets a SlotStore that exposes neither. A test
+// builds the same store from an instance whose state root it owns.
+fn worktree_claim_store(instance: HostDashboardInstance) -> SlotStore {
+  file_slot_store_over(fs: local_filesystem, root: worktree_claim_slots_path(instance: instance))
 }
 
 // THE CLAIM STORE ROOT IS A DEMANDED DIRECTORY, declared beside the path it is and enrolled in the one instance
@@ -30,10 +41,10 @@ fn worktree_claim_slots_root_of(instance: HostDashboardInstance) -> NonEmptyStr 
 // the claims record which attempt owns which tree.
 fn worktree_claim_slots_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
   OwnedDirectoryDeclared {
-    member: worktree_claim_slots_dirname as NonEmptyStr,
-    path: worktree_claim_slots_root_of(instance: instance) as String as FilePath,
+    member: worktree_claim_slots.member,
+    path: worktree_claim_slots_path(instance: instance) as String as FilePath,
     owner: instance.directory_owner,
-    mode: DirectoryOwnerOnly,
+    mode: worktree_claim_slots.mode,
     // DERIVED, not copied from neighbours. The SameUserRegroupToDeclaredGroup posture is authorized
     // ONLY where a discriminator declares a group the worker's writes need (the six worker-writable
     // directories of a dedicated-worker instance, dashboard_instance_worker_writable_group_adoption).
