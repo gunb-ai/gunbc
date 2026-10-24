@@ -44,3 +44,15 @@ The parent's precomputed seeds were unreachable: different hosts, no shared /tmp
 
 ## Phase 3 sample
 `random.seed(20261025)`, 60 of the no-signal production modules (phase3_sample.txt, drawn before the roster class existed: roster members in it are reported separately).
+
+## Phase 3 result (false negatives)
+60 no-signal production modules hand-read: 6 had a problem the mechanics missed (10%), listed in modules.tsv with phase=P3.
+gunbc.host.host_identity_adopt, gunbc.host.host_identity_assimilation, gunbc.host.host_kernel_dependency and gunbc.machine_intake.mtcollins1_boot_admission
+show per-host SYMBOLS (operator_host_srvN, srvN_host, fn *_srvN_*), used to branch or to enumerate hosts, which no literal pattern sees.
+gunbc.workspace_image_delivery and gunbc.ledger_row_coherence hold REPO-RELATIVE storage literals ("target/..."); the abs-path rule sees only absolute ones.
+No other false negatives in the sample. Several L1 declarers looked suspicious but are the authority: gunbc.runner.runner_slot_desired (memory max),
+gunbc.auth.gcp_iam_bootstrap_federation (service account), gunbc.namecheap.account (registrar user), gunbc.bmc.bmc_fan_alignment_standing (host roster).
+Follow-up: both shapes were run as leads over all 2,639 remaining no-signal production+extdeps modules. They match 82 modules (48 per-host symbol, 34 relative literal).
+The 73 not already read are slice 09-phase3-shapes, sent to their own reader. So the 10% miss rate is measured BEFORE that slice, and the residual
+miss rate after it is unmeasured (the remaining shapes in the sample were zero of 54).
+A roster-shaped directory the basename rule misses: gunbc.git_use_census.* (directory name, not basename). Noted, and left in production.

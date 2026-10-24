@@ -32,3 +32,9 @@ std.materialization_store_grant	production	L1	L0	L0	L1	L0	0	none: declares the m
 std.realization	production	L1	L1	L0	L0	L1	0	none: the realization vocabulary (Memoize arm, Placement)	Memoize	P2-parent
 std.realization_schedule	production	L0	L0	L0	L0	L0	0	none: the lead was prose inside a multi-line string (walk_plan_note)	walk_plan_note	P2-parent
 std.workspace_artifact	production	L0	L0	L0	L0	L0	0	none: LocalCacheState is a classification arm, not a cache	LocalCacheState	P2-parent
+gunbc.host.host_identity_adopt	production	L0	L0	L0	L0	L3	0	one ssh transport fn per host (srv1..srv4_host_identity_ssh_transport) hand-enumerates the fleet instead of receiving a host	srv1_host_identity_ssh_transport; srv2_host_identity_ssh_transport; srv3_host_identity_ssh_transport; srv4_host_identity_ssh_transport	P3
+gunbc.host.host_identity_assimilation	production	L0	L0	L0	L0	L3	0	per-host target constructor re-selects srv1 facts (fleet slot, persisted base, access) by name	host_identity_assimilation_target_srv1	P3
+gunbc.host.host_kernel_dependency	production	L0	L0	L0	L0	L4	0	environment-specific branch: if host == operator_host_srv1 choose the TUN kernel provider	tun_kernel_provider_for_host	P3
+gunbc.machine_intake.mtcollins1_boot_admission	production	L0	L0	L0	L0	L3	0	boot admission hard-wires the placement "must be srv1" by comparing to operator_host_srv1	mtcollins1_boot_host_must_be_srv1; mtcollins1_boot_refuses_off_srv1	P3
+gunbc.workspace_image_delivery	production	L4	L0	L0	L0	L0	0	staging root and receipt path hard-coded "target/workspace-image-artifact"	workspace_image_staging_root; workspace_image_build_receipt	P3
+gunbc.ledger_row_coherence	production	L4	L0	L0	L0	L0	0	artifact path hard-coded "target/heal-repair-declaration.txt"	heal_repair_declaration_artifact_path	P3
