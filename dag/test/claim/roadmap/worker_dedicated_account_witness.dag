@@ -1,5 +1,10 @@
 module test.claim.roadmap.worker_dedicated_account_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement {
+  dispatch_attempt_unit_stem, dispatch_worker_git_writable_paths, dispatch_worker_writable_path_list,
+  dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance,
+  dispatch_attempt_worker_log_path_for_instance, session_process_bounds,
+}
 import std.types { Bool, NonEmptyStr, List, String, Int, FilePath }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
 // THE WALK'S OWN PROGRAM IDENTITY, for the pairing claim's leg that requires every grant argv to BE a
@@ -44,15 +49,11 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardVerifyProviderAuth, dashboard_instance_provision_plan,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_attempt_unit_stem, dispatch_review_unit_properties,
-  dispatch_worker_git_writable_paths, dispatch_worker_writable_path_list,
-  dispatch_attempt_worker_git_entry_directories, dispatch_attempt_worker_git_entry_migration,
-  dispatch_repository_shared_posture_commands, dispatch_attempt_private_git_dir,
-  dispatch_worker_unit_properties, dispatch_attempt_state_path_for_instance,
-  dispatch_attempt_worker_log_path_for_instance, dispatch_codex_home,
+  dispatch_review_unit_properties, dispatch_attempt_worker_git_entry_directories,
+  dispatch_attempt_worker_git_entry_migration, dispatch_repository_shared_posture_commands,
+  dispatch_worker_unit_properties, dispatch_codex_home,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 import gunbc.host.host_layout { attempt_exit_spool_root }
 import extdeps.systemd { NoNewPrivilegesProperty, RestrictSUIDSGIDProperty }
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet }
