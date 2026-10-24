@@ -1,7 +1,8 @@
 module v2.workflow.wet_evidence
 
 import std.types { List, Map }
-import std.algebra { list_append, contains, empty_map, fold_list, length, map_insert, map_lookup }
+import std.algebra { list_append, contains, empty_map, fold_list, length, map_contains_key, map_insert, map_lookup }
+import v2.std.decl_index { DeclFact }
 import std.optional { Absent, Present }
 import v2.std.text { String }
 import v2.std.integer { Int }
@@ -256,6 +257,7 @@ type WetEvidenceRefusal
   | WetBindingRelationMismatch { identity: String }
   | WetCrossRouteIdentityOverlap { identity: String }
   | WetScheduledIdentityDuplicated { identity: String, occurrences: Int }
+  | WetScheduledFunctionNotDeclared { identity: String, entry: String, function: String }
 
 type WetEvidenceValidation
   = WetEvidenceAdmitted { binding: WetEvidenceBinding, terminals: List<WetTerminalRow> }
@@ -502,6 +504,86 @@ fn wet_string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
+// The second pass accumulates causes AND the keys already emitted, so one dangling (entry, function)
+// pair is named exactly once and in first-occurrence order.
+type WetScheduledDeclarationSweep {
+  causes: List<WetEvidenceRefusal>
+  emitted: List<String>
+}
+
+// THE SCHEDULE'S OTHER DANGLE: A ROW WHOSE ENTRY NEVER DECLARES ITS FUNCTION.
+//
+// THE HOLE THIS CLOSES (parent-confirmed by execution, msg_6e4fb4e8): a schedule row naming a
+// function that does not exist in its entry file passes everything. The forward join compares the
+// row to ITSELF (both sides read s.identity), so it cannot see the name is fiction, and the
+// enumerating witness fails to lower. The executor's own grain refuses it --
+// `validate_explicit_functions` in src/v1/stage0/src/bin/claim_batch.rs parses the entry, keeps the
+// FnItem names, and exits 2 naming what is missing (THE SEED PRECEDENT) -- but the executor is one
+// caller of this fold and the fold is the authority: any fixture schedule, or future caller, handing
+// a row whose function is never declared must refuse HERE, naming it.
+//
+// WHY THE POPULATION IS A PARAMETER AND NOT A READ. This fold is pure over `declared`, the same
+// way `execution` is handed to `local_repo_wet_finalize`: fixtures stay fixtures. The population is
+// v2.std.decl_index's declaration census -- the EXISTING index, not a grep and not a second parser.
+// The real-schedule control claim reads it ONCE and binds it (the fleet precedent,
+// test.claim.fleet.runtime_identity_match_witness.test_axis_table_citations_resolve_against_the_declaration_census:
+// an unbound per-row census read cost ~3.6s each and looked like a hang; one bound read is the
+// measured shape). Roots are the ones the schedule's entries actually resolve under: every row of
+// `local_repo_wet_schedule` names a file under `dag/test/claim`, so the control passes that root --
+// NOT `src` (CensusNotRunnable poison, keen-owl-704) and NOT a wider pool paid for per probe.
+//
+// WHY MEMBERSHIP IS (rel_path, name) AND NOT A KIND FILTER. The executor's seed filters
+// `item_kind == FnItem`, and `item_kind` (src/v1/stage0/src/v1_compiler_infer_items.rs) classifies a
+// body-carrying item with a return annotation and NO parameters as DataItem -- so every one of the
+// 515 real schedule rows, which are zero-parameter `test fn` claims returning Bool, is DataItem in
+// this census. A kind gate would false-refuse the entire wet route. What the fold needs is not
+// "is this a function" but "does this entry file DECLARE this name at all": a type or data
+// declaration wearing the claimed name is still a collision worth refusing over, and a claim whose
+// name is nowhere in the file is the dangle. That is the strongest fact the index supports at this
+// grain, and the seed's own refusal message -- "does not declare requested function(s)" -- is a
+// declaration-membership question, which is what is mirrored here.
+//
+// THE KEY IS AN AUTHORING KEY, not the index's logical qualified name: the schedule carries a file
+// path (`entry`), not a module, and the index carries both a rel_path and a module-derived
+// qualified_name. Joining path-to-path needs no string surgery and no v2.-prefix rule; joining
+// identity-to-qualified_name would have to re-derive the module from the path, a second authority
+// over one fact. Emission order is FIRST-OCCURRENCE order of the schedule, never a map order.
+fn wet_scheduled_function_declared_causes(
+  scheduled: List<WetScheduledClaim>,
+  declared: List<DeclFact>
+) -> List<WetEvidenceRefusal> {
+  let membership: Map<String, Int> = fold_list(
+    xs: declared,
+    empty: empty_map(),
+    cons: fn(m, f) { map_insert(m: m, key: concat(concat(f.rel_path, "#"), f.name), value: 1) }
+  )
+  let swept = fold_list(
+    xs: scheduled,
+    empty: WetScheduledDeclarationSweep { causes: [], emitted: [] },
+    cons: fn(acc, s) {
+      let key = concat(concat(s.entry, "#"), s.function)
+      if !map_contains_key(m: membership, key: key)
+        && !contains(xs: acc.emitted, item: key, eq: wet_string_eq) {
+        WetScheduledDeclarationSweep {
+          causes: list_append(
+            left: acc.causes,
+            right: [WetScheduledFunctionNotDeclared {
+              identity: wet_identity_name(identity: s.identity),
+              entry: s.entry,
+              function: s.function
+            }]
+          ),
+          emitted: list_append(left: acc.emitted, right: [key])
+        }
+      } else {
+        acc
+      }
+    }
+  )
+  swept.causes
+}
+
+
 // THE CROSS-ROUTE WALL, DERIVED FROM THE TWO ROSTERS AND NEVER TRANSCRIBED AS A THIRD.
 //
 // An identity evidenced by both routes would be admitted twice by two different relations, and the
@@ -544,6 +626,7 @@ fn wet_cross_route_overlap_causes(
 // why a route whose roster is empty proves nothing and must be walled elsewhere, not here.
 fn wet_evidence_validate(
   scheduled: List<WetScheduledClaim>,
+  declared: List<DeclFact>,
   terminals: List<WetTerminalRow>,
   requirement: WetEvidenceRequirement
 ) -> WetEvidenceValidation {
@@ -551,7 +634,10 @@ fn wet_evidence_validate(
     left: wet_forward_causes(scheduled: scheduled, terminals: terminals, requirement: requirement),
     right: list_append(
       left: wet_reverse_causes(scheduled: scheduled, terminals: terminals),
-      right: wet_scheduled_identity_duplicate_causes(scheduled: scheduled)
+      right: list_append(
+        left: wet_scheduled_identity_duplicate_causes(scheduled: scheduled),
+        right: wet_scheduled_function_declared_causes(scheduled: scheduled, declared: declared)
+      )
     )
   )
   if length(xs: causes) == 0 {
