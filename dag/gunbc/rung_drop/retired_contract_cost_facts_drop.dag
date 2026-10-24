@@ -2,7 +2,7 @@ module gunbc.rung_drop.retired_contract_cost_facts_drop
 
 import std.types { NonEmptyStr }
 import std.algebra { FreeSemigroup }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
+import gunbc.rung_drop { RungDrop, Retired, RetiredTypedDeclaration, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 
 // DECLARED BY OPERATOR DECISION (option A, relayed by tidy-ant-251) on review 85291 of PR #14751. A std.primitives
@@ -22,11 +22,11 @@ data retired_contract_cost_facts_drop: RungDrop = RungDrop {
 
   declared: "2026-10-24",
 
-  standing: Standing { declaration: TypedDeclaration {
+  standing: Retired { trigger_fired: "2026-10-24 -- std.primitive_identity primitive_list_push_cost and primitive_chars_cost re-home both facts onto PrimitiveCostFact, read by declaration through primitive_modeled_cost_for_declaration (std.primitive_projection binds std.algebra list_push and std.host_text chars to their primitives). list_push is CarrierSensitiveCost: ephemeral worst case linear, persistent worst case log n with amortized constant, which is the im 15.1.0 Vector push_back both running realizations use. chars is a structured linear bound. EXECUTED: test.claim.primitive_modeled_cost_witness 24 of 24 PASS and test.claim.realization_cost_fidelity_witness 39 of 39 PASS (claim_batch sha256 54909b976476394c, zesty-ibex-193 tree 955c28be017 applied onto origin/main 3bbf302b1c3, remote amd64). REDS, each run against a mutated tree: deleting the list_push row FAILS list_push_declaration_reads_its_carrier_sensitive_cost and the_roster_joins_every_cost_row_by_identity; deleting the chars row FAILS chars_declaration_reads_its_linear_cost; making the persistent worst case linear FAILS list_push_declaration_reads_its_carrier_sensitive_cost; the unaffected positive control stays PASS in each arm. A declaration with no row, a duplicated row and a homonym declaration each refuse (list_push_without_its_row_refuses_as_unmodeled, a_duplicated_row_refuses_instead_of_answering_with_either, a_homonym_declaration_is_not_priced_by_the_primitive_row). NOT RESTORED BY THIS, and never part of the loss: no lens priced either name. The accumulator-copy lens prices list_snoc_item from a hand citation that contradicts these facts, gunbc.recurring_failure_mode a_hand_cost_citation_contradicts_the_realization_it_prices." as NonEmptyStr, declaration: RetiredTypedDeclaration {
     previous: Mitigatable,
     temporary: OutsideTheLadder,
     reason: DeletedWithoutReplacement,
-    population: Enumerated { members: FreeSemigroup { head: "std.primitives list_push_contract (retired by #14751, declared home std.algebra list_push)", tail: ["std.primitives chars_contract (retired by #14520, declared home std.host_text chars)"] } },
+    population_at_retirement: Enumerated { members: FreeSemigroup { head: "std.primitives list_push_contract (retired by #14751, declared home std.algebra list_push)", tail: ["std.primitives chars_contract (retired by #14520, declared home std.host_text chars)"] } },
     restoration_trigger: "a modeled cost fact for each declaration (std.algebra list_push, std.host_text chars), read by an executing declaration-keyed lookup, with a RED -- the existing modeled home is std.primitive_identity PrimitiveCostFact joined through std.primitive_projection; sufficient when that lookup returns each declaration's cost fact on an executed path and a RED refuses a declaration with none"
   } }
 }
