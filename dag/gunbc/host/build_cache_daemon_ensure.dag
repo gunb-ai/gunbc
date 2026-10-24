@@ -56,12 +56,18 @@ data build_cache_unit_file_mode: NonEmptyStr = "0644" as NonEmptyStr
 // field is meant to hold. Pinned, not fixed: see build_cache_daemon_ensure_observation.
 data build_cache_misconfigured_marker: String = "observe=misconfigured"
 
-// THE TEXT THE OLD CLASSIFIER PRODUCED WHEN THE SCRIPT EXITED ZERO WITHOUT REACHING ITS READ-BACK. Kept
-// byte-for-byte because the verdict fold turns this into the operator-visible refusal reason
-// (`BuildCacheProvisionRefused { cause: RefusalDaemonUnresponsive, reason: detail }`). It is the wording
-// of the pinned short-circuit defect, and the follow-up fix PR corrects it along with the arm; a faithful
-// port must not silently rewrite an operator-visible string.
-data build_cache_observe_short_circuit_detail: NonEmptyStr = "the build-cache ensure exited zero without printing its read_back=ok receipt, so the daemon was never confirmed to answer after the ensure" as NonEmptyStr
+// THE SHORT-CIRCUIT REFUSAL TEXT IS GONE. `data build_cache_observe_short_circuit_detail` was deleted by
+// this PR together with the classifier arm that was its only producer: it existed to be handed to
+// `DaemonUnresponsive` when `--show-stats` exited zero, which the arm no longer does. Deleting it rather
+// than leaving it unreferenced is what keeps the two refusal texts distinguishable at the level the fleet
+// reads — there is now exactly ONE producer of the operator-visible `the build-cache ensure exited `
+// prefix, the fn build_cache_exit_detail, so a refusal can no longer say "never confirmed to answer" about
+// a host whose ensure ran. Verified at this head rather than assumed: grep finds that literal in one fn
+// only, and its two callers (build_cache_read_back_observation's non-zero-exit arm, and
+// build_cache_failure_detail, called only from EnsureFailed) each receive a recorded
+// BuildCacheHostRunObserved, which the caller only has when BOTH the ensure and the read-back were run.
+// The claim that used to enforce the distinction by banning the dead string now asserts that construction
+// instead. (An earlier draft named build_cache_refusal_capture_detail here; no such fn exists.)
 
 // THE CAPTURE OF ONE HOST COMMAND. `stdout` and `stderr` are the bytes the host produced, kept separate
 // where they are produced and joined only where a scan needs the merge (the script merged them with
@@ -524,28 +530,69 @@ fn build_cache_matched_stats_fragment(capture: String) -> Optional<String> {
 // short-circuit is kept — and kept HERE rather than in the site, so one function holds the whole decision
 // instead of it living partly in a bash `if` and partly in a classifier's arm order.
 //
-// AND THIS IS WHERE THE PINNED DEFECT LIVES. The guard was the exit code and nothing else, so it also
-// fired on the read that sccache's own MEASURED behaviour makes useless as an ownership proof:
+// AND THIS IS THE DEFECT THAT WAS PINNED HERE, AND IS REPAIRED BY THIS PR. The bash script's guard was the
+// exit code and nothing else, so it also fired on the read that sccache's own MEASURED behaviour makes
+// useless as an ownership proof:
 // `--show-stats` returns rc 0 with a fully-formed table of ZEROES when no server exists at all
 // (extdeps.cache.sccache.sccache_stats_query_does_not_spawn_note, RunnerObserved srv2 2026-08-01 0.15.0,
 // two private-endpoint controls; `stats_query_spawns_server: false` in sccache_server_process_facts). On a
 // host whose binary is installed and whose daemon is DOWN — the main host this effect exists for — the
 // script printed `observe=ok`, exited 0, wrote no unit, ran no daemon-reload / enable / restart, and the
 // classifier read "exited zero without printing its read_back=ok receipt" and refused with NotConverged.
-// This port keeps that behaviour EXACTLY (faithful port, ruling A), because the effect-grain swap must not
-// also change what the fleet observes. The contract that SHOULD hold — binary present, daemon absent,
-// therefore the ensure legs RUN and converge — is pinned by a claim enrolled as a known-red quarantine
-// probe, written to assert the correct behaviour so the fix greens it without an edit. The fix is the
-// TWO-ARM dissolve named by that row and by its gunbc.recurring_failure_mode row — ObserveStatsOk is consulted
-// in two decisions and both must stop treating it as an answer about the daemon: build_cache_ensure_is_needed
-// returns false on it (skipping the ensure before it starts), and build_cache_daemon_ensure_observation maps it
-// straight to DaemonUnresponsive without consulting the ensure or the read-back (so an ensure that DID run is
-// still reported unresponsive). Both must fall through to the path the other outcomes already use. The observe
-// phase must not end the ensure, and ownership comes from the endpoint SURVEY, not from `--show-stats` — the same
-// conclusion the receipt's own server_placement paragraph already reached.
+// The shell-to-`Dag` port deliberately kept that behaviour EXACTLY (faithful port, ruling A): an
+// effect-grain swap must not also change what the fleet observes, so the repair had to be its own change
+// with its own evidence. That swap has landed (PR #14155), so this is the change the enrolment authorised.
+//
+// THE CONTRACT THAT SHOULD HOLD — binary present, daemon absent, therefore the ensure legs RUN and converge
+// — was pinned by a claim enrolled as a known-red quarantine probe, written to assert the correct behaviour
+// so the fix greens it WITHOUT AN EDIT to the claim: see
+// binary_present_with_daemon_absent_runs_the_ensure_legs_and_converges in
+// dag/test/claim/host/host_build_cache_daemon_ensure_contract_witness.dag, whose own text lists the
+// requirements this PR satisfies. That the claim is now green is not asserted here — it is discharged by the
+// evidence comment on this PR, whose generator parses the runner logs and refuses to publish a leg that
+// reads any other way. Keeping the verdict out of this comment is deliberate: a result transcribed into a
+// comment is a result that goes silently stale when the head moves.
+//
+// THE DISSOLVE IS THE TWO-ARM one named by the probe row and by its gunbc.recurring_failure_mode row —
+// ObserveStatsOk is consulted in two decisions and both must stop treating it as an answer about the daemon:
+// build_cache_ensure_is_needed returned false on it (skipping the ensure before it started), and
+// build_cache_daemon_ensure_observation mapped it straight to DaemonUnresponsive without consulting the
+// ensure or the read-back (so an ensure that DID run was still reported unresponsive). BOTH are repaired
+// here, and each half is falsified on its own by a mutation on THIS code rather than on the old code:
+// `FU_F1a_restore_stats_short_circuit` puts back ONLY the `=> false` skip predicate, and
+// `FU_F1b_restore_second_short_circuit` puts back ONLY the classifier's `=> DaemonUnresponsive` arm, each at
+// this PR's own head. The prediction each tests is that the contract module then reads with ONLY this claim
+// red, against a clean tree at the same head with no claim red — the only comparison that can show an arm is
+// load-bearing. That two mutations are needed, and not one, is what it means for the claim to thread BOTH
+// decisions: it carries the same observe value through the decision AND the post-ensure classification
+// (review 81885 / stern-bat-401 (1)).
+//
+// AN EARLIER DRAFT of this comment cited mutation `F1_observe_arm` at head 9772aa09931 as falsifying the
+// skip half. It does not, and that mutation's own row in the #14155 evidence says so: at that head the claim
+// is red AT REST and the arm still carried the defect, so its result was byte-identical to the at-rest
+// control. It established only that a one-sided repair leaves the contract unsatisfied — never that the
+// repaired arm matters — and its row states that it "falsifies NOTHING and is therefore not cited as
+// coverage", promising the paired falsifier on the fixed code for this PR. Citing it here would have shipped
+// the check-that-cannot-fail that row warned about, so the paired falsifiers are named instead.
+//
+// The observe phase must not end the ensure, and ownership comes from the endpoint SURVEY, not from
+// `--show-stats` — the same conclusion the receipt's own server_placement paragraph already reached. The
+// survey is NOT called here: it is called one rung UP, in gunbc.host.host_effect_realize
+// realize_provision_build_cache_body, which surveys the endpoint and admits through
+// gunbc.build_cache.build_cache_ensure.admit_ensure_build_cache_instance BEFORE this module's fold runs — a
+// LISTENING endpoint converges or refuses there, so this predicate only ever decides for an ADMITTED
+// instance whose endpoint is absent or a currency-checked stale socket. Within that admitted route the
+// predicate decides only whether the ensure legs and the read-back run at all.
 fn build_cache_ensure_is_needed(observe: BuildCacheObserve) -> Bool {
   match observe {
-    ObserveStatsOk { stats: _ } => false
+    // REPAIRED by this PR (was `=> false`, the pinned defect). `--show-stats` returning rc 0 with a table
+    // of zeroes is NOT an answer about the daemon — sccache answers that way when no server exists at all
+    // (extdeps.cache.sccache.sccache_stats_query_does_not_spawn_note, RunnerObserved srv2 2026-08-01 0.15.0),
+    // which is the steady state of the main host this effect exists for. Treating it as "no ensure needed"
+    // meant the daemon was never installed, never enabled, never started. Every outcome now requires the
+    // ensure except the read that could not be taken at all (ObserveReadBlocked), which stays false: a
+    // phase we could not read is not evidence that a server is serving.
+    ObserveStatsOk { stats: _ } => true
     ObserveAbsent => true
     ObserveMisconfigured { matched_fragment: _, stats: _ } => true
     ObserveUnresponsive { detail: _ } => true
@@ -790,10 +837,16 @@ fn build_cache_unit_stage_discard_command(instance: BuildCacheInstance) -> ArgvC
 //      rewrite an operator-visible string. The value the field SHOULD hold is already carried by
 //      BuildCacheObserve.ObserveMisconfigured.matched_fragment, so the fix is a one-field change; it is
 //      pinned by the quarantined contract claim and the recurring-failure-mode row.
-//   3. observe exited zero (the daemon answered) -> the old third arm's text, byte for byte. This is the
-//      pinned short-circuit above; the ensure legs never ran and the read-back never happened.
-//   4. otherwise (absent / unresponsive) the script FELL THROUGH to the ensure and the read-back, and so
-//      does this arm: the ensure's own failure, or the read-back's exit code, decides.
+//   3. observe exited zero (the daemon answered) -> it now FALLS THROUGH with the other outcomes. This arm
+//      used to return the old third arm's text, byte for byte — the pinned short-circuit — on the theory
+//      that a zero exit from `--show-stats` proved a server was up. It does not (see
+//      build_cache_ensure_is_needed above: sccache answers with a zeroed table when there is no server at
+//      all), so reporting "unresponsive, ensure skipped" for a host whose ensure had in fact run was a
+//      second, independent lie: it made a SUCCESSFUL provisioning read as a refusal even when the legs ran.
+//   4. otherwise (answered / absent / unresponsive) the script FELL THROUGH to the ensure and the read-back,
+//      and so do these arms: the ensure's own failure, or the read-back's exit code, decides. An answering
+//      read-back yields DaemonStatsOk carrying the merged capture — the same path the absent and
+//      unresponsive hosts already used, which is why repairing (3) needed no new observation logic.
 // The two texts that the old classifier built from the host's bytes keep their shape:
 // `the build-cache ensure exited <rc>: <stderr-or-stdout>`, with stderr preferred over stdout exactly as
 // the old code preferred it.
@@ -808,7 +861,13 @@ fn build_cache_daemon_ensure_observation(
       DaemonUnresponsive { detail: build_cache_blocked_detail(phase: p, reason: r) as NonEmptyStr }
     ObserveMisconfigured { matched_fragment: _, stats: s } =>
       DaemonMisconfigured { matched_fragment: build_cache_misconfigured_marker, detail: s as NonEmptyStr }
-    ObserveStatsOk { stats: _ } => DaemonUnresponsive { detail: build_cache_observe_short_circuit_detail }
+    // REPAIRED by this PR (was `=> DaemonUnresponsive { detail: build_cache_observe_short_circuit_detail }`,
+    // the second half of the pinned defect). An rc-0 `--show-stats` table of zeroes is not an answer about
+    // the daemon, and answering on the arm's IDENTITY without consulting `ensure` or `read_back` reported a
+    // provisioning that HAD run as an unresponsive refusal. It now takes the same fall-through the absent and
+    // unresponsive arms take, so the ensure's own outcome and the read-back's exit code decide.
+    ObserveStatsOk { stats: _ } =>
+      build_cache_ensure_executed_observation(ensure: ensure, read_back: read_back, placement: placement)
     ObserveUnresponsive { detail: _ } =>
       build_cache_ensure_executed_observation(ensure: ensure, read_back: read_back, placement: placement)
     ObserveAbsent => build_cache_ensure_executed_observation(ensure: ensure, read_back: read_back, placement: placement)
