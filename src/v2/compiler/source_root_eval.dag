@@ -3052,6 +3052,7 @@ type NativeDemandCensusFoldState {
   authored: List<AuthoredUsesFunction>
   file_refused: List<AuthoredUsesFunction>
   unreadable: List<DemandCensusUnreadable>
+  t_absorb: Int
 }
 
 fn native_demand_census_snoc_all(xs: List<AuthoredUsesFunction>, ys: List<AuthoredUsesFunction>) -> List<AuthoredUsesFunction> {
@@ -3086,7 +3087,8 @@ fn native_demand_census_read(
         context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
         authored: state.authored,
         file_refused: state.file_refused,
-        unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtTokenize, d: d))
+        unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtTokenize, d: d)),
+        t_absorb: state.t_absorb
       }
     Accepted { value: tokens, diagnostics: _ } =>
       match parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, seed: state.context.alloc) {
@@ -3095,7 +3097,8 @@ fn native_demand_census_read(
             context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
             authored: state.authored,
             file_refused: state.file_refused,
-            unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtParse, d: d))
+            unreadable: list_snoc_item(xs: state.unreadable, item: native_demand_census_unreadable(read: read, stage: UnreadableAtParse, d: d)),
+            t_absorb: state.t_absorb
           }
         Accepted { value: artifact, diagnostics: _ } =>
           let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
@@ -3105,14 +3108,19 @@ fn native_demand_census_read(
                 context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope)),
                 authored: state.authored,
                 file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
-                unreadable: state.unreadable
+                unreadable: state.unreadable,
+                t_absorb: state.t_absorb
               }
             Accepted { value: scoped, diagnostics: _ } =>
+              let ab0 = observed_thread_cpu_nanos("tm-absorb-start")
+              let absorbed = native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope))
+              let ab1 = observed_thread_cpu_nanos("tm-absorb-finish")
               NativeDemandCensusFoldState {
-                context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope)),
+                context: absorbed,
                 authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
                 file_refused: state.file_refused,
-                unreadable: state.unreadable
+                unreadable: state.unreadable,
+                t_absorb: state.t_absorb + (ab1 - ab0)
               }
           }
       }
@@ -3255,7 +3263,7 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<NativeTimedC
       let k0 = observed_thread_cpu_nanos("tm-fold-start")
       let folded = fold_list(
         xs: ingest,
-        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: Empty },
+        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: Empty, t_absorb: 0 },
         cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
       )
       let k1 = observed_thread_cpu_nanos("tm-fold-finish")
@@ -3278,7 +3286,7 @@ fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<NativeTimedC
         cons: fn(w, root) { native_demand_census_module(w: w, root: root, authored: authored_by_owner) }
       )
       let k3 = observed_thread_cpu_nanos("tm-walk-finish")
-      outcome_accepted(value: NativeTimedCensus { timing: [demand_census_text(parts: ["[tm] modules=", to_string(length(xs: folded.context.roots)), " fold_ms=", to_string((k1 - k0) / 1000000), " finish_ms=", to_string((k2 - k1) / 1000000), " walk_ms=", to_string((k3 - k2) / 1000000), " resolve_ms=", to_string(walked.t_resolve / 1000000), " outcomes_ms=", to_string(walked.t_outcomes / 1000000), " facts_ms=", to_string(walked.t_facts / 1000000)])], report: demand_census_report(
+      outcome_accepted(value: NativeTimedCensus { timing: [demand_census_text(parts: ["[tm] modules=", to_string(length(xs: folded.context.roots)), " fold_ms=", to_string((k1 - k0) / 1000000), " finish_ms=", to_string((k2 - k1) / 1000000), " walk_ms=", to_string((k3 - k2) / 1000000), " resolve_ms=", to_string(walked.t_resolve / 1000000), " outcomes_ms=", to_string(walked.t_outcomes / 1000000), " facts_ms=", to_string(walked.t_facts / 1000000), " absorb_ms=", to_string(folded.t_absorb / 1000000), " accepted_roots=", to_string(length(xs: folded.context.roots)), " refusals=", to_string(length(xs: folded.context.file_refusals))])], report: demand_census_report(
         uses_functions: length(xs: folded.authored) + length(xs: folded.file_refused),
         functions: walked.functions,
         operations: walked.operations,
