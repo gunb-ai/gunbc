@@ -1,0 +1,11 @@
+module gunbc.dcs_record_red
+
+import std.types { String }
+import std.integer { int_to_decimal_string }
+
+type DcsMark = DcsMarked
+type DcsRecord { mark: DcsMark }
+
+fn dcs_record_red(a: DcsRecord) -> String {
+  int_to_decimal_string(value: a)
+}
