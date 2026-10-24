@@ -25,6 +25,7 @@ import gunbc.plans.gunb_ai_projection { gunb_ai_projection_plan }
 import gunbc.plans.p4_home_serving_power_semantics { p4_home_serving_power_semantics_plan }
 import gunbc.plans.ntfy_deployment_gate_approval { ntfy_deployment_gate_approval_plan }
 import gunbc.plans.fabric_serving_router { fabric_serving_router_plan }
+import gunbc.plans.network_install_architecture_rows { network_install_architecture_rows_plan }
 
 data batch_g_plans: List<Plan> = [
   resolver_type_name_collision_wall_plan,
@@ -50,5 +51,6 @@ data batch_g_plans: List<Plan> = [
   gunb_ai_projection_plan,
   p4_home_serving_power_semantics_plan,
   ntfy_deployment_gate_approval_plan,
-  fabric_serving_router_plan
+  fabric_serving_router_plan,
+  network_install_architecture_rows_plan
 ]
