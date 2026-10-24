@@ -81,6 +81,7 @@ import extdeps.systemd.systemd_run {
   systemd_run_command_of, systemd_run_property_options_short,
   systemd_run_command_argument_words, systemd_run_option_words_refused_cause_detail,
   RunUnit, Wait, Quiet, Collect, EndOfOptions, PathTrigger, PathDependency,
+  SystemdSetenvBinding, systemd_run_setenv_options,
 }
 import extdeps.systemd.systemctl
 import extdeps.systemd.systemctl { systemctl_binary_path, systemctl_start_verb }
@@ -103,6 +104,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worker_unit_properties_for_plan,
   dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
   dispatch_pane_working_directory, GunbcHarnessProvider, dispatch_attempt_handin_dir_for_instance,
+  dispatch_worker_git_trust_environment,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
@@ -335,14 +337,22 @@ fn attempt_system_unit_systemd_run_command(instance: HostDashboardInstance, plan
   attempt_system_unit_systemd_run_command_of(
     unit: plan.unit,
     properties: attempt_system_unit_properties(instance: instance, plan: plan, granted: granted, user: user),
+    environment: attempt_system_unit_worker_environment(instance: instance, plan: plan),
     command_argv: plan.inner_argv,
     wait: false,
   )
 }
 
+// THE WORKER'S ENVIRONMENT, derived here like every other privileged fact: its git trust in its own worktree
+// (gunbc.roadmap.roadmap_dispatch_actuator dispatch_worker_git_trust_environment). Each setting is one --setenv.
+fn attempt_system_unit_worker_environment(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> List<SystemdSetenvBinding> {
+  map(dispatch_worker_git_trust_environment(instance: instance, attempt_worktree: plan.attempt_worktree), g => SystemdSetenvBinding { name: g.name, value: g.value })
+}
+
 fn attempt_system_unit_systemd_run_command_of(
   unit: NonEmptyStr,
   properties: List<SystemdRunProperty>,
+  environment: List<SystemdSetenvBinding>,
   command_argv: List<String>,
   wait: Bool,
 ) -> SystemdRunCommandReading {
@@ -352,7 +362,7 @@ fn attempt_system_unit_systemd_run_command_of(
     [RunUnit { unit: unit }]
   }
   systemd_run_command_of(
-    options: concat(head, concat(systemd_run_property_options_short(properties: properties), [EndOfOptions])),
+    options: concat(head, concat(systemd_run_setenv_options(bindings: environment), concat(systemd_run_property_options_short(properties: properties), [EndOfOptions]))),
     command_argv: command_argv,
   )
 }
@@ -945,6 +955,7 @@ fn attempt_system_unit_run_admitted_start(
   match attempt_system_unit_systemd_run_command_of(
     unit: plan.unit,
     properties: attempt_system_unit_properties(instance: instance, plan: plan, granted: facts.granted, user: facts.user),
+    environment: attempt_system_unit_worker_environment(instance: instance, plan: plan),
     command_argv: plan.inner_argv,
     wait: wait,
   ) {

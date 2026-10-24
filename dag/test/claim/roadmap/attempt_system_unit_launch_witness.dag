@@ -445,6 +445,40 @@ test fn the_handin_wake_watches_its_own_attempt_and_is_bound_to_the_worker() -> 
   }
 }
 
+fn worker_start_words(instance: HostDashboardInstance) -> List<String> {
+  match attempt_system_unit_start_facts_for_request(instance: instance, request: claim_request(node_id: "n1", attempt_key: "k1")) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => []
+    AttemptSystemUnitStartDerived { facts } =>
+      match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
+        AttemptSystemUnitRefused { reason: _ } => []
+        AttemptSystemUnitAdmitted { unit: unit, facts: admitted } =>
+          match attempt_system_unit_systemd_run_command(instance: instance, plan: attempt_system_unit_plan_from_facts(facts: admitted, unit: unit), granted: admitted.granted, user: admitted.user) {
+            SystemdRunCommandRefused { cause: _ } => []
+            SystemdRunCommandReady { command } => argv_words(command: command)
+          }
+      }
+  }
+}
+
+// THE DEDICATED WORKER TRUSTS EXACTLY ITS OWN WORKTREE, AND NOTHING ELSE. The service user owns the worktree, so
+// every git call by a dedicated worker account was refused with "detected dubious ownership" (srv1 lab,
+// 2026-10-24); the unit is started with git's safe.directory grant naming that one worktree, in the environment so
+// the tools' git inherits it. A service-user worker owns its worktree and is started with no grant. RED on a lab
+// start without the grant, and on any grant wider than the one worktree (the wildcard, or a second path).
+test fn the_dedicated_worker_starts_trusting_only_its_own_worktree() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let lab_words = worker_start_words(instance: lab)
+  let live_words = worker_start_words(instance: srv1_live_dashboard_instance())
+  let worktree = dispatch_worktree_path_for_instance(instance: lab, node_id: "n1" as RoadmapNodeId, attempt_key: "k1")
+  count(lab_words) > 0 && count(live_words) > 0
+    && any(lab_words, w => w == "--setenv=GIT_CONFIG_COUNT=1")
+    && any(lab_words, w => w == "--setenv=GIT_CONFIG_KEY_0=safe.directory")
+    && any(lab_words, w => w == join(["--setenv=GIT_CONFIG_VALUE_0=", worktree], ""))
+    && count(filter(lab_words, w => starts_with(s: w, prefix: "--setenv=GIT_CONFIG_"))) == 3
+    && !any(lab_words, w => w == "--setenv=GIT_CONFIG_VALUE_0=*")
+    && !any(live_words, w => starts_with(s: w, prefix: "--setenv=GIT_CONFIG_"))
+}
+
 fn request_is_underivable(node_id: String, attempt_key: String) -> Bool {
   match attempt_system_unit_start_facts_for_request(instance: srv1_lab_dashboard_instance(), request: claim_request(node_id: node_id, attempt_key: attempt_key)) {
     AttemptSystemUnitStartUnderivable { reason: _ } => true

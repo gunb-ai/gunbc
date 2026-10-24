@@ -54,6 +54,7 @@ import gunbc.session_lease {
   classify_process_port_upsert,
 }
 import extdeps.git {
+  SafeDirectoryGrant, GitEnvironmentSetting, git_safe_directory_environment,
   shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv, git_non_bare_git_dir_name,
   git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
   git_maintenance_auto_disabled_config_command,
@@ -1442,6 +1443,20 @@ fn dispatch_attempt_worker_log_path_for_instance(
     ),
     "/worker/worker-stdout.log",
   ], "")
+}
+
+// THE WORKER'S GIT TRUST: EXACTLY ITS OWN WORKTREE. `git worktree add` runs as the service user, so the attempt's
+// worktree is the service user's; a dedicated worker account operating in it is refused by every git call with
+// "detected dubious ownership" -- the harness's own status reads and the model's tools, its commit included (srv1
+// lab, 2026-10-24, the first attempt to reach its model). The trust is git's own safe.directory grant naming that
+// one worktree, carried by the environment so it reaches the tools' git as well as the harness's
+// (extdeps.git git_safe_directory_environment), and set on the unit by the root launcher from the attempt's identity.
+// A worker that IS the service user owns its worktree and gets none.
+fn dispatch_worker_git_trust_environment(instance: HostDashboardInstance, attempt_worktree: String) -> List<GitEnvironmentSetting> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => git_safe_directory_environment(grant: SafeDirectoryGrant { path: attempt_worktree as NonEmptyStr })
+  }
 }
 
 // THE SESSION'S HAND-IN INBOX: a directory inside the worker's own writable scratch, one per attempt. The
