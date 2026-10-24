@@ -1,0 +1,5 @@
+error[dag/extdeps/realization/artifact_store_fs.dag:52:3]: CHAIN2CENSUS concat nominal:ContentHash:NotText:tn=ContentHash:cs=Fnv1a64
+error[dag/gunbc/ci/ci_runner_placement.dag:192:77]: CHAIN2CENSUS concat nominal:IntegerOverflow:NotText:tn=IntegerOverflow:cs=operation
+error[dag/gunbc/merge_admission.dag:215:41]: CHAIN2CENSUS concat Nat
+error[dag/gunbc/merge_admission.dag:235:39]: CHAIN2CENSUS concat Nat
+error[dag/gunbc/merge_admission.dag:237:37]: CHAIN2CENSUS concat Nat

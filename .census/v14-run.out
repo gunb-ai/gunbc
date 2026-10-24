@@ -1,0 +1,72 @@
+at b10b507f2315cff730da0a71566206896fc27888 dirty=0 base-diff=src/v1/04_infer.dag tools/.census_chain2.sh tools/.probe2_chain2.sh 
+build0 exit=0     Finished `release` profile [optimized] target(s) in 6m 15s
+regen1 exit=1 08:24:18
+required-regen: elapsed_ms=592072 first_generation_equal=false planned=175 executed=175 adjudicated=175 declared_divergent=1 [main.rs]
+required-regen: first_generation_equal=false candidate=target/stage0-regen-candidate
+required-regen: FAIL generated surface drift: v1_compiler_infer.rs
+  installed v1_compiler_infer.rs
+installed 1; census text in mirror: 1
+build1 exit=0     Finished `release` profile [optimized] target(s) in 6m 21s
+control rec expect='concat nominal' census=1 got='CHAIN2CENSUS concat nominal:P' ok other-error: error: resolve failed for target/c6p_rec/c6p_rec.dag all=[      1 CHAIN2CENSUS concat nominal:P ] reached_execution=0
+control int expect='concat Int' census=1 got='CHAIN2CENSUS concat Int' ok other-error: error: resolve failed for target/c6p_int/c6p_int.dag all=[      1 CHAIN2CENSUS concat Int ] reached_execution=0
+control bool expect='concat Bool' census=1 got='CHAIN2CENSUS concat Bool' ok other-error: error: resolve failed for target/c6p_bool/c6p_bool.dag all=[      1 CHAIN2CENSUS concat Bool ] reached_execution=0
+control str expect='SILENT' census=0 got='' ok other-error: error: function `main` returned `x`, not `ProcessExit`. all=[] reached_execution=1
+control fs expect='SILENT' census=0 got='' ok other-error: error: function `main` returned `x`, not `ProcessExit`. all=[] reached_execution=1
+control fp expect='concat nominal' census=1 got='CHAIN2CENSUS concat nominal:P' ok other-error: error: resolve failed for target/c6p_fp/c6p_fp.dag all=[      1 CHAIN2CENSUS concat nominal:P ] reached_execution=0
+control fn expect='concat Int' census=1 got='CHAIN2CENSUS concat Int' ok other-error: error: resolve failed for target/c6p_fn/c6p_fn.dag all=[      1 CHAIN2CENSUS concat Int ] reached_execution=0
+control rfm expect='SILENT' census=0 got='' ok other-error: error: function `main` returned `x`, not `ProcessExit`. all=[] reached_execution=1
+control js expect='SILENT' census=0 got='' ok other-error: error: function `main` returned `x`, not `ProcessExit`. all=[] reached_execution=1
+control jsep expect='SILENT' census=0 got='' ok other-error: error: function `main` returned `x`, not `ProcessExit`. all=[] reached_execution=1
+control jrec expect='join nominal' census=1 got='CHAIN2CENSUS join nominal:P' ok other-error: error: resolve failed for target/c6p_jrec/c6p_jrec.dag all=[      1 CHAIN2CENSUS join nominal:P ] reached_execution=0
+control tp expect='ANY' census=1 got='CHAIN2CENSUS concat other' ok other-error: error: resolve failed for target/c6p_tp/c6p_tp.dag all=[      1 CHAIN2CENSUS concat other:T ] reached_execution=0
+control u64 expect='concat unidentified' census=1 got='CHAIN2CENSUS concat unidentified' ok other-error: error: resolve failed for target/c6p_u64/c6p_u64.dag all=[      1 CHAIN2CENSUS concat unidentified:UInt64 ] reached_execution=0
+control fnv expect='ANY' census=1 got='CHAIN2CENSUS concat other' ok other-error: error: resolve failed for target/c6p_fnv/c6p_fnv.dag all=[      1 CHAIN2CENSUS concat other:fn ] reached_execution=0
+control unit expect='ANY' census=1 got='CHAIN2CENSUS concat nominal:Unit' ok other-error: error: resolve failed for target/c6p_unit/c6p_unit.dag all=[      1 CHAIN2CENSUS concat nominal:Unit ] reached_execution=0
+control json expect='ANY' census=1 got='CHAIN2CENSUS concat other' ok other-error: error: resolve failed for target/c6p_json/c6p_json.dag all=[      1 CHAIN2CENSUS concat other:Json ] reached_execution=0
+control secret expect='OBSERVE' census=1 got='CHAIN2CENSUS concat other' ok other-error: error: resolve failed for target/c6p_secret/c6p_secret.dag all=[      1 CHAIN2CENSUS concat other:Secret ] reached_execution=0
+compile start 08:31:31
+compile exit=1 09:07:28 582 blocking error(s), 51809 advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)
+blocking error lines: 582
+NEW vs base b96b: 147 (CHAIN2CENSUS: 147); GONE: 0
+files with a census line: 76
+=== CENSUS by class
+      3 CHAIN2CENSUS concat Nat
+      2 CHAIN2CENSUS concat nominal
+     34 CHAIN2CENSUS concat other
+     53 CHAIN2CENSUS concat unidentified
+      6 CHAIN2CENSUS concat unresolved
+     16 CHAIN2CENSUS join other
+     33 CHAIN2CENSUS join unidentified
+=== CENSUS nominal by type (top 40)
+      1 CHAIN2CENSUS concat nominal:IntegerOverflow
+      1 CHAIN2CENSUS concat nominal:ContentHash
+=== CENSUS other by type
+     12 CHAIN2CENSUS concat other:
+     10 CHAIN2CENSUS join other:
+      9 CHAIN2CENSUS concat other:String
+      7 CHAIN2CENSUS concat other:T
+      4 CHAIN2CENSUS join other:std.algebra.FreeMonoid
+      3 CHAIN2CENSUS concat other:V
+      3 CHAIN2CENSUS concat other:Symbol
+      1 CHAIN2CENSUS join other:T
+      1 CHAIN2CENSUS join other:String
+=== CENSUS unidentified by type
+     30 CHAIN2CENSUS join unidentified:FreeMonoid
+     29 CHAIN2CENSUS concat unidentified:HostIdentity
+      6 CHAIN2CENSUS concat unidentified:product.host_identity.HostIdentity
+      3 CHAIN2CENSUS concat unidentified:CacheInterfaceId
+      2 CHAIN2CENSUS join unidentified:Node
+      2 CHAIN2CENSUS concat unidentified:std.types.PathSegment
+      2 CHAIN2CENSUS concat unidentified:RecordedFactId
+      2 CHAIN2CENSUS concat unidentified:FreeMonoid
+      2 CHAIN2CENSUS concat unidentified:FilePath
+      2 CHAIN2CENSUS concat unidentified:ClaimId
+      1 CHAIN2CENSUS join unidentified:PathSegment
+      1 CHAIN2CENSUS concat unidentified:WorkKey
+      1 CHAIN2CENSUS concat unidentified:RoadmapNodeId
+      1 CHAIN2CENSUS concat unidentified:OutputObligationId
+      1 CHAIN2CENSUS concat unidentified:CargoVersionRequirement
+      1 CHAIN2CENSUS concat unidentified:CargoPackageVersion
+=== NEW non-census
+=== GONE
+done
