@@ -45,8 +45,11 @@ import gunbc.fleet.printer_job_start {
 import gunbc.auth.access_token_source { AccessTokenSource }
 import gunbc.auth.approval_gate { approval_instant_now }
 
-// THE ONLY MODULE THAT UPLOADS A PROJECT TO A PRINTER OR STARTS ONE. Approval adapters produce the
-// ScopedAuthorization this boundary consumes; none of them reach delivery or MQTT themselves.
+// THE ONLY MODULE THAT STARTS A PRINTER JOB, and the only one that uploads a project in order to start
+// it. Both are enforced by admit_callers on gunbc.fleet.printer_job_start start_print_with_session and
+// gunbc.fleet.printer_project_delivery deliver_project_with_session. The one other upload is the
+// transfer-only credential check (deliver_project_to_printer), confined to its two credential runs.
+// Approval adapters produce the ScopedAuthorization this boundary consumes.
 // Common start boundary for WIF and explicit operator authentication. Authentication
 // alone grants no start. Approval binds device, bytes, version, feed and attempt; the
 // fixed host claim is keyed by that approval, and is retained on every outcome.

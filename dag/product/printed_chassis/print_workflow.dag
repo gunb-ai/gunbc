@@ -22,7 +22,9 @@ import extdeps.languages.json.emit {json_object,json_kv,json_string,json_array,s
 import product.printed_chassis.print_batch_plan {parse_plan,PrinterSpec,PlateSpec}
 import product.printed_chassis.print_preparation {prepare,StagedProfiles,stage_profiles}
 import product.printed_chassis.cad_check_run {check_printable_cad}
-import gunbc.fleet.printer_selection {select_printer,PrinterSelected,PrinterSelectionRefused,print_inputs_admitted}
+import gunbc.fleet.printer_selection {select_printer,PrinterSelected,PrinterSelectionRefused}
+import extdeps.cloud.gcp.secret_manager {sm_version_id_is_number}
+import std.content_hash {sha256_hex_digest}
 import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
 import std.list {first_duplicate_by_key}
 import product.printed_chassis.assembly_inventory { inventory_report, captured_inventory_report, InventoryUnread, RequiredPart, PartReservation, ReserveParts, required_printed_parts, InspectPart, InspectionEvidence }
@@ -39,7 +41,8 @@ type PreparedQueue {printer:PhysicalAssetIdentity,version:NonEmptyStr,plates:Lis
 type QueuePrepared = QueueReadyForApproval {queue:PreparedQueue} | QueuePreparationRefused {reason:String}
 fn queue_valid(queue:PreparedQueue) -> Bool {
  (match select_printer(name:queue.printer as String) {PrinterSelected {printer:_}=>true PrinterSelectionRefused=>false}) &&
- all(queue.plates,p=>p.path!="" && p.attempt!="" && print_inputs_admitted(version:queue.version as String,digest:p.digest,bed_clear:"true")) &&
+ sm_version_id_is_number(version:queue.version as String) &&
+ all(queue.plates,p=>p.path!="" && p.attempt!="" && (match sha256_hex_digest(hex:p.digest) {Present {value:_}=>true Absent=>false})) &&
  (match first_duplicate_by_key(xs:queue.plates,key:p=>p.attempt) {Absent=>true Present {value:_}=>false})
 }
 fn queues_valid(queues:List<PreparedQueue>) -> Bool {
