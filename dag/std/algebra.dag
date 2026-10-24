@@ -176,6 +176,17 @@ fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
 // carrier); routing through list_append paid a full O(n) right-fold per snoc, which made
 // every build-by-appending accumulator quadratic — measured on the first-set union fold in
 // the self-hosted parser (2026-09-09, required-v2-native lane work).
+// `list_push` is FreeMonoid's own snoc: the one declared home of the primitive single-item append.
+// Its template row is `free_monoid_collection_templates` list_push; this fn is the importable
+// callable for it, so a caller reaches it by `import std.algebra { list_push }` and not through the
+// ambient primitive tier; the std.primitives list_push_contract row that admitted the bare name is
+// retired. std.algebra imports neither std.primitives nor std.types (a cycle). Realization:
+// HostRealizedSeam self-call (rt_function_registry list_push), selected by this declaration's
+// projection row.
+fn list_push<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
+  list_push(xs: xs, item: item)
+}
+
 fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   xs |> list_push(item)
 }
