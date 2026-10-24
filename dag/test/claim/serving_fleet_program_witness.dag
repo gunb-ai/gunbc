@@ -1,0 +1,153 @@
+module test.claim.serving_fleet_program_witness
+
+import std.types { Bool, Int, List, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.algebra { Cons, Empty, string_contains }
+import std.markdown { MarkdownDocument }
+import gunbc.plan { plan_projects_committed_markdown }
+import gunbc.plan_registry { all_plans }
+import extdeps.languages.markdown { serialize_markdown_source }
+import gunbc.plans.serving_fleet_program { serving_fleet_program_plan }
+import test.claim.plan_citation_census {
+  plan_citation_has_positional_citation,
+  plan_citation_citation_roster,
+  plan_citation_occurrences,
+  plan_citation_census_rows
+}
+
+// Guards on the serving-fleet umbrella CARRIER (DESIGN section 1: a plan's authority is its
+// .dag carrier). The plan is an index, so the claims are about its rows. The body is read
+// through the repository's own serializer, and citations through the shared reader
+// `test.claim.plan_citation_census`. No claim compares the row population to a literal: rows
+// are identified by their own `Row <label>` heads, and the dependency edges are joined
+// against those identities (DESIGN section 5, completeness is an identity join).
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn carrier_text() -> String {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: serving_fleet_program_plan.body })
+}
+
+fn carrier_is_registered() -> Bool {
+  fold(all_plans, init: false, f: (acc, p) => acc || p.slug == "serving-fleet-program")
+}
+
+fn citation_resolves(cite: String) -> Bool {
+  plan_citation_census_rows(cite: cite).length() >= 1
+}
+
+test fn the_carrier_is_registered_and_is_the_only_authority() -> Bool {
+  carrier_is_registered()
+    && plan_projects_committed_markdown(p: serving_fleet_program_plan) == false
+}
+
+// Positive conjuncts first, so an empty read cannot satisfy the negative ones.
+test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
+  let t = carrier_text()
+  string_contains(s: t, pattern: "product.fabric.serving_recipe::serving_unit_cost_for_selection")
+    && !(string_contains(s: t, pattern: ".dag:")
+      || string_contains(s: t, pattern: ".rs:")
+      || string_contains(s: t, pattern: "DESIGN.md:")
+      || plan_citation_has_positional_citation(t: t))
+}
+
+// Public repository: no endpoint or credential vocabulary may appear in the carrier.
+test fn the_carrier_names_no_endpoint_or_secret() -> Bool {
+  let t = carrier_text()
+  string_contains(s: t, pattern: "Standing:")
+    && !(string_contains(s: t, pattern: "http://")
+      || string_contains(s: t, pattern: "https://")
+      || string_contains(s: t, pattern: ".ts.net"))
+}
+
+// ── Row identity. A row is a line carrying `Standing:`; its label is the word after the
+// first `Row ` on that line, which is the row's own head. Keyed on plain words rather than
+// on emphasis markup, since the serializer, not this claim, owns how emphasis is written.
+fn row_lines() -> List<String> {
+  filter(carrier_text().split(delimiter: "\n"), l => string_contains(s: l, pattern: "Standing:"))
+}
+
+// The first word of the text, cut at a newline as well as a space: a reference that ends
+// its line (`Depends on Row D5.`) must not absorb the line after it.
+fn first_word(s: String) -> String {
+  let lines: List<String> = s.split(delimiter: "\n")
+  match lines {
+    Cons { head: line, tail: _ } =>
+      {
+      let words: List<String> = line.split(delimiter: " ")
+      match words {
+        Cons { head: w, tail: _ } => w
+        Empty => ""
+      }
+      }
+    Empty => ""
+  }
+}
+
+fn without_trailing_punctuation(w: String) -> String {
+  let last = substring(s: w, start: w.length() - 1, end: w.length())
+  if last == "," || last == "." || last == ";" { substring(s: w, start: 0, end: w.length() - 1) } else { w }
+}
+
+fn row_label(l: String) -> String {
+  let parts: List<String> = l.split(delimiter: "Row ")
+  match parts {
+    Cons { head: _, tail: Cons { head: rest, tail: _ } } => without_trailing_punctuation(w: first_word(s: rest))
+    _ => ""
+  }
+}
+
+fn row_labels() -> List<String> {
+  map(row_lines(), l => row_label(l: l))
+}
+
+// Every `Row <label>` reference anywhere in the text: the edges in `Depends on`, and the
+// closure order in section 5.
+fn referenced_labels(t: String) -> List<String> {
+  let parts: List<String> = t.split(delimiter: "Row ")
+  match parts {
+    Cons { head: _, tail: rest } => map(rest, r => without_trailing_punctuation(w: first_word(s: r)))
+    Empty => []
+  }
+}
+
+fn row_has_required_parts(l: String) -> Bool {
+  string_contains(s: l, pattern: "Standing:")
+    && string_contains(s: l, pattern: "Done:")
+    && string_contains(s: l, pattern: "Depends on")
+}
+
+fn row_cites_a_resolvable_symbol(l: String) -> Bool {
+  let cites = plan_citation_citation_roster(t: l)
+  cites.length() >= 1 && all(cites, c => citation_resolves(cite: c))
+}
+
+test fn every_row_has_its_parts_and_cites_a_resolvable_symbol() -> Bool {
+  let rows = row_lines()
+  rows.length() >= 1
+    && all(rows, l => row_has_required_parts(l: l))
+    && all(rows, l => row_cites_a_resolvable_symbol(l: l))
+}
+
+// Row labels are identities: unique and nonempty, and every reference to a row, each
+// dependency edge included, names a row that exists.
+test fn every_dependency_edge_names_a_declared_row() -> Bool {
+  let labels = row_labels()
+  let refs = referenced_labels(t: carrier_text())
+  labels.length() >= 1
+    && all(labels, a => a != "" && filter(labels, b => b == a).length() == 1)
+    && refs.length() > labels.length()
+    && all(refs, r => any(labels, a => a == r))
+}
+
+// Every `::` in the text is covered by the derived roster, and every roster entry resolves
+// in the declaration census; a name no module declares stays unresolved.
+test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bool {
+  let t = carrier_text()
+  let roster = plan_citation_citation_roster(t: t)
+  let covered = fold(roster, init: 0, f: (n, cite) => n + plan_citation_occurrences(t: t, cite: cite))
+  roster.length() >= 1
+    && covered == t.split(delimiter: "::").length() - 1
+    && !citation_resolves(cite: "gunbc.serving.no_such_module::NoSuchSymbol")
+    && all(roster, cite => citation_resolves(cite: cite))
+}

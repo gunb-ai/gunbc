@@ -1,0 +1,60 @@
+module gunbc.plans.serving_fleet_program
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, p, li, ul, quote }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+
+fn serving_fleet_program_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Status: umbrella index, awaiting review.** Operator goal, 2026-10-24: serve Qwen3.8 Flash Next, and smaller Qwen models, to dashboard agent sessions from ONE pool through a gunbc-native router, over three supply kinds. This plan is the index and the design spine. It restates no sub-plan: each row names the one module that owns its fact and says what done means, so the program can be tracked as rows close. The buying material (prices, budgets, site power, accounts, endpoints, keys) is deliberately absent from this public repository."),
+      p(text: "**Standing vocabulary.** modeled means a declaration exists and a witness executes it. executed means a real run produced a receipt. deployed means a live unit serves traffic. unstarted means nothing exists. No row below is deployed; the router has no live unit and no supply kind has served a session through it."),
+    ]),
+
+    h2(text: "1. Supply kinds"),
+    ul(items: [
+      li(text: "**Row A1 Vast, rented and interruptible.** Owner `gunbc.fleet.flex_pass_run::pass` (fleet-converge mode flex_pass), running the pass under `product.fabric.flex_vast_loop::flex_run_pass_caller_frontier`. Standing: executed in Plan mode, not deployed. Dispatched flex_pass runs on srv1 succeeded on 2026-10-19, and their receipts show complete instance and charge walks with an idle outcome. That fires trigger (1) of the caller frontier, whose text still says the pass has not executed. Selection is still unwired: the receipt reports needs-evidence under `product.fabric.flex_vast_loop::flex_select_supply_consumer_frontier`. PR: unstarted for the live leg. Live target: Apply on, a $50 spend cap, at most 2 cards. Done: live observation that one card was rented, enrolled, served a turn and was destroyed with the destroy independently read back, inside the cap. Depends on Row A3, Row D4 and Row D5."),
+      li(text: "**Row A2 AWS EC2 spot g7e, rented and interruptible.** Owner plan gunbc.plans.flex_supplier_generalization (PRs 14856 plan, 14862 shapes, 14866 serving image, 14879 supplier-agnostic carriers and destroy safety; owned by witty-lynx-354, cited only). The resolvable home today is the machine identity `product.fabric.flex_policy::FlexMachineKey`. Standing: modeled up to 14879; the boot path (3b) and the aws_cli plus Plan-mode supplier row (4b) are unstarted. Done: a Plan-mode pass against a real account observed green, and only then Apply, read back as in Row A1. Depends on Row A3."),
+      li(text: "**Row A3 Pinned serving image and onstart, shared by rented and owned.** Owner module product.fabric.flex_serving_image (PR 14866, not yet on main). The resolvable home today is `gunbc.serving.replica_endpoint_launch::replica_incarnation_unverified_obligation`, the declared frontier that the launched incarnation is not yet verified against the image. Standing: modeled in the PR. Done: the incarnation check executes and a launched replica proves it runs the pinned image, flags and weights. Depends on: nothing."),
+      li(text: "**Row B1 Owned premium, RTX PRO 6000 on srv1.** Owner `gunbc.serving.serving_enrollment::ServingRoute`; registered as a standing route, never through flex. Same image and onstart as Row A3. One card at TP1; a TP2 pair is a later purchase and not a row. Standing: modeled. PR: unstarted. Blocked: the card does not power on, a hardware fault that only the operator can act on. Done: live observation of a turn placed on the standing route and served by this card. Depends on Row A3, Row D1 and Row E2."),
+      li(text: "**Row C1 Owned cheap tier, per-host islands.** Owner `extdeps.external_authority::ExternalModelScope`: the Strata engine has no extdeps module, so a Strata module with its own scope is a modeling obligation under DESIGN section 3, and nothing is cited as Strata fact until it exists. Flash Next IQ3_S through Strata, with CPU-computed experts, is unmeasured and stays Unobserved until Row E3 reads it; the stock-vLLM alternative serves Qwen3.6 35B-A3B or 27B. Islands are per host and never cross-host TP. Strata's serving API is to be checked first; an adapter is written only if it is not OpenAI-compatible, since the wire already lives in `extdeps.llm.openai_compat_sse::openai_compat_sse_line_payload`. The return window on the cards ends 2026-11-24, which orders Row E3 ahead of the keep decision. Standing: unstarted. Done: a measured receipt for one engine on one island and a served turn through the router. Depends on Row D1 and Row E3."),
+    ]),
+
+    h2(text: "2. Router and lifecycle"),
+    ul(items: [
+      li(text: "**Row D1 Router design.** Owner plan gunbc.plans.fabric_serving_router (PR 14929, owned by proud-bear-756, cited only); the contract it realizes is `gunbc.serving.router_realization::router_capability_permission`. Standing: modeled, plan under review. Done: the first live target of that plan, a turn served with a permit and a seat released when the stream ends. Depends on Row D2 and Row D3."),
+      li(text: "**Row D2 Streaming proxy scaffold.** Owner plan gunbc.plans.fabric_serving_router S1 (PR 14938); the callouts it must reach are `gunbc.serving.serving_front_door::front_door_stream_end`. The hand-rendered configuration is operator-approved TRACKED debt that dissolves at the v2-native streaming door. Standing: executed as a scaffold, not deployed. Done: the falsifier cases of the router plan observed, and this row retires when the native door carries the bytes. Depends on: nothing."),
+      li(text: "**Row D3 Authz and stream-end callouts.** Owner `std.compiler_entry::CompilerEntryDriver` (the NativeServeDriver arm), as a separate srv1 unit beside the device-crypto sidecar. Standing: unstarted. PR: unstarted. Done: every RouterCapability arm exercised by a witness and the real callouts driven by the Row D2 harness. Depends on Row D6."),
+      li(text: "**Row D4 Rent-to-enroll.** Owner `gunbc.serving.rented_enrollment::rented_cohort_enrollments`, an empty hand list in production, to be replaced by applying `gunbc.serving.rented_allocation_host_enrollment::rented_allocation_host_enrollment` to each live allocation. Standing: modeled. PR: unstarted; sequenced after 14879. Done: a rented card becomes placeable with no hand edit. Depends on Row A1 or Row A2."),
+      li(text: "**Row D5 Reclaim and session re-placement.** Owner `gunbc.serving.rented_release::rented_release_receipt` for drain, revoke, clean and destroy. Re-placement of a session whose card is reclaimed has no home today; it is a modeling obligation on the incarnation frontier of Row A3, and no generic replica-failover abstraction is introduced. Standing: release legs modeled with no driver; re-placement unstarted. Done: a reclaimed card is gone, read back, and the session's next turn is placed on a surviving card. Depends on Row A1."),
+      li(text: "**Row D6 Client API key.** Owner `gunbc.serving.serving_key_grant::serving_key_request`. Standing: modeled. PR: unstarted for the callout check. Done: a request without a valid key is refused at the authz callout and one with it is served. Depends on: nothing."),
+      li(text: "**Row D7 Live deploy leg.** Owner `gunbc.live_deploy.apply_legs::DeployApplyPlan`, for the proxy and callout units, never a hand-written script. Standing: unstarted. Done: deployed units observed serving through the live deploy readback. Depends on Row D2 and Row D3."),
+    ]),
+
+    h2(text: "3. Measurement"),
+    ul(items: [
+      li(text: "**Row E1 Rented receipts.** Owner `extdeps.gpu_bench.request_v2::gpu_bench_parse_jsonl` for the receipt wire and `gunbc.serving.gpu_bench_warm_standing::GpuBenchWarmStanding` for what a warm run may claim. Receipts cover KV capacity, knee, safe seats at 180k, open-loop agentic throughput and wall power, and rented results are pulled off the box every 5 minutes. Standing: the wire is modeled; the pull is unstarted. Done: a receipt from a rented card parsed by the owner, with the pull cadence observed. Depends on Row A1."),
+      li(text: "**Row E2 Owned premium receipts.** Same owners as Row E1, plus the power-cap sweep at 300, 400, 500 and 600 W; the frontier it feeds is `gunbc.serving.home_serving_accelerator_field::home_serving_accelerator_field_p4_frontier`. Standing: unstarted. Done: a parsed receipt per cap. Depends on Row B1."),
+      li(text: "**Row E3 Cheap tier receipts.** Same owners as Row E1, per engine. Standing: unstarted. Done: a parsed receipt for Strata and one for stock vLLM, which turns the Unobserved reading into a number. Depends on Row C1."),
+      li(text: "**Row E4 Selection consumes only read cost.** Owner `product.fabric.serving_recipe::serving_unit_cost_for_selection` with `product.fabric.serving_recipe::serving_cost_per_million_tokens`, which refuse an unread unit cost. Standing: modeled. Done: the router's selection consumes a unit cost derived from an E1, E2 or E3 receipt and refuses a tier without one. Depends on Row E1."),
+    ]),
+
+    h2(text: "4. Routing policy across tiers"),
+    ul(items: [
+      li(text: "**Row F1 Tier policy.** A session's KV is tied to its exact weights, so a tier switch happens only at a task boundary, and an escalation from the cheap tier to the premium tier carries a compact summary, not the transcript. The home is a consumer of the shared choice authorities `std.decision::select_realization` and `product.fabric.selection::select_supply`, following the precedent `product.fleet_operating_point::fleet_operating_point_selection`; the session identity it must respect is `gunbc.serving.session_store::ServingPrefixIdentity`. No module owns the boundary rule or the summary carrier today, so this is a modeling obligation, to land as a model before any router code reads it. Standing: unstarted. Done: a witness where a mid-task tier switch is refused, a task-boundary switch is selected, and the summary carrier is the only thing handed across. Depends on Row E4 and Row D1."),
+    ]),
+
+    h2(text: "5. Order of closure"),
+    p(text: "The shortest path to a first live observation is Row A3, Row D2, Row D3, Row D6, Row D4, Row D5 and Row A1, with Row E1 and Row E4 before selection trusts a throughput. Rows B1 and C1 join through the same router and add no new router code. Row A2 is parallel and needs only its own Plan pass. Each row is updated by its own PR, and this plan is retired when every row is closed or has moved to its owner's declarations."),
+  ]
+}
+
+data serving_fleet_program_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "serving-fleet-program",
+  title: "Serving-fleet program: rented, owned premium and owned cheap supply behind one native router",
+  body: serving_fleet_program_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this plan when every deliverable row is deployed and observed, or has moved to the declarations and witnesses of the module that owns it.") },
+}
