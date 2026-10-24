@@ -58,7 +58,7 @@ use crate::v1_std_core::ContainerSpellingVerdict::{
 use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::{ExprError, ExprLiteral, NoExprData};
 use crate::v1_std_core::ExprErrorKind::{InternalExprError, SemanticExprError};
-use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
+use crate::v1_std_core::InferredNode::{ArgumentsResolved, CompilerError, Resolved, TypeVariable};
 pub use crate::v1_std_core::ParsedModuleItemKind;
 use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
@@ -117,12 +117,19 @@ pub fn resolved_type(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
-    if ((ch.inferred.clone() != std::option::Option::None)
-        && (ch.connective.clone() != Connective::Arrow))
     {
-        resolved_type(ch.clone())
-    } else {
-        ch.clone()
+        let cache_dropped = match ch.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::ArgumentsResolved) => true,
+            _ => false,
+        };
+        if (((ch.inferred.clone() != std::option::Option::None)
+            && (ch.connective.clone() != Connective::Arrow))
+            && !cache_dropped.clone())
+        {
+            resolved_type(ch.clone())
+        } else {
+            ch.clone()
+        }
     }
 }
 
