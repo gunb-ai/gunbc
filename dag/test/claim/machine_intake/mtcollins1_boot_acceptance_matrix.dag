@@ -885,10 +885,11 @@ test fn a_sol_session_held_elsewhere_refuses_before_the_attach() -> Bool {
 // case was pinned as reporting the loss only at the deadline until #12434's watch detected it. The final
 // world shows the drop fired, so the case is not green on a run where the loss never happened.
 //
-// DECLARED RED SINCE THE REALIZATION REACHED THE FAN GATE: #14263's gate sleeps its 60s settle between
-// power-on and this watch with SOL unwatched, so the teardown lands past the bound. Held in
-// v2.workflow.floor_expected_red floor_expected_red_chunk_fan_gate_settle_leaves_sol_unwatched until the
-// SOL watch covers the settle; the bound is the contract and stays.
+// THE LOSS LANDS IN THE FAN GATE'S SETTLE: #14263's gate reads the chassis only after a 60s settle, and
+// a drop at boot+30s falls inside it. The case was red while the gate slept the settle with SOL
+// unwatched (the teardown landed 60-120s after power); it passes because the settle is spent under the
+// SOL watch (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_watched_fan_settle), and it stays
+// as that repair's regression control. The bound is the contract and was not widened.
 fn sol_drop_fired_in(w: MtCollins1BootWorld) -> Bool {
   bmc_sol_drop_fired(world: w.bmc)
 }
