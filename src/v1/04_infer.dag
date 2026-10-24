@@ -11142,32 +11142,6 @@ fn alias_chain_type_arg_subst(env: TypeEnv, carrier: Node, target: Node, type_ar
   }
 }
 
-fn alias_chain_arity_diagnostics(carrier: Node, carrier_name: String, env: TypeEnv, module_name: String) -> List<ErrorNode> {
-  let type_args = carrier.children
-  if carrier_name == "" || (type_args |> count) == 0 || is_container_type(name: carrier_name) { [] }
-  else {
-    match lookup_type_by_name(env: env, name: carrier_name) {
-      Present { value: target } =>
-        let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
-        // A parameterless alias applied to arguments binds them to nothing: the arguments are dropped, and the
-        // alias's own arity (zero) is the one the application is judged against, not the arity of the declaration it expands to.
-        let is_paramless_alias = target.params |> count == 0 && target.children |> count == 0 && target.connective == NoConnective && target.inferred != none
-        if is_paramless_alias || alias_chain_type_arg_arity_mismatch(carrier: carrier, decl: decl, type_args: type_args) {
-          [make_error_node(
-            diagnostic: TypeArgumentArityMismatch {
-              type_name: carrier_name,
-              supplied: type_args |> count,
-              declared: if is_paramless_alias { 0 } else { decl.params |> count },
-              span: carrier.span
-            },
-            module_name: module_name
-          )]
-        } else { [] }
-      Absent => []
-    }
-  }
-}
-
 fn alias_chain_target_after_args(target: Node, carrier: Node, env: TypeEnv) -> Node {
   let type_args = carrier.children
   if type_args |> count == 0 { target }
@@ -11214,21 +11188,14 @@ fn alias_chain_carrier(n: Node) -> Node {
 fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> NodeResolveResult {
   let application = generic_application_reapplied(n: n, env: env)
   let peel_result = if needs_alias_field_expansion(n: application, env: env) {
-    let applied_carrier = alias_chain_carrier(n: application)
-    let applied_name = if applied_carrier.name != "" { applied_carrier.name } else { authored_name_at(source_indices: env.source_indices, node: applied_carrier) }
-    // The application is judged against its own declaration before the peel replaces it with the alias's target.
-    let peeled_once = peel_alias_once_for_field_access(n: application, env: env, module_name: module_name)
-    NodeResolveResult {
-      resolved: peeled_once.resolved,
-      diagnostics: concat(peeled_once.diagnostics, alias_chain_arity_diagnostics(carrier: applied_carrier, carrier_name: applied_name, env: env, module_name: module_name))
-    }
+    peel_alias_once_for_field_access(n: application, env: env, module_name: module_name)
   } else {
     NodeResolveResult { resolved: application, diagnostics: [] }
   }
   let peeled = peel_result.resolved
   let carrier = alias_chain_carrier(n: peeled)
   let carrier_name = if carrier.name != "" { carrier.name } else { authored_name_at(source_indices: env.source_indices, node: carrier) }
-  let own_diags = concat(peel_result.diagnostics, alias_chain_arity_diagnostics(carrier: carrier, carrier_name: carrier_name, env: env, module_name: module_name))
+  let own_diags = peel_result.diagnostics
   let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
   let is_record = structural.connective == Conj || structural.connective == Disj
   if is_record {

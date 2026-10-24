@@ -764,7 +764,13 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     let type_name = authored_name(env: env, node: n)
     let decl = resolve_generic_use_decl(env: env, n: n)
-    let expected_arity = decl.params |> count
+    // The application is judged against the arity of the name it USES: a parameterless alias applied to arguments
+    // binds them to nothing, whatever generic declaration its right-hand side expands to.
+    let uses_paramless_alias = match lookup_type_for(env: env, node: n) {
+      Present { value: used } => used.params |> count == 0 && used.children |> count == 0 && used.connective == NoConnective && used.inferred != none
+      Absent => false
+    }
+    let expected_arity = if uses_paramless_alias { 0 } else { decl.params |> count }
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
       [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: expected_arity, got: actual_arity, span: n.span }, module_name: module_name)]

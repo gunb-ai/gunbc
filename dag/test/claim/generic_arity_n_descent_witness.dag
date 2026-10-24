@@ -291,3 +291,16 @@ test fn arity_n_else_map_formal_bare_actual() -> Bool {
 test fn arity_n_else_pair_formal_mapbox_actual() -> Bool {
   gan_refused_arg(green: gan_census(source: gan_fx_else_pair_mapbox_green), red: gan_census(source: gan_fx_else_pair_mapbox_red), param: "p")
 }
+
+data gan_red_alias_applied_args_bare_param_source: String = "module arity_probe_mod\n\ntype ApBox<T> \{ v: T \}\ntype IntBox = ApBox<Int>\n\nfn ap_f(b: IntBox<String>) -> Int \{\n  1\n\}\n"
+data gan_pos_alias_and_generic_applied_correctly_source: String = "module arity_probe_mod\n\ntype ApBox<T> \{ v: T \}\ntype IntBox = ApBox<Int>\n\nfn ap_f(b: IntBox, c: ApBox<String>) -> Int \{\n  b.v\n\}\n"
+
+// RED: a parameterless alias applied to a type argument is refused at the type position itself (no field access needed).
+test fn arity_n_red_alias_applied_args_bare_param() -> Bool {
+  gan_blocking_count(source: gan_red_alias_applied_args_bare_param_source) > 0
+}
+
+// CONTROL: the alias spelled bare and a generic applied at its own arity are accepted.
+test fn arity_n_pos_alias_and_generic_applied_correctly() -> Bool {
+  gan_blocking_count(source: gan_pos_alias_and_generic_applied_correctly_source) == 0
+}
