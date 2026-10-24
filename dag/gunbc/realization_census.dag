@@ -150,3 +150,13 @@ fn census_module_class_text(c: CensusModuleClass) -> String {
     ClassExtdeps => "extdeps"
   }
 }
+
+// EACH CLOSED VOCABULARY'S MEMBERS, IN DECLARATION ORDER, for a consumer that needs the set rather
+// than one member: the sheet sizes a vocabulary column by its longest member's text.
+data decision_sites_all: List<DecisionSite> = [SiteNone, SiteHome, SitePassed, SiteRederived, SiteLiteral, SiteForked, SiteOther]
+
+data realization_levels_all: List<RealizationLevel> = [LevelL0, LevelL1, LevelL2, LevelL3, LevelL4, LevelL5]
+
+data realization_dimensions_all: List<RealizationDimension> = [DimensionStorage, DimensionCaching, DimensionAccess, DimensionAuthz, DimensionPlacement, DimensionOther]
+
+data census_module_classes_all: List<CensusModuleClass> = [ClassProduction, ClassSeedGenerated, ClassSeed, ClassRoster, ClassTest, ClassExtdeps]

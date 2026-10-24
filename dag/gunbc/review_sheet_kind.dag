@@ -5,13 +5,18 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { FreeSemigroup, skip }
 import gunbc.review_sheet_projection {
   ReviewSheetSchema,
+  ReviewColumn,
+  DerivedField,
+  OperatorEntered,
+  ListingStanding,
+  DerivedErasureMark,
   ProjectionRow,
   ValidatedHeaderSchema,
   HeaderSchemaValidated,
   HeaderSchemaRefused,
   validate_header_schema,
 }
-import gunbc.review_sheet_format_actuator { FormatRule }
+import gunbc.review_sheet_format_actuator { FormatRule, ColumnWidth }
 
 // A REVIEW SHEET KIND IS A VALUE, AND THE CONVERGE TAKES IT AS ONE. Before this module the converge
 // knew one kind by name -- the CI prospect sheet's schema, file name and Drive marker were literals
@@ -31,11 +36,77 @@ type ReviewTabRows
   = TabRowsProjected { rows: List<ProjectionRow> }
   | TabRowsWrittenElsewhere { writer: NonEmptyStr }
 
+// WHAT A COLUMN HOLDS, SO ITS WIDTH IS A CONSEQUENCE RATHER THAN A NUMBER. A closed vocabulary is
+// as wide as its longest member; a count as wide as its header; an identifier and a short code are
+// one width each; prose is the widest. The pixel per character and the padding are the only
+// numbers, and they are about the sheet's font rather than about any column.
+type ColumnContentClass
+  = ContentVocabulary { members: FreeSemigroup<String> }
+  | ContentIdentifier
+  | ContentCode
+  | ContentCount
+  | ContentProse
+
+type ColumnContent {
+  column: NonEmptyStr
+  content: ColumnContentClass
+}
+
 type ReviewSheetTab {
   title: NonEmptyStr
   schema: ReviewSheetSchema
   rules: List<FormatRule>
+  content: List<ColumnContent>
   rows: ReviewTabRows
+}
+
+data review_sheet_column_character_pixels: Int = 7
+data review_sheet_column_padding_pixels: Int = 16
+data review_sheet_identifier_characters: Int = 40
+data review_sheet_code_characters: Int = 12
+data review_sheet_prose_characters: Int = 60
+
+fn longest(texts: List<String>) -> Int {
+  fold(texts, init: 0, f: fn(acc, t) { if string_length(s: t) > acc { string_length(s: t) } else { acc } })
+}
+
+fn content_characters(header: String, content: ColumnContentClass) -> Int {
+  let floor = string_length(s: header)
+  let body = match content {
+    ContentVocabulary { members: m } => longest(texts: concat([m.head], m.tail))
+    ContentIdentifier => review_sheet_identifier_characters
+    ContentCode => review_sheet_code_characters
+    ContentCount => 0
+    ContentProse => review_sheet_prose_characters
+  }
+  if body > floor { body } else { floor }
+}
+
+fn column_pixels(header: String, content: ColumnContentClass) -> Int {
+  content_characters(header: header, content: content) * review_sheet_column_character_pixels + review_sheet_column_padding_pixels
+}
+
+// An operator's column is prose by its declared kind; a derived column takes the content its tab
+// declares for it, and a derived column the tab says nothing about keeps the width it has. A tab
+// that declares no content at all is not sized, operator columns included, so a kind that predates
+// widths (the CI prospect sheet) keeps the widths its live workbook already has.
+fn column_content_of(tab: ReviewSheetTab, column: ReviewColumn) -> ColumnContentClass? {
+  match column.kind {
+    OperatorEntered => Present { value: ContentProse }
+    DerivedField { source_field: _ } => match first(filter(tab.content, c => (c.column as String) == (column.name as String))) {
+      Present { value: c } => Present { value: c.content }
+      Absent => none
+    }
+    ListingStanding => none
+    DerivedErasureMark => none
+  }
+}
+
+fn review_sheet_tab_widths(tab: ReviewSheetTab) -> List<ColumnWidth> {
+  if count(tab.content) == 0 { [] } else { flat_map(tab.schema.columns, col => match column_content_of(tab: tab, column: col) {
+    Present { value: c } => [ColumnWidth { column: col.name, pixels: column_pixels(header: col.name as String, content: c) }]
+    Absent => []
+  }) }
 }
 
 type ReviewSheetKind {

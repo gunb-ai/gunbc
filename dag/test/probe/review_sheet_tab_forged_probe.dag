@@ -151,7 +151,7 @@ fn forge_every_mutation_from_an_authored_plan(
 ) -> FormatReport uses net: Network {
   format_review_sheet(
     plan: FormatRequestPlan {
-      freeze: freeze, header: header, rules: [rule],
+      freeze: freeze, header: header, rules: [rule], widths: [],
     }
   )
 }

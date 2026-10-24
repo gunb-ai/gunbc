@@ -68,6 +68,7 @@ import gunbc.review_sheet_kind {
   TabRowsWrittenElsewhere,
   admit_review_sheet_kind,
   review_sheet_kind_tab_titles,
+  review_sheet_tab_widths,
 }
 import gunbc.review_sheet_kind_roster { review_sheet_kind_roster, review_sheet_roster_collisions }
 import gunbc.review_sheet_ci_prospect_kind { ci_prospect_review_sheet_kind }
@@ -139,6 +140,7 @@ fn fixture_kind(kind_id: String, marker: String, first_title: String, second_tit
         title: first_title as NonEmptyStr,
         schema: census_schema(identity: "module", names: ["module", "phase"]),
         rules: [FormatRule { column: "phase" as NonEmptyStr, condition: RuleTextContains { fragment: "P2" }, color: standing_admitted_color() }],
+        content: [],
         rows: TabRowsProjected { rows: [] },
       },
       tail: [
@@ -146,6 +148,7 @@ fn fixture_kind(kind_id: String, marker: String, first_title: String, second_tit
           title: second_title as NonEmptyStr,
           schema: census_schema(identity: "module", names: ["module"]),
           rules: [],
+          content: [],
           rows: TabRowsWrittenElsewhere { writer: "a fixture writer" as NonEmptyStr },
         },
       ],
@@ -257,7 +260,7 @@ fn format_plan_summary(title: String) -> String {
     Present { value: at } =>
       match locate_review_tab(spreadsheet_id: w_spreadsheet, title: at.tab.title) {
         TabLocated { tab: t } =>
-          match format_request_plan(tab: t, validated: at.validated, rules: at.tab.rules) {
+          match format_request_plan(tab: t, validated: at.validated, rules: at.tab.rules, widths: review_sheet_tab_widths(tab: at.tab)) {
             FormatPlanned { plan: p } =>
               join([
                 to_string(p.freeze.sheet_id), to_string(p.freeze.frozen_row_count),
@@ -265,6 +268,7 @@ fn format_plan_summary(title: String) -> String {
                 to_string(count(p.rules)),
                 to_string(count(filter(p.rules, r => r.sheet_id != t.sheet_id))),
                 join(map(p.rules, r => to_string(r.start_col)), ","),
+                concat("w", to_string(count(p.widths))),
               ], " ")
             FormatPlanRefused { cause: c } => c as String
           }
@@ -277,16 +281,16 @@ fn format_plan_summary(title: String) -> String {
 // header position) and one number rule on ambient_calls (12) -- 31 rules, every one on the tab.
 test fn the_modules_format_plan_freezes_bands_and_colours_every_site_column_and_ambient_calls() -> Bool {
   format_plan_summary(title: "modules")
-    == "0 1 0 19 31 0 2,2,2,2,2,4,4,4,4,4,6,6,6,6,6,8,8,8,8,8,10,10,10,10,10,13,13,13,13,13,12"
+    == "0 1 0 19 31 0 2,2,2,2,2,4,4,4,4,4,6,6,6,6,6,8,8,8,8,8,10,10,10,10,10,13,13,13,13,13,12 w19"
 }
 
 test fn the_findings_format_plan_colours_the_site_column_on_the_findings_tab() -> Bool {
-  format_plan_summary(title: "findings") == "1 1 1 14 5 0 5,5,5,5,5"
+  format_plan_summary(title: "findings") == "1 1 1 14 5 0 5,5,5,5,5 w14"
 }
 
 // classes: decision_site (2) by site, current_rung (9) and attainable_ceiling (10) by rung name.
 test fn the_classes_format_plan_colours_sites_and_both_rung_columns() -> Bool {
-  format_plan_summary(title: "classes") == "2 1 2 18 15 0 2,2,2,2,2,9,9,9,9,9,10,10,10,10,10"
+  format_plan_summary(title: "classes") == "2 1 2 18 15 0 2,2,2,2,2,9,9,9,9,9,10,10,10,10,10 w18"
 }
 
 test fn a_rule_naming_a_column_the_header_lacks_refuses_the_plan() -> Bool {
@@ -295,13 +299,31 @@ test fn a_rule_naming_a_column_the_header_lacks_refuses_the_plan() -> Bool {
     Present { value: at } =>
       match locate_review_tab(spreadsheet_id: w_spreadsheet, title: at.tab.title) {
         TabLocated { tab: t } =>
-          match format_request_plan(tab: t, validated: at.validated, rules: [FormatRule { column: "worst_site" as NonEmptyStr, condition: RuleTextContains { fragment: "Forked" }, color: standing_admitted_color() }]) {
+          match format_request_plan(tab: t, validated: at.validated, rules: [FormatRule { column: "worst_site" as NonEmptyStr, condition: RuleTextContains { fragment: "Forked" }, color: standing_admitted_color() }], widths: []) {
             FormatPlanRefused { cause: _ } => true
             FormatPlanned { plan: _ } => false
           }
         _ => false
       }
   }
+}
+
+// ── widths, derived from what each column holds ──────────────────────────────────────────────
+
+// identifiers 40 characters, prose 60, a vocabulary its longest member or its header, each at 7px
+// a character plus 16px: class 14 (seed-generated), dimension and site 9 (placement, Rederived),
+// level 5 (its header outruns L0-L5), existing_authority 40 (its header is shorter).
+test fn the_findings_widths_follow_each_columns_content() -> Bool {
+  match admitted_tab(title: "findings") {
+    Absent => false
+    Present { value: at } =>
+      join(map(review_sheet_tab_widths(tab: at.tab), w => concat(w.column as String, "=", to_string(w.pixels))), ",")
+        == "finding_id=296,class_id=296,module=296,class=114,dimension=79,site=79,level=51,symbol=296,specimen=436,note=436,existing_authority=296,fix_shape=436,Ruling=436,Note=436"
+  }
+}
+
+test fn a_kind_that_declares_no_content_is_not_sized() -> Bool {
+  count(review_sheet_tab_widths(tab: ci_prospect_review_sheet_kind().tabs.head)) == 0
 }
 
 // ── the row write of the whole census ────────────────────────────────────────────────────────
@@ -329,12 +351,19 @@ fn row_write_summary(title: String) -> String {
   }
 }
 
+fn part_is(parts: List<String>, at: Int, expected: String) -> Bool {
+  match first(skip(parts, at)) {
+    Present { value: p } => p == expected
+    Absent => false
+  }
+}
+
 fn appends_and_rows(title: String, rows: Int) -> Bool {
   let parts = split(s: row_write_summary(title: title), delimiter: " ")
   count(parts) == 3
-    && first(parts) == Present { value: "0" }
-    && first(skip(parts, 1)) == Present { value: to_string(rows) }
-    && first(skip(parts, 2)) != Present { value: "0" }
+    && part_is(parts: parts, at: 0, expected: "0")
+    && part_is(parts: parts, at: 1, expected: to_string(rows))
+    && !part_is(parts: parts, at: 2, expected: "0")
 }
 
 test fn the_whole_modules_census_lowers_to_one_append_per_module() -> Bool {
@@ -370,3 +399,4 @@ test fn a_duplicated_identity_in_the_projection_refuses_the_write() -> Bool {
 test fn the_module_observation_counts_its_rows_by_projection() -> Bool {
   repository_census_row_count(observation: realization_census_module_observation()) == count(realization_census_module_rows)
 }
+

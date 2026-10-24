@@ -485,6 +485,8 @@ data sheets_field_conditional_formats: String = "sheets.conditionalFormats"
 
 data sheets_field_user_entered_format: String = "sheets.data.rowData.values.userEnteredFormat"
 
+data sheets_field_column_pixel_size: String = "sheets.data.columnMetadata.pixelSize"
+
 fn sheets_field_mask(paths: List<String>) -> String {
   join(paths, ",")
 }
@@ -549,6 +551,14 @@ type SheetsRowDataRead {
 
 type SheetsGridDataRead {
   rowData: List<SheetsRowDataRead>?
+  columnMetadata: List<SheetsDimensionPropertiesRead>?
+}
+
+// GridData.columnMetadata: one DimensionProperties per column of the returned range, in column
+// order. pixelSize is the column's width in pixels; upstream sends it for every column it returns,
+// so an absent one is an unread field rather than a default width.
+type SheetsDimensionPropertiesRead {
+  pixelSize: Int?
 }
 
 // frozenRowCount is absent when no rows are frozen, for the same proto3 reason as a zero colour
@@ -893,6 +903,38 @@ service sheets.Spreadsheets {
             updateSheetProperties: {
               properties: { sheetId: sheet_id, title: title },
               fields: "title"
+            }
+          }
+        ]
+      }
+    }
+    response {
+      200 => BatchUpdateSpreadsheetResponse
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
+  // UpdateDimensionPropertiesRequest over a column range: range is a DimensionRange (sheetId,
+  // dimension COLUMNS, startIndex inclusive, endIndex exclusive), properties a DimensionProperties,
+  // and the field mask names pixelSize alone, so a width write cannot also hide or show a column.
+  operation SetColumnWidth {
+    requires Network
+    input { spreadsheet_id: String, sheet_id: Int, start_index: Int, end_index: Int, pixel_size: Int }
+    output { spreadsheet_id: String from "spreadsheetId" }
+    transport rest {
+      method: POST,
+      path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
+      body: {
+        requests: [
+          {
+            updateDimensionProperties: {
+              range: { sheetId: sheet_id, dimension: sheets_major_dimension_wire(d: DimensionColumns), startIndex: start_index, endIndex: end_index },
+              properties: { pixelSize: pixel_size },
+              fields: "pixelSize"
             }
           }
         ]

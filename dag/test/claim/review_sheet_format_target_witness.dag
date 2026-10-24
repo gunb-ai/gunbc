@@ -126,7 +126,7 @@ fn plan_sheet_ids_for(sheet_id: Int, title: String) -> List<Int> {
 fn plan_sheet_ids_with(sheet_id: Int, title: String, validated: ValidatedHeaderSchema) -> List<Int> {
   match located_tab_for_witness(sheet_id: sheet_id, title: title) {
     TabLocated { tab: t } =>
-      match format_request_plan(tab: t, validated: validated, rules: witness_rules()) {
+      match format_request_plan(tab: t, validated: validated, rules: witness_rules(), widths: []) {
         FormatPlanned { plan: p } => plan_sheet_ids(plan: p)
         FormatPlanRefused { cause: _ } => []
       }

@@ -2,7 +2,7 @@ module gunbc.realization_census_sheet
 
 import std.optional { Absent, Present }
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
-import std.algebra { FreeSemigroup, map_insert, map_contains_key, empty_map }
+import std.algebra { FreeSemigroup, skip, map_insert, map_contains_key, empty_map }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
@@ -16,7 +16,7 @@ import extdeps.color.okabe_ito {
   okabe_ito_reddish_purple,
 }
 import gunbc.guarantee_measurement { MeasurementRevision, GitRevision, ContentFingerprint }
-import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_index, guarantee_rung_label }
+import gunbc.guarantee_rung { GuaranteeRung, Mitigatable, MechanicallyPreventable, StructurallyGuaranteed, StructurallyImpossible, guarantee_rung_index, guarantee_rung_label }
 import gunbc.repository_census_observation {
   RepositoryIdentity,
   SourceRootIdentity,
@@ -43,7 +43,18 @@ import gunbc.review_sheet_format_actuator {
   SheetsColorReading,
   sheets_color_from_srgb8,
 }
-import gunbc.review_sheet_kind { ReviewSheetKind, ReviewSheetTab, TabRowsProjected }
+import gunbc.review_sheet_kind {
+  ReviewSheetKind,
+  ReviewSheetTab,
+  TabRowsProjected,
+  ColumnContent,
+  ColumnContentClass,
+  ContentVocabulary,
+  ContentIdentifier,
+  ContentCode,
+  ContentCount,
+  ContentProse,
+}
 import gunbc.realization_census {
   DecisionSite,
   DimensionReading,
@@ -67,6 +78,10 @@ import gunbc.realization_census {
   realization_level_text,
   realization_dimension_text,
   census_module_class_text,
+  decision_sites_all,
+  realization_levels_all,
+  realization_dimensions_all,
+  census_module_classes_all,
 }
 import gunbc.realization_census_rows {
   realization_census_pin,
@@ -385,6 +400,86 @@ fn class_tab_rules() -> List<FormatRule> {
   concat(concat(site_rules(column: "decision_site"), rung_rules(column: "current_rung")), rung_rules(column: "attainable_ceiling"))
 }
 
+// ── widths: what each column holds ───────────────────────────────────────────────────────────
+
+fn vocabulary(texts: List<String>) -> ColumnContentClass {
+  match first(texts) {
+    Present { value: h } => ContentVocabulary { members: FreeSemigroup { head: h, tail: skip(texts, 1) } }
+    Absent => ContentCode
+  }
+}
+
+fn site_vocabulary() -> ColumnContentClass { vocabulary(texts: map(decision_sites_all, s => decision_site_text(s: s))) }
+
+fn level_vocabulary() -> ColumnContentClass { vocabulary(texts: map(realization_levels_all, l => realization_level_text(l: l))) }
+
+fn dimension_vocabulary() -> ColumnContentClass { vocabulary(texts: map(realization_dimensions_all, d => realization_dimension_text(d: d))) }
+
+fn module_class_vocabulary() -> ColumnContentClass { vocabulary(texts: map(census_module_classes_all, c => census_module_class_text(c: c))) }
+
+fn rung_vocabulary() -> ColumnContentClass {
+  vocabulary(texts: concat([concat("0 ", census_rung_unmodeled_label)], map([Mitigatable, MechanicallyPreventable, StructurallyGuaranteed, StructurallyImpossible], r => ladder_rung_text(r: r))))
+}
+
+fn content(column: String, class: ColumnContentClass) -> ColumnContent {
+  ColumnContent { column: column as NonEmptyStr, content: class }
+}
+
+fn dimension_content(dimension: String) -> List<ColumnContent> {
+  [content(column: concat(dimension, "_site"), class: site_vocabulary()), content(column: concat(dimension, "_level"), class: level_vocabulary())]
+}
+
+fn module_tab_content() -> List<ColumnContent> {
+  concat(concat(
+    [content(column: "module", class: ContentIdentifier), content(column: "class", class: module_class_vocabulary())],
+    flat_map(["storage", "caching", "access", "authz", "placement"], d => dimension_content(dimension: d))),
+    [
+      content(column: "ambient_calls", class: ContentCount),
+      content(column: "worst_site", class: site_vocabulary()),
+      content(column: "worst_finding", class: ContentProse),
+      content(column: "evidence_symbols", class: ContentProse),
+      content(column: "phase", class: ContentCode),
+    ])
+}
+
+fn finding_tab_content() -> List<ColumnContent> {
+  [
+    content(column: "finding_id", class: ContentIdentifier),
+    content(column: "class_id", class: ContentIdentifier),
+    content(column: "module", class: ContentIdentifier),
+    content(column: "class", class: module_class_vocabulary()),
+    content(column: "dimension", class: dimension_vocabulary()),
+    content(column: "site", class: site_vocabulary()),
+    content(column: "level", class: level_vocabulary()),
+    content(column: "symbol", class: ContentIdentifier),
+    content(column: "specimen", class: ContentProse),
+    content(column: "note", class: ContentProse),
+    content(column: "existing_authority", class: ContentIdentifier),
+    content(column: "fix_shape", class: ContentProse),
+  ]
+}
+
+fn class_tab_content() -> List<ColumnContent> {
+  [
+    content(column: "class_id", class: ContentIdentifier),
+    content(column: "dimension", class: dimension_vocabulary()),
+    content(column: "decision_site", class: ContentCode),
+    content(column: "pattern", class: ContentProse),
+    content(column: "instances", class: ContentCount),
+    content(column: "modules", class: ContentCount),
+    content(column: "production_modules", class: ContentCount),
+    content(column: "extdeps_modules", class: ContentCount),
+    content(column: "seed_modules", class: ContentCount),
+    content(column: "current_rung", class: rung_vocabulary()),
+    content(column: "attainable_ceiling", class: ContentProse),
+    content(column: "owning_authority", class: ContentIdentifier),
+    content(column: "wall", class: ContentProse),
+    content(column: "red_control", class: ContentProse),
+    content(column: "residual", class: ContentProse),
+    content(column: "next_trigger", class: ContentProse),
+  ]
+}
+
 // ── the kind ──────────────────────────────────────────────────────────────────────────────────
 
 fn realization_census_review_sheet_kind() -> ReviewSheetKind {
@@ -397,6 +492,7 @@ fn realization_census_review_sheet_kind() -> ReviewSheetKind {
         title: "modules" as NonEmptyStr,
         schema: census_schema(identity: "module", names: realization_census_module_column_names),
         rules: module_tab_rules(),
+        content: module_tab_content(),
         rows: TabRowsProjected { rows: realization_census_module_projection_rows() },
       },
       tail: [
@@ -404,12 +500,14 @@ fn realization_census_review_sheet_kind() -> ReviewSheetKind {
           title: "findings" as NonEmptyStr,
           schema: census_schema(identity: "finding_id", names: realization_census_finding_column_names),
           rules: finding_tab_rules(),
+          content: finding_tab_content(),
           rows: TabRowsProjected { rows: map(realization_census_finding_rows, f => finding_projection_row(f: f)) },
         },
         ReviewSheetTab {
           title: "classes" as NonEmptyStr,
           schema: census_schema(identity: "class_id", names: realization_census_class_column_names),
           rules: class_tab_rules(),
+          content: class_tab_content(),
           rows: TabRowsProjected { rows: map(realization_census_class_rows, c => class_projection_row(c: c)) },
         },
       ],

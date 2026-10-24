@@ -77,6 +77,7 @@ import gunbc.review_sheet_kind {
   TabRowsWrittenElsewhere,
   admit_review_sheet_kind,
   review_sheet_kind_tab_titles,
+  review_sheet_tab_widths,
 }
 import gunbc.review_sheet_kind_roster { review_sheet_kind_roster, review_sheet_roster_collisions }
 import gunbc.review_sheet_tab_set {
@@ -698,7 +699,7 @@ fn format_located_tab(file_id: NonEmptyStr, at: AdmittedReviewSheetTab) -> Forma
   let standing = locate_review_tab(spreadsheet_id: file_id, title: at.tab.title)
   match standing {
     TabLocated { tab: t } =>
-      FormatAttempted { outcome: converge_review_sheet_format(tab: t, validated: at.validated, rules: at.tab.rules) }
+      FormatAttempted { outcome: converge_review_sheet_format(tab: t, validated: at.validated, rules: at.tab.rules, widths: review_sheet_tab_widths(tab: at.tab)) }
     TabAbsent => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }
     TabAmbiguous { candidates: _ } => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }
     TabUnreadable { cause: _ } => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }
