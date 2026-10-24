@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.rest_query_parameters_rendered_into_one_homogeneous_slice
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data rest_query_parameters_rendered_into_one_homogeneous_slice: RecurringFailureMode = RecurringFailureMode {
+  identity: "rest_query_parameters_rendered_into_one_homogeneous_slice" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "an executing emit-and-build control over a REST operation whose query mixes parameter types, enrolled where it runs on every change to the REST renderer, so a renderer that shares one slice across types is refused before a consumer's crate reaches rustc" } },
+
+  receipts: [
+    "**REST query parameters of different types are rendered into one Rust array literal** (INVALID STATE: v1.compiler.emit_rust emit_rest_query_line rendered every query parameter of an operation into a single `request.query(&[(k, &v), ..])` slice. A Rust array literal is homogeneous, so it compiled only while every value had the same type.",
+
+    "HARM: extdeps.github.pulls List declares `query: { state: state, per_page: per_page }` (a PullRequestState and an Int), and every crate whose closure reaches it failed rustc E0308, expected `&PullRequestState`, found `&i64` (class 7 of stern-bat-401's emitter-debt list, on the rfm-rung-census route). The sibling witness test.claim.pipeline_transport_emit_rest_shell_witness w_rest_includes_query_params carries exactly this mixed shape (q: String, limit: Int) and stayed green, because its oracle is the substring `.query(` over emitted text, never a build.",
+
+    "ROOT CAUSE (DESIGN section 6b): the renderer itself was the earliest unjustified boundary. Its input was typed and sound; the renderer ignored a constraint of its own target. reqwest's RequestBuilder::query takes `&T: Serialize` and appends, so one call per parameter lets each value serialize as its own type (a coproduct through its wire contract, an integer as a number), in declaration order.",
+
+    "REPAIRED: emit_rest_query_line renders one `.query(&[(k, &v)])` per parameter. RED: test.claim.rest_query_parameter_types_witness mixed_type_query_parameters_render_as_one_call_each, whose must-not entry is the shared-slice form.",
+
+    "RUNG: found at mitigatable (rustc refused the consumer's crate); still mitigatable, since the new row is a text oracle like its sibling. Ceiling mechanically preventable through an executing emit-and-build control; climbable but unbuilt.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_rest_query_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rest_query_parameter_types_witness", decl_name: "mixed_type_query_parameters_render_as_one_call_each", field: WholeDeclaration },
+  ],
+}
