@@ -2,6 +2,7 @@ module gunbc.roadmap.roadmap_authority
 
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
 import std.types { FilePath, NonEmptyStr, Set, Map }
+import gunbc.design_ruling { roadmap_scm_edges_do_not_wait_on_the_fabric }
 import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap.roadmap_model {
@@ -2097,7 +2098,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           headline: "Fabric bring-up: our own fleet, its storage and the VM service on it, each observed rather than assumed",
           boundary: "Container for the fabric (operator ruling 2026-10-03: the VM service and fabric storage are both members of the fabric bring-up). Allocation, placement and serving follow the fabric/compute conformance domain (DESIGN §3b); storage follows the materialization/realization domain. Host bring-up itself stays operator-driven.",
           approach: "Two member projects: vm-service (the end-of-year VM service) and fabric-storage (internal fabric state, a workload's checkpointed workspace, and customer-provided storage). The private year-end plan carries the dates; this node carries the decomposition.",
-          red_control: "A member whose parent walk does not reach this node through vm-service or fabric-storage is not a fabric row. Work gated on the fabric (the SCM rows, by edge) does not dispatch until this node is accepted.",
+          red_control: "A member whose parent walk does not reach this node through vm-service or fabric-storage is not a fabric row. Work that declares an edge on this node does not dispatch until this node is accepted.",
           displaced_cost: "With the VM service as a top-level project and storage parentless, the largest fabric risk had no place on the public roadmap and the service read as independent of the fabric it runs on.",
           handback: "Per member project: its acceptance receipts, named by their instruments."
         )),
@@ -4670,6 +4671,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // bridge cutover. Edging to it would hold an executable row behind an entire unfinished program --
 // the wrong dependency, made machine-readable, which is worse than the prose it replaced. Found by
 // external review after the edge was added on exactly that reasoning.
+// The four edges to fabric-bringup are removed by gunbc.design_ruling roadmap_scm_edges_do_not_wait_on_the_fabric (amends #13052).
 // Shell→dag migration batch 1 edges: each node is a child of the completed exemplar
 // shell-typed-invocation; the two same-file pairs (ci-deploy-invoke-prelude/ci-heal-regen-invoke,
 // live-deploy-install-owned/live-deploy-restart-tailscale) carry NO edge between them — they are
@@ -4691,10 +4693,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "egress-encoding-0-bytes-seam", parent: "egress-crypto-0-sha256-landing"),
     edge(child: "egress-content-hash-fnv-kernel", parent: "egress-numeric-bit-kernel-arms"),
     edge(child: "egress-census-quiet-host-and-decomposition", parent: "egress-crypto-0-sha256-landing"),
-    edge(child: "2-scm-git-upstream-model", parent: "fabric-bringup"),
-    edge(child: "2-scm-mercurial-upstream-model", parent: "fabric-bringup"),
-    edge(child: "2-scm-pijul-upstream-model", parent: "fabric-bringup"),
-    edge(child: "2-claim-indexed-evidence", parent: "fabric-bringup"),
     edge(child: "emission-ownership-facts-survive-lowering", parent: "emission-building-block-realization"),
     edge(child: "emission-composite-patterns", parent: "emission-building-block-realization"),
     edge(child: "emission-cost-native-successor", parent: "emission-composite-patterns"),
