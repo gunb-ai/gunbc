@@ -3895,10 +3895,12 @@ type NativeCensusCascade
 
 // TWO COUNTS, BECAUSE THEY ARE TWO FACTS (parent ruling on census C, option A).
 // `closure_fan_out` is how many DISTINCT modules have the root in their import closure -- what fixing
-// the root unblocks. Those modules are BLOCKED, not refused: in c -> b -> a with a refused, resolve
-// refuses b (its imports are unbound) and ACCEPTS c, because b's declarations are indexed; c still
-// cannot compile as a program while a is refused. Distinct modules, never paths: a diamond counts
-// its apex once.
+// the root unblocks. That is a fact of the import graph, not of which of those modules refused: in
+// c -> b -> a with a refused, resolve refuses b (its import target's file was refused) and refuses c
+// declarer_refused (it names a declaration of the refused b, v2.compiler.resolve), so both are
+// counted here and both are members of a; a module that only reaches the root through an import it
+// never names would be counted here and refuse nothing. Distinct modules, never paths: a diamond
+// counts its apex once.
 // `resolve_refused_importers` is the directly observed fact beside it: how many modules' resolve
 // refusals this census attributed to the root. Absent means resolve was not run (the `census` verb),
 // not zero.
@@ -4253,21 +4255,47 @@ fn native_census_cause_groups_add_module(
 ) -> NativeCensusCauseGroups {
   match step.outcome {
     NativeCensusModuleResolveRefused { first: f, rest: r, observation: _ } =>
-      native_census_cause_groups_add_resolve_refused(groups: groups, positions: step.context.positions, closure: closure, entry: entry, first: f, rest: r, cascade: step.cascade)
+      native_census_cause_groups_add_resolve_refused(groups: groups, positions: step.context.positions, closure: closure, entry: entry, first: f, rest: r, cascade: step.cascade, attribution: fn(provider) { native_import_target_attribution(context: step.context, module: provider) })
     NativeCensusModuleFileRefused => groups
     NativeCensusModuleResolved => groups
   }
 }
 
+// A REFUSED PROVIDER'S ROOT, THE ONE RULE BOTH CROSS-MODULE CASCADES READ (the resolve declarer cascade,
+// native_census_chain_cascade, and the infer closure-miss cascade, native_census_infer_cascade_of). A provider
+// whose own import target's FILE was refused is filed as a member of that file's root (census C,
+// native_census_import_cascade, from the same attribution), so a module refused through it is a member of
+// that root too: roots stay one hop from an ingest refusal, and no member names a provider that is itself a
+// member. Otherwise the provider refused on its own account and is the root, under its own fatal reason.
+fn native_census_provider_root(
+  provider_path: Symbol,
+  provider_reason: Symbol,
+  attribution: NativeImportTargetAttribution
+) -> NativeCensusCascade {
+  match attribution {
+    NativeImportTargetRefused { target: t } => NativeCensusCascadeMemberOf { root: t.path, root_reason: native_test_file_refusal_fatal_reason(fr: t) }
+    NativeImportTargetsUnreadable { reason: r } => NativeCensusCascadeUnattributed { reason: r }
+    NativeImportTargetsAdmitted => NativeCensusCascadeMemberOf { root: provider_path, root_reason: provider_reason }
+    NativeImportTargetNotAsked => NativeCensusCascadeMemberOf { root: provider_path, root_reason: provider_reason }
+  }
+}
+
 // A CHAIN IS A DECLARER CASCADE ROW WHEN ITS FATAL DIAGNOSTIC CARRIES THE DeclarerRefused CORRECTION, AND THE
-// ROOT IS THAT DECLARER BY IDENTITY, never by reading the chain's reasons. The identity is minted where the
+// PROVIDER IS THAT DECLARER BY IDENTITY, never by reading the chain's reasons. The identity is minted where the
 // refused provider is found (v2.compiler.resolve declarer_refused_diagnostic). A chain is the provider's own
 // chain followed by the referencing site's fatal, so a declarer that itself refused on ITS declarer carries
-// the innermost correction first: the first DeclarerRefused in the chain names the module that refused on its
-// own account, the root, and the diagnostic before it is that root's fatal. None is a chain refused on the
+// the innermost correction first: the first DeclarerRefused in the chain names the innermost refused
+// provider, and the diagnostic before it is that provider's fatal. That provider is the root only when it did
+// not itself refuse on a refused import FILE: such a provider is filed as a member of that file's root
+// (native_census_import_cascade), so its declarer chains name the same root, read through
+// native_census_provider_root -- the rule the infer cascade reads too. None is a chain refused on the
 // module's own account. A chain whose fatal reason is declarer_refused but carries no declarer was not minted
 // by the resolver: Unattributed, never a root.
-fn native_census_chain_cascade(closure: NativeCensusClosureIndex, chain: NonEmptyDiagnostics) -> NativeCensusCascade {
+fn native_census_chain_cascade(
+  closure: NativeCensusClosureIndex,
+  chain: NonEmptyDiagnostics,
+  attribution: fn(QualifiedName) -> NativeImportTargetAttribution
+) -> NativeCensusCascade {
   if native_census_chain_ends_at_declarer(chain: chain) {
     match native_census_innermost_declarer(chain: chain) {
       Absent => NativeCensusCascadeUnattributed { reason: ^native_census_declarer_missing }
@@ -4278,7 +4306,8 @@ fn native_census_chain_cascade(closure: NativeCensusClosureIndex, chain: NonEmpt
           NativeCensusClosureIndexRead { importers_of: _, imports_of: _, module_paths: module_paths, modules: _, refused_modules: _ } =>
             match map_lookup(module_paths, qualified_name_to_dotted_string(qn: found.declarer)) {
               Absent => NativeCensusCascadeUnattributed { reason: ^native_census_declarer_not_censused }
-              Present { value: root_path } => NativeCensusCascadeMemberOf { root: root_path, root_reason: found.root_reason }
+              Present { value: provider_path } =>
+                native_census_provider_root(provider_path: provider_path, provider_reason: found.root_reason, attribution: attribution(found.declarer))
             }
         }
     }
@@ -4305,13 +4334,14 @@ fn native_census_cause_groups_add_chains_by_chain(
   closure: NativeCensusClosureIndex,
   entry: NativeCensusModule,
   first: NonEmptyDiagnostics,
-  rest: List<NonEmptyDiagnostics>
+  rest: List<NonEmptyDiagnostics>,
+  attribution: fn(QualifiedName) -> NativeImportTargetAttribution
 ) -> NativeCensusCauseGroups {
   fold_list(
     xs: Cons { head: first, tail: rest },
     empty: NativeCensusChainFiling { groups: groups, root_filed: false },
     cons: fn(acc, c) {
-      let own = native_census_chain_cascade(closure: closure, chain: c)
+      let own = native_census_chain_cascade(closure: closure, chain: c, attribution: attribution)
       let cascade = match own {
         NativeCensusCascadeNone => if acc.root_filed { NativeCensusCascadeNone } else { native_census_own_root(closure: closure, entry: entry) }
         NativeCensusCascadeMemberOf { root: _, root_reason: _ } => own
@@ -4395,14 +4425,15 @@ fn native_census_cause_groups_add_resolve_refused(
   entry: NativeCensusModule,
   first: NonEmptyDiagnostics,
   rest: List<NonEmptyDiagnostics>,
-  cascade: NativeCensusCascade
+  cascade: NativeCensusCascade,
+  attribution: fn(QualifiedName) -> NativeImportTargetAttribution
 ) -> NativeCensusCauseGroups {
   match cascade {
     NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
       native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason, head_reason: ^native_prepare_reason_import_target_file_refused)
     NativeCensusCascadeNone =>
       if native_census_chain_ends_at_declarer(chain: first) && fold_list(xs: rest, empty: true, cons: fn(all, c) { all && native_census_chain_ends_at_declarer(chain: c) }) {
-        match native_census_chain_cascade(closure: closure, chain: first) {
+        match native_census_chain_cascade(closure: closure, chain: first, attribution: attribution) {
           NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
             native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason, head_reason: ^resolve_reason_declarer_refused)
           NativeCensusCascadeNone =>
@@ -4413,7 +4444,7 @@ fn native_census_cause_groups_add_resolve_refused(
             native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
         }
       } else {
-        native_census_cause_groups_add_chains_by_chain(groups: groups, positions: positions, closure: closure, entry: entry, first: first, rest: rest)
+        native_census_cause_groups_add_chains_by_chain(groups: groups, positions: positions, closure: closure, entry: entry, first: first, rest: rest, attribution: attribution)
       }
     NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } =>
       native_census_cause_groups_add_chains(groups: groups, positions: positions, entry: entry, first: first, rest: rest, first_cascade: native_census_own_root(closure: closure, entry: entry), cascade: NativeCensusCascadeNone)
@@ -4493,12 +4524,7 @@ fn native_census_infer_cascade_of(
           match map_lookup(module_paths, qualified_name_to_dotted_string(qn: provider.module)) {
             Absent => NativeCensusCascadeUnattributed { reason: ^native_census_infer_cascade_provider_not_censused }
             Present { value: provider_path } =>
-              match attribution(provider.module) {
-                NativeImportTargetRefused { target: t } => NativeCensusCascadeMemberOf { root: t.path, root_reason: native_test_file_refusal_fatal_reason(fr: t) }
-                NativeImportTargetsUnreadable { reason: r } => NativeCensusCascadeUnattributed { reason: r }
-                NativeImportTargetsAdmitted => NativeCensusCascadeMemberOf { root: provider_path, root_reason: diagnostics_fatal_reason(d: provider.refusal) }
-                NativeImportTargetNotAsked => NativeCensusCascadeMemberOf { root: provider_path, root_reason: diagnostics_fatal_reason(d: provider.refusal) }
-              }
+              native_census_provider_root(provider_path: provider_path, provider_reason: diagnostics_fatal_reason(d: provider.refusal), attribution: attribution(provider.module))
           }
         }
     }
@@ -4531,7 +4557,7 @@ fn native_census_cause_groups_add_infer_module(
   match step.outcome {
     NativeInferCensusFileRefused => groups
     NativeInferCensusResolveRefused { first: f, rest: r, observation: _, partial: _ } =>
-      native_census_cause_groups_add_resolve_refused(groups: groups, positions: step.context.positions, closure: closure, entry: entry, first: f, rest: r, cascade: step.cascade)
+      native_census_cause_groups_add_resolve_refused(groups: groups, positions: step.context.positions, closure: closure, entry: entry, first: f, rest: r, cascade: step.cascade, attribution: fn(provider) { native_import_target_attribution(context: step.context, module: provider) })
     NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } => groups
     NativeInferCensusInferRefused { resolved: resolved, chain: chain } =>
       match native_census_infer_cascade(context: step.context, module_paths: module_paths, resolved: resolved, chain: chain) {

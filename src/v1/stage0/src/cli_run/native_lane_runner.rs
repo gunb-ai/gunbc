@@ -5101,6 +5101,8 @@ fn run_census_scoped_with(
 /// say which subjects reach each member. One run per subject re-resolved every shared member once per
 /// subject (DESIGN §2), which on a wave of thirty rewritten modules outran the runner.
 ///
+/// The compiler is built from `source_roots` (this checkout's); the subjects are read from `population_roots`, which
+/// are `source_roots` themselves unless a caller reads another tree with this checkout's compiler (the base receipt).
 /// THE KIT RUN is one more `census-scoped`, over the same prepared binary, with the kit's own root
 /// added to the source roots and the kit's fixture modules as its subjects
 /// (`gunbc.instruments.ambient_name_census_reading` `ambient_census_kit_subjects`). It is a separate
@@ -5114,6 +5116,7 @@ pub fn run_census_controls_and_subjects(
     source_roots: &[String],
     control_root_sets: &[Vec<String>],
     subjects: &[String],
+    population_roots: &[String],
     kit: Option<(&str, &[String])>,
     base_probe: impl FnOnce(&CensusInferRun) -> Result<Option<(Vec<String>, Vec<String>)>, String>,
 ) -> Result<
@@ -5134,7 +5137,7 @@ pub fn run_census_controls_and_subjects(
         .iter()
         .map(|subject| format!("//{}:all", subject.replace('.', "/")))
         .collect();
-    let union = run_census_scoped_with(&preparation.binary_path, &labels, source_roots)?;
+    let union = run_census_scoped_with(&preparation.binary_path, &labels, population_roots)?;
     let probe = match base_probe(&union)? {
         Some((probe_subjects, probe_roots)) => {
             let probe_labels: Vec<String> = probe_subjects
@@ -7223,4 +7226,42 @@ pub fn run_v2_census_verb(verb: &str, source_roots: &[String]) -> Result<i32, St
             "V2-NATIVE REFUSAL cause=NativeRunKilled — the {verb} child exited without a status"
         )
     })
+}
+
+/// THE SPELLED-MODULE SELECTION, RUN BY THE EMITTED COMPILER (`select-spelled-modules` verb): built from the
+/// head's `build_roots`, run over `population_roots`. The child prints one module name per line and decides its own
+/// exit; the seed relays both unjudged.
+pub fn run_v2_select_spelled_modules(
+    build_roots: &[String],
+    population_roots: &[String],
+) -> Result<(i32, String), String> {
+    let preparation = prepare_emitted_compiler_for_entry(build_roots, V2_NATIVE_CLI_ENTRY)?;
+    let mut args = vec!["select-spelled-modules".to_string()];
+    for root in population_roots {
+        args.push("--source-root".to_string());
+        args.push(root.clone());
+    }
+    let output = Command::new(&preparation.binary_path)
+        .args(&args)
+        .output()
+        .map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+                preparation.binary_path.display()
+            )
+        })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — select-spelled-modules stdout: {cause}")
+    })?;
+    let code = output.status.code().ok_or_else(|| {
+        "V2-NATIVE REFUSAL cause=NativeRunKilled — the select-spelled-modules child exited without a status"
+            .to_string()
+    })?;
+    if code != 0 {
+        return Ok((
+            code,
+            format!("{stdout}{}", String::from_utf8_lossy(&output.stderr)),
+        ));
+    }
+    Ok((code, stdout))
 }

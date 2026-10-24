@@ -18,7 +18,7 @@ use crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::{
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance, EmittedEdgeTarget};
 pub use crate::std_algebra::{
-    collection_concat_shape, collection_count_shape, collection_map_shape,
+    collection_concat_shape, collection_count_shape, collection_map_shape, list_push,
 };
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
