@@ -37,7 +37,8 @@ import v2.std.node {
   TypeNode,
   arrow_signature_order_edge,
   node_subtree_nodes,
-  symbol_lexeme
+  symbol_lexeme,
+  NotADeclaration
 }
 import v2.std.text { String }
 import std.algebra { list_snoc_item, fold_list, list_at_optional }
@@ -355,8 +356,8 @@ test fn product_introduction_leaves_partially_evidenced_conj_on_the_frontier_hol
   let partial = Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^derived_field }, target: derived_child },
-      Edge { label: Authored { name: ^frontier_field }, target: frontier_child }
+      Edge { label: Authored { name: ^derived_field }, target: derived_child, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^frontier_field }, target: frontier_child, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

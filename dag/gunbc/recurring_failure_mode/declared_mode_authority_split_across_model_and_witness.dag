@@ -1,0 +1,41 @@
+module gunbc.recurring_failure_mode.declared_mode_authority_split_across_model_and_witness
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE ROW: one declared mode, spelled in more than one place, drifting when the authority moves.
+//
+// THE SHAPE, in the abstract: a mode is DECIDED in one place (a declared arm, rendered to whatever shape
+// each consumer needs) and then TRANSSCRIBED -- into an executor's argument, into a fold's expectation, and
+// into the lines of a witness that reads the produced state back. The transcription is invisible while the
+// arm stands still. The moment the arm moves -- a bit consolidated, a triple cleared -- the executor and
+// the fold move with it because they render from the authority, and the witness does not, because a
+// transcribed figure has no dependency to update. The claim that then goes red is usually the honest one:
+// it was asserting the state the route produces, and the route produces a different state now.
+data declared_mode_authority_split_across_model_and_witness: RecurringFailureMode = RecurringFailureMode {
+  identity: "declared_mode_authority_split_across_model_and_witness" as NonEmptyStr,
+
+  // STATED BY THIS ROW: found below the floor (a green required run said nothing in either direction
+  // about the one layer that could drift); now mitigated by the row's own RECOGNITION RULE -- one
+  // exported text function rendering the fold's authority at every site, and every fixture step that
+  // produces the asserted state taken from the production argv. A discipline, not a mechanism, so the
+  // ceiling stays decidable: the dry layer reaching a wet claim's VERDICT is what the runner exclusion
+  // currently makes impossible.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the dry layer demanding a wet claim's decision -- the verdict fold, not just its argv -- before the module's exclusion is honoured, SUFFICIENT FOR a transcription that has drifted from the declared arm to red a job that runs rather than pass unobserved." } },
+
+  receipts: [
+    "**ONE DECLARED MODE, SPELLINGS THAT DRIFT APART** (INVALID STATE: a permission mode is decided once, in a declared arm, and then appears a second time as the argument a grant passes to its tool and a THIRD time as the figure a witness compares against the produced state. The second spelling is rendered from the arm; the third is typed. Nothing in the build connects them, so the arm can move underneath the typed figure and only the witness notices -- and what it notices looks like a defect in the route rather than in itself.",
+
+    "HARM, AND ITS DIRECTION MATTERS. When the route is right and the figure is stale, the claim refuses the deploy's own correct output: WORKER-ROOT-EQUIVALENT-3 round 3, the consolidation that made the three shared git subtree tops one named arm (managed_directory DirectoryOwnerGroupWritableSetgid / ...SetgidSticky, rendering 02770/03770) while the wet spawn witness still compared the top lines of its find receipts against hand-typed \"3775\"/\"2775\", transcribed from an INTERIOR shape it had measured once. Six of seven claims went red, returning false with NO FAILING COMMAND -- every command had succeeded; it was the fold's verdict that was false, against a line the witness had typed itself.",
+
+    "THE SECOND HALF OF THE SAME DEFECT, and the one that made it invisible: the fixture that planted the tree planted the tops with mkdir and left the grant's ADDITIVE sweep as the only thing that touched them. The production route does not do that -- the owned-directory provider INSTALLED each top with `install -d -o -g -m`, restating mode, owner and group absolutely, and the sweep only preserves those bits. An additive sweep cannot clear a bit, so from a 0755 top no composition reaches an arm whose `other` triple is empty: the witness was testing its own fixture's shape, not the route's, and a top that had never been installed at all still read as a plausible failure. The fixture and the route had split the SAME fact (what makes a top be 03770) between two realizations.",
+
+    "WHY NO GATE SAW IT: the witness is wet and executes on the deploy host only; the shared runner runs as uid 0, which cannot drop privileges to exercise a dedicated worker account, so the module carries a declared wet-execution exclusion and the required run reports it as unobserved, not as failing. Its dry counterparts drove the readback fold directly, and the fold was correct -- the stale spelling lived ONLY in the layer the runner never executes. A green required run therefore said nothing about it in either direction: not that it was covered, and not that it was broken.",
+
+    "RECOGNITION RULE: where a mode (or any declared value) has a fold that decides and a witness that OBSERVES, the witness's figure must be a rendering of the fold's own authority -- one exported text function, called at each site, never a literal beside it. Where a wet fixture asserts a state the route produces, every step that produces that state must come from the production argv, INCLUDING an absolute restatement (`install -d -o -g -m`) that an additive follow-up (chgrp + `chmod g+w,g+s`) cannot substitute for; a fixture that plants a state by hand and then asserts it is exercising the fixture. And where a witness is excluded from the executing set by a runner property, the dry layer must still reach the CLAIM's decision -- otherwise the one spelling that can drift is the one nothing runs.",
+  ],
+
+  evidence: [],
+}

@@ -95,6 +95,13 @@ type AppAttestEnvironment
 //   9. apple_validation_category_01 (UInt32, extensions CBOR) names an admitted launch category
 //  10. apple_bundle_version_01 (String, extensions CBOR) is the distributed app version
 //
+// Steps 9 and 10 apply to the authenticator data's extensions map, which Apple's page describes as
+// "extensions: CBOR that includes optional client properties": the map is optional. A real device
+// attestation (iPhone, iOS 26.6.2, AAGUID appattestdevelop) carries 164 octets of authData with the
+// ED flag clear and no extensions at all, so there is no value for either step to check and neither
+// refuses (NotCarried). A map that IS carried is held to both steps: a missing member is still
+// AttestationValidationCategoryAbsent / AttestationBundleVersionAbsent.
+//
 // The server then STORES the credential public key and the receipt: the key verifies every later
 // assertion, and the receipt is the handle for Apple's fraud-metric call.
 type AttestationRefusal
@@ -196,7 +203,7 @@ fn attestation_verification_from_implementation(
     decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "verify_attestation"),
     decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "fx_attestation"),
     decl_ref(module_path: "test.claim.approval_device_redemption_witness", decl_name: "witness_enrolment_refuses_a_refused_attestation"),
-    decl_ref(module_path: "test.claim.approval_enrolment_handshake_witness", decl_name: "fx_attestation"),
+    decl_ref(module_path: "test.claim.approval_google_enrolment_witness", decl_name: "fx_attestation"),
   ]
 {
   match refusal {
@@ -569,19 +576,21 @@ fn validity_refusal(cert: X509Certificate, observed_at: Timestamp, which: String
 // declared, BOTH consumers below are total by construction and neither needs either.
 type ValidationCategoryReading
   = ValidationCategoryAdmitted
+  | ValidationCategoryNotCarried
   | ValidationCategoryReadAbsent
   | ValidationCategoryReadRefused { category: Int }
   | ValidationCategoryReadUndecodable { cause: String }
 
 type BundleVersionReading
   = BundleVersionMatched
+  | BundleVersionNotCarried
   | BundleVersionReadAbsent
   | BundleVersionReadUnexpected { declared: String }
   | BundleVersionReadUndecodable { cause: String }
 
 fn read_validation_category(extensions: CborValue?, admitted: List<Int>) -> ValidationCategoryReading {
   match extensions {
-    Absent => ValidationCategoryReadAbsent
+    Absent => ValidationCategoryNotCarried
     Present { value: ext } =>
       match app_attest_member(v: ext, key: app_attest_validation_category_extension_key) {
         Absent => ValidationCategoryReadAbsent
@@ -597,7 +606,7 @@ fn read_validation_category(extensions: CborValue?, admitted: List<Int>) -> Vali
 
 fn read_bundle_version(extensions: CborValue?, expected: NonEmptyStr) -> BundleVersionReading {
   match extensions {
-    Absent => BundleVersionReadAbsent
+    Absent => BundleVersionNotCarried
     Present { value: ext } =>
       match app_attest_member(v: ext, key: app_attest_bundle_version_extension_key) {
         Absent => BundleVersionReadAbsent
@@ -617,6 +626,7 @@ fn validation_category_refusal(extensions: CborValue?, admitted: List<Int>) -> A
 {
   match read_validation_category(extensions: extensions, admitted: admitted) {
     ValidationCategoryAdmitted => none
+    ValidationCategoryNotCarried => none
     ValidationCategoryReadAbsent => Present { value: AttestationValidationCategoryAbsent }
     ValidationCategoryReadRefused { category: c } => Present { value: AttestationValidationCategoryRefused { category: c } }
     ValidationCategoryReadUndecodable { cause: c } => Present { value: app_attest_undecodable(cause: c) }
@@ -630,6 +640,7 @@ fn bundle_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> Atte
 {
   match read_bundle_version(extensions: extensions, expected: expected) {
     BundleVersionMatched => none
+    BundleVersionNotCarried => none
     BundleVersionReadAbsent => Present { value: AttestationBundleVersionAbsent }
     BundleVersionReadUnexpected { declared: d } => Present { value: AttestationBundleVersionUnexpected { declared: d } }
     BundleVersionReadUndecodable { cause: c } => Present { value: app_attest_undecodable(cause: c) }
@@ -973,6 +984,7 @@ fn assertion_parts(object: List<Int>) -> AssertionPartsRead {
 fn assertion_category_refusal(extensions: CborValue?, admitted: List<Int>) -> AssertionRefusal? {
   match read_validation_category(extensions: extensions, admitted: admitted) {
     ValidationCategoryAdmitted => none
+    ValidationCategoryNotCarried => none
     ValidationCategoryReadAbsent => Present { value: AssertionValidationCategoryAbsent }
     ValidationCategoryReadRefused { category: c } => Present { value: AssertionValidationCategoryRefused { category: c } }
     ValidationCategoryReadUndecodable { cause: c } => Present { value: AssertionUndecodable { cause: c } }
@@ -982,6 +994,7 @@ fn assertion_category_refusal(extensions: CborValue?, admitted: List<Int>) -> As
 fn assertion_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> AssertionRefusal? {
   match read_bundle_version(extensions: extensions, expected: expected) {
     BundleVersionMatched => none
+    BundleVersionNotCarried => none
     BundleVersionReadAbsent => Present { value: AssertionBundleVersionAbsent }
     BundleVersionReadUnexpected { declared: d } => Present { value: AssertionBundleVersionUnexpected { declared: d } }
     BundleVersionReadUndecodable { cause: c } => Present { value: AssertionUndecodable { cause: c } }

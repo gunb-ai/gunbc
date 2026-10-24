@@ -2,6 +2,7 @@ module test.claim.machine_intake.megarac_media_convergence_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.algebra { non_empty_singleton }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.bmc.megarac { megarac_firmware_0_32 }
@@ -53,6 +54,9 @@ import gunbc.machine_intake.megarac_media_attach {
   ReadinessStarted,
   ReadinessStartedUnbound,
   ReadinessUncatalogued,
+  redirection_unread_wire,
+  RedirectionUnreadCode,
+  RedirectionUnreadFirmware,
   ReadinessWaitClosed,
   ReadinessWaitReady,
   ReadinessWaitRefused,
@@ -139,9 +143,9 @@ fn step(configurations: String, detach: MegaRacDetachAdmission) -> ConvergenceSt
 fn step_with_cd(configurations: String, detach: MegaRacDetachAdmission, cd_before: CdErrorReading) -> ConvergenceStep {
   megarac_convergence_step(
     convergence: presented_convergence(
-      presented: presented_media(body: configurations, image_name: desired_census, firmware: megarac_firmware_0_32),
+      presented: presented_media(body: configurations, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable: Present { value: non_empty_singleton(item: mtcollins1_census_image_stem) }),
       image_name: desired_census,
-      replaceable_seeded_stem: mtcollins1_census_image_stem,
+      replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem),
     ),
     detach: detach,
     configurations: configurations,
@@ -210,7 +214,7 @@ test fn a_stopped_row_is_nothing_presented() -> Bool {
 
 test fn an_uncatalogued_status_on_a_named_row_refuses_keeping_the_wire() -> Bool {
   match step(configurations: presenting(name: desired_census as String, status: "16"), detach: host_off) {
-    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: _, wire: w, configurations: _ } } => w == 16
+    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: _, unread: u, configurations: _ } } => redirection_unread_wire(unread: u) == 16
     _ => false
   }
 }
@@ -224,7 +228,7 @@ fn look(at: EpochMs, status: String, session: String) -> ReadinessLook {
 test fn status_16_refuses_keeping_the_wire() -> Bool {
   match readiness_verdict(opened_at: 1000, budget: 30000, previous: none, look: look(at: 2000, status: "16", session: "255"), phase: ReadinessAfterStart, looks: 1) {
     ReadinessRefusedVerdict { look: l, looks: _ } =>
-      match l.reading { ReadinessUncatalogued { image_name: _, wire: w, configurations: c } => w == 16 && string_contains(s: c, pattern: "255") _ => false }
+      match l.reading { ReadinessUncatalogued { image_name: _, unread: u, configurations: c } => redirection_unread_wire(unread: u) == 16 && string_contains(s: c, pattern: "255") _ => false }
     _ => false
   }
 }
@@ -257,7 +261,7 @@ test fn connecting_only_times_out_keeping_the_last_look() -> Bool {
 test fn unknown_after_connecting_refuses() -> Bool {
   (match readiness_verdict(opened_at: 1000, budget: 30000, previous: none, look: look(at: 5000, status: "100", session: "0"), phase: ReadinessAfterStart, looks: 1) { ReadinessLookAgain => true _ => false })
     && (match readiness_verdict(opened_at: 1000, budget: 30000, previous: none, look: look(at: 7000, status: "16", session: "255"), phase: ReadinessAfterStart, looks: 2) {
-      ReadinessRefusedVerdict { look: l, looks: n } => n == 2 && (match l.reading { ReadinessUncatalogued { image_name: _, wire: w, configurations: _ } => w == 16 _ => false })
+      ReadinessRefusedVerdict { look: l, looks: n } => n == 2 && (match l.reading { ReadinessUncatalogued { image_name: _, unread: u, configurations: _ } => redirection_unread_wire(unread: u) == 16 _ => false })
       _ => false
     })
 }
@@ -329,19 +333,19 @@ data cleared_rows: String = "[{\"media_type\":1,\"image_name\":\"\",\"redirectio
 
 test fn an_error_but_detached_is_established_and_keeps_the_error() -> Bool {
   let d = detach(success: false, body: stop_1411, readback_read: true, readback: cleared_rows)
-  (match detach_verdict(evidence: d, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachEstablished => true _ => false })
+  (match detach_verdict(evidence: d, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) { DetachEstablished => true _ => false })
     && string_contains(s: detach_evidence_text(detach: d), pattern: "1411")
 }
 
 test fn a_success_but_still_attached_is_not_established() -> Bool {
-  match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: presenting(name: stale_census as String, status: "1")), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) {
+  match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: presenting(name: stale_census as String, status: "1")), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     DetachNotEstablished { reason: _ } => true
     _ => false
   }
 }
 
 test fn a_success_with_an_unread_readback_is_not_established() -> Bool {
-  match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: false, readback: "curl: (28)"), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) {
+  match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: false, readback: "curl: (28)"), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     DetachNotEstablished { reason: _ } => true
     _ => false
   }
@@ -775,8 +779,8 @@ data manual_stop_readback_1545z: String = "[ { \"id\": 1, \"media_type\": 1, \"m
 data manual_stop_readback_1630z: String = "[ { \"id\": 1, \"media_type\": 1, \"media_index\": 0, \"session_index\": 255, \"image_name\": \"\", \"redirection_status\": 0 } ]"
 
 test fn both_manual_stop_readbacks_establish_the_detach_whatever_stop_media_answered() -> Bool {
-  (match detach_verdict(evidence: detach(success: true, body: "echoed body", readback_read: true, readback: manual_stop_readback_1545z), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachEstablished => true _ => false })
-    && (match detach_verdict(evidence: detach(success: false, body: stop_1411, readback_read: true, readback: manual_stop_readback_1630z), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachEstablished => true _ => false })
+  (match detach_verdict(evidence: detach(success: true, body: "echoed body", readback_read: true, readback: manual_stop_readback_1545z), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) { DetachEstablished => true _ => false })
+    && (match detach_verdict(evidence: detach(success: false, body: stop_1411, readback_read: true, readback: manual_stop_readback_1630z), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) { DetachEstablished => true _ => false })
 }
 
 test fn the_stop_body_this_module_sends_is_byte_equal_to_the_manual_stop_that_worked() -> Bool {
@@ -804,13 +808,13 @@ test fn a_started_row_beside_an_unreadable_row_is_not_ready_either_order() -> Bo
 }
 
 test fn an_unreadable_row_in_the_readback_does_not_establish_a_detach() -> Bool {
-  (match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: empty_row_doc), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachNotEstablished { reason: _ } => true _ => false })
-    && (match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: string_status_row), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachNotEstablished { reason: _ } => true _ => false })
+  (match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: empty_row_doc), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) { DetachNotEstablished { reason: _ } => true _ => false })
+    && (match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: string_status_row), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) { DetachNotEstablished { reason: _ } => true _ => false })
 }
 
 test fn an_unnamed_row_with_an_uncatalogued_status_keeps_its_wire() -> Bool {
   match step(configurations: unnamed_uncatalogued_row, detach: host_off) {
-    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, wire: w, configurations: _ } } => n == "" && w == 16
+    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, configurations: _ } } => n == "" && redirection_unread_wire(unread: u) == 16
     _ => false
   }
 }
@@ -959,7 +963,7 @@ test fn partial_bytes_then_a_timeout_are_uncertain_and_kept() -> Bool {
 }
 
 test fn a_stop_never_sent_is_not_issued() -> Bool {
-  match detach_verdict(evidence: MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "", command: WriteNotIssued { reason: "no device" }, readback_read: false, readback: "", cd_after_stop: cd_unread, general_after_stop: MegaRacRawRead { answered: false, body: "not read", observed_at: none } }, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) {
+  match detach_verdict(evidence: MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "", command: WriteNotIssued { reason: "no device" }, readback_read: false, readback: "", cd_after_stop: cd_unread, general_after_stop: MegaRacRawRead { answered: false, body: "not read", observed_at: none } }, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     DetachNotEstablished { reason: _ } => true
     _ => false
   }

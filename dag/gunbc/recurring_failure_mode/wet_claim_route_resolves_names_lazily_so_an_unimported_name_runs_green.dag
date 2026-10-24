@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.wet_claim_route_resolves_names_lazily_so_an_unimported_name_runs_green
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data wet_claim_route_resolves_names_lazily_so_an_unimported_name_runs_green: RecurringFailureMode = RecurringFailureMode {
+  identity: "wet_claim_route_resolves_names_lazily_so_an_unimported_name_runs_green" as NonEmptyStr,
+
+  // STATED BY THIS ROW: found below the floor (green with unresolved names), still mitigated by the
+  // per-head entry-compile discipline only; the ceiling restates the row's own CEILING/NEXT-RUNG lines.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the wet lane demands module-scope name resolution before evaluating claims -- the capability is the route's own resolver entry, the one the compile route already uses -- SUFFICIENT FOR an unimported name to red the wet job rather than ride through it." } },
+
+  receipts: [
+    "INVALID STATE: a claim body that references a name the module has not imported -- a function, a type -- is EVALUATED and REPORTS HELD by the wet claim route, where the same module compiled as an entry point refuses with name-not-found. HARM: a witness that is supposed to prove something about a named dependency can be holding while never resolving that name, so the green tally is an artifact of the route and not of the claim. CAUSE: the wet route resolves names lazily, at use, and a name whose use is never reached (or whose evaluation short-circuits before it) is never demanded; nothing in the route asks 'does this module's name environment contain every free name it mentions' before executing.",
+    "OBSERVED, NOT INFERRED (WORKER-ROOT-EQUIVALENT-3, PR #14328, 2026-10-18, srv1 non-root, job named in the PR thread): worker_git_subtree_builder_wet_witness ran 6/6 HELD with `id_uid_command` and `FilePath` referenced but NOT imported by the module. `gunbc compile --entry dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag` on the same head refuses both names. The witness was not vacuous -- its other legs executed and its assertions were checked -- which is exactly why the class is dangerous: the claims that matter ran, and the unimported names rode along.",
+    "DISTINGUISHING FACT: this is not the exclusion lane. An excluded module (a WitnessExclusionRow) never runs at all and says so. Here the module RUNS, and the route's name resolution is what differs from the compile route's -- so the failure shows up as success on the wet path and as an error on the dry path, and the dry path is the one nobody runs for a *_wet_witness label.",
+    "RUNG FOUND AT: below the floor, silently admitted -- green with unresolved names. RUNG NOW: not preventable by anything the worker can write; each wet witness must be compiled as an ENTRY at least once per head (`gunbc compile --entry <wet witness module>`) so its names are demanded, which is the check that turns this red on the dry path. That is a discipline, not a mechanism. CEILING: structurally decidable -- the wet route can demand the module's full name environment before executing any claim, the same way the entry-point compile does, since both consume the same parsed tree. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the wet lane demands module-scope name resolution before evaluating claims (the capability is the route's own resolver entry -- the one the compile route already uses), SUFFICIENT FOR an unimported name to red the wet job rather than ride through it.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.name_resolve", decl_name: "name_resolve", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer", field: WholeDeclaration },
+  ],
+}

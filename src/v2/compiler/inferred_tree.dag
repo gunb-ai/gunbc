@@ -48,7 +48,7 @@ type NotDerivedSite
   | VariantArmValueNotDerived
   | CallableEvidenceAbsent
   | MatchFrontier
-  | EqualityNotDerived
+  | ComparisonNotDerived
   | LiteralPayloadMember
   | ConstructFieldsUnbound
   | ConstructFormalsAuthored
