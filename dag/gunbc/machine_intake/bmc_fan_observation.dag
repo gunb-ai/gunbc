@@ -258,12 +258,18 @@ fn observe_fan_round(
   }
 }
 
+// Each unstructured line is classified ONCE: a FANn_Failure empty-reading row, or any other undecoded text.
+type FanUnstructuredLine
+  = FanUnstructuredFailure { row: SdrEmptyReadingRow }
+  | FanUnstructuredOther { text: String }
+
 fn fan_observation(success: Bool, results: List<SdrLineResult>) -> FanSensorObservation {
   if success {
+    let classified = map(sdr_unstructured_texts(results: results), t => match fan_failure_empty_row(text: t) { Present { value: r } => FanUnstructuredFailure { row: r }  Absent => FanUnstructuredOther { text: t } })
     FanSensorsRead {
       lines: sdr_decoded_lines(results: results),
-      undecoded_lines: flat_map(sdr_unstructured_texts(results: results), t => match fan_failure_empty_row(text: t) { Present { value: _ } => []  Absent => [t] }),
-      failure_rows: flat_map(sdr_unstructured_texts(results: results), t => match fan_failure_empty_row(text: t) { Present { value: r } => [r]  Absent => [] }),
+      undecoded_lines: flat_map(classified, c => match c { FanUnstructuredOther { text: t } => [t]  FanUnstructuredFailure { row: _ } => [] }),
+      failure_rows: flat_map(classified, c => match c { FanUnstructuredFailure { row: r } => [r]  FanUnstructuredOther { text: _ } => [] }),
     }
   } else {
     FanSensorsUnreadable

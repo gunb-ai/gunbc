@@ -152,7 +152,7 @@ fn chassis_refusal(chassis: ChassisPowerObservation) -> PostPowerFanRefusal? {
 // A FAILURE SENSOR ADMITS ONLY AS OBSERVED NOT-ASSERTED WHILE POWERED: an empty reading cell with status ok (the powered shape of
 // artifacts/bmc/mtcollins1-32dimm/06-sdr.txt). `No Reading` (any status) is a sensor not reporting, so it refuses with its own arm: its only observed `ns` shape is the HOST-OFF capture of run 39053311400, and this gate runs with the chassis on.
 fn first_failure_sensor_refusal(lines: List<SdrTypeLine>, failure_rows: List<SdrEmptyReadingRow>) -> PostPowerFanRefusal? {
-  match failure_rows.filter(r => (r.status as String) != "ok").first() {
+  match failure_rows.filter(r => (r.status as String) != fan_row_status_ok).first() {
     Present { value: r } => Present { value: FanFailureSensorNotNominal { text: r.text } }
     Absent => match lines.filter(l => fan_failure_sensor_name(name: l.name as String) && (l.reading_text as String) == "No Reading").first() {
       Present { value: l } => Present { value: FanFailureSensorNoReading { text: join([l.name as String, " | ", l.status as String, " | ", l.reading_text as String], "") } }
