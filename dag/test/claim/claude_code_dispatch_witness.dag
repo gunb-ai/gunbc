@@ -366,6 +366,7 @@ test fn the_executor_word_decodes_over_the_provider_labels() -> Bool {
             CodexDispatchProvider => false
             CursorDispatchProvider => false
             GunbcHarnessProvider => false
+            ReplayDispatchProvider => false
           }
         ExecutorDefault => false
       }
