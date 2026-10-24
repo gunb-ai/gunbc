@@ -220,7 +220,6 @@ import extdeps.tools.websocat {
 }
 import extdeps.bmc.os_install_actuator_toolchain { gunbc_bin_dir }
 import gunbc.srv3.srv3_actuate_shell_paths {
-  srv3_bmcweb_login_body_path,
   srv3_bmcweb_login_response_path,
   srv3_bmcweb_token_path,
 }
@@ -652,7 +651,7 @@ type ResolvedHostEffectCell =
   | ReceiptEmitOnHost { node: ComputeHost, lines: List<String> }
   | BootOnceReadBackSleepOnHost { node: ComputeHost }
   | SeededInstallMediaToolchainOnHost { node: ComputeHost }
-  | BmcwebSessionLoginOnHost { node: ComputeHost }
+  | BmcwebSessionLoginOnHost { node: ComputeHost, request_body_file: NonEmptyStr }
   | BmcwebTokenExtractOnHost { node: ComputeHost }
   | EffectivePrincipalReadOnHost { node: ComputeHost, read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
@@ -721,8 +720,8 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
     Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
     Srv3SeededInstallMediaToolchainEnsure =>
       SeededInstallMediaToolchainOnHost { node: n }
-    Srv3BmcwebSessionLogin =>
-      BmcwebSessionLoginOnHost { node: n }
+    Srv3BmcwebSessionLogin { request_body_file: f } =>
+      BmcwebSessionLoginOnHost { node: n, request_body_file: f }
     Srv3BmcwebTokenExtract =>
       BmcwebTokenExtractOnHost { node: n }
     Srv3BootOnceReadBackSleep =>
@@ -805,7 +804,7 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     Srv3SeededInstallMediaToolchainEnsure =>
       IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-    Srv3BmcwebSessionLogin =>
+    Srv3BmcwebSessionLogin { request_body_file: _ } =>
       IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     Srv3BmcwebTokenExtract =>
       IncompatibleCell { reason: "host_effect: Srv3BmcwebTokenExtract is in-band (actuator host typed jq extract + write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -886,7 +885,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3InstallMediaFetch => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3SeededInstallMediaRemaster => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3SeededInstallMediaToolchainEnsure => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
-        Srv3BmcwebSessionLogin => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3BmcwebSessionLogin { request_body_file: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3BmcwebTokenExtract => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -928,8 +927,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           BootOnceReadBackSleepOnHost { node: n }
         Srv3SeededInstallMediaToolchainEnsure =>
           SeededInstallMediaToolchainOnHost { node: n }
-        Srv3BmcwebSessionLogin =>
-          BmcwebSessionLoginOnHost { node: n }
+        Srv3BmcwebSessionLogin { request_body_file: f } =>
+          BmcwebSessionLoginOnHost { node: n, request_body_file: f }
         Srv3BmcwebTokenExtract =>
           BmcwebTokenExtractOnHost { node: n }
         LiveDeployApply { warrant: w } =>
@@ -994,7 +993,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3InstallMediaFetch => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3SeededInstallMediaRemaster => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3SeededInstallMediaToolchainEnsure => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
-        Srv3BmcwebSessionLogin => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3BmcwebSessionLogin { request_body_file: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BmcwebTokenExtract => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BootOnceReadBackSleep => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3ReceiptEmit { lines: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1286,13 +1285,18 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
 // this site supplies only the paths its materialization bracket owns and runs the FLAGS through
 // srv3_run_tool_by_name, which resolves the program from the same cited curl_cli_tool row the
 // builder's identity carries.
+// THE BODY PATH ARRIVES ON THE EFFECT. It names the owner-only file the caller's
+// gunbc.auth.private_secret_file bracket created in a per-run private directory and removes when the
+// login returns. It used to be the fixed constant /tmp/srv3_bmcweb_login_body.json, written with
+// the ambient umask and never removed, so after a login the BMC password stayed in /tmp.
 fn realize_bmcweb_session_login_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  request_body_file: NonEmptyStr,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
+    request_body_file: request_body_file,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
   match srv3_run_tool_by_name(
@@ -1329,14 +1333,15 @@ fn realize_bmcweb_session_login_body(
 fn realize_bmcweb_session_login_on_host(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  request_body_file: NonEmptyStr,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     LocalShell =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     SshShell { ssh_host: _ } =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     FleetSsh { target: _, context: _ } =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3BmcwebSessionLogin cannot use EmitArtifactThenThinRun transport; typed mismatch.",
@@ -1837,7 +1842,7 @@ fn realize_provision_codex_runtime(
     Srv3InstallMediaFetch => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaRemaster => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaToolchainEnsure => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
-    Srv3BmcwebSessionLogin => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin { request_body_file: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3BmcwebTokenExtract => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3659,7 +3664,7 @@ fn realize_provision_build_cache(
     Srv3InstallMediaFetch => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaRemaster => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaToolchainEnsure => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
-    Srv3BmcwebSessionLogin => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin { request_body_file: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3BmcwebTokenExtract => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -7931,8 +7936,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_boot_once_read_back_sleep_on_host(transport: transport, intent: intent)
     SeededInstallMediaToolchainOnHost { node: _ } =>
       realize_seeded_install_media_toolchain_ensure_on_host(transport: transport, intent: intent)
-    BmcwebSessionLoginOnHost { node: _ } =>
-      realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
+    BmcwebSessionLoginOnHost { node: _, request_body_file: f } =>
+      realize_bmcweb_session_login_on_host(transport: transport, intent: intent, request_body_file: f)
     BmcwebTokenExtractOnHost { node: _ } =>
       realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
     EffectivePrincipalReadOnHost { node: _, read: r } =>
@@ -8119,7 +8124,7 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     Srv3InstallMediaFetch => access
     Srv3SeededInstallMediaRemaster => access
     Srv3SeededInstallMediaToolchainEnsure => access
-    Srv3BmcwebSessionLogin => access
+    Srv3BmcwebSessionLogin { request_body_file: _ } => access
     Srv3BmcwebTokenExtract => access
     Srv3NbdProxyServe { intent: _, lease_key: _ } => access
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => access
@@ -8190,8 +8195,8 @@ fn host_effect_apply_gated(
           realize_boot_once_read_back_sleep_on_host(transport: transport, intent: intent)
         SeededInstallMediaToolchainOnHost { node: _ } =>
           realize_seeded_install_media_toolchain_ensure_on_host(transport: transport, intent: intent)
-        BmcwebSessionLoginOnHost { node: _ } =>
-          realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
+        BmcwebSessionLoginOnHost { node: _, request_body_file: f } =>
+          realize_bmcweb_session_login_on_host(transport: transport, intent: intent, request_body_file: f)
         BmcwebTokenExtractOnHost { node: _ } =>
           realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
         EffectivePrincipalReadOnHost { node: _, read: r } =>
@@ -8286,7 +8291,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             ReceiptEmitOnHost { node: _, lines: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BootOnceReadBackSleepOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SeededInstallMediaToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            BmcwebSessionLoginOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            BmcwebSessionLoginOnHost { node: _, request_body_file: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EffectivePrincipalReadOnHost { node: _, read: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SudoNopasswdExecuteProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))

@@ -111,7 +111,7 @@ which curl websocat nbdkit socat jq sha256sum gunbc
 
 ### BMCweb login — credential resolution (read before live)
 
-**Modeled (`srv3_bmcweb_session_login`):** probes BMC with `bmc_probe_credential_phase`, resolves intent vs observation via `gunbc.srv3.srv3_bmc_credential_resolve`, then materializes password from factory login or `fetch_secret_ref_credential(bmc_srv3_admin_secret_ref)`. Password is written to **`/tmp/srv3_bmcweb_login_body.json`** (on disk); curl posts it to `https://192.168.1.192/login`. On **success** gunbc emits no password, only the token to **`/tmp/srv3_bmcweb_token`**. On **failure** stderr may include the curl body — do not paste logs containing credentials.
+**Modeled (`srv3_bmcweb_session_login`):** probes BMC with `bmc_probe_credential_phase`, resolves intent vs observation via `gunbc.srv3.srv3_bmc_credential_resolve`, then materializes password from factory login or `fetch_secret_ref_credential(bmc_srv3_admin_secret_ref)`. Password is written owner-only to a login body in a per-run private `mktemp -d` directory (`gunbc.auth.private_secret_file` `with_private_secret_file`), which is removed with its directory when the login returns, on success and failure alike; curl posts it to `https://192.168.1.192/login`. On **success** gunbc emits no password, only the token to **`/tmp/srv3_bmcweb_token`**. On **failure** stderr may include the curl body — do not paste logs containing credentials.
 
 Requires **gcloud auth** on the actuator host when BMC is in `RotatedCredentialActive` state.
 

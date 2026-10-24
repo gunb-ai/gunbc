@@ -2,6 +2,7 @@ module gunbc.auth.netrc_binding
 
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
 import std.optional { Absent, Present }
+import gunbc.auth.private_secret_file { PrivateSecretFileBracket, with_private_secret_file }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 
@@ -202,43 +203,21 @@ fn shred_netrc_binding(binding: NetrcBinding) -> Bool {
   })
 }
 
-// THE BRACKET FORM OF THE PRIVATE PLACEMENT: place, run `use` with the netrc path, shred, on every
-// arm. It adds no mechanics of its own; it is place_netrc_binding_privately and shred_netrc_binding
-// composed once, so a consumer cannot reach a path out of the bracket that skips the shred. Before it
-// existed the BMC tools wrote one fixed /tmp path and never removed it, and every consumer that did
-// shred spelled the place/use/shred sequence by hand.
-//
-// THE FOUR ARMS ARE FOUR REMEDIES. NotEntered: `use` never ran and nothing remains, so a retry is
-// safe. NotEnteredResidueRemains: `use` never ran but material may remain, so clean up first.
-// CompletedResidueRemains carries `use`'s result, because the effect has happened (a BMC password may
-// already have been changed) and a caller that dropped the result could not say so.
-//
-// WHAT THIS DOES NOT CLOSE: a process killed inside `use` reaches no shred
-// (gunbc.recurring_failure_mode a_killed_run_leaves_its_credential_file_behind). The private
-// directory bounds that residue to one run's 0700 directory rather than a shared fixed name.
-type NetrcBracket<R>
-  = NetrcBracketCompleted { value: R }
-  | NetrcBracketCompletedResidueRemains { value: R }
-  | NetrcBracketNotEntered { cause: NonEmptyStr }
-  | NetrcBracketNotEnteredResidueRemains { cause: NonEmptyStr }
-
+// THE BRACKET FORM: the netrc is the content, and gunbc.auth.private_secret_file
+// with_private_secret_file owns the private directory, the owner-only O_EXCL write and the checked
+// removal of both on every arm. Before it existed the BMC tools wrote one fixed /tmp path and never
+// removed it. A fresh private directory holds nothing beforehand, so the remove-then-write order
+// place_netrc_binding needs for a caller-chosen path does not arise here.
 fn with_private_netrc_binding<R>(
   machine: NonEmptyStr,
   login: NonEmptyStr,
   password: Secret,
   use: fn(NonEmptyStr) -> R,
-) -> NetrcBracket<R>
+) -> PrivateSecretFileBracket<R>
 {
-  match place_netrc_binding_privately(machine: machine, login: login, password: password) {
-    NetrcBindingRefused { cause: c } => NetrcBracketNotEntered { cause: c }
-    NetrcBindingRefusedResidueRemains { cause: c } => NetrcBracketNotEnteredResidueRemains { cause: c }
-    NetrcBindingPlaced { binding: binding } => {
-      let result = use(binding.path as NonEmptyStr)
-      if shred_netrc_binding(binding: binding) {
-        NetrcBracketCompleted { value: result }
-      } else {
-        NetrcBracketCompletedResidueRemains { value: result }
-      }
-    }
-  }
+  with_private_secret_file(
+    file_name: "netrc",
+    content: netrc_content(machine: machine, login: login, password: password) as Secret,
+    use: use,
+  )
 }

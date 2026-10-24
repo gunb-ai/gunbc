@@ -34,13 +34,13 @@ import gunbc.secret_provision_actuator {
   create_secret_container,
   observe_secret_container,
 }
-import gunbc.auth.netrc_binding {
-  NetrcBracketCompleted,
-  NetrcBracketCompletedResidueRemains,
-  NetrcBracketNotEntered,
-  NetrcBracketNotEnteredResidueRemains,
-  with_private_netrc_binding,
+import gunbc.auth.private_secret_file {
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
 }
+import gunbc.auth.netrc_binding { with_private_netrc_binding }
 import extdeps.bmc.redfish {
   redfish_password_change_verdict, RedfishPasswordChangeRequired, RedfishPasswordChangeNotIndicated,
   RedfishResponseBodyUnreadable,
@@ -201,14 +201,14 @@ fn bmc_authenticated_call(
     password: password,
     use: fn(netrc) { bmc_redfish_call(host: host, netrc: netrc, call: call) },
   ) {
-    NetrcBracketCompleted { value: reply } => BmcCallAnswered { reply: reply }
-    NetrcBracketCompletedResidueRemains { value: reply } =>
+    PrivateSecretFileCompleted { value: reply } => BmcCallAnswered { reply: reply }
+    PrivateSecretFileCompletedResidueRemains { value: reply } =>
       BmcCallRefused {
         reason: join([stage as String, ": the BMC call ", bmc_answer_word(reply: reply), " but the per-run netrc could not be removed, so credential material may remain on disk and requires cleanup before retry"], ""),
       }
-    NetrcBracketNotEntered { cause: c } =>
+    PrivateSecretFileNotEntered { cause: c } =>
       BmcCallRefused { reason: join([stage as String, ": the per-run netrc could not be placed, so the BMC was not called: ", c as String], "") }
-    NetrcBracketNotEnteredResidueRemains { cause: c } =>
+    PrivateSecretFileNotEnteredResidueRemains { cause: c } =>
       BmcCallRefused { reason: join([stage as String, ": the per-run netrc could not be placed AND credential material may remain on disk, requiring cleanup before retry: ", c as String], "") }
   }
 }

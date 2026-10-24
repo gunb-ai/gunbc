@@ -29,13 +29,13 @@ import gunbc.srv3.srv3_bmc_credential_resolve {
 }
 import gunbc.auth.access_token_source { access_token_upsert_required_reason }
 import gunbc.bmc.bmc_onboarding { srv3_onboarding_plan }
-import gunbc.auth.netrc_binding {
-  NetrcBracketCompleted,
-  NetrcBracketCompletedResidueRemains,
-  NetrcBracketNotEntered,
-  NetrcBracketNotEnteredResidueRemains,
-  with_private_netrc_binding,
+import gunbc.auth.private_secret_file {
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
 }
+import gunbc.auth.netrc_binding { with_private_netrc_binding }
 import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim }
 import gunbc.tools.bmc_onboard {
   boot_override_body,
@@ -170,16 +170,16 @@ fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExi
     password: password as Secret,
     use: fn(netrc) { srv3_boot_once_cd_with_netrc(host: host as NonEmptyStr, netrc: netrc) },
   ) {
-    NetrcBracketCompleted { value: exit } => exit
-    NetrcBracketCompletedResidueRemains { value: _ } =>
+    PrivateSecretFileCompleted { value: exit } => exit
+    PrivateSecretFileCompletedResidueRemains { value: _ } =>
       exit_failure(
         reason: "boot-once-cd: the boot sequence ran (the override and reset may have been applied) but its per-run netrc could not be removed, so credential material may remain on disk and requires cleanup before retry"
       )
-    NetrcBracketNotEntered { cause: _ } =>
+    PrivateSecretFileNotEntered { cause: _ } =>
       exit_failure(
         reason: "boot-once-cd: netrc stage failed: the owner-only credential file could not be created"
       )
-    NetrcBracketNotEnteredResidueRemains { cause: cause } =>
+    PrivateSecretFileNotEnteredResidueRemains { cause: cause } =>
       exit_failure(
         reason: concat(
           "boot-once-cd: netrc stage failed AND credential material may remain on disk, requiring cleanup before retry: ",
