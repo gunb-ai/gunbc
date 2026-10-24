@@ -1,16 +1,17 @@
 module gunbc.realization_census
 
 import std.types { String, NonEmptyStr, Int, List }
+import std.algebra { FreeSemigroup }
+import gunbc.guarantee_rung { GuaranteeRung }
 
 // THE CLOSED VOCABULARIES OF THE REALIZATION CENSUS, AS TYPES. The census (a population of modules
 // measured at a revision; its observation shape is gunbc.repository_census_observation) records, per
 // module and per realization dimension, WHERE the decision is made today and which guarantee rung
 // the module's handling of it sits at. A cell outside these sets is unwritable here rather than
-// refused later: the generator that turns the sibling lane's TSVs into rows
-// (tools/realization_census_rows.py) emits constructors, so a value outside the set is a compile
-// refusal of the rows module and never a string a sheet could carry. SiteOther and DimensionOther
-// are in the set because the census itself uses them (a build tree consumed within one run and
-// discarded is not kept state: method.md merge decision M1), not because the brief listed them.
+// refused later: the interim producer (gunbc.realization_census_rows_gen) admits each TSV cell
+// into these types or refuses the whole run with the cell's location, and emits constructors, so a
+// value outside the set never reaches a sheet. SiteOther and DimensionOther are vocabulary members,
+// not escapes added here: the census brief made `other` the explicit class for misfits.
 
 type RealizationDimension
   = DimensionStorage
@@ -67,6 +68,7 @@ type ModuleCensusReading {
 
 type FindingCensusReading {
   finding_id: NonEmptyStr
+  class_id: NonEmptyStr?
   module: NonEmptyStr
   dimension: RealizationDimension
   level: RealizationLevel
@@ -77,6 +79,31 @@ type FindingCensusReading {
   note: String
   existing_authority: String
   fix_shape: String
+}
+
+// THE CLASSES TAB'S RUNG IS NOT gunbc.guarantee_rung ALONE. The census writes 0 for a class nothing
+// models yet; DESIGN section 4b's OutsideTheLadder is a different fact (external reality,
+// undecidable or undeclared intent), so mapping 0 onto it would give one name two meanings.
+type CensusClassRung
+  = RungUnmodeled
+  | RungOnLadder { rung: GuaranteeRung }
+
+// A class's population counts (instances, modules, and their split by module class) are NOT
+// carried: they are projections of the findings whose class_id names the class, so the sheet
+// derives them and the producer refuses a TSV whose stated counts disagree with that projection.
+type ClassCensusReading {
+  class_id: NonEmptyStr
+  dimension: RealizationDimension
+  decision_sites: FreeSemigroup<DecisionSite>
+  pattern: String
+  current_rung: CensusClassRung
+  attainable_ceiling: GuaranteeRung
+  ceiling_reason: String
+  owning_authority: String
+  wall: String
+  red_control: String
+  residual: String
+  next_trigger: String
 }
 
 fn decision_site_text(s: DecisionSite) -> String {
