@@ -338,7 +338,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: Sou
       let scrut_node = expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env)
       let scrut_opt = scrut_node.return_cardinality == CardOptional
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
-        node_lookup_failed(diagnostics: [])
+        node_lookup_failed(diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: concat("LEAF2_UNSOLVED_SCRUTINEE name=", concat(scrut_node.name, concat(" authored=", authored_name_at(source_indices: source_indices, node: scrut_node)))), span: site }, module_name: module_name)])
       } else {
         let optional_cardinality_subject = scrut_opt && authored_name_at(source_indices: source_indices, node: scrut_node) != "Optional"
         let witness_subject = is_witness_type_name(name: authored_name_at(source_indices: source_indices, node: scrut_node)) && scrut_node.children |> count == 1
