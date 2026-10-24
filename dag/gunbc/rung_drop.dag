@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import std.optional { Optional, Present, Absent }
 import std.removal_tombstone { RemovalTombstone }
+import std.decl_ref { DeclarationRef, NamedField, TypeParameter, WholeDeclaration }
 import extdeps.bazel.label { Label, render_label }
 import gunbc.instrument_targets { instrument_targets }
 import gunbc.guarantee_rung {
@@ -343,6 +344,7 @@ fn uncounted_cause_label(c: UncountedCause) -> String {
 type RungDropPopulation
   = Enumerated { members: FreeSemigroup<String> }
   | DerivedBy { label: Label }
+  | DeclaredBy { declaration: DeclarationRef }
   | NotYetCounted { cause: UncountedCause }
 
 // THE TOTAL CONSTRUCTOR FOR A POPULATION DERIVED FROM A LIST: a list with a member is Enumerated, an
@@ -497,11 +499,25 @@ fn population_clause(p: Optional<RungDropPopulation>) -> String {
   }
 }
 
+// A DECLARED POPULATION IS A CITATION OF THE ONE DECLARATION THAT HOLDS THE MEMBERS, for a list whose
+// home is a closure this module cannot import (the v1 seed: rung-drop rows compile on dag and src/v2
+// only). It is readable here only as a whole-declaration reference; that the declaration EXISTS is
+// verified on the side that can see it, by a claim importing it by name (the row's own witness names
+// which), so a rename in its home breaks that import instead of leaving this citation stale.
+fn declared_population_is_whole_declaration(d: DeclarationRef) -> Bool {
+  match d.field {
+    WholeDeclaration => true
+    NamedField { field_name: _ } => false
+    TypeParameter { name: _ } => false
+  }
+}
+
 fn rung_drop_population_label(p: RungDropPopulation) -> String {
   match p {
     Enumerated { members: ms } => join(non_empty_to_list(xs: ms), ", ")
     NotYetCounted { cause: c } => concat("not yet counted (", concat(uncounted_cause_label(c: c), ")"))
     DerivedBy { label: l } => concat("derived by `gunbc test ", concat(render_label(l: l), "`"))
+    DeclaredBy { declaration: d } => concat("declared by ", concat(d.module_path as String, concat(" ", d.decl_name as String)))
   }
 }
 
@@ -515,6 +531,7 @@ fn rung_drop_population_is_readable(p: RungDropPopulation) -> Bool {
     Enumerated { members: _ } => true
     NotYetCounted { cause: _ } => false
     DerivedBy { label: l } => length(xs: filter(instrument_targets(), t => render_label(l: t) == render_label(l: l))) == 1
+    DeclaredBy { declaration: d } => declared_population_is_whole_declaration(d: d)
   }
 }
 
@@ -702,6 +719,7 @@ fn population_is_not_yet_counted(d: RungDrop) -> Bool {
       NotYetCounted { cause: _ } => true
       Enumerated { members: _ } => false
       DerivedBy { label: _ } => false
+      DeclaredBy { declaration: _ } => false
     }
     Absent => false
   }

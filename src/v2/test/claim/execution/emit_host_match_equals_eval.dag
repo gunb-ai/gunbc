@@ -65,7 +65,7 @@ import v2.std.node {
   TypeNode,
   MatchArmBodyEdge,
 }
-import v2.std.runtime {
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,
   ControlTransfer,
@@ -159,11 +159,11 @@ fn emit_match_eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 }
 
 fn emit_match_eval_bool_true(value: RuntimeValue) -> Bool {
-  value == emit_match_eval_octet_value(n: 1)
+  (runtime_value_equality(a: value, b: emit_match_eval_octet_value(n: 1)) == RuntimeValuesEqual)
 }
 
 fn emit_match_eval_bool_false(value: RuntimeValue) -> Bool {
-  value == emit_match_eval_octet_value(n: 0)
+  (runtime_value_equality(a: value, b: emit_match_eval_octet_value(n: 0)) == RuntimeValuesEqual)
 }
 
 fn emit_match_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
