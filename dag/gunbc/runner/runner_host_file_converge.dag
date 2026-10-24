@@ -624,7 +624,7 @@ fn runner_host_fabric_member_units(host: HostIdentity) -> List<NonEmptyStr> {
 
 // ── File observation and plan (pure) ─────────────────────────────────────────────────────────────
 
-type RunnerHostFileStanding
+type FleetHostFileStanding
   = HostFileIdentical
   | HostFileDiffers
   | HostFileAbsent
@@ -642,14 +642,14 @@ type RunnerHostFileStanding
 // format cannot cross the fleet SSH edge, and the default report is human text: carrying any of it as
 // a "file type" would give one field two meanings. No consumer here needs the kind -- the comparison
 // and root-only reads that follow decide what the path is -- so the arm carries no payload.
-type RunnerHostFileMetadataReading
+type FleetHostFileMetadataReading
   = HostFileMetadataReported
   | HostFileMetadataUnread { cause: String }
 
 // A COMPLETED READ THAT PRINTED NOTHING IS NOT A REPORT. Exit success is a fact about the CALL, never
 // about whether the output carrying the answer arrived, so an empty report is unread -- the same
 // separation gunbc.fabric.fabric_cell_acquire draws over this operation.
-fn classify_host_file_metadata(exit_code: Int, stdout: String, stderr: String) -> RunnerHostFileMetadataReading {
+fn classify_host_file_metadata(exit_code: Int, stdout: String, stderr: String) -> FleetHostFileMetadataReading {
   if exit_code == 0 {
     let w = trim(s: stdout)
     if w == "" {
@@ -667,12 +667,12 @@ fn classify_host_file_metadata(exit_code: Int, stdout: String, stderr: String) -
 // about this entry decides whether nothing is there or nobody could look. The parent standing is
 // gunbc.live_deploy.member_observe `entry_presence`, the landed authority for that rule over a
 // transport, consumed rather than restated (DESIGN section 3).
-type RunnerHostFilePathStanding
+type FleetHostFilePathStanding
   = HostFilePathPresent
   | HostFilePathAbsent
   | HostFilePathUnreadable { cause: String }
 
-fn classify_host_file_path(reading: RunnerHostFileMetadataReading, parent: EntryPresence) -> RunnerHostFilePathStanding {
+fn classify_host_file_path(reading: FleetHostFileMetadataReading, parent: EntryPresence) -> FleetHostFilePathStanding {
   match reading {
     HostFileMetadataReported => HostFilePathPresent
     HostFileMetadataUnread { cause: c } =>
@@ -690,7 +690,7 @@ fn classify_host_file_path(reading: RunnerHostFileMetadataReading, parent: Entry
 // comparison and is not settled here, so this answers `none` for it; absence and unreadability are
 // settled, and they land on DIFFERENT standings -- which is the whole repair, because `test -e`
 // sent both to HostFileAbsent and HostFileAbsent plans a write.
-fn runner_host_file_settled_standing(st: RunnerHostFilePathStanding) -> RunnerHostFileStanding? {
+fn fleet_host_file_settled_standing(st: FleetHostFilePathStanding) -> FleetHostFileStanding? {
   match st {
     HostFilePathPresent => none
     HostFilePathAbsent => Present { value: HostFileAbsent }
@@ -702,7 +702,7 @@ fn runner_host_file_settled_standing(st: RunnerHostFilePathStanding) -> RunnerHo
 // portability alphabet, so every file leg and every residue leg reported "NOT attempted" on every
 // host (observe runs 38350252200, 38662663858, 38662666227, 38662668957) while a witness pinned the
 // refused words as correct. The default report needs no format word; only the exit status and whether
-// any report was printed are read, and the reading carries no kind (RunnerHostFileMetadataReading).
+// any report was printed are read, and the reading carries no kind (FleetHostFileMetadataReading).
 fn runner_host_file_metadata_probe_argv(path: String) -> List<String> {
   argv_words(command: stat_default_report_command(path: path))
 }
@@ -712,7 +712,7 @@ fn runner_host_file_metadata_probe_argv(path: String) -> List<String> {
 // injection point that merely happens to hold the right bytes today. So every path the file depends on
 // -- the file and each ancestor directory up to the write scope -- must be owned by root and writable by
 // no group and no other user.
-type RunnerHostPathMetadata
+type FleetHostPathMetadata
   = PathsRootOnly
   | PathsNotRootOnly { paths: List<String>, detail: String }
   | PathsUnobservable { reason: String }
@@ -720,7 +720,7 @@ type RunnerHostPathMetadata
 
 // The directories a file's safety rests on: every ancestor from the write scope's root down to the
 // file's own directory. Each is a prefix of the path ending just before one of its separators.
-fn runner_host_path_ancestors(path: String) -> List<String> {
+fn fleet_host_path_ancestors(path: String) -> List<String> {
   path_ancestors_within_scope(scope: fleet_host_file_scope, path: path)
 }
 
@@ -759,7 +759,7 @@ fn runner_host_file_mode_find_argv(path: String, mode: RemoteFileMode) -> List<S
 // unsuccessful execution is unobservable BEFORE stdout is read; only a successful run may establish a
 // match or a mismatch. find exits 0 whether or not the predicate printed a path, so exit 0 is the whole
 // success signal.
-fn classify_root_only_paths(requested: List<String>, exit_code: Int, stdout: String, stderr: String) -> RunnerHostPathMetadata {
+fn classify_root_only_paths(requested: List<String>, exit_code: Int, stdout: String, stderr: String) -> FleetHostPathMetadata {
   if exit_code != 0 {
     PathsUnobservable { reason: join(["the far-side find did not succeed, so its output establishes neither a match nor a mismatch; exit=", to_string(exit_code), " ", trim(s: stderr)], "") }
   } else {
@@ -767,7 +767,7 @@ fn classify_root_only_paths(requested: List<String>, exit_code: Int, stdout: Str
   }
 }
 
-fn classify_printed_root_only_paths(requested: List<String>, exit_code: Int, stdout: String, stderr: String) -> RunnerHostPathMetadata {
+fn classify_printed_root_only_paths(requested: List<String>, exit_code: Int, stdout: String, stderr: String) -> FleetHostPathMetadata {
   let printed = filter(map(split(s: stdout, delimiter: "\n"), l => trim(s: l)), l => l != "")
   let unsafe = filter(requested, r => !any(printed, p => p == r))
   if length(unsafe) == 0 {
@@ -780,7 +780,7 @@ fn classify_printed_root_only_paths(requested: List<String>, exit_code: Int, std
   }
 }
 
-fn runner_host_path_metadata_wire(m: RunnerHostPathMetadata) -> String {
+fn runner_host_path_metadata_wire(m: FleetHostPathMetadata) -> String {
   match m {
     PathsRootOnly => "root-only"
     PathsNotRootOnly { paths: ps, detail: d } => join(["NOT-ROOT-ONLY ", join(ps, ","), " ", d], "")
@@ -790,9 +790,9 @@ fn runner_host_path_metadata_wire(m: RunnerHostPathMetadata) -> String {
 }
 
 type FleetHostFileObservation {
-  content: RunnerHostFileStanding
-  file_metadata: RunnerHostPathMetadata
-  ancestors: RunnerHostPathMetadata
+  content: FleetHostFileStanding
+  file_metadata: FleetHostPathMetadata
+  ancestors: FleetHostPathMetadata
 }
 
 type FleetHostFileAction
@@ -804,7 +804,7 @@ type FleetHostFileAction
 // the file cannot be repaired by writing the file, and writing into it would publish root-evaluated
 // bytes where a CI user can replace them. Unsafe FILE metadata, by contrast, IS repaired by a write --
 // the staged file is created by root and renamed over the old one, replacing its owner and mode.
-fn runner_host_file_action(observation: FleetHostFileObservation) -> FleetHostFileAction {
+fn fleet_host_file_action(observation: FleetHostFileObservation) -> FleetHostFileAction {
   match observation.ancestors {
     PathsNotRootOnly { paths: ps, detail: d } =>
       HostFileActionRefused { reason: join(["ancestor directory not root-only: ", join(ps, ","), " ", d], "") }
@@ -832,7 +832,7 @@ fn runner_host_file_action(observation: FleetHostFileObservation) -> FleetHostFi
   }
 }
 
-fn runner_host_file_standing_wire(standing: RunnerHostFileStanding) -> String {
+fn runner_host_file_standing_wire(standing: FleetHostFileStanding) -> String {
   match standing {
     HostFileIdentical => "identical"
     HostFileDiffers => "differs"
@@ -1245,7 +1245,7 @@ fn runner_slot_population_read_completely(population: RunnerSlotPopulation) -> B
 
 // ── Remote legs ──────────────────────────────────────────────────────────────────────────────────
 
-// EVERY ARGV THIS ROUTE SENDS OVER THE FLEET EDGE IS ONE OF THESE LEGS, and runner_host_leg_argv is
+// EVERY ARGV THIS ROUTE SENDS OVER THE FLEET EDGE IS ONE OF THESE LEGS, and fleet_host_leg_argv is
 // the only place one becomes words. The legs are a closed coproduct so the portability witness can
 // derive the command set from the route rather than list it by hand: a new remote call has to add an
 // arm here, and runner_host_leg_kind (exhaustive) plus runner_host_leg_kinds make the witness cover it.
@@ -1263,7 +1263,7 @@ type FleetHostRemoteLeg
   | LegResidueLoadState { unit: NonEmptyStr }
   | LegElevated { command: List<String> }
 
-fn runner_host_leg_argv(leg: FleetHostRemoteLeg) -> List<String> {
+fn fleet_host_leg_argv(leg: FleetHostRemoteLeg) -> List<String> {
   match leg {
     LegAdministratorPrivilegeProbe => elevated_argv(command: ["true"])
     LegRootOnlyFind { paths: ps, kind: k } => runner_host_root_only_find_argv(paths: ps, kind: k)
@@ -1297,7 +1297,7 @@ data runner_host_leg_kinds: List<String> = ["privilege-probe", "root-only-find",
 
 fn run_fleet_host_leg(subject: FleetHostFileSubject, context: FleetSshExecutionContext, leg: FleetHostRemoteLeg) -> TypedArgvExecOutcome
 {
-  typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: runner_host_leg_argv(leg: leg))
+  typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: fleet_host_leg_argv(leg: leg))
 }
 
 // THE LEGS ONE HOST'S RUN CAN ISSUE, from that host's own subject, desired files and residue, with
@@ -1312,7 +1312,7 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
       list_flat_map(files, f => [
         LegMetadataProbe { path: f.path as String },
         LegFileModeFind { path: f.path as String, mode: f.mode },
-        LegRootOnlyFind { paths: runner_host_path_ancestors(path: f.path as String), kind: "d" },
+        LegRootOnlyFind { paths: fleet_host_path_ancestors(path: f.path as String), kind: "d" },
       ]),
       concat(
         map(concat(residue.files, residue.directories), p => LegMetadataProbe { path: p }),
@@ -1361,7 +1361,7 @@ fn observe_fleet_host_paths(
   context: FleetSshExecutionContext,
   paths: List<String>,
   kind: String,
-) -> RunnerHostPathMetadata
+) -> FleetHostPathMetadata
 {
   match run_fleet_host_leg(subject: subject, context: context, leg: LegRootOnlyFind { paths: paths, kind: kind }) {
     TypedArgvExecRefused { reason: why } => PathsUnobservable { reason: why }
@@ -1374,7 +1374,7 @@ fn observe_fleet_host_file_mode(
   subject: FleetHostFileSubject,
   context: FleetSshExecutionContext,
   file: FleetHostFileDesired,
-) -> RunnerHostPathMetadata
+) -> FleetHostPathMetadata
 {
   match run_fleet_host_leg(subject: subject, context: context, leg: LegFileModeFind { path: file.path as String, mode: file.mode }) {
     TypedArgvExecRefused { reason: why } => PathsUnobservable { reason: why }
@@ -1383,11 +1383,11 @@ fn observe_fleet_host_file_mode(
   }
 }
 
-fn runner_host_file_write_admission(file: FleetHostFileDesired) -> TypedRemoteFileWriteAdmission {
+fn fleet_host_file_write_admission(file: FleetHostFileDesired) -> TypedRemoteFileWriteAdmission {
   typed_remote_file_write_seal(path: file.path, content: file.content, allowed_scope: fleet_host_file_scope)
 }
 
-fn runner_host_file_standing_of_report(report: RemoteFileComparisonReport) -> RunnerHostFileStanding {
+fn fleet_host_file_standing_of_report(report: RemoteFileComparisonReport) -> FleetHostFileStanding {
   match report {
     ComparisonIdentical => HostFileIdentical
     ComparisonDiffers { reason: _ } => HostFileDiffers
@@ -1405,8 +1405,8 @@ fn observe_fleet_host_file_path(
   subject: FleetHostFileSubject,
   context: FleetSshExecutionContext,
   path: String,
-  reading: RunnerHostFileMetadataReading,
-) -> RunnerHostFilePathStanding
+  reading: FleetHostFileMetadataReading,
+) -> FleetHostFilePathStanding
 {
   match reading {
     HostFileMetadataReported => HostFilePathPresent
@@ -1429,12 +1429,12 @@ fn observe_fleet_host_file_content(
   subject: FleetHostFileSubject,
   context: FleetSshExecutionContext,
   file: FleetHostFileDesired,
-) -> RunnerHostFileStanding
+) -> FleetHostFileStanding
 {
   match run_fleet_host_leg(subject: subject, context: context, leg: LegMetadataProbe { path: file.path as String }) {
     TypedArgvExecRefused { reason: why } => HostFileUnobservable { reason: why }
     TypedArgvExecConverged { result: metadata } =>
-      match runner_host_file_settled_standing(st: observe_fleet_host_file_path(
+      match fleet_host_file_settled_standing(st: observe_fleet_host_file_path(
         subject: subject,
         context: context,
         path: file.path as String,
@@ -1442,7 +1442,7 @@ fn observe_fleet_host_file_content(
       )) {
         Present { value: settled } => settled
         Absent =>
-          match runner_host_file_write_admission(file: file) {
+          match fleet_host_file_write_admission(file: file) {
             TypedRemoteFileWriteAdmissionRefused { cause: c } => HostFileUnobservable { reason: c as String }
             TypedRemoteFileWriteAdmitted { write: w } =>
               match typed_remote_file_step(
@@ -1454,7 +1454,7 @@ fn observe_fleet_host_file_content(
                 TypedRemoteFileStepArgvRefused => HostFileUnobservable { reason: "comparison argv refused as non-portable under the far-side shell re-parse allowlist" }
                 TypedRemoteFileStepLegRefused { cause: why } => HostFileUnobservable { reason: why as String }
                 TypedRemoteFileStepRan { result: back } =>
-                  runner_host_file_standing_of_report(
+                  fleet_host_file_standing_of_report(
                     report: classify_typed_remote_file_comparison(write: w, compare_exit_code: back.exit_code, compare_stderr: back.stderr),
                   )
               }
@@ -1478,7 +1478,7 @@ fn observe_fleet_host_file(
       HostFileIdentical => observe_fleet_host_file_mode(subject: subject, context: context, file: file)
       HostFileDiffers => observe_fleet_host_file_mode(subject: subject, context: context, file: file)
     },
-    ancestors: observe_fleet_host_paths(subject: subject, context: context, paths: runner_host_path_ancestors(path: file.path as String), kind: "d"),
+    ancestors: observe_fleet_host_paths(subject: subject, context: context, paths: fleet_host_path_ancestors(path: file.path as String), kind: "d"),
   }
 }
 
@@ -1678,7 +1678,7 @@ type RetiredResidueObservation
 // rule the desired files use, so "could not look" never reads as "absent".
 type ResiduePathReading {
   path: String
-  standing: RunnerHostFilePathStanding
+  standing: FleetHostFilePathStanding
 }
 
 fn classify_retired_residue(load_state_exit: Int, load_state: String, readings: List<ResiduePathReading>) -> RetiredResidueObservation {
@@ -1886,7 +1886,7 @@ type FleetHostFileConvergeMode
   = FleetHostFilesObserveOnly
   | FleetHostFilesApply
 
-type RunnerHostFileOutcome
+type FleetHostFileOutcome
   = HostFileLeftInPlace
   | HostFileConvergedByWrite { converged: RemoteFileConverged }
   | HostFileWriteRefused { step: String, reason: String }
@@ -1895,13 +1895,13 @@ type RunnerHostFileOutcome
 
 type FleetHostFileResult {
   planned: FleetHostFilePlanned
-  outcome: RunnerHostFileOutcome
+  outcome: FleetHostFileOutcome
 }
 
 // The judgment over the post-write metadata reading, apart from the leg that takes it: the reason a wrong
 // mode, a wrong owner or an unreadable reading refuses at the metadata readback even though the bytes read
 // back, or nothing when the file is root-only at its desired mode.
-fn runner_host_file_readback_refusal(metadata: RunnerHostPathMetadata) -> String? {
+fn fleet_host_file_readback_refusal(metadata: FleetHostPathMetadata) -> String? {
   match metadata {
     PathsRootOnly => none
     PathsNotRootOnly { paths: _, detail: d } => Present { value: d }
@@ -1917,7 +1917,7 @@ fn apply_fleet_host_file(
   subject: FleetHostFileSubject,
   context: FleetSshExecutionContext,
   planned: FleetHostFilePlanned,
-) -> RunnerHostFileOutcome
+) -> FleetHostFileOutcome
 {
   match planned.action {
     HostFileLeaveInPlace => HostFileLeftInPlace
@@ -1926,14 +1926,14 @@ fn apply_fleet_host_file(
       match converge_typed_remote_file(
         target: subject.target,
         context: context,
-        admission: runner_host_file_write_admission(file: planned.file),
+        admission: fleet_host_file_write_admission(file: planned.file),
         mode: planned.file.mode,
         privilege: RemoteFileViaNonInteractiveSudo,
         validation: planned.file.validation,
       ) {
         TypedRemoteFileConvergenceRefused { step: st, reason: why } => HostFileWriteRefused { step: st, reason: why }
         TypedRemoteFileConverged { converged: c } =>
-          match runner_host_file_readback_refusal(metadata: observe_fleet_host_file_mode(subject: subject, context: context, file: planned.file)) {
+          match fleet_host_file_readback_refusal(metadata: observe_fleet_host_file_mode(subject: subject, context: context, file: planned.file)) {
             Absent => HostFileConvergedByWrite { converged: c }
             Present { value: why } => HostFileWriteRefused { step: "metadata-readback", reason: why }
           }
@@ -1941,7 +1941,7 @@ fn apply_fleet_host_file(
   }
 }
 
-fn runner_host_file_outcome_settled(outcome: RunnerHostFileOutcome) -> Bool {
+fn fleet_host_file_outcome_settled(outcome: FleetHostFileOutcome) -> Bool {
   match outcome {
     HostFileLeftInPlace => true
     HostFileConvergedByWrite { converged: _ } => true
@@ -1951,7 +1951,7 @@ fn runner_host_file_outcome_settled(outcome: RunnerHostFileOutcome) -> Bool {
   }
 }
 
-fn runner_host_file_outcome_wire(outcome: RunnerHostFileOutcome) -> String {
+fn runner_host_file_outcome_wire(outcome: FleetHostFileOutcome) -> String {
   match outcome {
     HostFileLeftInPlace => "left-in-place"
     HostFileConvergedByWrite { converged: _ } => "written-and-read-back"
@@ -2023,7 +2023,7 @@ fn plan_fleet_host_file(
 ) -> FleetHostFilePlanned
 {
   let observation = observe_fleet_host_file(subject: subject, context: context, file: file)
-  FleetHostFilePlanned { file: file, observation: observation, action: runner_host_file_action(observation: observation) }
+  FleetHostFilePlanned { file: file, observation: observation, action: fleet_host_file_action(observation: observation) }
 }
 
 // The reload decision reads the manager AFTER the writes, so it covers this run's writes and any
@@ -2187,7 +2187,7 @@ fn runner_host_cap_phase_settled(phase: RunnerHostCapPhase) -> Bool {
     CapPhaseWithheld { cause: _ } => false
     CapPhaseObserved { readings: rs } => runner_host_cap_phase_observed_settled(readings: rs)
     CapPhaseRan { files: fs, reload: rl, slots: ss, certified: _ } =>
-      all(fs, r => runner_host_file_outcome_settled(outcome: r.outcome))
+      all(fs, r => fleet_host_file_outcome_settled(outcome: r.outcome))
         && runner_host_manager_reload_settled(r: rl)
         && all(ss, o => slot_cap_outcome_settled(o: o))
   }
@@ -2473,7 +2473,7 @@ fn write_reload_and_restart_admitted_over(
   let admitted = map(certified, c => c.unit)
   let files = map(runner_host_cap_files(), f => fleet_host_file_result(subject: fleet_subject_of(s: subject), context: context, mode: mode, privilege: privilege, file: f))
   let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files)
-  let written = all(files, r => runner_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
+  let written = all(files, r => fleet_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
   // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
   let readmitted = if written { [] } else { release_owned_slots_over(target: subject.target, context: context, units: owned) }
   // ONLY AN OWNED UNIT IS ACTIVATED: a unit someone else masked is not unmasked here (activation would
@@ -2586,7 +2586,7 @@ type RunnerHostActuationAdmission
   | ActuationSkipped { cause: String }
 
 fn runner_host_actuation_admission(results: List<FleetHostFileResult>, pre_reload: RunnerHostManagerReload) -> RunnerHostActuationAdmission {
-  let unsettled = filter(results, r => !runner_host_file_outcome_settled(outcome: r.outcome))
+  let unsettled = filter(results, r => !fleet_host_file_outcome_settled(outcome: r.outcome))
   if length(unsettled) > 0 {
     ActuationSkipped { cause: join(["unit files not converged: ", join(map(unsettled, r => r.planned.file.subject as String), ",")], "") }
   } else if !runner_host_manager_reload_settled(r: pre_reload) {
@@ -2659,7 +2659,7 @@ fn run_runner_host_files(
   }
   let gate = residue_retirement_gate(
     withheld: gated.withheld,
-    fragment_delivered: fragment_delivered && all(results, r => runner_host_file_outcome_settled(outcome: r.outcome)),
+    fragment_delivered: fragment_delivered && all(results, r => fleet_host_file_outcome_settled(outcome: r.outcome)),
     slots_effective: runner_slot_population_effective(population: slots),
   )
   RunnerHostFileRun {
@@ -2720,7 +2720,7 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         // REFUSES -- it must not print OBSERVED-UNREAD and still exit success.
         && runner_host_cap_phase_observed_verdict(phase: run.cap_phase)
     FleetHostFilesApply =>
-      all(run.results, r => runner_host_file_outcome_settled(outcome: r.outcome))
+      all(run.results, r => fleet_host_file_outcome_settled(outcome: r.outcome))
         && length(run.withheld) == 0
         && runner_host_manager_reload_settled(r: run.pre_actuation_reload)
         && (match run.actuation_admission { ActuationAdmitted => true ActuationSkipped { cause: _ } => false })
