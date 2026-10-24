@@ -145,7 +145,7 @@ import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declar
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
+  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, node_is_kernel_mint, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -7597,11 +7597,17 @@ fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?
 // for a parameter it did not solve and what an absent literal infers as, so it is no established
 // nominal identity. std.types Bool is declared as the coproduct `True | False`, so the head exposure
 // reads it as a coproduct, but it is a kernel scalar of the cast table and not a nominal value; at a
-// host-text formal it follows the cast's admission like Int and Nat. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
+// host-text formal it follows the cast's admission like Int and Nat. A kernel-minted type (Int, Float,
+// Bool, Unit, read by mint provenance, never by spelling) is likewise no nominal; measured, a kernel
+// Bool reaches here with no recovered declaration. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
 // itself is exempt (it has no declaration by construction); any other unrecovered source refuses,
 // located, so it is counted by the diagnostic census rather than waved through.
 fn value_type_is_declared_nominal(t: Node, scope: InferScope) -> Bool {
-  (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: t, scope: scope))
+  let kernel_minted = node_is_kernel_mint(n: t) || match t.inferred {
+    Present { value: Resolved { node: r } } => node_is_kernel_mint(n: r)
+    _ => false
+  }
+  !kernel_minted && (type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: t, scope: scope))
     || type_head_exposure_is_coproduct(exposure: expected_type_head_exposure(formal: t, scope: scope)))
     && match type_reference_declaration_ref(n: t, source_indices: scope.type_env.source_indices, env: scope.type_env) {
       Absent => !cast_source_is_solver_unit_placeholder(source_node: t)
