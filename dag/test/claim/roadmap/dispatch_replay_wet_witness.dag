@@ -1,0 +1,184 @@
+module test.claim.roadmap.dispatch_replay_wet_witness
+
+// THE REPLAY EXECUTOR'S GIT HALF, EXECUTED AGAINST A REAL REPOSITORY. The hermetic claims
+// (test.claim.roadmap.dispatch_replay_witness) supply values; this one runs the SAME recording_capture and the SAME
+// replay_worker_cli production runs over a throwaway repository: a base commit and a result commit, a recording
+// captured from the result, a fresh worktree at the base, and the worker run in it. It asserts the replayed tree is
+// the recorded tree (the capture/replay round trip, byte for byte, as git's own tree id), that the commit lands on
+// the attempt branch as a child of the base, that the exit equals the recorded status, and the two refusal controls
+// (a worktree at another base; a recording ref moved to a commit with another tree) which must exit with the
+// refusal code and leave HEAD and the tree untouched. Mutations: make replay_worker_apply skip ResetWorktreeToTree
+// (tree equality goes red); drop the base comparison in recording_replay_admission (the other-base control goes
+// red); drop the ref-to-tree comparison in replay_worker_admit (the moved-ref control goes red);
+// drop either exit-code check in replay_worker_admit (its unreadable-read control goes red: a deleted recording ref,
+// or a repository whose HEAD is unborn, must refuse with a reason naming the failed read, not a mismatch);
+// drop the object-id check on the base in recording_capture (the non-object-id base control goes red).
+
+import std.logic { Bool }
+import std.types { String, FilePath, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.systemd.service_exec { ServiceResultExitCode }
+import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
+import gunbc.roadmap.roadmap_belt_actuate { belt_exec, ExecOk, ExecFailed, ExecRefused }
+import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptExitRecord, AttemptProcessExitedWith }
+import gunbc.dispatch_replay_recording {
+  recording_capture, RecordingCaptured, RecordingCaptureRefused, RecordingCaptureExitCollidesWithReplayRefusal, RecordingCaptureObjectUnusable,
+  recording_ref_of, recording_peel_to_tree_suffix, replay_refusal_exit_code,
+}
+import gunbc.dispatch_replay_worker { replay_worker_cli }
+
+fn git_out(dir: String, args: List<String>) -> String {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir) {
+    ExecOk { stdout } => trim(stdout)
+    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
+    ExecRefused { program: _, reason: _ } => ""
+  }
+}
+
+fn git_ok(dir: String, args: List<String>) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir) {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn commit_all(dir: String, message: String) -> Bool {
+  git_ok(dir: dir, args: ["add", "-A"]) && git_ok(dir: dir, args: ["commit", "-q", "-m", message])
+}
+
+fn exit_record(status: Int) -> AttemptExitRecord {
+  AttemptExitRecord {
+    node_id: "n",
+    attempt_key: "k",
+    role: "worker",
+    invocation_id: "i",
+    result: ServiceResultExitCode,
+    end: AttemptProcessExitedWith { status: status },
+    entry_name: "e",
+  }
+}
+
+fn exit_code_of(exit: ProcessExit) -> Int {
+  match exit {
+    ExitSuccess => 0
+    ExitFailure { code, reason: _ } => code
+  }
+}
+
+fn reason_of(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason } => reason
+  }
+}
+
+// AN UNREADABLE READ REFUSES NAMING THE GIT FAILURE. The code alone cannot discriminate: a tree or base mismatch
+// also exits with the refusal code, which is the confusion the exit-code checks in replay_worker_admit remove. So
+// the reason must name the failed read and must not read as either mismatch.
+fn refused_naming(exit: ProcessExit, failure: String) -> Bool {
+  let reason = reason_of(exit: exit)
+  exit_code_of(exit: exit) == replay_refusal_exit_code
+    && string_contains(s: reason, pattern: failure)
+    && !string_contains(s: reason, pattern: "base mismatch")
+    && !string_contains(s: reason, pattern: "does not resolve to the recorded tree")
+}
+
+fn replay_over(repo: String, work: String) -> Bool {
+  let built = git_ok(dir: repo, args: ["init", "-q"])
+    && git_ok(dir: repo, args: ["config", "user.name", "witness"])
+    && git_ok(dir: repo, args: ["config", "user.email", "witness@invalid"])
+    && Filesystem.Write(path: join([repo, "/a.txt"], ""), content: "one").success
+    && commit_all(dir: repo, message: "base")
+  let base = git_out(dir: repo, args: ["rev-parse", "HEAD"])
+  let second = built
+    && Filesystem.Write(path: join([repo, "/a.txt"], ""), content: "two").success
+    && Filesystem.Write(path: join([repo, "/b.txt"], ""), content: "added").success
+    && commit_all(dir: repo, message: "result")
+  let result = git_out(dir: repo, args: ["rev-parse", "HEAD"])
+  let result_tree = git_out(dir: repo, args: ["rev-parse", concat(result, recording_peel_to_tree_suffix)])
+  let base_tree = git_out(dir: repo, args: ["rev-parse", concat(base, recording_peel_to_tree_suffix)])
+  let captured = second && base != "" && result != "" && result_tree != base_tree
+  captured && match recording_capture(repo_root: repo, base_sha: base, result_commit: result, exit: exit_record(status: 3)) {
+    RecordingCaptureRefused { cause: _ } => false
+    RecordingCaptured { id, ref_name } => {
+      let wt = join([work, "/attempt"], "")
+      let wt_other = join([work, "/other-base"], "")
+      let wt_moved = join([work, "/moved-ref"], "")
+      let added = git_ok(dir: repo, args: ["worktree", "add", "-q", "-b", "attempt/replay", wt, base])
+        && git_ok(dir: repo, args: ["worktree", "add", "-q", "--detach", wt_other, result])
+        && git_ok(dir: repo, args: ["worktree", "add", "-q", "--detach", wt_moved, base])
+      let other_exit = exit_code_of(exit: replay_worker_cli(worktree: wt_other, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)))
+      let other_untouched = git_out(dir: wt_other, args: ["rev-parse", "HEAD"]) == result
+        && git_out(dir: wt_other, args: ["status", "--porcelain"]) == ""
+      let replay_exit = exit_code_of(exit: replay_worker_cli(worktree: wt, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)))
+      let replayed_tree = git_out(dir: wt, args: ["rev-parse", concat("HEAD", recording_peel_to_tree_suffix)])
+      let replayed_parent = git_out(dir: wt, args: ["rev-parse", "HEAD^"])
+      let branch_tip = git_out(dir: repo, args: ["rev-parse", concat("attempt/replay", recording_peel_to_tree_suffix)])
+      let moved = git_ok(dir: repo, args: ["update-ref", ref_name, base])
+      let moved_exit = exit_code_of(exit: replay_worker_cli(worktree: wt_moved, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)))
+      let moved_untouched = git_out(dir: wt_moved, args: ["rev-parse", "HEAD"]) == base
+        && git_out(dir: wt_moved, args: ["status", "--porcelain"]) == ""
+      // THE UNBORN-HEAD CONTROL: a fresh repository holding the recording ref (restored from the moved-ref control,
+      // then fetched, so the recorded tree is readable) and no commit, so the attempt's HEAD cannot be resolved while
+      // the ref read succeeds.
+      let unborn = join([work, "/unborn"], "")
+      let unborn_built = git_ok(dir: repo, args: ["update-ref", ref_name, result])
+        && git_ok(dir: work, args: ["init", "-q", unborn])
+        && git_ok(dir: unborn, args: ["fetch", "-q", repo, join([ref_name, ":", ref_name], "")])
+      let unborn_refused = refused_naming(
+        exit: replay_worker_cli(worktree: unborn, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)),
+        failure: "HEAD could not be read")
+      // THE MISSING-REF CONTROL: the recording ref deleted, replayed in a fresh worktree at the base.
+      let wt_gone = join([work, "/missing-ref"], "")
+      let gone = git_ok(dir: repo, args: ["update-ref", "-d", ref_name])
+        && git_ok(dir: repo, args: ["worktree", "add", "-q", "--detach", wt_gone, base])
+      let gone_refused = refused_naming(
+        exit: replay_worker_cli(worktree: wt_gone, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)),
+        failure: "could not be read")
+      // THE NON-OBJECT-ID BASE CONTROL: capture refuses a base the decode would refuse, naming it, before any git read.
+      let bad_base = match recording_capture(repo_root: repo, base_sha: "not-a-sha", result_commit: result, exit: exit_record(status: 3)) {
+        RecordingCaptureRefused { cause } =>
+          match cause {
+            RecordingCaptureObjectUnusable { object, detail: _ } => object == "not-a-sha"
+            _ => false
+          }
+        RecordingCaptured { id: _, ref_name: _ } => false
+      }
+      let collision = match recording_capture(repo_root: repo, base_sha: base, result_commit: result, exit: exit_record(status: replay_refusal_exit_code)) {
+        RecordingCaptureRefused { cause } =>
+          match cause {
+            RecordingCaptureExitCollidesWithReplayRefusal { status } => status == replay_refusal_exit_code
+            _ => false
+          }
+        RecordingCaptured { id: _, ref_name: _ } => false
+      }
+      added
+        && replayed_tree == result_tree
+        && replayed_parent == base
+        && branch_tip == result_tree
+        && replay_exit == 3
+        && other_exit == replay_refusal_exit_code && other_untouched
+        && moved && moved_exit == replay_refusal_exit_code && moved_untouched
+        && collision
+        && unborn_built && unborn_refused
+        && gone && gone_refused
+        && bad_base
+    }
+  }
+}
+
+fn recording_id_of(ref_name: String) -> String {
+  substring(s: ref_name, start: string_length(s: "refs/gunbc/recordings/"), end: string_length(s: ref_name))
+}
+
+test fn a_recording_replays_its_tree_byte_for_byte_and_refuses_inexactly_in_a_real_repository() -> Bool {
+  let repo = shell.Mktemp.Dir()
+  let work = shell.Mktemp.Dir()
+  let observed = repo.success && work.success && replay_over(repo: repo.path as String, work: work.path as String)
+  let cleaned_repo = shell.Remove.RecursiveForce(path: repo.path)
+  let cleaned_work = shell.Remove.RecursiveForce(path: work.path)
+  observed && cleaned_repo.success && cleaned_work.success
+}

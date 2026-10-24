@@ -1,0 +1,314 @@
+module gunbc.dispatch_replay_recording
+
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
+import std.algebra { trim }
+import extdeps.git
+import extdeps.git.plumbing
+import extdeps.git.plumbing {
+  GitRepositoryAddress,
+  GitWorktreeAt,
+  GitParents,
+  GitCreateRefIfAbsent,
+  GitRefMutationOutcome,
+  GitRefMutationApplied,
+  GitRefMutationPreconditionNotHeld,
+  GitRefMutationExecutionRefused,
+  GitRefMutationObservationRefused,
+  GitRefMutationReadBackMismatch,
+  git_ref_mutation_outcome,
+  git_ref_mutation_applied,
+}
+import extdeps.git.object_store { GitRefName, git_object_id_from_untagged_hex }
+import extdeps.systemd.service_exec {
+  ServiceResult,
+  ServiceResultSuccess,
+  ServiceResultProtocol,
+  ServiceResultTimeout,
+  ServiceResultExitCode,
+  ServiceResultSignal,
+  ServiceResultCoreDump,
+  ServiceResultWatchdog,
+  ServiceResultStartLimitHit,
+  ServiceResultResources,
+  ServiceResultOomKill,
+  ServiceResultUnlisted,
+  service_result_of_wire,
+}
+import gunbc.devboot.transport { devboot_repo_address, devboot_observe_ref }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  AttemptExitRecord,
+  AttemptProcessExitedWith,
+  AttemptProcessSignaled,
+}
+
+// A RECORDING IS A COMPLETED ATTEMPT'S END STATE, CAPTURED BY THE CONTROLLER (the replay executor, DESIGN 3 pairing
+// obligation). A recording is the receipt that a real worker emitted this shape: its base, the tree it left, and
+// how its unit ended. A hand-authored fixture would owe a separate claim that a real worker emits that shape;
+// a recording owes none ONCE recording_capture runs, which is why the replay executor takes recordings and nothing else.
+//
+// DECLARED FRONTIER: recording_capture has no executing consumer in this change. Until a belt step after the result
+// commit (or an instrument entry) calls it and a witness runs that route, a recording can only be written by hand,
+// and the 'owes none' claim above is NOT yet established. Trigger: the follow-up PR that binds capture to a
+// completed attempt's belt step. Until then the lab operator writes a recording by calling recording_capture directly.
+//
+// WHERE IT LIVES: refs/gunbc/recordings/<RecordingId> in the controller's repository, a commit whose tree is the
+// result tree and whose single parent is the base. The existing refs/gunbc/ consumers are named single refs
+// (the admitted-revision pointers of gunbc.roadmap.roadmap_dashboard_instance) and the devboot request and produced
+// namespaces; this prefix is disjoint from each, so no existing consumer reads or races a recording.
+//
+// WHO WRITES IT: recording_capture, run by the controller as the controller's own account. A worker unit's
+// ReadWritePaths never include the controller's repository ref store, and the ref is written create-only, so a
+// recording can be neither forged nor moved by the process it later constrains.
+//
+// THE ID IS ITS PREIMAGE, NOT A HASH OF IT: <base>.<result tree>.<exit status>.<manager result>. The same four facts
+// are the same recording and any differing fact is a different ref, so one recording is one fact by construction and
+// replay reads the facts back out of the id it was given without a second record that could disagree.
+type RecordingId {
+  base_sha: NonEmptyStr
+  result_tree: NonEmptyStr
+  exit_status: Int
+  manager_result: ServiceResult
+}
+
+data recording_ref_prefix: String = "refs/gunbc/recordings/"
+
+// Assembled from parts because the braces of git's peel syntax are interpolation in a string literal.
+data recording_peel_to_tree_suffix: String = join(["^", "{", "tree", "}"], "")
+
+data recording_id_separator: String = "."
+
+fn recording_manager_result_word(result: ServiceResult) -> String {
+  match result {
+    ServiceResultSuccess => "success"
+    ServiceResultProtocol => "protocol"
+    ServiceResultTimeout => "timeout"
+    ServiceResultExitCode => "exit-code"
+    ServiceResultSignal => "signal"
+    ServiceResultCoreDump => "core-dump"
+    ServiceResultWatchdog => "watchdog"
+    ServiceResultStartLimitHit => "start-limit-hit"
+    ServiceResultResources => "resources"
+    ServiceResultOomKill => "oom-kill"
+    ServiceResultUnlisted { word } => word
+  }
+}
+
+fn recording_id_text(id: RecordingId) -> String {
+  join(
+    [
+      id.base_sha as String,
+      recording_id_separator,
+      id.result_tree as String,
+      recording_id_separator,
+      to_string(value: id.exit_status),
+      recording_id_separator,
+      recording_manager_result_word(result: id.manager_result),
+    ],
+    "",
+  )
+}
+
+fn recording_ref_of(id: RecordingId) -> String {
+  concat(recording_ref_prefix, recording_id_text(id: id))
+}
+
+type RecordingIdDecode
+  = RecordingIdDecoded { id: RecordingId }
+  | RecordingIdMalformed { text: String, reason: String }
+
+fn recording_id_part(parts: List<String>, index: Int) -> String {
+  match parts.get(index) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn recording_id_decode(text: String) -> RecordingIdDecode {
+  let parts = text.split(delimiter: recording_id_separator)
+  if count(parts) != 4 {
+    RecordingIdMalformed { text: text, reason: join(["a recording id has four '.'-separated parts (base, result tree, exit status, manager result); this has ", to_string(value: count(parts))], "") }
+  } else {
+    let base = recording_id_part(parts: parts, index: 0)
+    let tree = recording_id_part(parts: parts, index: 1)
+    let result_word = recording_id_part(parts: parts, index: 3)
+    match git_object_id_from_untagged_hex(hex: base) {
+      Absent => RecordingIdMalformed { text: text, reason: "the base part is not a git object id" }
+      Present { value: _ } =>
+        match git_object_id_from_untagged_hex(hex: tree) {
+          Absent => RecordingIdMalformed { text: text, reason: "the result tree part is not a git object id" }
+          Present { value: _ } =>
+            match parse_int(text: recording_id_part(parts: parts, index: 2)) {
+              Absent => RecordingIdMalformed { text: text, reason: "the exit status part is not a number" }
+              Present { value: status } =>
+                if string_length(s: result_word) == 0 {
+                  RecordingIdMalformed { text: text, reason: "the manager result part is empty" }
+                } else if status < 0 || status > 255 {
+                  RecordingIdMalformed { text: text, reason: "the exit status is outside 0..255, which no process exit can carry" }
+                } else if status == replay_refusal_exit_code {
+                  RecordingIdMalformed { text: text, reason: "the exit status is the replay refusal code, which an exit record could not tell from a refused replay" }
+                } else if !recording_exit_pair_reproducible(status: status, result: service_result_of_wire(word: result_word)) {
+                  RecordingIdMalformed { text: text, reason: "the manager result does not follow from the exit status, so replaying by exiting could not reproduce it" }
+                } else {
+                  RecordingIdDecoded {
+                    id: RecordingId {
+                      base_sha: base as NonEmptyStr,
+                      result_tree: tree as NonEmptyStr,
+                      exit_status: status,
+                      manager_result: service_result_of_wire(word: result_word),
+                    },
+                  }
+                }
+            }
+        }
+    }
+  }
+}
+
+// THE ONE FACT THE REPLAY OWES THE MANAGER'S WORD: a process that exited 0 ended in 'success' and one that exited
+// nonzero ended in 'exit-code'. A recording whose pair says otherwise was not emitted by a unit that ended by
+// exiting, so it cannot be replayed by exiting -- capture refuses it rather than recording a pair replay
+// could not reproduce.
+fn recording_exit_pair_reproducible(status: Int, result: ServiceResult) -> Bool {
+  match result {
+    ServiceResultSuccess => status == 0
+    ServiceResultExitCode => status != 0
+    ServiceResultProtocol => false
+    ServiceResultTimeout => false
+    ServiceResultSignal => false
+    ServiceResultCoreDump => false
+    ServiceResultWatchdog => false
+    ServiceResultStartLimitHit => false
+    ServiceResultResources => false
+    ServiceResultOomKill => false
+    ServiceResultUnlisted { word: _ } => false
+  }
+}
+
+// The exit code a replay REFUSAL exits with. The exit record keeps only the status, so a recording that carried this
+// status would read the same downstream as a refused replay; capture refuses such a recording, typed.
+data replay_refusal_exit_code: Int = 78
+
+type RecordingCaptureRefusal
+  = RecordingCaptureExitSignaled
+  | RecordingCaptureExitCollidesWithReplayRefusal { status: Int }
+  | RecordingCaptureExitPairNotReproducible { status: Int, manager_result: String }
+  | RecordingCaptureObjectUnusable { object: String, detail: String }
+  | RecordingCaptureAlreadyRecorded { ref_name: String }
+  | RecordingCaptureWriteRefused { ref_name: String, detail: String }
+
+type RecordingCapture
+  = RecordingCaptured { id: RecordingId, ref_name: String }
+  | RecordingCaptureRefused { cause: RecordingCaptureRefusal }
+
+fn recording_capture_write(repo_root: String, id: RecordingId, tree: String, base: String) -> RecordingCapture {
+  let committed = git.Plumbing.CommitTree(
+    address: devboot_repo_address(repo_root: repo_root),
+    tree: tree,
+    parents: GitParents { first: base as NonEmptyStr, remaining: [] },
+    message: concat("replay recording ", recording_id_text(id: id)),
+  )
+  if !(committed.exit_code == 0) {
+    RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: trim(s: committed.stderr) } }
+  } else {
+    let commit_hex = trim(s: committed.commit)
+    match git_object_id_from_untagged_hex(hex: commit_hex) {
+      Absent =>
+        RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: "commit-tree returned an object id this capture cannot decode" } }
+      Present { value: commit_oid } =>
+        let mutation = GitCreateRefIfAbsent { name: recording_ref_of(id: id) as GitRefName, new: commit_oid }
+        let attempted = git.Plumbing.CreateRefIfAbsent(
+          address: devboot_repo_address(repo_root: repo_root),
+          ref_name: recording_ref_of(id: id),
+          new: commit_hex,
+        )
+        let outcome = git_ref_mutation_outcome(
+          mutation: mutation,
+          exit_code: attempted.exit_code,
+          stderr: trim(s: attempted.stderr),
+          observed_after: devboot_observe_ref(repo_root: repo_root, ref_name: recording_ref_of(id: id)),
+        )
+        if git_ref_mutation_applied(outcome: outcome) {
+          RecordingCaptured { id: id, ref_name: recording_ref_of(id: id) }
+        } else {
+          match outcome {
+            GitRefMutationPreconditionNotHeld { mutation: _, observed: _ } =>
+              RecordingCaptureRefused { cause: RecordingCaptureAlreadyRecorded { ref_name: recording_ref_of(id: id) } }
+            GitRefMutationApplied { mutation: _ } =>
+              RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: "applied outcome read as not applied" } }
+            GitRefMutationExecutionRefused { mutation: _, exit_code: _, stderr } =>
+              RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: stderr } }
+            GitRefMutationObservationRefused { mutation: _, exit_code: _, stderr } =>
+              RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: stderr } }
+            GitRefMutationReadBackMismatch { mutation: _, observed: _ } =>
+              RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: "the ref does not hold the recording commit after the write" } }
+          }
+        }
+    }
+  }
+}
+
+// THE CAPTURE OPERATION over a completed attempt's durable records: the base the belt recorded
+// (spawn-destination.json), the result commit the belt committed, and the unit's exit record. It reads the result
+// commit's tree from the object store rather than accepting a tree from the caller, so the recorded tree is the
+// tree of a commit that exists.
+fn recording_capture(repo_root: String, base_sha: String, result_commit: String, exit: AttemptExitRecord) -> RecordingCapture {
+  match exit.end {
+    AttemptProcessSignaled { signal: _ } => RecordingCaptureRefused { cause: RecordingCaptureExitSignaled }
+    AttemptProcessExitedWith { status } =>
+      if status == replay_refusal_exit_code {
+        RecordingCaptureRefused { cause: RecordingCaptureExitCollidesWithReplayRefusal { status: status } }
+      } else if !recording_exit_pair_reproducible(status: status, result: exit.result) {
+        RecordingCaptureRefused {
+          cause: RecordingCaptureExitPairNotReproducible { status: status, manager_result: recording_manager_result_word(result: exit.result) },
+        }
+      } else {
+        match git_object_id_from_untagged_hex(hex: base_sha) {
+          Absent =>
+            RecordingCaptureRefused { cause: RecordingCaptureObjectUnusable { object: base_sha, detail: "the base is not a git object id" } }
+          Present { value: _ } =>
+            recording_capture_read_tree(repo_root: repo_root, base_sha: base_sha, result_commit: result_commit, status: status, exit: exit)
+        }
+      }
+  }
+}
+
+// The result tree is read only after the base is admitted as an object id: the decode refuses a base that is not
+// one (recording_id_decode), so capture refuses it too rather than minting an id the decode would reject.
+fn recording_capture_read_tree(repo_root: String, base_sha: String, result_commit: String, status: Int, exit: AttemptExitRecord) -> RecordingCapture {
+        let tree_read = git.Plumbing.ObserveRef(
+          address: devboot_repo_address(repo_root: repo_root),
+          ref_name: concat(result_commit, recording_peel_to_tree_suffix),
+        )
+        let tree_hex = trim(s: tree_read.revision)
+        match git_object_id_from_untagged_hex(hex: tree_hex) {
+          Absent =>
+            RecordingCaptureRefused { cause: RecordingCaptureObjectUnusable { object: result_commit, detail: trim(s: tree_read.stderr) } }
+          Present { value: _ } =>
+            recording_capture_write(
+              repo_root: repo_root,
+              id: RecordingId {
+                base_sha: base_sha as NonEmptyStr,
+                result_tree: tree_hex as NonEmptyStr,
+                exit_status: status,
+                manager_result: exit.result,
+              },
+              tree: tree_hex,
+              base: base_sha,
+            )
+        }
+}
+
+// REPLAY IS EXACT OR REFUSES. The attempt's base must equal the recording's base byte for byte: no rebase, no
+// merge, no 'close enough'. The comparison is the whole admission, so a mismatch is the typed cause below and
+// nothing downstream of it runs.
+type RecordingReplayAdmission
+  = RecordingReplayAdmitted { id: RecordingId }
+  | RecordingReplayBaseMismatch { recorded_base: String, attempt_base: String }
+
+fn recording_replay_admission(id: RecordingId, attempt_base: String) -> RecordingReplayAdmission {
+  if (id.base_sha as String) == attempt_base {
+    RecordingReplayAdmitted { id: id }
+  } else {
+    RecordingReplayBaseMismatch { recorded_base: id.base_sha as String, attempt_base: attempt_base }
+  }
+}
