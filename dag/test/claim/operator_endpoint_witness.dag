@@ -35,7 +35,7 @@ import gunbc.harness.harness_cli { harness_turn_exit }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_session_recovery { harness_unexplained_refusal }
 import extdeps.http.header_dump { HeaderDumpRead }
-import v2.std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
+import std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
