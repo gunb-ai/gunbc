@@ -14,6 +14,11 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.std.diagnostic {
   Accepted,
+  NodeLocus,
+  Textual,
+  SourcePortLocus,
+  InvariantPortLocus,
+  DeclarationLocus,
   NonEmptyDiagnostics,
   Outcome,
   Rejected,
@@ -29,6 +34,7 @@ import v2.std.diagnostic {
   diagnostics_list_has_reason
 }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.grammar { node_atom_identity_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import std.types { Bool }
@@ -51,6 +57,10 @@ data dr_rec_source: String = "module v2.test.dr.rec\n\ntype Rec { value: Unit }\
 data dr_rec_user_source: String = "module v2.test.dr.rec_user\n\nimport v2.test.dr.rec\nimport v2.test.dr.rec { Rec }\nfn f(x: Rec) -> Rec { x }\n"
 
 data dr_missing_source: String = "module v2.test.dr.missing\n\nfn f(x: Nowhere) -> Int { 1 }\n"
+
+data dr_body_decl_source: String = "module v2.test.dr.body_decl\n\nfn helper(x: Int) -> Int { dr_body_nowhere(x) }\n"
+
+data dr_body_user_source: String = "module v2.test.dr.body_user\n\nimport v2.test.dr.body_decl { helper }\nfn f(x: Int) -> Int { helper(x) }\n"
 
 data dr_p_source: String = "module v2.test.dr.p\n\nimport v2.test.dr.v2lib { Lib }\n"
 
@@ -92,7 +102,9 @@ fn dr_context() -> Outcome<NativeTestContext> {
     dr_read(text: dr_sum_source, id: ^dr_sum, path: "src/v2/test/fixture/dr/sum.dag", root: DagTree),
     dr_read(text: dr_variant_user_source, id: ^dr_variant_user, path: "src/v2/test/fixture/dr/variant_user.dag", root: DagTree),
     dr_read(text: dr_relay_source, id: ^dr_relay, path: "src/v2/test/fixture/dr/relay.dag", root: DagTree),
-    dr_read(text: dr_relay_user_source, id: ^dr_relay_user, path: "src/v2/test/fixture/dr/relay_user.dag", root: DagTree)
+    dr_read(text: dr_relay_user_source, id: ^dr_relay_user, path: "src/v2/test/fixture/dr/relay_user.dag", root: DagTree),
+    dr_read(text: dr_body_decl_source, id: ^dr_body_decl, path: "src/v2/test/fixture/dr/body_decl.dag", root: DagTree),
+    dr_read(text: dr_body_user_source, id: ^dr_body_user, path: "src/v2/test/fixture/dr/body_user.dag", root: DagTree)
   ])
 }
 
@@ -104,6 +116,7 @@ type DrVerdicts {
   nested_user: NativeModuleResolveVerdict
   variant_user: NativeModuleResolveVerdict
   relay_user: NativeModuleResolveVerdict
+  body_user: NativeModuleResolveVerdict
 }
 
 fn dr_verdicts() -> Optional<DrVerdicts> {
@@ -119,7 +132,8 @@ fn dr_verdicts() -> Optional<DrVerdicts> {
           missing: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.missing", path: ^dr_missing).verdict,
           nested_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.nested_user", path: ^dr_nested_user).verdict,
           variant_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.variant_user", path: ^dr_variant_user).verdict,
-          relay_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.relay_user", path: ^dr_relay_user).verdict
+          relay_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.relay_user", path: ^dr_relay_user).verdict,
+          body_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.body_user", path: ^dr_body_user).verdict
         })
       }
   }
@@ -273,5 +287,41 @@ test fn a_declaration_mentioning_a_refused_variant_blocks_its_users() -> Bool {
     Present { value: vs } =>
       dr_refuses_with(v: vs.relay_user, reason: ^resolve_reason_declarer_refused)
         && dr_fatal_declarer(v: vs.relay_user) == "v2.test.dr.relay"
+// THE CHAIN ORDER OF A DECLARER-BODY REFUSAL, PINNED (gunbc.recurring_failure_mode
+// cascade_chain_head_names_a_node_the_importer_never_wrote). The declarer v2.test.dr.body_decl refuses for an
+// unbound name inside its own fn body; the importer only calls helper. Today the importer's chain HEAD is the
+// declarer's own diagnostic, whose node is dr_body_nowhere (a name only the declarer wrote), and the LAST link is
+// declarer_refused naming the declarer. A census filing by the last link attributes it correctly; a reader of the
+// head sees a node the importer never wrote. This control goes red on any reorder, so a fix is deliberate.
+fn dr_head_atom(v: NativeModuleResolveVerdict) -> String {
+  match dr_refused_first(v: v) {
+    Absent => "none"
+    Present { value: d } =>
+      match d.head.at {
+        NodeLocus { anchor: a } =>
+          match node_atom_identity_optional(node: a.at) {
+            Present { value: id } => if id == ^dr_body_nowhere { "dr_body_nowhere" } else { "other-atom" }
+            Absent => "not-an-atom"
+          }
+        Textual { file: _, extent: _ } => "not-a-node-locus"
+        SourcePortLocus { anchor: _, file: _, extent: _ } => "not-a-node-locus"
+        InvariantPortLocus { anchor: _, invariant: _ } => "not-a-node-locus"
+        DeclarationLocus { declaration: _ } => "not-a-node-locus"
+      }
+  }
+}
+
+test fn a_declarer_body_refusal_heads_the_importer_chain_and_declarer_refused_is_last() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      match dr_refused_first(v: vs.body_user) {
+        Absent => false
+        Present { value: d } =>
+          d.head.reason == ^resolve_reason_unbound_symbol
+            && dr_head_atom(v: vs.body_user) == "dr_body_nowhere"
+            && diagnostics_fatal_reason(d: d) == ^resolve_reason_declarer_refused
+            && dr_fatal_declarer(v: vs.body_user) == "v2.test.dr.body_decl"
+      }
   }
 }

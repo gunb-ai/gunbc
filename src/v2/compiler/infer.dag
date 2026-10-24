@@ -5,7 +5,7 @@ import std.types { List, Map }
 import std.primitive_projection { never_type_declaration }
 
 import v2.std.anonymous_binder { TypeVariableOfBinder, TypeVariableOfConstructorUse, TypeVariableRigid, fresh_constructor_use_variable, type_variable_origin }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceSynthetic, occurrence_id_eq }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceSynthetic, ScopedOccurrenceAllocator, alloc_projected_occurrence, occurrence_id_eq, scoped_occurrence_allocator }
 import v2.std.provenance { node_occurrence_id_optional }
 import std.integer { int_to_decimal_string }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
@@ -28,7 +28,7 @@ import v2.compiler.lexical_scope { bind_binder, bind_value }
 import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
 import v2.compiler.body_lowering_fold { TypeDeclModifier, TypeDeclModifierModuleUncovered, TypeDeclModifierRowAbsent, TypeDeclModifierRowPresent, type_decl_modifiers_include_sole_constructor, type_declaration_modifier_row_at }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived, NotDerivedSite, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, ComparisonNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding }
+import v2.compiler.inferred_tree { authored_occurrence_id, RefinementObligation, DerivedGrounding, GroundingNotDerived, NotDerivedSite, BinderTypeNodeUnfacted, BinderTypeUnjudged, DeclarationWrapperEvidenceEdgesAbsent, ProductEvidenceEdgesAbsent, LexicalReferenceValued, LexicalReferenceUntyped, LiteralTypeUnknown, RosterMemberTypeAbsent, ProjectionReceiverUnderived, ReferenceRejectedGrounding, DeclarationReferenceWithoutPath, ReferenceLookupMiss, VariantArmValueNotDerived, CallableEvidenceAbsent, MatchFrontier, ComparisonNotDerived, LiteralPayloadMember, ConstructFieldsUnbound, ConstructFormalsAuthored, ConstructTypeAbsent, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding }
 import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_field_operation_type, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration, ordering_predicate_signature_node }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, KernelStringLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
@@ -60,7 +60,7 @@ import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
-import v2.std.node { BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed, NotADeclaration }
+import v2.std.node { content_hash, node_occurrence_allocator_after, BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, ArrowBodyEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, bind_slot_target, match_positional_slot, match_slot_target, match_role_slots, child_slot_target, positional_child_target_nodes, symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, NotFound, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed, NotADeclaration }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
@@ -193,6 +193,7 @@ type InferGatherFoldAcc {
   children_remaining: Int
   declared_position_expected: Optional<Node>
   rigid_binders: List<Symbol>
+  demands: List<InferLiteralRefinementDemand>
   branch_hold: InferBranchHold
 }
 
@@ -5338,7 +5339,7 @@ fn infer_application_argument_inhabitance(
   bindings: SymbolIndex,
   expected: Optional<Node>,
   rigid_binders: List<Symbol>,
-) -> Outcome<List<TypeVariableInstance>> {
+) -> Outcome<InferApplicationArguments> {
   match infer_application_formals(node: node, entries: entries) {
     FormalsUnresolved =>
       match infer_inhabitance_undecidable_accepted(
@@ -5347,7 +5348,7 @@ fn infer_application_argument_inhabitance(
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: _, diagnostics: d } =>
-          Accepted { value: infer_no_type_variable_instances(), diagnostics: d }
+          Accepted { value: InferApplicationArguments { instances: infer_no_type_variable_instances(), demands: Empty }, diagnostics: d }
       }
     FormalsOrderRefused { reason: reason } =>
       outcome_rejected(application_parameter_order_diagnostic(application: node, reason: reason))
@@ -5371,7 +5372,21 @@ fn infer_application_argument_inhabitance(
             Accepted { value: instances, diagnostics: d } =>
               match infer_application_structure_bounds(node: node, entries: judged, declarations: declarations, bindings: bindings, instances: instances) {
                 Present { value: refusal } => outcome_rejected(refusal)
-                Absent => Accepted { value: instances, diagnostics: d }
+                Absent =>
+                  Accepted {
+                    value: InferApplicationArguments {
+                      instances: instances,
+                      demands: infer_pairs_literal_demands(
+                        position: position_direct_call_argument(),
+                        site: JudgedAtApplication { application: node },
+                        pairs: infer_pairs_callbacks_last(pairs: pairs),
+                        entries: judged,
+                        declarations: declarations,
+                        bindings: bindings
+                      )
+                    },
+                    diagnostics: d
+                  }
               }
           }
       }
@@ -5652,6 +5667,181 @@ fn infer_expected_return_seed(site: InferJudgedSite, entries: Map<Node, List<Inf
   }
 }
 
+// A LITERAL AT A WHERE-REFINEMENT'S OWN CARRIER IS A DEMAND, NOT A JUDGMENT -- THE INTERIM LITERAL-ONLY RULING.
+// `type NonEmptyStr = String where string_non_empty` is satisfied by a string literal exactly when the predicate
+// holds of that literal, which the one evaluator can decide and this stage cannot. So a literal whose own type
+// inhabits the refinement's declared carrier (the one relation, declared_type_inhabitance, not a second
+// equality) is ADMITTED HERE AND OWED: it records one InferLiteralRefinementDemand, which infer_well_formed turns
+// into a RefinementObligation whose application `predicate(literal)` is inferred through this same gather fold
+// and decided by v2.compiler.refinement_discharge. Admission without the recorded demand is unreachable: the
+// judge skips a pair exactly when infer_literal_refinement_demand answers Present, and the same function over the
+// same pairs is what the two producing rows record (infer_pairs_literal_demands).
+// EVERYTHING ELSE STILL REFUSES: a NON-LITERAL value of the carrier type is not a refinement value (its predicate
+// is not decided by anyone), a literal of any other type is judged as before, and a refinement whose where clause
+// is not exactly one zero-argument predicate call is not read here.
+// DIVERGENCE FROM THE 2026-10-02 RETIREMENT RULING, STATED (DESIGN section 3b): that ruling
+// (gunbc.design_ruling where_refinements_retire_for_checked_constructors) said no infer judgment is coming and
+// refinements become checked constructors returning Optional. The operator ruling of 2026-10-23 admits THIS literal-only
+// judgment as an interim scaffold (gunbc.design_ruling literal_only_refinement_judgment_is_interim) because the
+// structural cut for NonEmptyStr has not landed and its literal population is the corpus's largest infer wall.
+// DISSOLUTION: the NonEmptyStr structural cut (checked constructors in place of the where clause); then this demand,
+// its producers and the obligation post-pass are deleted with the clause.
+// POSITIONS COVERED: direct call arguments and record-construct fields -- the two that route through
+// infer_judge_formal_args. Return, let and cast positions still refuse a literal at a refinement.
+type InferLiteralRefinementDemand {
+  site: Node
+  predicate: Node
+  target: Node
+  carrier: Node
+}
+
+type InferApplicationArguments {
+  instances: List<TypeVariableInstance>
+  demands: List<InferLiteralRefinementDemand>
+}
+
+// The callee of the one zero-argument predicate call a where clause states. The clause is the production
+// Conj body_lower_kept_where_clause builds: its captured child is the predicate set, each predicate a
+// Transform whose positional children are the callee then its positional arguments. Absent for any other
+// shape -- several predicates, an argument, a labelled record -- and Absent never admits.
+fn infer_where_sole_predicate(where_clause: Node) -> Optional<Node> {
+  match infer_edge_targets(edges: where_clause.children) {
+    Cons { head: production, tail: Empty } => infer_where_production_sole_predicate(production: production)
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => Absent
+    Empty => Absent
+  }
+}
+
+// THE KEPT CLAUSE (body_lower_kept_where_clause) is a Conj with ONE edge, the where-refinement production,
+// whose captured child is the predicate set; refinement_declaration hands back that wrapper.
+fn infer_where_production_sole_predicate(production: Node) -> Optional<Node> {
+  match find_named_child(root: production, name: ^grammar_production_captured_node_projection) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: set, diagnostics: _ } =>
+      match infer_edge_targets(edges: set.children) {
+        Cons { head: only, tail: Empty } =>
+          match positional_child_target_nodes(node: only) {
+            Cons { head: callee, tail: Empty } => Present { value: callee }
+            Cons { head: _, tail: Cons { head: _, tail: _ } } => Absent
+            Empty => Absent
+          }
+        Cons { head: _, tail: Cons { head: _, tail: _ } } => Absent
+        Empty => Absent
+      }
+  }
+}
+
+fn infer_edge_targets(edges: List<Edge>) -> List<Node> {
+  fold(edges, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e.target) })
+}
+
+fn infer_literal_refinement_demand(
+  position: DeclaredTypePosition,
+  application: Node,
+  pair: InhabitanceFormalArg,
+  entries: Map<Node, List<InferredFacts>>,
+  declarations: SymbolIndex,
+  bindings: SymbolIndex,
+) -> Optional<InferLiteralRefinementDemand> {
+  if !infer_node_is_literal(node: pair.arg) {
+    Absent
+  } else {
+    let target = pair.formal.declared
+    match refinement_declaration(index: declarations, reference: target) {
+      Absent => Absent
+      Present { value: refinement } =>
+        match infer_where_sole_predicate(where_clause: refinement.where_clause) {
+          Absent => Absent
+          Present { value: predicate } =>
+            match lookup_inferred_facts_in_entries(entries: entries, key: pair.arg) {
+              Absent => Absent
+              Present { value: facts } =>
+                match inferred_facts_resolved_type(facts: facts) {
+                  Violates { diagnostic: _ } => Absent
+                  Holds { value: produced } =>
+                    match declared_type_inhabitance(
+                      obligation: infer_declared_type_obligation(
+                        position: position,
+                        parameter_identity: pair.formal.parameter_identity,
+                        declared: refinement.carrier,
+                        produced: produced,
+                        application: application,
+                        type_variables: Empty,
+                        declarations: declarations,
+                        bindings: bindings
+                      )
+                    ) {
+                      Inhabits { homomorphism: _ } =>
+                        Present { value: InferLiteralRefinementDemand { site: pair.arg, predicate: predicate, target: target, carrier: refinement.carrier } }
+                      InhabitanceRefused { find_witness_reason: _ } => Absent
+                      InhabitanceUndecidable { reason: _ } => Absent
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn infer_pairs_literal_demands(
+  position: DeclaredTypePosition,
+  site: InferJudgedSite,
+  pairs: List<InhabitanceFormalArg>,
+  entries: Map<Node, List<InferredFacts>>,
+  declarations: SymbolIndex,
+  bindings: SymbolIndex,
+) -> List<InferLiteralRefinementDemand> {
+  fold(pairs, init: Empty, f: fn(acc, pair) {
+    match infer_literal_refinement_demand(
+      position: position,
+      application: infer_judged_site_node(site: site, actual: pair.arg),
+      pair: pair,
+      entries: entries,
+      declarations: declarations,
+      bindings: bindings
+    ) {
+      Present { value: demand } => list_snoc_item(xs: acc, item: demand)
+      Absent => acc
+    }
+  })
+}
+
+// ONE FORMAL/ACTUAL JUDGMENT. A literal at a where-refined formal is judged against the refinement's CARRIER
+// here (grounding and the instantiation record are the same judgment as any argument's), while its predicate
+// is owed as an obligation by infer_literal_refinement_demand: one judgment, two outputs.
+fn infer_judge_one_formal_arg(
+  judged: InhabitanceFormalArg,
+  pd: Diagnostics,
+  instances: List<TypeVariableInstance>,
+  position: DeclaredTypePosition,
+  site: InferJudgedSite,
+  entries: Map<Node, List<InferredFacts>>,
+  declarations: SymbolIndex,
+  bindings: SymbolIndex,
+  type_params: List<Symbol>,
+  rigid_binders: List<Symbol>,
+) -> Outcome<List<TypeVariableInstance>> {
+          match infer_judge_application_argument_instantiating(
+            position: position,
+            application: infer_judged_site_node(site: site, actual: judged.arg),
+            entries: entries,
+            declarations: declarations,
+            bindings: bindings,
+            formal: judged.formal,
+            arg: judged.arg,
+            type_params: type_params,
+            instances: instances,
+            rigid_binders: rigid_binders
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: next, diagnostics: jd } =>
+              Accepted {
+                value: next,
+                diagnostics: diagnostics_merge(outer: pd, inner: jd)
+              }
+          }
+}
+
 fn infer_judge_formal_args(
   position: DeclaredTypePosition,
   site: InferJudgedSite,
@@ -5670,24 +5860,18 @@ fn infer_judge_formal_args(
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: instances, diagnostics: pd } =>
-          match infer_judge_application_argument_instantiating(
+          match infer_literal_refinement_demand(
             position: position,
             application: infer_judged_site_node(site: site, actual: pair.arg),
+            pair: pair,
             entries: entries,
             declarations: declarations,
-            bindings: bindings,
-            formal: pair.formal,
-            arg: pair.arg,
-            type_params: type_params,
-            instances: instances,
-            rigid_binders: rigid_binders
+            bindings: bindings
           ) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: next, diagnostics: jd } =>
-              Accepted {
-                value: next,
-                diagnostics: diagnostics_merge(outer: pd, inner: jd)
-              }
+            Present { value: demand } =>
+              infer_judge_one_formal_arg(judged: InhabitanceFormalArg { formal: InhabitanceFormal { parameter_identity: pair.formal.parameter_identity, declared: demand.carrier }, arg: pair.arg }, pd: pd, instances: instances, position: position, site: site, entries: entries, declarations: declarations, bindings: bindings, type_params: type_params, rigid_binders: rigid_binders)
+            Absent =>
+              infer_judge_one_formal_arg(judged: pair, pd: pd, instances: instances, position: position, site: site, entries: entries, declarations: declarations, bindings: bindings, type_params: type_params, rigid_binders: rigid_binders)
           }
       }
     }
@@ -5985,6 +6169,7 @@ fn infer_gather_fold_acc_failed(
     children_remaining: children_remaining,
     declared_position_expected: Absent,
     rigid_binders: Empty,
+    demands: Empty,
     branch_hold: infer_no_branch_hold()
   }
 }
@@ -6011,6 +6196,7 @@ fn infer_gather_fold_acc_ok(
     children_remaining: children_remaining,
     declared_position_expected: Absent,
     rigid_binders: Empty,
+    demands: Empty,
     branch_hold: infer_no_branch_hold()
   }
 }
@@ -6028,6 +6214,7 @@ fn infer_gather_stamp_declared_position_expected(acc: InferGatherFoldAcc, expect
     children_remaining: acc.children_remaining,
     declared_position_expected: expected,
     rigid_binders: rigid_binders,
+    demands: acc.demands,
     branch_hold: acc.branch_hold
   }
 }
@@ -6478,9 +6665,28 @@ fn infer_gather_application_row_on_arguments(
         await_transform_row: false,
         children_remaining: 0
       )
-    Accepted { value: instances, diagnostics: id } =>
-      let merged_pending = diagnostics_merge(outer: pending, inner: id)
-      match infer_transform_derived_optional(
+    Accepted { value: judged_args, diagnostics: id } =>
+      infer_gather_acc_with_demands(
+        acc: infer_gather_application_row_on_instances(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved, rigid_binders: rigid_binders, instances: judged_args.instances, argument_diagnostics: id),
+        demands: judged_args.demands
+      )
+  }
+}
+
+fn infer_gather_application_row_on_instances(
+  node: Node,
+  entries: Map<Node, List<InferredFacts>>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  resolved: ResolvedTree,
+  rigid_binders: List<Symbol>,
+  instances: List<TypeVariableInstance>,
+  argument_diagnostics: Diagnostics,
+) -> InferGatherFoldAcc {
+  let id = argument_diagnostics
+  let merged_pending = diagnostics_merge(outer: pending, inner: id)
+  match infer_transform_derived_optional(
         node: node,
         partials: partials,
         entries: entries,
@@ -6541,7 +6747,6 @@ fn infer_gather_application_row_on_arguments(
           rigid_binders: rigid_binders
         )
       }
-  }
 }
 
 fn infer_unsolved_constructor_type_variable_diagnostic(node: Node) -> Diagnostic {
@@ -7349,9 +7554,10 @@ fn infer_disj_is_named_sum(n: Node) -> Bool {
 // call stays judged (a positional deficit still refuses: v2.test.claim.parameter_reference_test
 // pr_ordinary_named_call_deficit_still_refuses). IT IS LOUD, NOT SILENT: each predicate call emits
 // inhabitance_undecidable_where_predicate_subject_unmodelled at its own locus, so the population is counted by
-// execution over any compiled corpus rather than transcribed here. PARKED; NO INFER JUDGMENT IS COMING
-// (gunbc.design_ruling where_refinements_retire_for_checked_constructors): refinements are being deleted, replaced by checked constructors returning
-// Optional. NEXT TRIGGER, NAMING THE CAPABILITY: where-refinement clauses are removed from the language in
+// execution over any compiled corpus rather than transcribed here. PARKED, with ONE INTERIM EXCEPTION:
+// the literal-only demand (InferLiteralRefinementDemand, operator ruling 2026-10-23) infers a synthetic
+// `predicate(literal)` of its own, never these in-clause calls. The 2026-10-02 ruling stands for everything else:
+// refinements are being deleted, replaced by checked constructors returning Optional (gunbc.design_ruling where_refinements_retire_for_checked_constructors). NEXT TRIGGER, NAMING THE CAPABILITY: where-refinement clauses are removed from the language in
 // favour of checked constructors returning Optional, SUFFICIENT FOR no where-predicate call to reach infer --
 // then this arm and its reason are deleted with the clause.
 fn infer_where_predicate_set_edge(parent: Node, edge: Edge) -> Bool {
@@ -7407,6 +7613,7 @@ fn infer_gather_fold_step(
     infer_gather_fold_step_merged(
       acc: acc,
       merged_entries: acc.entries,
+      merged_demands: acc.demands,
       merged_pending: acc.pending,
       partials: partials,
       kinds: kinds,
@@ -7416,6 +7623,7 @@ fn infer_gather_fold_step(
     infer_gather_fold_step_merged(
       acc: acc,
       merged_entries: acc.entries,
+      merged_demands: acc.demands,
       merged_pending: diagnostics_merge(outer: acc.pending, inner: infer_where_predicate_calls_unjudged(set: edge.target)),
       partials: partials,
       kinds: kinds,
@@ -7451,6 +7659,7 @@ fn infer_gather_fold_step(
         infer_gather_fold_step_merged(
           acc: acc,
           merged_entries: inferred_facts_index_enter(index: acc.entries, entry: domain_entry),
+          merged_demands: acc.demands,
           merged_pending: acc.pending,
           partials: partials,
           kinds: kinds,
@@ -7480,6 +7689,7 @@ fn infer_gather_fold_step_arm(
           hold: InferBranchHold { held: list_snoc_item(xs: acc.branch_hold.held, item: InferHeldArm { edge: edge, settled: child, open_type: open_type }) }
         ),
         merged_entries: acc.entries,
+        merged_demands: concat(acc.demands, child.demands),
         merged_pending: acc.pending,
         partials: partials,
         kinds: kinds,
@@ -7506,6 +7716,7 @@ fn infer_gather_fold_step_unheld(
         infer_gather_fold_step_merged(
           acc: acc,
           merged_entries: concat_inferred_facts_entries(a: acc.entries, b: child.entries),
+          merged_demands: concat(acc.demands, child.demands),
           merged_pending: diagnostics_merge(outer: acc.pending, inner: child.pending),
           partials: partials,
           kinds: kinds,
@@ -7541,6 +7752,7 @@ fn infer_gather_literal_payload_step(
       infer_gather_fold_step_merged(
         acc: acc,
         merged_entries: concat_inferred_facts_entries(a: acc.entries, b: payload_entries),
+        merged_demands: acc.demands,
         merged_pending: acc.pending,
         partials: partials,
         kinds: kinds,
@@ -7549,7 +7761,51 @@ fn infer_gather_literal_payload_step(
   }
 }
 
+// THE ONE FUNNEL A NODE'S SETTLED ROW IS REACHED THROUGH, so it is the one place the demands its
+// children recorded join the row's own: every row below builds its acc from entries alone, and
+// infer_gather_acc_with_demands puts the merged demands back on whatever acc the row returned, BESIDE the demands
+// that row itself recorded (every row's acc is fresh, so an overwrite would drop the application row's own demand).
 fn infer_gather_fold_step_merged(
+  acc: InferGatherFoldAcc,
+  merged_entries: Map<Node, List<InferredFacts>>,
+  merged_demands: List<InferLiteralRefinementDemand>,
+  merged_pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  resolved: ResolvedTree,
+) -> InferGatherFoldAcc {
+  infer_gather_acc_with_demands(
+    acc: infer_gather_fold_step_row(
+      acc: acc,
+      merged_entries: merged_entries,
+      merged_pending: merged_pending,
+      partials: partials,
+      kinds: kinds,
+      resolved: resolved
+    ),
+    demands: merged_demands
+  )
+}
+
+fn infer_gather_acc_with_demands(acc: InferGatherFoldAcc, demands: List<InferLiteralRefinementDemand>) -> InferGatherFoldAcc {
+  InferGatherFoldAcc {
+    node: acc.node,
+    entries: acc.entries,
+    failed: acc.failed,
+    pending: acc.pending,
+    await_branch_row: acc.await_branch_row,
+    await_match_row: acc.await_match_row,
+    await_loop_row: acc.await_loop_row,
+    await_transform_row: acc.await_transform_row,
+    children_remaining: acc.children_remaining,
+    declared_position_expected: acc.declared_position_expected,
+    rigid_binders: acc.rigid_binders,
+    demands: concat(acc.demands, demands),
+    branch_hold: acc.branch_hold
+  }
+}
+
+fn infer_gather_fold_step_row(
   acc: InferGatherFoldAcc,
   merged_entries: Map<Node, List<InferredFacts>>,
   merged_pending: Diagnostics,
@@ -7624,6 +7880,7 @@ fn infer_gather_with_branch_hold(acc: InferGatherFoldAcc, hold: InferBranchHold)
     children_remaining: acc.children_remaining,
     declared_position_expected: acc.declared_position_expected,
     rigid_binders: acc.rigid_binders,
+    demands: acc.demands,
     branch_hold: hold
   }
 }
@@ -8428,13 +8685,22 @@ fn infer_record_construct_type(
 type InferConstructedFacts {
   facts: InferredFacts
   entries: Map<Node, List<InferredFacts>>
+  demands: List<InferLiteralRefinementDemand>
 }
 
 fn infer_constructed_from_facts(inner: Outcome<InferredFacts>, entries: Map<Node, List<InferredFacts>>) -> Outcome<InferConstructedFacts> {
+  infer_constructed_from_facts_demanding(inner: inner, entries: entries, demands: Empty)
+}
+
+fn infer_constructed_from_facts_demanding(
+  inner: Outcome<InferredFacts>,
+  entries: Map<Node, List<InferredFacts>>,
+  demands: List<InferLiteralRefinementDemand>,
+) -> Outcome<InferConstructedFacts> {
   match inner {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: facts, diagnostics: d } =>
-      Accepted { value: InferConstructedFacts { facts: facts, entries: entries }, diagnostics: d }
+      Accepted { value: InferConstructedFacts { facts: facts, entries: entries, demands: demands }, diagnostics: d }
   }
 }
 
@@ -8624,7 +8890,7 @@ fn infer_construct_facts_on_entries(
                       match infer_entries_instantiate_actuals(entries: entries, pairs: pairs, instances: instances) {
                         Rejected { diagnostics: r } => Rejected { diagnostics: r }
                         Accepted { value: instantiated_entries, diagnostics: id } =>
-                          infer_constructed_from_facts(
+                          infer_constructed_from_facts_demanding(
                             inner: bind_outcome_accepted(
                               od: diagnostics_merge(outer: diagnostics_merge(outer: cd, inner: jd), inner: id),
                               inner: match infer_record_construct_type(
@@ -8643,7 +8909,15 @@ fn infer_construct_facts_on_entries(
                                   inferred_facts_not_derived(site: ConstructTypeAbsent, node: node, descent: Holds { value: descent_proof })
                               }
                             ),
-                            entries: instantiated_entries
+                            entries: instantiated_entries,
+                            demands: infer_pairs_literal_demands(
+                              position: position_record_field(record: record),
+                              site: JudgedAtEachActual,
+                              pairs: pairs,
+                              entries: entries,
+                              declarations: declarations,
+                              bindings: bindings
+                            )
                           )
                       }
                   }
@@ -8697,18 +8971,21 @@ fn infer_gather_constructed_facts_row(
             children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
-          infer_gather_fold_acc_ok(
-            node: node,
-            entries: inferred_facts_index_enter(index: row.entries, entry: entry),
-            pending: diagnostics_merge(
-              outer: diagnostics_merge(outer: pending, inner: d),
-              inner: ed
+          infer_gather_acc_with_demands(
+            acc: infer_gather_fold_acc_ok(
+              node: node,
+              entries: inferred_facts_index_enter(index: row.entries, entry: entry),
+              pending: diagnostics_merge(
+                outer: diagnostics_merge(outer: pending, inner: d),
+                inner: ed
+              ),
+              await_branch_row: false,
+              await_match_row: false,
+              await_loop_row: false,
+              await_transform_row: false,
+              children_remaining: 0
             ),
-            await_branch_row: false,
-            await_match_row: false,
-            await_loop_row: false,
-            await_transform_row: false,
-            children_remaining: 0
+            demands: row.demands
           )
       }
   }
@@ -10379,6 +10656,7 @@ fn infer_gather_framed_init(acc: InferGatherFoldAcc, frame: InferFrame) -> Infer
         children_remaining: stamped.children_remaining,
         declared_position_expected: stamped.declared_position_expected,
         rigid_binders: stamped.rigid_binders,
+        demands: stamped.demands,
         branch_hold: stamped.branch_hold
       }
     InferFrameEnteredRefused { refused: r } =>
@@ -10416,17 +10694,20 @@ fn infer_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
   canonical_grounding_admits_infer_facts(grounding: grounding)
 }
 
-fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<Map<Node, List<InferredFacts>>> {
+fn infer_gather_for_tree(tree: ResolvedTree) -> InferGatherFoldAcc {
   let partials = partial_bounded_lattice_instances_in_tree(tree: tree.root)
   let kinds = infer_language_inhabitants_kind_index()
-  infer_gather_acc_to_outcome(
-    acc: fold_node_dependent(n: tree.root, ctx: infer_root_frame(), algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, resolved: tree))
-  )
+  fold_node_dependent(n: tree.root, ctx: infer_root_frame(), algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, resolved: tree))
+}
+
+fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<Map<Node, List<InferredFacts>>> {
+  infer_gather_acc_to_outcome(acc: infer_gather_for_tree(tree: tree))
 }
 // INFER'S OUTPUT IS THE OBLIGATED FORM, never an InferredTree: v2.compiler.refinement_discharge
-// discharge_refinement_obligations is the one route onward. No obligation is recorded yet -- the
-// producer is the literal-into-refinement cast arm, which lands once where-predicates bind to their
-// declarations (node adhoc-46630399-82b); until then every tree discharges with nothing to evaluate.
+// discharge_refinement_obligations is the one route onward. The only obligation producer is the
+// producer is the interim literal-only judgment (InferLiteralRefinementDemand): a literal at a
+// where-refinement's carrier, as a call argument or a record field, records `predicate(literal)` for
+// discharge to evaluate; every other tree discharges with nothing to evaluate.
 // INFER ADMITS ONLY A WELL-FORMED TREE. Resolve refuses an ill-formed root, but infer is also entered
 // directly with a ResolvedTree, so the Node-admission wall (v2.std.node well_formed -- including A4's
 // Named-binder domain without an order edge) is held here too, and the rung is the same on every path.
@@ -10456,7 +10737,8 @@ fn infer_malformed_tree_diagnostic(n: Node) -> Diagnostic {
 // evidence is dropped by the short-circuit.
 fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
   let sealed = infer_sole_constructor_diags(tree: tree)
-  match infer_entries_for_tree(tree: tree) {
+  let gathered = infer_gather_for_tree(tree: tree)
+  match infer_gather_acc_to_outcome(acc: gathered) {
     Rejected { diagnostics: r } =>
       match sealed {
         None => Rejected { diagnostics: r }
@@ -10475,16 +10757,121 @@ fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
               Rejected { diagnostics: non_empty_diagnostics_append(a: da, b: ned) }
           }
         None =>
-          Accepted {
-            value: ObligatedInferredTree {
-              root: tree.root,
-              facts: facts_partial_function_of_index(index: entries),
-              obligations: Empty
-            },
-            diagnostics: d
+          match infer_demands_to_obligations(tree: tree, entries: entries, demands: gathered.demands) {
+            Rejected { diagnostics: dr } =>
+              match d {
+                None => Rejected { diagnostics: dr }
+                Some { diagnostics: da } => Rejected { diagnostics: non_empty_diagnostics_append(a: da, b: dr) }
+              }
+            Accepted { value: ready, diagnostics: dd } =>
+              Accepted {
+                value: ObligatedInferredTree {
+                  root: tree.root,
+                  facts: facts_partial_function_of_index(index: ready.entries),
+                  obligations: ready.obligations
+                },
+                diagnostics: diagnostics_merge(outer: d, inner: dd)
+              }
           }
       }
   }
+}
+
+type InferDemandsDischargeable {
+  allocator: ScopedOccurrenceAllocator
+  entries: Map<Node, List<InferredFacts>>
+  obligations: List<RefinementObligation>
+}
+
+// THE OBLIGATION POST-PASS. Each demand becomes one RefinementObligation whose application is the closed call
+// `predicate(literal)`, a synthetic Transform that is inferred through THIS stage's own gather fold (not read
+// by a second route) so discharge evaluates it over real facts. Its occurrence is PROJECTED from the literal's
+// authored occurrence by the existing allocator, computed once past the tree's ceiling; a literal with no
+// authored occurrence cannot be placed and refuses, never drops its demand. The synthetic nodes' facts join the
+// tree's index only where the tree holds none (the literal and the predicate callee may already have an entry).
+// No demand, no work: the common tree returns its entries untouched.
+fn infer_demands_to_obligations(
+  tree: ResolvedTree,
+  entries: Map<Node, List<InferredFacts>>,
+  demands: List<InferLiteralRefinementDemand>,
+) -> Outcome<InferDemandsDischargeable> {
+  let fresh = InferDemandsDischargeable {
+    allocator: scoped_occurrence_allocator(alloc: node_occurrence_allocator_after(root: tree.root), scope: content_hash(n: tree.root)),
+    entries: entries,
+    obligations: Empty
+  }
+  match demands {
+    Empty => outcome_accepted(value: InferDemandsDischargeable { allocator: fresh.allocator, entries: entries, obligations: Empty })
+    Cons { head: _, tail: _ } =>
+      let partials = partial_bounded_lattice_instances_in_tree(tree: tree.root)
+      let kinds = infer_language_inhabitants_kind_index()
+      fold(
+        demands,
+        init: Accepted { value: fresh, diagnostics: None },
+        f: fn(acc, demand) {
+          match acc {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: state, diagnostics: pd } =>
+              match authored_occurrence_id(n: demand.site) {
+                Absent =>
+                  outcome_rejected(Diagnostic {
+                    reason: ^infer_reason_refinement_demand_site_unplaceable,
+                    at: node_locus(node: demand.site),
+                    correction: Unavailable { reason: CorrectionNotModeled }
+                  })
+                Present { value: source } =>
+                  let allocated = alloc_projected_occurrence(allocator: state.allocator, source: source)
+                  let application = node_with_occurrence_id(
+                    kind: ComputationNode { behavior: Transform },
+                    children: [
+                      Edge { label: Positional, target: demand.predicate, declaration: NotADeclaration },
+                      Edge { label: Positional, target: demand.site, declaration: NotADeclaration }
+                    ],
+                    occurrence_id: allocated.identity
+                  )
+                  match infer_gather_acc_to_outcome(
+                    acc: fold_node_dependent(
+                      n: application,
+                      ctx: infer_root_frame(),
+                      algebra: infer_gather_fold_algebra(partials: partials, kinds: kinds, resolved: tree)
+                    )
+                  ) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: inferred, diagnostics: sd } =>
+                      Accepted {
+                        value: InferDemandsDischargeable {
+                          allocator: allocated.allocator,
+                          entries: infer_entries_adopt_absent(into: state.entries, from: inferred),
+                          obligations: list_snoc_item(xs: state.obligations, item: RefinementObligation {
+                            site: demand.site,
+                            application: application,
+                            target: demand.target
+                          })
+                        },
+                        diagnostics: diagnostics_merge(outer: pd, inner: sd)
+                      }
+                  }
+              }
+          }
+        }
+      )
+  }
+}
+
+fn infer_entries_adopt_absent(
+  into: Map<Node, List<InferredFacts>>,
+  from: Map<Node, List<InferredFacts>>,
+) -> Map<Node, List<InferredFacts>> {
+  fold_list(xs: map_support_keys(m: from), empty: into, cons: fn(acc, key) {
+    match map_lookup(m: acc, key: key) {
+      Present { value: _ } => acc
+      Absent =>
+        match map_lookup(m: from, key: key) {
+          Present { value: held } => map_insert(m: acc, key: key, value: held)
+          Absent => acc
+        }
+    }
+  })
 }
 
 // ===================================================================

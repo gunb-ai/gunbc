@@ -67,19 +67,3 @@ fn finish_reconciliation(session:PrinterCredentialSession,remote:NonEmptyStr,ver
   other=>other
  }
 }
-
-// Fleet scheduling returns after publication and observes each start on later
-// fleet-wide passes. Single-printer callers retain the bounded confirmation route.
-type StartObservationPolicy = ConfirmBeforeReturn | ObserveOnFleetTicks
-fn record_publication(policy:StartObservationPolicy,session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,token_source:AccessTokenSource,evidence_prefix:String,publish_standing:String,cleanup_issue:String) -> ProcessExit {
- match policy {
-  ConfirmBeforeReturn=>reconcile_start(session:session,remote:remote,version:version,digest:digest,token_source:token_source,evidence_prefix:evidence_prefix,publish_standing:publish_standing,cleanup_issue:cleanup_issue)
-  ObserveOnFleetTicks=>{
-   let standing=join(["publication-awaiting-observation; publisher: ",publish_standing,"; cleanup: ",cleanup_issue],"")
-   match write_receipt_at(path:concat(evidence_prefix,".receipt.json"),printer:session_printer(s:session),standing:standing,version:version,remote:remote as String,digest:digest,token_source:token_source) {
-    ExitSuccess=>if cleanup_issue=="" {ExitSuccess} else {exit_failure(reason:"Publication attempted but cleanup failed; retain claim and inspect")}
-    other=>other
-   }
-  }
- }
-}
