@@ -46,7 +46,20 @@ import v1.compiler.emit_core_support { to_string }
 // sites and nothing read it, which is the DESIGN.md section 6 experimental-residue tell. The
 // conflation described above is real and unfixed; the code that fixes it is quarry in that PR.
 // Rebuild it when a decision actually needs to distinguish the two states, and land them together.
-type EdgeKind = Consumed | Read | Threaded | Projected
+//
+// PassedByValue IS THAT DECISION, AND ITS CONSUMER IS build_movable_set. A bare binding handed as
+// an argument to a call is an owned value going into a by-value parameter: in the emitted Rust every
+// declared callee parameter, and every bridge that is not passes_by_ref, takes its argument by
+// value. Recorded as Read, the argument was cloned even at the binding's last use, and a clone of an
+// Rc-held persistent vector makes the callee's make_mut copy the tail chunk on every push: measured
+// on the emitted list_map (fold_list + list_push), 16000 of 16000 pushes saw a shared Rc and the walk
+// ran 9.1x host; with the last-use clones moved, 0 of 16000 and 1.43x
+// (gunbc.recurring_failure_mode a_last_use_argument_is_cloned_into_a_by_value_parameter).
+// It is NOT Consumed: semantic_consumer_count keys SharedError, which v1.compiler.compile reports
+// as an OwnershipViolation, and `f(x)` beside `g(x)` is two ordinary reads, not a violation. A method
+// RECEIVER stays Read: receiver lowerings go through templates that are not audited for splicing the
+// receiver once, so a moved receiver could be used twice in the emitted text; that is the frontier.
+type EdgeKind = Consumed | Read | Threaded | Projected | PassedByValue
 
 type EdgeClassification {
   kind: EdgeKind
@@ -135,9 +148,13 @@ fn max_usage_by_fan_out(a: BindingUsage, b: BindingUsage) -> BindingUsage {
   let b_is_larger = binding_fan_out(usage: b) > binding_fan_out(usage: a)
   let selected = if b_is_larger { b } else { a }
   let other = if b_is_larger { a } else { b }
+  // A by-value argument on the other path is carried exactly as a Read is: dropping it would let a
+  // path that moves the value into a call and then consumes it pass for a single consume. Carrying
+  // it can make two exclusive moves read as two uses, which only keeps a clone.
   let missing_reads = other.consumers |> filter(edge =>
     match edge.kind {
       Read => selected.consumers |> any(existing => existing.kind == Read && existing.span_start == edge.span_start && existing.site == edge.site) == false
+      PassedByValue => selected.consumers |> any(existing => existing.kind == PassedByValue && existing.span_start == edge.span_start && existing.site == edge.site) == false
       _ => false
     }
   )
@@ -218,7 +235,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
         )
       } else {
         texpr.children |> fold(init: accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
+          walk_call_argument(accum: acc, arg: arg_value(n: a), si: si)
         )
       }
 
@@ -329,6 +346,17 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
   }
 }
 
+// A bare binding in argument position is handed over by value; any other argument expression is
+// walked as before, so a binding inside it (a field, a nested call's own argument) is classified by
+// its own position.
+fn walk_call_argument(accum: UsageAccum, arg: Node, si: Map<String, NewlineIndex>) -> UsageAccum {
+  match arg.expr_data {
+    ExprVar { binding_kind: bk } =>
+      record_use(accum: accum, name: expr_var_name_at(texpr: arg, source_indices: si), kind: PassedByValue, site: "argument", binding_kind: bk, span_start: arg.span.start)
+    _ => walk_expr(accum: accum, texpr: arg, in_tail: false, si: si)
+  }
+}
+
 fn make_decision(usage: BindingUsage) -> OwnershipDecision {
   let sc = semantic_consumer_count(usage: usage)
   if sc == 1 {
@@ -358,15 +386,29 @@ fn is_owned_local(kind: VarBindingKind?) -> Bool {
   }
 }
 
+// Every use that needs the whole value other than the one move: a by-value argument is one, or a
+// tail Consumed beside it (`let_body(texpr: body)` then `body` on another arm) would move the value
+// into the call and then return it. Leaving PassedByValue out of this count did exactly that to
+// fold_terminal_expr on the first regen round (rustc E0382, use of moved value `body`).
 fn whole_value_borrow_count(usage: BindingUsage) -> Int {
-  usage.consumers |> filter(c => match c.kind { Read => true, Threaded => true, _ => false }) |> count
+  usage.consumers |> filter(c => match c.kind { Read => true, Threaded => true, PassedByValue => true, _ => false }) |> count
+}
+
+// A binding whose ONE use is a by-value argument is moved there. One edge on the selected path means
+// nothing reads it before or after the call (a read inside a lambda or loop body surfaces here as a
+// capture Read, so a use that executes more than once is never the only edge), and branch merging
+// keeps one path's edges, so a move on each of two exclusive branches is still one. Exactly one
+// edge also keeps this disjoint from build_read_only_params, which needs a fan-out above one.
+fn moved_at_its_only_argument(usage: BindingUsage) -> Bool {
+  (usage.consumers |> count) == 1 && usage.consumers |> all(c => c.kind == PassedByValue)
 }
 
 fn build_movable_set(proof: OwnershipProof, param_names: Set<String>) -> Set<String> {
   proof.bindings |> map_values
     |> filter(usage =>
-      (match make_decision(usage: usage) { SoleOwner { binding: _, site: _ } => true, _ => false })
-      && whole_value_borrow_count(usage: usage) == 0
+      (((match make_decision(usage: usage) { SoleOwner { binding: _, site: _ } => true, _ => false })
+        && whole_value_borrow_count(usage: usage) == 0)
+        || moved_at_its_only_argument(usage: usage))
       && (is_owned_local(kind: usage.binding_kind) || set_contains(param_names, usage.name)))
     |> fold(init: empty_set(), f: (acc, usage) => set_insert(acc, usage.name))
 }
@@ -377,7 +419,7 @@ fn build_read_only_params(proof: OwnershipProof, param_names: Set<String>) -> Se
       set_contains(param_names, usage.name)
       && is_owned_local(kind: usage.binding_kind)
       && binding_fan_out(usage: usage) > 1
-      && usage.consumers |> all(c => match c.kind { Read => true, Projected => true, Threaded => true, _ => false })
+      && usage.consumers |> all(c => match c.kind { Read => true, Projected => true, Threaded => true, PassedByValue => true, _ => false })
     )
     |> fold(init: empty_set(), f: (acc, usage) => set_insert(acc, usage.name))
 }
@@ -694,8 +736,13 @@ fn analyze_dying_base_sites(params: List<Node>, body: Node, si: Map<String, Newl
 }
 
 fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<String, NewlineIndex>) -> OwnershipProof {
-  let initial = params |> fold(init: empty_usage_accum(), f: (acc, p) =>
-    let p_name = authored_name_at(source_indices: si, node: p)
+  analyze_ownership_of_names(func_name: func_name, param_names: params |> map(p => authored_name_at(source_indices: si, node: p)), body: body, si: si)
+}
+
+// The same proof keyed by parameter NAME, for a lambda, whose parameters are names rather than
+// declaration nodes (v1.compiler.emit_rust user_call_lambda_emit_info).
+fn analyze_ownership_of_names(func_name: String, param_names: List<String>, body: Node, si: Map<String, NewlineIndex>) -> OwnershipProof {
+  let initial = param_names |> fold(init: empty_usage_accum(), f: (acc, p_name) =>
     UsageAccum {
       bindings: map_insert(acc.bindings, p_name, BindingUsage { name: p_name, binding_kind: none, consumers: [] }),
       fold_call_nodes: acc.fold_call_nodes,

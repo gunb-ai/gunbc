@@ -253,7 +253,7 @@ import v1.compiler.resolve { get_exported_names }
 import v1.compiler.infer_resolve {
   resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position,
 }
-import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs, analyze_dying_base_sites }
+import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs, analyze_dying_base_sites }
 import std.induction { SubValueUnknown, InductiveField }
 
 import v1.compiler.emit {
@@ -13194,6 +13194,25 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
   }
 }
 
+// A LAMBDA BOUND TO A DECLARED CALLEE'S PARAMETER OWNS ITS ARGUMENTS. That parameter is emitted as
+// `impl Fn(A, T) -> R`, so each call hands the closure fresh owned values, and a parameter the body
+// uses once, by value, may be moved there instead of cloned: the accumulator of a fold_list step is
+// the specimen (v1.compiler.ownership PassedByValue says what the clone cost). The function's own
+// proof cannot say this, because it records every name in a lambda body as a capture Read, so the
+// lambda gets its own proof over its own parameters. Only parameters are admitted: any other name the
+// body reads is a capture, and a capture never moves out of an Fn closure. This route only, and not
+// the collection lambdas, whose parameters borrow from `.iter()`, where a move is a type error.
+fn user_call_lambda_emit_info(arg: Node, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> EmitGraphInfo {
+  match arg.expr_data {
+    ExprLambda =>
+      let ps = lambda_param_names_at(texpr: arg, source_indices: si)
+      let proof = analyze_ownership_of_names(func_name: "", param_names: ps, body: lambda_body(texpr: arg), si: si)
+      let local = build_movable_set(proof: proof, param_names: ps |> fold(init: empty_set(), f: (acc, p) => set_insert(acc, p)))
+      with(emit_info, { movable: ps |> filter(p => set_contains(local, p)) |> fold(init: empty_set(), f: (acc, p) => set_insert(acc, p)) })
+    _ => emit_info
+  }
+}
+
 // `func_ident` BELOW IS THE ONE SEAM THAT MUST PRODUCE AN IDENTIFIER, AND THEREFORE THE ONE
 // THAT REFUSES. The owner carried on a SourceDeclarationCall is exact, so no registry
 // disambiguation is needed and none is consulted: the duplicate-qualified-key marker exists
@@ -13520,10 +13539,11 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
-    let arg_emit_info = match application_plan |> skip(idx) |> first {
+    let typed_emit_info = match application_plan |> skip(idx) |> first {
       Present { value: application } => emit_info_with_expected_type(emit_info: emit_info, expected_type: Present { value: application.formal.substitution_basis })
       Absent => emit_info
     }
+    let arg_emit_info = if callee != none && !is_rt { user_call_lambda_emit_info(arg: arg_value(n: a), emit_info: typed_emit_info, si: scope.type_env.source_indices) } else { typed_emit_info }
     let arg_scope = lambda_argument_scope(arg: arg_value(n: a), scope: scope)
     if is_rt_ref_map && idx == 0 {
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: arg_emit_info)
