@@ -1219,10 +1219,11 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
 // widen an answer or substitute a reading -- but contributing nothing SILENTLY was the absorbing fallback's
 // other half: a consumer's miss could not say the provider never resolved, so the provider's defect never
 // ranked. Its module and its first refusal chain are recorded (ClosureProviderRefusal) and reach every
-// lookup miss through v2.compiler.resolve resolved_tree_unavailable_provider. A provider that cannot resolve simply has
-// no resolved declarations to offer, so a receiver typed by one of its records refuses at
-// infer_reason_projection_receiver_declaration_unavailable -- the located refusal that names missing
-// evidence.
+// lookup miss through v2.compiler.resolve resolved_tree_unavailable_provider. A provider that cannot resolve has no
+// resolved declarations to offer, and every declaration that mentions one of them -- through any declaration
+// it sits in, a refused coproduct's variant included (closure_callee_blocking_refusal) -- is blocked too, so a
+// subject naming any of them refuses at RESOLVE, resolve_reason_declarer_refused carrying the provider's chain
+// (v2.compiler.resolve unavailable_provider_for_path), the located refusal that names the missing evidence.
 //
 // THIS IS THE ONE-SEAT FORM OF A DEPENDENCY THE DEMAND ENGINE OWNS. Infer(module) depends on
 // Resolve(module) AND Resolve(each provider it consumes); here that is discharged by resolving the whole

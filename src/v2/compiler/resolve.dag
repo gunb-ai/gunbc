@@ -122,22 +122,6 @@ fn declaration_available(outcomes: List<ModuleOutcome>, path: QualifiedName) -> 
   })
 }
 
-fn module_outcomes_provider_refusals(outcomes: List<ModuleOutcome>) -> List<ClosureProviderRefusal> {
-  fold_list(xs: outcomes, empty: [], cons: fn(acc, o) {
-    match o {
-      ModuleUnavailable { module: m, refusal: r } =>
-        list_snoc_item(xs: acc, item: ClosureProviderRefusal { module: m, refusal: r })
-      ModuleObserved { module: m, declarations: ds } =>
-        fold_list(xs: ds, empty: acc, cons: fn(a, d) {
-          match d {
-            DeclarationAvailable { path: _ } => a
-            DeclarationRefused { path: _, refusal: r } =>
-              list_snoc_item(xs: a, item: ClosureProviderRefusal { module: m, refusal: r })
-          }
-        })
-    }
-  })
-}
 
 // THE PATH-KEYED GROUPING OF THE ROSTER. A reference lookup asks about one path or one module, so
 // the roster is grouped once per closure (module_outcome_index) and every per-name read is a map
