@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.unresolved_variant_pattern_renders_as_a_catc
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data unresolved_variant_pattern_renders_as_a_catch_all_binding: RecurringFailureMode = RecurringFailureMode {
   identity: "unresolved_variant_pattern_renders_as_a_catch_all_binding" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "an emitted Rust match arm whose variant pattern is rendered as a BARE identifier because its parent enum did not resolve (INVALID STATE: in Rust a bare identifier in pattern position that names no unit struct or in-scope variant is a fresh binding, so `Add => ...` with no `BinOp::*` in scope matches every scrutinee. HARM: the first such arm silently takes every value -- wrong-arm execution in the emitted program, with rustc reporting only unused-variable / unreachable-pattern WARNINGS, so a build without -D warnings ships it).",

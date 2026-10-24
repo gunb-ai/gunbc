@@ -24,7 +24,7 @@ import std.optional {
   optional_present
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Disj, Arrow, Instantiation, Atom, Conj, Edge, EdgeLabel, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, LexicalReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, Authored, core_edge_label, StructuralLabel, ComputationNode, fold_list_node, positional_child_target_nodes }
+import v2.std.node { Disj, Arrow, Instantiation, Atom, Conj, Edge, EdgeLabel, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, LexicalReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, Authored, core_edge_label, StructuralLabel, ComputationNode, fold_list_node, positional_child_target_nodes, NotADeclaration }
 import v2.std.text { String }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -523,7 +523,8 @@ fn lexical_reference_node(label: Symbol, occurrence_id: NodeOccurrenceIdentity) 
     children: [
       Edge {
         label: core_edge_label(marker: resolved_reference_kind_marker(kind: LexicalReferenceKind)),
-        target: node_synthetic(kind: TypeNode { connective: Atom { identity: label } }, children: [])
+        target: node_synthetic(kind: TypeNode { connective: Atom { identity: label } }, children: []),
+        declaration: NotADeclaration
       },
     ],
     occurrence_id: occurrence_id
@@ -549,7 +550,8 @@ fn resolved_reference_node_of_kind(kind: ResolvedReferenceKind, qn: QualifiedNam
     children: [
       Edge {
         label: core_edge_label(marker: resolved_reference_kind_marker(kind: kind)),
-        target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic)
+        target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic),
+        declaration: NotADeclaration
       },
     ],
     occurrence_id: occurrence_id
@@ -599,6 +601,14 @@ fn optional_declaration_identity() -> QualifiedName {
     symbol_intern_lexeme(lexeme: "optional"),
     symbol_intern_lexeme(lexeme: "Optional")
   ]
+}
+
+// THE ABSENT VARIANT OF THAT DECLARATION: what the authored `none` lowers to, as the marked reference
+// declaration_reference_node writes (ruling gunbc.design_ruling dag_absence_is_one_meaning). Derived from
+// optional_declaration_identity by the variant's declared path (v2.compiler.symbol_index_fill), never spelled
+// beside it.
+fn absent_declaration_identity() -> QualifiedName {
+  qualified_name_snoc(qn: optional_declaration_identity(), segment: symbol_intern_lexeme(lexeme: "Absent"))
 }
 
 // WHAT DECLARATION A TYPE NODE DENOTES, with the arguments applied to it: the ONE reading every

@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.a_job_accepted_between_the_idle_read_and_the
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_job_accepted_between_the_idle_read_and_the_stop_is_killed: RecurringFailureMode = RecurringFailureMode {
   identity: "a_job_accepted_between_the_idle_read_and_the_stop_is_killed" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: gunbc.runner.runner_slot_actuation drain_and_mask_runner_slot_over reads a slot idle (no Runner.Worker owned by the unit, extdeps.procps.ps ps_unit_comm_listing_argv) and then stops it. The GitHub Actions runner's listener can accept a job in the window between that read and the stop, and the stop then kills the job the drain exists never to kill.",

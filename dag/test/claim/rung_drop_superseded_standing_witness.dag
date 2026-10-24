@@ -1,12 +1,19 @@
 module test.claim.rung_drop_superseded_standing_witness
 
-import std.types { String, Bool, NonEmptyStr, List }
+import std.types { String, Bool, NonEmptyStr, List, CommitSha }
+import std.algebra { FreeSemigroup }
 import std.markdown { MarkdownDocument }
 import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.rung_drop { dissolved_is_admissible, RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, DeletedWithoutReplacement }
+import std.optional { Optional, Present, Absent }
+import std.removal_tombstone { RemovalTombstone, RemovalVerdict, RemovalHolds, RemovedModuleStillExists, RemovedModuleUnobservable, RemovalCommitDoesNotResolve, RemovalCommitUnobservable, ModuleObservation, ModulePresent, ModuleAbsent, ModuleUnobservable, CommitObservation, CommitResolves, CommitDoesNotResolve, CommitUnobservable, removal_tombstone_verdict }
+import v2.lens.module_impact_query { ModuleIdentity }
+import gunbc.source_layout { layout_module_storage_path }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import gunbc.compile_census_probe { total_blocking_census, census_delta_verdict, CensusHeld, CensusDisagreed, CensusUnobserved }
+import gunbc.rung_drop { rung_drop_population, RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, EndedTypedDeclaration, RetiredTypedDeclaration, NotYetCounted, MembersNeverEnumeratedBeforeRetirement, rung_drop_population_at_retirement, rung_drop_population_label, rung_drop_declaration_message, RungDropPopulation, Enumerated, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.roster { rung_drop_roster }
-import gunbc.rung_drop.standing { standing_rung_drops_of, dissolved_populations_empty, superseded_loss_holders_stand }
+import gunbc.rung_drop.standing { standing_rung_drops_of, superseded_loss_holders_stand }
 import gunbc.design_ledgers { rung_drop_standing_suffix, rung_drop_standing_blocks }
 import gunbc.rung_drop_amendment { standing_sentence }
 import gunbc.rung_drop.rust_unit_tests_over_their_cap { rust_unit_tests_over_their_cap }
@@ -20,22 +27,54 @@ import gunbc.rung_drop.rust_unit_tests_over_their_cap { rust_unit_tests_over_the
 
 data supersession_fixture: String = "fixture ruling; fixture decision record"
 
+data fixture_live: TypedDeclaration = TypedDeclaration {
+  previous: MechanicallyPreventable,
+  temporary: Mitigatable,
+  reason: DeletedWithoutReplacement,
+  population: Enumerated { members: FreeSemigroup { head: "fixture.population", tail: [] } },
+  restoration_trigger: "fixture trigger"
+}
+
+data fixture_retired: RetiredTypedDeclaration = RetiredTypedDeclaration {
+  previous: MechanicallyPreventable,
+  temporary: Mitigatable,
+  reason: DeletedWithoutReplacement,
+  population_at_retirement: Enumerated { members: FreeSemigroup { head: "fixture.retired.member", tail: [] } },
+  restoration_trigger: "fixture trigger"
+}
+
+data fixture_ended: EndedTypedDeclaration = EndedTypedDeclaration {
+  previous: MechanicallyPreventable,
+  temporary: Mitigatable,
+  reason: DeletedWithoutReplacement,
+  restoration_trigger: "fixture trigger"
+}
+
 fn rendered_blocks(blocks_doc: MarkdownDocument) -> String {
   serialize_markdown_source(doc: blocks_doc)
 }
 
-fn superseded_fixture_text() -> String {
-  rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: Superseded {
+fn superseded_fixture() -> RungDropStanding {
+  Superseded {
     ruling: "fixture ruling" as NonEmptyStr,
     decision_record: "fixture decision record" as NonEmptyStr,
-    loss_holder: "fixture_loss_holder" as NonEmptyStr
-  }, admissible: true) })
+    loss_holder: "fixture_loss_holder" as NonEmptyStr,
+    declaration: fixture_live
+  }
+}
+
+fn retired_fixture() -> RungDropStanding {
+  Retired { trigger_fired: supersession_fixture as NonEmptyStr, declaration: fixture_retired }
+}
+
+// A SUPERSEDED ROW KEEPS ITS LIVE DECLARATION: it is still a loss somebody holds, so its population
+// stays readable; a RETIRED row's declaration is the population-free ended form.
+fn superseded_fixture_text() -> String {
+  rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: superseded_fixture()) })
 }
 
 fn retired_fixture_text() -> String {
-  rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: Retired {
-    trigger_fired: supersession_fixture as NonEmptyStr
-  }, admissible: true) })
+  rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: retired_fixture()) })
 }
 
 // RED, AND ITS CONTROL. The superseded rendering carries the ruling, the decision record and the
@@ -52,20 +91,16 @@ test fn w_RED_a_superseded_row_never_renders_as_trigger_fired() -> Bool {
 }
 
 test fn the_heading_suffix_names_the_arm() -> Bool {
-  rung_drop_standing_suffix(standing: Superseded {
-    ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, loss_holder: "h" as NonEmptyStr
-  }, admissible: true) == " · SUPERSEDED"
-    && rung_drop_standing_suffix(standing: Retired { trigger_fired: "t" as NonEmptyStr }, admissible: true) == " · RETIRED"
-    && rung_drop_standing_suffix(standing: Standing, admissible: true) == ""
+  rung_drop_standing_suffix(standing: superseded_fixture()) == " · SUPERSEDED"
+    && rung_drop_standing_suffix(standing: retired_fixture()) == " · RETIRED"
+    && rung_drop_standing_suffix(standing: Standing { declaration: fixture_live }) == ""
 }
 
 // THE AMENDMENT'S CLOSING SENTENCE IS DERIVED FROM THE SAME ARM, so an amended superseded row
 // cannot be closed with "has since fired" or "stands whole".
 test fn the_amendment_sentence_for_a_superseded_row_says_the_trigger_did_not_fire() -> Bool {
-  let s = standing_sentence(standing: Superseded {
-    ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, loss_holder: "the_holder" as NonEmptyStr
-  }, admissible: true)
-  s.contains("did NOT fire") && s.contains("the_holder")
+  let s = standing_sentence(standing: superseded_fixture())
+  s.contains("did NOT fire") && s.contains("fixture_loss_holder")
     && (s.contains("has since fired") == false) && (s.contains("stands whole") == false)
 }
 
@@ -73,13 +108,13 @@ test fn the_amendment_sentence_for_a_superseded_row_says_the_trigger_did_not_fir
 // rendering does not say the trigger fired.
 test fn the_live_over_cap_row_is_superseded_and_names_its_loss_holder() -> Bool {
   match rust_unit_tests_over_their_cap.standing {
-    Superseded { ruling: _, decision_record: d, loss_holder: h } =>
+    Superseded { ruling: _, decision_record: d, loss_holder: h, declaration: _ } =>
       (h as String) == "v1_integration_tests_deleted_from_the_unit_lane"
         && (d as String).contains("msg_a8b84443")
-        && (rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: rust_unit_tests_over_their_cap.standing, admissible: true) }).contains("TRIGGER FIRED.") == false)
-    Standing => false
-    Retired { trigger_fired: _ } => false
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
+        && (rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: rust_unit_tests_over_their_cap.standing) }).contains("TRIGGER FIRED.") == false)
+    Standing { declaration: _ } => false
+    Retired { trigger_fired: _, declaration: _ } => false
+    Dissolved { removal: _, declaration: _ } => false
   }
 }
 
@@ -88,45 +123,38 @@ test fn the_live_over_cap_row_is_superseded_and_names_its_loss_holder() -> Bool 
 // from silently dropping the loss. Two reds over supplied rosters -- a holder no row names, and a
 // holder whose row is itself retired -- and the live roster as the positive control.
 fn holder_fixture(id: String, standing: RungDropStanding) -> RungDrop {
-  RungDrop {
-    identity: id as NonEmptyStr,
-    subject: id,
-    declared: "2026-01-01",
-    standing: standing,
-    declaration: TypedDeclaration {
-      previous: MechanicallyPreventable,
-      temporary: Mitigatable,
-      reason: DeletedWithoutReplacement,
-      population: ["fixture.population"],
-      restoration_trigger: "fixture trigger"
-    }
-  }
+  RungDrop { identity: id as NonEmptyStr, subject: id, declared: "2026-01-01", standing: standing }
+}
+
+fn standing_holder(id: String) -> RungDrop {
+  holder_fixture(id: id, standing: Standing { declaration: fixture_live })
 }
 
 fn superseded_fixture_naming(holder: String) -> RungDrop {
   holder_fixture(id: "fixture.superseded", standing: Superseded {
     ruling: "fixture ruling" as NonEmptyStr,
     decision_record: "fixture decision record" as NonEmptyStr,
-    loss_holder: holder as NonEmptyStr
+    loss_holder: holder as NonEmptyStr,
+    declaration: fixture_live
   })
 }
 
 test fn w_RED_a_superseded_row_naming_a_missing_holder_is_refused() -> Bool {
-  let roster = [superseded_fixture_naming(holder: "fixture.holdr"), holder_fixture(id: "fixture.holder", standing: Standing)]
-  let control = [superseded_fixture_naming(holder: "fixture.holder"), holder_fixture(id: "fixture.holder", standing: Standing)]
+  let roster = [superseded_fixture_naming(holder: "fixture.holdr"), standing_holder(id: "fixture.holder")]
+  let control = [superseded_fixture_naming(holder: "fixture.holder"), standing_holder(id: "fixture.holder")]
   (superseded_loss_holders_stand(drops: roster, roster: roster) == false)
     && superseded_loss_holders_stand(drops: control, roster: control)
 }
 
 test fn w_RED_a_superseded_row_whose_holder_does_not_stand_is_refused() -> Bool {
-  let retired_holder = [superseded_fixture_naming(holder: "fixture.holder"), holder_fixture(id: "fixture.holder", standing: Retired { trigger_fired: "fixture fired" as NonEmptyStr })]
-  let superseded_holder = [superseded_fixture_naming(holder: "fixture.holder"), holder_fixture(id: "fixture.holder", standing: Superseded { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, loss_holder: "fixture.superseded" as NonEmptyStr })]
+  let retired_holder = [superseded_fixture_naming(holder: "fixture.holder"), holder_fixture(id: "fixture.holder", standing: retired_fixture())]
+  let superseded_holder = [superseded_fixture_naming(holder: "fixture.holder"), holder_fixture(id: "fixture.holder", standing: superseded_fixture())]
   (superseded_loss_holders_stand(drops: retired_holder, roster: retired_holder) == false)
     && (superseded_loss_holders_stand(drops: superseded_holder, roster: superseded_holder) == false)
 }
 
 test fn w_RED_a_holder_named_twice_is_refused() -> Bool {
-  let doubled = [superseded_fixture_naming(holder: "fixture.holder"), holder_fixture(id: "fixture.holder", standing: Standing), holder_fixture(id: "fixture.holder", standing: Standing)]
+  let doubled = [superseded_fixture_naming(holder: "fixture.holder"), standing_holder(id: "fixture.holder"), standing_holder(id: "fixture.holder")]
   superseded_loss_holders_stand(drops: doubled, roster: doubled) == false
 }
 
@@ -134,77 +162,158 @@ test fn w_RED_a_holder_named_twice_is_refused() -> Bool {
 // standing drop, and the roster carries at least one supersession, so the join is not vacuous.
 test fn the_live_roster_loss_holders_resolve_and_stand() -> Bool {
   superseded_loss_holders_stand(drops: rung_drop_roster, roster: rung_drop_roster)
-    && dissolved_populations_empty(drops: rung_drop_roster)
     && any(rung_drop_roster, d => match d.standing {
-      Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
-      Standing => false
-      Retired { trigger_fired: _ } => false
-      Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
+      Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => true
+      Standing { declaration: _ } => false
+      Retired { trigger_fired: _, declaration: _ } => false
+      Dissolved { removal: _, declaration: _ } => false
     })
 }
 
 // THE DISSOLVED ARM: its rendering says the trigger did not fire and that the population is gone,
-// carries no loss holder, and joins to no roster row (nothing holds the loss).
+// carries no loss holder, and joins to no roster row (nothing holds the loss). The removal is the
+// typed tombstone, never a sentence beside the arm.
 test fn a_dissolved_row_renders_as_not_fired_and_needs_no_loss_holder() -> Bool {
-  let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
-  let r = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: st, admissible: true) })
-  r.contains("DISSOLVED") && r.contains("gone") && (r.contains("TRIGGER FIRED.") == false)
-    && rung_drop_standing_suffix(standing: st, admissible: true) == " · DISSOLVED"
-    && superseded_loss_holders_stand(drops: [holder_fixture(id: "fixture.dissolved", standing: st)], roster: [holder_fixture(id: "fixture.dissolved", standing: st)])
+  let st = Dissolved { removal: fixture_tombstone(), declaration: fixture_ended }
+  let r = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: st) })
+  let row = holder_fixture(id: "fixture.dissolved", standing: st)
+  r.contains("DISSOLVED") && r.contains("NO LONGER EXISTS") && (r.contains("TRIGGER FIRED.") == false)
+    && rung_drop_standing_suffix(standing: st) == " · DISSOLVED"
+    && superseded_loss_holders_stand(drops: [row], roster: [row])
 }
 
-// THE DISSOLVED ADMISSION LAW. RED: a Dissolved row over a non-empty typed population is refused.
-// Positive control: the same row over an empty population is admitted; the live roster is checked
-// by the_live_roster_loss_holders_resolve_and_stand.
-test fn w_RED_a_dissolved_row_over_a_live_population_is_refused() -> Bool {
-  let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
-  let live = RungDrop {
-    identity: "fixture.dissolved" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: ["still-live"], restoration_trigger: "t" }
+// THE POPULATION EXISTS ONLY WHERE A LOSS IS STILL HELD. Positive: a Standing and a Superseded row
+// read their population; RED: a Retired and a Dissolved row have none to read, so the accessor
+// answers Absent for them and a consumer cannot mistake a deleted population for an empty one.
+fn at_retirement_is_kept(d: RungDrop) -> Bool {
+  match rung_drop_population_at_retirement(d: d) {
+    Present { value: p } => rung_drop_population_label(p: p) == "fixture.retired.member"
+    Absent => false
   }
-  let empty = RungDrop {
-    identity: "fixture.dissolved" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
-  }
-  (dissolved_populations_empty(drops: [live]) == false) && dissolved_populations_empty(drops: [empty])
 }
 
-// THE LAW LIVES IN THE CONSUMER, NOT ONLY THE WITNESS. RED: standing_rung_drops_of, the accounting that
-// erases a loss, must still count a Dissolved row over a live population (fail closed) and must erase
-// one over an empty population (the sha256 shape). Mutating dissolved_is_admissible to always admit
-// makes the first conjunct fail.
-test fn w_RED_the_standing_accounting_keeps_an_invalid_dissolved_row_live() -> Bool {
-  let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
-  let live = RungDrop {
-    identity: "fixture.live" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: ["still-live"], restoration_trigger: "t" }
-  }
-  let empty = RungDrop {
-    identity: "fixture.empty" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
-  }
-  let kept = map(standing_rung_drops_of(ds: [live, empty]), d => d.identity as String)
-  length(xs: filter(kept, i => i == "fixture.live")) == 1 && length(xs: filter(kept, i => i == "fixture.empty")) == 0
+// THE RETIRED ARM KEEPS WHAT IT RECORDED: its members are readable at retirement and the one
+// rendering shows them, where a Retired row used to print nothing after this rework dropped them.
+test fn a_retired_row_keeps_its_population_at_retirement() -> Bool {
+  rung_drop_declaration_message(d: holder_fixture(id: "fixture.retired", standing: retired_fixture())).contains("Population: fixture.retired.member")
 }
 
-// THE RENDERERS ASK THE SAME PREDICATE AS THE ACCOUNTING. RED: a Dissolved row over a live population,
-// rendered with the admissibility derived from the row, must not assert dissolution in the ledger
-// heading, block or amendment sentence; the empty-population row still does.
-test fn w_RED_an_invalid_dissolved_row_does_not_render_as_dissolved() -> Bool {
-  let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
-  let live = RungDrop {
-    identity: "fixture.live" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: ["still-live"], restoration_trigger: "t" }
+test fn only_a_standing_or_superseded_row_has_a_population() -> Bool {
+  let has = (d => match rung_drop_population(d: d) { Present { value: _ } => true  Absent => false })
+  has(standing_holder(id: "fixture.standing"))
+    && has(superseded_fixture_naming(holder: "fixture.holder"))
+    && (has(holder_fixture(id: "fixture.retired", standing: retired_fixture())) == false)
+    && at_retirement_is_kept(d: holder_fixture(id: "fixture.retired", standing: retired_fixture()))
+    && (at_retirement_is_kept(d: standing_holder(id: "fixture.standing")) == false)
+    && (has(holder_fixture(id: "fixture.dissolved", standing: Dissolved { removal: fixture_tombstone(), declaration: fixture_ended })) == false)
+}
+
+// THE ACCOUNTING THAT ERASES A LOSS COUNTS ONLY THE STANDING ROWS: a Dissolved row, whose population
+// is gone, and a Retired and a Superseded row are not standing; the Standing row is.
+test fn the_standing_accounting_counts_only_standing_rows() -> Bool {
+  let dissolved = holder_fixture(id: "fixture.dissolved", standing: Dissolved { removal: fixture_tombstone(), declaration: fixture_ended })
+  let kept = map(standing_rung_drops_of(ds: [standing_holder(id: "fixture.live"), dissolved, holder_fixture(id: "fixture.retired", standing: retired_fixture()), superseded_fixture_naming(holder: "fixture.live")]), d => d.identity as String)
+  length(xs: kept) == 1 && length(xs: filter(kept, i => i == "fixture.live")) == 1
+}
+
+// THE FORBIDDEN STATES ARE UNWRITABLE, AND THIS IS THE RED THAT SAYS SO. Handed to the compiler as
+// source, a population on a Dissolved row, and a population spelled in an AuthoredProse
+// declaration, are each refused; the same rows without the extra field compile clean. Counted as
+// TOTAL blocking rows, with the control as the baseline, so a refusal for an unrelated cause in the
+// shared import closure cannot pass as this one: the RED must exceed its own control.
+fn dissolved_source(extra_field: String) -> String {
+  "module probe_dissolved_population\nimport std.types { NonEmptyStr, CommitSha }\nimport std.algebra { FreeSemigroup }\nimport std.removal_tombstone { RemovalTombstone }\nimport v2.lens.module_impact_query { ModuleIdentity }\nimport gunbc.guarantee_rung { Mitigatable }\nimport gunbc.rung_drop { RungDrop, Dissolved, EndedTypedDeclaration, DeletedWithoutReplacement, Enumerated }\ndata probe_row: RungDrop = RungDrop {\n  identity: \"probe\" as NonEmptyStr,\n  subject: \"s\",\n  declared: \"2026-01-01\",\n  standing: Dissolved {\n    removal: RemovalTombstone { removed_modules: FreeSemigroup { head: ModuleIdentity { name: \"a.gone\" }, tail: [] }, removed_at: \"fa44b9810259b88f721e55ae0a3bd3cf7bc9b46f\" as CommitSha, ruling: \"r\" as NonEmptyStr, decision_record: \"d\" as NonEmptyStr },\n    declaration: EndedTypedDeclaration { previous: Mitigatable, temporary: Mitigatable, reason: DeletedWithoutReplacement, " + extra_field + "restoration_trigger: \"t\" }\n  }\n}\n"
+}
+
+fn prose_source(extra_field: String) -> String {
+  "module probe_prose_population\nimport std.types { NonEmptyStr }\nimport std.algebra { FreeSemigroup }\nimport gunbc.rung_drop { RungDrop, Standing, AuthoredProse, FloorCutFalsifierCadence, Enumerated }\ndata probe_row: RungDrop = RungDrop {\n  identity: \"probe\" as NonEmptyStr,\n  subject: \"s\",\n  declared: \"2026-01-01\",\n  standing: Standing { declaration: AuthoredProse { legacy: FloorCutFalsifierCadence, " + extra_field + "authored: \"a\" } }\n}\n"
+}
+
+data probe_population_field: String = "population: Enumerated { members: FreeSemigroup { head: \"x\", tail: [] } }, "
+
+test fn w_RED_a_population_on_a_dissolved_row_is_a_compile_refusal() -> Bool {
+  let control = total_blocking_census(source: dissolved_source(extra_field: ""))
+  let red = total_blocking_census(source: dissolved_source(extra_field: probe_population_field))
+  match census_delta_verdict(red: red, control: control, holds: fn(n) { n > 0 }) {
+    CensusHeld {} => true
+    CensusDisagreed { reason: _ } => false
+    CensusUnobserved { cause: _ } => false
   }
-  let empty = RungDrop {
-    identity: "fixture.empty" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
-    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
+}
+
+test fn w_RED_an_authored_prose_row_cannot_spell_a_population() -> Bool {
+  let control = total_blocking_census(source: prose_source(extra_field: ""))
+  let red = total_blocking_census(source: prose_source(extra_field: probe_population_field))
+  match census_delta_verdict(red: red, control: control, holds: fn(n) { n > 0 }) {
+    CensusHeld {} => true
+    CensusDisagreed { reason: _ } => false
+    CensusUnobserved { cause: _ } => false
   }
-  let bad = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: live.standing, admissible: dissolved_is_admissible(drop: live)) })
-  let good = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: empty.standing, admissible: dissolved_is_admissible(drop: empty)) })
-  let bad_sentence = standing_sentence(standing: live.standing, admissible: dissolved_is_admissible(drop: live))
-  bad.contains("INVALID DISSOLVED") && (bad.contains("NO LONGER EXISTS") == false)
-    && rung_drop_standing_suffix(standing: live.standing, admissible: dissolved_is_admissible(drop: live)) == " · INVALID DISSOLVED"
-    && bad_sentence.contains("INVALID DISSOLVED") && (bad_sentence.contains("nothing remains") == false)
-    && good.contains("NO LONGER EXISTS")
+}
+
+data fixture_removed_commit: CommitSha = "fa44b9810259b88f721e55ae0a3bd3cf7bc9b46f" as CommitSha
+
+fn tombstone_over(modules: FreeSemigroup<ModuleIdentity>) -> RemovalTombstone {
+  RemovalTombstone { removed_modules: modules, removed_at: fixture_removed_commit, ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr }
+}
+
+fn fixture_tombstone() -> RemovalTombstone {
+  tombstone_over(modules: FreeSemigroup { head: ModuleIdentity { name: "fixture.gone" }, tail: [] })
+}
+
+fn module_looked_up(name: String, modules: List<ModuleDeclarationFact>) -> ModuleObservation {
+  match layout_module_storage_path(module: name) {
+    Absent => ModuleUnobservable
+    Present { value: path } => if length(xs: modules) == 0 {
+      ModuleUnobservable
+    } else if length(xs: filter(modules, m => m.path == path)) > 0 {
+      ModulePresent
+    } else {
+      ModuleAbsent
+    }
+  }
+}
+
+data tombstone_pool_roots: List<String> = ["dag", "src/v2"]
+
+fn tree_module_observer(m: ModuleIdentity) -> ModuleObservation {
+  module_looked_up(name: m.name, modules: module_declaration_facts_live(pool_roots: tombstone_pool_roots))
+}
+
+fn commit_not_observable(c: CommitSha) -> CommitObservation { CommitUnobservable }
+
+fn supplied_modules(present: List<String>) -> fn(ModuleIdentity) -> ModuleObservation {
+  m => if length(xs: filter(present, p => p == m.name)) > 0 { ModulePresent } else { ModuleAbsent }
+}
+
+// POSITIVE CONTROL + RED OF THE CONSUMER, over supplied observations. A named module still present
+// must refuse as RemovedModuleStillExists; all absent with a resolving commit holds; an unobservable
+// module or commit is a typed verdict and never Holds.
+test fn w_RED_a_tombstone_naming_a_still_present_module_refuses() -> Bool {
+  let t = tombstone_over(modules: FreeSemigroup { head: ModuleIdentity { name: "a.gone" }, tail: [ModuleIdentity { name: "a.back" }] })
+  let resolves = (c => CommitResolves)
+  let held = removal_tombstone_verdict(tombstone: t, observe_module: supplied_modules(present: []), observe_commit: resolves)
+  let refused = removal_tombstone_verdict(tombstone: t, observe_module: supplied_modules(present: ["a.back"]), observe_commit: resolves)
+  let blind = removal_tombstone_verdict(tombstone: t, observe_module: (m => ModuleUnobservable), observe_commit: resolves)
+  let missing = removal_tombstone_verdict(tombstone: t, observe_module: supplied_modules(present: []), observe_commit: (c => CommitDoesNotResolve))
+  let unseen = removal_tombstone_verdict(tombstone: t, observe_module: supplied_modules(present: []), observe_commit: commit_not_observable)
+  (match held { RemovalHolds => true  RemovedModuleStillExists { module: _ } => false  RemovedModuleUnobservable { module: _ } => false  RemovalCommitDoesNotResolve => false  RemovalCommitUnobservable => false })
+    && (match refused { RemovalHolds => false  RemovedModuleStillExists { module: m } => m.name == "a.back"  RemovedModuleUnobservable { module: _ } => false  RemovalCommitDoesNotResolve => false  RemovalCommitUnobservable => false })
+    && (match blind { RemovalHolds => false  RemovedModuleStillExists { module: _ } => false  RemovedModuleUnobservable { module: _ } => true  RemovalCommitDoesNotResolve => false  RemovalCommitUnobservable => false })
+    && (match missing { RemovalHolds => false  RemovedModuleStillExists { module: _ } => false  RemovedModuleUnobservable { module: _ } => false  RemovalCommitDoesNotResolve => true  RemovalCommitUnobservable => false })
+    && (match unseen { RemovalHolds => false  RemovedModuleStillExists { module: _ } => false  RemovedModuleUnobservable { module: _ } => false  RemovalCommitDoesNotResolve => false  RemovalCommitUnobservable => true })
+}
+
+// THE LIVE DISSOLVED ROWS ARE CHECKED AGAINST THE TREE: each live tombstone names modules the tree no
+// longer holds, and with no commit observation the verdict is the typed RemovalCommitUnobservable,
+// never Holds; at least one row is required so the fold is not vacuous, and the count is not copied from the tree.
+test fn the_live_roster_tombstones_name_only_absent_modules() -> Bool {
+  let verdicts = flat_map(rung_drop_roster, d => match d.standing {
+    Dissolved { removal: t, declaration: _ } => [removal_tombstone_verdict(tombstone: t, observe_module: tree_module_observer, observe_commit: commit_not_observable)]
+    Standing { declaration: _ } => []
+    Retired { trigger_fired: _, declaration: _ } => []
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => []
+  })
+  length(xs: verdicts) >= 1
+    && length(xs: filter(verdicts, v => match v { RemovalCommitUnobservable => true  RemovalHolds => false  RemovedModuleStillExists { module: _ } => false  RemovedModuleUnobservable { module: _ } => false  RemovalCommitDoesNotResolve => false })) == length(xs: verdicts)
 }

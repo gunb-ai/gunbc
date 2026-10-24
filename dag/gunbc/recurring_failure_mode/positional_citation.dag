@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.positional_citation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data positional_citation: RecurringFailureMode = RecurringFailureMode {
   identity: "positional_citation" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "positional citation (a `file:line` pointer where a symbol was available — see §3).",

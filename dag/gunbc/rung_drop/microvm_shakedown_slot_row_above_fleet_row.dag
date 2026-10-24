@@ -1,7 +1,8 @@
 module gunbc.rung_drop.microvm_shakedown_slot_row_above_fleet_row
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 
 // ============================================================================================
@@ -42,17 +43,13 @@ data microvm_shakedown_slot_row_above_fleet_row: RungDrop = RungDrop {
 
   declared: "2026-09-21",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
     reason: ReplacementStaged {
       replacement: "gunbc.runner.runner_slot_allocation gunbc_runner_slot_desired_for (28 GiB MemoryMax, MemoryHigh at the ceiling, MemorySwapMax zero for srv1_microvm_shakedown_slot) and memory_admitted_width_of_envelope charging that slot first on srv1, checked by test.claim.runner.runner_microvm_slot_controller_witness",
     },
-    population: [
-      "gunbc.runner.runner_slot_allocation srv1_microvm_shakedown_slot (srv1-13): 30064771072 bytes against the fleet row's 27917287424",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "gunbc.runner.runner_slot_allocation srv1_microvm_shakedown_slot (srv1-13): 30064771072 bytes against the fleet row's 27917287424", tail: [] } },
     restoration_trigger: "EITHER the shakedown slot leaves fabric_execution_slot_identities with its cell retired through the modeled teardown, OR the fleet row moves to the shakedown ceiling under an operator ruling cited on that change, so gunbc_runner_slot_desired_for has no differing arm and is deleted. A second per-slot arm satisfies neither",
-  },
+  } }
 }

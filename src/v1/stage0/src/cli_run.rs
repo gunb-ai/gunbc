@@ -107,14 +107,14 @@ pub use native_lane_runner::{
     emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
     run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
     run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
-    run_self_host, run_type_declaration_use_census_runs, run_v2_demand_census,
-    run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit,
-    run_v2_native_frontier, run_v2_select_spelled_modules, CensusInferRun, MeasuredSpawnRoute,
-    NativeCensusRun, NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt,
-    NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns,
-    NativeRouteOutcome, NativeServePhases, NativeServeProgramRun, PreparationCause,
-    PreparationRefusal, SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR,
-    MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
+    run_self_host, run_type_declaration_use_census_runs, run_v2_census_verb, run_v2_native_census,
+    run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier,
+    run_v2_select_spelled_modules, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
+    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
+    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
+    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
+    TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
+    MEASURED_SPAWN_RECEIPT_ENV,
 };
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
@@ -147,7 +147,8 @@ pub fn source_root_ingest_module_identities_for_ci(
 }
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_seeded_compile_closure, resolve_stage_totals, whole_tree_resolved_ctx,
+    resolve_entry_with_index_typed, resolve_seeded_compile_closure, resolve_stage_totals,
+    whole_tree_resolved_ctx, EntryResolveRefusal,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -204,6 +205,7 @@ pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
+mod provider_acquire;
 mod source_layout_lookup;
 pub use demand_acquire::resolve_entry_graph_demand_acquired;
 #[path = "required_regen_host.rs"]
@@ -720,7 +722,9 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Ephemeral,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(detail) => {
             return RoadmapAcceptanceHistoryProjection::Refused { detail };
@@ -7148,7 +7152,25 @@ pub enum IndexResidency {
     OwnedByThisCompile,
 }
 
+/// THE COMPILE TRANSACTION, AND ITS RECEIPT (§4 P0.1, §5a amendment A).
+///
+/// This is the outer boundary of ONE compile. The wrapper exists so the receipt is printed
+/// whatever the transaction's disposition — an early admission refusal still gets its rows,
+/// because an operator staring at a SIGKILL or a refusal is exactly who needs the receipt.
+/// `CompileRun.wall_ms` is sampled INSIDE the body before its locals finish dropping, and the
+/// caller materializes output and renders diagnostics after this returns, so the process rows
+/// staged here (printed at exit by `pre_entry_phase`) carry what falls outside even this.
 pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
+    let transaction_started = std::time::Instant::now();
+    let run = compile_emission_over_inner(request, residency);
+    crate::cli_run::pre_entry_phase::print_compile_transaction_receipt(
+        &request.subject.label(),
+        transaction_started,
+    );
+    run
+}
+
+fn compile_emission_over_inner(request: &CompileRequest, residency: IndexResidency) -> CompileRun {
     let source_roots: &[String] = &request.source_roots;
     let primary_precedence = request.primary_precedence;
     let subject_label = request.subject.label();
@@ -8888,6 +8910,84 @@ mod closure_edge_demand_tests {
         reset_bare_reference_admission_completion_for_test();
     }
 
+    /// §5 LANE A (P0.6) DISCRIMINATOR: `extend_with_bare_reference_closure` REUSES the index's
+    /// shared path lookup instead of rebuilding `path_to_source_lookup` per fixpoint round. What
+    /// must stay UNCHANGED is the closure and its order — this drives a two-round chain (entry
+    /// bare-calls `mid`, which bare-calls `deep`, so the second provider arrives only in round
+    /// two) through both the loader route and the fixpoint authority directly, on ONE index, and
+    /// the two must agree on paths in order. The sharing itself is pinned by pointer identity:
+    /// if a future edit re-mints the map per round (the pre-fix behavior), the `Rc` pointers
+    /// diverge and this goes red.
+    #[test]
+    fn bare_path_lookup_is_shared_across_rounds_with_closure_and_order_unchanged() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module probe_entry\nfn main() -> Int { mid() }\n",
+            ),
+            ("mid.dag", "module probe_mid\nfn mid() -> Int { deep() }\n"),
+            ("deep.dag", "module probe_deep\nfn deep() -> Int { 7 }\n"),
+        ]);
+        let index = fixture.index();
+        let entry_path = fixture.0.join("entry.dag").to_string_lossy().into_owned();
+        // The stage slot is thread-local and can carry residue; per the field's own contract,
+        // subtract a pre-span snapshot.
+        let before_snapshot = entry_resolve::resolve_stage_slot_snapshot();
+
+        let ordered = |sources: &[Rc<v1_compiler_compile::SourceFile>]| -> Vec<String> {
+            sources.iter().map(|s| s.path.clone()).collect()
+        };
+
+        // Route A: the ordinary loader, which closes through the fixpoint authority.
+        let via_loader = load_sources_for_entry_with_pool(&index, &entry_path).unwrap();
+        let via_loader = ordered(&via_loader);
+
+        // Route B: the fixpoint authority directly, seeded with the entry alone. Both routes
+        // share ONE index, so both must serve the SAME lookup; the closure and its order
+        // (paths ascending, the fixpoint's own normalization) must be identical.
+        let content = std::fs::read_to_string(&entry_path).unwrap();
+        // Seed with the workspace-relative path, exactly as the loader normalizes it — otherwise
+        // the seed and the index's copy of the entry survive `dedup_by(path)` as two rows.
+        let seed = Rc::new(v1_compiler_compile::SourceFile {
+            path: workspace_relative_entry_path(&entry_path),
+            content,
+        });
+        let lookup_ptr_before = Rc::as_ptr(&pool_path_lookup(&index));
+        let via_fixpoint = extend_sources_to_both_closure_fixpoint(vec![seed], &index).unwrap();
+        let via_fixpoint = ordered(&via_fixpoint);
+
+        assert!(
+            via_fixpoint.len() >= 3,
+            "the chain must pull BOTH providers across rounds, got {via_fixpoint:?}"
+        );
+        assert_eq!(
+            via_fixpoint, via_loader,
+            "closure and order must be unchanged by the lookup-sharing change"
+        );
+        assert!(
+            via_fixpoint.windows(2).all(|w| w[0] <= w[1]),
+            "the fixpoint's path-order normalization must survive: {via_fixpoint:?}"
+        );
+        // The lookup is the INDEX's memo, stable across the whole fixpoint — a regression that
+        // re-mints the index's own cell per round fails here. The rebuild elimination itself is
+        // what the self-host instrument prices: `load_bare_path_lookup` drops to ~0 ns per call
+        // after the first (the per-round calls keep counting, pinned below, so the instrument
+        // reads real data rather than an absent row).
+        assert_eq!(
+            lookup_ptr_before,
+            Rc::as_ptr(&pool_path_lookup(&index)),
+            "the path lookup must be minted once per index, not rebuilt per fixpoint round"
+        );
+        let after = entry_resolve::resolve_stage_slot_snapshot();
+        let calls = after.load_bare_path_lookup_calls - before_snapshot.load_bare_path_lookup_calls;
+        let rounds = after.load_fixpoint_rounds - before_snapshot.load_fixpoint_rounds;
+        assert!(
+            calls >= rounds && rounds >= 3,
+            "one lookup call per fixpoint round must still be counted (loader + direct \
+             fixpoint = at least 3 rounds), got {calls} calls for {rounds} rounds"
+        );
+    }
+
     /// A `test` row is never a bare provider, and which rows are tests is the parse's
     /// `DeclarationMarker`, read off the census binding. The same shape with the marker removed
     /// is the positive control: the provider is then pulled.
@@ -10125,8 +10225,17 @@ fn extend_with_bare_reference_closure(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    // THE LOOKUP IS SHARED, NOT REBUILT PER ROUND (§4 P0.6). `path_to_source_lookup` maps
+    // `index.source_files`, which no code path mutates after the index is built (demand-acquired
+    // files arrive through a FRESH index, never into this one) — so the index's
+    // `OnceCell`-memoized `pool_path_lookup` answer is the same map every round would rebuild.
+    // This function runs once per fixpoint round of
+    // `extend_sources_to_both_closure_fixpoint`; before this, every round cloned the whole
+    // path-keyed map (a per-fixpoint-round O(pool) rebuild) to produce an identical lookup.
+    // The receipt keeps counting calls per round; the nanos drop to zero after the first, which
+    // is the point an operator can SEE the sharing rather than trust the claim.
     let lookup_started = std::time::Instant::now();
-    let lookup = path_to_source_lookup(&index.source_files);
+    let lookup = pool_path_lookup(index);
     resolve_stage_slot_add(|s| {
         s.load_bare_path_lookup += lookup_started.elapsed().as_nanos();
         s.load_bare_path_lookup_calls += 1;
@@ -11449,6 +11558,14 @@ pub struct MultiEntryIndex {
     /// Opaque identity of THIS index, minted at construction (see `next_index_generation`).
     generation: u64,
     source_files: ModuleSourceIndex,
+    /// THE DEMAND-ACQUIRED PATH'S SOURCE LAYOUT, for generated providers (`provider_acquire`): the
+    /// layout's typed answer for a module this index's acquired closure does not hold. Set only by
+    /// `demand_acquire`; every index that already holds its whole pool leaves it empty.
+    provider_layout: RefCell<Option<Rc<dyn Fn(&str) -> entry_resolve::ProviderLayoutAnswer>>>,
+    /// The source each Holds answer read, kept so the rebuild acquires those exact bytes and never
+    /// reads the provider a second time.
+    provider_snapshots:
+        RefCell<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>>,
     module_graph_facts: ModuleGraphFactsLive,
     /// Per-index typed results, keyed by the typed-module CONTENT key
     /// (`std.interface_summary.typed_module_key`: module source hash ⊕ direct-import
@@ -12548,8 +12665,14 @@ fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
 // `_inner`), `CostPartitionRow`, `InclusiveCostRow`, `CostAccountingVerdict`,
 // `CostAccountingRefusal`, `ExclusiveCostPartition`, `exclusive_cost_partition`,
 // `exclusive_cost_partition_from`, `render_exclusive_cost_partition_json`, `json_num`, the
-// `exclusive_cost_partition_law` test module, and the three `[cost-partition]` emissions
-// (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`) — ~700 LOC incl. tests.
+// `exclusive_cost_partition_law` test module, `out_of_span_rows`, and the three
+// `[cost-partition]` emissions (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`)
+// — ~700 LOC incl. tests. The probe is no longer print-only in `claim_batch`: a Refused
+// verdict decides the batch exit (`NoSpans` -> 2, any other refusal -> 1), through the
+// third parameter of `claim_batch`'s `batch_exit_code` (an already-admitted declaration; no
+// new one), its call site in `main`, and the `a_refused_partition_joins_the_batch_exit` test.
+// At deletion the parameter, call-site argument and test go with the probe, and removing the
+// probe while they stand fails to compile.
 // Receipt: `rg -c cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs`
 // returns 4 while the scaffold stands (this block, the const, and its declaration test)
 // and must return 0 at deletion — the deletion is what the receipt checks, not a fixed
@@ -12659,6 +12782,13 @@ pub enum CostAccountingRefusal {
     NestedSpanAttribution { nested_spans: u64 },
     /// No resolve span ran on this thread — there is nothing to partition.
     NoSpans,
+    /// A stage's span-captured total exceeds the thread's total for it, so the two slot
+    /// accounts disagree and the out-of-span remainder does not exist.
+    InSpanExceedsThread {
+        stage: &'static str,
+        in_span_nanos: u128,
+        thread_nanos: u128,
+    },
 }
 
 /// An exclusive, non-overlapping accounting of the measured parent work.
@@ -12673,6 +12803,10 @@ pub struct ExclusiveCostPartition {
     pub spans: u64,
     pub nested_spans: u64,
     pub exclusive: Vec<CostPartitionRow>,
+    /// Stage time recorded outside every top-level resolve span (e.g. the whole-corpus
+    /// parse the edge index build forces before the first span opens). It is not part of
+    /// the parent, so it is never a row of the partition, but it is reported here, typed.
+    pub out_of_span: Vec<CostPartitionRow>,
     pub inclusive: Vec<InclusiveCostRow>,
     /// Parent minus the exclusive rows: the work inside a resolve span that no row claims.
     pub remainder_nanos: u128,
@@ -12726,14 +12860,84 @@ impl ExclusiveCostPartition {
 /// separate reason that they corrupt the slot the rows come from.
 pub fn exclusive_cost_partition() -> ExclusiveCostPartition {
     let account = resolve_span_account();
-    exclusive_cost_partition_from(
-        &resolve_stage_totals(),
-        "summed_top_level_resolve_span_nanos",
-        account.span_nanos,
-        account.spans,
-        account.nested_spans,
-        resolve_span_rows_by_entry(),
-    )
+    // THE ROWS ARE DRAWN FROM THE SAME UNIVERSE AS THE PARENT: the per-entry rows each
+    // span captured at its own exit. `resolve_stage_totals()` also holds every stage add
+    // made OUTSIDE a top-level span (the whole-corpus `pool_parse` is forced by the edge
+    // index build before the first span opens, so every in-span `pool_parse` is 0), and a
+    // child drawn from a larger universe than its parent is not a partition of it: the
+    // exclusive rows then summed past the span total by exactly the out-of-span parse.
+    let mut in_span = ResolveStageNanos::default();
+    for entry_rows in resolve_stage_rows_by_entry().values() {
+        in_span.accumulate(entry_rows);
+    }
+    let totals = resolve_stage_totals();
+    let basis = "summed_top_level_resolve_span_nanos";
+    let args = |st: &ResolveStageNanos| {
+        exclusive_cost_partition_from(
+            st,
+            basis,
+            account.span_nanos,
+            account.spans,
+            account.nested_spans,
+            resolve_span_rows_by_entry(),
+        )
+    };
+    let partition = args(&in_span);
+    // The out-of-span cost does not vanish by narrowing the universe: it is carried as its
+    // own typed rows beside the partition (totals minus the span-captured rows), never a
+    // child of the parent span and never summed into `sum_exclusive`.
+    let whole = args(&totals);
+    // A reversed universe is a refusal naming the stage, never a clamp to "no out-of-span
+    // cost": it outranks a reconciled verdict and leaves an already-refused one in place.
+    let (out_of_span, verdict) = match out_of_span_rows(&whole.exclusive, &partition.exclusive) {
+        Ok(rows) => (rows, partition.verdict),
+        Err(cause) => (
+            Vec::new(),
+            match partition.verdict {
+                CostAccountingVerdict::Reconciled { .. } => {
+                    CostAccountingVerdict::Refused { cause }
+                }
+                refused => refused,
+            },
+        ),
+    };
+    // Counts and volumes (builds, modules, scan bytes) are events of the whole thread, not
+    // span-bound durations, so they and the inclusive observations keep the totals.
+    ExclusiveCostPartition {
+        exclusive: partition.exclusive,
+        remainder_nanos: partition.remainder_nanos,
+        verdict,
+        out_of_span,
+        ..whole
+    }
+}
+
+/// Stage time the thread recorded that no top-level span captured: thread totals minus the
+/// span-captured rows, per stage. The span-captured rows are a subset of the thread totals by
+/// construction, so a stage whose in-span total exceeds the thread total is two slot accounts
+/// disagreeing and refuses naming that stage.
+fn out_of_span_rows(
+    thread: &[CostPartitionRow],
+    in_span: &[CostPartitionRow],
+) -> Result<Vec<CostPartitionRow>, CostAccountingRefusal> {
+    let mut rows = Vec::new();
+    for (all, inside) in thread.iter().zip(in_span.iter()) {
+        match all.nanos.checked_sub(inside.nanos) {
+            Some(0) => {}
+            Some(outside) => rows.push(CostPartitionRow {
+                name: all.name,
+                nanos: outside,
+            }),
+            None => {
+                return Err(CostAccountingRefusal::InSpanExceedsThread {
+                    stage: all.name,
+                    in_span_nanos: inside.nanos,
+                    thread_nanos: all.nanos,
+                })
+            }
+        }
+    }
+    Ok(rows)
 }
 
 /// Same law over a caller-supplied parent/children pair drawn from ONE universe.
@@ -13004,6 +13208,7 @@ pub fn exclusive_cost_partition_from(
         spans: account.spans,
         nested_spans: account.nested_spans,
         exclusive,
+        out_of_span: Vec::new(),
         inclusive,
         remainder_nanos,
         verdict,
@@ -13050,6 +13255,18 @@ pub fn render_exclusive_cost_partition_json(
 
     out.push_str(",\"exclusive\":{");
     for (i, row) in p.exclusive.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push('"');
+        out.push_str(&esc(row.name.to_string()));
+        out.push_str("\":");
+        out.push_str(&json_num(row.nanos));
+    }
+    out.push('}');
+
+    out.push_str(",\"out_of_span\":{");
+    for (i, row) in p.out_of_span.iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
@@ -13160,6 +13377,21 @@ pub fn render_exclusive_cost_partition_json(
                 }
                 CostAccountingRefusal::NoSpans => {
                     out.push_str("{\"kind\":\"NoSpans\"}");
+                }
+                CostAccountingRefusal::InSpanExceedsThread {
+                    stage,
+                    in_span_nanos,
+                    thread_nanos,
+                } => {
+                    out.push_str("{\"kind\":\"InSpanExceedsThread\",\"stage\":");
+                    out.push('"');
+                    out.push_str(&esc(stage.to_string()));
+                    out.push('"');
+                    out.push_str(",\"in_span_nanos\":");
+                    out.push_str(&json_num(*in_span_nanos));
+                    out.push_str(",\"thread_nanos\":");
+                    out.push_str(&json_num(*thread_nanos));
+                    out.push('}');
                 }
             }
             out.push_str(",\"shares_quotable\":false}");
@@ -13433,9 +13665,10 @@ mod module_schedule_batches_tests {
 fn finish_resolved_graph_assembly(
     modules: Rc<im::Vector<Rc<TypedModule>>>,
     diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>>,
+    demand_chunks: Vec<provider_acquire::ProviderDemands>,
     binding_fork_counts: (usize, usize),
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Result<Rc<ResolvedGraph>, String> {
+) -> Result<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands), String> {
     let (same_tree_fork_count, cross_tree_fork_count) = binding_fork_counts;
     let registry_started = std::time::Instant::now();
     let item_registry = modules.iter().fold(v1_rt::rc_empty_map(), |acc, typed| {
@@ -13529,7 +13762,7 @@ fn finish_resolved_graph_assembly(
         diagnostics,
     });
     resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
-    Ok(graph)
+    Ok((graph, provider_acquire::group_pass_demands(&demand_chunks)))
 }
 
 /// When every module in the closure is already in the typed cache, skip the
@@ -13553,7 +13786,7 @@ fn try_reconcile_all_cache_hits(
     cycle_residue_slots: &HashSet<usize>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
-) -> Result<Option<Rc<ResolvedGraph>>, String> {
+) -> Result<Option<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands)>, String> {
     // Pass 1 — DEPENDENCY order (`schedule`, the same antichain batches the dispatch loop
     // below uses): a stripped module's reference-derived dependencies are not guaranteed to
     // precede it in `closure_modules`'s resolver order (that DFS only follows declared
@@ -13636,6 +13869,8 @@ fn try_reconcile_all_cache_hits(
     let mut same_tree_fork_count: usize = 0;
     let mut cross_tree_fork_count: usize = 0;
     let empty_parent_diags = Rc::new(im::Vector::new());
+    let mut demand_chunks: Vec<provider_acquire::ProviderDemands> =
+        Vec::with_capacity(closure_modules.len());
     for tc_result in results.into_iter() {
         let tc_result = tc_result.expect("every slot filled by the dependency-order pass above");
         let graph_started = std::time::Instant::now();
@@ -13644,6 +13879,7 @@ fn try_reconcile_all_cache_hits(
         let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
+        demand_chunks.push(tc_result.provider_demands.clone());
         for fork in tc_result.binding_forks.iter() {
             if fork.same_tree {
                 same_tree_fork_count += 1;
@@ -13659,6 +13895,7 @@ fn try_reconcile_all_cache_hits(
     finish_resolved_graph_assembly(
         Rc::new(modules_vec),
         diag_chunks,
+        demand_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
@@ -14140,7 +14377,7 @@ fn reconcile_with_typed_cache(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     index: &MultiEntryIndex,
-) -> Result<Rc<ResolvedGraph>, String> {
+) -> Result<(Rc<ResolvedGraph>, provider_acquire::ProviderDemands), String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
@@ -14392,8 +14629,23 @@ fn reconcile_with_typed_cache(
                                         )
                                     );
                                 }
-                                let computed =
-                                    index_insert_typed(index, typed_key.clone(), computed)?;
+                                // A RESULT COMPUTED WHILE A DEMANDED PROVIDER WAS OUTSIDE THIS CLOSURE IS NOT
+                                // THE MODULE'S ANSWER. Its generated references were left as
+                                // needs-acquisition, and the content key (source hash plus direct-import
+                                // interfaces) cannot see a provider no import names, so caching it would
+                                // serve the unacquired result again after the provider joins. Only a
+                                // result whose every demanded provider is in the closure it was computed
+                                // against is cached; the draft is recomputed on the grown closure.
+                                let providers_held = computed.provider_demands.iter().all(|d| {
+                                    closure_names
+                                        .iter()
+                                        .any(|n| *n == d.declaration.module_path)
+                                });
+                                let computed = if providers_held {
+                                    index_insert_typed(index, typed_key.clone(), computed)?
+                                } else {
+                                    computed
+                                };
                                 Ok(computed)
                             };
 
@@ -14464,6 +14716,7 @@ fn reconcile_with_typed_cache(
     // diagnostic order — is assembled in the exact order the serial fold produced, so the
     // result is byte-identical regardless of how the schedule batched the closure.
     let mut modules_vec = im::Vector::new();
+    let mut demand_chunks: Vec<provider_acquire::ProviderDemands> = Vec::new();
     for (slot, entry) in dispatched.into_iter().enumerate() {
         let (parent_diags, tc_result) = entry.unwrap_or_else(|| {
             unreachable!(
@@ -14478,6 +14731,7 @@ fn reconcile_with_typed_cache(
         let diagnostics_started = std::time::Instant::now();
         diag_chunks.push(parent_diags);
         diag_chunks.push(tc_result.diagnostics.clone());
+        demand_chunks.push(tc_result.provider_demands.clone());
         for fork in tc_result.binding_forks.iter() {
             if fork.same_tree {
                 same_tree_fork_count += 1;
@@ -14493,6 +14747,7 @@ fn reconcile_with_typed_cache(
     finish_resolved_graph_assembly(
         Rc::new(modules_vec),
         diag_chunks,
+        demand_chunks,
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
@@ -17645,7 +17900,9 @@ pub fn handle_serve(
         sources,
         &entry_file,
         ResolvedGraphMemoShare::Memoize,
-    ) {
+    )
+    .map_err(ResolveFailure::into_message)
+    {
         Ok(parts) => parts,
         Err(msg) => {
             eprintln!("error: {}", msg);
@@ -18362,10 +18619,12 @@ fn serve_write_response(
 }
 
 /// One `.dag` `ServeWireHeader { name, value }` rendered as a header line. The name is the
-/// closed `ServeWireHeaderName` coproduct -- the framing headers this seam writes itself
-/// (Content-Length, Content-Type, Connection) have no constructor there -- and this match is its
-/// RFC 9110 spelling. The value is handler data, so the realization boundary refuses one carrying
-/// CR, LF or NUL rather than writing a split header. None = wrong shape or refused value.
+/// RFC 9110 field-name String `extdeps.http.server` `serve_response_header_wire` chose, written
+/// verbatim: this seam keeps no per-header table and no name grammar. A name is already a token
+/// that is no framing or typed-arm field, because `ServeWireHeader` is `sole_constructor` and its
+/// open arm carries the sealed `HttpExtensionFieldName`. A value is handler data, so one carrying
+/// CR, LF or NUL is refused rather than written as a split header. None = wrong shape or refused
+/// value.
 fn serve_wire_header_line(
     item: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
@@ -18377,17 +18636,7 @@ fn serve_wire_header_line(
         return None;
     }
     let name = match ctx.field(fields, "name") {
-        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
-            if ctx.sym_eq(*variant_name, "WireHeaderLocation") {
-                "Location"
-            } else if ctx.sym_eq(*variant_name, "WireHeaderSetCookie") {
-                "Set-Cookie"
-            } else if ctx.sym_eq(*variant_name, "WireHeaderCacheControl") {
-                "Cache-Control"
-            } else {
-                return None;
-            }
-        }
+        Some(Value::Str(s)) => s.to_string(),
         _ => return None,
     };
     let value = match ctx.field(fields, "value") {
@@ -20078,7 +20327,7 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     // exec created and is not inherited. A missing field is None, never a fabricated zero.
     #[cfg(target_os = "linux")]
     {
-        return proc_status_kb_field("VmHWM").filter(|b| *b > 0);
+        proc_status_kb_field("VmHWM").filter(|b| *b > 0)
     }
     #[cfg(target_os = "macos")]
     {
@@ -20180,16 +20429,17 @@ pub(crate) fn explicit_witness_admission_pairs() -> Vec<(String, String)> {
 // the freeze itself). Not a compiler_frontier `.dag` row: seed-Rust, counted here.
 
 /// The THIRD source of an executing consumer, and the one that was missing. `commit_gate_roster`
-/// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries` and
-/// `project_falsifier_witness_entries` turn them into explicit entries that RUN, and explicit rows
+/// carries `CommitWitnessClaim` rows at function grain; `project_ci_floor_witness_entries`
+/// turns them into explicit entries that RUN, and explicit rows
 /// merge after discovery with no exclusion filter — so an enrolled witness under an offline path
 /// executes even though the path excludes it (the two-edit rule `enforcement_coverage_exclusion_note`
 /// records: offlining such a witness requires deleting its enrollment too).
 ///
 /// Without this, the freeze wall would refuse 31 identities that already have a real consumer —
-/// a fail-closed FALSE POSITIVE, which is still a wrong answer. Only surfaces that execute count:
-/// `GitPrePushHook` is fmt-only since 2026-07-25 and runs no witness, so an enrollment naming only
-/// that surface is not a consumer.
+/// a fail-closed FALSE POSITIVE, which is still a wrong answer. Only surfaces that execute count
+/// (`EXECUTING_COMMIT_SURFACES`): `GitPrePushHook` is fmt-only since 2026-07-25 and
+/// `FalsifierCadenceJob` lost its executor at 611fd02770, so an enrollment naming only those is
+/// not a consumer.
 fn commit_roster_witness_claim_keys() -> &'static [String] {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
@@ -20201,13 +20451,20 @@ fn commit_roster_witness_claim_keys() -> &'static [String] {
     })
 }
 
+/// The enrollment surfaces that execute a witness. Hand-listed here only because the seed reads
+/// `commit_workflow.dag` by text scan; the authority is
+/// `gunbc.commit_workflow enrollment_is_scheduled`, and the unit test
+/// `executing_surfaces_mirror_enrollment_is_scheduled` pins this list to that predicate's body.
+/// `FalsifierCadenceJob` is deliberately absent: its executor (falsifier.yml) was deleted at
+/// 611fd02770 (#8283), so a row enrolled only there executes nowhere.
+const EXECUTING_COMMIT_SURFACES: [&str; 1] = ["GithubActionsCiJob"];
+
 fn commit_roster_witness_claim_keys_from_source(content: &str) -> Vec<String> {
     // The ROW head, not the bare constructor name: `CommitWitnessClaim {` also opens the coproduct
     // declaration and every pattern-match arm over it, and one such arm's window happens to reach a
     // prose `entry:` literal in a neighbouring note. A row is always a `check:` field of a
     // `CommitCheckEnrollment`, so that prefix is the identity of a row rather than a guess about it.
     const HEAD: &str = "check: CommitWitnessClaim {";
-    const EXECUTING_SURFACES: [&str; 2] = ["GithubActionsCiJob", "FalsifierCadenceJob"];
     let mut keys: Vec<String> = Vec::new();
     let mut cursor = 0usize;
     while let Some(offset) = content[cursor..].find(HEAD) {
@@ -20232,7 +20489,10 @@ fn commit_roster_witness_claim_keys_from_source(content: &str) -> Vec<String> {
                  {COMMIT_WORKFLOW_AUTHORITY_REL} has no parseable enrollment `surfaces:` list"
             );
         };
-        if !EXECUTING_SURFACES.iter().any(|s| surfaces.contains(s)) {
+        if !EXECUTING_COMMIT_SURFACES
+            .iter()
+            .any(|s| surfaces.contains(s))
+        {
             continue;
         }
         for function in quoted_literals(&list) {
@@ -20713,6 +20973,38 @@ fn read_frozen_roster_at_commit(
         ));
     }
     Ok(Some(String::from_utf8_lossy(&shown.stdout).into_owned()))
+}
+
+/// THE INSTRUMENT'S THIN READOUT over the SAME authority the required floor consults:
+/// `collect_frozen_path_deferral_additions`, which joins the live tree's typed
+/// FrozenPathDeferral entries (via `frozen_path_deferral_head_keys`) against the resolved diff
+/// baseline. This function adds NO judgment of its own — no second parser, no second comparison
+/// (DESIGN §5: a check restating a constraint the model already carries is a second representation
+/// of it). It renders the join's verdict as one tagged String for the dag instrument program
+/// `dag/gunbc/instruments/witness_deferral_freeze_population.dag`:
+/// * `refused|<cause>` — the join itself could not run (the baseline or a file read failed); the
+///   instrument refuses with a located diagnostic, never a silent pass (§5: every path succeeds
+///   fully or fails with a typed, located diagnostic).
+/// * `bounded` — no live identity sits outside the baseline population: the frozen list is bounded
+///   and shrinking only (an identity REMOVED from the roster shrinks the live set, so the join
+///   still holds — this is the removal arm's permit).
+/// * `unbounded|<identity>;;...` — at least one identity is outside the baseline population: a
+///   deferral was ADDED without its identity being in the drop row's declared population, which is
+///   the additions arm's refusal.
+/// Fixture determinism comes from the resolver's operator-override input (GUNBC_CI_DIFF_BASE), not
+/// from a test-only code path: a head-built run with the override pinned at HEAD self-compares, so
+/// the join reduces to exactly the working-tree identities — the planted entry, or its absence.
+pub fn witness_deferral_freeze_population_census() -> String {
+    match collect_frozen_path_deferral_additions() {
+        Err(reason) => format!("refused|{reason}"),
+        Ok(additions) => {
+            if additions.is_empty() {
+                "bounded".to_string()
+            } else {
+                format!("unbounded|{}", additions.join(";;"))
+            }
+        }
+    }
 }
 
 fn refuse_frozen_path_deferral_additions(additions: &[String]) -> Result<(), String> {
@@ -24093,10 +24385,45 @@ mod node_frontier_plumbing_controls {
             keys,
             vec![
                 "src/v2/test/claim/long/a_test.dag::ci_holds".to_string(),
-                "src/v2/test/claim/long/b_test.dag::falsifier_holds".to_string(),
             ],
-            "executing surfaces admit; the coproduct declaration and a pre-push-only row do not"
+            "only an executing surface admits; the coproduct declaration, a FalsifierCadenceJob-only \
+             row (dead executor) and a pre-push-only row do not"
         );
+    }
+
+    // THE DIFFERENTIAL PIN. The seed cannot call the .dag fact, so it mirrors it; this reads the
+    // authority's own body and refuses if the two surface sets ever differ. A mirror with no pin is
+    // a second authority that drifts silently (the fail-open this list once carried: it credited
+    // FalsifierCadenceJob after the predicate's executor was deleted).
+    #[test]
+    fn executing_surfaces_mirror_enrollment_is_scheduled() {
+        let content =
+            std::fs::read_to_string(workspace_root().join(super::COMMIT_WORKFLOW_AUTHORITY_REL))
+                .expect("read commit_workflow authority");
+        let head = content
+            .find("fn enrollment_is_scheduled(")
+            .expect("enrollment_is_scheduled is declared in the authority");
+        let body = &content[head..];
+        let body = &body[..body
+            .find("\n}\n")
+            .expect("enrollment_is_scheduled body closes")];
+        let mut authored: Vec<&str> = body
+            .split("surface: ")
+            .skip(1)
+            .map(|rest| {
+                rest.split(|c: char| !c.is_alphanumeric())
+                    .next()
+                    .unwrap_or("")
+            })
+            .collect();
+        authored.sort_unstable();
+        let mut mirrored: Vec<&str> = super::EXECUTING_COMMIT_SURFACES.to_vec();
+        mirrored.sort_unstable();
+        assert_eq!(
+            authored, mirrored,
+            "EXECUTING_COMMIT_SURFACES drifted from enrollment_is_scheduled"
+        );
+        assert!(!mirrored.contains(&"FalsifierCadenceJob"));
     }
 
     // The live half of the same fact: an enrolled witness under an offline path is admitted, and
@@ -26681,9 +27008,19 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommitWitnessClaimPairResolvability {
     Resolvable,
-    EntryMissing { detail: String },
-    EntryResolveFailed { detail: String },
+    EntryMissing {
+        detail: String,
+    },
+    EntryResolveFailed {
+        detail: String,
+    },
     FunctionNotFound,
+    /// A file-grain row (`check_fns: []`) whose entry file carries no TEST MARKER: the sentinel
+    /// promises every marked declaration in the file, and a marked-empty file promises nothing,
+    /// so the row holds no witness. Its own cause, distinct from a named function going missing.
+    FileGrainEntryHasNoMarkedDeclarations,
+    /// A file-grain row whose entry file cannot be read to enumerate markers.
+    FileGrainEntryUnreadable,
 }
 
 #[derive(Debug, Clone)]
@@ -28571,6 +28908,7 @@ mod witness_layer_roots_compile_clean_tests {
         let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
             graph: None,
             diagnostics: Rc::new(im::Vector::new()),
+            provider_demands: Rc::new(im::Vector::new()),
             source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             complexity: empty_complexity_report(),
             ownership: Rc::new(im::Vector::new()),
@@ -28729,6 +29067,7 @@ mod witness_layer_roots_compile_clean_tests {
             let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
                 graph: compiled.graph.clone(),
                 diagnostics: Rc::new(diagnostics.into()),
+                provider_demands: compiled.provider_demands.clone(),
                 source_indices: compiled.source_indices.clone(),
                 complexity: compiled.complexity.clone(),
                 ownership: compiled.ownership.clone(),
@@ -30059,6 +30398,9 @@ pub struct ShellTransportOperationCensusRow {
     pub operation: String,
     pub declared_inputs: Vec<String>,
     pub argv_input_refs: Vec<String>,
+    /// Declared-input names (variables intersected with `declared_inputs`) read anywhere inside `argv[0]`, calls and field accesses
+    /// included. Empty means the executable position reads no input.
+    pub executable_input_refs: Vec<String>,
 }
 
 fn collect_argv_input_refs(
@@ -30082,6 +30424,34 @@ fn collect_argv_input_refs(
             }
         }
         _ => {}
+    }
+}
+
+/// Every variable read anywhere under `node` (call arguments, field accesses, interpolations),
+/// in first-seen order. Unlike `collect_argv_input_refs` it descends through every expression
+/// form, because its question is "can an input reach this position", not "which inputs does
+/// this element interpolate".
+fn collect_expression_var_reads(
+    node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    out: &mut Vec<String>,
+) {
+    use crate::v1_std_core::{expr_var_name_at, ExprData, StringPart};
+    if let ExprData::ExprVar { .. } = node.expr_data.as_ref() {
+        let name = expr_var_name_at(node.clone(), source_indices.clone());
+        if !name.is_empty() && !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    if let ExprData::ExprStringInterp = node.expr_data.as_ref() {
+        for part in crate::v1_compiler_emit::extract_string_interp_parts(node.clone()).iter() {
+            if let StringPart::Interpolation { expr } = part.as_ref() {
+                collect_expression_var_reads(expr, source_indices, out);
+            }
+        }
+    }
+    for child in node.children.iter() {
+        collect_expression_var_reads(child, source_indices, out);
     }
 }
 
@@ -30159,6 +30529,20 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                 for argv_node in transport.children.iter() {
                     collect_argv_input_refs(argv_node, &source_indices, &mut argv_input_refs);
                 }
+                let mut executable_input_refs: Vec<String> = Vec::new();
+                if let Some(executable) = transport.children.iter().next() {
+                    collect_expression_var_reads(
+                        executable,
+                        &source_indices,
+                        &mut executable_input_refs,
+                    );
+                    let declared = operation_declared_inputs(op, &source_indices);
+                    executable_input_refs.retain(|name| {
+                        declared
+                            .iter()
+                            .any(|(declared_name, _)| declared_name == name)
+                    });
+                }
                 rows.push(ShellTransportOperationCensusRow {
                     path: rel.clone(),
                     service: item.name.clone(),
@@ -30168,6 +30552,7 @@ pub fn shell_transport_operation_rows() -> Vec<ShellTransportOperationCensusRow>
                         .map(|(name, _)| name)
                         .collect(),
                     argv_input_refs,
+                    executable_input_refs,
                 });
             }
         }
@@ -31436,7 +31821,7 @@ mod peel_alias_fixpoint_termination {
                 ),
             );
             // No files in this probe: the peel tree is synthetic, module_path is empty.
-            // file_modules / module_named_imports therefore come from empty_symbol_index,
+            // file_modules / module_named_imports / alias_cycles therefore come from empty_symbol_index,
             // the same constructor every other empty SymbolIndex uses.
             let empty_index = crate::v1_compiler_infer_env::empty_symbol_index();
             let symbol_index = std::rc::Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
@@ -31444,6 +31829,7 @@ mod peel_alias_fixpoint_termination {
                 global_bare,
                 services: empty_index.services.clone(),
                 transparent_alias_rep: empty_index.transparent_alias_rep.clone(),
+                alias_cycles: empty_index.alias_cycles.clone(),
                 type_head_exposures: empty_index.type_head_exposures.clone(),
                 file_modules: empty_index.file_modules.clone(),
                 module_named_imports: empty_index.module_named_imports.clone(),
@@ -31900,6 +32286,69 @@ mod exclusive_cost_partition_law {
             load,
             typecheck_compute: typecheck,
             ..ResolveStageNanos::default()
+        }
+    }
+
+    /// A stage add made outside every top-level span (the pool parse forced by the edge
+    /// index build) is in `resolve_stage_totals()` and in no span's parent, so the
+    /// partition over the totals refused OverAttributed by exactly that add.
+    /// RED WITHOUT THE FIX: the partition is drawn from the totals and refuses.
+    /// POSITIVE CONTROL: the same span with nothing outside it reconciles.
+    #[test]
+    fn a_stage_add_outside_every_span_is_not_a_row_of_the_partition() {
+        let in_span = |outside_pool_parse: u128| {
+            std::thread::spawn(move || {
+                resolve_stage_slot_add(|st| st.pool_parse += outside_pool_parse);
+                let depth = resolve_span_enter();
+                resolve_stage_slot_reset();
+                resolve_stage_slot_add(|st| st.typecheck_compute += 400);
+                resolve_span_exit(depth, "dag/probe.dag", 1_000);
+                exclusive_cost_partition()
+            })
+            .join()
+            .expect("partition thread")
+        };
+        assert!(
+            matches!(in_span(0).verdict, CostAccountingVerdict::Reconciled { .. }),
+            "control: a span with no outside add must reconcile"
+        );
+        let outside = in_span(5_000);
+        assert!(
+            matches!(outside.verdict, CostAccountingVerdict::Reconciled { .. }),
+            "a 5000ns pool parse outside the span must not enter the partition"
+        );
+        assert_eq!(
+            outside
+                .out_of_span
+                .iter()
+                .map(|r| (r.name, r.nanos))
+                .collect::<Vec<_>>(),
+            vec![("pool_parse", 5_000)],
+            "the out-of-span parse must be reported, typed, not dropped"
+        );
+        assert!(in_span(0).out_of_span.is_empty());
+    }
+
+    /// RED: a stage whose in-span total exceeds the thread total is two slot accounts
+    /// disagreeing; it refuses naming the stage instead of clamping to "no out-of-span cost".
+    /// POSITIVE CONTROL: the same rows with in-span <= thread yield the remainder.
+    #[test]
+    fn an_in_span_total_above_the_thread_total_refuses_naming_the_stage() {
+        let row = |name: &'static str, nanos: u128| CostPartitionRow { name, nanos };
+        let thread = [row("load", 100), row("pool_parse", 50)];
+        let rows = out_of_span_rows(&thread, &[row("load", 100), row("pool_parse", 20)])
+            .expect("in-span within thread totals");
+        assert_eq!(
+            rows.iter().map(|r| (r.name, r.nanos)).collect::<Vec<_>>(),
+            vec![("pool_parse", 30)]
+        );
+        match out_of_span_rows(&thread, &[row("load", 100), row("pool_parse", 51)]) {
+            Err(CostAccountingRefusal::InSpanExceedsThread {
+                stage,
+                in_span_nanos,
+                thread_nanos,
+            }) => assert_eq!((stage, in_span_nanos, thread_nanos), ("pool_parse", 51, 50)),
+            other => panic!("expected InSpanExceedsThread, got {other:?}"),
         }
     }
 

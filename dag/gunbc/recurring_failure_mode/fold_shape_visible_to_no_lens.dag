@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.fold_shape_visible_to_no_lens
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data fold_shape_visible_to_no_lens: RecurringFailureMode = RecurringFailureMode {
   identity: "fold_shape_visible_to_no_lens" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "a fold shape that lowers to NEITHER a substrate Loop NOR a surviving surface fold call, so no lens can see it: the site is absent from the analyzer's domain rather than refused inside it, and the accumulator it carries is neither proven, nor refused, nor counted (DESIGN section 5 -- a failure arm must refuse, never widen; here it widens into silence)",

@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.a_branch_property_falsified_by_a_derived_push
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_branch_property_falsified_by_a_derived_push: RecurringFailureMode = RecurringFailureMode {
   identity: "a_branch_property_falsified_by_a_derived_push" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of binding a published branch claim to the revision it was asserted against, so the claim carries its own subject and a later derived push makes it re-adjudicable rather than merely stale." } },
 
   receipts: [
     "**a branch property falsified by a derived push** (an author asserts a property about their OWN branch -- most often \"this change touches only the authority and never its generated projection\" -- and an automated actor then DERIVES the projection onto that same branch after CI. The asserted property was true of the commit the author wrote and false of the branch a reader inspects. This is single-party: no competing author exists and none was omitted.",

@@ -52,7 +52,7 @@ import std.measure { Second, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.operation_argv { InputTextList }
+import std.operation_argv { InputTextList }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall,
   ShellObserved, DispatchRecord, virtual_clock_origin,
@@ -929,5 +929,5 @@ test fn an_empty_observed_phase_refuses_the_observe_run() -> Bool {
 // A STAMPED-OFF APPLY PHASE ON AN OBSERVE RECORD REFUSES. CapPhaseRan says the write legs ran -- not
 // what this mode did; the mismatch is a second path to one observation and gets no pass.
 test fn an_apply_phase_on_an_observe_record_refuses() -> Bool {
-  observe_run_succeeded(phase: CapPhaseRan { files: [], reload: ManagerReloadNotOwed, slots: [] }) == false
+  observe_run_succeeded(phase: CapPhaseRan { files: [], reload: ManagerReloadNotOwed, slots: [], certified: [] }) == false
 }
