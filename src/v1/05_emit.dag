@@ -7,7 +7,9 @@ import std.compiler_entry {
 }
 import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
-import std.coercion { TypeRealizationDecision }
+import std.coercion { TypeRealizationDecision, dag_declared_widening_admits }
+import std.literal_elaboration { declaration_is_grounded_natural }
+import gunbc.structural_realization_bindings { kernel_grounding_rows }
 import std.unicode.scalar { ascii_lowercase }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
@@ -43,7 +45,7 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, carried_declaration_ref }
 
 import std.induction { InductiveField, SubValueUnknown }
 
@@ -3386,6 +3388,26 @@ fn cast_source_representation_identical(expr: Node, cast_target_node: Node, env:
   }
 }
 
+// A DECLARED ROUTE WHOSE REPRESENTATIONS COINCIDE REALIZES AS THE IDENTITY. LEGALITY is std.coercion's
+// (dag_declared_widening_admits over declared_widening_rules, keyed on the source DECLARATION: a std.nat Nat IS an Int); emit decides nothing
+// about it. What emit adds is only the realization, and that is a corpus fact too: a declaration with a
+// KernelGrounding row (gunbc.structural_realization_bindings kernel_grounding_rows) IS the kernel integer on every
+// route, as is the Int the rule widens to, so the target performs no operation. Read from the row on the exact
+// declaration, never from how a route spells the type: std.nat Nat renders as the Rust alias `Nat` (= i64), which is
+// no host numeric ground, so a spelling comparison could not see the coincidence.
+fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match expr.inferred {
+    Present { value: Resolved { node: n } } =>
+      match carried_declaration_ref(n: n, source_indices: source_indices, env: env) {
+        Present { value: d } =>
+          dag_declared_widening_admits(source: d, target_type: authored_name_at(source_indices: source_indices, node: cast_target_node))
+            && declaration_is_grounded_natural(rows: kernel_grounding_rows, d: d)
+        Absent => false
+      }
+    _ => false
+  }
+}
+
 // THREE MEANINGS, IN ORDER, AND THE THIRD IS UNCHANGED. Rendered-representation identity and
 // declared-carrier identity are two INDEPENDENTLY SUFFICIENT witnesses that the target has no
 // operation to perform -- neither is derived from the other, and neither is authority over the
@@ -3404,9 +3426,15 @@ fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarg
     expr_str
   } else if cast_source_representation_identical(expr: expr, cast_target_node: cast_target_node, env: env, target: target) {
     expr_str
+  } else if cast_source_grounded_onto_target_carrier(expr: expr, cast_target_node: cast_target_node, env: env, source_indices: source_indices) {
+    expr_str
   } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
     render_cast(expr_str: expr_str, type_str: ty_str, target: target)
   } else {
+    // RESIDUAL GAP, NOT AN INVARIANT: validate_cast (04_infer) refuses only a cast from a declaration
+    // that has std.coercion declared_widening_rules; a cast outside the cast domain (a user-declared
+    // Nat `as Int`) is skipped by the checker and reaches this arm as a runtime abort. Below ceiling;
+    // trigger: every `as` without a declared route refuses at type check, after a corpus cast census.
     emit_error_expr(message: concat("unsupported cast from ", src_ty, " to ", ty_str), target: target)
   }
 }

@@ -1,0 +1,75 @@
+module test.claim.emitter_nat_int_cast_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Permanent regression control for `Nat as Int` (#14545: extdeps.units.iso8601_calendar failed rustc
+// with 'unreachable expression' because the emitter rendered the cast as `panic!("unsupported cast
+// from Nat to i64")`). LEGALITY is a source-language fact: std.coercion declared_widening_rules names
+// the std.nat Nat DECLARATION (never the spelling) as widening to Int, validate_cast refuses any other
+// cast from that declaration at TYPE CHECK ("no declared conversion route"), and emit only realizes
+// the declared route as the identity. The emitter's unsupported-cast arm remains a RESIDUAL GAP, not
+// an invariant: a cast the checker skips (below) still reaches it as a runtime abort.
+//
+// NOT CLAIMED: a user `type Nat` passed at an Int formal. Executed at the PR head and at the merge-base it
+// does not refuse in either (no declared route is consulted for a call argument): the known declared-type-wall
+// gap, a pre-existing one this change neither opens nor closes. Trigger: #14430 closes it; claim it there.
+//
+// dissolve-on: std.coercion cast rows are declaration-keyed throughout (grounded_primitive_coproduct_identities
+// and dag_cast_rules are still name-keyed); a user `type Nat` cast to Int is skipped by the checker
+// today (outside the cast domain) and would reach the invariant arm.
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn nat_int_source() -> String {
+  "module nat_int_cast\n\nimport std.types { Int }\nimport std.nat { Nat }\n\nfn width() -> Nat {\n  60\n}\n\nfn widen() -> Int {\n  (width() as Int) * 2\n}\n"
+}
+
+data nat_as_float_source: String = "module probe_nat_as_float\nimport std.types { Float }\nimport std.nat { Nat }\nfn widen(n: Nat) -> Float { n as Float }\n"
+
+// RED: a cast from the std.nat Nat to a type with no declared route refuses at compile.
+fn w_undeclared_cast_is_refused_at_type_check() -> Bool {
+  blocking_count(nat_as_float_source) >= 1
+}
+
+// CONTROL: the declared route compiles.
+fn w_nat_as_int_compiles() -> Bool {
+  blocking_count(nat_int_source()) == 0
+}
+
+// CONTROL through emit: the declared route is realized as the identity, no abort spelling.
+fn w_nat_as_int_is_the_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    nat_int_source(),
+    "src/nat_int_cast.rs",
+    ["pub fn widen"],
+    ["unsupported cast", "panic!"]
+  )
+}
+
+data cross_module_nat_int_source: String = "module probe_cross_module_nat_int\n\nimport std.types { Int }\nimport extdeps.units.iso8601 { iso8601_minutes_per_hour }\n\nfn widen() -> Int {\n  (iso8601_minutes_per_hour() as Int) * 2\n}\n"
+
+// CONTROL, the #14545 shape: the operand is a call whose Nat comes from ANOTHER module and this module
+// never imports Nat, so the source's declaration is read from the carried type, not from this module's names.
+fn w_cross_module_nat_as_int_is_the_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    cross_module_nat_int_source,
+    "src/probe_cross_module_nat_int.rs",
+    ["pub fn widen"],
+    ["unsupported cast", "panic!"]
+  )
+}

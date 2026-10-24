@@ -26,7 +26,7 @@ import std.literal_elaboration {
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
-import std.coercion { select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
+import std.coercion { select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, dag_declaration_has_widening_rows, dag_declared_widening_admits, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -145,7 +145,7 @@ import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declar
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
+  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, carried_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -7531,6 +7531,13 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
+fn cast_source_declaration(inner: Node, scope: InferScope) -> DeclarationRef? {
+  match inner.inferred {
+    Present { value: Resolved { node: n } } => carried_declaration_ref(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env)
+    _ => none
+  }
+}
+
 // The solver's Unit placeholder is the synthesized core `unit_type` node, which has no declaration by
 // construction (OccurrenceSynthetic, kernel span): it is recognized as that node, so a source-authored
 // type spelled Unit, which carries a real occurrence and span, is never mistaken for it.
@@ -7618,11 +7625,18 @@ fn cast_source_is_declared_nominal(source_node: Node, source_indices: Map<String
 // below) let v1_interpreter eval_cast supply a route no declaration owns, the host's debug text.
 // source_is_nominal is the head exposure of the source's declaration identity, the same authority
 // product_at_scalar_declared_type reads, never a bare spelling.
-fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_is_nominal: Bool) -> ErrorNode? {
+fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_is_nominal: Bool) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
       if source_name == target_name { none }
+      else if (match source_declaration { Present { value: d } => dag_declaration_has_widening_rows(source: d) Absent => false }) {
+        if (match source_declaration { Present { value: d } => dag_declared_widening_admits(source: d, target_type: target_name) Absent => false }) { none }
+        else {
+          let msg = concat("invalid cast: ", source_name, " as ", target_name, " -- no declared conversion route in std.coercion")
+          Present { value: make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: module_name) }
+        }
+      }
       else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
         let diag = InternalError { message: msg, span: span }
@@ -7637,7 +7651,7 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
       else if !is_dag_cast_domain_type(name: target_name) { none }
       else if dag_can_cast(source_type: source_name, target_type: target_name) { none }
       else {
-        let msg = concat("invalid cast: ", source_name, " as ", target_name)
+        let msg = concat("invalid cast: ", source_name, " as ", target_name, " -- no declared conversion route in std.coercion")
         let diag = InternalError { message: msg, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
@@ -10662,7 +10676,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             && cast_source_is_declared_nominal(source_node: source_node, source_indices: si, env: scope.type_env)
         _ => false
       }
-      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
         Absent => []
