@@ -54,6 +54,6 @@ data non_literal_crossings_ground_to_the_refinement_carrier: RungDrop = RungDrop
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "the NonEmptyStr structural cut of the refinement-deletion program: where-refinement carriers retire behind checked constructors (gunbc.design_ruling where_refinements_retire_for_checked_constructors), at which point no non-literal crossing into a refined position exists to ground" },
     population: DerivedBy { label: v2_native_census_scoped_label() },
-    restoration_trigger: "the NonEmptyStr structural cut lands: every where-refinement carrier is replaced by a checked constructor whose admission is the type, the interim grounding rows on both sides are deleted with this row, and the accepted_frontier.advisories row {reason: \"refinement_carrier_grounding_crossing\", count: N} on the [native-census-infer] line goes to zero with them"
+    restoration_trigger: "the NonEmptyStr structural cut lands: every where-refinement carrier is replaced by a checked constructor whose admission is the type, the interim grounding rows on both sides are deleted with this row, and the accepted_frontier.advisories entry counting reason refinement_carrier_grounding_crossing on the native-census-infer line goes to zero with them"
   } }
 }
