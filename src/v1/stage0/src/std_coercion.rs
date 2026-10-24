@@ -199,52 +199,6 @@ pub fn refinement_cast_rules() -> Rc<Vec<Rc<RefinementCastRule>>> {
     CACHED.with(|c: &Rc<Vec<Rc<RefinementCastRule>>>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DeclaredWideningRule {
-    pub from_declaration: Rc<DeclarationRef>,
-    pub to_type: String,
-}
-
-pub fn declared_widening_rules() -> Rc<Vec<Rc<DeclaredWideningRule>>> {
-    thread_local! {
-            static CACHED: Rc<Vec<Rc<DeclaredWideningRule>>> = {
-                Rc::new(vec![Rc::new(DeclaredWideningRule {
-        from_declaration: crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
-        to_type: "Int".to_string(),
-    })])
-            };
-        }
-    CACHED.with(|c: &Rc<Vec<Rc<DeclaredWideningRule>>>| c.clone())
-}
-
-pub fn dag_declaration_has_widening_rows(source: Rc<DeclarationRef>) -> bool {
-    {
-        let mut __found = false;
-        for r in declared_widening_rules().iter().cloned() {
-            if crate::std_decl_ref::declaration_ref_eq(r.from_declaration.clone(), source.clone()) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
-pub fn dag_declared_widening_admits(source: Rc<DeclarationRef>, target_type: String) -> bool {
-    {
-        let mut __found = false;
-        for r in declared_widening_rules().iter().cloned() {
-            if (crate::std_decl_ref::declaration_ref_eq(r.from_declaration.clone(), source.clone())
-                && (r.to_type.clone() == target_type.clone()))
-            {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
 pub fn dag_cast_requires_proof(source_type: String, target_type: String) -> bool {
     {
         let mut __found = false;
