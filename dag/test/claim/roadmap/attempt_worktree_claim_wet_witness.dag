@@ -77,7 +77,7 @@ fn pass(
   match claims_at(cd: cd) {
   WorktreeClaimStoreUnready { detail } => WorktreeClaimPassRefused { detail: detail }
   WorktreeClaimStoreReady { store: claims } =>
-  match worktree_claim_ensure_pass_at(
+  worktree_claim_ensure_pass_at(
     stores: stores_at(dir: dir), claims: claims, host: host,
     path_of: (n, k) => tree_path(td: td, n: n, k: k),
     loaded_of: u => others, lifecycle_of: lifecycle_absent, now: now,
@@ -275,7 +275,7 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
   let outcomes = match claims_at(cd: cd) {
   WorktreeClaimStoreUnready { detail } => WorktreeClaimPassRefused { detail: detail }
   WorktreeClaimStoreReady { store: claims } =>
-  match worktree_claim_ensure_pass_at(
+  worktree_claim_ensure_pass_at(
     stores: stores_at(dir: dir), claims: claims, host: host,
     path_of: (n, k) => tree_path(td: td, n: n, k: k),
     loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 1301,
