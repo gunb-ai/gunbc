@@ -1,5 +1,6 @@
 module test.claim.serving.rented_release_witness
 
+import std.integer { int_to_decimal_string }
 import std.types { String, Bool, NonEmptyStr, Int }
 import std.optional { Present, Absent }
 import std.measure { MoneyRate, money_amount_micro }
@@ -7,12 +8,9 @@ import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.apply_mode { ApplyMode, Plan, Apply }
 import extdeps.currency.currency { Usd }
-import std.decimal { ExactDecimal }
-import extdeps.cloud.vast_ai { VastAiInstance }
-import product.supplier.vast_ai { VastAiAskReceipt }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths }
 import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired, rented_allocation_wire, rented_engine_served_name }
-import gunbc.serving.rented_release {
+import gunbc.serving.rented_release { RentedObservedInstance,
   RentedDrainNotListening, RentedDrainUnreadable, RentedAnchorAbsent, RentedAnchorPresent, RentedLegOutcomeNotReached, RentedStoreNoPartials, RentedStorePartials,
   RentedHostAnswered, RentedHostSilent, RentedHostReading, RentedVantageReached, RentedVantageNotReached, RentedVantageUnread,
   RentedLegOutcomeNotPerformedHostSilent, RentedDrainListening,
@@ -40,20 +38,13 @@ data w_protected: ServingProtectedPaths = ServingProtectedPaths {
   model_link_next: "/root/serve/model/model.ninfer.next",
 }
 
-// Recorded-shape Vast rows (the fields the interface returns), never an error rendering.
-fn w_instance(id: Int, label: String?) -> VastAiInstance {
-  VastAiInstance {
-    id: id,
-    machine_id: 42,
-    actual_status: Present { value: "running" },
-    gpu_name: "RTX PRO 5000",
-    gpu_ram: 49152,
-    num_gpus: 1,
-    image_uuid: "ninfer",
-    is_bid: Present { value: true },
-    min_bid: ExactDecimal { units: 1, fraction_digits: 0 },
-    dph_total: ExactDecimal { units: 1, fraction_digits: 0 },
-    label: label,
+// A supplier-agnostic instance reading, the shape every supplier maps into (the Vast mapping is
+// witnessed in test.claim.fabric.flex_vast_loop_witness through product.fabric.flex_vast_loop flex_vast_rented_instance).
+fn w_instance(id: Int, label: String?) -> RentedObservedInstance {
+  RentedObservedInstance {
+    id: int_to_decimal_string(value: id) as NonEmptyStr,
+    owner_label: label,
+    status: Present { value: "running" },
   }
 }
 
@@ -67,7 +58,6 @@ fn w_acquired() -> RentedServingAllocation {
       owner: "gunbc-flex" as NonEmptyStr,
       asked_at: 1792008000000,
       asked_rate: MoneyRate { amount: money_amount_micro(count: 450000), currency: Usd },
-      provider_ask: VastAiAskReceipt { ask_id: 77, machine_id: 42 },
     },
     contract: i.contract, card: i.card, end: i.end, engine: i.engine,
     artifact: i.artifact, host: i.host, route: i.route,
@@ -81,21 +71,21 @@ fn w_readings(before: RentedInstanceReading, after: RentedInstanceReading) -> Re
   }
 }
 
-fn w_decide(a: RentedServingAllocation, i: VastAiInstance, mode: ApplyMode) -> RentedDestroyDecision {
+fn w_decide(a: RentedServingAllocation, i: RentedObservedInstance, mode: ApplyMode) -> RentedDestroyDecision {
   rented_destroy_decision(allocation: a, reading: RentedInstanceObserved { instance: i }, required_label: w_label, mode: mode)
 }
 
 // THE RED for the id guard: the read instance is another id (ctrl's), so nothing is destroyed, even Apply.
 test fn an_id_mismatch_refuses_even_in_apply() -> Bool {
   match w_decide(a: w_imported(), i: w_instance(id: 2002, label: Present { value: "gunbc-flex" }), mode: Apply) {
-    RentedDestroyRefusedIdMismatch { bound: b, read: r } => (b as String) == "1001" && r == 2002
+    RentedDestroyRefusedIdMismatch { bound: b, read: r } => (b as String) == "1001" && (r as String) == "2002"
     _ => false
   }
 }
 
 test fn the_bound_id_is_authorized_in_apply() -> Bool {
   match w_decide(a: w_imported(), i: w_instance(id: 1001, label: none), mode: Apply) {
-    RentedDestroyAuthorized { request: q } => q.instance_id == 1001
+    RentedDestroyAuthorized { request: q } => (q.instance_id as String) == "1001"
     _ => false
   }
 }
@@ -123,7 +113,7 @@ test fn imported_without_the_label_is_admitted() -> Bool {
 
 test fn plan_produces_the_request_and_authorizes_nothing() -> Bool {
   match w_decide(a: w_imported(), i: w_instance(id: 1001, label: none), mode: Plan) {
-    RentedDestroyPlanned { request: q } => q.instance_id == 1001
+    RentedDestroyPlanned { request: q } => (q.instance_id as String) == "1001"
     _ => false
   }
 }
