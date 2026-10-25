@@ -42,11 +42,15 @@ import std.primitive_identity {
   DeclarationPrimitiveCostDuplicated,
   DeclarationPrimitiveCostUnmodeled,
   DeclarationProjectsNoCostedPrimitive,
+  DeclarationProjectsUndeclaredPrimitive,
+  PrimitiveDefinition,
+  primitive_declared_definitions,
   EmitRust,
   primitive_chars_cost,
   primitive_list_push_cost,
   primitive_modeled_cost_for_declaration,
   primitive_modeled_cost_in,
+  primitive_identity_is_declared,
   CoarseCostOnly,
   PrimitiveCostFact,
   PrimitiveModeledCost,
@@ -378,6 +382,7 @@ fn declared_cost_of(answer: DeclarationModeledCost, expected: PrimitiveIdentity)
     DeclarationCostModeled { primitive: p, cost: c } =>
       if primitive_identity_eq(left: p, right: expected) { Present { value: c } } else { none }
     DeclarationProjectsNoCostedPrimitive { declaration: _ } => none
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => none
     DeclarationPrimitiveCostUnmodeled { primitive: _ } => none
     DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => none
   }
@@ -433,31 +438,59 @@ fn roster_without(p: PrimitiveIdentity) -> List<PrimitiveCostFact> {
 }
 
 test fn list_push_without_its_row_refuses_as_unmodeled() -> Bool {
-  match primitive_modeled_cost_in(facts: roster_without(p: primitive_list_push), declaration: list_push_declaration) {
+  match primitive_modeled_cost_in(facts: roster_without(p: primitive_list_push), definitions: primitive_declared_definitions(), declaration: list_push_declaration) {
     DeclarationPrimitiveCostUnmodeled { primitive: p } => primitive_identity_eq(left: p, right: primitive_list_push)
     DeclarationCostModeled { primitive: _, cost: _ } => false
     DeclarationProjectsNoCostedPrimitive { declaration: _ } => false
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => false
     DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => false
   }
 }
 
 test fn chars_without_its_row_refuses_as_unmodeled() -> Bool {
-  match primitive_modeled_cost_in(facts: roster_without(p: primitive_chars), declaration: chars_declaration) {
+  match primitive_modeled_cost_in(facts: roster_without(p: primitive_chars), definitions: primitive_declared_definitions(), declaration: chars_declaration) {
     DeclarationPrimitiveCostUnmodeled { primitive: p } => primitive_identity_eq(left: p, right: primitive_chars)
     DeclarationCostModeled { primitive: _, cost: _ } => false
     DeclarationProjectsNoCostedPrimitive { declaration: _ } => false
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => false
     DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => false
   }
 }
 
 // TWO ROWS FOR ONE PRIMITIVE ARE A CONTRADICTION, NOT A FIRST ANSWER.
 test fn a_duplicated_row_refuses_instead_of_answering_with_either() -> Bool {
-  match primitive_modeled_cost_in(facts: [primitive_list_push_cost, primitive_list_push_cost], declaration: list_push_declaration) {
+  match primitive_modeled_cost_in(facts: [primitive_list_push_cost, primitive_list_push_cost], definitions: primitive_declared_definitions(), declaration: list_push_declaration) {
     DeclarationPrimitiveCostDuplicated { primitive: _, count: n } => n == 2
     DeclarationCostModeled { primitive: _, cost: _ } => false
     DeclarationProjectsNoCostedPrimitive { declaration: _ } => false
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => false
     DeclarationPrimitiveCostUnmodeled { primitive: _ } => false
   }
+}
+
+// THE RED FOR AN UNDECLARED PRIMITIVE, which is the state the projection roster was in before
+// list_push was declared. The same live row and the same live cost fact, read against a declared
+// population with list_push removed, must refuse with the projection's identity named. If it still
+// answered, the cost route would be keying through a row the projection validator refuses.
+fn declared_without(p: PrimitiveIdentity) -> List<PrimitiveDefinition> {
+  primitive_declared_definitions() |> filter(d => !primitive_identity_eq(left: d.identity, right: p))
+}
+
+test fn list_push_projected_onto_an_undeclared_primitive_refuses() -> Bool {
+  match primitive_modeled_cost_in(facts: primitive_d0_cost_facts, definitions: declared_without(p: primitive_list_push), declaration: list_push_declaration) {
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: p } => primitive_identity_eq(left: p, right: primitive_list_push)
+    DeclarationCostModeled { primitive: _, cost: _ } => false
+    DeclarationProjectsNoCostedPrimitive { declaration: _ } => false
+    DeclarationPrimitiveCostUnmodeled { primitive: _ } => false
+    DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => false
+  }
+}
+
+// THE INHABITANCE CLAIM FOR THE LIVE POPULATION: both re-homed facts key on identities the declared
+// population carries, which is what the positive controls above rely on without asserting.
+test fn both_re_homed_primitives_are_declared() -> Bool {
+  primitive_identity_is_declared(identity: primitive_list_push)
+    && primitive_identity_is_declared(identity: primitive_chars)
 }
 
 // THE RED FOR A SPELLING KEY. A declaration named list_push in a module that is not its home is no
@@ -465,6 +498,7 @@ test fn a_duplicated_row_refuses_instead_of_answering_with_either() -> Bool {
 test fn a_homonym_declaration_is_not_priced_by_the_primitive_row() -> Bool {
   match primitive_modeled_cost_for_declaration(declaration: decl_ref(module_path: "test.claim.primitive_modeled_cost_witness", decl_name: "list_push")) {
     DeclarationProjectsNoCostedPrimitive { declaration: _ } => true
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => false
     DeclarationCostModeled { primitive: _, cost: _ } => false
     DeclarationPrimitiveCostUnmodeled { primitive: _ } => false
     DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => false

@@ -43,6 +43,7 @@ import std.realization_cost_fidelity {
   RealizationCostFidelityReport,
   PrimitiveDuplicatedInSubjects,
   count_cost_facts_contradicted,
+  count_cost_carrier_unselected,
   cost_fidelity_counts,
   RealizationCostUnknown,
   RealizationDivergesByOperand,
@@ -57,12 +58,15 @@ import std.realization_cost_fidelity {
   realization_cost_fidelity_rows,
 }
 import std.primitive_identity {
+  CarrierCostReading,
+  CarrierSensitiveCost,
   CoarseCostOnly,
   CostParamNotRecoverableFromSignature,
   EmitRust,
   InterpreterHost,
   PrimitiveCostFact,
   PrimitiveCostStructureUnavailable,
+  PrimitiveModeledCost,
   StructuredCost,
 }
 import std.primitive_projection { PrimitiveIdentity }
@@ -610,6 +614,73 @@ test fn two_facts_for_one_key_contradict_in_either_order() -> Bool {
     && count_cost_fidelity_findings(rows: forward) == count_cost_fidelity_findings(rows: reversed)
     && count_cost_fidelity_unmeasured(rows: forward) == 0
     && count_cost_fidelity_unmeasured(rows: reversed) == 0
+}
+
+// THE SAME LAW, OVER THE TWO ARMS THAT CANNOT COMPARE. A carrier-sensitive model and a coarse one
+// both answer without comparing, and both used to answer without LOOKING, so two facts for one key
+// were reported as carrier-unselected or unmigrated and the contradiction vanished. The facts are the
+// same two in both orders, as above; the singleton and absent controls below keep the carrier answer
+// from being satisfied by a join that now contradicts everything.
+data probe_carrier_cost: PrimitiveModeledCost = CarrierSensitiveCost {
+  ephemeral: CarrierCostReading { worst_case: cost_linear(param: "n"), amortized: none },
+  persistent: CarrierCostReading { worst_case: cost_log(param: "n"), amortized: none },
+}
+
+fn carrier_report(facts: List<RealizationCostFact>) -> RealizationCostFidelityReport {
+  realization_cost_fidelity_rows(
+    modeled: [PrimitiveCostFact { primitive: probe_primitive_a, cost: probe_carrier_cost }],
+    target: InterpreterHost,
+    facts: facts,
+  )
+}
+
+fn carrier_fact(cost: CostBound) -> RealizationCostFact {
+  RealizationCostFact { primitive: probe_primitive_a, target: InterpreterHost, cost: cost }
+}
+
+test fn two_facts_for_a_carrier_sensitive_key_contradict_in_either_order() -> Bool {
+  let forward = rows_of(report: carrier_report(facts: [carrier_fact(cost: cost_linear(param: "n")), carrier_fact(cost: quadratic(param: "n"))]))
+  let reversed = rows_of(report: carrier_report(facts: [carrier_fact(cost: quadratic(param: "n")), carrier_fact(cost: cost_linear(param: "n"))]))
+  count_cost_facts_contradicted(rows: forward) == 1
+    && count_cost_facts_contradicted(rows: reversed) == 1
+    && count_cost_carrier_unselected(rows: forward) == 0
+    && count_cost_carrier_unselected(rows: reversed) == 0
+}
+
+test fn one_fact_for_a_carrier_sensitive_key_stays_carrier_unselected() -> Bool {
+  let rows = rows_of(report: carrier_report(facts: [carrier_fact(cost: cost_log(param: "n"))]))
+  count_cost_carrier_unselected(rows: rows) == 1 && count_cost_facts_contradicted(rows: rows) == 0
+}
+
+test fn no_fact_for_a_carrier_sensitive_key_stays_carrier_unselected() -> Bool {
+  let rows = rows_of(report: carrier_report(facts: []))
+  count_cost_carrier_unselected(rows: rows) == 1 && count_cost_facts_contradicted(rows: rows) == 0
+}
+
+test fn two_facts_for_a_coarse_key_contradict_in_either_order() -> Bool {
+  let forward = rows_of(report: realization_cost_fidelity_rows(
+    modeled: [probe_coarse(p: probe_primitive_a)],
+    target: InterpreterHost,
+    facts: [carrier_fact(cost: cost_linear(param: "n")), carrier_fact(cost: quadratic(param: "n"))],
+  ))
+  let reversed = rows_of(report: realization_cost_fidelity_rows(
+    modeled: [probe_coarse(p: probe_primitive_a)],
+    target: InterpreterHost,
+    facts: [carrier_fact(cost: quadratic(param: "n")), carrier_fact(cost: cost_linear(param: "n"))],
+  ))
+  count_cost_facts_contradicted(rows: forward) == 1
+    && count_cost_facts_contradicted(rows: reversed) == 1
+    && count_cost_model_unmigrated(rows: forward) == 0
+    && count_cost_model_unmigrated(rows: reversed) == 0
+}
+
+test fn one_fact_for_a_coarse_key_stays_unmigrated() -> Bool {
+  let rows = rows_of(report: realization_cost_fidelity_rows(
+    modeled: [probe_coarse(p: probe_primitive_a)],
+    target: InterpreterHost,
+    facts: [carrier_fact(cost: cost_linear(param: "n"))],
+  ))
+  count_cost_model_unmigrated(rows: rows) == 1 && count_cost_facts_contradicted(rows: rows) == 0
 }
 
 // A CONTRADICTED KEY IS NOT AN UNMEASURED ONE. Both are "no usable realized cost", and collapsing

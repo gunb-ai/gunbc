@@ -424,36 +424,32 @@ fn realization_cost_fidelity_row(
   }
 }
 
-// A primitive whose model has not yet been restated in the structured form gets a row too, with the
-// frontier arm. Omitting it would shrink the denominator by exactly the population that has not
-// been migrated, which is the population the frontier is about.
-fn unstructured_modeled_row(
+// A MODEL WITH NO SINGLE BOUND STILL GETS A ROW, AND THE REALIZATION SIDE IS STILL LOOKED UP. Two
+// arms land here. A model not yet restated in the structured form answers ModeledCostNotStructured,
+// and omitting its row would shrink the denominator by exactly the population the frontier is
+// about. A carrier-sensitive model answers ModeledCostCarrierUnselected, because no realization
+// fact names a carrier to compare against. Neither arm can compare, but the duplicate-key law is a
+// fact about the REALIZATION facts, not about the model's shape: two facts for one (primitive,
+// target) contradict whatever the model says. So the lookup runs first, through the same
+// realization_cost_for every structured row uses, and a duplicated key answers
+// RealizationCostFactsContradict before the arm's own answer. Both arms skipped it before, the coarse
+// one since the arms were split and the carrier one since it was added.
+fn uncomparable_modeled_row(
   primitive: PrimitiveIdentity,
   target: RealizationTarget,
+  facts: List<RealizationCostFact>,
+  uncontradicted: CostFidelity,
 ) -> RealizationCostFidelityRow {
   RealizationCostFidelityRow {
     primitive: primitive,
     target: target,
     modeled: none,
     realized: none,
-    fidelity: ModeledCostNotStructured,
-    projected_shape: none,
-  }
-}
-
-// A carrier-sensitive model gets a row too, so its primitive stays in the denominator. It has no
-// single modeled bound to show, and its realized side is not looked up, because the lookup could not
-// say which reading to compare it against.
-fn carrier_unselected_row(
-  primitive: PrimitiveIdentity,
-  target: RealizationTarget,
-) -> RealizationCostFidelityRow {
-  RealizationCostFidelityRow {
-    primitive: primitive,
-    target: target,
-    modeled: none,
-    realized: none,
-    fidelity: ModeledCostCarrierUnselected,
+    fidelity: match realization_cost_for(facts: facts, primitive: primitive, target: target) {
+      RealizationCostFactsDuplicated { count: n } => RealizationCostFactsContradict { count: n }
+      RealizationCostFactSingleton { cost: _ } => uncontradicted
+      RealizationCostFactAbsent => uncontradicted
+    },
     projected_shape: none,
   }
 }
@@ -533,9 +529,9 @@ fn realization_cost_fidelity_rows(
           StructuredCost { bound: b } =>
             realization_cost_fidelity_row(modeled: m, bound: b, target: target, facts: facts)
           CarrierSensitiveCost { ephemeral: _, persistent: _ } =>
-            carrier_unselected_row(primitive: m.primitive, target: target)
+            uncomparable_modeled_row(primitive: m.primitive, target: target, facts: facts, uncontradicted: ModeledCostCarrierUnselected)
           CoarseCostOnly { shape: _, cause: _ } =>
-            unstructured_modeled_row(primitive: m.primitive, target: target)
+            uncomparable_modeled_row(primitive: m.primitive, target: target, facts: facts, uncontradicted: ModeledCostNotStructured)
         }], acc)
       })) }
   }

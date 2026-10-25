@@ -37,7 +37,7 @@ import std.primitive_projection {
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
   primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_octets_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
-  primitive_list_push, primitive_chars,
+  primitive_list_push, primitive_chars, primitive_string_contains, primitive_machine_word_native_operate,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -983,36 +983,61 @@ data primitive_d0_cost_facts: List<PrimitiveCostFact> = [
 // primitive's spelling is not in that roster, so it is never priced by the primitive's row. Every
 // arm is a distinct fact: the declaration is no primitive projection; it projects a primitive with
 // no cost row; it projects a primitive with more than one row; or it has exactly one row.
+// A PROJECTION IS NOT TRUSTED FOR ITS IDENTITY. The projection roster can name a primitive the
+// declared population does not carry (list_push did, until it was declared), and the projection
+// validator refuses that row as ProjectionNamesUnknownPrimitive. A cost read through the same row
+// would key on an identity the primitive authority rejects, so the lookup asks the declared
+// population first and refuses with its own arm rather than pricing an undeclared primitive.
 type DeclarationModeledCost
   = DeclarationCostModeled { primitive: PrimitiveIdentity, cost: PrimitiveModeledCost }
   | DeclarationProjectsNoCostedPrimitive { declaration: DeclarationRef }
+  | DeclarationProjectsUndeclaredPrimitive { declaration: DeclarationRef, primitive: PrimitiveIdentity }
   | DeclarationPrimitiveCostUnmodeled { primitive: PrimitiveIdentity }
   | DeclarationPrimitiveCostDuplicated { primitive: PrimitiveIdentity, count: Int }
 
+// The fold sees only how many rows matched, so its accumulator has exactly those three states and
+// no arm of the answer type that a fold step could never produce.
+type PrimitiveCostRowsMatched
+  = NoCostRowMatched
+  | OneCostRowMatched { cost: PrimitiveModeledCost }
+  | CostRowsMatched { count: Int }
+
+fn primitive_cost_rows_matching(facts: List<PrimitiveCostFact>, primitive: PrimitiveIdentity) -> PrimitiveCostRowsMatched {
+  facts |> fold(init: NoCostRowMatched, f: fn(acc, fact) {
+    if primitive_identity_eq(left: fact.primitive, right: primitive) {
+      match acc {
+        NoCostRowMatched => OneCostRowMatched { cost: fact.cost }
+        OneCostRowMatched { cost: _ } => CostRowsMatched { count: 2 }
+        CostRowsMatched { count: n } => CostRowsMatched { count: n + 1 }
+      }
+    } else {
+      acc
+    }
+  })
+}
+
 fn primitive_modeled_cost_in(
   facts: List<PrimitiveCostFact>,
+  definitions: List<PrimitiveDefinition>,
   declaration: DeclarationRef,
 ) -> DeclarationModeledCost {
   match primitive_projection_row_for_declaration(declaration: declaration) {
     Absent => DeclarationProjectsNoCostedPrimitive { declaration: declaration }
     Present { value: row } =>
-      facts |> fold(init: DeclarationPrimitiveCostUnmodeled { primitive: row.primitive }, f: fn(acc, fact) {
-        if primitive_identity_eq(left: fact.primitive, right: row.primitive) {
-          match acc {
-            DeclarationPrimitiveCostUnmodeled { primitive: p } => DeclarationCostModeled { primitive: p, cost: fact.cost }
-            DeclarationCostModeled { primitive: p, cost: _ } => DeclarationPrimitiveCostDuplicated { primitive: p, count: 2 }
-            DeclarationPrimitiveCostDuplicated { primitive: p, count: n } => DeclarationPrimitiveCostDuplicated { primitive: p, count: n + 1 }
-            DeclarationProjectsNoCostedPrimitive { declaration: d } => DeclarationProjectsNoCostedPrimitive { declaration: d }
-          }
-        } else {
-          acc
+      if primitive_identity_is_declared_in(definitions: definitions, identity: row.primitive) {
+        match primitive_cost_rows_matching(facts: facts, primitive: row.primitive) {
+          NoCostRowMatched => DeclarationPrimitiveCostUnmodeled { primitive: row.primitive }
+          OneCostRowMatched { cost: c } => DeclarationCostModeled { primitive: row.primitive, cost: c }
+          CostRowsMatched { count: n } => DeclarationPrimitiveCostDuplicated { primitive: row.primitive, count: n }
         }
-      })
+      } else {
+        DeclarationProjectsUndeclaredPrimitive { declaration: declaration, primitive: row.primitive }
+      }
   }
 }
 
 fn primitive_modeled_cost_for_declaration(declaration: DeclarationRef) -> DeclarationModeledCost {
-  primitive_modeled_cost_in(facts: primitive_d0_cost_facts, declaration: declaration)
+  primitive_modeled_cost_in(facts: primitive_d0_cost_facts, definitions: primitive_declared_definitions(), declaration: declaration)
 }
 
 fn primitive_surface_missing_identity_violation(row: PrimitiveSurfaceRow) -> PrimitiveJoinViolation? {
@@ -1227,16 +1252,38 @@ data primitive_projection_target_canonical_names: List<String> = [
   "machine_word_native_operate",
 ]
 
+// list_push IS DECLARED HERE, AND GROUNDED, because its projection row and its cost row both key on
+// it. std.primitive_projection maps std.algebra list_push to primitive_list_push, and
+// primitive_modeled_cost_for_declaration reaches primitive_list_push_cost through that row, so an
+// undeclared identity made the projection ProjectionNamesUnknownPrimitive and the cost route keyed
+// through a row the projection validator refuses. It is not a canonical-name-only row: std.algebra
+// free_monoid_collection_templates carries exactly one list_push template, so the signature is
+// projected from that profile rather than minted ungrounded.
+data primitive_list_push_definition: PrimitiveDefinition = PrimitiveDefinition {
+  identity: primitive_list_push,
+  semantic_contract: PrimitiveSemanticContract {
+    canonical_name: "list_push" as NonEmptyStr,
+    signature: GroundedInAlgebraTemplate { profile: FreeMonoidCollectionProfile },
+  },
+}
+
+data primitive_projection_target_grounded_definitions: List<PrimitiveDefinition> = [
+  primitive_list_push_definition,
+]
+
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
   concat(
-    primitive_d0_definitions,
+    concat(primitive_d0_definitions, primitive_projection_target_grounded_definitions),
     primitive_projection_target_canonical_names |> map(name => primitive_definition_of(name: name))
   )
 }
 
+fn primitive_identity_is_declared_in(definitions: List<PrimitiveDefinition>, identity: PrimitiveIdentity) -> Bool {
+  definitions |> any(fn(d) { primitive_identity_eq(left: d.identity, right: identity) })
+}
+
 fn primitive_identity_is_declared(identity: PrimitiveIdentity) -> Bool {
-  primitive_declared_definitions()
-    |> any(fn(d) { primitive_identity_eq(left: d.identity, right: identity) })
+  primitive_identity_is_declared_in(definitions: primitive_declared_definitions(), identity: identity)
 }
 
 data primitive_projection_query_note: String = "The question a candidate collector asks, and it is TOTAL: every DeclarationRef gets an answer. Absence and divergence are different states at the consumer, which is the distinction a boolean suppress flag could not carry.
@@ -1586,6 +1633,22 @@ data primitive_pure_dag_seam_unreachable_traversal: PrimitiveTraversalOrderFact 
 // is a scalar whose rendering consults no order. String interpolation lowers to the same Display
 // and is syntax, not a primitive call, so this row covers it only through that shared realization.
 data primitive_to_string_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_to_string, order: CanonicalOrder }
+// FOUR DECLARED PRIMITIVES HAD NO TRAVERSAL FACT, and three were already on main. string_contains
+// (#13871), chars (#14233) and machine_word_native_operate (#14334) were each declared without one,
+// and list_push was about to be the fourth, so determinism_denominator_is_closed_on_declared_primitives
+// was red and the gate refused every tree it read. They are closed together because the obligation
+// belongs to declaring a primitive, not to whichever PR noticed it. string_contains and
+// machine_word_native_operate return a scalar computed from their arguments, with no collection
+// walked, so OrderFreeResult. chars yields the text's scalars in text order, and list_push yields xs
+// followed by item, so each result's order is its input's order: SourcePreservingOrder.
+data primitive_string_contains_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_string_contains, order: OrderFreeResult }
+
+data primitive_machine_word_native_operate_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_machine_word_native_operate, order: OrderFreeResult }
+
+data primitive_chars_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_chars, order: SourcePreservingOrder }
+
+data primitive_list_push_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_list_push, order: SourcePreservingOrder }
+
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
@@ -1608,6 +1671,10 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_octets_bytes_traversal,
   primitive_pure_dag_seam_unreachable_traversal,
   primitive_to_string_traversal,
+  primitive_string_contains_traversal,
+  primitive_machine_word_native_operate_traversal,
+  primitive_chars_traversal,
+  primitive_list_push_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {
