@@ -28,9 +28,31 @@ import v2.workflow.roster_import_sweep { roster_import_sweep_for_paths }
 // AllocationCounter. The sweep's git.Inspect shell operations sit only in the apply path
 // (roster_target_refusal, reached from roster_import_sweep_apply_exit), which the applied edits
 // never enter from here: nothing below calls an apply exit, so the entry's admission stays
-// Filesystem-only and the emitted closure builds without a git transport. If the seed refuses
-// this entry's closure anyway, the instrument's run reports the refusal as emission refused --
-// the exact cause is named by the run, not papered over (DESIGN section 5: done means executed).
+// Filesystem-only and the emitted closure carries no git transport. The MEASURED run refuses for
+// a different reason, and the refusal is recorded here as the run names it (DESIGN section 5:
+// done means executed -- and an unexecuted claim says so):
+//   V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed
+//   first_error=error[E0204]: the trait `Copy` cannot be implemented for this type
+//   @ src/v1/v2-emitted-policy-unit-0/src/../../stage0/src/std_bit.rs:40:12
+// The emitted std_bit.rs line 40 is `pub struct Word64` -- dag/std/bit.dag's
+// `type Word64 { bytes: List<Byte> }`, emitted with
+// `#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]` over an
+// `Rc<Vec<Rc<Byte>>>` field. It is the documented leaf collision (docs/governance RFM
+// emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer: shared_types is still leaf-keyed,
+// last-write-wins): Word64 is declared in BOTH dag/std/bit.dag and dag/std/machine_word.dag, both
+// are in this closure (std.bit through v2.compiler.program_assembly <- v2.std.integer's
+// `import std.bit { Word64 }` -- a name v2.std.integer's body never uses, the very dead shape
+// this sweep flags; std.machine_word through std.filesystem <- std.encoding), and the second
+// declarer poisons the leaf's shared mark, so the emitter takes its non-shared derive arm and
+// rustc refuses. The discriminating evidence: the emitted crate for this entry AND for
+// gunbc.instruments.native_materialization_store_closure (already red on main at the same line,
+// "run by name, not a merge gate") renders BOTH std_bit.rs and std_machine_word.rs Word64 with
+// the Copy arm, while gunbc.instruments.value_position_block_nests -- whose closure has std.bit
+// but no std.machine_word -- renders Word64 WITHOUT Copy and its instrument is green (exit 0).
+// This is a front-end/emitter gap, not a refusal of this entry's effect closure: the route
+// itself is wired (the seed rendered the crate and cargo ran), and it is reported, not papered
+// over. The gap routes to the emitter authority that owns the still-leaf-keyed EmitGraphInfo
+// indexes; this entry needs no special case.
 //
 // THE SUBJECT CHANNEL. The native claim child is spawned with no arguments and no environment of
 // its own (cli_run/native_lane_runner spawn site), so the work list arrives as ONE committed
