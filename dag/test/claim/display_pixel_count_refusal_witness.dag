@@ -1,0 +1,40 @@
+module test.claim.display_pixel_count_refusal_witness
+
+import std.types { String, Bool, Int, List }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable }
+
+// std.measure DisplayPixelCount AT ITS OWN PARAMETER, AND WHAT IT REFUSES TODAY. It is a nominal
+// record so it is not the same type as CharacterCount, and the checker refuses a distinct value at
+// it -- EXCEPT a value typed by an alias of a generic application, which every std.measure count is.
+// That hole is gunbc.recurring_failure_mode an_aliased_generic_application_is_admitted_at_a_distinct_record_formal,
+// filed with this change. The RED is therefore enrolled as an expecting-red tripwire: it asserts the
+// census RAN and carries zero blocking rows at the parameter, so it goes red the day the judgment
+// lands and is rewritten then to expect the refusal. Beside it, one term away, the same call with
+// the unaliased Measure<Count, One, Nat> IS refused, which shows the wall is reachable and the
+// carrier is not the defect; and the positive control is clean.
+
+data alias_red_source: String = "module probe_display_pixel_alias_red\nimport std.measure { Measure, CharacterCount, DisplayPixelCount }\nfn width(w: DisplayPixelCount) -> Int { 0 }\nfn chars() -> CharacterCount { Measure \{ count: 7 } }\nfn call() -> Int { width(w: chars()) }\n"
+
+data unaliased_control_source: String = "module probe_display_pixel_unaliased\nimport std.measure { Measure, Count, One, DisplayPixelCount }\nimport std.nat { Nat }\nfn width(w: DisplayPixelCount) -> Int { 0 }\nfn chars() -> Measure<Count, One, Nat> { Measure \{ count: 7 } }\nfn call() -> Int { width(w: chars()) }\n"
+
+data positive_control_source: String = "module probe_display_pixel_control\nimport std.measure { DisplayPixelCount }\nfn width(w: DisplayPixelCount) -> Int { 0 }\nfn call() -> Int { width(w: DisplayPixelCount \{ pixels: 7 }) }\n"
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => rows |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+test fn a_display_pixel_count_is_admitted_at_its_own_parameter() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(positive_control_source)) == 0
+}
+
+test fn an_unaliased_count_measure_refuses_at_a_display_pixel_count_parameter() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(unaliased_control_source)) > 0
+}
+
+// EXPECTING-RED: flips when the alias judgment lands.
+test fn a_character_count_is_still_admitted_at_a_display_pixel_count_parameter() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(alias_red_source)) == 0
+}

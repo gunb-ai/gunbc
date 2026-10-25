@@ -1,0 +1,177 @@
+module test.claim.fleet.posix_quoted_remote_word_real_execution_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import std.types { FilePath }
+import extdeps.ssh.openssh_remote_command { openssh_remote_command_string, openssh_release_of_version_output, openssh_remote_command_release_covered }
+import extdeps.ssh.openssh_remote_command
+import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTarget,
+  SshTargetResolved,
+  SshTargetRefused,
+  fleet_ssh_target_at_standard_port,
+  fleet_remote_leg_target,
+  fleet_remote_leg_strings,
+  LoginShellStanding,
+  PosixLoginShellProof,
+  PosixRemoteRouteStanding,
+  LoginShellPosix,
+  LoginShellNotPosix,
+  LoginShellUnreadable,
+  login_shell_standing,
+  fleet_posix_quoted_leg,
+  PosixRemoteRouteCovered,
+  PosixRemoteRouteUnmeasured,
+  PosixRemoteRouteUncovered,
+  OpenSshExecutorClient,
+  OpenSshTargetServer,
+  posix_remote_route_standing,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INJECTION BOUNDARY BY REAL EXECUTION (merry-fox-82 condition 3): the rendered words, joined into the one command
+// string OpenSSH sends (extdeps.ssh.openssh_remote_command openssh_remote_command_string, the ssh.c join), are executed
+// exactly as sshd runs a remote command -- the user's login shell, -c, that string (session.c) -- under the runner's own
+// login shell as its real passwd entry names it (extdeps.shell shell.Sh ReparseWith; no wrapping quotes, so no second
+// copy of the quoting under test, review 85958). It is not a live sshd: the transport itself is proven structurally
+// in the hermetic witness. The words are prefixed by
+// `printf '%s\036'`, so each word the shell sees is followed by one ASCII record separator (octal 036, a byte no
+// hostile word carries). The words pass when the separated fields equal the raw words exactly (no hostile word is
+// empty, so the non-empty fields are compared), so a word split in two -- including the word whose newline is followed
+// by `touch <canary>` (merry-fox-82's condition for carrying newlines) -- still reds, and no expansion or second
+// command ran: the canary path named inside the $( ), backtick, `;`, `&&` and newline words is never created.
+// Refused by the hermetic envelope (shell.Exec and shell.Mktemp.Dir have no mock_response), so it is a LocalRepoWetLane
+// exclusion in gunbc.ci.ci_layer_roots.
+
+// THE RUNNER'S OWN TARGET AND PROOF: the principal the witness runs as, its real passwd entry, a target naming it.
+fn runner_target() -> SshTarget? {
+  let who = shell.Id.UserName()
+  let name = trim(s: who.stdout)
+  if who.success == false || name == "" { Absent } else {
+    match fleet_ssh_target_at_standard_port(endpoint: "127.0.0.1", principal: name as NonEmptyStr) {
+      SshTargetResolved { target: t } => Present { value: t }
+      SshTargetRefused { endpoint: _, refusal: _ } => Absent
+    }
+  }
+}
+
+fn runner_standing(target: SshTarget) -> LoginShellStanding {
+  let entry = shell.Passwd.Entry(name: target.principal)
+  login_shell_standing(target: target, success: entry.success, output: entry.stdout)
+}
+
+// THE ROUTE UNDER THE RUNNER'S REAL CLIENT: `ssh -V` as this runner answers it (the producer the quoted route reads on
+// the executor). The server reading is SUPPLIED -- no sshd runs here -- as the line Ubuntu 24.04's openssh-server
+// prints; its real producer is the srv4 placement step (frontier row on typed_argv_exec_over_fleet_ssh_posix).
+fn runner_route(proof: PosixLoginShellProof) -> PosixRemoteRouteStanding {
+  let client = openssh.Client.Version()
+  posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: true, server_output: "OpenSSH_9.6p1 Ubuntu-3ubuntu13.5, OpenSSL 3.0.13 30 Jan 2024\n")
+}
+
+fn hostile_words(canary: String) -> List<String> {
+  [
+    "plain",
+    "a b  c",
+    "*",
+    "grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb",
+    concat(concat("$(touch ", canary), ")"),
+    concat(concat("`touch ", canary), "`"),
+    concat("x;touch ", canary),
+    concat("x&&touch ", canary),
+    concat("x\ntouch ", canary),
+    "it's",
+    "'\"",
+    "a\\b",
+    "$HOME",
+    "~",
+    "[ab]",
+    "!x",
+    "#x",
+  ]
+}
+
+test fn hostile_words_reach_sh_as_one_literal_word_each() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  if dir.success == false {
+    false
+  } else {
+    let canary = join([dir.path as String, "/canary"], "")
+    let words = hostile_words(canary: canary)
+    match runner_target() {
+      Absent => false
+      Present { value: t } =>
+        match runner_standing(target: t) {
+          LoginShellNotPosix { principal: _, shell: _ } => false
+          LoginShellUnreadable { principal: _, reason: _ } => false
+          LoginShellPosix { proof: p } =>
+        match runner_route(proof: p) {
+          PosixRemoteRouteUnmeasured { side: _, reason: _ } => false
+          PosixRemoteRouteUncovered { side: _, release_name: _ } => false
+          PosixRemoteRouteCovered { route: route } =>
+        match fleet_posix_quoted_leg(route: route, argv: concat(["printf", "%s\\036"], words)) {
+          Absent => false
+          Present { value: leg } => {
+            let command = openssh_remote_command_string(arguments: fleet_remote_leg_strings(leg: leg))
+            let ran = shell.Sh.ReparseWith(shell: p.shell, command: command as NonEmptyStr)
+            let canary_present = shell.Test.IsFile(path: canary as FilePath)
+            let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+            ran.success
+              && filter(split(s: ran.stdout, delimiter: "\x1e"), l => l != "") == words
+              && canary_present.is_file == false
+              && cleaned.success
+              && fleet_remote_leg_target(leg: leg) == t
+          }
+        }
+        }
+        }
+    }
+  }
+}
+
+// INHABITANCE OF THE PRODUCER (review 85942): the real `getent passwd <user>` this runner answers, for the user the
+// witness runs as, read through the production parser, against an independent oracle -- the seventh field of the
+// passwd FILE read by awk (a second producer, argv only; review 85958). The route is the producer's actual output -- its trailing
+// newline and NSS formatting included -- not a typed-in line; the fleet leg itself (read_fleet_login_shell over the
+// SSH edge) is a frontier row whose consumer is the srv4 placement step.
+test fn the_real_getent_output_mints_the_proof_for_its_own_principal() -> Bool {
+  match runner_target() {
+    Absent => false
+    Present { value: t } => {
+      let oracle = trim(s: shell.Passwd.FileShellField(name: t.principal).stdout)
+      match runner_standing(target: t) {
+        LoginShellPosix { proof: p } => p.target == t && (p.shell as String) == oracle
+        LoginShellNotPosix { principal: pr, shell: sh } => pr == t.principal && sh == oracle
+        LoginShellUnreadable { principal: _, reason: _ } => false
+      }
+    }
+  }
+}
+
+// INHABITANCE OF THE CLIENT PRODUCER: the runner's real `ssh -V` yields exactly one release line, and the route standing
+// classifies that release by the covered rows -- Covered when listed, Uncovered on the client side when not. Which it is
+// on a given runner is a fact of that runner's image; the route never treats an unlisted release as covered.
+test fn the_runners_real_ssh_version_is_read_and_classified_by_the_rows() -> Bool {
+  let client = openssh.Client.Version()
+  match openssh_release_of_version_output(output: client.stderr) {
+    Absent => false
+    Present { value: release_name } =>
+      match runner_target() {
+        Absent => false
+        Present { value: t } =>
+          match runner_standing(target: t) {
+            LoginShellNotPosix { principal: _, shell: _ } => false
+            LoginShellUnreadable { principal: _, reason: _ } => false
+            LoginShellPosix { proof: p } =>
+              match runner_route(proof: p) {
+                PosixRemoteRouteCovered { route: r } => r.client_release == release_name && openssh_remote_command_release_covered(release_name: release_name)
+                PosixRemoteRouteUncovered { side: OpenSshExecutorClient, release_name: rl } => rl == release_name && openssh_remote_command_release_covered(release_name: release_name) == false
+                PosixRemoteRouteUncovered { side: OpenSshTargetServer, release_name: _ } => false
+                PosixRemoteRouteUnmeasured { side: _, reason: _ } => false
+              }
+          }
+      }
+  }
+}

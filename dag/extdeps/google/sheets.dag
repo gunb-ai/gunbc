@@ -91,6 +91,10 @@ data sheets_conditional_format_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/sheets#conditionalformatrule" }
 }
 
+data sheets_add_sheet_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/request#addsheetrequest" }
+}
+
 data sheets_a1_notation_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/guides/concepts#cell" }
 }
@@ -119,6 +123,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     sheets_get_citation,
     sheets_grid_properties_citation,
     sheets_conditional_format_citation,
+    sheets_add_sheet_citation,
     sheets_a1_notation_citation
   ]
 }
@@ -438,8 +443,9 @@ data structural_coverage_gap_value_range_cell_types: List<CoverageClosureEntry> 
 // execution, and the wire is where the two part company.
 //
 // gunbc.review_sheet_sheets once lowered a write plan to the Optional form, and it never executed
-// -- it was the caller live_sheets_transport_frontier reserved. lower_write_plan now builds this
-// type; the defect was in a landed module rather than a gap in a new one.
+// -- no public caller wrote rows until gunbc.review_sheet_converge_cli converge_review_tab_rows.
+// lower_write_plan now builds this type; the defect was in a landed module rather than a gap in a
+// new one.
 type BatchUpdateSpreadsheetResponse {
   spreadsheetId: String
 }
@@ -478,6 +484,8 @@ data sheets_field_frozen_row_count: String = "sheets.properties.gridProperties.f
 data sheets_field_conditional_formats: String = "sheets.conditionalFormats"
 
 data sheets_field_user_entered_format: String = "sheets.data.rowData.values.userEnteredFormat"
+
+data sheets_field_column_pixel_size: String = "sheets.data.columnMetadata.pixelSize"
 
 fn sheets_field_mask(paths: List<String>) -> String {
   join(paths, ",")
@@ -543,6 +551,14 @@ type SheetsRowDataRead {
 
 type SheetsGridDataRead {
   rowData: List<SheetsRowDataRead>?
+  columnMetadata: List<SheetsDimensionPropertiesRead>?
+}
+
+// GridData.columnMetadata: one DimensionProperties per column of the returned range, in column
+// order. pixelSize is the column's width in pixels; upstream sends it for every column it returns,
+// so an absent one is an unread field rather than a default width.
+type SheetsDimensionPropertiesRead {
+  pixelSize: Int?
 }
 
 // frozenRowCount is absent when no rows are frozen, for the same proto3 reason as a zero colour
@@ -607,6 +623,23 @@ type SpreadsheetRead {
   sheets: List<SheetsSheetRead>?
 }
 
+// batchUpdate's reply to an addSheet request: one reply per request, in request order, each
+// carrying the new tab's properties. sheetId is what a later request addresses, so it is read from
+// this reply rather than assumed; absent is zero under the same proto3 omission as
+// SheetsSheetPropertiesRead, and sheets_sheet_id_read is the one place that says so.
+type SheetsAddSheetReplyRead {
+  properties: SheetsSheetPropertiesRead?
+}
+
+type SheetsBatchReplyRead {
+  addSheet: SheetsAddSheetReplyRead?
+}
+
+type BatchUpdateAddSheetResponse {
+  spreadsheetId: String
+  replies: List<SheetsBatchReplyRead>?
+}
+
 type ValueRangeWrite {
   range: String
   majorDimension: String
@@ -622,6 +655,21 @@ type BatchUpdateValuesResponse {
   responses: List<ValueRange>?
 }
 
+// BooleanCondition.type, the two members a conditional colour here uses. Upstream's ConditionType
+// is a long enum (Sheets v4 reference, BooleanCondition / ConditionType); a member is added when a
+// rule needs it, and each carries its wire name. TEXT_CONTAINS takes one value, the substring;
+// NUMBER_GREATER takes one value, the number the cell must exceed, written as user-entered text.
+type SheetsBooleanConditionType
+  = ConditionTextContains
+  | ConditionNumberGreater
+
+fn sheets_boolean_condition_type_wire(t: SheetsBooleanConditionType) -> String {
+  match t {
+    ConditionTextContains => "TEXT_CONTAINS"
+    ConditionNumberGreater => "NUMBER_GREATER"
+  }
+}
+
 // THE HERMETIC values.get FIXTURE IS AN EMPTY WHOLE TAB. mock_response can publish one result, so
 // the hermetic arm is the decoded-200 shape of values.get over a tab holding no values: the range
 // Sheets reports for a whole-tab request (the quoted title, then the grid extent) and no values
@@ -634,6 +682,31 @@ data hermetic_get_values_value_range: ValueRange = ValueRange {
   range: hermetic_get_values_range,
   majorDimension: Absent,
   values: Absent,
+}
+
+// THE HERMETIC spreadsheets.get FIXTURE IS A THREE-TAB WORKBOOK. It is the decoded-200 shape of a
+// metadata read under the locator's mask (sheetId, title, index per tab) over a workbook carrying
+// three tabs, so a multi-tab kind's tab set and per-title locate run end to end against the mock,
+// and a single-tab kind meets two tabs it does not declare. The first tab's sheetId is absent, as
+// upstream omits a zero (sheets_sheet_id_read). Every part is a data row, as mock_response needs.
+data hermetic_metadata_first_tab: SheetsSheetRead = SheetsSheetRead {
+  properties: Present { value: SheetsSheetPropertiesRead { sheetId: Absent, title: Present { value: "modules" }, index: Absent, gridProperties: Absent } },
+  data: Absent,
+  conditionalFormats: Absent,
+}
+data hermetic_metadata_second_tab: SheetsSheetRead = SheetsSheetRead {
+  properties: Present { value: SheetsSheetPropertiesRead { sheetId: Present { value: 1 }, title: Present { value: "findings" }, index: Present { value: 1 }, gridProperties: Absent } },
+  data: Absent,
+  conditionalFormats: Absent,
+}
+data hermetic_metadata_third_tab: SheetsSheetRead = SheetsSheetRead {
+  properties: Present { value: SheetsSheetPropertiesRead { sheetId: Present { value: 2 }, title: Present { value: "classes" }, index: Present { value: 2 }, gridProperties: Absent } },
+  data: Absent,
+  conditionalFormats: Absent,
+}
+data hermetic_metadata_spreadsheet_read: SpreadsheetRead = SpreadsheetRead {
+  spreadsheetId: Absent,
+  sheets: Present { value: [hermetic_metadata_first_tab, hermetic_metadata_second_tab, hermetic_metadata_third_tab] },
 }
 
 // THE READ THAT MAKES FORMATTING CONVERGEABLE. Without it a format actuator can only report what
@@ -719,6 +792,8 @@ service sheets.Spreadsheets {
       404 => SheetsError
       429 => SheetsError
       500 => SheetsError
+    }    mock_response {
+      200 => { result: hermetic_metadata_spreadsheet_read } "hermetic spreadsheets.get decoded-200 shape under the locator mask over a three-tab workbook (modules, findings, classes)"
     }
   }
   operation GetValues {
@@ -811,6 +886,70 @@ service sheets.Spreadsheets {
       5xx => SheetsError
     }
   }
+  // THE SAME updateSheetProperties REQUEST AS SetFrozenRows, UNDER THE OTHER FIELD MASK. Upstream's
+  // UpdateSheetPropertiesRequest carries a SheetProperties and a field mask naming which of its
+  // fields to write; properties.title is one of them. The mask names title and nothing else, so a
+  // rename cannot also reset the frozen rows or any other property the request does not carry.
+  operation RenameSheet {
+    requires Network
+    input { spreadsheet_id: String, sheet_id: Int, title: String }
+    output { spreadsheet_id: String from "spreadsheetId" }
+    transport rest {
+      method: POST,
+      path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
+      body: {
+        requests: [
+          {
+            updateSheetProperties: {
+              properties: { sheetId: sheet_id, title: title },
+              fields: "title"
+            }
+          }
+        ]
+      }
+    }
+    response {
+      200 => BatchUpdateSpreadsheetResponse
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
+  // UpdateDimensionPropertiesRequest over a column range: range is a DimensionRange (sheetId,
+  // dimension COLUMNS, startIndex inclusive, endIndex exclusive), properties a DimensionProperties,
+  // and the field mask names pixelSize alone, so a width write cannot also hide or show a column.
+  operation SetColumnWidth {
+    requires Network
+    input { spreadsheet_id: String, sheet_id: Int, start_index: Int, end_index: Int, pixel_size: Int }
+    output { spreadsheet_id: String from "spreadsheetId" }
+    transport rest {
+      method: POST,
+      path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
+      body: {
+        requests: [
+          {
+            updateDimensionProperties: {
+              range: { sheetId: sheet_id, dimension: sheets_major_dimension_wire(d: DimensionColumns), startIndex: start_index, endIndex: end_index },
+              properties: { pixelSize: pixel_size },
+              fields: "pixelSize"
+            }
+          }
+        ]
+      }
+    }
+    response {
+      200 => BatchUpdateSpreadsheetResponse
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
   operation FormatCellRange {
     requires Network
     input {
@@ -869,7 +1008,8 @@ service sheets.Spreadsheets {
       start_row: Int
       start_col: Int
       end_col: Int
-      match_text: String
+      condition_type: SheetsBooleanConditionType
+      condition_value: String
       foreground: SheetsColor
       rule_index: Int
     }
@@ -891,7 +1031,7 @@ service sheets.Spreadsheets {
                   }
                 ],
                 booleanRule: {
-                  condition: { type: "TEXT_CONTAINS", values: [{ userEnteredValue: match_text }] },
+                  condition: { type: sheets_boolean_condition_type_wire(t: condition_type), values: [{ userEnteredValue: condition_value }] },
                   format: { textFormat: { bold: true, foregroundColor: foreground } }
                 }
               },
@@ -903,6 +1043,33 @@ service sheets.Spreadsheets {
     }
     response {
       200 => BatchUpdateSpreadsheetResponse
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
+
+  // AddSheetRequest names the tab by properties.title only; sheetId and index are assigned by
+  // upstream and read back from the reply. A title already in use is refused by upstream with 400,
+  // which is the refusal the tab locator's per-title ambiguity rule never has to see.
+  operation AddSheet {
+    requires Network
+    input { spreadsheet_id: String, title: String }
+    output { result: BatchUpdateAddSheetResponse }
+    transport rest {
+      method: POST,
+      path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
+      body: {
+        requests: [
+          { addSheet: { properties: { title: title } } }
+        ]
+      }
+    }
+    response {
+      200 => BatchUpdateAddSheetResponse
       400 => SheetsError
       401 => SheetsError
       403 => SheetsError

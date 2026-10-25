@@ -16,7 +16,15 @@ data sheets_spreadsheets_mock_case_batch_update_values: PublishedMockCase = Publ
   case_id: 0
 }
 
+data sheets_spreadsheets_mock_case_get_spreadsheet_metadata: PublishedMockCase = PublishedMockCase {
+  operation_key: "sheets.Spreadsheets.GetSpreadsheetMetadata",
+  service: "sheets.Spreadsheets",
+  operation: "GetSpreadsheetMetadata",
+  case_id: 0
+}
+
 data sheets_published_mock_corpus: List<PublishedMockCase> = [
   sheets_spreadsheets_mock_case_get_values,
-  sheets_spreadsheets_mock_case_batch_update_values
+  sheets_spreadsheets_mock_case_batch_update_values,
+  sheets_spreadsheets_mock_case_get_spreadsheet_metadata
 ]
