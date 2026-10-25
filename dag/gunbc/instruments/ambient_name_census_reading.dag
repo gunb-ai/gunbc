@@ -119,7 +119,7 @@ fn ambient_census_fixture_expected() -> List<String> {
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t1\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t2\tdeclared_order",
     "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\t3\tdeclared_order",
-    "binding_refusal_cause\texamples.partial\town\tresolve_reason_unbound_symbol\t6:14",
+    "binding_refusal_cause\texamples.partial\town\tresolve_reason_unbound_symbol\t6:14\t-",
     "binding_unbound\texamples.partial\tnot_declared_anywhere\t6:14",
     "binding_unbound_module\texamples.partial\t1\t0"
   ]
@@ -352,6 +352,20 @@ fn refused_standing_text(standing: RefusedStanding) -> String {
   match standing { NewlyRefused => "newly_refused"  PreviouslyRefused => "previously_refused"  BaseUnread => "base_unread" }
 }
 
+// REFUSED BY A CARRIED DEPENDENCY: a newly refused module whose EVERY located refusal cause is a declarer_refused
+// cascade (binding_refusal_cause, field 5 = the declarer the resolver named) onto a declarer that is itself in the carried
+// set (refused at the head AND the merge base). The wave did not break it: it imports a module already broken, so its own
+// edits are unjudged exactly as a carried module's are. A module with no cause row, any cause that is not a declarer_refused
+// cascade, or a declarer outside the carried set is NOT this state -- it stays newly_refused and exits 1. Import-target-file
+// causes name no declarer, so they cannot be checked against the carried set and are never admitted here. The state is
+// listed and counted every run; it dissolves when its declarer resolves (the native-unbound `join` root in the import-wave
+// program, tidy-ant-251) because the module then leaves the refused set.
+fn refused_by_carried_dependency(cause_rows: List<String>, carried: List<String>, module: String) -> Bool {
+  let mine = cause_rows |> filter(l => field_at(line: l, index: 1) == module)
+  let unexplained = mine |> filter(l => !(field_at(line: l, index: 2) == "own" && field_at(line: l, index: 3) == "resolve_reason_declarer_refused" && count(carried |> filter(c => c == field_at(line: l, index: 5))) != 0))
+  count(mine) != 0 && count(unexplained) == 0
+}
+
 fn ambient_name_census_standing(
   fixture_stdout: String,
   fixture_status: Int,
@@ -376,12 +390,15 @@ fn ambient_name_census_standing(
   let not_observed = unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
   let refused_rewritten = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => true  Absent => false })
   let missing = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => false  Absent => true })
-  let newly_refused = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { NewlyRefused => true  _ => false })
+  let newly_candidates = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { NewlyRefused => true  _ => false })
   let base_unread = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { BaseUnread => true  _ => false })
   // THE CARRIED SET (gunbc.rung_drop ambient_name_census_carried_refusals): refused at the head AND at the merge base,
   // re-derived by this identity join on every run and never copied, so it can only shrink -- a module that resolves
   // at the head leaves refused_rewritten, and a module the base did not refuse is newly_refused, not carried.
   let carried = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { PreviouslyRefused => true  _ => false })
+  let cause_rows = distinct_lines(lines: split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_refusal_cause\t")))
+  let cascaded = newly_candidates |> filter(m => refused_by_carried_dependency(cause_rows: cause_rows, carried: carried, module: m))
+  let newly_refused = newly_candidates |> filter(m => count(cascaded |> filter(c => c == m)) == 0)
   let failed = failed_subject_runs(tree_runs: tree_runs)
   let attribution = module_subject_attribution(tree_stdout: tree_stdout)
   let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "")
@@ -396,9 +413,10 @@ fn ambient_name_census_standing(
     + (unanswered |> join(separator: "\n")) + "\n"
     + "unanswered_declared_order_count\t" + to_string(count(unanswered)) + "\n"
     + (rewritten_lines |> join(separator: "\n")) + "\n"
-    + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" }) + "\t" + refused_standing_text(standing: refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout))) |> join(separator: "\n")) + "\n"
+    + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" }) + "\t" + (if count(cascaded |> filter(c => c == m)) != 0 { "refused_by_carried_dependency" } else { refused_standing_text(standing: refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout)) })) |> join(separator: "\n")) + "\n"
     + (carried |> map(m => "carried_refused\t" + m) |> join(separator: "\n")) + "\n"
     + "carried_refused_count\t" + to_string(count(carried)) + "\n"
+    + "refused_by_carried_dependency_count\t" + to_string(count(cascaded)) + "\n"
     + (if count(newly_refused) == 0 { "ambient-name-census: a ratchet, no module newly refused against the merge base; " + to_string(count(carried)) + " carried (refused at the base too, their edits not judged)\n" } else { "ambient-name-census: a ratchet, " + to_string(count(newly_refused)) + " module(s) newly refused against the merge base; " + to_string(count(carried)) + " carried\n" })
     + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
     + (failed |> map(l => "unobserved_subject\t" + l) |> join(separator: "\n")) + "\n"

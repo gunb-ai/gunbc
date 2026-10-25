@@ -180,3 +180,59 @@ test fn a_binding_refusal_cause_row_is_a_known_kind_and_is_printed() -> Bool {
     _ => false
   }
 }
+
+fn standing_with_causes(causes: String) -> CliWireResponse {
+  ambient_name_census_standing(
+    fixture_stdout: ambient_census_fixture_stdout(),
+    fixture_status: 0,
+    unindexed_status: 2,
+    tree_stdout: healthy_head() + causes,
+    tree_runs: "",
+    rewritten: both_rewritten(),
+    base_stdout: "binding_module\tbroken_by_wave\t1\t0\t0\t0\nbinding_unreached\talready_refused\tresolve\n",
+    base_probed: "broken_by_wave\nalready_refused\n"
+  )
+}
+
+test fn a_newly_refused_module_whose_every_cause_cascades_from_a_carried_declarer_is_listed_counted_and_exits_zero() -> Bool {
+  match standing_with_causes(causes: "binding_refusal_cause\tbroken_by_wave\town\tresolve_reason_declarer_refused\t3:4\talready_refused\nbinding_refusal_cause\talready_refused\town\tresolve_reason_unbound_symbol\t9:1\t-\n") {
+    CliWirePrintable { bytes: bytes, exit: ExitSuccess } =>
+      string_contains(s: bytes, pattern: "refused_rewritten\tbroken_by_wave\tresolve\trefused_by_carried_dependency")
+        && string_contains(s: bytes, pattern: "refused_by_carried_dependency_count\t1")
+        && string_contains(s: bytes, pattern: "carried_refused_count\t1")
+    _ => false
+  }
+}
+
+test fn a_newly_refused_module_with_an_own_non_cascade_cause_still_exits_one() -> Bool {
+  match standing_with_causes(causes: "binding_refusal_cause\tbroken_by_wave\town\tresolve_reason_unbound_symbol\t3:4\t-\n") {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: code, reason: reason } } =>
+      (code == 1)
+        && string_contains(s: reason, pattern: "broken_by_wave")
+        && string_contains(s: bytes, pattern: "refused_rewritten\tbroken_by_wave\tresolve\tnewly_refused")
+        && string_contains(s: bytes, pattern: "refused_by_carried_dependency_count\t0")
+    _ => false
+  }
+}
+
+test fn a_cascade_from_a_declarer_outside_the_carried_set_still_exits_one() -> Bool {
+  match standing_with_causes(causes: "binding_refusal_cause\tbroken_by_wave\town\tresolve_reason_declarer_refused\t3:4\tsome.other_module\n") {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: code, reason: _ } } =>
+      (code == 1) && string_contains(s: bytes, pattern: "refused_rewritten\tbroken_by_wave\tresolve\tnewly_refused")
+    _ => false
+  }
+}
+
+test fn a_newly_refused_module_with_no_cause_row_is_not_a_cascade_and_exits_one() -> Bool {
+  match standing_with_causes(causes: "") {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: _ } } => code == 1
+    _ => false
+  }
+}
+
+test fn a_cascade_with_one_unexplained_cause_among_cascade_causes_still_exits_one() -> Bool {
+  match standing_with_causes(causes: "binding_refusal_cause\tbroken_by_wave\town\tresolve_reason_declarer_refused\t3:4\talready_refused\nbinding_refusal_cause\tbroken_by_wave\timport_target_file_refused\tresolve_module_not_found\t1:1\t-\n") {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: _ } } => code == 1
+    _ => false
+  }
+}

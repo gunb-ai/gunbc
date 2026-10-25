@@ -3698,11 +3698,20 @@ fn native_refusal_origin_label(origin: NativeRefusalOrigin) -> String {
   }
 }
 
-// THE LOCATED CAUSE OF A REFUSED MODULE, `binding_refusal_cause <module> <origin> <fatal reason> <line>:<byte column>`:
+// THE LOCATED CAUSE OF A REFUSED MODULE, `binding_refusal_cause <module> <origin> <fatal reason> <line>:<byte column> <declarer>`:
 // the FIRST refusal chain's fatal, located by the same position table as the residual rows. A locus that does not read
-// prints `-`, as binding_unbound does.
+// prints `-`, as binding_unbound does. The declarer is the module the fatal's DeclarerRefused correction names (the
+// identity minted by v2.compiler.resolve declarer_refused_diagnostic), `-` when the fatal carries none, so a consumer
+// judges a cascade by the named declarer and never by the reason text.
 fn native_census_refusal_cause_line(positions: NativeCensusPositionTable, entry: NativeCensusModule, origin: NativeRefusalOrigin, first: NonEmptyDiagnostics) -> String {
-  "binding_refusal_cause\t" + entry.module + "\t" + native_refusal_origin_label(origin: origin) + "\t" + symbol_lexeme(sym: diagnostics_fatal(d: first).reason) + "\t" + occurrence_binding_locus_text(locus: native_census_at_locus(at: native_census_locate_fatal(chain: first, path: entry.path, positions: positions)))
+  "binding_refusal_cause\t" + entry.module + "\t" + native_refusal_origin_label(origin: origin) + "\t" + symbol_lexeme(sym: diagnostics_fatal(d: first).reason) + "\t" + occurrence_binding_locus_text(locus: native_census_at_locus(at: native_census_locate_fatal(chain: first, path: entry.path, positions: positions))) + "\t" + native_census_cause_declarer_text(chain: first)
+}
+
+fn native_census_cause_declarer_text(chain: NonEmptyDiagnostics) -> String {
+  match native_census_correction_declarer(c: diagnostics_fatal(d: chain).correction) {
+    Present { value: declarer } => qualified_name_to_dotted_string(qn: declarer)
+    Absent => "-"
+  }
 }
 
 fn native_census_unbound_lines(positions: NativeCensusPositionTable, entry: NativeCensusModule, origin: NativeRefusalOrigin, first: NonEmptyDiagnostics, rest: List<NonEmptyDiagnostics>) -> List<String> {
