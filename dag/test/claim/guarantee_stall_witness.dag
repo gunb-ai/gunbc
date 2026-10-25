@@ -15,9 +15,8 @@ import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_liv
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }
-import gunbc.guarantee_stall.roster {
-  all_guarantee_stalls, restored_stalls, every_restored_stall_is_rostered_once,
-}
+import gunbc.guarantee_stall.roster { all_guarantee_stalls }
+import gunbc.guarantee_stall.roster_pins { restored_stalls, every_restored_stall_is_rostered_once }
 
 // Local one-liner over the builtin rather than an import: three test files already declare their
 // own `string_contains`, so a fourth would make the bare name ambiguous corpus-wide. This is a

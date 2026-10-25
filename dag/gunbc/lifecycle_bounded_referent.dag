@@ -15,7 +15,7 @@ import gunbc.dashboard_node_uri { dashboard_node_uri_scheme }
 // OPERATIVE half, which is the condition a later reader must re-measure.
 //
 // THE DISTINCTION IS NOT NEW HERE; IT WAS ARGUED IN PROSE AND IS NOW CARRIED AS STRUCTURE.
-// `gunbc.guarantee_stall.roster` already records, against a dated dashboard reading, that three
+// `gunbc.guarantee_stall.roster_pins` already records, against a dated dashboard reading, that three
 // cited work items reported done while their conditions were unmet, and states the rule it had to
 // state in a paragraph because nothing could hold it: the node ids are provenance for who was
 // asked, never evidence that the climb happened, and each trigger's operative half is the semantic

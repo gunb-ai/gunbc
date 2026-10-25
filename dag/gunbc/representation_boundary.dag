@@ -516,8 +516,7 @@ data cross_tree_import_boundary: RepresentationBoundary = RepresentationBoundary
   next_trigger: climbs_when(capability: "none identified by this inventory for the DECISION itself, which conforms. Whether its arbiter is reached on a required route is answered by boundary_interpreted_standing rather than asserted here.")
 }
 
-// ORDER IS SOURCE ORDER AND IS LOAD-BEARING, for the reason gunbc.guarantee_stall.roster gives:
-// a consumer renders rows in roster order, so sorting this list reorders every projection derived
+// ORDER IS SOURCE ORDER AND IS LOAD-BEARING: a consumer renders rows in roster order, so sorting this list reorders every projection derived
 // from it. Append at the end.
 data representation_boundary_roster: List<RepresentationBoundary> = [
   calls_boundary,
