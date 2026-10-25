@@ -25,7 +25,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHAT v2 ESTABLISHES, in two parts, because v2 has no anonymous tuple at all:
 // (A) OUTSIDE v2'S CURRENT REACH. There is no `enumerate` declaration for an application to bind
 //     (resolve refuses resolve_reason_unbound_symbol) and no tuple production in the grammar (a tuple
-//     type or literal refuses at parse), beside a control that differs only in not being a tuple. So
+//     type refuses at parse, and so does a tuple literal, each in its own fixture), each beside a
+//     control that differs only in not being a tuple. So
 //     the seed's specimen has no v2 counterpart to admit or refuse. TRIGGER: v2 gaining an enumerate or
 //     a tuple production; then these arms are rewritten to construct the anonymous element and assert
 //     its refusal.
@@ -110,11 +111,18 @@ test fn there_is_no_v2_enumerate_to_produce_an_anonymous_tuple() -> Bool {
     && tuple_infers(body: "want_bools(xs: produce_b())")
 }
 
-// (A2) NO TUPLE PRODUCTION: a tuple type and literal refuse at parse, and the same binding without the
-// tuple is accepted.
-test fn there_is_no_v2_tuple_type_or_literal() -> Bool {
-  tuple_refuses_before_infer_with(body: "let t: (Int, Bool) = (1, true)\n  0", reason: ^parse_g0_tokens_remain)
+// (A2) NO TUPLE TYPE: a tuple type annotation refuses at parse; the same binding with a one-term type
+// is accepted. The binding's value is not a tuple, so the refusal is the type's alone.
+test fn there_is_no_v2_tuple_type() -> Bool {
+  tuple_refuses_before_infer_with(body: "let t: (Int, Bool) = 1\n  0", reason: ^parse_g0_tokens_remain)
     && tuple_infers(body: "let t: Int = 1\n  0")
+}
+
+// (A3) NO TUPLE LITERAL: a tuple literal refuses at parse with no annotation at all; the same binding with a
+// one-term value is accepted.
+test fn there_is_no_v2_tuple_literal() -> Bool {
+  tuple_refuses_before_infer_with(body: "let t = (1, true)\n  0", reason: ^parse_g0_tokens_remain)
+    && tuple_infers(body: "let t = 1\n  0")
 }
 
 // (B0) CONTROLS for (B1) and (B2): the same consumers, one variable changed.
