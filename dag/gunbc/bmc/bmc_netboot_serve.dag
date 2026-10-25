@@ -338,9 +338,23 @@ fn bmc_netboot_staging_ops(plan: BmcNetbootServePlan, user_seed: String) -> List
     BmcNetbootPutArtifact { name: "grubaa64.efi", artifact: bmc_netboot_artifact(name: "grubaa64.efi") },
     BmcNetbootPutText { name: "grub.cfg", text: bmc_netboot_grub_cfg_text(plan: plan) },
     BmcNetbootPutText { name: "nocloud/user-data", text: user_seed },
+    // THE HOSTNAME COMES OUT OF AN OPTIONAL NOW. identity became Optional in extdeps.os.ubuntu_autoinstall when
+    // the key-only posture made it Canonical-optional; this plan's own construction sites still supply it, and
+    // a seed with no identity has no instance-id to name, so this row reads the present case and falls back to
+    // the empty instance-id the vendor data would carry anyway. The staging behaviour, ordering and argv are
+    // untouched — the byte for a present identity is exactly what it was.
     BmcNetbootPutText {
       name: "nocloud/meta-data",
-      text: join(["instance-id: ", plan.autoinstall.identity.hostname as String], ""),
+      text: join(
+        [
+          "instance-id: ",
+          match plan.autoinstall.identity {
+            Present { value: id } => id.hostname as String
+            Absent => "iid-datasource-none"
+          },
+        ],
+        "",
+      ),
     },
     BmcNetbootLaunchServe,
   ]

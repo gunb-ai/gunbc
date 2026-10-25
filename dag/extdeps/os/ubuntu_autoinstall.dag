@@ -25,6 +25,29 @@ type AutoinstallIdentity {
   hashed_password: NonEmptyStr
 }
 
+// THE KEY-ONLY ENTRY, LANDED IN THE CLOUD-INIT USER TABLE INSTEAD OF THE AUTOINSTALL IDENTITY.
+// WHY THIS EXISTS AT ALL is the Canonical autoinstall reference's own ruling on the identity section,
+// verbatim at its `identity` heading
+// (https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html):
+//   "This is the only configuration key that must be present (unless the user-data section is present,
+//   in which case it is optional)."
+// So a key-only posture is not a workaround around the schema -- upstream provides the door. And because the
+// identity section's own schema (subiquity server/controllers/identity.py, IdentityData) declares
+// `required: ["username", "hostname", "password"]`, an identity mapping WITHOUT a password is what upstream
+// refuses; the only upstream-legal no-password posture is therefore to omit identity and carry the user in
+// cloud-init's user-data, which this type models. The per-user key spellings are cloud-init's own schema
+// (cloud-init/config/schemas/schema-cloud-config-v1.json): `name`, `gecos`, `ssh_authorized_keys`,
+// `lock_passwd`. NO `passwd` AND NO `hashed_passwd` KEY IS REPRESENTABLE HERE ON PURPOSE: a key-only entry
+// is defined as one that carries no password at all, so the type cannot state the thing the operator's
+// condition forbids. `lock_passwd` stays settable because a user with keys and an unlocked empty password
+// field is a different machine than one with keys and a locked password field.
+type CloudInitUserEntry {
+  name: NonEmptyStr
+  gecos: NonEmptyStr
+  ssh_authorized_keys: List<SshPublicKey>
+  lock_passwd: Bool
+}
+
 type AutoinstallStoragePolicy
   = StoragePolicyAbsent
   | StoragePolicyDirectLayout
@@ -54,11 +77,23 @@ type UbuntuAutoinstallPayload {
   delivery: AutoinstallDeliveryMethod
   fully_automated: Bool
   target_distribution: UbuntuDistribution
-  identity: AutoinstallIdentity
+  // THE IDENTITY SECTION IS OPTIONAL IN THE ONLY UPSTREAM-LEGAL WAY: absent here means the autoinstall
+  // document carries no identity mapping at all, and the operator's entry then lives in `user_data`
+  // below (Canonical's ruling is cited on CloudInitUserEntry: identity "is the only configuration key
+  // that must be present (unless the user-data section is present, in which case it is optional)" —
+  // https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html).
+  // Present keeps today's rendering byte-for-byte: subiquity's identity schema demands
+  // username+hostname+password together whenever the mapping is there at all.
+  identity: Optional<AutoinstallIdentity>
   locale: NonEmptyStr
   keyboard_layout: NonEmptyStr
   ssh: Optional<AutoinstallSshServer>
   storage_policy: AutoinstallStoragePolicy
+  // The cloud-init `user-data` section, carried straight through into the emitted document. It is what
+  // makes a key-only posture expressible without inventing a password (see CloudInitUserEntry); Absent
+  // means the emitted document has no user-data key and identity must be Present — a combination the
+  // emitter checks rather than assumes.
+  user_data: Optional<List<CloudInitUserEntry>>
 }
 
 // A LIVE-SESSION autoinstall: upstream's `early-commands` run in the live installer environment

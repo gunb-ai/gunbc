@@ -6,6 +6,7 @@ import std.types { List, String }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
   AutoinstallIdentity,
+  CloudInitUserEntry,
   AutoinstallStoragePolicy,
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
@@ -28,24 +29,66 @@ fn identity_entries(id: AutoinstallIdentity) -> List<YamlKeyValue> {
   ]
 }
 
-fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyValue> {
-  let base = [
-    kv(key: "version", value: yaml_int(n: payload.autoinstall_version)),
-    kv(key: "locale", value: yaml_string(s: payload.locale)),
-    kv(key: "keyboard", value: yaml_mapping(entries: [
-      kv(key: "layout", value: yaml_string(s: payload.keyboard_layout)),
-    ])),
-    kv(key: "identity", value: yaml_mapping(entries: identity_entries(id: payload.identity))),
+// THE CLOUD-INIT USER ENTRY, EMITTED WITH CLOUD-INIT'S OWN KEY SPELLINGS (schema-cloud-config-v1.json:
+// name, gecos, ssh_authorized_keys, lock_passwd). There is deliberately NO branch that could emit `passwd`
+// or `hashed_passwd`: the type CloudInitUserEntry has no such field, so a key-only user cannot state a
+// password even by mistake, which is the operator's condition enforced by shape rather than by policy.
+fn cloudinit_user_entries(user: CloudInitUserEntry) -> List<YamlKeyValue> {
+  [
+    kv(key: "name", value: yaml_string(s: user.name)),
+    kv(key: "gecos", value: yaml_string(s: user.gecos)),
+    kv(key: "lock_passwd", value: yaml_bool(b: user.lock_passwd)),
+    kv(
+      key: "ssh_authorized_keys",
+      value: yaml_sequence(elements: map(user.ssh_authorized_keys, k => yaml_string(s: ssh_public_key_line(k: k)))),
+    ),
   ]
+}
+
+fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyValue> {
+  // The identity mapping renders only when it is there at all; when the seed's entry is key-only the
+  // document carries no identity key, because upstream's identity schema demands username+hostname+password
+  // TOGETHER and the no-password posture upstream allows is the one with user-data instead (cited on
+  // CloudInitUserEntry in extdeps.os.ubuntu_autoinstall). Present renders exactly the old four entries,
+  // in the old order, at the old position — byte-for-byte the pre-optional rendering.
+  let identity_entries_present = match payload.identity {
+    Present { value: id } => [
+      kv(key: "identity", value: yaml_mapping(entries: identity_entries(id: id))),
+    ]
+    Absent => []
+  }
+  let base = append(
+    [
+      kv(key: "version", value: yaml_int(n: payload.autoinstall_version)),
+      kv(key: "locale", value: yaml_string(s: payload.locale)),
+      kv(key: "keyboard", value: yaml_mapping(entries: [
+        kv(key: "layout", value: yaml_string(s: payload.keyboard_layout)),
+      ])),
+    ],
+    items: identity_entries_present,
+  )
+  // The user-data section sits beside identity, not inside it: upstream reads it as its own section and
+  // waives identity's requirement when it is present. An empty user list still emits the section — the
+  // section's PRESENCE is what makes the identity waiver legal, and refusing on an empty list would
+  // silently change which documents upstream accepts.
+  let with_user_data = match payload.user_data {
+    Present { value: users } => append(base, items: [
+      kv(key: "user-data", value: yaml_mapping(entries: [
+        kv(key: "users", value: yaml_sequence(elements: map(users, u =>
+          yaml_mapping(entries: cloudinit_user_entries(user: u))))),
+      ])),
+    ])
+    Absent => base
+  }
   let with_ssh = match payload.ssh {
-    Present { value: ssh } => append(base, items: [
+    Present { value: ssh } => append(with_user_data, items: [
       kv(key: "ssh", value: yaml_mapping(entries: [
         kv(key: "install-server", value: yaml_bool(b: true)),
         kv(key: "authorized-keys", value: yaml_sequence(elements: map(ssh.authorized_keys, k => yaml_string(s: ssh_public_key_line(k: k))))),
         kv(key: "allow-pw", value: yaml_bool(b: ssh.password_auth)),
       ])),
     ])
-    Absent => base
+    Absent => with_user_data
   }
   if payload.fully_automated {
     let automated = append(with_ssh, items: [

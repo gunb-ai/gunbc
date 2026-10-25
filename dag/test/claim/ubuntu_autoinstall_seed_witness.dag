@@ -655,7 +655,7 @@ fn audit_refuses_naming_one_of_its_own_packages(
   packages: List<PackageIntent>,
   entry: AdminAccessAuthorisation,
 ) -> Bool {
-  match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+  match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
     SeedIsNonInteractive => false
     SeedRefused { cause: cause } =>
       match cause {
@@ -665,6 +665,12 @@ fn audit_refuses_naming_one_of_its_own_packages(
         AddressingIsInstallerManaged => false
         ArchiveMirrorAbsent => false
         NoEntrypointAtAll => false
+        // NOT THE CAUSE THIS HELPER ACCEPTS. The fixtures it is called with carry QuestionAnswered intents, so
+        // no row is consulted and the per-architecture gate cannot fire; the key-only gate cannot fire either,
+        // because every caller passes an entry minted with a key. Naming both false keeps "an unrelated refusal
+        // leaked in" from reading as success.
+        PackageSilenceUnestablishedForArchitecture { name: _, architecture: _ } => false
+        KeyOnlyPostureAdmitsNoKeys => false
       }
   }
 }
@@ -891,7 +897,7 @@ test fn no_keys_is_admitted_only_when_the_console_is_deliberately_unlocked() -> 
 test fn an_unlocked_console_is_not_refused_as_having_no_entrypoint() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: unlocked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: NoEntrypointAtAll } => false
         _ => true
       }
@@ -985,15 +991,15 @@ test fn absent_mirror_refuses_the_seed() -> Bool {
 test fn each_refusal_names_its_own_mechanism() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: posture_no_mirror, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: posture_no_mirror, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: ArchiveMirrorAbsent } =>
-          match audit_ubuntu_autoinstall_seed( network: posture_installer_managed, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+          match audit_ubuntu_autoinstall_seed( network: posture_installer_managed, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
             SeedRefused { cause: AddressingIsInstallerManaged } =>
-              match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+              match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
                 SeedRefused { cause: PackagePrompts { name: named, question: _ } } =>
                   match named {
                     "tzdata" =>
-                      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+                      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
                         SeedRefused { cause: PackagePromptingUnclassified { name: un } } =>
                           un == "some-fleet-exporter" as NonEmptyStr
                         _ => false
@@ -2131,7 +2137,7 @@ test fn an_unclassified_package_refuses_the_seed_without_inventing_a_question() 
     Absent =>
       match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
         Present { value: entry } =>
-          match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+          match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
             SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
             _ => false
           }
@@ -2146,7 +2152,7 @@ test fn an_unclassified_package_refuses_the_seed_without_inventing_a_question() 
 test fn a_debconf_seed_cannot_classify_an_unchecked_package() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_but_seeded_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_but_seeded_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
         _ => false
       }
@@ -2228,9 +2234,9 @@ fn console_stanza_is_answered(stanza: NonInteractiveConsoleStanza) -> Bool {
 test fn the_closed_question_count_moves_only_with_answers() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         SeedIsNonInteractive { evidence: one_answer } =>
-          match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: two_answered_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+          match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: two_answered_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
             SeedIsNonInteractive { evidence: two_answers } =>
               two_answers.questions_closed > one_answer.questions_closed
             _ => false
@@ -2249,7 +2255,7 @@ test fn the_closed_question_count_moves_only_with_answers() -> Bool {
 test fn the_refusal_names_the_package_in_its_archive_spelling() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: PackagePrompts { name: named, question: asked } } =>
           named == "tzdata" as NonEmptyStr
             // BOTH keys, not one. The shipped package asks tzdata/Areas and then tzdata/Zones/<area>, and the
@@ -2274,7 +2280,7 @@ test fn the_refusal_names_the_package_in_its_archive_spelling() -> Bool {
 test fn the_closed_question_count_is_the_exact_arithmetic() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         // TWO answered debconf questions + seeded addressing + present mirror + the entrypoint the caller had
         // to earn. Not a magic number: two packages each in the QuestionAnswered arm, then one each of the
         // three structural terms questions_closed_count adds.
@@ -2821,14 +2827,23 @@ test fn a_receipt_from_another_secret_version_is_refused_by_name() -> Bool {
   }
 }
 
-// A SEED WITH NO PASSWORD LOCKS THE ACCOUNT; IT DOES NOT SET A DEFAULT (mutation M23-LockMarker-Placeholder:
-// the PasswordUnset arm made the field "changeme"). This is the login gate on a board nobody is standing at, so
-// the two ways to fail it are "nobody can log in" (acceptable, and the honest answer when a credential was never
-// provisioned) and "the first password anyone guesses works" (unacceptable). The assertion is on the EXACT field
-// the renderer will write, not on a substring: '!' is in libxcrypt's reserved set, which is what makes the marker
-// un-collidable with any admitted digest — no password hash can equal it or even begin with it. A row that only
-// checked the document "does not contain changeme" would pass over a default of "password", "password123", or the
-// empty string, so the marker is compared to, not searched for.
+// A SEED WITH NO PASSWORD LOCKS THE ACCOUNT WITHOUT NAMING A PASSWORD AT ALL. This row is the operator's
+// condition, stated as a machine check: the key-only posture must produce a document in which no password field
+// exists — not a placeholder, not a default, and not even the "!"-prefixed lock marker this module used while
+// identity was the only place a credential could be stated. The lock moved to where cloud-init keeps it
+// (lock_passwd: true on the user-data user, asserted in the render rows below), and the marker had to go,
+// because "!" is a password VALUE: a document carrying it does state a password field, and the condition is
+// that no such field be written. So this row now checks FOUR things, each killing a different way back:
+//   - password_field_from is Absent under PasswordUnset (the module states no field),
+//   - the rendered document contains no "passwd" and no "password" substring anywhere, which covers
+//     passwd:, hashed_passwd:, password: and any future spelling, since every one of them contains one of
+//     those two words,
+//   - no crypt-shaped digest appears: no "$6$", "$5$", "$2b$", "$y$" — the prefixes libxcrypt's admitted
+//     schemes emit, so a hash could not enter through a renamed key without tripping this,
+//   - the OLD marker "!"-star is absent too: it is the pre-rename spelling, and its absence is what makes this
+//     row a replacement rather than an accumulation,
+//   - and the document still BUILDS. Refusing it would be the other wrong answer: the board is legitimately
+//     key-only, and a seed that cannot render cannot be installed at all.
 test fn a_seed_with_no_password_locks_the_account_instead_of_setting_a_default() -> Bool {
   match build_seed_fixture(
     network: network_posture,
@@ -2842,24 +2857,40 @@ test fn a_seed_with_no_password_locks_the_account_instead_of_setting_a_default()
     Absent => false
     Present { value: seed } =>
       match password_field_from(seed: seed) {
-        Absent => false
-        Present { value: field } =>
-          match (field as String) == (password_lock_marker as String) {
-            False => false
-            // AND THE DOCUMENT STILL BUILDS. Refusing the document here would be the other wrong answer: the
-            // board is legitimately key-only, and a seed that cannot render cannot be installed at all.
-            True =>
-              match seed_document(seed: seed) {
-                DocumentBuilt { payload: _, content: _ } => true
-                DocumentRefused { reason: _ } => false
-              }
+        Present { value: _ } => false
+        Absent =>
+          match seed_document(seed: seed) {
+            DocumentRefused { reason: _ } => false
+            DocumentBuilt { payload: _, content: content } =>
+              document_names_no_password_field(content: content)
+                && !content.contains(password_lock_marker)
+                && content.contains(needle: "lock_passwd: true")
+                && content.contains(needle: "allow-pw: false")
           }
       }
   }
 }
 
+// THE NO-PASSWORD CHECK, AS A REUSABLE PREDICATE OVER RENDERED TEXT. The two words are what a credential field
+// must be called in any spelling cloud-init or subiquity accepts (passwd, hashed_passwd, password, and the
+// plural forms the schema also carries — all of which contain one of these two substrings), and the five
+// prefixes are what the ADMITTED crypt schemes emit, taken from extdeps.libxcrypt.crypt_scheme's own accepted
+// set rather than invented here: a hash arriving under an unforeseen key name still has to carry one of those
+// prefixes to be a hash this system would accept. Checking both words and every prefix means a regression cannot
+// hide by renaming the field.
+fn document_names_no_password_field(content: String) -> Bool {
+  !content.contains(needle: "passwd")
+    && !content.contains(needle: "password")
+    && !content.contains(needle: "$6$")
+    && !content.contains(needle: "$5$")
+    && !content.contains(needle: "$2b$")
+    && !content.contains(needle: "$y$")
+    && !content.contains(needle: "$7$")
+}
+
 // THE LOCK MARKER, STATED BY THE WITNESS AND NOT IMPORTED FROM THE MODULE: if the two agreed by sharing one
-// constant, the row would compare the renderer with itself.
+// constant, the row would compare the renderer with itself. It is now asserted ABSENT — this is the spelling the
+// key-only posture used before identity became Optional, and the module must never write it again.
 data password_lock_marker: NonEmptyStr = "!*"
 
 // THE SAME HANDLE JOINS, WHICH IS THE CONTROL THAT MAKES THE REFUSAL ABOVE A TEST AND NOT A WALL.
@@ -3306,6 +3337,7 @@ test fn the_produced_seed_carries_a_proof_that_agrees_with_a_fresh_audit() -> Bo
         late_packages: pair.seed.late_packages,
         locale: pair.seed.locale,
         strategy: pair.seed.delivery,
+        architecture: pair.seed.target.architecture,
       ) {
         SeedIsNonInteractive { evidence: fresh } =>
           // THE PROOF THE SEED CARRIES, NOT A SECOND CALL. The record's own proof must be what a fresh audit
@@ -3713,6 +3745,7 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
         locale: EnUsUtf8,
         entry: entry,
         strategy: virtual_media_strategy,
+        architecture: Aarch64, credential: seeded_handle,
       ) {
         SeedRefused { cause: _ } => false
         SeedIsNonInteractive { evidence: bare } =>
@@ -3723,6 +3756,7 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
             locale: EnUsUtf8,
             entry: entry,
             strategy: virtual_media_strategy,
+            architecture: Aarch64, credential: seeded_handle,
           ) {
             SeedRefused { cause: _ } => false
             SeedIsNonInteractive { evidence: silent } =>
@@ -3743,6 +3777,7 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
                 locale: EnUsUtf8,
                 entry: entry,
                 strategy: virtual_media_strategy,
+                architecture: Aarch64, credential: seeded_handle,
               ) {
                 SeedRefused { cause: _ } => false
                 SeedIsNonInteractive { evidence: answered } =>
@@ -3836,6 +3871,10 @@ test fn a_silence_whose_reading_is_owed_says_what_must_be_read() -> Bool {
             PackageVerifiedSilent {
               silence: SilentReceipt {
                 package: "nvme-cli" as NonEmptyStr,
+                // THE ARCHITECTURE THE READING WAS TAKEN FROM, stated like every other receipt row. This fixture's
+                // target is the arm64 one, so an arm64 reading is the one that admits it; the read_obligation
+                // below is the point of the row and the architecture field must not become the thing it tests.
+                architecture: Arm64Architecture,
                 observed_version: "2.8-1build2" as NonEmptyStr,
                 standing: TranscribedUncited {
                   read_obligation: "read the Noble arm64 archive index before believing this row" as NonEmptyStr,
@@ -4289,6 +4328,7 @@ test fn an_answer_record_written_by_another_package_closes_nothing_and_the_seed_
         locale: EnUsUtf8,
         entry: entry,
         strategy: virtual_media_strategy,
+        architecture: Aarch64, credential: seeded_handle,
       ) {
         SeedIsNonInteractive { evidence: _ } => false
         SeedRefused { cause: PackagePrompts { name: named, question: _ } } =>
@@ -4905,6 +4945,7 @@ test fn a_seen_flag_closes_nothing_and_the_seed_is_refused_as_prompting() -> Boo
                 locale: EnUsUtf8,
                 entry: entry,
                 strategy: virtual_media_strategy,
+                architecture: Aarch64, credential: seeded_handle,
               ) {
                 SeedIsNonInteractive { evidence: _ } => false
                 // THE QUESTION REPORTED IS tzdata/Areas — the flag's own label — and not the zone, so a future
@@ -5004,6 +5045,7 @@ test fn an_answer_whose_owner_carries_a_space_closes_nothing_and_the_seed_is_ref
             locale: EnUsUtf8,
             entry: entry,
             strategy: virtual_media_strategy,
+            architecture: Aarch64, credential: seeded_handle,
           ) {
             SeedIsNonInteractive { evidence: _ } => false
             SeedRefused { cause: PackagePrompts { name: named, question: _ } } =>
