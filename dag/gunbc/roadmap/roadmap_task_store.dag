@@ -148,7 +148,7 @@ fn task_created_decode(doc: JsonValue, key: NonEmptyStr) -> RuntimeTaskEvent? {
       Absent => none
       Present { value: task } => if (task.identity as String) == (roadmap_task_identity_of(operation_key: key) as String) { Present { value: TaskCreated { operation_key: key, task: task } } } else { none }
     }
-    other => none
+    _ => none
   }
 }
 
@@ -160,7 +160,7 @@ fn task_revised_decode(doc: JsonValue, key: NonEmptyStr) -> RuntimeTaskEvent? {
           Absent => none
           Present { value: replacement } => if (replacement.identity as String) == (id as String) { Present { value: TaskDefinitionRevised { operation_key: key, task: id, expected_definition_digest: digest, replacement: replacement } } } else { none }
         }
-        other => none
+        _ => none
       }
     }
   }

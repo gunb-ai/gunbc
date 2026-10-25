@@ -342,7 +342,7 @@ fn sink_kind_same_family(row: SinkKind, sink: SinkKind) -> Bool {
     DurableOrigin { route: _ } =>
       match sink {
         DurableOrigin { route: _ } => true
-        other => false
+        _ => false
       }
     _ => row == sink
   }
