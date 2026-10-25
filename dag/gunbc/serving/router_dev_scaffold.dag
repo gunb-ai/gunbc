@@ -3,6 +3,7 @@ module gunbc.serving.router_dev_scaffold
 import std.dissolution { DissolutionCondition, bound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 
 // THE SRV1 DEV DEPLOYMENT'S TRACKED DEBT. Authority (DESIGN section 5: operator approval outside the diff):
 // the operator's decision of 2026-10-25, option B, to serve the pool from the S1 OpenResty proxy on srv1
@@ -18,8 +19,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 //   - invented placement: no product.fabric.selection select_supply, no turn_admission, no lease;
 //   - forwarding without a permit: admission is the client key and the cap, no front-door seat permit.
 // Also against the S1 contract that the proxy holds no policy (plan gunbc.plans.fabric_serving_router).
-// Dissolves when the S3 callout service lands and the dev site's proxy is re-rendered from
-// gunbc.serving.router_proxy_config.
+// Dissolves when the S3 callout service (gunbc.serving.serving_router) lands and the dev site's proxy is
+// re-rendered from gunbc.serving.router_proxy_config. Trigger: router_dev_frontier_rows below.
 data router_dev_policy_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -29,7 +30,6 @@ data router_dev_policy_scaffold: Disposition = Scaffold {
   }
 }
 
-data router_dev_policy_dissolution: DissolutionCondition = bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.serving_router", decl_name: "native_serve_handle"))
 
 // 2. HAND-RUN DEPLOY. No live-deploy leg exists before S7, so the operator account on srv1 runs, in order:
 //   a. build gunbc at the deployed head and run gunbc.serving.router_dev_policy router_dev_srv1_write_config,
@@ -54,7 +54,6 @@ data router_dev_hand_deploy_scaffold: Disposition = Scaffold {
   }
 }
 
-data router_dev_hand_deploy_dissolution: DissolutionCondition = bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
 
 // 3. HAND-MAINTAINED UPSTREAM LIST. upstreams.json names srv1 vLLM (cap 4), srv3 Strata (cap 4) and the
 // rented Vast cards. The cards come from the retiring ctrl router's list, refreshed by reading srv2's
@@ -64,7 +63,6 @@ data router_dev_hand_deploy_dissolution: DissolutionCondition = bound_dissolutio
 // routes to a card its cap here is 1; at cut-over every card takes its full cap. Dissolves when rented
 // enrolment is durable state derived from gunbc.serving.rented_allocation (plan S5), replacing the hand list
 // gunbc.serving.rented_enrollment rented_cohort_enrollments.
-data router_dev_upstream_list_dissolution: DissolutionCondition = bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_enrollment", decl_name: "rented_cohort_enrollments_from_allocations"))
 
 // 4. CERTIFICATE PINS AS A TRUST BUNDLE. nginx verifies an upstream against a CA file, not a fingerprint, so
 // each pinned leaf certificate is installed into upstream_ca.pem after its sha256 is compared by hand with
@@ -74,4 +72,49 @@ data router_dev_upstream_list_dissolution: DissolutionCondition = bound_dissolut
 // the check is membership in the pinned set, not this upstream's pin. Dissolves with row 2's deploy leg,
 // which renders one location per upstream with its own proxy_ssl_trusted_certificate, so each upstream
 // is verified against its own pin.
-data router_dev_pin_bundle_dissolution: DissolutionCondition = bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
+
+data router_dev_upstream_rows_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.serving.router_dev_policy",
+    decl_name: "router_dev_first_party_upstreams",
+    field: WholeDeclaration
+  }
+}
+
+data router_dev_pin_bundle_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.serving.router_dev_policy",
+    decl_name: "router_dev_location",
+    field: WholeDeclaration
+  }
+}
+
+// THE FOUR DEBTS AS FRONTIER ROWS, each subject the declaration that carries it and each trigger bound to a
+// declaration that does not exist yet, so gunbc.census_closure_frontier (where these rows are enrolled)
+// reports each as pending until its replacement lands. The S3 trigger names the plan's callout module
+// (plan gunbc.plans.fabric_serving_router S3, gunbc.serving.serving_router) and a declaration only that
+// service will carry, not a generic entry-point name.
+data router_dev_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_access_lines"),
+    reason: "Router policy in the proxy (row 1): key check, stickiness, active-turn caps and model routing decided in OpenResty Lua.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.serving_router", decl_name: "serving_router_authz_callout"))
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_srv1_write_config"),
+    reason: "Hand-run deploy (row 2): the operator account renders, writes state and starts the container on srv1.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party_upstreams"),
+    reason: "Hand-maintained upstream list (row 3): literal first-party rows and the rented cards copied from the ctrl dashboard database.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_enrollment", decl_name: "rented_cohort_enrollments_from_allocations"))
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_location"),
+    reason: "Pins as one trust bundle (row 4): verification checks membership in the pinned set, not each upstream's own pin.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
+  ),
+]
