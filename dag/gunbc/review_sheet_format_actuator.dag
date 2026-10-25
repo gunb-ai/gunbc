@@ -36,6 +36,7 @@ import gunbc.review_sheet_projection {
   ListingStanding,
   DerivedErasureMark,
 }
+import std.measure { DisplayPixelCount }
 import extdeps.google.sheets
 import extdeps.google.sheets {
   SheetsBooleanConditionType,
@@ -381,14 +382,14 @@ fn format_rule_condition_text(c: FormatRuleCondition) -> String {
 // this module resolves the name against the validated header exactly as it resolves a rule's.
 type ColumnWidth {
   column: NonEmptyStr
-  pixels: Int
+  pixels: DisplayPixelCount
 }
 
 type ColumnWidthRequest sole_constructor {
   spreadsheet_id: String
   sheet_id: Int
   column_index: Int
-  pixel_size: Int
+  pixel_size: DisplayPixelCount
 }
 
 fn resolved_width_request(tab: LocatedReviewTab, validated: ValidatedHeaderSchema, width: ColumnWidth) -> List<ColumnWidthRequest> {
@@ -442,13 +443,13 @@ fn format_request_plan(tab: LocatedReviewTab, validated: ValidatedHeaderSchema, 
 }
 
 fn set_column_width(q: ColumnWidthRequest) -> FormatStepOutcome {
-  let step = join(["width of column ", to_string(q.column_index), " to ", to_string(q.pixel_size), "px"], "") as NonEmptyStr
+  let step = join(["width of column ", to_string(q.column_index), " to ", to_string(q.pixel_size.count), "px"], "") as NonEmptyStr
   match sheets.Spreadsheets.SetColumnWidth(
     spreadsheet_id: q.spreadsheet_id,
     sheet_id: q.sheet_id,
     start_index: q.column_index,
     end_index: q.column_index + 1,
-    pixel_size: q.pixel_size,
+    pixel_size: q.pixel_size.count,
   ) {
     RestAnswered { answer: _ } => FormatStepApplied { step: step }
     RestRefused { refusal } => classify_format_step(step: step, outcome: refusal)
@@ -971,7 +972,7 @@ fn width_is_observed(observed: List<Int?>, desired: ColumnWidthRequest) -> Bool 
   match first(skip(observed, desired.column_index)) {
     Present { value: observed_width } =>
       match observed_width {
-        Present { value: px } => px == desired.pixel_size
+        Present { value: px } => px == desired.pixel_size.count
         Absent => false
       }
     Absent => false

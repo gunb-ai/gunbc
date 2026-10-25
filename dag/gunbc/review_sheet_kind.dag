@@ -17,6 +17,7 @@ import gunbc.review_sheet_projection {
   validate_header_schema,
 }
 import gunbc.review_sheet_format_actuator { FormatRule, ColumnWidth }
+import std.measure { Measure, DisplayPixelCount }
 
 // A REVIEW SHEET KIND IS A VALUE, AND THE CONVERGE TAKES IT AS ONE. Before this module the converge
 // knew one kind by name -- the CI prospect sheet's schema, file name and Drive marker were literals
@@ -60,8 +61,8 @@ type ReviewSheetTab {
   rows: ReviewTabRows
 }
 
-data review_sheet_column_character_pixels: Int = 7
-data review_sheet_column_padding_pixels: Int = 16
+data review_sheet_column_character_pixels: DisplayPixelCount = Measure { count: 7 }
+data review_sheet_column_padding_pixels: DisplayPixelCount = Measure { count: 16 }
 data review_sheet_identifier_characters: Int = 40
 data review_sheet_code_characters: Int = 12
 data review_sheet_prose_characters: Int = 60
@@ -82,8 +83,8 @@ fn content_characters(header: String, content: ColumnContentClass) -> Int {
   if body > floor { body } else { floor }
 }
 
-fn column_pixels(header: String, content: ColumnContentClass) -> Int {
-  content_characters(header: header, content: content) * review_sheet_column_character_pixels + review_sheet_column_padding_pixels
+fn column_pixels(header: String, content: ColumnContentClass) -> DisplayPixelCount {
+  Measure { count: content_characters(header: header, content: content) * review_sheet_column_character_pixels.count + review_sheet_column_padding_pixels.count }
 }
 
 // An operator's column is prose by its declared kind; a derived column takes the content its tab

@@ -321,7 +321,7 @@ test fn the_findings_widths_follow_each_columns_content() -> Bool {
   match admitted_tab(title: "findings") {
     Absent => false
     Present { value: at } =>
-      join(map(review_sheet_tab_widths(tab: at.tab), w => concat(w.column as String, "=", to_string(w.pixels))), ",")
+      join(map(review_sheet_tab_widths(tab: at.tab), w => concat(w.column as String, "=", to_string(w.pixels.count))), ",")
         == "finding_id=296,class_id=296,module=296,class=114,dimension=79,site=79,level=51,symbol=296,specimen=436,note=436,existing_authority=296,fix_shape=436,Ruling=436,Note=436"
   }
 }

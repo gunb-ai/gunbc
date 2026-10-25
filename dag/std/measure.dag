@@ -407,6 +407,11 @@ type PhysicalCoreCount = Measure<Count, One, Nat>
 
 type CharacterCount = Measure<Count, One, Nat>
 
+// A count of display pixels: the unit a spreadsheet column's width is set and read in (Google
+// Sheets DimensionProperties.pixelSize, extdeps.google.sheets SetColumnWidth). Its own alias for
+// the reason PhysicalCoreCount is one: same Count axis, a different thing counted.
+type DisplayPixelCount = Measure<Count, One, Nat>
+
 type TokenCount = Measure<Count, One, Nat>
 
 // A count of KV allocator blocks (vLLM `num_gpu_blocks`). Same Count axis as TokenCount, different
