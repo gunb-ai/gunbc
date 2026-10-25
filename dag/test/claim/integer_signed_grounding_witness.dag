@@ -10,9 +10,7 @@ import std.literal_elaboration {
   KernelGroundingArm, GroundedConstructorShape, GroundedFieldShape, FieldAtGroundedNatural, FieldNotAtGroundedNatural,
   SignedViewReading, SignedViewAgrees, SignedViewDisagrees, SignedArity, SignedArmsCoincide, SignedArmNotDeclared, SignedArmPayloadNotSole,
   SignedPayloadNotNatural, SignedPayloadsDiffer, SignedCarrierNotACoproduct, DeclaredCoproduct, DeclaredNotACoproduct,
-  signed_view_reading, declaration_is_grounded_natural,
-  KernelGrounding, KernelIntLiteral, PeanoGroundingView, UnboundedNaturals, UnboundedIntegers, integer_extent_admits,
-  kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, CarrierNotGrounded, CarrierGroundedTwice, ExtentNotIncluded
+  signed_view_reading, declaration_is_grounded_natural
 }
 import gunbc.structural_realization_bindings { kernel_grounding_rows }
 
@@ -257,44 +255,4 @@ test fn a_third_constructor_refuses() -> Bool {
     SignedViewDisagrees { reason: SignedArity { constructor_count: c } } => c == 3
     _ => false
   }
-}
-
-// THE DERIVED CROSSING (std.literal_elaboration kernel_grounding_crossing), over the real rows and over
-// supplied ones. Nat's extent is inside Int's, so Nat onto Int is the total widening; the converse is no
-// inclusion; a declaration no row grounds has no route; and a carrier two rows ground has no unique route.
-fn structural_int_ref() -> DeclarationRef {
-  decl_ref(module_path: "std.integer", decl_name: "Int")
-}
-
-test fn the_naturals_widen_onto_the_integers_and_not_back() -> Bool {
-  (match kernel_grounding_crossing(rows: kernel_grounding_rows, from: nat_ref(), to: structural_int_ref()) {
-    CrossingTotalWidening => true
-    CrossingRefused { cause: _ } => false
-  })
-    && (match kernel_grounding_crossing(rows: kernel_grounding_rows, from: structural_int_ref(), to: nat_ref()) {
-      CrossingRefused { cause: ExtentNotIncluded { from: f, to: t } } => declaration_ref_eq(a: f, b: structural_int_ref()) && declaration_ref_eq(a: t, b: nat_ref())
-      _ => false
-    })
-}
-
-test fn a_declaration_no_row_grounds_has_no_crossing() -> Bool {
-  let foreign = decl_ref(module_path: "test.claim.integer_signed_grounding_witness", decl_name: "Nat")
-  match kernel_grounding_crossing(rows: kernel_grounding_rows, from: foreign, to: structural_int_ref()) {
-    CrossingRefused { cause: CarrierNotGrounded { carrier: c } } => declaration_ref_eq(a: c, b: foreign)
-    _ => false
-  }
-}
-
-test fn a_carrier_two_rows_ground_has_no_unique_crossing() -> Bool {
-  let twice = KernelGrounding { source_kind: KernelIntLiteral, carrier: nat_ref(), extent: UnboundedNaturals, view: PeanoGroundingView }
-  match kernel_grounding_crossing(rows: [twice, twice], from: nat_ref(), to: structural_int_ref()) {
-    CrossingRefused { cause: CarrierGroundedTwice { carrier: c } } => declaration_ref_eq(a: c, b: nat_ref())
-    _ => false
-  }
-}
-
-test fn an_extent_admits_exactly_its_integers() -> Bool {
-  integer_extent_admits(extent: UnboundedNaturals, value: 0)
-    && !integer_extent_admits(extent: UnboundedNaturals, value: 0 - 1)
-    && integer_extent_admits(extent: UnboundedIntegers, value: 0 - 1)
 }

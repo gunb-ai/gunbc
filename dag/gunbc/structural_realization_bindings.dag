@@ -3,7 +3,7 @@ module gunbc.structural_realization_bindings
 import std.optional { Present, Absent }
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding, KernelMintDeclaration, PeanoGroundingView, SignedGroundingView, KernelGroundingArm, UnboundedIntegers, UnboundedNaturals }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding, KernelMintDeclaration, PeanoGroundingView, SignedGroundingView, KernelGroundingArm }
 import std.coercion { ConversionPlan, UnfoldPhase, InverseUnfoldPhase }
 import std.operator_realization { StructuralOrderingBinding }
 
@@ -125,11 +125,12 @@ data structural_ordering_rows: List<StructuralOrderingBinding> = [
 // not exact (overflow-refusing arithmetic, v1.compiler.emit_rust expr_realizes_as_refusing_int) rather than
 // wrapping or saturating.
 data kernel_grounding_rows: List<KernelGrounding> = [
-  KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat"), extent: UnboundedNaturals, view: PeanoGroundingView },
+  KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat"), min: Present { value: 0 }, max: Absent, view: PeanoGroundingView },
   KernelGrounding {
     source_kind: KernelIntLiteral,
     carrier: decl_ref(module_path: "std.integer", decl_name: "Int"),
-    extent: UnboundedIntegers,
+    min: Absent,
+    max: Absent,
     view: SignedGroundingView {
       nonnegative: KernelGroundingArm { constructor: "NonNegative", payload: "n" },
       negative: KernelGroundingArm { constructor: "Negative", payload: "pred" }

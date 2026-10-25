@@ -4,14 +4,13 @@
 use crate::std_coercion::ConversionPhase::{InverseUnfoldPhase, UnfoldPhase};
 pub use crate::std_coercion::{ConversionPhase, ConversionPlan};
 pub use crate::std_decl_ref::{decl_ref, DeclarationRef};
-use crate::std_literal_elaboration::IntegerExtent::{UnboundedIntegers, UnboundedNaturals};
 use crate::std_literal_elaboration::KernelGroundingView::{
     PeanoGroundingView, SignedGroundingView,
 };
 use crate::std_literal_elaboration::LiteralSourceKind::{KernelIntLiteral, KernelStringLiteral};
 use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
 pub use crate::std_literal_elaboration::{
-    IntegerExtent, KernelGrounding, KernelGroundingArm, KernelGroundingView, KernelMintDeclaration,
+    KernelGrounding, KernelGroundingArm, KernelGroundingView, KernelMintDeclaration,
     LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
 };
 pub use crate::std_operator_realization::StructuralOrderingBinding;
@@ -115,12 +114,14 @@ pub fn kernel_grounding_rows() -> Rc<Vec<Rc<KernelGrounding>>> {
                 Rc::new(vec![Rc::new(KernelGrounding {
         source_kind: LiteralSourceKind::KernelIntLiteral,
         carrier: crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
-        extent: IntegerExtent::UnboundedNaturals,
+        min: Some(0),
+        max: std::option::Option::None,
         view: Rc::new(KernelGroundingView::PeanoGroundingView),
     }), Rc::new(KernelGrounding {
         source_kind: LiteralSourceKind::KernelIntLiteral,
         carrier: crate::std_decl_ref::decl_ref("std.integer".to_string(), "Int".to_string()),
-        extent: IntegerExtent::UnboundedIntegers,
+        min: std::option::Option::None,
+        max: std::option::Option::None,
         view: Rc::new(KernelGroundingView::SignedGroundingView {
         nonnegative: Rc::new(KernelGroundingArm {
         constructor: "NonNegative".to_string(),
