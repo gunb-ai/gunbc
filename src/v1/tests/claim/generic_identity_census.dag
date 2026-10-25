@@ -3,7 +3,8 @@ module v1.tests.claim.generic_identity_census
 import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_resolved }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFormals, DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext }
-import v1.compiler.infer { param_is_generic_decl, type_node_label, unify_generics, substitute_generics_apply }
+import v1.compiler.infer { param_is_generic_decl, unify_generics, substitute_generics_apply }
+import v1.compiler.infer_env { type_node_label }
 import v1.compiler.infer_env { node_with_children }
 import v1.std.core { Node, NewlineIndex, ResolvedFormal, authored_name_at, param_node_type_expr, param_node_name_at, Resolved, TypeVariable, Arrow }
 import std.decl_ref { DeclarationRef, TypeParameter, WholeDeclaration, NamedField, declaration_ref_display_key }
