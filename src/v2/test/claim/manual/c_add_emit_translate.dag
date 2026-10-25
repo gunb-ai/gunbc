@@ -1,6 +1,5 @@
 module v2.test.claim.manual.c_add_emit_translate
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
@@ -46,7 +45,7 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   node_locus
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   Conj,
   Edge,
@@ -102,11 +101,11 @@ fn c_add_canonical_grounding(node: Node, algebra: Node) -> CanonicalGrounding {
 }
 
 fn c_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == c_add_emitted_root {
+  if node_same_occurrence(a: node, b: c_add_emitted_root) {
     Holds { value: c_add_canonical_grounding(node: node, algebra: node) }
-  } else if node == c_add_int_inhabitant {
+  } else if node_same_occurrence(a: node, b: c_add_int_inhabitant) {
     Holds { value: c_add_canonical_grounding(node: node, algebra: c_add_int_inhabitant) }
-  } else if node == c_atom(id: ^c_inhabitant_int) {
+  } else if node_same_occurrence(a: node, b: c_atom(id: ^c_inhabitant_int)) {
     Holds { value: c_add_canonical_grounding(node: node, algebra: c_add_int_inhabitant) }
   } else {
     Violates {
@@ -140,8 +139,7 @@ fn c_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data c_add_inferred_tree: InferredTree = InferredTree {
   root: c_add_emitted_root,
-  facts: PartialFunction { lookup: c_add_facts_lookup },
-  arm_resolutions: constructed_root_arm_resolutions()
+  facts: PartialFunction { lookup: c_add_facts_lookup }
 }
 
 fn c_add_emit_accepts() -> Outcome<Medium<String>> {
@@ -188,8 +186,7 @@ test fn c_add_serialize_rejects_missing_translation_rules_holds() -> Bool {
 test fn c_add_emit_wrong_node_refuses_holds() -> Bool {
   let wrong_tree = InferredTree {
     root: c_add_wrong_emitted_root,
-    facts: PartialFunction { lookup: c_add_facts_lookup },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: c_add_facts_lookup }
   }
   match emit(tree: wrong_tree, target: c_add_target_model) {
     Accepted { value: source, diagnostics: d } =>

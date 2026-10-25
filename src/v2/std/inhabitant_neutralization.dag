@@ -22,10 +22,12 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node {
+  node_equal_ignoring_provenance,
   Edge,
   Node,
   Symbol,
-  node_rebuild
+  node_rebuild,
+  NotADeclaration
 }
 import v2.std.node_query { find_named_child, node_labeled_child_edges }
 import v2.std.passing_candidate_fold {
@@ -191,7 +193,7 @@ fn inhabitant_aligns_with_selection_policy(candidate: Node, selection: Node) -> 
                         Accepted { value: candidate_width, diagnostics: _ } =>
                           match inhabitant_width_node(inhabitant: selection) {
                             Accepted { value: selection_width, diagnostics: _ } =>
-                              candidate_width == selection_width
+                              node_equal_ignoring_provenance(a: candidate_width, b: selection_width)
                             Rejected { diagnostics: _ } => false
                           }
                         Rejected { diagnostics: _ } => false
@@ -361,7 +363,7 @@ fn neutralize_edges_for_target(
               Accepted {
                 value: list_snoc_item(
                   xs: rebuilt_edges,
-                  item: Edge { label: edge.label, target: neutralized_target }
+                  item: Edge { label: edge.label, target: neutralized_target, declaration: edge.declaration }
                 ),
                 diagnostics: ad
               }

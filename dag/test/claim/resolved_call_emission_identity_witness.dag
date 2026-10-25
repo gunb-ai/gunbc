@@ -156,3 +156,26 @@ test fn w_homonym_chars_keeps_authored_body() -> Bool {
   )
 }
 
+
+// std.algebra list_push (the #14751 declaration) reaches its Rust realization BY DECLARATION: the
+// imported HostRealizedSeam is emitted as the v1_rt::rc_list_push bridge, selected by its projection
+// row, and is NOT emitted as a self-recursive call to itself.
+test fn w_algebra_list_push_reaches_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.algebra_list_push_probe\nimport std.types { Int, List }\nimport std.algebra { list_push }\nfn probe() -> List<Int> { list_push(xs: [1], item: 2) }\n",
+    "src/test_claim_algebra_list_push_probe.rs",
+    ["v1_rt::rc_list_push("],
+    []
+  )
+}
+
+// A same-named ordinary fn keeps its authored body: the bridge is keyed by std.algebra's declaration
+// through its projection row, never by the spelling `list_push`.
+test fn w_homonym_list_push_keeps_authored_body() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.homonym_list_push_probe\nimport std.integer { Int }\nfn list_push(xs: Int, item: Int) -> Int { 424243 }\nfn probe() -> Int { list_push(xs: 1, item: 2) }\n",
+    "src/test_claim_homonym_list_push_probe.rs",
+    ["424243"],
+    ["v1_rt::rc_list_push("]
+  )
+}

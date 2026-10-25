@@ -1,0 +1,47 @@
+module gunbc.recurring_failure_mode.a_witness_population_reds_on_main_with_nothing_gating_it
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingDeclared }
+
+data a_witness_population_reds_on_main_with_nothing_gating_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_witness_population_reds_on_main_with_nothing_gating_it" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: AwaitsOneGrounding { grounding: GroundingDeclared { reference: DeclarationRef { module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn", decl_name: "v1_required_lanes_withdrawn", field: WholeDeclaration } } },
+      trigger_capability: "the native compiler judging, on the required path, every witness whose import closure a change reaches -- not only the witness files the change edits",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a change that is correct in itself grows what a production entry demands -- a new effect, or a new input the entry reads -- and every witness that executes that entry over a modeled realization stops reaching the stage it judges. The witnesses go red on main, the required job stays green because nothing on the required path evaluates a witness (DESIGN 'What a green v2-bootstrap does not say'; gunbc.rung_drop v1_required_lanes_withdrawn), and the reds are found later by whoever next happens to run the file. HARM: the population is silently uncovered for as long as nobody runs it, every later change to the subject lands against a red baseline that cannot tell its own regression from the standing one, and the first author to notice is tempted to patch the symptom where they stand.",
+
+    "SPECIMEN (2026-10-24, measured for gunbc#14774 by witty-moth-620 and re-derived by eager-bee-97): test.claim.machine_intake.mtcollins1_boot_acceptance_matrix read 26 FAIL / 2 PASS under claim_batch with a bound cgroup on main 3bbf302b1c3, every failing claim one that runs the production boot entry through run_attempt. The entry's effect demand had grown twice past gunbc.machine_intake.mtcollins1_boot_dry_realization, which declares itself the realization of the attempt's WHOLE effect demand: #14108 made the census filing's fleet-ssh context read RUNNER_TEMP and create and stat an owner-only mux directory (gunbc.fleet.fleet_known_hosts_anchor materialize_fleet_ssh_multiplex_directory), in a shared module the boot never edited; #14263 put a post-power-on fan gate on the boot path that reads diagnostic.ipmi.Tool SdrTypeList. The healthy world set no RUNNER_TEMP and the realization bound neither the mux operations nor SdrTypeList, so every boot case stopped at the census gate, before the media write and the power action its assertions read. The repair at the realization turned 25 of them green and the two controls it added hold; the one that stayed red is a separate defect the repair unmasked: the fan gate slept its 60s settle with SOL unwatched, so a_sol_loss_mid_boot_is_reported_before_the_deadline tore down past its bound. It was held as a declared expected red until gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_watched_fan_settle spent the settle under the SOL watch; the claim stays as its regression control.",
+
+    "AND THE REDS WERE BORN BEHIND A COMPILE RED, WHICH NOTHING GATED EITHER. Bisecting the matrix under the same claim_batch recipe: at #14108 and at its parent, and at three evenly spaced first-parent commits after it (27ea1faa439, 8da2a366cf6, e444c270561), the matrix does not compile at all -- each run refuses on a closure diagnostic in a module the matrix does not own (sol_hold.ReleaseHeld unresolved, then extdeps.transports.file_declared FileContent identity, then roadmap_event_carrier) and prints no verdict. By 66458284e1a, the parent of #14263, it compiles and reads 26 FAIL / 2 PASS, the same names as on main. So #14108 landed while the matrix could not even be evaluated, and when compilation recovered the population was already red; no point in that window had an executing witness that could have refused either change.",
+
+    "THE SECOND HALF IS THE SYMPTOM PATCH THE RED INVITED, and it is why this is filed as one class rather than two incidents. #14063 met the same gap while adding route-identity claims to test.claim.host.managed_host_boot_witness, stated the cause correctly in its annotation (the boot realization never bound the three mux operations or the fan reads), and then bound them in a test-local 'boot route' frame used by its four claims only -- constant answers ('700', 'runner', fixture rows) beside a shared realization that stayed short. Twenty-six claims in the same file kept running on the short realization and stayed red; the four that ran on the private frame went green. A private second realization answering what the shared one owes is gunbc.recurring_failure_mode symptom_link_patched_without_the_earliest_unjustified_boundary, and it is what a red with nothing gating it invites: the author can see the gap, the gate cannot, so repairing only what one's own claims need is locally free.",
+
+    "WHY IT IS NOT THE ROWS BESIDE IT. It is not a_prerequisite_merged_while_its_reds_did_not_pass: there the merged PR's OWN declared controls never ran. Here the reddening change declared nothing about these witnesses and did not touch their files -- #14108 never named the boot -- so an obligation 'run the reds you declare' would not have caught it; the population at risk is every witness whose CLOSURE the change reaches. It is not excluded_witness_outlives_the_subject_it_names: these witnesses are not excluded and their subject still exists; they are enrolled, discoverable and red.",
+
+    "RUNG FOUND AT 1, mitigatable: the harm is bounded only by someone running the file by hand. CEILING 3, structurally guaranteed, and not 4: the invalid state is a relation between a change and the witnesses its closure reaches, which can be refused at merge but not made unconstructible -- a production edit must stay writable. The interim rung-2 step, short of the trigger, is a witness that the realization covers its entry's demand: an entry's effect demand is a fact of its import closure (the services it reaches), so a census that every operation the entry can reach is bound by the realization that claims to realize all of it would turn this specimen's reds into one located refusal naming the unbound operations, whether or not anyone ran the matrix.",
+
+    "RECOGNITION RULE: when a witness is red on main and its own file did not change, bisect its import closure, not its file; and when you find a realization short of its entry, extend the realization the claims share -- never a frame only your claims use.",
+
+    "SECOND SPECIMEN, TWO POPULATIONS, TWO COMPILER CAUSES (2026-10-24, found by #14980). test.claim.machine_intake.machine_intake_prior_life_boundary_witness 0/10 and machine_intake_arrival_converge_witness 0/49 went red with no change to either file. #13925 (2026-10-15) made every closure reaching extdeps.clock refuse; #14594 (2026-10-21) refused arrival_converge on a generic binding, masked behind the first for anyone reading only the first diagnostic. Neither PR touched machine_intake. Each was bisected with a minimal fixture over the closure rather than the witness file, as this row's recognition rule says",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_dry_realization", decl_name: "mtcollins1_boot_dry_realization", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix", decl_name: "a_runner_without_runner_temp_stops_before_any_controller_write", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix", decl_name: "a_controller_with_no_modeled_sdr_refuses_at_the_fan_gate_rather_than_booting", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix", decl_name: "a_sol_loss_mid_boot_is_reported_before_the_deadline", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_watched_fan_settle", field: WholeDeclaration },
+  ],
+}

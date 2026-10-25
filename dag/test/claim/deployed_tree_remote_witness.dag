@@ -20,6 +20,7 @@ import gunbc.live_deploy.spec {
   OwnedArtifactKind,
   ComposeOwned, UpsertOwned,
   PublicationHelperPathUnit,
+  AttemptUnitDrainPathUnit,
   FabricStorageServeUnit,
   FabricStorageServeMapping,
   ApprovalBrokerFrontDoor,
@@ -139,9 +140,8 @@ test fn the_desired_url_is_the_derived_public_clone_url() -> Bool {
 // repository path it is HANDED, so any two distinct paths exercise it, and an arbitrary second path
 // is the better fixture precisely because the law is about the key rather than about any instance.
 // /opt/gunbc-lab/gunbc is NOT srv1-lab's root -- that is
-// gunbc.roadmap.roadmap_dashboard_instance srv1_dashboard_lab_root, under
-// /home/briansrls/.local/share/gunbc-dashboard-instances -- and an earlier version of this comment
-// called it one, which review caught. It is a synthetic path owned by nothing, chosen only to be
+// gunbc.roadmap.roadmap_dashboard_instance srv1_dashboard_lab_root, a sibling beneath the same
+// /opt/gunbc-lab parent -- and an earlier version of this comment called it one, which review caught. It is a synthetic path owned by nothing, chosen only to be
 // distinct from the live root, and it is named as such here so nobody reads it as a live location.
 test fn identity_separates_two_instances_on_one_host() -> Bool {
   let other = deployed_tree_remote_desired(repository_path: "/opt/gunbc-lab/gunbc" as FilePath)
@@ -239,6 +239,7 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
       ServeBinary => "binary"
       DeployedTreeRemoteUnit => "remote"
       PublicationHelperPathUnit => "publication"
+      AttemptUnitDrainPathUnit => "attempt-unit-drain"
       BeltEventPathUnit => "belt"
       TailscaleServeMapping => "route"
       ApprovalBrokerFrontDoor => ""
@@ -260,6 +261,7 @@ fn ordered_tags() -> List<String> {
       instance: srv1_live_dashboard_instance(),
       names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
       holding: deployment_spec_srv1().role_singletons,
+      lab_plan: deployment_spec_srv1().target.lab_plan,
     ),
     init: [],
     f: (acc, step) => {
@@ -270,5 +272,5 @@ fn ordered_tags() -> List<String> {
 }
 
 test fn the_remote_converges_after_its_inputs_and_before_the_belt() -> Bool {
-  join(ordered_tags(), ",") == "binary,tree,remote,publication,belt,route"
+  join(ordered_tags(), ",") == "binary,tree,remote,publication,attempt-unit-drain,belt,route"
 }

@@ -88,18 +88,6 @@ data class_b_remaining_sites: List<AliasedPredicateSite> = [
     aliased_causes: "nine conjuncts over six effects, indistinguishable at the return type"
   },
   AliasedPredicateSite {
-    module_path: "test.claim.proc_self_cgroup_real_execution_witness_test",
-    symbol: "run_membership_assign_observed",
-    proposition: "cgroup membership was observed after assignment",
-    aliased_causes: "membership was wrong; the assignment or the observation did not run"
-  },
-  AliasedPredicateSite {
-    module_path: "test.claim.proc_self_cgroup_real_execution_witness_test",
-    symbol: "run_membership_assign_shell_fails",
-    proposition: "the assignment shell refuses as expected",
-    aliased_causes: "an expect-fail arm, so a harness failure SATISFIES it -- the fail-open shape"
-  },
-  AliasedPredicateSite {
     module_path: "gunbc.instruments.build_step_transport",
     symbol: "corruption_probe_with_content",
     proposition: "a corrupted artifact is detected by the verification path",

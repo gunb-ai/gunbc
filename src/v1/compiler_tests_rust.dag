@@ -196,6 +196,39 @@ fn ct_tokenizer_tests() -> String {
     "    }\n\n")
 }
 
+// DIFFERENTIAL CONTROL (seed half): `c is V` parses to the same Match shape as the explicit
+// `match c { V => true  _ => false }` (v1 02_parse parse_is_arm_test); the v2 half is
+// v2.test.claim.is_surface is_unit_shape_equals_explicit_match. The shape is expr_data, arm pattern and
+// children, which carry no occurrence identity, so a swapped-arms lowering changes it.
+fn ct_is_arm_seed_lowering_test() -> String {
+  concat(
+    "    fn is_shape(n: &std::rc::Rc<crate::v1_std_core::Node>) -> String {\n",
+    "        let mut s = format!(\"{:?}|{:?}\", n.expr_data, n.match_pattern);\n",
+    "        if let Some(b) = n.body.as_ref() { s.push_str(&format!(\"[body:{}]\", is_shape(b))); }\n",
+    "        for c in n.children.iter() { s.push_str(&format!(\"[{}]\", is_shape(c))); }\n",
+    "        s\n",
+    "    }\n\n",
+    "    fn is_body_shape(src: &str) -> Option<String> {\n",
+    "        let tokens = tokenize(src.to_string(), \"test.dag\".to_string(), crate::extdeps_languages_dag_syntax::dag_parse_environment());\n",
+    "        let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));\n",
+    "        if result.error.is_some() { return None; }\n",
+    "        let module = result.module.as_ref()?;\n",
+    "        let items = crate::v1_std_core::module_items(module.clone());\n",
+    "        let f = items.iter().find(|it| it.name == \"f\")?;\n",
+    "        Some(is_shape(f.body.as_ref()?))\n",
+    "    }\n\n",
+    "    #[test]\n",
+    "    fn is_arm_seed_lowering_agrees_with_explicit_match() {\n",
+    "        let is_src = \"module t\\nfn f(c: Color) -> Bool {\\n  c is Red\\n}\\n\";\n",
+    "        let explicit = \"module t\\nfn f(c: Color) -> Bool {\\n  match c {\\n    Red => true\\n    _ => false\\n  }\\n}\\n\";\n",
+    "        let swapped = \"module t\\nfn f(c: Color) -> Bool {\\n  match c {\\n    Red => false\\n    _ => true\\n  }\\n}\\n\";\n",
+    "        let a = is_body_shape(is_src).expect(\"is parses\");\n",
+    "        assert_eq!(a, is_body_shape(explicit).expect(\"explicit parses\"));\n",
+    "        assert_ne!(a, is_body_shape(swapped).expect(\"swapped parses\"));\n",
+    "        assert!(is_body_shape(\"module t\\nfn f(c: Color) -> Bool {\\n  c is red\\n}\\n\").is_none(), \"lowercase V must refuse\");\n",
+    "    }\n\n")
+}
+
 fn ct_parse_tests() -> String {
   concat(
     "    #[test]\n",
@@ -2248,6 +2281,69 @@ fn ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test() ->
   )
 }
 
+// A std.nat Nat beyond the 64-bit range refuses on both routes, by execution: the interpreter run and the
+// emitted crate built and run (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged).
+// Projected into compiler_tests.rs by regeneration; it is .dag-authored, not hand-written Rust.
+fn ct_nat_beyond_the_64_bit_range_refuses_on_both_routes_test() -> String {
+  concat(
+    "    // A std.nat NAT BEYOND THE 64-BIT RANGE REFUSES ON BOTH ROUTES, EXECUTED (review 85900). std.nat Nat\n",
+    "    // realizes as the kernel integer (gunbc.structural_realization_bindings kernel_grounding_rows), and a\n",
+    "    // grounded natural cast onto the kernel Int is realized as the identity\n",
+    "    // (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged), so that\n",
+    "    // identity is safe only while no Nat past i64::MAX can be produced. THE FIXTURE is real std.nat Nat\n",
+    "    // arithmetic. INTERPRETER: v1_interpreter::run refuses `+` and `*` past the range with IntegerOverflow,\n",
+    "    // and an in-range Nat computes 4. EMITTED: the fixture is compiled to Rust by compile_sources, built as\n",
+    "    // a crate and run; past the range the program exits non-zero with an overflow message, in range it\n",
+    "    // prints 4. No emitted text is searched. Live: it builds a crate (minutes), so the receipts lane runs it.\n",
+    "    #[test]\n",
+    "    #[ignore = \"live-corpus: builds and runs an emitted crate (minutes per run); the receipts lane runs these with --ignored, the required unit run does not\"]\n",
+    "    fn nat_beyond_the_64_bit_range_refuses_on_both_routes() \{\n",
+    "        let root = workspace_root();\n",
+    "        let fixture = \"module test.fixture.nat_overflow_probe\\n\\nimport std.nat \{ Nat }\\n\\nfn nat_at_i64_max() -> Nat \{\\n  9223372036854775807\\n}\\n\\nfn past_by_addition() -> Nat \{\\n  nat_at_i64_max() + 1\\n}\\n\\nfn past_by_multiplication() -> Nat \{\\n  nat_at_i64_max() * 2\\n}\\n\\nfn in_range() -> Nat \{\\n  2 + 2\\n}\\n\";\n",
+    "        let dag_root = root.join(\"dag\").to_string_lossy().to_string();\n",
+    "        let closure = || resolve_source_closure(vec![(\"dag/test/fixture/nat_overflow_probe.dag\".to_string(), fixture.to_string())], &[dag_root.as_str()]);\n",
+    "        let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(closure().into()));\n",
+    "        let graph = resolved.graph.clone().expect(\"the std.nat fixture must resolve\");\n",
+    "        for (entry, op) in [(\"past_by_addition\", \"+\"), (\"past_by_multiplication\", \"*\")] \{\n",
+    "            match crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), entry) \{\n",
+    "                Err(crate::v1_interpreter::InterpError::IntegerOverflow \{ op: o, .. }) if o == op => \{}\n",
+    "                other => panic!(\"the interpreter must refuse \{entry} with IntegerOverflow on \{op}, got \{:?}\", other),\n",
+    "            }\n",
+    "        }\n",
+    "        match crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), \"in_range\") \{\n",
+    "            Ok(crate::v1_interpreter::Value::Int(4)) => \{}\n",
+    "            other => panic!(\"the interpreter must compute an in-range Nat, got \{:?}\", other),\n",
+    "        }\n",
+    "        let emitted = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(closure().into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        assert!(emitted.files.iter().any(|f| f.path.contains(\"test_fixture_nat_overflow_probe\")), \"the std.nat fixture must be emitted, diagnostics \{:?}\", emitted.diagnostics);\n",
+    "        let dir = std::env::temp_dir().join(format!(\"nat_overflow_\{}\", std::process::id()));\n",
+    "        let _ = std::fs::remove_dir_all(&dir);\n",
+    "        std::fs::create_dir_all(&dir).expect(\"create the workspace root\");\n",
+    "        let rust_crate = emitted.rust_crates.front().expect(\"one emitted Rust crate\").clone();\n",
+    "        crate::cli_run::write_emitted_workspace(&emitted.files, &emitted.emitted_edges, &emitted.rust_crates, &dir, &rust_crate.crate_name).expect(\"the emitted workspace must be written by the one workspace writer\");\n",
+    "        std::fs::create_dir_all(dir.join(\"src/bin\")).expect(\"create bin dir\");\n",
+    "        std::fs::write(dir.join(\"src/bin/nat_probe.rs\"), String::from(\"fn main() \{\\n    use v1_compiled::test_fixture_nat_overflow_probe as p;\\n    let v = match std::env::args().nth(1).as_deref() \{\\n        Some(\\\"add\\\") => p::past_by_addition(),\\n        Some(\\\"mul\\\") => p::past_by_multiplication(),\\n        _ => p::in_range(),\\n    };\\n    println!(\\\"\{v}\\\");\\n}\\n\").replace(\"v1_compiled\", &rust_crate.crate_name)).expect(\"write probe bin\");\n",
+    "        let build = std::process::Command::new(\"cargo\")\n",
+    "            .args([\"build\", \"--release\", \"--offline\", \"--bin\", \"nat_probe\"])\n",
+    "            .current_dir(&dir)\n",
+    "            .env(\"CARGO_TARGET_DIR\", dir.join(\"target\"))\n",
+    "            .output()\n",
+    "            .expect(\"cargo must be on PATH\");\n",
+    "        assert!(build.status.success(), \"the emitted crate must build:\\n\{}\", String::from_utf8_lossy(&build.stderr));\n",
+    "        let probe = dir.join(\"target/release/nat_probe\");\n",
+    "        for arm in [\"add\", \"mul\"] \{\n",
+    "            let out = std::process::Command::new(&probe).arg(arm).output().expect(\"run the emitted probe\");\n",
+    "            let stderr = String::from_utf8_lossy(&out.stderr);\n",
+    "            assert!(!out.status.success() && stderr.contains(\"overflow\"), \"the emitted program must refuse \{arm} past i64::MAX with an overflow panic; status \{:?}, stdout \{}, stderr \{}\", out.status, String::from_utf8_lossy(&out.stdout), stderr);\n",
+    "        }\n",
+    "        let ok = std::process::Command::new(&probe).output().expect(\"run the emitted probe\");\n",
+    "        assert!(ok.status.success() && String::from_utf8_lossy(&ok.stdout).trim() == \"4\", \"the emitted program must compute an in-range Nat; status \{:?}, stdout \{}\", ok.status, String::from_utf8_lossy(&ok.stdout));\n",
+    "        let _ = std::fs::remove_dir_all(&dir);\n",
+    "    }\n",
+    "\n"
+  )
+}
+
 // The referencing-module arm admits only a bare spelling: a qualified reference to another module's
 // declaration, arriving unstamped, is not decided by the referencing module's own same-leaf one.
 fn ct_qualified_reference_is_not_decided_by_the_local_declarer_test() -> String {
@@ -2431,6 +2527,7 @@ fn ct_coercion_tests() -> String {
     ct_same_leaf_type_declarations_emit_by_identity_test(),
     ct_unbound_reference_to_a_twice_declared_leaf_refuses_test(),
     ct_qualified_reference_is_not_decided_by_the_local_declarer_test(),
+    ct_nat_beyond_the_64_bit_range_refuses_on_both_routes_test(),
     ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test(),
     ct_unstamped_bare_optional_follows_the_lookup_binding_order_test(),
     ct_a_coproduct_named_optional_emits_as_its_own_enum_test(),
@@ -4356,6 +4453,66 @@ fn ct_contracts_sidecar_witness_test() -> String {
     "    }\n\n")
 }
 
+fn ct_record_literal_phantom_follows_declaration_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn record_literal_phantom_field_follows_the_constructed_declaration() {\n",
+    "        // DISCRIMINATING RED for the class-2 emitter defect (stern-bat-401's emitter-debt list):\n",
+    "        // gunbc.roadmap.roadmap_model's `Group { group: .. }` is an arm of SectionElement, but the\n",
+    "        // phantom-field decision looked the constructor SPELLING up and found std.algebra's record\n",
+    "        // `Group<T>`, whose T is unused, so the variant literal was emitted with `_phantom` (E0559).\n",
+    "        // probe.algebra declares the record `Group<T>`; probe.sections constructs the variant arm\n",
+    "        // `Group`. The control is the record literal itself, which must keep its phantom field.\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let source = |path: &str, content: &str| {\n",
+    "                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                        path: path.to_string(),\n",
+    "                        content: content.to_string(),\n",
+    "                    })\n",
+    "                };\n",
+    "                let sources = im::vector![\n",
+    "                    source(\"probe_algebra.dag\", \"module probe.algebra\\ntype Group<T> { carrier: Int }\\nfn trivial_group() -> Group<Int> { Group { carrier: 1 } }\\n\"),\n",
+    "                    source(\"probe_sections.dag\", \"module probe.sections\\ntype SectionElement = Prose { text: Int } | Group { size: Int }\\nfn group_of(n: Int) -> SectionElement { Group { size: n } }\\n\")\n",
+    "                ];\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(\n",
+    "                    std::rc::Rc::new(sources),\n",
+    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                );\n",
+    "                for d in result.diagnostics.iter() {\n",
+    "                    eprintln!(\"DIAG {} {}\", d.module_name, crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()));\n",
+    "                }\n",
+    "                let emitted = |suffix: &str| -> String {\n",
+    "                    result.files.iter()\n",
+    "                        .find(|f| f.path.ends_with(suffix))\n",
+    "                        .map(|f| f.content.clone())\n",
+    "                        .unwrap_or_else(|| panic!(\"no emitted file ending {}; files: {:?}\", suffix, result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()))\n",
+    "                };\n",
+    "                let sections = emitted(\"probe_sections.rs\");\n",
+    "                let algebra = emitted(\"probe_algebra.rs\");\n",
+    "                assert!(\n",
+    "                    !sections.contains(\"_phantom\"),\n",
+    "                    \"the variant literal Group(size) constructs an arm of SectionElement, which declares no phantom field; probe.sections:\\n{}\",\n",
+    "                    sections\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    !sections.contains(\"compile_error!\"),\n",
+    "                    \"the variant literal's type resolves to one declaration; probe.sections:\\n{}\",\n",
+    "                    sections\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    algebra.contains(\"_phantom: std::marker::PhantomData,\"),\n",
+    "                    \"the record literal Group(carrier) constructs Group<T>, whose unused T owes the phantom field; probe.algebra:\\n{}\",\n",
+    "                    algebra\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"record_literal_phantom_field_follows_the_constructed_declaration panicked\");\n",
+    "    }\n\n")
+}
+
 fn ct_call_shape_wall_witness_test() -> String {
   concat(
     "    #[test]\n",
@@ -6021,6 +6178,7 @@ fn compiler_tests_source() -> String {
     ct_source_builders(),
     ct_tokenizer_tests(),
     ct_parse_tests(),
+    ct_is_arm_seed_lowering_test(),
     ct_test_marker_item_kind_test(),
     ct_test_reference_import_all_test(),
     ct_tco_tail_call_assigns_every_loop_slot_test(),
@@ -6074,6 +6232,7 @@ fn compiler_tests_source() -> String {
     ct_constructor_call_admission_qualified_caller_test(),
     ct_sole_constructor_fieldless_witness_test(),
     ct_contracts_sidecar_witness_test(),
+    ct_record_literal_phantom_follows_declaration_test(),
     ct_self_resolve_test(),
     ct_self_compile_test(),
     ct_self_compile_cargo_check_test(),

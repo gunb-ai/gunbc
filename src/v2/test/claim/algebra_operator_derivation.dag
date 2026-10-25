@@ -11,7 +11,7 @@ import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool, bool_node }
-import v2.std.node { Arrow, Conj, Edge, Node, Positional, Symbol, TypeNode }
+import v2.std.node { node_same_occurrence, Arrow, Conj, Edge, Node, Positional, Symbol, TypeNode, NotADeclaration }
 import v2.std.node_query { binder_edge }
 import std.occurrence_identity { OccurrenceSynthetic }
 
@@ -98,7 +98,7 @@ fn aod_mismatched_row(outer: Node, algebra: Node) -> List<AlgebraInhabitanceDecl
 
 fn aod_result_is_type(r: InferAlgebraFieldResult, expected: Node) -> Bool {
   match r {
-    AlgebraFieldResultType { result: t } => t == expected
+    AlgebraFieldResultType { result: t } => node_same_occurrence(a: t, b: expected)
     AlgebraFieldNotCarried => false
     AlgebraFieldRowMalformed { cause: _ } => false
   }
@@ -175,7 +175,7 @@ test fn aod_complement_at_arity_one_answers_bool() -> Bool {
 test fn aod_an_arrow_without_formals_has_no_arity() -> Bool {
   match infer_algebra_field_declared_arity(arrow: Node {
     kind: TypeNode { connective: Arrow },
-    children: [Edge { label: Positional, target: bool_node() }, Edge { label: Positional, target: bool_node() }],
+    children: [Edge { label: Positional, target: bool_node(), declaration: NotADeclaration }, Edge { label: Positional, target: bool_node(), declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }) {
     Absent => true
@@ -198,7 +198,7 @@ test fn aod_a_unary_signature_reads_arity_one() -> Bool {
 fn aod_unreadable_domain_row() -> List<AlgebraInhabitanceDecl> {
   let unreadable_meet = Node {
     kind: TypeNode { connective: Arrow },
-    children: [Edge { label: Positional, target: bool_node() }, Edge { label: Positional, target: bool_node() }],
+    children: [Edge { label: Positional, target: bool_node(), declaration: NotADeclaration }, Edge { label: Positional, target: bool_node(), declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
   let structure = Node {

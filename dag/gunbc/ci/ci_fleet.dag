@@ -1,6 +1,7 @@
 module gunbc.ci.ci_fleet
 
-import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
+import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for, enrollment_for_host }
+import gunbc.fleet.fleet_host_backing { backing_converge_realization, ConvergeApplied, ImageBaked, ConvergeRealization }
 import gunbc.fleet.fleet_intent {
   ComputeHost,
   ExecutionSurface,
@@ -141,11 +142,9 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 // arrives as HostUsableRamMeasured, read by gunbc.host.host_memory_observation host_usable_ram_from_capture
 // from a census boot's meminfo receipt, and only from a HostCaptureBound envelope.
 //
-// NOT IN fleet_owned_compute_offer_catalog, and that is a declared frontier, not an omission.
-// Production committed_width_of(host_width_facts(mtcollins1)) is therefore
-// RunnerWidthUnresolved { WidthComputeOfferAbsent }, not a derived slot count of zero.
-// The CPU axis still has a consumer on this row: compute_host_cpu_admitted_width reads its
-// processors. Catalog enrolment remains a separate frontier.
+// IN fleet_owned_compute_offer_catalog: its committed width is derived through fleet_intent_offers like
+// any enrolled host's. The CPU axis has a second consumer on this row: compute_host_cpu_admitted_width
+// reads its processors.
 // The standing is a fold over the census capture, so a capture whose firmware string does not name the
 // catalog row's model number falls back to the typed bet rather than keeping a citation it lost. Only the
 // MODEL NUMBER is matched; the catalog's sustained Hertz is the vendor brief's figure, which the line's
@@ -204,12 +203,33 @@ data mtcollins1_offer: ComputeOffer = ComputeOffer {
   cost_quote: none,
 }
 
-data fleet_owned_compute_offer_catalog: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer]
+data fleet_owned_compute_offer_catalog: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer, mtcollins1_offer]
 
 data fleet_intent_offers: List<ComputeOffer> = filter(
   fleet_owned_compute_offer_catalog,
   o => any(hosts_enrolled_for(wanted: CiRunnerParticipation), h => (h as String) == (o.supply.physical.identity as String)),
 )
+
+// THE PARTITION OF THE ENROLLED OFFERS BY HOW THEIR RUNNER PROGRAM IS REALIZED, stated once here so no
+// reader branches on OS delivery: a reader that SSH-applies a host takes the converge-applied arm, the
+// image build input takes the image-baked arm. fleet_intent_offers stays the union (width, offer lookup
+// and registration read the host whichever way it is realized).
+fn offer_realization_is(o: ComputeOffer, wanted: ConvergeRealization) -> Bool {
+  match enrollment_for_host(host: o.supply.physical.identity) {
+    Absent => false
+    Present { value: e } => backing_converge_realization(backing: e.backing) == wanted
+  }
+}
+
+data fleet_converge_applied_offers: List<ComputeOffer> = filter(fleet_intent_offers, o => offer_realization_is(o: o, wanted: ConvergeApplied))
+
+data fleet_image_baked_offers: List<ComputeOffer> = filter(fleet_intent_offers, o => offer_realization_is(o: o, wanted: ImageBaked))
+
+// THE SAME CLASSIFIER ANSWERS "WHY IS THIS ENROLLED HOST ABSENT FROM THE CONVERGE-APPLIED PLAN": it is
+// realized by image, not unenrolled. runner_host_deployment_for reads this for its refusal cause.
+fn fleet_host_is_image_baked(host: HostIdentity) -> Bool {
+  any(fleet_image_baked_offers, o => (o.supply.physical.identity as String) == (host as String))
+}
 
 fn fleet_compute_offer_for(host: HostIdentity) -> ComputeOffer? {
   fold(fleet_intent_offers, init: none, f: (acc, o) =>

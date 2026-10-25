@@ -1,6 +1,5 @@
 module v2.test.claim.body_let_annotation
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
@@ -36,8 +35,8 @@ import v2.std.diagnostic {
   Suggested
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic, symbol_lexeme }
-import std.optional { Absent, Optional, Present, optional_present }
+import v2.std.node { node_same_occurrence, host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic, symbol_lexeme, NotADeclaration }
+import std.optional { optional_eq, Absent, Optional, Present, optional_present }
 import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.normalized_tree { admit_normalized_tree }
@@ -696,7 +695,7 @@ fn bla_resolved_type_is(t: InferredTree, n: Node, ty: Node) -> Bool {
     Present { value: facts } =>
       match facts.grounding {
         GroundingNotDerived { node: _, site: _ } => false
-        DerivedGrounding { grounding: g } => g.witness.structural.evidence == ty
+        DerivedGrounding { grounding: g } => node_same_occurrence(a: g.witness.structural.evidence, b: ty)
       }
   }
 }
@@ -1043,8 +1042,7 @@ fn bla_emit_rust(body: Node) -> Outcome<String> {
   match emit(
     tree: InferredTree {
       root: dag_arrow_with_body_node(domain: dag_arrow_domain_conj_node(), return_type_binding: ^dag_binding_type_int, body: body),
-      facts: PartialFunction { lookup: bla_no_facts },
-      arm_resolutions: constructed_root_arm_resolutions()
+      facts: PartialFunction { lookup: bla_no_facts }
     },
     target: rust_binop_target_model_staging()
   ) {
@@ -1074,16 +1072,16 @@ test fn bla_translate_refuses_an_annotated_bind() -> Bool {
 // for the annotated Bind and Absent for the same Bind without the edge. Read at the accessor, not
 // through a second full emit.
 test fn bla_translate_gate_is_the_annotations() -> Bool {
-  (type_annotation_optional(n: bla_bind(annotated: true)) == optional_present(value: dag_type_atom_node(identity: ^dag_binding_type_int)))
+  (optional_eq(a: type_annotation_optional(n: bla_bind(annotated: true)), b: optional_present(value: dag_type_atom_node(identity: ^dag_binding_type_int)), eq: fn(p, q) { node_same_occurrence(a: p, b: q) }))
     && (type_annotation_optional(n: bla_bind(annotated: false)) == Absent)
 }
 
 // (7) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node
 // canonicalize_positional_then_named): the annotation first or last is one node.
 test fn bla_annotation_order_does_not_move_the_hash() -> Bool {
-  let key = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
-  let value = Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x) }
-  let body = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
+  let key = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y), declaration: NotADeclaration }
+  let value = Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x), declaration: NotADeclaration }
+  let body = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y), declaration: NotADeclaration }
   let annotation = type_annotation_edge(annotation: dag_type_atom_node(identity: ^dag_binding_type_int))
   content_hash(n: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [key, value, body, annotation]))
     == content_hash(n: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [annotation, key, value, body]))
@@ -1094,9 +1092,9 @@ test fn bla_annotation_order_does_not_move_the_hash() -> Bool {
 // be refused here, by v2.std.type_binder type_binder_labels_conform, which resolve runs on the whole
 // tree. Dropping the Bind arm of that rule greens the mislabelled Bind and reds this row.
 test fn bla_bind_admits_only_its_annotation_label() -> Bool {
-  let key = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
-  let value = Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x) }
-  let body = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
+  let key = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y), declaration: NotADeclaration }
+  let value = Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x), declaration: NotADeclaration }
+  let body = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y), declaration: NotADeclaration }
   let t = dag_type_atom_node(identity: ^dag_binding_type_int)
   type_binder_labels_conform(root: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [key, value, body, type_annotation_edge(annotation: t)]))
     && !type_binder_labels_conform(root: node_synthetic(kind: ComputationNode { behavior: Bind }, children: [key, value, body, cast_target_edge(target_type: t)]))
@@ -1121,7 +1119,7 @@ type BlaReorderedResolve {
 // order. Children are rewritten first, so a nested Bind is moved too.
 fn bla_annotation_second(n: Node) -> Node {
   let rebuilt = fold(n.children, init: [], f: fn(acc, e) {
-    list_snoc_item(xs: acc, item: Edge { label: e.label, target: bla_annotation_second(n: e.target) })
+    list_snoc_item(xs: acc, item: Edge { label: e.label, target: bla_annotation_second(n: e.target), declaration: e.declaration })
   })
   let children = match n.kind {
     ComputationNode { behavior: Bind } =>

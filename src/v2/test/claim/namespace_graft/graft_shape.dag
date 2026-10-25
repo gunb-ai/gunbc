@@ -19,7 +19,7 @@ import v2.compiler.namespace_graft {
   namespace_graft_strip_provenance_marker
 }
 import v2.std.node_query { find_named_child }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, ComputationNode, well_formed, StructuralLabel, fold_list_node }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, ComputationNode, well_formed, StructuralLabel, fold_list_node, NotADeclaration }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
@@ -74,7 +74,8 @@ fn ng_pre_graft_module_root(
 fn ng_export_edge(name: Symbol) -> Edge {
   Edge {
     label: Authored { name: name },
-    target: ng_sym_node(sym: name)
+    target: ng_sym_node(sym: name),
+    declaration: NotADeclaration
   }
 }
 
@@ -229,7 +230,8 @@ data ng_dual_position_root: Node = ng_pre_graft_module_root(
         kind: TypeNode { connective: Conj },
         children: [ng_export_edge(name: ^NgDualPilot)],
         occurrence_id: OccurrenceSynthetic
-      }
+      },
+      declaration: NotADeclaration
     }
   ]
 )
@@ -268,7 +270,8 @@ fn ng_production_identity_shell(id: Symbol) -> Node {
 fn ng_projection_edge(target: Node) -> Edge {
   Edge {
     label: Authored { name: ^grammar_production_captured_node_projection },
-    target: target
+    target: target,
+    declaration: NotADeclaration
   }
 }
 
@@ -375,7 +378,8 @@ fn ng_conj_member_edge(name: Symbol) -> Edge {
       kind: TypeNode { connective: Conj },
       children: [ng_export_edge(name: ^NgInner)],
       occurrence_id: OccurrenceSynthetic
-    }
+    },
+    declaration: NotADeclaration
   }
 }
 

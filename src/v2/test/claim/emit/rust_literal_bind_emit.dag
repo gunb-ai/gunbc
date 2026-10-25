@@ -1,6 +1,5 @@
 module v2.test.claim.emit.rust_literal_bind_emit
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.test.claim.complexity_gate.table_fixture_bind_subject_producer {
@@ -64,8 +63,7 @@ fn rust_literal_bind_facts_miss(key: Node) -> Optional<InferredFacts> {
 fn rust_literal_bind_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: rust_literal_bind_facts_miss },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: rust_literal_bind_facts_miss }
   }
 }
 

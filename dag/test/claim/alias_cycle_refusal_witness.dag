@@ -1,9 +1,8 @@
 module test.claim.alias_cycle_refusal_witness
 
 import std.types { String, Int, Bool }
-import std.optional { Present, Absent }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -20,17 +19,11 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // below count 0 and fail, while every control stays green; the controls are what say a refusal is
 // about the cycle and not about an unparseable fixture. The 21-declaration chain exceeds the former
 // fixed chase fuel of 16, so it also discriminates a fuel-bounded walk from a bounded-by-chain one.
-// NOT-RUNNABLE IS NOT ZERO: 0 - 1 satisfies neither a red nor a control.
+// NOT-RUNNABLE IS NOT ZERO: a census that never ran is CensusUnobserved, which satisfies neither a
+// red nor a control.
 
-fn census_of(source: String) -> CompileDiagnosticCensus {
-  compile_dag_diagnostic_census(source)
-}
-
-fn blocking_alias_cycle_count(source: String) -> Int {
-  match census_blocking_count_for_class(census: census_of(source: source), wanted: "TypeAliasCycle") {
-    Present { value: n } => n
-    Absent => 0 - 1
-  }
+fn alias_cycle_verdict(source: String, holds: fn(Int) -> Bool) -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: source, wanted_class: "TypeAliasCycle"), holds: holds))
 }
 
 data red_direct_source: String = "module probe_alias_cycle_direct\ntype CycA = CycB\ntype CycB = CycA\n"
@@ -47,30 +40,30 @@ data green_generic_source: String = "module probe_alias_generic_ok\ntype Box<T> 
 
 data green_long_source: String = "module probe_alias_long_chain_ok\ntype LongChain0 = LongChain1\ntype LongChain1 = LongChain2\ntype LongChain2 = LongChain3\ntype LongChain3 = LongChain4\ntype LongChain4 = LongChain5\ntype LongChain5 = LongChain6\ntype LongChain6 = LongChain7\ntype LongChain7 = LongChain8\ntype LongChain8 = LongChain9\ntype LongChain9 = LongChain10\ntype LongChain10 = LongChain11\ntype LongChain11 = LongChain12\ntype LongChain12 = LongChain13\ntype LongChain13 = LongChain14\ntype LongChain14 = LongChain15\ntype LongChain15 = LongChain16\ntype LongChain16 = LongChain17\ntype LongChain17 = LongChain18\ntype LongChain18 = LongChain19\ntype LongChain19 = LongChain20\ntype LongChain20 = Int\n"
 
-test fn a_two_member_alias_cycle_refuses() -> Bool {
-  blocking_alias_cycle_count(source: red_direct_source) >= 1
+test fn a_two_member_alias_cycle_refuses() -> ProcessExit {
+  alias_cycle_verdict(source: red_direct_source, holds: fn(n) { n >= 1 })
 }
 
-test fn a_self_alias_refuses() -> Bool {
-  blocking_alias_cycle_count(source: red_self_source) >= 1
+test fn a_self_alias_refuses() -> ProcessExit {
+  alias_cycle_verdict(source: red_self_source, holds: fn(n) { n >= 1 })
 }
 
-test fn a_three_member_alias_cycle_refuses() -> Bool {
-  blocking_alias_cycle_count(source: red_three_source) >= 1
+test fn a_three_member_alias_cycle_refuses() -> ProcessExit {
+  alias_cycle_verdict(source: red_three_source, holds: fn(n) { n >= 1 })
 }
 
-test fn a_parameterized_alias_cycle_refuses() -> Bool {
-  blocking_alias_cycle_count(source: red_param_source) >= 1
+test fn a_parameterized_alias_cycle_refuses() -> ProcessExit {
+  alias_cycle_verdict(source: red_param_source, holds: fn(n) { n >= 1 })
 }
 
-test fn an_alias_of_an_alias_of_int_is_accepted() -> Bool {
-  blocking_alias_cycle_count(source: green_chain_source) == 0
+test fn an_alias_of_an_alias_of_int_is_accepted() -> ProcessExit {
+  alias_cycle_verdict(source: green_chain_source, holds: fn(n) { n == 0 })
 }
 
-test fn an_alias_of_an_alias_of_a_generic_is_accepted() -> Bool {
-  blocking_alias_cycle_count(source: green_generic_source) == 0
+test fn an_alias_of_an_alias_of_a_generic_is_accepted() -> ProcessExit {
+  alias_cycle_verdict(source: green_generic_source, holds: fn(n) { n == 0 })
 }
 
-test fn a_twenty_one_hop_acyclic_chain_is_accepted() -> Bool {
-  blocking_alias_cycle_count(source: green_long_source) == 0
+test fn a_twenty_one_hop_acyclic_chain_is_accepted() -> ProcessExit {
+  alias_cycle_verdict(source: green_long_source, holds: fn(n) { n == 0 })
 }

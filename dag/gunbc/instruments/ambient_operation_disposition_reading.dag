@@ -1,0 +1,435 @@
+module gunbc.instruments.ambient_operation_disposition_reading
+
+import std.types { String, Bool, List, Int, Map }
+import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional }
+import std.optional { Optional, Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.primitive_projection { primitive_identity_runtime_name }
+import gunbc.primitive_egress.disposition { PrimitiveEvidence, ObservesOrMutates, NoExternalSubject, ExternalSubjectUnestablished }
+import gunbc.primitive_egress.dispositions { primitive_evidence_rows }
+import gunbc.instruments.ambient_name_census_reading {
+  ambient_name_census_standing, ambient_census_subjects, binding_lines, field_at, distinct_lines,
+  module_subject_attribution, module_subjects_text
+}
+
+// HOW `gunbc test //gunbc/instruments:ambient-operation-disposition-census` READS ITS RUN. It is the
+// ambient-name census's own run (the same subject, the same controls, the same producer: DESIGN §3, no
+// second census), read for one question: every spelling that binds with NO import through an ambient
+// primitive table, which of four dispositions it takes. This module measures; it rules nothing. Which
+// disposition a row takes is the manager's decision per row, and no row is renamed or retired here.
+//
+// THE POPULATION is the closure of the census subjects (ambient_census_subjects), the N7 closure; each row
+// names the number of its modules that the run attributes to a subject (module_subjects), and a row whose
+// modules are all outside every closure says so.
+//
+// THE ROWS, one per (source, spelling, target):
+//   disposition <spelling> <source> <target> <call_sites> <modules> <in_closure> <candidate> <class> <basis> <evidence>
+// candidate is the declared callable (identity and signature) that implements the spelling, or `none`.
+// call_sites counts distinct census rows (module, spelling, ordinal), i.e. occurrences by binding identity,
+// not by text match; modules counts the distinct modules holding them.
+//
+// THE CLASSES, assigned in this order and exactly one per row:
+//   in-flight  the spelling is claimed by a change already under way (ambient_operation_claims, each naming its change and when it ends); counted,
+//              never classified, so the work is not duplicated;
+//   kernel-grounding  the binding source is an `ambient:kernel_*` table: a kernel token or type spelling, not an
+//              operation; a separate class by manager direction, no migration;
+//   C          the binding source is `generated`: the compiler minted the reference;
+//   D          the primitive-egress ledger (gunbc.primitive_egress.dispositions) records the spelling as
+//              observing or mutating something outside the value graph; the evidence is that row's
+//              retirement trigger (next_observation), quoted;
+//   A          a declaration the census printed (a `binding_declaration` row) implements the spelling;
+//   B          no such declaration was printed.
+//
+// A AND B ARE HEURISTIC, labelled so in every row's basis. A is matched on the declaration's NAME alone
+// (exact spelling) outside std.primitives; the signature is printed as evidence but is rendered by the type
+// census's own reference text, which prints an applied type as `<structural>`, so argument types
+// can NOT be relied on to confirm the match. A collection-roster row is different in kind: its target is a
+// roster template (AlgebraFieldTemplate), not a callable declaration, so it is A when
+// declared_callable_candidates names a declared callable for the spelling (verified when the census printed
+// that declaration, otherwise A on manager direction and labelled UNVERIFIED) and B when it names none. B's evidence is exactly "none in the N7 closure": a statement about the closure the
+// census read, never about the corpus. A declaration outside the closure is invisible to this reading.
+
+type AmbientOperationClaim {
+  spelling: String
+  change_pr: Optional<Int>
+  owner_session: String
+}
+
+// A spelling claimed by a change already under way: counted, never classified, so the work is not duplicated.
+// The claim ENDS when the spelling resolves to a declaration: a `binding_declaration` row outside std.primitives
+// carries its name. A claim that outlives its change therefore refuses the reading (stale_claim) instead of
+// counting in-flight forever.
+data ambient_operation_claims: List<AmbientOperationClaim> = [
+  AmbientOperationClaim { spelling: "list_push", change_pr: Present { value: 14751 }, owner_session: "sunny-bee-153" },
+  AmbientOperationClaim { spelling: "map_get", change_pr: Absent, owner_session: "wise-moth-707" }
+]
+
+fn claim_change_text(c: AmbientOperationClaim) -> String {
+  match c.change_pr {
+    Present { value: n } => "#" + to_string(n) + " (" + c.owner_session + ")"
+    Absent => c.owner_session + " (no PR number recorded)"
+  }
+}
+
+// THE DECLARED-CALLABLE CANDIDATES for a collection-roster spelling. A roster row (AlgebraFieldTemplate) is a
+// template, not a callable declaration, so a roster spelling is class A only when a declared callable already
+// implements it, and class B when none does (manager direction, tidy-ant-251, on the declared-callable reading).
+// The table names the candidate by declaration identity only; it is
+// a manager-named candidate, not a derivation: the census prints the declaration row when the module
+// contributes, and the column says when it did not. A spelling absent from the table has no candidate.
+// TRIGGER (manager direction, tidy-ant-251): derive the candidates from declaration rows when std.algebra resolves
+// (it is a refused declarer today, so the census prints none of its declarations); until then this table is manager direction.
+type DeclaredCandidate {
+  spelling: String
+  module: String
+  name: String
+}
+
+data declared_callable_candidates: List<DeclaredCandidate> = [
+  DeclaredCandidate { spelling: "fold", module: "std.algebra", name: "fold_list" },
+  DeclaredCandidate { spelling: "map", module: "std.algebra", name: "list_map" },
+  DeclaredCandidate { spelling: "all", module: "std.algebra", name: "for_all" }
+]
+
+type DispositionClass
+  = DispositionInFlight
+  | DispositionA
+  | DispositionB
+  | DispositionC
+  | DispositionD
+  | DispositionKernelGrounding
+
+type DispositionBasis
+  = BasisInFlight
+  | BasisManagerDirection
+  | BasisGeneratedSource
+  | BasisEgressEvidence
+  | BasisBindingIdentity
+  | BasisDeclaredCandidate
+  | BasisHeuristicNameMatch
+  | BasisHeuristicNoNameMatch
+
+fn disposition_basis_text(basis: DispositionBasis) -> String {
+  match basis {
+    BasisInFlight => "in-flight"
+    BasisManagerDirection => "manager direction (tidy-ant-251); no design_ruling recorded"
+    BasisGeneratedSource => "generated-source"
+    BasisEgressEvidence => "egress-evidence"
+    BasisBindingIdentity => "binding-identity"
+    BasisDeclaredCandidate => "declared-callable-candidate (declaration row printed; name from the manager table, HEURISTIC)"
+    BasisHeuristicNameMatch => "HEURISTIC-name-match"
+    BasisHeuristicNoNameMatch => "HEURISTIC-no-name-match"
+  }
+}
+
+type DispositionVerdict {
+  class: DispositionClass
+  basis: DispositionBasis
+  evidence: String
+}
+
+type DispositionRow {
+  spelling: String
+  source: String
+  target: String
+  call_sites: Int
+  modules: Int
+  in_closure: Int
+  candidate: String
+  verdict: DispositionVerdict
+}
+
+fn disposition_class_text(class: DispositionClass) -> String {
+  match class {
+    DispositionInFlight => "in-flight"
+    DispositionA => "A"
+    DispositionB => "B"
+    DispositionC => "C"
+    DispositionD => "D"
+    DispositionKernelGrounding => "kernel-grounding"
+  }
+}
+
+fn disposition_claim_for(spelling: String) -> Optional<AmbientOperationClaim> {
+  first(ambient_operation_claims |> filter(c => c.spelling == spelling))
+}
+
+// Every ambient table is in scope (the census labels each `ambient:<table>`), so a spelling such as `split`
+// or `join` is read whichever table binds it; `generated` rows are the compiler-minted references.
+fn is_in_scope_source(source: String) -> Bool {
+  starts_with(s: source, prefix: "ambient:") || source == "generated"
+}
+
+fn row_key(line: String) -> String {
+  field_at(line: line, index: 4) + "\t" + field_at(line: line, index: 2) + "\t" + field_at(line: line, index: 5)
+}
+
+fn declaration_lines(stdout: String) -> List<String> {
+  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_declaration\t"))
+}
+
+// A declaration row's module, name and signature: `binding_declaration <module> <name> fn <signature>`.
+fn declaration_named(decls: List<String>, name: String) -> Optional<String> {
+  first(decls |> filter(l => field_at(line: l, index: 2) == name) |> filter(l => !starts_with(s: field_at(line: l, index: 1), prefix: "std.primitives")))
+}
+
+// The census row's target is the declaring path `<module>.<name>`; its declaration row, when printed.
+fn declaration_at_path(decls: List<String>, path: String) -> Optional<String> {
+  first(decls |> filter(l => field_at(line: l, index: 1) + "." + field_at(line: l, index: 2) == path))
+}
+
+fn egress_observing_trigger(spelling: String) -> Optional<String> {
+  match first(primitive_evidence_rows() |> filter(e => primitive_identity_runtime_name(identity: e.identity) == spelling) |> filter(e => match e.external_subject { ObservesOrMutates { operation: _, subject: _, provider: _, ambient_realization: _ } => true  NoExternalSubject => false  ExternalSubjectUnestablished { detail: _ } => false })) {
+    Present { value: e } => Present { value: e.next_observation as String }
+    Absent => Absent
+  }
+}
+
+fn declaration_evidence(decl: String) -> String {
+  field_at(line: decl, index: 1) + "." + field_at(line: decl, index: 2) + " " + field_at(line: decl, index: 4)
+}
+
+fn candidate_named(spelling: String) -> Optional<DeclaredCandidate> {
+  first(declared_callable_candidates |> filter(c => c.spelling == spelling))
+}
+
+// The one resolution of "which declared callable implements this spelling, and did the census print it": the
+// candidate column and the class/basis/evidence verdict both read this value, so they cannot disagree.
+type CandidateResolution
+  = NoCandidate
+  | VerifiedCandidate { decl: String }
+  | UnverifiedCandidate { module: String, name: String }
+
+fn resolve_candidate(spelling: String, source: String, decls: List<String>) -> CandidateResolution {
+  if source == "ambient:collection_roster" {
+    match candidate_named(spelling: spelling) {
+      Absent => NoCandidate
+      Present { value: c } =>
+        match declaration_at_path(decls: decls, path: c.module + "." + c.name) {
+          Present { value: d } => VerifiedCandidate { decl: d }
+          Absent => UnverifiedCandidate { module: c.module, name: c.name }
+        }
+    }
+  } else {
+    match declaration_named(decls: decls, name: spelling) {
+      Present { value: d } => VerifiedCandidate { decl: d }
+      Absent => NoCandidate
+    }
+  }
+}
+
+// The candidate column: the declaration identity and signature, or `none`.
+fn candidate_text(res: CandidateResolution) -> String {
+  match res {
+    NoCandidate => "none"
+    VerifiedCandidate { decl: d } => declaration_evidence(decl: d)
+    UnverifiedCandidate { module: m, name: n } => m + "." + n + " (UNVERIFIED: declaration row not printed by the census; signature unread)"
+  }
+}
+
+fn verdict(class: DispositionClass, basis: DispositionBasis, evidence: String) -> DispositionVerdict {
+  DispositionVerdict { class: class, basis: basis, evidence: evidence }
+}
+
+fn classify_row(spelling: String, source: String, target: String, res: CandidateResolution) -> DispositionVerdict {
+  match disposition_claim_for(spelling: spelling) {
+    Present { value: c } => verdict(class: DispositionInFlight, basis: BasisInFlight, evidence: "claimed by " + claim_change_text(c: c) + "; ends when the spelling resolves to a declaration (checked: a stale claim refuses the reading)")
+    Absent => classify_unclaimed_row(spelling: spelling, source: source, target: target, res: res)
+  }
+}
+
+fn classify_unclaimed_row(spelling: String, source: String, target: String, res: CandidateResolution) -> DispositionVerdict {
+  if starts_with(s: source, prefix: "ambient:kernel_") {
+    verdict(class: DispositionKernelGrounding, basis: BasisManagerDirection, evidence: "kernel grounding: the spelling is a kernel token or type spelling, not an operation; no migration")
+  } else if source == "generated" {
+    verdict(class: DispositionC, basis: BasisGeneratedSource, evidence: "the compiler minted this reference (binding source generated) and it binds " + target)
+  } else {
+    match egress_observing_trigger(spelling: spelling) {
+      Present { value: next } => verdict(class: DispositionD, basis: BasisEgressEvidence, evidence: "primitive_egress row observes or mutates outside the value graph; retirement trigger: " + next)
+      Absent => classify_declared_row(source: source, target: target, res: res)
+    }
+  }
+}
+
+fn classify_declared_row(source: String, target: String, res: CandidateResolution) -> DispositionVerdict {
+  let roster = source == "ambient:collection_roster"
+  match res {
+    VerifiedCandidate { decl: d } =>
+      if roster { verdict(class: DispositionA, basis: BasisDeclaredCandidate, evidence: "the roster row " + target + " is a template, not a callable; the printed declaration " + declaration_evidence(decl: d) + " is the candidate (name from the manager's table; argument types not compared)") }
+      else { verdict(class: DispositionA, basis: BasisHeuristicNameMatch, evidence: "declaration " + declaration_evidence(decl: d) + " (name match only; argument types are not compared)") }
+    UnverifiedCandidate { module: m, name: n } => verdict(class: DispositionA, basis: BasisManagerDirection, evidence: "UNVERIFIED: " + m + "." + n + " is named by manager direction as the declared callable, but the census printed no declaration row for it (" + m + " is a refused declarer), so no executed evidence confirms it; trigger: derive the candidate when " + m + " resolves")
+    NoCandidate =>
+      if roster { verdict(class: DispositionB, basis: BasisHeuristicNoNameMatch, evidence: "none in the N7 closure: the roster row " + target + " is a template, not a callable declaration") }
+      else { verdict(class: DispositionB, basis: BasisHeuristicNoNameMatch, evidence: "none in the N7 closure") }
+  }
+}
+
+fn in_closure_modules(modules: List<String>, attribution: Map<String, List<String>>) -> Int {
+  count(modules |> filter(m => module_subjects_text(attribution: attribution, module: m) != "-"))
+}
+
+fn ambient_operation_rows(tree_stdout: String) -> List<DispositionRow> {
+  let selected = distinct_lines(lines: binding_lines(stdout: tree_stdout)) |> filter(l => is_in_scope_source(source: field_at(line: l, index: 4)))
+  let decls = distinct_lines(lines: declaration_lines(stdout: tree_stdout))
+  let attribution = module_subject_attribution(tree_stdout: tree_stdout)
+  let sites = fold(selected, init: empty_map(), f: fn(m, l) {
+    let k = row_key(line: l)
+    map_insert(m, k, match map_get(m, k) { Present { value: n } => n + 1  Absent => 1 })
+  })
+  let mods = fold(selected, init: empty_map(), f: fn(m, l) {
+    let k = row_key(line: l)
+    map_insert(m, k, match map_get(m, k) { Present { value: xs } => list_push(xs, field_at(line: l, index: 1))  Absent => [field_at(line: l, index: 1)] })
+  })
+  map_keys(sites) |> sort_by(k => k) |> map(fn(k) {
+    let source = field_at(line: k, index: 0)
+    let spelling = field_at(line: k, index: 1)
+    let target = field_at(line: k, index: 2)
+    let res = resolve_candidate(spelling: spelling, source: source, decls: decls)
+    let modules = distinct_lines(lines: match map_get(mods, k) { Present { value: xs } => xs  Absent => [] })
+    DispositionRow {
+      spelling: spelling
+      source: source
+      target: target
+      call_sites: match map_get(sites, k) { Present { value: n } => n  Absent => 0 }
+      modules: count(modules)
+      in_closure: in_closure_modules(modules: modules, attribution: attribution)
+      candidate: candidate_text(res: res)
+      verdict: classify_row(spelling: spelling, source: source, target: target, res: res)
+    }
+  })
+}
+
+fn render_disposition_row(r: DispositionRow) -> String {
+  "disposition\t" + r.spelling + "\t" + r.source + "\t" + r.target + "\t" + to_string(r.call_sites) + "\t" + to_string(r.modules)
+    + "\t" + to_string(r.in_closure) + "/" + to_string(r.modules)
+    + "\t" + r.candidate + "\t" + disposition_class_text(class: r.verdict.class) + "\t" + disposition_basis_text(basis: r.verdict.basis) + "\t" + r.verdict.evidence
+}
+
+fn class_count(rows: List<DispositionRow>, class: DispositionClass) -> Int {
+  count(rows |> filter(r => disposition_class_text(class: r.verdict.class) == disposition_class_text(class: class)))
+}
+
+fn stale_claims(decls: List<String>) -> List<String> {
+  ambient_operation_claims |> filter(c => match declaration_named(decls: decls, name: c.spelling) { Present { value: _ } => true  Absent => false }) |> map(c => c.spelling)
+}
+
+// Class A rows whose candidate declaration the census did not print: asserted by manager direction, with no executed
+// evidence behind them. The summary reports them on their own line so an A count never mixes the two (§4b rung honesty).
+fn unverified_a_count(rows: List<DispositionRow>) -> Int {
+  count(rows |> filter(r => disposition_class_text(class: r.verdict.class) == disposition_class_text(class: DispositionA) && disposition_basis_text(basis: r.verdict.basis) == disposition_basis_text(basis: BasisManagerDirection)))
+}
+
+fn summary_count(rows: List<DispositionRow>, label: String) -> Int {
+  let unverified = unverified_a_count(rows: rows)
+  if label == "A-unverified" { unverified }
+  else if label == "A" { class_count(rows: rows, class: DispositionA) - unverified }
+  else { count(rows |> filter(r => disposition_class_text(class: r.verdict.class) == label)) }
+}
+
+fn ambient_operation_summary(rows: List<DispositionRow>) -> List<String> {
+  ["in-flight", "A", "A-unverified", "B", "C", "D", "kernel-grounding"]
+    |> map(label => "disposition_summary\t" + label + "\t" + to_string(summary_count(rows: rows, label: label)))
+}
+
+// The reading, over the same run the ambient-name census reads. Its controls are that census's own
+// (fixture join, exactly one source per occurrence, the unindexed root, consistency, completeness): a
+// control that did not hold, or a run that observed nothing, is returned unchanged, with its exit.
+// This reading adds one refusal of its own: a run that printed no `binding_declaration` row at all
+// observed no declarations, so no row could be told A from B, and that is no observation (exit 2).
+fn ambient_operation_disposition_standing(
+  fixture_stdout: String,
+  fixture_status: Int,
+  unindexed_status: Int,
+  tree_stdout: String,
+  tree_runs: String,
+  rewritten: String
+) -> CliWireResponse {
+  match ambient_name_census_standing(fixture_stdout: fixture_stdout, fixture_status: fixture_status, unindexed_status: unindexed_status, tree_stdout: tree_stdout, tree_runs: tree_runs, rewritten: rewritten) {
+    CliWireUnprintable { cause: c } => CliWireUnprintable { cause: c }
+    CliWirePrintable { bytes: b, exit: x } =>
+      match x {
+        ExitSuccess =>
+          match disposition_classifier_control_failure() {
+            Present { value: why } => CliWirePrintable { bytes: b, exit: ExitFailure { code: 1, reason: why } }
+            Absent => disposition_response(tree_stdout: tree_stdout)
+          }
+        ExitFailure { code: _, reason: _ } => CliWirePrintable { bytes: b, exit: x }
+      }
+  }
+}
+
+fn observing_runtime_name() -> Optional<String> {
+  match first(primitive_evidence_rows() |> filter(e => match e.external_subject { ObservesOrMutates { operation: _, subject: _, provider: _, ambient_realization: _ } => true  NoExternalSubject => false  ExternalSubjectUnestablished { detail: _ } => false })) {
+    Present { value: e } => Present { value: primitive_identity_runtime_name(identity: e.identity) }
+    Absent => Absent
+  }
+}
+
+fn control_binding(name: String, source: String, target: String) -> String {
+  "binding\tctl.mod\t" + name + "\t0\t" + source + "\t" + target + "\t1:1"
+}
+
+fn control_basis_of(rows: List<DispositionRow>, spelling: String) -> String {
+  match first(rows |> filter(r => r.spelling == spelling)) {
+    Present { value: r } => disposition_basis_text(basis: r.verdict.basis)
+    Absent => "missing-row"
+  }
+}
+
+fn control_class_of(rows: List<DispositionRow>, spelling: String) -> String {
+  match first(rows |> filter(r => r.spelling == spelling)) {
+    Present { value: r } => disposition_class_text(class: r.verdict.class)
+    Absent => "missing-row"
+  }
+}
+
+// THE CLASSIFIER'S OWN DISCRIMINATING CONTROL: a synthetic census stdout holding one spelling per class, whose
+// answer is known by construction (the D spelling is read from the egress ledger itself, so it cannot go stale).
+// A shifted tab index in row_key (the census-line fields it joins on) makes a spelling land in the wrong class, and the
+// reading refuses (exit 1) instead of printing a well-formed table of wrong rows.
+fn disposition_classifier_control_failure() -> Optional<String> {
+  match observing_runtime_name() {
+    Absent => Present { value: "the egress ledger has no observing row, so the D control has no spelling" }
+    Present { value: d } => disposition_classifier_control_for(d: d)
+  }
+}
+
+fn disposition_classifier_control_for(d: String) -> Optional<String> {
+  let stdout = "binding_declaration\tctl.decl\tctl_decl\tfn\t() -> Int\nbinding_declaration\tctl.decl\tctl_named\tfn\t() -> Int\nbinding_declaration\tstd.algebra\tlist_map\tfn\t() -> Int\n"
+    + control_binding(name: "list_push", source: "ambient:ctl_table", target: "ctl.none") + "\n"
+    + control_binding(name: "ctl_gen", source: "generated", target: "ctl.gen") + "\n"
+    + control_binding(name: d, source: "ambient:ctl_table", target: "ctl.none") + "\n"
+    + control_binding(name: "fold", source: "ambient:collection_roster", target: "std.algebra.collection_fold_shape") + "\n"
+    + control_binding(name: "map", source: "ambient:collection_roster", target: "std.algebra.collection_map_shape") + "\n"
+    + control_binding(name: "filter", source: "ambient:collection_roster", target: "std.algebra.collection_filter_shape") + "\n"
+    + control_binding(name: "ctl_named", source: "ambient:ctl_table", target: "ctl.none") + "\n"
+    + control_binding(name: "ctl_missing", source: "ambient:ctl_table", target: "ctl.none") + "\n"
+    + control_binding(name: "ctl_kernel", source: "ambient:kernel_ctl", target: "kernel:ctl") + "\n"
+  let rows = ambient_operation_rows(tree_stdout: stdout)
+  let got = control_class_of(rows: rows, spelling: "list_push") + "," + control_class_of(rows: rows, spelling: "ctl_gen") + "," + control_class_of(rows: rows, spelling: d) + "," + control_class_of(rows: rows, spelling: "fold") + "," + control_class_of(rows: rows, spelling: "ctl_named") + "," + control_class_of(rows: rows, spelling: "ctl_missing") + "," + control_class_of(rows: rows, spelling: "ctl_kernel") + "," + control_class_of(rows: rows, spelling: "filter")
+  let basis_got = control_basis_of(rows: rows, spelling: "map") + "|" + control_basis_of(rows: rows, spelling: "fold") + "|" + control_basis_of(rows: rows, spelling: "filter")
+  let basis_want = disposition_basis_text(basis: BasisDeclaredCandidate) + "|" + disposition_basis_text(basis: BasisManagerDirection) + "|" + disposition_basis_text(basis: BasisHeuristicNoNameMatch)
+  let stale_got = join(stale_claims(decls: declaration_lines(stdout: stdout + "binding_declaration\tctl.decl\tlist_push\tfn\t() -> Int\n")), separator: ",")
+  if stale_got != "list_push" || count(stale_claims(decls: declaration_lines(stdout: stdout))) != 0 { Present { value: "stale-claim control read '" + stale_got + "', expected list_push when a declaration exists and none otherwise" } }
+  else if basis_got != basis_want { Present { value: "classifier control read bases " + basis_got + ", expected " + basis_want + " (verified candidate, unverified candidate, no candidate)" } }
+  else if summary_count(rows: rows, label: "A-unverified") != 1 || summary_count(rows: rows, label: "A") != 2 { Present { value: "classifier control summary read A-unverified " + to_string(summary_count(rows: rows, label: "A-unverified")) + " and A " + to_string(summary_count(rows: rows, label: "A")) + ", expected 1 and 2 (fold unverified; ctl_named and map evidenced)" } }
+  else if control_class_of(rows: rows, spelling: "map") != "A" { Present { value: "the verified-candidate control row map did not reach class A" } }
+  else if got == "in-flight,C,D,A,A,B,kernel-grounding,B" { Absent } else { Present { value: "classifier control read classes " + got + ", expected in-flight,C,D,A,A,B,kernel-grounding,B" } }
+}
+
+fn disposition_response(tree_stdout: String) -> CliWireResponse {
+  let rows = ambient_operation_rows(tree_stdout: tree_stdout)
+  let header = "subjects\t" + join(ambient_census_subjects(), separator: ",") + "\n"
+  let bytes = header + (rows |> map(r => render_disposition_row(r: r)) |> join(separator: "\n")) + "\n" + (ambient_operation_summary(rows: rows) |> join(separator: "\n")) + "\n"
+  let stale = stale_claims(decls: declaration_lines(stdout: tree_stdout))
+  if count(stale) > 0 {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "stale in-flight claim: " + join(stale, separator: ",") + " now resolves to a declaration, so its change has landed and the claim must be removed" } }
+  } else if count(declaration_lines(stdout: tree_stdout)) == 0 {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "the run printed no binding_declaration row: no declaration was observed, so no row can be told A from B" } }
+  } else if count(rows) == 0 {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "no ambient primitive binding was observed in the closure: an empty census is no observation" } }
+  } else {
+    CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+  }
+}

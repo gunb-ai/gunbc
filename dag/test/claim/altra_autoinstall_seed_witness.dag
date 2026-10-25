@@ -5328,15 +5328,13 @@ test fn the_mint_separator_authority_is_the_six_ascii_class_it_proclaims() -> Bo
   }
 }
 
-// THE ssh BLOCK IN THE SERVED DOCUMENT FOLLOWS THE PACKAGE SET, NOT A FLAG BESIDE IT (review 83764 finding 2: the
-// Bool over Optional was noted and left in place because its consumer is a Bool field in a sibling module —
-// gunbc.os_install_emit's AutoinstallPayload.install_openssh_server, merry's ruling: do not edit that file here.
-// Leaving the Bool is only honest if the Bool is CAUSALLY tied to the thing it names, so the tie is measured here,
-// through the real emitter rather than by reading the Bool back). A headless board whose package set contains
+// THE ssh BLOCK IN THE SERVED DOCUMENT FOLLOWS THE PACKAGE SET. The payload carries the section as
+// Optional<AutoinstallSshServer> (gunbc.extdeps.os.ubuntu_autoinstall), so presence is the install state and there is no
+// flag to disagree with the package set; the tie is still measured through the real emitter. A headless board whose package set contains
 // openssh-server must be handed an ssh block, or nobody can log into the machine it just installed; a board that
 // does not contain it must NOT be handed one, because `install-server: true` for an absent package is a promise the
 // installer cannot keep. Both directions are checked on the SERVED user-data bytes (the document the board
-// actually receives, via the binder's served bundle), not on the model value, so a mutation that hardcodes the Bool
+// actually receives, via the binder's served bundle), not on the model value, so a mutation that hardcodes the section
 // in either direction reddens exactly one leg.
 fn packages_without_openssh() -> List<PackageIntent> {
   [QuestionAnswered {

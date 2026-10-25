@@ -94,7 +94,13 @@ use crate::v1_std_core::{
 use serde::Serialize;
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
-    with_module_path_index(source_roots, |index| index.clone())
+    // STEP 0 (census cost): a hit still deep-clones the corpus index; count the materialization.
+    crate::cli_run::CENSUS_COST_INDEX_CLONES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    with_module_path_index(source_roots, |index| {
+        crate::cli_run::CENSUS_COST_INDEX_CLONED_ENTRIES
+            .fetch_add(index.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        index.clone()
+    })
 }
 
 /// THE CACHED MODULE-PATH INDEX, BORROWED. A keyed question -- is this module declared, where does
@@ -754,6 +760,7 @@ pub(crate) fn build_module_graph_facts_live_uncached(
         .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
         .collect();
     ModuleGraphFactsLive {
+        build_id: crate::cli_run::next_facts_build_id(),
         nodes,
         adjacency,
         selection,
@@ -1525,6 +1532,7 @@ fn multi_entry_index_shell_body(
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
         scratch_underlay: RefCell::new(None),
+        underlay_identity: RefCell::new(None),
         closure_name_censuses: RefCell::new(HashMap::new()),
         bare_reference_admission: RefCell::new(HashMap::new()),
         pool_module_names: std::cell::OnceCell::new(),

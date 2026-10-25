@@ -1,0 +1,60 @@
+module gunbc.recurring_failure_mode.directory_ownership_assertion_stops_at_the_top_level
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+
+// THE ROW: an ownership assertion that stops at the directory it names.
+//
+// THE SHAPE, in the abstract: a provider declares "this directory is owned by U:G, group-writable,
+// setgid" and reads as though it had said "everything under this directory". It has not. The assert is
+// one chgrp and one chmod on one inode, and the tree beneath it keeps whatever it already had. The
+// defect is invisible at the moment the apply succeeds -- the declared directory reads back exactly as
+// demanded, receipted, correct -- and appears only when something arrives that has to write a PATH
+// UNDERNEATH rather than the directory itself.
+//
+// WHERE IT BIT, and how it was mistaken for something else: WORKER-ROOT-EQUIVALENT-2 (#14270) declared
+// .git/objects, .git/refs and .git/logs group-writable setgid for the shared attempt group so a
+// dedicated worker could commit into the lab instance's repository. The apply passed. srv1 then read
+// the actual repository (2026-10-17, gunbc-worker 1004/1004 and gunbc-attempt 1003 created exactly as
+// fleet_posix_accounts declares) and found objects, refs, logs AND their existing subdirectories --
+// .git/objects/f9 among them -- still briansrls:briansrls 0775. The worker, not being in that group,
+// could not write into the fan-out directory its own object belonged in, and its first commit died
+// inside it. The natural reading was "the account is wrong" or "the group membership is wrong"; neither
+// was, both had been checked. The grant was right about the directory and silent about the tree.
+//
+// THE GENERALIZATION, which is what belongs in the ledger: a group-writable setgid directory makes
+// what is created NEXT inherit the group. It says nothing about what is ALREADY there, and git
+// repositories, caches, spool directories and build trees are never empty at the moment a second
+// principal is introduced to them. So any grant introduced to an EXISTING tree needs two claims and
+// only ever gets one: the directory, and the contents. The contents half has to be a separate,
+// BOUNDED step -- bounded depth, confined names pruned, symlinks excluded, one group and never an
+// owner -- because a recursive assert over a tree that grows is a step whose cost nobody declared.
+//
+// HOW THE LEDGER CLOSES IT: the same claims read both halves, and the pre-migration state is stated in
+// the model as the thing the readback REFUSES (dashboard_git_worker_directory_mode_is_unmigrated), so
+// "it passed on srv1" cannot be re-mistaken for "it is granted".
+data directory_ownership_assertion_stops_at_the_top_level: RecurringFailureMode = RecurringFailureMode {
+  identity: "directory_ownership_assertion_stops_at_the_top_level" as NonEmptyStr,
+
+  // STATED BY THIS ROW: found below the floor (#14270's apply succeeded, receipted, and the tree
+  // underneath stayed unowned -- a green that could not see its own subject); closed to the rung the
+  // row itself declares reachable: the grant ships with a declared, BOUNDED migration whose READBACK
+  // the model checks and whose pre-migration state the model REFUSES, so "the apply passed" cannot
+  // re-be mistaken for "the tree is granted". The ceiling is mechanically preventable and no higher:
+  // a recursive assert over a tree that grows is rejected by this very row (a step whose cost nobody
+  // declared), so the bounded migration IS the ceiling for this class.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "the migration is bounded by declared depth, confined names and one group, and its readback the model checks; recursion over an unbounded tree has no declared cost, so it is not a reachable rung for this class." as NonEmptyStr } },
+
+  receipts: [
+    "INVALID STATE: a provider declares 'this directory is owned by U:G, group-writable, setgid' and reads as though it had said 'everything under this directory'. The assert is one chgrp and one chmod on one inode; the tree beneath keeps whatever it already had. The defect is invisible at the moment the apply succeeds -- the declared directory reads back exactly as demanded, receipted, correct -- and appears only when something arrives that has to write a PATH UNDERNEATH rather than the directory itself.",
+    "WHERE IT BIT, and how it was mistaken for something else: WORKER-ROOT-EQUIVALENT-2 (#14270) declared .git/objects, .git/refs and .git/logs group-writable setgid for the shared attempt group so a dedicated worker could commit into the lab instance's repository. The apply passed. srv1 then read the actual repository (2026-10-17, gunbc-worker 1004/1004 and gunbc-attempt 1003 created exactly as fleet_posix_accounts declares) and found objects, refs, logs AND their existing subdirectories -- .git/objects/f9 among them -- still briansrls:briansrls 0775. The worker, not being in that group, could not write into the fan-out directory its own object belonged in, and its first commit died inside it. The natural reading was 'the account is wrong' or 'the group membership is wrong'; neither was, both had been checked. The grant was right about the directory and silent about the tree.",
+    "THE GENERALIZATION, which is what belongs in the ledger: a group-writable setgid directory makes what is created NEXT inherit the group. It says nothing about what is ALREADY there, and git repositories, caches, spool directories and build trees are never empty at the moment a second principal is introduced to them. So any grant introduced to an EXISTING tree needs two claims and only ever gets one: the directory, and the contents. The contents half has to be a separate, BOUNDED step -- bounded depth, confined names pruned, symlinks excluded, one group and never an owner -- because a recursive assert over a tree that grows is a step whose cost nobody declared.",
+    "HOW THE LEDGER CLOSES IT: the same claims read both halves, and the pre-migration state is stated in the model as the thing the readback REFUSES (dashboard_git_worker_directory_mode_is_unmigrated), so 'it passed on srv1' cannot be re-mistaken for 'it is granted'. RECOGNITION RULE: a grant introduced to an existing tree ships with a declared, bounded migration whose READBACK the model itself checks, and setgid on directories only where the writer creates directories, so the next fan-out directory is born in the right group.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.roadmap.worker_dedicated_account_witness", decl_name: "the_existing_subtree_is_covered_by_the_declared_migration", field: WholeDeclaration },
+  ],
+}

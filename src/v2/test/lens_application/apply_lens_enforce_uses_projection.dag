@@ -32,6 +32,7 @@ import v2.std.node {
   Path,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 
 data projection_test_section: Node = Node {
@@ -45,7 +46,8 @@ data projection_test_root: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^projection_section_step },
-      target: projection_test_section
+      target: projection_test_section,
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: OccurrenceSynthetic

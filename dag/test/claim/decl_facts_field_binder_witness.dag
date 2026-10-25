@@ -4,7 +4,7 @@ import std.types { String, List, Bool, Int }
 import std.optional { Optional, Present, Absent, optional_absent, optional_present }
 import v2.std.concept_index { FieldRef, QualifiedConcept, enumerate_concepts_in }
 import v2.std.decl_index { decl_facts, DeclFact }
-import v2.std.node { Node, Edge, Authored, OccurrenceSynthetic, TypeNode, ComputationNode, Value, Atom, Conj, Symbol, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Node, Edge, Authored, OccurrenceSynthetic, TypeNode, ComputationNode, Value, Atom, Conj, Symbol, NotADeclaration, symbol_intern_lexeme, symbol_lexeme }
 import std.nat { Succ, Zero }
 import v2.std.optional_layers { wrap_type_node_occupancy }
 import v2.std.node_query { DeclaredField, declared_field_list, binder_node, edge_field_type_name, FieldDefault, LiteralDefault, field_default_reading }
@@ -31,6 +31,7 @@ fn field_edge(name: String, ty: String, default: Optional<String>) -> Edge {
   Edge {
     label: Authored { name: symbol_of(text: name) }
     target: binder_node(type_node: atom(name: ty), default: default_node(default: default))
+    declaration: NotADeclaration
   }
 }
 

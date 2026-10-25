@@ -1,0 +1,800 @@
+module test.claim.machine_intake.machine_intake_bmc_recovery_route_witness
+
+import std.types {
+  Bool, Int, List, String,
+}
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.bmc.ipmi {
+  IpmiCompletionCode, ipmi_completion_code_invalid_data_field,
+}
+// THE RECEIPT SHELF, NOT THE VENDOR MODULE. The measurements -- the capture digest, the
+// Get Device ID reading, what the firmware answered -- are read from the observing layer's own shelf,
+// which is where production reads them too. extdeps.boards.asrock_rack keeps only what ASRock Rack
+// publishes, and the witness's remaining import there is exactly that: the board's release capability
+// rows. No receipt crosses that boundary in either direction.
+import gunbc.machine_intake.bmc_inband_recovery_receipts {
+  PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured,
+  asrock_altrad8ud_inband_recovery_capture, asrock_altrad8ud_1l2t_inband_device_identity,
+  asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
+  asrock_altrad8ud_published_factory_password_write_policy_for,
+  asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_openbmc_3_06_00_capabilities, asrock_altrad8ud_openbmc_3_22_00_capabilities,
+}
+import gunbc.auth.privileged_effect_census {
+  SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable,
+  census_verdicts, recovery_in_band_set_user_password_effect, recovery_manager_reset_to_defaults_effect,
+}
+import gunbc.auth.authorization_pattern_selection {
+  PatternSelected, OperatorApprovedCapability, ReversibleByReapply, IrreversibleEffect, MintsNoCredential, MintsResourceScopedCredential,
+}
+import std.decl_ref { declaration_ref_display_key }
+import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
+import std.roster_frontier {
+  DeclSubject, FrontierRow, PathSubject,
+}
+import gunbc.auth.privileged_effect_census {
+  PrivilegedEffectInterlock, privileged_effect_interlocks,
+}
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.machine_intake.bmc_recovery_route_frontier {
+  bmc_recovery_route_consumer_frontier_rows,
+  bmc_recovery_route_onboarding_consumer_frontier_rows, bmc_recovery_route_pairing_frontier_rows,
+}
+import extdeps.ssh.known_hosts { openssh_standard_port }
+import v2.std.decl_index { DeclFact, decl_facts }
+// THE NAME-TO-PATH RULE, asked directly: the pending census walks the directory THAT RULE resolves a
+// trigger's module to (see recovery_trigger_pool_roots), so the population is derived from the trigger,
+// never from a hand-kept list of directories this file could quietly keep stale.
+import gunbc.source_layout { layout_module_storage_path }
+import std.filesystem { path_parent_directory }
+import gunbc.machine_intake.bmc_recovery_route {
+  ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_rescue_host_address, recovery_reset_actuation, InBandTemporaryAdministratorPassword, RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree, NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive, recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity, converge_in_band_recovery, recovery_convergence_steps, recovery_proof_requires, recovery_route_next_action, recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback, recovery_admitted_in_band_write, recovery_admitted_reset_write,
+}
+import gunbc.machine_intake.arrival_converge {
+  ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable, access_discover, access_discover_step_ref, read_mtjade1_current_manager_read,
+}
+import gunbc.fleet.convergence_fold { step_instance_key, ConvergenceRunId, StepSubjectKey }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ── THE IN-BAND RECOVERY ROUTE, JUDGED WHERE ITS LOAD-BEARING FACTS LIVE ──────────────────────
+//
+// The route module deliberately does not carry these assertions, and not for tidiness. Every fact
+// under test here belongs to ANOTHER module: the per-release firmware write policy lives in
+// extdeps.boards.asrock_rack (it is a vendor-build fact, not an OpenBMC fact, and the route only ever
+// ASKS the catalog for it), the completion code belongs to extdeps.bmc.ipmi (a byte out of the IPMI
+// specification's completion-code list, with the English kept as its description), and the
+// authorization pattern belongs to gunbc.auth.privileged_effect_census -- which is the module that
+// answers which pattern a write is admitted under. Asserting any of them inside
+// gunbc.machine_intake.bmc_recovery_route would make the route vouch for its own upstream, which is
+// exactly how a firmware policy stops being a measured fact and starts being an assumption. Each test
+// here fails in the module that owns the fact it judges.
+
+// ── 1. THE PER-RELEASE WRITE POLICY, WHICH IS WHAT MAKES THE RESET NECESSARY ─────────────────
+//
+// The recovery actuates a factory reset because the firmware refuses a write of the published
+// factory password. That refusal is a property of ONE build, so the two ways it can be wrongly
+// generalized are the two ways it has to be refused: a release nobody measured, and a neighbouring
+// completion code.
+
+// THE LOOKUP IS CALLED THROUGH, NOT MERELY DESCRIBED. A witness that only checks names stays green when
+// the thing it names is absent; the release-keyed lookup answers with an arm of this coproduct, so calling
+// it and matching the answer is what makes the "no default" claim real.
+test fn a_release_the_catalog_never_measured_refuses_to_ground_a_reset() -> Bool {
+  let measured = asrock_altrad8ud_published_factory_password_write_policy_for(
+    firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+  )
+  let unmeasured = asrock_altrad8ud_published_factory_password_write_policy_for(
+    firmware: asrock_altrad8ud_openbmc_3_06_00_capabilities.firmware,
+  )
+  // MATCHED AS ARMS, NEVER AS A BOOLEAN: the two arms demand opposite actions -- one authorizes a
+  // destructive reset, the other refuses the route -- so a Bool would collapse "measured refusing" and
+  // "nobody ever looked" into one bit a reader cannot interrogate. Matching happens HERE, in the claim,
+  // where the arms are visible; a `_ => false` helper that names one variant true is the same Bool under
+  // another name.
+  (match measured {
+    FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _, measured_under: _ } => true
+    NotMeasured { firmware: _ } => false
+  })
+    && (match unmeasured {
+      FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _, measured_under: _ } => false
+      NotMeasured { firmware: _ } => true
+    })
+    // The refusal has to say WHICH firmware it could not measure -- a NotMeasured that forgets the
+    // release is indistinguishable from a catalog that lost its rows, and the route reports this one
+    // to the operator as "this firmware was never read".
+    && match unmeasured {
+      NotMeasured { firmware: f } => f.version.major == 3 && f.version.minor == 6
+      FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _, measured_under: _ } => false
+    }
+}
+
+fn policy_refusal_completion_code(policy: PublishedFactoryPasswordWritePolicy) -> IpmiCompletionCode? {
+  match policy {
+    FirmwareRefusesPublishedPassword { firmware: _, completion_code: c, capture: _, measured_under: _ } => Present { value: c }
+    NotMeasured { firmware: _ } => Absent
+  }
+}
+
+test fn a_completion_code_beside_the_measured_one_is_not_the_refusal() -> Bool {
+  let firmware = asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware
+  // 0xC7 "Request data length invalid" is the code a reader confuses with 0xCC. It indicts the LENGTH
+  // of the request and not the firmware's policy on the value -- and a route that read it as the
+  // policy refusal would spend a destructive ResetAll on a unit whose firmware would have accepted
+  // the write. Damage for nothing, on arriving metal.
+  // 0xC7 in the arm a refusal is written in is NOT the measured refusal: the identity is the typed
+  // numeric code alone, so a row pointing at the length complaint is a different fact, not a refusal
+  // with a stale label. (The deleted predicate let the text vouch for the code; the text now lives with
+  // the code in extdeps.bmc.ipmi as the spec's description of it and is not carried on the row at all.)
+  refuses_that_code(policy: FirmwareRefusesPublishedPassword {
+    firmware: firmware,
+    completion_code: IpmiCompletionCode { code: 199 },
+    capture: asrock_altrad8ud_inband_recovery_capture,
+    measured_under: asrock_altrad8ud_1l2t_inband_device_identity,
+  }) == false
+    // and the codes stay distinct as numbers -- 204 is the rejected field, 199 the length complaint.
+    // Compared with == : a named equality predicate over two of these would restate == with the byte
+    // hidden behind its name and would exist for no caller but this test, which is what section 3c
+    // counts as dangling.
+    && (ipmi_completion_code_invalid_data_field == IpmiCompletionCode { code: 204 })
+    && (ipmi_completion_code_invalid_data_field == IpmiCompletionCode { code: 199 }) == false
+    && (ipmi_completion_code_invalid_data_field == IpmiCompletionCode { code: 203 }) == false
+}
+
+// AN ORACLE WITH SOMETHING TO FAIL AGAINST. Comparing a data row's text against a literal copy of itself
+// stays green when the row and the test are edited together, so it detects nothing -- and the row's English
+// is the IPMI specification's description of the code, with no referent inside this repository to check it
+// against. So no claim is made about the wording. What CAN be checked is the NUMBER.
+//
+// What CAN be checked against something independent is the NUMBER, because the spec publishes it in hex and
+// hex digits are a DERIVATION rather than a copy: 0xCC is 12*16+12 and 0xC7 is 12*16+7, with C=12 and 7=7
+// coming from the notation and not from the constant under test. A row edited to any other byte -- 203, or
+// 199 for both -- fails here. That is precisely the substitution that would spend a destructive ResetAll on
+// a unit whose firmware would have accepted the write.
+test fn the_measured_completion_code_is_the_number_the_specification_publishes() -> Bool {
+  (ipmi_completion_code_invalid_data_field.code as Int) == 12 * 16 + 12
+    // and it is NOT the length complaint a reader confuses it with, whose byte derives the same way:
+    // 0xC7 is 12*16+7. Written as a value here rather than as a named row, because nothing in the
+    // product reads 0xC7 -- the one refusal this repository measured was 0xCC.
+    && (ipmi_completion_code_invalid_data_field.code as Int) != (12 * 16 + 7)
+}
+
+// THE ROW'S OWN CODE, AS A DECISION AND NOT A SHAPE. A refusal arm that points at 0xC7 is a different
+// fact, not "the refusal with a stale label": the identity is the typed byte alone (the deleted
+// predicate had let the English vouch for the code). Compared with == against the constant, which keeps
+// the byte being demanded in plain sight.
+fn refuses_that_code(policy: PublishedFactoryPasswordWritePolicy) -> Bool {
+  match policy_refusal_completion_code(policy: policy) {
+    Present { value: c } => c == ipmi_completion_code_invalid_data_field
+    Absent => false
+  }
+}
+
+test fn the_measured_row_is_keyed_by_the_catalog_version_and_not_by_a_rerollable_string() -> Bool {
+  match asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy {
+    FirmwareRefusesPublishedPassword { firmware: f, completion_code: c, capture: cap, measured_under: m } =>
+      f.family == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.family
+        && f.version.major == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.major
+        && f.version.minor == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.minor
+        && f.version.patch == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.patch
+        && (c == ipmi_completion_code_invalid_data_field)
+        && cap == asrock_altrad8ud_inband_recovery_capture
+    NotMeasured { firmware: _ } => false
+  }
+}
+
+// AN AMBIGUOUS CATALOG MUST NOT BLAME THE MEASUREMENT. The fold used to test
+// `list_length(matches) != 1` and answer ControllerNeverMeasured for BOTH zero and two matches -- so a
+// catalog with a duplicated row reported itself as never measured, while the sum declared a distinct arm
+// for the case and nothing could ever produce it. The fold is asked here at its own interface (the catalog
+// is a parameter, so nothing is invented in the FILED rows: the same measured row appears twice, which is
+// exactly what a duplicated catalog gives the fold -- it cannot tell a duplicate from two identical rows,
+// and that indistinguishability IS the defect being refused). The pair is what makes this a test and not a
+// restatement: zero rows must still say never-measured, so the ambiguity arm cannot be reached by making
+// everything ambiguous.
+test fn a_duplicated_catalog_reports_ambiguity_and_never_blames_the_measurement() -> Bool {
+  let one = asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy
+  let reading = asrock_altrad8ud_1l2t_inband_device_identity
+  // TWO refusal rows answer the one reading: ambiguity, with the disagreeing rows attached
+  (match asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
+    catalog: [one, one],
+    observed: reading,
+  ) {
+    CatalogAmbiguousForController { observed: o, matched: matched } =>
+      o == reading
+        // the refusal is COUNTABLE and locatable: it carries both rows, not a sentence about them
+        && list_length(items: matched) == 2
+        // every row the fold handed back is a measured refusal (none of them a NotMeasured placeholder)
+        && list_length(items: filter(matched, p => refuses_that_code(policy: p))) == list_length(items: matched)
+    ControllerNeverMeasured { observed: _ } => false
+    RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
+    CatalogIndexesDisagree { firmware: _, observed: _ } => false
+    // A row that refused its own filing is neither of the answers this arm-set is about.
+    RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
+    // A row that refused its own filing is neither of the two answers this claim is about.
+    RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
+  })
+  // ZERO rows is still the other failure, and stays the other failure
+  && (match asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
+    catalog: [],
+    observed: reading,
+  ) {
+    ControllerNeverMeasured { observed: o } => o == reading
+    CatalogAmbiguousForController { observed: _, matched: _ } => false
+    RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
+    CatalogIndexesDisagree { firmware: _, observed: _ } => false
+    // A row that refused its own filing is neither of the answers this arm-set is about.
+    RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
+  })
+  // and the filed catalog, which holds ONE row, still lands on the measured refusal: the two arms above
+  // did not become the only reachable answers
+  && (match asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
+    catalog: [one],
+    observed: reading,
+  ) {
+    RefusalMeasuredOnThisController { refusal: _, observed: o } => o == reading
+    ControllerNeverMeasured { observed: _ } => false
+    CatalogAmbiguousForController { observed: _, matched: _ } => false
+    CatalogIndexesDisagree { firmware: _, observed: _ } => false
+    // A row that refused its own filing is neither of the answers this arm-set is about.
+    RowDisagreesWithItsOwnReading { row: _, observed: _ } => false
+  })
+}
+
+// ── 2. BOTH WRITES ARE CENSUSED, AND THE DESTRUCTIVE ONE CANNOT DODGE OPERATOR APPROVAL ───────
+//
+// The route claims its two writes run through gunbc.auth.authorization_pattern_selection with
+// gunbc.auth.privileged_effect_census rows. Claimed is not done: these tests read the CENSUS and
+// require the rows to exist, to conform, and -- for the reset -- to have selection land on
+// OperatorApprovedCapability. The pattern is what the effect's characteristics force, so a row cannot
+// realize a friendlier pattern than its own effect permits.
+
+data recovery_in_band_site_name: String = "gunbc.machine_intake.bmc_recovery_route::admit_recovery_in_band_password_write"
+
+data recovery_reset_site_name: String = "gunbc.machine_intake.bmc_recovery_route::admit_recovery_manager_reset_to_defaults"
+
+fn recovery_site_verdicts() -> List<SiteVerdict> {
+  filter(
+    census_verdicts(),
+    v => declaration_ref_display_key(v.site) == recovery_in_band_site_name
+      || declaration_ref_display_key(v.site) == recovery_reset_site_name,
+  )
+}
+
+fn verdict_for(wanted: String) -> SiteVerdict? {
+  filter(census_verdicts(), v => declaration_ref_display_key(v.site) == wanted) |> first()
+}
+
+test fn both_in_band_recovery_writes_are_rostered_sites_of_the_census() -> Bool {
+  list_length(items: recovery_site_verdicts()) == 2
+    // Each row's conformance is MATCHED. A bare `Diverges` carries no reason, which forks the authority,
+    // so it is refused outright; a reasoned divergence is allowed to pass with its reason attached. The two
+    // need different fixes, so they are not flattened to one false.
+    && (match verdict_for(wanted: recovery_in_band_site_name) {
+      Present { value: verdict } =>
+        match verdict.conformance {
+          Conforms => true
+          Diverges => false
+          DivergesWithReason { reason: _ } => false
+          SiteNotDecidable { standing: _ } => false
+        }
+      Absent => false
+    })
+    && (match verdict_for(wanted: recovery_reset_site_name) {
+      Present { value: verdict } =>
+        match verdict.conformance {
+          Conforms => true
+          Diverges => false
+          DivergesWithReason { reason: _ } => false
+          SiteNotDecidable { standing: _ } => false
+        }
+      Absent => false
+    })
+}
+
+// ── 1b. A CENSUS ROW MUST POINT AT A DECLARATION THAT EXISTS ─────────────────────────────────
+//
+// Review 81115 #1 found both recovery rows filed against function names the module never declared -- and
+// the witness above stayed green, because comparing a site-name STRING to itself can never notice an
+// absent symbol. DESIGN §3 makes that decidable from the Node tree, so this asks the parse-only
+// declaration census of the live corpus: for each row, the declaration its `site` names must be declared.
+// The names asked for below are written by hand and the answers come from the census of the live tree,
+// so this cannot be satisfied by the census agreeing with itself: deleting or renaming a gate, or editing
+// a row's decl_name, turns it red from either side.
+
+data recovery_live_pool_roots: List<String> = ["dag/gunbc/machine_intake"]
+
+data recovery_live_decl_facts: List<DeclFact> = decl_facts(pool_roots: recovery_live_pool_roots)
+
+fn recovery_declares_gate(gate: String) -> Bool {
+  // the declaration's OWN name field on a fact the census produced, never a qualified name this file
+  // assembles: a module path written as a literal here would be a second naming of the module (DESIGN
+  // section 3), and gluing two halves together would pass for a declaration that lives somewhere else
+  // entirely. Renaming the module moves the census's own names with it. An empty census makes this false
+  // rather than true, so a wrong pool root cannot pass quietly.
+  any(xs: recovery_live_decl_facts, predicate: fn(d) {
+    d.name == gate
+  })
+}
+
+fn census_row_names_a_declared_declaration(wanted: String) -> Bool {
+  match verdict_for(wanted: wanted) {
+    Absent => false
+    Present { value: verdict } =>
+      // the row's own site key, split the way the census writes it, and asked of the live tree
+      declaration_ref_display_key(verdict.site) == wanted
+        && any(xs: recovery_live_decl_facts, predicate: fn(d) {
+             d.qualified_name == concat(verdict.site.module_path as String, concat(".", verdict.site.decl_name as String))
+           })
+  }
+}
+
+test fn each_recovery_census_row_points_at_a_declaration_the_live_tree_has() -> Bool {
+  recovery_declares_gate(gate: "admit_recovery_in_band_password_write")
+    && recovery_declares_gate(gate: "admit_recovery_manager_reset_to_defaults")
+    // ...and the ROWS, not just the functions: read from the ledger, checked against the tree
+    && census_row_names_a_declared_declaration(wanted: recovery_in_band_site_name)
+    && census_row_names_a_declared_declaration(wanted: recovery_reset_site_name)
+    // a site name that was never declared is refused -- the exact defect this replaces
+    && census_row_names_a_declared_declaration(wanted: "gunbc.machine_intake.bmc_recovery_route::no_such_recovery_gate") == false
+}
+
+// BOTH ROWS LAND ON THE OPERATOR-APPROVED CAPABILITY, AND THE CLAIM SAYS SO RATHER THAN HOPING ONE
+// DOES NOT. Review 81176 found the password row realizing that pattern while its profile said the
+// selection could not produce it -- a divergence with no reason, DESIGN §3b's only red. Two ways to close
+// that fork existed: change `realized`, or make the profile honest about what the write does. The profile
+// was wrong, so both rows now select the same pattern and this claim checks the SEPARATION that actually
+// matters -- each row's own characteristics force its own selection, so neither is claiming a pattern the
+// other's effect happens to produce.
+test fn both_recovery_writes_are_admitted_only_under_an_operator_approved_capability() -> Bool {
+  (match verdict_for(wanted: recovery_reset_site_name) {
+    Present { value: verdict } =>
+      match verdict.selection {
+        PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+        PatternSelected { pattern: _, receipt: _ } => false
+        ManualStepRequired { step: _, receipt: _ } => false
+        NoAdmissiblePattern { causes: _, scope: _ } => false
+        PatternSelectionNeedsEvidence { needs: _ } => false
+        PatternSelectionNeedsPolicy { survivors: _ } => false
+        PatternSelectionRefused { defects: _ } => false
+      }
+    Absent => false
+  })
+    && (match verdict_for(wanted: recovery_in_band_site_name) {
+      Present { value: verdict } =>
+        match verdict.selection {
+          PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+          PatternSelected { pattern: _, receipt: _ } => false
+          ManualStepRequired { step: _, receipt: _ } => false
+          NoAdmissiblePattern { causes: _, scope: _ } => false
+          PatternSelectionNeedsEvidence { needs: _ } => false
+          PatternSelectionNeedsPolicy { survivors: _ } => false
+          PatternSelectionRefused { defects: _ } => false
+        }
+      Absent => false
+    })
+}
+
+// WHY EACH ROW SELECTS WHAT IT DOES, ASSERTED AT THE CHARACTERISTICS SELECTION READS. The reset is
+// irreversible because nothing it destroys can be reissued; the password write is irreversible for a
+// DIFFERENT reason -- it leaves an enabled account holding a secret the run never stored, and writing the
+// password again does not close that window (the same reasoning route_qualification_effect already
+// carries). If either reason were softened the pattern would move, and this witness goes red rather than
+// shipping a recovery run admitted under a grant nobody approved.
+test fn each_row_is_forced_to_its_pattern_by_its_own_effect_characteristics() -> Bool {
+  (match recovery_manager_reset_to_defaults_effect().reversibility {
+    IrreversibleEffect { what_is_lost: _ } => true
+    ReversibleByReapply => false
+  })
+    && (match recovery_in_band_set_user_password_effect().reversibility {
+      IrreversibleEffect { what_is_lost: _ } => true
+      ReversibleByReapply => false
+    })
+    // the two irreversibilities are DIFFERENT losses, not one fact copied: only the reset destroys
+    // something no later act can restore
+    && recovery_manager_reset_to_defaults_effect().reversibility
+      != recovery_in_band_set_user_password_effect().reversibility
+    // the password write mints a device-scoped credential; the reset mints none. This is the second,
+    // independent force that puts the write under an attended pattern.
+    && match recovery_in_band_set_user_password_effect().minted_reach {
+      MintsResourceScopedCredential => true
+      _ => false
+    }
+    && match recovery_manager_reset_to_defaults_effect().minted_reach {
+      MintsNoCredential => true
+      _ => false
+    }
+    // and neither write takes a credential into OUR store: the route terminates by handing the factory
+    // credential to the existing factory-login-then-rotate path, so no secret is kept here
+    && recovery_in_band_set_user_password_effect().minted_reach
+      != recovery_manager_reset_to_defaults_effect().minted_reach
+}
+
+// ── 3. AN UNCATURED WRITE PROVES AN ATTEMPT AND NOTHING MORE ─────────────────────────────────
+//
+// Both privileged writes of the captured recovery were watched on the operator's terminal and never
+// byte-captured: the temporary password was wiped by the reset before it could be re-read, and the
+// ResetToDefaults exchange was observed without saving bodies. The model has to hold that state
+// honestly -- an executed-but-uncaptured write may satisfy "was this attempted, against the arm the
+// route names" and must NEVER satisfy "did this succeed". Anyone who later wants the reset to count
+// from its own exit code has to break this test first.
+
+test fn an_executed_write_without_byte_capture_can_prove_an_attempt_but_never_a_success() -> Bool {
+  let uncaptured_reset = ExecutedWithoutByteCapture {
+    kind: recovery_reset_actuation(),
+    observed_exit: 0,
+    detail: "observed in session; request and response bodies were not captured",
+  }
+  let wrong_kind = ExecutedWithoutByteCapture {
+    kind: InBandTemporaryAdministratorPassword,
+    observed_exit: 0,
+    detail: "the other arm of the same run, presented as the reset",
+  }
+  recovery_write_was_attempted(record: uncaptured_reset, kind: recovery_reset_actuation())
+    // THE SUCCESS SIDE, MATCHED AS THE ARMS THEY ARE. No predicate is consulted: the claim itself asks
+    // which arm can ground a success, and only one can. ExecutedWithoutByteCapture
+    // satisfies "was this attempted, against the arm the route names" and must NEVER satisfy "this
+    // happened and was recorded", which is the distinction the field exists to keep.
+    && (match uncaptured_reset {
+      ExecutedWithCapturedExchange { kind: _, request: _, response: _, observed_at: _ } => false
+      ExecutedWithoutByteCapture { kind: _, observed_exit: _, detail: _ } => true
+      NotExecuted { kind: _ } => false
+    })
+    // BOTH FIXTURE WRITES ARE OBSERVED-ONLY, AND THE CAPTURE SAYS SO FOR EACH. 00_README.txt records
+    // write 1 as "NOT reproducible and was not saved as bytes" (the reset wiped the temporary password)
+    // and write 2 as "Response bodies were not saved"; so neither module fixture may present itself as a
+    // captured exchange, and a fixture that started doing so without a capture behind it turns this red.
+    && (match recovery_in_band_write_record() {
+      ExecutedWithCapturedExchange { kind: _, request: _, response: _, observed_at: _ } => false
+      ExecutedWithoutByteCapture { kind: _, observed_exit: _, detail: _ } => true
+      NotExecuted { kind: _ } => false
+    })
+    && recovery_write_was_attempted(record: wrong_kind, kind: recovery_reset_actuation()) == false
+}
+
+// ── 4. THE ARRIVAL SEAM HAS A CONSUMER ────────────────────────────────────────────────────────
+//
+// Review 81115 #2 found the new AccessDiscover arm produced by nothing: `access_discover` never reached
+// the recovery route, so the arm was a dangling declaration -- DESIGN §3c's "the only red, however well
+// modeled". These claims run the real step over the real capture and require the arm to be the outcome
+// when a locked recovery standing for THAT unit is present. Judged in the seam's own module would let the
+// seam vouch for its own wiring; judged only inside the route module it would miss that the consumer is on
+// the other side.
+
+data recovery_witness_run: ConvergenceRunId = "inband-recovery-witness-run" as ConvergenceRunId
+
+// THE SAME UNIT THE ROUTE FIXTURES STAND ON, ON PURPOSE: the guard in access_discover compares the
+// standing's unit key against the step instance's, so a witness key that did not name the fixture's unit
+// would make every "the arm fires" claim false. It was not hypothetical: while this entry refused to
+// compile, no claim body executed at all, so a key mismatch that made all of these false was never
+// observed. The foreign-unit key below is what a genuine cross-wire looks like.
+data recovery_witness_unit_key: StepSubjectKey = "bmc-recovery-fixture-unit" as StepSubjectKey
+
+data recovery_other_unit_key: StepSubjectKey = "some-other-unit-inband-witness" as StepSubjectKey
+
+fn recovery_locked_standing_on_a_release_nobody_measured() -> InBandRecoveryStanding {
+  converge_in_band_recovery(
+    route: recovery_test_route(reading: recovery_unmeasured_identity()),
+    in_band_write: recovery_in_band_write_record(),
+    reset_write: recovery_reset_write_record(),
+    readback: recovery_factory_credential_readback(),
+    in_band_admission: recovery_admitted_in_band_write(),
+    reset_admission: recovery_admitted_reset_write(),
+  )
+}
+
+fn recovery_completed_standing() -> InBandRecoveryStanding {
+  converge_in_band_recovery(
+    route: recovery_test_route(reading: recovery_measured_identity()),
+    in_band_write: recovery_in_band_write_record(),
+    reset_write: recovery_reset_write_record(),
+    readback: recovery_factory_credential_readback(),
+    in_band_admission: recovery_admitted_in_band_write(),
+    reset_admission: recovery_admitted_reset_write(),
+  )
+}
+
+fn access_refusal_is_the_recovery_arm(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
+  match step_outcome_refusal(outcome: o) {
+    Present { value: AccessDiscoverCredentialUnknownRecoveryRouteAvailable { cause: _ } } => true
+    _ => false
+  }
+}
+
+// WHICH ARM THE STEP REFUSED WITH, so a claim can insist on the MISTAKE rather than on "some refusal". A
+// claim that only asked for "not the recovery arm" would stay green when a crossed wire was silently
+// dropped, which is precisely the behaviour that used to be the defect.
+fn access_refusal_is_wrong_unit_arm(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
+  match step_outcome_refusal(outcome: o) {
+    Present { value: AccessDiscoverRecoveryStandingForAnotherUnit { standing_unit: _, step_unit: _ } } => true
+    _ => false
+  }
+}
+
+// THE PAIRING, READ OUT OF THE REFUSAL. Both keys travel in the carrier, so the claim can check WHICH two
+// units were crossed rather than settling for "a refusal happened".
+fn access_wrong_unit_pair(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
+  match step_outcome_refusal(outcome: o) {
+    Present { value: AccessDiscoverRecoveryStandingForAnotherUnit { standing_unit: s, step_unit: u } } =>
+      (s as String) == (recovery_witness_unit_key as String)
+        && (u as String) == (recovery_other_unit_key as String)
+    _ => false
+  }
+}
+
+fn access_refusal_cause(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> RecoveryRouteUnavailable? {
+  match step_outcome_refusal(outcome: o) {
+    Present { value: AccessDiscoverCredentialUnknownRecoveryRouteAvailable { cause: cause } } => Present { value: cause }
+    _ => Absent
+  }
+}
+
+test fn access_discover_produces_the_locked_credential_arm_when_an_in_band_route_is_standing_on_the_unit() -> Bool {
+  let key = step_instance_key(run: recovery_witness_run, step: access_discover_step_ref, subject: recovery_witness_unit_key)
+  let armed = access_discover(
+    key: key,
+    read: read_mtjade1_current_manager_read(),
+    locked: Present { value: recovery_locked_standing_on_a_release_nobody_measured() },
+  )
+  access_refusal_is_the_recovery_arm(o: armed)
+    // the arm carries the route's OWN typed requirement, so the reader gets the next physical action
+    // (measure this controller) rather than a retry: the cause is not collapsed into "unavailable", and
+    // it carries the Get Device ID answer that failed to match, so the refusal can be checked against the
+    // capture without re-running the route
+    && access_refusal_cause(o: armed)
+      == Present { value: RecoveryControllerNeverMeasured { observed: recovery_unmeasured_identity() } }
+    // with no recovery observed the step behaves exactly as before this arm existed -- the same read
+    // still establishes its out-of-band route, so the arm is not a trap door on every locked board
+    && access_refusal_is_the_recovery_arm(
+      o: access_discover(key: key, read: read_mtjade1_current_manager_read(), locked: none),
+    ) == false
+    // a recovery that COMPLETED does not get the arm: a recovered unit is not a locked one
+    && access_refusal_is_the_recovery_arm(
+      o: access_discover(
+        key: key,
+        read: read_mtjade1_current_manager_read(),
+        locked: Present { value: recovery_completed_standing() },
+      ),
+    ) == false
+    // and a standing belonging to ANOTHER unit does not purchase the arm for this one
+    && access_refusal_is_the_recovery_arm(
+      o: access_discover(
+        key: step_instance_key(run: recovery_witness_run, step: access_discover_step_ref, subject: recovery_other_unit_key),
+        read: read_mtjade1_current_manager_read(),
+        locked: Present { value: recovery_locked_standing_on_a_release_nobody_measured() },
+      ),
+    ) == false
+}
+
+// THE CROSS-WIRE IS REFUSED LOUDLY, NOT DROPPED SILENTLY. The check above only insists that a foreign
+// standing does not purchase the recovery arm -- which a silent `none` also satisfied, and satisfying it
+// that way was the defect: the caller handed in an observation and the step behaved as though none had
+// been supplied. So the pairing gets its own refusal, and this claim asks for THAT one and for both unit
+// keys inside it. A unit-key mismatch is a defect in whoever wired the fold, and §5's "a failure arm
+// refuses, never widens" means the run stops rather than continuing down the out-of-band path.
+test fn a_recovery_standing_wired_to_the_wrong_unit_refuses_naming_both_units() -> Bool {
+  // one standing, two wirings: the ONLY difference between the two calls below is which unit the step
+  // instance names, so the pair of refusals is entirely about the pairing
+  let standing = recovery_locked_standing_on_a_release_nobody_measured()
+  let crossed = access_discover(
+    key: step_instance_key(run: recovery_witness_run, step: access_discover_step_ref, subject: recovery_other_unit_key),
+    read: read_mtjade1_current_manager_read(),
+    locked: Present { value: standing },
+  )
+  // it IS a refusal, it is the wrong-unit one, and the carrier names which two units were crossed
+  access_refusal_is_wrong_unit_arm(o: crossed)
+    && access_wrong_unit_pair(o: crossed)
+    // it is NOT the recovery arm: a foreign standing still buys nothing for this board
+    && access_refusal_is_the_recovery_arm(o: crossed) == false
+    // the SAME standing against the unit it names still gets the recovery arm -- so the new refusal has
+    // not swallowed the case it was added beside, which is the way this kind of guard usually goes wrong
+    && access_refusal_is_the_recovery_arm(
+      o: access_discover(
+        key: step_instance_key(run: recovery_witness_run, step: access_discover_step_ref, subject: recovery_witness_unit_key),
+        read: read_mtjade1_current_manager_read(),
+        locked: Present { value: standing },
+      ),
+    )
+}
+
+// THE CONVERGENCE-STEP ROSTER NAMES DECLARATIONS THE TREE ACTUALLY CONTAINS. §3: "a stale symbol is
+// decidable from the `Node` tree." A ref naming nothing is indistinguishable from one naming a function
+// until somebody calls it, so every ref in BOTH rosters is asked of the live tree, one at a time -- a
+// single miss fails the claim. A roster that names the module's own decision points (the two gates, the
+// host refusal, the channel admission, the readback mint, the fold) is the one worth checking, because
+// those are the declarations a consumer could be pointed at and fail to find.
+test fn every_convergence_step_names_a_declaration_the_tree_actually_contains() -> Bool {
+  all(recovery_convergence_steps(), fn(step) {
+    any(xs: recovery_live_decl_facts, predicate: fn(d) {
+      d.qualified_name == concat(step.module_path as String, concat(".", step.decl_name as String))
+    })
+  })
+    // the handoff's precondition list is a roster too: a step that stopped existing would silently remove
+    // a precondition from the fold
+    && all(recovery_proof_requires(), fn(step) {
+         any(xs: recovery_live_decl_facts, predicate: fn(d) {
+           d.qualified_name == concat(step.module_path as String, concat(".", step.decl_name as String))
+         })
+       })
+    // and the two are genuinely different lists -- the handoff requires a subset of the six the route runs.
+    // Equal lengths would mean the ordering law had collapsed into one list.
+    && list_length(items: recovery_convergence_steps()) != list_length(items: recovery_proof_requires())
+}
+
+// EVERY REFUSAL TELLS SOMEONE WHAT TO DO NEXT, AND NO TWO SAY THE SAME THING. A cause with no
+// operator-facing action is a dead end wearing a name; two causes sharing one sentence is the same dead end
+// for a different reason (it means one of them was never thought about). Both are checked rather than
+// asserted in prose, and the refusals are built with the same constructors the route builds them with -- so
+// renaming an arm, or copying one string into two arms, fails here.
+test fn each_recovery_refusal_carries_its_own_next_action() -> Bool {
+  let host = recovery_route_next_action(unavailable: NoReachableRescueHost {
+    cause: NoRescueHostAddressResponded { address: recovery_rescue_host_address(), ssh_port: openssh_standard_port },
+  })
+  let measure = recovery_route_next_action(unavailable: RecoveryControllerNeverMeasured { observed: recovery_measured_identity() })
+  let filing = recovery_route_next_action(unavailable: RecoveryCatalogIndexesDisagree {
+    firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+    observed: recovery_measured_identity(),
+  })
+  let readback = recovery_route_next_action(unavailable: RecoveryReadbackInconclusive { gap: ReadbackBodyCouldNotBeRead { why: "no body was saved" as NonEmptyStr } })
+  // The body is a PARENTHESISED expression. Left bare, a leading `&&` after the last `let` is parsed as a
+  // continuation of that let's own initializer -- which is how this claim once failed to resolve with
+  // "undefined variable 'readback'" inside the definition of `readback`.
+  (
+    // each refusal yields advice
+    string_length(s: host) > 0
+      && string_length(s: measure) > 0
+      && string_length(s: filing) > 0
+      && string_length(s: readback) > 0
+      // and all four differ: "go measure this controller" cannot be the sentence you give someone whose own
+      // filing is broken -- different people, different work
+      && host != measure
+      && host != filing
+      && host != readback
+      && measure != filing
+      && measure != readback
+      && filing != readback
+  )
+}
+
+
+// THE TWO ABSENCES ARE ROSTERED, AND THE ROSTER IS WHAT MAKES THEM VISIBLE. The route's missing production consumer and the missing hold-owning pairing used to be
+// stated only in `//` text, which DESIGN section 3c does not accept as a classification and section 4c
+// does not accept as evidence. They are rows now, and a row differs from a comment in one way that
+// matters: it is read by a fold, so it can turn red.
+
+// THE POPULATION THE TRIGGER CHECK IS ANSWERED FROM, DERIVED FROM THE TRIGGER ITSELF. A hand-kept list
+// of directories was tried first ("just add the module the trigger lives in") and the side chat held it:
+// a restricted census is a restricted census whether it is restricted by file or by directory, so a
+// trigger pointed at a declaration under, say, gunbc.auth would still have read "pending". What decides
+// now is the name-to-path rule itself (DESIGN §3: module `a.b.c` is stored at `<root(a)>/b/c.dag`, the
+// one authority gunbc.source_layout.layout_module_storage_path), so the population for a row is exactly
+// the directory the rule resolves THAT row's trigger module to -- the same resolution the compiler and
+// the layout check use, and nothing this file can edit. Two falsification rows found the shapes of this
+// hole in sequence: "the onboarding row dissolves against a declaration that already exists" (a trigger
+// repointed inside the hand-listed roots) and "a pairing trigger is pointed at a declaration outside
+// the rostered modules and the census still says pending" (one repointed OUTSIDE them, which the
+// hand-listed version passed green). A trigger whose module name resolves to no path at all is pending
+// by construction: a name the storage rule refuses cannot be declared anywhere.
+fn recovery_trigger_pool_roots(row: FrontierRow) -> List<String> {
+  match row.dissolution {
+    BoundDissolution { trigger: t } =>
+      match layout_module_storage_path(module: dissolution_trigger_ref(trigger: t).module_path as String) {
+        Present { value: path } => [path_parent_directory(path: path)]
+        Absent => []
+      }
+    UnboundDissolution { description: _ } => []
+  }
+}
+
+// Is this row's trigger a declaration the live tree's own census does NOT declare? The population is
+// the compiler's census of the directory the storage rule resolves this row's trigger module to, so
+// "pending" is answered by the tree, not by this file's belief about it. An UnboundDissolution is never
+// pending: it is a description, nothing can discharge it, and that is the shape these rows were written
+// to avoid.
+fn recovery_frontier_pending(row: FrontierRow) -> Bool {
+  match row.dissolution {
+    BoundDissolution { trigger: t } => {
+      let trigger_ref = dissolution_trigger_ref(trigger: t)
+      let wanted = concat(
+        trigger_ref.module_path as String,
+        concat(".", trigger_ref.decl_name as String),
+      )
+      !any(xs: decl_facts(pool_roots: recovery_trigger_pool_roots(row: row)), predicate: fn(d) {
+        d.qualified_name == wanted
+      })
+    }
+    UnboundDissolution { description: _ } => false
+  }
+}
+
+// Does the row's SUBJECT point at a declaration the tree really has? An obligation written against a
+// function nobody wrote is the same absence wearing a carrier.
+fn recovery_frontier_subject_declared(row: FrontierRow) -> Bool {
+  match row.subject {
+    DeclSubject { ref: r } =>
+      any(xs: recovery_live_decl_facts, predicate: fn(d) {
+        d.qualified_name == concat(r.module_path as String, concat(".", r.decl_name as String))
+      })
+    PathSubject { path: _ } => false
+  }
+}
+
+fn recovery_frontier_enrolled(row: FrontierRow) -> Bool {
+  any(xs: census_closure_frontier_rows(), predicate: fn(c) { c == row })
+}
+
+fn recovery_frontier_trigger_module(row: FrontierRow) -> String {
+  match row.dissolution {
+    BoundDissolution { trigger: t } => dissolution_trigger_ref(trigger: t).module_path as String
+    UnboundDissolution { description: _ } => ""
+  }
+}
+
+// Each group yields EXACTLY ONE row (a silently-dropped row is the failure mode of a list); each is
+// enrolled in gunbc.census_closure_frontier.census_closure_frontier_rows, the roster the dissolution
+// census folds -- a row nobody concatenates is the same absence in a new file; each is pending against
+// the census's own declaration population; and each subject is a declaration the tree has. THREE groups
+// since the side-chat verdict: the fold's consumer, the reset pairing, and the success side's onboarding
+// consumer -- the third is what replaced the module's "re-enters onboarding" prose, and its trigger
+// module is asserted so the row cannot quietly point its dissolution at something that already exists.
+test fn the_recovery_obligations_are_rostered_as_pending_frontiers() -> Bool {
+  let consumer = bmc_recovery_route_consumer_frontier_rows()
+  let pairing = bmc_recovery_route_pairing_frontier_rows()
+  let onboarding = bmc_recovery_route_onboarding_consumer_frontier_rows()
+  list_length(items: consumer) == 1
+    && list_length(items: pairing) == 1
+    && list_length(items: onboarding) == 1
+    && any(xs: consumer, predicate: fn(row) {
+         recovery_frontier_enrolled(row: row)
+           && recovery_frontier_pending(row: row)
+           && recovery_frontier_subject_declared(row: row)
+           // the named consumer is a future arrival entry, in the module that owns arrivals
+           && recovery_frontier_trigger_module(row: row) == "gunbc.machine_intake.arrival_converge"
+       })
+    && any(xs: pairing, predicate: fn(row) {
+         recovery_frontier_enrolled(row: row)
+           && recovery_frontier_pending(row: row)
+           && recovery_frontier_subject_declared(row: row)
+       })
+    && any(xs: onboarding, predicate: fn(row) {
+         recovery_frontier_enrolled(row: row)
+           && recovery_frontier_pending(row: row)
+           && recovery_frontier_subject_declared(row: row)
+           // the dissolve trigger is the fold this row exists to demand: a bmc_onboard fold, which does
+           // not exist today -- if someone repoints the trigger at a live declaration, this goes red and
+           // the row's pending status stops being something the module can quietly wish away
+           && recovery_frontier_trigger_module(row: row) == "gunbc.tools.bmc_onboard"
+       })
+}
+
+fn recovery_reset_interlock() -> PrivilegedEffectInterlock? {
+  filter(
+    privileged_effect_interlocks,
+    i => declaration_ref_display_key(ref: i.site)
+      == "gunbc.machine_intake.bmc_recovery_route::admit_recovery_manager_reset_to_defaults",
+  )
+    |> first()
+}
+
+// THE CENSUS NO LONGER CLAIMS A HOLD-OWNING ROOT THE FOLD DOES NOT ACQUIRE. The reset interlock used to
+// roster converge_in_band_recovery as acquiring the unit's durable hold at unit_hold_acquire. It does
+// not: the fold receives both write admissions as parameters and calls neither the store's acquire nor
+// either gate, so the roster attested to a pairing no code performs -- DESIGN section 4c again, a status
+// in a carrier the fold never reads. The honest state is an EMPTY roster plus the obligation row, which
+// is what this asserts: no root, the hold the premise is about still named, and the pairing frontier
+// present in the same roster. A change that fills the roster without deleting the row keeps this green
+// and takes its red from the frontier's own fold -- the arrangement working, not failing.
+test fn the_reset_interlock_rosters_no_root_the_fold_cannot_show() -> Bool {
+  match recovery_reset_interlock() {
+    Absent => false
+    Present { value: i } =>
+      list_length(items: i.hold_owning_roots) == 0
+        && (match i.hold {
+             Absent => false
+             Present { value: h } => (h.decl_name as String) == "UnitHoldProof"
+           })
+        && list_length(items: bmc_recovery_route_pairing_frontier_rows()) == 1
+  }
+}

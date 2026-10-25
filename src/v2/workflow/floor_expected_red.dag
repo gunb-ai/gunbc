@@ -1122,18 +1122,6 @@ fn floor_expected_red_chunk_shell_dag_cron_entry_line_builder() -> List<String> 
   Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_schedule_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_command_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_log_path_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_tag_field_renders_no_shell_control_word", tail: Empty {} } } } }
 }
 
-// SHELL-DAG-FLOOR-PEAK-CALIBRATION-ROWS' ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
-// chunk above states the admission shape. Three identities from
-// dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness.dag: the two red arms
-// over the pre-calibration surface (the echo reset row's 2>/dev/null swallow) and the acceptance
-// conjunction. Each reaches its subject and answers Bool(false) on BEHAVIOR — the module's two
-// positive controls pass on the same run. The worker rebinds the ci_floor_peak_*_command rows to
-// typed filesystem observation leaves; when the arms pass, this roster's self-emptying arm names
-// them for removal (DESIGN 4b(4)).
-fn floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_floor_peak_calibration_rows_witness.pre_calibration_surface_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_floor_peak_calibration_rows_witness.pre_calibration_reset_is_not_a_swallowed_echo", tail: Empty {} } }
-}
-
 // SHELL-DAG-CI-FMT-GATE-LINE'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry chunk
 // above states the admission shape. Two identities from
 // dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag: the red arm (the hand-spelled
@@ -1289,6 +1277,16 @@ fn floor_expected_red_chunk_pair_serving_authority_wet_red() -> List<String> {
   }
 }
 
+// THE CASOUTCOME SEAL'S DELIBERATE RED, held while std.durable_compare_and_set does not seal `CasOutcome`
+// (trigger: the sealing change, gunbc#14447 — only admitted realizations mint `CasCommitted`). The claim
+// hands the compiler a fixture that authors `CasCommitted` outside its realizing module and asserts the
+// SoleConstructorViolation the seal will raise; it fails today because nothing refuses the forgery. When
+// the seal lands it passes, this roster reports it stale and the row is deleted, leaving the claim as a
+// permanent regression control (DESIGN 4b(4)).
+fn floor_expected_red_chunk_cas_outcome_seal() -> List<String> {
+  Cons { head: "test.claim.cas_outcome_seal_witness.a_forged_cas_committed_literal_is_refused_at_compile", tail: Empty {} }
+}
+
 // THE WET REAL-EXECUTION REDS THAT CHARTER 4 MEASURED AND OWNED AND NO LEAF HAS FIXED YET (seven were measured; the belt recapture leaf fixed its three and deleted its chunk, as this paragraph requires), in two chunks, grouped by
 // the leaf that fixes each. They are WET claims: their entry files are scheduled in
 // `v2.workflow.local_repo_wet_terminal` `local_repo_wet_schedule` with `ExpectedToHold`, and they
@@ -1330,7 +1328,7 @@ fn floor_expected_red_chunk_pair_serving_authority_wet_red() -> List<String> {
 // dry-lane reading; a leaf that fixes a claim should remove it from both rosters, or neither, or the
 // surviving one will be asserting a state the fix already removed.
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_fmt_gate_line(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Cons { head: floor_expected_red_chunk_cursor_dispatch_credential_wet_red(), tail: Cons { head: floor_expected_red_chunk_pair_serving_authority_wet_red(), tail: Cons { head: floor_expected_red_chunk_constructor_tag_route_probe_red(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_expected_red_chunk_cas_outcome_seal(), tail: Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_fmt_gate_line(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Cons { head: floor_expected_red_chunk_cursor_dispatch_credential_wet_red(), tail: Cons { head: floor_expected_red_chunk_pair_serving_authority_wet_red(), tail: Cons { head: floor_expected_red_chunk_constructor_tag_route_probe_red(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }  }
 }
 
 // THE TWO CONSTRUCTOR-TAG QUARANTINE PROBES THAT ARE LIVE REDS, enrolled as expected reds. These are

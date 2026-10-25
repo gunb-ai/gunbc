@@ -6,7 +6,7 @@ import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree, Refineme
 import v2.compiler.eval { eval, inputs_root_only }
 import v2.compiler.infer { infer }
 import v2.compiler.resolve { ResolvedTree }
-import v2.extdeps.runtimes.v2_evaluator { v2_eval_bool_true_primitive, v2_evaluator_interpretation }
+import v2.extdeps.runtimes.v2_evaluator { v2_eval_runtime_bool_is_true, v2_evaluator_interpretation }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -42,7 +42,7 @@ import v2.std.runtime { RuntimeValue }
 // ZERO OBLIGATIONS EVALUATE NOTHING: the tree is re-wrapped and returned.
 
 fn discharge_refinement_obligations(t: ObligatedInferredTree) -> Outcome<InferredTree> {
-  let tree = InferredTree { root: t.root, facts: t.facts, arm_resolutions: t.arm_resolutions }
+  let tree = InferredTree { root: t.root, facts: t.facts }
   discharge_each(tree: tree, remaining: t.obligations)
 }
 
@@ -64,7 +64,7 @@ fn discharge_one(tree: InferredTree, obligation: RefinementObligation) -> Outcom
     inputs: inputs_root_only(root: obligation.application)
   ) {
     Accepted { value: v, diagnostics: _ } =>
-      if v == v2_eval_bool_true_primitive() {
+      if v2_eval_runtime_bool_is_true(value: v) {
         outcome_accepted(true)
       } else {
         outcome_rejected(d: refinement_predicate_violated_diagnostic(site: obligation.site))

@@ -1,6 +1,5 @@
 module v2.test.claim.execution.branch_eval_by_execution
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -54,7 +53,7 @@ import v2.std.diagnostic {
 }
 import v2.std.compilers.lexing { Token }
 import v2.std.machine { Byte }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Arrow,
   ComputationNode,
@@ -66,6 +65,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -176,7 +176,7 @@ fn branch_runtime_diagnostic(n: Node) -> Diagnostic {
 fn branch_runtime_bool_true(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == branch_bool_type_node()) && (count(p.bytes) == 1)
+      (node_same_occurrence(a: p.primitive_type, b: branch_bool_type_node())) && (count(p.bytes) == 1)
     _ => false
   }
 }
@@ -184,7 +184,7 @@ fn branch_runtime_bool_true(value: RuntimeValue) -> Bool {
 fn branch_runtime_bool_false(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == branch_bool_type_node()) && (count(p.bytes) == 0)
+      (node_same_occurrence(a: p.primitive_type, b: branch_bool_type_node())) && (count(p.bytes) == 0)
     _ => false
   }
 }
@@ -192,7 +192,7 @@ fn branch_runtime_bool_false(value: RuntimeValue) -> Bool {
 fn branch_runtime_int_is_one(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == branch_i64_node()) && (count(p.bytes) == 1)
+      (node_same_occurrence(a: p.primitive_type, b: branch_i64_node())) && (count(p.bytes) == 1)
     _ => false
   }
 }
@@ -218,9 +218,9 @@ fn branch_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<R
         }
       Rejected { diagnostics: d } => Rejected { diagnostics: d }
     }
-  } else if node == branch_kw_true_node() {
+  } else if node_same_occurrence(a: node, b: branch_kw_true_node()) {
     outcome_accepted(value: branch_bool_value(is_true: true))
-  } else if node == branch_kw_false_node() {
+  } else if node_same_occurrence(a: node, b: branch_kw_false_node()) {
     outcome_accepted(value: branch_bool_value(is_true: false))
   } else {
     outcome_rejected(d: branch_runtime_diagnostic(n: node))
@@ -335,7 +335,7 @@ fn branch_pick_call(callee: Node) -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: callee }
+      Edge { label: Positional, target: callee, declaration: NotADeclaration }
     ]
   }
 }
@@ -345,8 +345,8 @@ fn branch_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Authored { name: ^branch_actual }, target: call },
-      Edge { label: Authored { name: ^branch_expected }, target: expected }
+      Edge { label: Authored { name: ^branch_actual }, target: call, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^branch_expected }, target: expected, declaration: NotADeclaration }
     ]
   }
 }
@@ -364,8 +364,7 @@ fn branch_admitted_tree(root: Node) -> InferredTree {
     root: root,
     facts: PartialFunction {
       lookup: branch_facts_lookup
-    },
-    arm_resolutions: constructed_root_arm_resolutions()
+    }
   }
 }
 

@@ -135,7 +135,7 @@ import v2.workflow.floor_route_gap {
 // removed the edge. So the cycle argument above is now HISTORY rather than a live constraint, and it
 // is kept because it records WHY the ground type was not relocated when that question was live. The
 // ground stays in `floor_route_gap` on the independent merit that a spelling beside that authority
-// and the seed's `v1_interpreter.HermeticEffectGround` mirror would be exactly the fork this
+// and the seed's `v1_interpreter.EffectRefusalGround` mirror would be exactly the fork this
 // widening exists to close -- which was always the stronger half of the reason.
 //
 // WHAT THIS DOES NOT TOUCH: `floor_route_gap` keeps its expectation type and its whole population.

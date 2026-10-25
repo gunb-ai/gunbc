@@ -7,7 +7,7 @@ import std.types { String, NonEmptyStr, List, Int, Bool, FilePath, Port }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
 import std.os.types { OsPackageManager }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import extdeps.package_managers.apt {
   package_tailscale,
   package_tmux,
@@ -29,6 +29,8 @@ import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
 import gunbc.live_deploy.lab_host_plan {
   LabDeployPlan,
   srv1_lab_deploy_plan,
+  lab_plan_worker_sandbox_choice,
+  SystemManagerLauncherSelected,
 }
 import gunbc.host.host_software_surface {
   srv1_software_surface,
@@ -140,6 +142,7 @@ type UpsertArtifactKind =
   | TailscaleServeMapping
   | DeployedTreeRemoteUnit
   | PublicationHelperPathUnit
+  | AttemptUnitDrainPathUnit
   | ApprovalBrokerFrontDoor
 
 type OwnedArtifactKind
@@ -229,6 +232,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
       TailscaleServeMapping => TeardownActs
       DeployedTreeRemoteUnit => TeardownActs
       PublicationHelperPathUnit => TeardownActs
+      AttemptUnitDrainPathUnit => TeardownActs
       ApprovalBrokerFrontDoor => TeardownActs
     }
   }
@@ -794,6 +798,22 @@ fn deployment_retired_belt_timer_unit_name(names: DeploymentNames) -> NonEmptySt
   join([deployment_belt_unit_stem(names: names), "-belt.timer"], "") as NonEmptyStr
 }
 
+fn deployment_attempt_unit_drain_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-attempt-unit-drain.service"], "") as NonEmptyStr
+}
+
+fn deployment_attempt_unit_drain_path_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-attempt-unit-drain.path"], "") as NonEmptyStr
+}
+
+fn deployment_attempt_unit_drain_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_attempt_unit_drain_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_attempt_unit_drain_path_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_attempt_unit_drain_path_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
 fn deployment_publication_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_publication_service_unit_name(names: names) as String], "") as NonEmptyStr
 }
@@ -834,7 +854,11 @@ fn deployment_retired_belt_timer_unit_path(names: DeploymentNames) -> NonEmptySt
 // position satisfying the fresh-instance constraint above, so it satisfies both; last satisfied
 // only one. Witness: deployed_tree_remote_witness_test
 // `the_remote_converges_after_its_inputs_and_before_the_belt` pins the sequence
-// binary,tree,remote,publication,belt,route.
+// binary,tree,remote,publication,attempt-unit-drain,belt,route. The attempt-unit drain (present only
+// where the plan selects the system-manager launcher) sits AFTER the binary and tree its root service
+// executes and BEFORE the belt: the belt is a requester that enqueues on the spool the drain consumes,
+// so by the same dependencies-precede-consumers rule the drain is installed before any belt event can
+// enqueue a request, and a deployment whose plan does not select the launcher has no such member.
 fn deployment_tree_remote_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-tree-remote.service"], "") as NonEmptyStr
 }
@@ -1133,6 +1157,7 @@ fn deployment_owned_steps(
   instance: HostDashboardInstance,
   names: DeploymentNames,
   holding: RoleSingletonHolding,
+  lab_plan: LabDeployPlan,
 ) -> List<DeploymentArtifactStep> {
   concat([
     DeploymentArtifactStep { kind: UpsertOwned { kind: ServeBinary }, path: instance.serve_binary as String as NonEmptyStr },
@@ -1147,6 +1172,7 @@ fn deployment_owned_steps(
       kind: UpsertOwned { kind: PublicationHelperPathUnit },
       path: deployment_publication_path_unit_path(names: names),
     },
+  ], concat(deployment_attempt_unit_drain_steps(names: names, lab_plan: lab_plan), concat([
     DeploymentArtifactStep { kind: UpsertOwned { kind: BeltEventPathUnit }, path: deployment_belt_exit_path_unit_path(names: names) },
   ], concat(deployment_tailnet_door_steps(names: names), concat([
     DeploymentArtifactStep {
@@ -1156,7 +1182,24 @@ fn deployment_owned_steps(
   ], concat(
     deployment_fabric_storage_steps(holding: holding, names: names),
     deployment_approval_broker_front_door_steps(holding: holding),
-  ))))))
+  ))))))))
+}
+
+// THE DRAIN BELONGS TO THE SELECTED WORKER-SANDBOX REALIZATION, NOT TO EVERY DEPLOYMENT. The path
+// unit and its root service replace the attempt-system-unit launcher grant, which was installed only
+// when the plan selected the system-manager launcher; a deployment whose plan does not select it has
+// nothing that enqueues on the attempt-unit spool, so a root service there would be a member nothing
+// consumes (DESIGN 3c) and a root surface for nothing. The selector is read once, in lab_host_plan.
+fn deployment_attempt_unit_drain_steps(names: DeploymentNames, lab_plan: LabDeployPlan) -> List<DeploymentArtifactStep> {
+  match lab_plan_worker_sandbox_choice(plan: lab_plan) {
+    Present { value: SystemManagerLauncherSelected } => [
+      DeploymentArtifactStep {
+        kind: UpsertOwned { kind: AttemptUnitDrainPathUnit },
+        path: deployment_attempt_unit_drain_path_unit_path(names: names),
+      },
+    ]
+    Absent => []
+  }
 }
 
 // THE OIDC CONFIG FILE IS A PLACEMENT-SCOPED MEMBER, not an instance-kind every twin must share.
@@ -1267,12 +1310,14 @@ fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
       path: srv1_devboot_artifact_store_root,
       owner: owner,
       mode: DirectoryOwnerAllEveryoneTraverse,
+      group_adoption: ForeignOwnershipRefuses,
     },
     OwnedDirectoryDeclared {
       member: "codex-runtime-release" as NonEmptyStr,
       path: srv1_codex_runtime_release_root,
       owner: owner,
       mode: DirectoryOwnerAllEveryoneTraverse,
+      group_adoption: ForeignOwnershipRefuses,
     },
   ]
   match srv1_live_dashboard_instance().materialization_store_root {
@@ -1283,12 +1328,14 @@ fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
         path: materialization_store_root_path(root: store) as NonEmptyStr,
         owner: owner,
         mode: DirectoryOwnerAllEveryoneTraverse,
+        group_adoption: ForeignOwnershipRefuses,
       },
       OwnedDirectoryDeclared {
         member: "materialization-store-staging" as NonEmptyStr,
         path: materialization_store_staging_root_path(root: store) as NonEmptyStr,
         owner: owner,
         mode: DirectoryOwnerAllEveryoneTraverse,
+        group_adoption: ForeignOwnershipRefuses,
       },
     ])
   }
@@ -1328,7 +1375,7 @@ fn deployment_steps_apply_order(
   concat(
     map(deployment_ensured_steps(target: target, holding: holding), s => Dependency { step: s }),
     map(
-      deployment_owned_steps(instance: instance, names: names, holding: holding),
+      deployment_owned_steps(instance: instance, names: names, holding: holding, lab_plan: target.lab_plan),
       s => ArtifactStep { step: s },
     )
   )

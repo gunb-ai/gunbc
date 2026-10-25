@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_claim_module_red_on_main_with_its_cause_unread
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data a_claim_module_red_on_main_with_its_cause_unread: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_claim_module_red_on_main_with_its_cause_unread" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "a claim module is red on main and nothing requires it: the required job (v2-bootstrap) evaluates no witness (gunbc.rung_drop v1_required_lanes_withdrawn), so a claim that stopped holding stays red for every later author, and a brief that depends on it inherits a failure it did not cause.",
+
+    "SPECIMEN, found 2026-10-24 (gunbc#14926, quick-pike-815): test.claim.refinement_discharge rdt_a_holding_predicate_admits_holds and rdt_a_violated_predicate_refuses_at_the_site_holds were red on main 1dd3eda5696a. Cause read by a locator claim on srv1: the controls hand-built their application node, so the evaluator refused it GroundingNotDerived and discharge answered refinement_obligation_undischargeable whatever the predicate body. The evaluator reads grounding only on nodes real ingest produced; a hand-built node is not grounded. The controls now discharge directly over an ingested, infer-grounded module.",
+
+    "RECOGNITION RULE: a control whose input is a hand-built Node handed to the evaluator is undischargeable by construction once grounding is required; read the evaluator's first diagnostic behind the refusal (discharge carries it BEHIND refinement_obligation_undischargeable, and diagnostics_fatal_reason is the last diagnostic by design) before concluding anything about the predicate.",
+
+    "NEXT-RUNG TRIGGER: the native compiler judging claim modules on the required path, so a red claim refuses a merge rather than waiting for a reader (the capability gunbc.rung_drop v1_required_lanes_withdrawn names)."
+  ],
+
+  evidence: [],
+}

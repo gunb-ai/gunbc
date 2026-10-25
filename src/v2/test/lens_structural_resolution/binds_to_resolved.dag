@@ -1,6 +1,7 @@
 module v2.test.lens_structural_resolution.binds_to_resolved
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
+import v2.std.node { NotADeclaration }
+
 
 
 
@@ -20,7 +21,7 @@ data sr_use: Node = sr_claim_atom(s: ^sr_use_symbol)
 data sr_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_use }
+    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_use, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -52,8 +53,7 @@ fn sr_claim_tree() -> InferredTree {
   let facts = sr_claim_facts()
   InferredTree {
     root: sr_decl,
-    facts: sr_claim_fact_map(facts: facts),
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: sr_claim_fact_map(facts: facts)
   }
 }
 

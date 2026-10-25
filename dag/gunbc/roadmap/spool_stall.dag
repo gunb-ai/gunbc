@@ -1,0 +1,147 @@
+module gunbc.roadmap.spool_stall
+
+import std.types { String, Bool, Int, List, FilePath }
+import std.optional { Present, Absent }
+import extdeps.shell
+import extdeps.languages.json.emit { JsonValue, JsonArray, serialize_json, json_string, json_array, json_object, json_kv }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound }
+import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
+  filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  filesystem_delete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized,
+}
+
+// THE TWO RELEASES DIFFER, AND BOTH ARE HONEST. The exit spool's release (belt_exit_stall_release_at) refuses
+// while anything is still unmovable: the requester side must see the line clear before the trigger re-arms.
+// The attempt-unit release (gunbc.roadmap.roadmap_belt_tick_cli attempt_unit_stall_release_cli) clears the record
+// and re-arms without a pre-check, because the root drain's next pass is the verification: an entry that is
+// still unmovable re-stalls at once, writing a fresh record, loudly.
+// THE SPOOL LINE STOP'S RECORD, ONE HOME FOR EVERY LEVEL-TRIGGERED SPOOL (DESIGN section 5, the factory
+// model; section 3, one authority). A spool drained by a `.path` unit whose condition is a level
+// (DirectoryNotEmpty) is started again at once by any entry its drain leaves in place, so each such drain
+// ends a pass that retired nothing and left an entry it could not move by writing this record into the
+// spool's `stalled/` directory (create-only). The drain's service is then skipped by
+// `ConditionDirectoryNotEmpty=!<stalled>` until the spool's release verb clears the record. The verdict of
+// WHEN a pass stalls and the release that re-attempts the recorded entries are each spool's own (the exit
+// spool: gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_verdict; the attempt-unit spool:
+// gunbc.roadmap.attempt_system_unit_launch attempt_unit_stall_verdict); the record's shape, its one JSON
+// encoding, its create-only write, its fail-closed read and its delete are this module's, parameterized by
+// the spool's paths (gunbc.host.host_layout owns the paths).
+type SpoolStallEntry {
+  entry: String
+  step: String
+  cause: String
+}
+
+data spool_stall_schema: String = "gunbc.spool_stall.v1"
+
+// DECLARED VERSION TRANSITION (DESIGN section 3): the exit spool's record was first written under this
+// identifier, before the record layer became spool-generic. The same fields mean the same thing under both, so
+// the reader accepts it and no stall written by an earlier head is stranded as Unreadable; every writer emits
+// spool_stall_schema. Retire this row when no host holds a record written before the generic layer landed.
+data spool_stall_schema_exit_spool_v1: String = "gunbc.belt_exit_stall.v1"
+
+fn spool_stall_entry_json(u: SpoolStallEntry) -> JsonValue {
+  json_object(members: [json_kv(key: "entry", value: json_string(s: u.entry)), json_kv(key: "step", value: json_string(s: u.step)), json_kv(key: "cause", value: json_string(s: u.cause))])
+}
+
+fn spool_stall_record_text(unmovable: List<SpoolStallEntry>) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: spool_stall_schema)),
+    json_kv(key: "note", value: json_string(s: "entries that arrive while this record exists wait in the spool and are not consumed; release it with the spool's stall release verb once every entry below can leave")),
+    json_kv(key: "unmovable", value: json_array(elements: unmovable |> map(u => spool_stall_entry_json(u: u)))),
+  ]))
+}
+
+type SpoolStallRecord
+  = SpoolStallRecorded
+  | SpoolStallUnrecorded { reason: String }
+
+// create-only: a record already on disk is the line already stopped, and is kept as the evidence.
+fn spool_stall_record_at(stalled_dir: String, record_path: String, unmovable: List<SpoolStallEntry>) -> SpoolStallRecord {
+  let made = shell.Mkdir.Parents(path: stalled_dir as FilePath)
+  if !made.success {
+    SpoolStallUnrecorded { reason: "could not create the stalled directory" }
+  } else {
+    let written = Filesystem.WriteCreateNew(path: record_path, content: spool_stall_record_text(unmovable: unmovable))
+    match filesystem_create_new(path: record_path, success: written.success, error: written.error, error_kind: written.error_kind) {
+      FilesystemCreated { path: _ } => SpoolStallRecorded
+      FilesystemCreateTargetOccupied { path: _ } => SpoolStallRecorded
+      FilesystemCreateRefused { path: _, kind: _, error } => SpoolStallUnrecorded { reason: error }
+      FilesystemCreateKindUnrecognized { path: _, observed: _, error } => SpoolStallUnrecorded { reason: error }
+    }
+  }
+}
+
+type SpoolStallRead
+  = SpoolStallNone
+  | SpoolStallHeld { entries: List<SpoolStallEntry> }
+  | SpoolStallUnreadable { reason: String }
+
+fn spool_stall_entry_of_json(doc: JsonValue) -> SpoolStallEntry? {
+  match json_required_string_member(doc: doc, key: "entry") {
+    JsonStringMemberRefused { reason: _ } => none
+    JsonStringMemberFound { value: entry } =>
+      match json_required_string_member(doc: doc, key: "step") {
+        JsonStringMemberRefused { reason: _ } => none
+        JsonStringMemberFound { value: step } =>
+          match json_required_string_member(doc: doc, key: "cause") {
+            JsonStringMemberRefused { reason: _ } => none
+            JsonStringMemberFound { value: cause } => Present { value: SpoolStallEntry { entry: entry, step: step, cause: cause } }
+          }
+      }
+  }
+}
+
+// Fail closed: a record whose schema is another, or any of whose entries does not decode, is Unreadable --
+// never a shorter list of the entries that did.
+fn spool_stall_of_json(doc: JsonValue) -> SpoolStallRead {
+  match json_required_string_member(doc: doc, key: "schema") {
+    JsonStringMemberRefused { reason } => SpoolStallUnreadable { reason: reason }
+    JsonStringMemberFound { value: schema } =>
+      if schema != spool_stall_schema && schema != spool_stall_schema_exit_spool_v1 {
+        SpoolStallUnreadable { reason: join(["the stall record has schema ", schema, ", not ", spool_stall_schema], "") }
+      } else {
+        match json_object_unique_member(v: doc, key: "unmovable") {
+          JsonMemberFound { value: JsonArray { elements } } => {
+            let decoded: List<SpoolStallEntry?> = elements |> map(el => spool_stall_entry_of_json(doc: el))
+            let entries: List<SpoolStallEntry> = decoded |> flat_map(d => match d { Present { value: u } => [u] Absent => [] as List<SpoolStallEntry> })
+            if count(entries) == count(decoded) { SpoolStallHeld { entries: entries } } else { SpoolStallUnreadable { reason: "a stall record entry lacks its entry, step or cause" } }
+          }
+          _ => SpoolStallUnreadable { reason: "the stall record has no unmovable array" }
+        }
+      }
+  }
+}
+
+fn spool_stall_read_at(record_path: String) -> SpoolStallRead {
+  let read = Filesystem.Read(path: record_path)
+  match filesystem_exact_read(path: record_path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+    FilesystemExactPathAbsent { path: _ } => SpoolStallNone
+    FilesystemExactPathUnreadable { path: _, kind: _, error } => SpoolStallUnreadable { reason: error }
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error } => SpoolStallUnreadable { reason: error }
+    FilesystemExactPathRead { path: _, content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentParsed { value: doc } => spool_stall_of_json(doc: doc)
+        JsonDocumentUnreadable { gap: g } => SpoolStallUnreadable { reason: json_document_gap_text(gap: g) }
+      }
+  }
+}
+
+type SpoolStallCleared
+  = SpoolStallCleared
+  | SpoolStallClearRefused { reason: String }
+
+// Deletes the record; an absent record is cleared. The caller decides when: the attempt-unit release clears it
+// without a pre-check (see the module header).
+fn spool_stall_clear_at(record_path: String) -> SpoolStallCleared {
+  let removed = Filesystem.Delete(path: record_path)
+  match filesystem_delete(path: record_path, success: removed.success, error: removed.error, error_kind: removed.error_kind) {
+    FilesystemDeleted { path: _ } => SpoolStallCleared
+    FilesystemDeleteTargetAbsent { path: _ } => SpoolStallCleared
+    FilesystemDeleteRefused { path: _, kind: _, error } => SpoolStallClearRefused { reason: error }
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error } => SpoolStallClearRefused { reason: error }
+  }
+}

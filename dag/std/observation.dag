@@ -1275,7 +1275,9 @@ fn observation_producer_eq(a: ObservationProducer, b: ObservationProducer) -> Bo
   observation_producer_key(p: a) == observation_producer_key(p: b)
 }
 
-// AN OCCURRENCE ID IS AN ATTEMPT-LOCAL COORDINATE, so it carries the attempt it is local to. The
+// AN ATTEMPT OCCURRENCE ID IS AN ATTEMPT-LOCAL COORDINATE, so it carries the attempt it is local to. It is NOT
+// std.occurrence_identity.OccurrenceId (the compiler's per-node Int): same spelling was a meaning fork, so this one
+// names its attempt scope. The
 // bare-string form typechecked a comparison across two attempts and answered it — and comparing
 // receipts from two attempts is the whole point of the falsifier, so the meaningless join was on the
 // path of the first consumer. It is the cross-family comparison the ContentHash family grounding
@@ -1287,7 +1289,7 @@ fn observation_producer_eq(a: ObservationProducer, b: ObservationProducer) -> Bo
 // which is the semantic thing two attempts genuinely share — never on occurrence. Occurrences are
 // minted independently per attempt, so an id appearing in both is either the same string by accident
 // or the same subject by luck, and nothing in a bare string distinguishes those.
-type OccurrenceId {
+type AttemptOccurrenceId {
   attempt: NonEmptyStr
   id: NonEmptyStr
 }
@@ -1301,7 +1303,7 @@ type OccurrenceComparison
   | DifferentOccurrence
   | OccurrenceCrossAttempt { left: NonEmptyStr, right: NonEmptyStr }
 
-fn compare_occurrences(a: OccurrenceId, b: OccurrenceId) -> OccurrenceComparison {
+fn compare_occurrences(a: AttemptOccurrenceId, b: AttemptOccurrenceId) -> OccurrenceComparison {
   if a.attempt != b.attempt {
     OccurrenceCrossAttempt { left: a.attempt, right: b.attempt }
   } else {
@@ -1311,7 +1313,7 @@ fn compare_occurrences(a: OccurrenceId, b: OccurrenceId) -> OccurrenceComparison
 
 // THE PARENT CARRIES ONLY ITS ID, AND THE ATTEMPT IS DERIVED FROM THE CHILD. A spawn edge cannot
 // cross attempts — a process in one attempt did not spawn an occurrence in another — so a full
-// OccurrenceId here would have made that impossible edge writable, the same hole one level down.
+// AttemptOccurrenceId here would have made that impossible edge writable, the same hole one level down.
 // Reconstruct the parent through `parent_occurrence`, which takes the attempt from the record that
 // declares the edge.
 type OccurrenceOrigin
@@ -1324,7 +1326,7 @@ type OccurrenceOrigin
 type RecordedObservation {
   producer: ObservationProducer
   producer_sequence: Nat
-  occurrence: OccurrenceId
+  occurrence: AttemptOccurrenceId
   origin: OccurrenceOrigin
   at: ObservationInstant
   event: ObservationEvent
@@ -1334,10 +1336,10 @@ fn recorded_attempt(r: RecordedObservation) -> NonEmptyStr {
   r.occurrence.attempt
 }
 
-fn parent_occurrence(r: RecordedObservation) -> OccurrenceId? {
+fn parent_occurrence(r: RecordedObservation) -> AttemptOccurrenceId? {
   match r.origin {
     RootOccurrence => Absent
-    ChildOf { parent_id: p } => Present { value: OccurrenceId { attempt: r.occurrence.attempt, id: p } }
+    ChildOf { parent_id: p } => Present { value: AttemptOccurrenceId { attempt: r.occurrence.attempt, id: p } }
   }
 }
 
@@ -1444,11 +1446,11 @@ type LedgerReadScope
 
 type ParentResolution
   = OccurrenceIsRoot
-  | ParentResolved { parent: OccurrenceId }
+  | ParentResolved { parent: AttemptOccurrenceId }
   | ParentOutsideReadScope { scope: ObservationProducer, parent_id: NonEmptyStr }
   | ParentMissingFromAttempt { parent_id: NonEmptyStr }
 
-fn occurrence_present_in(records: List<RecordedObservation>, target: OccurrenceId) -> Bool {
+fn occurrence_present_in(records: List<RecordedObservation>, target: AttemptOccurrenceId) -> Bool {
   fold_list(records, false, (acc, r) =>
     acc || (r.occurrence.id == target.id && r.occurrence.attempt == target.attempt))
 }
@@ -1493,10 +1495,10 @@ fn resolve_parent(
 
 type ActiveOccurrences {
   scope: LedgerReadScope
-  occurrences: List<OccurrenceId>
+  occurrences: List<AttemptOccurrenceId>
 }
 
-fn occurrence_concluded_in(records: List<RecordedObservation>, target: OccurrenceId) -> Bool {
+fn occurrence_concluded_in(records: List<RecordedObservation>, target: AttemptOccurrenceId) -> Bool {
   fold_list(records, false, (acc, r) =>
     acc || (r.occurrence.id == target.id
       && r.occurrence.attempt == target.attempt

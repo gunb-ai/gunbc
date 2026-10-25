@@ -56,20 +56,6 @@ fn framed(fields: List<String>) -> NonEmptyStr {
   join(map(fields, f => framed_field(f: f)), "") as NonEmptyStr
 }
 
-data approval_enrolment_protocol: NonEmptyStr = "gunbc.approval-enrolment.v1" as NonEmptyStr
-
-// The bytes the platform attestation commits to (App Attest: SHA-256 of these is the
-// clientDataHash; Android: the attestation challenge). It binds the server-issued code (so a
-// replayed attestation cannot enrol under a fresh code) to the decision key (so a leaked code cannot
-// enrol a key the app did not attest alongside it). The login is not here: the server derives it.
-fn enrolment_transcript(code: NonEmptyStr, decision_key: VerifyingKey, platform: MobilePlatform) -> NonEmptyStr {
-  framed(fields: [
-    approval_enrolment_protocol as String,
-    code as String,
-    platform_wire(p: platform) as String,
-    decision_key.point_b64url as String,
-  ])
-}
 
 // ── The push ─────────────────────────────────────────────────────────────────────────────────
 // THE PUSH WAKES; IT DOES NOT CARRY WHAT IS DECIDED. One opaque, non-authorizing locator, carried as
@@ -169,51 +155,84 @@ data approval_device_request_path_prefix: NonEmptyStr = "/approve/device/request
 data approval_device_redeem_path: NonEmptyStr = "/approve/device/redeem" as NonEmptyStr
 
 // ── The enrolment refusal ────────────────────────────────────────────────────────────────────
-// WHY THE ENROL ROUTE'S REFUSAL CARRIES A TYPED KIND, not only prose. A phone whose enrolment POST
-// got no decodable answer holds SubmissionUnknown, and the readback route cannot resolve it for an
-// enrolment that never existed: that read authenticates under the ENROLLED App Attest key, so for a
-// never-minted enrolment it can only refuse, and a bare refusal is not proof of absence. The enrol
-// route CAN answer authoritatively, because the request carries the code itself (the bearer secret):
-// gunbc.auth.approval_device_redemption enrolment_admission observes the code's slot before anything
-// else, and code-expired / code-not-issued are reachable only when that code minted no enrolment.
-// Carried as prose, the phone could show that answer but not act on it (2026-09-30: an operator's
-// app stuck in SubmissionUnknown after the pre-front-door 404, with an expired unspent code). The
-// kind is the wire's; the reason stays for the human.
-type EnrolmentRefusalWire
-  = EnrolmentRefusalCodeNotIssued
-  | EnrolmentRefusalCodeAlreadyUsed
-  | EnrolmentRefusalCodeExpired
-  | EnrolmentRefusalStoreUnreadable
-  | EnrolmentRefusalAttestationRefused
-  | EnrolmentRefusalAttestationForOtherBytes
-  | EnrolmentRefusalAndroidUnrealized
+// The enrol route's refusal carries a typed KIND, not only prose, so the phone can act on it (sign in
+// again, show "not an approver", report a revoked key) instead of displaying a sentence. One arm per
+// gunbc.auth.approval_google_enrolment GoogleEnrolmentRefusal arm; the mapping is a single total match
+// in gunbc.auth.approval_device_routes, and this module cannot import the model (the model imports
+// this module). The stored-record mismatch names its field as a nested closed sum.
+type StoredEnrolmentFieldWire
+  = StoredFieldWireEnrollmentId
+  | StoredFieldWireGoogleSubject
+  | StoredFieldWireGoogleEmail
+  | StoredFieldWireDecisionKey
+  | StoredFieldWirePlatform
+  | StoredFieldWireAttestKeyId
 
-// The closed list of arms, one place, so a fixture or a state machine that must cover every arm
-// iterates this and cannot silently miss a new one.
-fn enrolment_refusal_kinds() -> List<EnrolmentRefusalWire> {
-  [EnrolmentRefusalCodeNotIssued, EnrolmentRefusalCodeAlreadyUsed, EnrolmentRefusalCodeExpired, EnrolmentRefusalStoreUnreadable, EnrolmentRefusalAttestationRefused, EnrolmentRefusalAttestationForOtherBytes, EnrolmentRefusalAndroidUnrealized]
+fn stored_enrolment_field_wire_kinds() -> List<StoredEnrolmentFieldWire> {
+  [StoredFieldWireEnrollmentId, StoredFieldWireGoogleSubject, StoredFieldWireGoogleEmail, StoredFieldWireDecisionKey, StoredFieldWirePlatform, StoredFieldWireAttestKeyId]
 }
 
-fn enrolment_refusal_wire_label(k: EnrolmentRefusalWire) -> NonEmptyStr {
+fn stored_enrolment_field_wire_label(f: StoredEnrolmentFieldWire) -> NonEmptyStr {
+  match f {
+    StoredFieldWireEnrollmentId => "enrollment_id" as NonEmptyStr
+    StoredFieldWireGoogleSubject => "google_subject" as NonEmptyStr
+    StoredFieldWireGoogleEmail => "google_email" as NonEmptyStr
+    StoredFieldWireDecisionKey => "decision_key" as NonEmptyStr
+    StoredFieldWirePlatform => "platform" as NonEmptyStr
+    StoredFieldWireAttestKeyId => "attest_key_id" as NonEmptyStr
+  }
+}
+
+type GoogleEnrolmentRefusalWire
+  = GoogleRefusalTokenRefused
+  | GoogleRefusalAudienceNotExact
+  | GoogleRefusalAuthorizedPartyNotAdmitted
+  | GoogleRefusalEmailAbsent
+  | GoogleRefusalNotAnApprover
+  | GoogleRefusalSubjectMismatch
+  | GoogleRefusalAttestationRefused
+  | GoogleRefusalAttestationForOtherBytes
+  | GoogleRefusalAttestKeyMismatch
+  | GoogleRefusalAndroidUnrealized
+  | GoogleRefusalRevokedKey
+  | GoogleRefusalStoredMismatch { field: StoredEnrolmentFieldWire }
+  | GoogleRefusalStoreUnreadable
+
+// The closed list of arms, one place; the stored-mismatch arm is expanded over its field sum.
+fn google_enrolment_refusal_kinds() -> List<GoogleEnrolmentRefusalWire> {
+  concat(
+    [GoogleRefusalTokenRefused, GoogleRefusalAudienceNotExact, GoogleRefusalAuthorizedPartyNotAdmitted, GoogleRefusalEmailAbsent, GoogleRefusalNotAnApprover, GoogleRefusalSubjectMismatch, GoogleRefusalAttestationRefused, GoogleRefusalAttestationForOtherBytes, GoogleRefusalAttestKeyMismatch, GoogleRefusalAndroidUnrealized, GoogleRefusalRevokedKey, GoogleRefusalStoreUnreadable],
+    map(stored_enrolment_field_wire_kinds(), f => GoogleRefusalStoredMismatch { field: f }),
+  )
+}
+
+fn google_enrolment_refusal_wire_label(k: GoogleEnrolmentRefusalWire) -> NonEmptyStr {
   match k {
-    EnrolmentRefusalCodeNotIssued => "code_not_issued" as NonEmptyStr
-    EnrolmentRefusalCodeAlreadyUsed => "code_already_used" as NonEmptyStr
-    EnrolmentRefusalCodeExpired => "code_expired" as NonEmptyStr
-    EnrolmentRefusalStoreUnreadable => "store_unreadable" as NonEmptyStr
-    EnrolmentRefusalAttestationRefused => "attestation_refused" as NonEmptyStr
-    EnrolmentRefusalAttestationForOtherBytes => "attestation_for_other_bytes" as NonEmptyStr
-    EnrolmentRefusalAndroidUnrealized => "android_unrealized" as NonEmptyStr
+    GoogleRefusalTokenRefused => "token_refused" as NonEmptyStr
+    GoogleRefusalAudienceNotExact => "audience_not_exact" as NonEmptyStr
+    GoogleRefusalAuthorizedPartyNotAdmitted => "authorized_party_not_admitted" as NonEmptyStr
+    GoogleRefusalEmailAbsent => "email_absent" as NonEmptyStr
+    GoogleRefusalNotAnApprover => "not_an_approver" as NonEmptyStr
+    GoogleRefusalSubjectMismatch => "subject_mismatch" as NonEmptyStr
+    GoogleRefusalAttestationRefused => "attestation_refused" as NonEmptyStr
+    GoogleRefusalAttestationForOtherBytes => "attestation_for_other_bytes" as NonEmptyStr
+    GoogleRefusalAttestKeyMismatch => "attest_key_mismatch" as NonEmptyStr
+    GoogleRefusalAndroidUnrealized => "android_unrealized" as NonEmptyStr
+    GoogleRefusalRevokedKey => "revoked_key" as NonEmptyStr
+    GoogleRefusalStoredMismatch { field: f } => join(["stored_mismatch:", stored_enrolment_field_wire_label(f: f) as String], "") as NonEmptyStr
+    GoogleRefusalStoreUnreadable => "store_unreadable" as NonEmptyStr
   }
 }
 
 data approval_device_enrolment_refusal_key: NonEmptyStr = "enrolment_refusal" as NonEmptyStr
 
-fn enrolment_refusal_json(reason: String, kind: EnrolmentRefusalWire) -> String {
+fn google_enrolment_refusal_json(reason: String, kind: GoogleEnrolmentRefusalWire) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "refused", value: json_string(s: reason)),
-    json_kv(key: approval_device_enrolment_refusal_key as String, value: json_string(s: enrolment_refusal_wire_label(k: kind) as String)),
+    json_kv(key: approval_device_enrolment_refusal_key as String, value: json_string(s: google_enrolment_refusal_wire_label(k: kind) as String)),
   ]))
 }
+
 
 // ── Request bodies ───────────────────────────────────────────────────────────────────────────
 // The JSON bodies of the device routes. Their encoders and strict decoders are in "The HTTP wire"
@@ -226,19 +245,17 @@ type PushRegistration
   = ApnsRegistration { environment: ApnsEnvironment, topic: ApnsTopic, token: ApnsDeviceToken }
   | FcmRegistration { project: FcmProjectId, token: FcmRegistrationToken }
 
-// What the app PRESENTS at enrolment: raw, unverified.
-type PresentedEnrollmentEvidence
-  = IosAppAttestAttestation { attest_key_id: AttestKeyId, attestation_b64: NonEmptyStr }
-  | AndroidKeyAttestationChain { chain: AndroidAttestationChain }
-
-// THE ENROLMENT POST BODY. The server reads the code's slot, verifies the evidence over
-// enrolment_transcript, and derives the login from the code; nothing here names a person.
-type EnrolmentRequest {
-  code: NonEmptyStr
+// THE ENROLMENT POST BODY (ruling approval_enrolment_is_google_sign_in): the keys the phone just
+// created, the App Attest attestation over gunbc.auth.approval_google_enrolment
+// google_enrolment_transcript, and the Google ID token whose nonce is that transcript's hash. Nothing
+// here names a person: the server derives the email and subject from the verified token. Push
+// registration is not a member; it stays on the push route.
+type GoogleEnrolmentRequest {
   platform: MobilePlatform
   decision_key: VerifyingKey
-  evidence: PresentedEnrollmentEvidence
-  push: PushRegistration
+  attest_key_id: AttestKeyId
+  attestation_b64: NonEmptyStr
+  id_token: NonEmptyStr
 }
 
 // Per-redemption platform proof. iOS: an App Attest assertion whose client data is EXACTLY the
@@ -499,42 +516,6 @@ fn decode_push_registration(v: JsonValue) -> WireDecode<PushRegistration> {
   }
 }
 
-fn presented_evidence_json(e: PresentedEnrollmentEvidence) -> JsonValue {
-  match e {
-    IosAppAttestAttestation { attest_key_id: k, attestation_b64: a } => json_object(members: [
-      json_kv(key: "kind", value: json_string(s: "ios_app_attest")),
-      json_kv(key: "attest_key_id", value: json_string(s: k as String)),
-      json_kv(key: "attestation_b64", value: json_string(s: a as String)),
-    ])
-    AndroidKeyAttestationChain { chain: c } => json_object(members: [
-      json_kv(key: "kind", value: json_string(s: "android_key_attestation")),
-      json_kv(key: "certificates_der_b64", value: json_array(elements: map(c.certificates_der_b64, x => json_string(s: x as String)))),
-    ])
-  }
-}
-
-fn decode_presented_evidence(v: JsonValue) -> WireDecode<PresentedEnrollmentEvidence> {
-  match wire_kind(v: v, at: "evidence") {
-    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
-    WireDecoded { value: kind } =>
-      if (kind as String) != "ios_app_attest" { WireRefused { at: "evidence.kind", cause: "not an admitted evidence kind" } }
-      else {
-        match wire_object(v: v, at: "evidence", allowed: ["kind", "attest_key_id", "attestation_b64"]) {
-          WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
-          WireDecoded { value: o } =>
-            match wire_string(obj: o, key: "attest_key_id") {
-              WireRefused { at: a, cause: c } => wire_refused_at(prefix: "evidence.", at: a, cause: c)
-              WireDecoded { value: k } =>
-                match wire_string(obj: o, key: "attestation_b64") {
-                  WireRefused { at: a, cause: c } => wire_refused_at(prefix: "evidence.", at: a, cause: c)
-                  WireDecoded { value: att } => WireDecoded { value: IosAppAttestAttestation { attest_key_id: k as AttestKeyId, attestation_b64: att } }
-                }
-            }
-        }
-      }
-  }
-}
-
 fn platform_proof_json(p: PlatformRedemptionProof) -> JsonValue {
   match p {
     IosAppAttestAssertion { assertion_b64: a } => json_object(members: [
@@ -564,13 +545,13 @@ fn decode_platform_proof(v: JsonValue) -> WireDecode<PlatformRedemptionProof> {
 }
 
 // ── Request bodies on the wire ───────────────────────────────────────────────────────────────
-fn enrolment_request_json(r: EnrolmentRequest) -> String {
+fn google_enrolment_request_json(r: GoogleEnrolmentRequest) -> String {
   serialize_json(v: json_object(members: [
-    json_kv(key: "code", value: json_string(s: r.code as String)),
     json_kv(key: "platform", value: json_string(s: platform_wire(p: r.platform) as String)),
     json_kv(key: "decision_key", value: verifying_key_json(k: r.decision_key)),
-    json_kv(key: "evidence", value: presented_evidence_json(e: r.evidence)),
-    json_kv(key: "push", value: push_registration_json(p: r.push)),
+    json_kv(key: "attest_key_id", value: json_string(s: r.attest_key_id as String)),
+    json_kv(key: "attestation_b64", value: json_string(s: r.attestation_b64 as String)),
+    json_kv(key: "id_token", value: json_string(s: r.id_token as String)),
   ]))
 }
 
@@ -579,13 +560,6 @@ fn decode_verifying_key_in(o: JsonValue, key: String) -> WireDecode<VerifyingKey
   match wire_member(obj: o, key: key) {
     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
     WireDecoded { value: v } => decode_verifying_key(v: v)
-  }
-}
-
-fn decode_presented_evidence_in(o: JsonValue, key: String) -> WireDecode<PresentedEnrollmentEvidence> {
-  match wire_member(obj: o, key: key) {
-    WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
-    WireDecoded { value: v } => decode_presented_evidence(v: v)
   }
 }
 
@@ -624,35 +598,37 @@ fn decode_platform_proof_in(o: JsonValue, key: String) -> WireDecode<PlatformRed
   }
 }
 
-fn decode_enrolment_request(text: String) -> WireDecode<EnrolmentRequest> {
+// THE ENROLMENT POST BODY, decoded strictly: the five members, no others. The token is opaque here
+// (gunbc.auth.oidc_id_token_verification decodes it); this decoder admits only its presence.
+fn decode_google_enrolment_request(text: String) -> WireDecode<GoogleEnrolmentRequest> {
   match parse_json_document(s: text) {
     JsonDocumentUnreadable { gap: g } => WireRefused { at: "$", cause: json_document_gap_text(gap: g) as NonEmptyStr }
     JsonDocumentParsed { value: v } =>
-      match wire_object(v: v, at: "$", allowed: ["code", "platform", "decision_key", "evidence", "push"]) {
+      match wire_object(v: v, at: "$", allowed: ["platform", "decision_key", "attest_key_id", "attestation_b64", "id_token"]) {
         WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
         WireDecoded { value: o } =>
-          match wire_string(obj: o, key: "code") {
+          match wire_string(obj: o, key: "platform") {
             WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
-            WireDecoded { value: code } =>
-              match wire_string(obj: o, key: "platform") {
-                WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
-                WireDecoded { value: platform } =>
-                  if platform != platform_wire(p: MobileIos) { WireRefused { at: "platform", cause: "not an admitted platform" } }
-                  else {
-                    match decode_verifying_key_in(o: o, key: "decision_key") {
+            WireDecoded { value: platform } =>
+              if platform != platform_wire(p: MobileIos) { WireRefused { at: "platform", cause: "not an admitted platform" } }
+              else {
+                match decode_verifying_key_in(o: o, key: "decision_key") {
+                  WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+                  WireDecoded { value: key } =>
+                    match wire_string(obj: o, key: "attest_key_id") {
                       WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
-                      WireDecoded { value: key } =>
-                        match decode_presented_evidence_in(o: o, key: "evidence") {
+                      WireDecoded { value: attest } =>
+                        match wire_string(obj: o, key: "attestation_b64") {
                           WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
-                          WireDecoded { value: evidence } =>
-                            match decode_push_registration_in(o: o, key: "push") {
+                          WireDecoded { value: att } =>
+                            match wire_string(obj: o, key: "id_token") {
                               WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
-                              WireDecoded { value: push } =>
-                                WireDecoded { value: EnrolmentRequest { code: code, platform: MobileIos, decision_key: key, evidence: evidence, push: push } }
+                              WireDecoded { value: tok } =>
+                                WireDecoded { value: GoogleEnrolmentRequest { platform: MobileIos, decision_key: key, attest_key_id: attest as AttestKeyId, attestation_b64: att, id_token: tok } }
                             }
                         }
                     }
-                  }
+                }
               }
           }
       }
@@ -916,11 +892,6 @@ fn decode_read_request(text: String) -> WireDecode<ReadAuthentication> {
   }
 }
 
-// THE ENROLMENT ID IS DERIVED FROM THE CODE, so the app knows the id of the enrolment its code
-// produced even when the POST's answer was lost -- the readback needs nothing the operator must type.
-fn enrollment_id_for_code(code: NonEmptyStr) -> NonEmptyStr {
-  join(["enr-", code as String], "") as NonEmptyStr
-}
 
 // READBACK: after an enrolment POST whose answer was lost, the app asks whether its enrolment
 // exists before generating anything new. It authenticates with an assertion under the App Attest
@@ -931,6 +902,11 @@ data approval_device_enrollment_path_prefix: NonEmptyStr = "/approve/device/enro
 // without a new enrolment. The token is inside the assertion's client data, so an assertion made
 // for one token cannot carry another. The body is { auth, push }: the same read authentication
 // beside the registration the client data framed.
+// The operator's two routes (ruling of clever-eagle-893, 2026-10-23): list every enrolment, and revoke one
+// by id. The id travels as a path segment exactly as the readback route's does.
+data approval_devices_list_path: NonEmptyStr = "/approve/devices" as NonEmptyStr
+data approval_device_revoke_path_prefix: NonEmptyStr = "/approve/devices/revoke/" as NonEmptyStr
+
 data approval_device_push_path: NonEmptyStr = "/approve/device/push" as NonEmptyStr
 data approval_device_push_protocol: NonEmptyStr = "gunbc.approval-device-push.v1" as NonEmptyStr
 

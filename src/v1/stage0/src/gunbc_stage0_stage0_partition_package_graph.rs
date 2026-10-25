@@ -36,7 +36,7 @@ pub fn stage0_partition_module_bearing_package_names() -> Rc<Vec<String>> {
 pub fn stage0_partition_package_dependency_names(
     row: Rc<GeneratedPartitionCrateRow>,
 ) -> Rc<Vec<String>> {
-    partition_package_dependency_names_over(row.clone(), generated_partition_crate_rows())
+    partition_package_dependency_names_over(row, generated_partition_crate_rows())
 }
 
 pub fn partition_module_bearing_package_names_over(

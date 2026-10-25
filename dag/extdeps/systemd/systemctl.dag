@@ -134,6 +134,13 @@ fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
 }
 
+// `reload UNIT`: systemctl(1) asks the unit to reload its service-specific configuration (for sshd, the
+// SIGHUP that makes it re-read sshd_config) -- not the unit file, which is daemon-reload, and not a
+// restart, which would end the process. A unit that is not active refuses the reload.
+fn systemctl_reload_unit_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "reload", unit as String]
+}
+
 // THE USER MANAGER IS A DIFFERENT MANAGER, AND DAEMON-RELOAD IS PER MANAGER. `systemctl daemon-reload`
 // reloads ONLY the system manager. Units under /etc/systemd/user/ are loaded by user@UID.service;
 // --user transients look up Slice= there (gunbc.live_deploy.spec gunbc_user_work_slice_unit_path).

@@ -115,6 +115,8 @@ type SystemdUnitProperty
   | JobProperty
   | NoNewPrivilegesProperty
   | RestrictSUIDSGIDProperty
+  // systemd.exec(5) UMask=: the file mode creation mask of the unit's processes (an octal word).
+  | UMaskProperty
   // systemd.resource-control(5) Delegate=: the unit owns its cgroup subtree, so a non-root User= can write the
   // memory controller files below it and the memory envelope read of its cgroup is bounded, not absent.
   | DelegateProperty
@@ -205,8 +207,95 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     JobProperty => "Job" as NonEmptyStr
     NoNewPrivilegesProperty => "NoNewPrivileges" as NonEmptyStr
     RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
+    UMaskProperty => "UMask" as NonEmptyStr
     DelegateProperty => "Delegate" as NonEmptyStr
   }
+}
+
+// THE PROPERTIES THAT CARRY FILESYSTEM PATHS A UNIT IS HANDED (systemd.exec(5), systemd.service(5)):
+// the working directory, the runtime directory systemd creates, the environment files the unit reads,
+// the start, stop and stop-post command paths, the writable, read-only, bind and inaccessible path
+// lists, and the stream targets. A consumer that must account for every path a unit is handed asks THIS
+// predicate, so a path-carrying setting is a fact of the upstream and not a list a consumer keeps beside
+// the unit. THE MATCH IS EXHAUSTIVE WITH NO WILDCARD: a property added to SystemdUnitProperty has no arm
+// here until it is classified, so the omission is a compile-time refusal and never a silent false.
+// FragmentPathProperty is false by classification: it is the unit file's own location read back from
+// the manager, not a path the unit is handed.
+fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
+  match property {
+    MemoryMax => false
+    MemorySwapMax => false
+    MemoryHigh => false
+    CPUWeight => false
+    CPUQuota => false
+    CPUQuotaPerSecUSec => false
+    MemoryCurrent => false
+    MemoryPeak => false
+    TasksMax => false
+    TasksCurrent => false
+    ControlGroup => false
+    SliceProperty => false
+    PartOf => false
+    ActiveEnterTimestampMonotonic => false
+    ActiveState => false
+    MainPID => false
+    LoadState => false
+    UnitFileState => false
+    SubState => false
+    Result => false
+    ExecMainStatus => false
+    ExecStartProperty => true
+    ExecStopProperty => true
+    ExecStopPostProperty => true
+    User => false
+    WorkingDirectoryProperty => true
+    RuntimeDirectoryProperty => true
+    Unit => false
+    NextElapseUSecMonotonic => false
+    AccuracyUSec => false
+    TimersMonotonic => false
+    ExecMainStartTimestampMonotonic => false
+    ExecMainExitTimestampMonotonic => false
+    NeedDaemonReload => false
+    IdProperty => false
+    KillModeProperty => false
+    ExitTypeProperty => false
+    EnvironmentProperty => false
+    EnvironmentFilesProperty => true
+    PassEnvironmentProperty => false
+    AfterProperty => false
+    WantsProperty => false
+    InvocationIDProperty => false
+    FragmentPathProperty => false
+    StandardOutputProperty => true
+    StandardErrorProperty => true
+    ProtectSystemProperty => false
+    ProtectHomeProperty => false
+    PrivateTmpProperty => false
+    ReadWritePathsProperty => true
+    BindPathsProperty => true
+    ReadOnlyPathsProperty => true
+    InaccessiblePathsProperty => true
+    RemainAfterExitProperty => false
+    RuntimeMaxSecProperty => false
+    CollectModeProperty => false
+    JobProperty => false
+    NoNewPrivilegesProperty => false
+    RestrictSUIDSGIDProperty => false
+    UMaskProperty => false
+    DelegateProperty => false
+  }
+}
+
+// systemd.exec(5) ReadWritePaths=/ReadOnlyPaths=: entries are space-separated, and an entry prefixed
+// with '-' is ignored when the path does not exist. The prefix is a wire spelling of one typed fact
+// (missing-ok), so a caller passes the Bool and never writes the character.
+data systemd_path_list_separator: String = " "
+
+data systemd_path_missing_ok_prefix: String = "-"
+
+fn systemd_path_list_entry_wire(path: String, missing_ok: Bool) -> String {
+  if missing_ok { join([systemd_path_missing_ok_prefix, path], "") } else { path }
 }
 
 data systemd_unit_load_state_not_found_wire: NonEmptyStr = "not-found" as NonEmptyStr

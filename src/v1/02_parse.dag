@@ -5806,6 +5806,55 @@ fn is_variant_pattern_start(name: String) -> Bool {
   }
 }
 
+// `x is V` IS A PARSE-LEVEL DESUGAR TO THE EXISTING MATCH AND ADDS NO SEED SEMANTICS: it is exactly
+// `match x { V => true  _ => false }`, built from the node kinds `match` already builds, so infer,
+// emit and every later stage see an ordinary match and no new node, typing rule or realization.
+// v2 lowers the same source to the same Match (v2.compiler.body_lowering_fold body_lower_is_node); the
+// differential control compiler_tests is_arm_seed_lowering_agrees_with_explicit_match holds the seed
+// half and v2.test.claim.is_surface the v2 half. V must be a constructor spelling: a lowercase name would parse as a Bind pattern and
+// answer true for every value, so it refuses here rather than lowering to a catch-all.
+fn parse_is_arm_test(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: TokenStream, span: SourceSpan) -> PostfixResult {
+  let r = parse_dotted_ident(tokens: token_stream_advance(stream: tokens, n: 1), env: ctx.env)
+  if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let name = r.name
+  if !is_variant_pattern_start(name: name) {
+    return PostfixResult {
+      expr: lhs,
+      changed: false,
+      tokens: r.tokens,
+      ctx: ctx,
+      err: Present { value: parse_error(msg: concat("`is` must name a constructor (an uppercase arm spelling), got '", name, "'"), span: r.span) }
+    }
+  }
+  let at = ConsumedWindow { from: lhs_from, to: r.tokens }
+  let yes_mint = mint_parsed_node_identity(ctx: ctx, at: at)
+  let yes_arm_mint = mint_parsed_node_identity(ctx: yes_mint.ctx, at: at)
+  let no_mint = mint_parsed_node_identity(ctx: yes_arm_mint.ctx, at: at)
+  let no_arm_mint = mint_parsed_node_identity(ctx: no_mint.ctx, at: at)
+  let match_mint = mint_parsed_node_identity(ctx: no_arm_mint.ctx, at: at)
+  let yes_arm = make_arm_node(
+    occurrence_identity: yes_arm_mint.identity,
+    pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [], parent_identity: VariantParentBeforeInference },
+    guard: none,
+    body: make_expr_node(occurrence_identity: yes_mint.identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: span),
+    span: span
+  )
+  let no_arm = make_arm_node(
+    occurrence_identity: no_arm_mint.identity,
+    pattern: Wildcard,
+    guard: none,
+    body: make_expr_node(occurrence_identity: no_mint.identity, expr_data: ExprLiteral { value: LitBool { value: false } }, children: [], inferred: none, span: span),
+    span: span
+  )
+  PostfixResult {
+    expr: make_expr_node(occurrence_identity: match_mint.identity, expr_data: ExprMatch, children: [lhs, yes_arm, no_arm], inferred: none, span: span),
+    changed: true,
+    tokens: r.tokens,
+    ctx: match_mint.ctx,
+    err: none
+  }
+}
+
 fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: TokenStream, min_bp: Int) -> PostfixResult {
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
@@ -5832,6 +5881,12 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
           if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
           let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
           PostfixResult { expr: make_expr_node(occurrence_identity: minted.identity, expr_data: ExprCast, children: [lhs, r.type_expr], inferred: none, span: span), changed: true, tokens: r.tokens, ctx: minted.ctx, err: none }
+        }
+      } else if tok.value.text == "is" {
+        if 13 < min_bp {
+          PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
+        } else {
+          parse_is_arm_test(tokens: tokens, ctx: ctx, lhs: lhs, lhs_from: lhs_from, span: span)
         }
       } else {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }

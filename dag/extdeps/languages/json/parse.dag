@@ -3,7 +3,7 @@ module extdeps.languages.json.parse
 import std.types { String, Int, List, Bool }
 import std.nat { Nat }
 import std.optional { Absent, Present }
-import std.algebra { string_concat_join }
+import std.algebra { string_concat_join, collection_concat_shape, collection_count_shape, collection_map_shape, list_push }
 import std.integer { int_to_decimal_string }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

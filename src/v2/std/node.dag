@@ -3,7 +3,7 @@ module v2.std.node
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.algebra { Cons, Empty, FreeMonoid, zip_eq, fold_list_right, list_snoc_item, collection_concat_shape, collection_count_shape, collection_map_shape }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -245,7 +245,7 @@ fn production_edge_label(language: Symbol, edge: Symbol) -> EdgeLabel {
 }
 
 fn core_edge(marker: CoreEdgeLabel, target: Node) -> Edge {
-  Edge { label: core_edge_label(marker: marker), target: target }
+  Edge { label: core_edge_label(marker: marker), target: target, declaration: NotADeclaration }
 }
 
 // THE ONE READER OF A CORE MARKER: it matches the arm, so an authored name spelled like a marker
@@ -343,9 +343,23 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     ConstantMemberEdge => ^core_constant_member_edge
   }
 }
+// WHETHER AN EDGE IS THE DECLARATION OF ITS LABEL, with the occurrence of the token that declared it.
+// A declaration name is an Authored label (a bare Symbol), so the occurrence of the token that declared
+// it has no home on the label; it lives on the Edge, beside the label, exactly as a Node carries its own
+// occurrence_id. Neither enters content_hash: content_hash_step folds (label, child hash) and never the
+// Edge. A closed coproduct with no default, so an edge built by a producer that forgot to mint refuses
+// at construction rather than reading as "not a declaration".
+type EdgeDeclaration = DeclaresAt { occurrence: NodeOccurrenceIdentity } | NotADeclaration
+
 type Edge {
   label: EdgeLabel
   target: Node
+  declaration: EdgeDeclaration
+}
+
+// THE ONE CONSTRUCTOR OF A DECLARATION EDGE: an Authored label declared by the token at `occurrence`.
+fn edge_declared(name: Symbol, target: Node, occurrence: NodeOccurrenceIdentity) -> Edge {
+  Edge { label: Authored { name: name }, target: target, declaration: DeclaresAt { occurrence: occurrence } }
 }
 
 type EdgeShape {
@@ -456,7 +470,7 @@ fn close_lowered_image_of(root: Node, source: Node) -> Node {
 fn close_lowered_image_under(node: Node, source: OccurrenceId) -> Node {
   match node.occurrence_id {
     OccurrenceSynthetic =>
-      node_rebuild(n: node, children: map(node.children, e => Edge { label: e.label, target: close_lowered_image_under(node: e.target, source: source) }))
+      node_rebuild(n: node, children: map(node.children, e => Edge { label: e.label, target: close_lowered_image_under(node: e.target, source: source), declaration: e.declaration }))
     OccurrenceMinted { id: id } => if id.value == source.value { close_lowered_image(root: node) } else { node }
     OccurrencePending { caused_by: _ } => node
     OccurrenceProjected { id: _, caused_by: _ } => node
@@ -487,7 +501,7 @@ fn close_image_member(node: Node, source: OccurrenceId) -> Node {
 }
 
 fn close_image_edges(edges: List<Edge>, source: OccurrenceId) -> List<Edge> {
-  map(edges, e => Edge { label: e.label, target: close_image_member(node: e.target, source: source) })
+  map(edges, e => Edge { label: e.label, target: close_image_member(node: e.target, source: source), declaration: e.declaration })
 }
 
 // THE ONE ALLOCATION PASS, run once over a normalized tree. It visits the whole tree in pre-order,
@@ -511,7 +525,7 @@ fn allocate_pending_occurrences(
     f: (acc, e) => {
       let child = allocate_pending_occurrences(root: e.target, allocator: acc.allocator)
       PendingEdgesAllocation {
-        edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: child.root }),
+        edges: list_snoc_item(xs: acc.edges, item: Edge { label: e.label, target: child.root, declaration: e.declaration }),
         allocator: child.allocator,
       }
     },
@@ -586,7 +600,7 @@ fn strip_provenance_fold_init(n: Node) -> Node {
 fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
+    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child, declaration: NotADeclaration })
   )
 }
 
@@ -600,6 +614,43 @@ fn strip_provenance_fold_algebra() -> NodeFold<Node> {
 fn canonicalize_node_strip_provenance(n: Node) -> Node {
   fold_node(n: n, algebra: strip_provenance_fold_algebra())
 }
+
+// NODE EQUALITY IS TWO QUESTIONS, and derived `==` on Node answered both while also comparing the
+// provenance it carries (occurrence ids, Edge.declaration). Node is declared equality-inadmissible;
+// a caller names which question it asks. Both compare exactly (no hash shortcut: content_hash is a
+// 64-bit non-cryptographic fold and a collision would be a silent false equality), recursing in
+// place with no canonical copy, and stop at the first difference.
+//
+// node_equal_ignoring_provenance: same kind, same labeled children, recursively; occurrence ids and
+// Edge.declaration are not compared. The question every structural reader asks (a type against a type,
+// a node against a pinned constant).
+fn node_equal_ignoring_provenance(a: Node, b: Node) -> Bool {
+  (a.kind == b.kind)
+    && zip_eq(a: a.children, b: b.children, eq: fn(x, y) { node_edge_equal_ignoring_provenance(x: x, y: y) })
+}
+
+fn node_edge_equal_ignoring_provenance(x: Edge, y: Edge) -> Bool {
+  (x.label == y.label) && node_equal_ignoring_provenance(a: x.target, b: y.target)
+}
+
+// node_same_occurrence: the two are the same authored occurrence. Derived `==` compared the occurrence id at
+// EVERY node of both trees (and Edge.declaration, which is provenance outside content); this keeps the
+// every-node occurrence comparison and drops only the declaration, so a node rebuilt with the same root id
+// but a rewritten descendant is NOT the same occurrence. Occurrence ids are minted unique per authored
+// node and all synthetic nodes share one, so for synthetic nodes it degrades to the structural question,
+// as `==` did.
+fn node_same_occurrence(a: Node, b: Node) -> Bool {
+  (a.occurrence_id == b.occurrence_id)
+    && (a.kind == b.kind)
+    && zip_eq(a: a.children, b: b.children, eq: fn(x, y) { node_edge_same_occurrence(x: x, y: y) })
+}
+
+
+fn node_edge_same_occurrence(x: Edge, y: Edge) -> Bool {
+  (x.label == y.label) && node_same_occurrence(a: x.target, b: y.target)
+}
+
+
 
 type Node {
   kind: NodeKind
@@ -1974,7 +2025,7 @@ fn match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
 // the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The binder's
 // type is the InferBinderType row its references read, never a fact about the key atom.
 fn bind_key_edge_is(key: Edge, edge: Edge) -> Bool {
-  key == edge && match key.target.kind {
+  key.label == edge.label && node_same_occurrence(a: key.target, b: edge.target) && match key.target.kind {
     TypeNode { connective: Atom { identity: _ } } => true
     TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false
@@ -2919,7 +2970,7 @@ fn node_offset_atom(sym: Symbol) -> Node {
 }
 
 fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn node_offset_conj(children: List<Edge>) -> Node {
@@ -3211,8 +3262,8 @@ fn fold_list_node<T>(
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Authored { name: ^fold_list_node_head }, target: item_node(item) },
-          Edge { label: Authored { name: ^fold_list_node_tail }, target: tail_node },
+          Edge { label: Authored { name: ^fold_list_node_head }, target: item_node(item), declaration: NotADeclaration },
+          Edge { label: Authored { name: ^fold_list_node_tail }, target: tail_node, declaration: NotADeclaration },
         ],
         occurrence_id: OccurrenceSynthetic
 }
