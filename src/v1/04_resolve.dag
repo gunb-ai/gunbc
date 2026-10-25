@@ -522,6 +522,8 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   }
 }
 
+type AliasKind = AliasParameterized | AliasLeaf | AliasPassthrough
+
 fn classify_alias(target: Node) -> AliasKind {
   let nc = target.connective == NoConnective
   if target.children |> count > 0 && nc { AliasParameterized }

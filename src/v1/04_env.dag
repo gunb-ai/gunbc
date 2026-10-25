@@ -2239,7 +2239,6 @@ fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_
   }
 }
 
-type AliasKind = AliasParameterized | AliasLeaf | AliasPassthrough
 
 
 fn settled_alias_rhs(rhs: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
