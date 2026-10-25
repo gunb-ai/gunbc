@@ -652,19 +652,20 @@ fn derived_roster_listing(directory: String, relative: String) -> DerivedRosterL
 }
 
 fn derived_roster_direct_stems(row_directory: String, paths: List<String>) -> List<String> {
+  sort_by(derived_roster_listed_stems(row_directory: row_directory, paths: paths), stem => stem)
+}
+
+fn derived_roster_listed_stems(row_directory: String, paths: List<String>) -> List<String> {
   let prefix_length = string_length(s: source_root_child_path(directory: row_directory, name: ""))
-  sort_by(
-    fold_list(xs: paths, empty: [], cons: fn(acc, path) {
-      let rest = substring(s: path, start: prefix_length, end: string_length(s: path))
-      let stem = substring(s: rest, start: 0, end: string_length(s: rest) - 4)
-      if string_contains(s: rest, pattern: "/") || stem == derived_roster_stem() {
-        acc
-      } else {
-        list_snoc_item(xs: acc, item: stem)
-      }
-    }),
-    stem => stem
-  )
+  fold_list(xs: paths, empty: [], cons: fn(acc, path) {
+    let rest = substring(s: path, start: prefix_length, end: string_length(s: path))
+    let stem = substring(s: rest, start: 0, end: string_length(s: rest) - 4)
+    if string_contains(s: rest, pattern: "/") || stem == derived_roster_stem() {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: stem)
+    }
+  })
 }
 
 // ---- reading what a member asks for -------------------------------------------------------------
