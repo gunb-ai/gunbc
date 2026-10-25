@@ -91,7 +91,7 @@ import gunbc.machine_intake.megarac_media_attach { MegaRacPresentationReady }
 import gunbc.host.bmc_control_binding { BmcControlEndpointMismatch, bmc_control_route_observation }
 import gunbc.host.host_reset_subject_roster { admit_reset_subject, ResetSubjectAdmitted }
 import gunbc.machine_intake.mtcollins1_access_observation {
-  mtcollins1_access_observation, mtcollins1_current_build_firmware, mtcollins1_current_build_identity,
+  mtcollins1_access_observation, mtcollins1_current_build_firmware,
 }
 import gunbc.host.host_reset_boot_selection { reset_boot_selection }
 import gunbc.host.boot_medium {
@@ -138,6 +138,19 @@ fn fixture_build_reading_evidence() -> EvidenceRef {
   EvidenceRef {
     label: "hypothetical boot-witness build reading (no artifact behind it)",
     digest: content_hash_of_value(value: "boot witness hypothetical build reading"),
+  }
+}
+
+// IS THIS IDENTITY THE COMMITTED MACHINE READ? The one equality the claims of this file use against the
+// current build. The current build is BmcFirmwareReleaseIdentity? -- derived from the committed hpm check
+// (gunbc.machine_intake.mtcollins1_access_observation) -- so a claim that compared against it directly
+// would compare an identity to an absence; here the Absent arm answers FALSE, which is what those claims
+// must do if the committed read ever stops establishing: every claim in this file that leans on the read
+// goes red together, none of them passes vacuously against a missing build.
+fn eq_the_committed_build(f: BmcFirmwareReleaseIdentity) -> Bool {
+  match mtcollins1_current_build_firmware {
+    Present { value: current } => bmc_firmware_release_identity_eq(a: f, b: current)
+    Absent => false
   }
 }
 
@@ -384,7 +397,7 @@ test fn w_the_catalog_never_labels_an_unread_build_machine_read() -> Bool {
         // EACH ROW DERIVES EXACTLY ITS OWN BUILD -- no third release appears and neither row is a copy
         // of the other.
         && (bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32)
-          || bmc_firmware_release_identity_eq(a: firmware, b: mtcollins1_current_build_firmware))
+          || eq_the_committed_build(f: firmware))
     MegaRacReleaseEstablishedByAttestation { firmware: _ } => false
     MegaRacReleaseEstablishmentRefused { standing: _, cause: _ } => false
   })
@@ -402,11 +415,14 @@ test fn w_the_catalog_never_labels_an_unread_build_machine_read() -> Bool {
 // Observed under the committed evidence, the lookup resolves the MACHINE-READ build's catalog row -- a
 // different row from 0.32's, keyed by the identity the reading derives -- and the boot selection still
 // admits, so the boot does not refuse as uncatalogued once a reading of the current build is on file. No
-// per-unit row was edited; the same generic derivation followed the reported build. RED if the row's key
-// is typed as the page label "0.45.3" (no reading ever names it, so nothing resolves), if the reading is
-// dropped (the current build falls back to the unread transition and resolves the page-label row again),
-// or if the resolved row is 0.32's.
-test fn w_the_observed_reflash_to_0_45_3_resolves_that_builds_row_and_still_admits() -> Bool {
+// per-unit row was edited; the same generic derivation followed the reported build. THE DESTINATION IS
+// DERIVED, NEVER NAMED (manager HOLD): the claim asks mtcollins1_current_build_firmware -- the value the
+// committed reading mints -- for the destination the ledger's reflash transition must carry, so the claim
+// cannot keep naming the vendor page label while the ledger moved on. RED if the row's key is typed as the
+// page label "0.45.3" (no reading ever names it, so nothing resolves), if the reading is dropped (the
+// current build falls back to the unread transition and resolves the page-label row again), if the
+// resolved row is 0.32's, or if the ledger's transition no longer points at the machine-read build.
+test fn w_the_observed_reflash_resolves_the_machine_read_builds_row_and_still_admits() -> Bool {
   managed_hosts() |> all(h => {
     // THE COMMITTED EVIDENCE, not a fixture: this claim is about the reflash and the machine read that
     // were actually recorded for mtcollins1, which is what a boot must resolve today.
@@ -418,12 +434,28 @@ test fn w_the_observed_reflash_to_0_45_3_resolves_that_builds_row_and_still_admi
     // the resolved row is the machine-read build's own row, not 0.32's and not the page label's
     let resolves_the_new_row = match host_capability_row(evidence: at_the_read_build, access: h.access) {
       HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityKnown { row: row } } =>
-        bmc_firmware_release_identity_eq(a: row.firmware, b: mtcollins1_current_build_firmware)
+        eq_the_committed_build(f: row.firmware)
         && !bmc_firmware_release_identity_eq(a: row.firmware, b: megarac_firmware_0_32)
         && !bmc_firmware_release_identity_eq(a: row.firmware, b: megarac_firmware_0_45_3)
       _ => false
     }
-    admitted && resolves_the_new_row
+    // THE LEDGER'S REFLASH POINTS AT THE MACHINE-READ BUILD, derived from the same data the row's key
+    // comes from -- there is exactly one transition on the ledger and its `to:` is what the committed
+    // reading mints. If the ledger regressed to the page label, or dropped the transition, this is red.
+    let ledger_reflashes_to_the_machine_read = match mtcollins1_current_build_firmware {
+      Absent => false
+      Present { value: current } => {
+        let transition_head = at_the_read_build.transitions |> first()
+        count(at_the_read_build.transitions) == 1
+        && match transition_head {
+          Absent => false
+          Present { value: t } =>
+            bmc_firmware_release_identity_eq(a: t.to, b: current)
+            && !bmc_firmware_release_identity_eq(a: t.to, b: megarac_firmware_0_45_3)
+        }
+      }
+    }
+    admitted && resolves_the_new_row && ledger_reflashes_to_the_machine_read
   }) && count(managed_hosts()) == 1
 }
 
@@ -586,7 +618,7 @@ test fn w_the_0_45_row_is_machine_read_and_the_page_label_is_never_its_key() -> 
     MegaRacVersionFromFirmwareRead { artifact_path: _, component: _, stdout: _ } =>
       match megarac_version_establishment(standing: e.standing) {
         MegaRacReleaseEstablishedByRead { firmware: firmware } =>
-          bmc_firmware_release_identity_eq(a: firmware, b: mtcollins1_current_build_firmware)
+          eq_the_committed_build(f: firmware)
         _ => false
       }
     MegaRacVersionFromOperatorAttestation { attested_on: _, page_reported: _, detail: _, upgrade_read: _ } => false
@@ -610,7 +642,7 @@ test fn w_the_0_45_row_is_machine_read_and_the_page_label_is_never_its_key() -> 
       // "0.45", semantic none -- the wire the controller's own table reports, NOT the vendor page's name.
       let established_by_the_read = match megarac_version_establishment(standing: e.standing) {
         MegaRacReleaseEstablishedByRead { firmware: firmware } =>
-          bmc_firmware_release_identity_eq(a: firmware, b: mtcollins1_current_build_firmware)
+          eq_the_committed_build(f: firmware)
           && !bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_3)
           && (firmware.raw_version as String) == "0.45"
           && match firmware.semantic_version { Absent => true  Present { value: _ } => false }
@@ -654,9 +686,12 @@ test fn w_the_0_45_row_is_machine_read_and_the_page_label_is_never_its_key() -> 
             SmproPlatformUnestablished { cause: c } => SmproPlatformUnestablished { cause: c }
           },
         )
-        match boot_selection(evidence: fixture_evidence_at(h, mtcollins1_current_build_firmware), host: at_the_read) {
-          VirtualMediaBootSelectionAdmitted { selection: _, capability_row: _ } => true
-          VirtualMediaBootSelectionRefused { cause: _ } => false
+        match mtcollins1_current_build_firmware {
+          Absent => false
+          Present { value: current } => match boot_selection(evidence: fixture_evidence_at(h, current), host: at_the_read) {
+            VirtualMediaBootSelectionAdmitted { selection: _, capability_row: _ } => true
+            VirtualMediaBootSelectionRefused { cause: _ } => false
+          }
         }
       }) && count(managed_hosts()) == 1
       // THE PAGE LABEL CARRIES NO ROW: a host reported at the vendor page's name resolves no current row,
@@ -773,7 +808,7 @@ test fn w_the_admitted_machine_boots_off_the_current_release_and_not_the_probed_
       // page label here (or any key that does not derive from the retained bytes) resolves nothing and
       // goes red; so does resolving 0.32's row, which the next arm keeps pinned.
       let is_the_current_release = match resolves_under {
-        Present { value: f } => bmc_firmware_release_identity_eq(a: f, b: mtcollins1_current_build_firmware)
+        Present { value: f } => eq_the_committed_build(f: f)
         Absent => false
       }
       let is_not_the_probed_release = match resolves_under {
@@ -825,9 +860,12 @@ test fn w_a_build_reading_for_another_controller_grounds_no_capability_row() -> 
       VirtualMediaBootSelectionRefused { cause: VirtualMediaUnestablished } => true
       _ => false
     }
-    let own_resolves = match host_capability_row(evidence: fixture_evidence_at(h, mtcollins1_current_build_firmware), access: h.access) {
-      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityKnown { row: row } } => bmc_firmware_release_identity_eq(a: row.firmware, b: mtcollins1_current_build_firmware)
-      _ => false
+    let own_resolves = match mtcollins1_current_build_firmware {
+      Absent => false
+      Present { value: current } => match host_capability_row(evidence: fixture_evidence_at(h, current), access: h.access) {
+        HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityKnown { row: row } } => eq_the_committed_build(f: row.firmware)
+        _ => false
+      }
     }
     row_refuses && boot_refuses && own_resolves
   }) && count(managed_hosts()) == 1
@@ -877,7 +915,7 @@ fn executed_boot_route_consumed_current_release() -> Bool {
       match value.admitted {
         Absent => false
         Present { value: consumed } =>
-          bmc_firmware_release_identity_eq(a: consumed, b: mtcollins1_current_build_firmware)
+          eq_the_committed_build(f: consumed)
             && !bmc_firmware_release_identity_eq(a: consumed, b: megarac_firmware_0_32)
       }
     WitnessRefused { diagnostic: _, route: _ } => false

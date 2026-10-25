@@ -21,13 +21,20 @@ import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release
 import extdeps.board_authority { BoardFruObservation, BoardFruRead, BoardFruNotRead }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
-import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_45 }
-import extdeps.bmc.ipmitool_hpm_check { hpm_version_absent_rendering }
+import extdeps.bmc.ipmitool_observed_output {
+  ipmitool_hpm_check_bmc0_45,
+  mtcollins1_boot_run_40082618814_hpm_check_artifact_path,
+  mtcollins1_boot_run_40082618814_hpm_check_digest,
+}
+import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
+import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
 import gunbc.host.bmc_release_capability_catalog {
   megarac_release_capability_catalog, MegaRacReleaseCapabilityEntry,
   megarac_version_establishment,
   megarac_release_capabilities_of, megarac_run_attempt_identity,
-  megarac_read_identity_of_committed_row,
+  megarac_committed_hpm_check_readout,
+  CommittedReadEstablished, CommittedReadRefused,
+  NoCommittedRowAtPath,
   MegaRacVersionFromFirmwareRead, MegaRacVersionFromOperatorAttestation,
   MegaRacReleaseEstablishedByRead, MegaRacReleaseEstablishedByAttestation,
   MegaRacReleaseEstablishmentRefused,
@@ -36,6 +43,7 @@ import gunbc.host.bmc_release_capability_catalog {
 import gunbc.machine_intake.mtcollins1_access_observation {
   mtcollins1_current_build_firmware, mtcollins1_current_build_identity, mtcollins1_identity,
 }
+
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image_stem }
 import gunbc.runner.runner_host_medium { runner_host_medium_image_stem }
 import gunbc.machine_intake.megarac_media_attach {
@@ -299,6 +307,18 @@ fn derived_is_not_the_page_label(e: MegaRacReleaseCapabilityEntry) -> Bool {
   }
 }
 
+// IS THIS IDENTITY THE COMMITTED MACHINE READ? The current build is BmcFirmwareReleaseIdentity? (it
+// exists only because the committed hpm check established it), so comparisons against it go through HERE:
+// the Absent arm answers FALSE, and every claim in this file that leans on the reading goes red together
+// if the read ever stops establishing -- none passes vacuously against a missing build.
+fn eq_the_committed_build(f: BmcFirmwareReleaseIdentity) -> Bool {
+  match mtcollins1_current_build_firmware {
+    Present { value: current } => bmc_firmware_release_identity_eq(a: f, b: current)
+    Absent => false
+  }
+}
+
+
 // THE 0.45 ROW IS ESTABLISHED BY A MACHINE READ OF THE COMMITTED STDOUT (prod cite:
 // gunbc/host/bmc_release_capability_catalog.dag). Three discriminations, each failing independently:
 // RED-1 the standing left the read arm (an attestation moved back, a third row, a row retyped) -- the
@@ -315,7 +335,7 @@ test fn w_the_0_45_row_is_established_by_a_machine_read_of_the_committed_stdout(
     MegaRacVersionFromFirmwareRead { artifact_path: _, component: _, stdout: _ } =>
       match megarac_version_establishment(standing: e.standing) {
         MegaRacReleaseEstablishedByRead { firmware: firmware } =>
-          bmc_firmware_release_identity_eq(a: firmware, b: mtcollins1_current_build_firmware)
+          eq_the_committed_build(f: firmware)
         _ => false
       }
     MegaRacVersionFromOperatorAttestation { attested_on: _, page_reported: _, detail: _, upgrade_read: _ } => false
@@ -325,7 +345,11 @@ test fn w_the_0_45_row_is_established_by_a_machine_read_of_the_committed_stdout(
     Absent => false
     Present { value: e } => match e.standing {
       MegaRacVersionFromFirmwareRead { artifact_path: path, component: component, stdout: stdout } =>
-        (path as String) == "artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt"
+        // THE PATH IS THE ONE DATA THE WHOLE REPOSITORY SHARES: the ledger's committed evidence row, the
+        // catalogue row's own artifact_path, and this claim all name
+        // extdeps.bmc.ipmitool_observed_output mtcollins1_boot_run_40082618814_hpm_check_artifact_path
+        // (review 86103 finding 2 -- the same path was typed at three sites).
+        (path as String) == (mtcollins1_boot_run_40082618814_hpm_check_artifact_path as String)
         && (component as String) == "APP"
         // THE AUXILIARY BYTES ARE HELD VERBATIM AND UNFOLDED: the auxiliary revision column's bytes are
         // present in the table, separated from the release by a space -- which is exactly what makes the
@@ -360,7 +384,7 @@ test fn w_the_0_45_row_names_no_release_it_did_not_read() -> Bool {
     MegaRacVersionFromFirmwareRead { artifact_path: _, component: _, stdout: _ } =>
       match megarac_version_establishment(standing: e.standing) {
         MegaRacReleaseEstablishedByRead { firmware: firmware } =>
-          bmc_firmware_release_identity_eq(a: firmware, b: mtcollins1_current_build_firmware)
+          eq_the_committed_build(f: firmware)
         _ => false
       }
     MegaRacVersionFromOperatorAttestation { attested_on: _, page_reported: _, detail: _, upgrade_read: _ } => false
@@ -384,21 +408,27 @@ test fn w_the_0_45_row_names_no_release_it_did_not_read() -> Bool {
 }
 
 // THE CURRENT BUILD IDENTITY IS THE ONE THE COMMITTED READING MINTS -- via the ROW, and only the row
-// (review 38602 rework). The identity is no longer a typed wire this test can compare a literal against:
-// gunbc.machine_intake.mtcollins1_access_observation ASKS the catalogue for it
-// (megarac_read_identity_of_committed_row). Three discriminations, each failing independently:
+// (review 38602 rework, review 86103/86139 rework). The identity is no longer a typed wire this test can
+// compare a literal against: gunbc.machine_intake.mtcollins1_access_observation ASKS the catalogue for it
+// (megarac_committed_hpm_check_readout) and receives either an identity or a TYPED REFUSAL -- never a
+// stand-in (review 86103 finding 1: the previous shape fabricated a "no version stored" identity for every
+// failure, DESIGN.md §5 "no plausible output is fabricated"). Four discriminations, each failing
+// independently:
 // 1. THE DERIVED IDENTITY IS WHAT THE ROW'S OWN BYTES SAY -- re-deriving the row's identity through the
 //    establishment here and comparing to the consumed value means a consumer that STARTED typing its own
 //    identity (or a row whose bytes changed under it) is caught from the outside;
-// 2. THE PATH IS THE ROW'S PATH: asking for the identity under the artifact path pinned by the operation
-//    ledger's committed evidence digest returns exactly this identity -- retarget the row's artifact_path
-//    away from the committed bytes and the row filter finds nothing under the ledger's path, the refusal
-//    sentinel answers, and this arm goes red;
-// 3. THE REFUSAL SENTINEL IS LOUD, NEVER PLAUSIBLE: asking under a path NO row carries yields the
-//    parser's own "no version stored" rendering -- not "0.45", not "0.45.3", nothing a row keys on. A
-//    sentinel rebuilt to return the last good release (so a lost artifact silently keeps booting) dies
-//    here. The sentinel is constructed from the parser's rendering constant, so this checks the SHAPE the
-//    derivation owes, without restating what the row's bytes mint.
+// 2. THE PATH IS THE ROW'S PATH: asking under the single-home artifact path data returns EXACTLY the
+//    established identity -- retarget the row's artifact_path away from the committed bytes and the lookup
+//    answers CommittedReadRefused { NoCommittedRowAtPath }, this arm demands Established, and it goes red;
+// 3. A PATH NO ROW CARRIVES REFUSES, BY TYPE -- CommittedReadRefused { NoCommittedRowAtPath }, which is
+//    not an identity at all. A lookup rebuilt to hand back the last good release (so a lost artifact
+//    silently keeps booting) has no arm to do it with, and if someone re-added one this match demands the
+//    refusal and dies;
+// 4. THE LEDGER CANNOT CLAIM A READING THE READ DID NOT ESTABLISH: exactly one reading on the committed
+//    ledger carries this build's identity, and the digest it vouches for is the digest DERIVED from the
+//    committed bytes -- the file on disk whose sha256 the committed artifact reports. A forged artifact
+//    (bytes changed) or a forged literal (literal changed against the file) separates the two and this
+//    arm goes red.
 test fn w_the_current_build_identity_is_the_one_the_committed_reading_mints() -> Bool {
   let committed_rows = filter(megarac_release_capability_catalog, e => match e.standing {
     MegaRacVersionFromFirmwareRead { artifact_path: path, component: _, stdout: bytes } =>
@@ -414,34 +444,68 @@ test fn w_the_current_build_identity_is_the_one_the_committed_reading_mints() ->
     }
     Absent => Absent
   }
-  // 1+2. THE CONSUMED IDENTITY EQUALS THE ROW-DERIVED ONE, and equals what the row answers under the
-  // ledger's own committed path.
+  // 1+2. THE CONSUMED IDENTITY EQUALS THE ROW-DERIVED ONE, and equals what the lookup ESTABLISHES under
+  // the single-home committed path -- the ask must come back Established, and with the row's own identity.
+  let ask_under_the_committed_path = megarac_committed_hpm_check_readout(
+    artifact_path: mtcollins1_boot_run_40082618814_hpm_check_artifact_path,
+  )
   let consumed_is_derived = match derived_by_the_row {
-    Present { value: established } =>
-      bmc_firmware_release_identity_eq(a: mtcollins1_current_build_firmware, b: established)
-      && bmc_firmware_release_identity_eq(a: mtcollins1_current_build_identity.firmware, b: established)
-      && bmc_firmware_release_identity_eq(
-        a: megarac_read_identity_of_committed_row(
-          artifact_path: "artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt",
-        ), b: established)
+    Present { value: established } => match ask_under_the_committed_path {
+      CommittedReadEstablished { firmware: readout } =>
+        eq_the_committed_build(f: established)
+        && bmc_firmware_release_identity_eq(a: readout, b: established)
+        && (match mtcollins1_current_build_identity {
+          Present { value: consumed } => bmc_firmware_release_identity_eq(a: consumed.firmware, b: established)
+          Absent => false
+        })
+      // 2'. THE ASK UNDER THE REAL PATH MUST ESTABLISH -- a refusal here is the boot refusing, and this
+      // claim going red is the whole point: no silent anything.
+      CommittedReadRefused { cause: _ } => false
+    }
     Absent => false
   }
-  // 3. THE SENTINEL: a path with no row above it answers with the absent-version rendering, and it is NOT
-  // any release anybody boots.
-  let sentinel = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: hpm_version_absent_rendering)
-  let asks_answer_the_sentinel = bmc_firmware_release_identity_eq(
-    a: megarac_read_identity_of_committed_row(artifact_path: "artifacts/bmc/no-such-run/hpm-check.txt"),
-    b: sentinel,
-  ) && !bmc_firmware_release_identity_eq(a: sentinel, b: mtcollins1_current_build_firmware)
-    && !bmc_firmware_release_identity_eq(a: sentinel, b: megarac_firmware_0_45_3)
+  // 3. A PATH NO ROW CARRIVES ANSWERS A TYPED REFUSAL, NOT AN IDENTITY. There is no value to compare
+  // against any more -- which is the fix: the previous shape had a sentinel identity a careless consumer
+  // could boot on. The match demands the arm, so any re-fabrication (a third arm, an identity for the
+  // miss) makes this witness uncompilable or red.
+  let ask_under_a_path_no_row_carries = megarac_committed_hpm_check_readout(
+    artifact_path: "artifacts/bmc/no-such-run/hpm-check.txt",
+  )
+  let an_absent_path_refuses_by_type = match ask_under_a_path_no_row_carries {
+    CommittedReadRefused { cause: NoCommittedRowAtPath { artifact_path: missing } } =>
+      (missing as String) == "artifacts/bmc/no-such-run/hpm-check.txt"
+    _ => false
+  }
+  // 4. THE LEDGER CANNOT CLAIM A READING THE READ DID NOT ESTABLISH. Exactly one committed reading
+  // carries this build's identity, its digest is the single-home digest DERIVED from the committed bytes,
+  // and that digest is the file's own observed sha256 -- the pin that binds literal, ledger row, and
+  // artifact on disk together (review 86103 finding 2: the same path/hex lived at three sites; now the
+  // witness is the only place a hex is written, and it is a CROSS-CHECK, not a home).
+  let ledger_rows_under_the_build = match mtcollins1_current_build_identity {
+    Absent => false
+    Present { value: consumed } => match count(filter(mtcollins1_megarac_operation_evidence().readings, r =>
+      bmc_firmware_release_identity_eq(a: r.identity.firmware, b: consumed.firmware))) {
+      1 => true
+      _ => false
+    }
+  }
+  let digest_is_the_files_own_sha256 = content_hash_eq_cryptographic(
+    left: mtcollins1_boot_run_40082618814_hpm_check_digest,
+    right: Sha256Digest { hex: "31d953d5e2ffc0ee084d7c7087d40be88a29ddf94cdc0b30d2b368610fca273d" },
+  )
   // AND THE FRU SIDE OF THE IDENTITY IS READ, NOT COPIED: the board and chassis of the current-build
   // identity are mtcollins1_identity's own fields (review 38602 finding 2) -- a build change moves the
   // firmware and nothing else, and there is no second spelling to drift.
   // Field-by-field, never == on whole structures: optional_equality_answers_by_representation
   // (gunbc.recurring_failure_mode) records == answering false on optionals that mean the same thing.
-  let fru_side_is_shared = board_fru_fields_eq(a: mtcollins1_current_build_identity.board, b: mtcollins1_identity.board)
-    && both_or_neither(a: mtcollins1_current_build_identity.chassis_part_number, b: mtcollins1_identity.chassis_part_number)
-  consumed_is_derived && asks_answer_the_sentinel && fru_side_is_shared
+  let fru_side_is_shared = match mtcollins1_current_build_identity {
+    Absent => false
+    Present { value: consumed } =>
+      board_fru_fields_eq(a: consumed.board, b: mtcollins1_identity.board)
+      && both_or_neither(a: consumed.chassis_part_number, b: mtcollins1_identity.chassis_part_number)
+  }
+  consumed_is_derived && an_absent_path_refuses_by_type && ledger_rows_under_the_build
+    && digest_is_the_files_own_sha256 && fru_side_is_shared
 }
 
 // Both boards READ, to the same fields (review 38602 finding 2: the current-build identity's board is
@@ -485,16 +549,23 @@ fn both_or_neither(a: NonEmptyStr?, b: NonEmptyStr?) -> Bool {
 // pass) turns the refusal into a walk-through and this witness goes red; so does a catalogue that started
 // treating the machine-read identity as the page label (the §4d confusion, from the other side).
 test fn the_status_19_census_row_refuses_at_the_machine_read_identity_as_an_unread_release() -> Bool {
-  refused_unread(
-    s: step_on(
-      configurations: rows1(a: row(name: census_left as String, status: "19")),
-      firmware: mtcollins1_current_build_firmware,
-      stems: both_stems,
-    ),
-    name: census_left as String,
-    want: RedirectionUnreadFirmware { firmware: mtcollins1_current_build_firmware, wire: 19 },
-    why: UnreadStopReleaseNotEvidenced {
-      unread: RedirectionUnreadFirmware { firmware: mtcollins1_current_build_firmware, wire: 19 },
-    },
-  )
+  // THE IDENTITY HERE IS THE MACHINE READ'S -- and it is Optional (reviews 86103/86139), so the claim
+  // demands the read ESTABLISHED it before asking what the redirection catalogue makes of it: with the
+  // committed read refused, there is no machine-read identity to be uncatalogued, and this claim is red
+  // beside every other claim that leans on the reading.
+  match mtcollins1_current_build_firmware {
+    Absent => false
+    Present { value: machine_read } => refused_unread(
+      s: step_on(
+        configurations: rows1(a: row(name: census_left as String, status: "19")),
+        firmware: machine_read,
+        stems: both_stems,
+      ),
+      name: census_left as String,
+      want: RedirectionUnreadFirmware { firmware: machine_read, wire: 19 },
+      why: UnreadStopReleaseNotEvidenced {
+        unread: RedirectionUnreadFirmware { firmware: machine_read, wire: 19 },
+      },
+    )
+  }
 }

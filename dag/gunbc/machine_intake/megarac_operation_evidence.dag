@@ -3,8 +3,9 @@ module gunbc.machine_intake.megarac_operation_evidence
 import std.types { EpochMs, List }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
-import extdeps.bmc.endpoint { AmiMegaRac }
-import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.ipmitool_observed_output {
+  mtcollins1_boot_run_40082618814_hpm_check_artifact_path, mtcollins1_boot_run_40082618814_hpm_check_digest,
+}
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.host.megarac_operation_standing {
   MegaRacOperationEvidence, megarac_operation_evidence_of, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
@@ -151,14 +152,16 @@ data mtcollins1_reflash_not_before: EpochMs = 1790899200000
 data mtcollins1_reflash_not_after: EpochMs = 1790985600000
 
 // THE MACHINE READING OF THE CURRENT BUILD, and the EPOCH IT WAS READ. Boot run 40082618814's
-// pre-power read-only phase ran `ipmitool hpm check` against this controller; its raw stdout is
-// committed beside that run, digested here, and the 0.45.x catalogue standing derives from those
-// bytes themselves (gunbc.host.bmc_release_capability_catalog
-// megarac_firmware_0_45_3_operator_attestation_instant). This row is what makes those run receipts
-// join a build: before it landed they joined nothing, because the ledger held no reading of 0.45.
+// pre-power read-only phase ran `ipmitool hpm check` against this controller; its raw stdout, its
+// retention path, and its digest have ONE home each, in extdeps.bmc.ipmitool_observed_output, and this
+// row names THAT data -- retyping the path or the hex here would be a second copy of one fact (review
+// 86103 finding 2; DESIGN.md §3). The digest this row vouches for is derived from the very literal the
+// catalogue row's standing holds, so the bytes the ledger grounds and the bytes the identity derives from
+// are one fact told once. This row is what makes those run receipts join a build: before it landed they
+// joined nothing, because the ledger held no reading of 0.45.
 data mtcollins1_current_build_hpm_check_evidence: EvidenceRef = EvidenceRef {
-  label: "artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt",
-  digest: Sha256Hash(Sha256Digest { hex: "31d953d5e2ffc0ee084d7c7087d40be88a29ddf94cdc0b30d2b368610fca273d" }),
+  label: mtcollins1_boot_run_40082618814_hpm_check_artifact_path,
+  digest: Sha256Hash(mtcollins1_boot_run_40082618814_hpm_check_digest),
 }
 
 // 2026-10-24T18:00:43Z: the instant the boot's read-only pre-power phase ran `hpm check` on this unit.
@@ -166,10 +169,21 @@ data mtcollins1_current_build_read_at: EpochMs = 1792864843000
 
 fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
   megarac_operation_evidence_of(
-    readings: [
-      megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_identity, evidence: mtcollins1_intake_reading_evidence, observed_at: mtcollins1_observed_at),
-      megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_current_build_identity, evidence: mtcollins1_current_build_hpm_check_evidence, observed_at: mtcollins1_current_build_read_at),
-    ],
+    // THE CURRENT-BUILD ROW EXISTS ONLY IF THE MACHINE READ ESTABLISHED IT (reviews 86103/86139;
+    // DESIGN.md §5). The intake row is a committed reading and stands unconditionally. The current-build
+    // row is written ONLY on the Present arm of the derived identity: when the committed hpm check
+    // refuses -- the row missing, duplicated, or unreadable -- there is NO reading to record, so recording
+    // one is not an option. The ledger cannot hold "a reading of a build called no-version-stored",
+    // because no such value can reach this list at all.
+    readings: match mtcollins1_current_build_identity {
+      Present { value: current_build_identity } => [
+        megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_identity, evidence: mtcollins1_intake_reading_evidence, observed_at: mtcollins1_observed_at),
+        megarac_build_reading(endpoint: mtcollins1_endpoint, identity: current_build_identity, evidence: mtcollins1_current_build_hpm_check_evidence, observed_at: mtcollins1_current_build_read_at),
+      ]
+      Absent => [
+        megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_identity, evidence: mtcollins1_intake_reading_evidence, observed_at: mtcollins1_observed_at),
+      ]
+    },
     receipts: [
       megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: mtcollins1_endpoint, receipt: mtcollins1_diskless_boot_evidence, executed_at: mtcollins1_diskless_boot_observed_at),
       megarac_operation_receipt(operation: MegaRacSdrSocketNaming, endpoint: mtcollins1_endpoint, receipt: mtcollins1_sdr_32dimm_evidence, executed_at: mtcollins1_sdr_32dimm_read_on),
@@ -177,15 +191,24 @@ fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
       megarac_operation_receipt(operation: MegaRacKvmCanvasStill, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_kvm_journal, executed_at: mtcollins1_run_37102391062_kvm_at),
       megarac_operation_receipt(operation: MegaRacSdrSocketNaming, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_diagnostics, executed_at: mtcollins1_run_37102391062_sensors_by),
     ],
-    transitions: [
-      megarac_firmware_transition(
-        endpoint: mtcollins1_endpoint,
-        from: mtcollins1_firmware,
-        to: mtcollins1_current_build_firmware,
-        not_before: mtcollins1_reflash_not_before,
-        not_after: mtcollins1_reflash_not_after,
-        record: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "credential_effect_of"),
-      ),
-    ],
+    // THE REFLASH DESTINATION IS THE MACHINE-READ BUILD, AND ONLY IF THERE IS ONE. The 2026-10-02
+    // reflash happened whatever the catalogue says -- but the LEDGER ROW says which build it moved TO, and
+    // that fact comes from the committed reading (the section comment above). With no machine-read build
+    // there is no destination to name, so the window carries no transition rather than a guessed one:
+    // the Oct-3 receipts then join no build -- the honest state of the ledger when the reading it needed
+    // is missing, which is exactly the state this PR's witnesses keep the ledger out of.
+    transitions: match mtcollins1_current_build_firmware {
+      Present { value: current_build_firmware } => [
+        megarac_firmware_transition(
+          endpoint: mtcollins1_endpoint,
+          from: mtcollins1_firmware,
+          to: current_build_firmware,
+          not_before: mtcollins1_reflash_not_before,
+          not_after: mtcollins1_reflash_not_after,
+          record: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "credential_effect_of"),
+        ),
+      ]
+      Absent => []
+    },
   )
 }
