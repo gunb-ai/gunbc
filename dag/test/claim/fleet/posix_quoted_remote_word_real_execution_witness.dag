@@ -1,10 +1,10 @@
 module test.claim.fleet.posix_quoted_remote_word_real_execution_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
-import gunbc.output_policy { OutcomeIsData }
-import gunbc.retained_shell_script { retained_runtime }
+import std.types { FilePath }
 import gunbc.fleet.fleet_known_hosts_anchor {
   PosixLoginShellProof,
   LoginShellPosix,
@@ -17,8 +17,9 @@ import gunbc.fleet.fleet_known_hosts_anchor {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE INJECTION BOUNDARY BY REAL EXECUTION (merry-fox-82 condition 3): the rendered words are handed to an actual
-// `sh -c` -- the same re-parse the remote login shell performs on the transported command -- prefixed by
+// THE INJECTION BOUNDARY BY REAL EXECUTION (merry-fox-82 condition 3): the rendered words, joined into the one command
+// string the transport sends, are handed as ONE argv word to an actual `sh -c` (extdeps.shell shell.Sh Reparse; no
+// wrapping quotes, so no second copy of the quoting under test, review 85958) -- the same re-parse the remote login shell performs on the transported command -- prefixed by
 // `printf '%s\n'`, so each word the shell sees becomes one output line. The words pass when the lines equal the raw
 // words exactly (no hostile word is empty, so the non-empty lines are compared: a runner that trims the final
 // newline changes nothing, and a word split in two still reds), and no expansion ran: the canary path named inside a $( ) word and a backtick word is never created.
@@ -68,15 +69,37 @@ test fn hostile_words_reach_sh_as_one_literal_word_each() -> Bool {
           Absent => false
           Present { value: rendered } => {
             let command = join(portable_remote_words_strings(words: rendered), " ")
-            let ran = shell.Exec.Run(script: retained_runtime(body: concat("sh -c ", concat(concat("'", join(split(s: command, delimiter: "'"), "'\\''")), "'")), reason: "posix quoted word real-execution witness: one sh -c re-parse" as NonEmptyStr), expect: OutcomeIsData)
-            let canary_absent = shell.Exec.Run(script: retained_runtime(body: concat("test ! -e ", canary), reason: "posix quoted word real-execution witness: canary absent" as NonEmptyStr), expect: OutcomeIsData)
+            let ran = shell.Sh.Reparse(command: command as NonEmptyStr)
+            let canary_present = shell.Test.IsFile(path: canary as FilePath)
             let cleaned = shell.Remove.RecursiveForce(path: dir.path)
             ran.success
               && filter(split(s: ran.stdout, delimiter: "\n"), l => l != "") == words
-              && canary_absent.success
+              && canary_present.is_file == false
               && cleaned.success
           }
         }
     }
+  }
+}
+
+// INHABITANCE OF THE PRODUCER (review 85942): the real `getent passwd <user>` this runner answers, for the user the
+// witness runs as, read through the production parser, against an independent oracle -- the seventh field of the
+// passwd FILE read by awk (a second producer, argv only; review 85958). The route is the producer's actual output -- its trailing
+// newline and NSS formatting included -- not a typed-in line; the fleet leg itself (read_fleet_login_shell over the
+// SSH edge) is a frontier row whose consumer is the srv4 placement step.
+test fn the_real_getent_output_mints_the_proof_for_its_own_principal() -> Bool {
+  let who = shell.Id.UserName()
+  let name = trim(s: who.stdout)
+  if who.success == false || name == "" {
+    false
+  } else {
+    let entry = shell.Passwd.Entry(name: name as NonEmptyStr)
+    let oracle = trim(s: shell.Passwd.FileShellField(name: name as NonEmptyStr).stdout)
+    entry.success
+      && (match login_shell_standing(principal: name as NonEmptyStr, success: entry.success, output: entry.stdout) {
+        LoginShellPosix { proof: p } => (p.principal as String) == name && (p.shell as String) == oracle
+        LoginShellNotPosix { principal: pr, shell: sh } => (pr as String) == name && sh == oracle
+        LoginShellUnreadable { principal: _, reason: _ } => false
+      })
   }
 }

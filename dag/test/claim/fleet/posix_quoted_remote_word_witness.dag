@@ -82,7 +82,7 @@ test fn nul_newline_and_carriage_return_refuse() -> Bool {
 }
 
 // THE PROOF IS READ, NOT ASSUMED: a POSIX shell mints it; a non-POSIX shell, another principal's entry, a truncated
-// entry and a failed read do not.
+// entry, two entries (an NSS answer with more than one line) and a failed read do not.
 test fn only_the_principals_own_posix_passwd_entry_mints_the_proof() -> Bool {
   bash_proof(claim: p => (p.shell as String) == "/bin/bash" && (p.principal as String) == "ubuntu")
     && proof_or_fail(standing: login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/bin/sh"), claim: p => (p.shell as String) == "/bin/sh")
@@ -97,6 +97,11 @@ test fn only_the_principals_own_posix_passwd_entry_mints_the_proof() -> Bool {
       LoginShellNotPosix { principal: _, shell: _ } => false
     })
     && (match login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000:/bin/bash\n") {
+      LoginShellUnreadable { principal: _, reason: _ } => true
+      LoginShellPosix { proof: _ } => false
+      LoginShellNotPosix { principal: _, shell: _ } => false
+    })
+    && (match login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/bin/bash\nubuntu:x:1001:1001::/home/u2:/bin/bash\n") {
       LoginShellUnreadable { principal: _, reason: _ } => true
       LoginShellPosix { proof: _ } => false
       LoginShellNotPosix { principal: _, shell: _ } => false
