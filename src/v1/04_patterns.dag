@@ -162,6 +162,43 @@ fn expand_settled_scrut_type(scrut_node: Node, env: TypeEnv) -> Node {
   }
 }
 
+// A PARAMETERIZED DECLARATION EXPANDS THROUGH ITS OWN `inferred` LINK, because the alias authority
+// expand_settled_scrut_type reads does not cover it: resolve retains TypeBinding.alias_rhs only for a
+// non-parameterized alias (v1.compiler.infer_env settled_type), and it is the parameterized alias
+// (`type List<element> = FreeMonoid<element>`) that carries the link. The two routes partition aliases
+// by a declared fact, the parameter count, so no alias is read by both. DIVERGENCE, STATED: this is a
+// second carrier of the alias relation; it dissolves when alias_rhs is retained for parameterized
+// aliases and settled_type binds the use-site arguments, at which point this function is deleted.
+fn expand_parameterized_alias_scrut(decl: Node, scrut_node: Node, name: String, env: TypeEnv) -> Node {
+  let def_is_disj = decl.connective == Disj
+  let has_inferred_body = decl.inferred != none && decl.connective == NoConnective
+  if def_is_disj {
+    decl
+  } else if has_inferred_body {
+    match decl.inferred {
+      Present { value: Resolved { node: target } } =>
+        let target_is_disj = target.connective == Disj
+        let target_is_generic_use = target.connective == NoConnective && target.children |> count > 0
+        if target_is_disj {
+          target
+        } else if target_is_generic_use {
+          let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+          let substituted = substitute_type_slots_scoped(
+            n: target,
+            slot_bindings: subst,
+            decl_name: name,
+            source_indices: env.source_indices,
+  bind_type_variables: true
+          )
+          expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
+        } else { scrut_node }
+      _ => scrut_node
+    }
+  } else {
+    scrut_node
+  }
+}
+
 fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
   let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
   let is_generic_use = scrut_node.connective == NoConnective && scrut_node.children |> count > 0
@@ -170,6 +207,8 @@ fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
     Present { value: decl } =>
       if is_generic_use {
         expand_scrut_from_decl(decl: decl, scrut_node: scrut_node, name: name, env: env)
+      } else if (decl.params |> count) > 0 {
+        expand_parameterized_alias_scrut(decl: decl, scrut_node: scrut_node, name: name, env: env)
       } else {
         expand_settled_scrut_type(scrut_node: scrut_node, env: env)
       }
