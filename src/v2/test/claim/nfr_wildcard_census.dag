@@ -1,6 +1,6 @@
 module v2.test.claim.nfr_wildcard_census
 
-import std.algebra { fold_list, list_at_optional }
+import std.algebra { fold_list, list_at_optional, string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
 import std.types { List }
@@ -12,7 +12,12 @@ import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { symbol_intern_lexeme }
+import v2.std.compilers.lexing {
+  Token,
+  TokenStream,
+  token_stream_new,
+}
+import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -143,4 +148,56 @@ data nfr_zero_arity_src: String = "module m.z\n\ntype C = A | B\n\nfn pick() -> 
 // (8 production fns at the first exact-head run); the RED is that Unread count being 1.
 test fn nfr_zero_arity_fn_is_classified_not_unread() -> Bool {
   nfr_count_unread(reads: nfr_reads_of(text: nfr_zero_arity_src)) == 0 && nfr_count_classified(reads: nfr_reads_of(text: nfr_zero_arity_src), want: "scrutinee-is-an-expression") == 1
+}
+
+// --- REVIEW 86129: THE CANDIDATE SELECTION IS ON THE LEXED TOKEN STREAM, NOT THE TEXT SPELLING ---
+
+// THE DETECTOR, tested directly. The token shapes are spelled exactly as the lexer emits them
+// (compare v2.test.claim.parse.variant_field_lowering): a pattern underscore is an IDENT token whose
+// lexeme is exactly "_"; the arrow is its own fat-arrow token.
+
+data nfr_tok_arrow: Token = Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^nfr_probe, start: 0, end: 2 }
+
+fn nfr_tok_ident(lexeme: String, start: Int) -> Token {
+  Token { class: ^dag_token_ident, lexeme: lexeme, file: ^nfr_probe, start: start, end: start + 1 }
+}
+
+data nfr_probe: Symbol = ^nfr_wildcard_arm_probe
+
+test fn nfr_wildcard_arm_detector_accepts_the_adjacent_pair() -> Bool {
+  nfr_wildcard_arm_in_tokens(stream: token_stream_new(all: [nfr_tok_ident(lexeme: "c", start: 0), nfr_tok_ident(lexeme: "_", start: 1), nfr_tok_arrow, nfr_tok_ident(lexeme: "none", start: 2)]))
+}
+
+// The text-spelling bug, as a token-level RED: the arm `_=>` produces the SAME token pair (trivia is
+// dropped by the lexer), so a spelling-based prefilter and a token-based one must agree here -- and only
+// the token one can, because the odd spellings below hold no "_" " " "=>" text run at all.
+test fn nfr_wildcard_arm_detector_negatives() -> Bool {
+  (nfr_wildcard_arm_in_tokens(stream: token_stream_new(all: [nfr_tok_ident(lexeme: "_b", start: 0), nfr_tok_arrow])) == false)
+    && (nfr_wildcard_arm_in_tokens(stream: token_stream_new(all: [nfr_tok_ident(lexeme: "_", start: 0), nfr_tok_ident(lexeme: "=>x", start: 1)])) == false)
+    && (nfr_wildcard_arm_in_tokens(stream: token_stream_new(all: [nfr_tok_ident(lexeme: "_", start: 0), nfr_tok_ident(lexeme: "then", start: 1), nfr_tok_arrow])) == false)
+    && (nfr_wildcard_arm_in_tokens(stream: token_stream_new(all: [])) == false)
+}
+
+// THE RED (fixture): a PRODUCTION-shape source whose wildcard arm is spelled with no spaces (`_=>none`)
+// and whose second arm breaks the line before the arrow. The old candidate prefilter asked the text for
+// "_ =>"; neither spelling contains it, so the file was never a candidate, the sites were never counted,
+// and the census still printed unrostered=0. Both fns take a CLOSED COPRODUCT (`c: C`), so each is a
+// SITE -- exactly what the census must count. The RED is either count reading 0.
+data nfr_odd_spelling_src: String = "module m.odd\n\ntype C = A | B\n\nfn squeeze(c: C) -> Int {\n  match c {\n    A => 1\n    _=>0\n  }\n}\n\nfn wrapped(c: C) -> Int {\n  match c {\n    A => 1\n    _\n      => 0\n  }\n}\n"
+
+test fn nfr_odd_spelling_wildcard_arms_are_sites_not_silent_drops() -> Bool {
+  (nfr_count_sites(reads: nfr_reads_of(text: nfr_odd_spelling_src)) == 2) && (nfr_count_unread(reads: nfr_reads_of(text: nfr_odd_spelling_src)) == 0)
+}
+
+// THE POSITIVE CONTROL: the canonically spelled twin of the fixture above counts the SAME two sites, so
+// the odd-spelling claim above measures the SPELLING, not a different program. This is also the guard on
+// the fixture: if someone reformats the fixture to the canonical spelling, this claim still passes while
+// the RED above stops distinguishing anything -- so the fixture's odd spellings are pinned textually:
+// the odd source must not contain the canonical "_ =>" run anywhere.
+data nfr_canonical_twin_src: String = "module m.odd\n\ntype C = A | B\n\nfn squeeze(c: C) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n\nfn wrapped(c: C) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n"
+
+test fn nfr_odd_spelling_fixture_is_the_same_program_as_the_canonical_twin() -> Bool {
+  (nfr_count_sites(reads: nfr_reads_of(text: nfr_canonical_twin_src)) == 2)
+    && (nfr_count_sites(reads: nfr_reads_of(text: nfr_odd_spelling_src)) == nfr_count_sites(reads: nfr_reads_of(text: nfr_canonical_twin_src)))
+    && (string_contains(s: nfr_odd_spelling_src, pattern: "_ =>") == false)
 }

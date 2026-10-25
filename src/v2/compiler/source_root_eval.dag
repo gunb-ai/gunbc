@@ -326,6 +326,9 @@ import v2.compiler.tokenize {
   prepare_lex_rules,
   tokenize,
 }
+import v2.std.compilers.lexing {
+  TokenStream,
+}
 import v2.std.language_model {
   LanguageModel,
 }
@@ -3686,6 +3689,32 @@ type NativeNfrOutput {
   exit: Int
 }
 
+// The candidate question, answered on TOKENS: does this stream contain the wildcard arm shape -- an
+// underscore token (an identifier token whose lexeme is exactly "_", which is how the DAG lexer spells
+// a pattern underscore) immediately followed by a fat-arrow token? The scan carries the previous token's
+// verdict, so a stream like [_ , "(", "_", "=>", ...] is read pairwise in one pass. Near-misses stay
+// false: a string literal token carries its quotes in the lexeme ("_\""), an identifier like "_b" is a
+// different lexeme, and comments/whitespace never appear in the stream.
+type NfrWildcardArmScan {
+  pending_underscore: Bool
+  found_arm: Bool
+}
+
+fn nfr_wildcard_arm_in_tokens(stream: TokenStream) -> Bool {
+  fold_list(
+    xs: stream.all,
+    empty: NfrWildcardArmScan { pending_underscore: false, found_arm: false },
+    cons: fn(acc, t) {
+      if acc.found_arm { acc }
+      else if acc.pending_underscore {
+        NfrWildcardArmScan { pending_underscore: false, found_arm: (t.class == ^dag_token_fat_arrow) }
+      } else {
+        NfrWildcardArmScan { pending_underscore: (t.class == ^dag_token_ident) && (t.lexeme == "_"), found_arm: false }
+      }
+    }
+  ).found_arm
+}
+
 fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutput {
   match native_test_front_end_prepare() {
     Rejected { diagnostics: d } =>
@@ -3696,7 +3725,25 @@ fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutpu
           NativeNfrOutput { lines: [concat("[nfr-wildcard-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
         Accepted { value: ingest_scope, diagnostics: _ } =>
           let plan = native_decl_ref_census_plan(ingest: ingest)
-          let wild = fold_list(xs: ingest, empty: [], cons: fn(acc, r) { if string_contains(s: r.source.carried, pattern: "_ =>") { list_snoc_item(xs: acc, item: r) } else { acc } })
+          // CANDIDATE SELECTION READS THE LEXED TOKEN STREAM, NOT THE TEXT SPELLING (review 86129).
+          // The prefilter here used to be string_contains(r.source.carried, "_ =>"), and the census then
+          // reported itself complete (unrostered=0, exit 0) even when an arm was written `_=>`, `_  =>`,
+          // or with a line break before the arrow: such a file never became a candidate, its sites were
+          // never counted, and the omission was invisible. That is an uncounted degradation (DESIGN.md §5),
+          // and this instrument feeds the population of gunbc.rung_drop.native_wildcard_census_unenforced.
+          // Now every ingested file is tokenized with the prepared DAG lexer and becomes a candidate when
+          // its token stream holds an underscore token immediately followed by a fat-arrow token -- any
+          // spacing, any line break (trivia is dropped by the lexer, so adjacency here is token adjacency).
+          // A file whose LEXING FAILS is also taken as a candidate: it then reaches the scan and lands in
+          // `refused`, which is a counted observation, while a silent drop would be an uncounted one.
+          // The holders prefilter below stays text-based: it keys on a declaration NAME, not a formatting
+          // spelling, so it cannot miss a site through whitespace.
+          let wild = fold_list(xs: ingest, empty: [], cons: fn(acc, r) {
+            match program_assembly_phase_tokenize(read: r, lex: front.lex) {
+              Rejected { diagnostics: _ } => list_snoc_item(xs: acc, item: r)
+              Accepted { value: stream, diagnostics: _ } => if nfr_wildcard_arm_in_tokens(stream: stream) { list_snoc_item(xs: acc, item: r) } else { acc }
+            }
+          })
           let candidates = fold_list(xs: wild, empty: [], cons: fn(acc, r) { match nfr_file_scope(path: symbol_lexeme(sym: r.compilation_unit)) { NfrProductionScope => list_snoc_item(xs: acc, item: r)  NfrTestLayerExcluded => acc } })
           let holders = fold_list(xs: ingest, empty: [], cons: fn(acc, r) { if string_contains(s: r.source.carried, pattern: "non_fold_residue_frontier") { match nfr_file_scope(path: symbol_lexeme(sym: r.compilation_unit)) { NfrProductionScope => list_snoc_item(xs: acc, item: r)  NfrTestLayerExcluded => acc } } else { acc } })
           let excluded = length(xs: wild) - length(xs: candidates)
