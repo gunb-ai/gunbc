@@ -103,6 +103,7 @@ test fn the_cached_token_record_round_trips_and_refuses_a_foreign_record() -> Bo
     Absent => false
   }
     && match parse_cached_provider_token(text: "gunbc.other.v1\n1\nk\ni\nj") { Absent => true  Present { value: _ } => false }
+    && match parse_cached_provider_token(text: "gunbc.apns-provider-token.v1\n-5\nk\ni\nj") { Absent => true  Present { value: _ } => false }
 }
 
 // ── The request ──────────────────────────────────────────────────────────────────────────────
@@ -152,7 +153,7 @@ test fn curls_answer_folds_to_apples_outcomes() -> Bool {
   let gone = apns_send_outcome_of(rest: apns_rest_result_of(exit_code: 0, stdout: "HTTP/2 410\napns-id: x\n\n\{\"reason\":\"Unregistered\",\"timestamp\":1761379200000}\n410", stderr: ""))
   let unreached = apns_send_outcome_of(rest: apns_rest_result_of(exit_code: 6, stdout: "", stderr: "curl: (6) Could not resolve host"))
   match accepted { ApnsAccepted { apns_id: i } => (i as String) == "7d2b0c1e-0000-4000-8000-000000000001"  _ => false }
-    && match no_id { ApnsUndecodable { status: s, cause: _ } => s == 200  _ => false }
+    && match no_id { ApnsUndecodable { status: s, cause: c } => s == 200 && contains(c, "no apns-id header")  _ => false }
     && match gone { ApnsRefused { status: s, class: ApnsTokenUnregistered, reason: r } => s == 410 && r == "Unregistered"  _ => false }
     && match push_outcome_of_apns(o: gone) { PushRegistrationInvalid { provider: ProviderApns, detail: d } => d == "Unregistered"  _ => false }
     && match unreached { ApnsUnreached { cause: c } => contains(c, "curl exit 6")  _ => false }
