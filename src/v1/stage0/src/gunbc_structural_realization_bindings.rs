@@ -32,11 +32,11 @@ pub fn peano_literal_homomorphism(
 ) -> Rc<LiteralHomomorphism> {
     Rc::new(LiteralHomomorphism {
         source_kind: LiteralSourceKind::KernelIntLiteral,
-        destination: crate::std_decl_ref::decl_ref(module_path.clone(), nat),
+        destination: crate::std_decl_ref::decl_ref(module_path.clone(), nat.clone()),
         element: std::option::Option::None,
         producer: Rc::new(LiteralUnfolding::PeanoUnfold {
-            zero: crate::std_decl_ref::decl_ref(module_path.clone(), zero),
-            succ: crate::std_decl_ref::decl_ref(module_path.clone(), succ),
+            zero: crate::std_decl_ref::decl_ref(module_path.clone(), zero.clone()),
+            succ: crate::std_decl_ref::decl_ref(module_path.clone(), succ.clone()),
             prev_field: prev_field.clone(),
         }),
     })
@@ -93,9 +93,9 @@ pub fn structural_ordering_binding(
     ordering: String,
 ) -> Rc<StructuralOrderingBinding> {
     Rc::new(StructuralOrderingBinding {
-        carrier: crate::std_decl_ref::decl_ref(carrier_module, carrier),
-        compare: crate::std_decl_ref::decl_ref(compare_module, compare),
-        ordering: crate::std_decl_ref::decl_ref(ordering_module, ordering),
+        carrier: crate::std_decl_ref::decl_ref(carrier_module.clone(), carrier.clone()),
+        compare: crate::std_decl_ref::decl_ref(compare_module.clone(), compare.clone()),
+        ordering: crate::std_decl_ref::decl_ref(ordering_module.clone(), ordering.clone()),
     })
 }
 

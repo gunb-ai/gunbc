@@ -83,7 +83,7 @@ pub fn json_quote(s: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
             "\"".to_string(),
-            crate::v1_compiler_emit_core_support::escape_json_string(s),
+            crate::v1_compiler_emit_core_support::escape_json_string(s.clone()),
         ),
         "\"".to_string(),
     )
@@ -259,7 +259,7 @@ pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> Strin
                 }
                 __result
             });
-            v1_rt::hash_combine(base, dag_node_seq_hash(field_hashes))
+            v1_rt::hash_combine(base.clone(), dag_node_seq_hash(field_hashes.clone()))
         }
         Some(MatchPattern::Wildcard) => v1_rt::atom_identity_hash("Wildcard".to_string()),
     }
@@ -283,18 +283,21 @@ pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
         });
         let with_children = v1_rt::hash_combine(
             dag_node_surface_leaf_mix(node.clone()),
-            child_subtree_hash(node.connective.clone(), child_hashes),
+            child_subtree_hash(node.connective.clone(), child_hashes.clone()),
         );
-        let with_params = v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes));
+        let with_params = v1_rt::hash_combine(
+            with_children.clone(),
+            dag_node_seq_hash(param_hashes.clone()),
+        );
         v1_rt::hash_combine(
-            with_params,
+            with_params.clone(),
             match_pattern_fingerprint_rec(node.match_pattern.clone()),
         )
     })
 }
 
 pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint_rec(node)
+    dag_node_surface_fingerprint_rec(node.clone())
 }
 
 pub fn dag_collect_fp_memo_reset() -> bool {
@@ -302,5 +305,5 @@ pub fn dag_collect_fp_memo_reset() -> bool {
 }
 
 pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint(node)
+    dag_node_surface_fingerprint(node.clone())
 }

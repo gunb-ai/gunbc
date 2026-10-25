@@ -112,9 +112,9 @@ pub fn kahn_remove_loop(
             __result
         });
         let final_state = kahn_cycle_drain(
-            initial_queue,
+            initial_queue.clone(),
             in_degree.clone(),
-            reverse_adj,
+            reverse_adj.clone(),
             0,
             (remaining.clone().len() as i64),
         );
@@ -225,7 +225,7 @@ pub fn kahn_cycle_drain(
                     )
                 });
         {
-            let __tco_0 = next_queue;
+            let __tco_0 = next_queue.clone();
             let __tco_1 = result.in_degree.clone();
             let __tco_2 = reverse_adj;
             let __tco_3 = result.removed_count.clone();
@@ -258,7 +258,8 @@ pub fn detect_type_cycles_kahn(
             .fold(v1_rt::rc_empty_set::<_>(), |acc: _, n: String| {
                 v1_rt::rc_set_insert(acc, n.clone())
             });
-        let local_deps = compute_in_graph_deps(all_names.clone(), deps_map.clone(), name_set);
+        let local_deps =
+            compute_in_graph_deps(all_names.clone(), deps_map.clone(), name_set.clone());
         let self_refs = Rc::new({
             let mut __result = Vec::new();
             for name in all_names.iter().cloned() {
@@ -280,7 +281,7 @@ pub fn detect_type_cycles_kahn(
             }
             __result
         });
-        let cycle_members = kahn_remove_loop(all_names.clone(), local_deps);
+        let cycle_members = kahn_remove_loop(all_names.clone(), local_deps.clone());
         let sr_set = self_refs
             .iter()
             .cloned()

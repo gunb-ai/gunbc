@@ -153,7 +153,7 @@ pub fn every_comment_lands_in_a_gap_holds() -> bool {
 pub fn a_body_comment_never_attaches_to_the_next_declaration_holds() -> bool {
     {
         let p = gap_parse(gap_fixture_source());
-        match key_of(p, "between the statements".to_string()) {
+        match key_of(p.clone(), "between the statements".to_string()) {
             std::option::Option::None => false,
             Some(k) => {
                 (((v1_rt::string_contains(&k.scope_key.clone(), ":zqx_f".to_string())
@@ -191,7 +191,7 @@ pub fn one_step_below(scope: String, key: Option<String>) -> bool {
 pub fn an_argument_comment_lands_between_the_arguments_holds() -> bool {
     {
         let p = gap_parse(gap_fixture_source());
-        match key_of(p, "between the arguments".to_string()) {
+        match key_of(p.clone(), "between the arguments".to_string()) {
             std::option::Option::None => false,
             Some(k) => {
                 (((v1_rt::string_contains(&k.scope_key.clone(), "zqx_g".to_string())
@@ -329,8 +329,8 @@ pub fn line_end(mut __tco_loop_source: String, mut __tco_loop_offset: i64) -> i6
 
 pub fn indent_at(source: String, offset: i64) -> String {
     {
-        let start = line_start(source.clone(), offset);
-        indent_from(source.clone(), start, "".to_string())
+        let start = line_start(source.clone(), offset.clone());
+        indent_from(source.clone(), start.clone(), "".to_string())
     }
 }
 
@@ -785,7 +785,7 @@ pub fn text_of_key(p: Rc<GapParse>, key: Option<String>) -> String {
 }
 
 pub fn gap_texts(p: Rc<GapParse>, text: String) -> Rc<Vec<String>> {
-    match key_of(p.clone(), text) {
+    match key_of(p.clone(), text.clone()) {
         std::option::Option::None => Rc::new(vec!["<no row>".to_string()]),
         Some(k) => Rc::new(vec![
             text_of_key(p.clone(), Some(k.scope_key.clone())),

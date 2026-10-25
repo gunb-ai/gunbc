@@ -316,7 +316,7 @@ pub fn stage0_lookup_module_owner_package_name(
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Stage0ModuleOwnerLookup> {
     {
-        let package_name = crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over(module_basename.clone(), rows).iter().cloned().fold("".to_string(), |acc: String, pkg: String| if (acc.clone() == "".to_string()) {
+        let package_name = crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over(module_basename.clone(), rows.clone()).iter().cloned().fold("".to_string(), |acc: String, pkg: String| if (acc.clone() == "".to_string()) {
             pkg.clone()
         } else {
             acc.clone()
@@ -698,7 +698,7 @@ pub fn stage0_partition_row_to_spec_outcome(
     match (*stage0_partition_row_dependencies_outcome(
         row.clone(),
         rows.clone(),
-        registry_dependencies,
+        registry_dependencies.clone(),
     ))
     .clone()
     {
@@ -1232,7 +1232,7 @@ pub fn partition_crate_plan_outcome_over(
         } => stage0_crate_plan_from_admitted_rows(
             bindings.clone(),
             rows.clone(),
-            registry_dependencies,
+            registry_dependencies.clone(),
         ),
     }
 }
@@ -1324,7 +1324,7 @@ pub fn partition_crate_boundary_emit_outcome_over(
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
     registry_dependencies: Rc<Vec<Rc<CargoDependency>>>,
 ) -> Rc<Stage0CrateBoundaryEmitOutcome> {
-    match (*partition_crate_plan_outcome_over(rows, registry_dependencies)).clone() {
+    match (*partition_crate_plan_outcome_over(rows.clone(), registry_dependencies.clone())).clone() {
     Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
     cause: stage0_map_package_dir_refusal_to_boundary(cause.clone()),
 }),

@@ -492,9 +492,13 @@ pub fn judge_conversion_plan(
                         })
                     }
                     Some(plan) => {
-                        if (conversion_endpoint_eq(conversion_plan_source(plan.clone()), source)
-                            && conversion_endpoint_eq(conversion_plan_target(plan.clone()), target))
-                        {
+                        if (conversion_endpoint_eq(
+                            conversion_plan_source(plan.clone()),
+                            source.clone(),
+                        ) && conversion_endpoint_eq(
+                            conversion_plan_target(plan.clone()),
+                            target.clone(),
+                        )) {
                             Rc::new(ConversionPlanJudgment::ConversionPlanAdmitted {
                                 plan: plan.clone(),
                             })
@@ -583,7 +587,7 @@ pub fn judge_text_conversion_plan(
                     })
                 }
                 TextPlanEndpoint::TextPlanEndpointKeyed { endpoint: te, .. } => {
-                    judge_conversion_plan(rows, route, se.clone(), te.clone())
+                    judge_conversion_plan(rows.clone(), route.clone(), se.clone(), te.clone())
                 }
             }
         }

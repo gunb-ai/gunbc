@@ -341,7 +341,7 @@ pub fn resolve_reference_occurrence_binding_validated(
                 let build = binding_candidates_from_supplied_declarations(
                     validated.clone(),
                     reference.clone(),
-                    supplied_candidates,
+                    supplied_candidates.clone(),
                 );
                 match build.refusal.clone() {
     Some(refusal) => Rc::new(OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
@@ -361,7 +361,9 @@ pub fn resolve_reference_occurrence_binding(
     occurrence: OccurrenceId,
     supplied_candidates: Rc<Vec<OccurrenceId>>,
 ) -> Rc<OccurrenceReferenceBindingOutcome> {
-    match (*crate::std_occurrence_identity::occurrence_transport_validate(transport)).clone() {
+    match (*crate::std_occurrence_identity::occurrence_transport_validate(transport.clone()))
+        .clone()
+    {
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..
         } => Rc::new(
@@ -374,8 +376,8 @@ pub fn resolve_reference_occurrence_binding(
             ..
         } => resolve_reference_occurrence_binding_validated(
             validated.clone(),
-            occurrence,
-            supplied_candidates,
+            occurrence.clone(),
+            supplied_candidates.clone(),
         ),
     }
 }

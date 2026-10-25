@@ -1224,6 +1224,202 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
     }
 }
 
+// THE DERIVED EQUALITY PLAN, EXECUTED (std.operator_realization EqualityPlan). The checker computed
+// it once, by declaration identity, where its `==` admission walks the operand's members, and
+// stamped it on the ExprBinOp; this reads it and never re-derives it, and never consults a type
+// name. A step names how one position compares: by the value's own equality, through a routed
+// function the plan names by declaration (v2.std.node node_equal_ignoring_provenance /
+// node_occurrence_eq), through another declaration's plan, by presence, or argument-wise over a
+// finite container. Seed maintenance under the v2-purpose test (gunbc.v1.v1_maintenance_standing):
+// v2's Node equality is decided by the seed's two readers until the v2 checker computes the plan.
+fn plan_equal(
+    ctx: &InterpContext,
+    plan: &crate::std_operator_realization::EqualityPlan,
+    step: &crate::std_operator_realization::EqualityStep,
+    a: &Value,
+    b: &Value,
+) -> InterpResult<bool> {
+    use crate::std_operator_realization::EqualityStep as S;
+    value_depth_guarded(|| match step {
+        S::EqualityByTarget => Ok(a == b),
+        S::EqualityRouted { function } => {
+            let qualified = format!("{}.{}", function.module_path, function.decl_name);
+            let fn_node =
+                ctx.lookup_fn(&qualified)
+                    .cloned()
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: format!(
+                    "equality plan names route '{qualified}', which is not declared in this frame"
+                ),
+                    })?;
+            let env = Env::empty();
+            match call_function(ctx, &fn_node, &[(None, a.clone()), (None, b.clone())], &env)? {
+                Value::Bool(v) => Ok(v),
+                other => Err(InterpError::TypeError {
+                    msg: format!("equality route '{qualified}' returned a non-Bool ({other:?})"),
+                }),
+            }
+        }
+        S::EqualityThroughPlan { declaration } => {
+            match plan
+                .declarations
+                .iter()
+                .find(|d| &d.declaration == declaration)
+            {
+                None => Ok(a == b),
+                Some(dp) => plan_declaration_equal(ctx, plan, dp, a, b),
+            }
+        }
+        S::EqualityPresence { inner } => match (optional_payload(a), optional_payload(b)) {
+            (None, None) => Ok(true),
+            (Some(x), Some(y)) => plan_equal(ctx, plan, inner, &x, &y),
+            _ => Ok(false),
+        },
+        S::EqualityContainer { arguments } => plan_container_equal(ctx, plan, arguments, a, b),
+    })
+}
+
+// An optional is absent as Null or the Absent variant, present as the Present variant's payload or
+// as the bare value the interpreter stores for it.
+fn optional_payload(v: &Value) -> Option<Value> {
+    match v {
+        Value::Null => None,
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => match resolve_sym(*variant_name).as_str() {
+            "Absent" if fields.is_empty() => None,
+            "Present" if fields.len() == 1 => Some(fields[0].1.clone()),
+            _ => Some(v.clone()),
+        },
+        _ => Some(v.clone()),
+    }
+}
+
+fn plan_container_equal(
+    ctx: &InterpContext,
+    plan: &crate::std_operator_realization::EqualityPlan,
+    arguments: &im::Vector<Rc<crate::std_operator_realization::EqualityStep>>,
+    a: &Value,
+    b: &Value,
+) -> InterpResult<bool> {
+    match (a, b) {
+        (Value::Map(am), Value::Map(bm)) => {
+            let value_step = match arguments.get(1) {
+                Some(s) => s,
+                None => return Ok(a == b),
+            };
+            if am.len() != bm.len() {
+                return Ok(false);
+            }
+            for (k, av) in am.iter() {
+                match bm.get(k) {
+                    None => return Ok(false),
+                    Some(bv) => {
+                        if !plan_equal(ctx, plan, value_step, av, bv)? {
+                            return Ok(false);
+                        }
+                    }
+                }
+            }
+            Ok(true)
+        }
+        (Value::Set(_), Value::Set(_)) => Ok(a == b),
+        _ => {
+            let element_step = match arguments.get(0) {
+                Some(s) => s,
+                None => return Ok(a == b),
+            };
+            let (xs, ys) = match (a, b) {
+                (Value::List(x), Value::List(y)) => (
+                    x.iter().cloned().collect::<Vec<_>>(),
+                    y.iter().cloned().collect::<Vec<_>>(),
+                ),
+                _ => match (free_monoid_to_vec(a), free_monoid_to_vec(b)) {
+                    (Some(x), Some(y)) => (x, y),
+                    _ => return Ok(a == b),
+                },
+            };
+            if xs.len() != ys.len() {
+                return Ok(false);
+            }
+            for (x, y) in xs.iter().zip(ys.iter()) {
+                if !plan_equal(ctx, plan, element_step, x, y)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+    }
+}
+
+fn plan_fields_equal(
+    ctx: &InterpContext,
+    plan: &crate::std_operator_realization::EqualityPlan,
+    arm: &crate::std_operator_realization::EqualityPlanArm,
+    af: &[(Symbol, Value)],
+    bf: &[(Symbol, Value)],
+) -> InterpResult<bool> {
+    if af.len() != bf.len() {
+        return Ok(false);
+    }
+    for (name, av) in af.iter() {
+        let bv = match bf.iter().find(|(n, _)| n == name) {
+            Some((_, v)) => v,
+            None => return Ok(false),
+        };
+        let field = resolve_sym(*name);
+        let equal = match arm.fields.iter().find(|f| f.field == field) {
+            Some(f) => plan_equal(ctx, plan, &f.step, av, bv)?,
+            None => av == bv,
+        };
+        if !equal {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn plan_declaration_equal(
+    ctx: &InterpContext,
+    plan: &crate::std_operator_realization::EqualityPlan,
+    dp: &crate::std_operator_realization::DeclarationEqualityPlan,
+    a: &Value,
+    b: &Value,
+) -> InterpResult<bool> {
+    match (a, b) {
+        (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => {
+            match dp.arms.iter().find(|arm| arm.arm.is_empty()) {
+                Some(arm) => plan_fields_equal(ctx, plan, arm, af, bf),
+                None => Ok(a == b),
+            }
+        }
+        (
+            Value::Variant {
+                variant_name: va,
+                fields: af,
+                ..
+            },
+            Value::Variant {
+                variant_name: vb,
+                fields: bf,
+                ..
+            },
+        ) => {
+            if va != vb {
+                return Ok(false);
+            }
+            let arm_name = resolve_sym(*va);
+            match dp.arms.iter().find(|arm| arm.arm == arm_name) {
+                Some(arm) => plan_fields_equal(ctx, plan, arm, af, bf),
+                None => Ok(a == b),
+            }
+        }
+        _ => Ok(a == b),
+    }
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         value_depth_guarded(|| {
@@ -8459,7 +8655,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
         // `match a { False => False  True => b }`, so the right operand is demanded only under one
         // left value, and the interpreter was the arm disagreeing with the corpus's own logic
         // authority.
-        ExprData::ExprBinOp { op, .. } => {
+        ExprData::ExprBinOp { op, equality, .. } => {
             let left = eval_expr(&binop_left(node.clone()), env, ctx)?;
             match &*crate::std_operator_realization::operand_demand(op.clone()) {
                 crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIs {
@@ -8476,7 +8672,13 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                 }
                 _ => {
                     let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
-                    eval_binop(&op, left, right, ctx)
+                    match (op, equality.as_deref()) {
+                        (BinOp::Eq | BinOp::Ne, Some(plan)) => {
+                            let equal = plan_equal(ctx, plan, &plan.root, &left, &right)?;
+                            Ok(Value::Bool(if matches!(op, BinOp::Eq) { equal } else { !equal }))
+                        }
+                        _ => eval_binop(&op, left, right, ctx),
+                    }
                 }
             }
         }

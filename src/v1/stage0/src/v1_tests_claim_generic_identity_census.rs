@@ -323,7 +323,7 @@ pub fn gi_carries_type_variable(n: Rc<Node>) -> bool {
 pub fn gi_resolved_label(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            crate::v1_compiler_infer::type_node_label(rt.clone(), si)
+            crate::v1_compiler_infer::type_node_label(rt.clone(), si.clone())
         }
         _ => "".to_string(),
     }
@@ -391,7 +391,7 @@ pub fn gi_type_rows(
                 ctx.clone(),
                 carrier.clone(),
                 path.clone(),
-                parent_label,
+                parent_label.clone(),
                 n.clone(),
             )
         } else {
@@ -899,7 +899,7 @@ pub fn gi_rows_from_sources(
     sources: Rc<Vec<Rc<SourceFile>>>,
 ) -> Option<Rc<Vec<Rc<GenericIdentityRow>>>> {
     {
-        let result = crate::v1_compiler_compile::compile_to_resolved(sources);
+        let result = crate::v1_compiler_compile::compile_to_resolved(sources.clone());
         match result.graph.clone() {
             std::option::Option::None => std::option::Option::None,
             Some(g) => Some(gi_rows_of_graph(g.clone(), result.source_indices.clone())),
@@ -979,7 +979,7 @@ pub fn gi_supplied_node_readings(
                             xs.clone(),
                             renamed_xs.clone(),
                             ints.inferred.clone(),
-                            si,
+                            si.clone(),
                         ),
                     },
                 },
@@ -1030,7 +1030,7 @@ pub fn gi_supplied_node_reading_lines(
             ),
             si.clone(),
         );
-        let copied_child_key = match gi_first_child(copied) {
+        let copied_child_key = match gi_first_child(copied.clone()) {
             Some(c) => gi_declaration_label(c.declaration.clone()),
             std::option::Option::None => "no child".to_string(),
         };
@@ -1106,7 +1106,10 @@ pub fn gi_supplied_node_reading_lines(
                     std::option::Option::None => "T unbound".to_string(),
                 },
             ),
-            gi_reading_line("unify_formal_child_mark".to_string(), renamed_child_key),
+            gi_reading_line(
+                "unify_formal_child_mark".to_string(),
+                renamed_child_key.clone(),
+            ),
             gi_reading_line(
                 "unify_binds_a_name_with_no_owner_check".to_string(),
                 match v1_rt::map_get(&bound_by_name_alone, "M".to_string()) {
@@ -1271,7 +1274,7 @@ pub fn generic_identity_census_summary_lines(
 }
 
 pub fn generic_identity_census_summary_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
-    match gi_rows_from_sources(sources) {
+    match gi_rows_from_sources(sources.clone()) {
         std::option::Option::None => "REFUSED\tcompile_to_resolved produced no graph".to_string(),
         Some(rows) => generic_identity_census_summary_lines(rows.clone()).join(&"\n".to_string()),
     }
@@ -1403,7 +1406,7 @@ pub fn gi_result_carrier_observation(
                                 si.clone(),
                             ),
                             carries_foreign_parameter: (gi_foreign_label(gi_foreign_reading(
-                                ctx,
+                                ctx.clone(),
                                 rt.clone(),
                             )) != "own_or_unmarked".to_string()),
                         })
@@ -1517,7 +1520,7 @@ pub fn gi_foreign_label_under_owner(
                 owner.clone(),
             ),
         }),
-        subject,
+        subject.clone(),
     ))
 }
 
@@ -1666,7 +1669,7 @@ pub fn gi_missing_carriers_are_unobserved(
 
 pub fn generic_identity_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
     {
-        let result = crate::v1_compiler_compile::compile_to_resolved(sources);
+        let result = crate::v1_compiler_compile::compile_to_resolved(sources.clone());
         match result.graph.clone() {
             std::option::Option::None => {
                 "REFUSED\tcompile_to_resolved produced no graph".to_string()
@@ -1802,7 +1805,7 @@ pub fn generic_identity_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> St
 }
 
 pub fn generic_identity_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
-    match gi_rows_from_sources(sources) {
+    match gi_rows_from_sources(sources.clone()) {
         std::option::Option::None => "REFUSED\tcompile_to_resolved produced no graph".to_string(),
         Some(rows) => generic_identity_census_tsv(rows.clone()),
     }

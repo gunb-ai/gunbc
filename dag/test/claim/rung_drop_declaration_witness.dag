@@ -1,6 +1,5 @@
 module test.claim.rung_drop_declaration_witness
 
-import gunbc.rung_drop.node_reaching_composite_equality { node_reaching_composite_equality }
 
 import std.types { String, Bool, NonEmptyStr }
 import std.algebra { FreeSemigroup, list_append }
@@ -186,7 +185,6 @@ test fn an_uncounted_or_unlabelled_standing_population_is_refused_and_readable_o
     && !rung_drop_is_readable(d: unreadable_unknown_label)
     && rung_drop_is_readable(d: control_rung_drop)
     && rung_drop_is_readable(d: readable_derived_label)
-    && !rung_drop_is_readable(d: node_reaching_composite_equality)
 }
 
 test fn unreadable_standing_roster_drops_are_only_not_yet_counted_populations() -> Bool {

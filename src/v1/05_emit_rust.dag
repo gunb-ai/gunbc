@@ -16751,7 +16751,7 @@ fn emit_rust_equality_plan_fn(plan: EqualityPlan, d: DeclarationEqualityPlan) ->
   match d.reference {
     Absent => ""
     Present { value: r } =>
-      let t = rust_declaration_path(module_path: r.module_path as String, decl_name: r.decl_name as String)
+      let t = concat("crate::", module_to_filename(name: r.module_path as String), "::", r.decl_name as String)
       let body = match d.arms |> filter(arm => arm.arm == "") |> first {
         Present { value: product } =>
           emit_rust_equality_fields(plan: plan, fields: product.fields, a_prefix: "&a.", b_prefix: "&b.")
@@ -16774,7 +16774,7 @@ fn emit_rust_equality_arm(plan: EqualityPlan, t: String, arm: EqualityPlanArm) -
   let b_binds = arm.fields |> map(f => concat(emit_ident(name: f.field, target: Rust), ": __eb_", emit_ident(name: f.field, target: Rust))) |> join(separator: ", ")
   let a_pat = if (arm.fields |> count) == 0 { "{ .. }" } else { concat("{ ", a_binds, ", .. }") }
   let b_pat = if (arm.fields |> count) == 0 { "{ .. }" } else { concat("{ ", b_binds, ", .. }") }
-  let variant = concat(t, "::", emit_ident(name: arm.arm, target: Rust))
+  let variant = concat(t, "::", arm.arm)
   concat("(", variant, " ", a_pat, ", ", variant, " ", b_pat, ") => ", emit_rust_equality_fields(plan: plan, fields: arm.fields, a_prefix: "__ea_", b_prefix: "__eb_"))
 }
 

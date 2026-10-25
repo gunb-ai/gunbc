@@ -454,8 +454,8 @@ pub fn to_snake(name: String) -> String {
 
 pub fn to_screaming_snake(name: String) -> String {
     {
-        let snake = to_snake(name);
-        crate::std_unicode_scalar::ascii_uppercase(snake)
+        let snake = to_snake(name.clone());
+        crate::std_unicode_scalar::ascii_uppercase(snake.clone())
     }
 }
 
@@ -496,7 +496,7 @@ pub fn capitalize_first(s: String) -> String {
 pub fn service_var_name(service_name: String) -> String {
     to_snake(
         Rc::new(
-            sanitize_service_name(service_name)
+            sanitize_service_name(service_name.clone())
                 .split(&"__".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
@@ -507,7 +507,7 @@ pub fn service_var_name(service_name: String) -> String {
 
 pub fn to_pascal(name: String) -> String {
     {
-        let snake = to_snake(name);
+        let snake = to_snake(name.clone());
         let parts = Rc::new(
             snake
                 .clone()
@@ -528,7 +528,7 @@ pub fn to_pascal(name: String) -> String {
 
 pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) -> String {
     {
-        let conventions = crate::v1_compiler_languages::test_conventions_for_target(target);
+        let conventions = crate::v1_compiler_languages::test_conventions_for_target(target.clone());
         let formatted = match conventions.name_style.clone() {
             TestNameStyle::SnakeCaseTestNames => v1_rt::concat(
                 v1_rt::concat(
@@ -630,7 +630,7 @@ pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: 
 
 pub fn apply_named_template(template: String, bindings: Rc<HashMap<String, String>>) -> String {
     apply_named_template_nested(
-        template,
+        template.clone(),
         bindings.clone(),
         Rc::new(v1_rt::map_keys(&bindings)),
     )
@@ -680,7 +680,7 @@ pub fn apply_named_template_nested(
 }
 
 pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
-    crate::v1_compiler_languages::language_spec_for_target(target)
+    crate::v1_compiler_languages::language_spec_for_target(target.clone())
 }
 
 pub fn escape_string_literal_body(s: String) -> String {
@@ -848,7 +848,7 @@ pub fn is_type_alias_return_node(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (crate::v1_std_core::authored_name_at(source_indices, n) != "Unit".to_string())
+    (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
 }
 
 pub fn is_type_def_item(item: Rc<Node>) -> bool {
@@ -871,7 +871,7 @@ pub fn is_type_alias_item(
     (is_leaf_type_item(item.clone())
         && is_type_alias_return_node(
             crate::v1_compiler_infer_types::resolved_type(item.clone()),
-            source_indices,
+            source_indices.clone(),
         ))
 }
 
@@ -882,7 +882,7 @@ pub fn is_type_decl_item(
     ((is_leaf_type_item(item.clone())
         && !is_type_alias_return_node(
             crate::v1_compiler_infer_types::resolved_type(item.clone()),
-            source_indices,
+            source_indices.clone(),
         ))
         || ((((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
             && ((item.params.clone().len() as i64) > 0))

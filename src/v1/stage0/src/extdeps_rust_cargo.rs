@@ -327,11 +327,14 @@ pub fn cargo_profile_dir_under_target_dir(target_dir: String, profile: String) -
 }
 
 pub fn cargo_default_profile_dir(build_root: String, profile: String) -> String {
-    cargo_profile_dir_under_target_dir(cargo_default_target_dir(build_root), profile)
+    cargo_profile_dir_under_target_dir(
+        cargo_default_target_dir(build_root.clone()),
+        profile.clone(),
+    )
 }
 
 pub fn cargo_default_release_dir(build_root: String) -> String {
-    cargo_default_profile_dir(build_root, cargo_default_release_profile())
+    cargo_default_profile_dir(build_root.clone(), cargo_default_release_profile())
 }
 
 pub fn cargo_default_release_dir_rel() -> String {

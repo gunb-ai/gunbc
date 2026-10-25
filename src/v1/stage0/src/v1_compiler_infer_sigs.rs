@@ -315,7 +315,10 @@ pub fn lookup_resolved_sig_unique_across_parents(
     env: Rc<ResolvedFuncEnv>,
     name: String,
 ) -> Rc<FuncSigLookup> {
-    decide_callable_candidates(parent_closure_callable_candidates(env, name))
+    decide_callable_candidates(parent_closure_callable_candidates(
+        env.clone(),
+        name.clone(),
+    ))
 }
 
 pub fn parent_closure_callable_candidates(
@@ -939,7 +942,7 @@ pub fn topo_resolve_loop(
             __result
         });
         {
-            let __tco_0 = next_remaining;
+            let __tco_0 = next_remaining.clone();
             let __tco_1 = ready_accum.signatures.clone();
             let __tco_2 = declared_sigs;
             let __tco_3 = call_edges;
@@ -1002,12 +1005,12 @@ pub fn resolve_func_sigs(
         topo_resolve_loop(
             local_func_names.clone(),
             v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-            declared_sigs,
-            call_edges,
+            declared_sigs.clone(),
+            call_edges.clone(),
             local_func_set.clone(),
-            module_name,
+            module_name.clone(),
             Rc::new(vec![]),
-            flatten_parent_envs(parent_envs),
+            flatten_parent_envs(parent_envs.clone()),
             (local_func_names.clone().len() as i64),
         )
     }

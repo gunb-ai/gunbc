@@ -71,7 +71,7 @@ pub fn service_receiver_resolved_name(
         } => match (*bk.clone()).clone() {
             VarBindingKind::ServiceValueBinding => Some(crate::v1_std_core::expr_var_name_at(
                 receiver.clone(),
-                source_indices,
+                source_indices.clone(),
             )),
             _ => std::option::Option::None,
         },
@@ -83,7 +83,7 @@ pub fn is_typed_service_call_receiver(
     receiver: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match service_receiver_resolved_name(receiver, source_indices) {
+    match service_receiver_resolved_name(receiver.clone(), source_indices.clone()) {
         Some(_) => true,
         std::option::Option::None => false,
     }
@@ -93,7 +93,7 @@ pub fn extract_typed_service_name(
     receiver: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    service_receiver_resolved_name(receiver, source_indices)
+    service_receiver_resolved_name(receiver.clone(), source_indices.clone())
 }
 
 pub fn collect_typed_service_calls(
@@ -102,12 +102,12 @@ pub fn collect_typed_service_calls(
 ) -> Rc<Vec<String>> {
     {
         let result = collect_typed_service_calls_into(
-            texpr,
+            texpr.clone(),
             Rc::new(UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
-            source_indices,
+            source_indices.clone(),
         );
         result.result.clone()
     }
@@ -341,12 +341,12 @@ pub fn collect_callee_edges(
 ) -> Rc<Vec<Rc<CalleeEdge>>> {
     {
         let result = collect_callee_edges_into(
-            texpr,
+            texpr.clone(),
             Rc::new(CalleeAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
-            source_indices,
+            source_indices.clone(),
         );
         result.result.clone()
     }
@@ -786,7 +786,7 @@ pub fn expand_transitive_services(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<ServiceEffectAnalysis> {
     {
-        let module_callees = build_module_callees(modules);
+        let module_callees = build_module_callees(modules.clone());
         let unresolved = v1_rt::concat(
             unresolved_callee_edges(module_callees.clone()),
             unjoinable_callee_edges(module_callees.clone(), registry.clone()),
@@ -835,7 +835,7 @@ pub fn check_service_field_access_node(
         {
             let path = v1_rt::concat(
                 v1_rt::concat(
-                    crate::v1_std_core::authored_name_at(source_indices, base_type.clone()),
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), base_type.clone()),
                     ".".to_string(),
                 ),
                 field.clone(),
@@ -863,7 +863,7 @@ pub fn check_service_method_call_node(
     {
         match v1_rt::map_get(
             &service_registry,
-            crate::v1_std_core::authored_name_at(source_indices, receiver_type.clone()),
+            crate::v1_std_core::authored_name_at(source_indices.clone(), receiver_type.clone()),
         ) {
             Some(ops) => {
                 let matching = Rc::new({
@@ -989,6 +989,6 @@ pub fn service_op_entry(
             source_indices.clone(),
         ),
         params: child.params.clone(),
-        rest: service_operation_is_rest(child.clone(), service, source_indices.clone()),
+        rest: service_operation_is_rest(child.clone(), service.clone(), source_indices.clone()),
     })
 }

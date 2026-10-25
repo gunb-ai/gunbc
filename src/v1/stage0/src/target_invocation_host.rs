@@ -659,9 +659,9 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
-            instrument_label("last-use-move"),
+            instrument_label("derived-equality-routes"),
             TargetProducer::NativeClaimProgram {
-                entry: "dag/gunbc/instruments/last_use_move_native.dag",
+                entry: "dag/gunbc/instruments/derived_equality_routes_native.dag",
             },
         ),
         (

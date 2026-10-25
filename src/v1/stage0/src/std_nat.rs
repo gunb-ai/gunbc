@@ -148,7 +148,7 @@ pub fn nat_div_rem(a: Nat, b: Nat) -> Rc<NatDivision> {
         {
             let divisor_prev = v1_rt::int_sub(b.clone(), 1);
             {
-                let q = nat_div_rem_by_succ(a, divisor_prev.clone());
+                let q = nat_div_rem_by_succ(a.clone(), divisor_prev.clone());
                 Rc::new(NatDivision::NatQuotientRemainder {
                     quotient: q.quotient.clone(),
                     remainder: q.remainder.clone(),
@@ -215,7 +215,7 @@ pub fn nat_semiring() -> Rc<CommutativeSemiring<i64>> {
 }
 
 pub fn nat_range_inclusive(lo: Nat, hi: Nat) -> Rc<Vec<i64>> {
-    nat_range_accumulate(lo, hi, Rc::new(vec![]))
+    nat_range_accumulate(lo.clone(), hi.clone(), Rc::new(vec![]))
 }
 
 pub fn nat_range_accumulate(
@@ -421,7 +421,7 @@ pub fn nat_decimal_split_advance(s: Rc<NatDecimalSplit>) -> Rc<NatDecimalSplit> 
 
 pub fn nat_to_decimal_string(value: Nat) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let q = nat_div_rem_by_succ(value, 9);
+        let q = nat_div_rem_by_succ(value.clone(), 9);
         let digit = decimal_digit_glyph(nat_decimal_split(q.remainder.clone()).units.clone());
         {
             let __kernel_grounded_subject = q.quotient.clone();

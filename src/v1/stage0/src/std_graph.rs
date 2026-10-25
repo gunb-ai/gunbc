@@ -125,14 +125,18 @@ pub fn forward_adjacency(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    build_adjacency_views(names, graph).forward.clone()
+    build_adjacency_views(names.clone(), graph.clone())
+        .forward
+        .clone()
 }
 
 pub fn reverse_adjacency(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    build_adjacency_views(names, graph).reverse.clone()
+    build_adjacency_views(names.clone(), graph.clone())
+        .reverse
+        .clone()
 }
 
 pub fn dfs_finish_order(
@@ -209,7 +213,7 @@ pub fn graph_strongly_connected_components(
     graph: Rc<CallGraph>,
 ) -> Rc<Vec<Rc<Vec<String>>>> {
     {
-        let adjacency = build_adjacency_views(names.clone(), graph);
+        let adjacency = build_adjacency_views(names.clone(), graph.clone());
         let finish = names.iter().cloned().fold(
             Rc::new(DfsFinishAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
@@ -256,7 +260,7 @@ pub fn graph_multi_node_scc_members(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
 ) -> Rc<Vec<String>> {
-    graph_strongly_connected_components(names, graph)
+    graph_strongly_connected_components(names.clone(), graph.clone())
         .iter()
         .cloned()
         .fold(
@@ -272,7 +276,7 @@ pub fn graph_multi_node_scc_members(
 }
 
 pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> bool {
-    ((graph_multi_node_scc_members(names, graph).len() as i64) > 0)
+    ((graph_multi_node_scc_members(names.clone(), graph.clone()).len() as i64) > 0)
 }
 
 pub fn graph_cycle_members(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> Rc<Vec<String>> {
@@ -309,7 +313,7 @@ pub fn graph_cycle_members(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> Rc<V
             self_cycles.clone(),
             Rc::new({
                 let mut __result = Vec::new();
-                for member in graph_multi_node_scc_members(names, graph.clone())
+                for member in graph_multi_node_scc_members(names.clone(), graph.clone())
                     .iter()
                     .cloned()
                 {
@@ -362,7 +366,10 @@ pub fn graph_reverse_reachable_members(
     graph: Rc<CallGraph>,
     start: String,
 ) -> Rc<Vec<String>> {
-    graph_reverse_reachable_members_from_views(build_adjacency_views(names, graph), start)
+    graph_reverse_reachable_members_from_views(
+        build_adjacency_views(names.clone(), graph.clone()),
+        start.clone(),
+    )
 }
 
 pub fn is_lexicographic_descent(mut __tco_loop_evidence: Rc<Vec<DescentEvidence>>) -> bool {
@@ -431,7 +438,7 @@ pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>
                 });
                 let nd_graph =
                     build_call_graph_from_proof_edges(members.clone(), non_descending.clone());
-                (graph_has_multi_node_scc(members.clone(), nd_graph) == false)
+                (graph_has_multi_node_scc(members.clone(), nd_graph.clone()) == false)
             }
         }
     }

@@ -372,7 +372,10 @@ pub fn match_path_template(template: Rc<PathTemplate>, path: String) -> Rc<PathT
             Some(p) => p.clone(),
             std::option::Option::None => path.clone(),
         };
-        match_path_tokens(template.tokens.clone(), match_path_segments(path_only))
+        match_path_tokens(
+            template.tokens.clone(),
+            match_path_segments(path_only.clone()),
+        )
     }
 }
 
@@ -554,7 +557,7 @@ pub fn parse_query_template(raw: String) -> Rc<PathTemplateParseResult> {
 pub fn uri_query_param(path: String, key: String) -> String {
     {
         let pairs = Rc::new(
-            uri_query_string(path)
+            uri_query_string(path.clone())
                 .split(&"&".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),

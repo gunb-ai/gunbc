@@ -280,7 +280,7 @@ pub fn resolve_modules(
             }
             __result
         }),
-        source_indices,
+        source_indices.clone(),
         Rc::new(OccurrenceTransport {
             index: Rc::new(OccurrenceIndex {
                 entries: Rc::new(vec![]),
@@ -390,7 +390,10 @@ pub fn module_type_declaration_names(
             let mut __result = Vec::new();
             for item in Rc::new({
                 let mut __result = Vec::new();
-                for item in crate::v1_std_core::module_items(module).iter().cloned() {
+                for item in crate::v1_std_core::module_items(module.clone())
+                    .iter()
+                    .cloned()
+                {
                     if (item.module_item_kind.clone()
                         == ParsedModuleItemKind::ModuleItemTypeDeclaration)
                     {
@@ -464,17 +467,17 @@ pub fn kernel_named_import_child_diags(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
-        let name = crate::v1_std_core::authored_name_at(source_indices, child.clone());
+        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone());
         kernel_named_import_diags(
             crate::std_literal_elaboration::kernel_named_import_standing(
                 name.clone(),
                 import_path.clone(),
-                map_has(type_decl_names, name.clone()),
+                map_has(type_decl_names.clone(), name.clone()),
                 kernel_mint_declaration_rows(),
             ),
             name.clone(),
             import_path.clone(),
-            importing_module,
+            importing_module.clone(),
             child.span.clone(),
         )
     }
@@ -522,7 +525,7 @@ pub fn resolve_import(
     {
         let import_path =
             crate::v1_std_core::authored_name_at(source_indices.clone(), import.clone());
-        let target = find_module(module_index, import_path.clone());
+        let target = find_module(module_index.clone(), import_path.clone());
         match target.clone() {
             std::option::Option::None => {
                 let diag = crate::v1_std_core::make_error_node(
@@ -758,7 +761,7 @@ pub fn get_item_name(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    crate::v1_std_core::authored_name_at(source_indices, item)
+    crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
 }
 
 pub fn get_variant_names(
@@ -1043,10 +1046,10 @@ pub fn topological_sort(
         });
         let module_count = (modules.clone().len() as i64);
         let result = kahn_drain(
-            initial_queue,
+            initial_queue.clone(),
             Rc::new(vec![]),
             in_degree_map.clone(),
-            adjacency,
+            adjacency.clone(),
             module_count.clone(),
         );
         if ((result.sorted.clone().len() as i64) == module_count.clone()) {
@@ -1201,7 +1204,7 @@ pub fn kahn_drain(
             __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         {
-            let __tco_0 = new_zero;
+            let __tco_0 = new_zero.clone();
             let __tco_1 = batch_result.sorted.clone();
             let __tco_2 = batch_result.in_degree_map.clone();
             let __tco_3 = adjacency;

@@ -1015,7 +1015,7 @@ pub fn emit_py_fn_def(
             si.clone(),
         );
         let ret_str = crate::v1_compiler_emit::emit_inferred_shared(
-            inferred,
+            inferred.clone(),
             RenderTarget::Python,
             si.clone(),
         );
@@ -1042,7 +1042,7 @@ pub fn emit_py_fn_def(
                     v1_rt::int_add(depth.clone(), 1),
                     |pat| {
                         crate::v1_compiler_emit::emit_unified_pattern(
-                            pat,
+                            pat.clone(),
                             RenderTarget::Python,
                             si.clone(),
                         )
@@ -1160,11 +1160,11 @@ pub fn emit_py_func_def(
         let params_str = emit_py_func_params(
             params.clone(),
             uses.clone(),
-            service_names,
+            service_names.clone(),
             scope.type_env.source_indices.clone(),
         );
         let ret_str = crate::v1_compiler_emit::emit_inferred_shared(
-            inferred,
+            inferred.clone(),
             RenderTarget::Python,
             scope.type_env.source_indices.clone(),
         );
@@ -1183,7 +1183,7 @@ pub fn emit_py_func_def(
                     )
                 });
         let body_str = crate::v1_compiler_emit::emit_unified_typed_func_body(
-            body,
+            body.clone(),
             RenderTarget::Python,
             registry.clone(),
             body_scope.clone(),
@@ -1299,15 +1299,15 @@ pub fn emit_py_typed_expr(
     fuel: i64,
 ) -> String {
     crate::v1_compiler_emit::emit_unified_typed_expr(
-        texpr,
+        texpr.clone(),
         RenderTarget::Python,
-        registry,
+        registry.clone(),
         scope.clone(),
-        depth,
-        fuel,
+        depth.clone(),
+        fuel.clone(),
         |pat| {
             crate::v1_compiler_emit::emit_unified_pattern(
-                pat,
+                pat.clone(),
                 RenderTarget::Python,
                 scope.type_env.source_indices.clone(),
             )
@@ -1322,16 +1322,19 @@ pub fn emit_py_transport_body(
     depth: i64,
 ) -> String {
     crate::v1_compiler_emit::emit_unified_transport_dispatch(
-        bound,
-        op_name,
-        source_indices,
-        depth,
+        bound.clone(),
+        op_name.clone(),
+        source_indices.clone(),
+        depth.clone(),
         RenderTarget::Python,
         |n, t, d, si| {
-            crate::v1_compiler_emit::emit_unrealized_rest_result_refusal(n, RenderTarget::Python)
+            crate::v1_compiler_emit::emit_unrealized_rest_result_refusal(
+                n.clone(),
+                RenderTarget::Python,
+            )
         },
-        |n, t, d, si| emit_py_shell_call(n, t, si),
-        |n, d| emit_py_local_call(n),
+        |n, t, d, si| emit_py_shell_call(n.clone(), t.clone(), si.clone()),
+        |n, d| emit_py_local_call(n.clone()),
     )
 }
 
@@ -1341,12 +1344,14 @@ pub fn emit_py_service_def(
     env: Rc<TypeEnv>,
 ) -> String {
     crate::v1_compiler_emit::emit_unified_service_def(
-        item,
+        item.clone(),
         RenderTarget::Python,
-        registry,
-        env,
-        |name, transport, ops, si| emit_py_service_init(transport, ops, si),
-        |bound, op_name, si, depth| emit_py_transport_body(bound, op_name, si, depth),
+        registry.clone(),
+        env.clone(),
+        |name, transport, ops, si| emit_py_service_init(transport.clone(), ops.clone(), si.clone()),
+        |bound, op_name, si, depth| {
+            emit_py_transport_body(bound.clone(), op_name.clone(), si.clone(), depth.clone())
+        },
     )
 }
 
@@ -1357,9 +1362,9 @@ pub fn emit_py_service_init(
 ) -> String {
     {
         let fs = crate::v1_compiler_emit::compute_service_fields(
-            fallback_transport,
-            op_children,
-            source_indices,
+            fallback_transport.clone(),
+            op_children.clone(),
+            source_indices.clone(),
         );
         let params = crate::v1_compiler_emit::service_field_decls(
             fs.clone(),
@@ -1405,7 +1410,7 @@ pub fn emit_py_shell_call(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let envs = crate::v1_std_core::transport_env(transport, source_indices.clone());
+        let envs = crate::v1_std_core::transport_env(transport.clone(), source_indices.clone());
         let env_dict_entries = Rc::new({
             let mut __result = Vec::new();
             for e in envs.iter().cloned() {
@@ -1453,7 +1458,7 @@ pub fn emit_py_shell_call(
                                                 "    [\"".to_string(),
                                             ),
                                             crate::v1_compiler_emit::emit_ident(
-                                                op_name,
+                                                op_name.clone(),
                                                 RenderTarget::Python,
                                             ),
                                         ),
@@ -1483,7 +1488,7 @@ pub fn emit_py_local_call(op_name: String) -> String {
                 "# Local binding -- direct function call\n".to_string(),
                 "return ".to_string(),
             ),
-            crate::v1_compiler_emit::emit_ident(op_name, RenderTarget::Python),
+            crate::v1_compiler_emit::emit_ident(op_name.clone(), RenderTarget::Python),
         ),
         "()".to_string(),
     )
@@ -1582,12 +1587,12 @@ pub fn emit_py_data_def(
 ) -> String {
     {
         let ty_str = crate::v1_compiler_emit::emit_node_type(
-            type_node,
+            type_node.clone(),
             RenderTarget::Python,
             scope.type_env.source_indices.clone(),
         );
-        let upper_name = crate::v1_compiler_emit_core_support::to_screaming_snake(name);
-        let val_str = emit_py_typed_expr(value, registry, scope.clone(), 0, 1024);
+        let upper_name = crate::v1_compiler_emit_core_support::to_screaming_snake(name.clone());
+        let val_str = emit_py_typed_expr(value.clone(), registry.clone(), scope.clone(), 0, 1024);
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(

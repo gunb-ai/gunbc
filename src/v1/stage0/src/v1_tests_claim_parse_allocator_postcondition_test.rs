@@ -122,7 +122,7 @@ pub fn postcondition_holds(parsed: Rc<ParseWithTableResult>) -> bool {
 }
 
 pub fn chain_terms(upto: i64) -> Rc<Vec<i64>> {
-    chain_terms_loop(Rc::new(vec![]), 1, upto)
+    chain_terms_loop(Rc::new(vec![]), 1, upto.clone())
 }
 
 pub fn chain_terms_loop(
@@ -157,7 +157,7 @@ pub fn chain_source(terms: i64) -> String {
     v1_rt::concat(
         v1_rt::concat(
             "module zqxalloc.user\n\ndata zqx_chain: Int = ".to_string(),
-            chain_terms(terms)
+            chain_terms(terms.clone())
                 .iter()
                 .cloned()
                 .fold("".to_string(), |s: String, k: i64| {

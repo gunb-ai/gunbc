@@ -235,7 +235,7 @@ pub fn http_not_found() -> i64 {
 }
 
 pub fn http_status_is_success(status: i64) -> bool {
-    match http_status_class_of(status) {
+    match http_status_class_of(status.clone()) {
         HttpStatusClass::Successful => true,
         HttpStatusClass::Informational => false,
         HttpStatusClass::Redirection => false,

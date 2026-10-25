@@ -235,8 +235,11 @@ pub fn go_mock_expr_uses_fmt(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let rendered =
-            crate::v1_compiler_emit::emit_simple_expr(expr, RenderTarget::Go, source_indices);
+        let rendered = crate::v1_compiler_emit::emit_simple_expr(
+            expr.clone(),
+            RenderTarget::Go,
+            source_indices.clone(),
+        );
         ((Rc::new(
             rendered
                 .clone()
@@ -596,7 +599,11 @@ pub fn emit_go_imports(
             }
             __found
         };
-        let std_imports = collect_go_std_imports(has_services, has_types, has_functions);
+        let std_imports = collect_go_std_imports(
+            has_services.clone(),
+            has_types.clone(),
+            has_functions.clone(),
+        );
         let pkg_imports = Rc::new({
             let mut __result = Vec::new();
             for imp in imports.iter().cloned() {
@@ -1135,7 +1142,11 @@ pub fn emit_go_type_alias(
             ),
             " = ".to_string(),
         ),
-        crate::v1_compiler_emit::emit_node_type(base, RenderTarget::Go, source_indices),
+        crate::v1_compiler_emit::emit_node_type(
+            base.clone(),
+            RenderTarget::Go,
+            source_indices.clone(),
+        ),
     )
 }
 
@@ -1154,8 +1165,11 @@ pub fn emit_go_fn_def(
             RenderTarget::Go,
             si.clone(),
         );
-        let ret_str =
-            crate::v1_compiler_emit::emit_inferred_shared(inferred, RenderTarget::Go, si.clone());
+        let ret_str = crate::v1_compiler_emit::emit_inferred_shared(
+            inferred.clone(),
+            RenderTarget::Go,
+            si.clone(),
+        );
         let body_scope =
             crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
         let use_tco = crate::v1_compiler_emit::is_tco_eligible(
@@ -1179,7 +1193,7 @@ pub fn emit_go_fn_def(
                     1,
                     |pat| {
                         crate::v1_compiler_emit::emit_unified_pattern(
-                            pat,
+                            pat.clone(),
                             RenderTarget::Go,
                             si.clone(),
                         )
@@ -1225,11 +1239,11 @@ pub fn emit_go_func_def(
         let params_str = emit_go_func_params(
             params.clone(),
             uses.clone(),
-            service_names,
+            service_names.clone(),
             scope.type_env.source_indices.clone(),
         );
         let ret_type = crate::v1_compiler_emit::emit_node_type(
-            inferred,
+            inferred.clone(),
             RenderTarget::Go,
             scope.type_env.source_indices.clone(),
         );
@@ -1248,7 +1262,7 @@ pub fn emit_go_func_def(
                     )
                 });
         let body_str = crate::v1_compiler_emit::emit_unified_typed_func_body(
-            body,
+            body.clone(),
             RenderTarget::Go,
             registry.clone(),
             body_scope.clone(),
@@ -1360,15 +1374,15 @@ pub fn emit_go_typed_expr(
     fuel: i64,
 ) -> String {
     crate::v1_compiler_emit::emit_unified_typed_expr(
-        texpr,
+        texpr.clone(),
         RenderTarget::Go,
-        registry,
+        registry.clone(),
         scope.clone(),
-        depth,
-        fuel,
+        depth.clone(),
+        fuel.clone(),
         |pat| {
             crate::v1_compiler_emit::emit_unified_pattern(
-                pat,
+                pat.clone(),
                 RenderTarget::Go,
                 scope.type_env.source_indices.clone(),
             )
@@ -1383,16 +1397,19 @@ pub fn emit_go_transport_body(
     depth: i64,
 ) -> String {
     crate::v1_compiler_emit::emit_unified_transport_dispatch(
-        bound,
-        op_name,
-        source_indices,
-        depth,
+        bound.clone(),
+        op_name.clone(),
+        source_indices.clone(),
+        depth.clone(),
         RenderTarget::Go,
         |n, t, d, si| {
-            crate::v1_compiler_emit::emit_unrealized_rest_result_refusal(n, RenderTarget::Go)
+            crate::v1_compiler_emit::emit_unrealized_rest_result_refusal(
+                n.clone(),
+                RenderTarget::Go,
+            )
         },
-        |n, t, d, si| emit_go_shell_call(n, t, d, si),
-        |n, d| emit_go_local_call(n, d),
+        |n, t, d, si| emit_go_shell_call(n.clone(), t.clone(), d.clone(), si.clone()),
+        |n, d| emit_go_local_call(n.clone(), d.clone()),
     )
 }
 
@@ -1402,12 +1419,16 @@ pub fn emit_go_service_def(
     env: Rc<TypeEnv>,
 ) -> String {
     crate::v1_compiler_emit::emit_unified_service_def(
-        item,
+        item.clone(),
         RenderTarget::Go,
-        registry,
-        env,
-        |name, transport, ops, si| emit_go_service_struct(name, transport, ops, si),
-        |bound, op_name, si, depth| emit_go_transport_body(bound, op_name, si, depth),
+        registry.clone(),
+        env.clone(),
+        |name, transport, ops, si| {
+            emit_go_service_struct(name.clone(), transport.clone(), ops.clone(), si.clone())
+        },
+        |bound, op_name, si, depth| {
+            emit_go_transport_body(bound.clone(), op_name.clone(), si.clone(), depth.clone())
+        },
     )
 }
 
@@ -1419,12 +1440,12 @@ pub fn emit_go_service_struct(
 ) -> String {
     {
         let fs = crate::v1_compiler_emit::compute_service_fields(
-            fallback_transport,
-            op_children,
-            source_indices,
+            fallback_transport.clone(),
+            op_children.clone(),
+            source_indices.clone(),
         );
         let decls = crate::v1_compiler_emit::service_field_decls(
-            fs,
+            fs.clone(),
             crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
                 .service_fields
                 .clone(),
@@ -1496,16 +1517,16 @@ pub fn emit_go_shell_call(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let prefix = crate::v1_compiler_emit_core_support::make_indent(depth);
+        let prefix = crate::v1_compiler_emit_core_support::make_indent(depth.clone());
         let cmd_line = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(prefix.clone(), "cmd := exec.Command(\"".to_string()),
-                crate::v1_compiler_emit_core_support::to_snake(op_name),
+                crate::v1_compiler_emit_core_support::to_snake(op_name.clone()),
             ),
             "\")".to_string(),
         );
         let dir_line = v1_rt::concat(prefix.clone(), "cmd.Dir = c.WorkingDir".to_string());
-        let envs = crate::v1_std_core::transport_env(transport, source_indices.clone());
+        let envs = crate::v1_std_core::transport_env(transport.clone(), source_indices.clone());
         let env_lines = Rc::new({
             let mut __result = Vec::new();
             for e in envs.iter().cloned() {
@@ -1556,7 +1577,7 @@ pub fn emit_go_shell_call(
 
 pub fn emit_go_local_call(op_name: String, depth: i64) -> String {
     {
-        let prefix = crate::v1_compiler_emit_core_support::make_indent(depth);
+        let prefix = crate::v1_compiler_emit_core_support::make_indent(depth.clone());
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -1566,7 +1587,7 @@ pub fn emit_go_local_call(op_name: String, depth: i64) -> String {
                     ),
                     "return ".to_string(),
                 ),
-                go_export_ident(op_name),
+                go_export_ident(op_name.clone()),
             ),
             "(), nil".to_string(),
         )
@@ -1652,7 +1673,7 @@ pub fn emit_go_capability_method(cap_node: Rc<Node>, depth: i64, env: Rc<TypeEnv
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                crate::v1_compiler_emit_core_support::make_indent(depth),
+                                crate::v1_compiler_emit_core_support::make_indent(depth.clone()),
                                 go_export_ident(crate::v1_compiler_infer_env::authored_name(
                                     env.clone(),
                                     cap_node.clone(),
@@ -1681,16 +1702,22 @@ pub fn emit_go_data_def(
 ) -> String {
     {
         let ty_str = crate::v1_compiler_emit::emit_node_type(
-            type_node,
+            type_node.clone(),
             RenderTarget::Go,
             scope.type_env.source_indices.clone(),
         );
-        let val_str = emit_go_typed_expr(value, registry, scope.clone(), depth, 1024);
+        let val_str = emit_go_typed_expr(
+            value.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            1024,
+        );
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat("var ".to_string(), go_export_ident(name)),
+                        v1_rt::concat("var ".to_string(), go_export_ident(name.clone())),
                         " ".to_string(),
                     ),
                     ty_str.clone(),
@@ -1711,7 +1738,7 @@ pub fn go_export_ident(name: String) -> String {
         VisibilitySpec::CaseVisibility {
             export_case: ec, ..
         } => {
-            let result = crate::v1_compiler_emit::apply_naming_case(name, ec.clone());
+            let result = crate::v1_compiler_emit::apply_naming_case(name.clone(), ec.clone());
             if {
                 let mut __found = false;
                 for r in go_reserved().iter().cloned() {

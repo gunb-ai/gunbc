@@ -185,7 +185,7 @@ pub fn oci_other_digest_algorithm(value: String) -> bool {
 }
 
 pub fn oci_other_digest_encoded(value: String) -> bool {
-    oci_encoded_digest_syntax_valid(value, 0)
+    oci_encoded_digest_syntax_valid(value.clone(), 0)
 }
 
 pub type OciOtherDigestAlgorithm = String;
@@ -274,7 +274,7 @@ pub fn oci_wire_digest_parts(raw: String) -> Option<Rc<OciWireDigestParts>> {
 }
 
 pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>> {
-    match oci_wire_digest_parts(raw) {
+    match oci_wire_digest_parts(raw.clone()) {
         Some(parts) => {
             if (parts.algorithm.clone() == "sha256".to_string()) {
                 match crate::std_content_hash::sha256_hex_digest(parts.encoded.clone()) {
@@ -313,7 +313,7 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
 }
 
 pub fn oci_sha256_content_digest(hex: String) -> Option<Rc<OciContentDigest>> {
-    match crate::std_content_hash::sha256_hex_digest(hex) {
+    match crate::std_content_hash::sha256_hex_digest(hex.clone()) {
         Some(digest) => Some(oci_content_digest_from_validated_sha256(digest.clone())),
         std::option::Option::None => std::option::Option::None,
     }

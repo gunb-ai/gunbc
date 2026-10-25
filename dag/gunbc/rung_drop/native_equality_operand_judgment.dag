@@ -8,17 +8,25 @@ import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
 // DECLARED 2026-10-23 with the Edge == guard (gunbc#14662). The seed refuses == on an Edge-bearing
 // operand (EqualityOnInadmissibleType); the native v2 compiler has no equality operand judgment, so
 // an Edge == Edge written in v2 source is not refused there.
-data native_equality_operand_judgment_population: FreeSemigroup<String> = FreeSemigroup { head: "v2 source == whose operand type reaches v2.std.node Edge: judged by the v1 seed only; the native v2 compiler judges no == operand", tail: [] }
+// EXTENDED 2026-10-25 with derived equality (the std.operator_realization EqualityPlan): the seed now
+// also computes WHAT == compares, routing a bare Node/Edge member as a value and a v2.std.node
+// NodeOccurrence member as the same occurrence, and its interpreter and emitter execute the plan. The
+// native path computes no plan, so v2 eval's == stays projection/structure. That cannot answer an
+// occurrence question wrongly today only because v2 eval constructs no record value (a record-construct
+// body is refused eval entry), so no NodeOccurrence-reaching value reaches its equality; the control
+// v2.test.claim.derived_equality_routes v2_eval_constructs_no_record_value_frontier_holds goes red the day
+// one does, and that day is this row's trigger as well.
+data native_equality_operand_judgment_population: FreeSemigroup<String> = FreeSemigroup { head: "v2 source == whose operand type reaches v2.std.node Edge: judged by the v1 seed only; the native v2 compiler judges no == operand", tail: ["v2 source == whose operand type reaches v2.std.node NodeOccurrence: its occurrence route is realized by the seed's interpreter and emitter only; v2 eval compares by structure and constructs no such value today"] }
 
 data native_equality_operand_judgment: RungDrop = RungDrop {
   identity: "native_equality_operand_judgment" as NonEmptyStr,
-  subject: "Rejection of == on an Edge-bearing operand (Edge.declaration is outside content_hash) in native v2 compilation",
+  subject: "Rejection of == on an Edge-bearing operand (Edge.declaration is outside content_hash), and the derived equality plan that routes Node/Edge/NodeOccurrence members, in native v2 compilation",
   declared: "2026-10-23",
   standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: OutsideTheLadder,
     reason: ReplacementStaged { replacement: "the seed's equality_operand_admission refuses the inadmissible declaration identities in the seed-inferred path; the native path has no equivalent" },
     population: Enumerated { members: native_equality_operand_judgment_population },
-    restoration_trigger: "native v2 == operand judgment: the native compiler reads the same inadmissible-declaration rows and refuses == on an operand type that is or reaches one, executed by a discriminating red (Edge == Edge refused) beside a positive control (a structural record == admitted)",
+    restoration_trigger: "native v2 == operand judgment: the native compiler reads the same inadmissible-declaration rows and refuses == on an operand type that is or reaches one, executed by a discriminating red (Edge == Edge refused) beside a positive control (a structural record == admitted); and the native compiler computes the same EqualityPlan and v2 eval executes it, sufficient for v2.test.claim.derived_equality_routes to hold under v2 eval with record construction evaluable",
   } }
 }
