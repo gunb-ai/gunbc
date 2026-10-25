@@ -78,11 +78,12 @@ import gunbc.roadmap.roadmap_dashboard_instance_apply {
   dashboard_apply_provision_op, dashboard_git_worker_subtree_is_granted,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
-  DispatchSpawnCommands, DispatchWorkerUnitPlan, DispatchSessionContainer, SystemdUnitContainer,
-  HostExecArgv, dispatch_attempt_private_git_dir,
+  DispatchSpawnCommands, DispatchSessionContainer, SystemdUnitContainer,
+  HostExecArgv,
   dispatch_attempt_worker_git_entry_migration, dispatch_attempt_worker_git_entry_readback_command,
   dispatch_git_owned_host_step_argv,
 }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir }
 import gunbc.roadmap.roadmap_belt_actuate { BeltExecStepsOutcome, ExecStepsOk, ExecStepFailed }
 
 // THE HOST ROUTE, THE PRODUCTION ONE: run_shell_command_capture over LocalExec. An ArgvCommand goes in as an
@@ -412,7 +413,7 @@ fn wet_spawn_bundle(readback: HostExecArgv) -> DispatchSpawnCommands {
     worktree_add: HostExecArgv { program: "", args: [] },
     worker_git_entry_grant: [],
     worker_git_entry_readback: readback,
-    attempt_state_prepare: HostExecArgv { program: "", args: [] },
+    attempt_state_prepare: [],
     attempt_current_pointer: HostExecArgv { program: "", args: [] },
     session_container: SystemdUnitContainer {
       plan: DispatchWorkerUnitPlan {

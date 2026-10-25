@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.unbound_generic_reaches_conformance_unjudged
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data unbound_generic_reaches_conformance_unjudged: RecurringFailureMode = RecurringFailureMode {
@@ -34,7 +35,11 @@ data unbound_generic_reaches_conformance_unjudged: RecurringFailureMode = Recurr
     "UNMEASURED POPULATION: how many corpus or user call sites reach the final else arm, and for how many a generic name is still free afterward. unify_generics returns only Map<String, Node>, so it has no channel for a count or a diagnostic; the only code that knows which generic names stayed unbound is infer_call_arguments_generic_pass. No count was taken, and none is claimed. The arm adds no rung to this class: its silent remainder, if any, sits below the floor with the rest of the class.",
 
     "TRIGGER (unchanged capability, named at the site that can judge): PR-2 lands a typed, located refusal of a generic name still free after binding, at infer_call_arguments_generic_pass. The else arm needs no change then; the refusal counts the population above.",
+
+    "FORM GUARD ON THE ARITY-N DESCENT (2026-10-24, regression bisected to #14594). A list element read through `.last()` (and `|> first()`) arrives at unify_generics as the coproduct DECLARATION (Disj, one child per variant), not as the application with its type arguments. Against an application formal of equal arity, unify_generic_child_pairs bound R to a variant node, and every match over the receipt's own variants refused `variant not found` (gunbc.machine_intake.arrival_converge arrival_prefix_outcomes_through_bmc_secure; 49 claims of test.claim.machine_intake.machine_intake_arrival_converge_witness). The descent now requires one connective on both sides, since a child is a type argument only under an application. The binding is then empty and R stays free on this route: a further admission route for this class, owned by the element read that loses its type arguments, not by the binder. Enrolled: test.claim.generic_arity_n_descent_witness arity_n_ctl_declaration_actual_binds_no_variant, FALSE at main 476be2f5386d and TRUE with the guard; the 28 existing claims of that witness pass unchanged",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "test.claim.generic_arity_n_descent_witness", decl_name: "arity_n_ctl_declaration_actual_binds_no_variant", field: WholeDeclaration },
+  ],
 }

@@ -6,7 +6,7 @@ import gunbc.native_serve_probe_plan {
   NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
   native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
 }
-import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef }
+import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair }
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -261,8 +261,10 @@ fn v2_native_frontier_label() -> Label {
 // reaching one more stage). Every front-end, resolve and infer refusal is GROUPED BY THE FATAL REASON
 // (v2.compiler.source_root_eval native_census_cause_groups_add), with the stage and head kept as member
 // fields. An import cascade is collapsed to its root (census C): each cascaded module is one member
-// under the root's reason. At infer the only cascade is a refused closure provider leading an
-// importer's chain (native_census_infer_cascade). The roots are ranked by closure fan-out
+// under the root's reason. A module refused through a refused provider's declaration is filed at resolve,
+// as a member of that provider's root (native_census_chain_cascade), and every infer refusal is a root of
+// its own: no cross-module refusal reaches infer (the census part 2 header in
+// v2.compiler.source_root_eval says why). The roots are ranked by closure fan-out
 // (native_census_roots_ranked), and each is marked against the native test target's closure
 // (native_census_subject_closure). The receipt's stderr names the host memory budget's source. It is
 // THE route to that census: the binary's `census` / `census-resolve` / `census-infer` verbs remain
@@ -714,6 +716,17 @@ fn decl_ref_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "decl-ref-census" } }
 }
 
+// THE EFFECT-PAIR CENSUS (gunbc.plans.demand_engine_program D16 TRIGGER; v2.compiler.source_root_eval
+// native_effect_pair_census_output, the emitted compiler's `effect-pair-census` verb): per function body,
+// every pair of effect-reaching call occurrences with no derived ordering (value use or Branch/Match
+// activation), with the not-derived rows, per-module totals, the unobserved population and a per-root
+// refusal report. Resource identity is unmodelled, so the count OVER-COUNTS and says so. Measurement
+// only: exit 0 means the census was observed, never that no pair exists.
+// `gunbc test //gunbc/instruments:effect-pair-census`.
+fn effect_pair_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "effect-pair-census" } }
+}
+
 // THE DERIVED-NODE-IDENTITY STEP-2 INSTRUMENT (docs/plans/derived-node-identity-design.md section 7;
 // class gunbc.recurring_failure_mode generic_identity_decided_by_spelling). The seed's own
 // v1.tests.claim.generic_identity_census reads the typed graph and reports, per stored type node,
@@ -862,6 +875,10 @@ fn decl_ref_census_binding() -> TargetBinding {
   TargetBinding { target: decl_ref_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDeclRef } }
 }
 
+fn effect_pair_census_binding() -> TargetBinding {
+  TargetBinding { target: effect_pair_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbEffectPair } }
+}
+
 fn generic_identity_census_binding() -> TargetBinding {
   TargetBinding { target: generic_identity_census_label() producer: GenericIdentityCensusProducer {} }
 }
@@ -911,6 +928,25 @@ fn append_chain_ladder_entry() -> String {
 // over its timing rows extends this same label (one instrument, not two).
 fn append_chain_ladder_binding() -> TargetBinding {
   TargetBinding { target: append_chain_ladder_label() producer: NativeClaimProgramProducer { entry: append_chain_ladder_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn last_use_move_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "last-use-move" } }
+}
+
+// The move-at-last-use fixtures on the emitted path: every shape compiles and agrees with its reference
+// (gunbc.recurring_failure_mode a_last_use_argument_is_cloned_into_a_by_value_parameter).
+fn last_use_move_binding() -> TargetBinding {
+  TargetBinding { target: last_use_move_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/last_use_move_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
+fn member_home_cost_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "member-home-cost" } }
+}
+
+// The N7 member wall's cost receipt: each ambient member against its std.algebra home on the emitted path.
+fn member_home_cost_binding() -> TargetBinding {
+  TargetBinding { target: member_home_cost_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/member_home_cost_native.dag" deadline: native_claim_policy_child_deadline() } }
 }
 
 fn claim_coverage_census_label() -> Label {
@@ -1325,7 +1361,7 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
@@ -1347,11 +1383,11 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), decl_ref_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

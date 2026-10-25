@@ -29,7 +29,7 @@ import v2.std.find_witness {
   find_witness,
   verify_witness
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Node,
   Symbol,
@@ -153,7 +153,7 @@ test data witness_find_witness_identity_accepts: Bool = match find_witness(
   predicate: exact_identity_predicate(),
   multiplicity_policy: UniqueOnly
 ) {
-  Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
+  Accepted { value: fw, diagnostics: _ } => node_same_occurrence(a: fw.candidate, b: identity_source_node())
   Rejected { diagnostics: _ } => false
 }
 test data witness_find_witness_non_identity_rejects: Bool = rejected_for_no_candidate(
@@ -170,7 +170,7 @@ test data witness_find_witness_constraint_rule_accepts: Bool = match find_witnes
   predicate: constraint_predicate(),
   multiplicity_policy: UniqueOnly
 ) {
-  Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
+  Accepted { value: fw, diagnostics: _ } => node_same_occurrence(a: fw.candidate, b: identity_source_node())
   Rejected { diagnostics: _ } => false
 }
 test data witness_find_witness_other_rule_rejects: Bool = rejected_for_not_realized(
@@ -254,6 +254,6 @@ test data witness_coercion_fold_identity_accepts: Bool = match coercion_fold(
   policy: TargetDeclaredPriority { priority: identity_source_node() }
 ) {
   Accepted { value: r, diagnostics: _ } =>
-    (r.target == identity_source_node()) && quality_is_identity(q: r.quality)
+    (node_same_occurrence(a: r.target, b: identity_source_node())) && quality_is_identity(q: r.quality)
   Rejected { diagnostics: _ } => false
 }
