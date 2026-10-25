@@ -920,11 +920,11 @@ data ci_witness_verdict_note: String = "ONE BIT WAS CARRYING SEVEN STATES (2026-
 //
 // THE ARMS MIRROR InterpError ONE-FOR-ONE and deliberately mint no vocabulary of their own
 // (DESIGN section 3): the five variants that already have their OWN ClaimOutcome arm --
-// HostToolUnresolved, HermeticHostEffectRefused, EvalBudgetExceeded, WitnessWallBudgetExceeded
+// HostToolUnresolved, HostEffectRefused, EvalBudgetExceeded, WitnessWallBudgetExceeded
 // and the pre-mapped EvaluationBudgetExceeded -- cannot reach this classifier, because
 // map_budget_error_to_witness_refusal and the arms above it consume them first. (The three
 // hermetic grounds -- UnpublishedMockCase, NoMockResponse, FilesystemRemoval -- are arms of
-// HermeticEffectGround NESTED INSIDE HermeticHostEffectRefused, not peers of it, so they are
+// EffectRefusalGround NESTED INSIDE HostEffectRefused, not peers of it, so they are
 // consumed with their parent and are likewise absent here. They were briefly given cause arms
 // of their own; the seed's exhaustiveness check refused it, which is the check doing its job.) They are NOT
 // given cause arms, and the one arm that stands for all five is WitnessCauseMappedOutcomeEscaped:

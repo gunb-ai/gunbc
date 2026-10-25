@@ -1,11 +1,12 @@
 module gunbc.approve_ios_project
 
-import std.types { String, List, NonEmptyStr, Port }
+import std.types { String, List, NonEmptyStr, Port, Bool }
+import std.optional { Optional, Present, Absent }
 import extdeps.apple.property_list { PlistEntry, plist_entry, plist_string }
 import extdeps.apple.info_plist {
   LaunchScreen, system_default_launch_screen, BackgroundMode, RemoteNotificationMode,
   launch_screen_entry, face_id_usage_entry, display_name_entry, background_modes_entry,
-  InterfaceOrientation, all_interface_orientations, supported_orientations_entry
+  InterfaceOrientation, all_interface_orientations, supported_orientations_entry, url_scheme_entry
 }
 import extdeps.apple.build_settings {
   BuildSetting, build_setting_bool,
@@ -13,13 +14,14 @@ import extdeps.apple.build_settings {
   EnableUserScriptSandboxing, StringCatalogGenerateSymbols, SwiftTreatWarningsAsErrors, GccTreatWarningsAsErrors, GenerateInfoPlistFile,
   MarketingVersion, CurrentProjectVersion
 }
+import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client }
 import gunbc.auth.approval_app_attest_config { approval_app_bundle_id, approval_app_bundle_version }
 import gunbc.auth.approval_broker_endpoint { approval_broker_public_port, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
 import gunbc.auth.approval_broker_placement { approval_broker_public_host_from }
 import gunbc.fleet.fleet_intent_network { fleet_intent_network }
 import extdeps.apple.xcode { xcode_26_6 }
 import extdeps.xcodegen.project_spec {
-  ProjectSpec, ProjectOptions, ConfigFile, XcodeGenTarget, XcodeGenPlist, PlatformDeploymentTarget, DottedVersion,
+  ProjectSpec, ProjectOptions, ConfigFile, SwiftPackage, XcodeGenTarget, XcodeGenPlist, PlatformDeploymentTarget, DottedVersion,
   IosPlatform, ApplicationProduct, UnitTestBundleProduct, SourcePath, ResourcePath, NoPlist, WritesPlist, project_spec_yaml
 }
 
@@ -45,6 +47,8 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 //   background_modes   UIBackgroundModes -- remote-notification, so an approval push wakes the app.
 //   server_host        ApproveServerHost -- read by ServerConfig at launch.
 //   apns_environment   ApproveApnsEnvironment -- read by ServerConfig at launch.
+//   short_version      CFBundleShortVersionString -- approval_app_bundle_version, the verifier's row.
+//   build_number       CFBundleVersion -- approve_build_number.
 // apns_environment is xcconfig-substituted from Config/Team.xcconfig. server_host is NOT: it is the
 // broker's public host (gunbc.auth.approval_broker_placement approval_broker_public_host_from), the
 // same composition the approval links are issued against, written into the spec as a value. It was
@@ -57,9 +61,12 @@ type ApproveAppInfo {
   background_modes: List<BackgroundMode>
   server_host: String
   apns_environment: String
+  google_redirect_scheme: String
+  short_version: String
+  build_number: String
 }
 
-fn approve_app_info(server_host: NonEmptyStr) -> ApproveAppInfo {
+fn approve_app_info(server_host: NonEmptyStr, google_redirect_scheme: String) -> ApproveAppInfo {
   ApproveAppInfo {
     launch_screen: system_default_launch_screen,
     face_id_purpose: "Approving a request signs it with a key that only unlocks with Face ID.",
@@ -68,6 +75,9 @@ fn approve_app_info(server_host: NonEmptyStr) -> ApproveAppInfo {
     background_modes: [RemoteNotificationMode],
     server_host: server_host as String,
     apns_environment: "$(APNS_ENVIRONMENT)",
+    google_redirect_scheme: google_redirect_scheme,
+    short_version: approval_app_bundle_version as String,
+    build_number: approve_build_number,
   }
 }
 
@@ -79,7 +89,10 @@ fn approve_info_properties(i: ApproveAppInfo) -> List<PlistEntry> {
     supported_orientations_entry(orientations: i.orientations),
     background_modes_entry(modes: i.background_modes),
     plist_entry(key: "ApproveServerHost", value: plist_string(s: i.server_host)),
-    plist_entry(key: "ApproveApnsEnvironment", value: plist_string(s: i.apns_environment))
+    plist_entry(key: "ApproveApnsEnvironment", value: plist_string(s: i.apns_environment)),
+    url_scheme_entry(scheme: i.google_redirect_scheme),
+    plist_entry(key: "CFBundleShortVersionString", value: plist_string(s: i.short_version)),
+    plist_entry(key: "CFBundleVersion", value: plist_string(s: i.build_number))
   ]
 }
 
@@ -120,6 +133,9 @@ data approve_project_settings: List<BuildSetting> = [
   build_setting_bool(name: GccTreatWarningsAsErrors, on: true)
 ]
 
+// The generated Info.plist carries CFBundleShortVersionString and CFBundleVersion as these same rows
+// (approve_info_properties): XcodeGen writes the plist from its properties and does not substitute
+// the build settings into it, so a plist that omitted them shipped XcodeGen's default 1.0.
 // THE BUNDLE IDENTIFIER AND MARKETING VERSION ARE THE APP ATTEST VERIFIER'S ROWS
 // (gunbc.auth.approval_app_attest_config), read here rather than restated: the server admits an
 // attestation only for that App ID and CFBundleShortVersionString, so the build and the verifier
@@ -127,7 +143,7 @@ data approve_project_settings: List<BuildSetting> = [
 // the server checks; it is 1 for the bring-up build.
 data approve_build_number: String = "1"
 
-fn approve_app_target(server_host: NonEmptyStr) -> XcodeGenTarget {
+fn approve_app_target(server_host: NonEmptyStr, google_redirect_scheme: String) -> XcodeGenTarget {
   XcodeGenTarget {
     name: "Approve",
     product_type: ApplicationProduct,
@@ -139,9 +155,10 @@ fn approve_app_target(server_host: NonEmptyStr) -> XcodeGenTarget {
       BuildSetting { name: CurrentProjectVersion, value: approve_build_number },
       BuildSetting { name: AssetCatalogCompilerAppIconName, value: "AppIcon" }
     ],
-    info: WritesPlist { plist: XcodeGenPlist { path: "Approve/Info.plist", properties: approve_info_properties(i: approve_app_info(server_host: server_host)) } },
+    info: WritesPlist { plist: XcodeGenPlist { path: "Approve/Info.plist", properties: approve_info_properties(i: approve_app_info(server_host: server_host, google_redirect_scheme: google_redirect_scheme)) } },
     entitlements: WritesPlist { plist: XcodeGenPlist { path: "Approve/Approve.entitlements", properties: approve_entitlements } },
     dependencies: [],
+    package_dependencies: [google_sign_in_package.name],
   }
 }
 
@@ -158,15 +175,38 @@ data approve_tests_target: XcodeGenTarget = XcodeGenTarget {
   info: NoPlist,
   entitlements: NoPlist,
   dependencies: ["Approve"],
+  package_dependencies: [],
 }
 
-fn approve_ios_project_spec(server_host: NonEmptyStr) -> ProjectSpec {
+// GoogleSignIn-iOS 9.0.0 is the first release that takes a custom nonce, which the enrolment binds
+// to the device keys (gunbc.auth.approval_google_enrolment google_enrolment_nonce). `from` admits
+// later 9.x releases and never an earlier one.
+data google_sign_in_package: SwiftPackage = SwiftPackage {
+  name: "GoogleSignIn",
+  url: "https://github.com/google/GoogleSignIn-iOS",
+  from: "9.0.0",
+}
+
+// THE REDIRECT URL SCHEME IS THE REVERSED CLIENT ID (Google's iOS registration): the client id
+// "<n>-<h>.apps.googleusercontent.com" redirects to "com.googleusercontent.apps.<n>-<h>". A client id
+// that does not end in the Google suffix has no scheme to derive and the projection refuses.
+data google_client_id_suffix: String = ".apps.googleusercontent.com"
+data google_redirect_scheme_prefix: String = "com.googleusercontent.apps."
+
+fn google_redirect_scheme(client_id: String) -> String? {
+  if client_id.ends_with(suffix: google_client_id_suffix) {
+    Present { value: join([google_redirect_scheme_prefix, substring(s: client_id, start: 0, end: string_length(s: client_id) - string_length(s: google_client_id_suffix))], "") }
+  } else { none }
+}
+
+fn approve_ios_project_spec(server_host: NonEmptyStr, google_redirect_scheme: String) -> ProjectSpec {
   ProjectSpec {
     name: "Approve",
     options: approve_project_options,
     config_files: [ConfigFile { configuration: "Debug", path: "Config/Team.xcconfig" }, ConfigFile { configuration: "Release", path: "Config/Team.xcconfig" }],
     settings: approve_project_settings,
-    targets: [approve_app_target(server_host: server_host), approve_tests_target],
+    packages: [google_sign_in_package],
+    targets: [approve_app_target(server_host: server_host, google_redirect_scheme: google_redirect_scheme), approve_tests_target],
   }
 }
 
@@ -197,9 +237,12 @@ fn approve_ios_project_yml_from(domain: NonEmptyStr?, port: Port?) -> ApproveIos
     ], "") }
     Absent => match approval_broker_public_host_from(domain: domain) {
       ApprovalBrokerAddressRefused { detail } => ApproveIosProjectRefused { reason: join(["gunbc.approve_ios_project: ", detail as String], "") }
-      ApprovalBrokerAddressResolved { value: host } => match emit_yaml(v: project_spec_yaml(p: approve_ios_project_spec(server_host: host))) {
-        EmittedYaml { text: t } => ApproveIosProjectGenerated { content: concat(approve_ios_project_header, t) }
-        YamlEmitRefused { path: p, reason: r } => ApproveIosProjectRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.approve_ios_project", path: p, reason: r) }
+      ApprovalBrokerAddressResolved { value: host } => match google_redirect_scheme(client_id: approve_ios_oauth_client.client_id as String) {
+        Absent => ApproveIosProjectRefused { reason: "gunbc.approve_ios_project: approve_ios_oauth_client does not end in .apps.googleusercontent.com, so it has no reversed-client-id redirect scheme" }
+        Present { value: scheme } => match emit_yaml(v: project_spec_yaml(p: approve_ios_project_spec(server_host: host, google_redirect_scheme: scheme))) {
+          EmittedYaml { text: t } => ApproveIosProjectGenerated { content: concat(approve_ios_project_header, t) }
+          YamlEmitRefused { path: p, reason: r } => ApproveIosProjectRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.approve_ios_project", path: p, reason: r) }
+        }
       }
     }
   }

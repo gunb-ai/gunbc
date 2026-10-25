@@ -1,7 +1,8 @@
 module gunbc.rung_drop.belt_liveness_publication_answers_unconsumed
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 
 // DECLARED 2026-10-06 beside the change that removed the belt timer (dogfood intervention #4,
@@ -30,17 +31,13 @@ data belt_liveness_publication_answers_unconsumed: RungDrop = RungDrop {
 
   declared: "2026-10-06",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "gunbc.roadmap.roadmap_launch_deployment_observe event_backlog_judge, which covers the exit spool's inbox and queued stages; the publication-answer half waits on a consumption record",
     },
-    population: [
-      "every deployment's publication answer directory (gunbc.host.host_layout publication_answer_dir), for the window between the belt timer's removal and the restoration trigger below",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "every deployment's publication answer directory (gunbc.host.host_layout publication_answer_dir), for the window between the belt timer's removal and the restoration trigger below", tail: [] } },
     restoration_trigger: "THE CAPABILITY: the launch receipt's event backlog row refuses with StaleBacklog naming a publication answer that is older than its bound and that no publish obligation has consumed -- which needs each consumption to be recorded against the answer it consumed (the attempt's obligation receipt naming the answer's spool key, or the answer moving to a consumed stage once the publish obligation's receipt exists). SUFFICIENT FOR: planting an answer older than the bound with no consuming receipt and observing the receipt refuse, and planting the same answer with its consuming receipt and observing it pass. An armed publication-answer path unit does NOT retire this row (it proves the watcher is armed, not that answers are consumed), and neither does a discovery receipt (it proves discovery ran, not that the answer it should have queued was consumed).",
-  }
+  } }
 }

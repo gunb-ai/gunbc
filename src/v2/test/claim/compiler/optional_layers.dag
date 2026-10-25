@@ -31,7 +31,7 @@ import v2.std.inhabitance {
 }
 import v2.std.symbol_index { empty_symbol_index }
 
-import v2.std.node { Atom, ComputationNode, Edge, Instantiation, Node, Positional, Symbol, TypeNode }
+import v2.std.node { node_same_occurrence, Atom, ComputationNode, Edge, Instantiation, Node, Positional, Symbol, TypeNode, NotADeclaration }
 import v2.std.list_introduction { list_introduction_head_path }
 import v2.std.qualified_name { declaration_reference_node, optional_declaration_identity }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -50,8 +50,8 @@ fn ol_list_of(element: Node) -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic) },
-      Edge { label: Positional, target: element }
+      Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration },
+      Edge { label: Positional, target: element, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -83,14 +83,14 @@ test fn a_nested_occupancy_tree_reads_as_two_layers() -> Bool {
 }
 
 test fn wrapping_required_is_the_base() -> Bool {
-  wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: Zero) == ol_atom(id: ^ol_int)
+  node_same_occurrence(a: wrap_type_node_occupancy(base: ol_atom(id: ^ol_int), depth: Zero), b: ol_atom(id: ^ol_int))
 }
 
 fn ol_malformed_occupancy() -> Node {
   Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: OccurrenceSynthetic) }
+      Edge { label: Positional, target: declaration_reference_node(qn: optional_declaration_identity(), occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -137,8 +137,7 @@ test fn list_of_t_binds_t_to_the_element_type() -> Bool {
   ) {
     InferFormalShapeMismatch => false
     InferFormalMatched { instances: bound } =>
-      infer_type_instantiated(t: ol_list_of(element: ol_atom(id: ^ol_t)), instances: bound)
-        == ol_list_of(element: ol_atom(id: ^ol_int))
+      node_same_occurrence(a: infer_type_instantiated(t: ol_list_of(element: ol_atom(id: ^ol_t)), instances: bound), b: ol_list_of(element: ol_atom(id: ^ol_int)))
   }
 }
 
@@ -167,7 +166,7 @@ test fn optional_t_matches_optional_int_and_binds_t() -> Bool {
   ) {
     InferFormalShapeMismatch => false
     InferFormalMatched { instances: bound } =>
-      infer_type_instantiated(t: formal, instances: bound) == produced
+      node_same_occurrence(a: infer_type_instantiated(t: formal, instances: bound), b: produced)
   }
 }
 
@@ -183,8 +182,7 @@ test fn substituting_u_optional_into_t_optional_composes_two_layers() -> Bool {
   ) {
     InferFormalShapeMismatch => false
     InferFormalMatched { instances: bound } =>
-      infer_type_instantiated(t: formal, instances: bound)
-        == wrap_type_node_occupancy(base: ol_atom(id: ^ol_u), depth: two_optional_layers())
+      node_same_occurrence(a: infer_type_instantiated(t: formal, instances: bound), b: wrap_type_node_occupancy(base: ol_atom(id: ^ol_u), depth: two_optional_layers()))
   }
 }
 

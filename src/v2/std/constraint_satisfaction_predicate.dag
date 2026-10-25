@@ -1,6 +1,6 @@
 module v2.std.constraint_satisfaction_predicate
 
-import v2.std.node { Node, well_formed }
+import v2.std.node { node_equal_ignoring_provenance, Node, well_formed }
 fn constraint_satisfaction_preservation_holds(
   source_facts: Node,
   candidate: Node,
@@ -9,6 +9,6 @@ fn constraint_satisfaction_preservation_holds(
   well_formed(n: source_facts)
     && well_formed(n: algebra)
     && well_formed(n: candidate)
-    && (algebra == source_facts)
-    && (candidate == source_facts)
+    && node_equal_ignoring_provenance(a: algebra, b: source_facts)
+    && node_equal_ignoring_provenance(a: candidate, b: source_facts)
 }

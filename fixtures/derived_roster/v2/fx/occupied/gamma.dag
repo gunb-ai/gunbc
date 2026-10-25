@@ -1,0 +1,5 @@
+module v2.fx.occupied.gamma
+
+import v2.fx.occupied { FxRow }
+
+data gamma: FxRow = FxRow { weight: 3 }

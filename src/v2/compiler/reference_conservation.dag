@@ -25,6 +25,7 @@ import v2.std.diagnostic {
   ByteRange,
   Diagnostic,
   Diagnostics,
+  Extent,
   Locus,
   NodeLocus,
   NonEmptyDiagnostics,
@@ -41,7 +42,7 @@ import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_id
 import v2.compiler.normalize { normalize_scoped }
 import std.occurrence_identity { scoped_occurrence_allocator }
 import v2.std.language_model { LanguageModel }
-import v2.std.node { Atom, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, content_hash, symbol_lexeme }
+import v2.std.node { Atom, Authored, DeclaresAt, NotADeclaration, StructuralLabel, Node, Positional, Symbol, TypeNode, content_hash, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.lens_verdict { lens_verdict_diagnostic_located_text_in_spans }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_resolve_textual_locus }
@@ -51,6 +52,7 @@ import std.integer { int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, empty_map, map_insert, map_lookup }
 import std.occurrence_identity {
+  NodeOccurrenceIdentity,
   DeclarationRole,
   OccurrenceCategoryModuleScopeExposed,
   OccurrenceCategoryModuleScopeNotExposed,
@@ -503,7 +505,19 @@ fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<
       }
   }
   fold(node.children, init: here, f: fn(inner, edge) {
-    occurrence_identity_index(acc: inner, node: edge.target)
+    let declared = match edge.declaration {
+      NotADeclaration => inner
+      DeclaresAt { occurrence: occurrence } =>
+        match authored_occurrence_of(identity: occurrence) {
+          Absent => inner
+          Present { value: id } =>
+            match edge.label {
+              Authored { name: name } => map_insert(m: inner, key: id, value: name)
+              _ => inner
+            }
+        }
+    }
+    occurrence_identity_index(acc: declared, node: edge.target)
   })
 }
 
@@ -513,14 +527,15 @@ fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<
 // carries the atom's occurrence, or a byte range enclosing the atom's extent. A diagnostic at an
 // invariant port or a declaration name locates nothing in this module's tree, so it covers nothing
 // -- an unlocated refusal that swallows a module is exactly the silence this check exists to count.
-type RefusalRange {
-  start: Int
-  end: Int
-}
-
+// THE BYTE RANGE IS v2.std.diagnostic's Extent, declared once there; a local field-isomorphic
+// record (the deleted `type RefusalRange { start: Int, end: Int }`) was a structural nickname --
+// DESIGN 3's one-declaration rule names the SYMBOL's home instead (gunbc.recurring_failure_mode
+// .nominal_isomorphic_record_admitted_at_sibling_declaration). The slot carries the coproduct
+// parent Extent, not one of its arms: ByteRange is an arm, not a type (review 38602), and the
+// arm is matched where the fields are read.
 type RefusalCover {
   anchored: Map<OccurrenceId, Bool>
-  ranges: FreeMonoid<RefusalRange>
+  ranges: FreeMonoid<Extent>
 }
 
 fn refusal_cover_anchor(acc: Map<OccurrenceId, Bool>, node: Node) -> Map<OccurrenceId, Bool> {
@@ -560,17 +575,26 @@ fn refusal_cover_from(diagnostics: NonEmptyDiagnostics) -> RefusalCover {
   )
 }
 
-fn range_encloses_atom(range: RefusalRange, atom: AuthoredAtom) -> Bool {
-  match atom.locus {
-    Textual { file: _, extent: extent } =>
-      match extent {
-        ByteRange { start: s, end: e } => range.start <= s && e <= range.end
-        WholeFile => false
+fn range_encloses_atom(range: Extent, atom: AuthoredAtom) -> Bool {
+  // The ARM is matched here, where the fields are read; the slot carries the coproduct parent.
+  // A WholeFile range in a cover encloses nothing by itself: the cover is built only from
+  // byte-ranged refusals, and a whole-file arm carries no file identity to match the atom's
+  // Textual file against -- treating it as covering everything would be a silence this check
+  // exists to count, so it covers nothing (the deleted RefusalRange could not express it).
+  match range {
+    ByteRange { start: rs, end: re } =>
+      match atom.locus {
+        Textual { file: _, extent: extent } =>
+          match extent {
+            ByteRange { start: s, end: e } => rs <= s && e <= re
+            WholeFile => false
+          }
+        NodeLocus { anchor: _ } => false
+        SourcePortLocus { anchor: _, file: _, extent: _ } => false
+        InvariantPortLocus { anchor: _, invariant: _ } => false
+        DeclarationLocus { declaration: _ } => false
       }
-    NodeLocus { anchor: _ } => false
-    SourcePortLocus { anchor: _, file: _, extent: _ } => false
-    InvariantPortLocus { anchor: _, invariant: _ } => false
-    DeclarationLocus { declaration: _ } => false
+    WholeFile => false
   }
 }
 

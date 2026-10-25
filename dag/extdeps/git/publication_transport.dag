@@ -25,7 +25,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.git.publication_transport",
-      decl_name: "PublicationTransport",
+      decl_name: "GitPushRequest",
       field: WholeDeclaration
     }
   },

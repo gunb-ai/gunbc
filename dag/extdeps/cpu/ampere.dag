@@ -1,17 +1,29 @@
 module extdeps.cpu.ampere
 
 import std.types { String, List }
+import std.algebra { FreeSemigroup }
 import std.optional { Absent, Present }
 import std.measure { Gram, gram, ByteSize, byte_size, celsius, hardware_thread_count, hertz, watt }
-import extdeps.external_authority { ExternalAuthority, FactCitation }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedToAuthority }
 import std.decl_ref { decl_field_ref, decl_ref }
 import extdeps.uri { Uri, Https }
 import extdeps.publication { HeldSpecificationSupersessionStanding, NewerRevisionPubliclyServed, HeldRevisionIsCurrentPublicCopy }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.ampere.altra_ssif_patch { altra_ssif_patch_authority }
+// THE IDENTITY TEST IS IMPORTED, NOT RELIED ON BY NAME. ampere_soc_family_carries_smpro calls it, and a
+// name that resolves only because nothing else in scope shadows it is not a resolved name. Review 81471
+// caught that this import list was written BEFORE the membership test was rewritten to use any(...) over
+// soc_family_eq, so the call was added and the import never was -- and the function's one consumer
+// (gunbc.host.smpro_platform_capability) sits outside the required emitted-subject rows, which is exactly
+// the CI blind spot DESIGN Sec 3 names: "a dependent can stop resolving while the required job reports
+// SUCCESS". The comment sits ABOVE the block, not inside it: no file in this corpus carries a comment
+// inside an import block, so it is not a position the parser is known to accept.
 import extdeps.cpu.types {
   ProcessorCoolingMount,
-  SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits }
+  SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SoCFamily,
+  soc_family_eq,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -253,20 +265,8 @@ data ampere_lga4926_socket: CpuSocket = CpuSocket {
   termination: SocketedLandGrid,
   contact_count: 4926,
   cooling_mount: ampere_lga4926_cooling_mount,
+  figure_standing: CitedToAuthority { authority: ampere_altra_max_rev_a1_datasheet_authority },
 }
-
-// The citations sit beside the family socket they ground, not on each SKU row, because the fact
-// they cite is the family's.
-data socket_lga4926_citations: List<FactCitation> = [
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_lga4926_socket", field_name: "termination"),
-    authority: ampere_altra_max_rev_a1_datasheet_authority,
-  },
-  FactCitation {
-    fact: decl_field_ref(module_path: "extdeps.cpu.ampere", decl_name: "ampere_lga4926_socket", field_name: "contact_count"),
-    authority: ampere_altra_max_rev_a1_datasheet_authority,
-  },
-]
 
 data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "M128-30",
@@ -277,7 +277,6 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(128),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
-  socket_citations: socket_lga4926_citations,
   tdp_watts: watt(183),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
@@ -296,7 +295,6 @@ data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
-  socket_citations: socket_lga4926_citations,
   tdp_watts: watt(124),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
@@ -351,7 +349,6 @@ data altra_q8030_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(80),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
-  socket_citations: socket_lga4926_citations,
   tdp_watts: watt(161),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
@@ -368,6 +365,83 @@ data ampere_cpu_catalog_rows: List<CpuModelCatalogRow> = [
   altra_q6430_catalog,
   altra_q8030_catalog,
 ]
+
+// THE AMPERE ALTRA SOC FAMILY: the Q-series Altra line. Each model's upstream-attested
+// architecture already lives in its catalog row; the family groups the models a board may admit.
+// Grouping is an upstream grouping fact, not an inference: it cites the same models the per-model
+// catalog rows cite, and the family's architecture is DERIVED from them (soc_family_architecture),
+// never asserted separately.
+data ampere_altra_soc_family: SoCFamily = SoCFamily {
+  name: "Altra",
+  models: FreeSemigroup { head: altra_q6430_catalog, tail: [altra_q8030_catalog] },
+}
+
+// THE AMPERE ALTRA MAX SOC FAMILY: the M-series Altra Max line. A dual-socket Altra/Altra Max board
+// (Mt. Collins) admits BOTH families; whether such a board establishes one firmware architecture is
+// then derived from whether both families agree, never defaulted.
+data ampere_altra_max_soc_family: SoCFamily = SoCFamily {
+  name: "Altra Max",
+  models: FreeSemigroup { head: altra_max_m12830_catalog, tail: [] },
+}
+
+// WHICH SoC FAMILIES CARRY SMpro. SMpro is the Ampere Altra-family SoC's own out-of-band register
+// interface, and the family set that carries it is a NAMED UPSTREAM SET, not an inference: the SSIF
+// patch readme "names Altra and Altra Max" (extdeps.ampere.altra_ssif_patch.altra_ssif_v6_purpose,
+// whose subject is those two processors), and the register documentation behind the SMpro sysfs ABI is
+// "Ampere's Altra Family SoC BMC Interface Specification" (extdeps.ampere.smpro_register). Listing the
+// families here is that cited set in the corpus's own SoCFamily terms.
+//
+// Membership is tested by FAMILY IDENTITY, not by name and never by the instruction-set architecture.
+// A family is its cited model rows (extdeps.cpu.types.soc_family_eq), so a row that merely spells its
+// name "Altra" while grouping different models does NOT carry SMpro — the earlier name comparison let it
+// (review 81149, finding 3). And aarch64 does not imply SMpro: an AWS Graviton or an NVIDIA Grace is
+// aarch64 silicon with no SMpro interface at all, so keying on the architecture would assert a facility
+// these machines do not have.
+// ONE FAMILY THE UPSTREAM SET NAMES, WITH THE CITATION THAT NAMES IT, in one row. The citation cannot
+// sit beside the set as a separate list: a row no fold reads is dangling, and a reader who takes
+// ampere_smpro_carrying_soc_families without its companion gets an uncited claim about silicon. Carrying
+// the citation inside the row is the corpus's own shape for exactly this — CpuModelCatalogRow keeps
+// l1_cache_citations next to the facts they ground.
+type SmproCarryingSocFamily {
+  family: SoCFamily
+  citations: List<FactCitation>
+}
+
+data ampere_smpro_carrying_soc_families: List<SmproCarryingSocFamily> = [
+  SmproCarryingSocFamily {
+    family: ampere_altra_soc_family,
+    citations: [
+      FactCitation {
+        fact: decl_ref(module_path: "extdeps.ampere.altra_ssif_patch", decl_name: "altra_ssif_v6_purpose"),
+        authority: altra_ssif_patch_authority,
+      },
+    ],
+  },
+  SmproCarryingSocFamily {
+    family: ampere_altra_max_soc_family,
+    citations: [
+      FactCitation {
+        fact: decl_ref(module_path: "extdeps.ampere.altra_ssif_patch", decl_name: "altra_ssif_v6_purpose"),
+        authority: altra_ssif_patch_authority,
+      },
+    ],
+  },
+]
+
+// WHETHER AN SoC FAMILY CARRIES SMpro, read off the cited family set above. True only for a family the
+// upstream names; every other family — any family the set does not name — is False, which the consumer
+// reads as a NAMED family that does not carry the facility. "We do not know the family" is a different
+// answer and is not expressible here: the caller passes a family it has, or none
+// (gunbc.host.smpro_platform_capability.smpro_facility).
+fn ampere_soc_family_carries_smpro(family: SoCFamily) -> Bool {
+  // THE CANONICAL MEMBERSHIP PREDICATE, not a hand-built one. This used to be
+  // `|> filter(...) |> first() { Present => true / Absent => false }`: a Bool helper that reconstructs an
+  // Optional and answers one variant true and the other false, which is the predicate/walker dissolution
+  // the review policy names -- the same fact as `row.capabilities |> any(c => c == cap)` two modules over
+  // (extdeps.bmc.capability), and DESIGN §2's "must not grow by re-invention" applies to walkers as much
+  // as to types. Membership is `any` over an identity test; there is nothing else it could mean.
+  ampere_smpro_carrying_soc_families |> any(c => soc_family_eq(a: c.family, b: family))
+}
 
 // Processor Mass Specification, section 4, p.17 of Altra Max Rev A1 issues
 // 1.15/1.25/1.30. Typical package mass, not a guaranteed tolerance interval.

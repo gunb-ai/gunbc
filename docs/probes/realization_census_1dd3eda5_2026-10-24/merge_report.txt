@@ -1,0 +1,18 @@
+M7 seed: +56 supplement, -0 dropped
+rule 1: 13 slice module rows superseded by parent rows (their instances kept): src/v1/stage0/src/cli_run.rs, extdeps.huggingface.hub, gunbc.fleet.fleet_posix_accounts, gunbc.auth.approval_assertion_counter, gunbc.auth.approval_decision_store, gunbc.dispatch_credential_acquisition, gunbc.durable_cas_file_store, gunbc.harness.harness_cli, gunbc.live_deploy.desired, gunbc.roadmap.roadmap_belt_actuate, gunbc.roadmap.roadmap_session_placement, gunbc.compute.work_provider_local, gunbc.fabric.fabric_storage_file_store
+M12 path-class relabels: fleet_declaration->production: 7, host_model->production: 7, observation->production: 29, production->roster: 3, production->seed: 9, roster->production: 12, test->production: 1, witness->production: 2
+exact-duplicate instances removed: 40
+ruling (d) moves: placement->access: 12, storage->access: 1, storage->placement: 1
+findings for modules with no modules row (1): gunbc.roadmap.roadmap_dispatch_selection
+cells raised to their worst instance: 37
+cells dropped because their instances moved under ruling (d): 1 gunbc.machine_intake.host_capture_envelope:storage
+UNBACKED L3+ cells (sheet level with no instance row): 7
+  extdeps.tools.websocat storage L4
+  gunbc.runner.runner_revision_job_toolchain placement L4
+  gunbc.bmc.bmc_fan_program_observation_witness placement L4
+  gunbc.srv3.srv3_actuate_shell_paths placement L4
+  gunbc.tools.review placement L4
+  gunbc.spark.managed_grant_install authz L3
+  gunbc.workspace_gateway_observer placement L4
+
+correction (stern-ram-763): removed finding gunbc.roadmap.roadmap_dispatch_selection|placement|codex_inventory_offers_for_instance|1 - a duplicate of gunbc.dispatch_selection|placement|codex_inventory_offers_for_instance|1 under a module name that does not exist; findings 951 -> 950

@@ -1,0 +1,102 @@
+module extdeps.fans.delta
+
+import std.types { NonEmptyStr }
+import std.measure { Milliampere, micrometer, millivolt, milliwatt, milliampere, millilitre_per_second, pascal, rpm }
+import extdeps.units.iec_61672 { tenths_dba }
+import extdeps.fans.types { RadialBlowerEnvelope, RadialBlowerOutletCandidates, RadialBlowerRating }
+import extdeps.vendor.delta { delta_electronics }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.deltaww.com/en-US/products/DC-Brushless-Fans/All"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.fans.delta",
+      decl_name: "delta_bfb1012m_envelope",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: delta_bfb_series_datasheet,
+  further_citations: [extdeps_external_authority_anchor]
+}
+
+// THE DELTA BFB SERIES SPECIFICATION AND DIMENSION SHEET, "97 x 94 x 33 MM SERIES BFB", as fetched
+// for the operator (2026-10-25) from a distributor mirror; the sheet carries Delta's own
+// "Internet: http://www.deltaww.com" footer. The mirror is a locator, and the bytes are pinned by
+// their digest, so a reader holding a different copy can tell.
+data delta_bfb_series_datasheet: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "static.chipdip.ru/lib/428/DOC012428094.pdf"
+  }
+}
+
+data delta_bfb_series_datasheet_sha256: NonEmptyStr = "b04bf73db7fb695d461ce46ede5d5b45baf0d596aa1fcb9377550f4088e89fc8"
+
+// THE DELTA BFB1012M (-R00/-F00): the 12 V medium-speed member of the series. The operator ordered this
+// exact model to cool one A16 through product.printed_chassis.gpu_duct's blower root.
+data delta_bfb1012m_model: NonEmptyStr = "BFB1012M"
+
+// The housing and the mounting holes, as the sheet's text prints them: 97.2 x 94.4 mm, 33.0 +/- 0.5 mm
+// thick, two holes of 4.5 +/- 0.3 mm. Cited.
+data delta_bfb1012m_envelope: RadialBlowerEnvelope = RadialBlowerEnvelope {
+  vendor: delta_electronics,
+  model: delta_bfb1012m_model,
+  housing_length: micrometer(count: 97200),
+  housing_depth: micrometer(count: 94400),
+  thickness: micrometer(count: 33000),
+  thickness_tolerance: micrometer(count: 500),
+  mounting_hole_count: 2,
+  mounting_hole_diameter: micrometer(count: 4500),
+}
+
+data delta_bfb1012m_envelope_standing: CitedFigureStanding = CitedToAuthority { authority: delta_bfb_series_datasheet }
+
+// THE OUTLET AND THE HOLE CENTRES ARE NOT YET ATTRIBUTABLE. The sheet's drawing prints these figures,
+// but its leaders are vector paths that were not rendered, so the text does not say which dimension
+// is which feature. 39.0 x 32.0 is the likely outlet opening, which is a candidate and not a reading;
+// nothing consumes these figures until they are cited.
+data delta_bfb1012m_outlet_candidates: RadialBlowerOutletCandidates = RadialBlowerOutletCandidates {
+  printed_figures: [
+    micrometer(count: 58900), micrometer(count: 45400), micrometer(count: 39000), micrometer(count: 32000),
+    micrometer(count: 52000), micrometer(count: 50000), micrometer(count: 57900), micrometer(count: 53900),
+    micrometer(count: 29300), micrometer(count: 1850), micrometer(count: 2000),
+  ],
+}
+
+data delta_bfb1012m_outlet_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Map the BFB1012M outline drawing's leaders, or caliper the received fan: the outlet opening's size and its offset on the housing edge, which edge (97.2 or 94.4 mm) it is on, and the hole centres.",
+}
+
+// THE RATING ROW, read from the same sheet for -R00/-F00. Free-air flow and speed, pressure at zero
+// flow; "function type is optional". The sheet states flow as 0.640 m3/min (22.60 CFM), carried as
+// 10666 mL/s (floor of 10666.7), and pressure as 19.00 mmH2O (0.748 inH2O), carried as 186 Pa (floor of
+// 186.3 at 9.80665 Pa per mmH2O). The operator's purchase listing says 0.48 A where the sheet says
+// 0.57 A, so the received unit's label is read before either is relied on.
+data delta_bfb1012m_rating: RadialBlowerRating = RadialBlowerRating {
+  rated_voltage: millivolt(count: 12000),
+  operating_voltage_low: millivolt(count: 4000),
+  operating_voltage_high: millivolt(count: 13800),
+  rated_current: milliampere(count: 570),
+  input_power: milliwatt(count: 6840),
+  speed: rpm(3200),
+  free_air_flow: millilitre_per_second(count: 10666),
+  zero_flow_pressure: pascal(count: 186),
+  sound_pressure: tenths_dba(490),
+}
+
+data delta_bfb1012m_rating_standing: CitedFigureStanding = CitedToAuthority { authority: delta_bfb_series_datasheet }
+
+data delta_bfb1012m_listing_current: Milliampere = milliampere(count: 480)
+
+data delta_bfb1012m_current_reconciliation: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read the received BFB1012M's label: the purchase listing says 0.48 A and the datasheet says 0.57 A.",
+}
