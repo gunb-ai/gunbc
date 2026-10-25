@@ -3430,12 +3430,17 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
 // (`type Bool = True | False`) at a scalar formal at every consulted position, and `Bool` at a
 // differently-parameterised declared head (`FreeMonoid<Int>`), including through the generic type
 // argument this relation is consulted at as well (all eight flips measured on the pinned pair).
-// WHAT THIS RUNG DOES NOT CLAIM: a value whose declared head is NOT kernel-named -- a user
-// `type Nat = Zero | Succ { predecessor: Nat }`, a user `type Opt<T>`, a user coproduct -- still
-// leaves through the guard above (`is_kernel_type(actual_name) == false` admits, and `Unit` is
-// excluded) and is judged only by the two-relation wall, exactly as before this change; measured
-// unchanged on both sides of the pin. Closing that guard is the named next rung of
-// gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel, not this one.
+// A KERNEL-SCALAR FORMAL NEVER REACHES THIS WALK: kernel_value_declared_type_mismatch hands it to the
+// one scalar-formal rule (value_at_scalar_declared_type), decided from the formal's declaration for an
+// actual of any kind, so a user `type Nat = Zero | Succ { .. }`, a user `type Opt<T>` or a user
+// coproduct at a String formal is refused there. What remains here is the other direction, a kernel
+// value at a STRUCTURED formal, and the guard below names that domain: a non-kernel actual at a
+// structured formal is the nominal relations' (the two-relation wall). THE `Unit` EXEMPTION IS
+// WITHDRAWN. It admitted a Unit value at any structured formal (`fn f() -> Tally { a_unit() }`
+// compiled), and no ruling or row granted it; what it protected is absence -- `none` is the unit
+// placeholder carrying CardOptional -- so the guard now excludes an OPTIONAL actual instead, the
+// cardinality relation's case (gunbc.design_ruling dag_absence_is_one_meaning), and a required Unit at
+// a record or coproduct formal is refused like any other kernel value.
 // The surviving accepts each carry a cited reason: name equality, the declared `dag_can_cast`
 // rows (Int<->Float) and the grounded identity rows (Int->Nat, String->FreeMonoid in
 // dag/std/coercion.dag -- the declared text unfold the operator ruled legitimate), the
@@ -3475,7 +3480,7 @@ fn kernel_value_declared_type_mismatch_bounded(
   } else {
     let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
     let actual_name = authored_name_at(source_indices: source_indices, node: actual_base)
-    if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
+    if is_kernel_type(name: actual_name) == false || actual.return_cardinality == CardOptional {
       false
     } else {
       let formal_name = if formal_name_override == "" {
