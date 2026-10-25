@@ -33,14 +33,6 @@ fn usage(edges: &[(EdgeKind, &str, i64)]) -> Rc<BindingUsage> {
     })
 }
 
-// The probe's `Present` and `Item?` are declaration-bound to std.optional, which imports nothing,
-// so the closure is the probe plus that one module, read from the workspace's source of truth.
-fn std_optional_source() -> String {
-    let path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dag/std/optional.dag");
-    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
-}
-
 fn movable(binding: Rc<BindingUsage>) -> bool {
     let proof = Rc::new(OwnershipProof {
         func_name: "fixture".into(),
@@ -103,16 +95,10 @@ fn authored_constructor_orders_emit_clones() {
              Item {{ child: item.child, text: item.text, other: item.other }} }} }}"
         );
         let result = compile_sources(
-            Rc::new(im::vector![
-                Rc::new(SourceFile {
-                    path: "move_probe.dag".into(),
-                    content: source
-                }),
-                Rc::new(SourceFile {
-                    path: "std/optional.dag".into(),
-                    content: std_optional_source(),
-                }),
-            ]),
+            Rc::new(im::vector![Rc::new(SourceFile {
+                path: "move_probe.dag".into(),
+                content: source
+            })]),
             RenderTarget::Rust,
         );
         assert!(
