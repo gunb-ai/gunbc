@@ -18,7 +18,6 @@ module v2.test.claim.compiler.operation_declaration_seam
 // walked, module-qualified path, so the walk-based claims here are the delta the swap must show.
 import std.algebra { Cons, Empty, fold_list, length, list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import std.decl_ref { decl_ref }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.primitive_projection { HostRealizedSeam, primitive_projection_roster }
@@ -175,9 +174,11 @@ fn ods_is_v2(path: String) -> Bool {
 }
 
 fn ods_witness(path: String) -> DagSourceReadWitness {
-  let read = Filesystem.Read(path: path)
   DagSourceReadWitness {
-    source: Medium { carried: read.content, fidelity: Lossless },
+    // THE REAL PRODUCER'S OWN BYTES: filesystem_read dispatches to the v1 builtin (the seam name
+    // still dispatches to the builtin at v1 per the decl_facts/symbol_lexeme precedent), the same
+    // read production_ingest uses to make file bytes the authority.
+    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
     artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
     compilation_unit: symbol_intern_lexeme(lexeme: path),
     source_root: if ods_is_v2(path: path) { V2Tree } else { DagTree }
