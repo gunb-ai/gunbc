@@ -12,7 +12,7 @@ import std.occurrence_identity {
   TypeAnnotationPosition,
   ValuePosition
 }
-import v2.std.decl_index { DataItem, DeclFact, FnItem, ItemKind, OtherItem, ServiceItem, TypeItem, decl_facts_at, type_declarer_qualified_names }
+import v2.std.decl_index { DataItem, DeclFact, FnItem, ItemKind, OtherItem, ServiceItem, TypeItem, decl_facts_at }
 import v2.compiler.reference_site_collector {
   HeadBoundAtRootValue,
   HeadBoundInFrame,
@@ -81,7 +81,7 @@ fn roster_site_needs_home_import(
 }
 
 // THE VERDICT. The binding fact comes from the site as v2.compiler.reference_site_collector classified it; the position
-// from v2.compiler.occurrence_role; the KIND is the row's HomeKindSide, read once per run by roster_home_side_read
+// from v2.compiler.occurrence_role; the KIND is the row's HomeKindSide, read once per run by roster_home_sides_read
 // (v2.std.decl_index keyed by the home declaration identity) and CARRIED here, never re-read per site. Only the kind can
 // fail to decide, and only in KindUnclassified.
 fn roster_site_home_kind_verdict(
@@ -160,14 +160,70 @@ fn type_ask_verdict(side: HomeKindSide) -> HomeKindVerdict {
 // `module` line and reads every .dag under its root, so a sibling file in the home's directory that declares the home
 // module would contribute rows the compiler never binds. The directory bounds how much source is read; the rows that may
 // classify the home are only those whose rel_path IS the file module_file assigns <home> (side chat on #14870).
-fn roster_home_declarations(home: String, import_name: String) -> List<DeclFact> {
-  match roster_home_file(home: home) {
-    Present { value: file } =>
-      roster_home_facts_in_file(
-        facts: decl_facts_at(pool_roots: [path_parent_directory(path: file)], qualified_name: home + "." + import_name),
-        file: file
-      )
-    Absent => []
+//
+// ONE READ PER DIRECTORY, NOT PER ROW. Every ask whose home file sits in one directory is a demand on the same pool, so
+// the asks are grouped by that directory and each directory is read once with all of its asks' keys; each ask then joins
+// its own key against that read (DESIGN 2, materialization ladder step 1: share the read at the demands' common
+// ancestor). Reading per row re-walked one directory once per row of it wherever no census provider was registered.
+type RosterHomeAsk {
+  home: String
+  import_name: String
+}
+
+type RosterHomeDirectoryRead {
+  directory: String
+  facts: List<DeclFact>
+}
+
+fn roster_home_ask_key(ask: RosterHomeAsk) -> String {
+  ask.home + "." + ask.import_name
+}
+
+fn roster_home_ask_directory(ask: RosterHomeAsk) -> Optional<String> {
+  match roster_home_file(home: ask.home) {
+    Present { value: file } => Present { value: path_parent_directory(path: file) }
+    Absent => Absent
+  }
+}
+
+fn roster_home_directories(asks: List<RosterHomeAsk>) -> List<String> {
+  fold_list(xs: asks, empty: [], cons: fn(acc, ask) {
+    match roster_home_ask_directory(ask: ask) {
+      Present { value: d } =>
+        if fold_list(xs: acc, empty: false, cons: fn(seen, x) { seen || x == d }) { acc } else { list_snoc_item(xs: acc, item: d) }
+      Absent => acc
+    }
+  })
+}
+
+fn roster_home_directory_keys(asks: List<RosterHomeAsk>, directory: String) -> List<String> {
+  fold_list(xs: asks, empty: [], cons: fn(acc, ask) {
+    match roster_home_ask_directory(ask: ask) {
+      Present { value: d } => if d == directory { list_snoc_item(xs: acc, item: roster_home_ask_key(ask: ask)) } else { acc }
+      Absent => acc
+    }
+  })
+}
+
+fn roster_home_directory_reads(asks: List<RosterHomeAsk>) -> List<RosterHomeDirectoryRead> {
+  fold_list(xs: roster_home_directories(asks: asks), empty: [], cons: fn(acc, d) {
+    list_snoc_item(xs: acc, item: RosterHomeDirectoryRead {
+      directory: d,
+      facts: decl_facts_at(pool_roots: [d], qualified_names: roster_home_directory_keys(asks: asks, directory: d), type_names: [])
+    })
+  })
+}
+
+// The side of one ask, joined from the read of its home's directory: its own key, then its home's exact file.
+fn roster_home_side_in(reads: List<RosterHomeDirectoryRead>, ask: RosterHomeAsk) -> HomeKindSide {
+  match roster_home_file(home: ask.home) {
+    Present { value: file } => {
+      let d = path_parent_directory(path: file)
+      let read = fold_list(xs: reads, empty: [], cons: fn(acc, r) { if r.directory == d { r.facts } else { acc } })
+      let key = roster_home_ask_key(ask: ask)
+      roster_home_side_of_facts(facts: fold_list(xs: read, empty: [], cons: fn(acc, f) { if f.qualified_name == key { list_snoc_item(xs: acc, item: f) } else { acc } }), file: file)
+    }
+    Absent => SideNeither
   }
 }
 
@@ -193,14 +249,6 @@ type HomeKindSide
   | SideValue
   | SideBoth
 
-fn roster_home_declaration_side(home: String, import_name: String) -> HomeKindSide {
-  fold_list(
-    xs: roster_home_declarations(home: home, import_name: import_name),
-    empty: SideNeither,
-    cons: fn(side, fact) { side_with_kind(side: side, kind: fact.kind) }
-  )
-}
-
 // THE KIND GROUNDING, the host's own assignment, item_kind (v1_compiler_infer_items.rs:274): TypeItem = a connective
 // without a transport (an OPAQUE type declaration); ServiceItem = has a transport; FnItem = has a body (with params, or
 // without an annotation); DataItem = has a BODY AND a type annotation (v1_compiler_infer_items.rs:291-293) -- a TYPED
@@ -213,8 +261,8 @@ fn roster_home_declaration_side(home: String, import_name: String) -> HomeKindSi
 // FreeMonoid<element>`) is no longer an OtherItem: decl_index item_kind reads TypeItem from the declaration's own kind, like
 // the opaque `type FreeMonoid<a>`. Nothing downstream can repair a genuine OtherItem: the
 // host marshals its fact's node as a unit node (coproduct_reflection.rs marshal_decl_fact_node:1794, the
-// `_ => unit_type_node(ctx)` arm), so v2.std.type_binder type_decl_view has no shape to read, and v2.std.decl_index
-// type_declarer_qualified_names -- the type-declarer seam -- filters on TypeItem only (coproduct_reflection.rs:2012).
+// `_ => unit_type_node(ctx)` arm), so v2.std.type_binder type_decl_view has no shape to read, and the type-name key of
+// v2.std.decl_index decl_facts_at (v1_compiler.coproduct_reflection eval_decl_facts_at) answers TypeItem rows only.
 fn side_with_kind(side: HomeKindSide, kind: ItemKind) -> HomeKindSide {
   match kind {
     TypeItem =>
@@ -250,8 +298,11 @@ type RosterHomeSide {
   side: HomeKindSide
 }
 
-fn roster_home_side_read(home: String, import_name: String) -> RosterHomeSide {
-  RosterHomeSide { home: home, import_name: import_name, side: roster_home_declaration_side(home: home, import_name: import_name) }
+fn roster_home_sides_read(asks: List<RosterHomeAsk>) -> List<RosterHomeSide> {
+  let reads = roster_home_directory_reads(asks: asks)
+  fold_list(xs: asks, empty: [], cons: fn(acc, ask) {
+    list_snoc_item(xs: acc, item: RosterHomeSide { home: ask.home, import_name: ask.import_name, side: roster_home_side_in(reads: reads, ask: ask) })
+  })
 }
 
 // The carried side of <home>.<import_name>. A row the table does not hold reads SideNeither, so every site of it refuses
@@ -261,8 +312,8 @@ fn roster_home_side_of(sides: List<RosterHomeSide>, home: String, import_name: S
 }
 
 // The two control-facing readings, each a single reading OF THE ONE classification (never a second pass over ItemKind).
-fn roster_home_declaration_is_type(home: String, import_name: String) -> Bool {
-  match roster_home_declaration_side(home: home, import_name: import_name) {
+fn roster_home_side_is_type(side: HomeKindSide) -> Bool {
+  match side {
     SideType => true
     SideBoth => true
     SideValue => false
@@ -270,8 +321,8 @@ fn roster_home_declaration_is_type(home: String, import_name: String) -> Bool {
   }
 }
 
-fn roster_home_declaration_is_value(home: String, import_name: String) -> Bool {
-  match roster_home_declaration_side(home: home, import_name: import_name) {
+fn roster_home_side_is_value(side: HomeKindSide) -> Bool {
+  match side {
     SideValue => true
     SideBoth => true
     SideType => false
@@ -294,7 +345,7 @@ fn roster_home_file(home: String) -> Optional<String> {
 // being decided by a file the compiler never binds. Deleting the rel_path filter turns the second reading SideValue.
 fn roster_home_exact_file_control() -> String {
   let file = "dag/std/host_text.dag"
-  let real = decl_facts_at(pool_roots: [path_parent_directory(path: file)], qualified_name: "std.host_text.chars")
+  let real = decl_facts_at(pool_roots: [path_parent_directory(path: file)], qualified_names: ["std.host_text.chars"], type_names: [])
   let moved = fold_list(xs: real, empty: [], cons: fn(acc, f) {
     list_snoc_item(xs: acc, item: DeclFact { qualified_name: f.qualified_name, name: f.name, kind: f.kind, node: f.node, rel_path: "dag/std/roster_seat7_sibling.dag" })
   })

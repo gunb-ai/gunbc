@@ -27,7 +27,7 @@ import gunbc.v1.v1_consumer_census {
   v1_blocking_consumers, v1_native_lane_consumers, v1_native_lane_row_count,
   v1_row_key, v1cd_module_path_from, v1cd_lexeme_is_a_signature, v1_literal_signatures
 }
-import gunbc.instruments.v1_consumer_discovery { v1_discovery_keys_at_name }
+import gunbc.instruments.v1_consumer_discovery { v1_discovery_facts_at_names, v1_discovery_keys_in }
 import std.decl_ref { declaration_ref_display_key }
 import gunbc.stage0.stage0_partition_package_graph { stage0_host_shell_package_name }
 import test.fixture.v1_consumer_census.specimens {
@@ -520,10 +520,11 @@ data discovery_control_name: String = "test.claim.self_host_v1_consumer_census_w
 data discovery_control_subject: String = "a declaration that names no v1 binary, so the fold must return nothing for it"
 
 test fn discovery_fold_executes_over_a_real_declaration_node() -> Bool {
-  let found = v1_discovery_keys_at_name(qualified_name: devboot_offered_programs_name)
+  let facts = v1_discovery_facts_at_names(qualified_names: [devboot_offered_programs_name, discovery_control_name])
+  let found = v1_discovery_keys_in(facts: facts, qualified_name: devboot_offered_programs_name)
   (found |> any(k => k == devboot_claim_batch_relation))
     && (found |> any(k => k == devboot_claim_executor_relation))
-    && count(v1_discovery_keys_at_name(qualified_name: discovery_control_name)) == 0
+    && count(v1_discovery_keys_in(facts: facts, qualified_name: discovery_control_name)) == 0
 }
 
 // THE SELF-OBSERVATION CONTROL, EXECUTED. The instrument's first real run reported the census's own
@@ -536,7 +537,7 @@ data signature_table_name: String = "gunbc.v1.v1_consumer_census.v1_literal_sign
 
 test fn discovery_fold_does_not_count_its_own_signature_table() -> Bool {
   count(v1_literal_signatures()) > 0
-    && count(v1_discovery_keys_at_name(qualified_name: signature_table_name)) == 0
+    && count(v1_discovery_keys_in(facts: v1_discovery_facts_at_names(qualified_names: [signature_table_name]), qualified_name: signature_table_name)) == 0
 }
 
 // THE PRODUCER'S COVERAGE BOUNDARY, MEASURED AND THEN ASSERTED. Review 63229 found relations the
@@ -555,6 +556,7 @@ test fn discovery_fold_does_not_count_its_own_signature_table() -> Bool {
 data devboot_program_package_name: String = "gunbc.devboot.program.devboot_program_package"
 
 test fn discovery_fold_sees_a_bare_string_initializer() -> Bool {
-  count(v1_discovery_keys_at_name(qualified_name: devboot_program_package_name)) > 0
-    && count(v1_discovery_keys_at_name(qualified_name: devboot_offered_programs_name)) > 0
+  let facts = v1_discovery_facts_at_names(qualified_names: [devboot_program_package_name, devboot_offered_programs_name])
+  count(v1_discovery_keys_in(facts: facts, qualified_name: devboot_program_package_name)) > 0
+    && count(v1_discovery_keys_in(facts: facts, qualified_name: devboot_offered_programs_name)) > 0
 }

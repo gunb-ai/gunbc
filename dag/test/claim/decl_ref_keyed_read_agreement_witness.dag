@@ -3,7 +3,8 @@ module test.claim.decl_ref_keyed_read_agreement_witness
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 import test.fixture.decl_facts_reflection.witness_support { decl_facts_reflection_fixture_pool_roots }
 import v2.lens.module_graph { module_declaration_facts_live }
-import v2.std.decl_index { decl_facts }
+import v2.std.decl_index { DeclFact, decl_facts }
+import std.types { List }
 import v2.std.decl_ref_resolution_host {
   DeclarationRefAmbiguous,
   DeclarationRefDeclarationAbsent,
@@ -11,9 +12,14 @@ import v2.std.decl_ref_resolution_host {
   DeclarationRefModuleAbsent,
   DeclarationRefResolution,
   DeclarationRefResolved,
+  declaration_ref_live_facts,
+  declaration_ref_resolution_census,
+  declaration_ref_resolution_census_live,
+  declaration_ref_target_qualified_name,
   resolve_declaration_ref,
   resolve_declaration_ref_live,
 }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -164,4 +170,55 @@ test fn keyed_and_population_routes_agree_that_an_authored_field_is_still_field_
     },
     expected: "FieldAbsent"
   )
+}
+
+// THE KEY-SET READ KEEPS A DUPLICATED NAME'S MULTIPLICITY. The keyed read takes every key a fold holds
+// and answers them in one walk, which widened its filter from equality to membership. That widening
+// must change which keys are asked together, never how many rows answer one key, so this reads the
+// duplicated name TOGETHER with a resolving name and an absent one and requires each to answer as a
+// one-key read would: two rows, one row, none. It reds if the set read collapsed rows per key (a set
+// of matched names instead of a filter over rows), if it dropped a key, or if a key's answer leaked
+// into another's. The fold half asks the same three through the live census, whose tally must
+// carry the ambiguous arm at count one and agree with the population route over the same pool.
+data keyed_set_duplicate_ref: DeclarationRef = DeclarationRef {
+  module_path: "test.fixture.decl_facts_reflection_duplicate_qn.primary.shadow_module",
+  decl_name: "shadowed_specimen",
+  field: WholeDeclaration,
+}
+
+data keyed_set_resolved_ref: DeclarationRef = DeclarationRef {
+  module_path: "test.fixture.decl_facts_reflection.specimens",
+  decl_name: "disposition_scaffold",
+  field: WholeDeclaration,
+}
+
+data keyed_set_absent_ref: DeclarationRef = DeclarationRef {
+  module_path: "test.fixture.decl_facts_reflection.specimens",
+  decl_name: "no_such_declaration_KEYED_RED",
+  field: WholeDeclaration,
+}
+
+fn keyed_set_rows_for(facts: List<DeclFact>, r: DeclarationRef) -> Int {
+  length(xs: decl_facts_matching_qualified_name(qn: declaration_ref_target_qualified_name(ref: r), facts: facts))
+}
+
+test fn a_key_set_read_keeps_both_rows_of_a_name_declared_twice() -> Bool {
+  let refs = [keyed_set_resolved_ref, keyed_set_duplicate_ref, keyed_set_absent_ref]
+  let facts = declaration_ref_live_facts(refs: refs, pool_roots: decl_facts_reflection_fixture_pool_roots)
+  let live = declaration_ref_resolution_census_live(refs: refs, pool_roots: decl_facts_reflection_fixture_pool_roots)
+  let population = declaration_ref_resolution_census(
+    refs: refs,
+    facts: decl_facts(pool_roots: decl_facts_reflection_fixture_pool_roots),
+    modules: module_declaration_facts_live(pool_roots: decl_facts_reflection_fixture_pool_roots)
+  )
+  keyed_set_rows_for(facts: facts, r: keyed_set_duplicate_ref) == 2
+    && keyed_set_rows_for(facts: facts, r: keyed_set_resolved_ref) == 1
+    && keyed_set_rows_for(facts: facts, r: keyed_set_absent_ref) == 0
+    && length(xs: facts) == 3
+    && live.ambiguous_count == 1
+    && live.resolved_count == 1
+    && live.declaration_absent_count == 1
+    && live.ambiguous_count == population.ambiguous_count
+    && live.resolved_count == population.resolved_count
+    && live.declaration_absent_count == population.declaration_absent_count
 }

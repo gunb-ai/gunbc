@@ -3,7 +3,7 @@ module test.claim.serving_fleet_program_witness
 import std.types { Bool, Int, List, String }
 import v2.std.decl_index { DeclFact }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.algebra { string_contains }
+import std.algebra { Empty, string_contains }
 import std.markdown { MarkdownDocument }
 import gunbc.plan { plan_projects_committed_markdown }
 import gunbc.plan_registry { all_plans }
@@ -26,7 +26,7 @@ import test.claim.plan_citation_census {
   plan_citation_has_positional_citation,
   plan_citation_citation_roster,
   plan_citation_occurrences,
-  plan_citation_census_facts,
+  plan_citation_census_read,
   plan_citation_census_rows_in
 }
 
@@ -82,7 +82,9 @@ test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bo
   let t = carrier_text()
   let roster = plan_citation_citation_roster(t: t)
   let covered = fold(roster, init: 0, f: (n, cite) => n + plan_citation_occurrences(t: t, cite: cite))
-  let facts = plan_citation_census_facts()
+  // The negative control is one of the read's keys, so the census answers it; a key left out of
+  // the read would come back empty by omission and the control would pass without being asked.
+  let facts = plan_citation_census_read(cites: concat(roster, ["gunbc.serving.no_such_module::NoSuchSymbol"]))
   roster.length() >= 1
     && covered == t.split(delimiter: "::").length() - 1
     && !citation_resolves(facts: facts, cite: "gunbc.serving.no_such_module::NoSuchSymbol")
@@ -119,6 +121,17 @@ fn owner_is_declared(facts: List<DeclFact>, o: ServingFleetOwner) -> Bool {
   }
 }
 
+fn owner_symbol_step(acc: List<String>, o: ServingFleetOwner) -> List<String> {
+  match o {
+    SfpOwnedBy { symbol } => concat(acc, [symbol])
+    SfpUnowned { obligation: _ } => acc
+  }
+}
+
+fn owner_symbols(owners: List<ServingFleetOwner>) -> List<String> {
+  fold(owners, init: Empty, f: owner_symbol_step)
+}
+
 fn is_owned(o: ServingFleetOwner) -> Bool {
   match o {
     SfpOwnedBy { symbol: _ } => true
@@ -128,10 +141,11 @@ fn is_owned(o: ServingFleetOwner) -> Bool {
 
 test fn every_row_names_a_resolvable_owner_or_its_obligation() -> Bool {
   let rows = serving_fleet_rows
-  let facts = plan_citation_census_facts()
+  let negative = SfpOwnedBy { symbol: "gunbc.serving.no_such_module::NoSuchSymbol" }
+  let facts = plan_citation_census_read(cites: owner_symbols(owners: concat(map(rows, r => r.owner), [negative])))
   any(rows, r => is_owned(o: r.owner))
     && all(rows, r => owner_is_declared(facts: facts, o: r.owner))
-    && !owner_is_declared(facts: facts, o: SfpOwnedBy { symbol: "gunbc.serving.no_such_module::NoSuchSymbol" })
+    && !owner_is_declared(facts: facts, o: negative)
     && !owner_is_declared(facts: facts, o: SfpUnowned { obligation: "" })
 }
 
