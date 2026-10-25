@@ -54,6 +54,7 @@ import gunbc.target_binding {
   SelfHostBehavioralEquivalenceProducer,
   V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, AmbientOperationDispositionReading, BindingDiffReading, NativeProcessMemoryReading,
   NativeCensusVerbProducer,
+  SelfHostFrontierProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -695,6 +696,20 @@ fn bare_reference_channel_outcome_label() -> Label {
 // `gunbc test //gunbc/instruments:self-host-behavioral-equivalence`.
 fn self_host_behavioral_equivalence_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "self-host-behavioral-equivalence" } }
+}
+
+// THE DERIVED SELF-HOST FRONTIER (v2.compiler.self_host.seed_retention_frontier self_host_frontier, the
+// emitted driver's `self-host-frontier` mode): every observed .rs file of the stage0 crate is SelfEmitted
+// (emitted and its module in the executed closure whose controls passed), EmittedUnexecuted, SeedRetained
+// by a declared row, or Unclassified -- the only refusal. Judged by the seed-emitted driver built by the
+// self-host step; no CI job of its own.
+// `gunbc test //gunbc/instruments:self-host-frontier`.
+fn self_host_frontier_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "self-host-frontier" } }
+}
+
+fn self_host_frontier_binding() -> TargetBinding {
+  TargetBinding { target: self_host_frontier_label() producer: SelfHostFrontierProducer {} }
 }
 
 // D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.source_root_eval native_demand_census_output, the emitted compiler's
@@ -1382,7 +1397,7 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
@@ -1404,7 +1419,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), self_host_frontier_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),

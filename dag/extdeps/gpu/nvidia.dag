@@ -1,13 +1,14 @@
 module extdeps.gpu.nvidia
 
 import extdeps.gpu.types {
+  DenseTensorThroughput, TensorFp4, TensorFp8, TensorInt8, TensorBf16,
   GpuModelCatalogRow, GpuComputeCapability, GpuRuntime, GpuSmCacheGeometry, Cuda,
   cuda_compute_capabilities_authority, PcieAddInCard, SxmModule,
 }
 import extdeps.memory.types { MemoryFacts, Dram, Hbm }
 import extdeps.storage.types { PcieLink, PcieGeneration }
 import extdeps.vendor.nvidia { nvidia }
-import std.measure { ByteSize, byte_size, hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size }
+import std.measure { ByteSize, byte_size, hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size, giga_tensor_operations_per_second }
 
 import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import std.decl_ref { decl_field_ref }
@@ -67,6 +68,7 @@ data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   sm_cache: Present { value: rtx_5090_sm_cache_geometry },
   sm_cache_citations: rtx_5090_sm_cache_citations,
   figure_citations: [],
+  dense_tensor_throughput: [],
 }
 
 // THE RTX PRO 6000 BLACKWELL FAMILY: THREE NVIDIA PRODUCTS, THREE ROWS, AND THE BANDWIDTH FIGURE IS
@@ -163,6 +165,7 @@ data nvidia_rtx_pro_6000_workstation_catalog: GpuModelCatalogRow = GpuModelCatal
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: rtx_pro_6000_workstation_figure_citations,
+  dense_tensor_throughput: [],
 }
 
 data nvidia_rtx_pro_6000_max_q_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
@@ -190,6 +193,7 @@ data nvidia_rtx_pro_6000_max_q_catalog: GpuModelCatalogRow = GpuModelCatalogRow 
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: rtx_pro_6000_max_q_figure_citations,
+  dense_tensor_throughput: rtx_pro_6000_max_q_dense_tensor_throughput,
 }
 
 data nvidia_rtx_pro_6000_server_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
@@ -217,6 +221,7 @@ data nvidia_rtx_pro_6000_server_catalog: GpuModelCatalogRow = GpuModelCatalogRow
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: rtx_pro_6000_server_figure_citations,
+  dense_tensor_throughput: [],
 }
 
 // The figures each page states, as FactCitations on the row fields they ground. The CUDA core count
@@ -318,6 +323,7 @@ data nvidia_rtx_pro_5000_48gb_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: rtx_pro_5000_48gb_figure_citations,
+  dense_tensor_throughput: [],
 }
 
 data nvidia_rtx_pro_5000_72gb_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
@@ -345,6 +351,7 @@ data nvidia_rtx_pro_5000_72gb_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: rtx_pro_5000_72gb_figure_citations,
+  dense_tensor_throughput: [],
 }
 
 data rtx_pro_5000_48gb_figure_citations: List<FactCitation> = [
@@ -426,12 +433,19 @@ data nvidia_b200_sxm_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   memory_bandwidth: none,
   boost_clock: none,
   tdp_watts: none,
-  compute_capability: none,
+  compute_capability: Present {
+    value: GpuComputeCapability {
+      vendor: nvidia,
+      major: 10,
+      minor: 0,
+    }
+  },
   supported_runtimes: [Cuda],
   interconnect: none,
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: nvidia_b200_sxm_figure_citations,
+  dense_tensor_throughput: nvidia_b200_sxm_dense_tensor_throughput,
 }
 
 data nvidia_b300_sxm_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
@@ -453,9 +467,14 @@ data nvidia_b300_sxm_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: nvidia_b300_sxm_figure_citations,
+  dense_tensor_throughput: [],
 }
 
 data nvidia_b200_sxm_figure_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_b200_sxm_catalog", field_name: "compute_capability"),
+    authority: cuda_compute_capabilities_authority,
+  },
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_b200_sxm_catalog", field_name: "memory"),
     authority: hgx_b200_authority,
@@ -466,5 +485,131 @@ data nvidia_b300_sxm_figure_citations: List<FactCitation> = [
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_b300_sxm_catalog", field_name: "memory"),
     authority: hgx_b300_authority,
+  },
+]
+
+// ── DENSE TENSOR THROUGHPUT (Giga-ops per second), ONE STANDING PER FIGURE ────────────────────────
+//
+// NVIDIA PRINTS SPARSE HEADLINES AND DENSE IS HALF OF THEM, A CONVENTION THIS REPOSITORY HAS NOT READ.
+// Read 2026-10-21: the H200 page states FP8 3,341 / BF16 1,671 / INT8 3,341 TFLOPS and says every Tensor
+// Core figure is "with sparsity"; the RTX PRO 6000 Max-Q page states only "3511 TOPS, theoretical FP4
+// TOPS using sparsity" and no per-datatype breakdown. So no page states a dense figure, and a dense row
+// cited to a page would assert something the page does not say. Each dense figure below is therefore
+// TranscribedUncited, naming the page that states the sparse figure and the halving that was applied.
+// The H200 halves (1,670.5 / 835.5 TFLOPS) agree with the operator's ~0.84 PF BF16; the Max-Q's 1,755.5
+// agrees with the operator's ~1.75 PF FP4. The B200 and the Max-Q BF16 figures are operator readings
+// with no page read at all. An H200 has no FP4 entry because Hopper has no FP4 MMA: absence, not zero.
+// CONSUMER: gunbc.serving.flash_next_roofline (prefill compute bound).
+
+data h200_nvl_dense_obligation: NonEmptyStr = "Read the H200 NVL dense Tensor Core figures from an NVIDIA H200 datasheet that states them without sparsity. www.nvidia.com/en-us/data-center/h200/ states FP8/INT8 3,341 and BF16 1,671 TFLOPS 'with sparsity'; the dense value used here is exactly half, by the convention that sparsity doubles the rate, and no page read states the halving." as NonEmptyStr
+
+data max_q_fp4_dense_obligation: NonEmptyStr = "Read the RTX PRO 6000 Blackwell Max-Q dense FP4 throughput from NVIDIA's datasheet. The Max-Q product page states 3511 TOPS 'theoretical FP4 TOPS using sparsity'; the dense value used here is exactly half, by the sparsity-doubles-the-rate convention, and no page read states the halving." as NonEmptyStr
+
+data max_q_bf16_dense_obligation: NonEmptyStr = "Read the RTX PRO 6000 Blackwell Max-Q dense BF16 throughput from NVIDIA's datasheet. The ~0.44 PF used here is an operator reading (2026-10-21); the Max-Q product page states no per-datatype breakdown." as NonEmptyStr
+
+data b200_dense_obligation: NonEmptyStr = "Read the B200 dense FP4 and BF16 throughput from an NVIDIA B200 / HGX B200 datasheet that states them without sparsity. The ~9 PF FP4 and ~2.25 PF BF16 used here are operator readings (2026-10-21); no page was read." as NonEmptyStr
+
+data rtx_pro_6000_max_q_dense_tensor_throughput: List<DenseTensorThroughput> = [
+  DenseTensorThroughput {
+    datatype: TensorFp4,
+    rate: giga_tensor_operations_per_second(count: 1755500),
+    standing: TranscribedUncited { read_obligation: max_q_fp4_dense_obligation },
+  },
+  DenseTensorThroughput {
+    datatype: TensorBf16,
+    rate: giga_tensor_operations_per_second(count: 440000),
+    standing: TranscribedUncited { read_obligation: max_q_bf16_dense_obligation },
+  },
+]
+
+data nvidia_b200_sxm_dense_tensor_throughput: List<DenseTensorThroughput> = [
+  DenseTensorThroughput {
+    datatype: TensorFp4,
+    rate: giga_tensor_operations_per_second(count: 9000000),
+    standing: TranscribedUncited { read_obligation: b200_dense_obligation },
+  },
+  DenseTensorThroughput {
+    datatype: TensorBf16,
+    rate: giga_tensor_operations_per_second(count: 2250000),
+    standing: TranscribedUncited { read_obligation: b200_dense_obligation },
+  },
+]
+
+// ── H200 NVL ─────────────────────────────────────────────────────────────────────────────────────
+// Read 2026-10-21 from NVIDIA's H200 page: 141 GB HBM3e, 4.8 TB/s, max TDP 600 W (configurable),
+// PCIe dual-slot air-cooled. The page states no PCIe generation or width and no core count, so
+// interconnect and execution_lane_count are Absent. "141 GB" is stored at this module's convention for
+// every other row (a marketing GB read as GiB, as the 96 GB RTX PRO 6000 rows do); a consumer sizing
+// KV against it must take the allocatable figure from vLLM's own report, not from this field.
+// Compute capability 9.0 is the Hopper value in cuda_compute_capabilities_authority's table.
+data h200_nvl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/en-us/data-center/h200/"
+  }
+}
+
+data nvidia_h200_nvl_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "NVIDIA H200 NVL",
+  microarchitecture: "Hopper",
+  package: PcieAddInCard,
+  execution_lane_count: none,
+  memory: MemoryFacts {
+    capacity: byte_size(count: 141000000000),
+    memory_kind: Hbm,
+  },
+  memory_bandwidth: Present { value: bandwidth(count: 4800000000000) },
+  boost_clock: none,
+  tdp_watts: Present { value: watt(count: 600) },
+  compute_capability: Present {
+    value: GpuComputeCapability {
+      vendor: nvidia,
+      major: 9,
+      minor: 0,
+    }
+  },
+  supported_runtimes: [Cuda],
+  interconnect: none,
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: nvidia_h200_nvl_figure_citations,
+  dense_tensor_throughput: nvidia_h200_nvl_dense_tensor_throughput,
+}
+
+data nvidia_h200_nvl_figure_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_h200_nvl_catalog", field_name: "memory"),
+    authority: h200_nvl_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_h200_nvl_catalog", field_name: "memory_bandwidth"),
+    authority: h200_nvl_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_h200_nvl_catalog", field_name: "tdp_watts"),
+    authority: h200_nvl_authority,
+  },
+  FactCitation {
+    fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_h200_nvl_catalog", field_name: "compute_capability"),
+    authority: cuda_compute_capabilities_authority,
+  },
+]
+
+data nvidia_h200_nvl_dense_tensor_throughput: List<DenseTensorThroughput> = [
+  DenseTensorThroughput {
+    datatype: TensorFp8,
+    rate: giga_tensor_operations_per_second(count: 1670500),
+    standing: TranscribedUncited { read_obligation: h200_nvl_dense_obligation },
+  },
+  DenseTensorThroughput {
+    datatype: TensorInt8,
+    rate: giga_tensor_operations_per_second(count: 1670500),
+    standing: TranscribedUncited { read_obligation: h200_nvl_dense_obligation },
+  },
+  DenseTensorThroughput {
+    datatype: TensorBf16,
+    rate: giga_tensor_operations_per_second(count: 835500),
+    standing: TranscribedUncited { read_obligation: h200_nvl_dense_obligation },
   },
 ]
