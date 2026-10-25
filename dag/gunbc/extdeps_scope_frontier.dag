@@ -215,6 +215,7 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 data scope_carrier_paths: List<String> = [
   "dag/extdeps/firmware/ami_aptio_status_codes.dag",
   "dag/extdeps/firmware/supermicro_ami_aptio_v_post_codes_guide.dag",
+  "dag/extdeps/qwen/qwen3_8_flash_next.dag",
   "dag/extdeps/gpu_bench/kit_log.dag",
   "dag/extdeps/gpu_bench/request_v2.dag",
   "dag/extdeps/ninfer/ninfer_serve.dag",

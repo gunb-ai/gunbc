@@ -1,5 +1,6 @@
 module test.claim.compute.attempt_discharge_wet_witness
 
+import gunbc.durable_cas_file_store { file_slot_store }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -128,7 +129,7 @@ fn committed(subject: ComputeCapacitySubject) -> Int {
 }
 
 fn opened(root: String, reference: String, owner: AttemptOwner) -> Bool {
-  made(path: attempts_at(root: root) as String) && match attempt_open(root: attempts_at(root: root), record: record_of(reference: reference, state: AttemptReserved, owner: owner)) {
+  made(path: attempts_at(root: root) as String) && match attempt_open(store: file_slot_store(root: attempts_at(root: root)), record: record_of(reference: reference, state: AttemptReserved, owner: owner)) {
     AttemptAdvanced { state: _, generation: _ } => true
     _ => false
   }
@@ -139,9 +140,9 @@ fn launching(root: String, reference: String) -> Bool {
 }
 
 fn launching_in(dir: NonEmptyStr, reference: String) -> Bool {
-  match attempt_slot_read(root: dir, reference: reference as NonEmptyStr) {
+  match attempt_slot_read(store: file_slot_store(root: dir), reference: reference as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: g } =>
-      match attempt_begin_launch(root: dir, reference: rec.reference as NonEmptyStr, expected: g) {
+      match attempt_begin_launch(store: file_slot_store(root: dir), reference: rec.reference as NonEmptyStr, expected: g) {
         AttemptAdvanced { state: _, generation: _ } => true
         _ => false
       }
@@ -207,7 +208,7 @@ fn is_refused(o: SeatEnsureOutcome) -> Bool {
 }
 
 fn is_terminal(root: String, reference: String) -> Bool {
-  match attempt_slot_read(root: attempts_at(root: root), reference: reference as NonEmptyStr) {
+  match attempt_slot_read(store: file_slot_store(root: attempts_at(root: root)), reference: reference as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: _ } => match rec.state { AttemptTerminal { verdict: _, detail: _ } => true  _ => false }
     _ => false
   }
@@ -333,9 +334,9 @@ fn a_kill_after_settle_before_release_is_discharged_from_the_terminal_record_cel
   let ok = opened(root: root, reference: "r-set", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-set")
     && launching(root: root, reference: "r-set")
-  let settled = match attempt_slot_read(root: attempts_at(root: root), reference: "r-set" as NonEmptyStr) {
+  let settled = match attempt_slot_read(store: file_slot_store(root: attempts_at(root: root)), reference: "r-set" as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: g } =>
-      match attempt_terminate(root: attempts_at(root: root), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
+      match attempt_terminate(store: file_slot_store(root: attempts_at(root: root)), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
         AttemptAdvanced { state: _, generation: _ } => true
         _ => false
       }
@@ -457,9 +458,9 @@ fn a_terminal_record_releases_only_when_the_unit_is_proven_ended_cell(root: Stri
   let ok = opened(root: root, reference: "r-tm", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-tm")
     && launching(root: root, reference: "r-tm")
-  let settled = match attempt_slot_read(root: attempts_at(root: root), reference: "r-tm" as NonEmptyStr) {
+  let settled = match attempt_slot_read(store: file_slot_store(root: attempts_at(root: root)), reference: "r-tm" as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: g } =>
-      match attempt_terminate(root: attempts_at(root: root), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
+      match attempt_terminate(store: file_slot_store(root: attempts_at(root: root)), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
         AttemptAdvanced { state: _, generation: _ } => true
         _ => false
       }
@@ -504,7 +505,7 @@ fn a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory_cel
   let subject = subject_at(root: root)
   let other_dir = seat_dir_of(root: root, key: "key-b") as String
   let other_open = made(path: other_dir)
-    && match attempt_open(root: seat_dir_of(root: root, key: "key-b"), record: record_of(reference: "r-b", state: AttemptReserved, owner: DispatchOwned { node_id: "node-a", attempt_key: "key-b" })) {
+    && match attempt_open(store: file_slot_store(root: seat_dir_of(root: root, key: "key-b")), record: record_of(reference: "r-b", state: AttemptReserved, owner: DispatchOwned { node_id: "node-a", attempt_key: "key-b" })) {
       AttemptAdvanced { state: _, generation: _ } => true
       _ => false
     }
@@ -521,7 +522,7 @@ fn a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory_cel
 }
 
 fn is_terminal_in(dir: NonEmptyStr, reference: String) -> Bool {
-  match attempt_slot_read(root: dir, reference: reference as NonEmptyStr) {
+  match attempt_slot_read(store: file_slot_store(root: dir), reference: reference as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: _ } => match rec.state { AttemptTerminal { verdict: _, detail: _ } => true  _ => false }
     _ => false
   }
