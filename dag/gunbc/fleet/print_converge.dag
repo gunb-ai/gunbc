@@ -18,10 +18,13 @@ import gunbc.auth.secret_ref_credential {
 }
 import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
 import gunbc.fleet.printer_federation { printer_lan_host_identity }
-import gunbc.fleet.printer_workflow_artifact { printer_start_claim_directory, printer_request_directory, print_run_directory, printer_state_directories }
-import gunbc.owned_directory { OwnedDirectoryManaged, owned_directory_outcome_converged, owned_directory_outcome_detail }
+import gunbc.fleet.printer_workflow_artifact { printer_start_claim_directory, printer_request_directory, print_run_directory, printer_state_directories, printer_state_group }
+import gunbc.runner.runner_host_deploy { srv1_runner_host_spec }
+import gunbc.owned_directory { OwnedDirectoryInstallPlan, owned_directory_ensure, owned_directory_outcome_converged, owned_directory_outcome_detail }
+import gunbc.ensure { EnsureMayApply }
 import gunbc.host.host_effect { LocalShell }
-import gunbc.host.host_effect_realize { live_deploy_apply_ensure_directory_on_host }
+import gunbc.host.host_effect_realize { deploy_apply_directory_observe, run_argv_over_host_effect_transport, RunArgvTransportRefused, RunArgvTransportObserved }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureOwnedDirectory, EnsureSupplementaryGroupMembership, executor_privileged_operation_elevated_command }
 import gunbc.fleet.fleet_printer_access {
   read_existing_printer_session, PrinterSessionReady, PrinterSessionRefused,
   printer_access_code_locus, PrinterAccessCodeDesiredLocusFound, PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
@@ -49,14 +52,31 @@ import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDige
 // read), and absence is never reconstructed as permission to start.
 fn request_directory() -> String { printer_request_directory() as String }
 
+// THE INSTALL IS THE GRANTED OPERATION'S EXACT WORDS (gunbc.executor_privileged_operation
+// EnsureOwnedDirectory), so the sudoers line the job holds is the only authority it uses; the
+// observation is the granted list and stat of the path and its parents.
+fn printer_state_install(plan: OwnedDirectoryInstallPlan) -> Bool {
+  granted(op: EnsureOwnedDirectory { path: plan.path as String as NonEmptyStr, owner: plan.owner.user, group: plan.owner.group, mode: plan.mode })
+}
+
 // THE STATE ROOTS ARE CONVERGED BEFORE ANY STANDING IS READ, through the one owned-directory provider
 // (observe, decide, install elevated, independent re-stat). A refusal stops the pass: a missing or
 // foreign directory never reads as an absent record.
+fn granted(op: ExecutorPrivilegedOperation) -> Bool {
+  match run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: op), transport: LocalShell) {
+    RunArgvTransportRefused { reason: _ } => false
+    RunArgvTransportObserved { observed: o } => o.success
+  }
+}
+
+// The job principal holds the fleet account's group (idempotent; a membership added here first takes
+// effect for the next job's process, so a pass that just added it refuses below on the unreadable root).
 fn ensure_printer_state_directories() -> String? {
+  if !granted(op: EnsureSupplementaryGroupMembership { login: srv1_runner_host_spec.job_user, group: printer_state_group() }) { return Present { value: concat("the job user could not be ensured in group ", printer_state_group() as String) } }
   fold(printer_state_directories(), init: none, f: (refused, d) => match refused {
     Present { value: r } => Present { value: r }
     Absent => {
-      let outcome = live_deploy_apply_ensure_directory_on_host(target: OwnedDirectoryManaged { directory: d }, transport: LocalShell)
+      let outcome = owned_directory_ensure(policy: EnsureMayApply, target: d, observe: p => deploy_apply_directory_observe(path: p, transport: LocalShell), run: plan => printer_state_install(plan: plan))
       if owned_directory_outcome_converged(o: outcome) { none } else { Present { value: owned_directory_outcome_detail(o: outcome) } }
     }
   })
