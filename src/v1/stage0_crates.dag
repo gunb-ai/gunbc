@@ -21,6 +21,7 @@ import gunbc.stage0.stage0_partition_package_graph {
   partition_package_dependency_names_over
 }
 import gunbc.stage0.stage0_emitted_edge_admission { partition_module_owner_packages_over }
+import gunbc.stage0.stage0_cargo_manifest { stage0_package_root, stage0_source_dir_relative_to_package }
 import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
   GeneratedFacadeCrate,
@@ -101,7 +102,13 @@ fn stage0_foundation_header_doc() -> String {
     "//!",
     "//! Foundation crate for the derived ~8-crate stage0 partition.",
     "//!",
-    "//! Module bodies remain generated into `src/v1/stage0/src`. The root",
+    concat(
+      concat(
+        concat("//! Module bodies remain generated into `", stage0_package_root),
+        stage0_source_dir_relative_to_package
+      ),
+      "`. The root"
+    ),
     "//! `NonEmpty*` wrappers are mirrored here because generated modules address",
     "//! them as `crate::NonEmptyVec` and `crate::NonEmptyBTreeSet`."
   ] |> join(separator: "\n")
