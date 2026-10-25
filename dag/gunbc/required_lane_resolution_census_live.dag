@@ -17,8 +17,10 @@ import gunbc.required_lane_resolution_census {
   LaneResolutionSubject, FloorNominalPreparedSubject, RunEntryClosure, ResolvesNoDagModule,
   LaneResolutionRow, LaneResolvedPopulation, ResolutionCensusInputs, ResolutionCensus,
   ResolutionCensusStanding, ResolutionCensusHeld, ResolutionCensusDidNotHold,
+  RosterRowStanding,
   resolution_census, resolution_census_standing, census_receipt_lines,
 }
+import v2.workflow.required_floor { required_gate_authored_modules }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -128,7 +130,7 @@ fn subject_population(s: LaneResolutionSubject) -> ModuleIdentityPopulation {
 }
 
 type LivePopulations
-  = LivePopulationsObserved { admitted: List<String>, resolved: List<LaneResolvedPopulation> }
+  = LivePopulationsObserved { admitted: List<String>, resolved: List<LaneResolvedPopulation>, roster: List<String> }
   | LivePopulationsRefused { cause: String }
 
 // The fold's accumulator is a coproduct rather than rows-plus-optional-cause: a refused subject
@@ -160,7 +162,7 @@ fn live_populations() -> LivePopulations {
       ModuleIdentityPopulationObserved { modules: admitted } =>
         match lane_resolution_roster() |> fold(init: ResolvedRows { rows: [] }, f: resolve_row) {
           ResolvedRefused { cause: c } => LivePopulationsRefused { cause: c }
-          ResolvedRows { rows: rows } => LivePopulationsObserved { admitted: admitted, resolved: rows }
+          ResolvedRows { rows: rows } => LivePopulationsObserved { admitted: admitted, resolved: rows, roster: required_gate_authored_modules() }
         }
     }
     RosterMissesJob { job_id: j } => LivePopulationsRefused { cause: roster_coverage_rendered(c: RosterMissesJob { job_id: j }) }
@@ -172,19 +174,25 @@ fn live_populations() -> LivePopulations {
 // THE INSTRUMENT ENTRY (`gunbc test //gunbc/instruments:required-lane-resolution-census`). Prints
 // the receipt and exits by the census standing: 0 every admitted module is resolved by some
 // required lane; 1 the unreached population is nonempty (printed by identity above the exit);
-// 2 a population could not be established or the roster does not cover the emitted jobs. The
-// receipt is the product on every termination that has one.
+// 2 a population could not be established, the roster does not cover the emitted jobs, or the
+// authored required-floor roster (v2.workflow.required_floor required_gate_authored_modules, read
+// as DATA so a row added there is enumerated here without touching this file) names a module that
+// resolves to no `.dag` -- a roster row must name a real module, and an uninventoriable roster is
+// what makes the unreached-row census discriminating rather than decorative. The receipt is the
+// product on every termination that has one.
 fn required_lane_resolution_census_exit() -> CliWireResponse {
   match live_populations() {
     LivePopulationsRefused { cause: c } =>
       CliWirePrintable { bytes: concat("required-lane-resolution-census: refused: ", concat(c, "\n")), exit: ExitFailure { code: 2, reason: c } }
-    LivePopulationsObserved { admitted: admitted, resolved: resolved } => {
-      let c = resolution_census(inputs: ResolutionCensusInputs { admitted: admitted, resolved: resolved })
+    LivePopulationsObserved { admitted: admitted, resolved: resolved, roster: roster } => {
+      let c = resolution_census(inputs: ResolutionCensusInputs { admitted: admitted, resolved: resolved, roster: roster })
       let bytes = concat(census_receipt_lines(c: c) |> join(separator: "\n"), "\n")
       match resolution_census_standing(c: c) {
         ResolutionCensusHeld => CliWirePrintable { bytes: bytes, exit: ExitSuccess }
         ResolutionCensusDidNotHold { unreached: u } =>
           CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: concat("required-lane-resolution-census: did not hold: ", concat(to_string(u |> count), " admitted modules are resolved by no required lane (listed above by identity)")) } }
+        ResolutionCensusRefused { cause: c2 } =>
+          CliWirePrintable { bytes: concat("required-lane-resolution-census: refused: ", concat(c2, "\n")), exit: ExitFailure { code: 2, reason: c2 } }
       }
     }
   }

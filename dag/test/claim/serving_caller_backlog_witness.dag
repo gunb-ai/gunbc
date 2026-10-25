@@ -48,6 +48,7 @@ import std.process { ProcessExit }
 import gunbc.harness.harness_cli { harness_durable_worker_cli, harness_bind_belt_seat }
 import std.decl_ref { DeclarationRef }
 import v2.std.decl_index { decl_facts_at }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 import std.optional { Present, Absent }
 import gunbc.compile_census_probe { blocking_subject_census, census_premise, census_verdict, census_verdict_all, total_blocking_census, census_exit}
 import gunbc.serving.caller_retry_contract {
@@ -300,11 +301,14 @@ fn basis_qualified_name(r: DeclarationRef) -> String {
   concat(r.module_path as String, concat(".", r.decl_name as String))
 }
 
+// One read with every basis's key, then each basis joined against it by its own key.
 test fn w_caller_backlog_bases_name_live_declarations() -> Bool {
-  all(caller_backlog_basis_refs, r => length(xs: decl_facts_at(
+  let facts = decl_facts_at(
     pool_roots: ["dag"],
-    qualified_name: basis_qualified_name(r: r),
-  )) == 1)
+    qualified_names: map(caller_backlog_basis_refs, r => basis_qualified_name(r: r)),
+    type_names: [],
+  )
+  all(caller_backlog_basis_refs, r => length(xs: decl_facts_matching_qualified_name(qn: basis_qualified_name(r: r), facts: facts)) == 1)
 }
 
 test fn w_encoded_waiting_roundtrips_recovery_history() -> Bool {
@@ -509,7 +513,7 @@ test fn w_typed_waiting_persist_is_the_admitted_publication_path() -> ProcessExi
     wanted_class: "ConstructorCallAdmissionRefused",
     wanted_subject: "persist_waiting_on_store",
   ), holds: fn(n) { n == 0 }),
-    census_premise(name: "the pool holds no decl fact for persist_record_cas", holds: length(xs: decl_facts_at( pool_roots: ["dag"], qualified_name: "gunbc.serving.caller_backlog.persist_record_cas", )) == 0),
+    census_premise(name: "the pool holds no decl fact for persist_record_cas", holds: length(xs: decl_facts_at( pool_roots: ["dag"], qualified_names: ["gunbc.serving.caller_backlog.persist_record_cas"], type_names: [], )) == 0),
   ])
 }
 

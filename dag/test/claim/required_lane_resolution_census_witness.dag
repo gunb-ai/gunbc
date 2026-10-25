@@ -5,8 +5,12 @@ import gunbc.required_lane_resolution_census {
   ModuleIdentityPopulation, ModuleIdentityPopulationObserved, ModuleIdentityPopulationRefused,
   LaneResolutionSubject, FloorNominalPreparedSubject, RunEntryClosure, ResolvesNoDagModule,
   LaneResolvedPopulation, ResolutionCensusInputs, ResolutionCensus,
-  ResolutionCensusStanding, ResolutionCensusHeld, ResolutionCensusDidNotHold,
+  ResolutionCensusStanding, ResolutionCensusHeld, ResolutionCensusDidNotHold, ResolutionCensusRefused,
+  RosterRowStanding, RosterRowResolvedByRequiredLane, RosterRowUnreachedByRequiredLane, RosterRowUnresolvable,
   resolution_census, resolution_census_standing, census_receipt_lines,
+}
+import gunbc.required_lane_resolution_census_live {
+  LivePopulations, LivePopulationsObserved, LivePopulationsRefused, live_populations,
 }
 
 // THE FOLD DISCRIMINATES AT ONE INTERFACE (DESIGN section 3): admitted and resolved populations
@@ -27,7 +31,13 @@ fn cargo_lane() -> LaneResolvedPopulation {
 }
 
 fn census_of(admitted: List<String>, resolved: List<LaneResolvedPopulation>) -> ResolutionCensus {
-  resolution_census(inputs: ResolutionCensusInputs { admitted: admitted, resolved: resolved })
+  resolution_census(inputs: ResolutionCensusInputs { admitted: admitted, resolved: resolved, roster: [] })
+}
+
+// Census over the same supplied populations PLUS an authored roster, so the roster arm is judged
+// at the one interface too (DESIGN section 3): nothing here reads the real roster file.
+fn census_of_roster(admitted: List<String>, resolved: List<LaneResolvedPopulation>, roster: List<String>) -> ResolutionCensus {
+  resolution_census(inputs: ResolutionCensusInputs { admitted: admitted, resolved: resolved, roster: roster })
 }
 
 fn same_list(a: List<String>, b: List<String>) -> Bool {
@@ -45,6 +55,7 @@ test fn every_admitted_module_resolved_by_some_lane_holds() -> Bool {
   match resolution_census_standing(c: c) {
     ResolutionCensusHeld => count(c.unreached) == 0
     ResolutionCensusDidNotHold { unreached: _ } => false
+    ResolutionCensusRefused { cause: _ } => false
   }
 }
 
@@ -55,6 +66,7 @@ test fn lanes_resolving_nothing_leave_every_admitted_module_unreached() -> Bool 
   match resolution_census_standing(c: c) {
     ResolutionCensusHeld => false
     ResolutionCensusDidNotHold { unreached: u } => same_list(a: u, b: ["a", "b", "c"])
+    ResolutionCensusRefused { cause: _ } => false
   }
 }
 
@@ -75,6 +87,111 @@ test fn the_receipt_prints_one_line_per_unreached_identity() -> Bool {
     && (lines |> filter(fn(l) { contains(l, "\"kind\":\"unreached\",\"module\":\"c\"") }) |> count) == 1
     && (lines |> filter(fn(l) { contains(l, "\"kind\":\"unreached\",\"module\":\"a\"") }) |> count) == 0
     && (lines |> filter(fn(l) { contains(l, "\"kind\":\"summary\"") && contains(l, "\"unreached\":2") }) |> count) == 1
+}
+
+// THE AUTHORED ROSTER IS ENUMERATED AT IDENTITY GRAIN. A supplied roster of admitted modules over
+// lanes that resolve nothing puts EVERY row in the unreached arm -- named members of the declared
+// drop gunbc.rung_drop v1_required_lanes_withdrawn, one receipt line per row by identity. A row a
+// lane does resolve stands resolved-by-required-lane (resolution grain, not execution), and `resolved_by` names the (job|subject) route: no parallel
+// judgment, the same reached/not-reached fact as every other admitted identity.
+fn standing_kind(r: RosterRowStanding) -> String {
+  match r {
+    RosterRowResolvedByRequiredLane { module: _, resolved_by: _ } => "resolved-by-required-lane"
+    RosterRowUnreachedByRequiredLane { module: _ } => "unreached"
+    RosterRowUnresolvable { module: _ } => "unresolvable"
+  }
+}
+
+fn row_module(r: RosterRowStanding) -> String {
+  match r {
+    RosterRowResolvedByRequiredLane { module: m, resolved_by: _ } => m
+    RosterRowUnreachedByRequiredLane { module: m } => m
+    RosterRowUnresolvable { module: m } => m
+  }
+}
+
+fn row_resolved_by(r: RosterRowStanding) -> String {
+  match r {
+    RosterRowResolvedByRequiredLane { module: _, resolved_by: e } => e |> join(separator: ",")
+    RosterRowUnreachedByRequiredLane { module: _ } => ""
+    RosterRowUnresolvable { module: _ } => ""
+  }
+}
+
+fn rows_of_kind(c: ResolutionCensus, kind: String) -> List<String> {
+  c.roster_rows |> filter(r => standing_kind(r) == kind) |> map(r => row_module(r))
+}
+
+test fn a_supplied_roster_is_enumerated_row_by_row_against_the_lane_union() -> Bool {
+  let c = census_of_roster(
+    admitted: ["a", "b", "ghost"],
+    resolved: [floor_lane(modules: ["a"]), cargo_lane()],
+    roster: ["a", "b"])
+  count(c.roster_rows) == 2
+    && same_list(a: rows_of_kind(c: c, kind: "resolved-by-required-lane"), b: ["a"])
+    && same_list(a: rows_of_kind(c: c, kind: "unreached"), b: ["b"])
+    && same_list(a: rows_of_kind(c: c, kind: "unresolvable"), b: [])
+    && (c.roster_rows |> filter(r => row_module(r) == "a") |> map(r => row_resolved_by(r)) |> join(separator: "|")) == "floor|floor-nominal-prepared-subject"
+}
+
+// The receipt prints one `roster` line per authored row, so each row is greppable from the
+// instrument output by identity -- a named member of the declared drop, never prose.
+test fn the_receipt_prints_one_roster_line_per_authored_row() -> Bool {
+  let c = census_of_roster(admitted: ["a", "b", "ghost"], resolved: [cargo_lane()], roster: ["a", "b"])
+  let lines = census_receipt_lines(c: c)
+  (lines |> filter(l => contains(l, "\"kind\":\"roster\",\"module\":\"a\"") && contains(l, "\"standing\":\"unreached-drop-member\"")) |> count) == 1
+    && (lines |> filter(l => contains(l, "\"kind\":\"roster\",\"module\":\"b\"") && contains(l, "\"standing\":\"unreached-drop-member\"")) |> count) == 1
+}
+
+// THE DISCRIMINATING CONTROL: a roster row naming a module the ingestion does not admit -- no .dag
+// carries that `module` line -- REFUSES the census before the held/did-not-hold judgment, naming
+// the row. Without this arm an authored roster could silently lose rows to typos and deletions,
+// and the census's answer "every remaining row is a declared drop member" would bound a roster
+// nobody authors.
+test fn a_roster_row_naming_a_nonexistent_module_refuses_the_census() -> Bool {
+  let c = census_of_roster(admitted: ["a"], resolved: [floor_lane(modules: ["a"])], roster: ["a", "no.such.module"])
+  match resolution_census_standing(c: c) {
+    ResolutionCensusHeld => false
+    ResolutionCensusDidNotHold { unreached: _ } => false
+    ResolutionCensusRefused { cause: cause } =>
+      contains(cause, "no.such.module") && contains(cause, "must name a real module")
+  }
+}
+
+// The refusal fires even when the rest of the census would HOLD: the unresolvable row outranks the
+// unreached judgment, and it outranks an otherwise-green census -- the roster is not decoration.
+test fn the_unresolvable_row_refuses_even_when_the_census_otherwise_holds() -> Bool {
+  let c = census_of_roster(admitted: ["a"], resolved: [floor_lane(modules: ["a"])], roster: ["a", "gone.without.a.trace"])
+  count(c.unreached) == 0
+    && match resolution_census_standing(c: c) {
+         ResolutionCensusHeld => false
+         ResolutionCensusDidNotHold { unreached: _ } => false
+         ResolutionCensusRefused { cause: _ } => true
+       }
+}
+
+// PAIRING, the census to the REAL authored roster (this is the census's product, not a fixture):
+// over the live populations -- the same admitted population and lane resolutions the instrument
+// entry judges -- every row of `v2.workflow.required_floor` `required_gate_authored_modules`, read
+// as DATA so rows added by #15023 arrive without touching this file, enumerates as its own line,
+// NO row is unresolvable (each names a module the ingestion admits -- if one stops resolving,
+// this claim turns RED, the instrument refuses, and the roster cannot silently shrink), and NO row
+// is reached by any required lane's closure today. The resolved-by-required-lane arm is empty by construction of the declared loss:
+// the manual required-floor runner is deleted and no required lane resolves a roster module. The
+// day a row moves to `resolved-by-required-lane` this claim goes RED and the drop's population shrinks with it --
+// that is what makes the census a measurement rather than a certificate.
+test fn w_the_authored_required_floor_roster_resolves_and_no_required_lane_reaches_it() -> Bool {
+  match live_populations() {
+    LivePopulationsRefused { cause: _ } => false
+    LivePopulationsObserved { admitted: admitted, resolved: resolved, roster: roster } => {
+      let c = resolution_census(inputs: ResolutionCensusInputs { admitted: admitted, resolved: resolved, roster: roster })
+      count(roster) > 0
+        && count(c.roster_rows) == count(roster)
+        && same_list(a: rows_of_kind(c: c, kind: "unresolvable"), b: [])
+        && same_list(a: rows_of_kind(c: c, kind: "resolved-by-required-lane"), b: [])
+        && count(rows_of_kind(c: c, kind: "unreached")) == count(roster)
+    }
+  }
 }
 
 // PAIRING: the entry-closure query on the real producer, over a two-module fixture root whose
