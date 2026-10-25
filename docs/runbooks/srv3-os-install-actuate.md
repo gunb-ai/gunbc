@@ -111,7 +111,7 @@ which curl websocat nbdkit socat jq sha256sum gunbc
 
 ### BMCweb login — credential resolution (read before live)
 
-**Modeled (`srv3_bmcweb_session_login`):** probes BMC with `bmc_probe_credential_phase`, resolves intent vs observation via `gunbc.srv3.srv3_bmc_credential_resolve`, then materializes password from factory login or `fetch_secret_ref_credential(bmc_srv3_admin_secret_ref)`. Password is written to **`/tmp/srv3_bmcweb_login_body.json`** (on disk); curl posts it to `https://192.168.1.192/login`. On **success** gunbc emits no password, only the token to **`/tmp/srv3_bmcweb_token`**. On **failure** stderr may include the curl body — do not paste logs containing credentials.
+**Modeled (`srv3_bmcweb_session_login`):** probes BMC with `bmc_probe_credential_phase`, resolves intent vs observation via `gunbc.srv3.srv3_bmc_credential_resolve`, then materializes password from factory login or `fetch_secret_ref_credential(bmc_srv3_admin_secret_ref)`. Password is written owner-only to a login body in a per-run private `mktemp -d` directory (`gunbc.auth.private_secret_file` `with_private_secret_file`), which is removed with its directory when the login returns, on success and failure alike; curl posts it to `https://192.168.1.192/login`. On **success** gunbc emits no password, only the token to **`/tmp/srv3_bmcweb_token`**. On **failure** stderr may include the curl body — do not paste logs containing credentials.
 
 Requires **gcloud auth** on the actuator host when BMC is in `RotatedCredentialActive` state.
 
@@ -155,7 +155,7 @@ gunbc run --source-root dag \
 
 **Boot-once semantics:** modeled `BootOverrideOnce` → Redfish wire **`"Once"`** (not `Continuous`). **Next boot only**; firmware clears the override once consumed. A failed install does **not** leave srv3 in a permanent CD-loop — worst case one retry if the host reboots back to virtual media before the override clears. A successful install reboots to disk (HDD/NVMe) with the override gone.
 
-**Credentials:** same resolution path as login (`srv3_bmc_credential_resolve`); netrc written to `/tmp/bmc_onboard_netrc`.
+**Credentials:** same resolution path as login (`srv3_bmc_credential_resolve`); netrc placed in a per-call private `mktemp -d` directory (`gunbc.auth.netrc_binding` `with_private_netrc_binding`) and removed, with its directory, when the boot sequence returns.
 
 Host should power-cycle and boot the Ubuntu installer from virtual media.
 
