@@ -666,7 +666,6 @@ fn observe_push_registration(devices: ApprovalDeviceStore, enrollment_id: NonEmp
 fn commit_push_registration(devices: ApprovalDeviceStore, enrollment_id: NonEmptyStr, push: PushRegistration) -> PushRegistrationWrite
   admit_callers: [
     decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "device_push_update_response_at"),
-    decl_ref(module_path: "test.claim.approval_google_enrolment_wet_witness", decl_name: "a_push_registration_writes_replays_unchanged_and_takes_a_rotated_token_through_the_real_store"),
   ]
 {
   let payload = push_update_json(p: push) as NonEmptyStr
