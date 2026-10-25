@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.a_target_roster_restates_the_labels_its_bindings_name
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_target_roster_restates_the_labels_its_bindings_name: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_target_roster_restates_the_labels_its_bindings_name" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyImpossible,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "gunbc.instrument_targets instrument_targets derived from instrument_bindings (each binding's target IS the roster row), or a TargetBinding unconstructible without its declared target, SUFFICIENT FOR a PR that adds a binding without listing its label to have no second list to forget, so the registry cannot disagree with itself."
+    }
+  },
+
+  receipts: [
+    "INVALID STATE: a TargetBinding in gunbc.instrument_targets instrument_bindings names a label that instrument_targets does not list. Both lists are hand-authored and must name the same labels, so the target roster restates a fact every binding already carries (its target), which is a second authority for one fact (DESIGN section 3).",
+    "HARM: gunbc.target_binding build_target_binding_index refuses the WHOLE registry on any such binding, and gunbc.target_invocation route_target_invocation then refuses every operand with InvocationRegistryRefused. One forgotten label stops every label from routing. The refusal is loud and typed, never a wrong producer, so this is mitigation, but the breadth of the stop is out of all proportion to the defect.",
+    "OBSERVED, 2026-10-25, THREE INSTANCES IN ONE DAY, each landed green because no required check runs a witness (gunbc.rung_drop v1_required_lanes_withdrawn): member_home_cost (gunbc#15044), last_use_move (gunbc#15041) and cons_tail_recursion (gunbc#15098) each added a binding with no label. dag/test/claim/target_invocation_witness.dag went from 67 of 67 to 44 of 67 (bisected by stern-bat-401 and royal-bee-327: 67 at 2c04ce474b, 44 at 57a14a90). Adding only one of the missing labels left it at 44, because the registry refuses on the next missing one. Repaired by gunbc#15142 (610e399f1ab): main at 66 targets and 66 bindings, the witness 68 of 68 on srv1 at the PR head.",
+    "WHY IT RECURS: the omission is invisible at authoring time. The new binding type-checks, its own claims pass, and v2-bootstrap is green; only target_invocation_witness, which nothing required runs, sees the disagreement. A contributor copying the nearest binding has no reason to open a second list 400 lines away.",
+    "NEXT RUNG: derive the roster from the bindings so the second list does not exist (structural impossibility). An interim mechanical prevention would be a required control that joins the two lists by identity, but that keeps the second authority alive; the derivation is the climb.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.instrument_targets", decl_name: "instrument_targets"),
+    decl_ref(module_path: "gunbc.instrument_targets", decl_name: "instrument_bindings"),
+    decl_ref(module_path: "gunbc.target_binding", decl_name: "build_target_binding_index"),
+    decl_ref(module_path: "gunbc.target_invocation", decl_name: "route_target_invocation"),
+  ],
+}
