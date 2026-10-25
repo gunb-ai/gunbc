@@ -218,7 +218,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/qwen/qwen3_8_flash_next.dag",
   "dag/extdeps/gpu_bench/kit_log.dag",
   "dag/extdeps/gpu_bench/request_v2.dag",
-  "dag/extdeps/gpu_bench/request_v3.dag",
+  "dag/extdeps/gpu_bench/request_v4.dag",
   "dag/extdeps/strata/serve_flags.dag",
   "dag/extdeps/ninfer/ninfer_serve.dag",
   "dag/extdeps/ninfer/qwen3_8_27b_nvfp4.dag",
