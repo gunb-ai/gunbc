@@ -46,10 +46,6 @@ fn manager(dir: String, ended_unit: String, others: AttemptUnitObservation, u: N
 
 fn mark_reset(dir: String, u: NonEmptyStr) -> Bool { Filesystem.Write(path: marker(dir: dir, unit: u as String), content: "reset").success }
 
-fn pass_outcomes(p: ActivationPass) -> List<ActivationOutcome> {
-  match p { ActivationPassRan { outcomes } => outcomes  ActivationPassRefused { detail: _ } => [] }
-}
-
 fn is_noop(o: ActivationOutcome) -> Bool {
   match o { ActivationNoop { unit: _, why: _ } => true  ActivationRolledBack { unit: _, detail: _ } => false  ActivationCollected { unit: _, detail: _ } => false  ActivationRefused { unit: _, reason: _ } => false  ActivationRed { unit: _, reason: _ } => false }
 }
@@ -63,12 +59,15 @@ fn is_refused(o: ActivationOutcome) -> Bool {
   match o { ActivationNoop { unit: _, why: _ } => false  ActivationRolledBack { unit: _, detail: _ } => false  ActivationCollected { unit: _, detail: _ } => false  ActivationRefused { unit: _, reason: _ } => true  ActivationRed { unit: _, reason: _ } => false }
 }
 
+// THE PASS KEEPS ITS REFUSAL: only a pass that RAN is judged, so a refused pass is never read as an empty one.
 fn only(p: ActivationPass, check: fn(ActivationOutcome) -> Bool) -> Bool {
-  let os = pass_outcomes(p: p)
-  os.length() == 1 && all(os, o => check(o))
+  match p {
+    ActivationPassRan { outcomes } => outcomes.length() == 1 && all(outcomes, o => check(o))
+    ActivationPassRefused { detail: _ } => false
+  }
 }
 
-// A store the mint refuses is a refused pass, whose outcomes are empty, so no control reads it as green.
+// A store the mint refuses is a refused pass, which only answers false, so no control reads it as green.
 fn pass_on(dir: String, run: fn(SessionPlacementStores) -> ActivationPass) -> ActivationPass {
   match stores_at(dir: dir) {
     Absent => ActivationPassRefused { detail: "the witness's session slot store could not be minted" }

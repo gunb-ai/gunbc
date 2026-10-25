@@ -31,7 +31,11 @@ fn session_attempt_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
 // here from session_attempt_slots, and only a directory listed (Filesystem.List) yields a store. Session placement takes this type, so a SlotStore
 // minted for another declaration or from a bare root is not a session slot store; the root is a field of the SlotStore it holds and field reads are not
 // module-private, so a holder CAN read it (declared residual:
-// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module). Non-generic and never a variant arm (test.claim.sole_constructor_completeness_audit_probe
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module).
+// The mint takes no path, but the instance it takes is buildable over any root
+// (gunbc.roadmap.roadmap_dashboard_instance isolated_dashboard_instance), so a chosen path DOES reach this store
+// through it: route 3 of the same residual (test.claim.attempt_store_seal_witness
+// a_session_store_over_a_chosen_instance_root_is_accepted_today, expecting-red). Non-generic and never a variant arm (test.claim.sole_constructor_completeness_audit_probe
 // f13). NOT established, as for the claim store: that a store minted for instance A is refused where B is
 // required.
 type SessionAttemptSlotsStore sole_constructor {
