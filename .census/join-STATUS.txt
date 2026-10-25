@@ -1,0 +1,2 @@
+JOIN CENSUS, planning only (throwaway; never merge). Instrument census-local-join f66074a88b2 over main 594064185d0; v1-scoped variant census-local-join-v1.
+PARTIAL: src/v1 self-compile population only (360 sites). The dag-primary corpus (srv2) and src/v2 per-file entry populations are in flight; the classified TSV follows.
