@@ -8,9 +8,10 @@ import extdeps.docker.cli_service { DockerCli }
 import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, ListenOn, LocationBlock, ExactMatch, PrefixMatch,
-  LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
+  LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ListenTlsOn, SslCertificate, SslCertificateKey, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
+import gunbc.serving.router_dev_policy { RouterDevSite, RouterDevConfig, RouterDevConfigRendered, RouterDevConfigRefused, router_dev_config }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
 }
@@ -42,6 +43,7 @@ fn docker() -> NonEmptyStr { "docker" as NonEmptyStr }
 fn fixture_name() -> NonEmptyStr { "gunbc-rpf-fixture" as NonEmptyStr }
 fn router_name() -> NonEmptyStr { "gunbc-rpf-router" as NonEmptyStr }
 fn unreachable_router_name() -> NonEmptyStr { "gunbc-rpf-router-noauthz" as NonEmptyStr }
+fn dev_router_name() -> NonEmptyStr { "gunbc-rpf-dev" as NonEmptyStr }
 fn test_name() -> NonEmptyStr { "gunbc-rpf-test" as NonEmptyStr }
 fn shared_namespace() -> NonEmptyStr { "container:gunbc-rpf-fixture" as NonEmptyStr }
 fn absent_daemon() -> NonEmptyStr { "unix:///nonexistent/gunbc-router-proxy-falsifier.sock" as NonEmptyStr }
@@ -85,6 +87,21 @@ fn fixture_location(path: String, exact: Bool, lines: List<String>) -> List<Ngin
   }
 }
 
+// THE DEV-POLICY UPSTREAMS: a plain HTTP upstream and two HTTPS upstreams, each echoing which upstream it
+// is, the Authorization it was sent and the body. The certificate of the first HTTPS one is the pinned
+// bundle the dev router trusts; the second presents a certificate outside the bundle.
+fn echo_lines(name: String) -> List<String> {
+  ["ngx.req.read_body()", "ngx.say('upstream=" + name + " auth=', ngx.var.http_authorization or '', ' body=', ngx.req.get_body_data() or '')"]
+}
+
+fn tls_fixture_server(port: Port, cert: String, key: String, name: String) -> List<NginxDirective> {
+  match tok(text: "127.0.0.1") { Absent => no_directives() Present { value: host } =>
+  match tok(text: cert) { Absent => no_directives() Present { value: c } =>
+  match tok(text: key) { Absent => no_directives() Present { value: k } =>
+    [ServerBlock { body: concat([ListenTlsOn { address: host, port: port }, SslCertificate { path: c }, SslCertificateKey { path: k }], fixture_location(path: "/", exact: false, lines: echo_lines(name: name))) }]
+  } } }
+}
+
 fn fixture_server(port: Port, locations: List<NginxDirective>) -> List<NginxDirective> {
   match tok(text: "127.0.0.1") {
     Present { value: host } => [ServerBlock { body: concat([ListenOn { address: host, port: port }], locations) }]
@@ -98,6 +115,12 @@ fn fixture_server(port: Port, locations: List<NginxDirective>) -> List<NginxDire
 // address; the sink counts stream-end notices and keeps the last permit; the upstream
 // counts its hits, echoes the body and sends one SSE event, flushes, then either aborts its connection
 // (?reset) or optionally waits four seconds (?slow) before a second.
+fn dev_upstreams() -> List<NginxDirective> {
+  concat(concat(fixture_server(port: 19101 as Port, locations: fixture_location(path: "/", exact: false, lines: echo_lines(name: "a"))),
+    tls_fixture_server(port: 19443 as Port, cert: "/etc/fake/b.crt", key: "/etc/fake/b.key", name: "b")),
+    tls_fixture_server(port: 19444 as Port, cert: "/etc/fake/o.crt", key: "/etc/fake/o.key", name: "d"))
+}
+
 fn fixture_directives() -> List<NginxDirective> {
   let authz = fixture_location(path: "/authz", exact: true, lines: [
     "if ngx.var.http_x_deny then return ngx.exit(403) end",
@@ -135,7 +158,7 @@ fn fixture_directives() -> List<NginxDirective> {
   [
     WorkerProcesses { count: 1 },
     EventsBlock,
-    HttpBlock { body: concat(concat(concat(concat([AccessLogOff], dict), fixture_server(port: 19001 as Port, locations: authz)), fixture_server(port: 19002 as Port, locations: concat(stream_end, ends))), fixture_server(port: 19003 as Port, locations: upstream)) },
+    HttpBlock { body: concat(concat(concat(concat([AccessLogOff], dict), fixture_server(port: 19001 as Port, locations: authz)), fixture_server(port: 19002 as Port, locations: concat(stream_end, ends))), fixture_server(port: 19003 as Port, locations: upstream)), dev_upstreams()) },
   ]
 }
 
@@ -164,8 +187,9 @@ fn remove_all() -> Int {
   let a = DockerCli.RemoveForce(docker: docker(), name: test_name())
   let b = DockerCli.RemoveForce(docker: docker(), name: router_name())
   let c = DockerCli.RemoveForce(docker: docker(), name: unreachable_router_name())
+  let e = DockerCli.RemoveForce(docker: docker(), name: dev_router_name())
   let d = DockerCli.RemoveForce(docker: docker(), name: fixture_name())
-  a.exit_code + b.exit_code + c.exit_code + d.exit_code
+  a.exit_code + b.exit_code + c.exit_code + e.exit_code + d.exit_code
 }
 
 fn destination(name: NonEmptyStr) -> String {
@@ -190,6 +214,63 @@ fn start_with(name: NonEmptyStr, network: NonEmptyStr, conf_path: String) -> Int
   let started = DockerCli.Start(docker: docker(), name: name)
   created.exit_code + copied.exit_code + started.exit_code
 }
+
+fn start_with_command(name: NonEmptyStr, network: NonEmptyStr, conf_path: String, command: List<String>, extras: List<CopyPair>) -> Int {
+  let created = DockerCli.Create(docker: docker(), name: name, network: network, image: openresty_1_27_1_1_image, command: command)
+  let copied = DockerCli.CopyInto(docker: docker(), source: conf_path, destination: destination(name: name))
+  let extras = fold(extras, init: 0, f: (acc, st) => acc + DockerCli.CopyInto(docker: docker(), source: st.source, destination: concat(concat(name as String, ":"), st.target)).exit_code)
+  let started = DockerCli.Start(docker: docker(), name: name)
+  created.exit_code + copied.exit_code + extras + started.exit_code
+}
+
+type CopyPair {
+  source: String
+  target: String
+}
+
+fn no_copies() -> List<CopyPair> { [] }
+
+// A self-signed certificate made inside the container before the server starts (the image carries the
+// openssl tool), so no key material is in the repository or on the host.
+fn self_signed(key: String, cert: String, cn: String) -> String {
+  "openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=" + cn + " -addext subjectAltName=DNS:" + cn + " -keyout " + key + " -out " + cert + " 2>/dev/null"
+}
+
+fn fixture_command() -> List<String> {
+  ["sh", "-c", "mkdir -p /etc/fake && " + self_signed(key: "/etc/fake/b.key", cert: "/etc/fake/b.crt", cn: "fakeb") + " && " + self_signed(key: "/etc/fake/o.key", cert: "/etc/fake/o.crt", cn: "fakeb") + " && exec openresty -g 'daemon off;'"]
+}
+
+fn dev_state_dir() -> String { "/usr/local/openresty/nginx/conf" }
+
+fn dev_router_command() -> List<String> {
+  ["sh", "-c", "mkdir -p " + dev_state_dir() + "/tls && " + self_signed(key: dev_state_dir() + "/tls/key.pem", cert: dev_state_dir() + "/tls/cert.pem", cn: "router") + " && exec openresty -g 'daemon off;'"]
+}
+
+fn dev_site() -> RouterDevSite {
+  RouterDevSite { listen_address: "127.0.0.1", listen_port: 18445, state_dir: dev_state_dir(), alias: "flash-next" }
+}
+
+fn dev_text() -> String {
+  match router_dev_config(site: dev_site()) { RouterDevConfigRendered { text: t } => t RouterDevConfigRefused { token: _ } => "" }
+}
+
+// Four upstreams: a (HTTP), b (HTTPS, pinned), c (cap 0) and d (HTTPS, certificate outside the bundle).
+fn dev_upstreams_json() -> String {
+  "[\{\"name\":\"a\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"ka\",\"model\":\"m-a\",\"cap\":4},"
+    + "\{\"name\":\"b\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19443,\"sni\":\"fakeb\",\"key\":\"kb\",\"model\":\"m-b\",\"cap\":4},"
+    + "\{\"name\":\"c\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19101,\"key\":\"kc\",\"model\":\"m-c\",\"cap\":0},"
+    + "\{\"name\":\"d\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19444,\"sni\":\"fakeb\",\"key\":\"kd\",\"model\":\"m-d\",\"cap\":4}]"
+}
+
+fn dev_request(key: String, session: String, body: String, path: String) -> String {
+  curl(arguments: ["-k", "-sS", "--max-time", "10", "-H", concat("Authorization: Bearer ", key), "-H", concat("x-session-id: ", session), "-d", body, "-w", "\n%\{http_code\}", concat("https://127.0.0.1:18445", path)])
+}
+
+fn dev_get(key: String, path: String) -> String {
+  curl(arguments: ["-k", "-sS", "--max-time", "10", "-H", concat("Authorization: Bearer ", key), "-w", "\n%\{http_code\}", concat("https://127.0.0.1:18445", path)])
+}
+
+fn model_body(model: String) -> String { concat(concat("\{\"model\":\"", model), "\"\}") }
 
 fn contains(s: String, p: String) -> Bool { string_contains(s: s, pattern: p) }
 
@@ -260,7 +341,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let t_ok = openresty_test(conf_path: router_conf_path())
   let t_broken = openresty_test(conf_path: broken_conf_path())
   let t_unreachable = openresty_test(conf_path: unreachable_conf_path())
-  let started_fixture = start_with(name: fixture_name(), network: "bridge" as NonEmptyStr, conf_path: fixture_conf_path())
+  let started_fixture = start_with_command(name: fixture_name(), network: "bridge" as NonEmptyStr, conf_path: fixture_conf_path(), command: fixture_command(), extras: no_copies())
   let started_router = start_with(name: router_name(), network: shared_namespace(), conf_path: router_conf_path())
   let started_unreachable = start_with(name: unreachable_router_name(), network: shared_namespace(), conf_path: unreachable_conf_path())
   let ready_sink = ready(port: "19002")
@@ -280,6 +361,28 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let bad_upstream = request(port: "18443", case_header: "x-case: badupstream", query: "", max_seconds: "10")
   let no_authz = request(port: "18444", case_header: "x-case: noauthz", query: "", max_seconds: "10")
   let after_refusals = sink(n: "0")
+  let w5 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev.conf", content: dev_text())
+  let w6 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-client-keys", content: "ck-falsifier\n")
+  let w7 = Filesystem.Write(path: "/tmp/gunbc-rpf-dev-upstreams.json", content: dev_upstreams_json())
+  let pinned = DockerCli.CopyInto(docker: docker(), source: "gunbc-rpf-fixture:/etc/fake/b.crt", destination: "/tmp/gunbc-rpf-dev-upstream-ca.pem")
+  let started_dev = start_with_command(name: dev_router_name(), network: shared_namespace(), conf_path: "/tmp/gunbc-rpf-dev.conf", command: dev_router_command(),
+    extras: [
+      CopyPair { source: "/tmp/gunbc-rpf-dev-client-keys", target: dev_state_dir() + "/client_keys" },
+      CopyPair { source: "/tmp/gunbc-rpf-dev-upstreams.json", target: dev_state_dir() + "/upstreams.json" },
+      CopyPair { source: "/tmp/gunbc-rpf-dev-upstream-ca.pem", target: dev_state_dir() + "/upstream_ca.pem" },
+    ])
+  let dev_ready = curl(arguments: ["-k", "-sS", "-o", "/dev/null", "-w", "%\{http_code\}", "--retry", "30", "--retry-delay", "1", "--retry-connrefused", "https://127.0.0.1:18445/ready"])
+  let dev_no_key = dev_request(key: "wrong", session: "s0", body: model_body(model: "m-a"), path: "/v1/chat/completions")
+  let dev_models = dev_get(key: "ck-falsifier", path: "/v1/models")
+  let dev_a = dev_request(key: "ck-falsifier", session: "s1", body: model_body(model: "m-a"), path: "/v1/chat/completions")
+  let dev_b = dev_request(key: "ck-falsifier", session: "s2", body: model_body(model: "m-b"), path: "/v1/chat/completions")
+  let dev_d = dev_request(key: "ck-falsifier", session: "s3", body: model_body(model: "m-d"), path: "/v1/chat/completions")
+  let dev_c = dev_request(key: "ck-falsifier", session: "s4", body: model_body(model: "m-c"), path: "/v1/chat/completions")
+  let dev_unknown = dev_request(key: "ck-falsifier", session: "s5", body: model_body(model: "m-none"), path: "/v1/chat/completions")
+  let alias1 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
+  let alias2 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
+  let alias3 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
+  let alias_other = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "m-b"), path: "/v1/chat/completions")
   let removed = remove_all()
   [
     case_of(identity: "daemon_red_absent_daemon_reads_unavailable", held: match daemon_control { DaemonUnavailable { stderr: _ } => true DaemonAnswered => false }, observed: match daemon_control { DaemonUnavailable { stderr: _ } => "unavailable" DaemonAnswered => "answered" }),
@@ -301,6 +404,16 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "an_answer_with_a_malformed_upstream_answers_503", held: contains(s: bad_upstream, p: "\n503 exit=0"), observed: bad_upstream),
     case_of(identity: "unreachable_authz_answers_503", held: contains(s: no_authz, p: "\n503 exit=0"), observed: no_authz),
     case_of(identity: "no_refusal_forwarded_or_fired_stream_end", held: contains(s: after_refusals, p: "ends=4 last=p-reset-alpha hits=4"), observed: after_refusals),
+    case_of(identity: "dev_world_starts", held: w5.success && w6.success && w7.success && dev_text() != "" && pinned.exit_code == 0 && started_dev == 0 && contains(s: dev_ready, p: "404"), observed: dev_ready),
+    case_of(identity: "dev_red_wrong_client_key_answers_401", held: contains(s: dev_no_key, p: "\n401 exit=0"), observed: dev_no_key),
+    case_of(identity: "dev_models_lists_both_models_and_the_alias", held: contains(s: dev_models, p: "m-a") && contains(s: dev_models, p: "m-b") && contains(s: dev_models, p: "flash-next") && contains(s: dev_models, p: "\n200 exit=0"), observed: dev_models),
+    case_of(identity: "dev_routes_by_model_with_that_upstreams_key", held: contains(s: dev_a, p: "upstream=a auth=Bearer ka") && contains(s: dev_a, p: "\n200 exit=0"), observed: dev_a),
+    case_of(identity: "dev_https_upstream_is_verified_against_its_pin", held: contains(s: dev_b, p: "upstream=b auth=Bearer kb") && contains(s: dev_b, p: "\n200 exit=0"), observed: dev_b),
+    case_of(identity: "dev_red_certificate_outside_the_pins_answers_502", held: contains(s: dev_d, p: "\n502 exit=0") && !contains(s: dev_d, p: "upstream=d"), observed: dev_d),
+    case_of(identity: "dev_red_upstream_at_its_cap_answers_429", held: contains(s: dev_c, p: "\n429 exit=0") && !contains(s: dev_c, p: "upstream="), observed: dev_c),
+    case_of(identity: "dev_red_unknown_model_answers_404", held: contains(s: dev_unknown, p: "\n404 exit=0"), observed: dev_unknown),
+    case_of(identity: "dev_alias_is_sticky_and_rewritten_to_the_upstream_model", held: contains(s: alias1, p: "upstream=a") && contains(s: alias2, p: "upstream=a") && contains(s: alias3, p: "upstream=a") && contains(s: alias1, p: "m-a") && !contains(s: alias1, p: "flash-next"), observed: alias3),
+    case_of(identity: "dev_red_bound_session_on_another_model_answers_409", held: contains(s: alias_other, p: "\n409 exit=0") && !contains(s: alias_other, p: "upstream="), observed: alias_other),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
   ]
 }
@@ -330,6 +443,16 @@ fn falsifier_expected_identities() -> List<String> {
     "an_answer_with_a_malformed_upstream_answers_503",
     "unreachable_authz_answers_503",
     "no_refusal_forwarded_or_fired_stream_end",
+    "dev_world_starts",
+    "dev_red_wrong_client_key_answers_401",
+    "dev_models_lists_both_models_and_the_alias",
+    "dev_routes_by_model_with_that_upstreams_key",
+    "dev_https_upstream_is_verified_against_its_pin",
+    "dev_red_certificate_outside_the_pins_answers_502",
+    "dev_red_upstream_at_its_cap_answers_429",
+    "dev_red_unknown_model_answers_404",
+    "dev_alias_is_sticky_and_rewritten_to_the_upstream_model",
+    "dev_red_bound_session_on_another_model_answers_409",
     "world_is_removed",
   ]
 }
