@@ -15804,7 +15804,7 @@ fn belt_exit_stall_release_at(root: String, move: fn(String, String, HostSpoolSt
 
 // ANALYZE IS READ-ONLY: for each recorded entry it reports the recorded cause and the entry's own owner, mode
 // and type (stat), and for an entry owned by another principal it names the follow-up -- a privileged clear
-// through the approval-broker route (gunbc.auth.approval_broker redeem_capability). Nothing is moved.
+// through the approval-broker route (gunbc.auth.approval_device_redemption redeem_device_over_store). Nothing is moved.
 // An observation either happened or it did not; a failed reading is never folded into a value, so ownership
 // is classified only from two readings that both succeeded.
 type BeltExitStallObservation

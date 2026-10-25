@@ -215,7 +215,7 @@ data conformance_domains: List<ConformanceDomain> = [
             head: decl_ref(module_path: "gunbc.auth.access_request", decl_name: "AccessRequest"),
             tail: [
               decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "ApprovalCapability"),
-              decl_ref(module_path: "gunbc.auth.approval_broker", decl_name: "redeem_capability"),
+              decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "redeem_device_over_store"),
             ],
           },
         },
