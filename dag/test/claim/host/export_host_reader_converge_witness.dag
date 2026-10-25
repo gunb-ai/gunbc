@@ -1,0 +1,204 @@
+module test.claim.host.export_host_reader_converge_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { string_contains }
+import std.optional { Present, Absent }
+import extdeps.ssh.openssh_server_commands { sshd_effective_config_value }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.host.export_host_reader_converge {
+  ExportHostReaderLegs, ExportHostReaderRun, ExportHostReaderOutcome,
+  ReaderRowsConverged, ReaderRowsRefused, ReaderRowsRolledBack, ReaderRowsRollbackFailed, ReaderRowsReloadUncertain,
+  export_host_reader_apply_with, render_export_host_reader_run, export_host_reader_drop_in, authorized_keys_file_value, authorized_keys_file_option,
+  export_host_reader_keys_path, boot_medium_reader_login,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn ok(stdout: String) -> RemoteAnswer { RemoteAnswer { exit_code: 0, stdout: stdout, stderr: "" } }
+fn bad() -> RemoteAnswer { RemoteAnswer { exit_code: 1, stdout: "", stderr: "refused" } }
+
+data effective_ours: String = "port 22\nauthorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2 /etc/ssh/authorized_keys.%u\npasswordauthentication no\n"
+
+fn absent() -> RemoteAnswer { RemoteAnswer { exit_code: 1, stdout: "", stderr: "" } }
+fn present() -> RemoteAnswer { RemoteAnswer { exit_code: 0, stdout: "", stderr: "" } }
+
+data effective_without_ours: String = "port 22\nauthorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2\n"
+
+// A HEALTHY HOST: every leg answers as it should, and a test names only the legs it varies. A Bool leg (a
+// converging write) holds when its override exits 0.
+type LegOverride {
+  leg: String
+  answer: RemoteAnswer
+}
+
+fn answer(name: String, overrides: List<LegOverride>, healthy: RemoteAnswer) -> RemoteAnswer {
+  fold(overrides, init: healthy, f: (acc, o) => if o.leg == name { o.answer } else { acc })
+}
+
+fn holds(name: String, overrides: List<LegOverride>) -> Bool {
+  answer(name: name, overrides: overrides, healthy: ok(stdout: "")).exit_code == 0
+}
+
+fn legs_with(overrides: List<LegOverride>) -> ExportHostReaderLegs {
+  ExportHostReaderLegs {
+    precheck: fn() { answer(name: "precheck", overrides: overrides, healthy: ok(stdout: "")) },
+    account_exists: fn() { answer(name: "account_exists", overrides: overrides, healthy: ok(stdout: "998")) },
+    ensure_account: fn() { answer(name: "ensure_account", overrides: overrides, healthy: ok(stdout: "")) },
+    write_keys: fn() { holds(name: "write_keys", overrides: overrides) },
+    write_drop_in: fn() { holds(name: "write_drop_in", overrides: overrides) },
+    test_config: fn() { answer(name: "test_config", overrides: overrides, healthy: ok(stdout: "")) },
+    effective_config: fn() { answer(name: "effective_config", overrides: overrides, healthy: ok(stdout: effective_ours)) },
+    reload: fn() { answer(name: "reload", overrides: overrides, healthy: ok(stdout: "")) },
+    fresh_login: fn() { answer(name: "fresh_login", overrides: overrides, healthy: ok(stdout: "")) },
+    remove_drop_in: fn() { answer(name: "remove_drop_in", overrides: overrides, healthy: ok(stdout: "")) },
+    drop_in_exists: fn() { answer(name: "drop_in_exists", overrides: overrides, healthy: absent()) },
+    drop_in_is_link: fn() { answer(name: "drop_in_is_link", overrides: overrides, healthy: absent()) },
+    rollback_reload: fn() { answer(name: "rollback_reload", overrides: overrides, healthy: ok(stdout: "")) },
+    rollback_fresh_login: fn() { answer(name: "rollback_fresh_login", overrides: overrides, healthy: ok(stdout: "")) },
+    effective_config_after_removal: fn() { answer(name: "effective_config_after_removal", overrides: overrides, healthy: ok(stdout: effective_without_ours)) },
+  }
+}
+
+fn run(overrides: List<LegOverride>) -> ExportHostReaderRun {
+  export_host_reader_apply_with(legs: legs_with(overrides: overrides))
+}
+
+fn word(o: ExportHostReaderOutcome) -> String {
+  match o {
+    ReaderRowsConverged => "converged"
+    ReaderRowsRefused { stage: _, cause: _ } => "refused"
+    ReaderRowsRolledBack { cause: _ } => "rolled-back"
+    ReaderRowsRollbackFailed { cause: _, rollback: _ } => "rollback-failed"
+    ReaderRowsReloadUncertain { cause: _, running: _, on_disk: _ } => "reload-uncertain"
+  }
+}
+
+fn stages(r: ExportHostReaderRun) -> List<String> {
+  map(r.stages, s => s as String)
+}
+
+fn reloads(r: ExportHostReaderRun) -> Int {
+  fold(stages(r: r), init: 0, f: (acc, s) => if s == "reload" { acc + 1 } else { acc })
+}
+
+data writes: List<String> = ["sshd-t-option", "account-check", "write-keys", "write-drop-in"]
+
+data through_reload: List<String> = ["sshd-t-option", "account-check", "write-keys", "write-drop-in", "sshd-t", "sshd-T", "reload"]
+
+// CONDITION 1: .ssh/authorized_keys stays FIRST, so every existing login is unchanged; the drop-in is
+// exactly that one setting.
+test fn existing_authorized_keys_stays_first_in_the_drop_in() -> Bool {
+  (authorized_keys_file_value as String).starts_with(".ssh/authorized_keys ")
+    && export_host_reader_drop_in().content == concat(authorized_keys_file_option() as String, "\n")
+    && match sshd_effective_config_value(text: effective_ours, keyword: "authorizedkeysfile") { Present { value: v } => v == (authorized_keys_file_value as String)  Absent => false }
+}
+
+// The file sshd reads for the reader (the %u entry, expanded for its login) is exactly the file written.
+test fn the_percent_u_entry_names_the_written_key_file_for_the_reader() -> Bool {
+  (authorized_keys_file_value as String).ends_with(suffix: concat(" ", (export_host_reader_keys_path as String).replace(from: boot_medium_reader_login as String, to: "%u")))
+    && export_host_reader_keys_path as String == "/etc/ssh/authorized_keys.boot-medium-reader"
+}
+
+// CONTROL: a healthy host converges through every stage in order, reloading once.
+test fn a_healthy_host_converges_through_every_stage_in_order() -> Bool {
+  let r = run(overrides: [])
+  word(o: r.outcome) == "converged" && stages(r: r) == concat(through_reload, ["fresh-login"])
+}
+
+// RED: an option sshd refuses against the live configuration writes nothing.
+test fn a_refused_option_writes_nothing() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "precheck", answer: bad() }])
+  word(o: r.outcome) == "refused" && stages(r: r) == ["sshd-t-option"]
+}
+
+// CONDITION 2 RED: sshd -t refusing the configuration with the drop-in removes the drop-in under the
+// absence readback and never reloads.
+test fn sshd_t_failure_removes_the_drop_in_and_does_not_reload() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "test_config", answer: bad() }])
+  word(o: r.outcome) == "refused"
+    && stages(r: r) == concat(writes, ["sshd-t", "remove-drop-in", "drop-in-absent-readback"])
+    && reloads(r: r) == 0
+}
+
+// RED: an effective AuthorizedKeysFile other than ours (an earlier drop-in wins) removes the drop-in and
+// never reloads.
+test fn a_shadowed_setting_removes_the_drop_in_and_does_not_reload() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "effective_config", answer: ok(stdout: "authorizedkeysfile .ssh/authorized_keys\n") }])
+  word(o: r.outcome) == "refused" && reloads(r: r) == 0 && stages(r: r).contains("remove-drop-in")
+}
+
+// CONDITIONS 3 AND 4 CONTROL: a fresh administrator login failing after the reload rolls back: the drop-in
+// is removed AND confirmed absent, sshd is reloaded, and a second fresh login succeeds.
+test fn a_failed_fresh_login_rolls_back_through_a_confirmed_removal_and_a_second_login() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }])
+  word(o: r.outcome) == "rolled-back"
+    && stages(r: r) == concat(through_reload, ["fresh-login", "remove-drop-in", "drop-in-absent-readback", "reload", "fresh-login"])
+}
+
+// RED (side chat, HOLD 1): a removal that is not CONFIRMED means no second reload -- whether the drop-in
+// is still there, the readback is unknown (test's error, ssh's 255), a dangling link is left (test -e
+// false, test -L true), or rm itself exited 0 over a file still present.
+test fn an_unconfirmed_removal_means_no_second_reload() -> Bool {
+  let still_there = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: present() }])
+  let unknown = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: RemoteAnswer { exit_code: 255, stdout: "", stderr: "ssh: connection closed" } }])
+  let dangling = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_is_link", answer: present() }])
+  let rm_lied = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "remove_drop_in", answer: ok(stdout: "") }, LegOverride { leg: "drop_in_exists", answer: present() }])
+  word(o: still_there.outcome) == "rollback-failed" && reloads(r: still_there) == 1
+    && stages(r: still_there) == concat(through_reload, ["fresh-login", "remove-drop-in", "drop-in-absent-readback"])
+    && word(o: unknown.outcome) == "rollback-failed" && reloads(r: unknown) == 1
+    && word(o: dangling.outcome) == "rollback-failed" && reloads(r: dangling) == 1
+    && word(o: rm_lied.outcome) == "rollback-failed" && reloads(r: rm_lied) == 1
+}
+
+// RED: a confirmed removal whose rollback reload fails, or whose second fresh login fails, is a loud
+// rollback failure, never "rolled back".
+test fn a_rollback_is_claimed_only_when_its_reload_and_second_login_hold() -> Bool {
+  let reload_failed = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "rollback_reload", answer: bad() }])
+  let still_locked = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "rollback_fresh_login", answer: bad() }])
+  word(o: reload_failed.outcome) == "rollback-failed" && !string_contains(s: render_export_host_reader_run(r: reload_failed), pattern: "rolled back")
+    && word(o: still_locked.outcome) == "rollback-failed"
+    && stages(r: still_locked) == concat(through_reload, ["fresh-login", "remove-drop-in", "drop-in-absent-readback", "reload", "fresh-login"])
+}
+
+// RED (side chat, HOLD 2): an initial reload that exits nonzero has an UNCERTAIN effect. The readbacks are
+// required -- a fresh login of the running server, the confirmed removal, sshd -T of what is on disk --
+// nothing is reloaded again, and the receipt never says unchanged or not reloaded.
+test fn an_uncertain_initial_reload_requires_the_readbacks_and_never_claims_unchanged() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "reload", answer: bad() }])
+  let text = render_export_host_reader_run(r: r)
+  word(o: r.outcome) == "reload-uncertain"
+    && stages(r: r) == concat(through_reload, ["fresh-login", "remove-drop-in", "drop-in-absent-readback", "sshd-T"])
+    && reloads(r: r) == 1
+    && string_contains(s: text, pattern: "RELOAD UNCERTAIN")
+    && string_contains(s: text, pattern: "a fresh administrator login succeeded")
+    && string_contains(s: text, pattern: "the drop-in is confirmed absent")
+    && string_contains(s: text, pattern: "not ours")
+    && !string_contains(s: text, pattern: "unchanged")
+    && !string_contains(s: text, pattern: "not reloaded")
+}
+
+// The uncertain arm reports what its readbacks found, and stays loud when they are bad.
+test fn an_uncertain_reload_reports_a_failed_login_and_an_unconfirmed_removal() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "reload", answer: bad() }, LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: present() }, LegOverride { leg: "effective_config_after_removal", answer: ok(stdout: effective_ours) }])
+  let text = render_export_host_reader_run(r: r)
+  word(o: r.outcome) == "reload-uncertain" && reloads(r: r) == 1
+    && string_contains(s: text, pattern: "login FAILED")
+    && string_contains(s: text, pattern: "NOT confirmed absent")
+    && string_contains(s: text, pattern: "STILL reports ours")
+}
+
+// The account is created only when `id -u` does not find it; a creation that fails writes nothing.
+test fn the_account_is_created_only_when_absent() -> Bool {
+  let created = run(overrides: [LegOverride { leg: "account_exists", answer: bad() }])
+  let refused = run(overrides: [LegOverride { leg: "account_exists", answer: bad() }, LegOverride { leg: "ensure_account", answer: bad() }])
+  word(o: created.outcome) == "converged" && stages(r: created).contains("account-ensure")
+    && word(o: refused.outcome) == "refused" && !stages(r: refused).contains("write-keys")
+    && !stages(r: run(overrides: [])).contains("account-ensure")
+}
+
+// A drop-in write that did not converge is withdrawn and nothing is tested or reloaded.
+test fn an_unconverged_drop_in_is_withdrawn() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "write_drop_in", answer: bad() }])
+  word(o: r.outcome) == "refused" && stages(r: r).contains("remove-drop-in") && reloads(r: r) == 0 && !stages(r: r).contains("sshd-t")
+}
