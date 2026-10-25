@@ -19021,6 +19021,9 @@ fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Int,
   topo_resolve_types(remaining: remaining, env: env, module_name: module_name, diagnostics: [], local_names: local_names, deps_map: deps_map, fuel: remaining |> count)
 }
 
+// resolve_node rebuilds the binding's declaration (fields' Resolved copies included), dropping the parameter marks
+// local_binding_for_item placed on the pre-resolve copy; the served binding is this output, so the marks are re-applied here,
+// before any copy leaves the env.
 fn topo_resolve_types(
     remaining: List<String>,
     env: TypeEnv,
@@ -19051,7 +19054,7 @@ fn topo_resolve_types(
           let pre = binding.resolved
           let result = resolve_node(n: pre, env: env, module_name: module_name)
           let resolved = preserve_nominal_brand_on_resolve(
-            identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
+            identity: pre, structural: declaration_with_parameter_marks(item: result.resolved, module_path: module_name, source_indices: env.source_indices), brand_name: binding.name, source_indices: env.source_indices)
           let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown, alias_rhs: alias_rhs_reference(pre: pre, env: env) }
           bindings_accum_insert(acc: acc, ident: ident, updated_binding: updated_binding, parents: env.parents, source_indices: env.source_indices, result_diagnostics: result.diagnostics)
         Absent => acc
@@ -19070,7 +19073,7 @@ fn topo_resolve_types(
         let pre = binding.resolved
         let result = resolve_node(n: pre, env: env, module_name: module_name)
         let resolved = preserve_nominal_brand_on_resolve(
-          identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
+          identity: pre, structural: declaration_with_parameter_marks(item: result.resolved, module_path: module_name, source_indices: env.source_indices), brand_name: binding.name, source_indices: env.source_indices)
         let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown, alias_rhs: alias_rhs_reference(pre: pre, env: env) }
         bindings_accum_insert(acc: acc, ident: ident, updated_binding: updated_binding, parents: env.parents, source_indices: env.source_indices, result_diagnostics: result.diagnostics)
       Absent => acc
