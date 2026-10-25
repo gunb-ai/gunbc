@@ -1,0 +1,184 @@
+module gunbc.instruments.cons_tail_recursion_native
+
+import std.types { Int, List, String, Bool }
+import std.algebra { fold_list, list_push, list_append }
+import std.measure { Nanosecond, nanosecond, nanosecond_count }
+import gunbc.instruments.cons_tail_recursion_user_list { user_upto, user_checksum }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
+import gunbc.instruments.append_chain_ladder {
+  LadderTiming,
+  LadderLinearity,
+  LadderLinear,
+  LadderSuperlinear,
+  LadderUnobserved,
+  ladder_arm_linearity,
+  ladder_is_unobserved,
+  ladder_is_superlinear
+}
+
+// THE TAIL-RECURSION-MODULO-CONS FIXTURES, ON THE EMITTED PATH (v1.compiler.emit_rust
+// is_trmc_eligible). Each fixture is emitted by the seed, compiled by rustc and run; a case holds when
+// the emitted function returns what an independently written reference returns.
+//
+//   take_n            a tail-position Cons self-call: lowered, and its time is judged linear per doubling
+//   prefix_until      mixed exits: a Cons self-call beside non-recursive list tails, lowered; every exit
+//                     must append to the heads already emitted
+//   cons_not_in_tail  a Cons self-call that is NOT in tail position (it is pushed onto afterwards): the
+//                     rule must refuse it and keep the ordinary lowering
+//   head_reads_result a Cons whose head reads the recursive result: refused the same way
+//   user_list_not_lowered  a module's own Chain with its own Cons, in exactly the lowered shape
+//                     (gunbc.instruments.cons_tail_recursion_user_list): the rule keys on the resolved
+//                     carrier, so it must keep the ordinary lowering; admitted by spelling it would be
+//                     lowered onto Rc<Vec> pushes and refused by rustc. This is the discriminating red.
+//
+// cons_not_in_tail and head_reads_result are POSITIVE fail-closed specimens: they show the refused shapes
+// still compute the right values, but value equality cannot tell an over-broad admission from a correct
+// one, so they are not boundary proof. user_list_not_lowered is the case whose RED is authorable.
+//
+// Which lowering each one got is read from the emitted crate, not asserted here; a mis-lowering is a
+// wrong value or a rustc refusal, either of which this label observes.
+//
+// NOT ON THE REQUIRED PATH: this label runs when invoked
+// (gunbc.recurring_failure_mode a_cons_around_a_self_call_rebuilds_the_result_per_element).
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn ascending(i: Int, n: Int, acc: List<Int>) -> List<Int> {
+  if i >= n { acc } else { ascending(i: i + 1, n: n, acc: list_push(xs: acc, item: i)) }
+}
+
+fn take_n(xs: List<Int>, n: Int) -> List<Int> {
+  if n <= 0 {
+    Empty
+  } else {
+    match xs {
+      Empty => Empty
+      Cons { head: h, tail: t } => Cons { head: h, tail: take_n(xs: t, n: n - 1) }
+    }
+  }
+}
+
+fn prefix_until(xs: List<Int>, stop: Int) -> List<Int> {
+  match xs {
+    Empty => [99]
+    Cons { head: h, tail: t } =>
+      if h == stop { [stop, stop] } else { Cons { head: h, tail: prefix_until(xs: t, stop: stop) } }
+  }
+}
+
+fn cons_not_in_tail(xs: List<Int>) -> List<Int> {
+  match xs {
+    Empty => Empty
+    Cons { head: h, tail: t } => list_push(xs: Cons { head: h, tail: cons_not_in_tail(xs: t) }, item: 0)
+  }
+}
+
+fn head_reads_result(xs: List<Int>) -> List<Int> {
+  match xs {
+    Empty => Empty
+    Cons { head: _, tail: t } => Cons { head: count(head_reads_result(xs: t)), tail: head_reads_result(xs: t) }
+  }
+}
+
+// References, written as left folds with no recursion through a Cons.
+type TakeState {
+  taken: Int
+  out: List<Int>
+}
+
+fn take_reference(xs: List<Int>, n: Int) -> List<Int> {
+  let st = fold_list(xs: xs, empty: TakeState { taken: 0, out: [] }, cons: fn(acc, x) {
+    if acc.taken >= n { acc } else { TakeState { taken: acc.taken + 1, out: list_push(xs: acc.out, item: x) } }
+  })
+  st.out
+}
+
+type UntilState {
+  stopped: Bool
+  out: List<Int>
+}
+
+fn prefix_until_reference(xs: List<Int>, stop: Int) -> List<Int> {
+  let st = fold_list(xs: xs, empty: UntilState { stopped: false, out: [] }, cons: fn(acc, x) {
+    if acc.stopped { acc }
+    else if x == stop { UntilState { stopped: true, out: list_push(xs: list_push(xs: acc.out, item: stop), item: stop) } }
+    else { UntilState { stopped: false, out: list_push(xs: acc.out, item: x) } }
+  })
+  if st.stopped { st.out } else { list_push(xs: st.out, item: 99) }
+}
+
+fn zeros(i: Int, n: Int, acc: List<Int>) -> List<Int> {
+  if i >= n { acc } else { zeros(i: i + 1, n: n, acc: list_push(xs: acc, item: 0)) }
+}
+
+fn descending_from(i: Int, acc: List<Int>) -> List<Int> {
+  if i < 0 { acc } else { descending_from(i: i - 1, acc: list_push(xs: acc, item: i)) }
+}
+
+fn checksum(xs: List<Int>) -> Int {
+  fold_list(xs: xs, empty: count(xs), cons: fn(acc, x) { (acc * 31 + x) % 1000000007 })
+}
+
+type FixtureCase {
+  name: String
+  observed: Int
+  expected: Int
+}
+
+fn fixture_cases() -> List<FixtureCase> {
+  let xs = ascending(i: 0, n: 300, acc: [])
+  let small = ascending(i: 0, n: 12, acc: [])
+  [
+    FixtureCase { name: "take_n", observed: checksum(xs: take_n(xs: xs, n: 120)), expected: checksum(xs: take_reference(xs: xs, n: 120)) },
+    FixtureCase { name: "take_n_past_end", observed: checksum(xs: take_n(xs: xs, n: 900)), expected: checksum(xs: take_reference(xs: xs, n: 900)) },
+    FixtureCase { name: "prefix_until_stops", observed: checksum(xs: prefix_until(xs: xs, stop: 77)), expected: checksum(xs: prefix_until_reference(xs: xs, stop: 77)) },
+    FixtureCase { name: "prefix_until_runs_out", observed: checksum(xs: prefix_until(xs: xs, stop: 5000)), expected: checksum(xs: prefix_until_reference(xs: xs, stop: 5000)) },
+    FixtureCase { name: "cons_not_in_tail", observed: checksum(xs: cons_not_in_tail(xs: xs)), expected: checksum(xs: list_append(left: xs, right: zeros(i: 0, n: 300, acc: []))) },
+    FixtureCase { name: "user_list_not_lowered", observed: user_checksum(xs: user_upto(i: 0, n: 200), acc: 0), expected: fold_list(xs: ascending(i: 0, n: 200, acc: []), empty: 0, cons: fn(acc, x) { (acc * 31 + x) % 1000000007 }) },
+    FixtureCase { name: "head_reads_result", observed: checksum(xs: head_reads_result(xs: small)), expected: checksum(xs: descending_from(i: 11, acc: [])) },
+  ]
+}
+
+fn sizes() -> List<Int> { [2000, 4000, 8000, 16000] }
+
+fn trials() -> Int { 5 }
+
+fn time_take(xs: List<Int>, n: Int, trial: Int, best: Nanosecond) -> Nanosecond {
+  if trial >= trials() { best } else {
+    let tag = concat("take-", to_string(value: n), "-", to_string(value: trial))
+    let t0 = observed_monotonic_nanos(concat(tag, "-start"))
+    let out = take_n(xs: xs, n: n)
+    let t1 = observed_monotonic_nanos(concat(tag, "-end"))
+    let elapsed = if count(out) == n { nanosecond(count: t1 - t0) } else { nanosecond(count: 0) }
+    let next = if trial == 0 || nanosecond_count(n: elapsed) < nanosecond_count(n: best) { elapsed } else { best }
+    time_take(xs: xs, n: n, trial: trial + 1, best: next)
+  }
+}
+
+fn take_timings() -> List<LadderTiming> {
+  map(sizes(), n => LadderTiming { arm: "take_n", n: n, best: time_take(xs: ascending(i: 0, n: n, acc: []), n: n, trial: 0, best: nanosecond(count: 0)) })
+}
+
+fn verdict_word(held: Bool) -> String { if held { "held" } else { "not_held" } }
+
+fn linearity_text(v: LadderLinearity) -> String {
+  match v {
+    LadderLinear => "linear"
+    LadderSuperlinear { arm: _, from_n: n, ratio_x100: x } => concat("grew_x100=", to_string(value: x), " from_n=", to_string(value: n))
+    LadderUnobserved { arm: _, cause: c } => concat("no_curve ", c)
+  }
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = fixture_cases()
+  let timings = take_timings()
+  let v = ladder_arm_linearity(rows: timings, arm: "take_n")
+  let failed = count(filter(cases, c => c.observed != c.expected)) + (if ladder_is_superlinear(v: v) { 1 } else { 0 })
+  let case_lines = join(map(cases, c => concat("case ", c.name, " ", verdict_word(held: c.observed == c.expected), " observed=", to_string(value: c.observed), " expected=", to_string(value: c.expected), "\n")), "")
+  let timing_line = concat("case take_n.linear ", verdict_word(held: !(ladder_is_unobserved(v: v) || ladder_is_superlinear(v: v))), " observed=", linearity_text(v: v), " ",
+    join(map(timings, t => concat(to_string(value: t.n), ":", to_string(value: nanosecond_count(n: t.best)))), ","), "\n")
+  let terminal = if ladder_is_unobserved(v: v) { NativeClaimNoObservation { reason: "take_n's curve could not be read" } }
+    else if failed > 0 { NativeClaimNotHeld { reason: concat(to_string(value: failed), " case(s) not held") } }
+    else { NativeClaimHeld }
+  NativeClaimReport { stdout: concat("roster ", join(map(cases, c => c.name), ","), ",take_n.linear\n", case_lines, timing_line), terminal: terminal }
+}

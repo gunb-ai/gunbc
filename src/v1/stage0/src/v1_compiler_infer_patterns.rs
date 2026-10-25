@@ -294,29 +294,33 @@ pub fn expand_scrut_type_for_variant_lookup(
     mut __tco_loop_scrut_node: Rc<Node>,
     mut __tco_loop_env: Rc<TypeEnv>,
 ) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut scrut_node = __tco_loop_scrut_node;
-        #[allow(unused_mut)]
-        let mut env = __tco_loop_env;
-        let name =
-            crate::v1_std_core::authored_name_at(env.source_indices.clone(), scrut_node.clone());
-        let is_disj = (scrut_node.connective.clone() == Connective::Disj);
-        let is_witness = is_witness_type_name(name);
-        let is_optional = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
-        if ((is_optional.clone() || is_disj.clone()) || is_witness.clone()) {
-            break scrut_node.clone();
-        } else {
-            match scrut_node.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => {
-                    let __tco_0 = target.clone();
-                    let __tco_1 = env;
-                    __tco_loop_scrut_node = __tco_0;
-                    __tco_loop_env = __tco_1;
-                    continue;
-                }
-                _ => {
-                    break expand_scrut_from_type_name(scrut_node.clone(), env.clone());
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut scrut_node = __tco_loop_scrut_node;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            let name = crate::v1_std_core::authored_name_at(
+                env.source_indices.clone(),
+                scrut_node.clone(),
+            );
+            let is_disj = (scrut_node.connective.clone() == Connective::Disj);
+            let is_witness = is_witness_type_name(name);
+            let is_optional = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
+            if ((is_optional.clone() || is_disj.clone()) || is_witness.clone()) {
+                break scrut_node.clone();
+            } else {
+                match scrut_node.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => {
+                        let __tco_0 = target.clone();
+                        let __tco_1 = env;
+                        __tco_loop_scrut_node = __tco_0;
+                        __tco_loop_env = __tco_1;
+                        continue;
+                    }
+                    _ => {
+                        break expand_scrut_from_type_name(scrut_node.clone(), env.clone());
+                    }
                 }
             }
         }
