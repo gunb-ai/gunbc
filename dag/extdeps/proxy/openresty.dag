@@ -75,12 +75,14 @@ type NginxToken = NonEmptyStr where brand("NginxToken")
 type NginxVariable = NonEmptyStr where brand("NginxVariable")
 
 type HeaderSource
-  = | HeaderFromVariable { variable: NginxVariable }
+  = HeaderFromVariable { variable: NginxVariable }
+  | HeaderPrefixedVariable { prefix: NginxToken, variable: NginxVariable }
 
 // OpenResty's interface is the phase block (access_by_lua_block, log_by_lua_block); the Lua inside it is the
 // consumer's code, passed in as lines.
 type LuaPhase
-  = | AccessPhase
+  = | InitPhase
+  | AccessPhase
   | ContentPhase
   | LogPhase
 
@@ -108,6 +110,18 @@ type NginxDirective
   | ProxyMethodPost
   | LuaPhaseBlock { phase: LuaPhase, lines: List<String> }
   | LuaSharedDict { name: NginxToken, size: NginxToken }
+  | EnvPassthrough { name: NginxToken }
+  | ListenTlsOn { address: NginxToken, port: Port }
+  | SslCertificate { path: NginxToken }
+  | SslCertificateKey { path: NginxToken }
+  | SetLiteral { variable: NginxVariable, value: NginxToken }
+  | ProxyReadTimeoutSeconds { seconds: Int }
+  | ProxySslServerNameOn
+  | ProxySslName { variable: NginxVariable }
+  | ProxySslVerifyOn
+  | ProxySslVerifyDepth { depth: Int }
+  | ProxySslTrustedCertificate { path: NginxToken }
+  | ProxyPassSchemeAndHostVariables { scheme: NginxVariable, host: NginxVariable }
 
 fn nginx_text_is_safe(t: String) -> Bool {
   !(string_contains(t, "'") || string_contains(t, "\\") || string_contains(t, "\n") || string_contains(t, "\r")
@@ -133,7 +147,7 @@ fn nginx_variable(text: String) -> Optional<NginxVariable> {
 }
 
 fn lua_phase_name(ph: LuaPhase) -> String {
-  match ph { AccessPhase => "access_by_lua_block" ContentPhase => "content_by_lua_block" LogPhase => "log_by_lua_block" }
+  match ph { InitPhase => "init_by_lua_block" AccessPhase => "access_by_lua_block" ContentPhase => "content_by_lua_block" LogPhase => "log_by_lua_block" }
 }
 
 fn location_match_text(m: LocationMatch) -> String {
@@ -164,13 +178,25 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     ProxyBufferingDirective { value: v } => match v { ProxyBufferingOff => nginx_line(text: "proxy_buffering off", indent: indent) }
     ProxyRequestBufferingDirective { value: v } => match v { ProxyRequestBufferingOff => nginx_line(text: "proxy_request_buffering off", indent: indent) }
     ProxyNextUpstreamDirective { value: v } => match v { ProxyNextUpstreamOff => nginx_line(text: "proxy_next_upstream off", indent: indent) }
-    ProxySetHeader { header: h, source: src } => nginx_line(text: "proxy_set_header " + (h as String) + " " + match src { HeaderFromVariable { variable: v } => "$" + (v as String) }, indent: indent)
+    ProxySetHeader { header: h, source: src } => nginx_line(text: "proxy_set_header " + (h as String) + " " + match src { HeaderFromVariable { variable: v } => "$" + (v as String) HeaderPrefixedVariable { prefix: px, variable: v } => "\"" + (px as String) + " $" + (v as String) + "\"" }, indent: indent)
     ProxyPassDirective { target: t, variable: v } => match t { ProxyTargetFromUpstreamVariable => nginx_line(text: "proxy_pass http://$" + (v as String), indent: indent) }
     ProxyPassToHost { host: hs, port: p, path: pa } => nginx_line(text: "proxy_pass http://" + (hs as String) + ":" + to_string(p as Int) + (pa as String), indent: indent)
     InternalLocationOnly => nginx_line(text: "internal", indent: indent)
     ProxyMethodPost => nginx_line(text: "proxy_method POST", indent: indent)
     LuaPhaseBlock { phase: ph, lines: ls } =>
       indent + lua_phase_name(ph: ph) + " \{\n" + indent + "  " + join_with(ls, "\n" + indent + "  ") + "\n" + indent + "}\n"
+    EnvPassthrough { name: n } => nginx_line(text: "env " + (n as String), indent: indent)
+    ListenTlsOn { address: a, port: p } => nginx_line(text: "listen " + (a as String) + ":" + to_string(p as Int) + " ssl", indent: indent)
+    SslCertificate { path: pa } => nginx_line(text: "ssl_certificate " + (pa as String), indent: indent)
+    SslCertificateKey { path: pa } => nginx_line(text: "ssl_certificate_key " + (pa as String), indent: indent)
+    SetLiteral { variable: v, value: x } => nginx_line(text: "set $" + (v as String) + " '" + (x as String) + "'", indent: indent)
+    ProxyReadTimeoutSeconds { seconds: n } => nginx_line(text: "proxy_read_timeout " + to_string(n) + "s", indent: indent)
+    ProxySslServerNameOn => nginx_line(text: "proxy_ssl_server_name on", indent: indent)
+    ProxySslName { variable: v } => nginx_line(text: "proxy_ssl_name $" + (v as String), indent: indent)
+    ProxySslVerifyOn => nginx_line(text: "proxy_ssl_verify on", indent: indent)
+    ProxySslVerifyDepth { depth: n } => nginx_line(text: "proxy_ssl_verify_depth " + to_string(n), indent: indent)
+    ProxySslTrustedCertificate { path: pa } => nginx_line(text: "proxy_ssl_trusted_certificate " + (pa as String), indent: indent)
+    ProxyPassSchemeAndHostVariables { scheme: sc, host: h } => nginx_line(text: "proxy_pass $" + (sc as String) + "://$" + (h as String), indent: indent)
     LuaSharedDict { name: n, size: z } => nginx_line(text: "lua_shared_dict " + (n as String) + " " + (z as String), indent: indent)
   }
 }

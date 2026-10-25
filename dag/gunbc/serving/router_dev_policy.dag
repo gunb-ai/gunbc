@@ -1,0 +1,213 @@
+module gunbc.serving.router_dev_policy
+
+import std.optional { Optional, Present, Absent }
+import std.types { String, Int, Bool, List, Port }
+import extdeps.proxy.openresty {
+  NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, LocationBlock, ExactMatch,
+  PrefixMatch, ListenTlsOn, SslCertificate, SslCertificateKey, SetEmptyVariable, SetLiteral, ProxyHttpVersion11, ProxyBufferingDirective,
+  ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxyReadTimeoutSeconds, ProxySetHeader, HeaderFromVariable,
+  HeaderPrefixedVariable, ProxySslServerNameOn, ProxySslName, ProxySslVerifyOn, ProxySslVerifyDepth, ProxySslTrustedCertificate,
+  ProxyPassSchemeAndHostVariables, LuaPhaseBlock, InitPhase, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ProxyBufferingOff,
+  ProxyRequestBufferingOff, ProxyNextUpstreamOff, nginx_token, nginx_variable, render_nginx_directives,
+}
+
+// THE SRV1 DEV DEPLOYMENT'S ROUTING POLICY, A DECLARED SCAFFOLD (operator decision 2026-10-25, option B,
+// relayed by calm-crab-645 msg_9e44dfaa and msg_cb0938f9; debt rows in gunbc.serving.router_dev_scaffold).
+// The pool is served from OpenResty before the S3 callout service exists, so the decisions S3 owns are
+// made here, in Lua, inside the proxy: the client key check, the session's sticky upstream, a per-upstream
+// active-turn cap, and routing by advertised model name or the pool alias. That is router policy in the
+// proxy, which gunbc.serving.router_realization forbids and the scaffold rows name item by item.
+//
+// What stays the S1 contract: bytes are relayed as they arrive (buffering and request buffering off), no
+// second upstream is tried (proxy_next_upstream off), and the upstream's TLS is verified against its pinned
+// certificate (proxy_ssl_verify on, one trusted bundle of the pinned leaf certificates).
+//
+// The proxy reads its state at start from state_dir, mounted from the host and written by the hand-run
+// deploy: client_keys (one client key per line), upstreams.json (name, scheme, host, port, sni, key, model,
+// cap per upstream) and upstream_ca.pem. No key is in the rendered configuration.
+//
+// A session is named by the x-session-id header, else the OpenAI body field user, else an md5 of the first
+// system and user messages (first 4 KiB). Its first request binds it to one upstream for six hours: the
+// named model's upstreams, or for the alias every upstream, choosing the one with the most spare turns. A
+// later request of a bound session goes to that upstream or is refused (429 at its cap, 409 for another
+// model), never to a second one, because the session's KV is tied to that upstream's weights. The alias is
+// rewritten to the chosen upstream's model id. A turn is counted from admission to the end of its log phase,
+// on completion, client abort or upstream failure alike.
+
+fn tok(text: String) -> NginxToken? { nginx_token(text: text) }
+fn var(text: String) -> NginxVariable? { nginx_variable(text: text) }
+
+fn router_dev_init_lines(state_dir: String, alias: String) -> List<String> {
+  [
+    "local cjson = require('cjson.safe')",
+    "local dir = '" + state_dir + "'",
+    "local function slurp(p) local f = io.open(p, 'r') if not f then return nil end local s = f:read('*a') f:close() return s end",
+    "ROUTER_KEYS = \{}",
+    "for line in (slurp(dir .. '/client_keys') or ''):gmatch('[^\\r\\n]+') do ROUTER_KEYS[line] = true end",
+    "ROUTER_UPSTREAMS = cjson.decode(slurp(dir .. '/upstreams.json') or '[]') or \{}",
+    "ROUTER_ALIAS = '" + alias + "'",
+  ]
+}
+
+fn router_dev_models_lines() -> List<String> {
+  [
+    "local cjson = require('cjson.safe')",
+    "local h = ngx.var.http_authorization or ''",
+    "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\",\"type\":\"authentication_error\"}}') return end",
+    "local seen, data = \{}, \{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do if not seen[u.model] then seen[u.model] = true data[#data + 1] = \{id = u.model, object = 'model', owned_by = 'gunbc'} end end",
+    "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc'}",
+    "ngx.header['Content-Type'] = 'application/json'",
+    "ngx.say(cjson.encode(\{object = 'list', data = data}))",
+  ]
+}
+
+fn router_dev_access_lines() -> List<String> {
+  [
+    "local cjson = require('cjson.safe')",
+    "local function refuse(status, kind, msg) ngx.status = status ngx.header['Content-Type'] = 'application/json' ngx.say(cjson.encode(\{error = \{message = msg, type = kind}})) return ngx.exit(status) end",
+    "local h = ngx.var.http_authorization or ''",
+    "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then return refuse(401, 'authentication_error', 'invalid api key') end",
+    "ngx.req.read_body()",
+    "local raw = ngx.req.get_body_data()",
+    "if not raw then return refuse(400, 'invalid_request_error', 'request body required') end",
+    "local body = cjson.decode(raw)",
+    "if type(body) ~= 'table' or type(body.model) ~= 'string' then return refuse(400, 'invalid_request_error', 'model required') end",
+    "local session = ngx.var.http_x_session_id",
+    "if (not session or session == '') and type(body.user) == 'string' and body.user ~= '' then session = 'user:' .. body.user end",
+    "if not session or session == '' then",
+    "  local sys, first = '', ''",
+    "  if type(body.messages) == 'table' then",
+    "    for _, m in ipairs(body.messages) do",
+    "      if type(m) == 'table' then",
+    "        local c = type(m.content) == 'string' and m.content or (cjson.encode(m.content) or '')",
+    "        if m.role == 'system' and sys == '' then sys = c elseif m.role == 'user' and first == '' then first = c end",
+    "      end",
+    "    end",
+    "  elseif type(body.prompt) == 'string' then first = body.prompt end",
+    "  session = 'prefix:' .. ngx.md5((sys .. '\\0' .. first):sub(1, 4096))",
+    "end",
+    "local state = ngx.shared.router_state",
+    "local candidates = \{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do if body.model == ROUTER_ALIAS or body.model == u.model then candidates[u.name] = u end end",
+    "if next(candidates) == nil then return refuse(404, 'invalid_request_error', 'unknown model') end",
+    "local pick = nil",
+    "local stuck = state:get('session:' .. session)",
+    "if stuck then",
+    "  pick = candidates[stuck]",
+    "  if not pick then return refuse(409, 'invalid_request_error', 'session is bound to another model') end",
+    "  if (state:get('active:' .. pick.name) or 0) >= pick.cap then ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'session upstream at its active-turn cap') end",
+    "else",
+    "  local best, spare = nil, 0",
+    "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "    local c = candidates[u.name]",
+    "    if c then local s = c.cap - (state:get('active:' .. c.name) or 0) if s > spare then best, spare = c, s end end",
+    "  end",
+    "  if not best then ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'every upstream at its active-turn cap') end",
+    "  pick = best",
+    "end",
+    "local n = state:incr('active:' .. pick.name, 1, 0)",
+    "if n > pick.cap then state:incr('active:' .. pick.name, -1, 0) ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'upstream at its active-turn cap') end",
+    "ngx.ctx.counted = pick.name",
+    "state:set('session:' .. session, pick.name, 21600)",
+    "if body.model == ROUTER_ALIAS then body.model = pick.model ngx.req.set_body_data(cjson.encode(body)) end",
+    "ngx.var.up = pick.host .. ':' .. tostring(pick.port)",
+    "ngx.var.up_scheme = pick.scheme",
+    "ngx.var.up_key = pick.key or ''",
+    "ngx.var.up_sni = pick.sni or pick.host",
+  ]
+}
+
+fn router_dev_log_lines() -> List<String> {
+  ["if ngx.ctx.counted then ngx.shared.router_state:incr('active:' .. ngx.ctx.counted, -1, 0) end"]
+}
+
+type RouterDevSite {
+  listen_address: String
+  listen_port: Port
+  state_dir: String
+  alias: String
+}
+
+type RouterDevConfig
+  = RouterDevConfigRendered { text: String }
+  | RouterDevConfigRefused { token: String }
+
+fn no_directives() -> List<NginxDirective> { [] }
+
+fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVariable, sni: NginxVariable, auth: NginxToken, host: NginxToken, bearer: NginxToken, http: NginxToken, ca: NginxToken, v1: NginxToken) -> NginxDirective {
+  LocationBlock { matching: PrefixMatch { path: v1 }, body: [
+    SetEmptyVariable { variable: up },
+    SetLiteral { variable: scheme, value: http },
+    SetEmptyVariable { variable: key },
+    SetEmptyVariable { variable: sni },
+    LuaPhaseBlock { phase: AccessPhase, lines: router_dev_access_lines() },
+    ProxyHttpVersion11,
+    ProxyBufferingDirective { value: ProxyBufferingOff },
+    ProxyRequestBufferingDirective { value: ProxyRequestBufferingOff },
+    ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff },
+    ProxyReadTimeoutSeconds { seconds: 3600 },
+    ProxySetHeader { header: auth, source: HeaderPrefixedVariable { prefix: bearer, variable: key } },
+    ProxySetHeader { header: host, source: HeaderFromVariable { variable: up } },
+    ProxySslServerNameOn,
+    ProxySslName { variable: sni },
+    ProxySslVerifyOn,
+    ProxySslVerifyDepth { depth: 1 },
+    ProxySslTrustedCertificate { path: ca },
+    ProxyPassSchemeAndHostVariables { scheme: scheme, host: up },
+    LuaPhaseBlock { phase: LogPhase, lines: router_dev_log_lines() },
+  ] }
+}
+
+fn router_dev_directives(site: RouterDevSite) -> List<NginxDirective> {
+  match tok(text: site.listen_address) { Absent => no_directives() Present { value: addr } =>
+  match tok(text: site.state_dir + "/tls/cert.pem") { Absent => no_directives() Present { value: cert } =>
+  match tok(text: site.state_dir + "/tls/key.pem") { Absent => no_directives() Present { value: certkey } =>
+  match tok(text: site.state_dir + "/upstream_ca.pem") { Absent => no_directives() Present { value: ca } =>
+  match tok(text: "router_state") { Absent => no_directives() Present { value: dict } =>
+  match tok(text: "10m") { Absent => no_directives() Present { value: dict_size } =>
+  match tok(text: "/v1/models") { Absent => no_directives() Present { value: models } =>
+  match tok(text: "/v1/") { Absent => no_directives() Present { value: v1 } =>
+  match tok(text: "Authorization") { Absent => no_directives() Present { value: auth } =>
+  match tok(text: "Host") { Absent => no_directives() Present { value: host } =>
+  match tok(text: "Bearer") { Absent => no_directives() Present { value: bearer } =>
+  match tok(text: "http") { Absent => no_directives() Present { value: http } =>
+  match var(text: "up") { Absent => no_directives() Present { value: up } =>
+  match var(text: "up_scheme") { Absent => no_directives() Present { value: scheme } =>
+  match var(text: "up_key") { Absent => no_directives() Present { value: key } =>
+  match var(text: "up_sni") { Absent => no_directives() Present { value: sni } =>
+    [
+      WorkerProcesses { count: 1 },
+      EventsBlock,
+      HttpBlock { body: [
+        AccessLogOff,
+        LuaSharedDict { name: dict, size: dict_size },
+        LuaPhaseBlock { phase: InitPhase, lines: router_dev_init_lines(state_dir: site.state_dir, alias: site.alias) },
+        ServerBlock { body: [
+          ListenTlsOn { address: addr, port: site.listen_port },
+          SslCertificate { path: cert },
+          SslCertificateKey { path: certkey },
+          LocationBlock { matching: ExactMatch { path: models }, body: [LuaPhaseBlock { phase: ContentPhase, lines: router_dev_models_lines() }] },
+          router_dev_location(up: up, scheme: scheme, key: key, sni: sni, auth: auth, host: host, bearer: bearer, http: http, ca: ca, v1: v1),
+        ] },
+      ] },
+    ]
+  } } } } } } } } } } } } } } } }
+}
+
+// The srv1 site (operator decision 2026-10-25): HTTPS on the host's 1G address, state mounted at
+// /etc/router in the container from /home/briansrls/router on the host, and the pool alias flash-next.
+fn router_dev_srv1_site() -> RouterDevSite {
+  RouterDevSite { listen_address: "192.168.1.203", listen_port: 18443 as Port, state_dir: "/etc/router", alias: "flash-next" }
+}
+
+fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
+  let rows = router_dev_directives(site: site)
+  if count(rows) == 0 { RouterDevConfigRefused { token: "site" } } else { RouterDevConfigRendered { text: render_nginx_directives(rows: rows) } }
+}
+
+// The text the hand-run deploy writes to the proxy's nginx.conf:
+// gunbc run --entry dag/gunbc/serving/router_dev_policy.dag --function router_dev_srv1_config_text
+fn router_dev_srv1_config_text() -> String {
+  match router_dev_config(site: router_dev_srv1_site()) { RouterDevConfigRendered { text: t } => t RouterDevConfigRefused { token: k } => "" }
+}
