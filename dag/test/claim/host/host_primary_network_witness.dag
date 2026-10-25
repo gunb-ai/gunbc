@@ -1,6 +1,7 @@
 module test.claim.host.host_primary_network_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.upsert_decision { Noop, Apply, Refuse }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv11 }
 import extdeps.network.mac { mac_addresses_are_equal }
 import extdeps.netplan.netplan { SystemdNetworkd, NetworkManager, MatchByMacAddress, MatchByName, TryStdinAtEof, TryStdinBlockingFifo, netplan_try_stdin_admits_confirmation }
@@ -22,7 +23,7 @@ import gunbc.host.host_primary_network {
   PrimaryEffectiveHolds, PrimaryNicNotPresent, PrimaryNicNoCarrier, PrimaryUplinkOnAnotherDevice, PrimaryNoDefaultRoute,
   PrimaryAddressDiverges, PrimaryMtuDiverges, PrimaryRouteMetricDiverges, PrimaryEffectiveUnjudged,
   PrimaryNetworkObservation, NetplanDirectoryListed, netplan_yaml_names,
-  plan_primary_network, PrimaryNetworkSettled, PrimaryNetworkApplyOwed, PrimaryNetworkRefused,
+  plan_primary_network,
   primary_network_cloud_init_guard,
 }
 import gunbc.host.host_primary_network_apply {
@@ -138,9 +139,9 @@ test fn srv1s_plan_owes_a_file_only_apply_and_the_swapped_directory_settles() ->
     directory: NetplanDirectoryListed { names: ["50-gunbc-primary-network.yaml"] },
     owned: HostFileIdentical,
   })
-  (match today { PrimaryNetworkApplyOwed { foreign: f, owned: _ } => f == ["50-cloud-init.yaml", "60-enP3p6s0.yaml"]  PrimaryNetworkSettled => false  PrimaryNetworkRefused { cause: _ } => false })
-    && (match after { PrimaryNetworkSettled => true  PrimaryNetworkApplyOwed { foreign: _, owned: _ } => false  PrimaryNetworkRefused { cause: _ } => false })
-    && (match unread { PrimaryNetworkRefused { cause: _ } => true  PrimaryNetworkSettled => false  PrimaryNetworkApplyOwed { foreign: _, owned: _ } => false })
+  (match today { Apply { plan: s } => s.foreign == ["50-cloud-init.yaml", "60-enP3p6s0.yaml"]  Noop => false  Refuse { reason: _ } => false })
+    && (match after { Noop => true  Apply { plan: _ } => false  Refuse { reason: _ } => false })
+    && (match unread { Refuse { reason: _ } => true  Noop => false  Apply { plan: _ } => false })
 }
 
 // THE TRY IS REVERTABLE ON DISK AND CONFIRMABLE AT ALL: the wrapper keeps and restores the prior

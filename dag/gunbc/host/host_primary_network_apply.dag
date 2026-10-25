@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.netplan.netplan {
@@ -31,7 +32,7 @@ import gunbc.host.host_primary_network {
   primary_network_cloud_init_guard,
   PrimaryNetworkIpReads, PrimaryEffectiveVerdict, PrimaryEffectiveUnjudged, primary_effective_verdict,
   NetplanDirectoryListing, NetplanDirectoryListed, NetplanDirectoryUnread, netplan_yaml_names,
-  PrimaryNetworkObservation, PrimaryNetworkPlan, PrimaryNetworkSettled, PrimaryNetworkApplyOwed, PrimaryNetworkRefused,
+  PrimaryNetworkObservation, PrimaryNetplanSwap,
   plan_primary_network, primary_network_plan_wire,
 }
 
@@ -251,19 +252,19 @@ type PrimaryApplyRollback
   | RollbackByTryTimeout { timeout_seconds: Nat }
 
 type PrimaryNetworkApplyOutcome
-  = PrimaryApplyObservedOnly { plan: PrimaryNetworkPlan }
+  = PrimaryApplyObservedOnly { plan: UpsertDecision<PrimaryNetplanSwap> }
   | PrimaryApplyNotOwed
-  | PrimaryApplyRefused { plan: PrimaryNetworkPlan }
+  | PrimaryApplyRefused { plan: UpsertDecision<PrimaryNetplanSwap> }
   | PrimaryApplyStopped { step: NonEmptyStr, cause: NonEmptyStr, rollback: PrimaryApplyRollback }
-  | PrimaryApplyConfirmed { after: PrimaryNetworkPlan }
+  | PrimaryApplyConfirmed { after: UpsertDecision<PrimaryNetplanSwap> }
 
 fn primary_apply_outcome_settled(o: PrimaryNetworkApplyOutcome) -> Bool {
   match o {
-    PrimaryApplyObservedOnly { plan: p } => match p { PrimaryNetworkSettled => true  PrimaryNetworkApplyOwed { foreign: _, owned: _ } => true  PrimaryNetworkRefused { cause: _ } => false }
+    PrimaryApplyObservedOnly { plan: p } => match p { Noop => true  Apply { plan: _ } => true  Refuse { reason: _ } => false }
     PrimaryApplyNotOwed => true
     PrimaryApplyRefused { plan: _ } => false
     PrimaryApplyStopped { step: _, cause: _, rollback: _ } => false
-    PrimaryApplyConfirmed { after: a } => match a { PrimaryNetworkSettled => true  PrimaryNetworkApplyOwed { foreign: _, owned: _ } => false  PrimaryNetworkRefused { cause: _ } => false }
+    PrimaryApplyConfirmed { after: a } => match a { Noop => true  Apply { plan: _ } => false  Refuse { reason: _ } => false }
   }
 }
 
@@ -308,9 +309,9 @@ fn confirm_primary_network_try(subject: FleetHostFileSubject, context: FleetSshE
     Absent => stopped_in_try(step: "await", cause: primary_leg_cause(read: waited, what: "await") as String)
     Present { value: _ } =>
       match plan_primary_network(d: d, observation: observe_primary_network(subject: subject, context: context, d: d)) {
-        PrimaryNetworkApplyOwed { foreign: f, owned: _ } => stopped_in_try(step: "readback", cause: join(["the tried directory is not the population; foreign=[", join(f, ","), "]"], ""))
-        PrimaryNetworkRefused { cause: c } => stopped_in_try(step: "readback", cause: c as String)
-        PrimaryNetworkSettled => {
+        Apply { plan: s } => stopped_in_try(step: "readback", cause: join(["the tried directory is not the population; foreign=[", join(s.foreign, ","), "]"], ""))
+        Refuse { reason: c } => stopped_in_try(step: "readback", cause: c as String)
+        Noop => {
           let confirm = primary_leg(subject: subject, context: context, command: ["/bin/sh", staged(name: "confirm.sh")])
           match primary_leg_stdout(read: confirm, what: "confirm") {
             Absent => stopped_in_try(step: "confirm", cause: primary_leg_cause(read: confirm, what: "confirm") as String)
@@ -330,13 +331,13 @@ fn apply_primary_network(subject: FleetHostFileSubject, context: FleetSshExecuti
     FleetHostFilesObserveOnly => PrimaryApplyObservedOnly { plan: plan }
     FleetHostFilesApply =>
       match plan {
-        PrimaryNetworkSettled =>
+        Noop =>
           match write_through_host_file_core(subject: subject, context: context, files: [primary_network_cloud_init_guard()]) {
             Present { value: why } => stopped_before_launch(step: "cloud-init-guard", cause: why)
             Absent => PrimaryApplyNotOwed
           }
-        PrimaryNetworkRefused { cause: _ } => PrimaryApplyRefused { plan: plan }
-        PrimaryNetworkApplyOwed { foreign: _, owned: _ } =>
+        Refuse { reason: _ } => PrimaryApplyRefused { plan: plan }
+        Apply { plan: _ } =>
           if !netplan_try_stdin_admits_confirmation(s: primary_network_try_stdin()) { stopped_before_launch(step: "try-stdin", cause: "the try's stdin cannot carry a confirmation") }
           else {
             let dir = primary_leg(subject: subject, context: context, command: primary_network_staging_dir_argv())

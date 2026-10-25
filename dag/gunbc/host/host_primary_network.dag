@@ -2,6 +2,7 @@ module gunbc.host.host_primary_network
 
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import std.algebra { trim }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, upsert_decision_label }
 import std.nat { Nat }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_intent_network { host_lan_address }
@@ -271,14 +272,15 @@ type PrimaryNetworkObservation {
   owned: FleetHostFileStanding
 }
 
-// Settled when the running network is the row's and the directory holds exactly the population with
-// the owned file's bytes. An apply is owed only when the running network ALREADY is the row's: the
-// apply then changes files and not the network. Anything else refuses, located, because an apply over
-// a running network that is not the row's would be a move the row never admitted.
-type PrimaryNetworkPlan
-  = PrimaryNetworkSettled
-  | PrimaryNetworkApplyOwed { foreign: List<String>, owned: FleetHostFileStanding }
-  | PrimaryNetworkRefused { cause: NonEmptyStr }
+// THE DECISION IS std.upsert_decision's. Noop when the running network is the row's and the directory
+// holds exactly the population with the owned file's bytes. Apply is owed only when the running
+// network ALREADY is the row's: the swap then changes files and not the network. Anything else
+// refuses, located, because an apply over a running network that is not the row's would be a move
+// the row never admitted.
+type PrimaryNetplanSwap {
+  foreign: List<String>
+  owned: FleetHostFileStanding
+}
 
 fn primary_effective_refusal(v: PrimaryEffectiveVerdict) -> NonEmptyStr? {
   match v {
@@ -294,24 +296,24 @@ fn primary_effective_refusal(v: PrimaryEffectiveVerdict) -> NonEmptyStr? {
   }
 }
 
-fn plan_primary_network(d: HostPrimaryNetworkDesired, observation: PrimaryNetworkObservation) -> PrimaryNetworkPlan {
+fn plan_primary_network(d: HostPrimaryNetworkDesired, observation: PrimaryNetworkObservation) -> UpsertDecision<PrimaryNetplanSwap> {
   match primary_nic_admission(d: d) {
     PrimaryNicRefusedOpenBets { bets: bs } =>
-      PrimaryNetworkRefused { cause: join(["the row's NIC ", render_mac_address(addr: d.nic) as String, " is blamed by ", to_string(length(bs)), " open bet(s)"], "") as NonEmptyStr }
+      Refuse { reason: join(["the row's NIC ", render_mac_address(addr: d.nic) as String, " is blamed by ", to_string(length(bs)), " open bet(s)"], "") as NonEmptyStr }
     PrimaryNicAdmitted =>
       match primary_effective_refusal(v: observation.effective) {
-        Present { value: why } => PrimaryNetworkRefused { cause: why }
+        Present { value: why } => Refuse { reason: why }
         Absent =>
           match observation.directory {
-            NetplanDirectoryUnread { cause: c } => PrimaryNetworkRefused { cause: c }
+            NetplanDirectoryUnread { cause: c } => Refuse { reason: c }
             NetplanDirectoryListed { names: names } => {
               let population = map(primary_network_netplan_population(d: d), n => n as String)
               let foreign = filter(names, n => !any(population, p => p == n))
               match observation.owned {
-                HostFileUnobservable { reason: r } => PrimaryNetworkRefused { cause: join(["the owned netplan file is unobservable: ", r], "") as NonEmptyStr }
-                HostFileIdentical => if length(foreign) == 0 { PrimaryNetworkSettled } else { PrimaryNetworkApplyOwed { foreign: foreign, owned: HostFileIdentical } }
-                HostFileDiffers => PrimaryNetworkApplyOwed { foreign: foreign, owned: HostFileDiffers }
-                HostFileAbsent => PrimaryNetworkApplyOwed { foreign: foreign, owned: HostFileAbsent }
+                HostFileUnobservable { reason: r } => Refuse { reason: join(["the owned netplan file is unobservable: ", r], "") as NonEmptyStr }
+                HostFileIdentical => if length(foreign) == 0 { Noop } else { Apply { plan: PrimaryNetplanSwap { foreign: foreign, owned: HostFileIdentical } } }
+                HostFileDiffers => Apply { plan: PrimaryNetplanSwap { foreign: foreign, owned: HostFileDiffers } }
+                HostFileAbsent => Apply { plan: PrimaryNetplanSwap { foreign: foreign, owned: HostFileAbsent } }
               }
             }
           }
@@ -319,11 +321,11 @@ fn plan_primary_network(d: HostPrimaryNetworkDesired, observation: PrimaryNetwor
   }
 }
 
-fn primary_network_plan_wire(p: PrimaryNetworkPlan) -> String {
+fn primary_network_plan_wire(p: UpsertDecision<PrimaryNetplanSwap>) -> String {
   match p {
-    PrimaryNetworkSettled => "settled"
-    PrimaryNetworkApplyOwed { foreign: f, owned: o } =>
-      join(["apply-owed owned=", match o { HostFileIdentical => "identical"  HostFileDiffers => "differs"  HostFileAbsent => "absent"  HostFileUnobservable { reason: _ } => "unobservable" }, " foreign=[", join(f, ","), "]"], "")
-    PrimaryNetworkRefused { cause: c } => join(["REFUSED ", c as String], "")
+    Noop => upsert_decision_label(decision: p)
+    Apply { plan: s } =>
+      join([upsert_decision_label(decision: p), " owned=", match s.owned { HostFileIdentical => "identical"  HostFileDiffers => "differs"  HostFileAbsent => "absent"  HostFileUnobservable { reason: _ } => "unobservable" }, " foreign=[", join(s.foreign, ","), "]"], "")
+    Refuse { reason: c } => join([upsert_decision_label(decision: p), " ", c as String], "")
   }
 }
