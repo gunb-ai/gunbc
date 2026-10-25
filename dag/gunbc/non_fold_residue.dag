@@ -319,4 +319,14 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       reason: nfr_reason_wildcard_found_by_native_census,
       dissolution: nfr_dissolve_owning_fold,
     },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/resolve.dag::lexical_binder_standing_equal" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/resolve.dag::occurrence_binding_equal" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
 ]
