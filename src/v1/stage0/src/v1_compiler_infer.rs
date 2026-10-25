@@ -343,7 +343,8 @@ use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AlgebraApplicationEvidenceUnavailable, AmbiguousReference, BareNoneNotAdmittedByFieldType,
     CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
-    CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
+    CallPositionalDeficit, CallPositionalSurplus, CollectionKeyReachesEqualityRoute,
+    ConstructorCallAdmissionRefused, EqualityInstantiationBlindGenericSite,
     EqualityMemberUnjudgeable, EqualityOnFunctionMember, EqualityOnInadmissibleType,
     EqualityOptionalityMismatch, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
     KernelMintShapeMismatch, MethodExistenceFrontierAdmitted, MethodExistenceUndecided,
@@ -6219,6 +6220,170 @@ pub struct EqualityAdmission {
     pub plan: Option<Rc<EqualityPlan>>,
 }
 
+pub fn equality_operand_is_type_variable(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+        n,
+        scope.type_env.source_indices.clone(),
+        scope.type_env.clone(),
+    ))
+    .clone()
+    {
+        TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => true,
+        _ => false,
+    }
+}
+
+pub fn equality_census_declaration(scope: Rc<InferScope>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(scope.module_name.clone(), " ".to_string()),
+        scope.caller_decl_name.clone(),
+    )
+}
+
+pub fn equality_collection_key_rows(
+    t: Rc<Node>,
+    decl: String,
+    scope: Rc<InferScope>,
+    fuel: i64,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (fuel.clone() <= 0) {
+            Rc::new(vec![])
+        } else {
+            {
+                let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(t);
+                let leaf = crate::v1_std_core::qualified_last_segment(
+                    crate::v1_std_core::authored_name_at(
+                        scope.type_env.source_indices.clone(),
+                        peeled.clone(),
+                    ),
+                );
+                let here = if (((((leaf.clone() == "Map".to_string())
+                    || (leaf.clone() == "Set".to_string()))
+                    || (leaf.clone() == "HashMap".to_string()))
+                    || (leaf.clone() == "HashSet".to_string()))
+                    && (v1_rt::map_get(&equality_extensional_container_rows(), leaf.clone())
+                        != std::option::Option::None))
+                {
+                    match peeled.children.clone().first().cloned() {
+                        Some(key) => {
+                            let kt = crate::v1_compiler_infer_types::child_type_node(key.clone());
+                            if (equality_plan_of_walk(equality_operand_walk(
+                                kt.clone(),
+                                scope.clone(),
+                                v1_rt::rc_empty_map::<String, bool>(),
+                                1,
+                                false,
+                            )) != std::option::Option::None)
+                            {
+                                Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::CollectionKeyReachesEqualityRoute {
+    key_type: crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), crate::v1_compiler_infer_types::normalize_access_type_node(kt.clone())),
+    declaration: decl.clone(),
+    span: peeled.span.clone(),
+}), scope.module_name.clone())])
+                            } else {
+                                Rc::new(vec![])
+                            }
+                        }
+                        std::option::Option::None => Rc::new(vec![]),
+                    }
+                } else {
+                    Rc::new(vec![])
+                };
+                peeled.children.clone().iter().cloned().fold(
+                    here.clone(),
+                    |acc: Rc<Vec<Rc<ErrorNode>>>, ch: Rc<Node>| {
+                        v1_rt::concat(
+                            acc,
+                            equality_collection_key_rows(
+                                crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                                decl.clone(),
+                                scope.clone(),
+                                v1_rt::int_sub(fuel.clone(), 1),
+                            ),
+                        )
+                    },
+                )
+            }
+        }
+    })
+}
+
+pub fn equality_item_declared_types(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    {
+        let fields =
+            item.children
+                .clone()
+                .iter()
+                .cloned()
+                .fold(Rc::new(vec![]), |acc: _, ch: Rc<Node>| {
+                    v1_rt::concat(
+                        acc,
+                        v1_rt::concat(
+                            Rc::new(vec![crate::v1_compiler_infer_types::child_type_node(
+                                ch.clone(),
+                            )]),
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for f in ch.children.clone().iter().cloned() {
+                                    __result.push(crate::v1_compiler_infer_types::child_type_node(
+                                        f.clone(),
+                                    ));
+                                }
+                                __result
+                            }),
+                        ),
+                    )
+                });
+        let params = Rc::new({
+            let mut __result = Vec::new();
+            for p in item.params.clone().iter().cloned() {
+                __result.push(crate::v1_compiler_infer_types::child_type_node(p.clone()));
+            }
+            __result
+        });
+        let ret = match item.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => Rc::new(vec![r.clone()]),
+            _ => Rc::new(vec![]),
+        };
+        let anno = match item.type_annotation.clone() {
+            Some(a) => Rc::new(vec![a.clone()]),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            v1_rt::concat(fields.clone(), params.clone()),
+            v1_rt::concat(ret.clone(), anno.clone()),
+        )
+    }
+}
+
+pub fn equality_item_collection_key_rows(
+    item: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let decl = v1_rt::concat(
+            v1_rt::concat(scope.module_name.clone(), " ".to_string()),
+            crate::v1_std_core::authored_name_at(
+                scope.type_env.source_indices.clone(),
+                item.clone(),
+            ),
+        );
+        equality_item_declared_types(item.clone())
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<Rc<ErrorNode>>>, t: Rc<Node>| {
+                    v1_rt::concat(
+                        acc,
+                        equality_collection_key_rows(t.clone(), decl.clone(), scope.clone(), 12),
+                    )
+                },
+            )
+    }
+}
+
 pub fn equality_admission_refused(diags: Rc<Vec<Rc<ErrorNode>>>) -> Rc<EqualityAdmission> {
     Rc::new(EqualityAdmission {
         diags: diags.clone(),
@@ -6369,32 +6534,46 @@ pub fn equality_admission(
                                                         equality_plan_of_walk(rw.clone())
                                                     }
                                                 };
-                                                if ((plan.clone() != std::option::Option::None)
-                                                    && (equality_operand_root_is_refused_route(
+                                                if ((plan.clone() == std::option::Option::None)
+                                                    && (equality_operand_is_type_variable(
                                                         lt.clone(),
                                                         scope.clone(),
-                                                    )
-                                                        || equality_operand_root_is_refused_route(
-                                                            rt.clone(),
-                                                            scope.clone(),
-                                                        )))
+                                                    ) || equality_operand_is_type_variable(
+                                                        rt.clone(),
+                                                        scope.clone(),
+                                                    )))
                                                 {
-                                                    {
-                                                        let refused = if equality_operand_root_is_refused_route(lt.clone(), scope.clone()) {
-                                                    lt.clone()
+                                                    Rc::new(EqualityAdmission {
+    diags: Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EqualityInstantiationBlindGenericSite {
+    operand_type: crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::normalize_access_type_node(if equality_operand_is_type_variable(lt.clone(), scope.clone()) {
+                                                lt.clone()
+                                            } else {
+                                                rt.clone()
+                                            })),
+    declaration: equality_census_declaration(scope.clone()),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+    plan: std::option::Option::None,
+})
                                                 } else {
-                                                    rt.clone()
-                                                };
-                                                        equality_admission_refused(Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EqualityOnInadmissibleType {
+                                                    if ((plan.clone() != std::option::Option::None) && (equality_operand_root_is_refused_route(lt.clone(), scope.clone()) || equality_operand_root_is_refused_route(rt.clone(), scope.clone()))) {
+                                                {
+                                                    let refused = if equality_operand_root_is_refused_route(lt.clone(), scope.clone()) {
+                                                        lt.clone()
+                                                    } else {
+                                                        rt.clone()
+                                                    };
+equality_admission_refused(Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EqualityOnInadmissibleType {
     type_name: crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::normalize_access_type_node(refused)),
     span: span.clone(),
 }), scope.module_name.clone())]))
-                                                    }
-                                                } else {
-                                                    Rc::new(EqualityAdmission {
-                                                        diags: Rc::new(vec![]),
-                                                        plan: plan.clone(),
-                                                    })
+}
+                                            } else {
+                                                Rc::new(EqualityAdmission {
+    diags: Rc::new(vec![]),
+    plan: plan.clone(),
+})
+                                            }
                                                 }
                                             }
                                         }
@@ -26279,7 +26458,19 @@ pub fn infer_items(
     Rc::new({
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
-            __result.push(infer_item(item.clone(), scope.clone()));
+            __result.push({
+                let r = infer_item(item.clone(), scope.clone());
+                Rc::new(TypedItemResult {
+                    item: r.item.clone(),
+                    emissions: infer_emissions_concat(
+                        r.emissions.clone(),
+                        infer_emissions_of_diagnostics(equality_item_collection_key_rows(
+                            item.clone(),
+                            scope.clone(),
+                        )),
+                    ),
+                })
+            });
         }
         __result
     })
