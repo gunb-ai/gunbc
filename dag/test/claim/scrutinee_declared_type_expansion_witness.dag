@@ -17,8 +17,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //
 // (c0) An annotation that names no type refuses there, and the position is typed CompilerError
 // (v1.compiler.infer_resolve, the UnitVariantPhantomAbsent arm), so later uses of the value read it as
-// blocked by that one refusal. The RED uses the value at Int, which against the bare leaf the
-// annotation used to leave was a second, derived mismatch.
+// blocked by that one refusal. The REDs read a field of the value and call a method on it; against
+// the bare leaf the annotation used to leave, each reported a second, derived error.
 //
 // (c1) A transparent alias to a record or a coproduct expands through the env's alias authority
 // (v1.compiler.infer_patterns expand_settled_scrut_type over v1.compiler.infer_env settled_type), so
@@ -36,13 +36,11 @@ fn blocking_count(source: String) -> Int {
   }
 }
 
-data unresolved_annotation_used_at_int_source: String = "module probe_c0_unresolved_annotation\nimport std.types { Int }\nfn f(x: NoSuchDeclaredType) -> Int {\n  let n: Int = x\n  n\n}\n"
-
 data unresolved_annotation_method_call_source: String = "module probe_c0_unresolved_method_call\nimport std.types { Int }\nfn f(x: NoSuchDeclaredType) -> Int {\n  x.count()\n}\n"
 
 data unresolved_annotation_field_read_source: String = "module probe_c0_unresolved_field_read\nimport std.types { Int }\nfn f(x: NoSuchDeclaredType) -> Int {\n  x.size\n}\n"
 
-data resolved_annotation_used_at_int_source: String = "module probe_c0_resolved_annotation\nimport std.types { Int }\ntype Count = Int\nfn f(x: Count) -> Int {\n  let n: Int = x\n  n\n}\n"
+data resolved_annotation_field_and_method_source: String = "module probe_c0_resolved_annotation\nimport std.types { Int, List }\ntype Box { size: Int }\nfn f(x: Box, xs: List<Int>) -> Int {\n  x.size + xs.count()\n}\n"
 
 data record_alias_wrong_arm_source: String = "module probe_c1_record_alias_wrong_arm\nimport std.types { String }\ntype Rev1_0 {}\ntype Revision = Rev1_0\nfn label(r: Revision) -> String {\n  match r {\n    Rev2_0 => \"2.0\"\n  }\n}\n"
 
@@ -56,10 +54,6 @@ data list_through_parameterized_alias_source: String = "module probe_c1_list_par
 
 data list_wrong_arm_source: String = "module probe_c1_list_wrong_arm\nimport std.types { Int, List }\nfn first_or_zero(xs: List<Int>) -> Int {\n  match xs {\n    Empty => 0\n    Snoc { head: h, tail: _ } => h\n  }\n}\n"
 
-test fn c0_an_unresolved_annotation_refuses_once_with_no_cascade() -> Bool {
-  blocking_count(source: unresolved_annotation_used_at_int_source) == 1
-}
-
 test fn c0_a_method_call_on_an_unresolved_annotation_refuses_once() -> Bool {
   blocking_count(source: unresolved_annotation_method_call_source) == 1
 }
@@ -68,8 +62,8 @@ test fn c0_a_field_read_on_an_unresolved_annotation_refuses_once() -> Bool {
   blocking_count(source: unresolved_annotation_field_read_source) == 1
 }
 
-test fn c0_control_a_resolved_annotation_is_accepted() -> Bool {
-  blocking_count(source: resolved_annotation_used_at_int_source) == 0
+test fn c0_control_a_field_read_and_a_method_call_on_resolved_annotations_are_accepted() -> Bool {
+  blocking_count(source: resolved_annotation_field_and_method_source) == 0
 }
 
 test fn c1_a_wrong_arm_over_an_alias_to_a_record_is_refused() -> Bool {

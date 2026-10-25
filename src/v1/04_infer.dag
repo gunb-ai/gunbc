@@ -7478,10 +7478,16 @@ type MethodPipeFallback {
   kernel_diags: List<ErrorNode>
 }
 
+// A RECEIVER TYPED CompilerError IS ALREADY REFUSED where its type failed (an unresolved annotation, an
+// undeclared builtin result), so the method on it answers the error type with no second, derived
+// diagnostic -- the terminal rule a field read on the same receiver already obeys.
 fn method_existence_decision(recv_rt: Node, method_name: String, scope: InferScope, span: SourceSpan) -> MethodPipeFallback {
   let recv_shape = node_type_shape(n: recv_rt, source_indices: scope.type_env.source_indices)
   let recv_surface_established = kernel_profile_lookup(name: authored_name_at(source_indices: scope.type_env.source_indices, node: recv_rt)) != none
-  if recv_surface_established {
+  let recv_already_refused = if recv_rt.inferred != none { is_compiler_error(inferred: recv_rt.inferred.value) } else { false }
+  if recv_already_refused {
+    MethodPipeFallback { result_ty: error_type, kernel_diags: [] }
+  } else if recv_surface_established {
     MethodPipeFallback {
       result_ty: error_type,
       kernel_diags: [make_error_node(
