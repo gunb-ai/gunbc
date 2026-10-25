@@ -242,6 +242,8 @@ fn selector_missed_boots(selector: NetplanMatch, nic_mac: Eui48Address, boots: L
 // advertised modes on srv1 (2026-10-25).
 data x550_nameplate_mbps: Nat = 10000
 
+data no_link_mbps: Nat = 0
+
 // WHAT THE LINK SPEEDS SAY. Port 1 linked at 100 Mb/s on every boot whose link was read from 2026-10-23
 // to 2026-10-24, and at 1000 Mb/s twice late on 2026-10-24; it never linked at its nameplate. A
 // 10GBASE-T port negotiating 100 Mb/s is the signature of the physical layer (a cable pair, a
@@ -260,7 +262,7 @@ fn x550_link_speed_bearing(boots: List<NicBootReading>) -> LinkSpeedBearing {
   } else if any(speeds, s => s >= x550_nameplate_mbps) {
     NameplateReachedOnSomeBoot
   } else {
-    BelowNameplateOnEveryReadBoot { read_boots: length(read), fastest_mbps: fold(speeds, init: 0, f: (acc, s) => if s > acc { s } else { acc }) }
+    BelowNameplateOnEveryReadBoot { read_boots: length(read), fastest_mbps: fold(speeds, init: no_link_mbps, f: (acc, s) => if s > acc { s } else { acc }) }
   }
 }
 

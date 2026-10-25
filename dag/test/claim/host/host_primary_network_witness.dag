@@ -89,7 +89,6 @@ test fn a_nic_blamed_by_an_open_bet_is_not_admitted_as_primary() -> Bool {
     nic: srv1_x550_port1_mac,
     renderer: srv1_primary_network_desired.renderer,
     addressing: srv1_primary_network_desired.addressing,
-    dns: srv1_primary_network_desired.dns,
     mtu: srv1_primary_network_desired.mtu,
     adopted: srv1_primary_network_desired.adopted,
   }

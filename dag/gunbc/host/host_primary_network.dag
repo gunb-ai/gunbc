@@ -49,17 +49,16 @@ import gunbc.host.host_primary_network_observed {
 // Moving the uplink to another NIC, or a static address, is a different change: it lands with the
 // first row that needs it, and the try route's fresh-connection readback is what it will rest on.
 
+// DHCP addressing carries its resolver: netplan's default for a dhcp4 definition takes the lease's
+// DNS servers, which is where srv1's resolver comes from today. A static arm, with its own servers,
+// lands with the first row that needs one.
 type PrimaryAddressing = PrimaryDhcp4 { route_metric: Nat? }
-
-// The lease supplies the resolver; netplan's default for a DHCP definition uses it.
-type PrimaryDns = PrimaryDnsFromDhcpLease
 
 type HostPrimaryNetworkDesired {
   host: HostIdentity
   nic: Eui48Address
   renderer: NetplanRenderer
   addressing: PrimaryAddressing
-  dns: PrimaryDns
   mtu: Nat
   adopted: OperatorHandNetworkChange
 }
@@ -72,7 +71,6 @@ data srv1_primary_network_desired: HostPrimaryNetworkDesired = HostPrimaryNetwor
   nic: srv1_primary_network_receipt_2026_10_25.lease.holder,
   renderer: srv1_primary_network_receipt_2026_10_25.renderer,
   addressing: PrimaryDhcp4 { route_metric: Present { value: srv1_primary_network_receipt_2026_10_25.lease.route_metric } },
-  dns: PrimaryDnsFromDhcpLease,
   mtu: srv1_primary_network_receipt_2026_10_25.mtu,
   adopted: srv1_hand_move_to_1g,
 }
