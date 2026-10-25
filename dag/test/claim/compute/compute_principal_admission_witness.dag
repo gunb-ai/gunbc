@@ -58,14 +58,14 @@ import gunbc.owned_directory {
   owned_directory_path, owned_directory_member, owned_directory_mode, owned_directory_owner,
 }
 import gunbc.compute.work_provider_local {
-  ComputeStore, ProvideResult, compute_store, compute_store_directories, compute_principal_refusal,
+  ComputeStore, ProvideResult, compute_store, compute_principal_refusal,
   compute_provide_admitted_as, compute_unobservable_principal,
 }
+import gunbc.compute.compute_store_owned_directories { compute_store_owned_directories }
 import gunbc.compute.attempt_lifecycle { AttemptOwner, DirectInvocation }
 import gunbc.compute.work_request {
-  WorkOperation, WorkOutcome, WorkRefusedByInfrastructure, WorkInfrastructureRefusal,
-  ComputePrincipalNotServiceUser, MaterializationStoreUndeclared, ToolchainUnobserved,
-  SubjectUnresolved, work_default_build, work_refusal_detail,
+  WorkRefusedByInfrastructure, WorkInfrastructureRefusal,
+  ComputePrincipalNotServiceUser, work_default_build, work_refusal_detail,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name }
 import extdeps.access.posix { file_mode_octal }

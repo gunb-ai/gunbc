@@ -1,0 +1,73 @@
+module gunbc.compute.compute_store_owned_directories
+
+import std.types { NonEmptyStr, List }
+import std.optional { Present, Absent }
+import std.materialization_store_grant {
+  PersistentInstanceWorkspace, DurableHostVolume, FrameJobWorkspace, WitnessScratchRoot,
+  materialization_store_root_path, materialization_store_staging_root_path,
+}
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DirectoryOwnerOnly }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+
+// THE STORE'S OWN DIRECTORIES, DEMANDED BY THE ROUTE THAT WRITES THEM. compute_store_open
+// (gunbc.compute.work_provider_local) initializes the store idempotently, but a missing root REFUSES
+// -- it is never created elsewhere (the comment on that route), and before this row nothing declared
+// the directories a PersistentInstanceWorkspace store needs: the prod DurableHostVolume pair comes
+// from gunbc.live_deploy.spec deployment_srv1_host_directories, and instance-owned directories come
+// only from gunbc.roadmap.dashboard_instance_directories dashboard_instance_directory_demands, where
+// the consumer declares its demand in its own module and adds one row. This is that declaration for
+// the compute store and its staging sibling.
+//
+// WHY THIS MODULE AND NOT THE PROVIDER IT DECLARES FOR. The demand belongs to the compute store's
+// consumer route, but the provider (gunbc.compute.work_provider_local) sits deep in the host-effect
+// layer; importing it from the consumer list would close a cycle (the list already feeds
+// gunbc.live_deploy.spec, which the provider's layer imports). The registry's own rule -- every
+// consumer declares its demand in a module the LIST can import -- is what this leaf is. The gate
+// that keeps this honest is the apply witness: a demand listed here without a real writer, or a
+// writer without a demand, shows up as an observe that never converges.
+//
+// SCOPED TO PERSISTENT WORKSPACES, ON PURPOSE. A DurableHostVolume store's directories belong to the
+// host (the srv1 pair above, at the host's shared 0755) and a FrameJobWorkspace / WitnessScratchRoot
+// store is ephemeral to its frame -- both are created by their own routes, and demanding them here
+// would put a second, differently-owned decision on a path someone else owns, which is the drift the
+// one-list rule exists to prevent. The scope that has NO creator today is PersistentInstanceWorkspace:
+// macbook-local, srv2-deploy and the srv1 lab. All three gain their store and staging directories
+// from this row, owned by their instance's directory owner at owner-only. That is right rather than
+// lab-only: the gap is the same for all three, and the fix is idempotent where a directory already
+// exists.
+//
+// OWNER-ONLY, AND WHY. The instance's directory owner IS the account compute may run as (the principal
+// gate compares against exactly it). The dedicated worker runs as a different account and is refused
+// compute by principal, but defence in depth does not stop at the gate: a worker-writable durable
+// store is a cache-poisoning surface, so the attempt group gets no write and no enter, on the store
+// or on its staging sibling. DirectoryOwnerOnly is 0700 -- owner read/write/execute, nothing for the
+// group or others. ForeignOwnershipRefuses: if a foreign-principal directory already sits at the
+// path, the deploy refuses rather than adopting it, because a store an unknown account can write is
+// not a store.
+fn compute_store_owned_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  match instance.materialization_store_root {
+    Absent => []
+    Present { value: store } => match store {
+      PersistentInstanceWorkspace { scope: _ } => [
+        OwnedDirectoryDeclared {
+          member: "compute-materialization-store" as NonEmptyStr,
+          path: materialization_store_root_path(root: store) as NonEmptyStr,
+          owner: instance.directory_owner,
+          mode: DirectoryOwnerOnly,
+          group_adoption: ForeignOwnershipRefuses,
+        },
+        OwnedDirectoryDeclared {
+          member: "compute-materialization-store-staging" as NonEmptyStr,
+          path: materialization_store_staging_root_path(root: store) as NonEmptyStr,
+          owner: instance.directory_owner,
+          mode: DirectoryOwnerOnly,
+          group_adoption: ForeignOwnershipRefuses,
+        },
+      ]
+      DurableHostVolume => []
+      FrameJobWorkspace { frame: _ } => []
+      WitnessScratchRoot { root: _ } => []
+    }
+  }
+}

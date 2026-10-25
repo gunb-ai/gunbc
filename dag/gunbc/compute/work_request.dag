@@ -240,6 +240,14 @@ type WorkOutcome
 // refused build reached the dependent's caller as 'dependency <id> ended refused_by_infrastructure'
 // and its typed cause was gone: no outcome.json is written for a refusal, so nothing else held it
 // (srv1 lab 2026-10-11, a worker's compile refused and the worker never saw why).
+type WorkInfrastructureRefusal
+  = ProducerInFlight { lease_path: String }
+  | HostComputeCapacityFull { wire: String }
+  | HostBelowMemoryFloor { requested: Kibibyte, available: Kibibyte }
+  | ComputeCapacityLedgerUnavailable { detail: String }
+  | CheckoutUnavailable { detail: String }
+  | StoreUnavailable { detail: String }
+  | MaterializationStoreUndeclared { instance_id: String }
 // THE RUNNING ACCOUNT IS NOT THE INSTANCE'S SERVICE USER, so the request is refused before it can
 // reach a store, the capacity ledger or the compute root. This is a PRINCIPAL exclusion, and the
 // reason it is typed rather than left to file permissions is measured: compute_root(instance)
