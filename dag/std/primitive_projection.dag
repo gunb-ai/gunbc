@@ -89,6 +89,20 @@ data primitive_utf8_encode_bytes: PrimitiveIdentity = primitive_identity_slug(na
 data primitive_octets_bytes: PrimitiveIdentity = primitive_identity_slug(name: "octets_bytes")
 data primitive_pure_dag_seam_unreachable: PrimitiveIdentity = primitive_identity_slug(name: "pure_dag_seam_unreachable")
 data primitive_to_string: PrimitiveIdentity = primitive_identity_slug(name: "to_string")
+// THE SIX HOST-BOUNDARY OPERATION SEAMS (M2V two-keyings / D16 part 1; relocated from
+// v2.compiler.primitive_execution_semantics's slug roster, which keyed by the bare primitive name and so
+// never joined a module-qualified declaration path). Their declarations are the self-call fns at
+// v2.std.live_read filesystem_read, v2.lens.module_graph module_declaration_facts / import_resolution_facts /
+// reference_resolution_facts / dependency_resolution_facts, and v2.std.layer_import_scan layer_import_facts;
+// each pairs to the interpreter builtin arm src/v1/stage0/src/v1_interpreter_dispatch_generated.rs carries for
+// the name, exactly the decl_facts pattern. The row is what says they are host-realized: never a seam without
+// one (the symbol_lexeme note records what the silence emitted).
+data primitive_filesystem_read: PrimitiveIdentity = primitive_identity_slug(name: "filesystem_read")
+data primitive_module_declaration_facts: PrimitiveIdentity = primitive_identity_slug(name: "module_declaration_facts")
+data primitive_import_resolution_facts: PrimitiveIdentity = primitive_identity_slug(name: "import_resolution_facts")
+data primitive_reference_resolution_facts: PrimitiveIdentity = primitive_identity_slug(name: "reference_resolution_facts")
+data primitive_dependency_resolution_facts: PrimitiveIdentity = primitive_identity_slug(name: "dependency_resolution_facts")
+data primitive_layer_import_facts: PrimitiveIdentity = primitive_identity_slug(name: "layer_import_facts")
 
 // THE DECLARATION IDENTITY of std.error_primitives Never / absurd. Emit, v1 exhaustiveness and
 // v2 match coproduct-read consume these refs; they do not restate the module or name as string
@@ -156,6 +170,12 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_string_contains, module_path: "std.algebra", decl_name: "string_contains", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_chars, module_path: "std.host_text", decl_name: "chars", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_machine_word_native_operate, module_path: "std.machine_word", decl_name: "machine_word_native_operate", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_filesystem_read, module_path: "v2.std.live_read", decl_name: "filesystem_read", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_module_declaration_facts, module_path: "v2.lens.module_graph", decl_name: "module_declaration_facts", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_import_resolution_facts, module_path: "v2.lens.module_graph", decl_name: "import_resolution_facts", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_reference_resolution_facts, module_path: "v2.lens.module_graph", decl_name: "reference_resolution_facts", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_dependency_resolution_facts, module_path: "v2.lens.module_graph", decl_name: "dependency_resolution_facts", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_layer_import_facts, module_path: "v2.std.layer_import_scan", decl_name: "layer_import_facts", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_length, module_path: "std.algebra", decl_name: "length", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_map_insert, module_path: "std.algebra", decl_name: "map_insert", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_lookup, module_path: "std.algebra", decl_name: "map_lookup", fidelity: ModeledProjection),
