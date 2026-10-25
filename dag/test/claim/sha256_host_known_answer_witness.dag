@@ -3,6 +3,7 @@ module test.claim.sha256_host_known_answer_witness
 import std.logic { Bool }
 import std.types { String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { sha256_hex_of_text }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
