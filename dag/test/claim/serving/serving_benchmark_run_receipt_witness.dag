@@ -127,7 +127,7 @@ fn fx_flags(pool_workers: Nat?) -> StrataServeFlags {
 fn fx_cell(gpus: List<ObservedGpu>, engines: Nat, gpus_per_engine: Nat, pool_workers: Nat?) -> ServingCellIdentity {
   ServingCellIdentity {
     host: operator_host_srv3,
-    cpu: ObservedCpu { model: CpuArmMidr { implementer: 65, variant: 3, part: 3340, revision: 1 }, sockets: 1, cores: cpu_core_count(count: 128), threads: hardware_thread_count(count: 128) },
+    cpu: ObservedCpu { model: CpuArmMidr { implementer: 65, variant: 3, part: 3340, revision: 1 }, logical_cpus: hardware_thread_count(count: 128) },
     memory: byte_size(count: 549755813888),
     gpus: gpus,
     engine: StrataEngineCell {

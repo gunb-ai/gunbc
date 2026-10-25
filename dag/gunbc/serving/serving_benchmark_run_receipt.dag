@@ -7,7 +7,7 @@ import std.content_hash { Sha256Digest }
 import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import std.measure {
   TokenCount, token_count, token_count_value, ByteSize, Mebibyte, Milliwatt, Watt, Hertz, Celsius, Bandwidth, Millicore,
-  CpuCoreCount, HardwareThreadCount, Microsecond, microsecond, microsecond_count, millisecond_count, milli_per_unit, basis_point_count,
+  HardwareThreadCount, Microsecond, microsecond, microsecond_count, millisecond_count, milli_per_unit, basis_point_count,
   MilliTokensPerSecond, milli_tokens_per_second, EventsPerHour, events_per_hour, millicore, byte_size, byte_size_count,
 }
 import product.host_identity { HostIdentity }
@@ -75,11 +75,11 @@ type CpuModelReading
   = CpuModelNamed { name: NonEmptyStr }
   | CpuArmMidr { implementer: Nat, variant: Nat, part: Nat, revision: Nat }
 
+// The logical CPUs the kernel lists (/proc/cpuinfo processor entries). Cores and sockets are not read:
+// arm64 /proc/cpuinfo carries neither, and a field no producer can fill would be a fabricated default.
 type ObservedCpu {
   model: CpuModelReading
-  sockets: Nat
-  cores: CpuCoreCount
-  threads: HardwareThreadCount
+  logical_cpus: HardwareThreadCount
 }
 
 // One GPU as the driver reports it at the start of the run. power_limit is the cap in force for the
