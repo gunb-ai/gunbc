@@ -1,20 +1,21 @@
 module gunbc.auth.approval_apns_publish
 
-import std.types { NonEmptyStr, String, Int, List, Bool, Unit }
+import std.types { NonEmptyStr, String, Int, List, Bool, Unit, EpochSecs }
 import std.optional { Absent, Present }
 import std.algebra { trim, length }
 import std.decl_ref { decl_ref }
 import std.measure { Second, second, second_count, byte_size_count }
 import std.resources { Network }
 import std.bytes { bytes_octets, utf8_encode_bytes }
-import extdeps.clock { Clock }
+import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.tools { CliTool }
 import extdeps.tools.curl {
   curl_program, curl_cli_tool, CurlConfigLine, CurlConfigFlag, CurlConfigValue, curl_config_text,
   curl_http_code_after_newline_write_out_format, curl_dumped_response, curl_dumped_header,
   CurlWroteHttpStatus, CurlWroteNoHttpStatus,
 }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject }
 import extdeps.languages.json.emit { JsonString }
 import extdeps.auth.jwt { JwtCompactSerialization }
@@ -92,12 +93,10 @@ data approval_apns_provider: ApnsProviderIdentity = ApnsProviderIdentity {
 // ── The provider token ───────────────────────────────────────────────────────────────────────
 // APPLE BOUNDS THE TOKEN FROM BOTH SIDES (extdeps.apple.apns apns_provider_token_max_age and
 // apns_provider_token_min_refresh): older than an hour is refused, and refreshing more than once in
-// twenty minutes is refused too. So the token is minted once and REUSED for max_age - min_refresh
-// seconds: it never outlives the hour, and two mints are always at least that far apart, which is
-// longer than the refresh floor. Both bounds are Apple's rows; the window is derived, not chosen.
-fn apns_provider_token_reuse_seconds() -> Int {
-  second_count(apns_provider_token_max_age) - second_count(apns_provider_token_min_refresh)
-}
+// twenty minutes is refused too. So the token is minted once and REUSED while its age plus the
+// refresh floor is still inside the maximum age: it never outlives the hour, and two mints are always
+// at least max_age - min_refresh apart, which is longer than the refresh floor. Both bounds are
+// Apple's Second rows and the comparison stays in Seconds; the window is derived, not chosen.
 
 // THE CACHE IS A WINDOWED CAS SLOT IN THE DEVICE STORE, for the reason the push registration is one:
 // its only fact is its head. CAS is what makes "at most one mint per window" hold across concurrent
@@ -108,7 +107,7 @@ data approval_apns_provider_token_window_k: Int = 2
 data approval_apns_provider_token_record: NonEmptyStr = "gunbc.apns-provider-token.v1"
 
 type CachedProviderToken {
-  issued_at: Int
+  issued_at: EpochSecs
   provider: ApnsProviderIdentity
   jwt: JwtCompactSerialization
 }
@@ -137,7 +136,7 @@ fn cached_provider_token_fields(fields: List<String>) -> CachedProviderToken? {
     Absent => none
     Present { value: iat_text } => match parse_int(s: iat_text) {
       Absent => none
-      Present { value: iat } => match fields.get(index: 2) {
+      Present { value: iat } => if iat < 0 { none } else { match fields.get(index: 2) {
         Absent => none
         Present { value: kid } => match fields.get(index: 3) {
           Absent => none
@@ -152,19 +151,29 @@ fn cached_provider_token_fields(fields: List<String>) -> CachedProviderToken? {
               } } }
           }
         }
-      }
+      } }
     }
   }
 }
 
+// THE TOKEN'S AGE as a Second; none when the token claims an issue time after now (a clock that
+// stepped back), which refuses reuse rather than trusting a future iat.
+fn provider_token_age(t: CachedProviderToken, now: EpochSecs) -> Second? {
+  match checked_int_to_nat(n: now - t.issued_at) {
+    Absent => none
+    Present { value: n } => Present { value: second(count: n) }
+  }
+}
+
 // A token is reused only for the provider it was minted for (a changed key id or team is a different
-// token, never a stale one served), only once issued (a clock that stepped back refuses reuse rather
-// than trusting a future iat), and only inside the window.
-fn provider_token_reusable(t: CachedProviderToken, provider: ApnsProviderIdentity, now: Int) -> Bool {
+// token, never a stale one served), only once issued, and only while age + min_refresh < max_age.
+fn provider_token_reusable(t: CachedProviderToken, provider: ApnsProviderIdentity, now: EpochSecs) -> Bool {
   (t.provider.key_id as String) == (provider.key_id as String)
     && (t.provider.team_id as String) == (provider.team_id as String)
-    && t.issued_at <= now
-    && now - t.issued_at < apns_provider_token_reuse_seconds()
+    && match provider_token_age(t: t, now: now) {
+      Absent => false
+      Present { value: age } => second_count(age) + second_count(apns_provider_token_min_refresh) < second_count(apns_provider_token_max_age)
+    }
 }
 
 type ApnsProviderToken
@@ -173,7 +182,7 @@ type ApnsProviderToken
 
 // THE MINT: the JWS signing input over Apple's claims, signed ES256 by the modeled signer
 // (gunbc.jws_signer_realize jws_sign: openssl over the host key file, DER read to R || S).
-fn mint_apns_provider_token(provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: Int) -> ApnsProviderToken {
+fn mint_apns_provider_token(provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: EpochSecs) -> ApnsProviderToken {
   match jws_signing_input(alg: JwsEs256, kid: Present { value: provider.key_id as NonEmptyStr }, payload_json: apns_provider_token_claims_json(identity: provider, issued_at: now)) {
     JwsEncodeNotOctets { observed: o } => ApnsProviderTokenUnavailable { detail: concat("the provider token's signing input carried a member outside octet range: ", to_string(o)) }
     JwsEncoded { text: input } =>
@@ -227,7 +236,7 @@ fn cached_token_in(slot: CasReadableSlot<NonEmptyStr>) -> CachedProviderToken? {
 // carries the winner, and the winner's token is used when it is reusable. A minted token whose
 // publish was refused is NOT sent -- an unrecorded token is exactly the second mint the window exists
 // to prevent.
-fn apns_provider_token_at(root: NonEmptyStr, provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: Int) -> ApnsProviderToken {
+fn apns_provider_token_at(root: NonEmptyStr, provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: EpochSecs) -> ApnsProviderToken {
   match provider_token_window() {
     Absent => ApnsProviderTokenUnavailable { detail: "the provider token window is narrower than the store admits" }
     Present { value: w } =>
@@ -249,7 +258,7 @@ fn apns_provider_token_at(root: NonEmptyStr, provider: ApnsProviderIdentity, key
   }
 }
 
-fn mint_and_publish_provider_token(root: NonEmptyStr, window: CasGenerationWindow, expected: CasExpectation, provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: Int) -> ApnsProviderToken {
+fn mint_and_publish_provider_token(root: NonEmptyStr, window: CasGenerationWindow, expected: CasExpectation, provider: ApnsProviderIdentity, key: JwsSigningKeyRef, now: EpochSecs) -> ApnsProviderToken {
   match mint_apns_provider_token(provider: provider, key: key, now: now) {
     ApnsProviderTokenUnavailable { detail: d } => ApnsProviderTokenUnavailable { detail: d }
     ApnsProviderTokenReady { token: jwt } =>
@@ -283,10 +292,10 @@ fn read_apns_sender() -> ApnsSender admit_callers: [
   match first_absent_host_cli_dependency(tools: apns_sender_host_cli_requirements) {
     Present { value: absence } => ApnsSenderUnavailable { detail: join(["APNs transport tool ", absence.tool as String, " is absent: ", absence.hint], "") }
     Absent =>
-      match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
-        Absent => ApnsSenderUnavailable { detail: "the host clock did not print epoch seconds, so no provider token can be dated" }
-        Present { value: now } =>
-          match apns_provider_token_at(root: approval_device_store_root, provider: approval_apns_provider, key: approval_apns_auth_key, now: now) {
+      match clock_unix_millis_read() {
+        ClockUnixMillisRefused { detail: d } => ApnsSenderUnavailable { detail: concat("the host clock refused, so no provider token can be dated: ", d) }
+        ClockUnixMillisObserved { millis: ms } =>
+          match apns_provider_token_at(root: approval_device_store_root, provider: approval_apns_provider, key: approval_apns_auth_key, now: epoch_secs_of_millis(millis: ms)) {
             ApnsProviderTokenReady { token: t } => ApnsSenderReady { token: t }
             ApnsProviderTokenUnavailable { detail: d } => ApnsSenderUnavailable { detail: d }
           }
@@ -475,7 +484,14 @@ fn apns_rest_result_of(exit_code: Int, stdout: String, stderr: String) -> RestRe
       CurlWroteNoHttpStatus { cause: c } => RestRefused { refusal: RestTransportRefused { cause: c } }
       CurlWroteHttpStatus { status: s } =>
         if (s as Int) == 200 {
-          RestAnswered { answer: match curl_dumped_header(header_lines: dumped.header_lines, lowercase_name: apns_id_header_name) { Absent => ""  Present { value: id } => id } }
+          // APNs names every accepted request by its apns-id; a 200 without one is not an acceptance
+          // this module can name, so it is the transport's undecodable answer, never an empty id.
+          match curl_dumped_header(header_lines: dumped.header_lines, lowercase_name: apns_id_header_name) {
+            Absent => RestRefused { refusal: RestBodyUndecodable { status: s, cause: "accepted response carried no apns-id header" } }
+            Present { value: id } =>
+              if id == "" { RestRefused { refusal: RestBodyUndecodable { status: s, cause: "accepted response carried an empty apns-id header" } } }
+              else { RestAnswered { answer: id } }
+          }
         } else {
           RestRefused { refusal: RestStatusRefused { status: s, body: apns_refusal_reason(body: dumped.body) } }
         }
