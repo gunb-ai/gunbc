@@ -94,7 +94,7 @@ pub struct NativeEffectDenominator {
 
 pub fn native_effect_declared(module_path: String, decl_name: String) -> Rc<NativeEffectClass> {
     Rc::new(NativeEffectClass::NativeEffectDeclaration {
-        declaration: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+        declaration: crate::std_decl_ref::decl_ref(module_path, decl_name),
     })
 }
 
@@ -267,7 +267,7 @@ pub fn native_driver_cost_account(
     tolerance: Nanosecond,
 ) -> Rc<NativeDriverCostAccounting> {
     {
-        let sum = native_driver_exclusive_sum(exclusive.clone());
+        let sum = native_driver_exclusive_sum(exclusive);
         if (crate::std_measure::nanosecond_count(sum.clone())
             > crate::std_measure::nanosecond_count(parent_span.clone()))
         {

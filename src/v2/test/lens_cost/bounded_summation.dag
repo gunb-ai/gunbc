@@ -12,7 +12,7 @@ import v2.lens.cost.expr {
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Succ, Zero }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Node,
   TypeNode,
@@ -57,7 +57,7 @@ fn bounded_summation_is_representable() -> Bool {
 
 fn bounded_summation_projects_to_linear() -> Bool {
   match normalize_cost_expr_to_symbolic(expr: bounded_unit_summation_expr()) {
-    LinearCost { variable: v } => v.source == bounded_summation_bound_leaf
+    LinearCost { variable: v } => node_same_occurrence(a: v.source, b: bounded_summation_bound_leaf)
     _ => false
   }
 }

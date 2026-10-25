@@ -3,7 +3,7 @@ module v2.workflow.bootstrap
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import v2.std.node { Atom, Conj, Edge, Hash, Authored, StructuralLabel, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, symbol_eq, NotADeclaration }
+import v2.std.node { node_same_occurrence, Atom, Conj, Edge, Hash, Authored, StructuralLabel, Node, NodeFold, Symbol, TypeNode, content_hash, fold_node, symbol_eq, NotADeclaration }
 import std.algebra { list_snoc_item, bag_eq, contains, fold_list, unique }
 import v2.std.language_model {
   LanguageModel,
@@ -540,7 +540,7 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
 }
 
 fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) -> Bool {
-  (inputs.snapshot.root == bootstrap_source_snapshot_root())
+  (node_same_occurrence(a: inputs.snapshot.root, b: bootstrap_source_snapshot_root()))
     && (inputs.snapshot.language_model.language_identity == seed_capability_language_model().language_identity)
     && (inputs.snapshot.content_hash == bootstrap_canonical_snapshot_content_hash())
     && (inputs.target_model == rust_target_model())

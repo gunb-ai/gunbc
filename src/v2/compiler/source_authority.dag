@@ -16,7 +16,7 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim, fold_list, i
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, bind_outcome, diagnostics_singleton, outcome_accepted, outcome_rejected, invariant_port_locus, textual_whole_file_diagnostic }
 import v2.std.grammar { ParseTree }
-import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance, symbol_intern_lexeme }
+import v2.std.node { node_equal_ignoring_provenance, Node, Symbol, symbol_intern_lexeme }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.cross_tree.import_model { CrossTreeAdmissionVerdict, CrossTreeAdmitted, CrossTreeDenialReason, CrossTreeDenied, CrossTreeImport, DagTree, SourceRootRef, SourceRootSet, V2Tree, cross_tree_import_admitted }
@@ -1098,7 +1098,7 @@ fn source_root_set_from_ingest(ingest: SourceRootIngest) -> SourceRootSet {
 }
 
 fn source_authority_node_equal(left: Node, right: Node) -> Bool {
-  canonicalize_node_strip_provenance(n: left) == canonicalize_node_strip_provenance(n: right)
+  node_equal_ignoring_provenance(a: left, b: right)
 }
 
 fn source_ast_equal_witness(

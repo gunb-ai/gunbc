@@ -13,14 +13,7 @@ import std.durable_compare_and_set {
   cas_generation_count,
 }
 import std.checked_arithmetic { int_inclusive_max }
-import gunbc.durable_cas_file_store {
-  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
-  admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path,
-  file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow,
-  cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
-  CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below,
-  CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted,
-}
+import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path, file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow, CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below, CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted }
 
 // Wet controls for the file-backed CAS provider. Hermetic mint and classification
 // live in test.claim.durable_cas_file_store_witness. This file reaches the host.
@@ -177,7 +170,7 @@ test fn the_gallop_probes_the_int_maximum_instead_of_overflowing_by_real_executi
 // AN UNINITIALIZED STORE IS NOT AN EMPTY ONE. The slot root is missing, so the host answers
 // NotFound for generation 1 exactly as it would for an empty slot; the observation must refuse
 // rather than read "absent", and a writer expecting absence must be refused before it publishes.
-// Before gunbc.durable_cas_file_store cas_first_generation_absent_over this read CasReadableAbsent.
+// Before gunbc.durable_cas_file_store cas_first_generation_absent this read CasReadableAbsent.
 test fn a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution() -> Bool {
   let root_path = fresh_root()
   let missing = concat(root_path, "/never-created")

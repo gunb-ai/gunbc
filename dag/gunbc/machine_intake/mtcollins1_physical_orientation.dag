@@ -1,6 +1,6 @@
 module gunbc.machine_intake.mtcollins1_physical_orientation
 
-import std.types { Bool, NonEmptyStr, String, List, list_length }
+import std.types { Bool, NonEmptyStr, String, List, list_length, bool_text }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef }
 import std.measure { gibibyte_count, millivolt_count }
@@ -292,7 +292,6 @@ fn secondary_stage_text(st: SmproBootProgress) -> String {
   }
 }
 
-fn bool_text(b: Bool) -> String { if b { "true" } else { "false" } }
 
 fn join_outcome_text(outcome: MtCollins1SecondaryJoinOutcome) -> String {
   match outcome {
