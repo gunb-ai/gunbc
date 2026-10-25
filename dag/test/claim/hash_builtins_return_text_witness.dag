@@ -1,0 +1,56 @@
+module test.claim.hash_builtins_return_text_witness
+
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EXECUTING EVIDENCE for v1.compiler.infer_method builtin_function_registry: atom_identity_hash and
+// hash_combine return String, the 16-hex-digit digest their realization produces (v1.runtime_rust
+// `pub type Hash = String`). Their rows used to name the result through a bare `Hash` node with no
+// declaration, which resolves in the CALLER's scope; wherever v2.std.node is in the closure that is
+// `type Hash = Fnv1a64Structural`, a record, so the builtin's digest was typed as a record and a record
+// formal ACCEPTED it (std.content_hash content_hash_atom passed it as a String digest the same way).
+// Each claim joins the census by CLASS and SUBJECT (a TypeMismatch's subject is the type it got), so a
+// module refusing for any other reason measures another wall. The refusal and the control are separate
+// modules, so the control's census carries no refusal this witness authored.
+
+data record_formal_source: String = "module hash_builtin_witness.record_formal\n\nimport std.types { String }\nimport std.content_hash { Fnv1a64Structural }\n\nfn digest_at_record() -> Fnv1a64Structural { atom_identity_hash(\"a\") }\n"
+
+data text_formal_source: String = "module hash_builtin_witness.text_formal\n\nimport std.types { String }\nimport std.content_hash { Fnv1a64Structural, structural_content_hash }\n\nfn digest_at_text() -> String { atom_identity_hash(\"a\") }\n\nfn combined_at_text() -> String { hash_combine(atom_identity_hash(\"a\"), atom_identity_hash(\"b\")) }\n\nfn digest_into_structural(value: String) -> Fnv1a64Structural { structural_content_hash(digest: atom_identity_hash(value)) }\n"
+
+// -1 when the census could not run, so neither a ">= 1" nor an "== 0" claim reads could-not-measure
+// as its answer.
+fn blocking_count(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+// DISCRIMINATING RED: the builtin's digest at a record formal is refused as the String it is. On the
+// parent of the change it was ACCEPTED, because the result was typed as v2.std.node Hash, the record.
+test fn a_hash_digest_is_refused_at_a_record_formal() -> Bool {
+  blocking_count(c: compile_dag_diagnostic_census(record_formal_source), wanted: "TypeMismatch", subject: "Primitive(String)") >= 1
+}
+
+// ACCEPTED CONTROL: the digest at a String return, hash_combine over two digests, and the
+// std.content_hash content_hash_atom route (a String digest into the String-refined field) compile
+// with no blocking diagnostic.
+test fn a_hash_digest_is_accepted_as_text() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(text_formal_source)) == 0
+}
