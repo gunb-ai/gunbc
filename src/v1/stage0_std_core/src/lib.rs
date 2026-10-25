@@ -54,6 +54,9 @@ pub mod std_disposition;
 #[path = "../../stage0/src/std_error_primitives.rs"]
 pub mod std_error_primitives;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_float.rs"]
+pub mod std_float;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_emit_model.rs"]
 pub mod std_emit_model;
 #[rustfmt::skip]

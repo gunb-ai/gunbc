@@ -1,0 +1,30 @@
+module gunbc.instruments.cons_tail_recursion_user_list
+
+import std.types { Int }
+
+// A MODULE'S OWN CHAIN WITH ITS OWN Cons { head, tail }: the discriminating red for tail recursion modulo
+// cons keying on the resolved carrier (v1.compiler.emit_rust is_trmc_eligible). user_upto has exactly the
+// shape the rule lowers, a Cons self-call in tail position, but its Cons resolves to this Chain and not to
+// the FreeMonoid carrier, so it must keep the ordinary lowering. Admitted by the spelling Cons it is lowered
+// onto Rc<Vec> pushes, which rustc refuses for a Chain.
+//
+// WHY NOT A TYPE NAMED List: a `List` reference resolves to the kernel's List<T> even in a module that
+// declares its own (measured: a module-local generic List<Int> return type was emitted as Rc<Vec<i64>> while
+// its literals built the module's enum), so a module-local List with its own Cons is not a coherent program
+// in v1, and the return-type-spelling half of the old admission had no well-typed specimen. The literal-
+// spelling half does, and this is it. Monomorphic, because a generic user enum here also needs a Clone bound
+// the emitter does not yet add (a separate defect, not this rule's).
+type Chain
+  = End
+  | Cons { head: Int, tail: Chain }
+
+fn user_upto(i: Int, n: Int) -> Chain {
+  if i >= n { End } else { Cons { head: i, tail: user_upto(i: i + 1, n: n) } }
+}
+
+fn user_checksum(xs: Chain, acc: Int) -> Int {
+  match xs {
+    End => acc
+    Cons { head: h, tail: t } => user_checksum(xs: t, acc: (acc * 31 + h) % 1000000007)
+  }
+}

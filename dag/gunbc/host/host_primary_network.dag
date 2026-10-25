@@ -1,0 +1,354 @@
+module gunbc.host.host_primary_network
+
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
+import std.algebra { trim }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, upsert_decision_label }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_intent_network { host_lan_address }
+import extdeps.network.mac { Eui48Address, render_mac_address, parse_mac_address, MacParsed, MacParseFailed, mac_addresses_are_equal }
+import extdeps.netplan.netplan {
+  netplan_config_dir, NetplanRenderer, NetplanDocument, NetplanEthernet, MatchByMacAddress, render_netplan_document,
+  NetplanDocumentRendering, NetplanDocumentRendered, NetplanDocumentRefused, netplan_document_rendering_wire,
+}
+import extdeps.cloud_init.cloud_init { cloud_init_network_config_disabled_text }
+import extdeps.iproute2.ip_show {
+  ip_oneline_records, ip_link_record, ip_addr4_record, ip_default_route4_record,
+  IpLinkRecord,
+}
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWrite, RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
+import gunbc.runner.runner_host_file_converge {
+  FleetHostFileDesired, FleetHostFileStanding, HostFileIdentical, HostFileDiffers, HostFileAbsent, HostFileUnobservable,
+}
+import gunbc.host.host_primary_network_observed {
+  OperatorHandNetworkChange, HandChangeReadFromJournal, HandChangeAttestedUnread,
+  srv1_primary_network_receipt_2026_10_25, srv1_hand_move_to_1g, hand_network_change_for,
+  UplinkFaultBet, uplink_fault_bets_on,
+}
+
+// ONE FLEET AUTHORITY FOR A HOST'S PRIMARY NETWORK: which NIC carries the host, how it is addressed,
+// which renderer applies it, where its DNS comes from and its MTU, rendered as the ONE netplan file the
+// host carries and converged by gunbc.host.host_primary_network_apply.
+//
+// THE NIC IS NAMED BY ITS MAC AND BY NOTHING ELSE. On srv1 the I210's kernel name and PCI address both
+// moved between boots when a BMC USB NIC took its bus number (gunbc.host.host_primary_network_observed
+// srv1_nic_boot_readings), and netplan's match has no PCI-path key, so the MAC is the only selector
+// that names the same port on every boot. The type admits no other.
+//
+// ON A HOST WITH A ROW, THE AUTHORITY OWNS EVERY *.yaml AT THE TOP OF /etc/netplan, AND ON NO OTHER HOST.
+// The owned population is exactly: the hosts in host_primary_network_rows (today srv1 alone), the
+// *.yaml names `ls -1 -A /etc/netplan` lists there (not /lib/netplan, not /run/netplan outside the
+// apply's own staged shadows, no subdirectory), and cloud-init's network switch below. A host without
+// a row is outside it, so the Spark hosts' /etc/netplan -- the fabric rail's 90-gunbc-fabric.yaml and
+// NetworkManager's 90-NM-<uuid>.yaml Wi-Fi profiles -- is not owned, and an apply cannot be pointed at
+// one (primary_network_row_for answers PrimaryRowUnmodeled). On a host it owns, netplan merges every
+// file there (extdeps.netplan.netplan netplan_file_is_applied), so a file the row does not declare
+// still decides the network:
+// srv1's install-time 50-cloud-init.yaml still configures the dead X550 port, which is why
+// systemd-networkd-wait-online failed at its last boot. A file outside the population is drift and the
+// apply removes it. cloud-init would regenerate that file if its marker were removed, so the authority
+// also owns cloud-init's network-config switch (extdeps.cloud_init.cloud_init
+// cloud_init_network_config_disabled_text).
+//
+// A ROW RE-EXPRESSES THE UPLINK THAT IS CARRYING THE HOST; IT NEVER MOVES IT. Each row is derived from
+// the host's own read (srv1: the 2026-10-25 receipt), so its effective network equals what the host
+// already runs, and the plan refuses any apply whose effect would differ from the read. An apply then
+// changes files, never the running network, and its readback is checked against the state before it.
+// Moving the uplink to another NIC, or a static address, is a different change: it lands with the
+// first row that needs it, and the try route's fresh-connection readback is what it will rest on.
+
+// DHCP addressing carries its resolver: netplan's default for a dhcp4 definition takes the lease's
+// DNS servers, which is where srv1's resolver comes from today. A static arm, with its own servers,
+// lands with the first row that needs one.
+type PrimaryAddressing = PrimaryDhcp4 { route_metric: Nat? }
+
+type HostPrimaryNetworkDesired {
+  host: HostIdentity
+  nic: Eui48Address
+  renderer: NetplanRenderer
+  addressing: PrimaryAddressing
+  mtu: ByteSize
+  adopted: OperatorHandNetworkChange
+}
+
+// srv1's row is its 2026-10-25 read: the NIC holding the lease, the renderer that rendered it, the
+// route metric the hand file set (200, chosen beside a 10G default route that no longer exists, kept
+// so the first apply changes no route) and the link's MTU.
+data srv1_primary_network_desired: HostPrimaryNetworkDesired = HostPrimaryNetworkDesired {
+  host: srv1_primary_network_receipt_2026_10_25.host,
+  nic: srv1_primary_network_receipt_2026_10_25.lease.holder,
+  renderer: srv1_primary_network_receipt_2026_10_25.renderer,
+  addressing: PrimaryDhcp4 { route_metric: Present { value: srv1_primary_network_receipt_2026_10_25.lease.route_metric } },
+  mtu: srv1_primary_network_receipt_2026_10_25.mtu,
+  adopted: srv1_hand_move_to_1g,
+}
+
+data host_primary_network_rows: List<HostPrimaryNetworkDesired> = [srv1_primary_network_desired]
+
+// A DECLARED ROW CARRIES ITS EMITTED DOCUMENT, so every consumer writes and compares the same bytes
+// and none of them can reach a row whose document the YAML emitter refused.
+type PrimaryNetworkRow {
+  desired: HostPrimaryNetworkDesired
+  netplan_text: String
+}
+
+// A HOST WITHOUT A ROW SAYS WHY. srv2 was moved by hand like srv1 but not read, so its row waits on
+// that read instead of being authored from srv1's shape.
+type PrimaryNetworkRowStanding
+  = PrimaryRowDeclared { row: PrimaryNetworkRow }
+  | PrimaryRowRenderRefused { host: HostIdentity, cause: NonEmptyStr }
+  | PrimaryRowAwaitingRead { change: OperatorHandNetworkChange, read_obligation: NonEmptyStr }
+  | PrimaryRowUnmodeled { host: HostIdentity }
+
+fn primary_network_row_of(d: HostPrimaryNetworkDesired) -> PrimaryNetworkRowStanding {
+  match primary_network_netplan_rendering(d: d) {
+    NetplanDocumentRendered { text: t } => PrimaryRowDeclared { row: PrimaryNetworkRow { desired: d, netplan_text: t } }
+    NetplanDocumentRefused { path: p, reason: why } =>
+      PrimaryRowRenderRefused { host: d.host, cause: join(["the row's netplan document was refused at ", p, ": ", why], "") as NonEmptyStr }
+  }
+}
+
+fn primary_network_row_for(host: HostIdentity) -> PrimaryNetworkRowStanding {
+  match first(filter(host_primary_network_rows, r => host_identity_eq(a: r.host, b: host))) {
+    Present { value: d } => primary_network_row_of(d: d)
+    Absent =>
+      match hand_network_change_for(host: host) {
+        Absent => PrimaryRowUnmodeled { host: host }
+        Present { value: c } =>
+          match c.standing {
+            HandChangeAttestedUnread { read_obligation: o } => PrimaryRowAwaitingRead { change: c, read_obligation: o }
+            HandChangeReadFromJournal { commands: _, written_files: _, applied_by: _ } => PrimaryRowUnmodeled { host: host }
+          }
+      }
+  }
+}
+
+// A NIC A BET BLAMES IS NOT ADMITTED AS PRIMARY. The bets about srv1's X550 are open; a row naming it
+// refuses until one is decided by its reading.
+type PrimaryNicAdmission
+  = PrimaryNicAdmitted
+  | PrimaryNicRefusedOpenBets { bets: List<UplinkFaultBet> }
+
+fn primary_nic_admission(d: HostPrimaryNetworkDesired) -> PrimaryNicAdmission {
+  let bets = uplink_fault_bets_on(nic: d.nic)
+  if length(bets) == 0 { PrimaryNicAdmitted } else { PrimaryNicRefusedOpenBets { bets: bets } }
+}
+
+// ── The netplan population the host carries ──────────────────────────────────────────────────────
+
+data primary_network_netplan_id: NonEmptyStr = "gunbc-primary" as NonEmptyStr
+data primary_network_netplan_file_name: NonEmptyStr = "50-gunbc-primary-network.yaml" as NonEmptyStr
+
+fn primary_network_netplan_path() -> FilePath {
+  join([netplan_config_dir as String, "/", primary_network_netplan_file_name as String], "") as FilePath
+}
+
+fn primary_network_netplan_document(d: HostPrimaryNetworkDesired) -> NetplanDocument {
+  NetplanDocument {
+    renderer: d.renderer,
+    ethernets: [
+      NetplanEthernet {
+        id: primary_network_netplan_id,
+        selector: MatchByMacAddress { mac: d.nic },
+        addresses: [],
+        mtu: Present { value: d.mtu },
+        dhcp4: match d.addressing { PrimaryDhcp4 { route_metric: _ } => true },
+        dhcp4_route_metric: match d.addressing { PrimaryDhcp4 { route_metric: m } => m },
+        dhcp6: none,
+        link_local: none,
+        optional: false,
+      },
+    ],
+  }
+}
+
+fn primary_network_netplan_rendering(d: HostPrimaryNetworkDesired) -> NetplanDocumentRendering {
+  render_netplan_document(d: primary_network_netplan_document(d: d))
+}
+
+// THE WHOLE POPULATION, as file names, so a listing of /etc/netplan is judged against it by identity.
+// The Spark fabric rail's 90-gunbc-fabric.yaml (gunbc.spark.fabric_rail_desired) joins it for a host
+// that carries both once Spark hosts have a primary row; their netplan also carries the
+// NetworkManager-written 90-NM-<uuid>.yaml Wi-Fi profile (extdeps.netplan.netplan
+// netplan_nm_profile_yaml_path), which must be a modeled member before an apply could own that
+// directory, so until then the rail keeps writing its one file.
+fn primary_network_netplan_population(d: HostPrimaryNetworkDesired) -> List<NonEmptyStr> {
+  [primary_network_netplan_file_name]
+}
+
+// The owned file as the host-file core compares it: root-only, never world-readable (netplan warns
+// on a readable file because one may carry Wi-Fi keys).
+fn primary_network_netplan_file(r: PrimaryNetworkRow) -> FleetHostFileDesired {
+  FleetHostFileDesired {
+    subject: "primary-network-netplan" as NonEmptyStr,
+    path: primary_network_netplan_path(),
+    content: r.netplan_text,
+    mode: RemoteFileModeOwnerReadWrite,
+    validation: NoValidation,
+  }
+}
+
+// cloud-init merges cloud.cfg.d in lexical order; the name sorts after the installer's 90- and 99-
+// files, so the key holds whether the merge is shallow or deep.
+data primary_network_cloud_init_guard_path: NonEmptyStr = "/etc/cloud/cloud.cfg.d/99-zz-gunbc-network-config-disabled.cfg" as NonEmptyStr
+
+fn primary_network_cloud_init_guard() -> FleetHostFileDesired {
+  FleetHostFileDesired {
+    subject: "cloud-init-network-config-disabled" as NonEmptyStr,
+    path: primary_network_cloud_init_guard_path as FilePath,
+    content: cloud_init_network_config_disabled_text as String,
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  }
+}
+
+// ── The running network, judged against the row ──────────────────────────────────────────────────
+
+// The three one-line reads of iproute2 (extdeps.iproute2.ip_show), taken together on one host.
+type PrimaryNetworkIpReads {
+  links: String
+  ipv4_addresses: String
+  ipv4_default_route: String
+}
+
+// WHAT THE ROW PREDICTS THE HOST RUNS, judged on the read. The device is found by MAC, never by name;
+// its address must be the fleet's recorded LAN address for the host (gunbc.fleet.fleet_intent_network
+// host_lan_address), because every consumer of that address -- the BMC NFS share among them -- breaks
+// silently when the lease moves.
+type PrimaryEffectiveVerdict
+  = PrimaryEffectiveHolds { device: NonEmptyStr }
+  | PrimaryNicNotPresent
+  | PrimaryNicNoCarrier { device: NonEmptyStr }
+  | PrimaryUplinkOnAnotherDevice { device: NonEmptyStr, default_device: NonEmptyStr }
+  | PrimaryNoDefaultRoute
+  | PrimaryAddressDiverges { device: NonEmptyStr, held: List<String>, expected: String }
+  | PrimaryMtuDiverges { device: NonEmptyStr, held: ByteSize }
+  | PrimaryRouteMetricDiverges { held: Int? }
+  | PrimaryEffectiveUnjudged { cause: NonEmptyStr }
+
+fn link_holds_mac(r: IpLinkRecord, mac: Eui48Address) -> Bool {
+  match r.ether {
+    Absent => false
+    Present { value: e } =>
+      match parse_mac_address(text: e) {
+        MacParsed { address: a } => mac_addresses_are_equal(left: a, right: mac)
+        MacParseFailed { error: _ } => false
+      }
+  }
+}
+
+fn cidr_address_part(cidr: String) -> String {
+  match first(split(s: cidr, delimiter: "/")) { Absent => ""  Present { value: a } => a }
+}
+
+fn optional_nat_matches_int(want: Nat?, held: Int?) -> Bool {
+  match want {
+    Absent => true
+    Present { value: w } => match held { Absent => false  Present { value: h } => h == w }
+  }
+}
+
+fn primary_effective_verdict(d: HostPrimaryNetworkDesired, reads: PrimaryNetworkIpReads) -> PrimaryEffectiveVerdict {
+  let links = flat_map(ip_oneline_records(stdout: reads.links), ws => match ip_link_record(words: ws) { Present { value: r } => [r]  Absent => [] })
+  let addrs = flat_map(ip_oneline_records(stdout: reads.ipv4_addresses), ws => match ip_addr4_record(words: ws) { Present { value: r } => [r]  Absent => [] })
+  let routes = flat_map(ip_oneline_records(stdout: reads.ipv4_default_route), ws => match ip_default_route4_record(words: ws) { Present { value: r } => [r]  Absent => [] })
+  match host_lan_address(host: d.host) {
+    Absent => PrimaryEffectiveUnjudged { cause: join(["the fleet records no LAN address for ", d.host as String, ", so the lease the NIC holds has nothing to be judged against"], "") as NonEmptyStr }
+    Present { value: lan } =>
+      match first(filter(links, l => link_holds_mac(r: l, mac: d.nic))) {
+        Absent => PrimaryNicNotPresent
+        Present { value: link } =>
+          if !link.carrier { PrimaryNicNoCarrier { device: link.name } }
+          else if byte_size_count(b: link.mtu) != byte_size_count(b: d.mtu) { PrimaryMtuDiverges { device: link.name, held: link.mtu } }
+          else {
+            let held = map(filter(addrs, a => (a.name as String) == (link.name as String)), a => a.cidr)
+            let expected = lan as String
+            if !any(held, c => cidr_address_part(cidr: c) == expected) { PrimaryAddressDiverges { device: link.name, held: held, expected: expected } }
+            else {
+              match first(routes) {
+                Absent => PrimaryNoDefaultRoute
+                Present { value: r } =>
+                  if (r.device as String) != (link.name as String) { PrimaryUplinkOnAnotherDevice { device: link.name, default_device: r.device } }
+                  else if !optional_nat_matches_int(want: match d.addressing { PrimaryDhcp4 { route_metric: m } => m }, held: r.metric) { PrimaryRouteMetricDiverges { held: r.metric } }
+                  else { PrimaryEffectiveHolds { device: link.name } }
+              }
+            }
+          }
+      }
+  }
+}
+
+// ── The plan ─────────────────────────────────────────────────────────────────────────────────────
+
+type NetplanDirectoryListing
+  = NetplanDirectoryListed { names: List<String> }
+  | NetplanDirectoryUnread { cause: NonEmptyStr }
+
+fn netplan_yaml_names(listing_stdout: String) -> List<String> {
+  filter(map(split(s: listing_stdout, delimiter: "\n"), l => trim(s: l)), n => ends_with(s: n, suffix: ".yaml"))
+}
+
+type PrimaryNetworkObservation {
+  effective: PrimaryEffectiveVerdict
+  directory: NetplanDirectoryListing
+  owned: FleetHostFileStanding
+}
+
+// THE DECISION IS std.upsert_decision's. Noop when the running network is the row's and the directory
+// holds exactly the population with the owned file's bytes. Apply is owed only when the running
+// network ALREADY is the row's: the swap then changes files and not the network. Anything else
+// refuses, located, because an apply over a running network that is not the row's would be a move
+// the row never admitted.
+type PrimaryNetplanSwap {
+  foreign: List<String>
+  owned: FleetHostFileStanding
+}
+
+fn primary_effective_refusal(v: PrimaryEffectiveVerdict) -> NonEmptyStr? {
+  match v {
+    PrimaryEffectiveHolds { device: _ } => none
+    PrimaryNicNotPresent => Present { value: "no link carries the row's MAC" as NonEmptyStr }
+    PrimaryNicNoCarrier { device: dv } => Present { value: join(["the row's NIC ", dv as String, " has no carrier"], "") as NonEmptyStr }
+    PrimaryUplinkOnAnotherDevice { device: dv, default_device: o } => Present { value: join(["the default route leaves by ", o as String, ", not the row's NIC ", dv as String, "; moving the uplink is not this row's change"], "") as NonEmptyStr }
+    PrimaryNoDefaultRoute => Present { value: "the host has no IPv4 default route" as NonEmptyStr }
+    PrimaryAddressDiverges { device: dv, held: h, expected: e } => Present { value: join([dv as String, " holds [", join(h, ","), "], not the fleet's recorded ", e], "") as NonEmptyStr }
+    PrimaryMtuDiverges { device: dv, held: m } => Present { value: join([dv as String, " runs mtu ", to_string(byte_size_count(b: m))], "") as NonEmptyStr }
+    PrimaryRouteMetricDiverges { held: m } => Present { value: join(["the default route's metric is ", match m { Absent => "unset"  Present { value: v } => to_string(v) }], "") as NonEmptyStr }
+    PrimaryEffectiveUnjudged { cause: c } => Present { value: c }
+  }
+}
+
+fn plan_primary_network(d: HostPrimaryNetworkDesired, observation: PrimaryNetworkObservation) -> UpsertDecision<PrimaryNetplanSwap> {
+  match primary_nic_admission(d: d) {
+    PrimaryNicRefusedOpenBets { bets: bs } =>
+      Refuse { reason: join(["the row's NIC ", render_mac_address(addr: d.nic) as String, " is blamed by ", to_string(length(bs)), " open bet(s)"], "") as NonEmptyStr }
+    PrimaryNicAdmitted =>
+      match primary_effective_refusal(v: observation.effective) {
+        Present { value: why } => Refuse { reason: why }
+        Absent =>
+          match observation.directory {
+            NetplanDirectoryUnread { cause: c } => Refuse { reason: c }
+            NetplanDirectoryListed { names: names } => {
+              let population = map(primary_network_netplan_population(d: d), n => n as String)
+              let foreign = filter(names, n => !any(population, p => p == n))
+              match observation.owned {
+                HostFileUnobservable { reason: r } => Refuse { reason: join(["the owned netplan file is unobservable: ", r], "") as NonEmptyStr }
+                HostFileIdentical => if length(foreign) == 0 { Noop } else { Apply { plan: PrimaryNetplanSwap { foreign: foreign, owned: HostFileIdentical } } }
+                HostFileDiffers => Apply { plan: PrimaryNetplanSwap { foreign: foreign, owned: HostFileDiffers } }
+                HostFileAbsent => Apply { plan: PrimaryNetplanSwap { foreign: foreign, owned: HostFileAbsent } }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn primary_network_plan_wire(p: UpsertDecision<PrimaryNetplanSwap>) -> String {
+  match p {
+    Noop => upsert_decision_label(decision: p)
+    Apply { plan: s } =>
+      join([upsert_decision_label(decision: p), " owned=", match s.owned { HostFileIdentical => "identical"  HostFileDiffers => "differs"  HostFileAbsent => "absent"  HostFileUnobservable { reason: _ } => "unobservable" }, " foreign=[", join(s.foreign, ","), "]"], "")
+    Refuse { reason: c } => join([upsert_decision_label(decision: p), " ", c as String], "")
+  }
+}

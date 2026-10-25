@@ -1,0 +1,28 @@
+module gunbc.self_host_frontier_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data self_host_frontier_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "run_self_host_frontier",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "run_self_host_frontier",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "The producer arm for the derived self-host frontier (gunbc.target_binding SelfHostFrontierProducer), a mode of the existing self-host step rather than a new job. Its host part is only what no .dag fold can do: run the step's own controls after prepare_emitted_compiler, record whether they passed beside the emit basenames of the crate the step built (the executed closure) and the stage0 crate's observed .rs files, spawn the built driver in its self-host-frontier verb, and relay its stdout and status unjudged. Every standing, count, refusal line and the exit are decided by v2.compiler.self_host.seed_retention_frontier self_host_frontier_report inside the emitted binary; the declared population is the stage0 emitted-population manifest the seed already emits, so no roster is authored here.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these declarations when gunbc test's producer dispatch is emitted rather than hand-mirrored (the capability gunbc.target_invocation_seed_growth names for target_invocation_host as a whole) AND an emitted driver can spawn a built program and hand its stdout and status to a .dag fold, SUFFICIENT FOR //gunbc/instruments:self-host-frontier to run with no hand-authored producer body.",
+
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs run_self_host_frontier, called once from src/v1/stage0/src/target_invocation_host.rs run_self_host_frontier, behind gunbc test //gunbc/instruments:self-host-frontier"
+}
