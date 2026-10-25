@@ -31,7 +31,6 @@ import v2.cli.parse_verdict_invocation {
   cli_option_source_root
 }
 import v2.cli.repository_layout { repository_storage_layout }
-import gunbc.source_layout_namespaces { layout_namespaces }
 import v2.cli.source_root_bindings {
   SourceRootBindings,
   SourceRootsBound,
@@ -979,7 +978,7 @@ fn cli_run_acquired(plan: CliPlan, bindings: List<SourceRootBinding>, entries: L
 }
 
 fn cli_run_differential(plan: CliPlan, bindings: List<SourceRootBinding>) -> CliRunOutcome {
-  match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings, namespaces: layout_namespaces()) {
+  match enumerate_bound_modules(layout: repository_storage_layout(), bindings: bindings) {
     BoundModulesListed { modules: modules } => cli_run_acquired(plan: plan, bindings: bindings, entries: modules)
     BoundModulesRefused { subject: subject, cause: cause } =>
       CliRunRefused {

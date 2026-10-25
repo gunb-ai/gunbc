@@ -9,26 +9,21 @@ type SourceRootRef
 
 type SourceRootSet = FreeMonoid<SourceRootRef>
 
+// One import edge across the trees, named by the namespaces at its two ends: admission reads whether each
+// namespace is declared (see cross_tree_import_admitted), so the namespace is what the edge carries.
 type CrossTreeImport {
   from_tree: SourceRootRef
-  from_module: String
+  from_namespace: String
   to_tree: SourceRootRef
-  to_module: String
+  to_namespace: String
 }
 
 type ImportClosure = FreeMonoid<CrossTreeImport>
 
-type TreeFundamentalityOrder
-  = MoreFundamental
-  | LessFundamental
-  | CoFundamental
-  | FundamentalityUnknown
-
 type CrossTreeDenialReason
   = CrossTreeFromTreeNotInRootSet
   | CrossTreeToTreeNotInRootSet
-  | CrossTreeFundamentalityUnknownFailClosed
-  | CrossTreeToTreeLessFundamental
+  | CrossTreeNamespaceUndeclared
 
 type CrossTreeAdmissionVerdict
   = CrossTreeAdmitted
@@ -45,33 +40,60 @@ fn source_root_set_contains(roots: SourceRootSet, r: SourceRootRef) -> Bool {
   contains(xs: roots, item: r, eq: source_root_ref_eq)
 }
 
+// THE ACTIVE-ROOT DENIALS: an edge from or to a tree the compile did not activate refuses, whichever
+// namespaces it joins. This is the whole verdict wherever a module is already in hand (v2.compiler.name_resolve
+// admit_import_cross_tree_gate, through v2.std.cross_tree.resolution cross_tree_edge_decision): reaching a
+// module at all went through the storage lookup, which asked the membership below.
+fn cross_tree_roots_admitted(
+  from_tree: SourceRootRef,
+  to_tree: SourceRootRef,
+  roots: SourceRootSet
+) -> CrossTreeAdmissionVerdict {
+  if !source_root_set_contains(roots: roots, r: from_tree) {
+    CrossTreeDenied { reason: CrossTreeFromTreeNotInRootSet }
+  } else if !source_root_set_contains(roots: roots, r: to_tree) {
+    CrossTreeDenied { reason: CrossTreeToTreeNotInRootSet }
+  } else {
+    CrossTreeAdmitted
+  }
+}
+
+// ADMISSION REQUIRES BOTH NAMESPACES TO BE DECLARED, and there is no direction (ruling
+// gunbc.design_ruling cross_tree_admission_is_namespace_membership). A crossing between two namespaces with a
+// row in gunbc.source_layout_namespaces is admitted whichever way it points; one whose importer or target
+// namespace has no row refuses fail-closed as CrossTreeNamespaceUndeclared. The declared rows are policy and
+// arrive as a value; this model imports no repository fact. An edge within one tree is not a crossing and
+// reads no membership. Its one enforcement site is the storage lookup
+// (v2.compiler.source_authority storage_cross_tree_verdict), per DESIGN section 3.
+// namespace_declared is the one membership judgment: the storage lookup's candidate skip and the population's
+// bound_modules_admitted ask it too. It scans the rows rather than keying a Map, because Map has no home the
+// native compiler binds yet; the row set is small and the scan is the same judgment.
+fn namespace_declared(rows: FreeMonoid<String>, namespace: String) -> Bool {
+  contains(xs: rows, item: namespace, eq: fn(a, b) { a == b })
+}
+
 fn cross_tree_import_admitted(
   edge: CrossTreeImport,
   roots: SourceRootSet,
-  order: TreeFundamentalityOrder
+  declared: FreeMonoid<String>
 ) -> CrossTreeAdmissionVerdict {
-  if !source_root_set_contains(roots: roots, r: edge.from_tree) {
-    CrossTreeDenied { reason: CrossTreeFromTreeNotInRootSet }
-  } else if !source_root_set_contains(roots: roots, r: edge.to_tree) {
-    CrossTreeDenied { reason: CrossTreeToTreeNotInRootSet }
-  } else {
-    match order {
-      FundamentalityUnknown =>
-        CrossTreeDenied { reason: CrossTreeFundamentalityUnknownFailClosed }
-      LessFundamental =>
-        CrossTreeDenied { reason: CrossTreeToTreeLessFundamental }
-      MoreFundamental =>
+  match cross_tree_roots_admitted(from_tree: edge.from_tree, to_tree: edge.to_tree, roots: roots) {
+    CrossTreeDenied { reason: reason } => CrossTreeDenied { reason: reason }
+    CrossTreeAdmitted =>
+      if source_root_ref_eq(a: edge.from_tree, b: edge.to_tree) {
         CrossTreeAdmitted
-      CoFundamental =>
+      } else if namespace_declared(rows: declared, namespace: edge.from_namespace) && namespace_declared(rows: declared, namespace: edge.to_namespace) {
         CrossTreeAdmitted
-    }
+      } else {
+        CrossTreeDenied { reason: CrossTreeNamespaceUndeclared }
+      }
   }
 }
 
 fn cross_tree_import_closure_admitted(
   closure: ImportClosure,
   roots: SourceRootSet,
-  order: TreeFundamentalityOrder
+  declared: FreeMonoid<String>
 ) -> CrossTreeAdmissionVerdict {
   fold_list(
     xs: closure,
@@ -80,7 +102,7 @@ fn cross_tree_import_closure_admitted(
       match verdict {
         CrossTreeDenied { reason: r } => CrossTreeDenied { reason: r }
         CrossTreeAdmitted =>
-          cross_tree_import_admitted(edge: edge, roots: roots, order: order)
+          cross_tree_import_admitted(edge: edge, roots: roots, declared: declared)
       }
     }
   )

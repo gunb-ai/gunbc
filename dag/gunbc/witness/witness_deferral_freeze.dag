@@ -903,7 +903,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/long/cross_tree_real_ingest_activation.dag",
     functions: [
       "cross_tree_real_ingest_v2_to_dag_admitted_holds",
-      "cross_tree_real_ingest_dag_to_v2_denied_holds"
+      "cross_tree_real_ingest_dag_to_v2_admitted_holds"
     ]
   },
   FrozenPathDeferral {

@@ -22,7 +22,7 @@ import v2.compiler.module_acquisition {
   census_acquisition_ingest
 }
 import v2.cli.repository_layout { repository_storage_layout }
-import v2.compiler.source_authority { DagTree, ReferenceCrossTreeDenied, V2Tree }
+import v2.compiler.source_authority { DagTree, ReferenceCrossTreeDenied, SourceStorageLayout, StorageNamespaceRoot, V2Tree, source_storage_layout }
 
 // THE CENSUS DOOR OVER A PLANTED CLOSURE (fixtures/census_scoped_acquisition, outside every corpus
 // root so its broken member reds nothing else). entry imports ok, broken and a module that does not
@@ -202,11 +202,21 @@ test fn the_compilers_door_still_refuses_the_closure_the_census_acquires_around(
 
 // ---- sharing an observation never shares a permission (R2) ----
 //
-// fixtures/census_scoped_acquisition/cross: v2.cx.shared is requested by a v2 module (permitted) and
-// by cx.fromdag, a dag-tree module the dag tree may not import v2 from (denied). The cross-tree check
-// runs in the lookup BEFORE the known-member shortcut, so whichever request comes first, the shared
-// module is acquired once AND the dag requester's edge is a denial -- never a free ride on the
-// permitted read.
+// fixtures/census_scoped_acquisition/cross: v2.cx.shared is requested by v2.cx.entry, in a declared
+// namespace on its own tree (permitted), and by cx.fromdag, a dag-tree module whose namespace has no row,
+// crossing into the v2 tree (denied: CrossTreeNamespaceUndeclared). Both are entries, so their order sets
+// which request comes first. The cross-tree verdict runs in the lookup BEFORE the known-member shortcut,
+// so whichever request comes first, the shared module is acquired once AND the undeclared requester's
+// edge is a denial -- never a free ride on the permitted read. The layout is the fixture's own: the
+// repository's rows declare neither fixture namespace.
+fn cross_layout() -> SourceStorageLayout {
+  source_storage_layout(
+    namespace_roots: [StorageNamespaceRoot { namespace: "v2", tree: V2Tree, elides_namespace: true }],
+    default_tree: DagTree,
+    namespace_rows: ["v2.cx"],
+    derived_rosters: []
+  )
+}
 
 fn cross_bindings() -> List<SourceRootBinding> {
   [
@@ -243,11 +253,11 @@ fn shared_acquired_and_dag_edge_denied(acq: CensusAcquisition) -> Bool {
 }
 
 test fn a_permitted_read_does_not_admit_a_later_denied_request() -> Bool {
-  shared_acquired_and_dag_edge_denied(acq: acquire_census_closure_of(layout: repository_storage_layout(), bindings: cross_bindings(), entries: ["v2.cx.entry"]))
+  shared_acquired_and_dag_edge_denied(acq: acquire_census_closure_of(layout: cross_layout(), bindings: cross_bindings(), entries: ["v2.cx.entry", "cx.fromdag"]))
 }
 
 test fn a_denied_request_does_not_block_a_later_permitted_read() -> Bool {
-  shared_acquired_and_dag_edge_denied(acq: acquire_census_closure_of(layout: repository_storage_layout(), bindings: cross_bindings(), entries: ["v2.cx.entry_denied_first"]))
+  shared_acquired_and_dag_edge_denied(acq: acquire_census_closure_of(layout: cross_layout(), bindings: cross_bindings(), entries: ["cx.fromdag", "v2.cx.entry"]))
 }
 
 // ---- THE BOUNDARY GUARD IS THE INSTRUMENT, NOT A CLAIM MODULE ----

@@ -44,6 +44,7 @@ import v2.compiler.source_authority {
   StorageDerivedRoster,
   StorageNamespaceRoot,
   derived_roster_declaration,
+  source_storage_layout,
   derived_roster_module,
   derived_roster_select,
   derived_roster_text
@@ -71,12 +72,15 @@ fn fx_ledger() -> StorageDerivedRoster {
   StorageDerivedRoster { row_namespace: "v2.fx.ledger", row_type: "FxRow" }
 }
 
+// The fixture's own namespace rows: a crossing from the fixture's v2 modules into std is admitted
+// because both namespaces have a row (v2.std.cross_tree.import_model cross_tree_import_admitted).
 fn fx_layout(rosters: List<StorageDerivedRoster>) -> SourceStorageLayout {
-  SourceStorageLayout {
+  source_storage_layout(
     namespace_roots: [StorageNamespaceRoot { namespace: "v2", tree: V2Tree {}, elides_namespace: true }],
     default_tree: DagTree {},
+    namespace_rows: ["std", "v2.fx", "v2.fx.ledger", "v2.fx.occupied", "v2.fx.misplaced"],
     derived_rosters: rosters
-  }
+  )
 }
 
 fn fx_all_ledgers() -> List<StorageDerivedRoster> {
@@ -299,7 +303,7 @@ fn fx_v2_only() -> List<SourceRootBinding> {
 // The roster is a member of the population its rows are in, after the listed modules, and a population
 // job reads the same bytes a compile does.
 test fn the_population_holds_the_roster_its_rows_are_in() -> Bool {
-  match enumerate_bound_modules(layout: fx_layout(rosters: [fx_ledger()]), bindings: fx_v2_only(), namespaces: ["v2.fx"]) {
+  match enumerate_bound_modules(layout: fx_layout(rosters: [fx_ledger()]), bindings: fx_v2_only()) {
     BoundModulesRefused { subject: _, cause: _ } => false
     BoundModulesListed { modules: modules } =>
       length(xs: filter(modules, m => m == "v2.fx.ledger.roster")) == 1
@@ -314,7 +318,7 @@ test fn the_population_holds_the_roster_its_rows_are_in() -> Bool {
 // The occupied ledger's file is listed by the walk as the roster's own name, which refuses the
 // enumeration rather than standing beside or in place of the derived module.
 test fn a_population_with_a_file_at_a_rosters_path_refuses() -> Bool {
-  match enumerate_bound_modules(layout: fx_layout(rosters: fx_all_ledgers()), bindings: fx_v2_only(), namespaces: ["v2.fx"]) {
+  match enumerate_bound_modules(layout: fx_layout(rosters: fx_all_ledgers()), bindings: fx_v2_only()) {
     BoundModulesRefused { subject: subject, cause: _ } => subject == "v2.fx.occupied.roster"
     BoundModulesListed { modules: _ } => false
   }

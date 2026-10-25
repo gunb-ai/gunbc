@@ -92,10 +92,12 @@ test fn cross_tree_real_ingest_v2_to_dag_admitted_holds() -> Bool {
   }
 }
 
-test fn cross_tree_real_ingest_dag_to_v2_denied_holds() -> Bool {
+// The same ingest with its tags reversed is admitted too: the gate over modules already read reads no namespace membership
+// (the storage lookup asked it before the read) and both trees are active roots of this ingest.
+test fn cross_tree_real_ingest_dag_to_v2_admitted_holds() -> Bool {
   match ct_real_edge_decision(ingest: ct_real_dag_to_v2_ingest) {
-    EdgeCrossDenied => true
-    EdgeCrossAdmitted => false
+    EdgeCrossAdmitted => true
+    EdgeCrossDenied => false
     EdgeNormalResolution => false
     EdgeCrossAmbiguous => false
   }
