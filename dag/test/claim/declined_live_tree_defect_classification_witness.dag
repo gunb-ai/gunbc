@@ -16,6 +16,9 @@ import gunbc.declined_live_tree_defect_classification {
 }
 import std.optional { Present }
 import std.algebra { string_contains }
+import std.types { List }
+import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_live }
+import gunbc.doc_graph_roots { hand_authored_works_resolution_pool_roots }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // SubstrateInputsOnly is truthful here and is the point: this witness reads the
@@ -73,7 +76,7 @@ test fn the_open_ruling_carries_a_typed_recommendation() -> Bool {
           value: RecommendedDropRoute {
             drop_carrier: dc,
             owner: own,
-            restoration_trigger_declaration: trg,
+            restoration_trigger: trg,
           },
         },
         prior_change_attribution: pa,
@@ -81,7 +84,15 @@ test fn the_open_ruling_carries_a_typed_recommendation() -> Bool {
     } =>
       (dc == "gunbc.rung_drop")
         && (own == "the operator who cut docs/probes/ in the 2026-08-24 measurement bankruptcy")
-        && (trg == "v2.lens.cited_symbol_resolution.cited_symbol_planted_controls")
+        // THE TRIGGER IS CHECKED, NOT PINNED (review 86427): it resolves against the LIVE declaration
+        // index through the same host join the retirement witness uses, so a trigger that names a
+        // deleted declaration -- the exact defect review 86427 found when this field was a string --
+        // fails THIS claim instead of being frozen into it as a literal. §4b(3): what it names is the
+        // capability restored, the g1 planted-control discriminators, which are the three retired
+        // claims themselves.
+        && (cited_declaration_ref_refusal_count_live(refs: [trg], pool_roots: pool_roots()) == 0)
+        && (trg.module_path == "test.claim.doc_reachability_witness")
+        && (trg.decl_name == "doc_graph_registered_plan_roots_all_admitted")
         && is_withheld(pa)
     _ => false
   }
@@ -102,6 +113,8 @@ test fn the_prior_change_question_is_withheld_not_written() -> Bool {
     _ => false
   }
 }
+
+fn pool_roots() -> List<String> { hand_authored_works_resolution_pool_roots() }
 
 fn is_withheld(pa: PriorChangeAttribution) -> Bool {
   match pa {

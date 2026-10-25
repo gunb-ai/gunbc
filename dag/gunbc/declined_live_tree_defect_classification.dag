@@ -3,7 +3,7 @@ module gunbc.declined_live_tree_defect_classification
 import std.types { String, List, CommitSha, NonEmptyStr }
 import v2.std.integer { Int }
 import std.execution_mode { ExecutionMode }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import std.algebra { list_snoc_item, count_where, length, fold_list, list_find_first, FreeSemigroup }
 import std.optional { Optional, Present, Absent }
@@ -155,7 +155,15 @@ type Closure
 type RecommendedDropRoute {
   drop_carrier: NonEmptyStr
   owner: NonEmptyStr
-  restoration_trigger_declaration: NonEmptyStr
+  // THE TRIGGER NAMES THE CAPABILITY RESTORED (§4b(3)) AND MUST RESOLVE (§3): a DeclarationRef, the same
+  // checked reference every other reference this PR carries uses -- a bare string would let the field point
+  // at a symbol that no longer exists, which is exactly the defect review 86427 found in the first typed
+  // version of this field. The capability named is the restored g1 planted-control discriminators: the three
+  // retired ExpectedRed claims themselves, whose re-measurements execute green. NOT the lost
+  // v2.lens.cited_symbol_resolution.cited_symbol_planted_controls: #9181's re-homing module is gone from the
+  // tree (that is the AttributionWithheld reason below), so a trigger pointing at it would be a §3 citation
+  // defect -- and a witness pins this ref against the live declaration index, not against a literal.
+  restoration_trigger: DeclarationRef
 }
 
 // THE STATE OF THE PRIOR-CHANGE QUESTION, TYPED. `ClassificationDisposition` deliberately does not carry
@@ -244,8 +252,9 @@ data doc_reachability_rows: List<ClassifiedRow> = [
     // that closure rested on a reference that does not resolve (§3), and it turned an operator-owned open
     // ruling into a lane-owned closure. The guidance that used to live in the question String as prose is
     // typed now: `recommended_if_ruled` names the rung-drop carrier, the owner, and the restoration
-    // trigger a non-operator lane may produce without reversing the operator's cut (review 86337,
-    // DESIGN 4c), and `prior_change_attribution` states -- withheld, with its reason -- why no prior
+    // trigger -- a `DeclarationRef` at the CAPABILITY restored (review 86427; §4b(3)), a declaration that
+    // resolves in this tree -- which a non-operator lane may act on without reversing the operator's cut
+    // (review 86337, DESIGN 4c), and `prior_change_attribution` states -- withheld, with its reason -- why no prior
     // change closes this row while the ruling is open.
     disposition: NeedsOperatorRuling {
       question: permanent_evidence_ruling_question,
@@ -253,7 +262,7 @@ data doc_reachability_rows: List<ClassifiedRow> = [
         value: RecommendedDropRoute {
           drop_carrier: "gunbc.rung_drop" as NonEmptyStr,
           owner: "the operator who cut docs/probes/ in the 2026-08-24 measurement bankruptcy" as NonEmptyStr,
-          restoration_trigger_declaration: "v2.lens.cited_symbol_resolution.cited_symbol_planted_controls" as NonEmptyStr,
+          restoration_trigger: decl_ref(module_path: "test.claim.doc_reachability_witness", decl_name: "doc_graph_registered_plan_roots_all_admitted"),
         },
       },
       prior_change_attribution: AttributionWithheld {
