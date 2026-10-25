@@ -91,7 +91,22 @@ data router_dev_pin_bundle_scaffold: Disposition = Scaffold {
   }
 }
 
-// THE FOUR DEBTS AS FRONTIER ROWS, each subject the declaration that carries it and each trigger bound to a
+// 5. HAND-WRITTEN SHELL IN THE FALSIFIER'S CONTAINERS. gunbc.instruments.router_proxy_falsifier starts the
+// fixture and the dev router with `sh -c` command strings (fixture_command, dev_router_command, built with
+// self_signed): mkdir, two openssl certificate mints, then exec openresty in the foreground. The words are
+// fixed literals with no caller input, but the and-list is shell semantics written as a string rather than a
+// modeled command. Dissolves when an and-list of argv commands has a production in the bash grammar rows
+// (extdeps.languages.bash), so the container command is emitted from argv nodes.
+data router_dev_falsifier_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.instruments.router_proxy_falsifier",
+    decl_name: "self_signed",
+    field: WholeDeclaration
+  }
+}
+
+// THE FIVE DEBTS AS FRONTIER ROWS, each subject the declaration that carries it and each trigger bound to a
 // declaration that does not exist yet, so gunbc.census_closure_frontier (where these rows are enrolled)
 // reports each as pending until its replacement lands. The S3 trigger names the plan's callout module
 // (plan gunbc.plans.fabric_serving_router S3, gunbc.serving.serving_router) and a declaration only that
@@ -116,5 +131,10 @@ data router_dev_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_location"),
     reason: "Pins as one trust bundle (row 4): verification checks membership in the pinned set, not each upstream's own pin.",
     dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instruments.router_proxy_falsifier", decl_name: "self_signed"),
+    reason: "Hand-written shell in the falsifier's container commands (row 5): mkdir, openssl and exec openresty joined as an sh -c and-list.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.languages.bash.grammar", decl_name: "bash_and_list_production"))
   ),
 ]

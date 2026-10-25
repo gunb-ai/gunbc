@@ -3,7 +3,7 @@ module gunbc.serving.router_dev_policy
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port }
 import std.measure { second }
-import gunbc.serving.router_proxy_config { router_request_body_limit }
+import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.proxy.openresty {
@@ -77,6 +77,7 @@ fn router_dev_access_lines() -> List<String> {
     "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then return refuse(401, 'authentication_error', 'invalid api key') end",
     "ngx.req.read_body()",
     "local raw = ngx.req.get_body_data()",
+    "if not raw then local f = ngx.req.get_body_file() if f then local h = io.open(f, 'rb') if h then raw = h:read('*a') h:close() end end end",
     "if not raw then return refuse(400, 'invalid_request_error', 'request body required') end",
     "local body = cjson.decode(raw)",
     "if type(body) ~= 'table' or type(body.model) ~= 'string' then return refuse(400, 'invalid_request_error', 'model required') end",
@@ -210,7 +211,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
       HttpBlock { body: [
         AccessLogOff,
         ClientMaxBodySize { size: router_request_body_limit() },
-        ClientBodyBufferSize { size: router_request_body_limit() },
+        ClientBodyBufferSize { size: router_request_body_buffer() },
         LuaSharedDict { name: dict, size: dict_size },
         LuaPhaseBlock { phase: InitPhase, lines: router_dev_init_lines(state_dir: site.state_dir, alias: site.alias) },
         ServerBlock { body: [

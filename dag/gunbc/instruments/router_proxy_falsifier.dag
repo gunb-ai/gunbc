@@ -273,8 +273,16 @@ fn dev_site() -> RouterDevSite {
   RouterDevSite { listen_address: "127.0.0.1", listen_port: 18445, state_dir: dev_state_dir(), alias: "flash-next" }
 }
 
+// The dev config, or the token it refused: a refusal is reported by name in dev_world_starts, never
+// replaced by an empty configuration.
+fn dev_config() -> RouterDevConfig { router_dev_config(site: dev_site()) }
+
 fn dev_text() -> String {
-  match router_dev_config(site: dev_site()) { RouterDevConfigRendered { text: t } => t RouterDevConfigRefused { token: _ } => "" }
+  match dev_config() { RouterDevConfigRendered { text: t } => t RouterDevConfigRefused { token: _ } => "" }
+}
+
+fn dev_refusal() -> String {
+  match dev_config() { RouterDevConfigRendered { text: _ } => "" RouterDevConfigRefused { token: k } => concat("dev config refused token ", k) }
 }
 
 // Four upstreams: a (HTTP), b (HTTPS, pinned), c (cap 0) and d (HTTPS, certificate outside the bundle).
@@ -422,6 +430,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let alias2 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
   let alias3 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
   let alias_other = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "m-b"), path: "/v1/chat/completions")
+  let dev_large = curl(arguments: ["-k", "-sS", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: big", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "https://127.0.0.1:18445/v1/chat/completions"])
   let dev_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
   let dev_stats_no_key = dev_get(key: "wrong", path: "/router/stats")
   let large = curl(arguments: ["-sS", "--max-time", "30", "-H", "x-case: large", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "http://127.0.0.1:18443/v1/x"])
@@ -449,7 +458,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "an_answer_with_a_port_above_65535_answers_503", held: contains(s: bad_port_high, p: "\n503 exit=0"), observed: bad_port_high),
     case_of(identity: "unreachable_authz_answers_503", held: contains(s: no_authz, p: "\n503 exit=0"), observed: no_authz),
     case_of(identity: "no_refusal_forwarded_or_fired_stream_end", held: contains(s: after_refusals, p: "ends=4 last=p-reset-alpha hits=4"), observed: after_refusals),
-    case_of(identity: "dev_world_starts", held: w5.success && w6.success && w7.success && dev_text() != "" && pinned.exit_code == 0 && started_dev == 0 && contains(s: dev_ready, p: "404"), observed: dev_ready),
+    case_of(identity: "dev_world_starts", held: dev_refusal() == "" && count(dev_upstreams()) == 3 && w5.success && w6.success && w7.success && dev_text() != "" && pinned.exit_code == 0 && started_dev == 0 && contains(s: dev_ready, p: "404"), observed: concat(dev_refusal(), dev_ready)),
     case_of(identity: "dev_red_wrong_client_key_answers_401", held: contains(s: dev_no_key, p: "\n401 exit=0"), observed: dev_no_key),
     case_of(identity: "dev_models_lists_both_models_and_the_alias", held: contains(s: dev_models, p: "m-a") && contains(s: dev_models, p: "m-b") && contains(s: dev_models, p: "flash-next") && contains(s: dev_models, p: "\n200 exit=0"), observed: dev_models),
     case_of(identity: "dev_routes_by_model_with_that_upstreams_key", held: contains(s: dev_a, p: "upstream=a auth=Bearer ka") && contains(s: dev_a, p: "\n200 exit=0"), observed: dev_a),
@@ -461,6 +470,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_red_bound_session_on_another_model_answers_409", held: contains(s: alias_other, p: "\n409 exit=0") && !contains(s: alias_other, p: "upstream="), observed: alias_other),
     case_of(identity: "a_body_over_1_mib_reaches_authz_and_the_upstream_byte_identically", held: contains(s: large, p: "same_body=true len=4139216") && contains(s: large, p: "\n200 exit=0"), observed: large),
     case_of(identity: "stream_end_fires_for_the_large_body", held: contains(s: after_large, p: "ends=5 last=p-large-nobody-4139216-") && contains(s: after_large, p: "hits=5"), observed: after_large),
+    case_of(identity: "dev_a_body_above_the_buffer_is_read_from_its_file", held: contains(s: dev_large, p: "\n400 exit=0") && contains(s: dev_large, p: "model required"), observed: dev_large),
     case_of(identity: "dev_stats_tally_each_status_and_upstream", held: contains(s: dev_stats, p: "\"status:401\":1") && contains(s: dev_stats, p: "\"status:429\":1") && contains(s: dev_stats, p: "\"status:502\":1") && contains(s: dev_stats, p: "\"upstream:a:200\":4") && contains(s: dev_stats, p: "\"active:a\":0"), observed: dev_stats),
     case_of(identity: "dev_red_stats_need_a_client_key", held: contains(s: dev_stats_no_key, p: "\n401 exit=0"), observed: dev_stats_no_key),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
@@ -508,6 +518,7 @@ fn falsifier_expected_identities() -> List<String> {
     "dev_red_bound_session_on_another_model_answers_409",
     "a_body_over_1_mib_reaches_authz_and_the_upstream_byte_identically",
     "stream_end_fires_for_the_large_body",
+    "dev_a_body_above_the_buffer_is_read_from_its_file",
     "dev_stats_tally_each_status_and_upstream",
     "dev_red_stats_need_a_client_key",
     "world_is_removed",
