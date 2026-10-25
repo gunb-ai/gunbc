@@ -194,6 +194,9 @@ type RosterRefusalReason
   // A `|>` whose right operand starts at the renamed call but extends past it: the call is not the pipe's target, so its
   // operand cannot be taken cleanly as slot 0.
   | RefusalRenamePipeOperandUnclean { call: String }
+  // A head relocation whose written text does not begin with the home name: the head occurrence would not be where the
+  // relocation says it is, so neither the planner nor the splice admits it.
+  | RefusalRelocationTextNotHeaded { call: String }
   // A RenameHead row whose companion import cannot be derived (the home, the callee, its declared return type, the
   // module that declares that type, or the type's variants did not read): a file whose renamed call it would govern
   // refuses rather than leaving the result matched by ambient tags that bind it untyped.
@@ -249,6 +252,7 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalEditsCoincide { at: a } => "edits-coincide at=" + int_to_decimal_string(value: a)
     RefusalRenameCallNamedArgument { call: c } => "rename-call-named-argument call=" + c
     RefusalRenamePipeOperandUnclean { call: c } => "rename-pipe-operand-unclean call=" + c
+    RefusalRelocationTextNotHeaded { call: c } => "relocation-text-not-headed call=" + c
     RefusalCompanionUnderivable { call: c, detail: d } => "companion-underivable call=" + c + " " + d
   }
 }
@@ -332,14 +336,13 @@ type RosterOutcome
 // whose authored label is the old parameter name gets the home's parameter name. One edit replaces exactly one label
 // token; the apply re-checks that the bytes at the extent are still `from`.
 // THE ONE TYPED FACT OF A PIPE SITE'S HEAD (agreed with wise-moth-707 and tidy-ant-251 for #15083 RelocateHeadStep): the edit
-// carrying it removes exactly the base head (`from`, at head_at), and the splice writes `inserted` at insert_at -- the only
-// write at that offset -- whose first len(to) bytes are the head occurrence `to` and the rest a plain insertion.
+// carrying it removes exactly the base head (its own start and `from`, not restated here), and the splice writes `text` at
+// insert_at -- the only write at that offset -- whose first len(to) bytes are the head occurrence `to` and the rest a plain
+// insertion. `text` begins with `to` or the relocation is not admitted (roster_relocation_admitted, a typed refusal).
 type RosterHeadRelocation {
-  head_at: Int
-  from: String
   insert_at: Int
+  text: String
   to: String
-  inserted: String
 }
 
 type RosterLabelEdit {
@@ -861,11 +864,35 @@ fn roster_expand_relocation_step(acc: List<RosterLabelEdit>, e: RosterLabelEdit)
   match e.relocation {
     Absent => list_snoc_item(xs: acc, item: e)
     Present { value: r } =>
-      list_snoc_item(xs: list_snoc_item(xs: acc, item: RosterLabelEdit { start: e.start, end: e.end, from: e.from, to: e.to, relocation: Absent }), item: RosterLabelEdit { start: r.insert_at, end: r.insert_at, from: "", to: r.inserted, relocation: Absent })
+      list_snoc_item(xs: list_snoc_item(xs: acc, item: RosterLabelEdit { start: e.start, end: e.end, from: e.from, to: e.to, relocation: Absent }), item: RosterLabelEdit { start: r.insert_at, end: r.insert_at, from: "", to: r.text, relocation: Absent })
+  }
+}
+
+// THE RELOCATION INVARIANT, one predicate for the planner and the splice: the written text begins with the home name.
+fn roster_relocation_text_headed(text: String, to: String) -> Bool {
+  (to != "") && starts_with(s: text, prefix: to)
+}
+
+fn roster_relocations_admitted(edits: List<RosterLabelEdit>) -> Bool {
+  fold_list(xs: edits, empty: true, cons: fn(ok, e) { ok && roster_relocation_edit_admitted(e: e) })
+}
+
+fn roster_relocation_edit_admitted(e: RosterLabelEdit) -> Bool {
+  match e.relocation {
+    Absent => true
+    Present { value: r } => roster_relocation_text_headed(text: r.text, to: r.to)
   }
 }
 
 fn roster_label_splices(before: String, edits: List<RosterLabelEdit>) -> RosterApplied {
+  if !roster_relocations_admitted(edits: edits) {
+    RosterApplyRefused { reason: RefusalRelocationTextNotHeaded { call: "*" } }
+  } else {
+    roster_label_splices_admitted(before: before, edits: edits)
+  }
+}
+
+fn roster_label_splices_admitted(before: String, edits: List<RosterLabelEdit>) -> RosterApplied {
   let octets = bytes_octets(b: utf8_encode_bytes(s: before))
   fold_list(
     xs: list_reverse(xs: roster_expand_relocations(edits: edits)),
@@ -1541,8 +1568,10 @@ fn roster_rename_pipe_edit(text: String, head: Node, spans: SpanIndex, row: Rost
                 Present { value: paren } =>
                   if paren != "(" {
                     LabelsAmbiguous
+                  } else if !roster_relocation_text_headed(text: to + "(" + label0 + ": ", to: to) {
+                    LabelsRenameRefused { reason: RefusalRelocationTextNotHeaded { call: row.call } }
                   } else {
-                    let relocation = RosterLabelEdit { start: hr.start, end: hr.end, from: row.call, to: "", relocation: Present { value: RosterHeadRelocation { head_at: hr.start, from: row.call, insert_at: left.start, to: to, inserted: to + "(" + label0 + ": " } } }
+                    let relocation = RosterLabelEdit { start: hr.start, end: hr.end, from: row.call, to: "", relocation: Present { value: RosterHeadRelocation { insert_at: left.start, text: to + "(" + label0 + ": ", to: to } } }
                     let drop_connector = RosterLabelEdit { start: left.end, end: hr.start, from: connector, to: "", relocation: Absent }
                     match list_head(xs: slots) {
                       // `lhs |> call()`: the head's `(` goes, its `)` closes the rewritten call.
@@ -2632,6 +2661,29 @@ fn roster_control_edits_disjoint() -> String {
     + roster_edits_disjoint_expect(name: "edits-insert-inside-replacement", edits: [roster_edit_replace(start: 2, end: 9), roster_edit_insert(at: 5)], want: "edits-overlap start=5 end=5 covered-to=9")
     + roster_edits_disjoint_expect(name: "edits-rename-shape", edits: [roster_edit_insert(at: 3), roster_edit_replace(start: 3, end: 10), roster_edit_insert(at: 11), roster_edit_insert(at: 15)], want: "")
     + roster_edits_disjoint_expect(name: "edits-adjacent-replacements", edits: [roster_edit_replace(start: 0, end: 4), roster_edit_replace(start: 4, end: 8)], want: "")
+    // THE PIPE SITE'S THREE EDITS are half-open neighbours: the connector [l, h) ends where the relocated head [h, h+n) starts,
+    // which ends where the paren [h+n, h+n+1) starts. Adjacency is admitted; an overlap of one byte refuses.
+    + roster_edits_disjoint_expect(name: "edits-pipe-three-adjacent", edits: [roster_edit_replace(start: 2, end: 6), roster_edit_replace(start: 6, end: 13), roster_edit_replace(start: 13, end: 14)], want: "")
+    + roster_edits_disjoint_expect(name: "edits-connector-overlaps-head-by-one", edits: [roster_edit_replace(start: 2, end: 7), roster_edit_replace(start: 6, end: 13)], want: "edits-overlap start=6 end=13 covered-to=7")
+    + roster_relocation_splice_controls()
+}
+
+// THE RELOCATION AT THE SPLICE: a head relocation whose text begins with the home name applies (head removed, text written at
+// insert_at, operands untouched); one whose text does not refuses typed.
+fn roster_relocation_splice_controls() -> String {
+  let before = "m |> map_get(k)"
+  let good = [RosterLabelEdit { start: 5, end: 12, from: "map_get", to: "", relocation: Present { value: RosterHeadRelocation { insert_at: 0, text: "map_lookup(m: ", to: "map_lookup" } } }, RosterLabelEdit { start: 1, end: 5, from: " |> ", to: "", relocation: Absent }, RosterLabelEdit { start: 12, end: 13, from: "(", to: ", key: ", relocation: Absent }]
+  let bad = [RosterLabelEdit { start: 5, end: 12, from: "map_get", to: "", relocation: Present { value: RosterHeadRelocation { insert_at: 0, text: "(m: map_lookup", to: "map_lookup" } } }]
+  let sorted = list_sort_by_key(xs: good, key: roster_label_edit_order_key, order: int_total_order())
+  let good_text = match roster_label_splices(before: before, edits: sorted) {
+    RosterApplyWritten { content: c } => if c == "map_lookup(m: m, key: k)" { "" } else { "CONTROL-FAIL relocation-splice: wrote " + c + "\n" }
+    RosterApplyRefused { reason: r } => "CONTROL-FAIL relocation-splice: refused " + roster_refusal_text(reason: r) + "\n"
+  }
+  let bad_text = match roster_label_splices(before: before, edits: bad) {
+    RosterApplyRefused { reason: r } => if roster_refusal_text(reason: r) == "relocation-text-not-headed call=*" { "" } else { "CONTROL-FAIL relocation-text-not-headed: refused " + roster_refusal_text(reason: r) + "\n" }
+    RosterApplyWritten { content: c } => "CONTROL-FAIL relocation-text-not-headed: wrote " + c + "\n"
+  }
+  good_text + bad_text
 }
 
 fn roster_edit_insert(at: Int) -> RosterLabelEdit {
@@ -3631,6 +3683,6 @@ fn roster_one_companion(c: RosterCompanion, parse_root: Node, spans: SpanIndex, 
 fn roster_rename_controls_report() -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
-    Accepted { value: prepared, diagnostics: _ } => roster_rename_controls(prepared: prepared, lex: dag_prepared_lex())
+    Accepted { value: prepared, diagnostics: _ } => roster_rename_controls(prepared: prepared, lex: dag_prepared_lex()) + roster_control_edits_disjoint()
   }
 }
