@@ -29,7 +29,8 @@ fn worktree_claim_slots_path(instance: HostDashboardInstance) -> NonEmptyStr {
 // file builds it in one place, worktree_claim_store, which takes the instance and NOTHING ELSE: the root is
 // derived here from worktree_claim_slots and that instance (worktree_claim_slots_path), the directory is
 // listed (Filesystem.List), and only a listed directory yields a store. No function
-// anywhere takes a path and answers a claim store, so a module holding a literal path has no route to one;
+// takes a path and answers a claim store directly, but the instance itself is buildable over any root
+// (isolated_dashboard_instance), so a literal path DOES reach a claim store through it (declared residual route 3);
 // spelling one (literal or cast) is a SoleConstructorViolation. The claim domain
 // (gunbc.roadmap.roadmap_attempt_worktree_claim) takes this type. A holder uses the slot operations through
 // gunbc.compute.attempt_lifecycle; the root is a field of the SlotStore it holds and field reads are not
