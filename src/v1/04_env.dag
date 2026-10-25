@@ -2101,7 +2101,15 @@ fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv
         Absent =>
           match parameterized_alias_of_declaration(item_ref: d, source_indices: source_indices, env: env) {
             Absent => Present { value: SettledType { head: d, args: n.children } }
-            Present { value: pa } => settled_parameterized_alias(alias: pa, use_args: n.children, source_indices: source_indices, env: env, fuel: fuel)
+            // A use site the alias cannot be substituted at (arity unequal, a bare reference included) settles to the alias's own
+            // declaration, exactly as before parameterized aliases settled at all. Answering none here turned every bare `List` into
+            // an unrecovered reading (v1.compiler.infer optional_declaration_reading -> OptionalUnrecovered, five new refusals on the
+            // srv1 census); a head that is the alias, not its target, still disagrees with the target at a join.
+            Present { value: pa } =>
+              match settled_parameterized_alias(alias: pa, use_args: n.children, source_indices: source_indices, env: env, fuel: fuel) {
+                Present { value: through } => Present { value: through }
+                Absent => Present { value: SettledType { head: d, args: n.children } }
+              }
           }
         Present { value: rhs } => settled_alias_rhs(rhs: rhs, source_indices: source_indices, env: env, fuel: fuel)
       }
@@ -2114,8 +2122,8 @@ fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv
 // and a `Map<K, V>` beside a `FinitelySupportedFunction<K, V>` fell to the name comparison (the v2.std.compilers.lexing joins). The
 // item is read from the symbol index by its exact module path, as alias_rhs_of_declaration reads one; its right-hand side's head is
 // the declaration its spelling names in the alias's own module, never the asking module's. Substitution is exact: the use-site arity
-// must equal the alias's parameter count, otherwise the type does not settle (fail closed; the arity refusal itself is
-// v1.compiler.infer alias_chain_arity_diagnostics), and no parameter is defaulted or partially bound.
+// must equal the alias's parameter count, otherwise the alias does not settle THROUGH to its target and its own declaration is the
+// head (the arity refusal itself is v1.compiler.infer alias_chain_arity_diagnostics); no parameter is defaulted or partially bound.
 type ParameterizedAlias {
   params: List<String>
   rhs: Node
