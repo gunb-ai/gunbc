@@ -445,8 +445,20 @@ test fn the_handin_wake_watches_its_own_attempt_and_is_bound_to_the_worker() -> 
   }
 }
 
+// The request names THIS instance's binary: claim_request names the lab's, which the live instance's admission
+// refuses (ExecStart program is not the instance gunbc binary), and a refused start has no words to judge.
+fn instance_request(instance: HostDashboardInstance) -> AttemptSystemUnitStartRequest {
+  AttemptSystemUnitStartRequest {
+    node_id: "n1",
+    attempt_key: "k1",
+    granted: kibibyte(count: 1),
+    inner_argv: [instance.serve_binary as String, "run"],
+    nonce: "n",
+  }
+}
+
 fn worker_start_words(instance: HostDashboardInstance) -> List<String> {
-  match attempt_system_unit_start_facts_for_request(instance: instance, request: claim_request(node_id: "n1", attempt_key: "k1")) {
+  match attempt_system_unit_start_facts_for_request(instance: instance, request: instance_request(instance: instance)) {
     AttemptSystemUnitStartUnderivable { reason: _ } => []
     AttemptSystemUnitStartDerived { facts } =>
       match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
