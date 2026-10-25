@@ -8,7 +8,7 @@ import extdeps.crypto.hash { sha256_digest }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet.printer_job_monitor { JobRunning, JobCompletedAwaitingInspection, JobPaused, JobFailed, JobUnresolved }
 import gunbc.fleet.print_request {
-  PrintRequest, PrintRequestRecord, print_attempt_id, record_matches,
+  PrintRequest, PrintRequestRecord, print_attempt_id, record_matches, completion_text, completion_matches,
   PrintEvidence, NoRequestRecord, RecordedNotClaimed, ClaimedObserved, CompletionRecorded,
   print_standing, print_action, PrintAction, Prepare, RequestBedClearThenStart, RecordCompletion, ObserveOnly, Stop,
 }
@@ -77,4 +77,22 @@ test fn a_mismatched_completion_record_needs_attention() -> Bool {
 // The first pass of a request prepares and does nothing else.
 test fn an_unrecorded_request_only_prepares() -> Bool {
   match print_action(s: print_standing(evidence: NoRequestRecord)) { Prepare => true _ => false }
+}
+
+fn ring_record() -> PrintRequestRecord {
+  let r = request(id: "ring-1", root: "a16-plug-fit-ring")
+  PrintRequestRecord { request: r, source_revision: "rev", artifact_sha256: artifact(), artifact_location: "/x/plate.3mf", attempt_id: print_attempt_id(request: r, artifact_sha256: artifact()) }
+}
+fn ring_remote() -> NonEmptyStr { remote_name_for_attempt(content: sha256_digest(hex: artifact().hex as NonEmptyStr), attempt: ring_record().attempt_id) }
+fn report(state: String, job: String) -> String { join(["{\"print\":{\"gcode_state\":\"", state, "\",\"print_error\":0,\"gcode_file\":\"\",\"subtask_name\":\"", job, "\"}}"], "") }
+
+// A completion record is accepted only while the report it retains still decodes as THIS job
+// finished: the same identity envelope around a RUNNING, IDLE or other-job report is a mismatch.
+test fn a_completion_record_must_retain_the_report_that_proved_it() -> Bool {
+  let rec = ring_record()
+  let remote = ring_remote()
+  completion_matches(text: completion_text(record: rec, remote: remote, run_id: "1", report: report(state: "FINISH", job: remote as String)), record: rec, remote: remote) &&
+  !completion_matches(text: completion_text(record: rec, remote: remote, run_id: "1", report: report(state: "RUNNING", job: remote as String)), record: rec, remote: remote) &&
+  !completion_matches(text: completion_text(record: rec, remote: remote, run_id: "1", report: report(state: "IDLE", job: remote as String)), record: rec, remote: remote) &&
+  !completion_matches(text: completion_text(record: rec, remote: remote, run_id: "1", report: report(state: "FINISH", job: "another-job.3mf")), record: rec, remote: remote)
 }
