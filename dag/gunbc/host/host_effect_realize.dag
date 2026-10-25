@@ -89,7 +89,7 @@ import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import gunbc.host_command_binding { admitted_scratch_path }
-import gunbc.managed_directory { managed_directory_admit, managed_directory_permissions, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
+import gunbc.managed_directory { managed_directory_admit, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
 import gunbc.auth.approval_broker_state_directories { approval_broker_state_directories }
 import gunbc.fleet.fleet_posix_accounts { GroundedPosixPrincipal, grounded_posix_principal_name, fleet_rm_binary_path, fleet_posix_nologin_shell_path }
 import gunbc.live_deploy.spec {
@@ -6910,8 +6910,7 @@ fn approval_broker_dark_install(
 fn dark_state_directory_leg(d: ManagedDirectory) -> DarkLeg {
   DarkLegArgv {
     step: DarkStepDeviceStore,
-    command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
-      mode: managed_directory_permissions(d: d).mode, owner: d.owner.name, group: d.group_principal.name, path: d.path as String)),
+    command: sudo_elevate_command(command: broker_state_directory_install_argv(d: d)),
   }
 }
 
