@@ -29,7 +29,7 @@ import gunbc.auth.heal_publisher_federation {
 }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
 import gunbc.auth.github_apps { gunbai_bot_app_pem_secret }
-import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user }
+import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user, role_iam_service_account_token_creator }
 
 // ONE-TIME PROVISIONING OF THE PUBLISHER'S OWN IDENTITY, run by an operator with a control-plane
 // token (gunbc.auth.access_token_source secret_access_token_path_env). It handles no key material at
@@ -62,8 +62,15 @@ fn rest_refusal_text(o: RestRefusal) -> String {
 // binding would hand the account to unreviewed code -- and a run gains the account only through a
 // time-conditioned cell naming that run's id, written after the operator approves that exact run
 // (gunbc.auth.branch_run_grant).
+//
+// A DELEGATING federation binds its pool standing too, but as token creator rather than workload
+// identity user, because its account is the first link of a delegation chain and not the identity the
+// run acts as: GenerateAccessToken with delegates needs iam.serviceAccounts.implicitDelegation on the
+// first delegate, which roles/iam.workloadIdentityUser does not carry. The account's own reach is the
+// next link, written on the target's policy (gunbc.review_sheet_federation is the one inhabitant).
 type FederationImpersonation
   = StandingPoolImpersonation { principal_set: String }
+  | StandingPoolDelegation { principal_set: String }
   | RunScopedImpersonation
 
 type DedicatedFederation {
@@ -140,6 +147,7 @@ fn standing_impersonation_cell(principal_set: String) -> GcpIamBindingCell {
 fn impersonation_cells(f: DedicatedFederation) -> List<GcpIamBindingCell> {
   match f.impersonation {
     StandingPoolImpersonation { principal_set: ps } => [standing_impersonation_cell(principal_set: ps)]
+    StandingPoolDelegation { principal_set: ps } => [GcpIamBindingCell { role: role_iam_service_account_token_creator, member: ps, condition: none }]
     RunScopedImpersonation => []
   }
 }
@@ -147,6 +155,7 @@ fn impersonation_cells(f: DedicatedFederation) -> List<GcpIamBindingCell> {
 fn standing_principal_set(f: DedicatedFederation) -> String? {
   match f.impersonation {
     StandingPoolImpersonation { principal_set: ps } => Present { value: ps }
+    StandingPoolDelegation { principal_set: ps } => Present { value: ps }
     RunScopedImpersonation => none
   }
 }

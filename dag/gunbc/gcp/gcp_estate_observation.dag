@@ -52,6 +52,8 @@ data gunbai_auto_lifecycle_state: String = "ACTIVE"
 
 data role_iam_workload_identity_user: String = "roles/iam.workloadIdentityUser"
 
+data role_iam_service_account_token_creator: String = "roles/iam.serviceAccountTokenCreator"
+
 data legacy_federated_repo: String = "gunb-ai/gunb.ai"
 
 type GcpEstateSubject
@@ -900,6 +902,30 @@ data gunbai_auto_project_id: GcpProjectId = "gunbai-auto"
 data gunbai_sheets_project_id: GcpProjectId = "gunbai-sheets"
 
 data review_sheet_writer_sa_email: ServiceAccountEmail = "review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com"
+
+// THE WRITER'S ONE DECLARED IMPERSONATION GRANT. The automated converge (gunbc.review_sheet_federation)
+// federates to review-sheet-converge in the fleet project and mints the writer's token by delegation,
+// which needs exactly this cell on the writer's own policy. It is DECLARED here, beside the writer,
+// and is not yet OBSERVED: no estate read has captured the writer's policy, so the gap below stands
+// until one does. Every converge run reads it back by minting -- a refused delegation stops the run
+// before any sheet is touched -- but a mint is evidence the cell admits, not a policy listing, so it
+// does not discharge the gap.
+data review_sheet_converge_sa_email: ServiceAccountEmail = "review-sheet-converge@gunbai-secrets.iam.gserviceaccount.com"
+
+data review_sheet_writer_delegation_cell: GcpEstateSubject = EstateIamBindingCell {
+  account: review_sheet_writer_sa_email,
+  role: role_iam_service_account_token_creator,
+  member: Present { value: concat("serviceAccount:", review_sheet_converge_sa_email as String) },
+}
+
+data gap_review_sheet_writer_delegation: EstateCoverageGap = EstateCoverageGap {
+  subject_identity: "review-sheet-writer@gunbai-sheets/roles/iam.serviceAccountTokenCreator/review-sheet-converge" as NonEmptyStr,
+  cause: "the writer's policy has not been read; whether its one declared tokenCreator cell for review-sheet-converge is present, and whether any other member holds tokenCreator or workloadIdentityUser on it, is unobserved",
+  discharge: "gcloud iam service-accounts get-iam-policy review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com --project=gunbai-sheets, transcribed as an observed binding row; the converge run's writer-token mint shows only that the cell admits",
+  trusting_accounts: [review_sheet_writer_sa_email],
+  trusting_role: Present { value: role_iam_service_account_token_creator },
+  federated_repo: Absent,
+}
 
 data gunb_ci_project_id: GcpProjectId = "gunb-ci"
 
