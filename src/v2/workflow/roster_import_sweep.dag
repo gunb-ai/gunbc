@@ -1446,9 +1446,36 @@ fn roster_rename_call_edits(text: Optional<String>, parse_root: Node, head: Node
     NotPiped => roster_rename_direct_call_edits(head: head, spans: spans, row: row, to: to, positional: positional)
     PipeOperandUnclean => LabelsRenameRefused { reason: RefusalRenamePipeOperandUnclean { call: row.call } }
     PipedFrom { left: lr, call: cr } =>
-      match text {
-        Absent => LabelsSelected { edits: [] }
-        Present { value: t } => roster_rename_pipe_edit(text: t, head: head, spans: spans, row: row, to: to, positional: positional, left: lr, call: cr)
+      // Arity and labels are read without the text, so the import pass refuses a bad pipe site exactly as the label pass
+      // would; only the edit itself waits for the text.
+      match roster_pipe_site_refusal(head: head, row: row, positional: positional) {
+        Present { value: r } => LabelsRenameRefused { reason: r }
+        Absent =>
+          match text {
+            Absent => LabelsSelected { edits: [] }
+            Present { value: t } => roster_rename_pipe_edit(text: t, head: head, spans: spans, row: row, to: to, positional: positional, left: lr, call: cr)
+          }
+      }
+  }
+}
+
+fn roster_pipe_site_refusal(head: Node, row: RosterHeadRow, positional: List<String>) -> Optional<RosterRefusalReason> {
+  let slots = dag_call_direct_arg_slots(node: head)
+  if length(xs: slots) + 1 != length(xs: positional) {
+    Present { value: RefusalRenameCallArity { call: row.call } }
+  } else {
+    fold_list(xs: roster_zip_slots(slots: slots, labels: roster_drop_first(xs: positional)), empty: Absent, cons: fn(acc, pair) { roster_pipe_label_refusal(acc: acc, pair: pair, call: row.call) })
+  }
+}
+
+fn roster_pipe_label_refusal(acc: Optional<RosterRefusalReason>, pair: RosterSlotLabel, call: String) -> Optional<RosterRefusalReason> {
+  match acc {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      match pair.slot {
+        Absent => Absent
+        Present { value: arg } =>
+          if roster_arg_is_named(arg: arg) && !roster_named_arg_label_is(arg: arg, label: pair.label) { Present { value: RefusalRenameCallNamedArgument { call: call } } } else { Absent }
       }
   }
 }
