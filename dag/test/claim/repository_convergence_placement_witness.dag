@@ -55,6 +55,7 @@ import gunbc.live_deploy.repository_convergence_placement {
   convergence_operands_for,
   convergence_principal_admission,
   convergence_readback_holds,
+  convergence_readback_line,
   convergence_readback_of_text_bound,
   read_convergence_receipt_bound,
   repository_convergence_readback_wet,
