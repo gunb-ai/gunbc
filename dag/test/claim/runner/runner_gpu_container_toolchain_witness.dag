@@ -30,11 +30,10 @@ module test.claim.runner.runner_gpu_container_toolchain_witness
 
 import std.logic { Bool }
 import std.types { NonEmptyStr }
-import std.algebra { trim }
+import std.algebra { trim, string_contains }
 
-import gunbc.runner.runner_host_deploy {
-  runner_host_gpu_container_toolchain_provision_script,
-}
+import product.host_identity { HostIdentity }
+
 import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
@@ -44,9 +43,36 @@ import gunbc.runner.runner_gpu_container_toolchain {
   GpuContainerArmOk, GpuContainerArmMissing, GpuContainerArmUnobserved,
   GpuContainerToolchainReadback,
   runner_gpu_container_toolchain_ready,
+  runner_gpu_container_toolchain_host_ready,
   GpuDockerLabelsOutcome,
   GpuDockerLabelsGranted, GpuDockerLabelsRevoked, GpuDockerLabelsFailed,
   gpu_docker_labels_outcome_holds,
+  gpu_container_provision_nvidia_actions_for,
+  gpu_container_provision_plan_has_refusal,
+  gpu_container_provision_plan_step_names,
+  gpu_container_provision_plan_check_count,
+  gpu_container_provision_step_names_include,
+  GpuContainerProvisionCheck,
+  VerifyKeyringFingerprint,
+  gpu_container_provision_check_verdict,
+  GpuContainerProvisionStep,
+  GpuContainerProvisioned, GpuContainerProvisionRefused, GpuContainerProvisionSkipped,
+  gpu_container_subordinate_integrity_holds,
+  gpu_container_provision_subuid_verify_step,
+  gpu_container_provision_subgid_verify_step,
+  GpuBrowserReadyObservation,
+  BrowserReadyHeld, BrowserReadyAbsent, BrowserReadyUnobservable,
+  gpu_docker_labels_resolve_browser_grant,
+  GpuBrowserReadyGrant,
+  BrowserGrantAllowed, BrowserGrantUndetermined,
+}
+
+import gunbc.runner.runner_registration_labels {
+  runner_gpu_docker_ready_registration_labels,
+  RunnerRegistrationLabelsResolution,
+  RegistrationLabelsResolved, RegistrationLabelsRefused,
+  gunbc_gpu_docker_label,
+  gunbc_browser_ready_label,
 }
 
 import extdeps.shadow.subordinate_ids {
@@ -335,54 +361,347 @@ test fn the_plan_refuses_when_the_displaceable_account_has_a_store() -> Bool {
   }
 }
 
-// ── THE REPO-INSTALL BODY IS NEVER FABRICATED ────────────────────────────────────────────────
+// ── THE NVIDIA REPO INSTALL IS NEVER FABRICATED ──────────────────────────────────────────────
 //
-// Review 86284 caught a real hole here, and the hole was of the kind a comment cannot prevent:
-// gpu_container_provision_toolkit_body returned the empty string for a host with no declared
-// provision script, and an empty file is a VALID shell script — `sh` reads it, runs nothing, exits
-// 0. So the converge would have reported "nvidia repo install: ok", continued, and surfaced the gap
-// only at the read-back, where the cause reads as a missing package rather than as a body that was
-// never assembled. The fix returns the honest Absent and turns it into a refusal, but the property
-// that matters is the one an empty string would violate, and it has to be claimed rather than
-// commented: NO HOST IS EVER HANDED A BODY THAT IS PRESENT BUT EMPTY.
-// Both halves are needed. Asserting only "srv3 gets a body" would pass on an implementation that
-// returned "" for every host. Asserting only "srv2 gets nothing" would pass on an implementation
-// that returned "" for srv2 — which is exactly the bug. So: the Desired hosts answer with a body
-// that has bytes in it, and the not-Desired hosts answer Absent, never the empty string.
+// Review 86284 caught a hole of the kind a comment cannot prevent, and review 86305/86314 then removed the
+// shell it lived in. The first version assembled the installer as a String and returned the empty string
+// for a host with no declared row — and an empty file is a VALID shell script, `sh` reads it, runs nothing,
+// exits 0, so the converge reported "nvidia repo install: ok". The fix was three-layered: the host row is
+// read as typed data, absence becomes a refusal naming the host, and the executor independently refuses an
+// empty body at the choke point where a body becomes a file.
+//
+// THE PROPERTY OUTLIVES BOTH FIXES, so it is claimed here rather than commented, and it now has a stricter
+// form: an action list can be fabricated too. An empty list would reach the fold as "nothing needed doing"
+// and read as success exactly as an empty script did, so a host the model does not describe must produce a
+// REFUSAL, not a shorter plan. And the Desired side has to produce the steps the trust argument depends on:
+// counting actions is not enough, because the step that can vanish without anything downstream noticing is
+// the fingerprint check — remove it and the fetch still "succeeds", the dearmor still writes to the system
+// keyring path, and the host ends up trusting unverified bytes.
+//
+// Both halves are needed. Asserting only "srv3 gets actions" would pass on an implementation that returned
+// [] for every host. Asserting only "srv2 gets a refusal" would pass on an implementation that refused
+// everyone.
 
+// THE POSITIVE HALF: each host that declares the toolchain gets a real plan, and that plan contains the
+// verification the trust argument rests on plus the sources file whose content is the model's own rendering.
+test fn a_desired_host_gets_repo_actions_including_the_keyring_check() -> Bool {
+  let a1 = gpu_container_provision_nvidia_actions_for(host: operator_host_srv1)
+  let a3 = gpu_container_provision_nvidia_actions_for(host: operator_host_srv3)
+  if length(a1) == 0 || length(a3) == 0 {
+    false
+  } else {
+    let steps1 = gpu_container_provision_plan_step_names(actions: a1)
+    let steps3 = gpu_container_provision_plan_step_names(actions: a3)
+    // No refusal may hide in a Desired host's plan, and the checks must actually be there.
+    !gpu_container_provision_plan_has_refusal(actions: a1)
+      && !gpu_container_provision_plan_has_refusal(actions: a3)
+      && gpu_container_provision_plan_check_count(actions: a1) > 0
+      && gpu_container_provision_plan_check_count(actions: a3) > 0
+      && gpu_container_provision_step_names_include(names: steps1, wanted: "nvidia keyring fingerprint verified")
+      && gpu_container_provision_step_names_include(names: steps3, wanted: "nvidia keyring fingerprint verified")
+      && gpu_container_provision_step_names_include(names: steps1, wanted: "nvidia apt sources")
+      && gpu_container_provision_step_names_include(names: steps3, wanted: "apt index refresh")
+  }
+}
 
-// THE POSITIVE HALF: each host that declares the toolchain gets a body with real content in it —
-// not the empty string. The marker is something only a real installer carries (the keyring is
-// dearmored into the keyring path), so a body that merely exists but installs nothing fails here.
-test fn a_desired_host_gets_a_non_empty_repo_install_body() -> Bool {
-  let b1 = runner_host_gpu_container_toolchain_provision_script(host: operator_host_srv1)
-  let b3 = runner_host_gpu_container_toolchain_provision_script(host: operator_host_srv3)
-  match b1 {
+// THE NEGATIVE HALF, WHICH IS THE ORIGINAL BUG IN ITS NEW DRESSING: a host the model does not certify for
+// this toolchain must answer with a REFUSAL that names the host — never an empty list (which the fold reads
+// as "nothing to do", the same false green the empty script produced) and never any install step.
+//
+// All three non-Desired arms are exercised, because the old code collapsed them into ONE answer (`Absent`)
+// and that collapse was half the defect: an unmeasured host and a host with no row at say very different
+// things about what an operator should do next, and a refusal that cannot tell them apart cannot be acted
+// on. srv2 and srv4 carry UNMEASURED rows (a row exists; nobody has read the host); srv9 carries no row at
+// all. Each must refuse, name itself, and — the part that makes this a real refusal rather than a
+// relabelled install — name no keyring, since a refusal that also describes fetching a key is a plan in
+// disguise.
+test fn an_uncertified_host_is_refused_by_every_non_desired_arm() -> Bool {
+  match refusal_cause_for(host: operator_host_srv2) {
     Absent => false
-    Present { value: v1 } =>
-      if trim(s: v1) == "" {
+    Present { value: c2 } =>
+      if !string_contains(s: c2, pattern: "srv2") || !string_contains(s: c2, pattern: "UNMEASURED") {
         false
       } else {
-        match b3 {
+        match refusal_cause_for(host: operator_host_srv9) {
           Absent => false
-          Present { value: v3 } =>
-            trim(s: v3) != ""
-              && string_contains(s: v1, pattern: "keyring")
-              && string_contains(s: v3, pattern: "keyring")
+          Present { value: c9 } =>
+            if !string_contains(s: c9, pattern: "srv9") || !string_contains(s: c9, pattern: "no GPU container toolchain row") {
+              false
+            } else {
+              // A refusal must not smuggle in the install it is refusing.
+              !string_contains(s: c2, pattern: "keyring")
+                && !string_contains(s: c9, pattern: "keyring")
+            }
           }
       }
   }
 }
 
-// THE NEGATIVE HALF, WHICH IS THE BUG ITSELF: a host that does not declare the toolchain must answer
-// Absent. Returning Present{""} here would be indistinguishable from the fix at the call site only
-// until the moment it staged an empty installer and called it success.
-test fn a_host_without_the_toolchain_declared_answers_absent_not_empty() -> Bool {
-  match runner_host_gpu_container_toolchain_provision_script(host: operator_host_srv2) {
-    Absent => match runner_host_gpu_container_toolchain_provision_script(host: operator_host_srv4) {
-      Absent => true
-      Present { value: v4 } => false
-    }
-    Present { value: v2 } => false
+// ONE ACTION, OR NOTHING — the shape check that sits next to the wording check. A refusal is exactly one
+// action of type ProvisionRefusal; anything else (an empty list, or a list carrying a leg alongside the
+// refusal) is the fabrication in a different form, because the fold would then run something.
+fn refusal_cause_for(host: HostIdentity) -> String? {
+  let actions = gpu_container_provision_nvidia_actions_for(host: host)
+  match actions.first() {
+    Absent => Absent
+    Present { value: ProvisionRefusal { step: _, cause: c } } =>
+      if length(actions) == 1 { Present { value: c } } else { Absent }
+    Present { value: _ } => Absent
   }
+}
+
+// THE FINGERPRINT DECISION ITSELF, AS DATA — the arm that replaced `… | grep -q <fingerprint> || exit 1`
+// inside a shell string. Three cases, because a check that only ever sees success is not a check: the
+// pinned key's real colon record (MEASURED on srv1 2026-10-25, byte-for-byte) passes; the same record with
+// the fingerprint altered refuses; and output with no fpr record at all refuses. The second case is the one
+// a substring shortcut would get wrong for the wrong reason, and the third is the case that would pass
+// silently if "no output" were treated as "nothing to complain about".
+test fn the_keyring_fingerprint_check_accepts_the_pinned_key_and_refuses_everything_else() -> Bool {
+  let pinned = "C95B321B61E88C1809C4F759DDCAE044F796ECB0"
+  let good = "pub:-:1024:1:0000000000000000:1600000000:::::::::\n"
+    + "fpr:::::::::C95B321B61E88C1809C4F759DDCAE044F796ECB0:\n"
+    + "sub:-:2048:1:1111111111111111:1600000001:::::::::\n"
+    + "fpr:::::::::AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n"
+  let wrong = "pub:-:1024:1:0000000000000000:1600000000:::::::::\n"
+    + "fpr:::::::::AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n"
+  let no_fpr = "pub:-:1024:1:0000000000000000:1600000000:::::::::\n"
+  // The pinned key must be accepted even though it is NOT the first fpr record in the keyring: a keyring
+  // holds a primary and its subkeys, and first-record-only would refuse a good key.
+  match gpu_container_provision_check_verdict(check: VerifyKeyringFingerprint { keyring_path: "/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg", expected_fingerprint: pinned }, job_user: "ghrunner" as NonEmptyStr, stdout: good) {
+    Absent =>
+      match gpu_container_provision_check_verdict(check: VerifyKeyringFingerprint { keyring_path: "/k", expected_fingerprint: pinned }, job_user: "ghrunner" as NonEmptyStr, stdout: wrong) {
+        Present { value: w } =>
+          if !string_contains(s: w, pattern: "NvidiaKeyringFingerprintRefusal") {
+            false
+          } else {
+            match gpu_container_provision_check_verdict(check: VerifyKeyringFingerprint { keyring_path: "/k", expected_fingerprint: pinned }, job_user: "ghrunner" as NonEmptyStr, stdout: no_fpr) {
+              Present { value: n } => string_contains(s: n, pattern: "NvidiaKeyringFingerprintRefusal")
+              Absent => false
+            }
+          }
+        Absent => false
+      }
+    // The accepted key must produce NO refusal: a verdict that reports a problem with the good keyring
+    // is the false-refusal direction, and it fails this witness as loudly as a false acceptance would.
+    Present { value: _ } => false
+  }
+}
+
+// ── SUBORDINATE INTEGRITY: THE HOST THAT PASSES EVERY PROBE AND MUST STILL BE RED ────────────
+//
+// Review 5644178843's finding was that `ready` could be true while the subordinate-range reconciliation
+// had refused or half-applied, because the four capability arms describe the RUNNING system and none of
+// them reads /etc/subuid or /etc/subgid. The shape that makes that visible is deliberately specific: the
+// uid leg lands, the gid leg fails, and the dockerd that is already running — started under ranges that
+// were correct when it started — answers every probe. Four ok arms, and the verdict has to be red.
+//
+// THE TESTS ARE WRITTEN AGAINST THE DECISION FUNCTION, not the inline expression in the converge, so the
+// thing under test is the thing that runs: runner_gpu_container_toolchain_host_ready is what the wet
+// converge calls, and a witness that tested a hand-copied conjunction would be certifying a copy.
+
+fn prov(step: String) -> GpuContainerProvisionStep { GpuContainerProvisioned { step: step } }
+fn refused(step: String) -> GpuContainerProvisionStep {
+  GpuContainerProvisionRefused { step: step, cause: "leg refused" }
+}
+fn skipped(step: String) -> GpuContainerProvisionStep { GpuContainerProvisionSkipped { step: step, reason: "chain stopped" } }
+
+// THE BASELINE WITHOUT WHICH EVERY RED CLAIM BELOW IS VACUOUS: a host that genuinely has both ranges
+// verified, four ok arms, a good ensure and a good CDI generate is ready. If this fails, the gate is
+// rejecting everyone and the "never green" claims pass for the wrong reason.
+test fn both_ranges_verified_and_four_arms_ok_is_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [
+      prov("staging directory"),
+      prov("nvidia keyring fingerprint verified"),
+      prov(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+    ],
+  )
+}
+
+// THE DISCRIMINATING CASE, THE MID-MIGRATION HOST. uid migrated, gid refused. Every capability arm is ok
+// — the daemon answers, the spec is present, nvidia-smi lists the devices — and the converge still must
+// not be green. This is the case the old comment argued away by claiming a refused range meant no daemon
+// and so a failed readback; on a host that already had working ranges, that inference is simply false.
+test fn a_partially_migrated_host_with_four_ok_arms_is_never_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [
+      prov("nvidia keyring fingerprint verified"),
+      prov("nvidia apt sources"),
+      prov(gpu_container_provision_subuid_verify_step),
+      refused(gpu_container_provision_subgid_verify_step),
+    ],
+  ) == false
+}
+
+// THE SAME HOST SEEN THE OTHER WAY ROUND. Migration can stop on either file, and a gate that only
+// recognises one direction is a gate that is half-built.
+test fn uid_refused_with_gid_ok_is_never_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [
+      refused(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+    ],
+  ) == false
+}
+
+// NOT-RUN IS NOT-PASSED. When the fold stops at the first refusal the remaining steps are never emitted
+// at all, so a chain that died before the verifications leaves them ABSENT. Absence must not satisfy a
+// safety gate; only a step that actually ran and passed counts.
+test fn absent_range_verifications_are_never_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [
+      prov("staging directory"),
+      prov("docker-ce repo install"),
+      refused("apt index refresh"),
+    ],
+  ) == false
+}
+
+// SKIPPED IS NOT-PASSED EITHER. A step reported skipped is a step that did not verify anything, and a
+// gate that accepted it would let a plan that decided not to check pass as a plan that checked.
+test fn skipped_range_verifications_are_never_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [
+      skipped(gpu_container_provision_subuid_verify_step),
+      skipped(gpu_container_provision_subgid_verify_step),
+    ],
+  ) == false
+}
+
+// ONE VERIFICATION IS NOT BOTH. The two files are independent and the whole finding is about one of them
+// moving without the other, so a gate satisfied by a single pass would reinstate the bug exactly.
+test fn only_one_range_verified_is_never_ready() -> Bool {
+  runner_gpu_container_toolchain_host_ready(
+    ensure_ok: true,
+    cdi_ok: true,
+    readback: all_four_ok(),
+    provision_steps: [prov(gpu_container_provision_subuid_verify_step)],
+  ) == false
+    && runner_gpu_container_toolchain_host_ready(
+      ensure_ok: true,
+      cdi_ok: true,
+      readback: all_four_ok(),
+      provision_steps: [prov(gpu_container_provision_subgid_verify_step)],
+    ) == false
+}
+
+// A REFUSAL CAN ONLY BE SEEN AS A REFUSAL IF THE NAMES AGREE. The predicate matches on the step names,
+// and the plan emits those same names from the same two rows; if a future edit renamed the row the plan
+// emits while the predicate still asked for the old string, every host would fail forever (safe) — but if
+// the predicate's string drifted to something the plan never emits, the gate would silently require a step
+// that cannot exist and every host would be red forever, which an operator would experience as the
+// capability being simply unobtainable. This pins the pair together: the rows are non-empty, distinct, and
+// the predicate treats them as the two it needs.
+test fn the_two_range_verifications_are_distinct_and_both_required() -> Bool {
+  gpu_container_provision_subuid_verify_step != gpu_container_provision_subgid_verify_step
+    && gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subuid_verify_step),
+      prov(gpu_container_provision_subgid_verify_step),
+    ])
+    && !gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subuid_verify_step),
+      prov("subgid verified (typo)"),
+    ])
+    // A refusal that happens to carry the right step name still must not count: the predicate asks what
+    // PASSED, not what was mentioned.
+    && !gpu_container_subordinate_integrity_holds(steps: [
+      prov(gpu_container_provision_subuid_verify_step),
+      refused(gpu_container_provision_subgid_verify_step),
+    ])
+}
+
+// ── THE GPU DROP-IN NEVER RESTATES A BROWSER LABEL THE HOST NEVER EARNED ─────────────────────
+//
+// Review 86378's finding, in one sentence: the GPU label set was built on top of the browser-ready set, so
+// the first GPU converge to succeed wrote an 86- drop-in advertising gunbc-browser-ready on a host whose
+// browser converge had never certified anything — and srv1 is exactly such a host, where
+// 85-browser-ready-labels.conf is absent although the browser mode has been dispatched. Browser jobs would
+// have scheduled onto a host that cannot run a browser, with the browser side still reporting green.
+//
+// The repair is at the boundary where the derivation could not be justified: the renderer takes the
+// browser half as an OBSERVATION and adds it only when observed. Three cases are asserted, because each
+// one is a different way to get this wrong:
+//   ABSENT must not carry the browser label — that is the fabricated capability;
+//   HELD must carry it — dropping it would silently revoke a capability from a host that legitimately has
+//     it, because the 86- file REPLACES the 85-'s LABELS_JSON rather than adding to it;
+//   UNDETERMINED must produce no label set at all — "could not look" may not be answered either way.
+
+fn gpu_labels_for(host: HostIdentity, browser_ready_granted: Bool) -> List<String> {
+  match runner_gpu_docker_ready_registration_labels(host: host, browser_ready_granted: browser_ready_granted) {
+    RegistrationLabelsResolved { labels: ls } => ls
+    RegistrationLabelsRefused { host: _, cause: _ } => []
+  }
+}
+
+// THE HOST THAT NEVER EARNED IT: srv1 has no browser drop-in, so the observed answer is ABSENT and the
+// GPU label set must contain the host label and gunbc-gpu-docker and NOTHING browser-shaped.
+test fn an_unearned_browser_label_is_never_restated_by_the_gpu_set() -> Bool {
+  let ls = gpu_labels_for(host: operator_host_srv1, browser_ready_granted: false)
+  length(ls) > 0
+    && ls.any(l => l == gunbc_gpu_docker_label)
+    && !ls.any(l => l == gunbc_browser_ready_label)
+    && !ls.any(l => string_contains(s: l, pattern: "browser"))
+}
+
+// THE HOST THAT DID EARN IT: with the 85- drop-in read back carrying the token, the set must restate the
+// browser label. This is not a nicety — systemd lets the later drop-in's Environment= replace the
+// earlier one wholesale, so a GPU converge that omitted the browser label would revoke it from a host that
+// has both toolchains, and the browser floor would stop scheduling there with nothing broken to find.
+test fn an_observed_browser_label_is_restated_so_it_is_not_silently_revoked() -> Bool {
+  let ls = gpu_labels_for(host: operator_host_srv1, browser_ready_granted: true)
+  ls.any(l => l == gunbc_gpu_docker_label)
+    && ls.any(l => l == gunbc_browser_ready_label)
+}
+
+// THE GRANT DECISION, ALL THREE ARMS. Held grants, absent declines, and an observation that could not be
+// made yields NO Bool at all — so no caller can pass a guess down the same path a read would take.
+test fn an_unobservable_browser_read_grants_nothing_and_offers_no_bool() -> Bool {
+  match gpu_docker_labels_resolve_browser_grant(o: BrowserReadyHeld) {
+    BrowserGrantAllowed { granted: g1, observed: _ } =>
+      if g1 != true {
+        false
+      } else {
+        match gpu_docker_labels_resolve_browser_grant(o: BrowserReadyAbsent) {
+          BrowserGrantAllowed { granted: g2, observed: _ } =>
+            if g2 != false {
+              false
+            } else {
+              match gpu_docker_labels_resolve_browser_grant(o: BrowserReadyUnobservable { cause: "ssh refused" }) {
+                BrowserGrantUndetermined { cause: c } =>
+                  string_contains(s: c, pattern: "browser-ready observation failed")
+                    && string_contains(s: c, pattern: "refusing to grant")
+                BrowserGrantAllowed { granted: _, observed: _ } => false
+              }
+            }
+          BrowserGrantUndetermined { cause: _ } => false
+        }
+      }
+    BrowserGrantUndetermined { cause: _ } => false
+  }
+}
+
+// THE LABEL SET IS NEVER EMPTY ON A GRANT, for either observation. An empty resolved set would reach the
+// drop-in as a LABELS_JSON with no capability in it — the runner would start, register, and take nothing,
+// which is the "green host, zero capacity" shape this module keeps being asked to make unrepresentable.
+test fn the_gpu_label_set_always_carries_the_gpu_capability() -> Bool {
+  gpu_labels_for(host: operator_host_srv1, browser_ready_granted: true).any(l => l == gunbc_gpu_docker_label)
+    && gpu_labels_for(host: operator_host_srv1, browser_ready_granted: false).any(l => l == gunbc_gpu_docker_label)
+    && gpu_labels_for(host: operator_host_srv3, browser_ready_granted: true).any(l => l == gunbc_gpu_docker_label)
+    && gpu_labels_for(host: operator_host_srv3, browser_ready_granted: false).any(l => l == gunbc_gpu_docker_label)
 }
