@@ -807,7 +807,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     EqualityOnFunctionMember { type_name: t, member: m, span: _ } =>
       concat("equality is not defined for '", t, "': member '", m, "' is function-valued, and function equality has no denotation — compare a declared identity for this type instead of '=='")
     EqualityOnInadmissibleType { type_name: t, span: _ } =>
-      concat("equality is not defined for '", t, "': it is declared equality-inadmissible (it carries provenance that derived '==' would compare) — compare through the erasure route (node_for_structural_equality, canonicalize_node_strip_provenance or content_hash) instead of '=='")
+      concat("equality is not defined for '", t, "': it is declared equality-inadmissible (it carries provenance that derived '==' would compare) — compare through the erasure route (node_equal_ignoring_provenance for structure, node_same_occurrence for identity) instead of '=='")
     EqualityMemberUnjudgeable { type_name: t, member: m, span: _ } =>
       concat("equality admission for '", t, "' cannot be judged: ", m, " — '==' is refused rather than admitted on an unjudged member")
     EqualityOptionalityMismatch { optional_side: side, span: _ } =>

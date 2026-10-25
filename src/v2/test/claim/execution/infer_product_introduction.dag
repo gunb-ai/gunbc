@@ -24,7 +24,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.type_binder { node_inferred_subtree_nodes }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   StructuralLabel,
   label_sort_key,
   Arrow,
@@ -158,7 +158,7 @@ fn is_params_conj(n: Node) -> Bool {
 // (v2.std.node_query binder_node_parts), and its type must be the type-denotation kind.
 fn binder_evidence_is_type_kind(evidence: Node) -> Bool {
   match binder_node_parts(n: evidence) {
-    Present { value: parts } => (parts.type_node == kind_node(kind: TypeDenotationKind)) && binder_evidence_has_no_default(parts: parts)
+    Present { value: parts } => (node_same_occurrence(a: parts.type_node, b: kind_node(kind: TypeDenotationKind))) && binder_evidence_has_no_default(parts: parts)
     Absent => false
   }
 }

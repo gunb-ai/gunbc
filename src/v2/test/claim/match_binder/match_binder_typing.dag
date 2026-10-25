@@ -15,7 +15,7 @@ import std.algebra { Cons, Empty, contains, list_map, list_append, empty_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NodeLocus, NonEmptyDiagnostics, None, Outcome, Rejected, Some, node_locus }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
   Conj,
@@ -492,7 +492,7 @@ fn mbp_declaration_named(n: Node, name: Symbol) -> Optional<Node> {
 }
 
 fn mbp_node_within(root: Node, wanted: Node) -> Bool {
-  if root == wanted {
+  if node_same_occurrence(a: root, b: wanted) {
     true
   } else {
     fold(root.children, init: false, f: fn(acc, e) { acc || mbp_node_within(root: e.target, wanted: wanted) })

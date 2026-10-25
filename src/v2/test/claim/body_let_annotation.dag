@@ -35,8 +35,8 @@ import v2.std.diagnostic {
   Suggested
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic, symbol_lexeme, NotADeclaration }
-import std.optional { Absent, Optional, Present, optional_present }
+import v2.std.node { node_same_occurrence, host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic, symbol_lexeme, NotADeclaration }
+import std.optional { optional_eq, Absent, Optional, Present, optional_present }
 import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.normalized_tree { admit_normalized_tree }
@@ -695,7 +695,7 @@ fn bla_resolved_type_is(t: InferredTree, n: Node, ty: Node) -> Bool {
     Present { value: facts } =>
       match facts.grounding {
         GroundingNotDerived { node: _, site: _ } => false
-        DerivedGrounding { grounding: g } => g.witness.structural.evidence == ty
+        DerivedGrounding { grounding: g } => node_same_occurrence(a: g.witness.structural.evidence, b: ty)
       }
   }
 }
@@ -1072,7 +1072,7 @@ test fn bla_translate_refuses_an_annotated_bind() -> Bool {
 // for the annotated Bind and Absent for the same Bind without the edge. Read at the accessor, not
 // through a second full emit.
 test fn bla_translate_gate_is_the_annotations() -> Bool {
-  (type_annotation_optional(n: bla_bind(annotated: true)) == optional_present(value: dag_type_atom_node(identity: ^dag_binding_type_int)))
+  (optional_eq(a: type_annotation_optional(n: bla_bind(annotated: true)), b: optional_present(value: dag_type_atom_node(identity: ^dag_binding_type_int)), eq: fn(p, q) { node_same_occurrence(a: p, b: q) }))
     && (type_annotation_optional(n: bla_bind(annotated: false)) == Absent)
 }
 

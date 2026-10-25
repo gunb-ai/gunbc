@@ -231,9 +231,8 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
     Rc::new(v1_rt::sorted_map_keys(&container_template_alias_rows()))
         .iter()
         .cloned()
-        .fold(
-            std::option::Option::None,
-            |acc: Option<String>, k: String| match acc.clone() {
+        .fold(std::option::Option::None, |acc: _, k: String| {
+            match acc.clone() {
                 Some(_) => acc.clone(),
                 std::option::Option::None => {
                     match v1_rt::map_get(&container_template_alias_rows(), k.clone()) {
@@ -247,8 +246,8 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
                         std::option::Option::None => std::option::Option::None,
                     }
                 }
-            },
-        )
+            }
+        })
 }
 
 pub fn container_kind_canonical(name: String) -> String {
@@ -2443,6 +2442,17 @@ pub fn type_node_is_callable(n: Rc<Node>) -> bool {
     ((n.connective.clone() == Connective::Arrow) || ((n.params.clone().len() as i64) > 0))
 }
 
+pub fn applied_field_type(field_type: Rc<Node>) -> Option<Rc<Node>> {
+    if type_node_is_callable(field_type.clone()) {
+        match field_type.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: codomain, .. }) => Some(codomain.clone()),
+            _ => std::option::Option::None,
+        }
+    } else {
+        Some(field_type.clone())
+    }
+}
+
 pub fn node_declaration_file(n: Rc<Node>) -> String {
     match n.ident_span.clone() {
         Some(sp) => sp.file.clone(),
@@ -3083,23 +3093,6 @@ pub fn applied_argument_declared_agrees(
     }
 }
 
-pub fn join_operand_element_is_unit(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-        if node_is_element_collection(n.clone(), source_indices.clone()) {
-            match n.children.clone().first().cloned() {
-                Some(ch) => is_unit_like(child_type_node(ch.clone())),
-                std::option::Option::None => false,
-            }
-        } else {
-            (is_optional.clone() && is_unit_like(n.clone()))
-        }
-    }
-}
-
 pub fn prefer_specific_type(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -3108,9 +3101,28 @@ pub fn prefer_specific_type(
     {
         let left_is_container = node_is_element_collection(left.clone(), source_indices.clone());
         let left_is_optional = (left.return_cardinality.clone() == Cardinality::CardOptional);
+        let left_first_child = left.children.clone().first().cloned();
         let left_norm_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), left.clone());
-        let left_is_unit_inner = join_operand_element_is_unit(left.clone(), source_indices.clone());
+        let left_is_unit_inner = if left_is_container.clone() {
+            match left_first_child.clone() {
+                Some(ch) => {
+                    let el = child_type_node(ch.clone());
+                    let el_is_unit = is_unit_like(el.clone());
+                    el_is_unit.clone()
+                }
+                std::option::Option::None => false,
+            }
+        } else {
+            if left_is_optional.clone() {
+                {
+                    let left_is_unit = is_unit_like(left.clone());
+                    left_is_unit.clone()
+                }
+            } else {
+                false
+            }
+        };
         let right_is_container = node_is_element_collection(right.clone(), source_indices.clone());
         let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
         let same_kind = if (left_is_container.clone() && right_is_container.clone()) {
@@ -3863,24 +3875,15 @@ pub fn infer_arithmetic_binop_type_node(
                 ) {
                     Some(m) => match m.field_node.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => {
-                            if ((rt.params.clone().len() as i64) > 0) {
-                                match rt.inferred.clone().as_deref().cloned() {
-                                    Some(InferredNode::Resolved {
-                                        node: return_type, ..
-                                    }) => Rc::new(BinOpInferred {
-                                        result_type: return_type.clone(),
-                                        algebra_field: Some(m.field_kind.clone()),
-                                    }),
-                                    _ => Rc::new(BinOpInferred {
-                                        result_type: left_type.clone(),
-                                        algebra_field: Some(m.field_kind.clone()),
-                                    }),
-                                }
-                            } else {
-                                Rc::new(BinOpInferred {
-                                    result_type: rt.clone(),
+                            match applied_field_type(rt.clone()) {
+                                Some(applied) => Rc::new(BinOpInferred {
+                                    result_type: applied.clone(),
                                     algebra_field: Some(m.field_kind.clone()),
-                                })
+                                }),
+                                std::option::Option::None => Rc::new(BinOpInferred {
+                                    result_type: left_type.clone(),
+                                    algebra_field: Some(m.field_kind.clone()),
+                                }),
                             }
                         }
                         _ => Rc::new(BinOpInferred {

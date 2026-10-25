@@ -62,7 +62,9 @@ type GeneratedArtifact
   | ApproveIosWireSwiftArtifact
   | ApproveIosProtocolVectorTestsSwiftArtifact
   | ApproveIosEnrolmentMachineSwiftArtifact
+  | ApproveIosOperationErrorsSwiftArtifact
   | ApproveIosEnrolmentMachineTestsSwiftArtifact
+  | ApproveIosOperationErrorsTestsSwiftArtifact
 
 // CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
 // resolves (gunbc.whole_corpus_compile_demand_projection).
@@ -164,7 +166,9 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     ApproveIosWireSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "Wire.swift" }
     ApproveIosProtocolVectorTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "ProtocolVectorTests.swift" }
     ApproveIosEnrolmentMachineSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "EnrolmentMachine.swift" }
+    ApproveIosOperationErrorsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "OperationErrors.swift" }
     ApproveIosEnrolmentMachineTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "EnrolmentMachineTests.swift" }
+    ApproveIosOperationErrorsTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "OperationErrorsTests.swift" }
     Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_layout_generated.dag" }
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
@@ -251,7 +255,9 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     ApproveIosWireSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     ApproveIosProtocolVectorTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     ApproveIosEnrolmentMachineSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    ApproveIosOperationErrorsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     ApproveIosEnrolmentMachineTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    ApproveIosOperationErrorsTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
@@ -326,7 +332,9 @@ fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
     ApproveIosWireSwiftArtifact => false
     ApproveIosProtocolVectorTestsSwiftArtifact => false
     ApproveIosEnrolmentMachineSwiftArtifact => false
+    ApproveIosOperationErrorsSwiftArtifact => false
     ApproveIosEnrolmentMachineTestsSwiftArtifact => false
+    ApproveIosOperationErrorsTestsSwiftArtifact => false
   }
 }
 
@@ -382,7 +390,9 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     ApproveIosWireSwiftArtifact => match b { ApproveIosWireSwiftArtifact => true  _ => false }
     ApproveIosProtocolVectorTestsSwiftArtifact => match b { ApproveIosProtocolVectorTestsSwiftArtifact => true  _ => false }
     ApproveIosEnrolmentMachineSwiftArtifact => match b { ApproveIosEnrolmentMachineSwiftArtifact => true  _ => false }
+    ApproveIosOperationErrorsSwiftArtifact => match b { ApproveIosOperationErrorsSwiftArtifact => true  _ => false }
     ApproveIosEnrolmentMachineTestsSwiftArtifact => match b { ApproveIosEnrolmentMachineTestsSwiftArtifact => true  _ => false }
+    ApproveIosOperationErrorsTestsSwiftArtifact => match b { ApproveIosOperationErrorsTestsSwiftArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
@@ -462,7 +472,9 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     ApproveIosWireSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "expected_approve_ios_wire_swift")
     ApproveIosProtocolVectorTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol_vector_tests", decl_name: "expected_approve_ios_protocol_vector_tests_swift")
     ApproveIosEnrolmentMachineSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_enrolment_machine", decl_name: "expected_approve_ios_enrolment_machine_swift")
+    ApproveIosOperationErrorsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_operation_errors", decl_name: "expected_approve_ios_operation_errors_swift")
     ApproveIosEnrolmentMachineTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_enrolment_machine", decl_name: "expected_approve_ios_enrolment_machine_tests_swift")
+    ApproveIosOperationErrorsTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_operation_errors", decl_name: "expected_approve_ios_operation_errors_tests_swift")
     Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
     Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
     Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")
