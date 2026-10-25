@@ -9,6 +9,7 @@ import gunbc.host.export_host_reader_converge {
   ExportHostReaderLegs, ExportHostReaderRun, ExportHostReaderOutcome,
   ReaderRowsConverged, ReaderRowsRefused, ReaderRowsRolledBack, ReaderRowsRollbackFailed,
   export_host_reader_apply_with, export_host_reader_drop_in, authorized_keys_file_value, authorized_keys_file_option,
+  export_host_reader_keys_path, boot_medium_reader_login,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -57,6 +58,12 @@ test fn existing_authorized_keys_stays_first_in_the_drop_in() -> Bool {
   (authorized_keys_file_value as String).starts_with(".ssh/authorized_keys ")
     && export_host_reader_drop_in().content == concat(authorized_keys_file_option() as String, "\n")
     && match sshd_effective_config_value(text: effective_ours, keyword: "authorizedkeysfile") { Present { value: v } => v == (authorized_keys_file_value as String)  Absent => false }
+}
+
+// The file sshd reads for the reader (the %u entry, expanded for its login) is exactly the file written.
+test fn the_percent_u_entry_names_the_written_key_file_for_the_reader() -> Bool {
+  (authorized_keys_file_value as String).ends_with(suffix: concat(" ", (export_host_reader_keys_path as String).replace(from: boot_medium_reader_login as String, to: "%u")))
+    && export_host_reader_keys_path as String == "/etc/ssh/authorized_keys.boot-medium-reader"
 }
 
 // CONTROL: a healthy host converges through every stage in order, reloading once.

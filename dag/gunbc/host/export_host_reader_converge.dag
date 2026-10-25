@@ -53,7 +53,11 @@ data boot_medium_reader_login: NonEmptyStr = "boot-medium-reader"
 
 data boot_medium_reader_login_shell: NonEmptyStr = "/bin/sh"
 
-data export_host_reader_keys_path: NonEmptyStr = "/etc/ssh/authorized_keys.boot-medium-reader"
+// The root-owned per-account key file's prefix: the drop-in names it with %u and the converge writes it with
+// the login, so the file sshd reads and the file written are one name.
+data authorized_keys_per_account_prefix: NonEmptyStr = "/etc/ssh/authorized_keys."
+
+data export_host_reader_keys_path: NonEmptyStr = concat(authorized_keys_per_account_prefix as String, boot_medium_reader_login as String) as NonEmptyStr
 
 data export_host_reader_drop_in_path: NonEmptyStr = "/etc/ssh/sshd_config.d/50-gunbc-boot-medium-reader.conf"
 
@@ -61,7 +65,7 @@ data authorized_keys_file_keyword: NonEmptyStr = "authorizedkeysfile"
 
 // sshd's default is ".ssh/authorized_keys .ssh/authorized_keys2"; both stay, in order, before the reader's
 // root-owned file, and %u resolves only for the account whose file exists.
-data authorized_keys_file_value: NonEmptyStr = ".ssh/authorized_keys .ssh/authorized_keys2 /etc/ssh/authorized_keys.%u"
+data authorized_keys_file_value: NonEmptyStr = concat(".ssh/authorized_keys .ssh/authorized_keys2 ", concat(authorized_keys_per_account_prefix as String, "%u")) as NonEmptyStr
 
 fn authorized_keys_file_option() -> NonEmptyStr {
   join(["AuthorizedKeysFile ", authorized_keys_file_value as String], "") as NonEmptyStr
