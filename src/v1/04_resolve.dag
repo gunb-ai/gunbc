@@ -83,7 +83,7 @@ import v1.compiler.infer_env {
 // annotation crediting the arm with a per-kind judgment it does not perform is rung inflation in
 // prose -- in a change whose whole subject is refusing exactly that.
 fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env: TypeEnv, module_name: String) -> List<ErrorNode> {
-  decl.params |> enumerate |> flat_map(pair =>
+  declaration_type_parameters(decl: decl) |> enumerate |> flat_map(pair =>
     match find_property(props: pair.second.properties, prop_name: type_param_kind_property_name(), source_indices: env.source_indices) {
       Absent => []
       Present { value: kind_node } =>
@@ -266,7 +266,7 @@ fn applied_arg_is_width_resolution_position(applied: Node, arg: Node, env: TypeE
         match map_get(env.symbol_index.file_modules, decl.span.file) {
           Absent => false
           Present { value: declaring_module } =>
-            decl.params |> enumerate |> any(pair =>
+            declaration_type_parameters(decl: decl) |> enumerate |> any(pair =>
               match applied.children |> skip(pair.first) |> first {
                 Absent => false
                 Present { value: supplied } =>
@@ -496,7 +496,7 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
   let brand = authored_name(env: env, node: n)
   match lookup_type_for(env: env, node: n) {
     Present { value: decl } =>
-      if decl.params |> count > 0 { decl }
+      if declaration_type_parameters(decl: decl) |> count > 0 { decl }
       else { resolve_paramless_generic_use_decl(env: env, n: n, decl: decl, brand: brand) }
     Absent =>
       match lookup_type_by_name(env: env, name: n.name) {
@@ -598,9 +598,21 @@ fn type_use_arity_diagnostics(n: Node, decl: Node, env: TypeEnv, module_name: St
   }
 }
 
+// A RESOLVED TYPE DECLARATION'S TYPE PARAMETERS. Node.params carries two facts: on a type declaration
+// it is the declared type-parameter list, and on a callable type (connective Arrow) it is the callable's
+// value-parameter types. A use of a function-type alias resolves to its arrow expansion (lookup_type_for),
+// so reading params there counted `fn(InferredTree) -> ..`'s one value parameter as one type parameter
+// and refused a bare `CompileLensGate` "expects 1 type arguments, got 0" (measured by the srv1
+// whole-corpus census on #15171: CompileLensGate, SpiceParse, SpiceEmit, Handler). Every reader of a
+// resolved declaration's type parameters goes through here.
+fn declaration_type_parameters(decl: Node) -> List<Node> {
+  match decl.connective { Arrow => []  _ => decl.params }
+}
+
 fn declared_type_parameter_count(decl: Node, env: TypeEnv) -> Int {
   let name = qualified_last_segment(name: authored_name_at(source_indices: env.source_indices, node: decl))
-  if decl.params |> count > 0 { decl.params |> count }
+  let type_params = declaration_type_parameters(decl: decl)
+  if type_params |> count > 0 { type_params |> count }
   else if resolved_node_is_kernel_identity_for_name(node: decl, name: name) {
     match container_expected_arity(name: name) {
       Present { value: arity } => arity
@@ -615,7 +627,7 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
 }
 
 fn is_user_generic_declaration(decl: Node, env: TypeEnv) -> Bool {
-  decl.params |> count > 0 && !declaration_is_container_family(decl: decl, env: env)
+  declaration_type_parameters(decl: decl) |> count > 0 && !declaration_is_container_family(decl: decl, env: env)
 }
 
 type AliasKind = AliasParameterized | AliasLeaf | AliasPassthrough
@@ -838,7 +850,7 @@ fn resolve_node_bounded_structure(n: Node, env: TypeEnv, module_name: String, de
       }
     )
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
-    let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+    let slot_bindings = declaration_type_parameters(decl: decl) |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
       let idx = pair.first
       let slot_name = authored_name_at(source_indices: env.source_indices, node: pair.second)
       match resolved_args |> enumerate |> filter(p => p.first == idx) |> map(p => p.second) |> first {

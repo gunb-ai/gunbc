@@ -56,6 +56,15 @@ test fn a_bare_kernel_container_still_refuses_test() -> Bool {
     && !compile_dag_rust_emit_check(std_types_source(module_leaf: "listnested", body: "fn keep(xs: List<List>) -> Int { 0 }\n"), "src/mltb_listnested.rs", [], [])
 }
 
+// PRESERVED (the srv1 census on #15171 found it refused): a non-generic alias of a FUNCTION type is used
+// bare. Its use resolves to the arrow expansion, whose params are the callable's VALUE parameters, never
+// type parameters (v1.compiler.resolve declaration_type_parameters). The pair differs only in whether the
+// alias declares a type parameter, and the generic one still refuses when used bare.
+test fn a_bare_function_type_alias_binds_and_a_bare_generic_one_refuses_test() -> Bool {
+  compile_dag_rust_emit_check(local_list_source(module_leaf: "fnalias", body: "type Gate = fn(Int) -> Int\n\nfn run(g: Gate) -> Int { g(1) }\n"), "src/mltb_fnalias.rs", [], [])
+    && !compile_dag_rust_emit_check(local_list_source(module_leaf: "genalias", body: "type Box<T> = Wrapped { inner: T }\n\nfn keep(b: Box) -> Int { 0 }\n"), "src/mltb_genalias.rs", [], [])
+}
+
 // PIN, NOT A PASS: the seed still ACCEPTS a kernel list returned where the module's own List<Int> is
 // declared. The return position now binds the local List; what remains is deciding a kernel MINT
 // against a module-local DECLARATION, which needs the kernel-carrier relation (which declaration carries
