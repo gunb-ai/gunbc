@@ -93,8 +93,10 @@ pub fn free_monoid_last(
             break loop {
                 #[allow(unused_mut)]
                 let mut last = __tco_loop_last;
+                #[allow(unused_mut)]
+                let mut xs = __tco_loop_xs.clone();
                 {
-                    let __fm = __tco_base_xs.clone();
+                    let __fm = xs.clone();
                     if (__fm.len() - __tco_cursor_xs) == 0 {
                         break last;
                     } else {
