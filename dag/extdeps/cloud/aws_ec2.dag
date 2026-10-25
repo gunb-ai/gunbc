@@ -109,6 +109,18 @@ data aws_ec2_spot_interruption_event_page: ExternalAuthority = ExternalAuthority
   uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-instance-termination-notices.html#ec2-spot-instance-interruption-warning-event" }
 }
 
+data aws_ec2_spot_market_options_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_SpotMarketOptions.html" }
+}
+
+data aws_ec2_interruption_behavior_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/UserGuide/interruption-behavior.html" }
+}
+
+data aws_ec2_instance_market_options_request_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/API_InstanceMarketOptionsRequest.html" }
+}
+
 // THE SUBJECT IS THE SERVICE, not its version: aws_ec2_api_version below is the revision fact of the
 // Query API these shapes are read at (DESIGN 3; extdeps.external_authority ExternalModelScope carries no
 // revision).
@@ -143,6 +155,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     aws_ec2_describe_security_groups_page,
     aws_ec2_describe_vpc_endpoints_page,
     aws_ec2_spot_interruption_event_page,
+    aws_ec2_spot_market_options_page,
+    aws_ec2_interruption_behavior_page,
+    aws_ec2_instance_market_options_request_page,
   ]
 }
 
@@ -211,26 +226,48 @@ type AwsEc2StateReason {
 
 // ---- RunInstances ----------------------------------------------------------------------------------
 
-type AwsEc2SpotInstanceType
-  = AwsEc2SpotOneTime
-  | AwsEc2SpotPersistent
-
-type AwsEc2InstanceInterruptionBehavior
-  = AwsEc2InterruptTerminate
-  | AwsEc2InterruptStop
-  | AwsEc2InterruptHibernate
+// SpotMarketOptions's SpotInstanceType and InstanceInterruptionBehavior are NOT independent upstream: a
+// one-time request supports only terminate, and stop and hibernate require a persistent request
+// (RunInstances reference, SpotMarketOptions; User Guide, interruption-behavior). So the pair is ONE closed
+// sum of the combinations EC2 accepts, and an invalid pair (one-time + stop, persistent + terminate) has
+// no constructor. The wire values of each arm are aws_ec2_spot_request_wire below.
+type AwsEc2SpotRequestBehavior
+  = AwsEc2OneTimeTerminate
+  | AwsEc2PersistentStop
+  | AwsEc2PersistentHibernate
 
 // SpotMarketOptions. max_price absent means the on-demand price is the cap (RunInstances reference).
 type AwsEc2SpotMarketOptions {
   max_price: ExactDecimal?
-  spot_instance_type: AwsEc2SpotInstanceType
-  instance_interruption_behavior: AwsEc2InstanceInterruptionBehavior
+  request_behavior: AwsEc2SpotRequestBehavior
 }
 
-// InstanceMarketOptionsRequest: market_type spot with options; an on-demand launch omits the member.
-type AwsEc2InstanceMarketOptions {
-  market_type: NonEmptyStr
-  spot_options: AwsEc2SpotMarketOptions
+// The wire pair (SpotInstanceType, InstanceInterruptionBehavior) of one arm, in the documented values.
+type AwsEc2SpotRequestWire {
+  spot_instance_type: NonEmptyStr
+  instance_interruption_behavior: NonEmptyStr
+}
+
+fn aws_ec2_spot_request_wire(behavior: AwsEc2SpotRequestBehavior) -> AwsEc2SpotRequestWire {
+  match behavior {
+    AwsEc2OneTimeTerminate => AwsEc2SpotRequestWire { spot_instance_type: "one-time" as NonEmptyStr, instance_interruption_behavior: "terminate" as NonEmptyStr }
+    AwsEc2PersistentStop => AwsEc2SpotRequestWire { spot_instance_type: "persistent" as NonEmptyStr, instance_interruption_behavior: "stop" as NonEmptyStr }
+    AwsEc2PersistentHibernate => AwsEc2SpotRequestWire { spot_instance_type: "persistent" as NonEmptyStr, instance_interruption_behavior: "hibernate" as NonEmptyStr }
+  }
+}
+
+// InstanceMarketOptionsRequest. MarketType is a closed upstream set (spot, capacity-block), and the
+// options member belongs to its market type, so the request is a sum whose arm IS the market type: Spot
+// options can never ride beside a non-spot market type. An on-demand launch omits the member (the
+// request field is optional), and capacity blocks are not launched by the loop, so that arm is not
+// modeled. The wire MarketType of an arm is aws_ec2_market_type_wire.
+type AwsEc2InstanceMarketOptions
+  = | AwsEc2SpotMarket { spot_options: AwsEc2SpotMarketOptions }
+
+fn aws_ec2_market_type_wire(options: AwsEc2InstanceMarketOptions) -> NonEmptyStr {
+  match options {
+    AwsEc2SpotMarket { spot_options: _ } => "spot" as NonEmptyStr
+  }
 }
 
 // LaunchTemplateSpecification: by id or by name, at a version (a number, `$Latest` or `$Default`).
