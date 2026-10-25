@@ -1,7 +1,7 @@
 module v1.compiler.emit_rust
 
 import std.unicode.scalar { ascii_lowercase }
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceSynthetic, authored_occurrence_of }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
   VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
@@ -253,7 +253,7 @@ import v1.compiler.resolve { get_exported_names }
 import v1.compiler.infer_resolve {
   resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position,
 }
-import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs, analyze_dying_base_sites }
+import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_moved_argument_occurrences, build_read_only_params, collect_callable_refs, analyze_dying_base_sites }
 import std.induction { SubValueUnknown, InductiveField }
 
 import v1.compiler.emit {
@@ -3461,6 +3461,7 @@ type OwnershipProofEntry {
 
 type OwnershipBuildResult {
   ownership_index: Map<String, Set<String>>
+  moved_argument_index: Map<String, Set<Int>>
   read_only_params_index: Map<String, Set<String>>
 }
 
@@ -3480,12 +3481,13 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
       OwnershipProofEntry { name: qualified, proof: analyze_ownership(func_name: authored_name_at(source_indices: si, node: item), params: item.params, body: item.body.value, si: si), param_names: pnames }
     )
   )
-  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), read_only_params_index: empty_map() }, f: (acc, entry) =>
+  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), moved_argument_index: empty_map(), read_only_params_index: empty_map() }, f: (acc, entry) =>
     let read_only = if set_contains(callable_set, entry.proof.func_name) { empty_set() }
       else { build_read_only_params(proof: entry.proof, param_names: entry.param_names) }
     let movable = build_movable_set(proof: entry.proof, param_names: entry.param_names)
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, entry.name, movable),
+      moved_argument_index: map_insert(acc.moved_argument_index, entry.name, build_moved_argument_occurrences(proof: entry.proof, param_names: entry.param_names, locals_admitted: true)),
       read_only_params_index: map_insert(acc.read_only_params_index, entry.name, read_only)
     }
   )
@@ -3662,7 +3664,9 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     positional_payload_variants: base_info.positional_payload_variants,
     shared_types: shared,
     ownership_index: ownership.ownership_index,
+    moved_argument_index: ownership.moved_argument_index,
     movable: empty_set(),
+    moved_argument_occurrences: empty_set(),
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_set(),
     read_only_params_index: ownership.read_only_params_index,
@@ -4368,7 +4372,9 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     positional_payload_variants: base_info.positional_payload_variants,
     shared_types: shared,
     ownership_index: base_info.ownership_index,
+    moved_argument_index: base_info.moved_argument_index,
     movable: base_info.movable,
+    moved_argument_occurrences: base_info.moved_argument_occurrences,
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_set(),
     read_only_params_index: base_info.read_only_params_index,
@@ -5700,7 +5706,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     positional_payload_variants: emit_info.positional_payload_variants,
     shared_types: emit_info.shared_types,
     ownership_index: emit_info.ownership_index,
+    moved_argument_index: emit_info.moved_argument_index,
     movable: emit_info.movable,
+    moved_argument_occurrences: emit_info.moved_argument_occurrences,
     variant_to_enum: emit_info.variant_to_enum,
     owned_bindings: emit_info.owned_bindings,
     read_only_params_index: emit_info.read_only_params_index,
@@ -7853,6 +7861,10 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             Present { value: m } => m
             Absent => empty_set()
           }
+          let fn_moved_arguments = match map_get(emit_info.moved_argument_index, qualified_name) {
+            Present { value: m } => m
+            Absent => empty_set()
+          }
           let item_is_tco = is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name(env: env, node: item) }, body: fn_body, registry: registry, source_indices: env.source_indices)
           let fn_read_only = if item_is_tco { empty_set() } else {
             match map_get(emit_info.read_only_params_index, qualified_name) {
@@ -7876,7 +7888,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             positional_payload_variants: emit_info.positional_payload_variants,
             shared_types: emit_info.shared_types,
             ownership_index: emit_info.ownership_index,
+            moved_argument_index: emit_info.moved_argument_index,
             movable: fn_movable,
+            moved_argument_occurrences: fn_moved_arguments,
             variant_to_enum: emit_info.variant_to_enum,
             owned_bindings: empty_set(),
             read_only_params_index: emit_info.read_only_params_index,
@@ -8252,6 +8266,35 @@ fn type_node_mentions_name(n: Node, target: String, source_indices: Map<String, 
     true
   } else {
     n.children |> any(c => type_node_mentions_name(n: c, target: target, source_indices: source_indices))
+  }
+}
+
+// A RECORD LITERAL CARRIES `_phantom` EXACTLY WHEN THE DECLARATION IT CONSTRUCTS DECLARES ONE: a
+// product whose type parameters some field leaves unused (emit_struct_from_children adds the
+// PhantomData field on that same condition). The declaration is the literal's resolved type, read
+// through the identity-keyed type index (resolve_type_decl_reference), never the constructor's
+// spelling. A variant literal resolves to its coproduct, whose arms carry no phantom field. The
+// spelling lookup this replaces (lookup_type_by_name on the constructor name) answered
+// gunbc.roadmap.roadmap_model's `Group { group: .. }`, an arm of SectionElement, with
+// std.algebra's record `Group<T>`, and emitted `_phantom` into a variant that has none (rustc
+// E0559). A type naming no single declaration refuses rather than guessing either answer.
+type RecordLiteralPhantom
+  = RecordLiteralPhantomField
+  | RecordLiteralNoPhantomField
+  | RecordLiteralDeclarationUnresolved { cause: String }
+
+fn record_literal_phantom_field(resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RecordLiteralPhantom {
+  match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: resolved_type, source_indices: source_indices) {
+    TypeDeclResolved { identity: _, decl: decl } =>
+      if (decl.connective == Conj) {
+        let pnames = decl.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+        if (struct_unused_param_names(generic_param_names: pnames, children: decl.children, source_indices: source_indices) |> count) > 0 {
+          RecordLiteralPhantomField
+        } else { RecordLiteralNoPhantomField }
+      } else { RecordLiteralNoPhantomField }
+    TypeDeclLeafAmbiguous { leaf: leaf } => RecordLiteralDeclarationUnresolved { cause: concat("more than one declaration of ", leaf) }
+    TypeDeclKernelSpellingUndecided { leaf: leaf } => RecordLiteralDeclarationUnresolved { cause: concat("kernel spelling undecided for ", leaf) }
+    TypeDeclNotDeclared => RecordLiteralDeclarationUnresolved { cause: "not declared" }
   }
 }
 
@@ -12339,7 +12382,17 @@ fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types:
   match expr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: expr, source_indices: source_indices)
-      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: source_indices, module_name: module_name)
+      // THIS occurrence was proved to be its binding's only use, at a by-value argument
+      // (v1.compiler.ownership build_moved_argument_occurrences says why the key is the occurrence).
+      // The move is granted for this one emission and for no other occurrence of the spelling.
+      let moved_here = match authored_occurrence_of(identity: expr.occurrence_identity) {
+        Present { value: id } => set_contains(emit_info.moved_argument_occurrences, id.value)
+        Absent => false
+      }
+      let occurrence_info = if moved_here {
+        with(emit_info, { movable: set_insert(emit_info.movable, n) })
+      } else { emit_info }
+      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: occurrence_info, source_indices: source_indices, module_name: module_name)
     _ => emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: Rust)
   }
 }
@@ -13194,6 +13247,26 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
   }
 }
 
+// A LAMBDA BOUND TO A DECLARED CALLEE'S PARAMETER OWNS ITS ARGUMENTS. That parameter is emitted as
+// `impl Fn(A, T) -> R`, so each call hands the closure fresh owned values, and a parameter the body
+// uses once, by value, may be moved there instead of cloned: the accumulator of a fold_list step is
+// the specimen (v1.compiler.ownership PassedByValue says what the clone cost). The function's own
+// proof cannot say this, because it records every name in a lambda body as a capture Read, so the
+// lambda gets its own proof over its own parameters, and its moves join the scope as OCCURRENCES,
+// never as names. Only parameters are admitted: any other name the body reads is a capture, and a
+// capture never moves out of an Fn closure. This route only, and not the collection lambdas, whose
+// parameters borrow from `.iter()`, where a move is a type error.
+fn user_call_lambda_emit_info(arg: Node, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> EmitGraphInfo {
+  match arg.expr_data {
+    ExprLambda =>
+      let ps = lambda_param_names_at(texpr: arg, source_indices: si)
+      let proof = analyze_ownership_of_names(func_name: "", param_names: ps, body: lambda_body(texpr: arg), si: si)
+      let moved = build_moved_argument_occurrences(proof: proof, param_names: ps |> fold(init: empty_set(), f: (acc, p) => set_insert(acc, p)), locals_admitted: false)
+      with(emit_info, { moved_argument_occurrences: set_union(emit_info.moved_argument_occurrences, moved) })
+    _ => emit_info
+  }
+}
+
 // `func_ident` BELOW IS THE ONE SEAM THAT MUST PRODUCE AN IDENTIFIER, AND THEREFORE THE ONE
 // THAT REFUSES. The owner carried on a SourceDeclarationCall is exact, so no registry
 // disambiguation is needed and none is consulted: the duplicate-qualified-key marker exists
@@ -13520,10 +13593,11 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
-    let arg_emit_info = match application_plan |> skip(idx) |> first {
+    let typed_emit_info = match application_plan |> skip(idx) |> first {
       Present { value: application } => emit_info_with_expected_type(emit_info: emit_info, expected_type: Present { value: application.formal.substitution_basis })
       Absent => emit_info
     }
+    let arg_emit_info = if callee != none && !is_rt { user_call_lambda_emit_info(arg: arg_value(n: a), emit_info: typed_emit_info, si: scope.type_env.source_indices) } else { typed_emit_info }
     let arg_scope = lambda_argument_scope(arg: arg_value(n: a), scope: scope)
     if is_rt_ref_map && idx == 0 {
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: arg_emit_info)
@@ -14000,7 +14074,9 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               positional_payload_variants: emit_info.positional_payload_variants,
               shared_types: emit_info.shared_types,
               ownership_index: emit_info.ownership_index,
+              moved_argument_index: emit_info.moved_argument_index,
               movable: emit_info.movable,
+              moved_argument_occurrences: emit_info.moved_argument_occurrences,
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: set_insert(emit_info.owned_bindings, acc_name),
               read_only_params_index: emit_info.read_only_params_index,
@@ -14040,7 +14116,9 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               positional_payload_variants: emit_info.positional_payload_variants,
               shared_types: emit_info.shared_types,
               ownership_index: emit_info.ownership_index,
+              moved_argument_index: emit_info.moved_argument_index,
               movable: set_insert(emit_info.movable, acc_name),
+              moved_argument_occurrences: emit_info.moved_argument_occurrences,
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: emit_info.owned_bindings,
               read_only_params_index: emit_info.read_only_params_index,
@@ -16222,16 +16300,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           Absent => []
         }
 
-        let phantom_strs = match lookup_type_by_name(env: scope.type_env, name: ctor_name) {
-          Present { value: struct_decl } =>
-            let is_struct = struct_decl.connective == Conj
-            let pnames = struct_decl.params |> map(p => generic_param_name_at(n: p, source_indices: si))
-            let unused = struct_unused_param_names(generic_param_names: pnames, children: struct_decl.children, source_indices: si)
-            let has_unused = (unused |> count) > 0
-            if is_struct && has_unused {
-              [concat("    ", rust_phantom_field_name(), ": std::marker::PhantomData,")]
-            } else { [] }
-          Absent => []
+        let phantom_strs = match record_literal_phantom_field(resolved_type: resolved_type, emit_info: emit_info, source_indices: si) {
+          RecordLiteralPhantomField => [concat("    ", rust_phantom_field_name(), ": std::marker::PhantomData,")]
+          RecordLiteralNoPhantomField => []
+          RecordLiteralDeclarationUnresolved { cause: cause } => return emit_rust_compile_error_expr(message: concat("record literal's type names no single declaration, so whether it carries a phantom field is undecided: ", cause))
         }
         let all_field_strs = concat(concat(field_strs, default_strs), phantom_strs)
         let fields_str = all_field_strs |> join(separator: "\n")
