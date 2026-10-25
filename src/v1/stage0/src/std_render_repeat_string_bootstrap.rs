@@ -37,5 +37,5 @@ pub fn repeat_string_loop(
 }
 
 pub fn repeat_string(s: String, n: i64) -> String {
-    repeat_string_loop("".to_string(), s.clone(), n.clone())
+    repeat_string_loop("".to_string(), s, n)
 }

@@ -3,12 +3,12 @@ module test.claim.host.managed_host_boot_witness
 import std.algebra { string_contains }
 import std.types { Bool, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.toolchain.types { Aarch64 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, AmiMegaRac }
 import extdeps.bmc.access_profile {
   BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity,
 }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label, ipmi_boot_flags_parameter_hex }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_bootparam5_cdrom_efi_next_boot }
 import extdeps.bmc.capability {
   bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq,
   BmcFirmwareReleaseCapabilityRow, BmcFirmwareReleaseIdentity,
@@ -203,7 +203,10 @@ test fn w_the_real_row_admits_a_boot_with_its_medium_and_the_boot_selection() ->
         && (s.medium.export.dir as String) == "/srv/bmc"
         && (boot_subject_machine(subject: s) as String) == "mtcollins1"
         && (s.execution_revision as String) == (revision as String)
-        && s.selection.architecture == Aarch64
+        && (match ipmi_boot_flags_parameter_hex(selection: s.selection) {
+          Present { value: hex } => string_contains(s: ipmitool_bootparam5_cdrom_efi_next_boot, pattern: concat("Boot parameter data: ", hex))
+          Absent => false
+        })
         && s.selection.firmware_mode == IpmiBootEfi
         && s.selection.persistence == IpmiBootOnce
         && s.selection.device == IpmiBootCdrom
