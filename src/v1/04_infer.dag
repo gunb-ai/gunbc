@@ -3900,9 +3900,9 @@ fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String,
   if (rt.connective == Arrow) {
     equality_walk_refused(r: equality_refused(carrier: name, member: "function value", member_judged: true))
   } else if (rt.connective == Conj) {
-    equality_product_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0, name: name, fields: rt.children, scope: scope, visited: visited, depth: depth)
+    equality_product_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0 || (peeled.children |> count) > 0, name: name, fields: rt.children, scope: scope, visited: visited, depth: depth)
   } else if (rt.connective == Disj) {
-    equality_coproduct_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0, name: name, variants: rt.children, scope: scope, visited: visited, depth: depth)
+    equality_coproduct_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0 || (peeled.children |> count) > 0, name: name, variants: rt.children, scope: scope, visited: visited, depth: depth)
   } else if (rt.children |> count) > 0 || type_reference_identity(n: rt, source_indices: scope.type_env.source_indices) != type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices) {
     equality_operand_walk(n: rt, scope: scope, visited: visited, depth: depth + 1, at_root: at_root)
   } else {
