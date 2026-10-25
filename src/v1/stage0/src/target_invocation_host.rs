@@ -620,6 +620,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("effect-pair-census"),
+            TargetProducer::NativeCensusVerb {
+                verb: "effect-pair-census",
+            },
+        ),
+        (
             instrument_label("generic-identity-census"),
             TargetProducer::GenericIdentityCensus,
         ),
@@ -650,6 +656,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("append-chain-ladder"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/append_chain_ladder_native.dag",
+            },
+        ),
+        (
+            instrument_label("last-use-move"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/last_use_move_native.dag",
             },
         ),
         (

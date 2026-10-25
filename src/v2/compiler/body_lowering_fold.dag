@@ -95,7 +95,7 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_is
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
-import v2.std.node { positional_child_target_nodes, content_hash, symbol_lexeme, NotADeclaration }
+import v2.std.node { node_same_occurrence, positional_child_target_nodes, content_hash, symbol_lexeme, NotADeclaration }
 
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
@@ -2658,7 +2658,7 @@ fn body_lower_binder_name_behind_shell_optional(node: Node) -> Optional<Node> {
     Present { value: inner } => body_lower_param_binding_atom_optional(node: inner)
     Absent =>
       let peeled = body_lower_deep_unwrap_optional(node: node)
-      if peeled != node {
+      if !node_same_occurrence(a: peeled, b: node) {
         body_lower_param_binding_atom_optional(node: peeled)
       } else {
         match sugar_sequence_pair_optional(node: node) {
@@ -8936,7 +8936,7 @@ fn body_lower_whole_match_shell_optional(node: Node) -> Optional<Node> {
       }
     Absent =>
       let peeled = body_lower_deep_unwrap_optional(node: node)
-      if peeled != node {
+      if !node_same_occurrence(a: peeled, b: node) {
         body_lower_whole_match_shell_optional(node: peeled)
       } else {
         match sugar_sequence_pair_optional(node: node) {
@@ -9908,7 +9908,7 @@ fn body_lowering_match_spine_identity_absent_dispatch_holds() -> Bool {
               Accepted { value: RawParse { node: _ }, diagnostics: _ } => false
               Accepted { value: RawLeaf { node: _ }, diagnostics: _ } => false
               Rejected { diagnostics: _ } => false
-            }) || dispatched != reduced
+            }) || !node_same_occurrence(a: dispatched, b: reduced)
         }
     }
   }
@@ -12753,7 +12753,7 @@ fn body_lower_statement_sole_if_optional(node: Node) -> Optional<Node> {
       }
     Absent =>
       let peeled = body_lower_deep_unwrap_optional(node: node)
-      if peeled != node {
+      if !node_same_occurrence(a: peeled, b: node) {
         body_lower_statement_sole_if_optional(node: peeled)
       } else {
         match sugar_sequence_pair_optional(node: node) {
@@ -12903,7 +12903,7 @@ fn body_lower_exit_walk(node: Node, tail: Bool, arm_tail: Bool) -> Optional<Outc
       }
     Absent =>
       let peeled = body_lower_deep_unwrap_optional(node: node)
-      if peeled != node {
+      if !node_same_occurrence(a: peeled, b: node) {
         body_lower_exit_walk(node: peeled, tail: tail, arm_tail: arm_tail)
       } else {
         match sugar_sequence_pair_optional(node: node) {

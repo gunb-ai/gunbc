@@ -29,7 +29,7 @@ import std.content_hash {sha256_hex_digest,Sha256Digest}
 import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
 import product.printed_chassis.assembly_inventory { inventory_report, captured_inventory_report, InventoryUnread, RequiredPart, PartReservation, ReserveParts, required_printed_parts, InspectPart, InspectionEvidence }
 import product.printed_chassis.assembly_inventory_store { initialize_inventory, mutate_inventory, observe_stored_inventory }
-import product.printed_chassis.printable_assembly { PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_from_wire, printed_assembly_root_wire }
+import product.printed_chassis.printable_assembly { PrintedAssemblyRoot, ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct, PrintableAssemblyReady, PrintableAssemblyRefused, printed_assembly_root_from_wire, printed_assembly_root_wire }
 import product.printed_chassis.printable_assembly_selection { select_printable_assembly }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 
@@ -100,9 +100,13 @@ fn run(plan_file:String,output:String,recipe:String,source_revision:String,root:
 // ONE PLATE FOR ONE PRINT REQUEST (gunbc.fleet.print_converge). The plate plan names only objects,
 // placements, orientation and support policy; the recipe is the machine and process, and the printer
 // belongs to the request, so nothing here names a physical printer or a credential.
+// THE REQUEST PASS OBSERVES THE RUNTIME; IT DOES NOT PROVISION IT. It runs as the CI job user, which
+// holds no apt or root grant, so a package install from here could only refuse (and the package
+// route is SSH as a login principal the job user is not). observe_print_runtime below reads the OS,
+// packages, CAD interpreter and pinned slicer on this host and refuses naming what is missing;
+// provisioning stays the explicit converge_runtime / provision_and_run route.
 type RequestPlatePreparation = RequestPlatePrepared {artifact:Sha256Digest,path:String} | RequestPlateRefused {cause:String}
 fn prepare_request_plate(plate_file:String,output:String,recipe:String,source_revision:String,root:String) -> RequestPlatePreparation {
- match converge_runtime(receipt:concat(output,"-runtime-convergence.txt")) {ExitSuccess=>{} ExitFailure {code:_,reason:r}=>return RequestPlateRefused {cause:concat("Print runtime convergence refused: ",r)}}
  let appimage=match acquire_orca_archive() {SlicerArchiveReady {path:p}=>p SlicerArchiveRefused {cause:c}=>return RequestPlateRefused {cause:c}}
  let selected=match printed_assembly_root_from_wire(s:root) {Present {value:r}=>r Absent=>return RequestPlateRefused {cause:"Unknown printed assembly root"}}
  let chosen=match print_recipe_from_wire(s:recipe) {Present {value:r}=>r Absent=>return RequestPlateRefused {cause:"Unknown print recipe"}}
@@ -170,6 +174,7 @@ fn inventory_root(prepared_output:String) -> InventoryRoot {
     A16SleeveDuct=>InventoryRootRefused
     A16PlugFitRing=>InventoryRootRefused
     A16SleeveFitRing=>InventoryRootRefused
+    A16BlowerDuct=>InventoryRootRefused
    }
   }
  }
