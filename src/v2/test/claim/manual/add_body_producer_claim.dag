@@ -5,7 +5,7 @@ import v2.test.claim.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body
 }
 import v2.extdeps.languages.dag { dag_add_binary_body_fixture }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   Atom,
   ComputationNode,
@@ -74,7 +74,7 @@ fn add_arrow_swapped_operand_body() -> Node {
 test fn add_body_operand_order_differs() -> Bool {
   let canonical = dag_add_binary_body_fixture
   let swapped = add_arrow_swapped_operand_body()
-  canonical != swapped
+  !node_same_occurrence(a: canonical, b: swapped)
 }
 
 // Deliberately hand-built shape with no producer: the retired positional-types Arrow [T1..Tn, U] (Program P).
