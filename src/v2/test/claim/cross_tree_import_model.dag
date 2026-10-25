@@ -1,130 +1,120 @@
 module v2.test.claim.cross_tree_import_model
 
+import std.algebra { Cons, Empty, empty_map, map_insert }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Map }
+import v2.std.text { String }
+import v2.std.cross_tree.import_model {
+  CrossTreeAdmissionVerdict,
+  CrossTreeAdmitted,
+  CrossTreeDenied,
+  CrossTreeFromTreeNotInRootSet,
+  CrossTreeFundamentalityUnknownFailClosed,
+  CrossTreeImport,
+  CrossTreeToTreeNotInRootSet,
+  DagTree,
+  SourceRootSet,
+  V2Tree,
+  cross_tree_import_admitted,
+  cross_tree_import_closure_admitted
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data both_roots: SourceRootSet = [V2Tree, DagTree]
+// WITNESSES FOR THE NAMESPACE RANK (v2.std.cross_tree.import_model cross_tree_import_admitted). The rank of a
+// namespace is its row; the declared set below is invented, as the trees' real rows are policy the storage
+// lookup is handed (v2.cli.repository_layout). Each control pins the verdict's KIND, so a denial for the wrong
+// reason cannot pass a denial control.
 
-data dag_only_roots: SourceRootSet = [DagTree]
+data both_roots: SourceRootSet = Cons { head: V2Tree, tail: Cons { head: DagTree, tail: Empty } }
 
-data dag_std_to_v2_std_edge: CrossTreeImport = CrossTreeImport {
-  from_tree: DagTree,
-  from_module: "dag.std.freeMonoid",
-  to_tree: V2Tree,
-  to_module: "v2.std.node"
+data dag_only_roots: SourceRootSet = Cons { head: DagTree, tail: Empty }
+
+fn declared() -> Map<String, Bool> {
+  map_insert(m: map_insert(m: map_insert(m: empty_map(), key: "test.claim", value: true), key: "std", value: true), key: "v2.std", value: true)
 }
 
-data dag_std_to_v2_compiler_edge: CrossTreeImport = CrossTreeImport {
-  from_tree: DagTree,
-  from_module: "dag.std.freeMonoid",
-  to_tree: V2Tree,
-  to_module: "v2.compiler.tokenize"
+fn test_claim_to_v2_std() -> CrossTreeImport {
+  CrossTreeImport { from_tree: DagTree, from_namespace: "test.claim", to_tree: V2Tree, to_namespace: "v2.std" }
 }
 
-data v2_workflow_to_dag_std_edge: CrossTreeImport = CrossTreeImport {
-  from_tree: V2Tree,
-  from_module: "v2.workflow.ci_floor_plan",
-  to_tree: DagTree,
-  to_module: "dag.std.types"
+fn v2_std_to_std() -> CrossTreeImport {
+  CrossTreeImport { from_tree: V2Tree, from_namespace: "v2.std", to_tree: DagTree, to_namespace: "std" }
 }
 
-test fn witness_dag_std_to_v2_std_more_fundamental_admitted_holds() -> Bool {
-  match cross_tree_import_admitted(
-    edge: dag_std_to_v2_std_edge,
+fn undeclared_to_v2_std() -> CrossTreeImport {
+  CrossTreeImport { from_tree: DagTree, from_namespace: "undeclared", to_tree: V2Tree, to_namespace: "v2.std" }
+}
+
+fn test_claim_to_undeclared_v2() -> CrossTreeImport {
+  CrossTreeImport { from_tree: DagTree, from_namespace: "test.claim", to_tree: V2Tree, to_namespace: "v2.undeclared" }
+}
+
+fn verdict_kind(verdict: CrossTreeAdmissionVerdict) -> String {
+  match verdict {
+    CrossTreeAdmitted => "admitted"
+    CrossTreeDenied { reason: reason } =>
+      match reason {
+        CrossTreeFundamentalityUnknownFailClosed => "unranked"
+        CrossTreeFromTreeNotInRootSet => "from-root-inactive"
+        CrossTreeToTreeNotInRootSet => "to-root-inactive"
+      }
+  }
+}
+
+// There is no direction rule: a crossing between two declared namespaces is admitted either way.
+test fn a_crossing_from_a_declared_dag_namespace_to_a_declared_v2_namespace_is_admitted() -> Bool {
+  verdict_kind(verdict: cross_tree_import_admitted(edge: test_claim_to_v2_std(), roots: both_roots, declared: declared())) == "admitted"
+}
+
+test fn a_crossing_from_a_declared_v2_namespace_to_a_declared_dag_namespace_is_admitted() -> Bool {
+  verdict_kind(verdict: cross_tree_import_admitted(edge: v2_std_to_std(), roots: both_roots, declared: declared())) == "admitted"
+}
+
+// THE RED: an importer whose namespace has no row has no rank, and the crossing refuses fail-closed.
+test fn a_crossing_from_an_undeclared_namespace_is_unranked() -> Bool {
+  verdict_kind(verdict: cross_tree_import_admitted(edge: undeclared_to_v2_std(), roots: both_roots, declared: declared())) == "unranked"
+}
+
+test fn a_crossing_to_an_undeclared_namespace_is_unranked() -> Bool {
+  verdict_kind(verdict: cross_tree_import_admitted(edge: test_claim_to_undeclared_v2(), roots: both_roots, declared: declared())) == "unranked"
+}
+
+// No row is not a rank by default: with nothing declared, the same admitted crossing is unranked.
+test fn with_no_rows_declared_every_crossing_is_unranked() -> Bool {
+  verdict_kind(verdict: cross_tree_import_admitted(edge: test_claim_to_v2_std(), roots: both_roots, declared: empty_map())) == "unranked"
+}
+
+// An edge within one tree is not a crossing and asks no rank.
+test fn an_edge_within_one_tree_asks_no_rank() -> Bool {
+  verdict_kind(verdict: cross_tree_import_admitted(
+    edge: CrossTreeImport { from_tree: DagTree, from_namespace: "undeclared", to_tree: DagTree, to_namespace: "undeclared.other" },
     roots: both_roots,
-    order: MoreFundamental
-  ) {
-    CrossTreeAdmitted => true
-    CrossTreeDenied { reason: _ } => false
-  }
+    declared: declared()
+  )) == "admitted"
 }
 
-test fn witness_dag_std_to_v2_std_co_fundamental_admitted_holds() -> Bool {
-  match cross_tree_import_admitted(
-    edge: dag_std_to_v2_std_edge,
+// The active-root denials stay enrolled and precede the rank.
+test fn a_crossing_to_an_inactive_root_is_refused_before_the_rank() -> Bool {
+  verdict_kind(verdict: cross_tree_import_admitted(edge: test_claim_to_v2_std(), roots: dag_only_roots, declared: declared())) == "to-root-inactive"
+}
+
+test fn a_crossing_from_an_inactive_root_is_refused_before_the_rank() -> Bool {
+  verdict_kind(verdict: cross_tree_import_admitted(edge: v2_std_to_std(), roots: dag_only_roots, declared: declared())) == "from-root-inactive"
+}
+
+test fn a_closure_of_ranked_crossings_is_admitted() -> Bool {
+  verdict_kind(verdict: cross_tree_import_closure_admitted(
+    closure: Cons { head: test_claim_to_v2_std(), tail: Cons { head: v2_std_to_std(), tail: Empty } },
     roots: both_roots,
-    order: CoFundamental
-  ) {
-    CrossTreeAdmitted => true
-    CrossTreeDenied { reason: _ } => false
-  }
+    declared: declared()
+  )) == "admitted"
 }
 
-test fn witness_v2_workflow_to_dag_std_more_fundamental_admitted_holds() -> Bool {
-  match cross_tree_import_admitted(
-    edge: v2_workflow_to_dag_std_edge,
+test fn a_closure_holding_one_unranked_crossing_is_refused() -> Bool {
+  verdict_kind(verdict: cross_tree_import_closure_admitted(
+    closure: Cons { head: test_claim_to_v2_std(), tail: Cons { head: undeclared_to_v2_std(), tail: Empty } },
     roots: both_roots,
-    order: MoreFundamental
-  ) {
-    CrossTreeAdmitted => true
-    CrossTreeDenied { reason: _ } => false
-  }
+    declared: declared()
+  )) == "unranked"
 }
-
-test fn witness_import_closure_all_admitted_holds() -> Bool {
-  let closure = [dag_std_to_v2_std_edge, v2_workflow_to_dag_std_edge]
-  match cross_tree_import_closure_admitted(
-    closure: closure,
-    roots: both_roots,
-    order: MoreFundamental
-  ) {
-    CrossTreeAdmitted => true
-    CrossTreeDenied { reason: _ } => false
-  }
-}
-
-test fn witness_layer_direction_deleted_now_admitted_holds() -> Bool {
-  match cross_tree_import_admitted(
-    edge: dag_std_to_v2_compiler_edge,
-    roots: both_roots,
-    order: MoreFundamental
-  ) {
-    CrossTreeAdmitted => true
-    CrossTreeDenied { reason: _ } => false
-  }
-}
-
-test fn witness_fundamentality_unknown_denied_holds() -> Bool {
-  match cross_tree_import_admitted(
-    edge: dag_std_to_v2_std_edge,
-    roots: both_roots,
-    order: FundamentalityUnknown
-  ) {
-    CrossTreeAdmitted => false
-    CrossTreeDenied { reason: _ } => true
-  }
-}
-
-test fn witness_missing_root_denied_holds() -> Bool {
-  match cross_tree_import_admitted(
-    edge: dag_std_to_v2_std_edge,
-    roots: dag_only_roots,
-    order: MoreFundamental
-  ) {
-    CrossTreeAdmitted => false
-    CrossTreeDenied { reason: _ } => true
-  }
-}
-
-test fn witness_less_fundamental_denied_holds() -> Bool {
-  match cross_tree_import_admitted(
-    edge: dag_std_to_v2_std_edge,
-    roots: both_roots,
-    order: LessFundamental
-  ) {
-    CrossTreeAdmitted => false
-    CrossTreeDenied { reason: _ } => true
-  }
-}
-
-test fn witness_closure_denied_on_less_fundamental_holds() -> Bool {
-  let closure = [dag_std_to_v2_std_edge, dag_std_to_v2_compiler_edge]
-  match cross_tree_import_closure_admitted(
-    closure: closure,
-    roots: both_roots,
-    order: LessFundamental
-  ) {
-    CrossTreeAdmitted => false
-    CrossTreeDenied { reason: _ } => true
-  }
-}
-

@@ -534,7 +534,7 @@ fn parse_population_listed(env: AcquisitionEnv, modules: List<String>, compiler:
 }
 
 fn parse_population_prepared(env: AcquisitionEnv, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationReport {
-  match enumerate_bound_modules(layout: env.layout, bindings: env.bindings, namespaces: layout_namespaces()) {
+  match enumerate_bound_modules(layout: env.layout, bindings: env.bindings) {
     BoundModulesRefused { subject: subject, cause: cause } =>
       PopulationReport {
         text: concat(subject, ": ", cause),
@@ -631,7 +631,7 @@ fn select_spelled_modules(bindings: List<SourceRootBinding>) -> PopulationReport
     AcquisitionEnvUnprepared { diagnostics: _ } =>
       PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" }
     AcquisitionEnvReady { env: env } =>
-      match enumerate_bound_modules(layout: env.layout, bindings: env.bindings, namespaces: layout_namespaces()) {
+      match enumerate_bound_modules(layout: env.layout, bindings: env.bindings) {
         BoundModulesRefused { subject: subject, cause: cause } =>
           PopulationReport { text: concat(subject, ": ", cause), held: false, detail: concat("could not enumerate the modules of ", subject) }
         BoundModulesListed { modules: modules } => select_spelled_listed(env: env, modules: modules)
