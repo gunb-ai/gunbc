@@ -58,7 +58,7 @@ pub fn currency_alphabetic_code(c: CurrencyCode) -> String {
 }
 
 pub fn currency_code_eq(a: CurrencyCode, b: CurrencyCode) -> bool {
-    (currency_numeric_code(a.clone()) == currency_numeric_code(b.clone()))
+    (currency_numeric_code(a) == currency_numeric_code(b))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

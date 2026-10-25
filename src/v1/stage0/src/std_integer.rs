@@ -272,7 +272,7 @@ pub fn decimal_digit_of_units(value: i64) -> DecimalDigit {
 }
 
 pub fn decimal_digit_advance(d: DecimalDigit) -> DecimalDigit {
-    match (*crate::std_nat::decimal_digit_successor(d.clone())).clone() {
+    match (*crate::std_nat::decimal_digit_successor(d)).clone() {
         DecimalDigitSuccessor::DecimalDigitNext { digit: next, .. } => next.clone(),
         DecimalDigitSuccessor::DecimalDigitCarry => DecimalDigit::D0,
     }
@@ -342,7 +342,7 @@ pub fn int_compare(a: i64, b: i64) -> Ordering {
 }
 
 pub fn int_eq(a: i64, b: i64) -> bool {
-    match int_compare(a.clone(), b.clone()) {
+    match int_compare(a, b) {
         Ordering::Less => false,
         Ordering::Equal => true,
         Ordering::Greater => false,
@@ -350,7 +350,7 @@ pub fn int_eq(a: i64, b: i64) -> bool {
 }
 
 pub fn int_ne(a: i64, b: i64) -> bool {
-    match int_compare(a.clone(), b.clone()) {
+    match int_compare(a, b) {
         Ordering::Less => true,
         Ordering::Equal => false,
         Ordering::Greater => true,

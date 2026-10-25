@@ -2,6 +2,7 @@ module test.claim.host.host_primary_network_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.upsert_decision { Noop, Apply, Refuse }
+import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_precheck, SplitOk, SplitRefused, SelfSubject, SubjectAbsent, ExecutorIdentityAbsent }
 import std.measure { bandwidth_count, byte_size_count }
 import extdeps.languages.yaml.types { YamlValue, kv, yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
@@ -38,7 +39,7 @@ import gunbc.host.host_primary_network_apply {
   primary_network_staged_population, StagedNetplanReady, StagedNetplanRefused, StagedNetplanFile, primary_network_cleanup_steps,
   primary_confirm_write, ConfirmWritten, ConfirmWriteFailed,
   primary_try_settlement, TrySettled, TryUnsettled, primary_network_cleanup_plan,
-  primary_readback_vantage, ReadbackFromPeer, ReadbackFromTargetItself,
+  primary_network_split_refusal,
 }
 
 // srv1's three one-line iproute2 reads as printed on 2026-10-25 (lo, the gunbc-tap* microvm links and
@@ -286,11 +287,18 @@ test fn the_fabric_rail_document_is_the_same_model_and_emitter() -> Bool {
   }
 }
 
-// A READBACK TAKEN FROM THE TARGET ITSELF NEVER CROSSES ITS UPLINK, so the entry refuses that vantage;
-// one taken from another host is admitted.
+// A READBACK TAKEN FROM THE SUBJECT ITSELF NEVER CROSSES ITS UPLINK, so the shared executor/subject
+// predicate refuses a slot on srv1 converging srv1 (by its runner slot name, not its hostname), admits a
+// slot on srv3, and this mode's refusal names the uplink rather than the host-file modes' drain.
 test fn the_readback_vantage_must_be_another_host() -> Bool {
-  (match primary_readback_vantage(executor: "srv1\n", target: operator_host_srv1) { ReadbackFromTargetItself => true  ReadbackFromPeer { executor: _ } => false })
-    && (match primary_readback_vantage(executor: "srv3", target: operator_host_srv1) { ReadbackFromPeer { executor: e } => (e as String) == "srv3"  ReadbackFromTargetItself => false })
+  (match fleet_converge_split_precheck(executor_runner_name: Present { value: "actions-runner@srv1-3" }, subject_host: Present { value: "srv1" }) {
+    SplitRefused { reason: why } => string_contains(s: primary_network_split_refusal(reason: why), pattern: "never crosses the uplink")
+    SplitOk { executor_runner_name: _, subject_host: _ } => false
+  })
+    && (match fleet_converge_split_precheck(executor_runner_name: Present { value: "actions-runner@srv3-2" }, subject_host: Present { value: "srv1" }) {
+      SplitOk { executor_runner_name: _, subject_host: h } => h == "srv1"
+      SplitRefused { reason: _ } => false
+    })
 }
 
 // A CONFIRMATION IS DELIVERED ONLY WHEN ITS WRITE SAYS SO: timeout's 124 or dd's own failure is a try

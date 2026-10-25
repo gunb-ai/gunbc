@@ -35,11 +35,12 @@ import gunbc.typed_remote_file_write {
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_target_host_env_name }
+import gunbc.fleet.fleet_converge_executor_subject_split {
+  fleet_converge_split_read, SplitPrecheck, SplitOk, SplitRefused, SplitRefusalReason, SelfSubject, SubjectAbsent, ExecutorIdentityAbsent,
+  fleet_converge_split_refusal_marker, fleet_converge_split_refusal_line,
+}
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.ci.ci_spec { host_primary_network_receipt_path }
-import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
-import gunbc.host.host_effect { LocalShell }
 import gunbc.host.host_primary_network {
   HostPrimaryNetworkDesired, PrimaryNetworkRow, PrimaryRowDeclared, PrimaryRowRenderRefused, PrimaryRowAwaitingRead, PrimaryRowUnmodeled,
   primary_network_row_for, primary_network_netplan_file, primary_network_netplan_file_name,
@@ -196,12 +197,18 @@ fn primary_network_apply_phase_budgets() -> List<Second> {
 
 // ── Legs ─────────────────────────────────────────────────────────────────────────────────────────
 
-type PrimaryReadbackVantage
-  = ReadbackFromPeer { executor: NonEmptyStr }
-  | ReadbackFromTargetItself
-
-fn primary_readback_vantage(executor: String, target: HostIdentity) -> PrimaryReadbackVantage {
-  if trim(s: executor) == (target as String) { ReadbackFromTargetItself } else { ReadbackFromPeer { executor: trim(s: executor) as NonEmptyStr } }
+// THE EXECUTOR IS NEVER THE SUBJECT, by gunbc.fleet.fleet_converge_executor_subject_split's one
+// predicate (the runner identity, slot names included, against the named subject). The host-file
+// modes refuse a self-subject because their drain would wait on its own slot; this mode refuses it
+// because a readback from the subject to itself is delivered locally and passes with the uplink dead.
+// One predicate, and this mode's own reason in its refusal.
+fn primary_network_split_refusal(reason: SplitRefusalReason) -> String {
+  match reason {
+    SelfSubject { executor_runner_name: n, subject_host: h } =>
+      join(["host_primary_network: ", fleet_converge_split_refusal_marker, ": the executor runner (", n, ") is on the subject ", h, ", where a readback is delivered locally and never crosses the uplink it would confirm. Dispatch with host (an observer) != subject_host."], "")
+    SubjectAbsent => fleet_converge_split_refusal_line(reason: reason)
+    ExecutorIdentityAbsent => fleet_converge_split_refusal_line(reason: reason)
+  }
 }
 
 type PrimaryLegRead
@@ -627,26 +634,19 @@ fn apply_primary_network(subject: FleetHostFileSubject, context: FleetSshExecuti
 
 data host_primary_network_attempt_raw: String = "host-primary-network-converge-ci"
 
-// ONE TARGET PER RUN, NAMED BY THE DISPATCH, and never the host the run executes on. A host without a
+// ONE SUBJECT PER RUN, NAMED BY THE DISPATCH, and never the host the run executes on. A host without a
 // row refuses with its standing; the apply mode is the operator's to choose.
 fn host_primary_network_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
 {
-  match actions_variable_read(name: fleet_converge_target_host_env_name) {
-    ActionsVariableAbsent { variable: v, detail: dt } =>
-      exit_failure(reason: join(["host_primary_network: ", v, " ", dt, "; one target host per run, named by the dispatch"], ""))
-    ActionsVariablePresent { value: raw_host } =>
+  match fleet_converge_split_read() {
+    SplitRefused { reason: why } => exit_failure(reason: primary_network_split_refusal(reason: why))
+    SplitOk { executor_runner_name: _, subject_host: raw_host } =>
       match primary_network_row_for(host: raw_host as HostIdentity) {
         PrimaryRowUnmodeled { host: h } => exit_failure(reason: join(["host_primary_network: ", h as String, " has no primary network row"], ""))
         PrimaryRowAwaitingRead { change: _, read_obligation: o } => exit_failure(reason: join(["host_primary_network: ", raw_host, " was moved by hand and not read; owed: ", o as String], ""))
         PrimaryRowRenderRefused { host: h, cause: c } => exit_failure(reason: join(["host_primary_network: ", h as String, ": ", c as String], ""))
         PrimaryRowDeclared { row: r } => {
           let d = r.desired
-          match hostname_short_read(transport: LocalShell) {
-            HostnameShortCaptureRefused { reason: why } => exit_failure(reason: join(["host_primary_network: the executor's own name is unread, so whether the readback crosses the uplink is undecided: ", why], ""))
-            HostnameShortCaptured { value: executor } =>
-              match primary_readback_vantage(executor: executor, target: d.host) {
-                ReadbackFromTargetItself => exit_failure(reason: join(["host_primary_network: this run executes on ", d.host as String, " itself, where a readback never crosses the uplink it would confirm; run it from an observer host"], ""))
-                ReadbackFromPeer { executor: _ } =>
                   match administrator_ssh_target(host: d.host) {
                     SshTargetRefused { endpoint: e, refusal: why } => exit_failure(reason: ssh_target_refusal_text(endpoint: e, refusal: why))
                     SshTargetResolved { target: target } =>
@@ -670,8 +670,6 @@ fn host_primary_network_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
                         }
                       }
                   }
-              }
-          }
         }
       }
   }

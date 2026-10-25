@@ -52,9 +52,12 @@ import extdeps.bmc.redfish_memory_inventory {
   RedfishSystemInventoryLinks, redfish_system_inventory_links_of, redfish_resource_odata_id, redfish_service_root_systems_link_of,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.auth.netrc_binding {
-  NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains,
-  place_netrc_binding_privately, shred_netrc_binding,
+import gunbc.auth.netrc_binding { netrc_binding_path, with_private_netrc_binding }
+import gunbc.auth.private_secret_file {
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
 }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.machine_intake.sel_stimulus_listener { SelDelta, sel_read, sel_after, sel_field }
@@ -2512,17 +2515,21 @@ fn mtcollins1_boot_inventory(username: NonEmptyStr, password: String) -> Invento
 {
   let at = clock_now_probed_at_or_unknown()
   let endpoint = mtcollins1_redfish_url(path: mtcollins1_redfish_service_root_path as String)
-  match place_netrc_binding_privately(machine: mtcollins1_endpoint.host, login: username, password: trim(s: password) as Secret) {
-    NetrcBindingRefused { cause: c } => inventory_unread(cause: BmcCredentialUnavailable { endpoint: endpoint, at: at, detail: c as String })
-    NetrcBindingRefusedResidueRemains { cause: c } => {
+  match with_private_netrc_binding(
+    machine: mtcollins1_endpoint.host,
+    login: username,
+    password: trim(s: password) as Secret,
+    use: fn(binding) { read_inventory_with_netrc(netrc: netrc_binding_path(binding: binding) as NonEmptyStr) },
+  ) {
+    PrivateSecretFileNotEntered { cause: c } => inventory_unread(cause: BmcCredentialUnavailable { endpoint: endpoint, at: at, detail: c as String })
+    PrivateSecretFileNotEnteredResidueRemains { cause: c } => {
       let cause = BmcCredentialUnavailable { endpoint: endpoint, at: at, detail: c as String }
       InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: false }
     }
-    NetrcBindingPlaced { binding: binding } => {
-      let read = read_inventory_with_netrc(netrc: binding.path as NonEmptyStr)
-      let removed = shred_netrc_binding(binding: binding)
-      InventoryReading { system_id: read.system_id, memory: read.memory, processors: read.processors, credential_removed: removed }
-    }
+    PrivateSecretFileCompleted { value: read } =>
+      InventoryReading { system_id: read.system_id, memory: read.memory, processors: read.processors, credential_removed: true }
+    PrivateSecretFileCompletedResidueRemains { value: read } =>
+      InventoryReading { system_id: read.system_id, memory: read.memory, processors: read.processors, credential_removed: false }
   }
 }
 

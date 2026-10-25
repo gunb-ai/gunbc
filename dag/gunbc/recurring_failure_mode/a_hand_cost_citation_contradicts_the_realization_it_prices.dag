@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_hand_cost_citation_contradicts_the_realization_it_prices
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_hand_cost_citation_contradicts_the_realization_it_prices: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_hand_cost_citation_contradicts_the_realization_it_prices" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the accumulator-copy lens prices a combiner from the std.primitive_identity PrimitiveCostFact of the declaration it routes through, read by declaration through primitive_modeled_cost_for_declaration with the realizing carrier selected, sufficient for list_snoc_item to be priced at the persistent reading and for a hand citation that disagrees with the declaration's modeled cost to have no route into a verdict" } },
+
+  receipts: [
+    "**A cost lens prices an operation from a hand-authored citation whose cost contradicts every realization that runs.** INVALID STATE: v2.lens.cost.copied_port_citations copied_port_citation_list_snoc_item cites std.algebra list_snoc_item (`xs |> list_push(item)`) as an Arrow whose Loop body is linear in xs. The accumulator-copy lens derives its copied port from that citation, so a per-item append fold is convicted as a copied accumulator. HARM: the verdict is directional and wrong. It convicts the linear construction and is cited as coverage, which is the false positive measured on v2.compiler.tokenize lexeme_grow (gunbc.recurring_failure_mode lens_prices_the_authority_while_the_lane_runs_the_realization). The citation is a second cost authority for one operation, and nothing joins it to the declaration's modeled cost (DESIGN section 3).",
+    "EVIDENCE THAT THE CITATION IS WRONG, read from the realizations, not assumed (zesty-ibex-193, 2026-10-24). Both routes that run list_push use im 15.1.0 Vector. The emitted bridge v1_rt rc_list_push is Rc::make_mut, then push_back. The interpreter's method_call.list_push arm (v1_interpreter.rs) clones the RrbVector, then push_back. im 15.1.0 src/vector/mod.rs documents Vector clone as 'Time: O(1), or O(n) with a very small, bounded n for an inline vector' and push_back as 'O(1) amortised, and O(log n) in the worst case'. So no running realization is linear in xs. The modeled fact now says the same: std.primitive_identity primitive_list_push_cost, persistent reading log n worst case and amortized constant, read by declaration and executed in test.claim.primitive_modeled_cost_witness.",
+    "WHY THE CITATION SURVIVED: it was authored as 'faithful' to an accumulator-copy axis (its semantics_note says so), not derived from the realization or from a cost contract. The only contract that stated list_push's cost, std.primitives list_push_contract, was never read by any lens, so the contradiction had no place to surface (gunbc.rung_drop.retired_contract_cost_facts_drop records that the contract's cost had no executing consumer).",
+    "RUNG FOUND AT: below the ladder. The wrong verdict is produced silently, and nothing refuses it. CEILING: structurally guaranteed. The lens can read the declaration's modeled cost, so a citation that disagrees with it has no route into a verdict. NEXT TRIGGER: climbable now but unbuilt. Correcting this citation is the first change of the lens-repoint PR that follows the declaration-keyed cost carrier (parent ruling sleek-owl-397, 2026-10-24), and it changes the lens's verdicts. It needs the realizing carrier selected, because the modeled fact holds one reading per carrier.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.lens.cost.copied_port_citations", decl_name: "copied_port_citation_list_snoc_item", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.primitive_identity", decl_name: "primitive_list_push_cost", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "list_snoc_item", field: WholeDeclaration },
+  ],
+}

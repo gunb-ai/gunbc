@@ -18,7 +18,7 @@ import extdeps.systemd.systemd_run {
   SystemdRunProperty,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, attempt_state_prepare_argv_for_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, attempt_state_prepare_argvs_for_instance }
 import std.optional { Present }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_commit_git, ExecOk, ExecFailed, ExecRefused,
@@ -89,13 +89,13 @@ data wet_probe_key: String = "wetprobe"
 // Requires a user systemd manager (srv1).
 
 fn prepare_probe_attempt(instance: HostDashboardInstance) -> Bool {
-  let prep = attempt_state_prepare_argv_for_instance(
+  let preps = attempt_state_prepare_argvs_for_instance(
     instance: instance,
     node_id: wet_probe_node,
     attempt_key: wet_probe_key,
   )
   let wt = probe_attempt_worktree(instance: instance)
-  shell.Exec.RunArgv(program: prep.program, arguments: prep.args).exit_code == 0
+  fold(preps, init: true, f: (ok, p) => ok && shell.Exec.RunArgv(program: p.program, arguments: p.args).exit_code == 0)
     && shell.Exec.RunArgv(program: "install", arguments: ["-d", "--", wt]).exit_code == 0
 }
 
@@ -342,12 +342,12 @@ fn launcher_probe_worker_dir(instance: HostDashboardInstance, unit_key: String) 
 }
 
 fn prepare_launcher_probe(instance: HostDashboardInstance, unit_key: String) -> Bool {
-  let prep = attempt_state_prepare_argv_for_instance(
+  let preps = attempt_state_prepare_argvs_for_instance(
     instance: instance,
     node_id: wet_probe_node,
     attempt_key: launcher_probe_key(unit_key: unit_key),
   )
-  shell.Exec.RunArgv(program: prep.program, arguments: prep.args).exit_code == 0
+  fold(preps, init: true, f: (ok, p) => ok && shell.Exec.RunArgv(program: p.program, arguments: p.args).exit_code == 0)
     && shell.Exec.RunArgv(program: "install", arguments: ["-d", "--", launcher_probe_worktree(instance: instance, unit_key: unit_key)]).exit_code == 0
 }
 
