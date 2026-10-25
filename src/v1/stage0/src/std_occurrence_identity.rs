@@ -603,8 +603,8 @@ pub fn occurrence_containment_ancestors_are_prefix_of(
     path_ancestors: Rc<Vec<OccurrenceId>>,
 ) -> bool {
     occurrence_id_list_is_prefix_of(
-        occurrence_containment_ancestors_as_list(prefix_ancestors.clone()),
-        occurrence_containment_ancestors_as_list(path_ancestors.clone()),
+        occurrence_containment_ancestors_as_list(prefix_ancestors),
+        occurrence_containment_ancestors_as_list(path_ancestors),
     )
 }
 
@@ -957,7 +957,7 @@ pub fn occurrence_transport_validate(
 pub fn occurrence_transport_refusal(
     transport: Rc<OccurrenceTransport>,
 ) -> Option<Rc<OccurrenceTransportRefusal>> {
-    match (*occurrence_transport_validate(transport.clone())).clone() {
+    match (*occurrence_transport_validate(transport)).clone() {
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..
         } => Some(refusal.clone()),

@@ -1,0 +1,100 @@
+module test.claim.roadmap.belt_spawn_instance_wet_witness
+
+// THE TIMER ROUTE'S SPAWN ACTS ON THE INSTANCE IT WAS HANDED. belt_tick_for_instance resolves its
+// instance once and passes it down through belt_tick_spawn_decided and belt_actuate_spawn_member to
+// belt_actuate_spawn; until this control's change the last of those re-picked srv1-live, so a lab or
+// srv2 tick spawned against srv1-live's environment and state. The control drives that route with a
+// test-owned instance whose root is unprovisioned, so the spawn's first host effect, the environment
+// admission, refuses; the refusal names the paths it probed, and those must be the test instance's own.
+//
+// THE MUTATION THIS GOES RED UNDER: in gunbc.roadmap.roadmap_belt_actuate belt_actuate_spawn, replace
+// the received instance with `let instance = srv1_live_dashboard_instance()` (or re-pick it in
+// belt_actuate_spawn_member or belt_tick_spawn_decided). The admission then probes srv1-live's
+// environment, the detail names srv1-live's serve binary, and both clauses below fail.
+//
+// Wet: the admission probes host capabilities by execution. It needs no provisioned host and writes
+// nothing, because the refusal precedes every mutation of the spawn.
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, FilePath }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
+  srv1_live_dashboard_instance,
+}
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeIdentity, PrsMerged, Dispatchable }
+import gunbc.roadmap.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap.roadmap_execution_contract { gunbc_claim_execution_contract }
+import gunbc.roadmap.roadmap_belt { DesiredMember }
+import gunbc.roadmap.roadmap_launch_admission { launch_identity_exemplar }
+import gunbc.roadmap.roadmap_belt_actuate {
+  belt_tick_spawn_decided, BeltLaunchDecided,
+  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data control_root: String = "/tmp/gunbc-belt-spawn-instance-control"
+
+fn control_instance() -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "belt-spawn-instance-control" as NonEmptyStr),
+    instance_id: "belt-spawn-instance-control" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: control_root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18131,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+// A contract that closes something, so admission reaches the per-instance probes instead of refusing
+// the contract itself first.
+fn control_node() -> RoadmapNode {
+  RoadmapNode {
+    identity: "rnfx_BELTSPAWNINSTCTRL001" as RoadmapNodeIdentity,
+    node: "belt-spawn-instance-control",
+    line: DerivableLine { prs: [1], title: "belt spawn instance control", description: "" },
+    carriers: [],
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
+    execution: gunbc_claim_execution_contract(
+      entry: "dag/test/claim/roadmap/belt_spawn_instance_wet_witness.dag" as FilePath,
+      function: "the_timer_route_spawn_probes_the_instance_it_was_handed" as NonEmptyStr,
+    ),
+    owner: "",
+    signoff: Unsigned,
+    parent: none,
+    centering: none,
+  }
+}
+
+fn admission_detail(o: BeltSpawnOutcome) -> String {
+  match o {
+    SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
+      if step == "environment-admission" { detail } else { "" }
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => ""
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => ""
+    SpawnNotAdmitted { node_id: _, refusal: _ } => ""
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => ""
+  }
+}
+
+test fn the_timer_route_spawn_probes_the_instance_it_was_handed() -> Bool {
+  let instance = control_instance()
+  let outcomes = belt_tick_spawn_decided(
+    instance: instance,
+    decisions: [BeltLaunchDecided {
+      member: DesiredMember { node_id: "belt-spawn-instance-control", node: control_node() },
+      launch: launch_identity_exemplar(),
+    }],
+    workdir: instance.repo_root as String,
+  )
+  let details = outcomes |> map(o => admission_detail(o: o))
+  count(details) == 1
+    && all(details, d => string_contains(s: d, pattern: instance.serve_binary as String))
+    && all(details, d => !string_contains(s: d, pattern: srv1_live_dashboard_instance().serve_binary as String))
+}

@@ -4,7 +4,7 @@ import v2.lens.edit_locus { resolve_edit_locus_from_loci }
 import v2.std.integer { integer_int_type_node }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import v2.std.witness { Holds, Violates }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -21,7 +21,7 @@ test fn no_locus_refuses_as_no_match() -> Bool {
 
 test fn one_locus_resolves_to_that_locus() -> Bool {
   match resolve_edit_locus_from_loci(loci: [bool_node()]) {
-    Holds { value: n } => n == bool_node()
+    Holds { value: n } => node_same_occurrence(a: n, b: bool_node())
     Violates { diagnostic: _ } => false
   }
 }

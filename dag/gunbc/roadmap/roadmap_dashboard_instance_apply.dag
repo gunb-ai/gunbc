@@ -2373,28 +2373,12 @@ fn srv2_deploy_ensure_roots_cli() -> ProcessExit {
   )
 }
 
-fn srv1_lab_dashboard_apply() -> DashboardInstanceApplyResult {
-  dashboard_instance_apply(
-    instance: srv1_lab_dashboard_instance(),
-    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
-  )
-}
-
-fn srv1_lab_dashboard_preflight() -> DashboardApplyPreflightResult {
-  dashboard_instance_apply_preflight(
-    instance: srv1_lab_dashboard_instance(),
-    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
-  )
-}
-
-fn srv1_lab_dashboard_preflight_json() -> String {
-  serialize_json(v: dashboard_apply_preflight_json_value(
-    result: srv1_lab_dashboard_preflight(),
-  ))
-}
-
-fn srv1_lab_dashboard_preflight_wet() -> ProcessExit {
-  let result = srv1_lab_dashboard_preflight()
+// THE EXIT MAPPING TAKES THE INSTANCE AND ITS PEER; ONLY THE NAMED ENTRIES BELOW CHOOSE THEM. Each
+// entry is selected by function name, resolves its instance and peer once, and hands both down;
+// nothing beneath it names an instance, and a newly declared lab adds two one-line entries rather
+// than another copy of the exit mapping.
+fn dashboard_instance_preflight_wet(instance: HostDashboardInstance, production: DashboardProductionPeer) -> ProcessExit {
+  let result = dashboard_instance_apply_preflight(instance: instance, production: production)
   match result {
     DashboardApplyPreflightReady {
       instance_id: _,
@@ -2416,17 +2400,27 @@ fn srv1_lab_dashboard_preflight_wet() -> ProcessExit {
   }
 }
 
-fn srv1_lab_dashboard_apply_json() -> String {
-  serialize_json(v: dashboard_apply_result_json_value(result: srv1_lab_dashboard_apply()))
-}
-
-fn srv1_lab_dashboard_apply_wet() -> ProcessExit {
-  let result = srv1_lab_dashboard_apply()
+fn dashboard_instance_apply_wet(instance: HostDashboardInstance, production: DashboardProductionPeer) -> ProcessExit {
+  let result = dashboard_instance_apply(instance: instance, production: production)
   match result {
     DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
     DashboardApplyRefused { instance_id: _, step: _, detail: _, receipts: _ } =>
       exit_failure(reason: serialize_json(v: dashboard_apply_result_json_value(result: result)))
   }
+}
+
+fn srv1_lab_dashboard_preflight_wet() -> ProcessExit {
+  dashboard_instance_preflight_wet(
+    instance: srv1_lab_dashboard_instance(),
+    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
+  )
+}
+
+fn srv1_lab_dashboard_apply_wet() -> ProcessExit {
+  dashboard_instance_apply_wet(
+    instance: srv1_lab_dashboard_instance(),
+    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
+  )
 }
 
 // BEFORE THIS BLOCK THIS MODULE CONTAINED THE STRING srv2 ZERO TIMES. Roughly sixteen hundred lines
@@ -2449,59 +2443,17 @@ fn srv1_lab_dashboard_apply_wet() -> ProcessExit {
 // port nobody serves. Being disjoint from something that is not there is not a property worth
 // checking; declaring that it is not there is.
 
-fn srv2_lab_dashboard_apply() -> DashboardInstanceApplyResult {
-  dashboard_instance_apply(
-    instance: srv2_lab_dashboard_instance(),
-    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
-  )
-}
-
-fn srv2_lab_dashboard_preflight() -> DashboardApplyPreflightResult {
-  dashboard_instance_apply_preflight(
-    instance: srv2_lab_dashboard_instance(),
-    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
-  )
-}
-
-fn srv2_lab_dashboard_preflight_json() -> String {
-  serialize_json(v: dashboard_apply_preflight_json_value(
-    result: srv2_lab_dashboard_preflight(),
-  ))
-}
-
 fn srv2_lab_dashboard_preflight_wet() -> ProcessExit {
-  let result = srv2_lab_dashboard_preflight()
-  match result {
-    DashboardApplyPreflightReady {
-      instance_id: _,
-      source_revision: _,
-    } => ExitSuccess
-    DashboardApplyPreflightBootstrapPending {
-      instance_id: _,
-      source_revision: _,
-      state_root: _,
-      remediation: _,
-    } =>
-      exit_failure(reason: serialize_json(v: dashboard_apply_preflight_json_value(
-        result: result,
-      )))
-    DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
-      exit_failure(reason: serialize_json(v: dashboard_apply_preflight_json_value(
-        result: result,
-      )))
-  }
-}
-
-fn srv2_lab_dashboard_apply_json() -> String {
-  serialize_json(v: dashboard_apply_result_json_value(result: srv2_lab_dashboard_apply()))
+  dashboard_instance_preflight_wet(
+    instance: srv2_lab_dashboard_instance(),
+    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
+  )
 }
 
 fn srv2_lab_dashboard_apply_wet() -> ProcessExit {
-  let result = srv2_lab_dashboard_apply()
-  match result {
-    DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
-    DashboardApplyRefused { instance_id: _, step: _, detail: _, receipts: _ } =>
-      exit_failure(reason: serialize_json(v: dashboard_apply_result_json_value(result: result)))
-  }
+  dashboard_instance_apply_wet(
+    instance: srv2_lab_dashboard_instance(),
+    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
+  )
 }
 

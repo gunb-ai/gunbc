@@ -26,7 +26,7 @@ data kit_call_shape_restates_the_home_signature: RungDrop = RungDrop {
     previous: StructurallyGuaranteed,
     temporary: MechanicallyPreventable,
     reason: ReplacementStaged { replacement: "a signature reader callable by the pre-census fixture generator, deriving params and result from the home declaration" },
-    population: Enumerated { members: FreeSemigroup { head: "gunbc.namespace_cut.ambient_name_home ambient_name_candidates list_push", tail: [] } },
-    restoration_trigger: "a pre-run signature reader exists: a typed reader from a home module's declaration to its arrow domain and codomain callable before the census run. Retire when it exists: AmbientNameKitCall and its row field are deleted and the fixture is derived from the declaration. Observed at retirement, not asserted: no AmbientNameHome row carries a kit_call."
+    population: Enumerated { members: FreeSemigroup { head: "gunbc.namespace_cut.ambient_name_home ambient_name_homes list_push", tail: [] } },
+    restoration_trigger: "a pre-run signature reader exists: a typed reader from a home module's declaration to its arrow domain and codomain callable before the census run. Retire when it exists: AmbientNameKitCall, the KitTypeUseProbe arguments and the row field kit_probe are deleted and the fixture is derived from the declaration. Observed at retirement, not asserted: no AmbientNameHome row carries a kit_probe."
   } }
 }

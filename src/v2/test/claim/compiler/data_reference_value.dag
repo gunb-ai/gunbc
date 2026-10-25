@@ -7,7 +7,7 @@ import v2.compiler.eval { eval, inputs_root_only }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
 import v2.test.claim.callexec.declaration_reference_eval { CrefReading, cref_assemble, cref_call_carries_declaration, cref_executes_to, cref_reading_of_outcome, cref_the_call_to }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.node { Arrow, Atom, Symbol, Authored, ConstantMemberEdge, Conj, Edge, Node, Positional, TypeNode, core_edge, edge_is_core, node_subtree_nodes, NotADeclaration }
+import v2.std.node { node_same_occurrence, Arrow, Atom, Symbol, Authored, ConstantMemberEdge, Conj, Edge, Node, Positional, TypeNode, core_edge, edge_is_core, node_subtree_nodes, NotADeclaration }
 import v2.std.node_query { arrow_constant_member_codomain }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Present }
@@ -129,12 +129,12 @@ test fn drv_lowering_marks_the_data_arrow_and_not_the_two_fn_arrows() -> Bool {
 // Int to the judge and an Int-at-String position refuses there by the judge's own existing rule. The input
 // is supplied (DESIGN section 3: one interface); the real path that types references through it is row (1).
 test fn drv_a_marked_reference_is_typed_at_exactly_its_codomain() -> Bool {
-  infer_reference_value_type(callable: drv_nullary_arrow(extra: [drv_marker()])) == drv_int()
+  node_same_occurrence(a: infer_reference_value_type(callable: drv_nullary_arrow(extra: [drv_marker()])), b: drv_int())
 }
 
 test fn drv_an_unmarked_callable_is_typed_as_itself() -> Bool {
   let f = drv_nullary_arrow(extra: [])
-  infer_reference_value_type(callable: f) == f
+  node_same_occurrence(a: infer_reference_value_type(callable: f), b: f)
 }
 
 // THE MARKER READER, SUPPLIED (DESIGN section 3: a witness discriminates at one interface). Its subject is
@@ -162,7 +162,7 @@ fn drv_nullary_arrow(extra: List<Edge>) -> Node {
 
 test fn drv_a_marked_nullary_arrow_answers_its_codomain() -> Bool {
   match arrow_constant_member_codomain(arrow: drv_nullary_arrow(extra: [drv_marker()])) {
-    Present { value: t } => t == drv_int()
+    Present { value: t } => node_same_occurrence(a: t, b: drv_int())
     Absent => false
   }
 }

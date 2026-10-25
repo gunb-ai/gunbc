@@ -101,7 +101,7 @@ pub fn outcome_under(grounding: DeclarationExposureGrounding) -> ExposureOutcome
     std::option::Option::None => ExposureOutcome::OutcomeSubjectRefused,
     Some(reference) => match crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(t.clone(), "ZqxProvided".to_string()).first().cloned() {
     std::option::Option::None => ExposureOutcome::OutcomeSubjectRefused,
-    Some(declaration) => match (*crate::std_occurrence_binding_candidates::resolve_type_reference_containment_binding(t.clone(), inputs_in_consumer_module(crate::v1_gunbc_occurrence_binding_parser_walk::occurrence_binding_inputs_from_transport(module_path.clone(), t.clone(), grounding.clone()), declaration.occurrence.clone(), "zqxexp.consumer".to_string()), reference.clone())).clone() {
+    Some(declaration) => match (*crate::std_occurrence_binding_candidates::resolve_type_reference_containment_binding(t.clone(), inputs_in_consumer_module(crate::v1_gunbc_occurrence_binding_parser_walk::occurrence_binding_inputs_from_transport(module_path.clone(), t.clone(), grounding), declaration.occurrence.clone(), "zqxexp.consumer".to_string()), reference.clone())).clone() {
     ReferenceBindingProjection::ReferenceBindingProjectionBound { provider: _, .. } => ExposureOutcome::OutcomeBound,
     ReferenceBindingProjection::ReferenceBindingProjectionUnbound { occurrence: _, .. } => ExposureOutcome::OutcomeUnbound,
     _ => ExposureOutcome::OutcomeOther,
