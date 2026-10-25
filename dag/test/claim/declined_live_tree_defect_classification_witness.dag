@@ -6,8 +6,16 @@ import gunbc.declined_live_tree_defect_classification {
   classified_row_count,
   every_row_carries_measured_evidence,
   real_defect_count,
-  wrong_witness_count
+  wrong_witness_count,
+  permanent_evidence_ruling_fields,
+  RecommendedDropRoute,
+  PriorChangeAttribution,
+  RulingFields,
+  AttributionWithheld,
+  AttributionWritten
 }
+import std.optional { Present }
+import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // SubstrateInputsOnly is truthful here and is the point: this witness reads the
@@ -47,4 +55,73 @@ test fn verdict_partition_is_exact_over_the_population() -> Bool {
 
 test fn exactly_one_pair_is_a_wrong_witness() -> Bool {
   wrong_witness_count() == 2
+}
+
+// THE OPEN RULING IS A TYPED SHAPE, NOT A PAGE OF PROSE (review 86337). The g1 row was NeedsOperatorRuling
+// with its operator guidance written INTO the question String -- an operating manual in a data field,
+// including a false statement ("this PR carries no ClosedByPriorChange arm") that read like fact. The
+// guidance is data now: `recommended_if_ruled` carries the drop route a non-operator lane may produce, and
+// `prior_change_attribution` states whether a prior change closes the row. These three claims are the
+// falsifiers: the row is still an open ruling, the typed recommendation is actually populated, and the
+// attribution is WITHHELD -- never Written, which would be the exact closure the operator has not made.
+test fn the_open_ruling_carries_a_typed_recommendation() -> Bool {
+  match permanent_evidence_ruling_fields() {
+    Present {
+      value: RulingFields {
+        question: _,
+        recommended_if_ruled: Present {
+          value: RecommendedDropRoute {
+            drop_carrier: dc,
+            owner: own,
+            restoration_trigger_declaration: trg,
+          },
+        },
+        prior_change_attribution: pa,
+      },
+    } =>
+      (dc == "gunbc.rung_drop")
+        && (own == "the operator who cut docs/probes/ in the 2026-08-24 measurement bankruptcy")
+        && (trg == "v2.lens.cited_symbol_resolution.cited_symbol_planted_controls")
+        && is_withheld(pa)
+    _ => false
+  }
+}
+
+// THE WITHHELD-NEVER-WRITTEN PAIR, spelled out so both arms exist. `AttributionWritten` is the closure the
+// operator has NOT made; the row being `NeedsOperatorRuling` and the attribution being `AttributionWritten`
+// at the same time would be the carrier contradicting itself, and it is the shape review 84372/84397
+// rejected. The reason must name #9181, because the withheld claim IS about #9181: naming it is what keeps
+// the withheld state distinguishable from a row nobody ever asked about.
+test fn the_prior_change_question_is_withheld_not_written() -> Bool {
+  match permanent_evidence_ruling_fields() {
+    Present { value: RulingFields { question: _, recommended_if_ruled: _, prior_change_attribution: pa } } =>
+      match pa {
+        AttributionWithheld { reason: r } => string_contains(s: r as String, pattern: "#9181")
+        AttributionWritten { change: _ } => false
+      }
+    _ => false
+  }
+}
+
+fn is_withheld(pa: PriorChangeAttribution) -> Bool {
+  match pa {
+    AttributionWithheld { reason: _ } => true
+    AttributionWritten { change: _ } => false
+  }
+}
+
+// THE QUESTION IS THE QUESTION AGAIN. The operator-guidance sentences that lived in the String are typed
+// fields now, so the String may no longer read as an operating manual: no option menu, and no
+// arm-narration ("this PR carries no X arm") -- the false ClosedByPriorChange sentence was the review's
+// example. This is a property OF the string value, checked through the carrier's own accessor; it is a
+// source lint, not behavioural evidence (DESIGN §5), and the behavioural evidence is the two claims above
+// reading the typed halves the prose was replaced by.
+test fn the_question_no_longer_carries_operating_manual_prose() -> Bool {
+  match permanent_evidence_ruling_fields() {
+    Present { value: RulingFields { question: q, recommended_if_ruled: _, prior_change_attribution: _ } } =>
+      (!string_contains(s: q, pattern: "OPTION B"))
+        && (!string_contains(s: q, pattern: "ClosedByPriorChange"))
+        && (!string_contains(s: q, pattern: "#9181"))
+    _ => false
+  }
 }

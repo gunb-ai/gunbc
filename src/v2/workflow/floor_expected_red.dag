@@ -1,6 +1,7 @@
 module v2.workflow.floor_expected_red
 
 import std.types { List }
+import std.algebra { FreeSemigroup }
 import std.algebra { Cons, Empty, list_flat_map }
 // The retirement carrier below reuses the closure-receipt shape this repo already declares for a
 // defect closed by prior work, rather than minting a second one (DESIGN §2). No cycle: that module
@@ -1424,7 +1425,8 @@ fn floor_expected_red_chunks() -> List<List<String>> {
 //    second copy of a fact the record already held, and the witness had to check one against the other
 //    -- exactly the second representation DESIGN 5 names, and a review (84231) caught one row where
 //    the two copies disagreed. What a reader wants -- which routes were run -- is read off the receipt,
-//    and `routes` must be non-empty (witness arm `receipt-names-no-route`).
+//    and `routes` is non-empty BY CONSTRUCTION: it is a `FreeSemigroup<ExecutionMode>` (review 86337), so a
+//    receipt naming no route cannot be written and the fold carries no emptiness arm for it.
 //  - trigger: the declaration naming the row's OWN discharge condition, when it had one; when
 //    Present it must resolve, which is what stops a trigger being pacified by deleting the row it
 //    names.
@@ -1481,15 +1483,17 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
       trigger: Absent,
       closure: RestsOnExecutedCheck {
         why_no_change: "no attributed fix commit exists: no commit touches this claim's own file, and the guarantee that named it was retired by the declaration-bound formal carrier, so the removal rests on the executed check rather than on a change" as NonEmptyStr,
-        durable_account: [
-          decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "guarantee_probe_rows"),
+        durable_account: FreeSemigroup {
+          head: decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "guarantee_probe_rows"),
+          tail: [
           decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "direct_call_arg_type_ordinary_module_red_probe"),
           decl_ref(module_path: "gunbc.guarantee_probe_corpus", decl_name: "direct_call_arg_type_v2_module_red_probe"),
         ],
+        },
         re_measured: ReMeasurement {
           head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
           on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
-          routes: [Wet, Hermetic],
+          routes: FreeSemigroup { head: Wet, tail: [Hermetic] },
           instrument: decl_ref(module_path: "test.claim.direct_call_argument_type_witness", decl_name: "direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch"),
         },
       },
@@ -1509,14 +1513,16 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
       trigger: Present { value: decl_ref(module_path: "std.unicode.scalar", decl_name: "from_code_point") },
       closure: AttributedToChange {
         change: PullRequest { number: 9250 },
-        durable_account: [
-          decl_ref(module_path: "std.unicode.scalar", decl_name: "from_code_point"),
+        durable_account: FreeSemigroup {
+          head: decl_ref(module_path: "std.unicode.scalar", decl_name: "from_code_point"),
+          tail: [
           decl_ref(module_path: "gunbc.floor.floor_non_verdict_classification", decl_name: "non_verdict_row_identity"),
         ],
+        },
         re_measured: ReMeasurement {
           head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
           on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
-          routes: [Wet, Hermetic],
+          routes: FreeSemigroup { head: Wet, tail: [Hermetic] },
           instrument: decl_ref(module_path: "v2.test.claim.manual.bootstrap_footprint_anchor", decl_name: "bootstrap_footprint_canonical_holds"),
         },
       },
@@ -1535,14 +1541,16 @@ fn floor_expected_red_retired_rows() -> List<RetiredExpectedRedRow> {
       trigger: Present { value: decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_algebra_ref_ungrounded_diagnostic") },
       closure: AttributedToChange {
         change: PullRequest { number: 12919 },
-        durable_account: [
-          decl_ref(module_path: "v2.compiler.infer", decl_name: "algebra_ref_is_grounded"),
+        durable_account: FreeSemigroup {
+          head: decl_ref(module_path: "v2.compiler.infer", decl_name: "algebra_ref_is_grounded"),
+          tail: [
           decl_ref(module_path: "v2.compiler.infer", decl_name: "infer_algebra_ref_ungrounded_diagnostic"),
         ],
+        },
         re_measured: ReMeasurement {
           head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
           on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
-          routes: [Wet, Hermetic],
+          routes: FreeSemigroup { head: Wet, tail: [Hermetic] },
           instrument: decl_ref(module_path: "v2.test.claim.manual.ingest_bridge", decl_name: "ingest_identity_coercion_accepts_source_present_in_authored_roster"),
         },
       },

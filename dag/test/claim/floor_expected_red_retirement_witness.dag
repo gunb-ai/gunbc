@@ -26,14 +26,15 @@ module test.claim.floor_expected_red_retirement_witness
 //   3. enrolled_on -- when Present, a real civil date (the calendar module's own round-trip) that does
 //                   not post-date its own re-measurement. When Absent, honest absence: two rows'
 //                   enrolling date was never recorded, and this claim does not let one be invented.
-//   4. re_measured.routes -- the ONE place route coverage lives. There is no companion boolean: a
-//                   `on_both_routes: Bool` beside this list was deleted (review 84231) because it was a
-//                   second copy of the same fact and the two copies were caught disagreeing. The fold
-//                   refuses a receipt naming no route, and asserts no count of routes either -- a row
-//                   measured on one route is honest when it says one, and the shipped rows say exactly
-//                   what was executed, per DESIGN 4b(1): the reported rung is the rung the evidence
-//                   established, never the rung that would read better.
-//   5. closure.durable_account -- non-empty, and EVERY ref resolves against the live declaration index
+//   4. re_measured.routes -- the ONE place route coverage lives, NONEMPTY BY CONSTRUCTION (review
+//                   86337, DESIGN §5 + §3b's FreeSemigroup model): `FreeSemigroup<ExecutionMode>` has no
+//                   empty inhabitant, so a receipt naming no route is unwritable and the fold checks no
+//                   emptiness. There is no companion boolean either: `on_both_routes: Bool` was deleted
+//                   (review 84231) as a second copy of the same fact. Which routes -- one or both -- the
+//                   list still carries exactly, per DESIGN 4b(1): the reported rung is the rung the
+//                   evidence established, never the rung that would read better.
+//   5. closure.durable_account -- non-empty BY CONSTRUCTION (FreeSemigroup, review 86337), and EVERY
+//                   ref resolves against the live declaration index
 //                   via the same host join `v2.std.decl_ref_resolution_host`
 //                   `cited_declaration_ref_refusal_count_live` the long-haul carrier witness uses. An
 //                   attributed closure that consists only of a pull-request number is a reference to a
@@ -52,7 +53,7 @@ module test.claim.floor_expected_red_retirement_witness
 //   8. trigger -- where the row NAMED its own discharge condition, that declaration must still resolve.
 //                   Deleting the capability a row was waiting for cannot pacify the row.
 //
-// WHY THE PREDICATE RETURNS NAMED REFUSALS INSTEAD OF A Bool. A single Bool across twelve conjuncts
+// WHY THE PREDICATE RETURNS NAMED REFUSALS INSTEAD OF A Bool. A single Bool across ten conjuncts
 // prints `FAIL <fn>` and nothing else: one bit for the whole fold, so an owner could not tell WHICH
 // obligation the tree is failing, and a future reviewer reading a green run could not tell whether the
 // conjuncts were still there. `retired_rows_refusal_reasons` returns one label per failing conjunct, the
@@ -71,7 +72,7 @@ module test.claim.floor_expected_red_retirement_witness
 // appears while the control row's list stays empty.
 
 import std.types { Bool, List, NonEmptyStr, CommitSha, commit_sha_text_holds }
-import std.algebra { Cons, Empty, fold_list, list_append, length, list_map }
+import std.algebra { Cons, Empty, fold_list, list_append, length, list_map, FreeSemigroup, non_empty_to_list }
 import std.optional { Optional, Present, Absent }
 import std.execution_mode { Wet, Hermetic }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -132,7 +133,7 @@ fn date_le(a: Iso8601CivilDate, b: Iso8601CivilDate) -> Bool {
 // not by a dot: adding a third arm to `Closure` makes these refuse to compile until this claim says
 // what the new way of closing a row means, instead of passing vacuously the way an `if` on a rendered
 // label would.
-fn closure_durable_account(closure: Closure) -> List<DeclarationRef> {
+fn closure_durable_account(closure: Closure) -> FreeSemigroup<DeclarationRef> {
   match closure {
     AttributedToChange { change: _, durable_account: a, re_measured: _ } => a
     RestsOnExecutedCheck { why_no_change: _, durable_account: a, re_measured: _ } => a
@@ -166,10 +167,8 @@ fn refusal_labels_for_row(
     "scheduled-under-wrong-expectation",
     "enrolment-date-not-a-civil-date",
     "enrolment-date-after-its-own-measurement",
-    "empty-durable-account",
     "unresolvable-durable-account",
     "head-not-a-commit-sha",
-    "receipt-names-no-route",
     "instrument-is-not-the-row-itself",
     "instrument-module-not-declared",
     "trigger-declaration-does-not-resolve",
@@ -187,7 +186,7 @@ fn refusal_labels_for_row(
   )
 }
 
-// ONE CONJUNCT, ADDRESSED BY NAME. Written as a dispatch over the label list rather than as twelve
+// ONE CONJUNCT, ADDRESSED BY NAME. Written as a dispatch over the label list rather than as ten
 // `&&`s so that the labels above are the complete list of obligations and cannot drift from the checks
 // below: adding a label with no branch, or a branch with no label, shows up as a refusal that never
 // fires or never appears.
@@ -196,7 +195,7 @@ fn refusal_fires(
   qn: String,
   r: RetiredExpectedRedRow,
   rm: ReMeasurement,
-  durable: List<DeclarationRef>,
+  durable: FreeSemigroup<DeclarationRef>,
   enrolled: List<String>,
   schedule: List<WetScheduledClaim>,
   pool_roots: List<String>
@@ -223,21 +222,12 @@ fn refusal_fires(
       Absent => false
       Present { value: d } => !(date_le(a: d, b: rm.on))
     }
-    } else if label == "empty-durable-account" {
-    length(xs: durable) == 0
-  } else if label == "unresolvable-durable-account" {
-    (length(xs: durable) >= 1)
-      && (cited_declaration_ref_refusal_count_live(refs: durable, pool_roots: pool_roots) != 0)
+    } else if label == "unresolvable-durable-account" {
+    cited_declaration_ref_refusal_count_live(refs: non_empty_to_list(xs: durable), pool_roots: pool_roots) != 0
   } else if label == "head-not-a-commit-sha" {
     !(commit_sha_text_holds(head: rm.head as String))
-  // THE ONLY ROUTE OBLIGATION, and deliberately a non-empty one rather than "covers both". Which
-  // routes a row was measured on is carried ONCE, by `re_measured.routes`; the bool that used to
-  // restate it was deleted (review 84231) because the two copies were observed to disagree. So the
-  // fold can refuse a receipt that names no route at all, but it does not -- and must not -- assert a
-  // number of routes: a row measured on one route is honest when it says so, and the shipped rows say
-  // what was actually executed.
-  } else if label == "receipt-names-no-route" {
-    length(xs: rm.routes) == 0
+  // (route coverage has no arm here any more: `re_measured.routes` is a FreeSemigroup, so the empty
+  // receipt that used to need refusing has no representation -- review 86337, DESIGN §5.)
   } else if label == "instrument-is-not-the-row-itself" {
     (rm.instrument.module_path as String != r.identity.module_path as String)
       || (rm.instrument.decl_name as String != r.identity.function as String)
@@ -390,7 +380,7 @@ fn control_remeasurement() -> ReMeasurement {
   ReMeasurement {
     head: "a162e67d1af846dc8431329871e2297768284613" as CommitSha,
     on: Iso8601CivilDate { year: 2026, month: 10, day: 21 },
-    routes: [Wet, Hermetic],
+    routes: FreeSemigroup { head: Wet, tail: [Hermetic] },
     // REAL AND RESOLVABLE, per the manager ruling. A control that must refuse nothing cannot rest on a
     // fictional module: `instrument-module-not-declared` fires on any instrument whose module resolves to
     // no declaration, and a control that fires it makes all seven arm controls fail (each demands the
@@ -401,8 +391,11 @@ fn control_remeasurement() -> ReMeasurement {
   }
 }
 
-fn control_account() -> List<DeclarationRef> {
-  [decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots")]
+fn control_account() -> FreeSemigroup<DeclarationRef> {
+  FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "plan_doc_graph_roots"),
+    tail: [],
+  }
 }
 
 fn control_closure() -> Closure {
@@ -546,32 +539,91 @@ test fn the_enrolment_date_arms_separate_absence_from_fabrication() -> Bool {
     && arm_refuses_exactly(arm: "enrolment-date-not-a-civil-date", row: impossible)
 }
 
-// ARMS: the durable account. Empty refuses one arm; naming a declaration that does not exist refuses the
-// other. Both are needed: a non-empty list of phantoms is exactly the shape review 84071 named.
-test fn the_durable_account_arms_refuse_empty_and_phantom() -> Bool {
+// ARM: the durable account, PHANTOM ONLY. The empty-account plant this test used to carry is GONE -- not
+// deleted as coverage but MOVED UP: `durable_account` is a `FreeSemigroup<DeclarationRef>` (review 86337,
+// DESIGN §5: "stronger than catching a wrong state is making it unwritable"), so the literal
+// `durable_account: []` the old fixture wrote has no representation and `an_empty_durable_account_is_unwritable`
+// below is the executing proof of that. The phantom plant stays, because a NON-EMPTY account of phantoms
+// is exactly the shape review 84071 named and the type cannot forbid it -- only the fold can.
+test fn the_durable_account_arm_refuses_a_phantom_ref() -> Bool {
   let base = control_row()
-  let empty_account = RetiredExpectedRedRow {
-    identity: base.identity,
-    enrolled_on: base.enrolled_on,
-    trigger: base.trigger,
-    closure: RestsOnExecutedCheck {
-      why_no_change: "synthetic" as NonEmptyStr,
-      durable_account: Empty {},
-      re_measured: control_remeasurement(),
-    },
-  }
   let phantom_account = RetiredExpectedRedRow {
     identity: base.identity,
     enrolled_on: base.enrolled_on,
     trigger: base.trigger,
     closure: RestsOnExecutedCheck {
       why_no_change: "synthetic" as NonEmptyStr,
-      durable_account: [decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "no_such_declaration_in_this_module")],
+      durable_account: FreeSemigroup {
+        head: decl_ref(module_path: "gunbc.doc_graph_roots", decl_name: "no_such_declaration_in_this_module"),
+        tail: [],
+      },
       re_measured: control_remeasurement(),
     },
   }
-  arm_refuses_exactly(arm: "empty-durable-account", row: empty_account)
-    && arm_refuses_exactly(arm: "unresolvable-durable-account", row: phantom_account)
+  arm_refuses_exactly(arm: "unresolvable-durable-account", row: phantom_account)
+}
+
+
+// THE WALL IS THE TYPE, AND A TYPE IS ONLY CLAIMED IF SOMETHING RUNS THAT TRIES TO DEFEAT IT. These two
+// arms ask the REAL compiler (compile_dag_rust_emit_check -- the same executing probe
+// test.claim.claim_cost_observation_type_wall_witness established) to build the carrier two ways. The
+// fixtures differ in ONE TOKEN each -- the shape of one field -- so a refusal that fires for both shapes
+// is a broken probe, not evidence about the wall, and the calibration arm below prices exactly that.
+// POSITIVE FIRST (the pattern's discipline): the FreeSemigroup account must compile, or the negative arm
+// below would be a refusal that was never falsifiable.
+test fn a_nonempty_durable_account_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fixture.durable_fs_ok\nimport std.types { NonEmptyStr, CommitSha }\nimport std.algebra { FreeSemigroup }\nimport std.decl_ref { decl_ref }\nimport gunbc.declined_live_tree_defect_classification { Closure, RestsOnExecutedCheck, ReMeasurement }\nimport extdeps.units.iso8601_calendar { Iso8601CivilDate }\nimport std.execution_mode { Wet }\nfn ok() -> Closure {\n  RestsOnExecutedCheck { why_no_change: \"synthetic\" as NonEmptyStr, durable_account: FreeSemigroup { head: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"plan_doc_graph_roots\"), tail: [] }, re_measured: ReMeasurement { head: \"a162e67d1af846dc8431329871e2297768284613\" as CommitSha, on: Iso8601CivilDate { year: 2026, month: 10, day: 21 }, routes: FreeSemigroup { head: Wet, tail: [] }, instrument: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"doc_graph_roots_all\") } }\n}\n",
+    "src/fixture_durable_fs_ok.rs",
+    [],
+    []
+  )
+}
+
+// THE NEGATIVE: the same fixture with the ONE token changed -- the empty list literal in the account
+// position. It must be refused; before review 86337 it compiled, and that is the gap this closes.
+test fn an_empty_durable_account_is_unwritable() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module fixture.durable_fs_empty\nimport std.types { NonEmptyStr, CommitSha }\nimport std.algebra { FreeSemigroup }\nimport std.decl_ref { decl_ref }\nimport gunbc.declined_live_tree_defect_classification { Closure, RestsOnExecutedCheck, ReMeasurement }\nimport extdeps.units.iso8601_calendar { Iso8601CivilDate }\nimport std.execution_mode { Wet }\nfn ok() -> Closure {\n  RestsOnExecutedCheck { why_no_change: \"synthetic\" as NonEmptyStr, durable_account: [], re_measured: ReMeasurement { head: \"a162e67d1af846dc8431329871e2297768284613\" as CommitSha, on: Iso8601CivilDate { year: 2026, month: 10, day: 21 }, routes: FreeSemigroup { head: Wet, tail: [] }, instrument: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"doc_graph_roots_all\") } }\n}\n",
+    "src/fixture_durable_fs_empty.rs",
+    [],
+    []
+  )
+}
+
+// THE ROUTE ARM OF THE SAME FINDING. `ReMeasurement.routes` is a `FreeSemigroup<ExecutionMode>` for the
+// same reason: the fold's `receipt-names-no-route` arm refused the empty receipt, so the empty receipt
+// gets no type, and the arm goes with it. POSITIVE then NEGATIVE, one token apart.
+test fn a_nonempty_route_receipt_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fixture.routes_fs_ok\nimport std.types { CommitSha }\nimport std.algebra { FreeSemigroup }\nimport std.decl_ref { decl_ref }\nimport gunbc.declined_live_tree_defect_classification { ReMeasurement }\nimport extdeps.units.iso8601_calendar { Iso8601CivilDate }\nimport std.execution_mode { Wet }\nfn ok() -> ReMeasurement {\n  ReMeasurement { head: \"a162e67d1af846dc8431329871e2297768284613\" as CommitSha, on: Iso8601CivilDate { year: 2026, month: 10, day: 21 }, routes: FreeSemigroup { head: Wet, tail: [] }, instrument: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"doc_graph_roots_all\") }\n}\n",
+    "src/fixture_routes_fs_ok.rs",
+    [],
+    []
+  )
+}
+
+test fn an_empty_route_receipt_is_unwritable() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module fixture.routes_fs_empty\nimport std.types { CommitSha }\nimport std.algebra { FreeSemigroup }\nimport std.decl_ref { decl_ref }\nimport gunbc.declined_live_tree_defect_classification { ReMeasurement }\nimport extdeps.units.iso8601_calendar { Iso8601CivilDate }\nimport std.execution_mode { Wet }\nfn ok() -> ReMeasurement {\n  ReMeasurement { head: \"a162e67d1af846dc8431329871e2297768284613\" as CommitSha, on: Iso8601CivilDate { year: 2026, month: 10, day: 21 }, routes: [], instrument: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"doc_graph_roots_all\") }\n}\n",
+    "src/fixture_routes_fs_empty.rs",
+    [],
+    []
+  )
+}
+
+// THE CALIBRATION, AND IT IS NOT CEREMONY: `compile_dag_rust_emit_check` collapses three outcomes --
+// refused, passed, and never-compiled-at-all -- into a Bool. A fixture naming a symbol that does not
+// exist must be refused by the SAME probe that accepts the two positives above; if it ever passed, the
+// probe would be broken and all four arms above would be vacuous (the reasoning is
+// claim_cost_observation_type_wall_witness's, imported here with its pattern).
+test fn the_wall_probe_refuses_an_unknown_symbol() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module fixture.durable_fs_calib\nimport std.types { NonEmptyStr, CommitSha }\nimport std.algebra { FreeSemigroup }\nimport std.decl_ref { decl_ref }\nimport gunbc.declined_live_tree_defect_classification { Closure, RestsOnExecutedCheck, ReMeasurement }\nimport extdeps.units.iso8601_calendar { Iso8601CivilDate }\nimport std.execution_mode { Wet }\nfn ok() -> Closure {\n  RestsOnExecutedCheck { why_no_change: \"synthetic\" as NonEmptyStr, durable_account: FreeSemigroup { head: no_such_fn_in_any_import(module_path: \"gunbc.doc_graph_roots\", decl_name: \"plan_doc_graph_roots\"), tail: [] }, re_measured: ReMeasurement { head: \"a162e67d1af846dc8431329871e2297768284613\" as CommitSha, on: Iso8601CivilDate { year: 2026, month: 10, day: 21 }, routes: FreeSemigroup { head: Wet, tail: [] }, instrument: decl_ref(module_path: \"gunbc.doc_graph_roots\", decl_name: \"doc_graph_roots_all\") } }\n}\n",
+    "src/fixture_durable_fs_calib.rs",
+    [],
+    []
+  )
 }
 
 // ARM: instrument-is-not-the-row-itself. Crediting an unrelated claim with closing the row -- the exact
@@ -650,7 +702,8 @@ test fn the_trigger_arm_refuses_a_named_discharge_that_does_not_exist() -> Bool 
 // `!(string_non_empty(w))` on a value the type already proved non-empty: a refusal that can never fire. Per
 // DESIGN §4b(1), a check whose forbidden state is expressible nowhere it runs is a decoration that reads as
 // coverage. The type is the real, stronger check; the durable account is what the closure is held to, and
-// `the_durable_account_arms_refuse_empty_and_phantom` (below) is the executing check that enforces it.
+// `the_durable_account_arm_refuses_a_phantom_ref` (below) is the executing check for the phantom shape,
+// and `an_empty_durable_account_is_unwritable` is the executing check that the empty shape has no type.
 
 // ARM: carrier-holds-no-rows. The empty-list refusal has its own control, because the other way the live
 // claim could go quiet is by the carrier holding nothing. It is checked in BOTH directions now: an empty

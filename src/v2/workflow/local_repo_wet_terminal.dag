@@ -3726,9 +3726,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_durable_account_arms_refuse_empty_and_phantom" },
+      identity: WitnessIdentity { module_path: "test.claim.floor_expected_red_retirement_witness", function: "the_durable_account_arm_refuses_a_phantom_ref" },
       entry: "dag/test/claim/floor_expected_red_retirement_witness.dag",
-      function: "the_durable_account_arms_refuse_empty_and_phantom",
+      function: "the_durable_account_arm_refuses_a_phantom_ref",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
