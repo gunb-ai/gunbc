@@ -1,6 +1,6 @@
 module gunbc.deploy_transition_lease_store
 
-import std.types { String, Bool, NonEmptyStr, List }
+import std.types { String, NonEmptyStr }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -48,7 +48,7 @@ import gunbc.durable_exclusive_hold_file_store {
   file_hold_release_assess,
   file_hold_release_commit,
 }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_root_spelling_refusal }
 
 // THE TRANSITION LEASE, A HOLD ON THE HOLD LIBRARY. gunbc.deploy_transition decides what the lease
 // SERIALIZES; this leaf module is the only place that knows where it lives and how it is held. It
@@ -95,34 +95,16 @@ type TransitionLeaseStoreReading
   = TransitionLeaseStoreReady { store: TransitionLeaseStore }
   | TransitionLeaseStoreUnready { detail: String }
 
-// ONE FIXED ROOT, SPELLED ONE WAY. A hold's identity is its store root and slot as spelled
-// (gunbc.durable_exclusive_hold_file_store file_hold_ref), so two spellings of one directory are two
-// leases: a trailing separator, a `.` or `..` segment, a doubled separator or a relative root would let
-// two acquirers each hold "the" lease. The root is the instance's own declared instance_root and nothing
-// a caller passes, and a declared root that is not absolute and canonical refuses here rather than
-// minting a store over a second spelling. NOT ESTABLISHED: that no component is a symlink. The
-// filesystem interface has no resolution operation, so symlink independence rests on the declaration
-// naming the real directory, and it is not observed.
-fn transition_lease_root_spelling_refusal(root: String) -> String? {
-  let segments = split(s: root, delimiter: "/")
-  if !starts_with(s: root, prefix: "/") {
-    Present { value: "it is not absolute" }
-  } else if root == "/" {
-    Present { value: "it is the filesystem root" }
-  } else if any(segments.skip(n: 1), s => s == "" || s == "." || s == "..") {
-    Present { value: "it has an empty, `.` or `..` segment (a doubled or trailing separator, or a relative step)" }
-  } else {
-    none
-  }
-}
-
 // THE STORE'S ONLY MINT. It takes the instance and nothing else; the root is the instance root as the
 // declaration spells it, and it is LISTED before a store is handed out, so a store over a root that
-// does not exist is never minted.
+// does not exist is never minted. A hold's identity is its store root and slot AS SPELLED
+// (gunbc.durable_exclusive_hold_file_store file_hold_ref), so a root that is not absolute or not spelled one
+// way refuses first, by the instance's own rule (gunbc.roadmap.roadmap_dashboard_instance
+// dashboard_instance_root_spelling_refusal), the same rule the inhibition store applies.
 fn transition_lease_store(instance: HostDashboardInstance) -> TransitionLeaseStoreReading {
   let root = instance.instance_root as String
   let name = transition_lease_slots.member as String
-  match transition_lease_root_spelling_refusal(root: root) {
+  match dashboard_instance_root_spelling_refusal(instance: instance) {
     Present { value: why } =>
       TransitionLeaseStoreUnready {
         detail: join(["the instance root ", root, " holding the ", name, " lease is refused because ", why], ""),

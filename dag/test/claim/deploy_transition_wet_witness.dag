@@ -479,31 +479,45 @@ test fn an_unlisted_instance_root_mints_no_store_and_refuses_actuation() -> Proc
   }
 }
 
-// ONE FIXED ROOT, SPELLED ONE WAY. The lease mint takes the root from the instance and refuses a declared root
-// that is not absolute and canonical -- a trailing separator, a `.` segment, a relative root -- because the hold
-// library names a hold by the root as spelled, so a second spelling would be a second lease. The subject of
-// these three claims IS the refusal, and each matches the Unready arm itself; the canonical spelling of the same
-// directory is the positive control.
-fn expect_lease_mint_refused(test: String, step: String, root: String, names: String) -> ProcessExit {
-  match transition_lease_store(instance: instance_at(dir: root)) {
+// ONE FIXED ROOT, SPELLED ONE WAY, AND BOTH HALVES OF A TRANSITION AGREE ON IT. Both mints take the root from the
+// instance and refuse, by the instance's one rule (gunbc.roadmap.roadmap_dashboard_instance
+// dashboard_instance_root_spelling_refusal), a declared root that is not absolute or not spelled one way -- a
+// trailing separator, a `.` segment, a doubled separator, a relative root. A second spelling reaches the same
+// files on disk, but the hold library names a hold by its root as spelled, so a release over it would refuse as
+// another hold; a relative root is a different directory per working directory. The subject of these claims IS
+// the refusal, and each matches the Unready arm of BOTH mints itself (review 86022 of gunb-ai/gunbc#15105: a
+// lease that refuses where the inhibition store admits leaves the two halves disagreeing); the canonical spelling
+// of the same directory, admitted by both, is the positive control.
+fn expect_mints_refused(test: String, step: String, root: String, names: String) -> ProcessExit {
+  let lease = match transition_lease_store(instance: instance_at(dir: root)) {
     TransitionLeaseStoreUnready { detail: d } =>
       if string_contains(s: d, pattern: names) {
         ExitSuccess
       } else {
-        failed(test: test, reason: join([step, ": refused for another reason: ", d], ""))
+        failed(test: test, reason: join([step, ": the lease mint refused for another reason: ", d], ""))
       }
-    TransitionLeaseStoreReady { store: _ } => failed(test: test, reason: join([step, ": a store was minted over ", root], ""))
+    TransitionLeaseStoreReady { store: _ } => failed(test: test, reason: join([step, ": a lease store was minted over ", root], ""))
   }
+  let inhibition = match transition_inhibition_store(instance: instance_at(dir: root)) {
+    TransitionInhibitionStoreUnready { detail: d } =>
+      if string_contains(s: d, pattern: names) {
+        ExitSuccess
+      } else {
+        failed(test: test, reason: join([step, ": the inhibition mint refused for another reason: ", d], ""))
+      }
+    TransitionInhibitionStoreReady { store: _ } => failed(test: test, reason: join([step, ": an inhibition store was minted over ", root], ""))
+  }
+  first_failure(steps: [lease, inhibition])
 }
 
-test fn the_lease_mint_refuses_every_spelling_but_the_canonical_absolute_root() -> ProcessExit {
-  let t = "the_lease_mint_refuses_every_spelling_but_the_canonical_absolute_root"
+test fn both_mints_refuse_every_spelling_but_the_canonical_absolute_root() -> ProcessExit {
+  let t = "both_mints_refuse_every_spelling_but_the_canonical_absolute_root"
   let dir = fresh_dir(tag: "spell")
-  let trailing = expect_lease_mint_refused(test: t, step: "a trailing separator", root: join([dir, "/"], ""), names: "segment")
-  let dotted = expect_lease_mint_refused(test: t, step: "a dot segment", root: join([dir, "/."], ""), names: "segment")
-  let doubled = expect_lease_mint_refused(test: t, step: "a doubled separator", root: join(["/", dir], ""), names: "segment")
-  let relative = expect_lease_mint_refused(test: t, step: "a relative root", root: "tmp/gunbc_transition_relative", names: "not absolute")
-  let canonical = with_lease_store(test: t, dir: dir, proceed: l => ExitSuccess)
+  let trailing = expect_mints_refused(test: t, step: "a trailing separator", root: join([dir, "/"], ""), names: "segment")
+  let dotted = expect_mints_refused(test: t, step: "a dot segment", root: join([dir, "/."], ""), names: "segment")
+  let doubled = expect_mints_refused(test: t, step: "a doubled separator", root: join(["/", dir], ""), names: "segment")
+  let relative = expect_mints_refused(test: t, step: "a relative root", root: "tmp/gunbc_transition_relative", names: "not absolute")
+  let canonical = with_lease_store(test: t, dir: dir, proceed: l => with_inhibition_store(test: t, dir: dir, proceed: s => ExitSuccess))
   cleaned(test: t, dir: dir, verdict: first_failure(steps: [trailing, dotted, doubled, relative, canonical]))
 }
 

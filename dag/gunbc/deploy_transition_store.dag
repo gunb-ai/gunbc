@@ -1,6 +1,7 @@
 module gunbc.deploy_transition_store
 
 import std.types { String, NonEmptyStr }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemFileObservation,
@@ -11,7 +12,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemDirectoryListingRefused,
   FilesystemDirectorySubjectRefused,
 }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_root_spelling_refusal }
 
 // THE TRANSITION INHIBITION STORE, SEALED IN PLACE. gunbc.deploy_transition decides what the inhibition MEANS;
 // this leaf module is the only place that knows where it lives. It mints a sealed value from the instance alone
@@ -82,24 +83,35 @@ type TransitionInhibitionStoreReading
 // THE STORE'S ONLY MINT. It takes the instance and nothing else; the directory is the instance root, and it is
 // LISTED before a store is handed out. A root that does not list makes every absence unestablished, so a store
 // over it could only ever answer indeterminate; it is refused here instead, and the decision module reads the
-// refusal as an unreadable standing.
+// refusal as an unreadable standing. A root that is not absolute or not spelled one way refuses before the
+// listing, by the instance's own rule (gunbc.roadmap.roadmap_dashboard_instance
+// dashboard_instance_root_spelling_refusal), the same rule the transition lease store applies, so the two halves
+// of one transition agree on whether the instance can be addressed at all.
 fn transition_inhibition_store(instance: HostDashboardInstance) -> TransitionInhibitionStoreReading {
   let root = instance.instance_root as String
   let name = transition_inhibition_slots.member as String
-  let listing = Filesystem.List(path: root)
-  match filesystem_listing_observation(directory: root, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+  match dashboard_instance_root_spelling_refusal(instance: instance) {
+    Present { value: why } =>
       TransitionInhibitionStoreUnready {
-        detail: join(["the instance root holding ", name, " is not admissible: ", c], ""),
+        detail: join(["the instance root ", root, " holding ", name, " is refused because ", why], ""),
       }
-    FilesystemDirectoryListingRefused { directory: _, error: e } =>
-      TransitionInhibitionStoreUnready {
-        detail: join(["the instance root holding ", name, " could not be listed: ", e], ""),
+    Absent => {
+      let listing = Filesystem.List(path: root)
+      match filesystem_listing_observation(directory: root, success: listing.success, entries: listing.entries, error: listing.error) {
+        FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+          TransitionInhibitionStoreUnready {
+            detail: join(["the instance root holding ", name, " is not admissible: ", c], ""),
+          }
+        FilesystemDirectoryListingRefused { directory: _, error: e } =>
+          TransitionInhibitionStoreUnready {
+            detail: join(["the instance root holding ", name, " could not be listed: ", e], ""),
+          }
+        FilesystemDirectoryListed(_) =>
+          TransitionInhibitionStoreReady {
+            store: TransitionInhibitionStore { instance: instance.instance_id, root: root as NonEmptyStr },
+          }
       }
-    FilesystemDirectoryListed(_) =>
-      TransitionInhibitionStoreReady {
-        store: TransitionInhibitionStore { instance: instance.instance_id, root: root as NonEmptyStr },
-      }
+    }
   }
 }
 
