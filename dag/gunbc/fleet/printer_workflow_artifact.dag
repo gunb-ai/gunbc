@@ -1,9 +1,50 @@
 module gunbc.fleet.printer_workflow_artifact
 
-import std.types { String,NonEmptyStr }
+import std.types { String, NonEmptyStr, List, FilePath }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.fleet.fleet_posix_accounts { fleet_automation_user }
 
 // The runtime writer, CI display and workflow uploader share one receipt path.
 data printer_workflow_receipt_path: String = "printer-workflow-receipt.json"
 
-// Shared, pre-provisioned LAN-host state. Claims and the controller hold use the same established directory and host access policy.
-data printer_start_claim_directory:NonEmptyStr = "/var/lib/gunbc/printer-starts"
+// THE PRINTER LAN HOST'S STATE ROOTS. Start claims, the controller hold and completion records live in
+// printer-starts; request records (gunbc.fleet.print_request PrintRequestRecord) in its requests/
+// child; each pass's prepared plate and verified copy in print-runs.
+data printer_start_claim_directory: NonEmptyStr = "/var/lib/gunbc/printer-starts"
+// Request records share the start claims' directory and failure domain, so their root is derived from it.
+fn printer_request_directory() -> NonEmptyStr { concat(printer_start_claim_directory as String, "/requests") as NonEmptyStr }
+data print_run_directory: NonEmptyStr = "/var/lib/gunbc/print-runs"
+
+// EACH IS AN OWNED DIRECTORY OF THE FLEET ACCOUNT, converged by the pass that reads it
+// (gunbc.fleet.print_converge ensure_printer_state_directories) before anything is read. The owner is
+// gunbc-fleet, the fleet's automation account (operator ruling 2026-10-24: host state goes under the
+// fleet account, not a per-capability one); the job principal that runs the printer pass, the CI job
+// user, reaches it through the gunbc-fleet group, so the mode is group-writable setgid and every
+// record created inside stays in that group. Neither account holds sudo for this: the job converges
+// these three paths only through its exact grants (gunbc.runner.runner_host_grants
+// printer_state_privileged_operations). A present directory under another owner refuses rather than
+// being re-owned, because these hold the evidence that a request was prepared, an attempt claimed
+// and a job completed.
+fn printer_state_directory(member: String, path: NonEmptyStr) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: member as NonEmptyStr,
+    path: path as String as FilePath,
+    owner: PosixOwnerNames { user: fleet_automation_user.name, group: fleet_automation_user.name },
+    mode: DirectoryOwnerGroupWritableSetgid,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+// The group the job principal must hold to use them.
+fn printer_state_group() -> NonEmptyStr { fleet_automation_user.name }
+
+// Parent before child: requests/ is ensured only after printer-starts converged.
+fn printer_state_directories() -> List<OwnedDirectoryTarget> {
+  [
+    printer_state_directory(member: "printer-start-claims", path: printer_start_claim_directory),
+    printer_state_directory(member: "printer-request-records", path: printer_request_directory()),
+    printer_state_directory(member: "print-runs", path: print_run_directory),
+  ]
+}

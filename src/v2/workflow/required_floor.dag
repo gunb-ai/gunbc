@@ -982,15 +982,23 @@ fn required_gate_authored_modules() -> List<String> {
     // resident-but-unread, the harm gunbc.recurring_failure_mode
     // witness_module_absent_from_the_executed_set records.
     "v2.test.claim.body_lowering_call_node_occurrence",
-    // THE NATIVE CENSUS CASCADE CONTROLS (node adhoc-40e4ae25-e94), at exact module grain for the
-    // reason the rows above give. The module was red on main with no lane executing it, the harm
-    // gunbc.recurring_failure_mode census_row_shape_moved_without_moving_its_consumer records: three
-    // sessions bisected a 'regression' that no gate would have shown going red. Admitted when green
-    // by execution at the head of the change that adjudicated it (its claim_batch run is cited on
-    // that change, never transcribed here). Neither the family v2.test.claim.native_census. nor its
-    // sibling infer_cascade is admitted: that module's provider-cascade claim stays red until resolve
-    // refuses a mention of a refused coproduct's variant, and earns its own row when it is green.
+    // THE NATIVE CENSUS CASCADE CONTROLS AND THE RESOLVE CONTROLS THEY REST ON (node adhoc-40e4ae25-e94),
+    // at exact module grain for the reason the rows above give; the family v2.test.claim.native_census.
+    // is not admitted. cascade_root_fan_out pins the census cascade's root and fan-out (gunbc#14978);
+    // infer_cascade pins that a variant of a refused coproduct is a resolve member of its provider, and
+    // declarer_refused carries that repair's discriminating REDs (gunbc#14985). Each was green by
+    // execution at the head of the change that adjudicated it (claim_batch, cited on that change, never
+    // transcribed here).
+    // ENROLLED, NOT EXECUTED: these rows place the modules in the required floor's selected subject, and
+    // NO LANE EXECUTES THAT SUBJECT. The manual floor runner is deleted
+    // (gunbc.rung_drop_amendment manual_required_floor_runner_deleted) and the required job evaluates no
+    // witness, so a red in any of the three reaches no merge. That loss is the declared drop
+    // gunbc.rung_drop v1_required_lanes_withdrawn, and these rows are retired by its trigger: native
+    // required-path judgment of the withdrawn population. Until then each module is still exposed to the
+    // harm gunbc.recurring_failure_mode witness_module_absent_from_the_executed_set records.
     "v2.test.claim.native_census.cascade_root_fan_out",
+    "v2.test.claim.native_census.infer_cascade",
+    "v2.test.claim.name_resolve.declarer_refused",
   ]
 }
 

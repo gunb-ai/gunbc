@@ -6,8 +6,10 @@ import extdeps.ssh.keys {
   SshPublicKey, AuthorizedKeyEntry, AuthorizedKeyOption, AuthorizedKeyForcedCommand, authorized_key_forced_command,
   ForcedCommandOption, NoAgentForwardingOption, NoPortForwardingOption, NoPtyOption, NoUserRcOption, NoX11ForwardingOption,
 }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { shell_command_render }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.host.boot_medium { bmc_boot_image_export }
 
 // ── A CREDENTIAL THAT CAN READ ONE DIGEST ON THE EXPORT HOST AND NOTHING ELSE ─────────────────────
@@ -28,14 +30,28 @@ import gunbc.host.boot_medium { bmc_boot_image_export }
 //
 // THE PUBLIC HALF IS ABSENT UNTIL THE KEY IS MINTED. The mint goes through the approval route and lands
 // its public key here; until then there is no authorized entry to converge and no readback over this key,
-// and both refuse by that name rather than fall back to the fleet key. The private half's Secret Manager
-// row is declared by the change that mints it, whose run is its one reader; it is not declared here.
+// and both refuse by that name rather than fall back to the fleet key.
 
 data boot_medium_served_link_name: NonEmptyStr = "served-current.iso"
 
 fn boot_medium_served_link_path() -> NonEmptyStr {
   join([bmc_boot_image_export.dir as String, "/", boot_medium_served_link_name as String], "") as NonEmptyStr
 }
+
+// THE PRIVATE HALF'S CUSTODY. Its version is pending until the mint's receipt names the version the
+// store assigned; the pin, the public key and its fingerprint then land here together. CONSUMPTION
+// (DESIGN section 3c): the mint (gunbc.host.boot_medium_reader_key_mint) adds the version to this
+// secret, and the converge grant set binds the mint identity's versionAdder cell on it
+// (gunbc.auth.fleet_secret_accessor_roster boot_medium_reader_key_version_adder_row). The boot's own
+// accessor cell is the third change of work item adhoc-0abea207-7ec.
+data boot_medium_reader_ssh_privkey_secret: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "boot-medium-reader-ssh-key" as NonEmptyStr,
+  version: "pending",
+  hash_state: HashPending,
+}
+
+data boot_medium_reader_key_comment: String = "boot-medium-reader"
 
 data boot_medium_reader_ssh_key: SshPublicKey? = none
 

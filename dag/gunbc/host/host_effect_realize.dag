@@ -101,7 +101,6 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.release_locus {
   approval_broker_helper_root_principal,
   HelperLocus,
-  HelperGrantSite,
   helper_locus_dir,
 }
 import gunbc.live_deploy.emit {
@@ -6040,7 +6039,8 @@ fn deploy_apply_ports_on_host(spec: DeploymentSpec, principal: GroundedPosixPrin
 
 // C1: ONE OWNED DIRECTORY, ENSURED THROUGH THE ONE PROVIDER. The reads are the privileged list and stat
 // of the directory's parent chain (the same ones gunbc.live_deploy.member_observe makes), each keeping
-// its origin typed; the install is the provider's plan elevated; the verdict is the provider's
+// its origin typed; the install is the provider's plan as the EnsureOwnedDirectory operation, so its
+// words are exactly the ones a job user's sudoers grant names (gunbc.executor_privileged_operation); the verdict is the provider's
 // independent second stat, never the install's exit status.
 fn deploy_apply_directory_read(op: ExecutorPrivilegedOperation, transport: HostEffectTransport) -> ObserverRead {
   match run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: op), transport: transport) {
@@ -6068,7 +6068,9 @@ fn live_deploy_apply_ensure_directory_on_host(target: OwnedDirectoryTarget, tran
     target: target,
     observe: p => deploy_apply_directory_observe(path: p, transport: transport),
     run: plan => match run_argv_over_host_effect_transport(
-      command: sudo_elevate_command(command: owned_directory_install_argv(plan: plan)),
+      command: executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory {
+        path: plan.path as String as NonEmptyStr, owner: plan.owner.user, group: plan.owner.group, mode: plan.mode,
+      }),
       transport: transport,
     ) {
       RunArgvTransportRefused { reason: _ } => false
@@ -6728,38 +6730,23 @@ fn approval_broker_tree_receipt_write(
 }
 
 // ── THE APPROVAL BROKER DARK INSTALL, TYPED ───────────────────────────────────────────────────
-// Stage 1 of the cutover: the device store, this release's helper grant (a root-owned snapshot, then
-// the sudoers line that names it), the broker's tree, slice and unit, a daemon-reload, enable +
-// restart of ONLY the broker unit, and the slice-control caps. It touches gunbc-roadmap.service in no
+// Stage 1 of the cutover: the broker's state directories (device store, JWKS cache), the broker's
+// tree, slice and unit, a daemon-reload, enable + restart of ONLY the broker unit, and the
+// slice-control caps. It touches gunbc-roadmap.service in no
 // way: a daemon-reload does not restart running units, so the roadmap keeps its PID and incarnation.
 //
 // FAIL-FAST, ONE STEP AT A TIME. Each leg is an ArgvCommand run through
 // run_argv_over_host_effect_transport -- no shell, no quoting, no script body -- and the first leg
 // that refuses stops the line: DarkInstallRefused names the step and NO later leg runs. The retired
-// script's refusals are all preserved as typed steps: a non-owning spec, an uncovered device-store
-// writer, a refused helper grant, a snapshot that is not root-owned, a sudoers file that fails
-// visudo, a readback that differs, a slice-control plan the host cannot derive.
-//
-// THE SUDOERS FILE IS STAGED IN ONE SCRATCH DIRECTORY (mktemp -d, written unelevated) because visudo
-// -cf must read a file before it is installed and neither tee nor dd is a grantable root verb. The
-// directory is acquired after the earlier legs and removed on every path out of the sudoers stage; a
-// removal that fails is its own refusal. The installed file is read back and hashed against the
-// staged one: convergence is the independent readback, not the install's exit code.
+// script's refusals that survive the helper grant's removal (cb6548946213) are typed steps: a
+// non-owning spec, an uncovered state-directory writer, a slice-control plan the host cannot derive.
+// The root-owned snapshot steps (snapshot, readback, retire) are run by the apply's
+// root-helper-snapshot leg (live_deploy_apply_root_helper_snapshot_on_host).
 type DarkInstallStep
   = DarkStepOwner
   | DarkStepDeviceStore
   | DarkStepSnapshot
   | DarkStepSnapshotReadback
-  | DarkStepScratchAcquire
-  | DarkStepSudoersStage
-  | DarkStepSudoersCheck
-  | DarkStepSudoersInstall
-  | DarkStepSudoersPolicyTemp
-  | DarkStepSudoersRename
-  | DarkStepSudoersPolicyFinal
-  | DarkStepSudoersReadback
-  | DarkStepSudoersCompare
-  | DarkStepScratchCleanup
   | DarkStepRetire
   | DarkStepBrokerTree
   | DarkStepSidecarDigest
@@ -6784,7 +6771,6 @@ type DarkLeg
   = DarkLegArgv { step: DarkInstallStep, command: ArgvCommand }
   | DarkLegStdin { step: DarkInstallStep, command: ArgvCommand, payload: String }
   | DarkLegExpectEmpty { step: DarkInstallStep, command: ArgvCommand }
-  | DarkLegSameHash { step: DarkInstallStep, left: String, right: String }
 
 type DarkState
   = DarkOk
@@ -6797,9 +6783,6 @@ type DarkInstallInputs {
   source_root: String
   transport: HostEffectTransport
 }
-
-data dark_scratch_template: NonEmptyStr = "/tmp/gunbc-broker-dark-install.XXXXXX" as NonEmptyStr
-data dark_scratch_prefix: String = "/tmp/gunbc-broker-dark-install."
 
 fn dark_failed_of_outcome(step: DarkInstallStep, outcome: RunArgvTransportOutcome) -> DarkState {
   match outcome {
@@ -6821,13 +6804,6 @@ fn dark_expect_empty_state(step: DarkInstallStep, outcome: RunArgvTransportOutco
   }
 }
 
-fn dark_same_hash_state(step: DarkInstallStep, left: String, right: String, agreement: Sha256Agreement) -> DarkState {
-  match sha256_disagreement_text(agreement: agreement) {
-    Absent => DarkOk
-    Present { value: why } => DarkFailed { step: step, reason: join([left, " and ", right, " differ (", why, ")"], "") }
-  }
-}
-
 fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) -> DarkState {
   match state {
     DarkFailed { step: _, reason: _ } => state
@@ -6839,8 +6815,6 @@ fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) 
           dark_failed_of_outcome(step: s, outcome: run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport))
         DarkLegExpectEmpty { step: s, command: c } =>
           dark_expect_empty_state(step: s, outcome: run_argv_over_host_effect_transport(command: c, transport: transport))
-        DarkLegSameHash { step: s, left: l, right: r } =>
-          dark_same_hash_state(step: s, left: l, right: r, agreement: tree_binary_agreement(source_path: l, installed_path: r, transport: transport))
       }
   }
 }
@@ -6874,37 +6848,6 @@ fn dark_snapshot_readback_legs_at(locus: HelperLocus, dir: String) -> List<DarkL
       command: find_untrusted_entries_command(roots: [dir], top_only: false, owner: root),
     },
   ]
-}
-
-fn dark_sudoers_legs_at(site: HelperGrantSite, principal: GroundedPosixPrincipal, scratch: String) -> List<DarkLeg> {
-  let staged = join([scratch, "/", site.stage_name], "")
-  let readback = join([scratch, "/", site.readback_name], "")
-  let temp_path = site.sudoers_temp_path
-  let final_path = site.sudoers_path
-  let root = site.locus.owner
-  let name = grounded_posix_principal_name(p: principal)
-  [
-    DarkLegStdin { step: DarkStepSudoersStage, command: dd_overwrite_path_command(path: staged), payload: site.sudoers_content },
-    DarkLegArgv { step: DarkStepSudoersCheck, command: visudo_check_command(file: staged) },
-    DarkLegArgv {
-      step: DarkStepSudoersInstall,
-      command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-        mode: site.sudoers_mode, owner: root, group: root, source: staged, dest: temp_path)),
-    },
-    DarkLegArgv { step: DarkStepSudoersPolicyTemp, command: visudo_policy_check_command(file: temp_path) },
-    DarkLegArgv { step: DarkStepSudoersRename, command: dark_elevated_of(c: mv_exact_destination_command(source: temp_path, destination: final_path)) },
-    DarkLegArgv { step: DarkStepSudoersPolicyFinal, command: visudo_policy_check_command(file: final_path) },
-    DarkLegArgv {
-      step: DarkStepSudoersReadback,
-      command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-        mode: "0400" as NonEmptyStr, owner: name, group: name, source: final_path, dest: readback)),
-    },
-    DarkLegSameHash { step: DarkStepSudoersCompare, left: staged, right: readback },
-  ]
-}
-
-fn dark_elevated_of(c: ArgvCommand) -> ArgvCommand {
-  sudo_elevate_command(command: concat([c.program.invocation as String], c.arguments))
 }
 
 fn dark_unit_install_leg(step: DarkInstallStep, dest: String, text: String) -> DarkLeg {
@@ -7022,27 +6965,6 @@ fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
   }
 }
 
-// ONE ROOT-OWNED HELPER GRANT AT ITS SITE: snapshot tree -> (the site's revision receipt, when it keeps
-// one) -> sudoers -> retire of the superseded snapshot. The approval broker's grant and the attempt
-// launcher's grant are two sites of this one sequence.
-
-fn dark_helper_site_install(
-  site: HelperGrantSite,
-  revision: ReleaseRevisionBinding,
-  principal: GroundedPosixPrincipal,
-  source_root: String,
-  transport: HostEffectTransport,
-) -> DarkState {
-  match dark_helper_snapshot_at(locus: site.locus, spine: site.spine, revision: revision, source_root: source_root, transport: transport) {
-    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-    DarkOk =>
-      match dark_helper_sudoers_at(site: site, principal: principal, transport: transport) {
-        DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-        DarkOk => dark_helper_retire_at(locus: site.locus, revision: revision, transport: transport)
-      }
-  }
-}
-
 fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
   let dir = helper_locus_dir(locus: locus, revision: revision)
   match dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
@@ -7068,36 +6990,7 @@ fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: Re
   }
 }
 
-fn dark_helper_sudoers_at(site: HelperGrantSite, principal: GroundedPosixPrincipal, transport: HostEffectTransport) -> DarkState {
-  match run_argv_over_host_effect_transport(command: mktemp_directory_command(template: dark_scratch_template), transport: transport) {
-    RunArgvTransportRefused { reason: r } => DarkFailed { step: DarkStepScratchAcquire, reason: r }
-    RunArgvTransportObserved { observed: o } =>
-      match (if o.success { admitted_scratch_path(prefix: dark_scratch_prefix, stdout: o.stdout) } else { none }) {
-        Absent => DarkFailed { step: DarkStepScratchAcquire, reason: join(["mktemp -d did not yield an admitted scratch directory (exit ", to_string(o.exit_code), "): ", o.stdout, o.stderr], "") }
-        Present { value: scratch } => {
-          let state = dark_run_legs(legs: dark_sudoers_legs_at(site: site, principal: principal, scratch: scratch), transport: transport)
-          let cleanup = dark_failed_of_outcome(
-            step: DarkStepScratchCleanup,
-            outcome: run_argv_over_host_effect_transport(command: rm_recursive_force_command(path: scratch), transport: transport),
-          )
-          match state {
-            DarkFailed { step: s, reason: r } =>
-              match cleanup {
-                DarkOk => DarkFailed { step: s, reason: r }
-                DarkFailed { step: _, reason: cr } => DarkFailed { step: s, reason: join([r, "; scratch cleanup of ", scratch, " also failed: ", cr], "") }
-              }
-            DarkOk =>
-              match cleanup {
-                DarkFailed { step: cs, reason: cr } => DarkFailed { step: cs, reason: join(["removing scratch ", scratch, ": ", cr], "") }
-                DarkOk => DarkOk
-              }
-          }
-        }
-      }
-  }
-}
-
-// The previous release's snapshot is removed after the rename took its grant away: the sweep is
+// The previous release's snapshot is removed once the units that name the new one stand: the sweep is
 // confined to the root-owned base and keeps exactly this release's directory.
 fn dark_helper_retire_at(locus: HelperLocus, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
   dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
@@ -7216,16 +7109,6 @@ fn dark_install_step_name(step: DarkInstallStep) -> String {
     DarkStepDeviceStore => "device-store"
     DarkStepSnapshot => "helper-snapshot"
     DarkStepSnapshotReadback => "helper-snapshot-readback"
-    DarkStepScratchAcquire => "scratch-acquire"
-    DarkStepSudoersStage => "sudoers-stage"
-    DarkStepSudoersCheck => "sudoers-visudo-check"
-    DarkStepSudoersInstall => "sudoers-install"
-    DarkStepSudoersPolicyTemp => "sudoers-policy-check-temp"
-    DarkStepSudoersRename => "sudoers-rename"
-    DarkStepSudoersPolicyFinal => "sudoers-policy-check-final"
-    DarkStepSudoersReadback => "sudoers-readback"
-    DarkStepSudoersCompare => "sudoers-compare"
-    DarkStepScratchCleanup => "scratch-cleanup"
     DarkStepRetire => "helper-snapshot-retire"
     DarkStepBrokerTree => "broker-tree"
     DarkStepSidecarDigest => "sidecar-digest"
