@@ -322,6 +322,7 @@ pub enum TargetProducer {
     NativeCensusVerb {
         verb: &'static str,
     },
+    SelfHostFrontier,
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
@@ -632,6 +633,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("self-host-frontier"),
+            TargetProducer::SelfHostFrontier,
+        ),
+        (
             instrument_label("generic-identity-census"),
             TargetProducer::GenericIdentityCensus,
         ),
@@ -668,6 +673,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("last-use-move"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/last_use_move_native.dag",
+            },
+        ),
+        (
+            instrument_label("cons-tail-recursion"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/cons_tail_recursion_native.dag",
             },
         ),
         (
@@ -1201,6 +1212,10 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
         TargetProducer::NativeCensusVerb { verb } => {
             run_census_verb(verb, label, &self_host_source_roots())
         }
+        TargetProducer::SelfHostFrontier => run_self_host_frontier(
+            &self_host_source_roots(),
+            &crate::gunbc_stage0_stage0_cargo_manifest::stage0_package_root(),
+        ),
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
         }
@@ -5997,6 +6012,25 @@ fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
             "generic-identity-census: {} (controls over {FIXTURE}; report over the closure of {REPORT_ENTRY}, {subjects} sources)",
             standing.lines().next().unwrap_or("STANDING absent")
         ),
+    }
+}
+
+fn run_self_host_frontier(source_roots: &[String], stage0_crate_dir: &str) -> InvocationOutcome {
+    match cli_run::run_self_host_frontier(source_roots, stage0_crate_dir) {
+        Ok(code) => InvocationOutcome {
+            termination: match code {
+                0 => Termination::ObservationHeld,
+                1 => Termination::ObservationDidNotHold,
+                _ => Termination::SubjectUnreached,
+            },
+            message: format!(
+                "self-host-frontier: exit {code}; the [self-host-frontier] lines above are the derived frontier"
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
     }
 }
 

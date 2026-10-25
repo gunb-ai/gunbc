@@ -1,0 +1,5 @@
+module v2.fx.ledger.beta
+
+import v2.fx.ledger { FxRow }
+
+data beta: FxRow = FxRow { weight: 2 }
