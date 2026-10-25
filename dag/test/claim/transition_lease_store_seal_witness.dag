@@ -1,0 +1,112 @@
+module test.claim.transition_lease_store_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE TRANSITION LEASE STORE IS MINTED FROM ITS DECLARATION, AND A HELD LEASE IS MINTED ONLY BY AN ACQUIRE.
+// gunbc.deploy_transition_lease_store TransitionLeaseStore and TransitionLeaseHeld are sole_constructor, and
+// gunbc.deploy_transition TransitionGuard carries a TransitionLeaseHeld, so a guard exists only where the hold
+// library committed an acquire. Each RED hands the compiler a module outside the defining files and asserts the
+// refusal on the real acceptance path:
+//   - a forged store literal, a forged store cast, a store over a LITERAL PATH, a forged held lease, and a forged
+//     guard: each EXACTLY ONE SoleConstructorViolation on its subject;
+//   - the deleted guard mint over an authored create outcome (lease_acquisition_from_create with
+//     LeaseCreateSucceeded, which minted a guard with no lease anywhere) and the deleted root-taking acquire
+//     (acquire_transition_lease over TransitionSubject.instance_root): each at least one blocking diagnostic
+//     beyond a baseline importing the same closure (gunbc.compile_diagnostic_census).
+// A root read out of a store is ACCEPTED today and is recorded as an expecting-red probe, below. The GREEN is the
+// lawful route, transition_lease_store into acquire_transition_lease, which adds no blocking diagnostic and draws
+// no seal violation. NOT closed here: Filesystem.* is ambient, so any module can write a hold slot's next
+// generation itself over a path it spells; that is not holding a TransitionLeaseStore.
+
+// Every probe imports one closure, so the baseline cancels it; `extra` names a deleted declaration a RED
+// imports from gunbc.deploy_transition inside the same import list, never in a second import of the module.
+fn probe_importing(name: String, extra: String, body: String) -> String {
+  join([
+    "module ", name, "\n",
+    "import std.types { NonEmptyStr, String }\n",
+    "import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\n",
+    "import gunbc.deploy_transition_lease_store { TransitionLeaseStore, TransitionLeaseStoreReading, TransitionLeaseStoreReady, TransitionLeaseStoreUnready, TransitionLeaseHeld, transition_lease_store }\n",
+    "import gunbc.deploy_transition { TransitionSubject, TransitionActor, TransitionGuard, LeaseAcquisition, LeaseUnobtainable, acquire_transition_lease", extra, " }\n",
+    body,
+  ], "")
+}
+
+fn probe(name: String, body: String) -> String {
+  probe_importing(name: name, extra: "", body: body)
+}
+
+data closure_baseline_source: String = probe(name: "probe_transition_lease_closure_baseline", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
+
+data forged_store_literal_source: String = probe(name: "probe_transition_lease_forged_store_literal", body: "fn f(s: TransitionLeaseStore) -> TransitionLeaseStore {\n  TransitionLeaseStore { instance: s.instance, root: s.root }\n}\n")
+
+data forged_store_cast_source: String = probe(name: "probe_transition_lease_forged_store_cast", body: "fn f(r: NonEmptyStr) -> TransitionLeaseStore {\n  r as TransitionLeaseStore\n}\n")
+
+data literal_path_store_source: String = probe(name: "probe_transition_lease_literal_path_store", body: "fn f() -> TransitionLeaseStore {\n  TransitionLeaseStore { instance: \"srv1-lab\" as NonEmptyStr, root: \"/tmp/forged-instance\" as NonEmptyStr }\n}\n")
+
+data forged_held_source: String = probe(name: "probe_transition_lease_forged_held", body: "fn f(s: TransitionLeaseStore, h: TransitionLeaseHeld) -> TransitionLeaseHeld {\n  TransitionLeaseHeld { store: s, owner: h.owner, generation: h.generation }\n}\n")
+
+data forged_guard_source: String = probe(name: "probe_transition_lease_forged_guard", body: "fn f(s: TransitionSubject, a: TransitionActor, h: TransitionLeaseHeld) -> TransitionGuard {\n  TransitionGuard { subject: s, holder: a, lease: h }\n}\n")
+
+data authored_create_outcome_source: String = probe_importing(name: "probe_transition_lease_authored_create_outcome", extra: ", LeaseCreateSucceeded, lease_acquisition_from_create", body: "fn f(s: TransitionSubject, a: TransitionActor) -> LeaseAcquisition {\n  lease_acquisition_from_create(subject: s, holder: a, outcome: LeaseCreateSucceeded)\n}\n")
+
+data root_taking_acquire_source: String = probe(name: "probe_transition_lease_root_taking_acquire", body: "fn f(a: TransitionActor) -> LeaseAcquisition {\n  acquire_transition_lease(subject: TransitionSubject { instance_root: \"/tmp/forged-instance\", repo_root: \"/tmp/forged-instance/source\", base_ref: \"refs/remotes/origin/main\", candidate: \"c\" }, holder: a)\n}\n")
+
+data root_out_of_store_source: String = probe(name: "probe_transition_lease_root_out_of_store", body: "fn f(s: TransitionLeaseStore) -> NonEmptyStr {\n  s.root\n}\n")
+
+data lawful_mint_route_source: String = probe(name: "probe_transition_lease_lawful_mint_route", body: "fn f(i: HostDashboardInstance, s: TransitionSubject, a: TransitionActor) -> LeaseAcquisition {\n  match transition_lease_store(instance: i) {\n    TransitionLeaseStoreReady { store } => acquire_transition_lease(lease: store, subject: s, holder: a)\n    TransitionLeaseStoreUnready { detail } => LeaseUnobtainable { cause: detail }\n  }\n}\n")
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: closure_baseline_source), holds: holds)
+}
+
+test fn a_forged_lease_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_store_literal_source, subject: "TransitionLeaseStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_lease_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_store_cast_source, subject: "TransitionLeaseStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_lease_store_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: literal_path_store_source, subject: "TransitionLeaseStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_held_lease_without_an_acquire_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_held_source, subject: "TransitionLeaseHeld"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_guard_without_a_held_lease_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_guard_source, subject: "TransitionGuard"), holds: fn(n) { n == 1 }))
+}
+
+test fn no_guard_is_minted_from_an_authored_create_outcome() -> ProcessExit {
+  census_exit(blocking_delta(hostile: authored_create_outcome_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn no_root_taking_acquire_resolves() -> ProcessExit {
+  census_exit(blocking_delta(hostile: root_taking_acquire_source, holds: fn(n) { n >= 1 }))
+}
+
+// AN EXPECTING-RED PROBE, recorded as what holds TODAY: a foreign module reads the root out of a lease store and
+// is accepted, because sole_constructor seals construction and not field reads -- the same residual
+// test.claim.transition_inhibition_store_seal_witness a_root_is_readable_through_an_inhibition_store_today records.
+// It flips, and is then inverted into that wall's RED, in the change that makes a sealed record's fields readable
+// only in its declaring module.
+test fn a_root_is_readable_through_a_lease_store_today() -> ProcessExit {
+  census_exit(blocking_delta(hostile: root_out_of_store_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn the_lawful_lease_mint_route_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lawful_mint_route_source, holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: lawful_mint_route_source, subject: "TransitionLeaseStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: lawful_mint_route_source, subject: "TransitionGuard"), holds: fn(n) { n == 0 }),
+  ])
+}

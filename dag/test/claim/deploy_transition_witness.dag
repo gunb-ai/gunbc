@@ -10,6 +10,16 @@ import extdeps.filesystem.filesystem_io {
   filesystem_file_observation,
 }
 import gunbc.deploy_transition_store { transition_inhibition_slots, transition_inhibition_path }
+import gunbc.deploy_transition_lease_store {
+  transition_lease_slots,
+  TransitionLeaseAcquire,
+  TransitionLeaseOccupied,
+  TransitionLeaseUndecodable,
+  TransitionLeaseLost,
+  TransitionLeaseUnavailable,
+}
+import gunbc.durable_cas_file_store { cas_file_slot_path }
+import std.durable_compare_and_set { cas_generation_first }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
@@ -17,15 +27,11 @@ import gunbc.deploy_transition {
   TransitionSubject,
   TransitionActor,
   TransitionRecord,
-  TransitionGuard,
   TransitionFileObservation,
   TransitionFileAbsent,
   TransitionFilePresent,
   TransitionFileIndeterminate,
   TransitionFileObservationsDisagree,
-  LeaseCreateOutcome,
-  LeaseCreateSucceeded,
-  LeaseCreateRefused,
   TransitionRecordDecode,
   TransitionRecordDecoded,
   TransitionRecordUndecodable,
@@ -33,6 +39,7 @@ import gunbc.deploy_transition {
   LeaseAcquired,
   LeaseHeldBy,
   LeaseHeldUndecodable,
+  LeaseAcquireLost,
   LeaseUnobtainable,
   ActuationStanding,
   ActuationPermitted,
@@ -52,19 +59,16 @@ import gunbc.deploy_transition {
   AbandonmentRefusedUnobserved,
   AbandonmentRefusedNotOperator,
   ClearanceBasis,
-  ClearedByHolder,
   ClearedByEvidence,
   ClearedByAbandonment,
   ClearanceAdmission,
   ClearanceAdmitted,
   ClearanceRefused,
-  transition_lease_path,
   transition_record_json,
   transition_record_decode,
   transition_file_observation_of,
-  transition_lease_file_name,
   transition_record_same_subject,
-  lease_acquisition_from_create,
+  lease_acquisition_of,
   actuation_standing_of,
   actuation_admission,
   residue_disposition,
@@ -79,7 +83,6 @@ import gunbc.deploy_transition {
 
 fn subject() -> TransitionSubject {
   TransitionSubject {
-    instance_root: "/opt/gunbc",
     repo_root: "/opt/gunbc/gunbc",
     base_ref: "refs/remotes/origin/main",
     candidate: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -115,29 +118,22 @@ fn partial_record() -> TransitionRecord {
 fn acquisition_arm(a: LeaseAcquisition) -> String {
   match a {
     LeaseAcquired(_) => "acquired"
-    LeaseHeldBy { record: _ } => "held"
+    LeaseHeldBy { holder: _ } => "held"
     LeaseHeldUndecodable { cause: _ } => "undecodable"
+    LeaseAcquireLost { cause: _ } => "lost"
     LeaseUnobtainable { cause: _ } => "unobtainable"
   }
 }
 
-fn acquire_with(observed: TransitionFileObservation) -> String {
-  acquisition_arm(a: lease_acquisition_from_create(
-    subject: subject(),
-    holder: holder(),
-    outcome: LeaseCreateRefused {
-      error: "File exists (os error 17)",
-      observed: observed,
-    },
-  ))
+// THE ACQUIRED ARM IS NOT WRITABLE HERE. Its payload is the lease store's sealed proof of a committed hold,
+// so this witness drives the four refusal arms of the store's outcome, and an acquire that committed is
+// witnessed by test.claim.deploy_transition_wet_witness over a real directory.
+fn acquire_with(outcome: TransitionLeaseAcquire) -> String {
+  acquisition_arm(a: lease_acquisition_of(subject: subject(), holder: holder(), outcome: outcome))
 }
 
-fn acquire_succeeded() -> String {
-  acquisition_arm(a: lease_acquisition_from_create(
-    subject: subject(),
-    holder: holder(),
-    outcome: LeaseCreateSucceeded,
-  ))
+fn occupied() -> TransitionLeaseAcquire {
+  TransitionLeaseOccupied { holder: "[\"deployer\", \"run-0\"]", generation: 1 }
 }
 
 fn decoded_ok(d: TransitionRecordDecode) -> Bool {
@@ -195,24 +191,6 @@ fn clearance_text(c: ClearanceAdmission) -> String {
   }
 }
 
-// A GUARD CANNOT BE WRITTEN HERE. `TransitionGuard` is sole_constructor, so this module -- and every
-// module that is not gunbc.deploy_transition -- has no record literal for it. The only way a witness
-// obtains one is the same way production does: through the acquisition fold on its admitting arm.
-// That is why this helper exists rather than a fixture constructor, and its existence is the
-// evidence that the wall is real: a literal here refuses to compile.
-fn acquired_guard() -> TransitionGuard? {
-  match lease_acquisition_from_create(
-    subject: subject(),
-    holder: holder(),
-    outcome: LeaseCreateSucceeded,
-  ) {
-    LeaseAcquired(g) => Present { value: g }
-    LeaseHeldBy { record: _ } => none
-    LeaseHeldUndecodable { cause: _ } => none
-    LeaseUnobtainable { cause: _ } => none
-  }
-}
-
 // THE RECORDS LIVE OUTSIDE THE REPOSITORY BEING TRANSITIONED. A durable file written under
 // `repo_root` would be untracked residue in the tree the convergence reads back, so the
 // convergence's own residue check would refuse on the artifact that exists to protect it. This
@@ -233,11 +211,13 @@ fn opt_instance() -> HostDashboardInstance {
   )
 }
 
+// The lease's first generation is spelled by the CAS file store's own slot path over the instance root, which
+// is the root the lease store's mint takes from the instance.
 test fn the_durable_records_sit_outside_the_repository_they_protect() -> Bool {
   let instance = opt_instance()
   let root = instance.instance_root as String
   let repo = instance.repo_root as String
-  let lease = transition_lease_path(instance_root: root)
+  let lease = cas_file_slot_path(root: instance.instance_root as NonEmptyStr, key: transition_lease_slots.member, generation: cas_generation_first())
   let inhibition = transition_inhibition_path(instance: instance)
   lease != inhibition
     && !string_contains(s: lease, pattern: join([repo, "/"], ""))
@@ -246,35 +226,46 @@ test fn the_durable_records_sit_outside_the_repository_they_protect() -> Bool {
     && string_contains(s: inhibition, pattern: join([root, "/"], ""))
 }
 
-// ALL FOUR ACQUISITION ARMS ARE DISTINCT, driven through one function over inputs that differ only
-// in the two facts the decision consumes. Asserting one arm alone would stay green against a fold
-// that answered it unconditionally.
-test fn the_four_acquisition_outcomes_are_four_different_answers() -> Bool {
-  let acquired = acquire_succeeded()
-  let held = acquire_with(observed: TransitionFilePresent { record: in_force_record() })
-  let corrupt = acquire_with(observed: TransitionFileIndeterminate { cause: "bad" })
-  let unobtainable = acquire_with(observed: absent_observation())
-  acquired == "acquired"
-    && held == "held"
+// ALL FOUR REFUSAL ARMS ARE DISTINCT, and none is an acquisition, driven through the one fold over the store's
+// outcome. Asserting one arm alone would stay green against a fold that answered it unconditionally.
+test fn the_four_refused_acquisitions_are_four_different_answers() -> Bool {
+  let held = acquire_with(outcome: occupied())
+  let corrupt = acquire_with(outcome: TransitionLeaseUndecodable { detail: "bad" })
+  let lost = acquire_with(outcome: TransitionLeaseLost { detail: "raced" })
+  let unobtainable = acquire_with(outcome: TransitionLeaseUnavailable { detail: "EACCES" })
+  held == "held"
     && corrupt == "undecodable"
+    && lost == "lost"
     && unobtainable == "unobtainable"
 }
 
-// THE FAIL-CLOSED DIRECTION, and it is the one a reasonable implementation gets wrong. A lease file
-// that exists and does not decode is NOT a free lease: rendering it as absent would hand a second
-// converge the critical section a first one is still inside. This witness reds the moment the
-// undecodable arm is folded into either neighbour.
+// THE FAIL-CLOSED DIRECTION, and it is the one a reasonable implementation gets wrong. A lease slot that
+// does not decode is NOT a free lease: rendering it as absent would hand a second converge the critical
+// section a first one is still inside. This witness reds the moment the undecodable arm is folded into
+// either neighbour.
 test fn a_lease_that_does_not_decode_is_not_a_free_lease() -> Bool {
-  let corrupt = acquire_with(observed: TransitionFileIndeterminate { cause: "bad" })
+  let corrupt = acquire_with(outcome: TransitionLeaseUndecodable { detail: "bad" })
   corrupt != "acquired" && corrupt != "held"
 }
 
-// A CREATE THAT FAILED WITH NOTHING READABLE IS NOT A HELD LEASE EITHER. Permission denied on the
-// directory and a lease held by a peer have opposite remedies -- fix the host, or wait -- so a fold
-// that answered "held" for both would send an operator to wait out a lease that does not exist.
-test fn a_directory_refusal_is_distinguished_from_a_held_lease() -> Bool {
-  acquire_with(observed: absent_observation())
-    != acquire_with(observed: TransitionFilePresent { record: in_force_record() })
+// A STORE THAT COULD NOT BE READ OR WRITTEN IS NOT A HELD LEASE, AND NOT A LOST RACE EITHER. Permission denied
+// on the root and a lease held by a peer have opposite remedies -- fix the host, or wait -- and a lost race is a
+// third (re-observe), so a fold that answered one for another would send an operator to the wrong one.
+test fn a_store_refusal_is_distinguished_from_a_held_lease_and_a_lost_race() -> Bool {
+  let unavailable = acquire_with(outcome: TransitionLeaseUnavailable { detail: "EACCES" })
+  unavailable != acquire_with(outcome: occupied())
+    && unavailable != acquire_with(outcome: TransitionLeaseLost { detail: "raced" })
+}
+
+// THE HELD ARM NAMES THE HOLDER the hold library read off the slot, so a refused converge can say who to wait for.
+test fn a_held_lease_names_its_holder() -> Bool {
+  match lease_acquisition_of(subject: subject(), holder: holder(), outcome: occupied()) {
+    LeaseHeldBy { holder: h } => string_contains(s: h, pattern: "run-0")
+    LeaseAcquired(_) => false
+    LeaseHeldUndecodable { cause: _ } => false
+    LeaseAcquireLost { cause: _ } => false
+    LeaseUnobtainable { cause: _ } => false
+  }
 }
 
 // THE ROUND TRIP IS THE ORACLE FOR THE ENCODING, not a golden string: what production writes is what
@@ -470,7 +461,7 @@ test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool {
     listing: "transition-inhibition.json.tmp",
     read: read_refused(e: "No such file or directory"),
   )) == "absent"
-    && transition_lease_file_name != transition_inhibition_slots.member as String
+    && transition_lease_slots.member as String != transition_inhibition_slots.member as String
 }
 
 // ONLY ONE STANDING ADMITS. An unreadable inhibition refuses, which is the direction that matters:
@@ -559,24 +550,8 @@ test fn an_unobservable_repository_refuses_rather_than_reading_a_stale_head() ->
   ))) == "unobservable"
 }
 
-// THE HOLDER MAY NOT CLEAR ON EXIT STATUS. Both arms run over one guard, so a fold that ignored the
-// readback would go red here rather than quietly clearing an inhibition over a tree nothing verified.
-test fn the_holder_clears_only_after_a_converged_readback() -> Bool {
-  match acquired_guard() {
-    Absent => false
-    Present { value: g } =>
-      clearance_admits(c: clearance_admission(
-        basis: ClearedByHolder(g),
-        readback_converged: true,
-        observed: present_marker(record: in_force_record()),
-      ))
-        && !clearance_admits(c: clearance_admission(
-          basis: ClearedByHolder(g),
-          readback_converged: false,
-          observed: present_marker(record: in_force_record()),
-        ))
-  }
-}
+// THE HOLDER MAY NOT CLEAR ON EXIT STATUS: witnessed by test.claim.deploy_transition_wet_witness over a real
+// guard, for the same reason as the subject-matched clearance below.
 
 // EVIDENCE-BASED CLEARANCE FOLLOWS THE DISPOSITION AND NOTHING ELSE, and the readback flag of the
 // clearing process is irrelevant to it -- it is clearing someone else's residue, so its own verdict
@@ -703,67 +678,9 @@ fn newer_record() -> TransitionRecord {
   }
 }
 
-// THE CLEARANCE IS SUBJECT-MATCHED, AND THIS IS THE FAILURE IT PREVENTS. A late-finishing older
-// deployment holds a perfectly sound basis -- its own guard, its own converged readback -- and the
-// marker on disk belongs to a NEWER transition that is still running. A blind delete admits the belt
-// into the tree that newer transition is mutating. Both halves are driven here over one basis: the
-// same clearance that admits against its own record refuses against someone else's.
-test fn a_clearance_cannot_clear_another_transitions_marker() -> Bool {
-  match acquired_guard() {
-    Absent => false
-    Present { value: g } =>
-      clearance_admits(c: clearance_admission(
-        basis: ClearedByHolder(g),
-        readback_converged: true,
-        observed: present_marker(record: in_force_record()),
-      ))
-        && !clearance_admits(c: clearance_admission(
-          basis: ClearedByHolder(g),
-          readback_converged: true,
-          observed: present_marker(record: newer_record()),
-        ))
-  }
-}
-
-// THE REFUSAL NAMES BOTH RECORDS, because an operator seeing it needs to know which transition owns
-// the marker and which one tried to clear it -- a mismatch that reported only "refused" would look
-// identical to a permission problem.
-test fn a_subject_mismatch_names_both_transitions() -> Bool {
-  match acquired_guard() {
-    Absent => false
-    Present { value: g } => {
-      let text = clearance_text(c: clearance_admission(
-        basis: ClearedByHolder(g),
-        readback_converged: true,
-        observed: present_marker(record: newer_record()),
-      ))
-      string_contains(s: text, pattern: "run-1")
-        && string_contains(s: text, pattern: "run-2")
-        && string_contains(s: text, pattern: "cccccccccccccccccccccccccccccccccccccccc")
-    }
-  }
-}
-
-// A MARKER THAT VANISHED OR BECAME UNREADABLE BETWEEN THE DECISION AND THE DELETE ALSO REFUSES.
-// Absent is the subtle one: it reads like "already cleared, nothing to do", and it is equally
-// consistent with another actor having replaced the file, so proceeding would delete whatever
-// arrives next. Neither state is the record this clearance was computed against.
-test fn a_vanished_or_unreadable_marker_refuses_the_clearance() -> Bool {
-  match acquired_guard() {
-    Absent => false
-    Present { value: g } =>
-      !clearance_admits(c: clearance_admission(
-        basis: ClearedByHolder(g),
-        readback_converged: true,
-        observed: absent_observation(),
-      ))
-        && !clearance_admits(c: clearance_admission(
-          basis: ClearedByHolder(g),
-          readback_converged: true,
-          observed: TransitionFileIndeterminate { cause: "corrupt" },
-        ))
-  }
-}
+// THE HOLDER'S SUBJECT-MATCHED CLEARANCE needs a real guard, which only a committed acquire mints, so its
+// three claims -- another transition's marker refuses, the refusal names both, a vanished or unreadable marker
+// refuses -- are test.claim.deploy_transition_wet_witness's, over a real lease.
 
 // SUBJECT IDENTITY IGNORES THE PHASE, and that is required rather than incidental: a transition that
 // marked itself partial and then recovered must still be able to clear its OWN marker, and the phase

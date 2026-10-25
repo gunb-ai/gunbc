@@ -29,12 +29,9 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 // and it is rewritten in place under a held lease, which the hold protocol has no operation for. Its own
 // consolidation target is a record slot (a FormatConsolidation follow-up), not the hold.
 //
-// THE LEASE IS NOT HERE. transition-lease.json is a hand lock, and stern-ram-763 ruled (2026-10-24) that it moves
-// onto the hold library once std.durable_exclusive_hold models a non-holder release typed by its evidence; until
-// then it stays where it is in gunbc.deploy_transition (Blocked: hold-release-model), with its own listing-joined
-// observation. That fold and transition_inhibition_observe below are the same few lines, kept apart on purpose:
-// a shared helper here would be an observer over a caller-chosen directory (ruling 2026-10-25), and the lease's
-// copy is deleted when the lease moves onto the hold library.
+// THE LEASE IS NOT HERE. It is a hold on gunbc.durable_exclusive_hold_file_store, sealed in its own store,
+// gunbc.deploy_transition_lease_store, with its own declaration in the same instance root; the hand lock it
+// replaced (transition-lease.json and its listing-joined observation) is deleted.
 
 // THE ONE DECLARATION OF THE STORE: the member it is under the instance root. The store is a single file
 // directly in the instance root, which the instance itself provisions; the store owns no directory, so there is
