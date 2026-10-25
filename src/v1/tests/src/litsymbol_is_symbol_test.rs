@@ -34,8 +34,8 @@ fn infer_literal_node_types_litstr_as_string() {
 }
 
 // Producer flip only. `-> String { ^tag }` still compiles: conformance is
-// declared_type_conformance_diags_core !both_ground, not a declared Symbol→String
-// conversion and not node_type_compatible treating the names as equal.
+// the explicit symbol_at_text exemption in kernel_value_declared_type_mismatch_bounded,
+// not a declared Symbol→String conversion and not node_type_compatible treating the names as equal.
 #[test]
 fn two_carets_still_compare() {
     let msgs = blocking("module litsymbol.eq\nfn f() -> Bool { ^tag == ^tag }\n");
