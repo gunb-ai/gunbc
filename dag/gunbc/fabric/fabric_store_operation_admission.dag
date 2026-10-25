@@ -3,7 +3,7 @@ module gunbc.fabric.fabric_store_operation_admission
 import std.types { NonEmptyStr, String, Bool, Timestamp, List }
 import std.optional { Present, Absent }
 import std.algebra { is_empty }
-import std.content_hash { ContentHash, sha256_hex_digest, as_content_hash_cryptographic, parse_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import std.content_hash { ContentHash, sha256_hex_digest, as_content_hash_cryptographic, parse_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, sha256_hex_of_text }
 import std.effect_grant { Grant, Write, NamespacePosition, CodeNameTree, grant_covers }
 import std.scoped_authorization { AuthorizationScope, parse_intent_scopes, scope_covered_by_any, authorization_claim_key_scope }
 import product.capacity.event_chain { EventDecoded, EventUndecodable }

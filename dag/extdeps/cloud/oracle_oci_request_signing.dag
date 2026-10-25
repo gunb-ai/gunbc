@@ -9,6 +9,7 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.types { Int, List, NonEmptyStr, String }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute }
 import extdeps.units.iso8601_calendar { iso8601_civil_from_days, iso8601_floor_div, iso8601_seconds_per_day, iso8601_seconds_per_hour, iso8601_two_digits }
+import std.content_hash { sha256_hex_of_text }
 
 // OCI API REQUEST SIGNING, the upstream specification: what is signed and how the Authorization
 // header is spelled. It is read from the signing-requests page cited below on 2026-10-05.
