@@ -6,7 +6,7 @@ import std.types { FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List 
 import std.content_hash { Fnv1a64Structural }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
-import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
+import std.effect_grant { Envelope, HandlerBinding, Read, Write, Verb, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto }
 import std.operation_argv { OperationRef }
