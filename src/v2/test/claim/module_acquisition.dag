@@ -9,7 +9,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority { ModuleFileRef, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, module_file_key, ReferenceCrossTreeDenied, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, reference_next_read, reference_prefixes }
 import std.algebra { length, list_head, list_map, empty_map, map_insert, collection_concat_shape, collection_join_shape }
-import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeFundamentalityUnknownFailClosed, CrossTreeToTreeNotInRootSet, DagTree, V2Tree }
+import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, DagTree, V2Tree }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
@@ -1034,8 +1034,8 @@ fn idle_acquisition_state(known: Map<String, Bool>) -> AcquisitionState {
   }
 }
 
-// A dag-tree importer in a namespace gunbc.source_layout_namespaces has no row for. The rank of a namespace is
-// its row, so this importer has none: the crossing is FundamentalityUnknown and refuses fail-closed.
+// A dag-tree importer in a namespace gunbc.source_layout_namespaces has no row for: the crossing is
+// CrossTreeNamespaceUndeclared and refuses fail-closed.
 fn undeclared_dag_import_of_v2_kind() -> AcquisitionRequest {
   AcquisitionRequest {
     from_module: "undeclared_namespace_probe.importer",
@@ -1066,9 +1066,9 @@ fn v2_import_of_v2_kind() -> AcquisitionRequest {
 
 // FORMATTING ONLY: the ACQUISITION-REFUSED sentence native_lane_acquire prints. It constructs
 // AcquisitionLookupRefused; it does not submit a request. The production-path pair is
-// an_unranked_dag_to_v2_acquisition_refuses_without_reading the target, a_test_to_v2_acquisition_advances and
+// an_undeclared_namespace_dag_to_v2_acquisition_refuses_without_reading the target, a_test_to_v2_acquisition_advances and
 // a_permitted_v2_to_v2_acquisition_advances.
-test fn acquisition_lookup_refusal_text_formats_an_unranked_crossing_denial() -> Bool {
+test fn acquisition_lookup_refusal_text_formats_an_undeclared_namespace_crossing_denial() -> Bool {
   acquisition_refusal_text(
     refusal: AcquisitionLookupRefused {
       request: AcquisitionRequest {
@@ -1080,17 +1080,17 @@ test fn acquisition_lookup_refusal_text_formats_an_unranked_crossing_denial() ->
       lookup: ReferenceCrossTreeDenied {
         module: "v2.std.cardinality",
         file: ModuleFileRef { tree: V2Tree {}, relative_path: "std/cardinality.dag" },
-        reason: CrossTreeFundamentalityUnknownFailClosed
+        reason: CrossTreeNamespaceUndeclared
       }
     }
-  ) == "v2.std.cardinality (requested by undeclared_namespace_probe.importer): module v2.std.cardinality at v2:std/cardinality.dag is across a tree crossing with no rank: the requesting module's namespace or the target's has no row in the declared layout"
+  ) == "v2.std.cardinality (requested by undeclared_namespace_probe.importer): module v2.std.cardinality at v2:std/cardinality.dag is across a tree crossing from or to a namespace with no row in the declared layout"
 }
 
 // Discriminator recorded 2026-10-13: rewriting acquisition_verdict_step's CandidateRefusedBy arm
 // to AcquisitionAdvanced kept the refusal-text control and the storage lookup's denial control green,
-// and redded this control. THE RED OF THE NAMESPACE RANK on the production path: the importer's namespace
-// has no row, so the crossing is FundamentalityUnknown and refuses before the target is read.
-test fn an_unranked_dag_to_v2_acquisition_refuses_without_reading() -> Bool {
+// and redded this control. THE RED OF NAMESPACE MEMBERSHIP on the production path: the importer's namespace
+// has no row, so the crossing is CrossTreeNamespaceUndeclared and refuses before the target is read.
+test fn an_undeclared_namespace_dag_to_v2_acquisition_refuses_without_reading() -> Bool {
   match prepare_grammar(grammar: dag_language_model().grammar) {
     Rejected { diagnostics: _ } => false
     Accepted { value: prepared, diagnostics: _ } =>
@@ -1110,7 +1110,7 @@ test fn an_unranked_dag_to_v2_acquisition_refuses_without_reading() -> Bool {
                     named == "v2.std.kind"
                       && file.relative_path == "std/kind.dag"
                       && match reason {
-                        CrossTreeFundamentalityUnknownFailClosed => true
+                        CrossTreeNamespaceUndeclared => true
                         CrossTreeToTreeNotInRootSet => false
                         CrossTreeFromTreeNotInRootSet => false
                       }
@@ -1134,7 +1134,7 @@ test fn an_unranked_dag_to_v2_acquisition_refuses_without_reading() -> Bool {
   }
 }
 
-// THE POSITIVE CONTROL OF THE NAMESPACE RANK, differing from the red above in the importer's namespace alone:
+// THE POSITIVE CONTROL OF NAMESPACE MEMBERSHIP, differing from the red above in the importer's namespace alone:
 // a test-namespace module importing a v2 module crosses between two declared namespaces and advances. The
 // target is already acquired so no read is needed, and the cross-tree verdict precedes that shortcut, so a
 // denial would still refuse here.

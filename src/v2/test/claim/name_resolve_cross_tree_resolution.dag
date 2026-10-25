@@ -402,7 +402,7 @@ fn ct_dag_tree_only() -> SourceRootSet {
 }
 
 // THE POSITIVE CONTROL: with both trees active, a dag-tree module importing a v2-tree module resolves. The
-// gate over modules already read asks no namespace rank (the storage lookup asked it before the read).
+// gate over modules already read reads no namespace membership (the storage lookup read it before the read).
 test fn witness_cross_tree_dag_to_v2_grounded_resolves_holds() -> Bool {
   match ct_dag_to_v2_roots() {
     Rejected { diagnostics: _ } => false

@@ -4,7 +4,7 @@ import std.types { Bool, List }
 import std.coercion { unicode_scalar_fold }
 import v2.std.text { String }
 import std.algebra { for_all, length, list_map }
-import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeFundamentalityUnknownFailClosed, CrossTreeToTreeNotInRootSet, DagTree, V2Tree }
+import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, DagTree, V2Tree }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.module_header { ModuleHeaderAbsent, ModuleHeaderDeclared, ModuleHeaderReader, ModuleHeaderRefused, module_header_reader }
 import v2.compiler.parse { PreparedVoidGrammar }
@@ -304,7 +304,7 @@ test fn header_agreement_accepts_exactly_when_the_parsed_identity_is_the_request
   length(xs: header_cases) > 5 && for_all(xs: header_cases, predicate: fn(case) { case_agrees_with_the_lookup(case: case) })
 }
 
-// THE RANK IS PER NAMESPACE, read from the declared rows, and the crossing is decided BEFORE any file is
+// ADMISSION READS NAMESPACE MEMBERSHIP from the declared rows, and the crossing is decided BEFORE any file is
 // read. The positive control: a module in `test.claim` resolving `v2.std.text.String` crosses between two
 // declared namespaces. The longest candidate, `v2.std.text.String`, lies in `v2.std.text`, which has no
 // row and so stores no module: it is skipped unread (no observation names it), and `v2.std.text` is read.
@@ -323,13 +323,13 @@ test fn lookup_test_to_v2_reference_resolves() -> Bool {
   }
 }
 
-fn unranked_denial_named(lookup: ReferenceLookup, module: String, path: String) -> Bool {
+fn undeclared_namespace_denial_named(lookup: ReferenceLookup, module: String, path: String) -> Bool {
   match lookup {
     ReferenceCrossTreeDenied { module: named, file: file, reason: reason } =>
       named == module
         && file.relative_path == path
         && match reason {
-          CrossTreeFundamentalityUnknownFailClosed => true
+          CrossTreeNamespaceUndeclared => true
           CrossTreeToTreeNotInRootSet => false
           CrossTreeFromTreeNotInRootSet => false
         }
@@ -343,11 +343,11 @@ fn unranked_denial_named(lookup: ReferenceLookup, module: String, path: String) 
 }
 
 // THE RED, differing from the positive control in the importer's namespace alone: `undeclared` has no row,
-// so it has no rank, and the crossing refuses fail-closed as FundamentalityUnknown, located at the first
+// and the crossing refuses fail-closed as CrossTreeNamespaceUndeclared, located at the first
 // storable candidate, with nothing read -- the file is supplied present, so a lookup that read before
 // deciding would resolve it.
-test fn lookup_unranked_importer_crossing_to_v2_is_denied_before_any_read() -> Bool {
-  unranked_denial_named(
+test fn lookup_undeclared_importer_crossing_to_v2_is_denied_before_any_read() -> Bool {
+  undeclared_namespace_denial_named(
     lookup: resolve_reference_over(reader: header_reader(), layout: layout(), from_tree: DagTree {}, from_module: "undeclared.m", reference: "v2.std.text.String", observed: [
       ModuleFilePresent { file: v2_file(path: "std/text.dag"), content: "module v2.std.text\n" }
     ]),
@@ -356,10 +356,10 @@ test fn lookup_unranked_importer_crossing_to_v2_is_denied_before_any_read() -> B
   )
 }
 
-// The same red in the other direction: the rank is a namespace's, not a tree's, so a v2-tree importer
+// The same red in the other direction: membership is a namespace's, not a tree's, so a v2-tree importer
 // whose namespace has no row is refused crossing into the dag tree too.
-test fn lookup_unranked_v2_importer_crossing_to_dag_is_denied_before_any_read() -> Bool {
-  unranked_denial_named(
+test fn lookup_undeclared_v2_importer_crossing_to_dag_is_denied_before_any_read() -> Bool {
+  undeclared_namespace_denial_named(
     lookup: resolve_reference_over(reader: header_reader(), layout: layout(), from_tree: V2Tree {}, from_module: "v2.undeclared.m", reference: "a.b.f", observed: [
       ModuleFilePresent { file: dag_file(path: "a/b.dag"), content: "module a.b\n" }
     ]),

@@ -1555,9 +1555,10 @@ fn ascii_case_fold(s: String) -> String {
 // same two steps over a supplied observation and is the control for the decision itself.
 //
 // The cross-tree verdict (v2.std.cross_tree.import_model cross_tree_import_admitted) is decided HERE,
-// before the read, because a candidate's tree and namespace are known from its name alone. The rank is a
-// NAMESPACE's row in the layout, never a tree: a crossing between two declared namespaces is admitted
-// either way, and an importer whose namespace has no row is refused without the candidate being read. A cross-tree CANDIDATE whose namespace has no row is skipped, not refused:
+// before the read, because a candidate's tree and namespace are known from its name alone. Admission requires
+// both namespaces to have a row in the layout, and there is no direction: a crossing between two declared
+// namespaces is admitted either way, and an importer whose namespace has no row is refused without the
+// candidate being read. A cross-tree CANDIDATE whose namespace has no row is skipped, not refused:
 // longest-first probing asks `v2.std.text.String` (namespace `v2.std.text`, a module, not a row)
 // before `v2.std.text`, and no module is stored in a namespace with no row.
 type ModuleFileProbe

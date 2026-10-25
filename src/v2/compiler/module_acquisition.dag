@@ -17,7 +17,7 @@ import v2.compiler.source_authority { ModuleFileAbsent, ModuleFileDerived, Modul
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.lens.reference_deps { admission_from_module_root }
-import v2.std.cross_tree.import_model { CrossTreeDenialReason, CrossTreeFromTreeNotInRootSet, CrossTreeFundamentalityUnknownFailClosed, CrossTreeToTreeNotInRootSet, SourceRootRef }
+import v2.std.cross_tree.import_model { CrossTreeDenialReason, CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, SourceRootRef }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
@@ -1313,8 +1313,8 @@ fn acquisition_lookup_text(lookup: ReferenceLookup) -> String {
 // an inactive root or a namespace with no row (v2.std.cross_tree.import_model cross_tree_import_admitted).
 fn cross_tree_denial_text(reason: CrossTreeDenialReason) -> String {
   match reason {
-    CrossTreeFundamentalityUnknownFailClosed =>
-      "is across a tree crossing with no rank: the requesting module's namespace or the target's has no row in the declared layout"
+    CrossTreeNamespaceUndeclared =>
+      "is across a tree crossing from or to a namespace with no row in the declared layout"
     CrossTreeToTreeNotInRootSet => "lies in a tree that is not an active source root"
     CrossTreeFromTreeNotInRootSet => "is requested from a tree that is not an active source root"
   }

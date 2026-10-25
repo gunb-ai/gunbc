@@ -68,7 +68,7 @@ fn source_root_set_insert(
   }
 }
 
-// THE NAME-RESOLVE GATE OVER AN EDGE BETWEEN TWO MODULES ALREADY READ. It asks no rank: the namespace rank
+// THE NAME-RESOLVE GATE OVER AN EDGE BETWEEN TWO MODULES ALREADY READ. It reads no namespace membership: that
 // has one enforcement site, the storage lookup, which decides it before the read
 // (v2.compiler.source_authority storage_cross_tree_verdict; DESIGN section 3). What stays here is what only
 // the ingest knows: whether both trees are active roots, and whether a module was read from two trees.
