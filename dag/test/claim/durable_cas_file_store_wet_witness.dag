@@ -13,14 +13,7 @@ import std.durable_compare_and_set {
   cas_generation_count,
 }
 import std.checked_arithmetic { int_inclusive_max }
-import gunbc.durable_cas_file_store {
-  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
-  admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path,
-  file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow,
-  cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
-  CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below,
-  CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted,
-}
+import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path, file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow, CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below, CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted }
 
 // Wet controls for the file-backed CAS provider. Hermetic mint and classification
 // live in test.claim.durable_cas_file_store_witness. This file reaches the host.

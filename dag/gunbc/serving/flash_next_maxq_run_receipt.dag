@@ -1,0 +1,77 @@
+module gunbc.serving.flash_next_maxq_run_receipt
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { TokenCount, token_count, ByteSize, mebibyte, mebibyte_to_byte_size, Second, second, second_count, Watt, watt, Milliwatt, milliwatt, Hertz, hertz }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+data maxq_run_read_obligation: NonEmptyStr = "Re-read the Prometheus text of the RTX PRO 6000 Blackwell Max-Q vLLM /metrics scrape of 2026-10-21 (process uptime 504,451 s) and the launch log for the KV pool and weight lines, and commit that text as the receipt this row is derived from. Every figure below is the operator's transcription at the print precision of the scrape (5-6 significant digits), not a value this repository read; the seconds-valued histogram sums are therefore whole seconds and the byte figures were printed in GiB and are stored in whole MiB." as NonEmptyStr
+
+// ONE OBSERVATION OF ONE PRODUCTION RUN, by the observing layer (DESIGN section 3: an observation this
+// repository makes is a receipt, never a fact of the observed upstream). Counter names follow
+// extdeps.vllm.metrics VllmServingMetric; the three prompt-token sources are vllm:prompt_tokens_by_source
+// (local_compute, local_cache_hit, external_kv_transfer), where external is LMCache. Histogram sums are
+// whole seconds; a mean is derived by the consumer, never stored.
+type FlashNextMaxQRunReceipt {
+  // Review 84774 (flat-scalar unit fields): durations are std.measure Second, power Watt/Milliwatt, clock Hertz, so a
+  // bare count never stands for a unit again and every conversion goes through std.measure's own extractors. The
+  // scrape printed whole seconds and deci-watts; the milli scale carries the printed power precision exactly.
+  uptime_seconds: Second
+  requests: Nat
+  prompt_tokens: TokenCount
+  prompt_local_compute_tokens: TokenCount
+  prompt_gpu_prefix_hit_tokens: TokenCount
+  prompt_lmcache_external_tokens: TokenCount
+  generation_tokens: TokenCount
+  spec_draft_tokens: TokenCount
+  spec_accepted_tokens: TokenCount
+  inter_token_latency_steps: Nat
+  inter_token_latency_sum_seconds: Second
+  e2e_latency_sum_seconds: Second
+  queue_time_sum_seconds: Second
+  prefill_time_sum_seconds: Second
+  decode_time_sum_seconds: Second
+  preemptions: Nat
+  kv_cache_bytes: ByteSize
+  kv_cache_tokens: TokenCount
+  weights_bytes: ByteSize
+  power_draw_milliwatts: Milliwatt
+  power_limit_watts: Watt
+  // The clock the run held under load (review 84973): Hertz carrier; the _mhz in the
+  // name described the print figure, not the type's scale.
+  sm_clock: Hertz
+  speculative_draft_depth: Nat
+  standing: CitedFigureStanding
+}
+
+data flash_next_maxq_run_2026_10_21: FlashNextMaxQRunReceipt = FlashNextMaxQRunReceipt {
+  uptime_seconds: second(count: 504451),
+  requests: 101838,
+  prompt_tokens: token_count(count: 10834000000),
+  prompt_local_compute_tokens: token_count(count: 1651700000),
+  prompt_gpu_prefix_hit_tokens: token_count(count: 3189900000),
+  prompt_lmcache_external_tokens: token_count(count: 5994200000),
+  generation_tokens: token_count(count: 114733000),
+  spec_draft_tokens: token_count(count: 131007000),
+  spec_accepted_tokens: token_count(count: 70962000),
+  inter_token_latency_steps: 43669000,
+  inter_token_latency_sum_seconds: second(count: 1624150),
+  e2e_latency_sum_seconds: second(count: 3103130),
+  queue_time_sum_seconds: second(count: 1206510),
+  prefill_time_sum_seconds: second(count: 246848),
+  decode_time_sum_seconds: second(count: 1623970),
+  preemptions: 465,
+  kv_cache_bytes: mebibyte_to_byte_size(m: mebibyte(count: 14582)),
+  kv_cache_tokens: token_count(count: 773026),
+  weights_bytes: mebibyte_to_byte_size(m: mebibyte(count: 73585)),
+  power_draw_milliwatts: milliwatt(count: 278900),
+  power_limit_watts: watt(count: 275),
+  sm_clock: hertz(count: 1620000000),
+  speculative_draft_depth: 3,
+  standing: TranscribedUncited { read_obligation: maxq_run_read_obligation },
+}
+
+data flash_next_maxq_run_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: flash_next_maxq_run_2026_10_21 is consumed by gunbc.serving.flash_next_roofline (the KV bytes-per-token calibration and the workload means the predictions are ratioed against). Trigger: that fold reads these fields. The by-source counters and prompt_tokens_total are separate Prometheus counters scraped non-atomically, so their 0.017 percent excess is expected and is not reconciled; the roofline reads the by-source split for shares and prompt_tokens for the mean." as NonEmptyStr
+)

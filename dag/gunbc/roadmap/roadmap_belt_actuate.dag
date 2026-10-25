@@ -610,7 +610,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 }
 import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire }
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
-import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
+import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_store, WorktreeClaimStoreReady, WorktreeClaimStoreUnready }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimWritten, WorktreeClaimRecorded, WorktreeClaimNotRecorded, worktree_claim_new, worktree_claim_record_before_add,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved,
@@ -1607,20 +1607,21 @@ fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id
   }
 }
 
-// THE SLOT STORE IS CREATED BY THE SAME CAPABILITY THAT CREATES ATTEMPT STATE, before the settlement
+// THE SLOT STORE IS CREATED BY THE SAME CAPABILITY THAT CREATES ATTEMPT STATE, at the root read off
+// the very SlotStore every lifecycle write in stores.slots goes to (one root, not a path beside it), before the settlement
 // pass reads it and before any slot is opened in it, so "the store is missing" never has to be told
 // apart from "the store could not be listed" by reading an error string. Present carries the refusal.
 fn belt_session_slots_ensure(instance: HostDashboardInstance, stores: SessionPlacementStores) -> String? {
   match belt_exec(
     cmd: host_exec_argv(
       program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
-      args: ["-d", "-m", "0700", stores.slots_root as String],
+      args: ["-d", "-m", "0700", stores.slots.root as String],
     ),
     workdir: belt_observe_workdir as String,
   ) {
     ExecOk { stdout: _ } => none
-    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
-    ExecRefused { program, reason } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, "): ", reason], "") }
+    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", stores.slots.root as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
+    ExecRefused { program, reason } => Present { value: join(["the session slot store ", stores.slots.root as String, " could not be created (", program, "): ", reason], "") }
   }
 }
 
@@ -1647,12 +1648,16 @@ fn belt_worktree_claim_before_add(instance: HostDashboardInstance, node_id: Stri
   match now_epoch_seconds() {
     Absent => WorktreeClaimNotRecorded { detail: "the host clock could not be read, so the worktree claim has no launch deadline" }
     Present { value: now } =>
-      worktree_claim_record_before_add(
-        root: worktree_claim_slots_root_of(instance: instance),
-        claim: worktree_claim_new(
-          node_id: node_id, attempt_key: attempt_key,
-          worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
-          opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds))
+      match worktree_claim_store(instance: instance) {
+        WorktreeClaimStoreUnready { detail } => WorktreeClaimNotRecorded { detail: detail }
+        WorktreeClaimStoreReady { store: claims } =>
+          worktree_claim_record_before_add(
+            claims: claims,
+            claim: worktree_claim_new(
+              node_id: node_id, attempt_key: attempt_key,
+              worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
+              opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds))
+      }
   }
 }
 
@@ -1735,9 +1740,12 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
       match now_epoch_seconds() {
         Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the worktree claim ensure compares against the launch deadline" }
         Present { value: now } =>
+          match worktree_claim_store(instance: instance) {
+          WorktreeClaimStoreUnready { detail } => SessionSettlePassRefused { detail: detail }
+          WorktreeClaimStoreReady { store: claims } =>
           match worktree_claim_ensure_pass_at(
             stores: stores,
-            claims_root: worktree_claim_slots_root_of(instance: instance),
+            claims: claims,
             host: instance.host_identity as String,
             path_of: (n, k) => dispatch_worktree_path_for_instance(instance: instance, node_id: n as RoadmapNodeId, attempt_key: k),
             loaded_of: u => attempt_unit_observation(unit: u),
@@ -1755,6 +1763,7 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
                 SessionSettlePassRan { settlements: settlements }
               }
             WorktreeClaimPassRefused { detail } => SessionSettlePassRefused { detail: detail }
+          }
           }
       }
   }
@@ -3438,9 +3447,12 @@ fn belt_spawn_admitted(
     steps: concat(
       [BeltExecStep { step: "worktree-add", command: cmds.worktree_add }],
       concat(
-        map(
-          cmds.worker_git_entry_grant,
-          command => BeltExecStep { step: "worker-git-entry-grant", command: command },
+        concat(
+          map(
+            cmds.worker_git_entry_grant,
+            command => BeltExecStep { step: "worker-git-entry-grant", command: command },
+          ),
+          map(cmds.worker_worktree_grant, command => BeltExecStep { step: "worker-worktree-grant", command: command }),
         ),
         map(cmds.attempt_state_prepare, command => BeltExecStep { step: "attempt-state-prepare", command: command }),
       ),

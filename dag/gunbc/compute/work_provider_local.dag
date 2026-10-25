@@ -1,5 +1,6 @@
 module gunbc.compute.work_provider_local
 
+import gunbc.durable_cas_file_store { file_slot_store }
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs, Seconds }
@@ -1264,7 +1265,7 @@ fn compute_open_attempt(layout: ComputeLayout, identity: String, reference: NonE
     Absent => AttemptGateRefused { detail: "the host clock could not be read as epoch seconds, and an attempt's opened_at and launch deadline are both instants -- a fabricated one would make this attempt look expired to recovery the moment it is written" }
     Present { value: now } => {
       let record = compute_attempt_record(identity: identity, reference: reference, granted: granted, now: now, owner: owner)
-      compute_gate_from_transition(t: attempt_open(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner), record: record), record: record, what: "opening the attempt")
+      compute_gate_from_transition(t: attempt_open(store: file_slot_store(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner)), record: record), record: record, what: "opening the attempt")
     }
   }
 }
@@ -1486,7 +1487,7 @@ fn compute_begin_launch(layout: ComputeLayout, gate: AttemptGate) -> AttemptGate
   match gate {
     AttemptGateRefused { detail: d } => AttemptGateRefused { detail: d }
     AttemptGateReady { record: rec, generation: g } =>
-      compute_gate_from_transition(t: attempt_begin_launch(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: rec.owner), reference: rec.reference as NonEmptyStr, expected: g), record: rec, what: "the launch")
+      compute_gate_from_transition(t: attempt_begin_launch(store: file_slot_store(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: rec.owner)), reference: rec.reference as NonEmptyStr, expected: g), record: rec, what: "the launch")
   }
 }
 
@@ -1519,7 +1520,7 @@ fn compute_settle_attempt(layout: ComputeLayout, gate: AttemptGate, verdict: Att
   match gate {
     AttemptGateRefused { detail: d } => AttemptUnsettleable { detail: d }
     AttemptGateReady { record: rec, generation: g } =>
-      match attempt_terminate(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: rec.owner), reference: rec.reference as NonEmptyStr, expected: g, verdict: verdict, detail: detail) {
+      match attempt_terminate(store: file_slot_store(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: rec.owner)), reference: rec.reference as NonEmptyStr, expected: g, verdict: verdict, detail: detail) {
         AttemptAdvanced { state: _, generation: _ } => AttemptSettled
         AttemptLostRace { expected: e, observed: o } =>
           AttemptNotSettled { detail: join(["the attempt slot for ", rec.reference, " could not be closed: expected ", e, " and it holds ", o, "; the attempt stays open in the store and the seat's settlement is recorded only here"], "") }
@@ -2473,7 +2474,7 @@ fn compute_open_attempt_minted(layout: ComputeLayout, identity: String, granted:
       Absent => AttemptGateRefused { detail: "the host clock could not be read as epoch seconds, and an attempt's opened_at and launch deadline are both instants -- a fabricated one would make this attempt look expired to recovery the moment it is written" }
       Present { value: now } => {
         let record = compute_attempt_record(identity: identity, reference: reference, granted: granted, now: now, owner: owner)
-        match attempt_open(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner), record: record) {
+        match attempt_open(store: file_slot_store(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner)), record: record) {
           AttemptLostRace { expected: _, observed: _ } => compute_open_attempt_minted(layout: layout, identity: identity, granted: granted, owner: owner, ordinal: ordinal + 1)
           AttemptAdvanced { state: s, generation: g } => compute_gate_from_transition(t: AttemptAdvanced { state: s, generation: g }, record: record, what: "opening the attempt")
           AttemptTransitionRefused { detail: d } => compute_gate_from_transition(t: AttemptTransitionRefused { detail: d }, record: record, what: "opening the attempt")
@@ -3044,7 +3045,7 @@ type ComputeRecoverRoots
   | RecoverRootsUnreadable { reason: String }
 
 fn compute_recover_slot_present(root: String, reference: NonEmptyStr) -> Bool {
-  match attempt_slot_read(root: root as NonEmptyStr, reference: reference) {
+  match attempt_slot_read(store: file_slot_store(root: root as NonEmptyStr), reference: reference) {
     AttemptSlotAbsent => false
     AttemptSlotHeld { record: _, generation: _ } => true
     AttemptSlotUnreadable { detail: _ } => true
@@ -3066,7 +3067,7 @@ fn compute_recover_roots(attempts_root: String, reference: NonEmptyStr) -> Compu
 }
 
 fn compute_recover_attempt_in(attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, reference: NonEmptyStr, source: UnitLifecycleSource) -> ComputeRecovery {
-  match attempt_slot_read(root: attempts_root, reference: reference) {
+  match attempt_slot_read(store: file_slot_store(root: attempts_root), reference: reference) {
     AttemptSlotUnreadable { detail: d } =>
       RecoveryRefused { detail: join(["the attempt slot for ", reference as String, " could not be read (", d, "), and an unreadable slot is not an absent one -- releasing on a read that failed would return a seat whose attempt was never observed"], "") }
     AttemptSlotAbsent =>
@@ -3081,7 +3082,7 @@ fn compute_recover_attempt_in(attempts_root: NonEmptyStr, subject: ComputeCapaci
             RecoveryUnitNotEnded { lifecycle: u } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
             RecoveryTerminalRecordMayRelease { state: st } => compute_recover_after_terminal(subject: subject, rec: rec, state: st, lifecycle: lifecycle)
             RecoveryMayTerminate { reason: why } =>
-              match attempt_terminate(root: attempts_root, reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
+              match attempt_terminate(store: file_slot_store(root: attempts_root), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
                 AttemptLostRace { expected: e, observed: o } =>
                   RecoveryRefused { detail: join(["the attempt moved while recovery was deciding: expected ", e, " and the slot holds ", o, "; the observation this recovery would act on is stale, so nothing is released"], "") }
                 AttemptTransitionRefused { detail: d } => RecoveryRefused { detail: join(["the attempt slot would not take the terminal generation: ", d], "") }

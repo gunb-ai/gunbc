@@ -105,6 +105,7 @@ data nvidia_gh200_hopper_96gb_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogR
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: [],
+  dense_tensor_throughput: [],
 }
 
 data gh200_grace_core_clusters: List<CpuCoreCluster> = [
@@ -158,6 +159,7 @@ data nvidia_gh200_hopper_144gb_hbm3e_gpu_catalog: GpuModelCatalogRow = GpuModelC
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: [],
+  dense_tensor_throughput: [],
 }
 
 data nvidia_gh200_624gb_hbm3e_catalog: CoherentSuperchipCatalogRow = CoherentSuperchipCatalogRow {

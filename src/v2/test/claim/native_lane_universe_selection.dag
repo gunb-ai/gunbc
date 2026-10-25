@@ -5,7 +5,7 @@ import extdeps.bazel.target_pattern { TargetPatternParsed, TargetPatternRefused,
 import v2.compiler.native_test_vocabulary { native_route_identity_qualified }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.source_root_eval { native_lane_acquire_verified, native_lane_universe_selected }
-import v2.compiler.module_acquisition {
+import v2.compiler.module_acquisition { AcquiredFromFile,
   AcquiredModule,
   AcquisitionEnv,
   AcquisitionGrammarUnprepared,
@@ -67,7 +67,8 @@ fn a_probe(name: String, path: String, markers: List<String>, content: String) -
     host_directory: "src/v2",
     content: content,
     requests: [],
-    test_markers: markers
+    test_markers: markers,
+    origin: AcquiredFromFile
   }
 }
 
