@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.a_service_unit_that_runs_gunbc_is_emitted_outside_a_bounded_slice
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_service_unit_that_runs_gunbc_is_emitted_outside_a_bounded_slice: RecurringFailureMode = RecurringFailureMode {
   identity: "a_service_unit_that_runs_gunbc_is_emitted_outside_a_bounded_slice" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "one builder for gunbc-running service bodies that includes the slice by construction, with the sibling sites migrated to it" } },
   receipts: [
     "INVALID STATE: a service unit whose ExecStart runs the gunbc binary is emitted without Slice=, so it lands in system.slice, where gunbc refuses to run (user_work_scope: observed-bound arm did not admit, UncappedSystemSlice). The unit starts, is refused, exits 2, trips its start limit, and a .path unit that triggers it fails with it.",
     "RECEIPT, srv1 lab 2026-10-21 (lab-dev + main + #14619 e926e9f9): the new attempt-unit drain oneshot (live_deploy_attempt_unit_drain_service_unit_file) carried no Slice=. The deploy apply reported rc=0 and removed the old sudoers route in the same apply, so the lab held a revision whose root drain could not start and no sudo route to fall back on. Six sibling gunbc-running services each repeated ServiceSlice by hand; the seventh was written without it.",
