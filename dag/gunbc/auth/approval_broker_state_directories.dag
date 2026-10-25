@@ -23,10 +23,9 @@ module gunbc.auth.approval_broker_state_directories
 // `approval_broker_state_directories`, so the deploy emits one converging `install -d` leg per row.
 //
 //   FOLD ROWS — broker-owned roots the serve path reads or writes, converged by the broker's own install:
-//   * /var/lib/gunbc/approval-devices            approval_device_store_root        (device enrolment records; converged before this change)
+//   * /var/lib/gunbc/approval-devices            approval_device_store_root        (device enrolment records, and each enrolment's push-registration CAS slot: gunbc.auth.approval_device_redemption commit_push_registration writes under this root, so the separate approval-device-push root an earlier row named is gone and owes no provisioning; converged before this change)
 //   * /var/lib/gunbc/approval-jwks               approval_jwks_cache_root          (Google signing-key cache; converged before this change)
 //   * /var/lib/gunbc/approval-assertion-counters approval_assertion_counter_root   (THE OBSERVED 503 — the gap this change closes)
-//   * /var/lib/gunbc/approval-device-push        approval_device_push_root         (THE SAME GAP, UNSTRUCK: approval_device_routes store_push_registration writes an owner-only CAS slot under it on the very next route an enrolled device takes; Filesystem.WriteOwnerOnly opens create_new (O_EXCL) with no parent creation, so a missing root is the identical fail-closed 503)
 //   * /var/lib/gunbc/approvals                   approval_decision_store_root      (serve WRITES it at redemption commit — approval_request_submission redeem_device_over_store — and READS it on every escalation-status and receipt-answer route; the keyring converge job's store_root_mkdir_argv provisioned it alone, and now PROJECTS this row — broker_state_directory_install_argv — instead of restating owner/mode/path, so the deploy fold and the converge lane install one declaration (DESIGN §3) and the fold Noops against what the converge job already made)
 //
 //   SERVE-PATH READS, PROVISIONED OUTSIDE THE BROKER'S OWN LANE — named by the census, deliberately
@@ -61,7 +60,6 @@ import gunbc.auth.approval_device_redemption {
   approval_jwks_cache_directory,
 }
 import gunbc.auth.approval_assertion_counter { approval_assertion_counter_root }
-import gunbc.auth.approval_device_routes { approval_device_push_root }
 import gunbc.auth.approval_decision_store { approval_decision_store_root }
 import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged, managed_directory_permissions }
 import gunbc.ownership { Ensured }
@@ -104,11 +102,6 @@ fn approval_assertion_counter_directory() -> ManagedDirectory {
   broker_state_directory(member: "approval-assertion-counter-store", path: approval_assertion_counter_root)
 }
 
-// THE PUSH-REGISTRATION ROOT AS A MANAGED DIRECTORY: the same miss, one route later.
-fn approval_device_push_directory() -> ManagedDirectory {
-  broker_state_directory(member: "approval-device-push-store", path: approval_device_push_root)
-}
-
 // THE DECISION STORE ROOT AS A MANAGED DIRECTORY: serve-written at redemption commit, serve-read on
 // every status and receipt route. THE SINGLE SOURCE for this directory's provisioning: the keyring
 // converge job's store_root_mkdir_argv projects THIS row (below) rather than restating
@@ -143,7 +136,6 @@ fn approval_broker_state_directories() -> List<ManagedDirectory> {
     approval_device_store_directory(),
     approval_jwks_cache_directory(),
     approval_assertion_counter_directory(),
-    approval_device_push_directory(),
     approval_decision_store_directory(),
   ]
 }
