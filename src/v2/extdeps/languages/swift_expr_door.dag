@@ -11,6 +11,8 @@ import v2.extdeps.languages.swift.syntax { SwiftArgument, SwiftAwaitExpr, SwiftA
 import v2.std.compilers.target_model {
   TargetModel,
   LocalCallee,
+  TargetRealizationCatalog,
+  PrimitiveRealizationsUnwired,
   TargetValueExprFieldInitSlot,
   TargetValueExpression,
   render_target_text,
@@ -229,7 +231,7 @@ fn swift_expr_door_print(e: SwiftExpr) -> Outcome<String> {
       o: target_value_expression_to_concrete_tokens(
         expr: x,
         projection: swift_value_expression_projection(),
-        catalog: swift_operator_realizations_catalog_node()
+        catalog: TargetRealizationCatalog { operators: swift_operator_realizations_catalog_node(), primitives: PrimitiveRealizationsUnwired }
       ),
       f: fn(tokens) {
         bind_outcome(o: serialize_concrete_syntax_tokens_to_source_string(target: swift_expr_door_target(e: e), tokens: tokens), f: fn(text) {
