@@ -2197,7 +2197,12 @@ fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_
     }
   } else { none }
   if tv_slot != none { return preserve_outer_optional_cardinality(outer: n, inner: tv_slot.value) }
-  let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
+  // A leaf is a slot when it spells one of the declaration's own type parameters (the slot map's keys), whether or not resolve has
+  // already bound it: a parameter shadows every other declaration of its name inside that declaration's body. Requiring
+  // `inferred == none` missed a parameterized alias read from the symbol index, whose right-hand side leaves `key` / `value` are
+  // resolved, so std.types Map<String, Int> settled to FinitelySupportedFunction<key, value> (probe at 79836904e10).
+  let leaf = n.children |> count == 0 && n.connective == NoConnective && n.body == none
+  let is_slot = leaf && (n.inferred == none || map_has(m: slot_bindings, key: authored_name_at(source_indices: source_indices, node: n)))
   if is_slot {
     match map_get(slot_bindings, authored_name_at(source_indices: source_indices, node: n)) {
       Present { value: concrete } => preserve_outer_optional_cardinality(outer: n, inner: concrete)
