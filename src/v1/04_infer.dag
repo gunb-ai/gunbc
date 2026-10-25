@@ -3469,13 +3469,17 @@ fn kernel_value_declared_type_mismatch_bounded(
   } else {
     let formal_base = peel_where_refinement_base(ty: formal, type_env: type_env)
     let actual_name = authored_name_at(source_indices: source_indices, node: actual_base)
-    if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
+    if (is_kernel_type(name: actual_name) == false && actual_name != "Symbol") || actual_name == "Unit" {
       false
     } else {
       let formal_name = if formal_name_override == "" {
         authored_name_at(source_indices: source_indices, node: formal_base)
       } else { formal_name_override }
-      if formal_name == "" || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
+      // A caret literal is Symbol, which is grounded here so it refuses at every ground non-text type
+      // (`-> Int { ^tag }`). Symbol -> String is the one crossing left open: the declared gap
+      // gunbc.recurring_failure_mode caret_symbol_inhabits_string_via_conformance_unjudged.
+      let symbol_at_text = actual_name == "Symbol" && qualified_last_segment(name: formal_name) == "String"
+      if formal_name == "" || symbol_at_text || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
         false
       } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual_base, source_indices: source_indices) {
         false

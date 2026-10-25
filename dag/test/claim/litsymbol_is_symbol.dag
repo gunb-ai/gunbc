@@ -49,6 +49,8 @@ test fn symbol_at_record_refuses() -> Bool {
   blocking_in_class(source: "module litsymbol.atrec\ntype P { x: Int }\nfn f() -> P { ^tag }\n", wanted_class: "DeclaredTypeNotInhabited") >= 1
 }
 
-test fn symbol_at_symbol_accepts() -> Bool {
-  blocking_count(source: "module litsymbol.atsym\nfn f() -> Symbol { ^tag }\n") == 0
+// The declared gap stays open and is a control, not a refusal: Symbol at String is accepted
+// (gunbc.recurring_failure_mode caret_symbol_inhabits_string_via_conformance_unjudged).
+test fn symbol_at_string_stays_accepted() -> Bool {
+  blocking_count(source: "module litsymbol.atstr\nfn f() -> String { ^tag }\n") == 0
 }
