@@ -178,7 +178,7 @@ fn live_populations() -> LivePopulations {
 // authored required-floor roster (v2.workflow.required_floor required_gate_authored_modules, read
 // as DATA so a row added there is enumerated here without touching this file) names a module that
 // resolves to no `.dag` -- a roster row must name a real module, and an uninventoriable roster is
-// what makes the unexecuted-row census discriminating rather than decorative. The receipt is the
+// what makes the unreached-row census discriminating rather than decorative. The receipt is the
 // product on every termination that has one.
 fn required_lane_resolution_census_exit() -> CliWireResponse {
   match live_populations() {

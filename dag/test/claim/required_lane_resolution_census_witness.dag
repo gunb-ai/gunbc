@@ -6,7 +6,7 @@ import gunbc.required_lane_resolution_census {
   LaneResolutionSubject, FloorNominalPreparedSubject, RunEntryClosure, ResolvesNoDagModule,
   LaneResolvedPopulation, ResolutionCensusInputs, ResolutionCensus,
   ResolutionCensusStanding, ResolutionCensusHeld, ResolutionCensusDidNotHold, ResolutionCensusRefused,
-  RosterRowStanding, RosterRowExecuted, RosterRowUnexecuted, RosterRowUnresolvable,
+  RosterRowStanding, RosterRowResolvedByRequiredLane, RosterRowUnreachedByRequiredLane, RosterRowUnresolvable,
   resolution_census, resolution_census_standing, census_receipt_lines,
 }
 import gunbc.required_lane_resolution_census_live {
@@ -90,30 +90,30 @@ test fn the_receipt_prints_one_line_per_unreached_identity() -> Bool {
 }
 
 // THE AUTHORED ROSTER IS ENUMERATED AT IDENTITY GRAIN. A supplied roster of admitted modules over
-// lanes that resolve nothing puts EVERY row in the unexecuted arm -- named members of the declared
+// lanes that resolve nothing puts EVERY row in the unreached arm -- named members of the declared
 // drop gunbc.rung_drop v1_required_lanes_withdrawn, one receipt line per row by identity. A row a
-// lane does resolve stands executed, and `executed_by` names the (job|subject) route: no parallel
+// lane does resolve stands resolved-by-required-lane (resolution grain, not execution), and `resolved_by` names the (job|subject) route: no parallel
 // judgment, the same reached/not-reached fact as every other admitted identity.
 fn standing_kind(r: RosterRowStanding) -> String {
   match r {
-    RosterRowExecuted { module: _, executed_by: _ } => "executed"
-    RosterRowUnexecuted { module: _ } => "unexecuted"
+    RosterRowResolvedByRequiredLane { module: _, resolved_by: _ } => "resolved-by-required-lane"
+    RosterRowUnreachedByRequiredLane { module: _ } => "unreached"
     RosterRowUnresolvable { module: _ } => "unresolvable"
   }
 }
 
 fn row_module(r: RosterRowStanding) -> String {
   match r {
-    RosterRowExecuted { module: m, executed_by: _ } => m
-    RosterRowUnexecuted { module: m } => m
+    RosterRowResolvedByRequiredLane { module: m, resolved_by: _ } => m
+    RosterRowUnreachedByRequiredLane { module: m } => m
     RosterRowUnresolvable { module: m } => m
   }
 }
 
-fn row_executed_by(r: RosterRowStanding) -> String {
+fn row_resolved_by(r: RosterRowStanding) -> String {
   match r {
-    RosterRowExecuted { module: _, executed_by: e } => e |> join(separator: ",")
-    RosterRowUnexecuted { module: _ } => ""
+    RosterRowResolvedByRequiredLane { module: _, resolved_by: e } => e |> join(separator: ",")
+    RosterRowUnreachedByRequiredLane { module: _ } => ""
     RosterRowUnresolvable { module: _ } => ""
   }
 }
@@ -128,10 +128,10 @@ test fn a_supplied_roster_is_enumerated_row_by_row_against_the_lane_union() -> B
     resolved: [floor_lane(modules: ["a"]), cargo_lane()],
     roster: ["a", "b"])
   count(c.roster_rows) == 2
-    && same_list(a: rows_of_kind(c: c, kind: "executed"), b: ["a"])
-    && same_list(a: rows_of_kind(c: c, kind: "unexecuted"), b: ["b"])
+    && same_list(a: rows_of_kind(c: c, kind: "resolved-by-required-lane"), b: ["a"])
+    && same_list(a: rows_of_kind(c: c, kind: "unreached"), b: ["b"])
     && same_list(a: rows_of_kind(c: c, kind: "unresolvable"), b: [])
-    && (c.roster_rows |> filter(r => row_module(r) == "a") |> map(r => row_executed_by(r)) |> join(separator: "|")) == "floor|floor-nominal-prepared-subject"
+    && (c.roster_rows |> filter(r => row_module(r) == "a") |> map(r => row_resolved_by(r)) |> join(separator: "|")) == "floor|floor-nominal-prepared-subject"
 }
 
 // The receipt prints one `roster` line per authored row, so each row is greppable from the
@@ -139,8 +139,8 @@ test fn a_supplied_roster_is_enumerated_row_by_row_against_the_lane_union() -> B
 test fn the_receipt_prints_one_roster_line_per_authored_row() -> Bool {
   let c = census_of_roster(admitted: ["a", "b", "ghost"], resolved: [cargo_lane()], roster: ["a", "b"])
   let lines = census_receipt_lines(c: c)
-  (lines |> filter(l => contains(l, "\"kind\":\"roster\",\"module\":\"a\"") && contains(l, "\"standing\":\"unexecuted-drop-member\"")) |> count) == 1
-    && (lines |> filter(l => contains(l, "\"kind\":\"roster\",\"module\":\"b\"") && contains(l, "\"standing\":\"unexecuted-drop-member\"")) |> count) == 1
+  (lines |> filter(l => contains(l, "\"kind\":\"roster\",\"module\":\"a\"") && contains(l, "\"standing\":\"unreached-drop-member\"")) |> count) == 1
+    && (lines |> filter(l => contains(l, "\"kind\":\"roster\",\"module\":\"b\"") && contains(l, "\"standing\":\"unreached-drop-member\"")) |> count) == 1
 }
 
 // THE DISCRIMINATING CONTROL: a roster row naming a module the ingestion does not admit -- no .dag
@@ -176,11 +176,11 @@ test fn the_unresolvable_row_refuses_even_when_the_census_otherwise_holds() -> B
 // as DATA so rows added by #15023 arrive without touching this file, enumerates as its own line,
 // NO row is unresolvable (each names a module the ingestion admits -- if one stops resolving,
 // this claim turns RED, the instrument refuses, and the roster cannot silently shrink), and NO row
-// is executed by any route today. The executed arm is empty by construction of the declared loss:
+// is reached by any required lane's closure today. The resolved-by-required-lane arm is empty by construction of the declared loss:
 // the manual required-floor runner is deleted and no required lane resolves a roster module. The
-// day a row moves to `executed` this claim goes RED and the drop's population shrinks with it --
+// day a row moves to `resolved-by-required-lane` this claim goes RED and the drop's population shrinks with it --
 // that is what makes the census a measurement rather than a certificate.
-test fn w_the_authored_required_floor_roster_resolves_and_runs_nowhere() -> Bool {
+test fn w_the_authored_required_floor_roster_resolves_and_no_required_lane_reaches_it() -> Bool {
   match live_populations() {
     LivePopulationsRefused { cause: _ } => false
     LivePopulationsObserved { admitted: admitted, resolved: resolved, roster: roster } => {
@@ -188,8 +188,8 @@ test fn w_the_authored_required_floor_roster_resolves_and_runs_nowhere() -> Bool
       count(roster) > 0
         && count(c.roster_rows) == count(roster)
         && same_list(a: rows_of_kind(c: c, kind: "unresolvable"), b: [])
-        && same_list(a: rows_of_kind(c: c, kind: "executed"), b: [])
-        && count(rows_of_kind(c: c, kind: "unexecuted")) == count(roster)
+        && same_list(a: rows_of_kind(c: c, kind: "resolved-by-required-lane"), b: [])
+        && count(rows_of_kind(c: c, kind: "unreached")) == count(roster)
     }
   }
 }
