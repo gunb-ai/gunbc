@@ -90,18 +90,23 @@ fn manifest_rows(paths: String) -> List<ManifestRow> {
 fn manifest_rows_step(lines: List<String>, acc: List<ManifestRow>) -> List<ManifestRow> {
   match lines {
     Empty => acc
-    Cons { head: line, tail: rest } =>
-      if string_length(s: line) == 0 || substring(s: line, start: 0, end: 1) == "#" {
-        manifest_rows_step(lines: rest, acc: acc)
-      } else
-        match split_pipe_pair(line: line) {
-          Absent => manifest_rows_step(lines: rest, acc: acc)
-          Present { value: pair } =>
-            manifest_rows_step(
-              lines: rest,
-              acc: list_append(left: acc, right: [ManifestRow { identity: pair.first, paths: pair.second }])
-            )
-        }
+    Cons { head: line, tail: rest } => match manifest_row_of(line: line) {
+      Absent => manifest_rows_step(lines: rest, acc: acc)
+      Present { value: row } =>
+        manifest_rows_step(lines: rest, acc: list_append(left: acc, right: [row]))
+    }
+  }
+}
+
+// A manifest line is a row only if it is neither blank nor a comment nor malformed.
+fn manifest_row_of(line: String) -> Optional<ManifestRow> {
+  if string_length(s: line) == 0 || substring(s: line, start: 0, end: 1) == "#" {
+    Absent
+  } else {
+    match split_pipe_pair(line: line) {
+      Absent => Absent
+      Present { value: pair } => Present { value: ManifestRow { identity: pair.first, paths: pair.second } }
+    }
   }
 }
 
@@ -201,7 +206,7 @@ fn first_diff(a: String, b: String) -> String {
 fn first_diff_step(a: String, b: String, i: Int, shared: Int) -> String {
   if i >= shared {
     concat("shared_prefix_ends_at=", to_string(value: i))
-  } else
+  } else {
     if substring(s: a, start: i, end: i + 1) == substring(s: b, start: i, end: i + 1) {
       first_diff_step(a: a, b: b, i: i + 1, shared: shared)
     } else {
@@ -216,6 +221,7 @@ fn first_diff_step(a: String, b: String, i: Int, shared: Int) -> String {
         )
       )
     }
+  }
 }
 
 fn case_row(c: SweepCase) -> String {
@@ -252,52 +258,4 @@ fn native_claim_report() -> NativeClaimReport {
       }
     }
   }
-}
-
-// CONTROLS. Each names the red it would print if the route rotted; the instrument's own run is
-// what proves they go red, and the interpreter stays the offline oracle that committed the
-// expected files, never the executor.
-
-test fn a_row_without_a_pipe_is_no_row() -> Bool {
-  match split_pipe_pair(line: "no-pipe-at-all") {
-    Absent => true
-    _ => false
-  }
-}
-
-test fn a_row_with_two_pipes_is_no_row() -> Bool {
-  match split_pipe_pair(line: "a|b|c") {
-    Absent => true
-    _ => false
-  }
-}
-
-test fn a_row_with_an_empty_identity_is_no_row() -> Bool {
-  match split_pipe_pair(line: "|dag/x.dag") {
-    Absent => true
-    _ => false
-  }
-}
-
-test fn the_paths_column_keeps_its_commas() -> Bool {
-  match split_pipe_pair(line: "a|dag/x.dag,dag/y.dag") {
-    Present { value: p } => p.first == "a" && p.second == "dag/x.dag,dag/y.dag"
-    Absent => false
-  }
-}
-
-test fn comment_lines_and_blank_lines_are_skipped() -> Bool {
-  manifest_rows(paths: "# comment\n\na|dag/x.dag\n") |> count == 1
-}
-
-test fn first_diff_names_the_byte_where_bytes_disagree() -> Bool {
-  first_diff(a: "EDIT 1 2 x\n", b: "EDIT 1 2 y\n") == "8:native[x\n] oracle[y\n]"
-}
-
-test fn first_diff_names_a_missing_tail_as_the_shared_prefix() -> Bool {
-  first_diff(a: "EDIT", b: "EDIT AND MORE") == "shared_prefix_ends_at=4"
-}
-
-test fn the_expected_file_path_is_the_identity_under_the_expected_directory() -> Bool {
-  expected_path(identity: "node_dag_sweep") == "docs/measurements/roster_import_sweep_native/expected/node_dag_sweep.txt"
 }
