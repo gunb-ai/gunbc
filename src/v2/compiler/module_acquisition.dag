@@ -17,7 +17,7 @@ import v2.compiler.source_authority { ModuleFileAbsent, ModuleFileDerived, Modul
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.lens.reference_deps { admission_from_module_root }
-import v2.std.cross_tree.import_model { CrossTreeDenialReason, CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, SourceRootRef }
+import v2.std.cross_tree.import_model { CrossTreeDenialReason, CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, SourceRootRef, namespace_declared }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
@@ -1949,7 +1949,7 @@ fn namespace_walk_under(namespace: String, root: String, relative: String) -> Na
 // top-level namespace's whole directory, so a file in an undeclared sub-namespace (dag/test/zzz/m.dag,
 // namespace test.zzz) would otherwise enter the population. This route reads by path and never through the
 // storage lookup, so the membership judgment the lookup asks before a crossing
-// (std.algebra map_contains_key over the layout's declared_namespaces, the one read both make) is asked here, of every
+// (v2.std.cross_tree.import_model namespace_declared over the layout's namespace_rows, the one read both make) is asked here, of every
 // member: a file outside gunbc.source_layout is not compilable on either route (DESIGN section 3).
 type BoundModules
   = BoundModulesListed { modules: List<String> }
@@ -2003,7 +2003,7 @@ fn top_level_namespaces(namespaces: List<String>) -> List<String> {
 
 // One walk's listing, admitted to the population or refused at its first member whose namespace has no row.
 fn bound_modules_admitted(layout: SourceStorageLayout, listed: List<String>) -> BoundModules {
-  match list_find_first(xs: listed, predicate: fn(name) { !map_contains_key(m: layout.declared_namespaces, key: module_namespace(name: name)) }) {
+  match list_find_first(xs: listed, predicate: fn(name) { !namespace_declared(rows: layout.namespace_rows, namespace: module_namespace(name: name)) }) {
     Present { value: undeclared } =>
       BoundModulesRefused {
         subject: undeclared,

@@ -1,7 +1,6 @@
 module v2.std.cross_tree.import_model
 
-import std.algebra { FreeMonoid, contains, fold_list, map_contains_key }
-import std.types { Map }
+import std.algebra { FreeMonoid, contains, fold_list }
 import v2.std.text { String }
 
 type SourceRootRef
@@ -62,21 +61,28 @@ fn cross_tree_roots_admitted(
 // ADMISSION REQUIRES BOTH NAMESPACES TO BE DECLARED, and there is no direction (ruling
 // gunbc.design_ruling cross_tree_admission_is_namespace_membership). A crossing between two namespaces with a
 // row in gunbc.source_layout_namespaces is admitted whichever way it points; one whose importer or target
-// namespace has no row refuses fail-closed as CrossTreeNamespaceUndeclared. The declared set is policy and
-// arrives as a value; this model imports no repository fact. An edge within one tree is not a crossing and
+// namespace has no row refuses fail-closed as CrossTreeNamespaceUndeclared. The declared rows are policy and
+// arrive as a value; this model imports no repository fact. An edge within one tree is not a crossing and
 // reads no membership. Its one enforcement site is the storage lookup
 // (v2.compiler.source_authority storage_cross_tree_verdict), per DESIGN section 3.
+// namespace_declared is the one membership judgment: the storage lookup's candidate skip and the population's
+// bound_modules_admitted ask it too. It scans the rows rather than keying a Map, because Map has no home the
+// native compiler binds yet; the row set is small and the scan is the same judgment.
+fn namespace_declared(rows: FreeMonoid<String>, namespace: String) -> Bool {
+  contains(xs: rows, item: namespace, eq: fn(a, b) { a == b })
+}
+
 fn cross_tree_import_admitted(
   edge: CrossTreeImport,
   roots: SourceRootSet,
-  declared: Map<String, Bool>
+  declared: FreeMonoid<String>
 ) -> CrossTreeAdmissionVerdict {
   match cross_tree_roots_admitted(from_tree: edge.from_tree, to_tree: edge.to_tree, roots: roots) {
     CrossTreeDenied { reason: reason } => CrossTreeDenied { reason: reason }
     CrossTreeAdmitted =>
       if source_root_ref_eq(a: edge.from_tree, b: edge.to_tree) {
         CrossTreeAdmitted
-      } else if map_contains_key(m: declared, key: edge.from_namespace) && map_contains_key(m: declared, key: edge.to_namespace) {
+      } else if namespace_declared(rows: declared, namespace: edge.from_namespace) && namespace_declared(rows: declared, namespace: edge.to_namespace) {
         CrossTreeAdmitted
       } else {
         CrossTreeDenied { reason: CrossTreeNamespaceUndeclared }
@@ -87,7 +93,7 @@ fn cross_tree_import_admitted(
 fn cross_tree_import_closure_admitted(
   closure: ImportClosure,
   roots: SourceRootSet,
-  declared: Map<String, Bool>
+  declared: FreeMonoid<String>
 ) -> CrossTreeAdmissionVerdict {
   fold_list(
     xs: closure,
