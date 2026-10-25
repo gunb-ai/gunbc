@@ -2,6 +2,28 @@ module test.claim.repository_convergence_placement_witness
 
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.types { String, Bool, NonEmptyStr }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant {
+  Read, ServiceOpTree, NamespacePosition,
+  ModeledRealization, LifecycleByConstruction, Grant, Envelope,
+}
+import v2.std.operation_realization {
+  OperationRealization, virtual_clock_origin,
+}
+import v2.std.witness_evaluation {
+  WitnessEvaluationFrame, WitnessReturned,
+  evaluate_in_witness_frame,
+}
+import gunbc.filesystem_model {
+  ModeledFilesystem, ModeledFile, filesystem_bindings,
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemExactPathRead,
+  FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable,
+  FilesystemExactPathKindUnrecognized,
+  filesystem_exact_read,
+}
 import gunbc.live_deploy.repository_convergence { convergence_fetch_upload_pack }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.access.posix_effective_principal {
@@ -46,6 +68,8 @@ import gunbc.live_deploy.repository_convergence_placement {
   PlacementReceiptUnreadable,
   ConvergenceReadbackDecoded,
   ConvergenceReadbackReceiptAbsent,
+  ConvergenceReadbackUnreadable,
+  ConvergenceReadbackKindUnrecognized,
   ConvergenceReadbackWrongCandidate,
   ConvergenceReadbackStale,
   ConvergenceReadbackRefused,
@@ -93,6 +117,12 @@ data fixture_stale_candidate: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 // lowercase hex spelling of an object id (one commit, one name), so this is the fixture the binding
 // must REFUSE on each side it touches -- used by the case-drift row below.
 data fixture_candidate_upper_tail: String = "0123456789ABCDEF0123456789abcdef01234567"
+
+// THE SUBJECT THE READBACK ANSWERS FOR, on the route the deploy actually takes: the per-instance
+// receipts directory. Tests that exercise the text route pass this as the read's path so the
+// refusal reports a REAL location rather than an invented placeholder (review 86287), and the
+// entry-level rows hand it to the wet entry as its `receipt` argument.
+data fixture_receipt_path: String = "/opt/gunbc/receipts/repository-convergence.json"
 
 data fixture_object_source: String = "/home/ghrunner/work/gunbc/gunbc"
 
@@ -467,11 +497,13 @@ test fn only_a_decoded_converged_receipt_lets_the_transaction_proceed() -> Bool 
   convergence_readback_holds(
     readback: convergence_readback_of_text_bound(
       text: placement_receipt_text(receipt: converged),
+      path: fixture_receipt_path,
       expected_candidate: fixture_candidate,
     ),
   )
     && !convergence_readback_holds(readback: convergence_readback_of_text_bound(
       text: "",
+      path: fixture_receipt_path,
       expected_candidate: fixture_candidate,
     ))
     && !convergence_readback_holds(readback: ConvergenceReadbackRefused { cause: "no receipt" })
@@ -480,6 +512,7 @@ test fn only_a_decoded_converged_receipt_lets_the_transaction_proceed() -> Bool 
         text: placement_receipt_text(
           receipt: PlacementWrongPrincipal { expected: srv1_service_user(), observed: "ghrunner" },
         ),
+        path: fixture_receipt_path,
         expected_candidate: fixture_candidate,
       ),
     )
@@ -501,11 +534,13 @@ test fn a_fresh_receipt_naming_the_plan_candidate_converges() -> Bool {
   let fresh = PlacementConverged { candidate: fixture_candidate, repo: srv1_repo_root() }
   match convergence_readback_of_text_bound(
     text: placement_receipt_text(receipt: fresh),
+    path: fixture_receipt_path,
     expected_candidate: fixture_candidate,
   ) {
     ConvergenceReadbackDecoded { receipt: r } => placement_converged(receipt: r)
       && convergence_readback_holds(readback: convergence_readback_of_text_bound(
         text: placement_receipt_text(receipt: fresh),
+        path: fixture_receipt_path,
         expected_candidate: fixture_candidate,
       ))
     _ => false
@@ -524,18 +559,21 @@ test fn a_prior_run_receipt_read_back_for_another_plan_refuses_as_stale() -> Boo
   let stale = PlacementConverged { candidate: fixture_stale_candidate, repo: srv1_repo_root() }
   let readback = convergence_readback_of_text_bound(
     text: placement_receipt_text(receipt: stale),
+    path: fixture_receipt_path,
     expected_candidate: fixture_candidate,
   )
   !convergence_readback_holds(readback: readback)
     && match readback {
-      // THE STALE CAUSE, TYPED, WITH BOTH IDENTITIES CARRIED. The path arm is the text-route
-      // sentinel because this leg never touches the filesystem; the wet route's own row below
-      // checks the path-carrying shape.
+      // THE STALE CAUSE, TYPED, WITH ALL THREE LOCATIONS CARRIED. The path is NOT fabricated: the
+      // caller hands the read its subject in, and the refusal reports THAT path back -- review
+      // 86287 found the earlier shape inventing a placeholder instead, and this row is its
+      // regression. The wet route's own row below pins the same shape through the entry.
       ConvergenceReadbackStale { path: p, expected: e, found: f } =>
-        e == fixture_candidate
+        p == fixture_receipt_path
+          && e == fixture_candidate
           && f == fixture_stale_candidate
-          && string_contains(s: p, pattern: "no path was involved")
           && string_contains(s: convergence_readback_line(readback: readback), pattern: "stale-receipt")
+          && string_contains(s: convergence_readback_line(readback: readback), pattern: fixture_receipt_path)
       _ => false
     }
 }
@@ -549,6 +587,7 @@ test fn a_receipt_naming_no_candidate_refuses_as_stale() -> Bool {
   let unbound = PlacementConverged { candidate: "", repo: srv1_repo_root() }
   match convergence_readback_of_text_bound(
     text: placement_receipt_text(receipt: unbound),
+    path: fixture_receipt_path,
     expected_candidate: fixture_candidate,
   ) {
     ConvergenceReadbackStale { path: _, expected: e, found: f } =>
@@ -567,6 +606,7 @@ test fn a_malformed_expected_candidate_refuses_as_wrong_candidate() -> Bool {
   let fresh = PlacementConverged { candidate: fixture_candidate, repo: srv1_repo_root() }
   match convergence_readback_of_text_bound(
     text: placement_receipt_text(receipt: fresh),
+    path: fixture_receipt_path,
     expected_candidate: "not-a-git-object-id",
   ) {
     ConvergenceReadbackWrongCandidate { expected: e } =>
@@ -591,6 +631,7 @@ test fn case_drift_refuses_on_both_sides_rather_than_folding() -> Bool {
   let upper = PlacementConverged { candidate: fixture_candidate_upper_tail, repo: srv1_repo_root() }
   match convergence_readback_of_text_bound(
     text: placement_receipt_text(receipt: fresh),
+    path: fixture_receipt_path,
     expected_candidate: fixture_candidate_upper_tail,
   ) {
     ConvergenceReadbackWrongCandidate { expected: e } => e == fixture_candidate_upper_tail
@@ -598,6 +639,7 @@ test fn case_drift_refuses_on_both_sides_rather_than_folding() -> Bool {
   }
     && match convergence_readback_of_text_bound(
       text: placement_receipt_text(receipt: upper),
+      path: fixture_receipt_path,
       expected_candidate: fixture_candidate,
     ) {
       ConvergenceReadbackStale { path: _, expected: e, found: f } =>
@@ -608,6 +650,7 @@ test fn case_drift_refuses_on_both_sides_rather_than_folding() -> Bool {
       text: placement_receipt_text(
         receipt: PlacementConverged { candidate: fixture_stale_candidate, repo: srv1_repo_root() },
       ),
+      path: fixture_receipt_path,
       expected_candidate: fixture_candidate,
     ))
 }
@@ -639,22 +682,24 @@ test fn the_readback_entry_refuses_without_a_receipt_path() -> Bool {
 }
 
 // THE PATH ROUTE CARRIES ITS OWN CAUSE SHAPE. `read_convergence_receipt_bound` is what the wet entry
-// calls once the arguments hold; a missing file refuses as ReceiptAbsent naming the path and error,
-// NOT as stale -- a file that does not exist answers for no run and must not be reported as a stale
-// one (which would send an operator hunting for a writer that never wrote). The path is a
+// calls once the arguments hold; a missing file refuses as ReceiptAbsent naming the path, NOT as
+// stale -- a file that does not exist answers for no run and must not be reported as a stale one
+// (which would send an operator hunting for a writer that never wrote). The path is a
 // NONEXISTENT FILE UNDER THE CHECKOUT ROOT, which the hermetic route serves as a real read (absence
 // off the commit is input access, not host state), so this row is hermetic-safe: it observes the
-// read's refusal rather than needing a mock.
+// read's refusal rather than needing a mock. Absence is concluded ONLY from the host's not_found
+// for the exact path -- the classifier is `filesystem_exact_read`, and the entry-level row below
+// proves the sibling arms (unreadable, unrecognized kind) stay separate from this one.
 test fn an_absent_receipt_refuses_as_absent_not_stale() -> Bool {
   match read_convergence_receipt_bound(
     receipt_path: "gunbc-nonexistent-repository-convergence-receipt.json",
     expected_candidate: fixture_candidate,
   ) {
-    ConvergenceReadbackReceiptAbsent { path: p, error: _ } =>
+    ConvergenceReadbackReceiptAbsent { path: p } =>
       string_contains(s: p, pattern: "repository-convergence")
-        && !convergence_readback_holds(readback: ConvergenceReadbackReceiptAbsent { path: p, error: "x" })
+        && !convergence_readback_holds(readback: ConvergenceReadbackReceiptAbsent { path: p })
         && string_contains(
-          s: convergence_readback_line(readback: ConvergenceReadbackReceiptAbsent { path: p, error: "x" }),
+          s: convergence_readback_line(readback: ConvergenceReadbackReceiptAbsent { path: p }),
           pattern: "UNREPORTED",
         )
     _ => false
@@ -715,4 +760,219 @@ test fn the_fetch_source_trust_rides_inside_upload_pack_quoted() -> Bool {
     && convergence_fetch_upload_pack(remote: fixture_object_source) != "git-upload-pack"
     && convergence_fetch_upload_pack(remote: fixture_object_source) != "git -c safe.directory=/home/ghrunner/work/gunbc/gunbc/.git upload-pack"
     && convergence_fetch_upload_pack(remote: "/srv/it's here") == "git -c 'safe.directory=/srv/it'\\''s here/.git' upload-pack"
+}
+
+// THE ENTRY IS EXECUTED, NOT REASONED ABOUT. Every row above exercises a helper; the side-chat
+// review of head 079aefa85c55 named exactly the gap those rows leave: an ENTRY that ignored its
+// candidate would keep every helper row green, because no row ran the entry on a readable receipt
+// with two nonempty arguments. These rows close it. The instrument is the modeled operation
+// realization (gunbc.filesystem_model through std.witness_evaluation), the same one
+// dag/test/claim/modeled_filesystem_witness.dag runs durable-hold production code through: the
+// subject below is the PRODUCTION ENTRY, and the model answers ONLY its Filesystem.Read, through
+// the real dispatcher and the transport projection that fills the operation's `error_kind` field.
+// A path inside the model is host state the MODEL owns, so no checkout carve-out or scratch file
+// is touched. The runner executes as root, where a chmod 000 control could never bite --
+// permission denial is therefore modeled the way the model says it (`refused_reads`), which is
+// also the answer `filesystem_exact_read` must classify as unreadable-and-never-absent.
+data readback_frame_identity: NonEmptyStr = "convergence-readback-entry-witness" as NonEmptyStr
+
+fn readback_grant(verb: std.effect_grant.Verb) -> Grant {
+  Grant {
+    verb: verb
+    root: NamespacePosition { tree: ServiceOpTree { service: "Filesystem" }, path: [] }
+    binding: ModeledRealization { realization: readback_frame_identity as String }
+    lifecycle: LifecycleByConstruction
+  }
+}
+
+fn readback_frame(initial: ModeledFilesystem) -> WitnessEvaluationFrame<ModeledFilesystem> {
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "convergence-readback-entry-witness", kind: SharedStateFrame }
+      grants: [readback_grant(verb: Read)]
+    }
+    rest_fixtures: []
+    realization: Present { value: OperationRealization {
+      identity: readback_frame_identity,
+      initial: initial,
+      epoch: virtual_clock_origin(),
+      bindings: filesystem_bindings(get: fn(fs) { fs }, put: fn(fs, next) { next }, cwd: fn(fs) { "/" }),
+      advance: fn(fs, now) { fs },
+    } }
+  }
+}
+
+fn readback_model_with(content: String) -> ModeledFilesystem {
+  ModeledFilesystem {
+    directories: ["/", "/opt", "/opt/gunbc", "/opt/gunbc/receipts"],
+    files: [ModeledFile { path: fixture_receipt_path, content: content }],
+    refused_reads: [],
+    stats: [],
+  }
+}
+
+fn readback_model_refusing() -> ModeledFilesystem {
+  ModeledFilesystem {
+    directories: ["/", "/opt", "/opt/gunbc", "/opt/gunbc/receipts"],
+    files: [ModeledFile { path: fixture_receipt_path, content: "unreadable-but-present" }],
+    refused_reads: [fixture_receipt_path],
+    stats: [],
+  }
+}
+
+fn readback_model_empty() -> ModeledFilesystem {
+  ModeledFilesystem {
+    directories: ["/", "/opt", "/opt/gunbc", "/opt/gunbc/receipts"],
+    files: [],
+    refused_reads: [],
+    stats: [],
+  }
+}
+
+fn receipt_text_for(candidate: String) -> String {
+  placement_receipt_text(receipt: PlacementConverged { candidate: candidate, repo: srv1_repo_root() })
+}
+
+// THE POSITIVE CONTROL, AT THE ENTRY. A receipt readable at the path, naming THIS plan's candidate,
+// exits 0. This is the row that would stay green for a vacuous entry too -- which is why it is the
+// FIRST half of the pair below and never stands alone.
+test fn the_executed_entry_converges_on_a_fresh_receipt_naming_the_plan_candidate() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: readback_frame(initial: readback_model_with(content: receipt_text_for(candidate: fixture_candidate))),
+    subject: fn(_scope) { repository_convergence_readback_wet(receipt: fixture_receipt_path, candidate: fixture_candidate) },
+  ) {
+    WitnessReturned { value } => match value { ExitSuccess => true _ => false }
+    _ => false
+  }
+}
+
+// THE ENTRY-LEVEL RED, EXECUTED THROUGH THE ENTRY. The model holds a CONVERGED receipt for candidate
+// X; the entry is called for plan Y. It must exit nonzero with the stale-receipt cause AND the real
+// receipt path in the reason -- the path the read actually took, not a placeholder (review 86287
+// found the text-level constructor filling `path` with "(text readback -- no path was involved)" and
+// the read leg passing it through, so the installed-binary route reported the wrong location).
+// MUTATION-SENSITIVITY, THE PART THE HELPER ROWS COULD NOT CARRY: an entry that dropped or ignored
+// `candidate` would exit 0 on this receipt (its helper twin green), reddening exactly this row.
+test fn the_executed_entry_refuses_a_prior_run_receipt_with_the_stale_cause_and_the_real_path() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: readback_frame(initial: readback_model_with(content: receipt_text_for(candidate: fixture_stale_candidate))),
+    subject: fn(_scope) { repository_convergence_readback_wet(receipt: fixture_receipt_path, candidate: fixture_candidate) },
+  ) {
+    WitnessReturned { value } =>
+      match value {
+        ExitFailure { code: _, reason: r } =>
+          string_contains(s: r, pattern: "stale-receipt")
+            && string_contains(s: r, pattern: fixture_receipt_path)
+            && string_contains(s: r, pattern: fixture_candidate)
+            && string_contains(s: r, pattern: fixture_stale_candidate)
+            && !string_contains(s: r, pattern: "no path was involved")
+        ExitSuccess => false
+      }
+    _ => false
+  }
+}
+
+// PERMISSION DENIED IS UNREADABLE, AND THE ENTRY NEVER CALLS IT ABSENCE. The model refuses the read
+// of a PRESENT file -- the shape a chmod-000 or SELinux denial produces on a real host, modeled
+// because the runner is root and no file mode can deny root. The entry's refusal must say the
+// receipt EXISTS and is being withheld (the unreadable arm's words), must name the host's kind, and
+// must NOT speak the absent arm's sentence ("did not reach its write") -- conflating the two sends
+// the operator to hunt a writer that wrote (DESIGN 5: typed, located; S83469995's class is exactly
+// an answer read from the wrong run, and absence-vs-withholding is the same conflation one level
+// down). This is the typed-channel control the Bool `success` channel could not express.
+test fn the_executed_entry_refuses_a_present_but_unreadable_receipt_as_unreadable_not_absent() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: readback_frame(initial: readback_model_refusing()),
+    subject: fn(_scope) { repository_convergence_readback_wet(receipt: fixture_receipt_path, candidate: fixture_candidate) },
+  ) {
+    WitnessReturned { value } =>
+      match value {
+        ExitFailure { code: _, reason: r } =>
+          string_contains(s: r, pattern: "NOT absence")
+            && string_contains(s: r, pattern: "permission_denied")
+            && string_contains(s: r, pattern: fixture_receipt_path)
+            && !string_contains(s: r, pattern: "did not reach its write")
+        ExitSuccess => false
+      }
+    _ => false
+  }
+}
+
+// THE ABSENT ENTRY STAYS ITSELF. The model holds nothing at the path -- NotFound for the exact path
+// is the ONLY thing that concludes absence -- and the entry refuses with the absent arm's sentence,
+// NOT the unreadable one. Paired with the row above, the two refusal sentences never appear in the
+// other's output: only NotFound is absence, and every other kind keeps its own arms.
+test fn the_executed_entry_refuses_an_absent_receipt_as_absent_never_unreadable() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: readback_frame(initial: readback_model_empty()),
+    subject: fn(_scope) { repository_convergence_readback_wet(receipt: fixture_receipt_path, candidate: fixture_candidate) },
+  ) {
+    WitnessReturned { value } =>
+      match value {
+        ExitFailure { code: _, reason: r } =>
+          string_contains(s: r, pattern: "did not reach its write")
+            && string_contains(s: r, pattern: fixture_receipt_path)
+            && !string_contains(s: r, pattern: "NOT absence")
+        ExitSuccess => false
+      }
+    _ => false
+  }
+}
+
+// THE FOLD'S OWN ARMS, INCLUDING THE ONE NO HOST MODEL CAN PRODUCE. A host kind outside the closed
+// roster (a future kernel error, a version-skewed host) arrives on the `error_kind` channel as a
+// string this module does not recognize. The fold refuses to fold THAT into absence -- the host did
+// not say the file is missing -- and the refusal carries the observed spelling. The model can only
+// answer recognized kinds, so this arm is driven at its boundary directly, where the string enters.
+test fn an_unrecognized_host_kind_is_never_classified_as_absent_or_unreadable() -> Bool {
+  match filesystem_exact_read(
+    path: fixture_receipt_path,
+    content: "",
+    success: false,
+    error: "some future errno",
+    error_kind: "quota_exceeded",
+  ) {
+    FilesystemExactPathKindUnrecognized { path: p, observed: o, error: e } =>
+      p == fixture_receipt_path && o == "quota_exceeded" && e == "some future errno"
+        && string_contains(s: convergence_readback_line(readback: ConvergenceReadbackKindUnrecognized {
+          path: p, observed: o, error: e,
+        }), pattern: "never")
+        && string_contains(s: convergence_readback_line(readback: ConvergenceReadbackKindUnrecognized {
+          path: p, observed: o, error: e,
+        }), pattern: "quota_exceeded")
+        && !string_contains(s: convergence_readback_line(readback: ConvergenceReadbackKindUnrecognized {
+          path: p, observed: o, error: e,
+        }), pattern: "did not reach its write")
+    _ => false
+  }
+    && match filesystem_exact_read(
+      path: fixture_receipt_path,
+      content: "",
+      success: false,
+      error: "No such file or directory",
+      error_kind: "not_found",
+    ) {
+      FilesystemExactPathAbsent { path: p } => p == fixture_receipt_path
+      _ => false
+    }
+    && match filesystem_exact_read(
+      path: fixture_receipt_path,
+      content: "",
+      success: false,
+      error: "Not a directory",
+      error_kind: "not_a_directory",
+    ) {
+      FilesystemExactPathUnreadable { path: p, kind: _, error: _ } => p == fixture_receipt_path
+      _ => false
+    }
+    && match filesystem_exact_read(
+      path: fixture_receipt_path,
+      content: "payload",
+      success: true,
+      error: "",
+      error_kind: "",
+    ) {
+      FilesystemExactPathRead { path: p, content: c } => p == fixture_receipt_path && c == "payload"
+      _ => false
+    }
 }
