@@ -26,6 +26,8 @@ import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshCo
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.host.host_effect { LocalShell }
 import gunbc.host.host_primary_network {
   HostPrimaryNetworkDesired, PrimaryRowDeclared, PrimaryRowAwaitingRead, PrimaryRowUnmodeled,
   primary_network_row_for, primary_network_netplan_file, primary_network_netplan_file_name, primary_network_netplan_text,
@@ -60,6 +62,13 @@ import gunbc.host.host_primary_network {
 // directory against the population, exactly as the plan does, and only a Settled readback writes the
 // newline that confirms. A host that cannot be reached is never confirmed, and netplan's timeout
 // restores it.
+//
+// THE READBACK MUST CROSS THE UPLINK IT JUDGES. A leg from the target host to itself is delivered
+// locally (its own tailnet address is on tailscale0, its LAN address on the NIC's own stack) and
+// succeeds with the uplink dead, so a readback taken from the target proves nothing about the change
+// it would confirm. The executor is therefore another host, and the entry refuses to run on the
+// target: the fleet-converge shared job runs on the dispatched host itself, so this mode's job is
+// placed on an observer host the way host_reset_return places its observer.
 //
 // OUTSIDE THE MODELED GUARANTEE: a reboot or power loss inside the try window boots the unconfirmed
 // files, with the prior directory kept on disk in the staging directory; recovery is the BMC serial
@@ -175,6 +184,14 @@ fn primary_network_staging_dir_argv() -> List<String> {
 
 fn primary_network_launch_argv() -> List<String> {
   ["systemd-run", "--unit", primary_network_try_unit as String, "--collect", "--quiet", "/bin/sh", staged(name: "try.sh")]
+}
+
+type PrimaryReadbackVantage
+  = ReadbackFromPeer { executor: NonEmptyStr }
+  | ReadbackFromTargetItself
+
+fn primary_readback_vantage(executor: String, target: HostIdentity) -> PrimaryReadbackVantage {
+  if trim(s: executor) == (target as String) { ReadbackFromTargetItself } else { ReadbackFromPeer { executor: trim(s: executor) as NonEmptyStr } }
 }
 
 // ── Legs ─────────────────────────────────────────────────────────────────────────────────────────
@@ -377,6 +394,12 @@ fn host_primary_network_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
         PrimaryRowUnmodeled { host: h } => exit_failure(reason: join(["host_primary_network: ", h as String, " has no primary network row"], ""))
         PrimaryRowAwaitingRead { change: _, read_obligation: o } => exit_failure(reason: join(["host_primary_network: ", raw_host, " was moved by hand and not read; owed: ", o as String], ""))
         PrimaryRowDeclared { desired: d } =>
+          match hostname_short_read(transport: LocalShell) {
+            HostnameShortCaptureRefused { reason: why } => exit_failure(reason: join(["host_primary_network: the executor's own name is unread, so whether the readback crosses the uplink is undecided: ", why], ""))
+            HostnameShortCaptured { value: executor } =>
+              match primary_readback_vantage(executor: executor, target: d.host) {
+                ReadbackFromTargetItself => exit_failure(reason: join(["host_primary_network: this run executes on ", d.host as String, " itself, where a readback never crosses the uplink it would confirm; run it from an observer host"], ""))
+                ReadbackFromPeer { executor: _ } =>
           match administrator_ssh_target(host: d.host) {
             SshTargetRefused { endpoint: e, refusal: why } => exit_failure(reason: ssh_target_refusal_text(endpoint: e, refusal: why))
             SshTargetResolved { target: target } =>
@@ -398,6 +421,8 @@ fn host_primary_network_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
                   else if !primary_apply_outcome_settled(o: outcome) { exit_failure(reason: body) }
                   else { ExitSuccess }
                 }
+              }
+          }
               }
           }
       }

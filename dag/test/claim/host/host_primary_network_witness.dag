@@ -28,6 +28,7 @@ import gunbc.host.host_primary_network {
 }
 import gunbc.host.host_primary_network_apply {
   primary_network_try_script, primary_network_await_script, primary_network_confirm_script, primary_network_launch_argv,
+  primary_readback_vantage, ReadbackFromPeer, ReadbackFromTargetItself,
 }
 
 // srv1's three one-line iproute2 reads as printed on 2026-10-25 (lo, the gunbc-tap* microvm links and
@@ -180,4 +181,11 @@ test fn the_fabric_rail_document_is_unchanged_by_the_shared_renderer() -> Bool {
     Present { value: d } =>
       d.netplan_text == "network:\n  version: 2\n  renderer: NetworkManager\n  ethernets:\n    gunbc-fabric:\n      match:\n        name: \"enp1s0f1np1\"\n      addresses:\n      - \"192.168.110.18/24\"\n      mtu: 9000\n      dhcp4: false\n      dhcp6: false\n      link-local: []\n      optional: true\n    gunbc-fabric-twin:\n      match:\n        name: \"enP2p1s0f1np1\"\n      dhcp4: false\n      dhcp6: false\n      link-local: []\n      optional: true\n"
   }
+}
+
+// A READBACK TAKEN FROM THE TARGET ITSELF NEVER CROSSES ITS UPLINK, so the entry refuses that vantage;
+// one taken from another host is admitted.
+test fn the_readback_vantage_must_be_another_host() -> Bool {
+  (match primary_readback_vantage(executor: "srv1\n", target: operator_host_srv1) { ReadbackFromTargetItself => true  ReadbackFromPeer { executor: _ } => false })
+    && (match primary_readback_vantage(executor: "srv3", target: operator_host_srv1) { ReadbackFromPeer { executor: e } => (e as String) == "srv3"  ReadbackFromTargetItself => false })
 }
