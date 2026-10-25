@@ -1,0 +1,24 @@
+module gunbc.instruments.cons_tail_recursion_user_list
+
+import std.types { Int }
+
+// A MODULE'S OWN List WITH ITS OWN Cons { head, tail }: the discriminating red for tail recursion modulo
+// cons keying on the resolved carrier (v1.compiler.emit_rust is_trmc_eligible). user_upto has exactly the
+// shape the rule lowers, a Cons self-call in tail position, but its Cons resolves to this List and not to
+// the FreeMonoid carrier, so it must keep the ordinary lowering. Admitted by spelling (a return type named
+// List, a literal named Cons) it would be lowered onto Rc<Vec> pushes and refused by rustc. It is generic
+// because a bare `List` reference resolves to the kernel's List<T> even in a module that declares its own.
+type List<T>
+  = Nil
+  | Cons { head: T, tail: List<T> }
+
+fn user_upto(i: Int, n: Int) -> List<Int> {
+  if i >= n { Nil } else { Cons { head: i, tail: user_upto(i: i + 1, n: n) } }
+}
+
+fn user_checksum(xs: List<Int>, acc: Int) -> Int {
+  match xs {
+    Nil => acc
+    Cons { head: h, tail: t } => user_checksum(xs: t, acc: (acc * 31 + h) % 1000000007)
+  }
+}

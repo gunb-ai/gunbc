@@ -7871,7 +7871,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
           // A loop-lowered function (plain tail calls, or tail recursion modulo cons) takes its params as
           // owned loop slots, so neither the read-only borrow nor the dying-base analysis applies to it.
           let item_is_tco = is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name(env: env, node: item) }, body: fn_body, registry: registry, source_indices: env.source_indices)
-            || is_trmc_eligible(body: fn_body, fn_name: authored_name(env: env, node: item), return_type: resolved_type(n: item), si: env.source_indices)
+            || is_trmc_eligible(body: fn_body, fn_name: authored_name(env: env, node: item), emit_info: emit_info, si: env.source_indices)
           let fn_read_only = if item_is_tco { empty_set() } else {
             match map_get(emit_info.read_only_params_index, qualified_name) {
               Present { value: m } => m
@@ -10140,7 +10140,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let depth = 0
   let realized_seam = rust_host_seam_is_realized(module_path: scope.module_name, name: name, body: body, source_indices: si)
   let plain_tco = !realized_seam && is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si)
-  let use_trmc = !realized_seam && !plain_tco && is_trmc_eligible(body: body, fn_name: name, return_type: inferred, si: si)
+  let use_trmc = !realized_seam && !plain_tco && is_trmc_eligible(body: body, fn_name: name, emit_info: emit_info, si: si)
   let use_tco = plain_tco || use_trmc
   let needs_stacker = !realized_seam && is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si) && use_tco == false
   if rust_host_seam_is_unrealized(module_path: scope.module_name, name: name, body: body, source_indices: si) {
@@ -16076,6 +16076,35 @@ fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: 
 // is a guess. It refuses exactly as the multi-field arm does; the remedy is a nominal type on the
 // literal. Found when std.algebra TotalOrder gained the same single `compare` field as
 // extdeps.version VersionScheme and `{ compare: f }` silently emitted `f`.
+// THE VARIANT PARENT A RECORD LITERAL RESOLVES TO: the contextual parent the resolved type names, else the
+// enum the resolved type is when the variant belongs to it, else the literal's own bare parent. ONE
+// judgment, read by the Cons lowering below and by tail recursion modulo cons (trmc_cons_tail_call), so
+// the two cannot disagree on which literals are the FreeMonoid carrier's Cons.
+fn record_lit_variant_parent(variant_surface_name: String, bare_parent_enum: String?, resolved_type: Node, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> String? {
+  match contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si) {
+    Present { value: context_parent } => Present { value: context_parent }
+    Absent =>
+      let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
+      let rt_name = qualified_last_segment(name: authored_name_at(source_indices: si, node: resolved_type))
+      if resolved_type.ident_span != none && rt_name != variant_surface_name && !rt_is_type_var && rt_name != "Error"
+        && match variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_surface_name, enum_name: rt_name) {
+          QuestionDecided { value: v } => v
+          _ => false
+        } {
+        Present { value: rt_name }
+      } else {
+        bare_parent_enum
+      }
+  }
+}
+
+// A literal is the FreeMonoid carrier's Cons exactly when its constructor is Cons and its resolved parent
+// is FreeMonoid (parent_enum_is_freemonoid, the same reading the FreeMonoid match lowering uses). A
+// module's own `List` with its own `Cons { head, tail }` resolves to that List and is not this.
+fn record_lit_is_host_freemonoid_cons(tn: String, effective_parent: String?) -> Bool {
+  tn == "Cons" && parent_enum_is_freemonoid(p: effective_parent)
+}
+
 fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: String?, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let qualified_name = match struct_name {
@@ -16200,25 +16229,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           } else { tn }
         }
       let ctor_alias_resolved = ctor_name != tn
-      let context_lookup = contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
-      let effective_parent = match context_lookup {
-        Present { value: context_parent } => Present { value: context_parent }
-        Absent =>
-          let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
-          let rt_name = qualified_last_segment(name: authored_name_at(source_indices: si, node: resolved_type))
-
-          if resolved_type.ident_span != none && rt_name != variant_surface_name && !rt_is_type_var && rt_name != "Error"
-            && match variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_surface_name, enum_name: rt_name) {
-              QuestionDecided { value: v } => v
-              _ => false
-            } {
-            Present { value: rt_name }
-          } else {
-            bare_parent_enum
-          }
-      }
-      let host_freemonoid_cons = tn == "Cons"
-        && (match effective_parent { Present { value: p } => p == "FreeMonoid"  Absent => false })
+      let effective_parent = record_lit_variant_parent(variant_surface_name: variant_surface_name, bare_parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, si: si)
+      let host_freemonoid_cons = record_lit_is_host_freemonoid_cons(tn: tn, effective_parent: effective_parent)
       if host_freemonoid_cons {
         let head_val = match fields |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "head") |> first {
           Present { value: f } => emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -17175,18 +17187,24 @@ type TcoCursorPlan {
 // returns `__trmc_out` followed by its value. It is admitted only when every self-call is either in
 // tail position or exactly the tail field of a tail-position list Cons whose head calls nothing
 // recursive, and the function returns a list; anything else keeps the ordinary lowering.
-fn is_trmc_eligible(body: Node, fn_name: String, return_type: Node, si: Map<String, NewlineIndex>) -> Bool {
-  let returns_list = authored_name_at(source_indices: si, node: return_type) == "List" || authored_name_at(source_indices: si, node: return_type) == "FreeMonoid"
-  returns_list && trmc_has_cons_site(n: body, fn_name: fn_name, si: si) && trmc_tail_ok(n: body, fn_name: fn_name, si: si)
+// KEYED ON THE RESOLVED CARRIER, NEVER ON A SPELLING (DESIGN section 4): a Cons step is admitted only
+// when the literal resolves to the FreeMonoid carrier's Cons (record_lit_is_host_freemonoid_cons, the
+// same judgment the Cons lowering uses), so a module's own List with its own Cons keeps the ordinary
+// lowering. A tail-position FreeMonoid Cons is the function's return value, so the function returns the
+// carrier by typing; no return-type spelling is consulted.
+fn is_trmc_eligible(body: Node, fn_name: String, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> Bool {
+  trmc_has_cons_site(n: body, fn_name: fn_name, emit_info: emit_info, si: si) && trmc_tail_ok(n: body, fn_name: fn_name, emit_info: emit_info, si: si)
 }
 
-// The self-call a list Cons carries as its tail, when the Cons is `Cons { head, tail: fn_name(..) }`.
-fn trmc_cons_tail_call(n: Node, fn_name: String, si: Map<String, NewlineIndex>) -> Node? {
+// The self-call a FreeMonoid Cons carries as its tail, when the Cons is `Cons { head, tail: fn_name(..) }`.
+fn trmc_cons_tail_call(n: Node, fn_name: String, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> Node? {
   match n.expr_data {
-    ExprRecordLit { parent_enum: _ } =>
-      let named_cons = match record_lit_type_name_at(texpr: n, source_indices: si) { Present { value: tn } => tn == "Cons"  Absent => false }
+    ExprRecordLit { parent_enum: pe } =>
+      let tn = match record_lit_type_name_at(texpr: n, source_indices: si) { Present { value: t } => t  Absent => "" }
+      let bare_parent = match pe { Present { value: p } => Present { value: qualified_last_segment(name: p) }  Absent => none }
+      let carrier_cons = record_lit_is_host_freemonoid_cons(tn: tn, effective_parent: record_lit_variant_parent(variant_surface_name: tn, bare_parent_enum: bare_parent, resolved_type: resolved_type(n: n), emit_info: emit_info, si: si))
       let names = n.children |> map(f => field_init_node_name_at(n: f, source_indices: si))
-      let shaped = named_cons && (names |> count) == 2 && names |> any(x => x == "head") && names |> any(x => x == "tail")
+      let shaped = carrier_cons && (names |> count) == 2 && names |> any(x => x == "head") && names |> any(x => x == "tail")
       if !shaped { none } else {
         match n.children |> filter(f => field_init_node_name_at(n: f, source_indices: si) == "tail") |> first {
           Present { value: tf } =>
@@ -17214,17 +17232,17 @@ fn trmc_no_self_call(n: Node, fn_name: String, si: Map<String, NewlineIndex>) ->
   !expr_has_self_call(texpr: n, fn_name: fn_name, source_indices: si)
 }
 
-fn trmc_has_cons_site(n: Node, fn_name: String, si: Map<String, NewlineIndex>) -> Bool {
-  match trmc_cons_tail_call(n: n, fn_name: fn_name, si: si) {
+fn trmc_has_cons_site(n: Node, fn_name: String, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> Bool {
+  match trmc_cons_tail_call(n: n, fn_name: fn_name, emit_info: emit_info, si: si) {
     Present { value: _ } => true
-    Absent => n.children |> any(c => trmc_has_cons_site(n: c, fn_name: fn_name, si: si))
+    Absent => n.children |> any(c => trmc_has_cons_site(n: c, fn_name: fn_name, emit_info: emit_info, si: si))
   }
 }
 
 // `n` sits in tail position. FAIL-CLOSED: any self-call anywhere this walk does not admit refuses
 // the lowering, which leaves the function on the ordinary path.
-fn trmc_tail_ok(n: Node, fn_name: String, si: Map<String, NewlineIndex>) -> Bool {
-  match trmc_cons_tail_call(n: n, fn_name: fn_name, si: si) {
+fn trmc_tail_ok(n: Node, fn_name: String, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> Bool {
+  match trmc_cons_tail_call(n: n, fn_name: fn_name, emit_info: emit_info, si: si) {
     Present { value: call } =>
       let head_ok = match trmc_cons_head(n: n, si: si) { Present { value: h } => trmc_no_self_call(n: h, fn_name: fn_name, si: si)  Absent => false }
       head_ok && call.children |> all(a => trmc_no_self_call(n: arg_value(n: a), fn_name: fn_name, si: si))
@@ -17235,22 +17253,22 @@ fn trmc_tail_ok(n: Node, fn_name: String, si: Map<String, NewlineIndex>) -> Bool
             n.children |> all(a => trmc_no_self_call(n: arg_value(n: a), fn_name: fn_name, si: si))
           } else { trmc_no_self_call(n: n, fn_name: fn_name, si: si) }
         ExprIf =>
-          let else_ok = match if_else_branch(texpr: n) { Present { value: eb } => trmc_tail_ok(n: eb, fn_name: fn_name, si: si)  Absent => true }
-          trmc_no_self_call(n: if_condition(texpr: n), fn_name: fn_name, si: si) && trmc_tail_ok(n: if_then_branch(texpr: n), fn_name: fn_name, si: si) && else_ok
+          let else_ok = match if_else_branch(texpr: n) { Present { value: eb } => trmc_tail_ok(n: eb, fn_name: fn_name, emit_info: emit_info, si: si)  Absent => true }
+          trmc_no_self_call(n: if_condition(texpr: n), fn_name: fn_name, si: si) && trmc_tail_ok(n: if_then_branch(texpr: n), fn_name: fn_name, emit_info: emit_info, si: si) && else_ok
         ExprMatch =>
           trmc_no_self_call(n: match_scrutinee(texpr: n), fn_name: fn_name, si: si)
             && match_arm_nodes(texpr: n) |> all(arm =>
               (match arm_guard(n: arm) { Present { value: g } => trmc_no_self_call(n: g, fn_name: fn_name, si: si)  Absent => true })
-              && trmc_tail_ok(n: arm_body(n: arm), fn_name: fn_name, si: si))
+              && trmc_tail_ok(n: arm_body(n: arm), fn_name: fn_name, emit_info: emit_info, si: si))
         ExprLet =>
-          let body_ok = match let_body(texpr: n) { Present { value: b } => trmc_tail_ok(n: b, fn_name: fn_name, si: si)  Absent => true }
+          let body_ok = match let_body(texpr: n) { Present { value: b } => trmc_tail_ok(n: b, fn_name: fn_name, emit_info: emit_info, si: si)  Absent => true }
           trmc_no_self_call(n: let_value(texpr: n), fn_name: fn_name, si: si) && body_ok
         ExprBlock =>
           let ss = n.children
           let ss_count = ss |> count
           let inits_ok = ss |> enumerate |> all(pair => pair.first == ss_count - 1 || trmc_no_self_call(n: pair.second, fn_name: fn_name, si: si))
-          inits_ok && (match ss |> last { Present { value: e } => trmc_tail_ok(n: e, fn_name: fn_name, si: si)  Absent => true })
-        ExprReturn => trmc_tail_ok(n: return_value(texpr: n), fn_name: fn_name, si: si)
+          inits_ok && (match ss |> last { Present { value: e } => trmc_tail_ok(n: e, fn_name: fn_name, emit_info: emit_info, si: si)  Absent => true })
+        ExprReturn => trmc_tail_ok(n: return_value(texpr: n), fn_name: fn_name, emit_info: emit_info, si: si)
         _ => trmc_no_self_call(n: n, fn_name: fn_name, si: si)
       }
   }
@@ -17500,7 +17518,7 @@ fn cursor_walk(n: Node, p: String, in_tails: List<String>, fn_name: String, para
       // A tail-recursion-modulo-cons step is a self-call whose head is pushed first: its arguments are
       // judged as a self-call's are, and its head as any other read of the param.
       ExprRecordLit { parent_enum: _ } =>
-        let cons_step = if emit_info.trmc_out { trmc_cons_tail_call(n: n, fn_name: fn_name, si: si) } else { none }
+        let cons_step = if emit_info.trmc_out { trmc_cons_tail_call(n: n, fn_name: fn_name, emit_info: emit_info, si: si) } else { none }
         match cons_step {
           Present { value: call } =>
             let head_ok = match trmc_cons_head(n: n, si: si) { Present { value: h } => cursor_escapes_only(node: h, p: p, in_tails: in_tails, si: si)  Absent => false }
@@ -17658,7 +17676,7 @@ fn trmc_exit(value: String, emit_info: EmitGraphInfo) -> String {
 
 fn emit_rust_tco_default_return(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = frame.scope.type_env.source_indices
-  let cons_step = if emit_info.trmc_out { trmc_cons_tail_call(n: frame.expr, fn_name: fn_name, si: si) } else { none }
+  let cons_step = if emit_info.trmc_out { trmc_cons_tail_call(n: frame.expr, fn_name: fn_name, emit_info: emit_info, si: si) } else { none }
   match cons_step {
     Present { value: call } =>
       let head_str = match trmc_cons_head(n: frame.expr, si: si) {

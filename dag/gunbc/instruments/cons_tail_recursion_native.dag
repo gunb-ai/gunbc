@@ -3,6 +3,7 @@ module gunbc.instruments.cons_tail_recursion_native
 import std.types { Int, List, String, Bool }
 import std.algebra { fold_list, list_push, list_append }
 import std.measure { Nanosecond, nanosecond, nanosecond_count }
+import gunbc.instruments.cons_tail_recursion_user_list { user_upto, user_checksum }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import gunbc.instruments.append_chain_ladder {
   LadderTiming,
@@ -25,6 +26,14 @@ import gunbc.instruments.append_chain_ladder {
 //   cons_not_in_tail  a Cons self-call that is NOT in tail position (it is pushed onto afterwards): the
 //                     rule must refuse it and keep the ordinary lowering
 //   head_reads_result a Cons whose head reads the recursive result: refused the same way
+//   user_list_not_lowered  a module's own List with its own Cons, in exactly the lowered shape
+//                     (gunbc.instruments.cons_tail_recursion_user_list): the rule keys on the resolved
+//                     carrier, so it must keep the ordinary lowering; admitted by spelling it would be
+//                     lowered onto Rc<Vec> pushes and refused by rustc. This is the discriminating red.
+//
+// cons_not_in_tail and head_reads_result are POSITIVE fail-closed specimens: they show the refused shapes
+// still compute the right values, but value equality cannot tell an over-broad admission from a correct
+// one, so they are not boundary proof. user_list_not_lowered is the case whose RED is authorable.
 //
 // Which lowering each one got is read from the emitted crate, not asserted here; a mis-lowering is a
 // wrong value or a rustc refusal, either of which this label observes.
@@ -125,6 +134,7 @@ fn fixture_cases() -> List<FixtureCase> {
     FixtureCase { name: "prefix_until_stops", observed: checksum(xs: prefix_until(xs: xs, stop: 77)), expected: checksum(xs: prefix_until_reference(xs: xs, stop: 77)) },
     FixtureCase { name: "prefix_until_runs_out", observed: checksum(xs: prefix_until(xs: xs, stop: 5000)), expected: checksum(xs: prefix_until_reference(xs: xs, stop: 5000)) },
     FixtureCase { name: "cons_not_in_tail", observed: checksum(xs: cons_not_in_tail(xs: xs)), expected: checksum(xs: list_append(left: xs, right: zeros(i: 0, n: 300, acc: []))) },
+    FixtureCase { name: "user_list_not_lowered", observed: user_checksum(xs: user_upto(i: 0, n: 200), acc: 0), expected: fold_list(xs: ascending(i: 0, n: 200, acc: []), empty: 0, cons: fn(acc, x) { (acc * 31 + x) % 1000000007 }) },
     FixtureCase { name: "head_reads_result", observed: checksum(xs: head_reads_result(xs: small)), expected: checksum(xs: descending_from(i: 11, acc: [])) },
   ]
 }
