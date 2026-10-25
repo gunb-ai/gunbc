@@ -1,8 +1,10 @@
 module gunbc.jws_signer_realize
 
-import std.types { String, NonEmptyStr }
-import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile, JwsSignOutcome, JwsSigned, JwsSignRefused }
+import std.types { String, NonEmptyStr, Int, List }
+import std.integer { UInt8 }
+import extdeps.auth.jws { JwsAlgorithm, JwsRs256, JwsEs256, jws_es256_coordinate_octets, JwsSigningKeyRef, HostKeyFile, JwsSignOutcome, JwsSigned, JwsSignRefused }
 import extdeps.tools.openssl { openssl_sign_sha256, OpensslSigned, OpensslSignRefused }
+import extdeps.standards.rfc_5280 { ecdsa_sig_value, EcdsaSigValueRead, EcdsaSigValueRefused, EcdsaSigValueTooWide }
 import gunbc.host.host_cli_dependency { first_absent_host_cli_dependency, jws_signer_host_cli_requirements }
 import std.optional { Absent, Present }
 
@@ -14,7 +16,15 @@ import std.optional { Absent, Present }
 // modeled RSA inside the evaluator would be a different subject (the key inside) and would not
 // replace this. The handler's enrolled CLI dependency is checked before the key is touched, so a
 // missing binary is refused with its install hint and does not surface as an exec error.
-fn jws_rs256_sign(signing_input: NonEmptyStr, key: JwsSigningKeyRef) -> JwsSignOutcome {
+//
+// ONE openssl OPERATION SERVES BOTH ALGORITHMS, because `openssl dgst -sha256 -sign` signs with
+// whatever the key file holds: an RSA key gives RSASSA-PKCS1-v1_5 (RS256 as it stands), an EC P-256
+// key gives ECDSA over SHA-256 printed as the DER ECDSA-Sig-Value. ES256's JWS Signature is R || S
+// (RFC 7518 section 3.4), so the DER is read through extdeps.standards.rfc_5280 ecdsa_sig_value --
+// the reader App Attest verification already uses -- and never re-parsed here. A DER that does not
+// read, or a component wider than a P-256 coordinate, refuses: an RSA key filed under an ES256
+// request lands there, by name, rather than producing a JWT APNs would reject later.
+fn jws_sign(alg: JwsAlgorithm, signing_input: NonEmptyStr, key: JwsSigningKeyRef) -> JwsSignOutcome {
   match key {
     HostKeyFile { path: path } =>
       match first_absent_host_cli_dependency(tools: jws_signer_host_cli_requirements) {
@@ -22,10 +32,23 @@ fn jws_rs256_sign(signing_input: NonEmptyStr, key: JwsSigningKeyRef) -> JwsSignO
           JwsSignRefused { detail: join(["signer tool ", absence.tool as String, " is absent: ", absence.hint], "") }
         Absent =>
           match openssl_sign_sha256(key_file: path, signing_input: signing_input) {
-            OpensslSigned { octets: sig } => JwsSigned { signature: sig }
             OpensslSignRefused { exit_code: code, detail: d } =>
               JwsSignRefused { detail: join(["openssl dgst exit ", to_string(code), ": ", d], "") }
+            OpensslSigned { octets: sig } => jws_signature_of_openssl(alg: alg, octets: sig)
           }
+      }
+  }
+}
+
+fn jws_signature_of_openssl(alg: JwsAlgorithm, octets: List<UInt8>) -> JwsSignOutcome {
+  match alg {
+    JwsRs256 => JwsSigned { signature: octets }
+    JwsEs256 =>
+      match ecdsa_sig_value(octets: octets, width: jws_es256_coordinate_octets) {
+        EcdsaSigValueRead { r_s_fixed: rs } => JwsSigned { signature: rs }
+        EcdsaSigValueRefused { cause: _ } => JwsSignRefused { detail: "openssl's ES256 signature is not a DER ECDSA-Sig-Value (is the key file an EC P-256 key?)" }
+        EcdsaSigValueTooWide { component_octets: n, width: w } =>
+          JwsSignRefused { detail: join(["openssl's ES256 signature component is ", to_string(n), " octets, wider than the ", to_string(w), "-octet P-256 coordinate"], "") }
       }
   }
 }

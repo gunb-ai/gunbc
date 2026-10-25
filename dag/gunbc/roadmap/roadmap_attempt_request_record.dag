@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_attempt_request_record
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
@@ -15,7 +16,6 @@ import extdeps.languages.json.parse {
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_state_path_for_instance }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventId }
 
 // THE ATTEMPT'S REQUEST RECORD: the durable, create-only fact of which request an attempt answers.
