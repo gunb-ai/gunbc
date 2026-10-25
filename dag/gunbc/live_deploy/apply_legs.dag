@@ -38,7 +38,9 @@ import extdeps.tools.stat { stat_default_report_command }
 import gunbc.live_deploy.emit { deployment_apply_plan, owned_directory_will_install }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands, deployment_owns_the_host_approval_broker }
 import extdeps.sudo.elevation { sudo_elevate_command }
-import extdeps.tools.gnu_coreutils { coreutils_install_file_owned_argv }
+import extdeps.tools.gnu_coreutils { coreutils_install_file_owned_argv, mktemp_directory_command, install_file_mode_command, rm_force_command, rmdir_command }
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_credentials }
+import extdeps.systemd.unit_file { systemd_system_credstore_directory }
 import gunbc.live_deploy.release_locus { approval_broker_helper_root_principal, ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.emit { install_file_shared_mode }
 import gunbc.host.host_axis_caps {
@@ -177,6 +179,7 @@ type DeployApplyLeg
   | ApplyLegRetract { step: String, leg: DeployRetractLeg }
   | ApplyLegDependency { dep: DeploymentDependencyStep }
   | ApplyLegDigestEnvFile { step: String, binary: String, env_name: String, dest: String, owner: NonEmptyStr }
+  | ApplyLegCredstoreCopy { step: String, source: NonEmptyStr, dest: NonEmptyStr, file_name: NonEmptyStr }
 
 // A root-owned release snapshot is installed before the units that name it and its superseded siblings are
 // retired after them, so the two halves are separate legs of one effect.
@@ -207,6 +210,7 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegRetract { step: st, leg: _ } => st
     ApplyLegDependency { dep: _ } => "dependency"
     ApplyLegDigestEnvFile { step: st, binary: _, env_name: _, dest: _, owner: _ } => st
+    ApplyLegCredstoreCopy { step: st, source: _, dest: _, file_name: _ } => st
   }
 }
 
@@ -671,6 +675,80 @@ fn deploy_apply_attempt_spool_legs(spec: DeploymentSpec) -> List<DeployApplyLeg>
   ]
 }
 
+// THE ROOT-OWNED CREDSTORE COPY A DEDICATED WORKER UNIT IS HANDED (gunbc.roadmap.dispatch_worker_unit_confinement
+// dispatch_worker_credentials, whose credstore_path the launcher's LoadCredential= line names too). The custody
+// file is read AS THE APPLY'S PRINCIPAL -- the service user, whose file it is -- and root installs the copy, 0400
+// root:root, from a stage that principal owns. Root never opens the custody path, so a relinked custody file
+// cannot turn a deploy into a root read of an arbitrary file, and the copy can only ever hold bytes the custody
+// owner could read itself.
+//
+// THIS IS THE HOST-SIDE REALIZATION OF gunbc.auth.private_secret_file with_private_secret_file, AND A STATED
+// DIVERGENCE FROM CALLING IT. The bracket's discipline is kept exactly: a fresh `mktemp -d` (0700, the principal's
+// own), the file created owner-only inside it, the one use (here the root install), then `rm -f` of the file and
+// `rmdir` of the directory, the rmdir being the removal check; four outcomes, four remedies, and no arm carries a
+// path (a stage path dereferences to the secret). It cannot CALL the bracket: the bracket holds the secret
+// in-process (Filesystem.WriteOwnerOnly of a Secret value), and this leg must never hold it -- the bytes stay on
+// the host and are copied there by the host's own commands, so they never ride the apply's transport (under
+// SshShell, a read through the command port would carry the key to the controller and back). So the leg names
+// the five commands (credstore_copy_stage_command, credstore_copy_commands) and the runner
+// (gunbc.host.host_effect_realize credstore_copy_bracket) folds their outcomes into
+// CredstoreCopyBracket. No credential, no legs: a service-user worker reads its own custody.
+data credstore_copy_stage_template: NonEmptyStr = "/tmp/gunbc-credstore.XXXXXX"
+
+data credstore_copy_stage_file_mode: NonEmptyStr = "0600"
+
+data credstore_copy_installed_file_mode: NonEmptyStr = "0400"
+
+fn credstore_copy_stage_command() -> ArgvCommand {
+  mktemp_directory_command(template: credstore_copy_stage_template)
+}
+
+// THE FOUR COMMANDS THAT FOLLOW THE STAGE, in run order: the principal's own copy, root's install from the stage,
+// then the removal. Only root_install runs elevated, and its words name the stage file, never the source.
+type CredstoreCopyCommands {
+  user_copy: ArgvCommand
+  root_install: ArgvCommand
+  remove_file: ArgvCommand
+  remove_dir: ArgvCommand
+}
+
+fn credstore_copy_commands(stage: NonEmptyStr, source: NonEmptyStr, dest: NonEmptyStr, file_name: NonEmptyStr) -> CredstoreCopyCommands {
+  let staged = join([stage as String, "/", file_name as String], "")
+  CredstoreCopyCommands {
+    user_copy: install_file_mode_command(source: source as String, destination: staged, mode: credstore_copy_stage_file_mode),
+    root_install: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+      mode: credstore_copy_installed_file_mode,
+      owner: approval_broker_helper_root_principal, group: approval_broker_helper_root_principal,
+      source: staged, dest: dest as String)),
+    remove_file: rm_force_command(path: staged),
+    remove_dir: rmdir_command(path: stage as String),
+  }
+}
+
+// THE BRACKET'S FOUR REMEDIES (gunbc.auth.private_secret_file PrivateSecretFileBracket). Entered means the root
+// install ran; `installed` is its result, carried because the effect may have happened.
+type CredstoreCopyBracket
+  = CredstoreCopyCompleted { installed: Bool }
+  | CredstoreCopyCompletedResidueRemains { installed: Bool }
+  | CredstoreCopyNotEntered { cause: NonEmptyStr }
+  | CredstoreCopyNotEnteredResidueRemains { cause: NonEmptyStr }
+
+fn credstore_copy_legs(instance: HostDashboardInstance) -> List<DeployApplyLeg> {
+  match dispatch_worker_credentials(instance: instance).first() {
+    Absent => []
+    Present { value: _ } =>
+      concat(
+        [apply_root_directory_leg(step: "worker-credstore-dir", mode: declared_directory_mode(m: DirectoryOwnerOnly), group: approval_broker_helper_root_principal, path: systemd_system_credstore_directory as String)],
+        map(dispatch_worker_credentials(instance: instance), c => ApplyLegCredstoreCopy {
+          step: "worker-credstore-copy",
+          source: c.custody_source,
+          dest: c.credstore_path,
+          file_name: c.identifier,
+        }),
+      )
+  }
+}
+
 // THE ROOT SIDE OF THE ATTEMPT-UNIT SPOOL, WITHOUT A SUDO GRANT. The requester writes its request into the
 // spool; a .path unit on the request directory starts the drain, a system oneshot (deploy_apply_attempt_drain_plan).
 // So the sandbox half installs the spool, removes the retired sudo route (the sudoers drop-in, the revision
@@ -686,7 +764,7 @@ fn deploy_apply_attempt_launcher_plan(spec: DeploymentSpec, revision: ReleaseRev
         Empty => ApplyPlanRefused { step: "attempt-unit-sudo-route-retire", reason: "live-deploy apply refused: the retired sudo route names no path" }
         Cons { head: h, tail: rest } =>
           ApplyPlanReady { legs: concat(
-            deploy_apply_attempt_spool_legs(spec: spec),
+            concat(deploy_apply_attempt_spool_legs(spec: spec), credstore_copy_legs(instance: instance)),
             [
               ApplyLegRetract { step: "attempt-unit-sudo-route-retire", leg: retract_remove_files(head: h as NonEmptyStr, rest: map(rest, p => p as NonEmptyStr)) },
               ApplyLegCommand { step: "attempt-unit-sudoers-check", command: visudo_check_command(file: "/etc/sudoers") },
