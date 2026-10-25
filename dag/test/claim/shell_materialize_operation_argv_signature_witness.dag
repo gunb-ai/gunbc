@@ -1,0 +1,38 @@
+module test.claim.shell_materialize_operation_argv_signature_witness
+
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_rows }
+
+// THE SUBJECT: std.operation_argv shell_materialize_operation_argv is a declared HostRealizedSeam, so a call is judged on the
+// declared-signature arm (label, arity and bijection). As a builtin it was not: its registry row named four parameters the
+// interpreter never read, and a wrong-arity or wrong-label call was accepted silently. The REDs are invalid programs,
+// authorable only as fixture source (DESIGN 4b).
+
+fn smoa_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => count(census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+data smoa_prelude: String = "module smoa_probe_mod\n\nimport std.types \{ String, List \}\nimport std.operation_argv \{ shell_materialize_operation_argv, ArgvMaterialization, OperationInputBinding \}\n\n"
+
+data smoa_well_formed: String = "fn smoa_a(p: String, s: String, o: String, b: List<OperationInputBinding>) -> ArgvMaterialization \{\n  shell_materialize_operation_argv(p, s, o, b)\n\}\n"
+
+data smoa_missing_argument: String = "fn smoa_b(p: String, s: String, o: String) -> ArgvMaterialization \{\n  shell_materialize_operation_argv(p, s, o)\n\}\n"
+
+data smoa_wrong_label: String = "fn smoa_c(p: String, s: String, o: String, b: List<OperationInputBinding>) -> ArgvMaterialization \{\n  shell_materialize_operation_argv(path: p, service: s, workspace_dir: o, binds: b)\n\}\n"
+
+// POSITIVE CONTROL: the four declared parameters, positionally.
+test fn smoa_well_formed_call_is_accepted() -> Bool {
+  smoa_blocking_count(concat(smoa_prelude, smoa_well_formed)) == 0
+}
+
+// RED: a call missing its fourth argument.
+test fn smoa_missing_argument_is_refused() -> Bool {
+  smoa_blocking_count(concat(smoa_prelude, smoa_missing_argument)) > 0
+}
+
+// RED: a label the declaration does not have (the stale registry row's workspace_dir).
+test fn smoa_wrong_label_is_refused() -> Bool {
+  smoa_blocking_count(concat(smoa_prelude, smoa_wrong_label)) > 0
+}
