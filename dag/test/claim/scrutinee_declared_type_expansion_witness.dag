@@ -92,20 +92,11 @@ test fn c1_a_wrong_arm_over_a_list_is_refused() -> Bool {
   blocking_count(source: list_wrong_arm_source) >= 1
 }
 
-// A VALUE WHOSE TYPE IS NOT VISIBLE BY ITS SPELLING. A module with no imports reaches a corpus value
-// through the global bare-name fallback (the shape of test.claim.srv3.srv3_subsumption_witness, whose
-// census cascade this removed); the value's type, extdeps.network.reach Reach, resolves nowhere in the
-// module's env, but the node still names the declaration it resolved to, and expansion keys on that
-// identity (v1.compiler.infer_patterns expand_scrut_from_type_name, the Absent arm). The specimen is
-// the corpus value gunbc.fleet.fleet_reach srv3_reach, so the probe is compiled against the corpus.
-data unimported_value_wrong_arm_source: String = "module probe_c1_unimported_value_wrong_arm\nfn hop() -> Bool {\n  match srv3_reach {\n    ProxyJump { jumps: _, target: _ } => true\n    DirectLan { host: _ } => false\n    Teleport { target: _ } => false\n  }\n}\n"
-
-data unimported_value_right_arms_source: String = "module probe_c1_unimported_value_right_arms\nfn hop() -> Bool {\n  match srv3_reach {\n    ProxyJump { jumps: _, target: _ } => true\n    DirectLan { host: _ } => false\n    FabricTunnel { target: _ } => false\n  }\n}\n"
-
-test fn c1_a_wrong_arm_over_a_value_whose_type_is_not_visible_is_refused() -> Bool {
-  blocking_count(source: unimported_value_wrong_arm_source) >= 1
-}
-
-test fn c1_control_the_right_arms_over_a_value_whose_type_is_not_visible_are_accepted() -> Bool {
-  blocking_count(source: unimported_value_right_arms_source) == 0
-}
+// NOT AUTHORABLE HERE, STATED (DESIGN section 4b): the Absent arm of expand_scrut_from_type_name (a value
+// whose type is not visible by its spelling, reached through the global bare-name fallback by a module
+// with no imports) has no RED in this file. A probe compiled by compile_dag_diagnostic_census cannot
+// reach a corpus value by a bare name, and a multi_module_compile_fixture closure has no corpus roots,
+// while an importing module already resolves the type -- so every attempt refused for a reason
+// unrelated to the arm, at base and head alike. Its evidence is the corpus census, by name: the
+// cascade at test.claim.srv3.srv3_subsumption_witness (`fold` not found) disappears. TRIGGER: a probe
+// harness that compiles a caller-authored module against the corpus roots.
