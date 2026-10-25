@@ -18,7 +18,6 @@ import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshCo
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
-import gunbc.host.boot_medium { bmc_boot_image_export }
 import gunbc.host.boot_medium_reader_key { boot_medium_reader_authorized_entry }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of }
 import gunbc.runner.runner_host_file_converge {
@@ -44,7 +43,8 @@ import gunbc.runner.runner_host_file_converge {
 //      unchanged (a drop-in sorting earlier than ours would win, sshd taking the first value); otherwise the
 //      drop-in is removed and nothing is reloaded;
 //   6. systemctl reload ssh (sshd re-reads its configuration on SIGHUP; a reload, never a restart);
-//   7. a FRESH fleet-automation login on its own connection, never the run's multiplexed master
+//   7. a FRESH login of the same administrator target every write used (the subject's, one source for
+//      every leg), on its own connection, never the run's multiplexed master
 //      (gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_fresh_connection). If it fails, the drop-in is
 //      removed and sshd reloaded again -- the typed rollback -- and the run refuses either way.
 // The reader probe (another command under the reader key yields only the forced line) is the next change.
@@ -177,7 +177,7 @@ fn export_host_reader_after_writes(legs: ExportHostReaderLegs, stages: List<NonE
               let removed = leg(f: legs.remove_drop_in)
               let again = leg(f: legs.reload)
               let s5 = concat(s4, ["remove-drop-in" as NonEmptyStr, "reload" as NonEmptyStr])
-              let cause = concat("a fresh fleet-automation login failed after the reload: ", answer_text(a: login))
+              let cause = concat("a fresh administrator login to the export host failed after the reload: ", answer_text(a: login))
               if removed.exit_code == 0 && again.exit_code == 0 {
                 ExportHostReaderRun { outcome: ReaderRowsRolledBack { cause: cause }, stages: s5 }
               } else {
@@ -230,7 +230,7 @@ fn render_export_host_reader_run(r: ExportHostReaderRun) -> String {
     ReaderRowsConverged => "export_host_reader=converged\n"
     ReaderRowsRefused { stage: s, cause: c } => join(["export_host_reader=refused\nstage=", s as String, "\nreason=", c, "\n"], "")
     ReaderRowsRolledBack { cause: c } => join(["export_host_reader=rolled back\nreason=", c, "\n"], "")
-    ReaderRowsRollbackFailed { cause: c, rollback: b } => join(["export_host_reader=ROLLBACK FAILED -- check fleet-automation login to the export host now\nreason=", c, "\nrollback=", b, "\n"], "")
+    ReaderRowsRollbackFailed { cause: c, rollback: b } => join(["export_host_reader=ROLLBACK FAILED -- check administrator login to the export host now\nreason=", c, "\nrollback=", b, "\n"], "")
   }
   join([head, "stages=", join(map(r.stages, s => s as String), ","), "\n"], "")
 }
@@ -259,7 +259,7 @@ fn export_host_reader_legs(subject: FleetHostFileSubject, context: FleetSshExecu
     test_config: fn() { elevated(subject: subject, context: context, argv: sshd_test_config_argv()) },
     effective_config: fn() { elevated(subject: subject, context: context, argv: sshd_effective_config_argv()) },
     reload: fn() { elevated(subject: subject, context: context, argv: systemctl_reload_unit_argv(unit: openssh_server_unit)) },
-    fresh_login: fn() { remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh_fresh_connection(target: bmc_boot_image_export.target, context: context, argv: ["true"])) },
+    fresh_login: fn() { remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh_fresh_connection(target: subject.target, context: context, argv: ["true"])) },
     remove_drop_in: fn() { elevated(subject: subject, context: context, argv: argv_words(command: rm_force_command(path: export_host_reader_drop_in_path as String))) },
   }
 }

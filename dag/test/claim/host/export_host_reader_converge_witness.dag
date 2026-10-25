@@ -95,7 +95,7 @@ test fn a_shadowed_setting_removes_the_drop_in_and_does_not_reload() -> Bool {
   word(o: r.outcome) == "refused" && !stages(r: r).contains("reload") && stages(r: r).contains("remove-drop-in")
 }
 
-// CONDITIONS 3 AND 4 RED: a fresh fleet-automation login failing after the reload rolls the drop-in back
+// CONDITIONS 3 AND 4 RED: a fresh administrator login failing after the reload rolls the drop-in back
 // and reloads again; a rollback that itself fails is its own, loud arm.
 test fn a_failed_fresh_login_rolls_back_and_a_failed_rollback_is_loud() -> Bool {
   let rolled = export_host_reader_apply_with(legs: legs(precheck: ok(stdout: ""), exists: ok(stdout: "998"), ensure: ok(stdout: ""), keys: true, drop_in: true, test: ok(stdout: ""), effective: ok(stdout: effective_ours), reload: ok(stdout: ""), login: bad(), remove: ok(stdout: "")))
