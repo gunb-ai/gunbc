@@ -801,7 +801,7 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
 pub fn is_paramless_alias_application(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     (((n.connective.clone() == Connective::NoConnective)
         && ((n.children.clone().len() as i64) > 0))
-        && match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
+        && match crate::v1_compiler_infer_env::lookup_type_for(env, n.clone()) {
             Some(used) => {
                 (((used.params.clone().len() as i64) == 0)
                     && (used.connective.clone() == Connective::NoConnective))
@@ -812,7 +812,7 @@ pub fn is_paramless_alias_application(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
 
 pub fn is_paramless_alias_use(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     ((n.application_role.clone() == Some(TypeApplicationRole::AuthoredArguments))
-        && is_paramless_alias_application(n.clone(), env.clone()))
+        && is_paramless_alias_application(n.clone(), env))
 }
 
 pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
@@ -1154,13 +1154,7 @@ pub fn resolve_node_bounded(
     masked: bool,
 ) -> Rc<NodeResolveResult> {
     {
-        let r = resolve_node_arm(
-            n.clone(),
-            env.clone(),
-            module_name.clone(),
-            depth.clone(),
-            masked.clone(),
-        );
+        let r = resolve_node_arm(n, env, module_name, depth, masked);
         if (r.resolved.application_role.clone() == Some(TypeApplicationRole::AuthoredArguments)) {
             Rc::new(NodeResolveResult {
                 resolved: node_with_application_role(
@@ -4983,9 +4977,9 @@ pub fn generic_application_reapplied(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> 
                         generic_declaration_application(
                             n.clone(),
                             decl.clone(),
-                            type_name.clone(),
+                            type_name,
                             n.children.clone(),
-                            slot_bindings.clone(),
+                            slot_bindings,
                             env.clone(),
                         )
                     }
