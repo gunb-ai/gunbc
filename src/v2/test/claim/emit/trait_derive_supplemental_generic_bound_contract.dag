@@ -2,11 +2,7 @@ module v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract
 
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra {
-  Cons,
-  Empty,
-  map_insert
-}
+import std.algebra { Cons, Empty, map_insert, map_keys }
 import std.decl_ref {
   DeclarationRef,
   WholeDeclaration

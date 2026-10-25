@@ -2,7 +2,7 @@ module gunbc.instruments.namespace_wave_binding_shard
 
 import std.types { String, Bool, List, Int, Map }
 import gunbc.instruments.namespace_wave_occurrence_join { rows_multiset_equal, join_field, rows_by_module }
-import std.algebra { Cons, Empty, list_at_optional, empty_map, map_insert, list_snoc_item }
+import std.algebra { Cons, Empty, list_at_optional, empty_map, map_insert, list_snoc_item, map_keys }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 
 // THE PARTITION DOMAIN is the set of modules the wave REWRITES (a git fact, known before any census and identical in

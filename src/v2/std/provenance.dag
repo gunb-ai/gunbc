@@ -2,7 +2,7 @@ module v2.std.provenance
 
 import std.types { List, Map }
 import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
-import std.algebra { fold_list, empty_map, map_insert }
+import std.algebra { fold_list, empty_map, map_insert, map_keys }
 import std.content_hash { Fnv1a64Structural }
 import v2.std.diagnostic {
   ByteRange,

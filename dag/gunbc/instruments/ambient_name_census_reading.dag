@@ -1,7 +1,7 @@
 module gunbc.instruments.ambient_name_census_reading
 
 import std.types { String, Bool, List, Int, Map }
-import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
+import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional, collection_count_shape, collection_map_shape, collection_join_shape, list_push, map_keys }
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }

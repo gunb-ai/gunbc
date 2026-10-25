@@ -1,7 +1,7 @@
 module gunbc.instruments.namespace_wave_binding_diff
 
 import std.types { String, Bool, List, Int, Map, NonEmptyStr }
-import std.algebra { Cons, Empty, empty_map, map_insert, list_snoc_item }
+import std.algebra { Cons, Empty, empty_map, map_insert, list_snoc_item, map_keys }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }

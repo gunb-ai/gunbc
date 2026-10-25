@@ -1,7 +1,7 @@
 module gunbc.instruments.namespace_wave_occurrence_join
 
 import std.types { String, Bool, List, Int, Map, NonEmptyStr }
-import std.algebra { empty_map, map_insert, list_at_optional, list_snoc_item, list_append, length, fold_list, list_init, list_reverse }
+import std.algebra { empty_map, map_insert, list_at_optional, list_snoc_item, list_append, length, fold_list, list_init, list_reverse, map_keys }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.optional { Optional, Present, Absent, optional_present }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, PrimitiveAuthorityTable, KitCallProbe, chars_kit_call, ambient_name_declaration }

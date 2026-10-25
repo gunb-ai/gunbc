@@ -1,7 +1,7 @@
 module gunbc.instruments.ambient_operation_disposition_reading
 
 import std.types { String, Bool, List, Int, Map }
-import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional }
+import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional, map_keys }
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }

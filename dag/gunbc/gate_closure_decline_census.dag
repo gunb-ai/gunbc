@@ -10,6 +10,7 @@ import v2.workflow.required_floor {
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   DeclinedCostDebt, DeclinedNoCiWetLane, DeclinedChangedWitnessOutsideDiscovery
 }
+import std.algebra { map_keys }
 
 // THE POPULATION OF gunbc.recurring_failure_mode witness_outside_gate_closure_falsified_by_other_file,
 // READ FROM THE FLOOR'S OWN RECORD RATHER THAN RECOMPUTED. The floor decides, per qualified witness

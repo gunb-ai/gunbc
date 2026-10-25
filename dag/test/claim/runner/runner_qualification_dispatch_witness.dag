@@ -3,7 +3,7 @@ module test.claim.runner.runner_qualification_dispatch_witness
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Bool, Bytes, CommitSha, Int, List, NonEmptyStr, String }
 import std.bytes { utf8_encode_bytes }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, map_keys }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { HostIdentity }
 import extdeps.transports.rest {

@@ -5,7 +5,7 @@ import v2.extdeps.languages.dag { dag_lex }
 import v2.std.compilers.lexing { StreamLayout, Token, TokenStream, stream_layout_empty, stream_layout_with_break, token_stream_lexed }
 import v2.test.claim.parse.expression_bodied_fn_decl_parse { g_fatal_at, g_tokenize_parse }
 import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_parse }
-import std.algebra { Cons, Empty, map_lookup }
+import std.algebra { Cons, Empty, map_lookup, map_keys }
 import std.types { List, Map }
 import v2.std.integer { Int }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
