@@ -324,10 +324,14 @@ test fn home_serving_field_covers_every_card_and_rung() -> ProcessExit {
       if any(keys, k => string_contains(s: k, pattern: (c + "_at_" + r) as String)) { [] } else { [(c + " @ " + r) as String] }
     )
   )
+  // The count check is what distinguishes "the grid narrowed" from "the grid is empty": with an
+  // empty field, `missing` alone would still be non-empty, but a field of the WRONG size with every
+  // identity present would slip past a missing-only check. The reason NAMES the absent cells, so a
+  // drift failure points at the card@rung that went missing instead of just at this function.
   if (hscf_live() |> count) == 16 && (missing |> count) == 0 {
     ExitSuccess
   } else {
-    exit_failure("candidate cells are missing from the grid")
+    exit_failure(reason: concat("candidate cells missing (or wrong cell count): ", join(missing, ", ")))
   }
 }
 
