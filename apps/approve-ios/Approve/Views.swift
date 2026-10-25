@@ -1,4 +1,19 @@
 import SwiftUI
+import UIKit
+
+/// The current errors, one per failed operation (OperationErrors.shown). A section exists only while
+/// some operation's latest attempt failed; nothing here is a log.
+struct ErrorSection: View {
+    let title: String
+    let errors: OperationErrors
+    var body: some View {
+        if !errors.shown.isEmpty {
+            Section(title) {
+                ForEach(Array(errors.shown.enumerated()), id: \.offset) { Text($0.element).foregroundStyle(.red) }
+            }
+        }
+    }
+}
 
 struct RootView: View {
     @EnvironmentObject var state: AppState
@@ -29,7 +44,7 @@ struct SignInView: View {
             } footer: {
                 Text("Creates a Secure Enclave key that only unlocks with Face ID, attests this app instance, and enrols this phone under your Google account.")
             }
-            if let e = state.lastError { Section("Refused") { Text(e).foregroundStyle(.red) } }
+            ErrorSection(title: "Refused", errors: state.errors)
         }
         .navigationTitle("Sign in")
     }
@@ -42,99 +57,143 @@ struct RevokedView: View {
         Form {
             Section("Enrolment revoked") { Text(reason) }
             Section { Button("Sign in again with a new key") { state.signOut() } }
+            ErrorSection(title: "Error", errors: state.errors)
         }
         .navigationTitle("Enrolment revoked")
     }
 }
 
+/// ONE REQUEST AT A TIME, full screen (operator direction 2026-10-24: one giant button, "Tinder for
+/// approvals"). The deck is exactly the server's set of requests that still need the operator
+/// (gunbc.auth.approval_decision_store pending_escalations), in the order the server answers; the
+/// first is the card. Deciding re-lists, so the decided request leaves and the next card appears.
+/// When nothing needs attention the screen says so and shows nothing else but a current error.
 struct InboxView: View {
     @EnvironmentObject var state: AppState
     var body: some View {
-        List {
-            if state.pending.isEmpty { Text("Nothing pending").foregroundStyle(.secondary) }
-            ForEach(state.pending) { p in
-                NavigationLink(value: p) {
-                    VStack(alignment: .leading) {
-                        Text(p.escalation_id).font(.headline)
-                        Text("revision \(p.request_revision)").font(.caption).foregroundStyle(.secondary)
+        GeometryReader { geo in
+            ScrollView {
+                VStack(spacing: 16) {
+                    if let p = state.pending.first {
+                        RequestCard(pending: p, remaining: state.pending.count - 1).id(p.escalation_id)
+                    } else {
+                        Spacer(minLength: 0)
+                        Image(systemName: "checkmark.circle").font(.system(size: 72)).foregroundStyle(.secondary)
+                        Text("Nothing needs your attention").font(.title2).foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
                     }
+                    ForEach(Array(state.errors.shown.enumerated()), id: \.offset) { Text($0.element).foregroundStyle(.red) }
                 }
+                .padding()
+                .frame(minHeight: geo.size.height)
             }
-            if let e = state.lastError { Section("Error") { Text(e).foregroundStyle(.red) } }
+            .refreshable { await state.refresh() }
         }
-        .navigationTitle("Approvals")
-        .navigationDestination(for: PendingApproval.self) { DetailView(pending: $0) }
-        .refreshable { await state.refresh() }
         .task { await state.refresh() }
     }
 }
 
-struct DetailView: View {
+/// The card: what is asked, by which run, for what; swipe right to approve, left to deny, or the
+/// two large buttons. Face ID is the enclave's own prompt on signing (AppState.redeem).
+struct RequestCard: View {
     @EnvironmentObject var state: AppState
     let pending: PendingApproval
+    let remaining: Int
     @State private var fetched: FetchedRequest?
     @State private var summary: StoredRequestSummary?
     @State private var outcome: RedemptionOutcome?
-    @State private var error: String?
+    /// This card's own operations (requestFetch, redemption), under the same lifetime rule.
+    @State private var errors = OperationErrors()
     @State private var busy = false
+    @State private var drag: CGFloat = 0
+    private let threshold: CGFloat = 120
+
+    private var decidable: Bool { fetched != nil && summary != nil && !busy }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 20) {
+            VStack(alignment: .leading, spacing: 12) {
+                if let s = summary {
+                    Text(s.purpose).font(.title2.bold())
+                    Label("requested by \(s.requester)", systemImage: "person.crop.circle")
+                    Label(s.destructive ? "Destructive" : "Not destructive", systemImage: s.destructive ? "exclamationmark.triangle.fill" : "checkmark.shield")
+                        .foregroundStyle(s.destructive ? .red : .secondary)
+                    // The request's own expiry, from the stored record.
+                    Text("Expires \(s.expires_at)").font(.caption).foregroundStyle(.secondary)
+                } else if fetched != nil {
+                    Text("Stored request unreadable; deciding is refused.").foregroundStyle(.red)
+                } else if errors.shown.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity)
+                }
+                Text(pending.escalation_id).font(.caption2.monospaced()).foregroundStyle(.secondary)
                 if let f = fetched {
-                    if let s = summary {
-                        Text(s.purpose).font(.title3)
-                        Text("requested by \(s.requester)")
-                        Label(s.destructive ? "Destructive" : "Not destructive", systemImage: s.destructive ? "exclamationmark.triangle" : "checkmark.shield")
-                            .foregroundStyle(s.destructive ? .red : .secondary)
-                        // The request's own expiry, from the stored record. The access lifetime is
-                        // not carried by the store yet (approval_target_frontier).
-                        Text("Request expires \(s.expires_at)").font(.caption).foregroundStyle(.secondary)
-                        Text("Refresh required after \(f.challenge.expires_at)").font(.caption2).foregroundStyle(.secondary)
-                    } else {
-                        Text("Stored request unreadable; deciding is refused.").foregroundStyle(.red)
-                    }
-                    DisclosureGroup("Stored request (exactly what is signed)") {
+                    DisclosureGroup("Exactly what is signed") {
                         Text(f.stored_request_text)
                             .font(.system(.footnote, design: .monospaced))
                             .textSelection(.enabled)
                     }
-                    if let o = outcome {
-                        VStack(alignment: .leading) {
-                            Text(o.outcome).font(.headline)
-                            Text(o.message)
-                        }
-                    } else {
-                        HStack {
-                            Button("Deny", role: .destructive) { decide(f, .deny) }
-                            Spacer()
-                            Button("Approve") { decide(f, .approve) }.buttonStyle(.borderedProminent)
-                        }
-                        .disabled(busy || summary == nil)
-                    }
-                } else if error == nil {
-                    ProgressView()
                 }
-                if let e = error { Text(e).foregroundStyle(.red) }
+                if let o = outcome {
+                    VStack(alignment: .leading) {
+                        Text(o.outcome).font(.headline)
+                        Text(o.message)
+                    }
+                }
+                ForEach(Array(errors.shown.enumerated()), id: \.offset) { Text($0.element).foregroundStyle(.red) }
             }
-            .padding()
+            .padding(24)
+            .frame(maxWidth: .infinity, minHeight: 360, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: 24).fill(Color(uiColor: .secondarySystemBackground)))
+            .overlay(alignment: .top) {
+                if drag > 0 { Text("APPROVE").font(.title.bold()).foregroundStyle(.green).opacity(Double(min(drag / threshold, 1))).padding() }
+                else if drag < 0 { Text("DENY").font(.title.bold()).foregroundStyle(.red).opacity(Double(min(-drag / threshold, 1))).padding() }
+            }
+            .offset(x: drag)
+            .rotationEffect(.degrees(Double(drag / 20)))
+            .gesture(
+                DragGesture()
+                    .onChanged { v in if decidable { drag = v.translation.width } }
+                    .onEnded { v in
+                        let w = v.translation.width
+                        withAnimation(.spring()) { drag = 0 }
+                        guard decidable, let f = fetched else { return }
+                        if w > threshold { decide(f, .approve) } else if w < -threshold { decide(f, .deny) }
+                    }
+            )
+            HStack(spacing: 16) {
+                Button(role: .destructive) { if let f = fetched { decide(f, .deny) } } label: {
+                    Label("Deny", systemImage: "xmark").frame(maxWidth: .infinity, minHeight: 64)
+                }
+                .buttonStyle(.bordered)
+                Button { if let f = fetched { decide(f, .approve) } } label: {
+                    Label("Approve", systemImage: "checkmark").frame(maxWidth: .infinity, minHeight: 64)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .font(.title3.bold())
+            .disabled(!decidable)
+            if remaining > 0 { Text("\(remaining) more waiting").font(.footnote).foregroundStyle(.secondary) }
         }
-        .navigationTitle(pending.escalation_id)
         .task {
             do {
                 let f = try await state.fetch(pending.escalation_id)
                 fetched = f
-                do { summary = try WireDecode.storedRequest(f.stored_request_text) }
-                catch { self.error = error.localizedDescription }
-            } catch { self.error = error.localizedDescription }
+                summary = try WireDecode.storedRequest(f.stored_request_text)
+                errors.record(.requestFetch, .succeeded)
+            } catch { errors.record(.requestFetch, .failed(error.localizedDescription)) }
         }
     }
 
+    /// Redeem, then AppState re-lists: an admitted decision removes this request from the server's
+    /// set, so this card is replaced by the next one. A refused outcome is the server's answer and is
+    /// shown on the card as is.
     private func decide(_ f: FetchedRequest, _ d: ProposedDecision) {
         busy = true
         Task {
-            do { outcome = try await state.redeem(f, d) }
-            catch { self.error = error.localizedDescription }
+            do {
+                outcome = try await state.redeem(f, d)
+                errors.record(.redemption, .succeeded)
+            } catch { errors.record(.redemption, .failed(error.localizedDescription)) }
             busy = false
         }
     }
