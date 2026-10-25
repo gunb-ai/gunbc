@@ -138,7 +138,7 @@ fn attempt_slot_controls(tree: HostStateTree) -> Bool {
             first_a && repeated_a && then_b && a_after_b && released && a_after_release
           }
         }
-      } else false
+      } else { false }
     }
   }
 }

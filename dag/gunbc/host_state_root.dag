@@ -13,11 +13,12 @@ import extdeps.posix.identity { PosixOwnerNames }
 // a leaf (the way gunbc.roadmap.roadmap_attempt_worktree_claim_root is): it imports only std.types,
 // gunbc.owned_directory, gunbc.managed_directory and extdeps.posix.identity, so every cohort can import
 // it without a cycle, and no module in this import closure can import it back.
-// HONEST FRONTIER: the claim is true except for ONE literal -- inventory row Sfeb74402,
-// gunbc.authorization_claim_slot, still spelled in gunbc.durable_cas_file_store as
-// authorization_claim_store_root. It is not this cohort's store; it is discharged by cohort C-misc,
-// onto THIS declaration, in its own PR. Until that lands, "the ONE declaration" means exactly that:
-// the one declaration, except Sfeb74402's literal, discharged by C-misc.
+// WHAT THIS CLAIMS, EXACTLY: the host-state tree's root is declared HERE, and every store THIS cohort
+// migrates onto HostStateTree derives from it. Every other "/var/lib/gunbc" literal anywhere else is a
+// different store or path -- each one owned by its own inventory row and cohort, listed by identity
+// (site, row_id, disposition, cohort) at census-data/jolly-hawk-60 0c30918
+// .store-inventory/var_lib_gunbc_literals.tsv. No cohort may declare a second host-state tree; a store
+// moves onto THIS declaration in its own cohort's PR.
 //
 // THE OWNER AND MODE ARE THE OBSERVED FACT, NOT A DEMAND INVENTED HERE. The executor's privileged
 // operations create the store directories beneath it with install -d -o -g -m (gunbc.executor_privileged_operation
