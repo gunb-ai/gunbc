@@ -26,6 +26,7 @@ import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshCo
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_target_host_env_name }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.ci.ci_spec { host_primary_network_receipt_path }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host.host_effect { LocalShell }
 import gunbc.host.host_primary_network {
@@ -380,7 +381,6 @@ fn apply_primary_network(subject: FleetHostFileSubject, context: FleetSshExecuti
 // ── The CI entry ─────────────────────────────────────────────────────────────────────────────────
 
 data host_primary_network_attempt_raw: String = "host-primary-network-converge-ci"
-data host_primary_network_receipt_path: String = "target/host-primary-network-receipt.txt"
 
 // ONE TARGET PER RUN, NAMED BY THE DISPATCH, and never the host the run executes on. A host without a
 // row refuses with its standing; the apply mode is the operator's to choose.

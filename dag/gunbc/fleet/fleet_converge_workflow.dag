@@ -42,7 +42,7 @@ import gunbc.auth.mtjade1_arrival_pair {
 }
 import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
 import gunbc.ci.ci_spec { gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time }
-import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path, host_primary_network_receipt_path }
 
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
 import gunbc.auth.access_token_source { workload_identity_token_env }
@@ -193,6 +193,8 @@ import gunbc.ci.ci_spec {
   gunbc_ci_runner_microvm_host_converge_invoke,
   gunbc_ci_runner_browser_toolchain_converge_invoke,
   gunbc_ci_runner_host_file_observe_invoke,
+  gunbc_ci_host_primary_network_observe_invoke,
+  gunbc_ci_host_primary_network_converge_invoke,
   gunbc_ci_host_memory_envelope_observe_invoke,
   gunbc_ci_runner_host_file_converge_invoke,
   gunbc_ci_runner_host_cap_release_invoke,
@@ -223,7 +225,8 @@ import gunbc.ci.ci_spec {
   gunbc_rlm_launch_deployment_receipt_artifact_dir,
 }
 import gunbc.fleet.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
-import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name }
+import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name, fleet_converge_target_host_env_name }
+import gunbc.host.host_primary_network { host_primary_network_rows }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
 import gunbc.fleet.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
@@ -292,6 +295,15 @@ data fleet_converge_enrolled_host_options: List<String> = map(fleet_hosts(), h =
 // rostered again -- it does not fabricate srv5..srv12, and it does not emit a plausible empty choice.
 data fleet_converge_spark_target_options: List<String> = map(spark_administrator_credential_roster_hosts(), h => h as String)
 
+// THE `target` INPUT NAMES THE HOST A MODE ACTS ON WHEN IT IS NOT THE HOST THE JOB RUNS ON. Its choices
+// are the union of each such mode's own roster -- the Spark administrator roster for the spark_* modes,
+// the declared primary network rows for host_primary_network_* -- and each mode refuses a target outside
+// its own roster at run time, so widening the choice widens no mode. The spark_* modes stay gated on
+// their own roster (fleet_converge_dispatchable_modes).
+data fleet_converge_primary_network_target_options: List<String> = map(host_primary_network_rows, r => r.host as String)
+
+data fleet_converge_target_options: List<String> = concat(fleet_converge_spark_target_options, filter(fleet_converge_primary_network_target_options, h => !any(fleet_converge_spark_target_options, s => s == h)))
+
 // ONE NAME PER MODE, SPELLED ONCE. The dispatch options and every `if:` expression that selects on
 // them used to spell every mode name independently: once as a bare String in the options
 // list, and again inside each hand-written "github.event.inputs.mode == '<name>'". Seventeen such
@@ -336,6 +348,8 @@ type FleetConvergeWorkflowMode
   | MicrovmSlotReserve
   | MicrovmSlotStart
   | RunnerHostFileConverge
+  | HostPrimaryNetworkObserve
+  | HostPrimaryNetworkConverge
   | SitePxeEdgeObserve
   | SitePxeEdgeConverge
   | RunnerPasswordSessionToolConverge
@@ -413,6 +427,8 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     MicrovmSlotReserve => "microvm_slot_reserve"
     MicrovmSlotStart => "microvm_slot_start"
     RunnerHostFileConverge => "runner_host_file_converge"
+    HostPrimaryNetworkObserve => "host_primary_network_observe"
+    HostPrimaryNetworkConverge => "host_primary_network_converge"
     SitePxeEdgeObserve => "site_pxe_edge_observe"
     SitePxeEdgeConverge => "site_pxe_edge_converge"
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
@@ -469,6 +485,16 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
 // dispatcher reading the menu would have believed srv12 was not a legal target; the resolution would
 // have accepted it. That is the §3 positional-citation decay in prose: a second spelling of a roster,
 // invalidated by an edit somewhere else, with nothing to catch it. It is now joined from the roster.
+fn fleet_converge_target_description() -> String {
+  join([
+    "The host a target-acting mode acts on, never the executor host. spark_* modes: a rostered Spark (",
+    join(fleet_converge_spark_target_options, ", "),
+    "). host_primary_network_*: a host with a primary network row (",
+    join(fleet_converge_primary_network_target_options, ", "),
+    "), run from another host named in `host`",
+  ], "")
+}
+
 fn fleet_converge_spark_target_description() -> String {
   join([
     "Spark target host for the spark_* modes, naming the administrator credential the run materializes (any rostered Spark: ",
@@ -477,7 +503,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -521,6 +547,8 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     RunnerHostFileObserve => SixteenBinaryPack
     HostMemoryObserve => SixteenBinaryPack
     RunnerHostFileConverge => SixteenBinaryPack
+    HostPrimaryNetworkObserve => SixteenBinaryPack
+    HostPrimaryNetworkConverge => SixteenBinaryPack
     SitePxeEdgeObserve => SixteenBinaryPack
     SitePxeEdgeConverge => SixteenBinaryPack
     RunnerPasswordSessionToolConverge => SixteenBinaryPack
@@ -631,6 +659,8 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     RunnerHostFileObserve => none
     HostMemoryObserve => none
     RunnerHostFileConverge => none
+    HostPrimaryNetworkObserve => none
+    HostPrimaryNetworkConverge => none
     SitePxeEdgeObserve => none
     SitePxeEdgeConverge => none
     RunnerPasswordSessionToolConverge => none
@@ -834,6 +864,8 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     RunnerHostFileObserve => FleetSshKeyConsumed
     HostMemoryObserve => FleetSshKeyNotConsumed
     RunnerHostFileConverge => FleetSshKeyConsumed
+    HostPrimaryNetworkObserve => FleetSshKeyConsumed
+    HostPrimaryNetworkConverge => FleetSshKeyConsumed
     SitePxeEdgeObserve => FleetSshKeyConsumed
     SitePxeEdgeConverge => FleetSshKeyConsumed
     RunnerPasswordSessionToolConverge => FleetSshKeyConsumed
@@ -1477,6 +1509,12 @@ data fleet_converge_runner_host_file_converge_step_if: String = fleet_converge_m
 
 data fleet_converge_runner_host_file_any_step_if: String = fleet_converge_any_mode_step_if(modes: [RunnerHostFileObserve, RunnerHostFileConverge])
 
+data fleet_converge_host_primary_network_observe_step_if: String = fleet_converge_mode_step_if(mode: HostPrimaryNetworkObserve)
+
+data fleet_converge_host_primary_network_converge_step_if: String = fleet_converge_mode_step_if(mode: HostPrimaryNetworkConverge)
+
+data fleet_converge_host_primary_network_any_step_if: String = fleet_converge_any_mode_step_if(modes: [HostPrimaryNetworkObserve, HostPrimaryNetworkConverge])
+
 data fleet_converge_site_pxe_edge_observe_step_if: String = fleet_converge_mode_step_if(mode: SitePxeEdgeObserve)
 
 data fleet_converge_site_pxe_edge_converge_step_if: String = fleet_converge_mode_step_if(mode: SitePxeEdgeConverge)
@@ -1641,6 +1679,8 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MicrovmSlotReserve => ExecutorDomain
     MicrovmSlotStart => ExecutorDomain
     RunnerHostFileConverge => ExecutorDomain
+    HostPrimaryNetworkObserve => OwnRunConfined
+    HostPrimaryNetworkConverge => TargetHostDomain
     SitePxeEdgeObserve => ExecutorDomain
     SitePxeEdgeConverge => ExecutorDomain
     RunnerPasswordSessionToolConverge => ExecutorDomain
@@ -2321,6 +2361,65 @@ fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
     ] },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_host_file_any_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// A HOST'S PRIMARY NETWORK (gunbc.host.host_primary_network_apply), observed or converged FROM the
+// dispatched host and ON the target, because a readback taken from the target itself never crosses
+// the uplink it judges: the shared job runs on inputs.host, so the operator names an observer there
+// and the host to converge in `target`. The entry refuses when the two are one host.
+fn fleet_converge_host_primary_network_step(id: String, name: String, invoke: String, if_condition: String) -> Step {
+  RunStep {
+    name: Present { value: name },
+    id: Present { value: id },
+    run: invoke,
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        kv(key: fleet_converge_target_host_env_name, value: yaml_string(s: "${{ github.event.inputs.target }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: if_condition },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_host_primary_network_observe_step() -> Step {
+  fleet_converge_host_primary_network_step(
+    id: "host_primary_network_observe",
+    name: "Primary network: read the target's links, lease, default route and /etc/netplan from the observer and plan (no writes)",
+    invoke: gunbc_ci_host_primary_network_observe_invoke(),
+    if_condition: fleet_converge_host_primary_network_observe_step_if,
+  )
+}
+
+fn fleet_converge_host_primary_network_converge_step() -> Step {
+  fleet_converge_host_primary_network_step(
+    id: "host_primary_network_converge",
+    name: "Primary network: stage the population, netplan try on the target, confirm only on a readback from the observer",
+    invoke: gunbc_ci_host_primary_network_converge_invoke(),
+    if_condition: fleet_converge_host_primary_network_converge_step_if,
+  )
+}
+
+fn fleet_converge_host_primary_network_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload primary network receipt" },
+    id: Present { value: "host_primary_network_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "host-primary-network-receipt")),
+      kv(key: "path", value: yaml_string(s: host_primary_network_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_host_primary_network_any_step_if, ")")) },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -4696,6 +4795,9 @@ fn fleet_converge_job() -> Job {
         fleet_converge_runner_host_file_converge_step(),
         fleet_converge_runner_host_cap_release_step(),
         fleet_converge_runner_host_cap_release_receipt_upload_step(),
+        fleet_converge_host_primary_network_observe_step(),
+        fleet_converge_host_primary_network_converge_step(),
+        fleet_converge_host_primary_network_receipt_upload_step(),
         fleet_converge_runner_password_session_tool_converge_step(),
         fleet_converge_runner_password_session_tool_receipt_upload_step(),
         fleet_converge_runner_browser_toolchain_converge_step(),
@@ -4905,6 +5007,8 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     RunnerHostFileObserve => fleet_converge_shared_job_id
     HostMemoryObserve => fleet_converge_shared_job_id
     RunnerHostFileConverge => fleet_converge_shared_job_id
+    HostPrimaryNetworkObserve => fleet_converge_shared_job_id
+    HostPrimaryNetworkConverge => fleet_converge_shared_job_id
     SitePxeEdgeObserve => fleet_converge_shared_job_id
     SitePxeEdgeConverge => fleet_converge_shared_job_id
     RunnerPasswordSessionToolConverge => fleet_converge_shared_job_id
@@ -5842,10 +5946,10 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   },
   DispatchInput {
     name: "target",
-    description: Present { value: fleet_converge_spark_target_description() },
+    description: Present { value: fleet_converge_target_description() },
     required: false,
     default: none,
-    type: InputChoice { options: fleet_converge_spark_target_options },
+    type: InputChoice { options: fleet_converge_target_options },
   },
   DispatchInput {
     name: "reset_observer",
@@ -5967,7 +6071,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
 // is GitHub-invalid and dispatch-dead (review 78408). Other empty choices still refuse below.
 data fleet_converge_dispatch_inputs: List<DispatchInput> = filter(
   fleet_converge_dispatch_input_rows,
-  i => i.name != "target" || count(fleet_converge_spark_target_options) > 0
+  i => i.name != "target" || count(fleet_converge_target_options) > 0
 )
 
 fn fleet_converge_empty_choice_input_names() -> List<String> {
