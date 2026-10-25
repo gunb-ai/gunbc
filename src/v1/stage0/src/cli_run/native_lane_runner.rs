@@ -7259,7 +7259,11 @@ pub fn run_self_host_frontier(
     eprintln!(
         "[self-host-frontier] observed tests/ harness files: {} ({})",
         observed.len() - before_tests,
-        if tests_dir.is_dir() { "tests/ present" } else { "tests/ absent" }
+        if tests_dir.is_dir() {
+            "tests/ present"
+        } else {
+            "tests/ absent"
+        }
     );
     if crate_dir.join("build.rs").is_file() {
         observed.push("build.rs".to_string());

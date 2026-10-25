@@ -766,8 +766,32 @@ pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
     m.values().cloned().collect()
 }
 
+// ONE APPEND RULE FOR BOTH ENTRY POINTS (list_concat and rc_list_concat; #14997 found the second one
+// still on the plain append). An empty right side is the identity and an empty left takes the right
+// side whole, so neither copies an element. A right side of at most LIST_CONCAT_ELEMENTWISE_MAX members
+// is moved in one push at a time: im Vector append onto a growing left is superlinear for small right
+// sides (gunbc.recurring_failure_mode non_empty_append_on_a_persistent_vector_is_superlinear; the
+// threshold is a one-off bench crossover receipted there, and append_chain_ladder checks linearity at 8
+// elements). Above it, append keeps its sub-linear join. The right side is consumed, never cloned.
+pub const LIST_CONCAT_ELEMENTWISE_MAX: usize = 4096;
+
+pub fn append_persistent<T: Clone>(a: &mut Vec<T>, b: Vec<T>) {
+    if b.is_empty() {
+        return;
+    }
+    if a.is_empty() {
+        *a = b;
+        return;
+    }
+    if b.len() <= LIST_CONCAT_ELEMENTWISE_MAX {
+        a.extend(b);
+    } else {
+        a.append(b);
+    }
+}
+
 pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
-    a.append(b);
+    append_persistent(&mut a, b);
     a
 }
 
@@ -886,6 +910,72 @@ mod list_slice_tests {
             assert_eq!(list_take(&xs, n), copying_take, "take {}", n);
         }
     }
+
+    // From #14997 (calm-ferret-416): every shape of both entry points agrees with plain extension,
+    // including both sides of LIST_CONCAT_ELEMENTWISE_MAX.
+    #[test]
+    fn append_agrees_with_extension_for_every_shape() {
+        for (l, r) in [
+            (0usize, 0usize),
+            (0, 1),
+            (0, 5),
+            (5, 0),
+            (5, 1),
+            (5, 2),
+            (7, 3000),
+            (3000, 1),
+            (9, LIST_CONCAT_ELEMENTWISE_MAX),
+            (9, LIST_CONCAT_ELEMENTWISE_MAX + 1),
+        ] {
+            let a: Vec<i64> = (0..l as i64).collect();
+            let b: Vec<i64> = (100..100 + r as i64).collect();
+            let want: std::vec::Vec<i64> = a.iter().chain(b.iter()).cloned().collect();
+            let bare = list_concat(a.clone(), b.clone());
+            assert_eq!(
+                bare.iter().cloned().collect::<std::vec::Vec<_>>(),
+                want,
+                "bare {} {}",
+                l,
+                r
+            );
+            let rc = rc_list_concat(Rc::new(a), Rc::new(b));
+            assert_eq!(
+                rc.iter().cloned().collect::<std::vec::Vec<_>>(),
+                want,
+                "rc {} {}",
+                l,
+                r
+            );
+        }
+    }
+
+    // THE RED CONTROL FOR THE IDENTITY ARMS (#14997): an empty left takes the right side whole and an
+    // empty right side is the identity, so neither copies an element; walking and cloning the right
+    // side (the arm this replaced) counts one clone per member.
+    #[test]
+    fn an_empty_side_copies_no_element() {
+        let cps = non_ascii_code_points(50);
+        let (_, left_empty) = clones_during(|| list_concat(Vec::new(), cps.clone()));
+        assert_eq!(left_empty, 0);
+        let (_, right_empty) = clones_during(|| list_concat(cps.clone(), Vec::new()));
+        assert_eq!(right_empty, 0);
+        let rc = Rc::new(cps);
+        let (_, rc_left_empty) = clones_during(|| rc_list_concat(Rc::new(Vec::new()), rc.clone()));
+        assert_eq!(rc_left_empty, 0);
+        let (_, rc_right_empty) = clones_during(|| rc_list_concat(rc.clone(), Rc::new(Vec::new())));
+        assert_eq!(rc_right_empty, 0);
+    }
+
+    // THE RED CONTROL FOR THE CONSUMING ARM: a uniquely held right side under the threshold is moved
+    // into the left, so no member is cloned; the clone-per-member walk this replaced counts 50.
+    #[test]
+    fn a_uniquely_held_right_side_is_moved_not_cloned() {
+        let left = Rc::new(non_ascii_code_points(3));
+        let right = non_ascii_code_points(50);
+        let (out, clones) = clones_during(|| rc_list_concat(left, Rc::new(right)));
+        assert_eq!(out.len(), 53);
+        assert_eq!(clones, 0);
+    }
 }
 
 pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
@@ -980,22 +1070,21 @@ pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
     v
 }
 
-// A right side at or below RC_LIST_CONCAT_ELEMENTWISE_MAX is pushed element by element: im Vector
-// append onto a growing left is superlinear for small right sides, and element-wise push is linear
-// (gunbc.recurring_failure_mode non_empty_append_on_a_persistent_vector_is_superlinear; the threshold
-// is a one-off bench crossover receipted there; append_chain_ladder checks linearity at 8 elements). Above it, append keeps its sub-linear join.
-pub const RC_LIST_CONCAT_ELEMENTWISE_MAX: usize = 4096;
-
+// The Rc entry point of the append rule above: an empty side returns the other Rc untouched, and the
+// right side is unwrapped when uniquely held (else the O(1) persistent clone) so it is moved, not copied.
 pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
-    let mut result = a;
-    let out = Rc::make_mut(&mut result);
-    if b.len() <= RC_LIST_CONCAT_ELEMENTWISE_MAX {
-        for item in b.iter() {
-            out.push_back(item.clone());
-        }
-    } else {
-        out.append((*b).clone());
+    if b.is_empty() {
+        return a;
     }
+    if a.is_empty() {
+        return b;
+    }
+    let owned = match Rc::try_unwrap(b) {
+        Ok(v) => v,
+        Err(rc) => (*rc).clone(),
+    };
+    let mut result = a;
+    append_persistent(Rc::make_mut(&mut result), owned);
     result
 }
 

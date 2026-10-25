@@ -300,6 +300,7 @@ data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
   retained_support_dir_member(path: "src/cli_run/test_migration.rs"),
   retained_support_dir_member(path: "src/cli_run/witness_gates.rs"),
   retained_test_harness(path: "tests/base_closure_member_absent_at_live_path.rs"),
+  retained_test_harness(path: "tests/census_cost_step0_measurement.rs"),
   retained_test_harness(path: "tests/census_identity_call_type.rs"),
   retained_test_harness(path: "tests/dag_parse_sweep_refusal_location.rs"),
   retained_test_harness(path: "tests/declaration_index_integrity.rs"),
