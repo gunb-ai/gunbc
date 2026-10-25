@@ -1399,12 +1399,14 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
   // The sorted plan must then be pairwise disjoint (roster_label_edits_disjoint), or it refuses: the order alone does not
   // make two edits of the same bytes safe.
   match planned {
-    LabelsSelected { edits: es } =>
-      let sorted = list_sort_by_key(xs: es, key: roster_label_edit_order_key, order: int_total_order())
-      match roster_label_edits_disjoint(edits: roster_expand_relocations(edits: sorted)) {
-        LabelsSelected { edits: _ } => LabelsSelected { edits: sorted }
-        other => other
-      }
+    LabelsSelected { edits: es } => roster_sorted_disjoint_plan(sorted: list_sort_by_key(xs: es, key: roster_label_edit_order_key, order: int_total_order()))
+    other => other
+  }
+}
+
+fn roster_sorted_disjoint_plan(sorted: List<RosterLabelEdit>) -> RosterLabelPlan {
+  match roster_label_edits_disjoint(edits: roster_expand_relocations(edits: sorted)) {
+    LabelsSelected { edits: _ } => LabelsSelected { edits: sorted }
     other => other
   }
 }
