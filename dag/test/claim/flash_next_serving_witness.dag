@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, token_count_value, token_count, tokens_per_second, nanosecond, milli_tokens_per_second_count, basis_point, basis_point_count, Permille, permille, permille_count, concurrent_request_thousandths_count }
 import std.dissolution { dissolution_is_bound }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt, CitedFigureStanding }
-import extdeps.gpu.types { TensorFp4, TensorFp8, TensorBf16, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count }
+import extdeps.gpu.types { GpuModelCatalogRow, TensorFp4, TensorFp8, TensorBf16, gpu_dense_tensor_throughput, gpu_catalog_bandwidth_count, gpu_catalog_bandwidth }
 import extdeps.gpu.nvidia { nvidia_h200_nvl_catalog, nvidia_b200_sxm_catalog, nvidia_rtx_pro_6000_max_q_catalog }
 import extdeps.qwen.qwen3_8_flash_next {
   qwen3_8_flash_next_architecture, flash_next_qsa_kv_bytes_per_token, flash_next_routed_expert_parameters,
@@ -15,9 +15,10 @@ import extdeps.qwen.qwen3_8_flash_next {
 import gunbc.serving.gpu_observed_memory_receipt { observed_memory_bytes, h200_nvl_observed_memory, b200_observed_memory, observed_memory_frontier }
 import gunbc.serving.flash_next_experiment_identity {
   H200ObservedCurrentStack, B200ObservedCurrentStack, B200PredictedNativeStack, H200UpstreamV032, B200UpstreamV032,
-  VariantPlanned, host_ngram_table_copies, Pro6000MaxQNative, VariantRefused,
+  VariantPlanned, VariantPartiallyObserved, host_ngram_table_copies, Pro6000MaxQNative, VariantRefused,
   VariantUnobserved, VariantObserved, VariantHypothesis, VariantStatus, flash_next_variant_rows, variant_status,
   flash_next_experiment_identity_frontier, kv_arithmetic_capacity, serving_variant_eq, current_stack_kv_figure,
+  ServingVariant, VariantRow,
 }
 import gunbc.serving.flash_next_quant_matrix {
   QuantCell, QuantMatrixRow, WeightNvfp4LilQad, WeightBf16, WeightFp8Qwen128Blocks, KvFp8, KvBf16, CellOutcome, CellMeasured,
@@ -29,11 +30,16 @@ import gunbc.serving.flash_next_maxq_fork_measurements {
   ForkMaxQ300, ForkServer600, fork_kv_pool, pool_ratio_permille, fork_level_aggregate, fork_levels, ForkLevelDoesNotFit,
   collapse_capture_size_hypothesis, fork_open_loop_rows, oversubscribed_rows, tp2_175k_seat_bracket, tp2_unmeasured_seats,
   two_card_pcie_interconnect, fork_unobserved_layouts, fork_prefill_readings, layout, flash_next_maxq_fork_measurements_frontier,
+  topology_eq,
 }
 import gunbc.serving.gpu_bench_warm_standing { WarmValid, WarmOverCapacity }
 import gunbc.serving.flash_next_topology {
   ServingTopology, CardBudget, TopologyFits, TopologyRefused, topology_capacity, card_budget_from_measured_cell,
   topology_cards, topology_host_ngram_copies, budget_with_indexer_scaled, flash_next_topology_frontier,
+  CardBudgetBuild, CardBudgetDerived, CardBudgetRefused, CellNotMeasured, CellMeasurementIncomplete, MeasuredKvTokensZero,
+  MeasuredUsageExceedsUsableMemory, MeasuredPerTokenBelowDerivedTerms, WeightsDoNotFit, RankBytesPerTokenZero,
+  serving_topology_from_widths, ServingTopologyBuilt, ServingTopologyWidthZero, TensorParallelWidth, DataParallelWidth,
+  width_one, width_two, width_four, width_eight,
 }
 import gunbc.serving.flash_next_recipe_throughput_evidence {
   ReceiptConcurrencyBelowReading, flash_next_recipe_throughput_verdict, flash_next_recipe_throughput_frontier,
@@ -46,8 +52,8 @@ import gunbc.serving.flash_next_image_capability_observation {
   flash_next_image_observation_frontier,
 }
 import gunbc.serving.flash_next_roofline {
-  RooflineCard, CeilingRatio, maxq_kv_bytes_per_token, mean_prompt_tokens, unique_experts_per_layer,
-  p3_ceiling_ratio, p4_ceiling_ratio, p5_composed_permille, flash_next_roofline_consumer_frontier,
+  RooflineCard, CeilingRatio, maxq_kv_bytes_per_token, mean_prompt_tokens, expert_bytes, mandatory_step_bytes,
+  mandatory_operations_per_token, roofline_bandwidth, p3_ceiling_ratio, p4_ceiling_ratio, p5_composed_permille, flash_next_roofline_consumer_frontier,
 }
 import gunbc.serving.flash_next_predictions {
   PredictionId, PredictionCard,
@@ -174,9 +180,9 @@ test fn w_p4_ceiling_discriminates_h200_and_b200_paths() -> Bool {
           Present { value: bm } => match row_for(id: P4PrefillSpeedup, card: H200Nvl) {
             Present { value: ph } => match row_for(id: P4PrefillSpeedup, card: B200) {
               Present { value: pb } =>
-                (match ceiling_verdict(row: ph, ceiling: p4_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: h, chunk_tokens: 6144)) { IntervalAboveCeiling { ceiling_permille: _, spec_standing: _ } => true, IntervalReachableUnderCeiling { ceiling_permille: _, spec_standing: _ } => false, CeilingNotScored => false })
-                  && (match ceiling_verdict(row: pb, ceiling: p4_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: bf, chunk_tokens: 6144)) { IntervalReachableUnderCeiling { ceiling_permille: _, spec_standing: _ } => true, IntervalAboveCeiling { ceiling_permille: _, spec_standing: _ } => false, CeilingNotScored => false })
-                  && (match ceiling_verdict(row: pb, ceiling: p4_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: bm, chunk_tokens: 6144)) { IntervalAboveCeiling { ceiling_permille: _, spec_standing: _ } => true, IntervalReachableUnderCeiling { ceiling_permille: _, spec_standing: _ } => false, CeilingNotScored => false })
+                (match ceiling_verdict(row: ph, ceiling: p4_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: h, chunk_tokens: 6144)) { IntervalAboveCeiling { ceiling: _ } => true, IntervalReachableUnderCeiling { ceiling: _ } => false, CeilingNotScored => false })
+                  && (match ceiling_verdict(row: pb, ceiling: p4_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: bf, chunk_tokens: 6144)) { IntervalReachableUnderCeiling { ceiling: _ } => true, IntervalAboveCeiling { ceiling: _ } => false, CeilingNotScored => false })
+                  && (match ceiling_verdict(row: pb, ceiling: p4_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: bm, chunk_tokens: 6144)) { IntervalAboveCeiling { ceiling: _ } => true, IntervalReachableUnderCeiling { ceiling: _ } => false, CeilingNotScored => false })
               none => false
             }
             none => false
@@ -191,12 +197,44 @@ test fn w_p4_ceiling_discriminates_h200_and_b200_paths() -> Bool {
   }
 }
 
-// P3 CEILING: decode is bandwidth-bound, so the ceiling tracks the bandwidth ratio (2.68x H200).
-test fn w_p3_ceiling_tracks_bandwidth() -> Bool {
+// P3 CEILING: both decode floors divide the same mandatory bytes, so the ceiling is the bandwidth ratio (2.68x H200,
+// 4.46x B200 on the operator figure), and both registered P3 intervals sit under it. The ceiling carries the standing
+// of the BANDWIDTH it divided by, not the tensor-throughput standing (review 5641830716): the H200's bandwidth is
+// CitedToAuthority where its BF16 rate is TranscribedUncited, which is what makes the first assertion discriminate,
+// and the B200's is the operator figure's own TranscribedUncited.
+fn standing_is_cited(s: CitedFigureStanding) -> Bool {
+  match s { CitedToAuthority { authority: _ } => true, TranscribedUncited { read_obligation: _ } => false, ObservedByReceipt { observed: _ } => false }
+}
+
+fn standing_is_uncited(s: CitedFigureStanding) -> Bool {
+  match s { TranscribedUncited { read_obligation: _ } => true, CitedToAuthority { authority: _ } => false, ObservedByReceipt { observed: _ } => false }
+}
+
+test fn w_p3_ceiling_is_the_bandwidth_ratio_and_carries_the_bandwidth_standing() -> Bool {
   match flash_next_maxq_card {
     Present { value: m } => match flash_next_h200_card {
-      Present { value: h } => match p3_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: h, concurrent: 4, draft_depth: 3, context_tokens: 110000) {
-        Present { value: c } => permille_count(p: c.permille) > 2000 && permille_count(p: c.permille) < 3000
+      Present { value: h } => match flash_next_b200_fp4_card {
+        Present { value: b } => match p3_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: h) {
+          Present { value: ch } => match p3_ceiling_ratio(arch: qwen3_8_flash_next_architecture, baseline: m, card: b) {
+            Present { value: cb } => match row_for(id: P3DecodeSpeedup, card: H200Nvl) {
+              Present { value: ph } => match row_for(id: P3DecodeSpeedup, card: B200) {
+                Present { value: pb } =>
+                  between_permille(Present { value: ch.permille }, 2670, 2690)
+                    && between_permille(Present { value: cb.permille }, 4450, 4480)
+                    && standing_is_cited(s: ch.card_rate_standing)
+                    && standing_is_cited(s: ch.baseline_rate_standing)
+                    && standing_is_uncited(s: cb.card_rate_standing)
+                    && standing_is_uncited(s: ch.workload_standing)
+                    && (match ceiling_verdict(row: ph, ceiling: Present { value: ch }) { IntervalReachableUnderCeiling { ceiling: _ } => true, IntervalAboveCeiling { ceiling: _ } => false, CeilingNotScored => false })
+                    && (match ceiling_verdict(row: pb, ceiling: Present { value: cb }) { IntervalReachableUnderCeiling { ceiling: _ } => true, IntervalAboveCeiling { ceiling: _ } => false, CeilingNotScored => false })
+                none => false
+              }
+              none => false
+            }
+            none => false
+          }
+          none => false
+        }
         none => false
       }
       none => false
@@ -205,12 +243,34 @@ test fn w_p3_ceiling_tracks_bandwidth() -> Bool {
   }
 }
 
-test fn w_unique_experts_saturate_with_rows() -> Bool {
+// THE FLOOR'S WORK IS MANDATORY: ten routed experts and the shared expert per layer, at 9/16 byte per parameter, and two
+// operations per parameter of the same experts; neither moves with rows or context (they are not functions of them).
+test fn w_mandatory_step_work_follows_the_config() -> Bool {
   let a = qwen3_8_flash_next_architecture
-  unique_experts_per_layer(arch: a, rows: 1) >= 9
-    && unique_experts_per_layer(arch: a, rows: 1) <= 10
-    && unique_experts_per_layer(arch: a, rows: 16) > unique_experts_per_layer(arch: a, rows: 4)
-    && unique_experts_per_layer(arch: a, rows: 6144) == 512
+  byte_size_count(b: expert_bytes(arch: a)) == 2764800
+    && byte_size_count(b: mandatory_step_bytes(arch: a)) == 48 * 11 * 2764800
+    && mandatory_operations_per_token(arch: a) == 2 * 48 * 11 * 4915200
+    && mandatory_operations_per_token(arch: a) < 2 * a.active_parameters_per_token
+}
+
+// A CATALOG BANDWIDTH IS READ WITH ITS CITATION. The Max-Q and H200 rows cite memory_bandwidth; the B200 row has none, so its
+// card reads the override and its standing. RED: a row that carries a bandwidth its citations do not ground is absent, and a
+// card on it does NOT fall back to an override (the uncited figure is neither read as cited nor silently replaced).
+fn uncited_bandwidth_row(r: GpuModelCatalogRow) -> GpuModelCatalogRow {
+  GpuModelCatalogRow { vendor: r.vendor, model: r.model, microarchitecture: r.microarchitecture, package: r.package, execution_lane_count: r.execution_lane_count, memory: r.memory, memory_bandwidth: r.memory_bandwidth, boost_clock: r.boost_clock, tdp_watts: r.tdp_watts, compute_capability: r.compute_capability, supported_runtimes: r.supported_runtimes, interconnect: r.interconnect, sm_cache: r.sm_cache, sm_cache_citations: r.sm_cache_citations, figure_citations: [], dense_tensor_throughput: r.dense_tensor_throughput }
+}
+
+test fn w_catalog_bandwidth_carries_its_citation_and_an_uncited_one_is_absent() -> Bool {
+  (match gpu_catalog_bandwidth(row: nvidia_h200_nvl_catalog) { Present { value: f } => standing_is_cited(s: f.standing), none => false })
+    && (match gpu_catalog_bandwidth(row: nvidia_rtx_pro_6000_max_q_catalog) { Present { value: f } => standing_is_cited(s: f.standing), none => false })
+    && (match gpu_catalog_bandwidth(row: nvidia_b200_sxm_catalog) { Present { value: _ } => false, none => true })
+    && (match gpu_catalog_bandwidth(row: uncited_bandwidth_row(r: nvidia_h200_nvl_catalog)) { Present { value: _ } => false, none => true })
+    && (match flash_next_b200_fp4_card {
+      Present { value: b } =>
+        (match roofline_bandwidth(card: b) { Present { value: f } => standing_is_uncited(s: f.standing), none => false })
+          && (match roofline_bandwidth(card: RooflineCard { catalog: uncited_bandwidth_row(r: nvidia_h200_nvl_catalog), bandwidth_override: b.bandwidth_override, memory_bytes: b.memory_bytes, weights_bytes: b.weights_bytes, overhead_bytes: b.overhead_bytes, gpu_memory_utilization: b.gpu_memory_utilization, main_kv_element_bytes: b.main_kv_element_bytes, math_datatype: b.math_datatype }) { Present { value: _ } => false, none => true })
+      none => false
+    })
 }
 
 test fn w_p5_composition_is_parity_at_parity_and_monotone() -> Bool {
@@ -279,13 +339,18 @@ test fn w_variants_are_distinct_and_unsupported_paths_are_not_zero() -> Bool {
     && status_is_hypothesis(s: variant_status(rows: flash_next_variant_rows, v: B200PredictedNativeStack))
     && !serving_variant_eq(a: H200UpstreamV032, b: H200ObservedCurrentStack)
     && !serving_variant_eq(a: H200UpstreamV032, b: B200UpstreamV032)
-    && status_is_planned(s: variant_status(rows: flash_next_variant_rows, v: H200UpstreamV032))
+    && status_is_partially_observed(s: variant_status(rows: flash_next_variant_rows, v: H200UpstreamV032))
+    && status_is_partially_observed(s: variant_status(rows: flash_next_variant_rows, v: B200UpstreamV032))
     && host_ngram_table_copies(replicas: 8, shared_copy: true) == 1
     && host_ngram_table_copies(replicas: 8, shared_copy: false) == 8
 }
 
 fn status_is_planned(s: VariantStatus?) -> Bool {
   match s { Present { value: VariantPlanned { recorded_when: _ } } => true, _ => false }
+}
+
+fn status_is_partially_observed(s: VariantStatus?) -> Bool {
+  match s { Present { value: VariantPartiallyObserved { observations_ref: _, receipt_fields_unrecorded: f } } => count(f) > 0, _ => false }
 }
 
 fn status_is_refused(s: VariantStatus?) -> Bool {
@@ -299,6 +364,83 @@ fn status_is_observed(s: VariantStatus?) -> Bool {
 }
 fn status_is_hypothesis(s: VariantStatus?) -> Bool {
   match s { Present { value: VariantHypothesis { basis: _ } } => true, _ => false }
+}
+
+// A STATUS AGREES WITH THE READINGS IT INDEXES (review 5641830716): a variant with a CellMeasured matrix cell or an upstream
+// run observation is not Planned, Unobserved or Hypothesis, and a PartiallyObserved variant has at least one such reading.
+// Named members pin the arms the fold could otherwise ratify by classifier: both upstream 0.32.0 variants have readings and
+// are PartiallyObserved; the predicted native stack has none.
+fn variant_has_readings(v: ServingVariant) -> Bool {
+  count(flash_next_quant_matrix |> filter(r => serving_variant_eq(a: r.variant, b: v) && (match r.outcome { CellMeasured { weights_bytes: _, kv_bytes: _, kv_tokens: _, gpu_memory_utilization: _, throughput: _ } => true, _ => false }))) > 0
+    || count(upstream_v032_run_observations |> filter(o => serving_variant_eq(a: o.variant, b: v))) > 0
+}
+
+fn status_agrees_with_readings(r: VariantRow) -> Bool {
+  match r.status {
+    VariantPlanned { recorded_when: _ } => !variant_has_readings(v: r.variant)
+    VariantUnobserved { trigger: _ } => !variant_has_readings(v: r.variant)
+    VariantHypothesis { basis: _ } => !variant_has_readings(v: r.variant)
+    VariantPartiallyObserved { observations_ref: _, receipt_fields_unrecorded: f } => variant_has_readings(v: r.variant) && count(f) > 0
+    VariantObserved { run_receipt_ref: _ } => true
+    VariantRefused { cause: _ } => true
+  }
+}
+
+test fn w_variant_status_agrees_with_the_readings_it_indexes() -> Bool {
+  count(flash_next_variant_rows |> filter(r => !status_agrees_with_readings(r: r))) == 0
+    && variant_has_readings(v: H200UpstreamV032)
+    && variant_has_readings(v: B200UpstreamV032)
+    && !variant_has_readings(v: B200PredictedNativeStack)
+    && !status_agrees_with_readings(r: VariantRow { variant: H200UpstreamV032, status: VariantPlanned { recorded_when: "fixture" as NonEmptyStr } })
+    && !status_agrees_with_readings(r: VariantRow { variant: B200PredictedNativeStack, status: VariantPartiallyObserved { observations_ref: "fixture" as NonEmptyStr, receipt_fields_unrecorded: [] } })
+}
+
+// ZERO WIDTHS AND ZERO DENOMINATORS REFUSE FOR THEIR OWN CAUSE, before any arithmetic (review 5641830716). A ServingTopology
+// width is a PositiveMeasureCount, so a zero TP or DP has no constructor; a width read as a natural enters only through
+// serving_topology_from_widths, which names the zero width. A measured cell with zero KV tokens refuses before the per-token
+// division; a budget whose per-token terms are all zero refuses before the per-rank division. Each red names a different
+// cause, and each sits beside a positive control on the same route.
+data zero_kv_token_cell: CellOutcome = CellMeasured { weights_bytes: Present { value: byte_size(count: 80000000000) }, kv_bytes: Present { value: byte_size(count: 80000000000) }, kv_tokens: Present { value: 0 }, gpu_memory_utilization: basis_point(count: 9000), throughput: [] }
+
+data zero_per_token_budget: CardBudget = CardBudget { memory_bytes: byte_size(count: 100000000000), utilization: basis_point(count: 9000), weights_bytes: byte_size(count: 40000000000), overhead_bytes: byte_size(count: 1000000000), full_attention_bytes_per_token: byte_size(count: 0), indexer_bytes_per_token: byte_size(count: 0), gdn_amortized_bytes_per_token: byte_size(count: 0) }
+
+data oversized_weights_budget: CardBudget = CardBudget { memory_bytes: byte_size(count: 100000000000), utilization: basis_point(count: 9000), weights_bytes: byte_size(count: 200000000000), overhead_bytes: byte_size(count: 1000000000), full_attention_bytes_per_token: byte_size(count: 12288), indexer_bytes_per_token: byte_size(count: 384), gdn_amortized_bytes_per_token: byte_size(count: 6000) }
+
+fn budget_refusal_is(b: CardBudgetBuild, expect_zero_tokens: Bool, expect_incomplete: Bool, expect_unmeasured: Bool) -> Bool {
+  match b {
+    CardBudgetRefused { cause: MeasuredKvTokensZero } => expect_zero_tokens
+    CardBudgetRefused { cause: CellMeasurementIncomplete } => expect_incomplete
+    CardBudgetRefused { cause: CellNotMeasured } => expect_unmeasured
+    _ => false
+  }
+}
+
+test fn w_zero_widths_and_zero_denominators_refuse_for_their_own_cause() -> Bool {
+  let fa = flash_next_qsa_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: byte_size(count: 1))
+  let ix = flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: byte_size(count: 1))
+  let mem = observed_memory_bytes(o: b200_observed_memory)
+  let zero_tp = match serving_topology_from_widths(tensor_parallel: 0, data_parallel: 1, expert_parallel: false) { ServingTopologyWidthZero { width: TensorParallelWidth } => true, _ => false }
+  let zero_dp = match serving_topology_from_widths(tensor_parallel: 1, data_parallel: 0, expert_parallel: false) { ServingTopologyWidthZero { width: DataParallelWidth } => true, _ => false }
+  let zero_both_names_tp = match serving_topology_from_widths(tensor_parallel: 0, data_parallel: 0, expert_parallel: false) { ServingTopologyWidthZero { width: TensorParallelWidth } => true, _ => false }
+  let widths_positive = match serving_topology_from_widths(tensor_parallel: 2, data_parallel: 4, expert_parallel: false) { ServingTopologyBuilt { topology: t } => topology_cards(t: t) == 8 && topology_eq(a: t, b: ServingTopology { tensor_parallel: width_two, data_parallel: width_four, expert_parallel: false }), _ => false }
+  let zero_kv_tokens = budget_refusal_is(b: card_budget_from_measured_cell(memory_bytes: mem, cell: zero_kv_token_cell, full_attention_bytes_per_token: fa, indexer_bytes_per_token: ix), expect_zero_tokens: true, expect_incomplete: false, expect_unmeasured: false)
+  let incomplete = match quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: QuantCell { weights: WeightNvfp4LilQad, kv: KvBf16 }) {
+    Present { value: c } => budget_refusal_is(b: card_budget_from_measured_cell(memory_bytes: mem, cell: c, full_attention_bytes_per_token: fa, indexer_bytes_per_token: ix), expect_zero_tokens: false, expect_incomplete: true, expect_unmeasured: false)
+    none => false
+  }
+  let unmeasured = match quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: QuantCell { weights: WeightBf16, kv: KvFp8 }) {
+    Present { value: c } => budget_refusal_is(b: card_budget_from_measured_cell(memory_bytes: mem, cell: c, full_attention_bytes_per_token: fa, indexer_bytes_per_token: ix), expect_zero_tokens: false, expect_incomplete: false, expect_unmeasured: true)
+    none => false
+  }
+  let measured_positive = match quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: QuantCell { weights: WeightNvfp4LilQad, kv: KvFp8 }) {
+    Present { value: c } => match card_budget_from_measured_cell(memory_bytes: mem, cell: c, full_attention_bytes_per_token: fa, indexer_bytes_per_token: ix) { CardBudgetDerived { budget: _ } => true, CardBudgetRefused { cause: _ } => false }
+    none => false
+  }
+  let tp1 = ServingTopology { tensor_parallel: width_one, data_parallel: width_one, expert_parallel: false }
+  let zero_rank_bytes = match topology_capacity(t: tp1, b: zero_per_token_budget) { TopologyRefused { cause: RankBytesPerTokenZero } => true, _ => false }
+  let weights_do_not_fit = match topology_capacity(t: tp1, b: oversized_weights_budget) { TopologyRefused { cause: WeightsDoNotFit } => true, _ => false }
+  let sharded_fits = match topology_capacity(t: ServingTopology { tensor_parallel: width_four, data_parallel: width_one, expert_parallel: false }, b: oversized_weights_budget) { TopologyFits { retained_tokens: r, per_replica_tokens: _, weight_copies_bytes: _ } => r > 0, TopologyRefused { cause: _ } => false }
+  zero_tp && zero_dp && zero_both_names_tp && widths_positive && zero_kv_tokens && incomplete && unmeasured && measured_positive && zero_rank_bytes && weights_do_not_fit && sharded_fits
 }
 
 // KV arithmetic fills two of the six capacity quantities and leaves the SLO-bound ones absent, not zero.
@@ -350,12 +492,12 @@ test fn w_topology_dp_replicates_weights_and_tp_capacity_rises_past_tp2() -> Boo
   let cell = quant_matrix_outcome(rows: flash_next_quant_matrix, v: B200UpstreamV032, c: QuantCell { weights: WeightNvfp4LilQad, kv: KvFp8 })
   match cell {
     Present { value: c } => match card_budget_from_measured_cell(memory_bytes: observed_memory_bytes(o: b200_observed_memory), cell: c, full_attention_bytes_per_token: flash_next_qsa_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: byte_size(count: 1)), indexer_bytes_per_token: flash_next_indexer_kv_bytes_per_token(arch: qwen3_8_flash_next_architecture, element_bytes: byte_size(count: 1))) {
-      Present { value: b } => {
-        let dp1 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 1, expert_parallel: false }, b: b)
-        let tp2 = topology_capacity(t: ServingTopology { tensor_parallel: 2, data_parallel: 1, expert_parallel: false }, b: b)
-        let tp8 = topology_capacity(t: ServingTopology { tensor_parallel: 8, data_parallel: 1, expert_parallel: false }, b: b)
-        let tp8_idx = topology_capacity(t: ServingTopology { tensor_parallel: 8, data_parallel: 1, expert_parallel: false }, b: budget_with_indexer_scaled(b: b, permille: 2000))
-        let dp8 = topology_capacity(t: ServingTopology { tensor_parallel: 1, data_parallel: 8, expert_parallel: false }, b: b)
+      CardBudgetDerived { budget: b } => {
+        let dp1 = topology_capacity(t: ServingTopology { tensor_parallel: width_one, data_parallel: width_one, expert_parallel: false }, b: b)
+        let tp2 = topology_capacity(t: ServingTopology { tensor_parallel: width_two, data_parallel: width_one, expert_parallel: false }, b: b)
+        let tp8 = topology_capacity(t: ServingTopology { tensor_parallel: width_eight, data_parallel: width_one, expert_parallel: false }, b: b)
+        let tp8_idx = topology_capacity(t: ServingTopology { tensor_parallel: width_eight, data_parallel: width_one, expert_parallel: false }, b: budget_with_indexer_scaled(b: b, permille: 2000))
+        let dp8 = topology_capacity(t: ServingTopology { tensor_parallel: width_one, data_parallel: width_eight, expert_parallel: false }, b: b)
         match dp1 {
           TopologyFits { retained_tokens: r1, per_replica_tokens: p1, weight_copies_bytes: _ } => match tp2 {
             TopologyFits { retained_tokens: r2, per_replica_tokens: _, weight_copies_bytes: _ } => match tp8 {
@@ -374,12 +516,12 @@ test fn w_topology_dp_replicates_weights_and_tp_capacity_rises_past_tp2() -> Boo
           _ => false
         }
       }
-      none => false
+      CardBudgetRefused { cause: _ } => false
     }
     none => false
   }
-  && topology_cards(t: ServingTopology { tensor_parallel: 2, data_parallel: 4, expert_parallel: false }) == 8
-  && topology_host_ngram_copies(t: ServingTopology { tensor_parallel: 1, data_parallel: 8, expert_parallel: false }, shared_copy: true) == 1
+  && topology_cards(t: ServingTopology { tensor_parallel: width_two, data_parallel: width_four, expert_parallel: false }) == 8
+  && topology_host_ngram_copies(t: ServingTopology { tensor_parallel: width_one, data_parallel: width_eight, expert_parallel: false }, shared_copy: true) == 1
 }
 
 // The recipe's ~900 tok/s @16 reading is not contradicted or confirmed by the production receipt: it ran at ~3.2 mean decode
@@ -472,8 +614,8 @@ test fn w_bf16_kv_decode_ceiling_exceeds_fp8_on_both_cards() -> Bool {
 }
 
 test fn w_fork_pools_ratio() -> Bool {
-  let one = fork_kv_pool(card: ForkMaxQ300, topology: layout(tp: 1, dp: 1))
-  let two = fork_kv_pool(card: ForkMaxQ300, topology: layout(tp: 2, dp: 1))
+  let one = fork_kv_pool(card: ForkMaxQ300, topology: layout(tp: width_one, dp: width_one))
+  let two = fork_kv_pool(card: ForkMaxQ300, topology: layout(tp: width_two, dp: width_one))
   let ratio = match one {
     Present { value: a } => match two { Present { value: b } => pool_ratio_permille(pool: b, single: a), none => none }
     none => none
@@ -482,15 +624,15 @@ test fn w_fork_pools_ratio() -> Bool {
 }
 
 test fn w_fork_pool_lookup() -> Bool {
-  fork_kv_pool(card: ForkServer600, topology: layout(tp: 1, dp: 1)) == Present { value: 734135 }
-    && fork_kv_pool(card: ForkServer600, topology: layout(tp: 2, dp: 1)) == none
+  fork_kv_pool(card: ForkServer600, topology: layout(tp: width_one, dp: width_one)) == Present { value: 734135 }
+    && fork_kv_pool(card: ForkServer600, topology: layout(tp: width_two, dp: width_one)) == none
 }
 
 test fn w_fork_levels() -> Bool {
   let no_b8 = count(fork_levels |> filter(l => match l.outcome { ForkLevelDoesNotFit { cause: _ } => true, _ => false })) == 1
-  let collapse = fork_level_aggregate(card: ForkMaxQ300, topology: layout(tp: 1, dp: 1), context: 16384, concurrency: 16) == Present { value: tokens_per_second(count: 363) }
-  let unmeasured_b8 = fork_level_aggregate(card: ForkMaxQ300, topology: layout(tp: 1, dp: 1), context: 131072, concurrency: 8) == none
-  let no_gain = fork_level_aggregate(card: ForkServer600, topology: layout(tp: 1, dp: 1), context: 175000, concurrency: 3) == Present { value: tokens_per_second(count: 365) }
+  let collapse = fork_level_aggregate(card: ForkMaxQ300, topology: layout(tp: width_one, dp: width_one), context: 16384, concurrency: 16) == Present { value: tokens_per_second(count: 363) }
+  let unmeasured_b8 = fork_level_aggregate(card: ForkMaxQ300, topology: layout(tp: width_one, dp: width_one), context: 131072, concurrency: 8) == none
+  let no_gain = fork_level_aggregate(card: ForkServer600, topology: layout(tp: width_one, dp: width_one), context: 175000, concurrency: 3) == Present { value: tokens_per_second(count: 365) }
   no_b8 && collapse && unmeasured_b8 && no_gain
 }
 

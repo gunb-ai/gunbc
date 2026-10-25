@@ -69,6 +69,7 @@ type Quantity =
   | VolumeFlow
   | Density
   | SpecificHeatCapacity
+  | Velocity
   | Acceleration
   | ResistancePerLength
 
@@ -749,6 +750,17 @@ fn positive_measure_count_from_int(
 fn positive_measure_count_value(
   count: PositiveMeasureCount,
 ) -> Int {
+  match count {
+    PositiveMeasureSuccessor { predecessor: predecessor } =>
+      predecessor + 1
+  }
+}
+
+// The same count as a natural, for a consumer whose arithmetic is over Nat (a divisor, a multiplier of
+// byte counts): the successor of a natural is a natural, so no Int crossing is needed to read it.
+fn positive_measure_count_nat(
+  count: PositiveMeasureCount,
+) -> Nat {
   match count {
     PositiveMeasureSuccessor { predecessor: predecessor } =>
       predecessor + 1
@@ -2162,6 +2174,11 @@ fn kilogram_per_cubic_metre_count(d: KilogramPerCubicMetre) -> Nat { measure_cou
 type JoulePerKilogramKelvin = Measure<SpecificHeatCapacity, One, Nat>
 fn joule_per_kilogram_kelvin(count: Nat) -> JoulePerKilogramKelvin { Measure { count: count } }
 fn joule_per_kilogram_kelvin_count(c: JoulePerKilogramKelvin) -> Nat { measure_count(c) }
+
+// VELOCITY at micrometres per second, so a slicer's mm/s speeds are exact counts.
+type MicrometrePerSecond = Measure<Velocity, Micro, Nat>
+fn micrometre_per_second(count: Nat) -> MicrometrePerSecond { Measure { count: count } }
+fn micrometre_per_second_count(v: MicrometrePerSecond) -> Nat { measure_count(v) }
 
 // ACCELERATION at micrometres per second squared, so standard gravity 9.80665 m/s^2 is exact.
 type MicrometrePerSecondSquared = Measure<Acceleration, Micro, Nat>

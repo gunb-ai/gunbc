@@ -1,0 +1,209 @@
+module gunbc.fleet.printer_actuation
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessRefused}
+import std.scoped_authorization {AuthorizationRefused}
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonArray,JsonObject}
+import extdeps.languages.json.parse {JsonMemberAbsent,JsonMemberNotAnObject,JsonMemberDuplicated,JsonDocumentUnreadable}
+
+import extdeps.printing.bambu_lab_lan_protocol {bambu_completed_or_idle_state,bambu_start_error_nonblocking}
+import extdeps.tools.hostname
+import std.algebra {trim}
+import gunbc.fleet.printer_federation {printer_lan_host_identity}
+import std.types { String, NonEmptyStr, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { second }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.content_hash { sha256_hex_digest, as_content_hash_cryptographic }
+import std.effect_grant { Execute, NamespacePosition, ServiceOpTree }
+import std.scoped_authorization { AuthorizationRequest, AuthorizationScope, AttemptIdentity, AuthorizedAction, ScopedAuthorization, authorize, AuthorizationPermitted }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.emit { JsonString, JsonNumber }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_unique_member, JsonMemberFound }
+import extdeps.shell.exec { ProcessOutputPresent }
+import gunbc.fleet.printer_report { report_using_session }
+import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
+import gunbc.fleet.printer_start_reconciliation {reconcile_start}
+import gunbc.fleet.printer_workflow_artifact {printer_start_claim_directory}
+import gunbc.fleet.printer_execution_hold {PrinterExecutionHold,hold_current}
+import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_version}
+import gunbc.fleet.printer_project_delivery {
+  NamedByAttempt,
+  PrinterProjectPayload, identify_project_payload, PayloadIdentified, PayloadIdentificationRefused,
+  PayloadIdentificationRefusedResidueRemains, project_payload_digest, abandon_payload,
+  deliver_project_with_session, ProjectDelivered, ProjectDeliveryRefused,
+  ProjectDeliveryUnattempted, ProjectTransferredCleanupRefused, ProjectDeliveryProvisionRequired,
+  ProjectDeliveryRefusedResidueRemains, ProjectDeliveryUnattemptedResidueRemains,
+  ProjectDeliveryProvisionRequiredResidueRemains, receipt_remote_name,
+}
+import gunbc.fleet.printer_job_start {
+  start_print_with_session, PrintStartPublished, PrintStartRefused,
+  PrintStartOutcomeUnknown, PrintStartOutcomeUnknownResidueRemains,
+  PrintStartRefusedResidueRemains, PrintStartPublishedCleanupRefused,
+}
+
+
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.auth.approval_gate { approval_instant_now }
+
+// THE ONLY MODULE THAT STARTS A PRINTER JOB, and the only one that uploads a project in order to start
+// it. Both are enforced by admit_callers on gunbc.fleet.printer_job_start start_print_with_session and
+// gunbc.fleet.printer_project_delivery deliver_project_with_session. The one other upload is the
+// transfer-only credential check (deliver_project_to_printer), confined to its two credential runs.
+// Approval adapters produce the ScopedAuthorization this boundary consumes.
+// Common start boundary for WIF and explicit operator authentication. Authentication
+// alone grants no start. Approval binds device, bytes, version, feed, attempt and the printer state
+// the human looked at; the fixed host claim is keyed by the attempt and retained on every outcome.
+// Canonical approval subject; identity hashing consumes these exact serialized bytes.
+fn print_subject(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String, printer_state: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "printer", value: json_string(s: printer as String)),
+    json_kv(key: "project_sha256", value: json_string(s: digest)),
+    json_kv(key: "credential_version", value: json_string(s: version)),
+    json_kv(key: "filament_feed", value: json_string(s: "ams-slot-1")),
+    json_kv(key: "bed_clear_attestation", value: json_string(s: "operator confirms bed clear at approval")),
+    json_kv(key: "attempt", value: json_string(s: attempt)),
+    json_kv(key: "printer_state", value: json_string(s: printer_state)),
+  ]))
+}
+
+fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String, printer_state: String) -> AuthorizationRequest<String>? {
+  let subject = print_subject(printer: printer, digest: digest, version: version, attempt: attempt, printer_state: printer_state)
+  match sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: subject)))) {
+    Absent => none
+    Present { value: hash } => Present { value: AuthorizationRequest {
+      escalation_id: concat("printer-start-", hash.hex as String) as NonEmptyStr,
+      scopes: [AuthorizationScope {
+        verb: Execute,
+        resource: NamespacePosition { tree: ServiceOpTree { service: "bambu-lan" }, path: [printer as String] },
+        action: "gunbc.printer.project-file.start" as AuthorizedAction,
+      }],
+      subject: subject,
+      purpose: join(["Print one prepared part on ", printer as String, ". Project SHA-256 ", digest,
+        "; credential version ", version, "; batch ", attempt,
+        ". AMS slot 1. Approve ONLY after checking the bed is clear NOW; approval confirms that check. No IAM or credential changes. One start only."], "") as NonEmptyStr,
+      attempt: attempt as AttemptIdentity,
+      intent_hash: as_content_hash_cryptographic(digest: hash),
+      destructive: false,
+    } }
+  }
+}
+
+// THE PRINTER STATE THE HUMAN ACKNOWLEDGED, as far as the LAN report can tell it apart: the last
+// job's names, its state and the print type. In LAN mode task_id and subtask_id read "0", so a manual
+// reprint of the identical last file inside the approval window is indistinguishable here; any other
+// print in between changes this and voids the approval (start_authorized re-derives it).
+fn printer_state_generation(text: String) -> String? {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: root } => match json_object_unique_member(v: root, key: "print") {
+      JsonMemberFound { value: p } => {
+        let fields = map(["gcode_state", "gcode_file", "subtask_name", "print_type"], k => match json_object_unique_member(v: p, key: k) {
+          JsonMemberFound { value: JsonString { value: v } } => Present { value: json_kv(key: k, value: json_string(s: v)) }
+          _ => none
+        })
+        if any(fields, f => match f { Absent => true Present { value: _ } => false }) { none }
+        else { Present { value: serialize_json(v: json_object(members: flat_map(fields, f => match f { Present { value: kv } => [kv] Absent => [] }))) } }
+      }
+      _ => none
+    }
+    JsonDocumentUnreadable { gap: _ } => none
+  }
+}
+
+fn report_allows_start(text: String) -> Bool {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: root } => match json_object_unique_member(v: root, key: "print") {
+      JsonMemberFound { value: p } => {
+        let idle = match json_object_unique_member(v: p, key: "gcode_state") {
+          JsonMemberFound { value: JsonString { value: state } } => bambu_completed_or_idle_state(state:state)
+          JsonMemberFound {value:JsonNull}=>false JsonMemberFound {value:JsonBool {value:_}}=>false JsonMemberFound {value:JsonNumber {lexeme:_}}=>false JsonMemberFound {value:JsonArray {elements:_}}=>false JsonMemberFound {value:JsonObject {members:_}}=>false JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
+        }
+        let clear = match json_object_unique_member(v: p, key: "print_error") {
+          JsonMemberFound { value: JsonNumber { lexeme: code } } => bambu_start_error_nonblocking(code:code as String)
+          JsonMemberFound {value:JsonNull}=>false JsonMemberFound {value:JsonBool {value:_}}=>false JsonMemberFound {value:JsonString {value:_}}=>false JsonMemberFound {value:JsonArray {elements:_}}=>false JsonMemberFound {value:JsonObject {members:_}}=>false JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
+        }
+        idle && clear
+      }
+      JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
+    }
+    JsonDocumentUnreadable {gap:_}=>false
+  }
+}
+
+// Fixed host state: changing output folders cannot re-admit the same grant. Never delete
+// claims on failure; an unknown physical effect must be reconciled by observation.
+
+// ONE START PER ATTEMPT: the claim is keyed by the attempt, so no second approval of the same attempt
+// (another printer state, another window) can admit another start.
+fn attempt_claim_key(attempt:String) -> NonEmptyStr { concat("printer-attempt-",sha256_hex(message:bytes_octets(b:utf8_encode_bytes(s:attempt)))) as NonEmptyStr }
+fn start_claim_name(key:NonEmptyStr) -> String { concat(key as String,".claimed") }
+fn start_claim_path(key:NonEmptyStr) -> String { join([printer_start_claim_directory,"/",start_claim_name(key:key)],"") }
+
+type ClaimedPrinterStart sole_constructor {
+ printer:PhysicalAssetIdentity, path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>,
+}
+// Only the gate/claim arm above can mint this input. Authentication is not start authority.
+fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
+  let printer=claim.printer
+  let path=claim.path
+  let digest=claim.digest
+  let version=claim.version
+  let token_source=claim.token_source
+  match identify_project_payload(payload: PrinterProjectPayload { local_path: path as NonEmptyStr, naming: NamedByAttempt { attempt: claim.request.attempt as NonEmptyStr } }) {
+    PayloadIdentificationRefused { local_path: _, cause: c } => exit_failure(reason: c as String)
+    PayloadIdentificationRefusedResidueRemains { local_path: _, residue_path: residue, cause: c } => exit_failure(reason: join(["Payload residue remains at ", residue as String, ": ", c as String], ""))
+    PayloadIdentified { payload: payload } =>
+      if (project_payload_digest(payload: payload).hex as String) != digest {
+        let cleaned = abandon_payload(payload: payload)
+        exit_failure(reason: if cleaned { "Project digest differs from the requested print; nothing uploaded" } else { "Project digest differs; private payload cleanup also failed" })
+      } else {
+        match deliver_project_with_session(session:claim.session, payload:payload) {
+          ProjectDelivered { receipt: receipt } => {
+            let remote = receipt_remote_name(r: receipt)
+            let still_idle=match report_using_session(session:claim.session) { ProcessOutputPresent {text:t}=>report_allows_start(text:t) && (match printer_state_generation(text:t) {Present {value:g}=>(match parse_json_document(s:claim.request.subject) {JsonDocumentParsed {value:v}=>(match json_object_unique_member(v:v,key:"printer_state") {JsonMemberFound {value:JsonString {value:acked}}=>acked==g _=>false}) JsonDocumentUnreadable {gap:_}=>false}) Absent=>false}) ProcessOutputAbsent=>false ProcessRefused {exit_code:_,stderr:_}=>false }
+            if !still_idle { return exit_failure(reason:"Printer no longer ready after upload; start withheld and claim retained") }
+            let fresh_authority=match approval_instant_now() {
+              Absent=>false
+              Present {value:now}=>match authorize(authorization:claim.authorization,request:claim.request,observed_at:now) {AuthorizationPermitted {grant:_}=>true AuthorizationRefused {cause:_}=>false}
+            }
+            if !fresh_authority { return exit_failure(reason:"Print approval expired or no longer matches after upload; claim retained") }
+            match start_print_with_session(session:claim.session, remote_name:remote) {
+              PrintStartPublished { receipt: _ } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:"publish-acknowledged",cleanup_issue:"")
+              PrintStartRefused { printer: _, cause: c } => exit_failure(reason: c as String)
+              PrintStartRefusedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Start refused; credential residue remains: ", c as String))
+              PrintStartOutcomeUnknown { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:c as String,cleanup_issue:"")
+              PrintStartOutcomeUnknownResidueRemains { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:"publish-uncertain",cleanup_issue:c as String)
+              PrintStartPublishedCleanupRefused { receipt: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(key:attempt_claim_key(attempt:claim.request.attempt as String)),publish_standing:"publish-acknowledged",cleanup_issue:c as String)
+            }
+          }
+          ProjectDeliveryRefused { printer: _, cause: c } => exit_failure(reason: c as String)
+          ProjectDeliveryUnattempted { printer: _, cause: c } => exit_failure(reason: c as String)
+          ProjectDeliveryProvisionRequired { printer: _, desired: _ } => exit_failure(reason: "Credential absent; routine printing does not provision it")
+          ProjectTransferredCleanupRefused { receipt: _, cause: c } => exit_failure(reason: concat("Transferred but cleanup failed; start withheld: ", c as String))
+          ProjectDeliveryRefusedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Delivery refused with residue: ", c as String))
+          ProjectDeliveryUnattemptedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Delivery unattempted with residue: ", c as String))
+          ProjectDeliveryProvisionRequiredResidueRemains { printer: _, desired: _, cause: c } => exit_failure(reason: concat("Credential absent with residue: ", c as String))
+        }
+      }
+  }
+}
+
+// The one boundary that uploads and starts a printer job. A caller cannot
+// bypass the live readiness check, durable claim, payload binding or grant recheck.
+fn start_authorized(hold:PrinterExecutionHold,printer:PhysicalAssetIdentity,path:String,digest:String,version:NonEmptyStr,token_source:AccessTokenSource,session:PrinterCredentialSession,authorization:ScopedAuthorization<String>,request:AuthorizationRequest<String>) -> ProcessExit {
+
+ let host=os.Hostname.ReadShort()
+ if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) || !hold_current(hold:hold) || session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session/controller hold mismatch")}
+ let claim_path=start_claim_path(key:attempt_claim_key(attempt:request.attempt as String))
+ let live_text=match report_using_session(session:session) {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>return exit_failure(reason:"Printer report empty; nothing uploaded or started") ProcessRefused {exit_code:_,stderr:_}=>return exit_failure(reason:"Printer report unreadable; nothing uploaded or started")}
+ if !Filesystem.Write(path:concat(claim_path,".before-start.json"),content:live_text).success || !report_allows_start(text:live_text) {return exit_failure(reason:"Printer was not freshly observed IDLE/FINISH without a blocking print error; nothing uploaded or started")}
+ let state=match printer_state_generation(text:live_text) {Present {value:g}=>g Absent=>return exit_failure(reason:"Printer state cannot be identified from the report; nothing uploaded or started")}
+ let expected=match print_request(printer:printer,digest:digest,version:version as String,attempt:request.attempt as String,printer_state:state) {Present {value:r}=>r Absent=>return exit_failure(reason:"Cannot bind start request")}
+ if request.subject!=expected.subject || request.escalation_id!=expected.escalation_id {return exit_failure(reason:"The approval was given for other bytes or another printer state; nothing uploaded or started")}
+ let now=match approval_instant_now() {Present {value:t}=>t Absent=>return exit_failure(reason:"Approval clock unavailable")}
+ let permitted=match authorize(authorization:authorization,request:expected,observed_at:now) {AuthorizationPermitted {grant:_}=>true AuthorizationRefused {cause:_}=>false}
+ if !permitted {return exit_failure(reason:"No current approval for this printer start")}
+                    let claim = Filesystem.WriteCreateNew(path: claim_path, content: request.subject)
+                    if !claim.success { exit_failure(reason: "This attempt's start is already claimed or its durable marker cannot be written; do not replay") }
+                    else { print_claimed_project(claim:ClaimedPrinterStart {printer:printer,path:path,digest:digest,version:version,token_source:token_source,session:session,authorization:authorization,request:request}) }
+}

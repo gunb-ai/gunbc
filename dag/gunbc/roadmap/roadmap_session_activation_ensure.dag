@@ -6,8 +6,8 @@ import extdeps.systemd.systemctl
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.durable_cas_file_store { cas_slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
 import gunbc.compute.attempt_lifecycle {
+  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
   AttemptRecord, UnitLifecycle, UnitLifecycleUnknown,
   RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease, recovery_trigger,
   AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
@@ -294,11 +294,11 @@ fn session_activation_ensure_pass_at(
   reset_failed: fn(NonEmptyStr) -> Bool,
   now: EpochSecs,
 ) -> ActivationPass {
-  match cas_slot_keys(root: stores.slots_root) {
-    CasSlotKeysListed { keys } =>
+  match attempt_slot_keys(store: stores.slots) {
+    AttemptSlotKeysListed { keys } =>
       ActivationPassRan {
         outcomes: map(keys, k =>
-          match attempt_slot_read(root: stores.slots_root, reference: k) {
+          match attempt_slot_read(store: stores.slots, reference: k) {
             AttemptSlotHeld { record: rec, generation: _ } =>
               match session_attempt_name_of(identity: rec.identity) {
                 Present { value: n } => session_activation_ensure_one(stores: stores, host: host, node_id: n.node_id, attempt_key: n.attempt_key, loaded_of: loaded_of, lifecycle_of: lifecycle_of, reset_failed: reset_failed, now: now)
@@ -308,8 +308,7 @@ fn session_activation_ensure_pass_at(
             AttemptSlotUnreadable { detail } => ActivationRefused { unit: k as String, reason: join(["the slot is unreadable: ", detail], "") }
           }),
       }
-    CasSlotKeysListingRefused { root: r, detail: d } => ActivationPassRefused { detail: join(["the session slot store at ", r as String, " could not be listed: ", d], "") }
-    CasSlotKeysSubjectRefused { root: r, cause: c } => ActivationPassRefused { detail: join(["the session slot store path ", r as String, " is not admissible: ", c], "") }
+    AttemptSlotKeysRefused { detail: d } => ActivationPassRefused { detail: join(["the session slot store: ", d], "") }
   }
 }
 

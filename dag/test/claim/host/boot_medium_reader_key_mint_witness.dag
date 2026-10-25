@@ -1,0 +1,159 @@
+module test.claim.host.boot_medium_reader_key_mint_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, Secret, String }
+import std.optional { Present, Absent }
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
+import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_ed25519_type }
+import extdeps.exec.command { argv_words }
+import gunbc.host_command_binding { HostCommandDone, HostCommandFailed }
+import extdeps.cloud.gcp.secret_manager { encode_sm_access_version_payload_wire }
+import extdeps.github.actions { Job, HostedRunner, SelfHosted, RunsOnExpression, Step, RunStep, UsesStep }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_boot_medium_reader_key_mint_job, fleet_converge_jobs, fleet_converge_boot_medium_reader_key_mint_job_id }
+import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_key }
+import gunbc.host.boot_medium_reader_key_mint {
+  ReaderKeypair, ReaderKeypairGeneration, ReaderKeypairGenerated, ReaderKeypairRefused,
+  ReaderKeyAddition, ReaderKeyVersionAdded, ReaderKeyAddRefused, ReaderKeyAddAmbiguous,
+  ReaderKeyMintReceipt, ReaderKeyMinted, ReaderKeyAlreadyPinned, ReaderKeyMintRefused, ReaderKeyMintOutcomeUnknown,
+  reader_key_mint_with, render_reader_key_mint_receipt, reader_key_mint_holds, reader_keypair_from,
+  reader_mint_dir_admission, ReaderMintDirAdmission, ReaderMintDirOnTmpfs, ReaderMintDirRefused, redact_private_material,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PLANTED PRIVATE HALF with a marker no public field contains, so its absence from a rendering is
+// decidable by substring.
+data planted_private: String = "-----BEGIN OPENSSH PRIVATE KEY-----\nPLANTED-PRIVATE-MATERIAL-7f3a\n-----END OPENSSH PRIVATE KEY-----\n"
+data public_material: NonEmptyStr = "AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN"
+data public_line: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN boot-medium-reader"
+data fingerprint_line: String = "256 SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ boot-medium-reader (ED25519)"
+
+fn generated() -> ReaderKeypairGeneration {
+  reader_keypair_from(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line })
+}
+
+fn no_private_in(text: String) -> Bool {
+  !text.contains("PLANTED-PRIVATE-MATERIAL") && !text.contains("PRIVATE KEY")
+}
+
+fn receipt_word(r: ReaderKeyMintReceipt) -> String {
+  match r {
+    ReaderKeyMinted { version_name: _, public_line: _, fingerprint: _ } => "minted"
+    ReaderKeyAlreadyPinned { public_line: _ } => "pinned"
+    ReaderKeyMintRefused { cause: _ } => "refused"
+    ReaderKeyMintOutcomeUnknown { cause: _, public_line: _, fingerprint: _ } => "unknown"
+  }
+}
+
+fn gen_word(g: ReaderKeypairGeneration) -> String {
+  match g {
+    ReaderKeypairGenerated { pair: _ } => "generated"
+    ReaderKeypairRefused { cause: _ } => "refused"
+  }
+}
+
+// THE GENERATE ARGV is ssh-keygen(1)'s: quiet, ed25519, an empty passphrase, the comment, the file.
+test fn the_keypair_is_generated_by_ssh_keygen_ed25519_with_no_passphrase_into_the_named_file() -> Bool {
+  argv_words(command: ssh_keygen_generate_command(key_type: ssh_keygen_ed25519_type, key_file: "/tmp/x/key", comment: "boot-medium-reader"))
+    == ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "boot-medium-reader", "-f", "/tmp/x/key"]
+}
+
+// CONTROL: a generation that read both halves and the fingerprint, with its directory removed, yields the
+// pair; the mint adds it and the receipt names the version, the public key and the fingerprint.
+test fn a_minted_key_receipt_names_the_version_public_key_and_fingerprint() -> Bool {
+  let r = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyVersionAdded { version_name: "projects/1/secrets/boot-medium-reader-ssh-key/versions/1" } })
+  let text = render_reader_key_mint_receipt(r: r)
+  receipt_word(r: r) == "minted" && reader_key_mint_holds(r: r)
+    && text.contains("version_name=projects/1/secrets/boot-medium-reader-ssh-key/versions/1")
+    && text.contains(concat("public_key=", public_line))
+    && text.contains("fingerprint=SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ")
+}
+
+// RED: NO RENDERING CARRIES THE PRIVATE HALF. The receipt is the run's whole output -- the exit reason and
+// the uploaded file are both this rendering -- and every arm the mint can end in is rendered over a pair
+// whose private half is planted: minted, outcome unknown, refused by the store, and refused at generation.
+test fn no_receipt_the_mint_can_produce_contains_private_key_material() -> Bool {
+  let minted = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyVersionAdded { version_name: "v1" } })
+  let unknown = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddAmbiguous { detail: "timeout" } })
+  let refused = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddRefused { detail: "403" } })
+  let unremoved = reader_key_mint_with(pinned: none, generate: fn() { reader_keypair_from(removed: false, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line }) }, add: fn(p) { ReaderKeyVersionAdded { version_name: "v1" } })
+  receipt_word(r: minted) == "minted" && receipt_word(r: unknown) == "unknown" && receipt_word(r: refused) == "refused" && receipt_word(r: unremoved) == "refused"
+    && no_private_in(text: render_reader_key_mint_receipt(r: minted))
+    && no_private_in(text: render_reader_key_mint_receipt(r: unknown))
+    && no_private_in(text: render_reader_key_mint_receipt(r: refused))
+    && no_private_in(text: render_reader_key_mint_receipt(r: unremoved))
+    && !no_private_in(text: planted_private)
+}
+
+// RED: A KEY LEFT ON DISK IS NEVER ADDED. A directory that could not be removed refuses before the add is
+// asked for; an ambiguous add does not hold; a refused add does not hold.
+test fn an_unremoved_directory_refuses_and_an_unsettled_add_does_not_hold() -> Bool {
+  gen_word(g: reader_keypair_from(removed: false, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line })) == "refused"
+    && !reader_key_mint_holds(r: reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddAmbiguous { detail: "timeout" } }))
+    && !reader_key_mint_holds(r: reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddRefused { detail: "403" } }))
+}
+
+// RED: only an ed25519 public line and a SHA256 fingerprint are admitted; a failed generation refuses.
+test fn a_generation_that_is_not_one_ed25519_key_refuses() -> Bool {
+  gen_word(g: reader_keypair_from(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: "ssh-rsa AAAAB3Nza boot-medium-reader", fingerprint: HostCommandDone { stdout: fingerprint_line })) == "refused"
+    && gen_word(g: reader_keypair_from(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: "256 MD5:aa:bb boot (ED25519)" })) == "refused"
+    && gen_word(g: reader_keypair_from(removed: true, generated: HostCommandFailed { exit_code: 1, stderr: "no" }, private_read: false, private_text: "", public_text: "", fingerprint: HostCommandFailed { exit_code: 1, stderr: "no" })) == "refused"
+    && gen_word(g: reader_keypair_from(removed: true, generated: HostCommandDone { stdout: "" }, private_read: false, private_text: "", public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line })) == "refused"
+    && gen_word(g: generated()) == "generated"
+}
+
+// THE PIN IS THE IDEMPOTENCE: a pinned public key mints nothing, and generation is never reached.
+test fn a_pinned_key_mints_nothing() -> Bool {
+  let pinned = SshPublicKey { algorithm: Ed25519, material: public_material, comment: "boot-medium-reader" }
+  receipt_word(r: reader_key_mint_with(pinned: Present { value: pinned }, generate: fn() { ReaderKeypairRefused { cause: "generation must not be reached" } }, add: fn(p) { ReaderKeyAddRefused { detail: "add must not be reached" } })) == "pinned"
+    && (match boot_medium_reader_ssh_key { Present { value: _ } => false  Absent => true })
+}
+
+fn dir_word(a: ReaderMintDirAdmission) -> String {
+  match a {
+    ReaderMintDirOnTmpfs => "tmpfs"
+    ReaderMintDirRefused { cause: _, created: c } => if c { "refused-created" } else { "refused-not-created" }
+  }
+}
+
+// RED: THE KEY IS GENERATED ONLY ON tmpfs, IN A DIRECTORY THIS RUN CREATED. A directory findmnt reports on
+// another filesystem refuses (and is the run's to remove); a directory that already exists -- an earlier
+// mint died there -- refuses without being claimed; an unreadable fstype refuses. CONTROL: a created
+// directory on tmpfs is admitted.
+test fn the_key_is_generated_only_in_a_created_directory_on_tmpfs() -> Bool {
+  dir_word(a: reader_mint_dir_admission(made: HostCommandDone { stdout: "" }, fstype: HostCommandDone { stdout: "tmpfs\n" })) == "tmpfs"
+    && dir_word(a: reader_mint_dir_admission(made: HostCommandDone { stdout: "" }, fstype: HostCommandDone { stdout: "ext4\n" })) == "refused-created"
+    && dir_word(a: reader_mint_dir_admission(made: HostCommandDone { stdout: "" }, fstype: HostCommandFailed { exit_code: 1, stderr: "findmnt: not found" })) == "refused-created"
+    && dir_word(a: reader_mint_dir_admission(made: HostCommandFailed { exit_code: 1, stderr: "mkdir: cannot create directory: File exists" }, fstype: HostCommandDone { stdout: "tmpfs" })) == "refused-not-created"
+}
+
+// RED: A DIAGNOSTIC THAT ECHOES THE KEY IS REDACTED BEFORE ANY RECEIPT HOLDS IT. A failing AddVersion
+// whose detail carries the planted private half -- whole, one of its lines, or its wire encoding -- and an
+// ambiguous add carrying it, render receipts that do not contain it. CONTROL: a detail that carries none
+// of it is kept verbatim.
+test fn a_failing_add_that_echoes_the_key_renders_no_private_material() -> Bool {
+  let whole = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddRefused { detail: concat("400 bad payload: ", planted_private) } })
+  let one_line = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddRefused { detail: "400 near PLANTED-PRIVATE-MATERIAL-7f3a" } })
+  let wire = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddRefused { detail: concat("400 data=", encode_sm_access_version_payload_wire(credential: planted_private as Secret)) } })
+  let ambiguous = reader_key_mint_with(pinned: none, generate: fn() { generated() }, add: fn(p) { ReaderKeyAddAmbiguous { detail: concat("connection reset after sending ", planted_private) } })
+  no_private_in(text: render_reader_key_mint_receipt(r: whole))
+    && no_private_in(text: render_reader_key_mint_receipt(r: wire))
+    && no_private_in(text: render_reader_key_mint_receipt(r: ambiguous))
+    && !render_reader_key_mint_receipt(r: one_line).contains("PLANTED-PRIVATE-MATERIAL")
+    && !render_reader_key_mint_receipt(r: wire).contains(encode_sm_access_version_payload_wire(credential: planted_private as Secret))
+    && redact_private_material(text: "403 PERMISSION_DENIED secretmanager.versions.add", private_half: planted_private) == "403 PERMISSION_DENIED secretmanager.versions.add"
+}
+
+fn step_ids(j: Job) -> List<String> {
+  map(j.steps, st => match st {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+  })
+}
+
+// THE MINT RUNS ONLY ON A DISCARDED VM: its job is GitHub-hosted, and no other job holds the mint step.
+test fn the_mint_runs_only_in_its_github_hosted_job() -> Bool {
+  (match fleet_converge_boot_medium_reader_key_mint_job().runner { HostedRunner { label: _ } => true  SelfHosted { labels: _ } => false  RunsOnExpression { expression: _ } => false })
+    && step_ids(j: fleet_converge_boot_medium_reader_key_mint_job()).contains("boot_medium_reader_key_mint")
+    && all(filter(fleet_converge_jobs(), j => j.id != (fleet_converge_boot_medium_reader_key_mint_job_id as String)), j => !step_ids(j: j).contains("boot_medium_reader_key_mint"))
+}
