@@ -1,0 +1,212 @@
+module gunbc.plans.fleet_naming_reach_access
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import gunbc.design_ruling {
+  project_documentation_projections_are_not_checkout_artifacts,
+  root_generalization_closes_breadth,
+  epistemic_humility_is_symmetric,
+}
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul }
+import std.types { List, String }
+
+// THE DESIGN AND SURVEY FOR FLEET NAMING, REACH AND ACCESS (session bright-swift-248, 2026-10-25):
+// every fleet member on the tailnet under a name the fleet chooses, connection between members gated
+// by access and auth alone, and BMCs and pre-OS clients found and reached through a tamed member on
+// the same LAN at any site. Design only: it changes no producer. Populations are cited by the
+// declarations that hold them, and the counts are survey readings at a5cc1bbdd2e, not pins.
+
+fn ruling_names() -> List<String> {
+  [
+    root_generalization_closes_breadth.reference.decl_name as String,
+    epistemic_humility_is_symmetric.reference.decl_name as String,
+  ]
+}
+
+fn opening() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. Target"),
+    ul(items: [
+      li(text: "Every fleet member is on the tailnet under a name the fleet allocates: owned hardware and the Hetzner guests now, vast and AWS instances as the same rows later."),
+      li(text: "Any member can connect to any other member. Whether it may is decided by access and auth alone, never by network topology."),
+      li(text: "BMCs and pre-OS clients cannot join the tailnet. They are found and reached through a tamed member on the same LAN, at any site, with or without a router."),
+      li(text: "Boot images live in R2 behind a gunb.ai custom domain and reach NFS-only BMCs through a LAN relay."),
+    ]),
+    p(text: concat("Rulings (gunbc.design_ruling): ", join(ruling_names(), ", "))),
+  ]
+}
+
+fn settled() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Settled by the operator (2026-10-25)"),
+    ul(items: [
+      li(text: "**D1. Every name is its own fact downstream of identity.** A name is derived from product.host_identity HostIdentity through a declared policy, never by reusing the identity's spelling. The policy that the tailnet device name equals the Linux hostname equals the allocated label is one explicit row, kept because it makes debugging easy for humans; changing it is an edit to that row, not to every consumer."),
+      li(text: "**D2. New hosts are named by the lottery.** gunbc.hostname_allocation draw_human_name over gunbc.host_names.gen_z, with the draw recorded. Existing LegacyHostname rows stay as they are, and the operator migrates them later. mtjade1 and srv9 to srv12 have no allocation and are drawn."),
+      li(text: "**D3. Tags and grants are derived from convergence requirements**, never hand-authored. There is no fleet-wide catch-all tag."),
+      li(text: "**D4. The enrollment credential is Tailscale workload identity federation, preferred.** The fallback is a Tailscale OAuth client limited to minting auth keys, registered by the same process as the approvals app's Google client: one human console step, the client id in the repository, the secret in custody."),
+      li(text: "**D5. Joining the tailnet.** The Hetzner guests join it. vast and AWS instances join at launch; that part is aspirational."),
+      li(text: "**D6. The R2 boot origin's custom domain is under gunb.ai.** The operator moves the gunb.ai nameservers to Cloudflare. mtcollins1 is the first test subject, since it network-boots."),
+      li(text: "**D7. Access between members is the focus.** srv3 moves to direct tailnet SSH, and its nested hop through srv2 retires."),
+      li(text: "**D8. extdeps.network.reach Reach arm FabricTunnel is renamed Tailnet.** Fabric already names the compute control plane (gunbc.fabric) and the Spark RoCE rail, so the arm takes the real upstream's name (DESIGN section 3)."),
+      li(text: "**D9. A router is expected for now.** The routerless case is designed in full and stubbed in code as a typed refusal."),
+      li(text: "**D10. MACs are learned, never typed.** Unknown machines are found by a segment census and then converged."),
+      li(text: "**D11. The site anchor is a role, not dedicated hardware.** It is filled by any tamed member on the segment. The first host at a new site is prepared offsite."),
+    ]),
+  ]
+}
+
+fn survey() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. Survey"),
+    h3(text: "3.1 Names"),
+    ul(items: [
+      li(text: "gunbc.hostname_allocation is a sound authority: an injective roster through std.allocation_roster, plus resolve_host_selector. It has no row for mtjade1 or srv9 to srv12."),
+      li(text: "About 30 production declarations build a name or address from the identity's spelling. About 11 call sites use the allocation, and those only verify or resolve names; none builds an address."),
+      li(text: "**Funnel one: gunbc.fleet.fleet_reach_endpoint fleet_owned_probe_endpoint_for.** It folds with the host identity as its initial value, so any host that is not a provider guest returns its own identity as the SSH endpoint. Every caller listed in gunbc.endpoint_authority_replacement_cut external_consumers reaches it through fleet_probe_endpoint_for or fleet_probe_target_for."),
+      li(text: "**Funnel two: gunbc.fleet.fleet_tailnet tailnet_host_from and tailnet_base_url_from.** Every caller passes the identity: gunbc.auth.approval_ntfy_publish, gunbc.auth.approval_broker_endpoint, gunbc.auth.approval_broker_placement, gunbc.fabric.fabric_storage_placement fabric_storage_endpoint_for, gunbc.live_deploy.spec deployment_tailnet_url, gunbc.live_deploy.role_singleton_convergence roster_host_tailnet_node, gunbc.live_deploy.readiness live_deploy_proxied_health_url, gunbc.workspace_gateway workspace_fleet_gateway, and gunbc.auth.tracker_web_oauth_client tracker_web_oauth_public_redirect_uri."),
+      li(text: "**Identity used as ssh_host:** gunbc.host.host_identity_access, gunbc.host.host_identity_adopt, gunbc.ci.ci_deploy_access, gunbc.live_deploy.spec deployment_srv1_target and gunbc.live_deploy.desired deployment_srv2_target."),
+      li(text: "**Linux hostname:** gunbc.hostname_set and gunbc.host.host_identity_converge already derive it from the allocation. gunbc.os_install srv3_autoinstall_identity and srv4_autoinstall_identity write the identity itself. gunbc.fleet.printer_federation printer_lan_host_identity compares the kernel hostname to the identity."),
+    ]),
+    h3(text: "3.2 IP addresses"),
+    ul(items: [
+      li(text: "**Host OS reached by automation, which moves to tailnet names:** the host endpoints of gunbc.fleet.fleet_intent_network (still bare strings in a String-typed field, already marked as debt there), gunbc.fleet.fleet_reach srv2_lan_ipv4 and srv3_lan_ipv4, gunbc.fleet.fleet_reach_endpoint provider_guest_endpoints, the gunbc.runner.runner_host_deploy host specs, and the two device IPs in extdeps.tailscale.acl."),
+      li(text: "**BMC, pre-OS, PXE and appliance addresses, which move to anchor observations (section 5):** BMC endpoints in gunbc.fleet.fleet_intent and fleet_intent_network, gunbc.machine_intake.mtcollins1_boot_run mtcollins1_media_share, the NBD server in gunbc.bmc.bmc_virtual_media, the TFTP address in gunbc.fleet.site_pxe_edge_converge, gunbc.machine_intake.mtjade1_factory_network, and the printers."),
+      li(text: "**Historical observations and topology facts stay.** These are receipts, provenance strings, segments, the gateway, DHCP reservations, the Spark RoCE rail and the microVM networks."),
+      li(text: "**Stale:** gunbc.endpoint_authority_replacement_cut names a consumer in spark.serving_converge_slice_wet, a module that no longer exists. gunbc.harness.harness_wire imports host_lan_address and never calls it. dgx_spark_router_bindings is empty, so the Spark endpoint path is dead."),
+    ]),
+    h3(text: "3.3 Tailscale"),
+    ul(items: [
+      li(text: "**Modeled (use of a member already on the tailnet):** extdeps.tailscale acl, acl_api (Get and Upsert policy, no caller), serve, whois (Node.Name) and identity (Tailscale-User-Login); gunbc.tailscale_acl_emit; gunbc.auth.tailnet_serve_readback; the apt package; the host_software_surface version probe; fleet_posix_accounts SudoTailscale."),
+      li(text: "**Not modeled (becoming a member):** tailscale up and set with hostname and tags, auth keys, the devices API (list devices, set tags), OAuth clients and workload identity federation, key expiry, ephemeral nodes, and userspace networking."),
+      li(text: "Only srv1 and srv2 have tailnet rows, and those are raw 100.x addresses."),
+      li(text: "gunbc.tailscale_acl_phase2_credential is design-only. It cites tailscale_acl_upsert_wet, which does not exist. The live ACL push is refused in gunbc.host.host_standup until operator sign-off."),
+      li(text: "extdeps.tailscale.acl operator_tailscale_acl_policy is hand-authored, and operator_acl_security_spine_holds restates its shape: validation standing where derivation is available."),
+    ]),
+    h3(text: "3.4 MAC, site and LAN"),
+    ul(items: [
+      li(text: "**MAC authority:** extdeps.network.mac Eui48Address tells a burned-in address from a software-set one and projects the OUI. It has three stragglers on old types: extdeps.dhcp.v4 MacAddress (a branded string), extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow, and gunbc.machine_intake.mtcollins1_netboot_client_observation mtcollins1_host_nic_mac (a bare string)."),
+      li(text: "**Existing building blocks:** extdeps.iputils.arping proves layer-2 presence on a named interface. extdeps.linux.neighbour models the ARP table's states. gunbc.fleet.runtime_identity_match binds the machine that answered to an identity. gunbc.machine_intake.ethernet models a port carrying several functions, such as a BMC on a shared port."),
+      li(text: "**Sites:** product.placement_supply SiteIdentity exists. gunbc.fleet.fleet_site_locale fleet_host_site_assignments holds one row."),
+      li(text: "**MAC-keyed DHCP config:** gunbc.site_uefi_arm64_pxe_edge already renders dnsmasq dhcp-host rows keyed by MAC, in ProxyDHCP mode."),
+      li(text: "**Missing: a per-host interface inventory.** MACs are scattered across intake observations."),
+      li(text: "**Taming pipeline:** gunbc.machine_intake.arrival_converge runs access_discover, then identity_bind_provisional, prior_life_boundary and bmc_secure. It has no network-discovery step in front of it."),
+    ]),
+    h3(text: "3.5 BMC and R2"),
+    ul(items: [
+      li(text: "**mtcollins1 serves no Redfish** (gunbc.machine_intake.mtcollins1_access_observation). Its only media route is the OEM REST remote media, which takes NFS or CIFS shares, so R2 cannot feed it directly. extdeps.bmc.redfish_virtual_media models HTTPS transfer for controllers that do serve Redfish."),
+      li(text: "**The boot origin is modeled but unaddressed.** gunbc.cloudflare.boot_origin models a public, content-addressed bucket behind a custom domain, and its fold refuses secrets. boot_origin_hostname_standing is Unallocated."),
+      li(text: "**gunb.ai is at Namecheap** (gunbc.namecheap.account). An R2 custom domain is understood to need an active Cloudflare zone in the account; that reading is to be verified upstream. Either way the nameserver move (D6) is a precondition."),
+    ]),
+  ]
+}
+
+fn model() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. Model"),
+    ul(items: [
+      li(text: "**Name.** HostIdentity, then the allocation (gunbc.hostname_allocation), then the naming-policy row. From that row come the Linux hostname (the existing hostnamectl converge) and the tailnet name: the allocated label joined to gunbc.fleet.fleet_tailnet fleet_tailnet_domain, read back from MagicDNS. tailnet_host_from takes the allocated label, never an identity."),
+      li(text: "**Roles and tags.** A member's roles are already declared: its gunbc.fleet.fleet_enrollment participations, the services gunbc.live_deploy publishes through tailscale serve, and the SSH demand of each gunbc.fleet.fleet_converge_workflow mode. Each role projects one tag. tagOwners is derived too, because Tailscale lets only a tag owner apply a tag, so the enrolling identity owns every derived tag."),
+      li(text: "**Reach demands and grants.** A declared reach demand names a consumer role, a provider role, a port and a reason. The ACL grants are its projection, emitted by gunbc.tailscale_acl_emit, which replaces the hand-authored operator_tailscale_acl_policy rows and the checks that restate them."),
+      li(text: "**Interface inventory.** Per HostIdentity: each interface's function (host OS, dedicated BMC, shared BMC), its permanent Eui48Address and the provenance of the reading."),
+      li(text: "**Site.** The host-to-site assignment, generalized from fleet_host_site_assignments. A site row names its anchor role and its address-discovery route."),
+      li(text: "**Endpoint resolution.** One function from an identity and an attachment (Tailnet or SiteLan) to an endpoint or a typed refusal. This is the attachment authority gunbc.endpoint_authority_replacement_cut names as its replacement root. No consumer builds a name, and a missing allocation, enrollment or observation refuses, with no fallback to the identity string."),
+      li(text: "**Access is the only gate between members.** The tailnet gives every member a route to every other. Whether a connection is admitted is decided by the derived grants plus the SSH principal (gunbc.fleet.fleet_posix_accounts, gunbc.host.host_authorized_keys_reconcile, and the pinned host keys of gunbc.fleet.fleet_host_key_enrollment). Reach becomes DirectLan, ProxyJump or Tailnet; ProxyJump stays for site-LAN targets behind an anchor."),
+    ]),
+  ]
+}
+
+fn site_reach() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. BMC and pre-OS reach at any site"),
+    h3(text: "5.1 The anchor"),
+    ul(items: [
+      li(text: "**Who can anchor.** Any member that is tamed (on the tailnet, with its interfaces captured and its site assigned) and sits on the segment can anchor it. The subject being acted on is excluded. With no eligible member, the answer is the typed refusal NoAnchorOnSegment."),
+      li(text: "**The first host at a new site is tamed offsite before it travels.** It reads its own BMC's MAC and LAN settings in-band over KCS with a local ipmitool, so it needs no network discovery to find its BMC."),
+      li(text: "**Declared residual:** if the first host at a site is down and no other member is there, the site is out of reach until a second member or a person arrives."),
+    ]),
+    h3(text: "5.2 Learning MACs"),
+    ul(items: [
+      li(text: "**BMC:** ipmitool lan print at first contact, out of band or in band."),
+      li(text: "**Host NIC:** ip link at first boot or intake, with the address's permanence checked."),
+      li(text: "**Either:** any DHCP lease or ARP entry the anchor sees."),
+      li(text: "**BMC, before first contact:** the factory sticker (gunbc.machine_intake.bmc_operator_credential_inventory, keyed by BMC MAC)."),
+    ]),
+    h3(text: "5.3 Segment census, then converge"),
+    ul(items: [
+      li(text: "**List the segment.** With a router: a ping sweep of the subnet, then the ARP table. Routerless (stubbed): passive ARP and DHCP listening, plus one IPv6 all-nodes ping."),
+      li(text: "**Classify each device by its learned MAC.** A known device converges. An unknown one gets only an unauthenticated fingerprint: the OUI vendor, IPMI channel-auth capabilities on UDP 623, and the Redfish service-root UUID where one exists. The result is CandidateBmc, CandidateHost or Foreign."),
+      li(text: "**Bind** by an expected-arrival row (board serial or vendor), a factory-sticker MAC match, or one operator confirmation. Then hand off to gunbc.machine_intake.arrival_converge, which records the MACs with their provenance."),
+      li(text: "**Hard rule:** no credential, factory or ours, goes to an unbound device. Before any credential is sent to an address, arping on the named interface must return the learned MAC, every time and not once per site. On someone else's LAN, an address is only whatever answered there last."),
+    ]),
+    h3(text: "5.4 Address lookup order"),
+    ul(items: [
+      li(text: "**1. Router lease table**, where the router is readable (the CR1000A lab)."),
+      li(text: "**2. ARP table plus arping with the MAC verified.** This works on any router."),
+      li(text: "**3. Routerless.** The typed refusal RouterlessDiscoveryNotRealized, whose trigger is per-firmware observations of how each BMC behaves without DHCP (link-local IPv4 and IPv6). The designed realization is a DHCP server on the anchor, decided once per site and enabled only after a bounded check that no other DHCP server answers. It is never an automatic switch, because a second DHCP server on someone else's network breaks it."),
+      li(text: "BMCs use DHCP everywhere, because a foreign site's subnet is unknown in advance."),
+    ]),
+    h3(text: "5.5 Boot media"),
+    ul(items: [
+      li(text: "R2 is the content-addressed public origin. The anchor fetches by digest, checks the hash and exports over NFS; srv2 fills that role in the lab. Controllers with Redfish HTTPS virtual media read R2 directly."),
+      li(text: "**Open:** whether the MegaRAC NFS server_address accepts a hostname. If not, the anchor's LAN address comes from endpoint resolution."),
+    ]),
+  ]
+}
+
+fn enrollment() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. Enrollment"),
+    ul(items: [
+      li(text: "**Credential (D4).** Workload identity federation, once upstream documentation confirms that Tailscale's federation covers minting auth keys or API tokens for this flow. Otherwise the OAuth fallback, registered like gunbc.auth.tracker_web_oauth_client approve_ios_oauth_client: an intervention row, the client id in the repository, the secret in custody, and a row in gunbc.auth.fleet_secret_accessor_roster. The pattern is selected by gunbc.auth.authorization_pattern_selection select_authorization_pattern and rostered in gunbc.auth.privileged_effect_census. Mint, custody, readback and revoke follow gunbc.cloudflare.r2_token_mint."),
+      li(text: "**Per member.** Mint a one-off tagged key, ephemeral for short-lived cloud instances. Run tailscale up with the allocated hostname and the derived tags. Read back through the devices API and status --json: the DNS name must equal the allocated label at the tailnet domain, and the tags must equal the derived set. If Tailscale renames a device on a name collision, the readback refuses. Devices reconcile the way gunbc.host.host_authorized_keys_reconcile does: an unrecognized device is refused, never removed."),
+      li(text: "**Fresh images carry no key,** because the boot origin is public and refuses secrets. The anchor delivers a one-off key after gunbc.fleet.runtime_identity_match binds the machine."),
+      li(text: "**Cloud instances** take the key through user-data. vast containers may need userspace networking, which is modeled in extdeps.tailscale as an upstream fact, not guessed."),
+      li(text: "**Workflow.** A new gunbc.fleet.fleet_converge_workflow mode, wired like HostCredentialCustodyConverge."),
+      li(text: "**Cutover is staged** (DESIGN section 3, gap-intolerant boundary). Enrollment runs over today's route, and that route survives until tailnet readback proves a member is reachable by name. Then one transition per consumer family deletes the old route."),
+    ]),
+  ]
+}
+
+fn phases() -> List<MarkdownBlock> {
+  [
+    h2(text: "7. Phases"),
+    ul(items: [
+      li(text: "**P0a. Interface inventory filled by capture.** extdeps.dhcp.v4 MacAddress, Cr1000aDhcpLeaseRow and mtcollins1_host_nic_mac move onto Eui48Address."),
+      li(text: "**P0b. The site row**, with its anchor role and discovery route, generalizing the host-to-site assignment."),
+      li(text: "**P0c. Anchor address lookup with typed refusals.** The routerless arm is stubbed."),
+      li(text: "**P0d. The segment census and its classification**, feeding arrival_converge, with the no-credential-to-unbound rule and its RED."),
+      li(text: "**P0e. BMC actions routed through the anchor**, plus the NFS relay from R2."),
+      li(text: "**P1. A live census.** The tailnet device list and every member's status --json, joined with the allocation and the enrollment roster."),
+      li(text: "**P2. The model.** The extdeps.tailscale additions, gunbc.fleet.tailnet_membership, the reach-demand rows with derived tags and grants, and the lottery allocations for mtjade1 and srv9 to srv12."),
+      li(text: "**P3. Enrollment.** The converge mode, the credential and the readback. Hetzner first, then owned hosts."),
+      li(text: "**P4. Endpoint resolution.** Delete the two funnels in section 3.1 first, then move the coupled sites, the runner specs, fleet_reach and srv3, and rename FabricTunnel to Tailnet."),
+      li(text: "**P5. The remaining LAN facts, typed.** fleet_intent_network NetworkEndpoint.address moves onto extdeps.network.address IpAddress, and BMC addresses become anchor observations."),
+      li(text: "**R2. The boot origin**, after the nameserver move. The BootOriginHostnameAllocated arm, publication and readback of the runner ISO, then a test on mtcollins1 through the srv2 NFS relay."),
+    ]),
+  ]
+}
+
+fn risks() -> List<MarkdownBlock> {
+  [
+    h2(text: "8. Risks and open items"),
+    ul(items: [
+      li(text: "**Overlapping site subnets.** Two sites can share one private range, so plain subnet routes collide. Reach through the anchor avoids that, and Tailscale 4via6 routing is the later route."),
+      li(text: "**The nameserver move** carries every existing gunb.ai record, which gunbc.namecheap observes today. They are copied before the move."),
+      li(text: "**Rogue DHCP and credential spray on a foreign LAN** are covered by the site-decided DHCP fallback and the no-credential-to-unbound rule."),
+      li(text: "**To verify upstream:** Tailscale workload identity federation for this flow, and the R2 custom-domain zone requirement."),
+      li(text: "**To observe:** whether MegaRAC NFS accepts a hostname, and how each BMC firmware behaves without DHCP."),
+      li(text: "**Deferred: Tailscale SSH.** OpenSSH principals and pinned host keys stay the access authority. They are modeled, fail closed, and work during bootstrap before a member has joined the tailnet."),
+    ]),
+  ]
+}
+
+data fleet_naming_reach_access_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "fleet-naming-reach-access",
+  title: "Fleet naming, reach and access: allocated tailnet names downstream of identity, access-gated member connection, and anchor-observed BMC reach at any site",
+  body: concat(concat(concat(concat(concat(concat(concat(opening(), settled()), survey()), model()), site_reach()), enrollment()), phases()), risks()),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Retire when every enrolled member is on the tailnet under its allocated name with derived tags read back, no production declaration builds a name or address from a HostIdentity spelling, endpoint resolution is the only route to a member, and a BMC at a site other than the operator lab has been reached through an anchor after a MAC-verified lookup."),
+  },
+}
