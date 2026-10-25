@@ -1,5 +1,7 @@
 module test.claim.fleet.site_pxe_edge_converge_witness
 
+import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data }
+import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
 import extdeps.bootloader.grub { grub_cmdline_arg_render }
@@ -760,8 +762,31 @@ data stranger_mac: Eui48Address = mac_address(octet1: 2, octet2: 0, octet3: 0, o
 
 data resolved: BootNetworkProbe = BootNetworkProbeSucceeded { observation: decl_ref(module_path: "test.claim.fleet.site_pxe_edge_converge_witness", decl_name: "resolved"), observed_at: 1788000000000 }
 
-fn binding(mac: Eui48Address) -> SitePxeEdgeInstallBinding {
-  SitePxeEdgeInstallBinding { client_mac: mac, user_data: concat("#cloud-config\nautoinstall:\n  version: 1\n# for ", render_mac_address(addr: mac) as String), meta_data: "instance-id: fixture\n" }
+// A KEY-ONLY SEED, admitted through the one mint (gunbc.provisioning.public_nocloud_seed); there is no other way to
+// build the binding's seed, so every claim below runs on an admitted one.
+fn fixture_user_data() -> YamlValue {
+  yaml_mapping(entries: [kv(key: "autoinstall", value: yaml_mapping(entries: [
+    kv(key: "version", value: yaml_int(n: 1)),
+    kv(key: "ssh", value: yaml_mapping(entries: [
+      kv(key: "install-server", value: yaml_bool(b: true)),
+      kv(key: "authorized-keys", value: yaml_sequence(elements: [yaml_string(s: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFixtureFixtureFixtureFixtureFixtureFixture fixture")])),
+      kv(key: "allow-pw", value: yaml_bool(b: false)),
+    ])),
+  ]))])
+}
+
+fn binding(mac: Eui48Address) -> SitePxeEdgeInstallBinding? {
+  match admit_public_nocloud_seed(user_data: fixture_user_data(), meta_data: yaml_mapping(entries: [kv(key: "instance-id", value: yaml_string(s: render_mac_address(addr: mac) as String))])) {
+    PublicSeedAdmitted { seed: sd } => Present { value: SitePxeEdgeInstallBinding { client_mac: mac, seed: sd } }
+    PublicSeedRefused { findings: _ } => Absent
+  }
+}
+
+fn with_binding(mac: Eui48Address, claim: fn(SitePxeEdgeInstallBinding) -> Bool) -> Bool {
+  match binding(mac: mac) {
+    Present { value: b } => claim(b)
+    Absent => false
+  }
 }
 
 fn x86_roster(macs: List<Eui48Address>) -> SiteEdgeRoster? {
@@ -815,10 +840,10 @@ test fn an_admitted_binding_renders_its_own_grub_configuration_and_seed() -> Boo
     Present { value: r } =>
       match image() {
         Absent => false
-        Present { value: i } => {
-          let st = site_pxe_edge_install_standing(binding: binding(mac: x86_mac), roster: r, image: servable_image(), name_resolution: resolved)
-          let files = site_pxe_edge_install_files(admitted: [binding(mac: x86_mac)], image: servable_image(), bind: edge_server)
-          let grub = site_pxe_edge_host_grub_cfg(binding: binding(mac: x86_mac), image: i)
+        Present { value: i } => with_binding(mac: x86_mac, claim: b => {
+          let st = site_pxe_edge_install_standing(binding: b, roster: r, image: servable_image(), name_resolution: resolved)
+          let files = site_pxe_edge_install_files(admitted: [b], image: servable_image(), bind: edge_server)
+          let grub = site_pxe_edge_host_grub_cfg(binding: b, image: i)
           admitted(st: st)
             && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-ac-1f-6b-e3-f7-fe")
             && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/user-data")
@@ -831,21 +856,23 @@ test fn an_admitted_binding_renders_its_own_grub_configuration_and_seed() -> Boo
             && !contains(grub, "\\;")
             && contains(grub, "cloud-config-url=/dev/null")
             && !contains(grub, "192.168.")
-        }
+            && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/user-data" && f.content == public_nocloud_seed_user_data(seed: b.seed))
+        })
       }
   }
 }
 
-// TWO HOSTS, TWO CONFIGURATIONS: each host's grub configuration names only its own seed.
-test fn each_hosts_configuration_names_only_its_own_seed() -> Bool {
+// TWO HOSTS, TWO ROUTES: each host's grub configuration names its own seed's URL. This is routing only -- seeds are
+// public, and any host on the segment can fetch either URL.
+test fn each_hosts_configuration_routes_to_its_own_seed() -> Bool {
   match image() {
     Absent => false
-    Present { value: i } => {
-      let a = site_pxe_edge_host_grub_cfg(binding: binding(mac: x86_mac), image: i)
-      let b = site_pxe_edge_host_grub_cfg(binding: binding(mac: other_x86_mac), image: i)
+    Present { value: i } => with_binding(mac: x86_mac, claim: ba => with_binding(mac: other_x86_mac, claim: bb => {
+      let a = site_pxe_edge_host_grub_cfg(binding: ba, image: i)
+      let b = site_pxe_edge_host_grub_cfg(binding: bb, image: i)
       contains(a, "seed/ac-1f-6b-e3-f7-fe/") && !contains(a, "seed/ac-1f-6b-e3-f7-ff/")
         && contains(b, "seed/ac-1f-6b-e3-f7-ff/") && !contains(b, "seed/ac-1f-6b-e3-f7-fe/")
-    }
+    }))
   }
 }
 
@@ -853,7 +880,7 @@ test fn each_hosts_configuration_names_only_its_own_seed() -> Bool {
 test fn a_binding_for_a_mac_off_the_roster_is_withheld() -> Bool {
   match x86_roster(macs: [x86_mac]) {
     Absent => false
-    Present { value: r } => refusals_of(st: site_pxe_edge_install_standing(binding: binding(mac: stranger_mac), roster: r, image: servable_image(), name_resolution: resolved)) == [InstallClientNotOnRoster { mac: stranger_mac }]
+    Present { value: r } => with_binding(mac: stranger_mac, claim: b => refusals_of(st: site_pxe_edge_install_standing(binding: b, roster: r, image: servable_image(), name_resolution: resolved)) == [InstallClientNotOnRoster { mac: stranger_mac }])
   }
 }
 
@@ -868,8 +895,9 @@ test fn an_installer_image_with_other_bytes_withholds_every_binding() -> Bool {
         Present { value: i } => {
           let bad = site_pxe_edge_image_standing(image: i, observation: ChainloaderDigestObserved { digest: digest_b })
           (match bad { InstallerImageDigestMismatch { observed: o, pinned: _ } => o == digest_b InstallerImageServable { image: _ } => false InstallerImageUnplaced { reason: _ } => false })
-            && !admitted(st: site_pxe_edge_install_standing(binding: binding(mac: x86_mac), roster: r, image: bad, name_resolution: resolved))
-            && length(site_pxe_edge_install_files(admitted: [binding(mac: x86_mac)], image: bad, bind: edge_server)) == 0
+            && with_binding(mac: x86_mac, claim: b =>
+              !admitted(st: site_pxe_edge_install_standing(binding: b, roster: r, image: bad, name_resolution: resolved))
+                && length(site_pxe_edge_install_files(admitted: [b], image: bad, bind: edge_server)) == 0)
         }
       }
   }
@@ -880,8 +908,8 @@ test fn an_unresolved_seed_origin_name_withholds_the_binding() -> Bool {
   match x86_roster(macs: [x86_mac]) {
     Absent => false
     Present { value: r } =>
-      refusals_of(st: site_pxe_edge_install_standing(binding: binding(mac: x86_mac), roster: r, image: servable_image(), name_resolution: BootNetworkProbeUnobserved))
-        == [SeedOriginNameUnresolved { name: "srv4", probe: BootNetworkProbeUnobserved }]
+      with_binding(mac: x86_mac, claim: b => refusals_of(st: site_pxe_edge_install_standing(binding: b, roster: r, image: servable_image(), name_resolution: BootNetworkProbeUnobserved))
+        == [SeedOriginNameUnresolved { name: "srv4", probe: BootNetworkProbeUnobserved }])
   }
 }
 

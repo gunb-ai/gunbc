@@ -9,6 +9,7 @@ import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg }
+import gunbc.provisioning.public_nocloud_seed { PublicNoCloudSeed, public_nocloud_seed_user_data, public_nocloud_seed_meta_data }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, Ipv4ParseError, parse_ipv4_address, render_ipv4_address }
 import gunbc.fleet.fleet_intent_network { srv4_host_lan_endpoint, operator_lan_segment }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -784,12 +785,14 @@ data site_pxe_edge_fallback_grub_cfg: String = "# gunbc.fleet.site_pxe_edge_conv
 
 // ── The install surface: the HTTP-served installer image and per-host install bindings ────────────
 // merry-fox-82's conditions (msg_42e15131), each realized here: the HTTP unit binds srv4's onboarding address
-// only, read back from its listening socket; a host's seed is served under its roster MAC and reached only
-// through that host's own grub configuration; the installer image is checked against Canonical's digest at
+// only, read back from its listening socket; a host's seed is served under its roster MAC, which its grub
+// configuration names; the installer image is checked against Canonical's digest at
 // readback and a mismatch withholds every install binding; grub configurations name srv4 by its host
 // identity, never an address, and a binding is refused until that name was observed resolving from the
-// segment. MAC KEYING IS ROUTING, NOT ACCESS CONTROL: http.server authenticates no client, so the seed must
-// carry no secret (key-only SSH, no password), which gunbc.provisioning's seed audit owns.
+// segment. SEEDS ARE PUBLIC: http.server authenticates no client, so any host on the segment that names a seed's
+// URL receives it, and the MAC in the URL routes a client to its seed without restricting who may fetch it. No
+// confidentiality is claimed for a seed anywhere; what makes publishing it safe is that the binding carries only a
+// gunbc.provisioning.public_nocloud_seed PublicNoCloudSeed, whose one mint refuses any credential.
 data site_pxe_edge_http_root: NonEmptyStr = "/srv/gunbc-site-pxe-edge/http"
 
 data site_pxe_edge_http_scope: FileTreeScope = FileTreeScope { root_path: site_pxe_edge_http_root }
@@ -856,13 +859,12 @@ fn site_pxe_edge_http_uri(name: NonEmptyStr, path: String) -> Uri {
   Uri { scheme: Http, locator: join([name as String, ":", to_string(site_pxe_edge_http_port), "/", path], "") as NonEmptyStr }
 }
 
-// ONE HOST'S INSTALL, as the provisioning attempt hands it over: the client's NIC MAC and its rendered NoCloud
-// documents. user_data comes from the seed renderer (gunbc.provisioning, through gunbc.os_install_emit); this
-// edge serves it and never authors it.
+// ONE HOST'S INSTALL, as the provisioning attempt hands it over: the client's NIC MAC and its PUBLIC NoCloud seed,
+// admitted secret-free by gunbc.provisioning.public_nocloud_seed admit_public_nocloud_seed from the seed renderer's
+// documents. The edge serves the seed's bytes and never authors them; a raw document string has no way in.
 type SitePxeEdgeInstallBinding {
   client_mac: Eui48Address
-  user_data: String
-  meta_data: String
+  seed: PublicNoCloudSeed
 }
 
 type SitePxeEdgeImageStanding
@@ -958,8 +960,8 @@ fn site_pxe_edge_binding_files(binding: SitePxeEdgeInstallBinding, image: SitePx
   let seed_dir = join([site_pxe_edge_http_root as String, "/", site_pxe_edge_seed_path(mac: binding.client_mac)], "")
   [
     SitePxeEdgeFile { subject: concat("install-grub ", render_mac_address(addr: binding.client_mac) as String) as NonEmptyStr, path: join([site_pxe_edge_tftp_root as String, "/", site_pxe_edge_grub_mac_path(mac: binding.client_mac) as String], "") as FilePath, content: site_pxe_edge_host_grub_cfg(binding: binding, image: image), scope: site_pxe_edge_tftp_scope },
-    SitePxeEdgeFile { subject: concat("install-user-data ", render_mac_address(addr: binding.client_mac) as String) as NonEmptyStr, path: concat(seed_dir, "/user-data") as FilePath, content: binding.user_data, scope: site_pxe_edge_http_scope },
-    SitePxeEdgeFile { subject: concat("install-meta-data ", render_mac_address(addr: binding.client_mac) as String) as NonEmptyStr, path: concat(seed_dir, "/meta-data") as FilePath, content: binding.meta_data, scope: site_pxe_edge_http_scope },
+    SitePxeEdgeFile { subject: concat("install-user-data ", render_mac_address(addr: binding.client_mac) as String) as NonEmptyStr, path: concat(seed_dir, "/user-data") as FilePath, content: public_nocloud_seed_user_data(seed: binding.seed), scope: site_pxe_edge_http_scope },
+    SitePxeEdgeFile { subject: concat("install-meta-data ", render_mac_address(addr: binding.client_mac) as String) as NonEmptyStr, path: concat(seed_dir, "/meta-data") as FilePath, content: public_nocloud_seed_meta_data(seed: binding.seed), scope: site_pxe_edge_http_scope },
   ]
 }
 
