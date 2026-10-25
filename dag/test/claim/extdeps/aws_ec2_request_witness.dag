@@ -1,4 +1,4 @@
-module test.claim.cloud.aws_ec2_request_witness
+module test.claim.extdeps.aws_ec2_request_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool, String }
