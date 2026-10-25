@@ -27,7 +27,7 @@ import v2.std.find_witness {
   find_witness,
   find_witness_derives,
 }
-import v2.std.node { Node, Symbol }
+import v2.std.node { node_same_occurrence, Node, Symbol }
 import v2.std.refinement_widening_predicate { refinement_widening_predicate_algebra }
 import v2.std.verdict { Pass, Deferred, SemanticMismatch, BuildFailed, RunFailed }
 import v2.std.verification {
@@ -77,7 +77,7 @@ fn find_witness_sibling_accepts(source: Node, target: Node, rule: Symbol) -> Boo
     predicate: task_id_predicate(source: source, target: target, rule: rule),
     multiplicity_policy: UniqueOnly
   ) {
-    Accepted { value: fw, diagnostics: _ } => fw.candidate == target
+    Accepted { value: fw, diagnostics: _ } => node_same_occurrence(a: fw.candidate, b: target)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -92,12 +92,12 @@ fn find_witness_dispatch_accepts(source: Node, target: Node) -> Bool {
     derivation_algebra: source,
     multiplicity_policy: UniqueOnly
   ) {
-    Accepted { value: fw, diagnostics: _ } => fw.candidate == target
+    Accepted { value: fw, diagnostics: _ } => node_same_occurrence(a: fw.candidate, b: target)
     Rejected { diagnostics: _ } => false
   }
 }
 
-data witness_task_id_surfaces_distinct: Bool = (task_id_api_inhabitant_node() != task_id_db_inhabitant_node()) && (task_id_api_inhabitant_node() != task_id_wire_inhabitant_node()) && (task_id_db_inhabitant_node() != task_id_wire_inhabitant_node())
+data witness_task_id_surfaces_distinct: Bool = (!node_same_occurrence(a: task_id_api_inhabitant_node(), b: task_id_db_inhabitant_node())) && (!node_same_occurrence(a: task_id_api_inhabitant_node(), b: task_id_wire_inhabitant_node())) && (!node_same_occurrence(a: task_id_db_inhabitant_node(), b: task_id_wire_inhabitant_node()))
 
 data witness_task_id_shared_core_matches: Bool = exact_structural_equality_zip_fold(source_facts: task_id_semantic_core_node(), candidate: task_id_semantic_core_node())
 

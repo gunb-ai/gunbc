@@ -4,7 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.machine { Byte }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Node,
   Symbol,
@@ -142,7 +142,7 @@ fn primitive_projection_type_and_bytes_round_trip(value: RuntimeValue) -> Bool {
       match find_named_child(root: projected, name: ^runtime_primitive_type_node_projection) {
         Accepted { value: type_node, diagnostics: _ } =>
           match find_named_child(root: projected, name: ^runtime_primitive_bytes_node_projection) {
-            Accepted { value: _, diagnostics: _ } => type_node == expected_type
+            Accepted { value: _, diagnostics: _ } => node_same_occurrence(a: type_node, b: expected_type)
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
