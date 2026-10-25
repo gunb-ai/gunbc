@@ -1,0 +1,64 @@
+module test.claim.approval_decision_store_wet_witness
+
+import extdeps.shell
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Timestamp }
+import std.scoped_authorization { AttemptIdentity }
+import gunbc.auth.approval_broker { BrokerDenied }
+import gunbc.auth.approval_decision_store {
+  StoredApprovalRequest, StoreWrite, StoreWritten, approval_mac_key_id,
+  file_approval_request, commit_broker_decision, pending_escalations, PendingEscalationsListed, PendingEscalationsRefused,
+}
+
+// THE INHABITANCE CLAIM for the listing's membership rule (DESIGN 3, the pairing obligation):
+// test.claim.approval_decision_store_witness supplies observed slots to
+// pending_fold_step; this claim runs the REAL route the pending read takes --
+// file_approval_request and commit_broker_decision publishing generations into a throwaway store,
+// then pending_escalations listing it through cas_slot_keys and observe_escalation -- so the
+// supplied EscalationSlot shapes are what the store emits. Effects: shell.Mktemp.DirWithTemplate, the
+// CAS store's Filesystem reads and create-new writes, shell.Remove.RecursiveForce. Enrolled on the
+// local-repo wet lane (throwaway temp directory, no network).
+
+fn fresh_store_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_approval_store.XXXXXX").path
+}
+
+fn wet_request(id: NonEmptyStr, expires_at: Timestamp) -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: id,
+    request_revision: "sha256:abababababababababababababababababababababababababababababababab",
+    attempt: "wet-attempt-1" as AttemptIdentity,
+    requester: "proud-bee-531",
+    purpose: "Exercise the pending listing against a real store.",
+    destructive: false,
+    issued_at: "2026-10-24T08:00:00Z",
+    expires_at: expires_at,
+    key_id: approval_mac_key_id,
+  }
+}
+
+fn written(w: StoreWrite) -> Bool {
+  match w {
+    StoreWritten => true
+    _ => false
+  }
+}
+
+// One open request, one whose lifetime has passed, one decided: only the open one is listed. The
+// open one is the positive control, so an empty listing cannot pass.
+test fn the_store_lists_only_the_open_unexpired_request_by_real_execution() -> Bool {
+  let root = fresh_store_root()
+  let open = file_approval_request(root: root as NonEmptyStr, request: wet_request(id: "esc-open", expires_at: "2026-10-25T08:00:00Z"))
+  let expired = file_approval_request(root: root as NonEmptyStr, request: wet_request(id: "esc-expired", expires_at: "2026-10-24T09:00:00Z"))
+  let decided = file_approval_request(root: root as NonEmptyStr, request: wet_request(id: "esc-denied", expires_at: "2026-10-25T08:00:00Z"))
+  let denial = commit_broker_decision(root: root as NonEmptyStr, decision: BrokerDenied {
+    escalation_id: "esc-denied", revision: "sha256:abababababababababababababababababababababababababababababababab",
+    decided_by: "operator", decided_at: "2026-10-24T08:30:00Z", reason: "no",
+  })
+  let listed = match pending_escalations(root: root as NonEmptyStr, observed_at: "2026-10-24T10:00:00Z") {
+    PendingEscalationsListed { pending: rows, unreadable: u } => join(map(rows, r => r.escalation_id as String), ",") + "|" + join(map(u, x => x as String), ",")
+    PendingEscalationsRefused { detail: d } => "refused: " + d
+  }
+  let removed = shell.Remove.RecursiveForce(path: root)
+  written(w: open) && written(w: expired) && written(w: decided) && written(w: denial) && listed == "esc-open|" && removed.success
+}
