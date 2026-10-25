@@ -97,7 +97,8 @@ fn fixture_server(port: Int, locations: List<NginxDirective>) -> List<NginxDirec
 // upstream and a permit naming the request's x-case and the body's model, except that the noupstream,
 // nopermit and badupstream cases omit the upstream, omit the permit, or answer an upstream that is not an
 // address; the sink counts stream-end notices and keeps the last permit; the upstream
-// counts its hits and sends one SSE event, flushes, optionally waits four seconds, and sends a second.
+// counts its hits, echoes the body and sends one SSE event, flushes, then either aborts its connection
+// (?reset) or optionally waits four seconds (?slow) before a second.
 fn fixture_directives() -> List<NginxDirective> {
   let authz = fixture_location(path: "/authz", exact: true, lines: [
     "if ngx.var.http_x_deny then return ngx.exit(403) end",
@@ -124,6 +125,7 @@ fn fixture_directives() -> List<NginxDirective> {
     "ngx.req.read_body()",
     "ngx.say('body: ', ngx.req.get_body_data() or '')",
     "ngx.say('data: one') ngx.say('') ngx.flush(true)",
+    "if ngx.var.arg_reset then return ngx.exit(ngx.ERROR) end",
     "if ngx.var.arg_slow then ngx.sleep(4) end",
     "ngx.say('data: two') ngx.say('')",
   ])
@@ -268,6 +270,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let after_beta = sink(n: "2")
   let aborted = request(port: "18443", case_header: "x-case: abort", query: "?slow=1", max_seconds: "1")
   let after_abort = sink(n: "3")
+  let reset = request(port: "18443", case_header: "x-case: reset", query: "?reset=1", max_seconds: "10")
+  let after_reset = sink(n: "4")
   let denied = request(port: "18443", case_header: "x-deny: 1", query: "", max_seconds: "10")
   let no_upstream = request(port: "18443", case_header: "x-case: noupstream", query: "", max_seconds: "10")
   let no_permit = request(port: "18443", case_header: "x-case: nopermit", query: "", max_seconds: "10")
@@ -287,12 +291,14 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "authz_reads_the_body_so_two_models_get_two_answers", held: contains(s: after_beta, p: "ends=2 last=p-full-beta hits=2") && contains(s: after_full, p: "p-full-alpha"), observed: after_beta),
     case_of(identity: "sse_is_relayed_before_the_upstream_ends", held: contains(s: aborted, p: "data: one") && !contains(s: aborted, p: "data: two") && contains(s: aborted, p: "exit=28"), observed: aborted),
     case_of(identity: "stream_end_fires_on_client_abort", held: contains(s: after_abort, p: "ends=3 last=p-abort-alpha hits=3"), observed: after_abort),
+    case_of(identity: "an_upstream_reset_ends_the_client_stream", held: contains(s: reset, p: "data: one") && !contains(s: reset, p: "data: two") && contains(s: reset, p: "exit=18"), observed: reset),
+    case_of(identity: "stream_end_fires_on_upstream_reset", held: contains(s: after_reset, p: "ends=4 last=p-reset-alpha hits=4"), observed: after_reset),
     case_of(identity: "authz_refusal_answers_503", held: contains(s: denied, p: "\n503 exit=0"), observed: denied),
     case_of(identity: "an_answer_without_upstream_answers_503", held: contains(s: no_upstream, p: "\n503 exit=0"), observed: no_upstream),
     case_of(identity: "an_answer_without_permit_answers_503", held: contains(s: no_permit, p: "\n503 exit=0"), observed: no_permit),
     case_of(identity: "an_answer_with_a_malformed_upstream_answers_503", held: contains(s: bad_upstream, p: "\n503 exit=0"), observed: bad_upstream),
     case_of(identity: "unreachable_authz_answers_503", held: contains(s: no_authz, p: "\n503 exit=0"), observed: no_authz),
-    case_of(identity: "no_refusal_forwarded_or_fired_stream_end", held: contains(s: after_refusals, p: "ends=3 last=p-abort-alpha hits=3"), observed: after_refusals),
+    case_of(identity: "no_refusal_forwarded_or_fired_stream_end", held: contains(s: after_refusals, p: "ends=4 last=p-reset-alpha hits=4"), observed: after_refusals),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
   ]
 }
@@ -314,6 +320,8 @@ fn falsifier_expected_identities() -> List<String> {
     "authz_reads_the_body_so_two_models_get_two_answers",
     "sse_is_relayed_before_the_upstream_ends",
     "stream_end_fires_on_client_abort",
+    "an_upstream_reset_ends_the_client_stream",
+    "stream_end_fires_on_upstream_reset",
     "authz_refusal_answers_503",
     "an_answer_without_upstream_answers_503",
     "an_answer_without_permit_answers_503",
