@@ -10,7 +10,8 @@ import gunbc.instruments.multi_module_compile_fixture {
   FixtureCompileCompleted,
   fixture_source,
   compile_fixture,
-  fixture_blocking_rows
+  fixture_blocking_rows,
+  fixture_rows_of_class
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -52,9 +53,19 @@ fn gba_accepted(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
-// RED: the ancestor module's Pin, used from fa.b.c without an import, refuses.
+fn gba_ambiguous_reference_to_pin(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(fixture_rows_of_class(rows, "AmbiguousReference") |> filter(r => r.subject_name == "Pin" && r.blocking)) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// RED: the ancestor module's Pin, used from fa.b.c without an import, refuses as an AMBIGUOUS reference to Pin (fa and fx both
+// declare it), so the author picks the import; the refusal names no guessed module.
 test fn gba_ancestor_declaration_without_an_import_is_refused() -> Bool {
-  gba_refused(o: gba_run(user_source: "module fa.b.c\nfn use_pin(p: Pin) -> Int { p.v }\n"))
+  gba_ambiguous_reference_to_pin(o: gba_run(user_source: "module fa.b.c\nfn use_pin(p: Pin) -> Int { p.v }\n"))
 }
 
 // POSITIVE CONTROL: the same use with the import it names is accepted.
