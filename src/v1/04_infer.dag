@@ -17760,20 +17760,29 @@ fn build_module_context(contributions: List<ItemContribution>,
             rest: service_operation_is_rest(op: c, service: sitem, source_indices: env.source_indices)
           }
         )
-        let root = namespace_root_from_properties(properties: sitem.properties, name: sname, source_indices: env.source_indices)
         InferScopeComponents {
           svc_registry: map_insert(acc.svc_registry, sname, entries),
-          svc_locals: map_insert(acc.svc_locals, root, nominal_type_binding(name: root))
+          svc_locals: acc.svc_locals
         }
       Absent => acc
     }
   )
+  // A SERVICE ROOT IS BOUND ONLY WHERE ITS SERVICE IS DECLARED OR IMPORTED. The closure census
+  // supplies operation entries for a qualified service path; it binds no bare root. It used to: every
+  // service in the closure put its root into every module's locals, and the locals fold below writes
+  // those over the module's own variant locals. So once any module imported the bare-named
+  // extdeps.filesystem.filesystem_io Filesystem, a module that never imported it and declared its own
+  // `| Filesystem` arm read that arm as a service root, and the interpreter raised NoSuchVariable at
+  // run time for a program the checker accepted (v1_compiler compiler_tests
+  // service_root_binds_only_where_its_service_is_imported). The roots
+  // that remain come from local.svc_locals (the module's own services) and from
+  // merge_scope_from_imports (each imported module's services).
   let merged_scope = merge_scope_from_imports(
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
     svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
-    svc_locals: map_merge(census_scope.svc_locals, local.svc_locals)
+    svc_locals: local.svc_locals
   )
   let parent_envs = merge_func_env_views_by_owner(flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
@@ -19258,6 +19267,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     expected_type: none,
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
+    trmc_out: false,
     dying_base_sites: empty_map()
   }
 }
