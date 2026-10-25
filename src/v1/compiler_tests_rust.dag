@@ -3842,7 +3842,7 @@ fn ct_service_root_binds_only_where_its_service_is_imported_test() -> String {
     "                };\n",
     "                let service = source(\n",
     "                    \"zz_svc.dag\",\n",
-    "                    \"module zz_svc\\nservice ZzEcho {\\n  operation Say {\\n    input { word: String }\\n    output {\\n      stdout: String from \\\"stdout\\\"\\n    }\\n    transport shell { argv: [\\\"echo\\\", \\\"{word}\\\"] }\\n  }\\n}\\n\",\n",
+    "                    \"module zz_svc\\nservice ZzEcho {\\n  operation Say {\\n    input { word: String }\\n    output {\\n      stdout: String from \\\"stdout\\\"\\n    }\\n    transport shell { argv: [\\\"echo\\\", \\\"\{word}\\\"] }\\n  }\\n}\\n\",\n",
     "                );\n",
     "                let arm = source(\n",
     "                    \"zz_arm.dag\",\n",
