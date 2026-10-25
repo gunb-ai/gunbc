@@ -49,7 +49,7 @@ import gunbc.durable_cas_file_store {
 }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 import gunbc.host_state_root { HostStateTree, host_state_tree, host_state_tree_path }
-import gunbc.auth.oidc_id_token_verification { JwksCacheRoot }
+import gunbc.auth.oidc_id_token_verification { JwksCacheRoot, broker_jwks_cache_root }
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
@@ -482,12 +482,6 @@ fn approval_device_store_directory() -> ManagedDirectory {
 // directory. It wraps the one JWKS cache carrier (gunbc.auth.oidc_id_token_verification JwksCacheRoot) that
 // the verification code takes; its identity is this sealed type, distinct from the instance cache's
 // InstanceJwksCache, so neither stands where the other is required. Data only; construction is what is sealed.
-type BrokerJwksCacheSlotsDeclaration { member: NonEmptyStr }
-
-data broker_jwks_cache_slots: BrokerJwksCacheSlotsDeclaration = BrokerJwksCacheSlotsDeclaration {
-  member: "approval-jwks" as NonEmptyStr,
-}
-
 type BrokerJwksCache sole_constructor {
   cache: JwksCacheRoot
 }
@@ -497,20 +491,21 @@ type BrokerJwksCacheReading
   | BrokerJwksCacheUnready { detail: String }
 
 fn broker_jwks_cache(tree: HostStateTree) -> BrokerJwksCacheReading {
-  let root = approval_broker_store_path(tree: tree, member: broker_jwks_cache_slots.member)
-  let listed = Filesystem.List(path: root as String)
-  match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
+  let cache = broker_jwks_cache_root(tree: tree)
+  let listed = Filesystem.List(path: cache.root as String)
+  match filesystem_listing_observation(directory: cache.root as String, success: listed.success, entries: listed.entries, error: listed.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => BrokerJwksCacheUnready { detail: join(["the broker JWKS cache's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => BrokerJwksCacheUnready { detail: join(["the broker JWKS cache's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => BrokerJwksCacheReady { cache: BrokerJwksCache { cache: JwksCacheRoot { root: root } } }
+    FilesystemDirectoryListed(_) => BrokerJwksCacheReady { cache: BrokerJwksCache { cache: cache } }
   }
 }
 
-// Ensured for the same reason as the device store, at the path derived from broker_jwks_cache_slots.
+// Ensured for the same reason as the device store, at the path derived from the broker's member declaration
+// (gunbc.auth.oidc_id_token_verification broker_jwks_cache_slots, through broker_jwks_cache_root).
 fn approval_jwks_cache_directory() -> ManagedDirectory {
   ManagedDirectory {
     member: "approval-jwks-cache" as NonEmptyStr,
-    path: approval_broker_store_path(tree: host_state_tree(), member: broker_jwks_cache_slots.member) as String as FilePath,
+    path: broker_jwks_cache_root(tree: host_state_tree()).root as String as FilePath,
     owner: fleet_posix_operator_user,
     group_principal: fleet_posix_operator_user,
     dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],

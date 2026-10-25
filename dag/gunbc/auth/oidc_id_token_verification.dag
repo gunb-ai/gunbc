@@ -68,6 +68,7 @@ import gunbc.principal_projection { google_oidc_issuer }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_child }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
 import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path }
 
 // ── The Google endpoints and cache policy ──────────────────────────────────────────────────────
 // THE GOOGLE REALIZATION FACTS as data rows: the JWKS endpoint this module fetches and the
@@ -804,16 +805,35 @@ data jwks_cache_schema: String = "gunbc-jwks-cache/v1"
 
 // THE JWKS CACHE'S DIRECTORY, ONE CARRIER FOR EVERY JWKS CACHE. Two stores hold a JWKS cache: a dashboard
 // instance's (InstanceJwksCache below) and the approval broker's (gunbc.auth.approval_device_redemption
-// BrokerJwksCache). Each is its own sealed identity type in its own declaring module, and each wraps this plain
-// record, which the one verification code takes, as gunbc.durable_cas_file_store SlotStore is for the attempt
-// stores. jwks_cache_read answers the cache file's absence from a listing, never from a failed read;
-// jwks_cache_write writes it owner-only; the RS256 check keeps its scratch files in the cache's own
-// owner-only directory (the verification scratch row, unchanged by the seal). It is NOT sealed and NOT an
-// identity: any module can spell one over a path it chose, which is the declared residual
-// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module, the same as the slot
-// store's builder. The seal is on the two identity types that wrap it.
-type JwksCacheRoot {
+// BrokerJwksCache). Each is its own sealed identity type, and each wraps this record, which the one
+// verification code takes. jwks_cache_read answers the cache file's absence from a listing, never from a failed
+// read; jwks_cache_write writes it owner-only; the RS256 check keeps its scratch files in the cache's own
+// owner-only directory (the verification scratch row, unchanged by the seal). The carrier is sealed too
+// (ruling of jolly-hawk-60, 2026-10-25), so no module reaches the JWKS operations over a directory it chose: it
+// has exactly two constructors, below, and neither takes a path. One derives the instance's cache directory
+// from the instance; the other derives the broker's from the host-state tree and the broker's member
+// declaration. A witness reaches the second only through gunbc.host_state_root isolated_host_state_tree, a
+// recorded route. Construction is what is sealed; the root is a readable field.
+type JwksCacheRoot sole_constructor {
   root: NonEmptyStr
+}
+
+fn instance_jwks_cache_root(instance: HostDashboardInstance) -> JwksCacheRoot {
+  JwksCacheRoot { root: instance_jwks_cache_slots_path(instance: instance) as String as NonEmptyStr }
+}
+
+// THE BROKER'S JWKS CACHE MEMBER, declared here rather than beside BrokerJwksCache because the carrier's
+// constructor reads it and gunbc.auth.approval_device_redemption already imports this module: it is the one
+// declaration of where the broker's cache sits under the host-state tree. The broker's mint and its directory
+// row (approval_jwks_cache_directory) both derive from broker_jwks_cache_root.
+type BrokerJwksCacheSlotsDeclaration { member: NonEmptyStr }
+
+data broker_jwks_cache_slots: BrokerJwksCacheSlotsDeclaration = BrokerJwksCacheSlotsDeclaration {
+  member: "approval-jwks" as NonEmptyStr,
+}
+
+fn broker_jwks_cache_root(tree: HostStateTree) -> JwksCacheRoot {
+  JwksCacheRoot { root: join([host_state_tree_path(tree: tree) as String, "/", broker_jwks_cache_slots.member as String], "") as NonEmptyStr }
 }
 
 fn jwks_cache_file_path(cache: JwksCacheRoot) -> String {
@@ -869,12 +889,12 @@ type InstanceJwksCacheReading
   | InstanceJwksCacheUnready { detail: String }
 
 fn instance_jwks_cache(instance: HostDashboardInstance) -> InstanceJwksCacheReading {
-  let root = instance_jwks_cache_slots_path(instance: instance)
-  let listed = Filesystem.List(path: root as String)
-  match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
+  let cache = instance_jwks_cache_root(instance: instance)
+  let listed = Filesystem.List(path: cache.root as String)
+  match filesystem_listing_observation(directory: cache.root as String, success: listed.success, entries: listed.entries, error: listed.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => InstanceJwksCacheUnready { detail: join(["the instance JWKS cache's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => InstanceJwksCacheUnready { detail: join(["the instance JWKS cache's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => InstanceJwksCacheReady { cache: InstanceJwksCache { instance: instance.instance_id, cache: JwksCacheRoot { root: root as String as NonEmptyStr } } }
+    FilesystemDirectoryListed(_) => InstanceJwksCacheReady { cache: InstanceJwksCache { instance: instance.instance_id, cache: cache } }
   }
 }
 
@@ -996,9 +1016,10 @@ fn rs256_verify_over_key(
   spki_pem: String,
   signing_input: String,
   signature_b64url: String,
-  scratch_dir: String,
+  cache: JwksCacheRoot,
   verify_id: NonEmptyStr,
 ) -> Rs256Verification {
+  let scratch_dir = cache.root as String
   match base64_decode(s: signature_b64url, variant: UrlSafe) {
     Absent => Rs256SignatureInvalid { detail: "the signature segment is not valid base64url" }
     Present { value: signature_octets } =>
@@ -1123,7 +1144,7 @@ fn oidc_id_token_signature_of_parts(
                           spki_pem: rsa_public_key_pem(spki: spki),
                           signing_input: signing_input,
                           signature_b64url: signature_segment,
-                          scratch_dir: cache.root as String,
+                          cache: cache,
                           verify_id: verify_id,
                         ),
                       )
