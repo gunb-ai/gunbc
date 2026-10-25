@@ -21,6 +21,7 @@ import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_
 import gunbc.actions_run_binding { fleet_converge_subject_host_env_name, fleet_converge_expected_host_env_name }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_withdraw_invoke, gunbc_ci_runner_host_restore_invoke }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
+import extdeps.github.expressions { parse_expression_with, default_expression_spellings, evaluate_expression, gha_value_is_truthy, github_path_key, GithubPathValue, GithubPathUnmodeled, GithubPathResolution, ExpressionValue, ExpressionEvaluationRefused }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_step_budget_env_name, host_cap_bracket_budget, runner_host_cap_drain_policy }
 
 // THE LINKAGE CONTROLS OF THE CAP BRACKET'S WORKFLOW: the emitted job carries the release step and the budget
@@ -130,45 +131,96 @@ test fn the_split_gate_step_carries_the_refusal_and_no_act_entry() -> Bool {
         && !string_contains(s: r, pattern: "--entry")
         && any(kvs, e => e.key == fleet_converge_expected_host_env_name && env_value_is(e, "${{ github.event.inputs.host }}"))
         && any(kvs, e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}"))
-        && string_contains(s: cond, pattern: "github.event.inputs.host")
-        && string_contains(s: cond, pattern: "github.event.inputs.subject_host")
-        && string_contains(s: cond, pattern: "==")
     _ => false
   }
 }
 
-// THE GATE SCRIPT IS WELL-FORMED SHELL, AND THE GATE'S `if:` GROUPS THE DISJUNCTION (reviews 38602
-// and 386096). Both defects the reviews found were shape defects in emitted text: the script was
-// hand-joined strings whose second test read `[ -z "$X"] || [ -z "$Y"] ]` (no space before `]`, a
-// stray `]`, and an echo whose quote never closed -- bash died on a PARSE ERROR, printing neither the
-// declared marker nor anything else), and the `if:` glued two serialized strings so GitHub read
-// `A || B || C && D` as A || B || (C && D): unconditional for converge/withdraw, skipped for a restore
-// with an empty subject -- the exact case the step exists to refuse. These controls pin the shapes the
-// typed builders must produce: a balanced script (every test bracket closes with a space before `]`,
-// both refusal markers present, both refusals exit 1) and an `if:` that groups the disjunction before
-// conjoining the host == subject comparison. A mutation that returns to string-built shell or glued
-// conditions goes red here.
-test fn the_split_gate_script_is_well_formed_and_the_if_condition_groups_the_disjunction() -> Bool {
+// THE GATE SCRIPT IS WELL-FORMED SHELL AND DECIDES BOTH REFUSALS ITSELF (reviews 38602, 386096,
+// 86194). The script was once hand-joined strings whose second test read `[ -z "$X"] || [ -z "$Y"] ]`
+// (no space before `]`, a stray `]`, an echo whose quote never closed), so bash died on a PARSE ERROR
+// and printed nothing. The fold's own spelling single-quotes each literal word, so a test bracket is
+// its own token `']'`; the negatives are the broken signatures, which the fold cannot produce. Both
+// refusals live HERE, not in the `if:`: the executor == subject test and the either-name-empty test,
+// each exiting 1 (the `if:` only says which modes the precondition applies to).
+test fn the_split_gate_script_is_well_formed_and_decides_both_refusals() -> Bool {
   match fleet_converge_executor_subject_split_gate_step() {
-    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: Present { value: cond }, continue_on_error: _, timeout_minutes: _ } =>
-      // Script shape, in the fold's OWN spelling (bash_emit single-quotes each literal word, so the
-      // test bracket is its own token '"]' -- and the BROKEN hand-joined script welded the bracket to
-      // the variable instead: `"$X"]`, no space, plus an echo whose quote never closed and a stray ]
-      // (reviews 38602 / 386096). The negatives below are exactly those broken signatures; the fold
-      // cannot produce them because the bracket is a word of its own and every literal is closed.
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       string_contains(s: r, pattern: "set -e")
         && string_contains(s: r, pattern: "']'")
+        && string_contains(s: r, pattern: concat("\"$", fleet_converge_expected_host_env_name, "\" '=' \"$", fleet_converge_subject_host_env_name, "\""))
+        && string_contains(s: r, pattern: concat("'-z' \"$", fleet_converge_subject_host_env_name, "\""))
+        && string_contains(s: r, pattern: concat("'-z' \"$", fleet_converge_expected_host_env_name, "\""))
         && string_contains(s: r, pattern: fleet_converge_split_refusal_marker)
         && string_contains(s: r, pattern: fleet_converge_split_missing_subject_marker)
         && string_contains(s: r, pattern: "exit 1")
         && !string_contains(s: r, pattern: "\"]")
         && !string_contains(s: r, pattern: "named; exit 1; fi")
-        // `if:` shape: the disjunction is GROUPED before the equality is conjoined with it, so GitHub
-        // reads (A || B || C) && D rather than A || B || (C && D).
-        && string_contains(s: cond, pattern: ") && ")
-        && string_contains(s: cond, pattern: "github.event.inputs.host == github.event.inputs.subject_host")
     _ => false
   }
+}
+
+// THE GATE'S `if:`, EVALUATED. The step's emitted `if:` TEXT is parsed back (the same grammar the
+// serializer writes) and evaluated by extdeps.github.expressions evaluate_expression against a
+// dispatch's inputs, so these controls read what GitHub would decide for the bytes the workflow carries,
+// not a tree beside them. A text the parser refuses, or an input the evaluator refuses, is red.
+fn gate_if_text() -> String {
+  match fleet_converge_executor_subject_split_gate_step() {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: Present { value: cond }, continue_on_error: _, timeout_minutes: _ } => cond
+    _ => ""
+  }
+}
+
+fn dispatch_path(mode: String, host: String, subject_host: String, path: List<String>) -> GithubPathResolution {
+  let key = github_path_key(path: path)
+  if key == "event.inputs.mode" { GithubPathValue { value: mode } }
+  else if key == "event.inputs.host" { GithubPathValue { value: host } }
+  else if key == "event.inputs.subject_host" { GithubPathValue { value: subject_host } }
+  else { GithubPathUnmodeled }
+}
+
+type GateRuns = GateExecutes | GateSkipped | GateUnreadable
+
+fn gate_runs_for(mode: String, host: String, subject_host: String) -> GateRuns {
+  match parse_expression_with(s: gate_if_text(), sp: default_expression_spellings) {
+    Absent => GateUnreadable
+    Present { value: e } =>
+      match evaluate_expression(expression: e, github_path: fn(path) { dispatch_path(mode: mode, host: host, subject_host: subject_host, path: path) }) {
+        ExpressionEvaluationRefused { cause: _ } => GateUnreadable
+        ExpressionValue { value: v } => if gha_value_is_truthy(s: v) { GateExecutes } else { GateSkipped }
+      }
+  }
+}
+
+fn executes(g: GateRuns) -> Bool { match g { GateExecutes => true  GateSkipped => false  GateUnreadable => false } }
+
+fn skipped(g: GateRuns) -> Bool { match g { GateSkipped => true  GateExecutes => false  GateUnreadable => false } }
+
+// THE FAIL-OPEN CASE (review 86194): a restore whose subject_host is EMPTY while host is named. The
+// former `(A || B || C) && host == subject_host` evaluated false here and skipped the gate; the gate
+// must execute, and its script refuses on the empty subject.
+test fn a_restore_with_an_empty_subject_executes_the_gate() -> Bool {
+  executes(g: gate_runs_for(mode: "runner_host_restore", host: "srv3", subject_host: ""))
+    && executes(g: gate_runs_for(mode: "runner_host_withdraw", host: "", subject_host: "srv3"))
+}
+
+// DISTINCT HOSTS: the gate executes (and its script passes, printing the holding line).
+test fn distinct_hosts_execute_the_gate() -> Bool {
+  executes(g: gate_runs_for(mode: "runner_host_restore", host: "srv1", subject_host: "srv3"))
+    && executes(g: gate_runs_for(mode: "runner_host_file_converge", host: "srv1", subject_host: "srv3"))
+}
+
+// EQUAL HOSTS: the gate executes (and its script refuses on self-subject).
+test fn equal_hosts_execute_the_gate() -> Bool {
+  executes(g: gate_runs_for(mode: "runner_host_withdraw", host: "srv3", subject_host: "srv3"))
+    && executes(g: gate_runs_for(mode: "runner_host_file_converge", host: "srv3", subject_host: "srv3"))
+}
+
+// AN OBSERVE-ONLY MODE does not run the gate, whatever its host inputs: it actuates nothing, so the
+// split precondition is not its obligation (and an empty subject_host is legitimate there).
+test fn an_observe_only_mode_skips_the_gate() -> Bool {
+  skipped(g: gate_runs_for(mode: "runner_host_file_observe", host: "srv3", subject_host: ""))
+    && skipped(g: gate_runs_for(mode: "runner_host_file_observe", host: "srv3", subject_host: "srv3"))
+    && skipped(g: gate_runs_for(mode: "plan", host: "srv1", subject_host: "srv3"))
 }
 
 // The env pair carries exactly this rendered value. The value is a YamlValue, so the read is a match,

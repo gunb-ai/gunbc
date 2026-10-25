@@ -20,9 +20,9 @@ import product.host_identity { HostIdentity }
 // drain or mask actuation.
 //
 // Three walls, each independently checked:
-//   1. the WORKFLOW PRECONDITION STEP (fleet_converge_split_gate_step) is the first mode step and
-//      runs only when the two inputs are equal, where it prints the refusal and exits 1 -- no drain,
-//      no mask leg can have run when it fires;
+//   1. the WORKFLOW PRECONDITION STEP (fleet_converge_executor_subject_split_gate_step) is the first
+//      mode step and runs on every dispatch of an act mode; its script refuses (exit 1) when either
+//      name is empty or the two are equal -- no drain, no mask leg can have run when it fires;
 //   2. the PRODUCTION ENTRIES re-check the runner identity (the SAME proving relation the deploy gate
 //      uses, runner_name_proves_host_identity from gunbc.ci.ci_deploy_target_host) before any subject
 //      resolution or edge call, so a hand-run of the entry refuses with the same typed value;
@@ -103,10 +103,11 @@ fn fleet_converge_split_refusal_line(reason: SplitRefusalReason) -> String {
 // fold admits only statements its grammar parses, and the generation gate refuses emission when the
 // fold refuses (fleet_converge_split_gate_script_admitted).)
 //
-// It reads ONLY its two bound env names and refuses; it contains no entry invocation, so the step
-// whose text ran performed zero actuation. In a well-formed dispatch the `if:` never lets it execute
-// -- its ORDERING before every actuation step is what the control asserts, together with its refusal
-// text and the absence of any entry invoke in it.
+// It reads ONLY its two bound env names and decides both refusals; it contains no entry invocation,
+// so a refusing run performed zero actuation. The step's `if:` is only the act-mode disjunction, so
+// every act dispatch executes it and the decision is never made by an expression that can skip it
+// (review 86194). The control asserts its ORDERING before every actuation step, its refusal text, the
+// absence of any entry invoke in it, and the evaluated `if:` across the input cases.
 fn fleet_converge_split_gate_statements(executor_env_name: String, subject_env_name: String) -> List<Node> {
   [
     // Equal names = the executor is a slot on its own subject: the drain would wait for this very

@@ -2239,9 +2239,9 @@ fn fleet_converge_runner_host_restore_step() -> Step {
 // (converge, withdraw, restore) drain and mask EVERY slot of their subject; if the job runs on that
 // subject, the drain waits for the job's own executor slot and can never finish. The split is executor
 // (inputs.host, where the job pins) != subject (inputs.subject_host, who the run acts on), and it is
-// enforced HERE, as a step emitted only for the three act modes and ordered BEFORE all of them: its
-// script holds no entry invocation, and its `if:` fires exactly when the two inputs are equal -- so
-// when it prints, it prints, exits 1, and no drain or mask leg can have run. The control
+// enforced HERE, as a step that runs in every one of the three act modes and is ordered BEFORE all of
+// them: its script holds no entry invocation and decides both refusals itself (either name empty, or
+// executor == subject), so when it refuses it exits 1 and no drain or mask leg can have run. The control
 // (test.claim.fleet.fleet_converge_host_cap_linkage_witness) pins the ordering, the refusal
 // text, and the absence of any actuation invoke in the step.
 fn fleet_converge_executor_subject_split_gate_step() -> Step {
@@ -2257,16 +2257,15 @@ fn fleet_converge_executor_subject_split_gate_step() -> Step {
       ]
     },
     working_directory: none,
-    // ONE EXPRESSION TREE, serialized once -- not two strings glued with " && ". Gluing text made
-    // GitHub read `A || B || C && D` as A || B || (C && D): the gate ran on EVERY converge/withdraw
-    // dispatch and was SKIPPED for a restore whose subject_host was empty, which is the case the step
-    // exists to catch (review 38602, review 386096). The serializer wraps an operand that binds looser
-    // than its parent, so this tree renders `(A || B || C) && (host == subject_host)`.
+    // THE MODE DISJUNCTION ONLY, as one expression tree from the mode roster's builder. The `if:` says
+    // WHEN the precondition applies; the script says WHETHER it holds. A host comparison in the `if:`
+    // fails open: `(A || B || C) && host == subject_host` is false when subject_host is empty and host
+    // is not, so a restore with no subject skipped the gate and actuated (review 86194; DESIGN.md §5).
+    // Before that, gluing two serialized strings made GitHub read `A || B || C && D` as
+    // A || B || (C && D) (review 38602, review 386096). With the decision in the script, every
+    // dispatch of an act mode executes the gate and no input combination can step around it.
     if_condition: Present {
-      value: serialize_expression(expression: LogicalAnd {
-        left: fleet_converge_any_mode_expression(modes: [RunnerHostFileConverge, RunnerHostWithdraw, RunnerHostRestore]),
-        right: Equals { left: ContextAccess { context: Github, path: ["event", "inputs", "host"] }, right: ContextAccess { context: Github, path: ["event", "inputs", "subject_host"] } },
-      })
+      value: serialize_expression(expression: fleet_converge_any_mode_expression(modes: [RunnerHostFileConverge, RunnerHostWithdraw, RunnerHostRestore]))
     },
     continue_on_error: none,
     timeout_minutes: none
