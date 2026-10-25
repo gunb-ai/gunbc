@@ -158,7 +158,7 @@ fn fixture_directives() -> List<NginxDirective> {
   [
     WorkerProcesses { count: 1 },
     EventsBlock,
-    HttpBlock { body: concat(concat(concat(concat([AccessLogOff], dict), fixture_server(port: 19001 as Port, locations: authz)), fixture_server(port: 19002 as Port, locations: concat(stream_end, ends))), fixture_server(port: 19003 as Port, locations: upstream)), dev_upstreams()) },
+    HttpBlock { body: concat(concat(concat(concat(concat([AccessLogOff], dict), fixture_server(port: 19001 as Port, locations: authz)), fixture_server(port: 19002 as Port, locations: concat(stream_end, ends))), fixture_server(port: 19003 as Port, locations: upstream)), dev_upstreams()) },
   ]
 }
 

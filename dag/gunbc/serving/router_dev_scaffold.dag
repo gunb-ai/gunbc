@@ -68,6 +68,10 @@ data router_dev_upstream_list_dissolution: DissolutionCondition = bound_dissolut
 
 // 4. CERTIFICATE PINS AS A TRUST BUNDLE. nginx verifies an upstream against a CA file, not a fingerprint, so
 // each pinned leaf certificate is installed into upstream_ca.pem after its sha256 is compared by hand with
-// the recorded pin (trust on first use, as the ctrl router did). Dissolves with row 2's deploy leg, which
-// takes the pin comparison into the converge step.
+// the recorded pin (trust on first use, as the ctrl router did). WHAT THIS DOES NOT ENFORCE (found on the
+// live srv1 deploy, calm-crab-645 2026-10-25): the pool certificates all carry CN=pool-card and no
+// subjectAltName, so inside one bundle any pinned card's certificate verifies as any other HTTPS upstream;
+// the check is membership in the pinned set, not this upstream's pin. Dissolves with row 2's deploy leg,
+// which renders one location per upstream with its own proxy_ssl_trusted_certificate, so each upstream
+// is verified against its own pin.
 data router_dev_pin_bundle_dissolution: DissolutionCondition = bound_dissolution(ref: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "serving_router_proxy_leg"))

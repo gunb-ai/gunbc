@@ -2,6 +2,7 @@ module extdeps.proxy.openresty
 
 import std.optional { Optional, Present, Absent }
 import std.types { NonEmptyStr, brand, String, Int, List, Bool, Port }
+import std.measure { Second, second_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -115,7 +116,7 @@ type NginxDirective
   | SslCertificate { path: NginxToken }
   | SslCertificateKey { path: NginxToken }
   | SetLiteral { variable: NginxVariable, value: NginxToken }
-  | ProxyReadTimeoutSeconds { seconds: Int }
+  | ProxyReadTimeout { timeout: Second }
   | ProxySslServerNameOn
   | ProxySslName { variable: NginxVariable }
   | ProxySslVerifyOn
@@ -190,7 +191,7 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     SslCertificate { path: pa } => nginx_line(text: "ssl_certificate " + (pa as String), indent: indent)
     SslCertificateKey { path: pa } => nginx_line(text: "ssl_certificate_key " + (pa as String), indent: indent)
     SetLiteral { variable: v, value: x } => nginx_line(text: "set $" + (v as String) + " '" + (x as String) + "'", indent: indent)
-    ProxyReadTimeoutSeconds { seconds: n } => nginx_line(text: "proxy_read_timeout " + to_string(n) + "s", indent: indent)
+    ProxyReadTimeout { timeout: t } => nginx_line(text: "proxy_read_timeout " + to_string(second_count(s: t)) + "s", indent: indent)
     ProxySslServerNameOn => nginx_line(text: "proxy_ssl_server_name on", indent: indent)
     ProxySslName { variable: v } => nginx_line(text: "proxy_ssl_name $" + (v as String), indent: indent)
     ProxySslVerifyOn => nginx_line(text: "proxy_ssl_verify on", indent: indent)

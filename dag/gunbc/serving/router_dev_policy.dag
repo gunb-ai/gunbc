@@ -2,12 +2,13 @@ module gunbc.serving.router_dev_policy
 
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port }
+import std.measure { second }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, LocationBlock, ExactMatch,
   PrefixMatch, ListenTlsOn, SslCertificate, SslCertificateKey, SetEmptyVariable, SetLiteral, ProxyHttpVersion11, ProxyBufferingDirective,
-  ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxyReadTimeoutSeconds, ProxySetHeader, HeaderFromVariable,
+  ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxyReadTimeout, ProxySetHeader, HeaderFromVariable,
   HeaderPrefixedVariable, ProxySslServerNameOn, ProxySslName, ProxySslVerifyOn, ProxySslVerifyDepth, ProxySslTrustedCertificate,
   ProxyPassSchemeAndHostVariables, LuaPhaseBlock, InitPhase, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ProxyBufferingOff,
   ProxyRequestBufferingOff, ProxyNextUpstreamOff, nginx_token, nginx_variable, render_nginx_directives,
@@ -27,6 +28,9 @@ import extdeps.proxy.openresty {
 // The proxy reads its state at start from state_dir, mounted from the host and written by the hand-run
 // deploy: client_keys (one client key per line), upstreams.json (name, scheme, host, port, sni, key, model,
 // cap per upstream) and upstream_ca.pem. No key is in the rendered configuration.
+//
+// Every interpolated value, the state directory and the alias included, passes the checked token
+// constructor, which refuses a quote; a refusal names the token that failed.
 //
 // A session is named by the x-session-id header, else the OpenAI body field user, else an md5 of the first
 // system and user messages (first 4 KiB). Its first request binds it to one upstream for six hours: the
@@ -135,8 +139,6 @@ type RouterDevConfig
   = RouterDevConfigRendered { text: String }
   | RouterDevConfigRefused { token: String }
 
-fn no_directives() -> List<NginxDirective> { [] }
-
 fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVariable, sni: NginxVariable, auth: NginxToken, host: NginxToken, bearer: NginxToken, http: NginxToken, ca: NginxToken, v1: NginxToken) -> NginxDirective {
   LocationBlock { matching: PrefixMatch { path: v1 }, body: [
     SetEmptyVariable { variable: up },
@@ -148,7 +150,7 @@ fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVaria
     ProxyBufferingDirective { value: ProxyBufferingOff },
     ProxyRequestBufferingDirective { value: ProxyRequestBufferingOff },
     ProxyNextUpstreamDirective { value: ProxyNextUpstreamOff },
-    ProxyReadTimeoutSeconds { seconds: 3600 },
+    ProxyReadTimeout { timeout: second(count: 3600) },
     ProxySetHeader { header: auth, source: HeaderPrefixedVariable { prefix: bearer, variable: key } },
     ProxySetHeader { header: host, source: HeaderFromVariable { variable: up } },
     ProxySslServerNameOn,
@@ -161,24 +163,26 @@ fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVaria
   ] }
 }
 
-fn router_dev_directives(site: RouterDevSite) -> List<NginxDirective> {
-  match tok(text: site.listen_address) { Absent => no_directives() Present { value: addr } =>
-  match tok(text: site.state_dir + "/tls/cert.pem") { Absent => no_directives() Present { value: cert } =>
-  match tok(text: site.state_dir + "/tls/key.pem") { Absent => no_directives() Present { value: certkey } =>
-  match tok(text: site.state_dir + "/upstream_ca.pem") { Absent => no_directives() Present { value: ca } =>
-  match tok(text: "router_state") { Absent => no_directives() Present { value: dict } =>
-  match tok(text: "10m") { Absent => no_directives() Present { value: dict_size } =>
-  match tok(text: "/v1/models") { Absent => no_directives() Present { value: models } =>
-  match tok(text: "/v1/") { Absent => no_directives() Present { value: v1 } =>
-  match tok(text: "Authorization") { Absent => no_directives() Present { value: auth } =>
-  match tok(text: "Host") { Absent => no_directives() Present { value: host } =>
-  match tok(text: "Bearer") { Absent => no_directives() Present { value: bearer } =>
-  match tok(text: "http") { Absent => no_directives() Present { value: http } =>
-  match var(text: "up") { Absent => no_directives() Present { value: up } =>
-  match var(text: "up_scheme") { Absent => no_directives() Present { value: scheme } =>
-  match var(text: "up_key") { Absent => no_directives() Present { value: key } =>
-  match var(text: "up_sni") { Absent => no_directives() Present { value: sni } =>
-    [
+fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
+  match tok(text: site.state_dir) { Absent => RouterDevConfigRefused { token: "state_dir" } Present { value: _ } =>
+  match tok(text: site.alias) { Absent => RouterDevConfigRefused { token: "alias" } Present { value: _ } =>
+  match tok(text: site.listen_address) { Absent => RouterDevConfigRefused { token: "addr" } Present { value: addr } =>
+  match tok(text: site.state_dir + "/tls/cert.pem") { Absent => RouterDevConfigRefused { token: "cert" } Present { value: cert } =>
+  match tok(text: site.state_dir + "/tls/key.pem") { Absent => RouterDevConfigRefused { token: "certkey" } Present { value: certkey } =>
+  match tok(text: site.state_dir + "/upstream_ca.pem") { Absent => RouterDevConfigRefused { token: "ca" } Present { value: ca } =>
+  match tok(text: "router_state") { Absent => RouterDevConfigRefused { token: "dict" } Present { value: dict } =>
+  match tok(text: "10m") { Absent => RouterDevConfigRefused { token: "dict_size" } Present { value: dict_size } =>
+  match tok(text: "/v1/models") { Absent => RouterDevConfigRefused { token: "models" } Present { value: models } =>
+  match tok(text: "/v1/") { Absent => RouterDevConfigRefused { token: "v1" } Present { value: v1 } =>
+  match tok(text: "Authorization") { Absent => RouterDevConfigRefused { token: "auth" } Present { value: auth } =>
+  match tok(text: "Host") { Absent => RouterDevConfigRefused { token: "host" } Present { value: host } =>
+  match tok(text: "Bearer") { Absent => RouterDevConfigRefused { token: "bearer" } Present { value: bearer } =>
+  match tok(text: "http") { Absent => RouterDevConfigRefused { token: "http" } Present { value: http } =>
+  match var(text: "up") { Absent => RouterDevConfigRefused { token: "up" } Present { value: up } =>
+  match var(text: "up_scheme") { Absent => RouterDevConfigRefused { token: "scheme" } Present { value: scheme } =>
+  match var(text: "up_key") { Absent => RouterDevConfigRefused { token: "key" } Present { value: key } =>
+  match var(text: "up_sni") { Absent => RouterDevConfigRefused { token: "sni" } Present { value: sni } =>
+    RouterDevConfigRendered { text: render_nginx_directives(rows: [
       WorkerProcesses { count: 1 },
       EventsBlock,
       HttpBlock { body: [
@@ -193,19 +197,14 @@ fn router_dev_directives(site: RouterDevSite) -> List<NginxDirective> {
           router_dev_location(up: up, scheme: scheme, key: key, sni: sni, auth: auth, host: host, bearer: bearer, http: http, ca: ca, v1: v1),
         ] },
       ] },
-    ]
-  } } } } } } } } } } } } } } } }
+    ]) }
+  } } } } } } } } } } } } } } } } } }
 }
 
 // The srv1 site (operator decision 2026-10-25): HTTPS on the host's 1G address, state mounted at
 // /etc/router in the container from /home/briansrls/router on the host, and the pool alias flash-next.
 fn router_dev_srv1_site() -> RouterDevSite {
   RouterDevSite { listen_address: "192.168.1.203", listen_port: 18443, state_dir: "/etc/router", alias: "flash-next" }
-}
-
-fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
-  let rows = router_dev_directives(site: site)
-  if count(rows) == 0 { RouterDevConfigRefused { token: "site" } } else { RouterDevConfigRendered { text: render_nginx_directives(rows: rows) } }
 }
 
 // The hand-run deploy's render step: writes the proxy's nginx.conf into the host state directory the
