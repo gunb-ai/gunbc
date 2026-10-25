@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_census_refusal_locus_names_no_expression_in_its_own_revision
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_census_refusal_locus_names_no_expression_in_its_own_revision: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_census_refusal_locus_names_no_expression_in_its_own_revision" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "every locus the native census emits for a refusal is carried from the authored occurrence that caused it, so a refusal row's line:column names an expression of the module's own text at the census revision, or the row carries no locus and says why" } },
+
+  receipts: [
+    "a census refusal locus names no expression in its own revision (INVALID STATE: a native census refusal row whose line:column, read in the module's own source at the revision the census ran over, is not the position of any expression of the refused construct).",
+
+    "RECEIPT (wise-moth-707, 2026-10-25, while correcting gunbc.rung_drop instrument_observations_unobservable_in_modules_refusing_natively_at_base): the full v2-native-census at 8b6bbaa5d171 (//gunbc/instruments:v2-native-census, sleek-owl-397 on srv1, rc 0, 11199s; output srv1 ~/n7full/k8b/census.out) reported gunbc.instruments.namespace_wave_occurrence_join refused with resolve_cross_tree_import_denied at 170:14, 189:8 and 190:83. In dag/gunbc/instruments/namespace_wave_occurrence_join.dag at 8b6bbaa5d171, line 170 is empty, 189:8 falls inside `match outcome {` and 190:83 inside a ProofState record literal's `stuck: \"\"` field; none is the module's import of a v2 module, which is what the cause is about (the imports sit at lines 8-11). The same loci do not name it at base 4ecf29dee either, nor in src/v2/workflow/roster_import_sweep.dag at either revision.",
+
+    "HARM: a reader who trusts the locus edits or cites the wrong construct, and a join keyed by locus (the binding diff's occurrence join) pairs the refusal with an unrelated occurrence or none. Found below the ladder: the row was cited as the root of a declared rung drop until a per-position check against the source text refused it.",
+
+    "DISTINGUISHING FACTS: the cause names a module-level edge (an import denied by v2.std.cross_tree.import_model), while the loci name expression positions in function bodies; a cause whose subject is an import edge has no body position, so the locus is either carried from some other occurrence or computed in a text other than the module's own. The route read so far: the denial is minted by v2.compiler.name_resolve at import admission (cross_tree_edge_decision answering EdgeCrossDenied yields resolve_diagnostics(reason: resolve_cross_tree_import_denied), a diagnostic with NO locus), so the `at` the census prints is supplied downstream, by whatever occurrence the walk was resolving when the refusal surfaced; which census step attaches it is the next read.",
+
+    "ATTAINABLE CEILING: structurally guaranteed, since a locus can be carried from the authored occurrence that caused the refusal, and an edge-scoped cause can carry the import's own locus. NEXT-RUNG TRIGGER, at capability grain: the census emits a refusal's locus only from the causing occurrence (or the import site for an edge-scoped cause), with a RED whose fixture is a dag module importing a v2 module and whose expected locus is that import line."
+  ],
+
+  evidence: [],
+}
