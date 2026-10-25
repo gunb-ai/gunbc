@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.argv_builder_green_by_shape_never_executed
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data argv_builder_green_by_shape_never_executed: RecurringFailureMode = RecurringFailureMode {
+  identity: "argv_builder_green_by_shape_never_executed" as NonEmptyStr,
+
+  // STATED BY THIS ROW: found below the floor (green with no executed leg), now mitigated by the
+  // per-builder executed-claim discipline this PR's wet witness instantiates; the ceiling row below
+  // restates the row's own CEILING and NEXT-RUNG lines, not new belief.
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the admitted-builder ledger records, for each builder whose output a host runs, whether a lane executes it, and refuses a builder admitted with no executed witness -- the same shape as the coverage ledger the mint list keeps, SUFFICIENT FOR a shape-only green to become a red without anyone remembering to run the wet lane." } },
+
+  receipts: [
+    "INVALID STATE: an argv builder is green on the required path because every claim over it inspects the SHAPE of the words it produces -- lengths, membership, prefix order -- while nothing ever runs the vector, so a builder that renders a PLAUSIBLE but wrong command reports full coverage. HARM: the wrong command reaches the host, where the only witness left is a shell error at 3am in a lane no one is watching. CAUSE: shape claims are cheap and hermetic, so they are the ones that get written; the executed leg is the one deferred, and deferring it leaves no trace in the tally.",
+    "OBSERVED, NOT INFERRED (WORKER-ROOT-EQUIVALENT-3, PR #14328, 2026-10-17..18): five separate rounds of the same loop caught this class in the builders this PR adds -- (a) a find action list built as List<List<String>> passed where List<String> was wanted, which would have rendered a `find` whose chmod actions were nested lists rather than `-exec chmod g+w {} +`, and whose rendered text still LOOKED right to a shape claim; (b) a chgrp action whose `{}` and `+` were doubled; (c) a readback printf whose field order did not match its parser; (d) a mode accepted as a granted file mode that the model says the granted tree never contains; (e) a projection that invented an empty program name for a command with no words. In every case the shape claims held. What reddened them, when it did, was a leg that EXECUTED the vector and read the result back.",
+    "WHY A SHAPE CLAIM CANNOT SEE THIS: the failure is in the RELATIONSHIP between the vector and the program that consumes it. `-exec chmod {} +` is well-formed words; `[[chmod, {}, +]]` nested is also a list of strings to a shape claim that checks `contains(chmod)`. The only claim that distinguishes them runs find and looks at what it did to the tree.",
+    "BOUNDED AGAINST ITS NEIGHBOURS. `mock_response_that_cannot_execute_reads_as_hermetic_coverage` is a mock standing in for an effect the route cannot perform; here there is no mock at all, only a claim that never asked to perform the effect. `executed_conjunct_discriminates_nothing` is a conjunct that runs and distinguishes nothing; here the CONJUNCT runs fine, and it is the SUBJECT that was never executed. `non_execution_undifferentiated_by_what_it_silenced` is about a lane reporting nothing; here the lane reports HELD, correctly, for a claim that does not test the thing.",
+    "RUNG FOUND AT: below the floor, green. RUNG NOW: a discipline, not a mechanism -- every builder whose output is a command that a host runs must have at least one claim that RUNS it through the production exec route (`run_shell_command_capture` over LocalExec) and reads the effect back from the world, with the dry claims kept as the fast shape layer beside it. That is what this PR's wet witness is, and it is the only leg in the file that ever found any of the five.",
+    "CEILING: structurally decidable, per builder class -- the admitted-builder roster can record, for each builder, whether a lane executes it, and the roster check can refuse a builder admitted with no executed witness (the same shape as the coverage ledger the mint list already keeps). NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a real-host lane for argv execution that the required path can schedule -- the capability the wet witness's exclusion row names (argv-bound `mock_response` coverage for shell.Exec.RunArgv and shell.Mktemp.Dir) -- SUFFICIENT FOR the shape-only green to become a red without anyone remembering to run the wet lane.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.exec.command", decl_name: "argv_command", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.ci.ci_layer_roots", decl_name: "excl_local_repo_wet_argv_execution_reason", field: WholeDeclaration },
+  ],
+}

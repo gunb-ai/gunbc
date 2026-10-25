@@ -63,6 +63,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacObservedShare,
   observe_media_general_share,
 }
+import std.content_hash { sha256_hex_of_text }
 
 // MT. JADE UNIT 1 BMC ACCESS. Every fact below is read from a committed capture; this module invents
 // no host, serial, or board enum arm. The unit key is not a row here: it is derived by

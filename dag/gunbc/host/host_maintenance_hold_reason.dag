@@ -1,8 +1,8 @@
 module gunbc.host.host_maintenance_hold_reason
 
 import std.types { NonEmptyStr }
-import product.host_identity { host_identity_eq }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.host.managed_host { ManagedHost }
 
 // THE VARIABLE AN OPERATOR NAMES THEIR MAINTENANCE REASON THROUGH IS MAINTENANCE POLICY, not a fact
@@ -14,6 +14,29 @@ import gunbc.host.managed_host { ManagedHost }
 fn maintenance_hold_reason_env(host: ManagedHost) -> NonEmptyStr? {
   if host_identity_eq(a: host.host, b: operator_host_mtcollins1) {
     Present { value: "GUNBC_MTCOLLINS1_MAINTENANCE_REASON" as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+// WHETHER DRIVING A HOST MUST TAKE ITS MAINTENANCE HOLD FIRST, and on which host the hold store lives.
+// This is maintenance policy of the same kind as the reason variable above, so it lives here and not on
+// gunbc.host.managed_host ManagedHost, whose row carries what was OBSERVED of a machine (#14063 disclosed
+// the field; this is its move). Mt. Collins unit 1 is serviced by hand, so a power cycle of it is gated
+// by the same slot the boot takes; a write may only run where that store is, or it would acquire a hold
+// in an empty store the operator never sees. gunbc.host.managed_host_unit_hold admit_unit_hold_subject is
+// the only reader that turns a decision into a slot.
+type ResetUnitHold
+  = ResetUnitHoldRequired { key: NonEmptyStr, store_host: NonEmptyStr }
+  | ResetNoUnitHold
+
+// ONE DECISION PER HOST, AND A HOST WITH NO ROW HAS NO DECISION: Absent is never read as
+// ResetNoUnitHold. A hand-serviced unit enrolled without a row would otherwise be power-cycled with no
+// hold at all, so gunbc.host.managed_host_unit_hold admit_unit_hold_subject types it UnitHoldUndecided
+// and every hold-gated effect refuses it.
+fn unit_hold_decision(host: HostIdentity) -> ResetUnitHold? {
+  if host_identity_eq(a: host, b: operator_host_mtcollins1) {
+    Present { value: ResetUnitHoldRequired { key: operator_host_mtcollins1 as NonEmptyStr, store_host: operator_host_srv1 as NonEmptyStr } }
   } else {
     none
   }

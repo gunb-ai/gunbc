@@ -1,7 +1,7 @@
 module v2.test.claim.census_scoped_acquisition
 
 import std.types { Bool, Int, List, String }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, fold_list, list_find_first }
 import std.optional { Absent, Present }
 import v2.compiler.module_acquisition {
   AcquiredModule,
@@ -249,3 +249,21 @@ test fn a_permitted_read_does_not_admit_a_later_denied_request() -> Bool {
 test fn a_denied_request_does_not_block_a_later_permitted_read() -> Bool {
   shared_acquired_and_dag_edge_denied(acq: acquire_census_closure_of(layout: repository_storage_layout(), bindings: cross_bindings(), entries: ["v2.cx.entry_denied_first"]))
 }
+
+// ---- THE BOUNDARY GUARD IS THE INSTRUMENT, NOT A CLAIM MODULE ----
+//
+// No claim in v2.test.claim guards fn native_census_scoped_entries (v2.compiler.source_root_eval)
+// TODAY, on main or at this head: four measured probe rounds
+// (banked scratch/qc503-boundary-probe1..probe4; full causes in the ledger row) show EVERY claim
+// shape refusing at prepare/eval with the grounding-not-derived chain -- down to a bare String
+// equality in a module importing only std.types -- and the control (scratch/qc503-probe4-on-main @
+// 7b954f7182cc) shows the SAME minimal module refusing identically on main's tree and binaries: the
+// claim lane's own grounding requirement, NOT an effect of this rework. An un-executed claim is not a guard (DESIGN section 5), so none is landed here;
+// the executed guard is the instrument //gunbc/instruments:v2-native-census-scoped, which runs the
+// census over supplied subjects beside the route's own first fatal. Separately, THIS module's door
+// claims are refused at prepare at main, because they reach std.algebra's BODY through
+// acquire_census_closure_of and std.algebra binds ambient names (list_push, ...) that do not resolve
+// outside the contract rows the v2 native ruling keeps off both paths -- a declared frontier blocked
+// on #14751 giving list_push its one declared home. The class both guard-spaces guard stays OPEN,
+// with the direction-measurements and what
+// closes it in the ledger: gunbc.recurring_failure_mode.census_rows_read_the_loaded_population.

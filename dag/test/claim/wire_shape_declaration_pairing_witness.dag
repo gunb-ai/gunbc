@@ -18,7 +18,7 @@ fn pairs() -> List<ShapePair> {
     ShapePair { qualified: "extdeps.crypto.signature.VerifyingKey", shape: key_shape() },
     ShapePair { qualified: "gunbc.auth.approval_device_wire.RedemptionChallenge", shape: challenge_shape() },
     ShapePair { qualified: "gunbc.auth.approval_device_wire.DeviceRedemptionSigningInput", shape: signing_input_shape() },
-    ShapePair { qualified: "gunbc.auth.approval_device_wire.EnrolmentRequest", shape: enrolment_shape() },
+    ShapePair { qualified: "gunbc.auth.approval_device_wire.GoogleEnrolmentRequest", shape: enrolment_shape() },
   ]
 }
 

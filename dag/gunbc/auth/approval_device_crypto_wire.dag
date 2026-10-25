@@ -2,7 +2,7 @@ module gunbc.auth.approval_device_crypto_wire
 
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import std.algebra { trim }
+import std.algebra { trim, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
 import std.encoding { base64_decode, Standard }
 import extdeps.crypto.signature {
   VerifyingKey, SignatureBytes, SignedMessage, SignatureVerification, SignatureVerified, SignatureInvalid, SignatureMalformed, VerifyingKeyMalformed,

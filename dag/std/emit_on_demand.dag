@@ -167,7 +167,7 @@ data gunbc_serve_wet_surface: InterpreterWetSurface = InterpreterWetSurface {
   membership: DeclaredFrontier {
     authorities: [
       wet_surface_ref(module_path: "gunbc.roadmap.roadmap_serve", decl_name: "roadmap_serve_handle"),
-      wet_surface_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_dispatch_node")
+      wet_surface_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_dispatch_node_for_instance_over")
     ],
     reason: "the in-process belt dispatch is modeled, but the gunbc serve socket accept-loop remains a seed Rust seam and exact declaration-Node resolution is unavailable",
     dissolution: unbound_dissolution(description: "emit-on-demand materializes the serve closure and its host accept-loop, then the seed handle_serve seam deletes")

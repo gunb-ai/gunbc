@@ -19,7 +19,7 @@ import gunbc.auth.approval_broker_marker {
   approval_broker_served_token, approval_serving_process_token,
 }
 import gunbc.auth.approval_broker_serve {
-  ApprovalBrokerHandler, DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler,
+  ApprovalBrokerHandler, DeviceEnrolHandler, DeviceRedeemHandler, DevicePendingHandler, DeviceRequestHandler, DeviceEnrollmentReadbackHandler, DevicePushUpdateHandler, DeviceListHandler, DeviceRevokeHandler,
   ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
   approval_broker_route_specs,
   approval_broker_route_table_build,
@@ -90,32 +90,35 @@ test fn approval_broker_table_selects_the_store_receipt_route_as_a_post() -> Boo
     }
 }
 
-// THE SIX DEVICE ROUTES ARE ANSWERED HERE AND ONLY AS POSTS (gunbc.auth.approval_device_wire:
+// THE SIX PHONE ROUTES ARE ANSWERED HERE AND ONLY AS POSTS (gunbc.auth.approval_device_wire:
 // every device operation is a POST whose body carries its authentication). The two suffixed
 // routes bind one segment; a GET on any of them is 405, not a read.
-test fn approval_broker_table_selects_the_six_device_routes_as_posts() -> Bool {
+test fn approval_broker_table_selects_the_device_routes_with_their_methods() -> Bool {
   broker_selects(method: POST, path: "/approve/device/enrol", want: DeviceEnrolHandler)
     && broker_selects(method: POST, path: "/approve/device/redeem", want: DeviceRedeemHandler)
     && broker_selects(method: POST, path: "/approve/device/pending", want: DevicePendingHandler)
     && broker_selects(method: POST, path: "/approve/device/requests/id-ZXNj", want: DeviceRequestHandler)
     && broker_selects(method: POST, path: "/approve/device/enrollments/id-ZW5y", want: DeviceEnrollmentReadbackHandler)
     && broker_selects(method: POST, path: "/approve/device/push", want: DevicePushUpdateHandler)
+    // THE TWO OPERATOR ROUTES: the list is a GET, the revoke a POST binding one enrollment segment.
+    && broker_selects(method: GET, path: "/approve/devices", want: DeviceListHandler)
+    && broker_selects(method: POST, path: "/approve/devices/revoke/id-ZW5y", want: DeviceRevokeHandler)
     && match serve_select_route(table: broker_table_or_empty(), method: GET, path: "/approve/device/pending") {
       MethodNotAllowed { allowed: ms } => count(ms) == 1
       _ => false
     }
 }
 
-// THE TABLE IS EXACTLY THE ELEVEN: the four approval routes, the store receipt route and the six
-// device routes. A new row is not a neutral addition: every route this process serves is one more
+// THE TABLE IS EXACTLY THE FOURTEEN: the favicon and approval routes, the store receipt route and the eight
+// device routes (six phone routes, the operator list and revoke). A new row is not a neutral addition: every route this process serves is one more
 // thing whose demand shares the broker's slice, and the split exists because co-tenancy is what
 // made an approval poll depend on a dashboard render. The eleventh is the approval loop's own: a
 // receipt is minted from the broker's decision store and nowhere else, and it is a separate POST so
 // that bearer authority over store writes never rides the public status GET.
 test fn approval_broker_table_carries_no_other_route() -> Bool {
-  count(approval_broker_route_specs()) == 11
+  count(approval_broker_route_specs()) == 14
     && match approval_broker_route_table_build() {
-      ServedRouteTableBuilt { table: t } => count(t.routes) == 11
+      ServedRouteTableBuilt { table: t } => count(t.routes) == 14
       ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     }
 }

@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_belt_actuate
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_attempt_request_binding {
   AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous, attempt_launch_request_for_origin,
@@ -44,6 +45,22 @@ import gunbc.dispatch_credential_acquisition {
   CredentialLaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
+import gunbc.roadmap.dispatch_unit_created_paths {
+  DispatchUnitCreatedPathVerdict,
+  DispatchUnitCreatedPathConsumable,
+  DispatchUnitCreatedPathUnconsumable,
+  dispatch_worker_created_paths,
+  dispatch_unit_created_paths_judge,
+  dispatch_unit_created_path_wire,
+}
+import gunbc.roadmap.dispatch_worker_traversal {
+  dispatch_worker_traversal_for_plan,
+  dispatch_worker_traversal_wire,
+  DispatchWorkerTraversal,
+  DispatchWorkerTraversalAdmitted,
+  DispatchWorkerAncestorNotTraversable,
+  DispatchWorkerTraversalCouldNotLook,
+}
 import gunbc.dispatch_attempt_launch {
   PreparedAttemptLaunch,
   SnapshotLaunch,
@@ -143,85 +160,7 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  HostExecArgv,
-  DispatchLiveSession,
-  DispatchSpawnCommands,
-  DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer,
-  dispatch_worker_unit_properties_for_plan,
-  dispatch_attempt_unit_name,
-  attempt_unit_observation,
-  worker_process_from_attempt_unit,
-  DispatchSpawnPlan,
-  DispatchSpawnReady,
-  DispatchSpawnRefused,
-  dispatch_spawn_commands_for_launch,
-  dispatch_capability_program,
-  dispatch_attempt_key,
-  dispatch_attempt_identity_mint,
-  DispatchAttemptMinted,
-  DispatchAttemptIdentityRefused,
-  dispatch_attempt_key_path_for_instance,
-  dispatch_attempt_admission_path_for_instance,
-  dispatch_attempt_launch_path_for_instance,
-  dispatch_attempt_spawn_origin_path_for_instance,
-  dispatch_attempt_events_path_for_instance,
-  dispatch_attempt_spawn_failure_path_for_instance,
-  dispatch_attempt_oracle_identity_path_for_instance,
-  dispatch_attempt_oracle_revision_path_for_instance,
-  dispatch_attempt_oracle_pin_refusal_path_for_instance,
-  dispatch_attempt_validation_receipt_path_for_instance,
-  dispatch_attempt_verification_receipt_path_for_instance,
-  dispatch_attempt_verification_dir_for_instance,
-  dispatch_attempt_diff_window_path_for_instance,
-  dispatch_attempt_verification_current_selection_path_for_instance,
-  dispatch_attempt_publication_receipt_path_for_instance,
-  dispatch_attempt_publication_dir_for_instance,
-  dispatch_attempt_state_path_for_instance,
-  publication_receipt_directory_segment,
-  dispatch_current_attempt_oracle_identity_path_for_instance,
-  dispatch_current_attempt_oracle_revision_path_for_instance,
-  dispatch_current_attempt_oracle_pin_refusal_path_for_instance,
-  dispatch_current_attempt_validation_receipt_path_for_instance,
-  dispatch_worktree_path_for_instance,
-  dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files,
-  dispatch_verification_checkout_path_for_instance,
-  git_worktree_add_detached_argv_for_instance,
-  dispatch_current_attempt_key_path_for_instance,
-  dispatch_current_attempt_admission_path_for_instance,
-  dispatch_current_attempt_events_projection_argv_for_instance,
-  dispatch_current_attempt_spawn_failure_path_for_instance,
-  dispatch_branch_name,
-  DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence,
-  git_for_each_ref_dispatch_argv,
-  git_for_each_ref_dispatch_argv_for_instance,
-  dispatch_tmux_session_scope,
-  DispatchCliProvider, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider,
-  dispatch_provider_label, dispatch_codex_home,
-  dispatch_actuator_selection,
-  DispatchActuatorSelection,
-  DispatchActuatorSelectionOk,
-  DispatchActuatorSelectionRefused,
-  dispatch_tmux_session_name,
-  dispatch_worktree_root,
-  tmux_ls_argv,
-  tmux_ls_argv_for_instance,
-  tmux_kill_session_argv,
-  tmux_kill_session_argv_for_instance,
-  dispatch_live_sessions_from_entries,
-  dispatch_live_sessions_with_process,
-  dispatch_session_cleanup_for_live_session,
-  DispatchStopRunningProcess,
-  DispatchClearRetainedSession,
-  DispatchClearSignaledSession,
-  DispatchCleanupRefused,
-  dispatch_session_cleanup,
-  dispatch_session_cleanup_action,
-  dispatch_session_cleanup_allowed,
-  dispatch_session_cleanup_detail,
-  tmux_attempt_panes_argv_for_instance,
-  worker_process_from_attempt_pane,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_attempt_key_path_for_instance, dispatch_attempt_admission_path_for_instance, dispatch_attempt_launch_path_for_instance, dispatch_attempt_spawn_origin_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_spawn_failure_path_for_instance, dispatch_attempt_oracle_identity_path_for_instance, dispatch_attempt_oracle_revision_path_for_instance, dispatch_attempt_oracle_pin_refusal_path_for_instance, dispatch_attempt_validation_receipt_path_for_instance, dispatch_attempt_verification_receipt_path_for_instance, dispatch_attempt_verification_dir_for_instance, dispatch_attempt_diff_window_path_for_instance, dispatch_attempt_verification_current_selection_path_for_instance, dispatch_attempt_publication_receipt_path_for_instance, dispatch_attempt_publication_dir_for_instance, publication_receipt_directory_segment, dispatch_current_attempt_oracle_identity_path_for_instance, dispatch_current_attempt_oracle_revision_path_for_instance, dispatch_current_attempt_oracle_pin_refusal_path_for_instance, dispatch_current_attempt_validation_receipt_path_for_instance, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_key_path_for_instance, dispatch_current_attempt_admission_path_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_current_attempt_spawn_failure_path_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane, dispatch_attempt_events_initialize_for_instance, DispatchAttemptEventsInitialized, DispatchAttemptEventsInitializationFailed }
 import extdeps.tmux {
   classify_tmux_session_list,
   TmuxSessionsListed,
@@ -259,7 +198,7 @@ import gunbc.worker_lifecycle {
   terminal_outcome_evidence_label,
 }
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
-import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
+import gunbc.host.host_layout { belt_spawn_workdir_env_var, instance_receipts_dir, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
@@ -288,7 +227,6 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardObserveOnly,
   DashboardActuating,
-  srv1_live_dashboard_instance,
   dashboard_instance_for_id,
   DashboardInstanceForId,
   DashboardInstanceIdUnknown,
@@ -302,7 +240,15 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceRootUnknown,
   dashboard_instance_for_repo_root,
   dispatch_base_branch,
+  dashboard_git_subtree_readback_is_granted_under, dashboard_git_worker_granted_directory_mode,
+  dashboard_git_worker_directory_mode_octal,
+  dashboard_git_worker_entry_writes_files_in_place,
 }
+// THE GROUP ROW, IMPORTED FROM THE ACCOUNT MODEL THAT DECLARES IT. The gate below compares the group
+// find reports on every granted entry against this row, so it has to name the same declaration the
+// spawn's chgrp was told -- two spellings of a group name is how a gate starts a worker unit over a
+// tree it believes is grouped for a different account.
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 import gunbc.roadmap.roadmap_dispatch_environment {
   EnvironmentAdmitted,
   EnvironmentRefused,
@@ -662,18 +608,9 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_worker_unit_observation_of,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
-import gunbc.roadmap.roadmap_session_placement {
-  attempt_worker_unit_observe_for_instance,
-  SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores,
-  session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused,
-  session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon,
-  session_process_bounds, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed,
-  session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable,
-  SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused,
-  session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
-}
+import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire }
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
-import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
+import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_store, WorktreeClaimStoreReady, WorktreeClaimStoreUnready }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimWritten, WorktreeClaimRecorded, WorktreeClaimNotRecorded, worktree_claim_new, worktree_claim_record_before_add,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved,
@@ -794,9 +731,8 @@ data belt_actuate_fingerprint_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
-data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). belt_actuate_workdir is the SPAWN root: `git worktree add` must run inside the gunbc repo — a PROJECTION of gunbc.host.host_layout.srv1_gunbc_repo_root (the single path authority; its former private copy deleted, DESIGN §3): the same tree `gunbc serve` loads, which is why dispatch works in-process. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
+data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). The SPAWN root is the instance's own repo_root: `git worktree add` must run inside the gunbc repo the instance serves — the same tree `gunbc serve` loads, which is why dispatch works in-process — and it is read from the instance the caller passed, never from one host's layout. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
 
-data belt_actuate_workdir: FilePath = srv1_gunbc_repo_root
 
 data belt_observe_workdir: FilePath = "/" as FilePath
 
@@ -1009,15 +945,17 @@ fn belt_attempt_state_initialize_for_instance(
         detail: launch_write.error,
       }
     } else {
-      let events_write = Filesystem.Write(
-        path: dispatch_attempt_events_path_for_instance(
-          instance: instance,
-          node_id: node.node,
-          attempt_key: attempt_key,
-        ),
-        content: "",
-      )
-      if events_write.success {
+      match dispatch_attempt_events_initialize_for_instance(
+        instance: instance,
+        node_id: node.node,
+        attempt_key: attempt_key,
+      ) {
+      DispatchAttemptEventsInitializationFailed { detail: events_detail } =>
+        AttemptStateInitializationFailed {
+          step: "attempt-events-initialize",
+          detail: events_detail,
+        }
+      DispatchAttemptEventsInitialized => {
         let receipt_initialized = Filesystem.Write(
           path: dispatch_attempt_validation_receipt_path_for_instance(
             instance: instance,
@@ -1079,11 +1017,7 @@ fn belt_attempt_state_initialize_for_instance(
               }
           }
         }
-      } else {
-        AttemptStateInitializationFailed {
-          step: "attempt-events-initialize",
-          detail: events_write.error,
-        }
+      }
       }
     }
   }
@@ -1367,7 +1301,7 @@ data belt_spawn_oracle_pin_standing_production_consumer_frontier: FrontierRow = 
   ref: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_spawn_oracle_pin_standing"),
   reason: "live spawn refuses via belt_attempt_oracle_pin_capture_for_instance after worktree-add; belt_spawn_oracle_pin_standing is not on that path",
   dissolution: unbound_dissolution(
-    description: "a production fold on the POST /dispatch or belt-intent-admission path calls belt_spawn_oracle_pin_standing with observations of the exact admitted-base Git objects. Not satisfied by belt_dispatch_node existing, nor by a witness constructing OracleMissing / OracleFound, nor by re-binding spawn to instance.repo_root"
+    description: "a production fold on the POST /dispatch or belt-intent-admission path calls belt_spawn_oracle_pin_standing with observations of the exact admitted-base Git objects. Not satisfied by belt_dispatch_node_for_instance existing, nor by a witness constructing OracleMissing / OracleFound, nor by re-binding spawn to instance.repo_root"
   ),
 )
 
@@ -1525,6 +1459,44 @@ fn belt_credential_admit_before_spawn(prepared: PreparedAttemptLaunch) -> BeltCr
   }
 }
 
+// THE WORKER'S REACH IS ESTABLISHED BEFORE ANYTHING IS CLAIMED FOR THE UNIT. A unit whose worker uid
+// cannot traverse an ancestor of a handed path fails at start (200/CHDIR) with the worker never
+// having run, after the credential snapshot, placement grant and request have been consumed. This
+// refuses first, so no placement record is written and no start request is enqueued.
+// The tmux container runs as the controller itself and hands no User=, so only a unit container
+// climbs.
+fn belt_worker_traversal_outcome(reach: DispatchWorkerTraversal) -> BeltExecStepsOutcome {
+  match reach {
+    DispatchWorkerTraversalAdmitted => ExecStepsOk
+    DispatchWorkerAncestorNotTraversable { worker: _, handed_path: _, blocking_dir: _, observed_owner: _, observed_mode: _ } =>
+      ExecStepFailed { step: "worker-traversal", detail: dispatch_worker_traversal_wire(reach: reach) }
+    DispatchWorkerTraversalCouldNotLook { worker: _, handed_path: _, subject: _, reason: _ } =>
+      ExecStepFailed { step: "worker-traversal", detail: dispatch_worker_traversal_wire(reach: reach) }
+  }
+}
+
+fn belt_worker_traversal_before_spawn(instance: HostDashboardInstance, container: DispatchSessionContainer) -> BeltExecStepsOutcome {
+  match container {
+    TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => ExecStepsOk
+    SystemdUnitContainer { plan } =>
+      match belt_worker_traversal_outcome(reach: dispatch_worker_traversal_for_plan(instance: instance, plan: plan)) {
+        ExecStepFailed { step: s, detail: d } => ExecStepFailed { step: s, detail: d }
+        ExecStepsOk => belt_worker_created_paths_outcome(verdict: dispatch_unit_created_paths_judge(created: dispatch_worker_created_paths(instance: instance, plan: plan)))
+      }
+  }
+}
+
+// The producer-side half of the same boundary: the paths the system manager creates for the unit must
+// be usable by their consumers (gunbc.roadmap.dispatch_unit_created_paths). Pure over declared
+// principals, so it needs no observation; it refuses before the placement record and the enqueue.
+fn belt_worker_created_paths_outcome(verdict: DispatchUnitCreatedPathVerdict) -> BeltExecStepsOutcome {
+  match verdict {
+    DispatchUnitCreatedPathConsumable => ExecStepsOk
+    DispatchUnitCreatedPathUnconsumable { created: _ } =>
+      ExecStepFailed { step: "worker-created-path", detail: dispatch_unit_created_path_wire(verdict: verdict) }
+  }
+}
+
 fn belt_session_container_create(
   instance: HostDashboardInstance,
   attempt_key: String,
@@ -1636,20 +1608,21 @@ fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id
   }
 }
 
-// THE SLOT STORE IS CREATED BY THE SAME CAPABILITY THAT CREATES ATTEMPT STATE, before the settlement
+// THE SLOT STORE IS CREATED BY THE SAME CAPABILITY THAT CREATES ATTEMPT STATE, at the root read off
+// the very SlotStore every lifecycle write in stores.slots goes to (one root, not a path beside it), before the settlement
 // pass reads it and before any slot is opened in it, so "the store is missing" never has to be told
 // apart from "the store could not be listed" by reading an error string. Present carries the refusal.
 fn belt_session_slots_ensure(instance: HostDashboardInstance, stores: SessionPlacementStores) -> String? {
   match belt_exec(
     cmd: host_exec_argv(
       program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
-      args: ["-d", "-m", "0700", stores.slots_root as String],
+      args: ["-d", "-m", "0700", stores.slots.root as String],
     ),
     workdir: belt_observe_workdir as String,
   ) {
     ExecOk { stdout: _ } => none
-    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
-    ExecRefused { program, reason } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, "): ", reason], "") }
+    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", stores.slots.root as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
+    ExecRefused { program, reason } => Present { value: join(["the session slot store ", stores.slots.root as String, " could not be created (", program, "): ", reason], "") }
   }
 }
 
@@ -1676,12 +1649,16 @@ fn belt_worktree_claim_before_add(instance: HostDashboardInstance, node_id: Stri
   match now_epoch_seconds() {
     Absent => WorktreeClaimNotRecorded { detail: "the host clock could not be read, so the worktree claim has no launch deadline" }
     Present { value: now } =>
-      worktree_claim_record_before_add(
-        root: worktree_claim_slots_root_of(instance: instance),
-        claim: worktree_claim_new(
-          node_id: node_id, attempt_key: attempt_key,
-          worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
-          opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds))
+      match worktree_claim_store(instance: instance) {
+        WorktreeClaimStoreUnready { detail } => WorktreeClaimNotRecorded { detail: detail }
+        WorktreeClaimStoreReady { store: claims } =>
+          worktree_claim_record_before_add(
+            claims: claims,
+            claim: worktree_claim_new(
+              node_id: node_id, attempt_key: attempt_key,
+              worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
+              opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds))
+      }
   }
 }
 
@@ -1764,9 +1741,12 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
       match now_epoch_seconds() {
         Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the worktree claim ensure compares against the launch deadline" }
         Present { value: now } =>
+          match worktree_claim_store(instance: instance) {
+          WorktreeClaimStoreUnready { detail } => SessionSettlePassRefused { detail: detail }
+          WorktreeClaimStoreReady { store: claims } =>
           match worktree_claim_ensure_pass_at(
             stores: stores,
-            claims_root: worktree_claim_slots_root_of(instance: instance),
+            claims: claims,
             host: instance.host_identity as String,
             path_of: (n, k) => dispatch_worktree_path_for_instance(instance: instance, node_id: n as RoadmapNodeId, attempt_key: k),
             loaded_of: u => attempt_unit_observation(unit: u),
@@ -1784,6 +1764,7 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
                 SessionSettlePassRan { settlements: settlements }
               }
             WorktreeClaimPassRefused { detail } => SessionSettlePassRefused { detail: detail }
+          }
           }
       }
   }
@@ -1981,7 +1962,7 @@ fn belt_dispatch_spawn_provider_wire_label(provider: DispatchCliProvider) -> Str
 // srv1 at go-live (ancestor-inheritance makes the single root sufficient; steps claude-trust-home /
 // claude-trust-store / claude-trust-seed, each detail naming the exact convergence). The DECISION
 // is the pure witnessed fn belt_claude_preflight_decision (every arm on synthetic facts, like
-// belt_observe_from_result); belt_claude_preflight only threads live observations in. Residue:
+// belt_observe_from_result); belt_claude_preflight_for_instance only threads live observations in. Residue:
 // refuse-with-instructions, not auto-seed — the trust store is claude's own runtime-mutable file,
 // so a read-modify-write APPLY arm races the upstream writer; seeding stays with the live_deploy
 // membership convergence (the go-live receipt's named dissolution).
@@ -2057,10 +2038,6 @@ fn belt_claude_preflight_for_instance(instance: HostDashboardInstance) -> BeltCl
       trust_root: dashboard_instance_dispatch_worktree_root(instance: instance) as String,
     )
   }
-}
-
-fn belt_claude_preflight() -> BeltClaudePreflight {
-  belt_claude_preflight_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 type BeltCodexPreflight
@@ -2209,10 +2186,6 @@ fn belt_codex_preflight_for_instance(instance: HostDashboardInstance) -> BeltCod
   }
 }
 
-fn belt_codex_preflight() -> BeltCodexPreflight {
-  belt_codex_preflight_for_instance(instance: srv1_live_dashboard_instance())
-}
-
 type BeltProviderPreflight
   = ProviderPreflightOk
   | ProviderPreflightRefused { step: String, detail: String }
@@ -2249,13 +2222,6 @@ fn belt_provider_preflight_for_instance(
           }
       }
   }
-}
-
-fn belt_provider_preflight(provider: DispatchCliProvider) -> BeltProviderPreflight {
-  belt_provider_preflight_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    provider: provider,
-  )
 }
 
 // Step 0b: the runtime admits against its own deployment footprint BEFORE mutating anything. The
@@ -3078,7 +3044,7 @@ fn belt_supervisor_convene(
                 launch: launch,
               }
             WorktreeHeadObserved { revision } =>
-              match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: escalation.node_id, attempt_key: escalation.attempt_key, role: AttemptSupervisorRole { turn: escalation.turn }) {
+              match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: escalation.node_id, attempt_key: escalation.attempt_key, role: AttemptSupervisorRole { turn: escalation.turn }, record_owner: instance.directory_owner) {
               AttemptExitHookRefused { reason: hook_reason } => SpawnFailed { node_id: node.node as String, step: "supervisor-exit-hook", detail: join(["the supervisor was not launched: its exit hook could not be rendered: ", hook_reason as String], ""), provider: provider_wire_label, launch: launch }
               AttemptExitHookRendered { exec_line: hook_line } =>
               match metering_roster_admit(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, role: MeteredSupervisor { turn: escalation.turn }) {
@@ -3368,6 +3334,78 @@ fn belt_actuate_spawn_with_origin(
   }
 }
 
+// THE PER-ATTEMPT PROOF, run by the SPAWN and nothing else. The grant argv come in the spawn bundle
+// beside worktree_add, so the sequence is one attempt's by construction: `git worktree add` creates
+// .git/worktrees/<key> under the principal that runs the actuator (on the lab, the account the serve
+// runs as -- the entry's owner and a member of the attempt group), the two grant commands then put that
+// entry and everything under it in the attempt group at the declared arm (02770 on directories, 0664 on the
+// walked files), and the walk proves it. THE UNIT IS
+// NOT STARTED IF THE PROOF FAILS: a worker whose entry is not granted cannot commit, and starting it
+// anyway turns a named refusal into a permission error inside someone else's attempt. The decision is
+// the model's own dashboard_git_subtree_readback_is_granted_under over
+// dashboard_git_worker_granted_directory_mode -- the same figure the apply and the claims use -- so
+// there is no second definition of "granted" to drift, and an EMPTY receipt fails it rather than
+// passing it (recurring failure mode directory_ownership_assertion_stops_at_the_top_level).
+//
+// THE GROUP IS A PARAMETER, NOT A CONSTANT READ HERE, for the reason every other grant in this slice has
+// it: the fold compares find's `%g` against the token the grant was told, and a test that groups a
+// throwaway tree to a token its own host can resolve is asking the same question of a group name the CI
+// host has never heard. THE PRODUCTION CALLER BELOW BINDS fleet_posix_worker_shared_group_name, the row
+// fleet_posix_accounts declares and the same row the grant argv were built with; NO DEFAULT, so a call
+// site cannot quietly take the production name where it meant to name its own. The dry pairing claim
+// the_production_route_names_the_declared_group_in_every_grant_command keeps the production binding
+// executed, so the substituted spelling is never the only route through this gate.
+fn belt_worker_git_entry_grant_readback(
+  cmds: DispatchSpawnCommands,
+  workdir: String,
+  group: NonEmptyStr,
+) -> BeltExecStepsOutcome {
+  match belt_exec(cmd: cmds.worker_git_entry_readback, workdir: workdir) {
+    ExecOk { stdout: receipt } =>
+      if dashboard_git_subtree_readback_is_granted_under(
+        top: dashboard_git_worker_granted_directory_mode,
+        // THE GROUP HALF OF THE GRANT, ON EVERY LINE. Without this leg the gate starts the worker unit
+        // on a tree at the right MODES and the wrong GROUP -- which is exactly the pre-migration state of
+        // the lab tree this slice exists to repair (briansrls:briansrls at 0775 read as granted), and the
+        // worker's first commit dies on a permission error inside a tree the belt just certified.
+        group: group,
+        // THE ENTRY'S OWN DECISION: its files DO carry group-write, because logs/HEAD in this very entry
+        // is a reflog the worker's commit appends to (dashboard_git_worker_entry_writes_files_in_place).
+        // A receipt whose reflog came back at git's read-only 0444 therefore refuses here -- which is the
+        // state that makes the worker's first commit die on "unable to append", so the unit is not started.
+        files_group_writable: dashboard_git_worker_entry_writes_files_in_place(),
+        receipt: receipt,
+      ) {
+        ExecStepsOk
+      } else {
+        ExecStepFailed {
+          step: "worker-git-entry-readback",
+          // THE EXPECTED TOP IS NAMED BY THE ARM THE GATE DECIDES ON, not by a figure typed beside it:
+          // the same rendering the install passes to `install -d -m` and the fold compares against
+          // (dashboard_git_worker_directory_mode_octal over dashboard_git_worker_granted_directory_mode).
+          // A hand-typed mode here is a third spelling of one fact, and it is how this gate started
+          // reporting a mode its own decision no longer used.
+          detail: join(
+            [
+              "the attempt's private git entry did not read back granted (expected ",
+              dashboard_git_worker_directory_mode_octal(mode: dashboard_git_worker_granted_directory_mode),
+              " on the entry, group-writable entries beneath it; an empty or unreadable walk counts as not",
+              " granted), so the worker unit is not started",
+            ],
+            "",
+          ) as NonEmptyStr,
+        }
+      }
+    ExecFailed { program: _, exit_code, stderr } =>
+      ExecStepFailed {
+        step: "worker-git-entry-readback",
+        detail: join(["the grant walk could not run: exit ", to_string(exit_code), ": ", stderr], ""),
+      }
+    ExecRefused { program: _, reason } =>
+      ExecStepFailed { step: "worker-git-entry-readback", detail: reason }
+  }
+}
+
 // THE ADMITTED SPAWN'S HOST STEPS, carrying the session's placement grant when its container holds
 // one. Extracted from belt_actuate_spawn_with_origin so the grant's release-unless-spawned rule
 // wraps ONE outcome rather than every SpawnFailed arm separately. It addresses the prepared launch's
@@ -3407,13 +3445,19 @@ fn belt_spawn_admitted(
       }
     WorktreeClaimRecorded =>
   match belt_exec_steps(
-    steps: [
-      BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
-      BeltExecStep {
-        step: "attempt-state-prepare",
-        command: cmds.attempt_state_prepare,
-      },
-    ],
+    steps: concat(
+      [BeltExecStep { step: "worktree-add", command: cmds.worktree_add }],
+      concat(
+        concat(
+          map(
+            cmds.worker_git_entry_grant,
+            command => BeltExecStep { step: "worker-git-entry-grant", command: command },
+          ),
+          map(cmds.worker_worktree_grant, command => BeltExecStep { step: "worker-worktree-grant", command: command }),
+        ),
+        map(cmds.attempt_state_prepare, command => BeltExecStep { step: "attempt-state-prepare", command: command }),
+      ),
+    ),
     workdir: workdir,
   ) {
     ExecStepFailed { step, detail } =>
@@ -3425,6 +3469,23 @@ fn belt_spawn_admitted(
         launch: launch,
       }
     ExecStepsOk =>
+      match belt_worker_git_entry_grant_readback(
+        cmds: cmds,
+        workdir: workdir,
+        // THE PRODUCTION BINDING, AT THE SPAWN THAT RUNS THIS GATE: the group the grant argv in the same
+        // bundle were told, read from the row that declares it. The gate and the grant cannot disagree,
+        // because neither of them spells a group name.
+        group: fleet_posix_worker_shared_group_name,
+      ) {
+        ExecStepFailed { step, detail } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: step,
+            detail: detail,
+            provider: provider_wire_label,
+            launch: launch,
+          }
+        ExecStepsOk =>
       match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
         AttemptWorktreeAbsent { path } =>
           SpawnFailed {
@@ -3443,6 +3504,16 @@ fn belt_spawn_admitted(
             launch: launch,
           }
         AttemptWorktreePresent { path: _ } =>
+      match belt_worker_traversal_before_spawn(instance: instance, container: cmds.session_container) {
+        ExecStepFailed { step, detail } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: step,
+            detail: detail,
+            provider: provider_wire_label,
+            launch: launch,
+          }
+        ExecStepsOk =>
       match belt_attempt_state_initialize_for_instance(
         instance: instance,
         node: node,
@@ -3562,8 +3633,10 @@ fn belt_spawn_admitted(
           }
       }
       }
+      }
   }
   }
+      }
 }
 
 // ONE ROSTER READ PER SPAWN, BOUND HERE AND CARRIED. This site preflighted and labelled a provider
@@ -3573,8 +3646,13 @@ fn belt_spawn_admitted(
 // spawned one could disagree with nothing recording it. That is the same class the observe fold
 // closed, sitting on the one route where the model actually reaches a process, and this module's own
 // rule is that the fix is the carrier rather than the call.
-fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {
-  let instance = srv1_live_dashboard_instance()
+fn belt_actuate_spawn(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  probed_at: String,
+  workdir: String,
+  launch: LaunchIdentity,
+) -> BeltSpawnOutcome {
   match dispatch_environment_admit(
     contract: node.execution,
     environment: instance.execution_environment,
@@ -3622,7 +3700,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
           }
         DispatchAttemptPrepared { prepared } => {
           let provider = prepared_attempt_provider(prepared: prepared)
-          match belt_provider_preflight(provider: provider) {
+          match belt_provider_preflight_for_instance(instance: instance, provider: provider) {
             ProviderPreflightRefused { step: st, detail: d } =>
               SpawnFailed {
                 node_id: node.node as String,
@@ -3811,13 +3889,6 @@ fn belt_actuate_teardown_for_instance(
   }
 }
 
-fn belt_actuate_teardown(session_name: String) -> BeltTeardownOutcome {
-  belt_actuate_teardown_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    session_name: session_name,
-  )
-}
-
 // The reconcile guarantees spawns are DesiredMembers (carry the RoadmapNode for the brief) and
 // teardowns ObservedMembers (carry the live session). The cross arms are unreachable by
 // construction; if reached they REFUSE (typed SpawnFailed/TeardownFailed), never a fabricated
@@ -3895,12 +3966,12 @@ fn belt_spawn_session_uuid(node_id: String, attempt_key: String) -> String {
   belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id, attempt_key: attempt_key)))
 }
 
-fn belt_actuate_spawn_member(m: DispatchMember, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {
+fn belt_actuate_spawn_member(instance: HostDashboardInstance, m: DispatchMember, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {
   match m {
     DesiredMember { node_id: nid, node: node } =>
       match clock_now_probed_at() {
         Present { value: probed_at } =>
-          belt_actuate_spawn(node: node, probed_at: probed_at as String, workdir: workdir, launch: launch)
+          belt_actuate_spawn(instance: instance, node: node, probed_at: probed_at as String, workdir: workdir, launch: launch)
         Absent =>
           SpawnFailed {
             node_id: nid,
@@ -3937,13 +4008,6 @@ fn belt_actuate_teardown_member_for_instance(
         detail: "belt teardown expected ObservedMember (carries live session); got DesiredMember — fail-closed, no teardown without an observed session",
       }
   }
-}
-
-fn belt_actuate_teardown_member(m: DispatchMember) -> BeltTeardownOutcome {
-  belt_actuate_teardown_member_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    m: m,
-  )
 }
 
 type BeltObserve
@@ -4894,6 +4958,7 @@ fn belt_tick_for_instance(
     },
   )
   let spawn_outcomes = belt_tick_spawn_after_settlement(
+    instance: instance,
     settled: belt_session_settlement_pass(instance: instance),
     decisions: pass.decisions,
     workdir: spawn_workdir,
@@ -4994,9 +5059,9 @@ fn belt_launch_member_node_id(m: DispatchMember) -> String {
   }
 }
 
-fn belt_tick_spawn_after_settlement(settled: SessionSettlePass, decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
+fn belt_tick_spawn_after_settlement(instance: HostDashboardInstance, settled: SessionSettlePass, decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
   match settled {
-    SessionSettlePassRan { settlements: _ } => belt_tick_spawn_decided(decisions: decisions, workdir: workdir)
+    SessionSettlePassRan { settlements: _ } => belt_tick_spawn_decided(instance: instance, decisions: decisions, workdir: workdir)
     SessionSettlePassRefused { detail } =>
       decisions |> map(d => match d {
         BeltLaunchWithheld { node_id, refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
@@ -5009,14 +5074,15 @@ fn belt_tick_spawn_after_settlement(settled: SessionSettlePass, decisions: List<
   }
 }
 
-fn belt_tick_spawn_decided(decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
+fn belt_tick_spawn_decided(instance: HostDashboardInstance, decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
   decisions |> map(d => match d {
     BeltLaunchWithheld { node_id, refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
-    BeltLaunchDecided { member, launch } => belt_actuate_spawn_member(m: member, workdir: workdir, launch: launch)
+    BeltLaunchDecided { member, launch } => belt_actuate_spawn_member(instance: instance, m: member, workdir: workdir, launch: launch)
   })
 }
 
 fn belt_tick_admit_and_spawn(
+  instance: HostDashboardInstance,
   candidates: List<DispatchMember>,
   standing: LaunchHostStanding,
   graph: LaunchGraphStanding,
@@ -5024,6 +5090,7 @@ fn belt_tick_admit_and_spawn(
   workdir: String,
 ) -> List<BeltSpawnOutcome> {
   belt_tick_spawn_decided(
+    instance: instance,
     decisions: belt_tick_admit(candidates: candidates, standing: standing, graph: graph, merged: merged),
     workdir: workdir,
   )
@@ -5039,29 +5106,6 @@ fn belt_tick_launch_identities(outcomes: List<BeltSpawnOutcome>) -> List<LaunchI
     SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch, entry: _ } => [launch]
     SpawnNotAdmitted { node_id: _, refusal: _ } => [] as List<LaunchIdentity>
   })
-}
-
-fn belt_tick(
-  state: SpawnMode,
-  frontier: SpawnFrontier,
-  cap: BeltCapacity,
-  spawn_workdir: String,
-) -> BeltTickResult {
-  belt_tick_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    state: state,
-    frontier: frontier,
-    cap: cap,
-    spawn_workdir: spawn_workdir,
-  )
-}
-
-fn belt_tick_default_workdir(
-  state: SpawnMode,
-  frontier: SpawnFrontier,
-  cap: BeltCapacity,
-) -> BeltTickResult {
-  belt_tick(state: state, frontier: frontier, cap: cap, spawn_workdir: belt_actuate_workdir as String)
 }
 
 // ONE fold over the tick's spawn outcomes to a typed tally; every count the tick JSON, receipt and
@@ -5137,9 +5181,11 @@ fn belt_tick_teardown_ok_count(t: BeltTickResult) -> Int {
 // frontier, and reconciles it in the production spawn mode (ManualReady) at the default capacity.
 // gunbc.roadmap.roadmap_belt_tick_cli belt_run_once_cli is the executable entrypoint (`gunbc run --function belt_run_once_cli`, wet):
 // it requires the deployment's GUNBC_BELT_SPAWN_WORKDIR, resolves that root to its dashboard
-// instance, ticks against it, and persists the BeltTickReceipt and the served observation. belt_run_once and
-// belt_run_once_json are non-executable projections (typed BeltTickResult for the production
-// instance; its serialization) — `gunbc run` rejects both return types. The tick observes live
+// instance, ticks against it, and persists the BeltTickReceipt and the served observation.
+// belt_run_once_in and belt_run_once_json_in are non-executable projections over a supplied
+// instance (typed BeltTickResult; its serialization) — `gunbc run` rejects both return types. No
+// form of the tick names an instance itself: every entry resolves one from its own input and every
+// step below receives it, down to the spawn (belt_actuate_spawn). The tick observes live
 // sessions before actuating planned spawns and teardowns through the provider
 // dispatch_actuator_selection resolves (a refused selection is a typed SpawnFailed at step
 // dispatch-selection, never a defaulted provider), then DISCOVERS which attempts owe an obligation and
@@ -5170,13 +5216,6 @@ fn belt_run_once_in(
         spawn_workdir: spawn_workdir,
       )
   }
-}
-
-fn belt_run_once() -> BeltTickResult {
-  belt_run_once_in(
-    instance: srv1_live_dashboard_instance(),
-    spawn_workdir: belt_actuate_workdir as String,
-  )
 }
 
 fn belt_spawn_outcome_json(o: BeltSpawnOutcome) -> JsonValue {
@@ -5305,8 +5344,8 @@ type BeltAttempts
 // U3: the attempts observation mirrors belt_observe's fail-closed grammar — git absent or a
 // non-zero for-each-ref is an UNKNOWABLE attempts set (AttemptsRefused, typed, carries stderr),
 // never widened to zero; exit 0 with empty output IS a genuine zero (for-each-ref's documented
-// no-match behavior). Runs in belt_actuate_workdir — the repo-root authority the spawn's worktree
-// add uses, because attempt branches live where spawns mint them.
+// no-match behavior). Runs in the instance's repo root — the root the spawn's worktree add uses,
+// because attempt branches live where spawns mint them.
 fn belt_attempts_observe_for_instance(instance: HostDashboardInstance) -> BeltAttempts {
   let cmd = git_for_each_ref_dispatch_argv_for_instance(instance: instance)
   if belt_program_available(program: cmd.program) {
@@ -5323,10 +5362,6 @@ fn belt_attempts_observe_for_instance(instance: HostDashboardInstance) -> BeltAt
   } else {
     AttemptsRefused { reason: "git not found on PATH — the attempts set is unknowable" }
   }
-}
-
-fn belt_attempts_observe() -> BeltAttempts {
-  belt_attempts_observe_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 fn belt_attempt_slots_json_members(slots: SessionSlotRecords) -> List<JsonKeyValue> {
@@ -5642,12 +5677,6 @@ fn belt_sessions_observe_for_instance(
       reason: "belt_sessions_observe: tmux not found; session containers are unknowable",
     }
   }
-}
-
-fn belt_sessions_observe() -> BeltObserve {
-  belt_sessions_observe_for_instance(
-    instance: srv1_live_dashboard_instance(),
-  )
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -10687,15 +10716,6 @@ fn belt_workflow_attempts_json_value_for_instance(
   }
 }
 
-fn belt_workflow_attempts_json_value(
-  observed: BeltWorkflowAttempts,
-) -> JsonValue {
-  belt_workflow_attempts_json_value_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    observed: observed,
-  )
-}
-
 fn belt_workflow_attempts_observed_json_for_instance(
   instance: HostDashboardInstance,
   observed: BeltWorkflowAttempts,
@@ -10706,12 +10726,6 @@ fn belt_workflow_attempts_observed_json_for_instance(
     observed: observed,
     stale_nodes: stale_nodes,
   ))
-}
-
-fn belt_workflow_attempts_observed_json(
-  observed: BeltWorkflowAttempts,
-) -> String {
-  serialize_json(v: belt_workflow_attempts_json_value(observed: observed))
 }
 
 fn belt_workflow_attempts_http_status(
@@ -10856,13 +10870,6 @@ fn belt_stop_node_for_instance(
   }
 }
 
-fn belt_stop_node(node_id: String) -> BeltStopResult {
-  belt_stop_node_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    node_id: node_id,
-  )
-}
-
 fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
   match r {
     StopProcessStopped { node_id: nid, session_name: sn } =>
@@ -10957,10 +10964,6 @@ fn belt_stop_http_status(r: BeltStopResult) -> Int {
   }
 }
 
-fn belt_stop_json(node_id: String) -> String {
-  serialize_json(v: belt_stop_result_json_value(r: belt_stop_node(node_id: node_id)))
-}
-
 // The sessions wire projects independent session-container, process-lifecycle, provider, readiness,
 // phase and cleanup facts. Inclusion in sessions proves only `session_presence=present`.
 // process_state comes from the exact dead/status pane observation; cleanup_action is derived
@@ -11025,10 +11028,6 @@ fn belt_sessions_observed_json(o: BeltObserve) -> String {
   serialize_json(v: belt_sessions_json_value(o: o))
 }
 
-fn belt_sessions_json() -> String {
-  belt_sessions_observed_json(o: belt_sessions_observe())
-}
-
 fn belt_sessions_http_status(o: BeltObserve) -> Int {
   match o {
     ObserveRefused { reason: _ } => 503
@@ -11036,13 +11035,9 @@ fn belt_sessions_http_status(o: BeltObserve) -> Int {
   }
 }
 
-fn belt_run_once_json() -> String {
-  serialize_json(v: belt_tick_result_json_value(t: belt_run_once()))
-}
-
-// THE JSON TICK RESOLVES ITS INSTANCE FROM THE SPAWN WORKDIR, the way the CLI does. belt_run_once_json
-// above is bound to the srv1 live instance; run on any other host it ticks a nonexistent layout and
-// reports refusals about the wrong machine. This entry takes the workdir as its argument and returns
+// THE JSON TICK RESOLVES ITS INSTANCE FROM THE SPAWN WORKDIR, the way the CLI does. A form bound to
+// one named instance would, run on any other host, tick a nonexistent layout and report refusals
+// about the wrong machine. This entry takes the workdir as its argument and returns
 // the full per-attempt commit, verify and publish outcomes as one JSON document for a reader.
 fn belt_run_once_json_in(spawn_workdir: String) -> String {
   match dashboard_instance_for_repo_root(repo_root: spawn_workdir) {
@@ -11055,7 +11050,7 @@ fn belt_run_once_json_in(spawn_workdir: String) -> String {
 
 
 // Per-node MANUAL dispatch — the click path (operator 2026-07-20: 'i should just manually
-// click/dispatch'). belt_run_once ticks the WHOLE ready frontier; belt_dispatch_node spawns exactly
+// click/dispatch'). belt_run_once_in ticks the WHOLE ready frontier; belt_dispatch_node_for_instance spawns exactly
 // ONE node by id, operator-selected from the roadmap UI, NOT frontier-gated (the click IS the
 // selection). DONE = the operator's SIGNOFF, never a merged PR (operator: 'PR merged not
 // necessarily mean item == done — they may not be 1:1'): a signoff-accepted node refuses
@@ -11381,20 +11376,26 @@ fn belt_dispatch_node_for_instance(
   belt_dispatch_node_staged(instance: instance, standing: belt_launch_host_standing(instance: instance), node_id: node_id)
 }
 
-// The dispatch route reaches the SAME staged fold with a caller-supplied plan. belt_dispatch_node_staged_over
-// already took the graph as a parameter, so this adds no second decision path -- it only supplies
-// launch_graph_of_projection over the given plan instead of over the public one.
+// The dispatch route reaches the SAME staged fold with a caller-supplied plan thunk.
+// Host standing is resolved first: observe-only (and any other host refusal) is
+// LaunchInstanceActuationRefused through launch_admission_staged, and the plan is forced
+// only when launch_host_refusal is absent — never a second observe-only arm at HTTP.
 fn belt_dispatch_node_for_instance_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   node_id: String,
   request: AttemptLaunchRequest,
   executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
+  let standing = belt_launch_host_standing(instance: instance)
   belt_dispatch_node_staged_over(
     instance: instance,
-    standing: belt_launch_host_standing(instance: instance),
-    graph: launch_graph_of_projection(proj: plan),
+    standing: standing,
+    graph: match launch_host_refusal(standing: standing) {
+      Present { value: _ } =>
+        LaunchGraphUnobserved { detail: "host standing refuses before a plan read" }
+      Absent => launch_graph_of_projection(proj: plan())
+    },
     merged: authored_merged_prs(),
     node_id: node_id,
     request: request,
@@ -11489,13 +11490,6 @@ fn belt_dispatch_node_staged_over(
           }
       }
   }
-}
-
-fn belt_dispatch_node(node_id: String) -> BeltSpawnOutcome {
-  belt_dispatch_node_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    node_id: node_id,
-  )
 }
 
 fn belt_dispatch_result_ok(r: BeltSpawnOutcome) -> Bool {
@@ -12137,7 +12131,7 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
                 verdict_path: dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head),
               )
               let unit = dispatch_audit_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key)
-              match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: progress.node_id, attempt_key: progress.attempt_key, role: AttemptAuditorRole { head_sha: head }) {
+              match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: progress.node_id, attempt_key: progress.attempt_key, role: AttemptAuditorRole { head_sha: head }, record_owner: instance.directory_owner) {
                 AttemptExitHookRefused { reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: its exit hook could not be rendered: ", reason as String], "") }
                 AttemptExitHookRendered { exec_line } =>
               match metering_roster_admit(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, role: MeteredAuditor { head: head as NonEmptyStr }) {
@@ -12437,7 +12431,7 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
       let verdict_path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: key)
       let brief = join([call.brief, review_verdict_instruction(verdict_path: verdict_path)], "")
       let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: key)
-      match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptReviewerRole { criterion_key: key, head_sha: head }) {
+      match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptReviewerRole { criterion_key: key, head_sha: head }, record_owner: instance.directory_owner) {
         AttemptExitHookRefused { reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: its exit hook could not be rendered: ", reason as String], "") }
         AttemptExitHookRendered { exec_line } =>
       match metering_roster_admit(instance: instance, node_id: nid, attempt_key: attempt_key, role: MeteredReviewer { criterion_key: key as NonEmptyStr, head: head as NonEmptyStr }) {
@@ -13945,7 +13939,7 @@ fn belt_publish_project_worktree(instance: HostDashboardInstance, project_key: S
         ),
         args: ["worktree", "add", "--detach", path, base_sha],
       ),
-      workdir: belt_actuate_workdir as String,
+      workdir: instance.repo_root as String,
     )
   } else {
     ExecOk { stdout: "" }
@@ -15273,7 +15267,7 @@ data belt_instance_obligation_function: String = "belt_instance_obligation_cli"
 // costs one drain and starts nothing, which is why it cannot loop.
 fn belt_attempt_obligations_enqueue(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltObligationEnqueue {
   let unit = belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key)
-  match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptObligationRole) {
+  match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptObligationRole, record_owner: instance.directory_owner) {
     AttemptExitHookRefused { reason } => BeltObligationEnqueueRefused { unit: unit, reason: join(["the attempt unit's stop hook could not be rendered: ", reason as String], "") }
     AttemptExitHookRendered { exec_line } =>
       belt_obligation_enqueue(

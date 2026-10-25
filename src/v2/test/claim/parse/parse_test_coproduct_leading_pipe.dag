@@ -7,7 +7,7 @@ import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance, node_equal_ignoring_provenance }
 import std.optional { Absent, Optional, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -56,7 +56,7 @@ fn cp_same_lowering(left: String, right: String) -> Optional<Bool> {
       match cp_lowered(text: right, production: ^dag_production_type_decl) {
         Rejected { diagnostics: _ } => Absent
         Accepted { value: r, diagnostics: _ } =>
-          Present { value: canonicalize_node_strip_provenance(n: l.node) == canonicalize_node_strip_provenance(n: r.node) }
+          Present { value: node_equal_ignoring_provenance(a: canonicalize_node_strip_provenance(n: l.node), b: canonicalize_node_strip_provenance(n: r.node)) }
       }
   }
 }

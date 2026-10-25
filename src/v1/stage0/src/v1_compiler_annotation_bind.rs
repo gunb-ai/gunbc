@@ -44,7 +44,7 @@ pub fn erased_region_depth() -> i64 {
 
 pub fn zero_padded(n: i64, width: i64) -> String {
     {
-        let digits = (n.clone()).to_string();
+        let digits = (n).to_string();
         if (v1_rt::string_length(&digits) >= width.clone()) {
             digits.clone()
         } else {
@@ -57,20 +57,22 @@ pub fn zero_padded(n: i64, width: i64) -> String {
 }
 
 pub fn zero_padded_with(mut __tco_loop_digits: String, mut __tco_loop_width: i64) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut digits = __tco_loop_digits;
-        #[allow(unused_mut)]
-        let mut width = __tco_loop_width;
-        if (v1_rt::string_length(&digits) >= width.clone()) {
-            break digits.clone();
-        } else {
-            {
-                let __tco_0 = v1_rt::concat("0".to_string(), digits);
-                let __tco_1 = width;
-                __tco_loop_digits = __tco_0;
-                __tco_loop_width = __tco_1;
-                continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut digits = __tco_loop_digits;
+            #[allow(unused_mut)]
+            let mut width = __tco_loop_width;
+            if (v1_rt::string_length(&digits) >= width.clone()) {
+                break digits.clone();
+            } else {
+                {
+                    let __tco_0 = v1_rt::concat("0".to_string(), digits);
+                    let __tco_1 = width;
+                    __tco_loop_digits = __tco_0;
+                    __tco_loop_width = __tco_1;
+                    continue;
+                }
             }
         }
     }
@@ -105,30 +107,32 @@ pub fn close_regions_ending_by(
     mut __tco_loop_open: Rc<Vec<Rc<SweptRegion>>>,
     mut __tco_loop_at: i64,
 ) -> Rc<Vec<Rc<SweptRegion>>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut open = __tco_loop_open;
-        #[allow(unused_mut)]
-        let mut at = __tco_loop_at;
-        match open.clone().last().cloned() {
-            Some(top) => {
-                if (top.extent.end.clone() <= at.clone()) {
-                    {
-                        let __tco_0 = Rc::new(v1_rt::list_take(
-                            &open,
-                            v1_rt::int_sub((open.len() as i64), 1),
-                        ));
-                        let __tco_1 = at;
-                        __tco_loop_open = __tco_0;
-                        __tco_loop_at = __tco_1;
-                        continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut open = __tco_loop_open;
+            #[allow(unused_mut)]
+            let mut at = __tco_loop_at;
+            match open.clone().last().cloned() {
+                Some(top) => {
+                    if (top.extent.end.clone() <= at.clone()) {
+                        {
+                            let __tco_0 = Rc::new(v1_rt::list_take(
+                                &open,
+                                v1_rt::int_sub((open.len() as i64), 1),
+                            ));
+                            let __tco_1 = at;
+                            __tco_loop_open = __tco_0;
+                            __tco_loop_at = __tco_1;
+                            continue;
+                        }
+                    } else {
+                        break open.clone();
                     }
-                } else {
+                }
+                std::option::Option::None => {
                     break open.clone();
                 }
-            }
-            std::option::Option::None => {
-                break open.clone();
             }
         }
     }
@@ -368,11 +372,7 @@ pub fn optional_region_key(
     depth: i64,
 ) -> Option<String> {
     match scope.clone() {
-        Some(s) => Some(region_structural_key(
-            index.clone(),
-            s.clone(),
-            depth.clone(),
-        )),
+        Some(s) => Some(region_structural_key(index, s.clone(), depth)),
         std::option::Option::None => std::option::Option::None,
     }
 }
@@ -383,12 +383,12 @@ pub fn keyed_annotation_rows(
     graph: Rc<SourceAnnotationGraph>,
 ) -> Rc<Vec<Rc<KeyedAnnotationRow>>> {
     {
-        let regions = annotation_regions(transport.clone(), extents.clone());
+        let regions = annotation_regions(transport.clone(), extents);
         let index = region_key_index(transport.clone(), regions.clone());
         let depth = v1_rt::int_add((regions.clone().len() as i64), 1);
         Rc::new({
             let mut __result = Vec::new();
-            for row in crate::std_source_annotation::source_annotation_graph_rows(graph.clone())
+            for row in crate::std_source_annotation::source_annotation_graph_rows(graph)
                 .iter()
                 .cloned()
             {
@@ -427,7 +427,7 @@ pub fn keyed_annotation_regions(
     extents: Rc<ParsedSourceExtents>,
 ) -> Rc<Vec<Rc<KeyedAnnotationRegion>>> {
     {
-        let regions = annotation_regions(transport.clone(), extents.clone());
+        let regions = annotation_regions(transport.clone(), extents);
         let index = region_key_index(transport.clone(), regions.clone());
         let depth = v1_rt::int_add((regions.clone().len() as i64), 1);
         Rc::new({
@@ -470,6 +470,6 @@ pub fn bind_annotations(
             }
             __result
         }),
-        annotation_regions(transport.clone(), extents.clone()),
+        annotation_regions(transport, extents),
     )
 }

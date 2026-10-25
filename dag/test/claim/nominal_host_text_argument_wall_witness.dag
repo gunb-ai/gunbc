@@ -1,0 +1,198 @@
+module test.claim.nominal_host_text_argument_wall_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_count_at_key, census_blocking_rows, census_total_count,
+  // Each refusal claim is keyed (class + subject_name + blocking). The subject of an InternalError
+  // row is its message truncated at 80 bytes; every refusal below is shorter, so the subject is the
+  // whole message v1.compiler.infer nominal_value_at_host_text_diags writes.
+}
+import std.types { String, Bool, Int, bool_text }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE EXECUTED EVIDENCE THAT A NOMINAL VALUE HAS NO IMPLICIT ROUTE INTO A HOST-TEXT POSITION OF A
+// BUILTIN OR ALGEBRA METHOD, on the source -> .dag-acceptance path (gunbc.recurring_failure_mode
+// a_nominal_value_reaches_a_string_position_and_renders_host_debug_text, chain (ii)). Before
+// v1.compiler.infer asked value_type_is_declared_nominal at these positions, concat and join
+// accepted a record or coproduct and the host rendered its debug text, and string_length accepted
+// one and failed at runtime with a TypeError. The REDs cover concat, join's elements and join's
+// separator, for a record and for a coproduct, and string_length as the one sibling of the
+// registry's host-text formals. The controls: String and NonEmptyStr pass, a declared conversion
+// passes, and kernel Int and Nat stay accepted at concat and join: at a host-text formal they follow
+// the cast's admission of the same source, and each is its own control so that a kernel refusal
+// joining v1.compiler.infer value_type_is_declared_nominal's judgment turns it RED in one edit. Bool
+// is a RED: the cast already refuses `b as String`, so the formals refuse it too. PATH SCOPE:
+// compile acceptance on the seed only; the v2 native route is unmeasured.
+
+fn refusals(source: String, subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "InternalError", subject_name: subject, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// Keyed on a prefix of the subject: the optional REDs because the subject's type spelling is the
+// kernel Optional's authored name, which this witness does not restate, and the imported RED because
+// its message passes the census subject's 80-byte truncation.
+fn blocking_refusals_containing(source: String, fragment: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: rows) |> filter(r => string_contains(s: r.subject_name, pattern: fragment)))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data concat_record_source: String = "module probe_host_text_concat_record\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn text(p: P) -> String { concat(\"id=\", p) }\n"
+
+data concat_coproduct_unit_source: String = "module probe_host_text_concat_unit\nimport std.types { String, Int, List }\ntype U = Red | Blue\nfn text(u: U) -> String { concat(\"id=\", u) }\n"
+
+data concat_coproduct_record_arm_source: String = "module probe_host_text_concat_record_arm\nimport std.types { String, Int, List }\ntype C = Red | Green { n: Int }\nfn text() -> String { concat(\"id=\", Green { n: 1 }) }\n"
+
+data join_record_elements_source: String = "module probe_host_text_join_record\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn text(ps: List<P>) -> String { join(ps, \",\") }\n"
+
+data join_coproduct_elements_source: String = "module probe_host_text_join_coproduct\nimport std.types { String, Int, List }\ntype C = Red | Green { n: Int }\nfn text(cs: List<C>) -> String { join(cs, \",\") }\n"
+
+data join_record_separator_source: String = "module probe_host_text_join_sep_record\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn text(xs: List<String>, p: P) -> String { join(xs, p) }\n"
+
+data join_coproduct_separator_source: String = "module probe_host_text_join_sep_coproduct\nimport std.types { String, Int, List }\ntype U = Red | Blue\nfn text(xs: List<String>, u: U) -> String { join(xs, u) }\n"
+
+data string_length_record_source: String = "module probe_host_text_string_length_record\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn size(p: P) -> Int { string_length(p) }\n"
+
+data control_string_source: String = "module probe_host_text_string\nimport std.types { String, Int, List }\nfn text(s: String, xs: List<String>) -> String { concat(join(xs, s), concat(\"id=\", s)) }\n"
+
+data control_non_empty_source: String = "module probe_host_text_non_empty\nimport std.types { String, NonEmptyStr, List }\nfn text(s: NonEmptyStr, xs: List<NonEmptyStr>) -> String { concat(join(xs, s), concat(\"id=\", s)) }\n"
+
+data control_declared_conversion_source: String = "module probe_host_text_declared_conversion\nimport std.types { String, Int, List }\nimport extdeps.languages.json.parse { JsonDocumentGap, json_document_gap_text }\nfn text(g: JsonDocumentGap) -> String { concat(\"gap=\", json_document_gap_text(gap: g)) }\n"
+
+data control_int_source: String = "module probe_host_text_int\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(i: Int, is: List<Int>) -> String { concat(concat(\"i=\", i), join(is, \",\")) }\n"
+
+data control_nat_source: String = "module probe_host_text_nat\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(n: Nat, ns: List<Nat>) -> String { concat(concat(\"n=\", n), join(ns, \",\")) }\n"
+
+data kernel_bool_source: String = "module probe_host_text_bool\nimport std.types { String, Int, Bool, List }\nimport std.nat { Nat }\nfn text(b: Bool, bs: List<Bool>) -> String { concat(concat(\"b=\", b), join(bs, \",\")) }\n"
+
+data control_local_join_parameter_source: String = "module probe_host_text_local_join\nimport std.types { String, Int, List }\ntype P { value: Int }\nfn combine(join: fn(P, P) -> P, p: P) -> P { join(p, p) }\n"
+
+data concat_optional_source: String = "module probe_host_text_concat_optional\nimport std.types { String, Int, List }\nfn text(o: Int?) -> String { concat(\"o=\", o) }\n"
+
+data join_optional_elements_source: String = "module probe_host_text_join_optional\nimport std.types { String, Int, List }\nfn text(o: String?) -> String { join([o], \",\") }\n"
+
+data concat_imported_coproduct_source: String = "module probe_host_text_concat_imported\nimport std.types { String, Int, List }\nimport extdeps.languages.json.parse { JsonDocumentGap }\nfn text(g: JsonDocumentGap) -> String { concat(\"gap=\", g) }\n"
+
+data concat_optional_carrier_source: String = "module probe_host_text_concat_optional_carrier\nimport std.types { String, Int, List }\nimport std.optional { Optional }\nfn text(o: Optional<Int>) -> String { concat(\"o=\", o) }\n"
+
+data to_string_record_source: String = "module probe_host_text_to_string_record\nimport std.types { String, Int }\ntype P { value: Int }\nfn text(p: P) -> String { to_string(value: p) }\n"
+
+data list_concat_unsolved_source: String = "module probe_host_text_list_concat\nimport std.types { String, Int, List }\nfn joined(xs: List<List<Int>>) -> List<Int> { fold(xs, init: [], f: (acc, x) => concat(acc, x)) }\n"
+
+data concat_two_records_source: String = "module probe_host_text_concat_two_records\nimport std.types { String, Int }\ntype P { value: Int }\nfn text(p: P, q: P) -> String { concat(p, q) }\n"
+
+test fn a_record_at_concat_is_refused() -> Bool {
+  refusals(source: concat_record_source, subject: "nominal P at host text String formal of concat: no declared conversion") == 1
+}
+
+test fn a_unit_arm_coproduct_at_concat_is_refused() -> Bool {
+  refusals(source: concat_coproduct_unit_source, subject: "nominal U at host text String formal of concat: no declared conversion") == 1
+}
+
+test fn a_record_arm_coproduct_at_concat_is_refused() -> Bool {
+  refusals(source: concat_coproduct_record_arm_source, subject: "nominal C at host text String formal of concat: no declared conversion") == 1
+}
+
+test fn record_elements_at_join_are_refused() -> Bool {
+  refusals(source: join_record_elements_source, subject: "nominal P at host text elements of join: no declared conversion") == 1
+}
+
+test fn coproduct_elements_at_join_are_refused() -> Bool {
+  refusals(source: join_coproduct_elements_source, subject: "nominal C at host text elements of join: no declared conversion") == 1
+}
+
+test fn a_record_separator_at_join_is_refused() -> Bool {
+  refusals(source: join_record_separator_source, subject: "nominal P at host text String formal of join: no declared conversion") == 1
+}
+
+test fn a_coproduct_separator_at_join_is_refused() -> Bool {
+  refusals(source: join_coproduct_separator_source, subject: "nominal U at host text String formal of join: no declared conversion") == 1
+}
+
+test fn a_record_at_string_length_is_refused() -> Bool {
+  refusals(source: string_length_record_source, subject: "nominal P at host text 's' of string_length: no declared conversion") == 1
+}
+
+test fn control_string_is_accepted() -> Bool {
+  blocking_total(source: control_string_source) == 0
+}
+
+test fn control_non_empty_str_is_accepted() -> Bool {
+  blocking_total(source: control_non_empty_source) == 0
+}
+
+test fn control_declared_conversion_is_accepted() -> Bool {
+  blocking_total(source: control_declared_conversion_source) == 0
+}
+
+test fn control_kernel_int_is_accepted() -> Bool {
+  blocking_total(source: control_int_source) == 0
+}
+
+test fn control_kernel_nat_is_accepted() -> Bool {
+  blocking_total(source: control_nat_source) == 0
+}
+
+test fn a_kernel_bool_at_concat_and_join_is_refused() -> Bool {
+  refusals(source: kernel_bool_source, subject: "nominal Bool at host text String formal of concat: no declared conversion") == 1
+    && refusals(source: kernel_bool_source, subject: "nominal Bool at host text elements of join: no declared conversion") == 1
+}
+
+test fn control_a_local_parameter_spelled_join_is_not_the_builtin() -> Bool {
+  blocking_total(source: control_local_join_parameter_source) == 0
+}
+
+test fn an_optional_at_concat_is_refused() -> Bool {
+  blocking_refusals_containing(source: concat_optional_source, fragment: "? at host text String formal of concat") == 1
+}
+
+test fn an_optional_carrier_written_out_at_concat_is_refused() -> Bool {
+  blocking_refusals_containing(source: concat_optional_carrier_source, fragment: "? at host text String formal of concat") == 1
+}
+
+test fn optional_elements_at_join_are_refused() -> Bool {
+  blocking_refusals_containing(source: join_optional_elements_source, fragment: "? at host text elements of join") == 1
+}
+
+test fn an_imported_coproduct_at_concat_is_refused() -> Bool {
+  blocking_refusals_containing(source: concat_imported_coproduct_source, fragment: "nominal JsonDocumentGap at host text String formal of concat") == 1
+}
+
+// THE BYTES OF std.types bool_text, the one declared Bool-to-text route. The sites it replaced
+// (v1.dag_collect_support literal_value_fingerprint, identity material, through kernel to_string;
+// three local bool_text copies) wrote the host's `true` and `false`; these pin the same bytes.
+test fn bool_text_writes_true_and_false() -> Bool {
+  bool_text(b: true) == "true" && bool_text(b: false) == "false"
+}
+
+// ADMITTED TODAY, A DECLARED RESIDUAL: to_string's `value` is a host-Display rendering position whose
+// nominal and optional judgment is deferred (v1.compiler.method host_display_deferred_formals). When
+// the to_string program dispositions its non-text sites and the row is deleted, this claim flips to a
+// RED in one edit.
+test fn residual_a_record_at_to_string_is_admitted() -> Bool {
+  blocking_total(source: to_string_record_source) == 0
+}
+
+// A List concatenation through a fold accumulator reaches the registry concat with an unsolved Self:
+// its ReceiverSelf formals are not established host text, so nothing is refused there.
+test fn control_a_list_concat_through_an_unsolved_accumulator_is_accepted() -> Bool {
+  blocking_total(source: list_concat_unsolved_source) == 0
+}
+
+test fn two_records_at_concat_are_refused() -> Bool {
+  blocking_refusals_containing(source: concat_two_records_source, fragment: "nominal P at host text") >= 1
+}

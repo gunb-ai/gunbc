@@ -1,577 +1,109 @@
 module gunbc.approve_ios_enrolment_machine
 
-import std.types { Bool, NonEmptyStr, String, List }
-import std.algebra { list_append }
-import std.optional { Optional, Present, Absent, optional_present, optional_absent }
-import std.content_hash { ContentHash, compare_content_hash, content_hash_of_value, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set {
-  CasExpectation,
-  CasReadableSlot,
-  CasReadableAbsent,
-  CasReadablePresent,
-  CasSlotObservation,
-  cas_unreadable_slot_detail,
-  CasSlotObservationRefused,
-  CasGenerationPublicationRefused,
-  CasGenerationSpaceExhausted,
-  CasOutcome,
-  CasCommitted,
-  CasPreconditionFailed,
-  CasStoreRefused,
-  CasAttempt,
-  cas_decide,
-  ExpectSlotAbsent,
-  ExpectSlotGeneration,
-}
-import std.durable_transfer { LocalCommitStanding, LocallyCommitted, LocalCommitFailed }
-import std.decl_ref { DeclarationRef, decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import extdeps.crypto.signature { VerifyingKey }
-import extdeps.apple.secure_enclave { SecureEnclaveWrappedKeyBlob }
-import extdeps.apple.app_attest { AttestKeyId }
-import extdeps.apple.apns { ApnsDeviceToken }
-import gunbc.auth.approval_device_wire {
-  framed,
-  EnrolmentRefusalWire, EnrolmentRefusalCodeNotIssued, EnrolmentRefusalCodeAlreadyUsed, EnrolmentRefusalCodeExpired,
-  EnrolmentRefusalStoreUnreadable, EnrolmentRefusalAttestationRefused, EnrolmentRefusalAttestationForOtherBytes,
-  EnrolmentRefusalAndroidUnrealized, enrolment_refusal_kinds,
-}
+import std.types { NonEmptyStr, List }
 
-// THE APP'S DURABLE ENROLMENT STATE MACHINE, as the authority apps/approve-ios/Approve/EnrolmentMachine.swift
+// THE APP'S ENROLMENT STATE MACHINE, as the authority apps/approve-ios/Approve/EnrolmentMachine.swift
 // is printed from (gunbc.approve_ios_swift_enrolment_machine). The Swift EnrolmentState keeps the
-// payloads (keys, ids) and the persistence; WHICH PHASE FOLLOWS WHICH ANSWER is this module's, and
-// nothing hand-written in Swift decides it.
+// payloads (keys, ids) and the persistence; WHICH PHASE FOLLOWS WHICH ANSWER is this module's.
 //
-// WHY SubmissionUnknown HAS EXACTLY ONE TYPED EXIT BESIDE GRANT. A phone that POSTed its enrolment
-// and got no decodable answer cannot tell "the server never saw it" from "the server minted it and
-// the answer was lost", and the readback route cannot resolve it for an enrolment that never
-// existed. The enrol route can answer authoritatively because the request carries the code itself:
-// gunbc.auth.approval_device_redemption enrolment_admission reports code_not_issued / code_expired
-// only for a code that minted no enrolment and now never can. Every other refusal proves nothing
-// about the enrolment the phone was waiting on (code_already_used above all: it may have been spent
-// by THIS phone's lost first attempt), and a transport failure proves less, so those leave the phase
-// where it is and readback stays the only way forward. The sibling model for the planned two-step
-// handshake is gunbc.auth.approval_enrolment_handshake; this module models the phone as built.
+// ENROLMENT IS ONE GOOGLE SIGN-IN AND ONE IDEMPOTENT POST (ruling
+// gunbc.design_ruling approval_enrolment_is_google_sign_in; gunbc.auth.approval_google_enrolment).
+// The phone therefore has no state it must recover. An unanswered POST is resent byte-identical and
+// a refused or abandoned sign-in is "sign in again", so there is no phase between "not enrolled" and
+// "enrolled": the earlier Prepared and SubmissionUnknown phases, the answers keyed by code refusals
+// and the persist-before-effect ordering that existed only to resolve SubmissionUnknown are deleted.
 //
-// States here are PHASES (payload-free): this projection exists so the transition table can be
-// evaluated over the closed phase x answer product, and only the ordering of kinds matters for that.
-// The PAYLOADS the Swift carries — Prepared its keys and transcript, Enrolled its grant — are modelled
-// below as EnrolmentState, over the wire carriers gunbc.auth.approval_device_wire already owns; the
-// phase projection and the payload-carrying state are two views of one machine, not two machines.
+// KEY-INVALIDATED IS NOT A PHASE. A key the enclave refuses is dead; the app discards it and the
+// phone reads as signed out. Nothing about the dead key can decide anything, so keeping it as a
+// phase would carry a state no transition leaves for a reason other than "sign in again".
+//
+// REVOKED IS THE ONE PHASE THAT REMEMBERS. The server reports an enrolment revoked; the phone may
+// leave that only by signing in with a NEW key. The same key signing in again would re-present a key
+// the server already revoked, so it stays revoked.
 type EnrolmentPhase
-  = PhaseUnenrolled
-  | PhasePrepared
-  | PhaseSubmissionUnknown
+  = PhaseSignedOut
   | PhaseEnrolled
-  | PhaseKeyInvalidated
   | PhaseRevoked
 
-// What the app learned from the enrol POST. Unanswered is a transport failure, an undecodable
-// body, an unrecognised refusal, or a failed persist of Enrolled: no answer it may act on.
+// Whether the key a sign-in registered is the one the phone already held.
+type SignInKey
+  = NewKey
+  | SameKey
+
+// What the app learned. Refused and Unanswered carry no payload: every refusal, a transport
+// failure, an undecodable body and an abandoned sign-in all mean the same thing to the phase.
 type EnrolmentAnswer
-  = AnswerGranted
-  | AnswerRefused { kind: EnrolmentRefusalWire }
+  = AnswerSignedIn { key: SignInKey }
+  | AnswerRefused
   | AnswerUnanswered
+  | AnswerServerReportsRevoked
 
 fn phase_name(p: EnrolmentPhase) -> NonEmptyStr {
   match p {
-    PhaseUnenrolled => "unenrolled" as NonEmptyStr
-    PhasePrepared => "prepared" as NonEmptyStr
-    PhaseSubmissionUnknown => "submissionUnknown" as NonEmptyStr
+    PhaseSignedOut => "signedOut" as NonEmptyStr
     PhaseEnrolled => "enrolled" as NonEmptyStr
-    PhaseKeyInvalidated => "keyInvalidated" as NonEmptyStr
     PhaseRevoked => "revoked" as NonEmptyStr
   }
 }
 
 fn enrolment_phases() -> List<EnrolmentPhase> {
-  [PhaseUnenrolled, PhasePrepared, PhaseSubmissionUnknown, PhaseEnrolled, PhaseKeyInvalidated, PhaseRevoked]
+  [PhaseSignedOut, PhaseEnrolled, PhaseRevoked]
 }
 
 fn enrolment_answers() -> List<EnrolmentAnswer> {
-  list_append(left: [AnswerGranted, AnswerUnanswered], right: map(enrolment_refusal_kinds(), k => AnswerRefused { kind: k }))
+  [
+    AnswerSignedIn { key: NewKey },
+    AnswerSignedIn { key: SameKey },
+    AnswerRefused,
+    AnswerUnanswered,
+    AnswerServerReportsRevoked,
+  ]
 }
 
-// THE TRANSITION FUNCTION, exhaustive over phase and, where a phase moves, over the answer: a new
-// phase, answer or refusal kind is a compile refusal here until someone says what it does. The
-// Swift table is printed by EVALUATING this over the closed phase x answer product
-// (gunbc.approve_ios_swift_enrolment_machine), so there is no second statement of it to drift.
+// THE TRANSITION FUNCTION, exhaustive over phase and answer: a new phase or answer is a compile
+// refusal here until someone says what it does. The Swift table is printed by EVALUATING this over
+// the closed phase x answer product (gunbc.approve_ios_swift_enrolment_machine).
+//
+// A refusal or no answer while Enrolled or Revoked leaves the phase: a failed re-sign-in does not
+// undo an enrolment the server still holds. From SignedOut they are the same phase, "sign in again".
 fn enrolment_next(from: EnrolmentPhase, answer: EnrolmentAnswer) -> EnrolmentPhase {
   match from {
-    PhaseUnenrolled => PhaseUnenrolled
-    PhasePrepared => PhasePrepared
-    PhaseSubmissionUnknown => submission_unknown_next(answer: answer)
-    PhaseEnrolled => PhaseEnrolled
-    PhaseKeyInvalidated => PhaseKeyInvalidated
-    PhaseRevoked => PhaseRevoked
+    PhaseSignedOut => signed_out_next(answer: answer)
+    PhaseEnrolled => enrolled_next(answer: answer)
+    PhaseRevoked => revoked_next(answer: answer)
   }
 }
 
-fn submission_unknown_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
+fn signed_out_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
   match answer {
-    AnswerGranted => PhaseEnrolled
-    AnswerUnanswered => PhaseSubmissionUnknown
-    AnswerRefused { kind: k } => submission_unknown_after_refusal(kind: k)
+    AnswerSignedIn { key: _ } => PhaseEnrolled
+    AnswerRefused => PhaseSignedOut
+    AnswerUnanswered => PhaseSignedOut
+    AnswerServerReportsRevoked => PhaseSignedOut
   }
 }
 
-fn submission_unknown_after_refusal(kind: EnrolmentRefusalWire) -> EnrolmentPhase {
-  match kind {
-    EnrolmentRefusalCodeNotIssued => PhaseUnenrolled
-    EnrolmentRefusalCodeExpired => PhaseUnenrolled
-    EnrolmentRefusalCodeAlreadyUsed => PhaseSubmissionUnknown
-    EnrolmentRefusalStoreUnreadable => PhaseSubmissionUnknown
-    EnrolmentRefusalAttestationRefused => PhaseSubmissionUnknown
-    EnrolmentRefusalAttestationForOtherBytes => PhaseSubmissionUnknown
-    EnrolmentRefusalAndroidUnrealized => PhaseSubmissionUnknown
+fn enrolled_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
+  match answer {
+    AnswerSignedIn { key: _ } => PhaseEnrolled
+    AnswerRefused => PhaseEnrolled
+    AnswerUnanswered => PhaseEnrolled
+    AnswerServerReportsRevoked => PhaseRevoked
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════════════════════
-// THE PAYLOAD THE STATES CARRY, AND THE ORDER EVERY TRANSITION IS PERSISTED IN.
-//
-// The phases and answers above are the machine's shape; a phase with no payload cannot be resumed
-// from, because resuming means knowing WHICH key, WHICH transcript, WHICH enrolment. Those fields
-// were hand-authored in apps/approve-ios/Approve/EnrolmentState.swift with no model behind them:
-// the Swift is authoritative for its own spelling, and this is the model the later generator
-// consumes instead of a second hand-written copy. It is also where the file's opening law becomes
-// checkable — "every transition is persisted BEFORE the remote call that depends on it" was, until
-// here, prose in a comment nobody's compiler could refuse.
-//
-// NOTHING HERE RESTATES A CARRIER. Every field is a type gunbc.auth.approval_device_wire,
-// extdeps.apple.app_attest, extdeps.apple.apns, extdeps.crypto.signature, or
-// extdeps.apple.secure_enclave already declares as its own. A copy of a wire field's shape in this
-// module would fork the concept (DESIGN §3), and the wire module is the sole home for what the
-// enrolment protocol puts on the wire.
-// ══════════════════════════════════════════════════════════════════════════════════════════════
-
-// WHAT PREPARATION FIXES, and what a retry therefore re-sends. Same authority as the Swift struct:
-// the code, the enclave's wrapped key, the public key the server will verify evidence under, the
-// App Attest key id, the transcript over which the attestation was made, and — once made — the
-// attestation bytes themselves, so a retry posts the SAME bytes rather than minting a second
-// attestation the server may already hold under the first.
-type PreparedEnrolmentPayload {
-  code: NonEmptyStr
-  decision_key_blob: SecureEnclaveWrappedKeyBlob
-  decision_key_pub: VerifyingKey
-  attest_key_id: AttestKeyId
-  transcript: NonEmptyStr
-  // Absent until the attestation has been generated; Present means a retry must reuse it.
-  attestation: Optional<NonEmptyStr>
-}
-
-// WHAT ENROLMENT FIXES. The enrollment_id is the server's own (gunbc.auth.approval_device_wire's
-// EnrolmentGrant.enrollment_id), so this carries it rather than minting an id type of its own.
-// attest_key_id is kept here only once the server verified the attestation under it, and
-// forwarded_apns_token is the last token the server was told about, so a rotated token is forwarded
-// exactly once.
-type EnrolledDevicePayload {
-  enrollment_id: NonEmptyStr
-  decision_key_blob: SecureEnclaveWrappedKeyBlob
-  attest_key_id: AttestKeyId
-  forwarded_apns_token: Optional<ApnsDeviceToken>
-}
-
-// THE DURABLE STATE, as one sum over the SAME closed EnrolmentPhase the transitions move through.
-// A payload attaches to a phase, it does not become a second taxonomy: PhasePrepared carries
-// PreparedEnrolmentPayload and nothing else, so a state cannot be Prepared without a key and a
-// transcript, and cannot be Enrolled without the id the server issued.
-type EnrolmentState
-  = StateUnenrolled
-  | StatePrepared { payload: PreparedEnrolmentPayload }
-  | StateSubmissionUnknown { payload: PreparedEnrolmentPayload }
-  | StateEnrolled { device: EnrolledDevicePayload }
-  | StateKeyInvalidated { device: EnrolledDevicePayload, reason: NonEmptyStr }
-  | StateRevoked { device: EnrolledDevicePayload, reason: NonEmptyStr }
-
-// THE PHASE A STATE IS IN — one projection, so the phase axis and the payload axis cannot disagree
-// about which state the app is in. An implementation that switches on payloads without asking this
-// has re-derived the taxonomy, which is what §3 forbids.
-fn enrolment_state_phase(state: EnrolmentState) -> EnrolmentPhase {
-  match state {
-    StateUnenrolled => PhaseUnenrolled
-    StatePrepared { payload: _ } => PhasePrepared
-    StateSubmissionUnknown { payload: _ } => PhaseSubmissionUnknown
-    StateEnrolled { device: _ } => PhaseEnrolled
-    StateKeyInvalidated { device: _, reason: _ } => PhaseKeyInvalidated
-    StateRevoked { device: _, reason: _ } => PhaseRevoked
+fn revoked_next(answer: EnrolmentAnswer) -> EnrolmentPhase {
+  match answer {
+    AnswerSignedIn { key: k } => revoked_after_sign_in(key: k)
+    AnswerRefused => PhaseRevoked
+    AnswerUnanswered => PhaseRevoked
+    AnswerServerReportsRevoked => PhaseRevoked
   }
 }
 
-// THE ONLY WAY TO ASK "AM I ENROLLED". Mirrors the Swift accessor, which returns a device only for
-// the Enrolled case: a Revoked or KeyInvalidated device still HAS an enrollment_id, and handing it
-// out through the same door would let a caller treat a dead enrolment as a live one.
-fn enrolled_device(state: EnrolmentState) -> Optional<EnrolledDevicePayload> {
-  match state {
-    StateEnrolled { device: device } => optional_present(value: device)
-    StateUnenrolled => optional_absent()
-    StatePrepared { payload: _ } => optional_absent()
-    StateSubmissionUnknown { payload: _ } => optional_absent()
-    StateKeyInvalidated { device: _, reason: _ } => optional_absent()
-    StateRevoked { device: _, reason: _ } => optional_absent()
+fn revoked_after_sign_in(key: SignInKey) -> EnrolmentPhase {
+  match key {
+    NewKey => PhaseEnrolled
+    SameKey => PhaseRevoked
   }
 }
-
-// THE CANONICAL RENDER A PERSISTENCE PROOF IS OVER. The proof seals a ContentHash; that hash has to
-// mean a specific record, or "we persisted the transition" proves nothing about WHICH transition was
-// persisted. One render, framed over a separator no payload value may contain un-escaped — the same
-// discipline approval_device_wire uses for every wire render (its frame() carries that rule).
-data enrolment_record_frame: NonEmptyStr = "\u{1f}gunbc.approve.ios.enrolment.record.v1"
-
-// THE FIELD LIST OF ONE PAYLOAD, WRITTEN ONCE. The render below hashes these lists, so a field added
-// to a payload has to enter the digest exactly once — and if each payload-carrying phase spelled its
-// own copy, forgetting one would silently make that phase's digest stop covering the field, the same
-// class of divergence this whole module exists to prevent. DESIGN §2: model a concept once and derive
-// every use; §6b names this trigger — the second local implementation of one rule.
-//
-// The renderer is a parameter rather than a bare `to_string`, because the optionals carry branded
-// carriers (NonEmptyStr-backed attestations, ApnsDeviceToken) and each carrier's authority says how it
-// is shown; the helper stays the single place the present/absent SHAPE is decided.
-fn enrolment_optional_field<T>(value: Optional<T>, render: fn(T) -> String) -> String {
-  match value {
-    Present { value: v } => render(v)
-    Absent => ""
-  }
-}
-
-fn prepared_enrolment_payload_fields(payload: PreparedEnrolmentPayload) -> List<String> {
-  [
-    payload.code as String,
-    payload.decision_key_blob as String,
-    payload.decision_key_pub.point_b64url as String,
-    payload.attest_key_id as String,
-    payload.transcript as String,
-    enrolment_optional_field(value: payload.attestation, render: fn(a) { a as String }),
-  ]
-}
-
-fn enrolled_device_payload_fields(device: EnrolledDevicePayload) -> List<String> {
-  [
-    device.enrollment_id as String,
-    device.decision_key_blob as String,
-    device.attest_key_id as String,
-    enrolment_optional_field(value: device.forwarded_apns_token, render: fn(t) { t as String }),
-  ]
-}
-
-// EVERY PHASE RENDERS THE SAME WAY: the phase name, the record frame, that phase's payload fields from
-// the helper above, and a reason where the phase carries one. No arm lists a payload field itself, so
-// no arm can fall behind its payload's declaration.
-fn enrolment_record_render(state: EnrolmentState) -> NonEmptyStr {
-  match state {
-    StateUnenrolled =>
-      framed(fields: [phase_name(p: PhaseUnenrolled) as String, enrolment_record_frame as String])
-    StatePrepared { payload: p } =>
-      framed(fields: [phase_name(p: PhasePrepared) as String, enrolment_record_frame as String]
-        |> concat(prepared_enrolment_payload_fields(payload: p)))
-    StateSubmissionUnknown { payload: p } =>
-      framed(fields: [phase_name(p: PhaseSubmissionUnknown) as String, enrolment_record_frame as String]
-        |> concat(prepared_enrolment_payload_fields(payload: p)))
-    StateEnrolled { device: d } =>
-      framed(fields: [phase_name(p: PhaseEnrolled) as String, enrolment_record_frame as String]
-        |> concat(enrolled_device_payload_fields(device: d)))
-    StateKeyInvalidated { device: d, reason: r } =>
-      framed(fields: [phase_name(p: PhaseKeyInvalidated) as String, enrolment_record_frame as String]
-        |> concat(enrolled_device_payload_fields(device: d))
-        |> concat([r as String]))
-    StateRevoked { device: d, reason: r } =>
-      framed(fields: [phase_name(p: PhaseRevoked) as String, enrolment_record_frame as String]
-        |> concat(enrolled_device_payload_fields(device: d))
-        |> concat([r as String]))
-  }
-}
-
-
-fn enrolment_record_digest(state: EnrolmentState) -> ContentHash {
-  content_hash_of_value(value: enrolment_record_render(state: state))
-}
-
-// ──────────────────────────────────────────────────────────────────────────────────────────────
-// THE ORDERING AS ONE OPERATION, AND WHAT IT REFUSES.
-//
-// THE GUARANTEE, STATED AS WHAT CANNOT BE BUILT: there is no value meaning "this remote enrolment
-// call was admitted" that any module outside this one can write. `EnrolmentEffectAdmission` is
-// sole_constructor, and the only declaration in the tree that produces one is `enrolment_persist`
-// below. A consumer that wants to post without persisting first has to write that record by hand, and
-// writing it is SoleConstructorViolation — which is what the witness's RED fixture measures. The
-// ordering is not a convention the generator is asked to respect; it is the only path to the value the
-// effect needs.
-//
-// WHY PERSISTENCE AND ADMISSION ARE ONE OPERATION AND NOT TWO CALLS IN A RECOMMENDED ORDER: an
-// ordering expressed as "call A, then call B" can be reordered silently and nothing downstream
-// notices. Here the check that the bytes written describe the state being transitioned to runs INSIDE
-// the persist step, and the admission is minted only on its far side — so there is no earlier
-// transition's permission to reuse and none to hand to the wrong call.
-//
-// WHAT THE SEAL DOES NOT ESTABLISH, measured rather than asserted — the same class
-// gunbc.fleet_observation.capture_chunk discloses for its own commit seal
-// (gunbc.recurring_failure_mode.admitted_call_edge_with_unrestricted_value_egress):
-// std.durable_compare_and_set does not seal `CasOutcome`, so a caller can still AUTHOR a
-// `CasCommitted` and reach the admitted arm without a store ever holding a byte. This is not a hole
-// the model can plug from here, and the shape of the reason is worth stating precisely, because it is
-// the reason the seal is still the right one: `cas_decide` is a PURE FOLD and nothing in the tree
-// mints a `CasOutcome` but the caller, so every commit fact available to any fold in any module is
-// caller-authored. The seal therefore buys the one thing that is not caller-authored — that the
-// proposed bytes are the state's own render — and buys nothing on whether a store exists. The
-// obligation to close that belongs to the durable store realizing the CAS: it owns the read and the
-// write, so it must be the one producing the outcome (a store-minted `CasOutcome`, sole_constructor),
-// after which `enrolment_persist` takes the store's receipt instead of a caller-authored one. Until
-// then this is a typed ordering a store-less caller can bypass, and the witness keeps that as a named
-// control instead of letting the seal's name overstate it.
-// ──────────────────────────────────────────────────────────────────────────────────────────────
-
-// WHAT A COMMIT PROVES, as far as a pure fold can prove anything: the digest the conditional write
-// carried, on a branch where the store's precondition held. Not a timestamp, not a path, not
-// "save() did not throw" — KeychainItem.write returning is not a commit, and EnrolmentStore.save's
-// return value is precisely the thing this type refuses to stand in for. It is sealed because a
-// consumer holding one of these would otherwise be holding evidence that a write landed.
-type EnrolmentCommitProof sole_constructor {
-  committed_content: ContentHash
-}
-
-// ONE ARM PER WAY A COMMIT CAN FAIL, because the remedies differ and a caller cannot choose between
-// them from one flat failure: a lost race re-reads and re-persists, a refused read or exhausted
-// generation space is a store fault to retry or escalate, and an unparseable head is repaired by hand.
-// The refusal shapes are std.durable_compare_and_set's own rather than renamed copies, and the
-// unreadable detail comes from that module's rendering authority (cas_unreadable_slot_detail) rather
-// than a fixed sentence this module could go stale on.
-type EnrolmentPersistenceFailure
-  = EnrolmentCommitLostRace { expected: NonEmptyStr, observed: NonEmptyStr }
-  | EnrolmentCommitStoreRefused { detail: String }
-  | EnrolmentCommitSlotUnreadable { detail: String }
-
-fn enrolment_race_expected_name(expected: CasExpectation) -> NonEmptyStr {
-  match expected {
-    ExpectSlotAbsent => "absent" as NonEmptyStr
-    ExpectSlotGeneration { generation: _ } => "generation" as NonEmptyStr
-  }
-}
-
-fn enrolment_race_observed_name<T>(observed: CasReadableSlot<T>) -> NonEmptyStr {
-  match observed {
-    CasReadableAbsent => "absent" as NonEmptyStr
-    CasReadablePresent { version: _ } => "present" as NonEmptyStr
-  }
-}
-
-// EVERY ARM OF A CAS OUTCOME MAPS TO A PERSISTENCE STANDING, and only CasCommitted yields
-// LocallyCommitted. A write() that returned, a directory that exists, or a save() that did not throw
-// reaches no arm here, because none of them is a CasOutcome. Public so a consumer can report WHERE
-// persistence failed; it is not the door to an effect, because it carries no admission.
-//
-// THE PROOF NAMES WHAT WAS COMMITTED AS THE ATTEMPT'S OWN BYTES, not as the committed version's
-// `content` field. The attempt is the caller's assertion about the write it made; the version's
-// content is a field a caller also supplied, so reading it back is the fold affirming a caller's own
-// claim — which is how a caller-authored outcome becomes self-certifying. `enrolment_persist` checks
-// the two against each other before this standing is ever used to admit anything.
-fn enrolment_persistence_standing<T>(
-  attempt: CasAttempt<T>,
-  outcome: CasOutcome<T>
-) -> LocalCommitStanding<EnrolmentCommitProof, EnrolmentPersistenceFailure> {
-  match outcome {
-    CasCommitted { committed: _ } =>
-      LocallyCommitted { proof: EnrolmentCommitProof { committed_content: attempt.proposed_content } }
-    CasPreconditionFailed { expected: expected, observed: observed } =>
-      LocalCommitFailed {
-        cause: EnrolmentCommitLostRace {
-          expected: enrolment_race_expected_name(expected: expected),
-          observed: enrolment_race_observed_name(observed: observed),
-        }
-      }
-    CasStoreRefused { cause: cause } =>
-      match cause {
-        CasSlotObservationRefused { cause: reason } =>
-          LocalCommitFailed { cause: EnrolmentCommitSlotUnreadable { detail: cas_unreadable_slot_detail(cause: reason) } }
-        CasGenerationPublicationRefused { detail: detail } =>
-          LocalCommitFailed { cause: EnrolmentCommitStoreRefused { detail: detail as String } }
-        CasGenerationSpaceExhausted { head: _ } =>
-          LocalCommitFailed { cause: EnrolmentCommitStoreRefused { detail: "slot generation space exhausted" } }
-      }
-  }
-}
-
-// THE PERSIST STEP'S VERDICT. Only one arm carries an admission, and it exists only when the bytes the
-// write carried are the bytes THIS state renders to. The refused arms are ordinary coproduct arms on
-// purpose: a refusal needs no seal, and sealing them would only force consumers to mint denials too.
-//
-// WHY THERE IS NO "the commit attests a record other than the one you proposed" arm, which is the
-// honest finding rather than an omission — and note this says nothing about how many refusal arms the
-// coproduct has, since reading that off a comment is exactly the restatement DESIGN §4c forbids. An
-// earlier draft had that arm, and it reads like the strongest check available. It is unreachable:
-// std.durable_compare_and_set's `cas_decide_readable` builds the committed version as
-// `content: attempt.proposed_content`, so committed-vs-proposed agrees by CONSTRUCTION rather than by
-// verification, and a fold comparing those two fields compares one value against itself. What is
-// genuinely checkable is the pair whose sides come from DIFFERENT sources: what the caller proposed to
-// write, against what the state being transitioned to renders to. "The bytes the store ended up holding
-// are the bytes you named" is the store's obligation, not a fact this fold can establish; it is carried
-// as a typed row in gunbc.guarantee_stall, not dressed as a check here.
-type EnrolmentPersistVerdict
-  = EnrolmentPersistedAndAdmitted {
-      standing: LocalCommitStanding<EnrolmentCommitProof, EnrolmentPersistenceFailure>,
-      admission: EnrolmentEffectAdmission,
-    }
-  | EnrolmentPersistRefused { standing: LocalCommitStanding<EnrolmentCommitProof, EnrolmentPersistenceFailure> }
-  | EnrolmentPersistRefusedProposedRecordIsNotThisState { proposed: ContentHash, intended: ContentHash }
-  | EnrolmentPersistRefusedCrossFamilyDigest { proposed: ContentHash, intended: ContentHash }
-
-// THE PERSIST STEP, AND THE ONLY DOOR TO AN EFFECT. Takes the state being transitioned to, the
-// caller's conditional-write attempt, and what the store observed; runs std.durable_compare_and_set's
-// fold; and admits nothing unless the bytes the write carried are the digest of THIS state under
-// `enrolment_record_render`. Any disagreement is a named refusal, never a silent proceed.
-//
-// WHY THIS DIRECTION OF CHECK, NOT THE OTHER. "Does the commit match the attempt?" is decided by the
-// CAS itself (see the two-arm note above) and cannot fail here. "Does what you wrote describe the
-// record you are transitioning to?" is decided nowhere else in the tree — the CAS has no notion of the
-// record's meaning, and the store has no notion of the phase. That is the check this fold exists to
-// run. Its failure is the real bug: the app posts a payload for one record while a DIFFERENT record
-// (an earlier phase's, or another attempt's) is what becomes durable, then resumes from the durable one
-// and mints a second attestation the server may already hold.
-fn enrolment_persist(
-  state: EnrolmentState,
-  attempt: CasAttempt<EnrolmentState>,
-  observed: CasSlotObservation<EnrolmentState>
-) -> EnrolmentPersistVerdict {
-  let intended_digest = enrolment_record_digest(state: state)
-  let outcome = cas_decide(attempt: attempt, observed: observed)
-  let standing = enrolment_persistence_standing(attempt: attempt, outcome: outcome)
-  match outcome {
-    CasCommitted { committed: _ } =>
-      match compare_content_hash(left: attempt.proposed_content, right: intended_digest) {
-        ContentHashEqual =>
-          EnrolmentPersistedAndAdmitted {
-            standing: standing,
-            admission: EnrolmentEffectAdmission { record: intended_digest },
-          }
-        ContentHashDifferent =>
-          EnrolmentPersistRefusedProposedRecordIsNotThisState {
-            proposed: attempt.proposed_content,
-            intended: intended_digest,
-          }
-        ContentHashCrossFamilyIncomparable =>
-          EnrolmentPersistRefusedCrossFamilyDigest {
-            proposed: attempt.proposed_content,
-            intended: intended_digest,
-          }
-      }
-    CasPreconditionFailed { expected: _, observed: _ } => EnrolmentPersistRefused { standing: standing }
-    CasStoreRefused { cause: _ } => EnrolmentPersistRefused { standing: standing }
-  }
-}
-
-// WHAT AN ADMITTED EFFECT COVERS: the digest of the record that was persisted. One field, because on
-// the only path that mints this value the durable bytes, the proposed bytes and the state's render are
-// one digest — a second field would advertise a distinction the persist step has already excluded.
-type EnrolmentEffectAdmission sole_constructor {
-  record: ContentHash
-}
-
-// THE VERDICT AS A PERMISSION, so a consumer asks one question and cannot widen the answer: an
-// admission is handed out exactly in the one arm carrying it, and nothing here turns a refusal, a
-// missing standing, or a stale admission into permission.
-fn enrolment_effect_admitted(verdict: EnrolmentPersistVerdict) -> Optional<EnrolmentEffectAdmission> {
-  match verdict {
-    EnrolmentPersistedAndAdmitted { standing: _, admission: admission } => optional_present(value: admission)
-    EnrolmentPersistRefused { standing: _ } => optional_absent()
-    EnrolmentPersistRefusedProposedRecordIsNotThisState { proposed: _, intended: _ } => optional_absent()
-    EnrolmentPersistRefusedCrossFamilyDigest { proposed: _, intended: _ } => optional_absent()
-  }
-}
-
-// THE REMOTE CALLS THE ENROLMENT FLOW MAKES, one arm per call the Swift actually performs, with the
-// state each one depends on. Forwarding the APNs token depends on the enrolled record carrying that
-// token; posting the enrolment depends on the prepared record carrying the attestation; the readback
-// probe depends on the enrolled record carrying the id the server issued. Those dependencies are what
-// make the rule below able to answer for a specific call rather than for "the app" in general.
-type EnrolmentRemoteCall
-  = SubmitEnrolmentPost { state: EnrolmentState }
-  | ForwardApnsToken { state: EnrolmentState }
-  | EnrolmentReadbackProbe { state: EnrolmentState }
-
-fn enrolment_remote_call_state(call: EnrolmentRemoteCall) -> EnrolmentState {
-  match call {
-    SubmitEnrolmentPost { state: s } => s
-    ForwardApnsToken { state: s } => s
-    EnrolmentReadbackProbe { state: s } => s
-  }
-}
-
-fn enrolment_remote_call_name(call: EnrolmentRemoteCall) -> NonEmptyStr {
-  match call {
-    SubmitEnrolmentPost { state: _ } => "submit_enrolment_post" as NonEmptyStr
-    ForwardApnsToken { state: _ } => "forward_apns_token" as NonEmptyStr
-    EnrolmentReadbackProbe { state: _ } => "enrolment_readback_probe" as NonEmptyStr
-  }
-}
-
-// THE RULE, AS A FUNCTION AND NOT AS A COMMENT. A remote call is admitted exactly when the persist
-// step admitted an effect AND the record that effect was admitted for IS the record this call depends
-// on. The second condition is what stops one transition's admission from authorizing another call's
-// post — a stale-but-valid admission is not a licence, and this is where that is decided rather than
-// left to caller discipline. This is the executable form of the EnrolmentState.swift header law; the
-// witness runs it rather than re-deriving it.
-fn enrolment_call_admitted(call: EnrolmentRemoteCall, verdict: EnrolmentPersistVerdict) -> Bool {
-  match enrolment_effect_admitted(verdict: verdict) {
-    Present { value: admission } =>
-      match compare_content_hash(
-        left: admission.record,
-        right: enrolment_record_digest(state: enrolment_remote_call_state(call: call))
-      ) {
-        ContentHashEqual => true
-        ContentHashDifferent => false
-        ContentHashCrossFamilyIncomparable => false
-      }
-    Absent => false
-  }
-}
-
-// ──────────────────────────────────────────────────────────────────────────────────────────────
-// THE ORDERING, AS A TYPED FACT THE CONSUMER IMPORTS (gunbc.serving.caller_backlog's
-// persist_before_offer_basis is the precedent). A consumer that asks "may I post?" gets an answer
-// naming the declarations that carry the law, so a change to the order has to move the basis with it
-// or the fact refuses — an ordering that lives only in a call sequence can be reordered silently.
-// ──────────────────────────────────────────────────────────────────────────────────────────────
-// WHY THERE IS NO `EnrolmentOrderingProperty` SUM TYPE HERE, which is a finding rather than an
-// omission. An earlier draft had a one-arm property sum and a standing fn taking it. With one arm the
-// parameter cannot be varied by any caller, so the match over it is total by accident and the
-// "property" argues nothing: it is a Bool with a longer name, and DESIGN 4b's decoration test applies.
-// WHY NOTHING STANDS HERE, which is a deletion rather than a gap. This block held an
-// `EnrolmentOrderingStanding` computed from a basis of four `decl_ref` string literals, and its
-// admitted arm fired when those same four constants were found in the list of those same four
-// constants. The refusal arm was therefore unreachable, and `enrolment_persist` could be deleted from
-// this module while the "fact" still reported itself admitted — DESIGN §4b's check whose forbidden
-// state is expressible nowhere it runs, green by construction and then cited as coverage. A name
-// spelled as a string does not pin a declaration; only the resolver does, and this module has no
-// resolved-declaration fold to ask.
-//
-// WHAT ACTUALLY CARRIES THE LAW, none of it resting on a declaration being named:
-//  - `enrolment_persist` is the only declaration in the tree that mints `EnrolmentCommitProof` or
-//    `EnrolmentEffectAdmission`, both sole_constructor; a foreign literal is a compile-time
-//    SoleConstructorViolation, measured by keyed REDs in
-//    test.claim.approve_ios_enrolment_machine_persist_order_witness.
-//  - `enrolment_call_admitted` binds an admitted effect to the digest of the record it was persisted
-//    for, so a stale admission does not authorize a call; measured behaviourally there too.
-//  - The gap no consumer-side check can close — a caller-authored `CasCommitted` reaching the admitted
-//    arm, because `std.durable_compare_and_set` does not seal `CasOutcome` — is a typed row:
-//    gunbc.guarantee_stall's enrolment_commit_evidence_remains_caller_authored_stall, with a population
-//    and a re-measurable trigger, not a sentence in a comment.
-//
-// What remains from the earlier draft is the frontier row below: a consumer declared as data, which a
-// closure fold enumerates rather than a fact that certifies itself.
-// ──────────────────────────────────────────────────────────────────────────────────────────────
-// THE DECLARED FRONTIER: the consumer this model exists to serve.
-//
-// The consumer named here does not exist yet, which is the point of the row: the durable enrolment
-// state is generated from THIS module rather than hand-authored a second time, and the row dissolves
-// when that generator reads the payload model and the ordering fact declared above. The row is
-// registered in gunbc.census_closure_frontier's group list so the closure sees it, and its dissolution
-// is deliberately unbound — per gunbc.arm_ci_seller_census's precedent, an unbound row reports its
-// state honestly instead of being scored against a declaration that is not in this tree.
-// ──────────────────────────────────────────────────────────────────────────────────────────────
-data approve_ios_enrolment_state_generator_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.approve_ios_enrolment_machine", decl_name: "enrolment_record_render"),
-    reason: "The hand-authored apps/approve-ios/Approve/EnrolmentState.swift carries PreparedEnrolment, EnrolledDevice and EnrolmentState with no model behind them, and states its persist-before-effect law in prose. The payload model, the record render and the ordering fact above now carry both. Named consumer: the approve-ios EnrolmentState.swift GENERATOR — the Swift-emitting module that replaces that hand-authored file (the gunbc.approve_ios_swift_enrolment_machine lineage, whose state-table printer is already the durable-machine printer) — consuming enrolment_state_phase, enrolled_device, enrolment_record_render, EnrolmentCommitProof, EnrolmentEffectAdmission, enrolment_persist, enrolment_effect_admitted and enrolment_call_admitted. Trigger: that generator imports this module and its emitted EnrolmentState.swift round-trips enrolment_record_render and refuses a remote call whose persist verdict carries no admission. NOT satisfied by this witness, by a PR pin, or by deleting the Swift file.",
-    dissolution: unbound_dissolution(description: "dissolve-on: the approve-ios EnrolmentState.swift generator (the approve_ios_swift_* printer lineage) declares a public declaration that imports enrolment_record_render and EnrolmentCommitProof from gunbc.approve_ios_enrolment_machine and emits the durable state from them; that change rebinds this row to bound_dissolution on the emitting declaration. SUFFICIENT FOR deleting this row: the generated file, not the witness, being what apps/approve-ios/Approve/EnrolmentState.swift is."),
-  ),
-]

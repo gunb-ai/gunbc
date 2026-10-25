@@ -1,19 +1,29 @@
 module test.claim.host.host_reset_return_witness
 
 import std.logic { Bool }
-import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
+import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String, list_length }
 import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
 import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural, Sha256Digest, Sha256Hash }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ProcessExit, ExitSuccess }
 import std.algebra { string_contains }
 import std.list { first_where }
-import v2.std.witness_evaluation { WitnessEvaluation, WitnessReturned }
+import v2.std.witness_evaluation { WitnessEvaluation, WitnessReturned, evaluate_in_witness_frame }
 import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix {
   MtCollins1BootWorld, world_for_reset_route, run_reset_route, count_named, realization_identity,
+  matrix_reset_route_frame,
 }
+import gunbc.host.host_reset_subject_roster { reset_subject_for, reset_lookup_subject }
+import gunbc.host.host_reset_return_run { host_reset_return_attempt }
+import gunbc.host.managed_host_unit_hold { UnitHoldSubjectAdmitted, UnitHoldNotRequired, UnitHoldUndecided }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.host.host_reset_subject_roster { reset_observer_peer_roster, reset_roster_hosts, reset_subject_roster }
 import gunbc.host.host_reset_return {
+  host_roster_contains,
+  ResetAttemptMint,
+  AttemptReceiptMinted,
+  AttemptReceiptPairingRefused,
   host_reset_return_receipt_path,
   AttemptIdentitiesNotDistinct,
   AttemptTimingUnavailable,
@@ -1241,3 +1251,90 @@ test fn w_the_identity_the_executed_reset_route_reported_came_from_writing_the_c
 }
 
 
+
+// THE REAL DERIVATION NEVER ROSTERS A SUBJECT AS AN OBSERVER. A host enrolled as a runner executor AND admitted
+// as a reset subject (mtcollins1) is on both source rosters; the peer roster derives with every subject excluded,
+// so the whole assignment is minted instead of refused. Deleting the exclusion in reset_observer_peer_roster
+// refuses it with ObserverIsSubject, which is the fleet-converge regen refusal this control replaces.
+test fn w_the_real_peer_roster_excludes_every_reset_subject_and_the_assignment_is_minted() -> Bool {
+  let subjects = reset_roster_hosts(entries: reset_subject_roster(evidence: megarac_operation_evidence()))
+  let peers = reset_observer_peer_roster(subjects: subjects)
+  let excluded = fold(subjects, init: true, f: (ok, s) => ok && host_roster_contains(roster: peers, host: s) == false)
+  excluded && list_length(subjects) > 0 && list_length(peers) > 0 && match reset_dispatch_pairings(subject_roster: subjects, peer_roster: peers) {
+    DispatchAssignment { pairings: _ } => true
+    DispatchAssignmentRefused { cause: _ } => false
+  }
+}
+
+// ── THE RESET ADMISSION PASSES THROUGH THE UNIT HOLD ──────────────────────────────────────────────
+//
+// gunbc.host.host_reset_subject_roster admit_reset_subject mints the subject's hold admission once,
+// through gunbc.host.managed_host_unit_hold admit_unit_hold_subject, and the run reads that carried
+// value and nothing else (gunbc.host.host_reset_return_run reset_unit_hold_gate). The two claims below
+// pin both ends. The referent for the carry claim is the fleet identity authority
+// (gunbc.fleet.fleet_host_identity), not the subject's own row read back: mtcollins1 is serviced by hand,
+// so its reset must take the slot keyed by its own name in the store on srv1.
+
+// THE ADMITTED SUBJECT CARRIES THE HOLD ITS UNIT REQUIRES. A reset admission that skips the hold (mints
+// UnitHoldNotRequired, or never consults the policy) turns this red by arm. One that keys the slot or
+// places the store anywhere else turns it red by value.
+test fn w_the_admitted_reset_subject_carries_the_unit_hold_its_row_requires() -> Bool {
+  match reset_lookup_subject(lookup: reset_subject_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1 as NonEmptyStr)) {
+    Absent => false
+    Present { value: candidate } =>
+      match candidate.hold {
+        UnitHoldNotRequired { host: _ } => false
+        UnitHoldUndecided { host: _ } => false
+        UnitHoldSubjectAdmitted { subject: held } =>
+          (held.key as String) == (operator_host_mtcollins1 as String)
+            && (held.store_host as String) == (operator_host_srv1 as String)
+            && (held.host.host as String) == (candidate.host.host as String)
+      }
+  }
+}
+
+// THE EXECUTED ATTEMPT WITH NO HOLD PROOF REFUSES BEFORE ANY CONTROLLER WRITE. This runs the production
+// attempt (host_reset_return_attempt: issuance block, pre-issuance baseline, clock read, then the gated
+// issue) for the ADMITTED mtcollins1 subject under the same hermetic frame as the executed reset route
+// above, with proof: none, exactly what a caller that skipped the acquire would hand it. The verdict is
+// read from the route itself: the attempt minted ResetNotAttempted with the gate's own hold cause, and
+// the frame's trace records zero boot-selection and zero power writes. The positive control is
+// w_the_identity_the_executed_reset_route_reported_came_from_writing_the_controller: the same frame, the
+// same subject, but entered through host_reset_return_wet, which acquires the hold, and that run DOES
+// write the controller. So this red is the missing proof and not a frame that cannot reach the controller.
+// The cause is asserted by its text, so that a refusal for some other reason (baseline, clock, pairing)
+// cannot satisfy it.
+fn executed_attempt_without_a_hold_proof() -> WitnessEvaluation<ResetAttemptMint, MtCollins1BootWorld> {
+  evaluate_in_witness_frame(
+    frame: matrix_reset_route_frame(world: world_for_reset_route(observer_label: "srv1", run_id: "77002")),
+    subject: fn(_scope) {
+      match reset_lookup_subject(lookup: reset_subject_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1 as NonEmptyStr)) {
+        Absent => AttemptReceiptPairingRefused { cause: SubjectNotRostered { subject: operator_host_mtcollins1 as NonEmptyStr } }
+        Present { value: candidate } =>
+          host_reset_return_attempt(
+            evidence: megarac_operation_evidence(),
+            proof: none,
+            candidate: candidate,
+            observer: operator_host_srv1 as NonEmptyStr,
+            attempt: "srv1-observes-mtcollins1-without-a-hold-proof" as NonEmptyStr,
+            route: IssuedThroughConverge { workflow: "fleet-converge", mode: "host_reset_return", run_id: "77002" },
+            password_file: "/run/gunbc/bmc-credential" as NonEmptyStr,
+          )
+      }
+    },
+  )
+}
+
+test fn w_an_executed_reset_attempt_without_a_hold_proof_writes_nothing_to_the_controller() -> Bool {
+  match executed_attempt_without_a_hold_proof() {
+    WitnessReturned { value: AttemptReceiptMinted { observed: o }, route, state: _ } =>
+      match o.acknowledgement {
+        ResetNotAttempted { cause: c } =>
+          string_contains(s: c as String, pattern: "is hold-gated and no unit hold proof was presented")
+            && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") == 0
+            && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 0
+        _ => false
+      }
+    _ => false
+  }
+}

@@ -31,12 +31,10 @@ import gunbc.shell_command_text {
   shell_command_intent,
   shell_literal_words,
   shell_command_text_of_argv,
-  shell_command_text_of_node,
   shell_privileged_command_intent,
   shell_privileged_command_text_of_argv,
 }
 import v2.extdeps.languages.bash_build {
-  bash_build_command_with_words,
   bash_build_with_redir_to_file,
   bash_build_word_concat_from_nodes,
   bash_build_word_lit,
@@ -142,31 +140,6 @@ fn deploy_path_word_in_dir(dir_var: String, stage_name: String) -> Node {
 
 fn deploy_cap_stage_path_word(stage_name: String) -> Node {
   deploy_path_word_in_dir(dir_var: deploy_cap_stage_dir_var, stage_name: stage_name)
-}
-
-// ONE EXIT TRAP, parameterized by the stage variables the frame actually binds. Two traps
-// would race on EXIT; naming a variable the frame did not bind is an unbound-variable abort
-// under `set -u` after the mutations, and the rm never completes. Apply passes
-// [_gunbc_stage, _gunbc_cap_stage]; retract passes [_gunbc_stage]. Inner words are lit rm,
-// lit -rf, then one var word per bound name. Outer words are lit trap, a literal whose text
-// is that inner emission, lit EXIT. The bash emitter quotes; this source has no quote
-// characters.
-fn deploy_stage_dirs_rm_command(dir_vars: List<String>) -> Node {
-  bash_build_command_with_words(words: fold(
-    dir_vars,
-    init: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-rf")],
-    f: (acc, v) => concat(acc, [bash_build_word_var(name: v)]),
-  ))
-}
-
-fn deploy_stage_dirs_exit_trap_command(dir_vars: List<String>) -> String {
-  shell_command_text_of_node(
-    stmt: bash_build_command_with_words(words: [
-      bash_build_word_lit(text: "trap"),
-      bash_build_word_lit(text: shell_command_text_of_node(stmt: deploy_stage_dirs_rm_command(dir_vars: dir_vars))),
-      bash_build_word_lit(text: "EXIT"),
-    ]),
-  )
 }
 
 fn install_directory_owned_command(

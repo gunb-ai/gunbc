@@ -11,6 +11,7 @@ import v2.std.operation_realization {
 }
 import extdeps.transports.file { FileExchangeObservation, FileOperationSucceeded, FileOperationFailed }
 import extdeps.transports.shell { ShellProcessExited }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal }
 import extdeps.filesystem.filesystem_io {
   FilesystemNotFound, FilesystemAlreadyExists, FilesystemNotDirectory, FilesystemOtherFailure, FilesystemPermissionDenied,
 }
@@ -26,8 +27,12 @@ import extdeps.filesystem.filesystem_io {
 //   - reading or writing a directory as a file answers `other`, as an EISDIR does.
 //   - a path in refused_reads answers permission_denied to a read, whether or not it exists: the one
 //     permission fact modeled, so a consumer's "could not look" arm is reachable over this model.
-// WHAT IT DOES NOT MODEL, stated so a green over it is not over-read: file modes (the declared mode of
-// write_create_new_with_mode is accepted and not stored), ownership, symlinks, partial writes, and
+//   - a path's mode and owning principal are known only where `stats` records them: an authored world
+//     states them for the paths it seeds, and an owner-only mkdir records the 0700 it creates with and
+//     the principal that created it. stat of a path with no record is a harness fault, never a guess.
+// WHAT IT DOES NOT MODEL, stated so a green over it is not over-read: the declared mode of
+// write_create_new_with_mode (accepted and not stored), permission ENFORCEMENT (a recorded mode is read
+// back, never consulted on access), symlinks, partial writes, and
 // the atomicity of a real create-exclusive under concurrent processes. Those are properties of the real
 // filesystem, and their evidence is the file-store tests that run against a real directory.
 // byte_count is the content's UTF-8 byte length, as the realization's own `content.len()` reports it --
@@ -41,10 +46,19 @@ type ModeledFile {
   content: String
 }
 
+// A PATH'S STAT FACTS: the mode (extdeps.access.posix FileMode, the one mode authority) and the login name
+// that owns it, as `stat -c %a` and `stat -c %U` read them back.
+type ModeledPathStat {
+  path: String
+  mode: FileMode
+  owner: String
+}
+
 type ModeledFilesystem {
   directories: List<String>
   files: List<ModeledFile>
   refused_reads: List<String>
+  stats: List<ModeledPathStat>
 }
 
 fn fs_is_directory(fs: ModeledFilesystem, path: String) -> Bool {
@@ -95,11 +109,11 @@ fn fs_read(fs: ModeledFilesystem, path: String) -> FileExchangeObservation {
 }
 
 fn fs_without_file(fs: ModeledFilesystem, path: String) -> ModeledFilesystem {
-  ModeledFilesystem { directories: fs.directories, files: filter(fs.files, f => f.path != path), refused_reads: fs.refused_reads }
+  ModeledFilesystem { directories: fs.directories, files: filter(fs.files, f => f.path != path), refused_reads: fs.refused_reads, stats: filter(fs.stats, t => t.path != path) }
 }
 
 fn fs_refusing_reads_of(fs: ModeledFilesystem, path: String) -> ModeledFilesystem {
-  ModeledFilesystem { directories: fs.directories, files: fs.files, refused_reads: list_append(fs.refused_reads, path) }
+  ModeledFilesystem { directories: fs.directories, files: fs.files, refused_reads: list_append(fs.refused_reads, path), stats: fs.stats }
 }
 
 type ModeledFileWrite {
@@ -131,6 +145,7 @@ fn fs_with_file(fs: ModeledFilesystem, path: String, content: String) -> Modeled
     directories: fs.directories,
     files: list_snoc_item(xs: filter(fs.files, f => f.path != path), item: ModeledFile { path: path, content: content }),
     refused_reads: fs.refused_reads,
+    stats: fs.stats,
   }
 }
 
@@ -291,7 +306,7 @@ fn fs_make_parents(fs: ModeledFilesystem, path: String) -> ModeledFileWrite {
   match blocked.first() {
     Present { value: b } => ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemNotDirectory, message: concat("mkdir: cannot create directory: Not a directory: ", b)) }
     Absent => ModeledFileWrite {
-      fs: ModeledFilesystem { directories: fold(chain, init: fs.directories, f: fn(acc, d) { if any_string(xs: acc, x: d) { acc } else { list_append(acc, d) } }), files: fs.files, refused_reads: fs.refused_reads },
+      fs: ModeledFilesystem { directories: fold(chain, init: fs.directories, f: fn(acc, d) { if any_string(xs: acc, x: d) { acc } else { list_append(acc, d) } }), files: fs.files, refused_reads: fs.refused_reads, stats: fs.stats },
       observation: FileOperationSucceeded { byte_count: byte_size(count: 0), content: "" },
     }
   }
@@ -335,4 +350,95 @@ fn canonicalising<S>(get: fn(S) -> ModeledFilesystem, cwd: fn(S) -> String) -> f
       }
     }
   }
+}
+
+// ─── OWNER-ONLY CREATION AND THE STAT READBACK ──────────────────────────────────────────────────
+// extdeps.shell shell.Mkdir NewOwnerOnly: `mkdir -m 00700 -- <path>`. It fails when the name exists at
+// all -- as a directory or as a file -- and when its parent is not a directory, each with mkdir's own
+// words and exit 1; otherwise it creates the directory AT 0700, owned by the principal the caller's
+// process runs as. The principal is the caller's (process) state, supplied as a lens like the working
+// directory, because this module knows no process.
+data shell_mkdir_new_owner_only_operation: OperationRef = OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Mkdir", operation: "NewOwnerOnly" }
+data shell_stat_mode_of_operation: OperationRef = OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "ModeOf" }
+data shell_stat_owner_of_operation: OperationRef = OperationRef { path: "dag/extdeps/shell.dag", service: "shell.Stat", operation: "OwnerOf" }
+
+data owner_only_directory_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: false, write: false, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false, setgid: false, sticky: false,
+}
+
+fn fs_exists(fs: ModeledFilesystem, path: String) -> Bool {
+  fs_is_directory(fs: fs, path: path) || (match fs_file(fs: fs, path: path) { Present { value: _ } => true  Absent => false })
+}
+
+fn fs_stat(fs: ModeledFilesystem, path: String) -> ModeledPathStat? {
+  first(filter(fs.stats, t => t.path == path))
+}
+
+fn fs_make_owner_only(fs: ModeledFilesystem, path: String, principal: String) -> ModeledFileWrite {
+  if fs_exists(fs: fs, path: path) {
+    ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemAlreadyExists, message: join(["mkdir: cannot create directory '", path, "': File exists"], "")) }
+  } else if !fs_is_directory(fs: fs, path: fs_parent(path: path)) {
+    ModeledFileWrite { fs: fs, observation: failed_with(kind: FilesystemNotFound, message: join(["mkdir: cannot create directory '", path, "': No such file or directory"], "")) }
+  } else {
+    ModeledFileWrite {
+      fs: ModeledFilesystem {
+        directories: list_snoc_item(xs: fs.directories, item: path), files: fs.files, refused_reads: fs.refused_reads,
+        stats: list_snoc_item(xs: fs.stats, item: ModeledPathStat { path: path, mode: owner_only_directory_mode, owner: principal }),
+      },
+      observation: FileOperationSucceeded { byte_count: byte_size(count: 0), content: "" },
+    }
+  }
+}
+
+// `stat -c %a` prints the access rights in octal with no leading zeros (GNU coreutils stat(1)), so a
+// 0700 directory reads "700" and a 2700 one "2700"; the digits are extdeps.access.posix file_mode_octal's.
+fn stat_access_rights_text(mode: FileMode) -> String {
+  fold([1, 2, 3], init: file_mode_octal(mode: mode), f: fn(acc, _i) {
+    if starts_with(s: acc, prefix: "0") { substring(s: acc, start: 1, end: string_length(s: acc)) } else { acc }
+  })
+}
+
+// stat of an absent path fails as stat does; stat of a path that exists but whose facts the world never
+// recorded is a HARNESS FAULT, because answering it would invent a mode or an owner nobody stated.
+fn stat_step<S>(state: S, fs: ModeledFilesystem, path: String, read: fn(ModeledPathStat) -> String) -> OperationStep<S> {
+  if !fs_exists(fs: fs, path: path) {
+    OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 1, stdout: "", stderr: join(["stat: cannot statx '", path, "': No such file or directory\n"], "") } }, state: state, elapsed: second(count: 0) }
+  } else {
+    match fs_stat(fs: fs, path: path) {
+      Absent => OperationHarnessFault { reason: join(["the modeled filesystem records no mode or owner for ", path], "") as NonEmptyStr }
+      Present { value: t } => OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: concat(read(t), "\n"), stderr: "" } }, state: state, elapsed: second(count: 0) }
+    }
+  }
+}
+
+fn filesystem_ownership_bindings<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, ModeledFilesystem) -> S, cwd: fn(S) -> String, principal: fn(S) -> String) -> List<OperationBinding<S>> {
+  let making = fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "path") {
+      Absent => OperationHarnessFault { reason: "mkdir -m 00700 was dispatched without a path" as NonEmptyStr }
+      Present { value: path } => {
+        let m = fs_make_owner_only(fs: get(state), path: fs_resolved(cwd: cwd(state), path: path), principal: principal(state))
+        OperationObserved { observation: ShellObserved { observation: shell_exited_of(observation: m.observation, stdout: "") }, state: put(state, m.fs), elapsed: second(count: 0) }
+      }
+    }
+  }
+  let mode_of = fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "path") {
+      Absent => OperationHarnessFault { reason: "stat -c %a was dispatched without a path" as NonEmptyStr }
+      Present { value: path } => stat_step(state: state, fs: get(state), path: fs_resolved(cwd: cwd(state), path: path), read: fn(t) { stat_access_rights_text(mode: t.mode) })
+    }
+  }
+  let owner_of = fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "path") {
+      Absent => OperationHarnessFault { reason: "stat -c %U was dispatched without a path" as NonEmptyStr }
+      Present { value: path } => stat_step(state: state, fs: get(state), path: fs_resolved(cwd: cwd(state), path: path), read: fn(t) { t.owner })
+    }
+  }
+  [
+    OperationBinding { at: shell_mkdir_new_owner_only_operation, handler: making },
+    OperationBinding { at: shell_stat_mode_of_operation, handler: mode_of },
+    OperationBinding { at: shell_stat_owner_of_operation, handler: owner_of },
+  ]
 }
