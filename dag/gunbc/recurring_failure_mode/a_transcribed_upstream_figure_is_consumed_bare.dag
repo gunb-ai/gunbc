@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.a_transcribed_upstream_figure_is_consumed_bare
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data a_transcribed_upstream_figure_is_consumed_bare: RecurringFailureMode = RecurringFailureMode {
   identity: "a_transcribed_upstream_figure_is_consumed_bare" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "INVALID STATE: a figure an upstream's operator STATED (a limit, a field spelling, a token) is typed as a bare value and a consumer enforces or parses by it as if it had been read. HARM: the figure is a bet consumed as deduced fact (DESIGN 4d); when the live service differs, the consumer fails or silently mis-parses at the first real use. Found at PR 14244 (pool front limits and reasoning spellings), reviews 81458, 81465, 81526.",

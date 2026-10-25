@@ -1,11 +1,13 @@
 module gunbc.recurring_failure_mode.the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card: RecurringFailureMode = RecurringFailureMode {
   identity: "the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
 
   receipts: [
     "INVALID STATE: every harness worker of the dev lab had one model route, an ssh -L tunnel started by a hand-placed systemd --user unit on srv1 (127.0.0.1:18090) to one card the operator rented (ssh1.vast.ai:32062, ninfer-serve, model id qwen). When the operator's rental ended (2026-10-17 03:28Z) the tunnel failed and the route was an unreachable address no model declared: the lab had no inference at all, and nothing in the repository said what replaced it. A route that is an address, a unit and a rental none of which the repository models is a single point of failure that is invisible until it fails.",

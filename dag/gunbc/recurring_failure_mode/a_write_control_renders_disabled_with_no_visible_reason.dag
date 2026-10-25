@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.a_write_control_renders_disabled_with_no_visible_reason
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_write_control_renders_disabled_with_no_visible_reason: RecurringFailureMode = RecurringFailureMode {
   identity: "a_write_control_renders_disabled_with_no_visible_reason" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a disabled-control census over the rendered page corpus is enrolled as a gate, so every disabled control carries a typed refusal reason" } },
 
   receipts: [
     "a write control renders disabled with no visible reason: a page with no live session (empty csrf) rendered its submit as a disabled button carrying only a hover title, so pressing it did nothing and no request reached the route. SPECIMEN, 2026-10-17, srv1 lab: the operator pressed Retire lineage on /issue/shell-dag-floor-peak-calibration-rows for attempt f3630f05539fdf01 and nothing happened; no record was written. The refusal existed in the model (no session) but was expressed only as an inert control, which is silence at the human boundary (DESIGN 5).",

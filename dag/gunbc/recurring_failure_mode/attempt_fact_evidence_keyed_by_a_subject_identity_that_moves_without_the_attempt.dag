@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.attempt_fact_evidence_keyed_by_a_subject_identity_that_moves_without_the_attempt
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data attempt_fact_evidence_keyed_by_a_subject_identity_that_moves_without_the_attempt: RecurringFailureMode = RecurringFailureMode {
   identity: "attempt_fact_evidence_keyed_by_a_subject_identity_that_moves_without_the_attempt" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the keying-relation read-set carrier declares which subject fields each attempt-fact lookup depends on, and the lookup derives its key from that read-set" } },
 
   receipts: [
     "**EVIDENCE FOR A FACT ABOUT THE ATTEMPT IS LOOKED UP UNDER A VERIFICATION-SUBJECT IDENTITY THAT MOVES WHEN THE ATTEMPT DOES NOT** (INVALID STATE: the terminality guard of the operator resume of a refused verification took an EXACT-SUBJECT refused receipt as its evidence that the worker ended. The subject's change_window_identity folds target_generation, which is the deployed revision on the lab, so every deploy moved the key and the evidence became unreachable although the attempt, its branch and its head never changed).",

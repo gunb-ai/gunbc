@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.a_refused_acceptance_stage_is_never_retried_so_its_lineage_holds_forever
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_refused_acceptance_stage_is_never_retried_so_its_lineage_holds_forever: RecurringFailureMode = RecurringFailureMode {
   identity: "a_refused_acceptance_stage_is_never_retried_so_its_lineage_holds_forever" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the review and goal-audit refusal-cause carrier lands, so their Refused arms wake their own retry obligation on an infrastructure refusal as the verification arm does" } },
 
   receipts: [
     "a refused acceptance stage is never retried, so its lineage holds forever: a verification, review or goal audit REFUSED because its environment failed (not a verdict on the candidate) projects to WorkflowSegmentRefused, the continuation decision answers ContinuationHold with the promise that the belt retries it when the environment recovers, and nothing performs that retry. belt_segment_unsettled returns false for Refused (the 2026-10-03 manual-resume ruling), so no obligation is owed and discovery never wakes it; the dashboard had no operator route to re-run it. The lineage holds behind a cause that cleared.",

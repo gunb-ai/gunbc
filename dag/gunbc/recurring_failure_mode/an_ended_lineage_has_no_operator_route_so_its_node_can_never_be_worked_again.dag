@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.an_ended_lineage_has_no_operator_route_so_its_node_can_never_be_worked_again
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data an_ended_lineage_has_no_operator_route_so_its_node_can_never_be_worked_again: RecurringFailureMode = RecurringFailureMode {
   identity: "an_ended_lineage_has_no_operator_route_so_its_node_can_never_be_worked_again" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "an arm-to-writer census over every non-spawning ContinuationDecision arm is enrolled as a gate, so each arm names the record or route that releases it" } },
 
   receipts: [
     "an ended lineage has no operator route, so its node can never be worked again: a terminal fail-closed state (gunbc.roadmap.roadmap_attempt_continuation ContinuationEnded: starting over from base would discard committed work silently) was modelled with no transition out, and the reason text of the refusal said the operator decides while no route existed for the operator to decide. The state is correct to refuse; the defect is that the refusal named an authority nothing implemented, so the node was dead rather than held.",

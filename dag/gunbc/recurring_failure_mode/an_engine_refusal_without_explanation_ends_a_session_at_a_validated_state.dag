@@ -2,12 +2,16 @@ module gunbc.recurring_failure_mode.an_engine_refusal_without_explanation_ends_a
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // Consumer: directory-derived recurring_failure_mode.roster, projected by
 // gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
 data an_engine_refusal_without_explanation_ends_a_session_at_a_validated_state: RecurringFailureMode = RecurringFailureMode {
   identity: "an_engine_refusal_without_explanation_ends_a_session_at_a_validated_state" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a per-tool effect-outcome witness establishes the outcome of an interrupted tool effect, so recovery-needed resolves to a bounded resume" } },
 
   receipts: [
     "INVALID STATE: a harness worker session whose last persisted conversation answered every tool call is ended for good because the engine refused one request without saying why -- a non-2xx status, response headers present, an empty body. The worker exits 1, the capture is CaptureAbsent, the continuation decision is ContinuationEnded and every later dispatch refuses with step lineage-ended, though nothing was lost and the same conversation could continue. HARM: ten minutes of committed-state work sit on a branch no route resumes; the operator repairs by hand (DESIGN section 5, stop visibly but do not end what was recoverable).",
