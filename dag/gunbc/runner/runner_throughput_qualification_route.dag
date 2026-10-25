@@ -210,18 +210,17 @@ data qualification_instruments: List<QualificationInstrument> = [
 // the remedy is a disk or a narrower shape, both of which are a different subject.
 data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmpfs
 
-// THE BOOT LEG HAS AN IMPLEMENTED AUTHORITY (gunbc.runner.runner_host_medium) AND NO PRODUCTION CALLER;
-// THE IMAGE LEG IS WIRED (below). The boot leg's authority is the runner-host-up acceptance predicate the boot
-// run's terminal watch delegates to for a BootMediumRunnerHostUp medium; the image leg's is the
-// derivation of the runner image's seeded-media build input. Only the boot leg is unwired: the boot run's medium
-// is still the one data row gunbc.machine_intake.mtcollins1_census_image mtcollins1_boot_medium, and
-// it stays the census medium until the one-socket census boot has its receipt (operator sequencing,
-// relayed 2026-10-04), so switching it is a separate one-line import change after that receipt.
-// The boot stage's egress stays none (stage_egress): the runner tarball rides on the medium as a
-// digest-keyed seed artifact fetched at BUILD time, so booting the runner image opens no network.
-data mtcollins1_boot_leg: RouteLegStanding = LegAuthorityImplemented {
-  authority: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_up_readback"),
-  wiring_owed: "after the one-socket census boot's receipt exists: a gunbc.runner.runner_host_medium runner_host_boot_medium data row carrying the measured digest in the receipt of gunbc.runner.runner_host_medium_publish mtcollins1_runner_image_publish_wet, the boot run's medium switched to it (one import change), and the boot run's census-only pre-attach readbacks (gunbc.machine_intake.mtcollins1_census_medium_readback, which refuse any medium but the census) replaced by gunbc.host.boot_medium boot_medium_readback over the selected medium; SUFFICIENT FOR booting mtcollins1 from the derived runner image under grant_from_store with the SOL collector attached before the BMC stimulus, no controller write on deny, expiry or an unfiled request, and a terminal accepted only by runner_host_up_readback" as NonEmptyStr,
+// THE BOOT LEG IS WIRED: its production caller is gunbc.machine_intake.mtcollins1_boot_run
+// mtcollins1_boot_medium, the medium the boot run selects (runner_host_boot_medium over the digest the
+// wet publish run 39775218607 measured). The boot run re-measures the served file through
+// gunbc.host.boot_medium_served_readback, judged by gunbc.host.boot_medium boot_medium_readback, before
+// the request is filed and again before the media attach; its terminal for this medium is accepted only
+// by gunbc.runner.runner_host_medium runner_host_up_readback, under grant_from_store, with no controller
+// write on deny, expiry or an unfiled request. The census image row stays the census-member modes'
+// medium. The boot stage's egress stays none (stage_egress): the runner tarball rides on the medium as
+// a digest-keyed seed artifact fetched at BUILD time, so booting the runner image opens no network.
+data mtcollins1_boot_leg: RouteLegStanding = LegWired {
+  authority: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_medium"),
 }
 
 // THE IMAGE LEG IS WIRED: its production caller is gunbc.runner.runner_host_medium_publish

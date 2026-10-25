@@ -226,6 +226,13 @@ data megarac_firmware_0_45_3: BmcFirmwareReleaseIdentity = bmc_firmware_release_
 // Any other numeric code on a catalogued firmware is an uncatalogued wire, not a named denial.
 // A firmware identity this row
 // does not catalog refuses rather than inheriting 0.32's numbers.
+// ON 0.45.3 ONLY 1 IS CATALOGUED, because only 1 has been read there: boot run 38789347052
+// (gunbc.host.bmc_release_capability_catalog megarac_run_38789347052_evidence, executed after the
+// 2026-10-02 reflash; artifacts/bmc/mtcollins1-boot-run-38789347052/mtcollins1-boot-diagnostics.txt)
+// read redirection_status 1 on the started census session, three times. No committed 0.45.3 reading
+// shows 0 or 100, so they are NOT carried over from 0.32: a stopped or connecting session on 0.45.3
+// reads as an uncatalogued wire until a reading grounds it. Boot run 40038339650 read 19 on a
+// session left over from an earlier attempt; what 19 means is unread, and it stays uncatalogued.
 type MegaRacRedirectionStatus
   = RedirectionStopped
   | RedirectionStartedConnectionAccepted
@@ -251,10 +258,18 @@ fn megarac_redirection_status_of_wire(
       RedirectionWireUncatalogued { wire: wire }
     }
     RedirectionStatusKnown { firmware: firmware, status: status }
+  } else if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_45_3) {
+    let status = if wire == 1 {
+      RedirectionStartedConnectionAccepted
+    } else {
+      RedirectionWireUncatalogued { wire: wire }
+    }
+    RedirectionStatusKnown { firmware: firmware, status: status }
   } else {
     RedirectionStatusFirmwareUncatalogued { firmware: firmware, wire: wire }
   }
 }
+
 
 // A SESSION IS PRESENTING MEDIA ONLY WHILE STARTED OR CONNECTING. Stopped is known not
 // presenting. Uncatalogued firmware and uncatalogued wire are not "not presenting": they are

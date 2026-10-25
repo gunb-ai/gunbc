@@ -48,6 +48,11 @@ fn desired_for(m: ConvergedMember) -> MemberIdentity {
     ServiceProcess => desired_process()
     DirectoryRoot { path: _ } => desired_bin()
     OidcConfigFile => desired_bin()
+    // WORKER-ROOT-EQUIVALENT-3: the two git-subtree members ride the DEPLOYMENT roster only, gated on a
+    // dedicated-worker instance; this witness's release roster is the always-present set, so no arm here is
+    // ever reached -- the placeholder is total-and-unreached, mirroring the DirectoryRoot row above it.
+    GitWorkerSubtree { path: _, child: _ } => desired_bin()
+    RepositorySharedPosture { path: _ } => desired_bin()
   }
 }
 
@@ -203,6 +208,9 @@ test fn a_fully_drifted_host_derives_each_mutation_once_in_order() -> Bool {
     ServiceProcess => MemberObserved { identity: ProcessAt { process: ProcessNotRunning { active: Inactive } } }
     DirectoryRoot { path: _ } => converged_observation_for(m: m)
     OidcConfigFile => converged_observation_for(m: m)
+    // The roster here is the always-present 5; these two never appear -- total-and-unreached arms.
+    GitWorkerSubtree { path: _, child: _ } => converged_observation_for(m: m)
+    RepositorySharedPosture { path: _ } => converged_observation_for(m: m)
   })
   labels(d: d) == [
     "install-executable sha256:1111111111111111111111111111111111111111111111111111111111111111",

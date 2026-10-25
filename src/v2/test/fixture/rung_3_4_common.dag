@@ -1,6 +1,5 @@
 module v2.test.fixture.rung_3_4_common
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.std.node { Authored, NotADeclaration }
 
@@ -45,8 +44,7 @@ fn rung34_inferred_tree(root: Node) -> InferredTree {
           )
         }
       }
-    },
-    arm_resolutions: constructed_root_arm_resolutions()
+    }
   }
 }
 
