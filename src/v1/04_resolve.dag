@@ -1511,7 +1511,7 @@ fn binder_marked_member(member: Node, owner: DeclarationRef, binders: List<Strin
 // Node.declaration on its own output (v1.compiler.infer_emit_info records the same ordering for union
 // members): a consumer reading the copy would otherwise see an unmarked declaration, and substitution,
 // which keys on the (owner, TypeParameter) identity alone, would find no key. It marks the signature's
-// parameter types and return, or a type declaration's members, and changes nothing but Node.declaration.
+// parameter types and return, or a type declaration's members (each field's type expression in its first child AND its Resolved copy, since the record-literal and field-read routes read the former), and changes nothing but Node.declaration.
 fn declaration_with_parameter_marks(item: Node, module_path: String, source_indices: Map<String, NewlineIndex>) -> Node {
   let tp_names = if item.connective != NoConnective && item.transport == none {
     item.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
@@ -1523,7 +1523,7 @@ fn declaration_with_parameter_marks(item: Node, module_path: String, source_indi
   } else {
     let owner = decl_ref(module_path: module_path, decl_name: authored_name_at(source_indices: source_indices, node: item))
     let members = if (item.connective == Conj || item.connective == Disj) && item.transport == none {
-      map(item.children, c => binder_marked_member(member: c, owner: owner, binders: tp_names, source_indices: source_indices))
+      map(item.children, c => binder_marked_type(n: binder_marked_member(member: c, owner: owner, binders: tp_names, source_indices: source_indices), owner: owner, binders: tp_names, source_indices: source_indices))
     } else {
       item.children
     }
