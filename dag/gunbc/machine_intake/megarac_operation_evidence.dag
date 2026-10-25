@@ -12,6 +12,7 @@ import gunbc.host.megarac_operation_standing {
 }
 import gunbc.machine_intake.mtcollins1_access_observation {
   mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_identity, mtcollins1_evidence_manifest_digest, mtcollins1_observed_at,
+  mtcollins1_current_build_firmware, mtcollins1_current_build_identity,
 }
 import gunbc.machine_intake.mtcollins1_diskless_boot_receipt {
   mtcollins1_diskless_boot_artifact_path, mtcollins1_diskless_boot_capture_digest, mtcollins1_diskless_boot_observed_at,
@@ -134,15 +135,36 @@ data mtcollins1_run_37102391062_kvm_at: EpochMs = 1791016710837
 data mtcollins1_run_37102391062_sensors_by: EpochMs = 1791016934906
 
 // THE 2026-10-02 REFLASH. The vendor names the release 0.45.3 (extdeps.ampere.mt_collins_firmware_release
-// mt_collins_bmc_0_45_3_hpm); what the controller reports for it is the probe's to read, and a reading
-// row supersedes this name as the current build the moment it lands.
+// mt_collins_bmc_0_45_3_hpm) and that NAME is where the vendor's page lives -- the operator-attested page
+// label, kept by the catalogue row's evidence and by the transition below. What the controller REPORTS for
+// that release is no longer owed: boot run 40082618814 read it, and the controller reports `0.45` (the
+// Active APP cell reads `0.45 03000000`). So this window's `to:` names the READING, not the page label.
+// Naming the label here instead would make the ledger assert a build that the ledger's own readings do not
+// contain, and the join's reading-window match against the transition's build would never fire. Nothing
+// here asserts 0.45.3 == "0.45 03000000"; the transition records WHEN the unit moved and the reading
+// records WHAT it now reports, and the two are kept separate on purpose.
 data mtcollins1_reflash_not_before: EpochMs = 1790899200000
 data mtcollins1_reflash_not_after: EpochMs = 1790985600000
+
+// THE MACHINE READING OF THE CURRENT BUILD, and the EPOCH IT WAS READ. Boot run 40082618814's
+// pre-power read-only phase ran `ipmitool hpm check` against this controller; its raw stdout is
+// committed beside that run, digested here, and the 0.45.x catalogue standing derives from those
+// bytes themselves (gunbc.host.bmc_release_capability_catalog
+// megarac_firmware_0_45_3_operator_attestation_instant). This row is what makes those run receipts
+// join a build: before it landed they joined nothing, because the ledger held no reading of 0.45.
+data mtcollins1_current_build_hpm_check_evidence: EvidenceRef = EvidenceRef {
+  label: "artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt",
+  digest: Sha256Hash(Sha256Digest { hex: "31d953d5e2ffc0ee084d7c7087d40be88a29ddf94cdc0b30d2b368610fca273d" }),
+}
+
+// 2026-10-24T18:00:43Z: the instant the boot's read-only pre-power phase ran `hpm check` on this unit.
+data mtcollins1_current_build_read_at: EpochMs = 1792864843000
 
 fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
   megarac_operation_evidence_of(
     readings: [
       megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_identity, evidence: mtcollins1_intake_reading_evidence, observed_at: mtcollins1_observed_at),
+      megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_current_build_identity, evidence: mtcollins1_current_build_hpm_check_evidence, observed_at: mtcollins1_current_build_read_at),
     ],
     receipts: [
       megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: mtcollins1_endpoint, receipt: mtcollins1_diskless_boot_evidence, executed_at: mtcollins1_diskless_boot_observed_at),
@@ -155,7 +177,7 @@ fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
       megarac_firmware_transition(
         endpoint: mtcollins1_endpoint,
         from: mtcollins1_firmware,
-        to: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3"),
+        to: mtcollins1_current_build_firmware,
         not_before: mtcollins1_reflash_not_before,
         not_after: mtcollins1_reflash_not_after,
         record: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "credential_effect_of"),
