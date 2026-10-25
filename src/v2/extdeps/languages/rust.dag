@@ -164,6 +164,7 @@ import v2.std.compilers.target_model { EmitSpellingEscape,
   FunctionTypeRealizationRow,
   FunctionTypeSugarRows,
   ProducedSignatureFixed,
+  ProducedDeclSignatureSegment,
   ProducedSignatureDeclName,
   ProducedSignatureTypeParams,
   ProducedSignatureParams,
@@ -218,6 +219,7 @@ import v2.std.compilers.target_model { EmitSpellingEscape,
   TargetAtomRealization,
   DeclarationReferenceForm,
   ModuleScopedPath,
+  CalleeScopeRealized,
   TargetAtomTypeShape,
   TargetTypeExpression,
   target_atom_alias_type_expression,
@@ -2410,6 +2412,65 @@ fn rust_target_model() -> TargetModel {
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_source_text_authority(),
     runtime_row: rust_runtime_row()
+  }
+}
+
+// THE CLOSURE-CRATE PROFILE: Rust's own declaration spelling with the item visibility row selected. A
+// closure emits one module per member into ONE crate, and a member references another member's declaration
+// by its crate-rooted path (declaration_reference_form), so every module-level declaration a closure member
+// emits is `pub`: a private item is correct only at a boundary with no external consumer, and a closure has
+// one by construction. Choosing "every member declaration" rather than "only the referenced ones" keeps the
+// row independent of which members reference which (a later member, or another crate module, may call it),
+// and it is the visibility the committed stage0 mirrors already carry. The keyword is rust_visibility_public_lex_rule;
+// the signature rows below prepend it to rust_produced_decl_render_rows rather than restating them, so a
+// change to Rust's signature order reaches this profile. A target that is NOT a closure boundary keeps
+// rust_target_model, which spells no visibility.
+fn rust_closure_crate_signature_segments() -> List<ProducedDeclSignatureSegment> {
+  list_append(
+    left: [ProducedSignatureFixed { token_class: ^rust_token_kw_pub }],
+    right: rust_produced_decl_render_rows.signature
+  )
+}
+
+fn rust_closure_crate_render_rows() -> ProducedDeclRenderRows {
+  ProducedDeclRenderRows {
+    signature: rust_closure_crate_signature_segments(),
+    param_layout: rust_produced_decl_render_rows.param_layout,
+    param_separator: rust_produced_decl_render_rows.param_separator,
+    type_ref_token_class: rust_produced_decl_render_rows.type_ref_token_class,
+    block_close: rust_produced_decl_render_rows.block_close,
+    block_evaluation_mode: rust_produced_decl_render_rows.block_evaluation_mode,
+    function_type_realizations: rust_produced_decl_render_rows.function_type_realizations
+  }
+}
+
+fn rust_closure_crate_decl_support(base: ProducedDeclSupport) -> ProducedDeclSupport {
+  match base {
+    ProducedDeclUnwired => ProducedDeclUnwired
+    ProducedDeclWired {
+      render_rows: _,
+      scaffold_relation_rule_name: rule_name,
+      scaffold_base_row: base_row
+    } =>
+      ProducedDeclWired {
+        render_rows: rust_closure_crate_render_rows(),
+        scaffold_relation_rule_name: rule_name,
+        scaffold_base_row: base_row
+      }
+  }
+}
+
+fn rust_closure_crate_target_model() -> TargetModel {
+  let base = rust_target_model()
+  TargetModel {
+    primitive_realizations: base.primitive_realizations,
+    produced_decl_support: rust_closure_crate_decl_support(base: base.produced_decl_support),
+    bundle: base.bundle,
+    lex: ModeledLexRules { root: rust_production_lex_rules_with(extra: [rust_visibility_public_lex_rule()]) },
+    binding_spellings: base.binding_spellings,
+    token_class_emit_transforms: base.token_class_emit_transforms,
+    authority_source_text: base.authority_source_text,
+    runtime_row: base.runtime_row
   }
 }
 
@@ -4690,7 +4751,8 @@ fn rust_declaration_reference_form() -> DeclarationReferenceForm {
   ModuleScopedPath {
     root_text: "crate",
     scope_separator_text: "::",
-    module_segment_joiner: "_"
+    module_segment_joiner: "_",
+    callee_scope: CalleeScopeRealized
   }
 }
 data rust_sg2_type_alias_text: String = "type Sg2Probe = Rc<FooBar<X, Y>>;"
