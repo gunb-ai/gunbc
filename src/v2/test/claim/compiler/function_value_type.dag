@@ -3,22 +3,22 @@ module v2.test.claim.compiler.function_value_type
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
 import v2.test.claim.compiler.callback_argument_formal { caf_refused_at }
 import v2.test.claim.callexec.declaration_reference_eval { cref_the_call_to }
-import v2.compiler.infer { infer, infer_descent_witness_for_node, infer_function_value_signature, infer_instances_with_binder_generator, infer_node_is_function_value, inferred_facts_from_derived_type, inferred_facts_resolved_type_optional, infer_type_equal_ignoring_provenance }
+import v2.compiler.infer { InferFormalMatched, InferFormalShapeMismatch, infer_match_generic_formal, infer, infer_descent_witness_for_node, infer_function_value_signature, infer_instances_with_binder_generator, infer_node_is_function_value, inferred_facts_from_derived_type, inferred_facts_resolved_type_optional, infer_type_equal_ignoring_provenance }
 import v2.compiler.inferred_tree { FunctionValueSignatureUndetermined, GroundingNotDerived, DerivedGrounding, InferredFacts }
 import v2.compiler.fold_lowering { collection_roster_row, collection_roster_signature_arrow, collection_roster_carrier_type, RosterFreeMonoidPrimitiveCall }
 import v2.compiler.resolve { ResolvedTree }
 import v2.std.inhabitance { TypeVariableInstance, type_variable_instance_lookup }
-import v2.std.arrow_signature { anonymous_signature_arrow }
+import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature_arrow }
 import v2.std.type_binder { edge_is_type_params, type_param_names }
 import v2.std.integer { integer_int_type_node }
-import v2.std.node_query { binder_node_parts }
+import v2.std.node_query { binder_edge, binder_node_parts }
 import v2.std.diagnostic { Accepted, Diagnostic, Rejected, diagnostics_fatal, diagnostics_has_reason }
 import v2.std.node { Atom, Authored, Edge, Node, Symbol, TypeNode, arrow_body_target_lookup, Found, Ambiguous, NotFound, node_subtree_nodes, node_synthetic, positional_child_target_nodes, symbol_intern_lexeme }
 import v2.test.claim.compiler.free_monoid_structure_bound { fmb_declared, fmb_list_of }
 import v2.std.symbol_index { empty_symbol_index }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.algebra { Cons, Empty, collection_sort_by_shape, empty_map, list_at_optional, map_insert }
+import std.algebra { Cons, Empty, collection_sort_by_shape, empty_map, list_at_optional, list_snoc_item, map_insert }
 import std.types { Bool, List, String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -318,4 +318,92 @@ test fn fvt_a_key_agreeing_with_its_order_is_accepted_and_decided() -> Bool {
         Accepted { value: _, diagnostics: d } => !diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_argument_type_not_derived)
       }
   }
+}
+
+// ARROW INPUTS PAIR IN DECLARED ORDER, NOT IN THE DOMAIN'S STORED ORDER (review on gunbc#15038): an Arrow's domain is a
+// Conj whose stored child order is not its parameter order, so the matcher's Arrow arm reads each side's declared
+// order (v2.compiler.infer infer_arrow_ordered_domain_types). `g(z: Int, a: String)` passed to `f: fn(A, B) -> R` fixes
+// A as Int and B as String, so `first: 1, second: "x"` is accepted. Read in stored label order (a, z) the arm would fix
+// A as String and the call would refuse at `first`. MEASURED: source ingest stores this domain in authored order, so
+// this real-route claim stays green when the reader is mutated to domain.children -- it is the positive control. The
+// discriminating case is the supplied Arrow below, whose stored order differs from its declared order.
+data fvt_arrow_order: String = "module p\n\nfn apply<A, B, R>(f: fn(A, B) -> R, first: A, second: B, fallback: R) -> R {\n  fallback\n}\n\nfn g(z: Int, a: String) -> Bool {\n  true\n}\n\nfn use_it() -> Bool {\n  apply(f: g, first: 1, second: \"x\", fallback: true)\n}\n"
+
+test fn fvt_arrow_inputs_pair_in_declared_order() -> Bool {
+  match fmi_assemble(src: fvt_arrow_order) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+// SUPPLIED, THE DISCRIMINATING CASE: an Arrow whose domain is STORED as (a: String, z: Int) while its declared order is
+// (z, a). Matched against fn(A, B) -> R, A is Int and B is String -- the declared order -- never the stored one.
+// MUTATION CONTROL: reading domain.children positionally fixes A as String and reds this claim (measured on the PR).
+fn fvt_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn fvt_reversed(xs: List<Edge>) -> List<Edge> {
+  fold(xs, init: Empty, f: fn(acc, x) { Cons { head: x, tail: acc } })
+}
+
+type FvtRebuild {
+  index: Int
+  edges: List<Edge>
+}
+
+// The domain (the Arrow's first child) with its children stored in reverse; every other child, the order edge
+// included, as declared.
+fn fvt_stored_out_of_order(declared: Node) -> Node {
+  let rebuilt = fold(declared.children, init: FvtRebuild { index: 0, edges: Empty }, f: fn(acc, e) {
+    FvtRebuild {
+      index: acc.index + 1,
+      edges: list_snoc_item(xs: acc.edges, item: if acc.index == 0 {
+        Edge { label: e.label, target: Node { kind: e.target.kind, children: fvt_reversed(xs: e.target.children), occurrence_id: e.target.occurrence_id }, declaration: e.declaration }
+      } else {
+        e
+      })
+    }
+  })
+  Node { kind: declared.kind, children: rebuilt.edges, occurrence_id: declared.occurrence_id }
+}
+
+// The Arrow's domain and codomain only: its declared-order edge (the third child) dropped.
+fn fvt_without_order(declared: Node) -> Node {
+  let rebuilt = fold(declared.children, init: FvtRebuild { index: 0, edges: Empty }, f: fn(acc, e) {
+    FvtRebuild { index: acc.index + 1, edges: if acc.index < 2 { list_snoc_item(xs: acc.edges, item: e) } else { acc.edges } }
+  })
+  Node { kind: declared.kind, children: rebuilt.edges, occurrence_id: declared.occurrence_id }
+}
+
+fn fvt_produced_g() -> Node {
+  declared_signature_arrow(params: [binder_edge(name: ^z, type_node: integer_int_type_node()), binder_edge(name: ^a, type_node: fvt_atom(id: ^fvt_supplied_text))], codomain: fvt_atom(id: ^fvt_supplied_truth), source: fvt_atom(id: ^fvt_supplied_source))
+}
+
+fn fvt_formal_f() -> Node {
+  anonymous_signature_arrow(domain_types: [fvt_atom(id: ^A), fvt_atom(id: ^B)], codomain: fvt_atom(id: ^R), source: fvt_atom(id: ^fvt_supplied_source))
+}
+
+fn fvt_learned(produced: Node, binder: Symbol) -> Optional<Node> {
+  match infer_match_generic_formal(formal: fvt_formal_f(), produced: produced, type_params: [^A, ^B, ^R], instances: [], declarations: empty_symbol_index()) {
+    InferFormalShapeMismatch => optional_absent()
+    InferFormalMatched { instances: learned } => type_variable_instance_lookup(instances: learned, binder: binder)
+  }
+}
+
+test fn fvt_supplied_arrow_inputs_pair_in_declared_not_stored_order() -> Bool {
+  let produced = fvt_stored_out_of_order(declared: fvt_produced_g())
+  fvt_same(a: fvt_learned(produced: produced, binder: ^A), b: optional_present(value: integer_int_type_node()))
+    && fvt_same(a: fvt_learned(produced: produced, binder: ^B), b: optional_present(value: fvt_atom(id: ^fvt_supplied_text)))
+}
+
+// SUPPLIED, FAIL-CLOSED: an Arrow with no declared order teaches nothing -- not even its codomain -- rather than a
+// positional guess.
+test fn fvt_supplied_arrow_without_an_order_learns_nothing() -> Bool {
+  let produced = fvt_without_order(declared: fvt_produced_g())
+  fvt_learned(produced: produced, binder: ^A) == optional_absent() && fvt_learned(produced: produced, binder: ^R) == optional_absent()
 }

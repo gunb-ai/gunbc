@@ -4588,27 +4588,63 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
 // parameters its formal's inputs and result mention -- `key: fn(T) -> K` filled by a value of type fn(Item) -> Int fixes
 // K as Int -- and the call's InferredFacts.type_instances carries them like any other instance. A produced arrow that
 // declares type parameters of its own (a generic fn passed by name) fixes nothing here: its variables mean nothing in
-// the caller's scope, so binding a formal parameter to one would type the call with a foreign name. A parameter-count
-// disagreement, or a part that does not match, fixes nothing either: this arm only LEARNS instances and never refuses,
+// the caller's scope, so binding a formal parameter to one would type the call with a foreign name. Inputs are paired
+// in each arrow's DECLARED order (infer_arrow_ordered_domain_types), never the domain's stored child order; an order
+// either side cannot read, a parameter-count disagreement, or a part that does not match, fixes nothing either: this arm only LEARNS instances and never refuses,
 // because alias normalization (infer_type_alias_normalized_at) does not descend into an arrow's parts, so a part
 // mismatch here may be one type under two spellings. The declared-position judgment that follows is alias-aware and
 // owns every refusal, located.
-fn infer_arrow_domain_types(arrow: Node) -> List<Node> {
-  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
-    Absent => Empty
-    Present { value: domain } =>
-      fold(domain.children, init: Empty, f: fn(acc, e) {
-        match declared_field_from_edge(e: e) {
-          Present { value: field } => list_snoc_item(xs: acc, item: field.type_node)
-          Absent => acc
-        }
-      })
+// AN ARROW'S INPUTS IN DECLARED ORDER. Its domain is a Conj whose stored child order is not parameter order: the order is
+// the ^arrow_signature_order_edge (v2.std.arrow_signature arrow_declared_parameter_order), and each ordered label names
+// one domain field. So each label resolves to the type of the ONE field carrying it; an absent or malformed order, or a
+// label no field or more than one field carries, reads nothing -- Absent, never a positional guess.
+fn infer_arrow_ordered_domain_types(arrow: Node) -> Optional<List<Node>> {
+  match arrow_declared_parameter_order(arrow: arrow) {
+    ArrowParameterOrderAbsent => optional_absent()
+    ArrowParameterOrderMalformed => optional_absent()
+    ArrowParameterOrderDeclared { labels: labels } =>
+      match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
+        Absent => optional_absent()
+        Present { value: domain } =>
+          fold(labels, init: optional_present(value: Empty), f: fn(acc, label) {
+            match acc {
+              Absent => acc
+              Present { value: types } =>
+                match infer_domain_field_type_named(domain: domain, label: label) {
+                  Absent => optional_absent()
+                  Present { value: t } => optional_present(value: list_snoc_item(xs: types, item: t))
+                }
+            }
+          })
+      }
+  }
+}
+
+fn infer_domain_field_type_named(domain: Node, label: Symbol) -> Optional<Node> {
+  let carrying = fold(domain.children, init: Empty, f: fn(acc, e) {
+    match declared_field_from_edge(e: e) {
+      Present { value: field } => if field.name == label { list_snoc_item(xs: acc, item: field.type_node) } else { acc }
+      Absent => acc
+    }
+  })
+  match carrying {
+    Cons { head: t, tail: rest } => if is_empty(xs: rest) { optional_present(value: t) } else { optional_absent() }
+    Empty => optional_absent()
   }
 }
 
 fn infer_match_generic_arrow(formal: Node, produced: Node, type_params: List<Symbol>, instances: List<TypeVariableInstance>, declarations: SymbolIndex) -> InferFormalMatch {
-  let formal_inputs = infer_arrow_domain_types(arrow: formal)
-  let produced_inputs = infer_arrow_domain_types(arrow: produced)
+  match infer_arrow_ordered_domain_types(arrow: formal) {
+    Absent => InferFormalMatched { instances: instances }
+    Present { value: formal_inputs } =>
+      match infer_arrow_ordered_domain_types(arrow: produced) {
+        Absent => InferFormalMatched { instances: instances }
+        Present { value: produced_inputs } => infer_match_generic_arrow_inputs(formal: formal, produced: produced, formal_inputs: formal_inputs, produced_inputs: produced_inputs, type_params: type_params, instances: instances, declarations: declarations)
+      }
+  }
+}
+
+fn infer_match_generic_arrow_inputs(formal: Node, produced: Node, formal_inputs: List<Node>, produced_inputs: List<Node>, type_params: List<Symbol>, instances: List<TypeVariableInstance>, declarations: SymbolIndex) -> InferFormalMatch {
   if !is_empty(xs: type_param_names(n: produced)) || length(xs: formal_inputs) != length(xs: produced_inputs) {
     InferFormalMatched { instances: instances }
   } else {
