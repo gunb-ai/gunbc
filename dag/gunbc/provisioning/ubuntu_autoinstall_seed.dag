@@ -1,4 +1,4 @@
-module gunbc.provisioning.altra_autoinstall_seed
+module gunbc.provisioning.ubuntu_autoinstall_seed
 
 // THE SEED AN ALTRA BOARD NET-BOOTS INTO (physical-machine boot program, cut 6, step 2: "OS
 // installation through autoinstall from a pinned origin"). extdeps.os.ubuntu_autoinstall owns what
@@ -11,24 +11,24 @@ module gunbc.provisioning.altra_autoinstall_seed
 //
 // WHO CONSUMES THIS, declared per DESIGN 3c rather than left to be inferred.
 //   * CONSUMED IN THIS CHANGE: every refusal arm, both digest functions, the render, the audit, the selection
-//     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness. Nothing here is
+//     rule and the projection edge are consumed by test.claim.ubuntu_autoinstall_seed_witness. Nothing here is
 //     exercised only by its own module. The roster and its verdicts are OBTAINED, NEVER QUOTED here (DESIGN
 //     section 6: name the instrument, never transcribe its output): the count of test fns is derived from the
 //     witness file by gunbc.frontend_eval.control's test_fns, which reads the module-scope `test fn ` lines the
 //     parser itself requires, and each one's verdict comes from the claim run, which reports one PASS or FAIL
 //     line per test fn — `gunbc run --source-root dag --source-root src/v2 --entry
-//     dag/test/claim/altra_autoinstall_seed_witness.dag --claim-run --function <the fn>`. A number written into
+//     dag/test/claim/ubuntu_autoinstall_seed_witness.dag --claim-run --function <the fn>`. A number written into
 //     this comment would be a second, rotting copy of a fact both of those produce on demand; if the two ever
 //     disagree, the module has grown a rule nothing exercises and the run says so, not this sentence.
-//   * CONSUMED ON MAIN: test.claim.altra_autoinstall_seed_witness, as above. That is the only EXECUTING consumer
+//   * CONSUMED ON MAIN: test.claim.ubuntu_autoinstall_seed_witness, as above. That is the only EXECUTING consumer
 //     of anything here while this change stands on its own, and this header says so rather than borrowing a
 //     sibling's unmerged branch for standing.
 //   * DECLARED FRONTIER, NAMED, WITH ITS TRIGGER — NOT CITED AS JUSTIFICATION: the binding record is imported
 //     (not yet executed) by the S5 sibling, gunbc.provisioning.provisioning_arm, whose branch imports
-//     AltraAutoinstallSeedBinding. Naming that import as this module's consumer would be circular — S5 resolves
+//     UbuntuAutoinstallSeedBinding. Naming that import as this module's consumer would be circular — S5 resolves
 //     only because S4 exists, so S5's branch cannot be what justifies S4 (review: swift-wren-451; the PR's
 //     earlier wording did exactly that and is withdrawn here). What is true and checkable on main is the
-//     frontier itself: cut 6 step 3 must mint the install-attempt record through bind_altra_autoinstall_seed and
+//     frontier itself: cut 6 step 3 must mint the install-attempt record through bind_ubuntu_autoinstall_seed and
 //     read binding_digest — if step 3 lands and never calls this module, these declarations are scaffold and must
 //     be deleted, which is the same rule that already governs project_autoinstall_identity and
 //     project_storage_policy: consumed by cut 6 step 4 (a seed becomes bytes an installer can fetch via
@@ -212,10 +212,10 @@ data debconf_preseed_authority: ExternalAuthority = ExternalAuthority {
 // that two units share is evidence nobody wrote a per-host rule. A future requirement that really does
 // need per-unit configuration (a unit-local mirror, say) adds a constructor to a closed axis below plus
 // the evidence that justifies it; it does not add a String field keyed on a label.
-type AltraAutoinstallTargetStanding sole_constructor {
+type ProvisioningTargetStanding sole_constructor {
   architecture: Architecture
   bmc_firmware: BmcFirmwareFamily
-  role: AltraAutoinstallTargetRole
+  role: ProvisioningTargetRole
   kernel_flavour: UbuntuKernelFlavour
 }
 
@@ -227,14 +227,14 @@ type AltraAutoinstallTargetStanding sole_constructor {
 // a host string here would be a field with no consumer whose only effect would be to make two refusals of
 // the same kind digest differently. A future requirement (serving hosts allowed to seed themselves) adds a
 // constructor here and a row in the door below; it does not add a host payload to a refusal.
-type AltraAutoinstallTargetRole = AltraProvisioningTarget | RunnerBacked
+type ProvisioningTargetRole = ProvisioningTarget | RunnerBacked
 
 // RENDERED OR REFUSED, WITH REFUSAL AS A VALUE. Refusal is an arm, not an error, because the program's
 // rule is "no route from absent evidence to a green claim": a seed that was never admitted is not an
 // exception to swallow, it is the record of why nothing was installed, and it has to survive to the
 // report.
-type AltraAutoinstallTarget
-  = TargetAdmitted { standing: AltraAutoinstallTargetStanding }
+type ProvisioningTargetAdmission
+  = TargetAdmitted { standing: ProvisioningTargetStanding }
   | TargetRefused { reason: TargetRefusalCause }
 
 // THE CAUSES NAME WHAT THE PROBE DID NOT OBSERVE, NOT WHAT WENT WRONG IN THIS MODULE. Each arm is a
@@ -244,7 +244,7 @@ type TargetRefusalCause
   = UnitKeyUnbound { cause: UnitKeyRefusalCause }
   | PlatformUnsupported { architecture: Architecture }
   | BmcFirmwareFamilyUnobserved { discriminator: NonEmptyStr }
-  | NotAnAltraProvisioningTarget { role: AltraAutoinstallTargetRole }
+  | NotAnProvisioningTarget { role: ProvisioningTargetRole }
 
 // THE ONLY DOOR INTO A TARGET STANDING, AND WHY EVERY ARGUMENT IS A STANDING RATHER THAN A FACT. A
 // caller holding an unbound UnitKey or an unobserved BMC family receives a refused arm out of the
@@ -254,13 +254,13 @@ type TargetRefusalCause
 // whose console has been observed directly adds a standing to
 // gunbc.machine_intake.bmc_first_contact_standing and a row in the match below — it does not add a
 // "guess the family" default.
-fn admit_altra_autoinstall_target(
+fn admit_provisioning_target(
   unit_key: UnitKeyStanding,
   architecture: Architecture,
   bmc_firmware: BmcFirmwareFamilyStanding,
-  role: AltraAutoinstallTargetRole,
+  role: ProvisioningTargetRole,
   kernel_flavour: UbuntuKernelFlavour,
-) -> AltraAutoinstallTarget {
+) -> ProvisioningTargetAdmission {
   match unit_key {
     UnitKeyBound { key: _ } =>
       match bmc_firmware {
@@ -268,9 +268,9 @@ fn admit_altra_autoinstall_target(
           match architecture {
             Aarch64 =>
               match role {
-                AltraProvisioningTarget =>
+                ProvisioningTarget =>
                   TargetAdmitted {
-                    standing: AltraAutoinstallTargetStanding {
+                    standing: ProvisioningTargetStanding {
                       architecture: architecture,
                       bmc_firmware: observed,
                       role: role,
@@ -278,7 +278,7 @@ fn admit_altra_autoinstall_target(
                     },
                   }
                 RunnerBacked => TargetRefused {
-                  reason: NotAnAltraProvisioningTarget { role: role },
+                  reason: NotAnProvisioningTarget { role: role },
                 }
               }
             _ => TargetRefused { reason: PlatformUnsupported { architecture: architecture } }
@@ -351,7 +351,7 @@ fn client_network_boot_mode_token(mode: ClientNetworkBootMode) -> NonEmptyStr {
 // WHY THIS IS CLOSED WHEN PackageIntent Is Open. The closed sets are the members WE guarantee; anything else
 // enters through PackageIntent, where the caller names it and carries its debconf burden. A member added here
 // is a claim this module defends with a citation.
-type AltraInstallDriver =
+type SeedInstallDriver =
     NvmeCliDriver
   | IpmiToolDriver
   | DmidecodeDriver
@@ -366,7 +366,7 @@ type AltraInstallDriver =
 // arm64. linux-firmware is here because the r8169 driver requests firmware at probe time (drivers/net/
 // ethernet/realtek/r8169_main.c at v6.8 calls request_firmware), so a board with the 8125-class NIC the S2
 // probe reports cannot bring its own link up without it — an install-time need, not a cosmetic one.
-fn altra_install_driver_package(driver: AltraInstallDriver) -> NonEmptyStr {
+fn install_driver_package(driver: SeedInstallDriver) -> NonEmptyStr {
   match driver {
     NvmeCliDriver => "nvme-cli"
     IpmiToolDriver => "ipmitool"
@@ -393,7 +393,7 @@ fn altra_install_driver_package(driver: AltraInstallDriver) -> NonEmptyStr {
 // Unclassified into a pass would have fixed the witness by making it lie. A future checked-silent package adds a
 // row here with its own version and standing; a package nobody has checked still enters through
 // UnclassifiedPackage and is still refused.
-fn altra_required_late_package_rows() -> List<PackageIntent> {
+fn board_required_late_package_rows() -> List<PackageIntent> {
   [
     PackageVerifiedSilent { silence: nvme_cli_silence_receipt },
     PackageVerifiedSilent { silence: ipmitool_silence_receipt },
@@ -480,7 +480,7 @@ data rasdaemon_deb_authority: ExternalAuthority = ExternalAuthority {
 // exist here because a BMC virtual-media install hands the board a USB mass-storage device — a board missing
 // those three cannot read the media it is installing from. That is a consequence of the delivery strategy
 // arriving as data, not a machine-name branch: the same rule would fire for any unit delivered that way.
-type AltraLoadableModule =
+type LoadableModuleClass =
     NvmeBlockModule
   | AhciPlatformModule
   | R8169NicModule
@@ -489,7 +489,7 @@ type AltraLoadableModule =
   | UasModule
   | SdModuleModule
 
-fn altra_loadable_module(driver: AltraLoadableModule) -> NonEmptyStr {
+fn loadable_module_name(driver: LoadableModuleClass) -> NonEmptyStr {
   match driver {
     NvmeBlockModule => "nvme"
     AhciPlatformModule => "ahci_platform"
@@ -506,7 +506,7 @@ fn altra_loadable_module(driver: AltraLoadableModule) -> NonEmptyStr {
 // citation is part of what the seed CLAIMS (this module asserts that this symbol, in this file, was read as
 // `tristate`), so it belongs in the digest — and a provenance the digest cannot see is a provenance that can be
 // changed without any witness noticing.
-fn loadable_module_kconfig_symbol(driver: AltraLoadableModule) -> NonEmptyStr {
+fn loadable_module_kconfig_symbol(driver: LoadableModuleClass) -> NonEmptyStr {
   match driver {
     NvmeBlockModule => "BLK_DEV_NVME"
     AhciPlatformModule => "SATA_AHCI_PLATFORM"
@@ -518,7 +518,7 @@ fn loadable_module_kconfig_symbol(driver: AltraLoadableModule) -> NonEmptyStr {
   }
 }
 
-fn loadable_module_kconfig_path(driver: AltraLoadableModule) -> NonEmptyStr {
+fn loadable_module_kconfig_path(driver: LoadableModuleClass) -> NonEmptyStr {
   match driver {
     NvmeBlockModule => "drivers/nvme/host/Kconfig"
     AhciPlatformModule => "drivers/ata/Kconfig"
@@ -535,9 +535,9 @@ fn loadable_module_kconfig_path(driver: AltraLoadableModule) -> NonEmptyStr {
 // anyone sees this board at all, and the display path the BMC's video pipeline offers. Same tristate rule as
 // above: each row is a `tristate` stanza in the named file with the named Makefile object (v6.8,
 // drivers/char/ipmi/Kconfig + Makefile, drivers/gpu/drm/ast/Kconfig + Makefile).
-type AltraLateDriver = KipmiIpmbDriver | KipmiSiDriver | Ast2500DrmDriver | IpmiWatchdogDriver
+type LateDriver = KipmiIpmbDriver | KipmiSiDriver | Ast2500DrmDriver | IpmiWatchdogDriver
 
-fn altra_late_driver_module(driver: AltraLateDriver) -> NonEmptyStr {
+fn late_driver_module(driver: LateDriver) -> NonEmptyStr {
   match driver {
     KipmiIpmbDriver => "ipmi_ipmb"
     KipmiSiDriver => "ipmi_si"
@@ -546,7 +546,7 @@ fn altra_late_driver_module(driver: AltraLateDriver) -> NonEmptyStr {
   }
 }
 
-fn altra_late_driver_kconfig_symbol(driver: AltraLateDriver) -> NonEmptyStr {
+fn late_driver_kconfig_symbol(driver: LateDriver) -> NonEmptyStr {
   match driver {
     KipmiIpmbDriver => "IPMI_IPMB"
     KipmiSiDriver => "IPMI_SI"
@@ -1085,7 +1085,7 @@ type ConsoleEntryUnlockReason = SerialConsoleGettyUnlocked | BmcSolConsoleUnlock
 // caller's `List<SshPublicKey>` into the fact "the board's owner authorised these keys". A check placed in a
 // helper that a caller could also skip turns only the callers who remembered to call it into that fact —
 // which is why the earlier revision's claim that keys "are validated through ssh_ed25519_key_identity" was
-// false: nothing on the route from build_altra_autoinstall_seed to the seed ever called it. Each key must
+// false: nothing on the route from build_ubuntu_autoinstall_seed to the seed ever called it. Each key must
 // satisfy BOTH facts before the list is credited as an authorisation, and each fact is refused as itself:
 //   - the declared algorithm must be Ed25519 — the fleet's declared key type, per keys.dag's Rsa posture row
 //     (ssh-rsa signatures deprecated by RFC 8332) — and
@@ -1261,7 +1261,7 @@ fn disk_selection_provenance(
   admitted: StorageDevice,
   observed: List<StorageDevice>,
 ) -> DiskSelectionProvenance admit_callers: [
-  decl_ref(module_path: "gunbc.provisioning.altra_autoinstall_seed", decl_name: "select_target_disk")
+  decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk")
 ] {
   DiskSelectionProvenance {
     selector: selector,
@@ -1648,7 +1648,7 @@ fn console_stanza_for(strategy: SeedDeliveryStrategy) -> NonInteractiveConsoleSt
 // barely be reached at all — admit_admin_access_authorisation already made "no keys and locked console"
 // unnameable — so it is a second line of defence against a caller that bypassed that constructor, not the
 // primary guard. That redundancy is intentional: this is the failure the module exists to make impossible.
-fn audit_altra_autoinstall_seed(
+fn audit_ubuntu_autoinstall_seed(
   network: SeedNetworkPosture,
   install_packages: List<PackageIntent>,
   late_packages: List<PackageIntent>,
@@ -1844,12 +1844,12 @@ fn questions_closed_count(
 // against a fixed upstream change, and be digested without digesting formatting. sole_constructor because a
 // hand-written record could pair an audited proof with inputs the audit never saw: the proof and the inputs
 // it was computed from must not be independently assignable, or the field is decoration.
-type AltraAutoinstallSeed sole_constructor {
-  target: AltraAutoinstallTargetStanding,
+type UbuntuAutoinstallSeed sole_constructor {
+  target: ProvisioningTargetStanding,
   network: SeedNetworkPosture,
-  install_drivers: List<AltraInstallDriver>,
-  loadable_modules: List<AltraLoadableModule>,
-  late_drivers: List<AltraLateDriver>,
+  install_drivers: List<SeedInstallDriver>,
+  loadable_modules: List<LoadableModuleClass>,
+  late_drivers: List<LateDriver>,
   install_packages: List<PackageIntent>,
   late_packages: List<PackageIntent>,
   disk: TargetDiskSelector,
@@ -1873,12 +1873,12 @@ type AltraAutoinstallSeed sole_constructor {
 // through which a caller can supply a proof, which is the difference between an audit and a stamp. A future
 // requirement (re-verifying a seed built before an upstream change) adds a re-audit function beside this one;
 // it does not add a proof parameter.
-fn build_altra_autoinstall_seed(
-  target: AltraAutoinstallTarget,
+fn build_ubuntu_autoinstall_seed(
+  target: ProvisioningTargetAdmission,
   network: SeedNetworkPosture,
-  install_drivers: List<AltraInstallDriver>,
-  loadable_modules: List<AltraLoadableModule>,
-  late_drivers: List<AltraLateDriver>,
+  install_drivers: List<SeedInstallDriver>,
+  loadable_modules: List<LoadableModuleClass>,
+  late_drivers: List<LateDriver>,
   install_packages: List<PackageIntent>,
   late_packages: List<PackageIntent>,
   disk: TargetDiskSelector,
@@ -1894,11 +1894,11 @@ fn build_altra_autoinstall_seed(
   locale: SeedLocale,
   delivery: SeedDeliveryStrategy,
   keyboard: CeremonialKeyboardLayout,
-) -> Optional<AltraAutoinstallSeed> {
+) -> Optional<UbuntuAutoinstallSeed> {
   match target {
     TargetRefused { reason: _ } => Absent
     TargetAdmitted { standing: admitted } =>
-      match audit_altra_autoinstall_seed(
+      match audit_ubuntu_autoinstall_seed(
         network: network,
         install_packages: install_packages,
         late_packages: late_packages,
@@ -1912,7 +1912,7 @@ fn build_altra_autoinstall_seed(
             False => Absent
             True =>
               Present {
-                value: AltraAutoinstallSeed {
+                value: UbuntuAutoinstallSeed {
                 target: admitted,
                 network: network,
                 install_drivers: install_drivers,
@@ -2687,7 +2687,7 @@ type IdentityProjection
   | IdentityReceiptIsForeign { expected: NonEmptyStr, presented: NonEmptyStr }
 
 fn project_autoinstall_identity(
-  seed: AltraAutoinstallSeed,
+  seed: UbuntuAutoinstallSeed,
   binding_hostname: NonEmptyStr,
   receipt: Optional<AdminPasswordHashReceipt>,
 ) -> IdentityProjection {
@@ -2761,7 +2761,7 @@ fn project_storage_policy(selection: TargetDiskSelection) -> StorageProjection {
 // ---------------------------------------------------------------------------
 
 // THE RENDERING IS A FUNCTION OF THE AXES AND NOTHING ELSE. Every wire spelling below is derived by the
-// fn that owns it — the locale by seed_locale_wire, the package names by altra_install_driver_package, the
+// fn that owns it — the locale by seed_locale_wire, the package names by install_driver_package, the
 // console stanza by console_stanza_for, the transport by delivery_strategy_diagnostic — so the digest is a
 // digest of decisions, never of formatting or of a stored string that could disagree with the axis it
 // claims to spell. Field order is fixed by this function rather than by a map iteration, because a digest
@@ -2773,7 +2773,7 @@ fn project_storage_policy(selection: TargetDiskSelection) -> StorageProjection {
 // ones that contain no secret and no identity. The credential's VERSION still reaches the digest through a
 // locator-shaped atom — so a rotated secret changes the digest — without the secret itself ever being in
 // scope of a hash input.
-fn render_altra_autoinstall_seed(seed: AltraAutoinstallSeed) -> NonEmptyStr {
+fn render_ubuntu_autoinstall_seed(seed: UbuntuAutoinstallSeed) -> NonEmptyStr {
   [
     "autoinstall/1",
     concat("arch=", architecture_token(architecture: seed.target.architecture)),
@@ -2823,10 +2823,10 @@ fn architecture_token(architecture: Architecture) -> NonEmptyStr {
 // to a digest of some other record that happens to render the same, and the whole purpose of the digest is
 // to be quotable as evidence years later. Adding a seed format (a non-autoinstall variant) means a new tag,
 // and a new tag cannot silently collide with this one.
-fn altra_autoinstall_seed_digest(seed: AltraAutoinstallSeed) -> Fnv1a64Structural {
+fn ubuntu_autoinstall_seed_digest(seed: UbuntuAutoinstallSeed) -> Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "gunbc.provisioning.altra_autoinstall_seed/1",
-    payload: content_hash_atom(value: render_altra_autoinstall_seed(seed: seed)),
+    tag: "gunbc.provisioning.ubuntu_autoinstall_seed/1",
+    payload: content_hash_atom(value: render_ubuntu_autoinstall_seed(seed: seed)),
   )
 }
 
@@ -2849,7 +2849,7 @@ type SeedDocument
   // recording a digest of a rendering nobody was ever served.
   | DocumentRefused { reason: NonEmptyStr }
 
-fn seed_document(seed: AltraAutoinstallSeed) -> SeedDocument {
+fn seed_document(seed: UbuntuAutoinstallSeed) -> SeedDocument {
   match autoinstall_payload(seed: seed) {
     Absent => DocumentRefused { reason: "seed-declares-nothing-to-write" as NonEmptyStr }
     Present { value: payload } =>
@@ -2866,7 +2866,7 @@ fn seed_document(seed: AltraAutoinstallSeed) -> SeedDocument {
 // a fabricated credential into a document that is about to be served to a board. (review: merry-fox-82) The
 // earlier projection handed a placeholder digest to the payload and the witness then compared placeholders —
 // both sides of an equality over something that was never read.
-fn autoinstall_payload(seed: AltraAutoinstallSeed) -> Optional<UbuntuAutoinstallPayload> {
+fn autoinstall_payload(seed: UbuntuAutoinstallSeed) -> Optional<UbuntuAutoinstallPayload> {
   match password_field_from(seed: seed) {
     Present { value: hashed } =>
       Present { value: UbuntuAutoinstallPayload {
@@ -2905,7 +2905,7 @@ fn autoinstall_payload(seed: AltraAutoinstallSeed) -> Optional<UbuntuAutoinstall
 // declined a password shows the lock marker and nothing else, and a seed that has one shows a digest this
 // module admitted. Both are only survivable because the entry posture had to justify itself at admission —
 // a locked password with no authorised key never became a seed (AdminEntryHasNoKey).
-fn password_field_from(seed: AltraAutoinstallSeed) -> Optional<NonEmptyStr> {
+fn password_field_from(seed: UbuntuAutoinstallSeed) -> Optional<NonEmptyStr> {
   match seed.credential {
     PasswordUnset => Present { value: "!*" as NonEmptyStr }
     // THE READ TRAVELS INSIDE THE SEED, SO THERE IS NOTHING LEFT TO RE-PROVE HERE. An earlier revision
@@ -3062,7 +3062,7 @@ fn rendered_document_digest(content: NonEmptyStr) -> Optional<Fnv1a64Structural>
     False =>
       Present {
         value: content_hash_tagged_structural(
-          tag: "gunbc.provisioning.altra_autoinstall_seed.document/sha256",
+          tag: "gunbc.provisioning.ubuntu_autoinstall_seed.document/sha256",
           payload: content_hash_atom(value: hex as NonEmptyStr),
         ),
       }
@@ -3133,7 +3133,7 @@ type ServedPreseed
 // seeds differing only in an answer VALUE). A fold term no test can lose is a comment with arithmetic in it.
 fn served_bundle_digest(document: Fnv1a64Structural, preseed: ServedPreseed) -> Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "gunbc.provisioning.altra_autoinstall_seed.bundle/1",
+    tag: "gunbc.provisioning.ubuntu_autoinstall_seed.bundle/1",
     payload: content_hash_combine_structural(
       left: content_hash_tagged_structural(tag: "document", payload: document),
       right: match preseed {
@@ -3168,7 +3168,7 @@ fn served_bundle_digest(document: Fnv1a64Structural, preseed: ServedPreseed) -> 
 // learned to produce text that will not cast, the compiler refuses to resolve the fn rather than silently serving
 // a wrong-typed answer file, which is the honest outcome (an empty file is NoDebconfQuestionsToAnswer, never a
 // one-line file with an empty value).
-fn render_served_preseed(seed: AltraAutoinstallSeed) -> ServedPreseed {
+fn render_served_preseed(seed: UbuntuAutoinstallSeed) -> ServedPreseed {
   let intents = all_package_intents(seed: seed)
   match seed_preseed_file(intents: intents) == "" {
     True => NoDebconfQuestionsToAnswer
@@ -3176,8 +3176,8 @@ fn render_served_preseed(seed: AltraAutoinstallSeed) -> ServedPreseed {
   }
 }
 
-fn serve_seed_bundle(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> admit_callers: [
-  decl_ref(module_path: "gunbc.provisioning.altra_autoinstall_seed", decl_name: "bind_altra_autoinstall_seed")
+fn serve_seed_bundle(seed: UbuntuAutoinstallSeed) -> Optional<ServedSeedBundle> admit_callers: [
+  decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "bind_ubuntu_autoinstall_seed")
 ] {
   match seed_document(seed: seed) {
     DocumentRefused { reason: _ } => Absent
@@ -3207,7 +3207,7 @@ fn serve_seed_bundle(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> a
 // Its own fn because the mint needs it twice (the emptiness test and the digest both read it) and an expression
 // repeated is an expression that can drift. Structurally recursive rather than a list concatenation, matching
 // preseed_records' own construction — records arrive one at a time, in the order they were authored.
-fn all_package_intents(seed: AltraAutoinstallSeed) -> List<PackageIntent> {
+fn all_package_intents(seed: UbuntuAutoinstallSeed) -> List<PackageIntent> {
   intents_after(left: seed.install_packages, right: seed.late_packages)
 }
 
@@ -3285,7 +3285,7 @@ fn address_family_diagnostic(family: SeedAddressFamily) -> NonEmptyStr {
 // when the preimage changes shape: reorder a segment, make one optional, and an unframed host containing '|'
 // starts masquerading as the next segment's label. Framing now is cheaper than reasoning about it later, and it
 // is the same framing every other host- or serial-shaped field in this preimage already uses. THIS STRING IS THE
-// DIGEST PREIMAGE — render_altra_autoinstall_seed is its only consumer — so the tagging is not a reporting
+// DIGEST PREIMAGE — render_ubuntu_autoinstall_seed is its only consumer — so the tagging is not a reporting
 // choice but the thing that makes the receipt's answer trustworthy; a second untagged spelling kept beside it
 // would be the collision again with a greener name. A future arm of ArchiveMirrorAuthority adds a case HERE with
 // its own tag (unhandled, no default), so a new kind of mirror cannot digest into an existing arm's bytes.
@@ -3356,7 +3356,7 @@ fn int_diagnostic(count: Int) -> NonEmptyStr {
 // swapped value that still "answers" the question must not digest identically).
 //
 // WHY A HASH AND NOT THE STRING. This render is a diagnostic and an identity, not a config file (see the note on
-// render_altra_autoinstall_seed): it is printed in reports and compared in receipts, and key material and seeded
+// render_ubuntu_autoinstall_seed): it is printed in reports and compared in receipts, and key material and seeded
 // values have no business being copied into a log line. A digest is the honest middle: it makes the identity
 // depend on the bytes while publishing nothing, and it is the same primitive the seed digest itself is built
 // from, so there is no second hashing story to keep consistent. A future requirement to SHOW a value must add a
@@ -3471,10 +3471,10 @@ fn credential_diagnostic(posture: AdminCredentialPosture) -> NonEmptyStr {
 // callers who list the same packages in different orders must produce the same seed — otherwise the digest
 // stops meaning "the same configuration" and starts meaning "the same configuration, typed the same way",
 // and the second is worthless as evidence.
-fn install_driver_list_diagnostic(drivers: List<AltraInstallDriver>) -> NonEmptyStr {
+fn install_driver_list_diagnostic(drivers: List<SeedInstallDriver>) -> NonEmptyStr {
   render_sorted_names(
     names: drivers
-      .map(driver => concat("pkg:", altra_install_driver_package(driver: driver)) as String),
+      .map(driver => concat("pkg:", install_driver_package(driver: driver)) as String),
   )
 }
 
@@ -3484,13 +3484,13 @@ fn install_driver_list_diagnostic(drivers: List<AltraInstallDriver>) -> NonEmpty
 // missing module fails as "no disks found" and gets blamed on the backplane). The Kconfig symbol rides in the
 // token: two rows claiming one object stem from different symbols is a real modeling error, and a digest that
 // equated them would hide it.
-fn loadable_module_list_diagnostic(modules: List<AltraLoadableModule>) -> NonEmptyStr {
+fn loadable_module_list_diagnostic(modules: List<LoadableModuleClass>) -> NonEmptyStr {
   render_sorted_names(
     names: modules
       .map(loaded =>
         concat(
           concat(
-            concat("mod:", altra_loadable_module(driver: loaded)),
+            concat("mod:", loadable_module_name(driver: loaded)),
             concat("=", loadable_module_kconfig_symbol(driver: loaded)),
           ),
           concat("@", loadable_module_kconfig_path(driver: loaded)),
@@ -3498,13 +3498,13 @@ fn loadable_module_list_diagnostic(modules: List<AltraLoadableModule>) -> NonEmp
   )
 }
 
-fn late_driver_list_diagnostic(drivers: List<AltraLateDriver>) -> NonEmptyStr {
+fn late_driver_list_diagnostic(drivers: List<LateDriver>) -> NonEmptyStr {
   render_sorted_names(
     names: drivers
       .map(driver =>
         concat(
-          concat("mod:", altra_late_driver_module(driver: driver)),
-          concat("=", altra_late_driver_kconfig_symbol(driver: driver)),
+          concat("mod:", late_driver_module(driver: driver)),
+          concat("=", late_driver_kconfig_symbol(driver: driver)),
         ) as String),
   )
 }
@@ -3620,7 +3620,7 @@ fn render_sorted_names(names: List<String>) -> NonEmptyStr {
 // whoever records the boot event — a seed does not restate origin digests, because then a seed would be
 // stale whenever the origin was republished byte-identically, and "which seed" would stop being a
 // question with one answer. The binding keeps the two records side by side, each with its own digest.
-type AltraAutoinstallSeedBinding sole_constructor {
+type UbuntuAutoinstallSeedBinding sole_constructor {
   unit_key: UnitKey
   attempt: IntakeAttemptId
   // TWO DIGESTS BECAUSE THERE ARE TWO QUESTIONS. `seed_digest` answers "which configuration" and is computed
@@ -3691,16 +3691,16 @@ type BindingBlocker
 
 // THE TWO OUTCOMES OF A BINDING ATTEMPT, as arms rather than Optional, for the reason above: the green arm
 // carries the record, the red arm carries why there is no record.
-type BindingResult = Bound { binding: AltraAutoinstallSeedBinding } | BindRefused { blocker: BindingBlocker }
+type BindingResult = Bound { binding: UbuntuAutoinstallSeedBinding } | BindRefused { blocker: BindingBlocker }
 
 // THE ONLY DOOR INTO A BINDING. It takes the SEED (so the digest is computed now, from this record), the
 // unit key and attempt (so the identity is bound, not assumed), and the live disk SELECTION (so a binding
 // cannot exist for a disk the rules refused — a binding whose install had no target disk is a record of an
 // install that could not have happened). A caller holding a refused selection receives Absent; the refusal
 // reason is carried out so the report says why there is no binding.
-fn bind_altra_autoinstall_seed(
-  seed: AltraAutoinstallSeed,
-  target: AltraAutoinstallTarget,
+fn bind_ubuntu_autoinstall_seed(
+  seed: UbuntuAutoinstallSeed,
+  target: ProvisioningTargetAdmission,
   unit_key: UnitKey,
   attempt: IntakeAttemptId,
   selection: TargetDiskSelection,
@@ -3744,10 +3744,10 @@ fn bind_altra_autoinstall_seed(
                   BindRefused { blocker: SeedHasNoRenderableDocument { reason: "bundle-mint-refused-after-document-built" as NonEmptyStr } }
                 Present { value: served } =>
               Bound {
-                binding: AltraAutoinstallSeedBinding {
+                binding: UbuntuAutoinstallSeedBinding {
                   unit_key: unit_key,
                   attempt: attempt,
-                  seed_digest: altra_autoinstall_seed_digest(seed: seed),
+                  seed_digest: ubuntu_autoinstall_seed_digest(seed: seed),
                   // THE SAME VALUE THE BUNDLE DIGEST FOLDED, taken out of the bundle rather than re-hashed here,
                   // so `document_digest` and the digest inside the served bundle cannot drift. The bundle is only
                   // `Present` when a real SHA-256 existed, so this field can never carry a stand-in (review 83764 #1).
@@ -3755,7 +3755,7 @@ fn bind_altra_autoinstall_seed(
                   // THE RENDERING IS CARRIED, not just its digest, so the receipt can be re-checked without the
                   // seed still existing. And the disk evidence is inside the digest below, so "the machine
                   // booted seed X" cannot be answered for a machine that was pointed at a different drive.
-                  seed_rendering: render_altra_autoinstall_seed(seed: seed),
+                  seed_rendering: render_ubuntu_autoinstall_seed(seed: seed),
                   served: served,
                   delivery: seed.delivery,
                   disk: seed.disk,
@@ -3821,8 +3821,8 @@ type BindingVerdict
   | BindingIsForeign
 
 fn check_binding_against_seed(
-  binding: AltraAutoinstallSeedBinding,
-  seed: AltraAutoinstallSeed,
+  binding: UbuntuAutoinstallSeedBinding,
+  seed: UbuntuAutoinstallSeed,
   unit_key: UnitKey,
   attempt: IntakeAttemptId,
 ) -> BindingVerdict {
@@ -3831,7 +3831,7 @@ fn check_binding_against_seed(
     True =>
       match content_hash_eq_structural(
         left: binding.seed_digest,
-        right: altra_autoinstall_seed_digest(seed: seed),
+        right: ubuntu_autoinstall_seed_digest(seed: seed),
       ) {
         True => BoundConfigurationMatchesSeed
         False => BoundConfigurationDiffersFromSeed
@@ -3937,7 +3937,7 @@ type SuppliedDocumentStanding
 // same tagged fold the mint used, so both user-data and preseed must agree. The configuration digest stays on
 // the binding answering "which configuration did we intend"; the served bytes answer "what did the board get".
 fn supplied_document_standing(
-  binding: AltraAutoinstallSeedBinding,
+  binding: UbuntuAutoinstallSeedBinding,
   supplied: Optional<SuppliedServedDocument>,
 ) -> SuppliedDocumentStanding {
   match supplied {
@@ -3969,9 +3969,9 @@ fn supplied_document_standing(
 // be overwritten by whichever write came second. Including it means "the receipt for this attempt" changes when
 // the target changes, and a silent change of drive in a stored receipt becomes a different receipt rather than
 // the same one.
-fn binding_digest(binding: AltraAutoinstallSeedBinding) -> Fnv1a64Structural {
+fn binding_digest(binding: UbuntuAutoinstallSeedBinding) -> Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "gunbc.provisioning.altra_autoinstall_seed.binding/3",
+    tag: "gunbc.provisioning.ubuntu_autoinstall_seed.binding/3",
     payload: content_hash_combine_structural(
       left: content_hash_combine_structural(
         left: content_hash_atom(value: to_string(binding.unit_key) as NonEmptyStr),

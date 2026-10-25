@@ -18,9 +18,9 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //
 // THE SIX GAPS AND THE SYMBOLS CHECKED:
 //
-// G1 x86 Ubuntu autoinstall seed/IMAGE. Exists: gunbc.provisioning.altra_autoinstall_seed
+// G1 x86 Ubuntu autoinstall seed/IMAGE. Exists: gunbc.provisioning.ubuntu_autoinstall_seed
 //    (autoinstall/v1 user-data) and gunbc.provisioning.provisioning_arm, both Aarch64-bound --
-//    admit_altra_autoinstall_target refuses a target whose architecture is not Aarch64
+//    admit_provisioning_target refuses a target whose architecture is not Aarch64
 //    (PlatformUnsupported). For x86: none exists.
 //
 // G2 install-to-disk route for THIS board. Exists: gunbc.srv3.srv3_os_install_actuate
@@ -89,7 +89,7 @@ data h11ssl_x86_bringup_virtual_media_gap_subject: DeclarationRef = decl_ref(mod
 data h11ssl_x86_bringup_dimm_reader_gap_subject: DeclarationRef = decl_ref(module_path: "extdeps.bmc.redfish_memory_inventory", decl_name: "redfish_memory_dimm_inventory")
 data h11ssl_x86_bringup_storage_reader_gap_subject: DeclarationRef = decl_ref(module_path: "extdeps.boards.supermicro_h11ssl", decl_name: "supermicro_h11ssl_storage_support")
 data h11ssl_x86_bringup_adoption_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.host.host_identity_adopt", decl_name: "HostIdentityAdoptReceipt")
-data h11ssl_x86_bringup_seed_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.provisioning.altra_autoinstall_seed", decl_name: "admit_altra_autoinstall_target")
+data h11ssl_x86_bringup_seed_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "admit_provisioning_target")
 data h11ssl_x86_bringup_pxe_edge_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.network_boot_delivery", decl_name: "uefi_pxe_admitted_architectures")
 data h11ssl_x86_bringup_install_route_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.srv3.srv3_os_install_actuate", decl_name: "srv3_os_install_actuator_plan_refuses_on_unestablished_path")
 
@@ -159,12 +159,12 @@ data h11ssl_hand_install_adoption_frontier: FrontierRow = frontier_row_decl(
 // ---- G1: x86 autoinstall seed (fill-order step 4) ----
 
 data h11ssl_x86_autoinstall_seed_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: an x86_64 Ubuntu autoinstall seed and image route exist the way the arm64 ones do -- the shape of gunbc.provisioning.altra_autoinstall_seed plus gunbc.provisioning.provisioning_arm and the extdeps.provisioning seeded-remaster chain, with the Aarch64 admission inverted to an x86_64 admission (the extdeps.toolchain.types Architecture x86 spellings) and the seed content corrected for x86 -- and a witness renders the seed for a named x86 target. A hand-edited seed on a USB stick, or the arm64 seed with its arch constant relabeled, is not this trigger." as NonEmptyStr
+  description: "TRIGGER: an x86_64 Ubuntu autoinstall seed and image route exist the way the arm64 ones do -- the shape of gunbc.provisioning.ubuntu_autoinstall_seed plus gunbc.provisioning.provisioning_arm and the extdeps.provisioning seeded-remaster chain, with the Aarch64 admission inverted to an x86_64 admission (the extdeps.toolchain.types Architecture x86 spellings) and the seed content corrected for x86 -- and a witness renders the seed for a named x86 target. A hand-edited seed on a USB stick, or the arm64 seed with its arch constant relabeled, is not this trigger." as NonEmptyStr
 )
 
 data h11ssl_x86_autoinstall_seed_frontier: FrontierRow = frontier_row_decl(
   ref: h11ssl_x86_bringup_seed_gap_subject,
-  reason: "the autoinstall seed is ARM-only by construction: admit_altra_autoinstall_target refuses any non-Aarch64 target with PlatformUnsupported, so no x86 unit can be seeded today",
+  reason: "the autoinstall seed is ARM-only by construction: admit_provisioning_target refuses any non-Aarch64 target with PlatformUnsupported, so no x86 unit can be seeded today",
   dissolution: h11ssl_x86_autoinstall_seed_dissolution,
 )
 

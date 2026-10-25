@@ -33,7 +33,7 @@ import gunbc.firmware_network_boot_standing {
 // S3, PR #14281: the pinned Ubuntu arm64 network origin an attempt fetches from.
 import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin }
 // S4, owner deep-ram-338: the autoinstall seed binding an attempt boots with.
-import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding, BindingBlocker }
+import gunbc.provisioning.ubuntu_autoinstall_seed { UbuntuAutoinstallSeedBinding, BindingBlocker }
 
 // THE CLOSED SET OF DELIVERY STRATEGIES THE OPERATOR HAS PERMITTED. Network boot (PXE or UEFI HTTP,
 // one family: the firmware picks the transport) and BMC virtual media. There is deliberately no
@@ -66,7 +66,7 @@ type DeliveryEvidence {
   chain: SitePxeEdgeChainPin
   virtual_media: VirtualMediaStanding
   origin: UbuntuNetworkOrigin?
-  seed: AltraAutoinstallSeedBinding?
+  seed: UbuntuAutoinstallSeedBinding?
 }
 
 // Network boot needs the firmware either already ready or prepared through exactly one named route.
@@ -105,12 +105,12 @@ type ArmShape
       chain: SitePxeEdgePinnedChain
       firmware: FirmwarePreparation
       origin: UbuntuNetworkOrigin
-      seed: AltraAutoinstallSeedBinding
+      seed: UbuntuAutoinstallSeedBinding
     }
   | ArmedVirtualMedia {
       media_observation: DeclarationRef
       origin: UbuntuNetworkOrigin
-      seed: AltraAutoinstallSeedBinding
+      seed: UbuntuAutoinstallSeedBinding
     }
   | ArmUnobserved { missing: ArmMissingEvidence }
   | ArmRefused { cause: ArmRefusalCause }
