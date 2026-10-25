@@ -113,7 +113,7 @@ use crate::v1_compiler_infer_emit_info::TypeDeclResolution::{TypeDeclResolved, T
 use crate::v1_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared};
 use crate::v1_compiler_infer_emit_info::TypeSummaryQuestion::{QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared};
-use crate::v1_compiler_infer_env::BareOccurrenceBinding::{BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided};
+use crate::v1_compiler_infer_env::BareOccurrenceBinding::{BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{GlobalBareUniqueBinding, GlobalBareAmbiguousBinding};
 use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, TypeItem, OtherItem};
@@ -862,6 +862,7 @@ pub fn unstamped_reference_is_host_option(
                     } => false,
                 }
             }
+            BareOccurrenceBinding::BareOccurrenceUnbound => false,
             BareOccurrenceBinding::BareOccurrenceUndecided => false,
         }
     }
@@ -6092,46 +6093,15 @@ pub fn phantom_marker_decision(
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<PhantomMarkerDecision> {
-    match (*crate::v1_compiler_infer_emit_info::type_decl_occurrence_binding(
-        emit_info.type_decl_items.clone(),
-        vname.clone(),
-        arm.clone(),
-    ))
-    .clone()
-    {
-        TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
-            identity: identity, ..
-        } => phantom_marker_for_bound_arm(
-            identity.clone(),
-            coproduct.clone(),
-            arm.clone(),
-            vname.clone(),
-            env.clone(),
-            emit_info.clone(),
-        ),
-        TypeDeclOccurrenceBinding::OccurrenceImported {
-            identity: identity, ..
-        } => phantom_marker_for_bound_arm(
-            identity.clone(),
-            coproduct.clone(),
-            arm.clone(),
-            vname.clone(),
-            env.clone(),
-            emit_info.clone(),
-        ),
-        TypeDeclOccurrenceBinding::OccurrenceIsKernelName => phantom_marker_for_unbound_arm(
-            coproduct.clone(),
-            arm.clone(),
-            vname.clone(),
-            env.clone(),
-        ),
-        TypeDeclOccurrenceBinding::OccurrenceUndecided => phantom_marker_for_unbound_arm(
-            coproduct.clone(),
-            arm.clone(),
-            vname.clone(),
-            env.clone(),
-        ),
-    }
+    match (*crate::v1_compiler_infer_emit_info::type_decl_occurrence_binding(emit_info.type_decl_items.clone(), vname.clone(), arm.clone())).clone() {
+    TypeDeclOccurrenceBinding::OccurrenceDeclaredHere { identity: identity, .. } => phantom_marker_for_bound_arm(identity.clone(), coproduct.clone(), arm.clone(), vname.clone(), env.clone(), emit_info.clone()),
+    TypeDeclOccurrenceBinding::OccurrenceImported { identity: identity, .. } => phantom_marker_for_bound_arm(identity.clone(), coproduct.clone(), arm.clone(), vname.clone(), env.clone(), emit_info.clone()),
+    TypeDeclOccurrenceBinding::OccurrenceIsKernelName => phantom_marker_for_unbound_arm(coproduct.clone(), arm.clone(), vname.clone(), env.clone()),
+    TypeDeclOccurrenceBinding::OccurrenceUnbound => phantom_marker_for_unbound_arm(coproduct.clone(), arm.clone(), vname.clone(), env.clone()),
+    TypeDeclOccurrenceBinding::OccurrenceUndecided => Rc::new(PhantomMarkerDecision::PhantomMarkerUndecided {
+    cause: "the arm's name binds ambiguously, or binds a declaration the type-declaration index does not identify".to_string(),
+}),
+}
 }
 
 pub fn phantom_marker_for_bound_arm(
@@ -6265,16 +6235,19 @@ pub fn collect_phantom_zst_markers(
     Rc::new({
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
-            if (crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) && {
-                let mut __all = true;
-                for c in item.children.clone().iter().cloned() {
-                    if !((c.children.clone().len() as i64) == 0) {
-                        __all = false;
-                        break;
+            if ((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                && (item.connective.clone() == Connective::Disj))
+                && {
+                    let mut __all = true;
+                    for c in item.children.clone().iter().cloned() {
+                        if !((c.children.clone().len() as i64) == 0) {
+                            __all = false;
+                            break;
+                        }
                     }
-                }
-                __all
-            }) {
+                    __all
+                })
+            {
                 __result.push(item);
             }
         }
