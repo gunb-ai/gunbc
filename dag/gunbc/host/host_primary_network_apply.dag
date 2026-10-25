@@ -24,7 +24,7 @@ import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWrite, NoValidatio
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_target_host_env_name }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host.host_effect { LocalShell }
@@ -382,13 +382,13 @@ fn apply_primary_network(subject: FleetHostFileSubject, context: FleetSshExecuti
 data host_primary_network_attempt_raw: String = "host-primary-network-converge-ci"
 data host_primary_network_receipt_path: String = "target/host-primary-network-receipt.txt"
 
-// ONE HOST PER RUN, NAMED BY THE DISPATCH, as the host-file converge reads it. A host without a row
-// refuses with its standing; the apply mode is the operator's to choose.
+// ONE TARGET PER RUN, NAMED BY THE DISPATCH, and never the host the run executes on. A host without a
+// row refuses with its standing; the apply mode is the operator's to choose.
 fn host_primary_network_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
 {
-  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+  match actions_variable_read(name: fleet_converge_target_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: dt } =>
-      exit_failure(reason: join(["host_primary_network: ", v, " ", dt, "; one host per run, named by the dispatch"], ""))
+      exit_failure(reason: join(["host_primary_network: ", v, " ", dt, "; one target host per run, named by the dispatch"], ""))
     ActionsVariablePresent { value: raw_host } =>
       match primary_network_row_for(host: raw_host as HostIdentity) {
         PrimaryRowUnmodeled { host: h } => exit_failure(reason: join(["host_primary_network: ", h as String, " has no primary network row"], ""))
