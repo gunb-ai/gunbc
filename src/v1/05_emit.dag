@@ -7,7 +7,7 @@ import std.compiler_entry {
 }
 import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
-import std.coercion { TypeRealizationDecision }
+import std.coercion { TypeRealizationDecision, dag_refinement_inclusion }
 import std.unicode.scalar { ascii_lowercase }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
@@ -16,7 +16,7 @@ import v1.std.core {
   CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
-  Node, ErrorNode, make_error_node, TransportEmissionNotModeled, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
+  Node, ErrorNode, make_error_node, TransportEmissionNotModeled, CastRealizationRefused, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items, param_node_name_at, param_node_type_expr, qualified_last_segment,
   param_node_default_value, NewlineIndex, authored_name_at, empty_intern_table,
   field_from_key_property_name,
@@ -43,7 +43,7 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration, type_reference_declaration_ref }
 
 import std.induction { InductiveField, SubValueUnknown }
 
@@ -3386,29 +3386,167 @@ fn cast_source_representation_identical(expr: Node, cast_target_node: Node, env:
   }
 }
 
-// THREE MEANINGS, IN ORDER, AND THE THIRD IS UNCHANGED. Rendered-representation identity and
-// declared-carrier identity are two INDEPENDENTLY SUFFICIENT witnesses that the target has no
-// operation to perform -- neither is derived from the other, and neither is authority over the
-// other: the first sees carriers the resolver cannot reach from this seam, the second sees carriers
-// whose rendering the one-level peel gets wrong. Only after both decline is a real host conversion
-// selected from the target's CastSyntax, and only after THAT declines does the pre-existing
-// unsupported disposition stand.
-fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> String {
-  let expr_str = recurse(expr)
+// WHAT A TARGET DOES FOR ONE ACCEPTED CAST, DECIDED ONCE AND READ TWICE: by the emission below, and
+// by cast_realization_diagnostics, the wall v1.compiler.compile emit_artifact runs before any
+// artifact is written. One decision is what keeps the wall and the emitted bytes from disagreeing.
+type CastRealization
+  = CastOperandUnchanged
+  | CastThroughTargetSyntax { target_spelling: String }
+  | CastNotRealized { refusal: CastRealizationRefusal }
+
+// WHY A CAST HAS NO REALIZATION, as two causes rather than one message. A cast whose route is
+// undeclared is a source fact no target could fix; a declared route the target has no spelling for
+// is a realization gap. Folding them would send the author of the first to a target table.
+type CastRealizationRefusal
+  = CastRouteUndeclared { source_type: String, target_type: String }
+  | CastRouteNotRealizedByTarget { source_type: String, target_type: String, route: String }
+
+fn cast_realization_refusal_fact(refusal: CastRealizationRefusal) -> String {
+  match refusal {
+    CastRouteUndeclared { source_type: s, target_type: t } =>
+      concat("no declared conversion route from ", s, " to ", t, ": the two are not one host representation, std.coercion declares no route between them, and the target's cast syntax has no rule for the pair; name a declared conversion (a checked constructor or a conversion function) instead of `as`")
+    CastRouteNotRealizedByTarget { source_type: s, target_type: t, route: r } =>
+      concat("the declared route ", r, " from ", s, " to ", t, " has no realization in this target: the target realizes the two carriers as different host types with no cast rule between them")
+  }
+}
+
+fn cast_source_type_node(expr: Node) -> Node? {
+  match expr.inferred {
+    Present { value: Resolved { node: n } } => Present { value: n }
+    _ => none
+  }
+}
+
+// THE DECLARED INCLUSION, READ FROM ITS ONE AUTHORITY (std.coercion dag_refinement_inclusion). The
+// source is keyed by the declaration it resolves to, so a user coproduct spelled Nat has no route;
+// the target is keyed by its authored spelling because that is how the refinement row keys its
+// carrier. Legality is the row's; what follows only decides what this target spells.
+fn cast_is_declared_refinement_inclusion(source_type: Node, cast_target_node: Node, env: TypeEnv) -> Bool {
+  match type_reference_declaration_ref(n: source_type, source_indices: env.source_indices, env: env) {
+    Present { value: d } => dag_refinement_inclusion(source: d, target_type: qualified_last_segment(name: authored_name_at(source_indices: env.source_indices, node: cast_target_node)))
+    Absent => false
+  }
+}
+
+// THE TARGET SPELLS A DECLARED ROUTE FROM THE CARRIERS IT REALIZES, never from the rendered names.
+// std.nat Nat renders in Rust as its declared alias `Nat` and realizes as i64; std.types Int renders
+// and realizes as i64. Compared as rendered names the inclusion read as a crossing between two
+// unrelated types and was emitted as a runtime panic. The grounding spelling is the host type each
+// declaration is realized in, so equal groundings need no operation, and different ones are spelled
+// by the target's CastSyntax over those groundings -- the table realizing a route it did not judge.
+fn realize_declared_refinement_inclusion(source_type: Node, cast_target_node: Node, src_ty: String, ty_str: String, target: RenderTarget, env: TypeEnv) -> CastRealization {
+  let si = env.source_indices
+  let source_carrier = realized_checkpoint(decision: type_reference_realization(n: source_type, dag_name: authored_name_at(source_indices: si, node: source_type), target: target))
+  let target_carrier = realized_checkpoint(decision: type_reference_realization(n: cast_target_node, dag_name: authored_name_at(source_indices: si, node: cast_target_node), target: target))
+  let refused = CastNotRealized { refusal: CastRouteNotRealizedByTarget { source_type: src_ty, target_type: ty_str, route: "std.coercion dag_refinement_inclusion" } }
+  match source_carrier {
+    Absent => refused
+    Present { value: sc } =>
+      match target_carrier {
+        Absent => refused
+        Present { value: tc } =>
+          if sc.grounding_type == tc.grounding_type {
+            CastOperandUnchanged
+          } else if can_cast(target: target, source_type: sc.grounding_type, target_type: tc.grounding_type) {
+            CastThroughTargetSyntax { target_spelling: ty_str }
+          } else {
+            refused
+          }
+      }
+  }
+}
+
+// FOUR MEANINGS, IN ORDER. Rendered-representation identity and declared-carrier identity are two
+// INDEPENDENTLY SUFFICIENT witnesses that the target has no operation to perform -- neither is
+// derived from the other, and neither is authority over the other: the first sees carriers the
+// resolver cannot reach from this seam, the second sees carriers whose rendering the one-level peel
+// gets wrong. A declared route (the refinement inclusion) is realized from the carriers. Only then
+// is a host conversion selected from the target's CastSyntax over the rendered pair, and a cast
+// none of these answers is refused -- never fabricated as a runtime abort (DESIGN section 5).
+fn cast_realization(expr: Node, cast_target_node: Node, target: RenderTarget, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> CastRealization {
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_indices: source_indices)
-  let src_ty = match expr.inferred {
-    Present { value: Resolved { node: n } } => emit_node_type(n: n, target: target, source_indices: source_indices)
-    _ => ""
+  let source_type = cast_source_type_node(expr: expr)
+  let src_ty = match source_type {
+    Present { value: n } => emit_node_type(n: n, target: target, source_indices: source_indices)
+    Absent => ""
   }
   if src_ty != "" && src_ty == ty_str {
-    expr_str
+    CastOperandUnchanged
   } else if cast_source_representation_identical(expr: expr, cast_target_node: cast_target_node, env: env, target: target) {
-    expr_str
-  } else if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
-    render_cast(expr_str: expr_str, type_str: ty_str, target: target)
+    CastOperandUnchanged
   } else {
-    emit_error_expr(message: concat("unsupported cast from ", src_ty, " to ", ty_str), target: target)
+    match source_type {
+      Present { value: st } =>
+        if cast_is_declared_refinement_inclusion(source_type: st, cast_target_node: cast_target_node, env: env) {
+          realize_declared_refinement_inclusion(source_type: st, cast_target_node: cast_target_node, src_ty: src_ty, ty_str: ty_str, target: target, env: env)
+        } else {
+          cast_through_target_syntax_or_refuse(src_ty: src_ty, ty_str: ty_str, target: target)
+        }
+      Absent => cast_through_target_syntax_or_refuse(src_ty: src_ty, ty_str: ty_str, target: target)
+    }
   }
+}
+
+fn cast_through_target_syntax_or_refuse(src_ty: String, ty_str: String, target: RenderTarget) -> CastRealization {
+  if can_cast(target: target, source_type: src_ty, target_type: ty_str) {
+    CastThroughTargetSyntax { target_spelling: ty_str }
+  } else {
+    CastNotRealized { refusal: CastRouteUndeclared { source_type: src_ty, target_type: ty_str } }
+  }
+}
+
+// THE REFUSED ARM IS NOT REACHED BY ANY ARTIFACT emit_artifact RETURNS: cast_realization_diagnostics
+// refuses the compile on the same decision first. It renders the target's compile-time refusal
+// form rather than its runtime error form, so an emission entered some other way still cannot
+// build an artifact that aborts at run time on a cast the compiler already knew it could not spell.
+fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> String {
+  let expr_str = recurse(expr)
+  match cast_realization(expr: expr, cast_target_node: cast_target_node, target: target, env: env, source_indices: source_indices) {
+    CastOperandUnchanged => expr_str
+    CastThroughTargetSyntax { target_spelling: ty } => render_cast(expr_str: expr_str, type_str: ty, target: target)
+    CastNotRealized { refusal: r } =>
+      let spec = language_spec(target: target)
+      apply_type_template1(template: spec.error_type_template, arg0: cast_realization_refusal_fact(refusal: r))
+  }
+}
+
+// THE CAST WALL: every cast in the closure is realized or the compile refuses, located at the cast,
+// before any artifact is written -- the same shape as the transport walls above. The walk reads each
+// item's typed body and every child expression under it.
+fn cast_realization_diagnostics(typed: ResolvedGraph, target: RenderTarget) -> List<ErrorNode> {
+  match target_emission_mode(target: target) {
+    SerializesSubstrate => []
+    RealizesTransports =>
+      typed.modules |> flat_map(tm => {
+        let module_name = authored_name(env: tm.type_env, node: tm.module)
+        tm.items |> flat_map(item => match item.body {
+          Present { value: b } => cast_realization_diagnostics_in(texpr: b, target: target, env: tm.type_env, module_name: module_name)
+          Absent => []
+        })
+      })
+  }
+}
+
+fn cast_realization_diagnostics_in(texpr: Node, target: RenderTarget, env: TypeEnv, module_name: String) -> List<ErrorNode> {
+  let here = match texpr.expr_data {
+    ExprCast =>
+      match cast_realization(expr: cast_expr(texpr: texpr), cast_target_node: cast_target(texpr: texpr), target: target, env: env, source_indices: env.source_indices) {
+        CastNotRealized { refusal: r } => [make_error_node(
+          diagnostic: CastRealizationRefused {
+            target: render_target_name(target: target),
+            missing_realization_fact: cast_realization_refusal_fact(refusal: r),
+            span: texpr.span
+          },
+          module_name: module_name)]
+        _ => []
+      }
+    _ => []
+  }
+  let nested_body = match texpr.body {
+    Present { value: b } => cast_realization_diagnostics_in(texpr: b, target: target, env: env, module_name: module_name)
+    Absent => []
+  }
+  concat(here, texpr.children |> flat_map(c => cast_realization_diagnostics_in(texpr: c, target: target, env: env, module_name: module_name)), nested_body)
 }
 
 fn emit_typed_for_each_shared(variable: String, collection: Node, body: Node, target: RenderTarget, depth: Int, source_indices: Map<String, NewlineIndex>, recurse: fn(Node, InferScope, Int) -> String, scope: InferScope) -> String {

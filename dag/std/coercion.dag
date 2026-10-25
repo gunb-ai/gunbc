@@ -310,24 +310,51 @@ fn dag_cast_requires_proof(source_type: String, target_type: String) -> Bool {
 // the operand's declaration is the target of no refinement row, and the operand's own algebra
 // decides as before.
 // ZERO, ONE OR MANY -- never "the first". Two rows naming one exact declaration with different
-// source types would make the difference's type depend on row ORDER, which is not a fact about
-// the declaration; that is a coherence defect in this table, so it is answered as its own arm and
-// the checker refuses on it (v1.compiler.infer_types subtraction_refinement_of) rather than picking.
-type SubtractionRefinement
-  = SubtractionStaysInOperandAlgebra
-  | SubtractionEscapesTo { from_type: String }
-  | SubtractionRefinementAmbiguous { from_types: List<String> }
+// source types would make the carrier depend on row ORDER, which is not a fact about the
+// declaration; that is a coherence defect in this table, so it is answered as its own arm and every
+// consumer refuses on it rather than picking.
+//
+// ONE ANSWER, TWO CONSUMERS. What a refinement row declares about its target declaration is the
+// carrier it widens to, and two judgments ask exactly that: the difference of two refinement values
+// escapes to the carrier (v1.compiler.infer_types subtraction_refinement_of), and an explicit cast
+// from a refinement value to that carrier is the row's INCLUSION (dag_refinement_inclusion below).
+// It was spelled SubtractionRefinement while subtraction was its only reader; the second reader is
+// why it now names the fact rather than the first question that asked it.
+type RefinementCarrier
+  = NotARefinementTarget
+  | RefinesCarrier { from_type: String }
+  | RefinementCarrierAmbiguous { from_types: List<String> }
 
-fn dag_subtraction_refinement(operand: DeclarationRef) -> SubtractionRefinement {
+fn dag_refinement_carrier(operand: DeclarationRef) -> RefinementCarrier {
   let hits = refinement_cast_rules |> filter(r => declaration_ref_eq(a: r.to_declaration, b: operand))
   match hits |> first {
-    Absent => SubtractionStaysInOperandAlgebra
+    Absent => NotARefinementTarget
     Present { value: r } =>
       if (hits |> count) == 1 {
-        SubtractionEscapesTo { from_type: r.from_type }
+        RefinesCarrier { from_type: r.from_type }
       } else {
-        SubtractionRefinementAmbiguous { from_types: hits |> map(h => h.from_type) }
+        RefinementCarrierAmbiguous { from_types: hits |> map(h => h.from_type) }
       }
+  }
+}
+
+// THE INCLUSION IS A DECLARED EXACT CONVERSION, AND THE ROW IS ITS DECLARATION (DESIGN section 4:
+// coercion is the implicit-safe subset of declared conversions). A refinement row says every
+// to_declaration value IS a from_type value; read in the converse direction from the refinement
+// cast it refuses, the same row declares the embedding `n as Int` for n: std.nat Nat -- total (every
+// Nat is an Int), exact (no value changes), unique (one row, the Ambiguous arm refuses many),
+// semantics-preserving and consent-free. So the route needs no row of its own, and adding one beside
+// refinement_cast_rules would be a second authority for one fact (section 3).
+//
+// THE SOURCE IS KEYED BY ITS RESOLVED DECLARATION, the target by the row's from_type spelling,
+// exactly as the row is keyed for the refinement direction: a user coproduct spelled Nat is the
+// to_declaration of no row and has no inclusion. A realization reads this route to decide what to
+// spell; it never decides from its own cast table whether the crossing is legal.
+fn dag_refinement_inclusion(source: DeclarationRef, target_type: String) -> Bool {
+  match dag_refinement_carrier(operand: source) {
+    RefinesCarrier { from_type: carrier } => carrier == target_type
+    NotARefinementTarget => false
+    RefinementCarrierAmbiguous { from_types: _ } => false
   }
 }
 

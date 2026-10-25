@@ -26,7 +26,7 @@ import std.literal_elaboration {
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
-import std.coercion { select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
+import std.coercion { select_text_crossing_plan, CrossingPlanNone, CrossingPlanSeveral, CrossingPlanJudged, ConversionPlanAdmitted, ConversionPlanAbsent, ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanEndpointNotText, unicode_scalar_unfold, dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, RefinementCarrierAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -10661,7 +10661,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let refinement_diags = match op {
         Sub =>
           match subtraction_refinement_of(left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices, env: scope.type_env) {
-            SubtractionRefinementAmbiguous { from_types: fts } =>
+            RefinementCarrierAmbiguous { from_types: fts } =>
               [inference_error(
                 message: concat("subtraction refinement is ambiguous: std.coercion refinement_cast_rules has ", to_string(fts |> count), " rows for this operand's declaration (source types ", join(fts, ", "), "); the difference's type would depend on row order"),
                 span: span, module_name: scope.module_name)]
@@ -10845,7 +10845,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let span = texpr.span
       let cast_inner = cast_expr(texpr: texpr)
       let target_type = cast_target(texpr: texpr)
-      let inner_result = infer_expr(texpr: cast_inner, scope: scope, expected: none)
+      // AN EMPTY LIST LITERAL HAS NO ELEMENT TO TYPE, SO THE CAST NAMES ITS TYPE. Inferred with no
+      // expected type it became List<empty_list_element>, an unsolved variable, and the emitter then
+      // read `[] as List<Int>` as a crossing from an unresolved carrier and refused it (it used to emit
+      // a panic as a fold seed). The literal inhabits List<T> for every T, so the cast's target is
+      // the expected type it is checked against -- a target that is not a collection still refuses
+      // there. Any other operand keeps its own type: a cast's operand is not expected to be its target.
+      let operand_expected = if equality_operand_is_empty_list_literal(n: cast_inner) { Present { value: target_type } } else { none }
+      let inner_result = infer_expr(texpr: cast_inner, scope: scope, expected: operand_expected)
       let inner_typed = inner_result.typed
       let inner_emissions = inner_result.emissions
       let si = scope.type_env.source_indices
@@ -18157,7 +18164,7 @@ fn grounded_int_literal(k: Int, occurrence_identity: NodeOccurrenceIdentity, spa
 // declaration is the grounded carrier's, so emission decides the host operator from the same
 // fact it decides an authored `a + 1` on. result_type overrides the judgment's answer only for
 // the predecessor, where a difference of naturals leaves the naturals in general
-// (std.coercion dag_subtraction_refinement) and stays inside them here because the branch is
+// (std.coercion dag_refinement_carrier) and stays inside them here because the branch is
 // taken only when the subject is at least k.
 fn grounded_binop(op: BinOp, left: Node, k: Int, result_type: Node?, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
   let info = infer_binop_type_node(op: op, left_type: resolved_type(n: left), source_indices: ctx.env.source_indices, env: ctx.env)

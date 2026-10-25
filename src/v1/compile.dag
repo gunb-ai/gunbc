@@ -67,7 +67,7 @@ import v1.compiler.infer_types { algebra_field_kind_name }
 import v1.compiler.emit_core_support { EmitResult, escape_json_string }
 import gunbc.rust_emitted_crate { EmittedRustCrate }
 import gunbc.rust_emitted_edge { EmittedEdge }
-import v1.compiler.emit { unmodeled_file_transport_diagnostics, unmodeled_shell_transport_diagnostics, unmodeled_rest_transport_diagnostics }
+import v1.compiler.emit { unmodeled_file_transport_diagnostics, unmodeled_shell_transport_diagnostics, unmodeled_rest_transport_diagnostics, cast_realization_diagnostics }
 
 import v1.compiler.emit_rust { emit_rust_selected }
 
@@ -482,13 +482,17 @@ fn compile_bundle_error(message: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: no_span() }, module_name: "")
 }
 
+// A REFUSAL KNOWN BEFORE EMISSION STOPS THE ARTIFACT: an unmodeled transport, or a cast the target
+// cannot realize, returns its located diagnostics and no files, so no emitted program carries a
+// runtime abort standing in for a refusal the compiler already had.
 fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
-  let unmodeled_transports = concat(
+  let emission_refusals = concat(
     unmodeled_file_transport_diagnostics(typed: typed, target: artifact.target),
     unmodeled_shell_transport_diagnostics(typed: typed, target: artifact.target),
-    unmodeled_rest_transport_diagnostics(typed: typed, target: artifact.target))
-  if unmodeled_transports |> count > 0 {
-    return EmitResult { files: [], diagnostics: unmodeled_transports, emitted_edges: [], rust_crates: [] }
+    unmodeled_rest_transport_diagnostics(typed: typed, target: artifact.target),
+    cast_realization_diagnostics(typed: typed, target: artifact.target))
+  if emission_refusals |> count > 0 {
+    return EmitResult { files: [], diagnostics: emission_refusals, emitted_edges: [], rust_crates: [] }
   }
   match artifact.target {
     Rust => emit_rust_selected(typed: typed, selection: artifact.module_selection)

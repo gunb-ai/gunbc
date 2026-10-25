@@ -2,6 +2,8 @@
 // Source module: v1.compiler.emit
 
 use self::BoundOperation::*;
+use self::CastRealization::*;
+use self::CastRealizationRefusal::*;
 use self::EmitterOutcome::*;
 use self::ExprCategory::*;
 use self::FileEmissionRefusal::*;
@@ -25,8 +27,8 @@ pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 pub use crate::gunbc_rust_emitted_edge::module_to_filename;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
-pub use crate::std_coercion::TypeRealizationDecision;
 use crate::std_coercion::TypeRealizationDecision::*;
+pub use crate::std_coercion::{dag_refinement_inclusion, TypeRealizationDecision};
 use crate::std_compiler_entry::CompilerEntryDriver::{
     DirectIngestDriver, NativeClaimDriver, NativeCliDriver, NativeServeDriver,
     RetainedHostCliKernel, SourceRootEvalDriver,
@@ -81,7 +83,8 @@ use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReference
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{
     authored_name, empty_symbol_index, lookup_type_for, type_reference_declaration_reading,
-    GlobalBareLookupState, TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
+    type_reference_declaration_ref, GlobalBareLookupState, TypeBinding, TypeEnv,
+    TypeReferenceDeclarationReading,
 };
 pub use crate::v1_compiler_infer_items::{
     item_is_effectful_callee, item_resource_names, ItemInfo, ResolvedGraph, TypedModule,
@@ -128,7 +131,7 @@ use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
+use crate::v1_std_core::CompilerDiagnostic::{CastRealizationRefused, TransportEmissionNotModeled};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
@@ -6795,6 +6798,224 @@ pub fn cast_source_representation_identical(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CastRealization {
+    CastOperandUnchanged,
+    CastThroughTargetSyntax { target_spelling: String },
+    CastNotRealized { refusal: Rc<CastRealizationRefusal> },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CastRealizationRefusal {
+    CastRouteUndeclared {
+        source_type: String,
+        target_type: String,
+    },
+    CastRouteNotRealizedByTarget {
+        source_type: String,
+        target_type: String,
+        route: String,
+    },
+}
+impl CastRealizationRefusal {
+    pub fn source_type(&self) -> String {
+        match self {
+            CastRealizationRefusal::CastRouteUndeclared {
+                source_type: __val, ..
+            } => __val.clone(),
+            CastRealizationRefusal::CastRouteNotRealizedByTarget {
+                source_type: __val, ..
+            } => __val.clone(),
+        }
+    }
+    pub fn target_type(&self) -> String {
+        match self {
+            CastRealizationRefusal::CastRouteUndeclared {
+                target_type: __val, ..
+            } => __val.clone(),
+            CastRealizationRefusal::CastRouteNotRealizedByTarget {
+                target_type: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn cast_realization_refusal_fact(refusal: Rc<CastRealizationRefusal>) -> String {
+    match (*refusal.clone()).clone() {
+    CastRealizationRefusal::CastRouteUndeclared { source_type: s, target_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no declared conversion route from ".to_string(), s.clone()), " to ".to_string()), t.clone()), ": the two are not one host representation, std.coercion declares no route between them, and the target's cast syntax has no rule for the pair; name a declared conversion (a checked constructor or a conversion function) instead of `as`".to_string()),
+    CastRealizationRefusal::CastRouteNotRealizedByTarget { source_type: s, target_type: t, route: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared route ".to_string(), r.clone()), " from ".to_string()), s.clone()), " to ".to_string()), t.clone()), " has no realization in this target: the target realizes the two carriers as different host types with no cast rule between them".to_string()),
+}
+}
+
+pub fn cast_source_type_node(expr: Rc<Node>) -> Option<Rc<Node>> {
+    match expr.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: n, .. }) => Some(n.clone()),
+        _ => std::option::Option::None,
+    }
+}
+
+pub fn cast_is_declared_refinement_inclusion(
+    source_type: Rc<Node>,
+    cast_target_node: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+        source_type,
+        env.source_indices.clone(),
+        env.clone(),
+    ) {
+        Some(d) => crate::std_coercion::dag_refinement_inclusion(
+            d.clone(),
+            crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                env.source_indices.clone(),
+                cast_target_node,
+            )),
+        ),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn realize_declared_refinement_inclusion(
+    source_type: Rc<Node>,
+    cast_target_node: Rc<Node>,
+    src_ty: String,
+    ty_str: String,
+    target: RenderTarget,
+    env: Rc<TypeEnv>,
+) -> Rc<CastRealization> {
+    {
+        let si = env.source_indices.clone();
+        let source_carrier = crate::v1_compiler_coercion::realized_checkpoint(
+            crate::v1_compiler_coercion::type_reference_realization(
+                source_type.clone(),
+                crate::v1_std_core::authored_name_at(si.clone(), source_type.clone()),
+                target.clone(),
+            ),
+        );
+        let target_carrier = crate::v1_compiler_coercion::realized_checkpoint(
+            crate::v1_compiler_coercion::type_reference_realization(
+                cast_target_node.clone(),
+                crate::v1_std_core::authored_name_at(si.clone(), cast_target_node.clone()),
+                target.clone(),
+            ),
+        );
+        let refused = Rc::new(CastRealization::CastNotRealized {
+            refusal: Rc::new(CastRealizationRefusal::CastRouteNotRealizedByTarget {
+                source_type: src_ty.clone(),
+                target_type: ty_str.clone(),
+                route: "std.coercion dag_refinement_inclusion".to_string(),
+            }),
+        });
+        match source_carrier.clone() {
+            std::option::Option::None => refused,
+            Some(sc) => match target_carrier.clone() {
+                std::option::Option::None => refused,
+                Some(tc) => {
+                    if (sc.grounding_type.clone() == tc.grounding_type.clone()) {
+                        Rc::new(CastRealization::CastOperandUnchanged)
+                    } else {
+                        if crate::v1_compiler_coercion::can_cast(
+                            target.clone(),
+                            sc.grounding_type.clone(),
+                            tc.grounding_type.clone(),
+                        ) {
+                            Rc::new(CastRealization::CastThroughTargetSyntax {
+                                target_spelling: ty_str.clone(),
+                            })
+                        } else {
+                            refused
+                        }
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub fn cast_realization(
+    expr: Rc<Node>,
+    cast_target_node: Rc<Node>,
+    target: RenderTarget,
+    env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CastRealization> {
+    {
+        let ty_str = emit_node_type(
+            cast_target_node.clone(),
+            target.clone(),
+            source_indices.clone(),
+        );
+        let source_type = cast_source_type_node(expr.clone());
+        let src_ty = match source_type.clone() {
+            Some(n) => emit_node_type(n.clone(), target.clone(), source_indices.clone()),
+            std::option::Option::None => "".to_string(),
+        };
+        if ((src_ty.clone() != "".to_string()) && (src_ty.clone() == ty_str.clone())) {
+            Rc::new(CastRealization::CastOperandUnchanged)
+        } else {
+            if cast_source_representation_identical(
+                expr.clone(),
+                cast_target_node.clone(),
+                env.clone(),
+                target.clone(),
+            ) {
+                Rc::new(CastRealization::CastOperandUnchanged)
+            } else {
+                match source_type.clone() {
+                    Some(st) => {
+                        if cast_is_declared_refinement_inclusion(
+                            st.clone(),
+                            cast_target_node.clone(),
+                            env.clone(),
+                        ) {
+                            realize_declared_refinement_inclusion(
+                                st.clone(),
+                                cast_target_node.clone(),
+                                src_ty.clone(),
+                                ty_str.clone(),
+                                target.clone(),
+                                env.clone(),
+                            )
+                        } else {
+                            cast_through_target_syntax_or_refuse(
+                                src_ty.clone(),
+                                ty_str.clone(),
+                                target.clone(),
+                            )
+                        }
+                    }
+                    std::option::Option::None => cast_through_target_syntax_or_refuse(
+                        src_ty.clone(),
+                        ty_str.clone(),
+                        target.clone(),
+                    ),
+                }
+            }
+        }
+    }
+}
+
+pub fn cast_through_target_syntax_or_refuse(
+    src_ty: String,
+    ty_str: String,
+    target: RenderTarget,
+) -> Rc<CastRealization> {
+    if crate::v1_compiler_coercion::can_cast(target, src_ty.clone(), ty_str.clone()) {
+        Rc::new(CastRealization::CastThroughTargetSyntax {
+            target_spelling: ty_str.clone(),
+        })
+    } else {
+        Rc::new(CastRealization::CastNotRealized {
+            refusal: Rc::new(CastRealizationRefusal::CastRouteUndeclared {
+                source_type: src_ty.clone(),
+                target_type: ty_str.clone(),
+            }),
+        })
+    }
+}
+
 pub fn emit_typed_cast_shared(
     expr: Rc<Node>,
     cast_target_node: Rc<Node>,
@@ -6805,53 +7026,142 @@ pub fn emit_typed_cast_shared(
 ) -> String {
     {
         let expr_str = recurse(expr.clone());
-        let ty_str = emit_node_type(
-            cast_target_node.clone(),
+        match (*cast_realization(
+            expr.clone(),
+            cast_target_node,
             target.clone(),
-            source_indices.clone(),
-        );
-        let src_ty = match expr.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: n, .. }) => {
-                emit_node_type(n.clone(), target.clone(), source_indices.clone())
-            }
-            _ => "".to_string(),
-        };
-        if ((src_ty.clone() != "".to_string()) && (src_ty.clone() == ty_str.clone())) {
-            expr_str.clone()
-        } else {
-            if cast_source_representation_identical(
-                expr.clone(),
-                cast_target_node.clone(),
-                env,
+            env,
+            source_indices,
+        ))
+        .clone()
+        {
+            CastRealization::CastOperandUnchanged => expr_str.clone(),
+            CastRealization::CastThroughTargetSyntax {
+                target_spelling: ty,
+                ..
+            } => crate::v1_compiler_coercion::render_cast(
+                expr_str.clone(),
+                ty.clone(),
                 target.clone(),
-            ) {
-                expr_str.clone()
-            } else {
-                if crate::v1_compiler_coercion::can_cast(
-                    target.clone(),
-                    src_ty.clone(),
-                    ty_str.clone(),
-                ) {
-                    crate::v1_compiler_coercion::render_cast(
-                        expr_str.clone(),
-                        ty_str.clone(),
-                        target.clone(),
-                    )
-                } else {
-                    emit_error_expr(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("unsupported cast from ".to_string(), src_ty.clone()),
-                                " to ".to_string(),
-                            ),
-                            ty_str.clone(),
-                        ),
-                        target.clone(),
-                    )
-                }
+            ),
+            CastRealization::CastNotRealized { refusal: r, .. } => {
+                let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
+                crate::v1_compiler_emit_core_support::apply_type_template1(
+                    spec.error_type_template.clone(),
+                    cast_realization_refusal_fact(r.clone()),
+                )
             }
         }
     }
+}
+
+pub fn cast_realization_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
+        TargetEmissionMode::RealizesTransports => Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*{
+                        let module_name = crate::v1_compiler_infer_env::authored_name(
+                            tm.type_env.clone(),
+                            tm.module.clone(),
+                        );
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                __result.extend(
+                                    (*match item.body.clone() {
+                                        Some(b) => cast_realization_diagnostics_in(
+                                            b.clone(),
+                                            target.clone(),
+                                            tm.type_env.clone(),
+                                            module_name.clone(),
+                                        ),
+                                        std::option::Option::None => Rc::new(vec![]),
+                                    })
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        })
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+    }
+}
+
+pub fn cast_realization_diagnostics_in(
+    texpr: Rc<Node>,
+    target: RenderTarget,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprCast => match (*cast_realization(
+                crate::v1_std_core::cast_expr(texpr.clone()),
+                crate::v1_std_core::cast_target(texpr.clone()),
+                target.clone(),
+                env.clone(),
+                env.source_indices.clone(),
+            ))
+            .clone()
+            {
+                CastRealization::CastNotRealized { refusal: r, .. } => {
+                    Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::CastRealizationRefused {
+                            target: render_target_name(target.clone()),
+                            missing_realization_fact: cast_realization_refusal_fact(r.clone()),
+                            span: texpr.span.clone(),
+                        }),
+                        module_name.clone(),
+                    )])
+                }
+                _ => Rc::new(vec![]),
+            },
+            _ => Rc::new(vec![]),
+        };
+        let nested_body = match texpr.body.clone() {
+            Some(b) => cast_realization_diagnostics_in(
+                b.clone(),
+                target.clone(),
+                env.clone(),
+                module_name.clone(),
+            ),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            v1_rt::concat(
+                here.clone(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in texpr.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*cast_realization_diagnostics_in(
+                                c.clone(),
+                                target.clone(),
+                                env.clone(),
+                                module_name.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+            nested_body.clone(),
+        )
+    })
 }
 
 pub fn emit_typed_for_each_shared(
