@@ -348,7 +348,7 @@ fn job_user_daemon_arm(user: NonEmptyStr, uid: Int, home: String, transport: Hos
   // rather than assumed away by the caller.
   if home == "" {
     GpuContainerArmUnobserved { reason: "job user home is unknown, so no Docker Root Dir can be accepted as its own" }
-  } else
+  } else {
   // ONE RUN, BOTH VERDICTS. Asking the daemon twice would let the two halves of this arm disagree for a
   // reason that has nothing to do with the host — the daemon could answer the first call and be
   // restarting for the second — and a check that can disagree with itself is not a check.
@@ -388,6 +388,7 @@ fn job_user_daemon_arm(user: NonEmptyStr, uid: Int, home: String, transport: Hos
             }
         }
       }
+  }
   }
 }
 
