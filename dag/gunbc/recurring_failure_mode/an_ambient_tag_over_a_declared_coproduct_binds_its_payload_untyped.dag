@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.an_ambient_tag_over_a_declared_coproduct_binds_its_payload_untyped
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data an_ambient_tag_over_a_declared_coproduct_binds_its_payload_untyped: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_ambient_tag_over_a_declared_coproduct_binds_its_payload_untyped" as NonEmptyStr,
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the seed and native typecheckers type a pattern tag against the scrutinee's declared coproduct, so a match over a declared Optional<V> with ambient Present / Absent tags refuses (or binds the payload at V) instead of binding it untyped" } },
+
+  receipts: [
+    "INVALID STATE: a match over a value of the DECLARED std.optional Optional<V> whose arms use the AMBIENT tags Present / Absent (the module does not import std.optional) binds the Present payload with no type, so a use of it is not checked against V. Specimen (wise-moth-707, 2026-10-23, the map_get -> std.algebra map_lookup rename wave; seed built at main 2fdbab77bb, gunbc run resolve + typecheck): `type Acc { m: Map<NonEmptyStr, Set<String>> }` and `fn probe(acc: Acc, k: NonEmptyStr) -> Int { match map_lookup(m: acc.m, key: k) { Present { value: s } => s  Absent => 0 } }` is ACCEPTED, returning a Set<String> as an Int. The same body over the ambient map_get (kernel Optional result) REFUSES with `match arms produce proven-disjoint types: Container(Set,Primitive(String)) vs Primitive(Int)`, and so does the map_lookup body with `import std.optional { Present, Absent }`. The ambient map_get with the std.optional tags imported also refuses correctly, so binding the declared tags is safe over a kernel Optional scrutinee.",
+    "HARM: silent wrong typing (below the ladder): a payload of any type flows to any use. The loud variant of the same state -- a typed operation on the payload, `set_contains(s, ...)` refusing `receiver must be a Set` -- is how it was found (dag/std/occurrence_binding_candidates.dag direct_module_dependency_dedup_step, after the rename; relayed by keen-heron-809 from silent-raven-360's provisional regen). A rename from an ambient callee to a declared one creates the state in every module that matches the result with ambient tags: 28 of the map_get wave's 54 files use Present without importing std.optional (lexical count over the wave's file list).",
+    "DISTINGUISHING FACTS: sibling of gunbc.recurring_failure_mode.bare_variant_elected_by_spelling_not_by_expected_coproduct (a bare variant in VALUE position elected by spelling) -- here the tag is in PATTERN position and the scrutinee's type is known and declared; the payload binding, not the tag election, loses the type. NATIVE: not measured; the native CLI (v2-native-cli emit, built at the same head) refuses all three specimen closures at the std.types / std.algebra imports (resolve_module_not_found), so the native reading is could-not-tell, not agreement.",
+    "RUNG FOUND AT: below the ladder (silent acceptance), on the seed. MITIGATION IN PLACE: the namespace rename generator (v2.workflow.roster_import_sweep RenameHead rows) imports the declared tags a renamed call's module uses at ambient pattern positions, derived from the callee's declared return type (tidy-ant-251's ruling), so the wave does not create new instances. CEILING: structurally guaranteed -- a pattern tag binds the variant of the scrutinee's own declared coproduct, or refuses. NEXT-RUNG TRIGGER, AS A CAPABILITY: the seed (and native) type a pattern tag against the scrutinee's declared coproduct, so the specimen refuses with the ambient tags as it does with the imported ones; the separate end state is the namespace item that gives Present / Absent their one declared home (Seat 12's rows), after which no ambient tag remains to bind."
+  ],
+
+  evidence: [],
+}
