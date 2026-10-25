@@ -708,6 +708,15 @@ pub fn positive_measure_count_value(count: Rc<PositiveMeasureCount>) -> i64 {
     }
 }
 
+pub fn positive_measure_count_nat(count: Rc<PositiveMeasureCount>) -> Nat {
+    match (*count.clone()).clone() {
+        PositiveMeasureCount::PositiveMeasureSuccessor {
+            predecessor: predecessor,
+            ..
+        } => v1_rt::int_add(predecessor.clone(), 1),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PositiveCelsiusDelta {
