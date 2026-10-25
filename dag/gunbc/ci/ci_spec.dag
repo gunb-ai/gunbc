@@ -1049,6 +1049,13 @@ data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget 
   function: "namecheap_observe_ci_wet",
 }
 
+// The review sheets' argv-free converge entry (gunbc.review_sheet_converge_cli). It writes no receipt
+// file: its verdict is the exit and the per-kind report on stderr, which names no token.
+data gunbc_ci_review_sheet_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/review_sheet_converge_cli.dag",
+  function: "converge_drive_half_cli",
+}
+
 data gunbc_ci_arrival_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/arrival_admission.dag",
   function: "arrival_admit_executor",
@@ -1471,6 +1478,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_user_session_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
+    gunbc_ci_review_sheet_converge_target,
     gunbc_ci_printer_workflow_target,
     gunbc_ci_spark_grants_observe_target,
 
@@ -4292,6 +4300,16 @@ fn gunbc_ci_namecheap_observe_invoke() -> String {
     function: gunbc_ci_namecheap_observe_target.function,
     claim_run: false,
     receipt_rel: namecheap_observation_receipt_path
+  )
+}
+
+fn gunbc_ci_review_sheet_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_review_sheet_converge_target.entry,
+    function: gunbc_ci_review_sheet_converge_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 

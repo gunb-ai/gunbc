@@ -1,0 +1,175 @@
+module v2.test.claim.compiler.infer_declared_return_source_witness
+
+import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_list_peers }
+import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, diagnostics_has_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a fn body judged at its declared return, from SOURCE TEXT through the production assembly
+// route (v2.test.claim.body_let_annotation bla_assemble_with_peers) and v2.compiler.infer infer.
+// v2.test.claim.compiler.infer_declared_return_inhabitance_witness establishes the same judgment on
+// supplied Arrow trees; this file is its source-text twin, the trigger that file names.
+//
+// WHAT IS ASSERTED IS THE ROUTE, NOT ONLY THE ANSWER (DESIGN section 3, the pairing obligation). A red
+// asserts the refusal carries ^arrow_body_does_not_inhabit_declared_return, the reason
+// v2.std.inhabitance declared_type_inhabitance gives a PositionDeclaredReturn obligation whose
+// find_witness found no candidate -- so a refusal raised by anything else (resolution, a shape
+// diagnostic) does not satisfy it. A green asserts Accepted AND that no obligation in the fn was
+// counted undecidable (drs_only_admitted_advisories, below): v2.compiler.infer
+// infer_judge_declared_position admits an InhabitanceUndecidable verdict with an advisory, so
+// Accepted alone could be an unjudged return. Decided, every declared position was judged Inhabits, which only find_witness's exact
+// structural equality witness (or a literal elaboration) produces. There is no detector set to fall
+// through: a pair no rule witnesses is refused.
+//
+// THE SEED IS THE CONTRAST, not the specification (DESIGN section 7). v1.compiler.infer
+// declared_type_conformance_diags_core judges a declared return by a chain of refusal detectors that
+// ends in `if !both_ground { [] }`, and declared_type_inhabitance ends its chain in `Absent =>
+// Inhabits`: a pair no detector recognizes is admitted. That fall-through is the class
+// gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel, whose receipt
+// records what these probes measured on the seed.
+
+fn drs_infer(src: String) -> Outcome<Bool> {
+  match bla_assemble_with_peers(p_src: src, peers: fmi_list_peers()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+      }
+  }
+}
+
+fn drs_refused_at_return(src: String) -> Bool {
+  match drs_infer(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^arrow_body_does_not_inhabit_declared_return)
+  }
+}
+
+// "DECIDED" IS ESTABLISHED BY WHAT AN ACCEPTED RUN MAY CARRY, NOT BY A LIST OF WHAT IT MAY NOT.
+// infer_judge_declared_position admits an InhabitanceUndecidable verdict on the Accepted path with
+// one advisory per undecided obligation, so a control must refuse any advisory it does not
+// recognize. Enumerating the undecidable reasons to look for would fail OPEN: a reason added to
+// v2.std.inhabitance InhabitanceUndecidableReason later would read as decided until someone
+// edited the list, and the corpus has no way to enumerate a coproduct's arms that could close it.
+// The allow-list below fails CLOSED instead: an Accepted run counts as decided only when every
+// diagnostic it carries is infer_grounding_not_derived. Measured on these probes, that is the only
+// advisory a decided fn carries (the empty module `p` carries none, so each such row comes from
+// the probe module itself, not from its peers), and it is not an inhabitance verdict. Any other
+// reason -- each undecidable arm today, or one added later -- makes the control fail.
+// drs_an_undecided_return_is_not_read_as_decided_holds and
+// drs_a_generic_return_is_not_read_as_decided_holds keep that red authorable: two returns v2
+// counts as undecidable are refused by this predicate.
+fn drs_admitted_advisory_reasons() -> List<Symbol> {
+  [^infer_grounding_not_derived]
+}
+
+fn drs_only_admitted_advisories(d: Diagnostics) -> Bool {
+  match d {
+    None => true
+    Some { diagnostics: nd } =>
+      fold(concat([nd.head], nd.tail), init: true, f: fn(acc, x) {
+        acc && fold(drs_admitted_advisory_reasons(), init: false, f: fn(found, r) { found || (x.reason == r) })
+      })
+  }
+}
+
+fn drs_admitted_by_judgment(src: String) -> Bool {
+  match drs_infer(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } => drs_only_admitted_advisories(d: d)
+  }
+}
+
+fn drs_accepted_but_undecided(src: String) -> Bool {
+  match drs_infer(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } => !drs_only_admitted_advisories(d: d)
+  }
+}
+
+data drs_bool_at_int: String = "module p\n\nfn f(x: Bool) -> Int {\n  x\n}\n"
+
+data drs_int_at_int: String = "module p\n\nfn f(x: Int) -> Int {\n  x\n}\n"
+
+data drs_record_at_unrelated_record: String = "module p\n\ntype A {\n  a: Int\n}\n\ntype B {\n  b: Int\n}\n\nfn f(x: A) -> B {\n  x\n}\n"
+
+data drs_record_at_its_own_record: String = "module p\n\ntype A {\n  a: Int\n}\n\ntype B {\n  b: Int\n}\n\nfn f(x: A) -> A {\n  x\n}\n"
+
+data drs_record_at_its_transparent_alias: String = "module p\n\ntype A {\n  a: Int\n}\n\ntype B = A\n\nfn f(x: A) -> B {\n  x\n}\n"
+
+data drs_coproduct_at_unrelated_coproduct: String = "module p\n\ntype C = | X | Y\n\ntype D = | Z\n\nfn f(c: C) -> D {\n  c\n}\n"
+
+data drs_list_of_bool_at_free_monoid_of_string: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { FreeMonoid }\n\nfn f(xs: List<Bool>) -> FreeMonoid<String> {\n  xs\n}\n"
+
+data drs_list_of_bool_at_free_monoid_of_bool: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { FreeMonoid }\n\nfn f(xs: List<Bool>) -> FreeMonoid<Bool> {\n  xs\n}\n"
+
+// THE SHAPE OF THE REPORTED PROBE (`Map<String, Int>` at `FinitelySupportedFunction<String, Int>`):
+// std.types declares `type Map<key, value> = FinitelySupportedFunction<key, value>`, a transparent
+// generic alias, so the return is admitted -- by the alias unfolding and then the witness, not by
+// silence. Its red twin changes one type argument.
+data drs_generic_alias_at_its_aliased_application: String = "module p\n\ntype Fsf<K, V> {\n  size: Int\n}\n\ntype M<K, V> = Fsf<K, V>\n\nfn f(m: M<Int, Bool>) -> Fsf<Int, Bool> {\n  m\n}\n"
+
+data drs_generic_alias_at_a_different_application: String = "module p\n\ntype Fsf<K, V> {\n  size: Int\n}\n\ntype M<K, V> = Fsf<K, V>\n\nfn f(m: M<Int, Bool>) -> Fsf<Int, Int> {\n  m\n}\n"
+
+test fn a_bool_body_at_a_declared_int_return_is_refused_holds() -> Bool {
+  drs_refused_at_return(src: drs_bool_at_int)
+}
+
+test fn an_int_body_at_a_declared_int_return_is_judged_inhabited_holds() -> Bool {
+  drs_admitted_by_judgment(src: drs_int_at_int)
+}
+
+test fn a_record_body_at_an_unrelated_record_return_is_refused_holds() -> Bool {
+  drs_refused_at_return(src: drs_record_at_unrelated_record)
+}
+
+test fn a_record_body_at_its_own_record_return_is_judged_inhabited_holds() -> Bool {
+  drs_admitted_by_judgment(src: drs_record_at_its_own_record)
+}
+
+test fn a_record_body_at_its_transparent_alias_return_is_judged_inhabited_holds() -> Bool {
+  drs_admitted_by_judgment(src: drs_record_at_its_transparent_alias)
+}
+
+test fn a_coproduct_body_at_an_unrelated_coproduct_return_is_refused_holds() -> Bool {
+  drs_refused_at_return(src: drs_coproduct_at_unrelated_coproduct)
+}
+
+test fn a_list_of_bool_body_at_a_free_monoid_of_string_return_is_refused_holds() -> Bool {
+  drs_refused_at_return(src: drs_list_of_bool_at_free_monoid_of_string)
+}
+
+test fn a_list_of_bool_body_at_a_free_monoid_of_bool_return_is_judged_inhabited_holds() -> Bool {
+  drs_admitted_by_judgment(src: drs_list_of_bool_at_free_monoid_of_bool)
+}
+
+test fn a_generic_alias_body_at_its_aliased_application_return_is_judged_inhabited_holds() -> Bool {
+  drs_admitted_by_judgment(src: drs_generic_alias_at_its_aliased_application)
+}
+
+test fn a_generic_alias_body_at_a_different_application_return_is_refused_holds() -> Bool {
+  drs_refused_at_return(src: drs_generic_alias_at_a_different_application)
+}
+
+// THE "DECIDED" PREDICATE HAS AN AUTHORABLE RED. A fold callback's body type is not derived, so
+// v2 counts that return InhabitanceUndecidable (argument type not derived) on the Accepted path;
+// a return spelled as the fn's own type variable is counted generic formal. Both are Accepted,
+// and both must NOT read as judged.
+data drs_return_through_a_fold_callback: String = "module p\n\nfn f(x: Int) -> Int {\n  fold([x], init: 0, f: fn(a, e) { a })\n}\n"
+
+data drs_return_spelled_as_a_type_variable: String = "module p\n\nfn f<T>(x: T) -> T {\n  x\n}\n"
+
+test fn drs_an_undecided_return_is_not_read_as_decided_holds() -> Bool {
+  drs_accepted_but_undecided(src: drs_return_through_a_fold_callback)
+}
+
+test fn drs_a_generic_return_is_not_read_as_decided_holds() -> Bool {
+  drs_accepted_but_undecided(src: drs_return_spelled_as_a_type_variable)
+}
