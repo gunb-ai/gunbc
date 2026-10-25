@@ -2281,6 +2281,33 @@ fn ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test() ->
   )
 }
 
+// A natural beyond the 64-bit range refuses on the emitted route, so the identity realization of a grounded
+// natural cast onto the kernel Int never sees one (gunbc.rung_drop nat_cast_onto_the_kernel_integer_is_unjudged).
+// The interpreter route's controls are v1_interpreter add_overflow_refuses and its multiplication sibling.
+fn ct_nat_beyond_the_64_bit_range_refuses_on_the_emitted_route_test() -> String {
+  concat(
+    "    // A GROUNDED NATURAL BEYOND THE 64-BIT RANGE CANNOT BE PRODUCED ON THE EMITTED ROUTE. std.nat Nat\n",
+    "    // realizes as the kernel integer (gunbc.structural_realization_bindings kernel_grounding_rows), and\n",
+    "    // its arithmetic emits through the kernel integer's checked runtime. Measured on main 06acbbcc48 by\n",
+    "    // building and running the emission of `nat_at_i64_max() + 1` and `* 2` on std.nat Nat: both panic in\n",
+    "    // v1_rt. THE REDS: the runtime refuses i64::MAX + 1 and i64::MAX * 2; the arithmetic emits through it,\n",
+    "    // not through a wrapping operator; and an integer literal past the range refuses at compile.\n",
+    "    #[test]\n",
+    "    fn nat_beyond_the_64_bit_range_refuses_on_the_emitted_route() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        assert!(std::panic::catch_unwind(|| crate::v1_rt::int_add(i64::MAX, 1)).is_err(), \"the emitted runtime must refuse i64::MAX + 1\");\n",
+    "        assert!(std::panic::catch_unwind(|| crate::v1_rt::int_mul(i64::MAX, 2)).is_err(), \"the emitted runtime must refuse i64::MAX * 2\");\n",
+    "        let arithmetic = std::rc::Rc::new(SourceFile { path: \"fixtures/nat_beyond_range/arithmetic.dag\".to_string(), content: \"module hom.nat_arithmetic\\n\\nfn grow(a: Int) -> Int {\\n  a + 1\\n}\\n\\nfn double(a: Int) -> Int {\\n  a * 2\\n}\\n\".to_string() });\n",
+    "        let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![arithmetic].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let emitted = result.files.iter().find(|f| f.path.contains(\"hom_nat_arithmetic\")).map(|f| f.content.clone()).unwrap_or_default();\n",
+    "        assert!(emitted.contains(\"v1_rt::int_add(\") && emitted.contains(\"v1_rt::int_mul(\"), \"kernel-integer arithmetic must emit through the checked runtime:\\n\{emitted}\");\n",
+    "        let literal = std::rc::Rc::new(SourceFile { path: \"fixtures/nat_beyond_range/literal.dag\".to_string(), content: \"module hom.nat_literal\\n\\nfn past() -> Int {\\n  9223372036854775808\\n}\\n\".to_string() });\n",
+    "        let refused = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![literal].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        assert!(!refused.diagnostics.is_empty(), \"an integer literal past the 64-bit range must refuse at compile\");\n",
+    "    }\n\n"
+  )
+}
+
 // The referencing-module arm admits only a bare spelling: a qualified reference to another module's
 // declaration, arriving unstamped, is not decided by the referencing module's own same-leaf one.
 fn ct_qualified_reference_is_not_decided_by_the_local_declarer_test() -> String {
@@ -2464,6 +2491,7 @@ fn ct_coercion_tests() -> String {
     ct_same_leaf_type_declarations_emit_by_identity_test(),
     ct_unbound_reference_to_a_twice_declared_leaf_refuses_test(),
     ct_qualified_reference_is_not_decided_by_the_local_declarer_test(),
+    ct_nat_beyond_the_64_bit_range_refuses_on_the_emitted_route_test(),
     ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test(),
     ct_unstamped_bare_optional_follows_the_lookup_binding_order_test(),
     ct_a_coproduct_named_optional_emits_as_its_own_enum_test(),
