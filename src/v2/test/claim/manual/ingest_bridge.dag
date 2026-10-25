@@ -46,7 +46,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
 }
 import v2.std.coercion { Identity }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_fatal_reason, invariant_port_locus }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Conj,
   Edge,
   Authored,
@@ -189,7 +189,7 @@ fn check_ingest_recovers_emitted() -> Bool {
         source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
         Accepted { value: recovered, diagnostics: _ } =>
-          recovered == dag_fixture_emitted_add_fn
+          node_same_occurrence(a: recovered, b: dag_fixture_emitted_add_fn)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -208,7 +208,7 @@ fn check_ingest_bridge_to_canonical() -> Bool {
         source_model: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
         Accepted { value: core, diagnostics: _ } =>
-          core == dag_fixture_emitted_add_fn
+          node_same_occurrence(a: core, b: dag_fixture_emitted_add_fn)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -248,7 +248,7 @@ test fn ingest_identity_coercion_accepts_source_present_in_authored_roster() -> 
           ) {
               Rejected { diagnostics: _ } => false
               Accepted { value: coerced, diagnostics: _ } =>
-                (coerced.quality == Identity) && (coerced.target == source)
+                (coerced.quality == Identity) && (node_same_occurrence(a: coerced.target, b: source))
             }
       }
   }

@@ -2,7 +2,7 @@ module v2.std.dependency
 
 import std.types { List }
 import std.algebra { FreeSemigroup, list_append, list_snoc_item }
-import v2.std.node {
+import v2.std.node { node_equal_ignoring_provenance,
   Bind,
   ComputationNode,
   Edge,
@@ -185,12 +185,19 @@ fn classified_usage_site<C>(view: ClassifiedDependencyView<C>) -> Node {
   view.dependency.usage_site
 }
 
+fn dependency_view_equal(a: DependencyView, b: DependencyView) -> Bool {
+  node_equal_ignoring_provenance(a: a.source, b: b.source)
+    && node_equal_ignoring_provenance(a: a.dependent, b: b.dependent)
+    && (a.kind == b.kind)
+    && node_equal_ignoring_provenance(a: a.usage_site, b: b.usage_site)
+}
+
 fn classified_dependency_view_eq<C>(
   a: ClassifiedDependencyView<C>,
   b: ClassifiedDependencyView<C>,
   classification_eq: fn(C, C) -> Bool
 ) -> Bool {
-  (a.dependency == b.dependency) && classification_eq(a.classification, b.classification)
+  dependency_view_equal(a: a.dependency, b: b.dependency) && classification_eq(a.classification, b.classification)
 }
 
 type DependencyFoldState {
