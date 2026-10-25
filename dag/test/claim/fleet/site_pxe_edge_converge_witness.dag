@@ -776,8 +776,8 @@ fn fixture_user_data() -> YamlValue {
 }
 
 fn binding(mac: Eui48Address) -> SitePxeEdgeInstallBinding? {
-  match admit_public_nocloud_seed(user_data: fixture_user_data(), meta_data: yaml_mapping(entries: [kv(key: "instance-id", value: yaml_string(s: render_mac_address(addr: mac) as String))])) {
-    PublicSeedAdmitted { seed: sd } => Present { value: SitePxeEdgeInstallBinding { client_mac: mac, seed: sd } }
+  match admit_public_nocloud_seed(client_mac: mac, user_data: fixture_user_data()) {
+    PublicSeedAdmitted { seed: sd } => Present { value: SitePxeEdgeInstallBinding { seed: sd } }
     PublicSeedRefused { findings: _ } => Absent
   }
 }
