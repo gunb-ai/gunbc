@@ -1,6 +1,7 @@
 module test.claim.runner.runner_user_session_witness
 
-import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
+import extdeps.shell
 import std.algebra { string_contains }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.loginctl { loginctl_enable_linger_argv }
@@ -107,6 +108,7 @@ test fn an_unknown_account_reads_disabled_and_anything_else_unread() -> Bool {
 
 // A REFUSAL PAST ADMISSION STILL WRITES THE RECEIPT the upload step requires, and still refuses.
 test fn a_refused_path_writes_its_receipt_and_refuses() -> Bool {
+  let _made = shell.Mkdir.Parents(path: "target" as FilePath)
   let exit = user_session_receipt_then(host: "srv4" as NonEmptyStr, job_user: "ghrunner" as NonEmptyStr, lines: ["refused: the fleet SSH context: witness"], holds: false)
   let written = Filesystem.Read(path: runner_user_session_converge_receipt_path)
   let refused = match exit { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true }
