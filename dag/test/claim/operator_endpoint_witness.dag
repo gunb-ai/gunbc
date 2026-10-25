@@ -8,7 +8,10 @@ import gunbc.harness.harness_operator_route {
   OperatorClassAdmitted, OperatorClassRefused,
   OperatorModelsReading, OperatorHealthUnanswered, OperatorHealthUnhealthy, OperatorModelsRefused, OperatorModelsAnswered,
   OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
+  operator_custody_file_path, operator_credential_custody_of, OperatorCredentialCustody,
+  OperatorCredentialHandedByManager, OperatorCredentialInHome, OperatorCredentialUnlocated,
 }
+import gunbc.harness.harness_operator_credential { operator_route_credential_file }
 import gunbc.harness.harness_backend {
   harness_operator_roster_step, harness_roster_of, HarnessRosterFold, HarnessBackendRoster,
   HarnessBackendServing, HarnessBackendModelNotAdmitted,
@@ -107,6 +110,45 @@ test fn an_empty_credential_file_is_refused_not_sent_as_an_empty_bearer() -> Boo
     Absent => true
     Present { value: _ } => false
   }
+}
+
+fn custody_path_text(path: NonEmptyStr?) -> String {
+  match path {
+    Absent => ""
+    Present { value: p } => p as String
+  }
+}
+
+fn custody_text(custody: OperatorCredentialCustody) -> String {
+  match custody {
+    OperatorCredentialHandedByManager { directory: d } => join(["handed:", d as String], "")
+    OperatorCredentialInHome { home: h } => join(["home:", h as String], "")
+    OperatorCredentialUnlocated => "unlocated"
+  }
+}
+
+// WHERE THE KEY IS FOUND. A harness the manager handed a credentials directory reads the route's key there under
+// the route's identifier -- the identifier the dedicated worker unit loads it as
+// (test.claim.roadmap.dispatch_worker_traversal_witness the_dedicated_worker_unit_loads_the_route_key_from_the_root_credstore),
+// because the route's credential IS the leaf datum the launcher reads -- and never from a home; one with only a
+// home reads its custody there; one with neither locates nothing. RED on a route whose credential is spelled apart
+// from the leaf (the launcher would hand in a file the harness never opens), and on a handed directory that falls
+// through to the home.
+test fn handed_credentials_are_read_from_the_managers_directory_and_a_home_only_from_its_custody() -> Bool {
+  let file = harness_operator_route.credential
+  let handed = OperatorCredentialHandedByManager { directory: "/run/credentials/gunbc-attempt-n-k.service" as NonEmptyStr }
+  let home = OperatorCredentialInHome { home: "/home/svc" as NonEmptyStr }
+  (file.identifier as String) == (operator_route_credential_file.identifier as String)
+    && (file.relative_path as String) == (operator_route_credential_file.relative_path as String)
+    && custody_path_text(path: operator_custody_file_path(custody: handed, file: file))
+      == "/run/credentials/gunbc-attempt-n-k.service/gunbc-gpu-pod-api-key"
+    && custody_path_text(path: operator_custody_file_path(custody: home, file: file))
+      == "/home/svc/.config/gunbc-gpu-pod/api-key"
+    && custody_path_text(path: operator_custody_file_path(custody: OperatorCredentialUnlocated, file: file)) == ""
+    && custody_text(custody: operator_credential_custody_of(credentials_directory: Present { value: "/run/c" }, home: Present { value: "/home/svc" })) == "handed:/run/c"
+    && custody_text(custody: operator_credential_custody_of(credentials_directory: Present { value: "" }, home: Present { value: "/home/svc" })) == "unlocated"
+    && custody_text(custody: operator_credential_custody_of(credentials_directory: Absent, home: Present { value: "/home/svc" })) == "home:/home/svc"
+    && custody_text(custody: operator_credential_custody_of(credentials_directory: Absent, home: Absent)) == "unlocated"
 }
 
 test fn the_operator_backend_access_hands_the_turn_its_header_file_and_a_seat_has_none() -> Bool {

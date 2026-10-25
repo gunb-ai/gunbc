@@ -310,33 +310,23 @@ fn dag_cast_requires_proof(source_type: String, target_type: String) -> Bool {
 // the operand's declaration is the target of no refinement row, and the operand's own algebra
 // decides as before.
 // ZERO, ONE OR MANY -- never "the first". Two rows naming one exact declaration with different
-// source types would make the carrier depend on row ORDER, which is not a fact about the
-// declaration; that is a coherence defect in this table, so it is answered as its own arm and every
-// consumer refuses on it rather than picking.
-//
-// ONE ANSWER, TWO CONSUMERS. What a refinement row declares about its target declaration is the
-// carrier it widens to, and two judgments ask exactly that: the difference of two refinement values
-// escapes to the carrier (v1.compiler.infer_types subtraction_refinement_of), and a cast between a
-// refinement value and that carrier is the row's INCLUSION, which asks the target for no operation
-// (v1.compiler.emit declared_representation_carrier). The inclusion is total, exact, unique and
-// semantics-preserving -- every std.nat Nat is an Int and no value changes -- so it is a declared
-// exact conversion (DESIGN section 4) whose declaration is this row; it needs no row of its own, and
-// adding one would be a second authority for one fact. It was spelled SubtractionRefinement while
-// subtraction was its only reader; the second reader is why it now names the fact.
-type RefinementCarrier
-  = NotARefinementTarget
-  | RefinesCarrier { from_type: String }
-  | RefinementCarrierAmbiguous { from_types: List<String> }
+// source types would make the difference's type depend on row ORDER, which is not a fact about
+// the declaration; that is a coherence defect in this table, so it is answered as its own arm and
+// the checker refuses on it (v1.compiler.infer_types subtraction_refinement_of) rather than picking.
+type SubtractionRefinement
+  = SubtractionStaysInOperandAlgebra
+  | SubtractionEscapesTo { from_type: String }
+  | SubtractionRefinementAmbiguous { from_types: List<String> }
 
-fn dag_refinement_carrier(operand: DeclarationRef) -> RefinementCarrier {
+fn dag_subtraction_refinement(operand: DeclarationRef) -> SubtractionRefinement {
   let hits = refinement_cast_rules |> filter(r => declaration_ref_eq(a: r.to_declaration, b: operand))
   match hits |> first {
-    Absent => NotARefinementTarget
+    Absent => SubtractionStaysInOperandAlgebra
     Present { value: r } =>
       if (hits |> count) == 1 {
-        RefinesCarrier { from_type: r.from_type }
+        SubtractionEscapesTo { from_type: r.from_type }
       } else {
-        RefinementCarrierAmbiguous { from_types: hits |> map(h => h.from_type) }
+        SubtractionRefinementAmbiguous { from_types: hits |> map(h => h.from_type) }
       }
   }
 }

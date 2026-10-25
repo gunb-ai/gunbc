@@ -312,6 +312,25 @@ fn find_subtree_walk_words(target: String, pruned: List<String>, depth: Nat) -> 
   )
 }
 
+// THE PROOF THAT A GRANT REACHED EVERYTHING: the walk FAILS if any entry it reaches is not group-writable or not in
+// `group`, naming the first such entry on stderr -- which is where a failed exec step's detail is read. The decision
+// is find's own exit status (`-exec false {} +` makes "found one" non-zero), so no output is parsed to decide it,
+// and a walk that cannot run (a missing target, an unreadable directory) is non-zero too. A full mode listing
+// folded afterwards would say the same thing at the cost of one receipt line per entry, which on a checkout of
+// thousands of files is the whole cost of the check.
+fn find_subtree_ungranted_entry_refusal_command(target: String, pruned: List<String>, group: String, depth: Nat) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(
+      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+      concat(
+        ["(", "-not", "-perm", "-g+w", "-o", "-not", "-group", group, ")", "-fprint", "/dev/stderr"],
+        find_subtree_exec_action(words: ["false"]),
+      ),
+    ),
+  )
+}
+
 // Re-group a subtree to one group. No user field: this cannot re-own anything.
 fn find_subtree_regroup_command(target: String, group: String, pruned: List<String>, depth: Nat) -> ArgvCommand {
   argv_command(
