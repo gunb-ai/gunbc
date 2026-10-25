@@ -1,0 +1,177 @@
+module gunbc.plans.fleet_naming_reach_access
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import gunbc.design_ruling {
+  project_documentation_projections_are_not_checkout_artifacts,
+  root_generalization_closes_breadth,
+  epistemic_humility_is_symmetric,
+}
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul }
+import std.types { List, String }
+
+// THE DESIGN AND SURVEY FOR FLEET NAMING, OVERLAY REACH AND ACCESS (session bright-swift-248,
+// 2026-10-25): every fleet member under a name the fleet chooses, attached to a private overlay whose
+// first realization is Tailscale, with every connection gated by independent endpoint, route,
+// provider-policy, host, principal and application facts. Design only: it changes no producer.
+// Populations are cited by the declarations that hold them, and the counts are survey readings at
+// a5cc1bbdd2e, not pins. Site, BMC and boot-media reach are separate plans with their own
+// retirement: gunbc.plans.site_segment_anchor_bmc_reach and gunbc.plans.boot_origin_bmc_media.
+
+fn ruling_names() -> List<String> {
+  [
+    root_generalization_closes_breadth.reference.decl_name as String,
+    epistemic_humility_is_symmetric.reference.decl_name as String,
+  ]
+}
+
+fn opening() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. Target"),
+    ul(items: [
+      li(text: "**Tailscale is the first realization of the fleet-overlay contract; it is not the name or shape of that contract.** Consumers see a fleet attachment and an endpoint authority. Tailnet, MagicDNS, tags, tagOwners, grants, auth keys and node keys stay upstream vocabulary in extdeps.tailscale and in the Tailscale realization beneath the contract."),
+      li(text: "Every fleet member has an allocated name and a qualified overlay attachment: owned hardware and the Hetzner guests now, vast and AWS instances later, as ephemeral memberships keyed by their incarnation."),
+      li(text: "IP addresses leave the durable fleet contract. They remain observed locators behind the endpoint authority, historical evidence, topology facts, and declared bootstrap or recovery attachments."),
+      li(text: "Network topology grants no authority. A connection is usable only when endpoint resolution, route realization, the provider network grant, host authentication, principal authentication and application authorization each hold independently."),
+    ]),
+    p(text: concat("Rulings (gunbc.design_ruling): ", join(ruling_names(), ", "))),
+    p(text: "**Split.** Site-segment anchors and BMC reach are gunbc.plans.site_segment_anchor_bmc_reach. The R2 boot origin and the BMC media relay are gunbc.plans.boot_origin_bmc_media. Each retires on its own condition, so this plan does not wait for an offsite BMC experiment. They are peers, not children: gunbc.plan_governance admits only a relation rooted at the compiler architecture, with compiler-stage roles. A non-compiler governance root is a modeling obligation of that module, not something to fake here with a compiler role."),
+  ]
+}
+
+fn settled() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Settled (operator 2026-10-25, revised by review of 800da689173)"),
+    ul(items: [
+      li(text: "**D1. Three identities, each its own fact.** HostIdentity, or a workload incarnation, is the durable subject. FleetMemberName is the allocated, human-readable, provider-independent name. AttachmentEndpoint is the current provider-owned locator. Each is derived from the one before it through a declared policy, never by reusing a spelling. The policy that the Linux hostname equals the allocated label equals the provider machine name is one explicit row, kept because it makes debugging easy for humans."),
+      li(text: "**D2. Names are branded types, not conventions.** FleetMemberLabel, LinuxHostname, TailscaleMachineName (in the Tailscale realization) and ProviderEndpoint are distinct types, so a function that takes a FleetMemberLabel cannot be handed a HostIdentity spelling. The route is HostIdentity, then HostnameAllocation, then FleetMemberLabel. The naming policy maps FleetMemberLabel to LinuxHostname. FleetMemberLabel plus the Tailscale realization gives TailscaleMachineName, and the observed endpoint is read back. A NonEmptyStr argument that promises callers behave is the defect this replaces."),
+      li(text: "**D3. Services have their own identity.** The approval broker, the ntfy publisher, the OAuth redirect, the workspace gateway, fabric storage and live-deploy health are services. They consume a ServiceEndpointIdentity, not an allocated host name, because a service may move between hosts without changing identity. No home exists today: gunbc.deployment_risk DeploymentId is the nearest, and it names a deployment, not an addressable service. The type is a modeling obligation of P2."),
+      li(text: "**D4. New owned hosts and long-lived guests are named by the lottery.** gunbc.hostname_allocation draw_human_name over gunbc.host_names.gen_z, with the draw recorded. Existing LegacyHostname rows stay, and the operator migrates them later. mtjade1 and srv9 to srv12 have no allocation and are drawn. Short-lived rented replicas (vast, AWS) do not consume allocations or tombstones. They take ephemeral overlay membership keyed by their incarnation: gunbc.serving.replica_incarnation ReplicaIncarnation, and gunbc.runner.provider_guest_incarnation ProviderGuestIncarnation where the guest is long-lived."),
+      li(text: "**D5. Canonical names live in a fleet-controlled namespace.** Host and service names are under a gunb.ai zone the fleet controls. A ts.net name is a Tailscale attachment endpoint behind the endpoint authority. It is never the durable name in OAuth registrations, application configuration, certificates or operator-facing contracts. The zone needs the operator's nameserver move to Cloudflare. Until then, consumers reach services through the endpoint authority, and the population still embedding ts.net (gunbc.auth.tracker_web_oauth_client tracker_web_oauth_public_redirect_uri first) is counted debt."),
+      li(text: "**D6. Tags and grants are projections of admitted reach demands.** Each projects to exact provider grants. A projection that would widen a demand refuses visibly. The existing extdeps.tailscale.acl member_baseline_grant (autogroup:member to every destination on every port) is the old authority, and it is deleted in the same policy cutover that installs the derived grants. Tailscale grants are additive, so a narrow grant beside it changes nothing."),
+      li(text: "**D7. Tag ownership is split from registration.** tagOwners names the control-plane policy principal. A member's registration capability is attenuated to that subject's exact desired tags, and it cannot assign any other fleet role."),
+      li(text: "**D8. Registration realizations.** Workload identity federation is the selected realization wherever an admitted workload identity issuer and subject exist. Tailscale documents that a federated client ID plus an OIDC token registers a node directly with tailscale up (v1.90.1 or later), that the tags passed to advertise-tags must match the tags configured on the federated identity, and that registration needs the auth_keys scope. Bare metal and providers without a usable workload identity get a one-off, exact-tag key through a separately authorized bootstrap route. An OAuth client stays the fallback, registered like the approvals app's Google client. No generic fleet code knows which realization registered a member. The open question is which of Hetzner, AWS, vast, CI and the owned-host bootstrap have an identity that satisfies an exact issuer, subject and audience contract."),
+      li(text: "**D9. The generic reach arm is renamed from FabricTunnel to ManagedOverlay, not to Tailnet.** extdeps.network.reach Reach becomes DirectLan, ProxyJump or ManagedOverlay { binding, target }, and FabricTunnelNotOperational becomes ManagedOverlayNotOperational. Fabric already names gunbc.fabric and the Spark RoCE rail. The arm stays upstream-neutral because extdeps.network names no product. FleetOverlayAttachment, the fleet's meaning, lives in gunbc.fleet."),
+      li(text: "**D10. Access between members is the focus.** srv3 moves to direct overlay SSH, and its nested hop through srv2 retires."),
+    ]),
+  ]
+}
+
+fn survey() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. Survey"),
+    h3(text: "3.1 Names"),
+    ul(items: [
+      li(text: "gunbc.hostname_allocation is a sound authority: an injective roster through std.allocation_roster, plus resolve_host_selector. It has no row for mtjade1 or srv9 to srv12."),
+      li(text: "About 30 production declarations build a name or address from the identity's spelling. About 11 call sites use the allocation, and those only verify or resolve names; none builds an address."),
+      li(text: "**Funnel one: gunbc.fleet.fleet_reach_endpoint fleet_owned_probe_endpoint_for.** It folds with the host identity as its initial value, so any host that is not a provider guest returns its own identity as the SSH endpoint. Every caller listed in gunbc.endpoint_authority_replacement_cut external_consumers reaches it through fleet_probe_endpoint_for or fleet_probe_target_for."),
+      li(text: "**Funnel two: gunbc.fleet.fleet_tailnet tailnet_host_from and tailnet_base_url_from.** They take an arbitrary NonEmptyStr, and every caller passes the identity. Most callers are services, not hosts (D3): gunbc.auth.approval_ntfy_publish, gunbc.auth.approval_broker_endpoint, gunbc.auth.approval_broker_placement, gunbc.fabric.fabric_storage_placement fabric_storage_endpoint_for, gunbc.live_deploy.spec deployment_tailnet_url, gunbc.live_deploy.role_singleton_convergence roster_host_tailnet_node, gunbc.live_deploy.readiness live_deploy_proxied_health_url, gunbc.workspace_gateway workspace_fleet_gateway, and gunbc.auth.tracker_web_oauth_client tracker_web_oauth_public_redirect_uri."),
+      li(text: "**Identity used as ssh_host:** gunbc.host.host_identity_access, gunbc.host.host_identity_adopt, gunbc.ci.ci_deploy_access, gunbc.live_deploy.spec deployment_srv1_target and gunbc.live_deploy.desired deployment_srv2_target."),
+      li(text: "**Linux hostname:** gunbc.hostname_set and gunbc.host.host_identity_converge already derive it from the allocation. gunbc.os_install srv3_autoinstall_identity and srv4_autoinstall_identity write the identity itself. gunbc.fleet.printer_federation printer_lan_host_identity compares the kernel hostname to the identity."),
+    ]),
+    h3(text: "3.2 Provider vocabulary in generic types (the fork census for D9)"),
+    ul(items: [
+      li(text: "extdeps.network.reach: the Reach arm FabricTunnel and its refusal cause FabricTunnelNotOperational. Matched in test.claim.network_grounding and test.claim.srv3.srv3_subsumption_witness."),
+      li(text: "product.network_topology: TailscaleOverlay, NetworkAttachmentRole TailscaleEndpoint and NetworkReachabilityZone TailscaleMesh. Consumed by gunbc.tailscale_serve_scope, gunbc.fleet.printer_project_delivery and gunbc.fleet.fleet_intent_network. These are the same leak as the Reach arm, so they generalize together to a managed-overlay arm."),
+      li(text: "gunbc.fleet.fleet_tailnet: a fleet module named after the provider, holding fleet_tailnet_domain beside the URL builders. The domain is a Tailscale realization fact. The builders dissolve into the endpoint authority."),
+    ]),
+    h3(text: "3.3 IP addresses"),
+    ul(items: [
+      li(text: "**Host OS reached by automation, which moves behind the endpoint authority:** the host endpoints of gunbc.fleet.fleet_intent_network (still bare strings in a String-typed field, already marked as debt there), gunbc.fleet.fleet_reach srv2_lan_ipv4 and srv3_lan_ipv4, gunbc.fleet.fleet_reach_endpoint provider_guest_endpoints, the gunbc.runner.runner_host_deploy host specs, and the two device IPs in extdeps.tailscale.acl."),
+      li(text: "**BMC, pre-OS, PXE and appliance addresses** belong to gunbc.plans.site_segment_anchor_bmc_reach."),
+      li(text: "**Historical observations and topology facts stay.** These are receipts, provenance strings, segments, the gateway, DHCP reservations, the Spark RoCE rail and the microVM networks."),
+      li(text: "**Stale:** gunbc.endpoint_authority_replacement_cut names a consumer in spark.serving_converge_slice_wet, a module that no longer exists. gunbc.harness.harness_wire imports host_lan_address and never calls it. dgx_spark_router_bindings is empty, so the Spark endpoint path is dead."),
+    ]),
+    h3(text: "3.4 Tailscale"),
+    ul(items: [
+      li(text: "**Modeled (use of a member already attached):** extdeps.tailscale acl, acl_api (Get and Upsert policy, no caller), serve, whois (Node.Name) and identity (Tailscale-User-Login); gunbc.tailscale_acl_emit; gunbc.auth.tailnet_serve_readback; the apt package; the host_software_surface version probe; fleet_posix_accounts SudoTailscale."),
+      li(text: "**Not modeled (becoming a member):** tailscale up and set with hostname and tags, auth keys, the devices API with its device and node identities, OAuth clients and workload identity federation, key expiry, ephemeral nodes, and userspace networking."),
+      li(text: "Only srv1 and srv2 have overlay rows, and those are raw 100.x addresses."),
+      li(text: "**The live policy is wider than any demand.** extdeps.tailscale.acl operator_tailscale_acl_grants starts with member_baseline_grant, so every member reaches every port of every device. operator_tailscale_acl_ssh accepts Tailscale SSH from autogroup:member to autogroup:self (root included) and to tag:ci. operator_tailscale_acl_node_attrs grants funnel to autogroup:member. operator_tailscale_acl_tag_owners names autogroup:admin. The policy is hand-authored, and operator_acl_security_spine_holds restates its shape, which is validation standing where derivation is available."),
+      li(text: "gunbc.tailscale_acl_phase2_credential is design-only. It cites tailscale_acl_upsert_wet, which does not exist. The live ACL push is refused in gunbc.host.host_standup until operator sign-off."),
+    ]),
+  ]
+}
+
+fn model() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. Model"),
+    ul(items: [
+      li(text: "**Subject.** HostIdentity for owned hardware and long-lived guests. ReplicaIncarnation or ProviderGuestIncarnation for rented instances."),
+      li(text: "**Name.** HostIdentity, then HostnameAllocation, then FleetMemberLabel, then the naming-policy row, then LinuxHostname (the existing hostnamectl converge) and the provider machine name. The canonical fleet name is FleetMemberLabel in the fleet zone (D5)."),
+      li(text: "**Attachments.** A subject has one or more NetworkAttachments: FleetOverlayAttachment (the selected realization is Tailscale today), SiteLanAttachment (owned by the site plan), and declared bootstrap or recovery attachments. Attachment selection is policy. A provider switch adds a realization, enrolls and observes members on it, qualifies the required reach demands, switches selection, and retires the old bindings. Consumers do not change."),
+      li(text: "**Provider binding.** OverlayMemberBinding records the subject, the attachment identity, the provider binding, the host or workload incarnation, the provider device identity, the provider node identity, the desired FleetMemberLabel and the desired roles. A machine name is not a device identity. Tailscale documents that a name collision gives the new machine a suffix such as hostname-1, and that the suffix stays after the conflicting machine is renamed."),
+      li(text: "**Incarnation for owned hosts.** No home exists. gunbc.machine_intake.prior_life_boundary is the nearest, since it already draws the line between lives of one machine. OwnedHostIncarnation is a modeling obligation of P2 and extends that boundary rather than minting beside it."),
+      li(text: "**Roles and demands.** A member's roles are already declared: its gunbc.fleet.fleet_enrollment participations, the services gunbc.live_deploy publishes through tailscale serve, and the SSH demand of each gunbc.fleet.fleet_converge_workflow mode. A ReachDemand names a source principal or role, a destination host or service identity, a protocol and port, and a purpose. Demands give a provider-neutral authorization intent, and the Tailscale grant projection is one realization of it. gunbc.tailscale_acl_emit emits the projection, which replaces the hand-authored operator_tailscale_acl_policy rows and the checks that restate them."),
+      li(text: "**Endpoint authority.** EndpointAuthority(subject or service, required attachment or capability) gives ResolvedEndpoint, with its observation and binding, or EndpointRefused with a typed cause. This is the attachment authority gunbc.endpoint_authority_replacement_cut names as its replacement root. No consumer builds a name. A missing allocation, binding or observation refuses, with no fallback to an identity spelling or a raw address."),
+      li(text: "**Independent connection facts.** Endpoint resolution comes from the endpoint authority. Route realization comes from extdeps.network.reach Reach. Provider network grants are the projected demands. Host authentication is the pinned host keys of gunbc.fleet.fleet_host_key_enrollment. Principal authentication is gunbc.fleet.fleet_posix_accounts and gunbc.host.host_authorized_keys_reconcile. Application authorization belongs to each service. None of them stands in for another."),
+    ]),
+  ]
+}
+
+fn enrollment() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. Enrollment and readback"),
+    ul(items: [
+      li(text: "**Per member.** Obtain an exact-tag registration capability through the selected realization (D8), ephemeral for rented instances. Run tailscale up with the TailscaleMachineName and the derived tags. Then read back through the devices API and the member's local status --json."),
+      li(text: "**The join is on identity, never on name.** The control-plane observation and the local observation join on the exact provider device and node identity, and then the name and tags are compared. These are the typed refusals: no local node identity; no matching provider device; more than one matching provider device; a matching name with a different device or node; a matching identity with the wrong name or tags; a stale device from a prior incarnation; and local and control-plane observations that name different nodes."),
+      li(text: "**Authorized replacement on reimage.** Establish the new incarnation. Bind its new provider device identity. Fence the old binding. Retire the recognized superseded device. Read back that exactly one current binding remains. Without this, a first reimage leaves the old record holding the name, the new device takes a suffix, and convergence refuses forever. A device that no binding recognizes is still refused and never removed."),
+      li(text: "**Fresh images carry no key.** The boot origin is public and refuses secrets. A bare-metal member takes its one-off key through the bootstrap route after gunbc.fleet.runtime_identity_match binds the machine."),
+      li(text: "**Cloud instances** register at launch. vast containers may need userspace networking, which is modeled in extdeps.tailscale as an upstream fact, not guessed."),
+      li(text: "**Credential custody.** The registration pattern is selected by gunbc.auth.authorization_pattern_selection select_authorization_pattern and rostered in gunbc.auth.privileged_effect_census. Any custodied secret has a row in gunbc.auth.fleet_secret_accessor_roster, and mint, custody, readback and revoke follow gunbc.cloudflare.r2_token_mint."),
+      li(text: "**Workflow.** A new gunbc.fleet.fleet_converge_workflow mode, wired like HostCredentialCustodyConverge."),
+    ]),
+  ]
+}
+
+fn access_cut() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. The access-policy cut"),
+    ul(items: [
+      li(text: "Every admitted reach demand projects to an exact provider grant, and a projection that would widen a demand refuses visibly."),
+      li(text: "member_baseline_grant is absent after the cut, and so is any other grant no demand produces. The funnel node attribute on autogroup:member is one of these: it is derived from a demand or deleted."),
+      li(text: "**Tailscale SSH is a second authentication route, not a dormant rule.** The cut deletes the operator_tailscale_acl_ssh rules, and the per-member readback proves Tailscale SSH is off. Keeping it instead means modeling it as an authentication route beside OpenSSH, with its own principals. That is a separate decision, not a default."),
+      li(text: "Positive access tests are derived from the demands. Critical edges that no demand covers get generated negative tests."),
+      li(text: "The complete policy is read back from the Tailscale API and compared with the projection as modeled structure, not merely accepted after an upload."),
+    ]),
+  ]
+}
+
+fn phases() -> List<MarkdownBlock> {
+  [
+    h2(text: "7. Phases"),
+    p(text: "Live fleet administration is a gap-intolerant boundary, so the endpoint cut takes the staged form of DESIGN section 3: Y in shadow, then one authority switch that deletes X."),
+    ul(items: [
+      li(text: "**P1. A live census.** The provider device list and every member's status --json, joined on device and node identity with the allocation and the enrollment roster."),
+      li(text: "**P2. The model.** The branded name types. ServiceEndpointIdentity. OwnedHostIncarnation on gunbc.machine_intake.prior_life_boundary. FleetOverlayAttachment and OverlayMemberBinding. ReachDemand with its provider-neutral intent. The extdeps.tailscale additions (devices API, node identity, registration via WIF and auth keys, userspace networking), with each upstream fact cited. The lottery allocations for mtjade1 and srv9 to srv12."),
+      li(text: "**P3. The generic rename (D9).** One cut over the section 3.2 fork census: FabricTunnel becomes ManagedOverlay, and the product.network_topology Tailscale arms become managed-overlay arms. Their matches move in the same change."),
+      li(text: "**P4. Enrollment.** The converge mode, the registration capability, the identity-joined readback and the replacement path. One or two canaries first (a Hetzner guest, then an owned host), then the rest."),
+      li(text: "**P5. Endpoint cutover, staged.** (1) The provider-neutral endpoint authority, with the Tailscale realization beneath it. (2) Device bindings populated read-only. (3) A differential observation path between the old funnels and the new authority, in which the new one never falls back to the old. (4) Every consumer enumerated in sections 3.1 and 3.3 moves to the new contract, with services moving to ServiceEndpointIdentity. (5) One switch moves the root and deletes fleet_owned_probe_endpoint_for, tailnet_host_from and tailnet_base_url_from. (6) Old IP rows stay only as historical evidence, topology, bootstrap observations or selected recovery attachments. (7) The last live raw-IP consumers are deleted after a zero-consumer census."),
+      li(text: "**P6. The access-policy cut (section 6).** The derived grants and tagOwners, the deletion of member_baseline_grant and the Tailscale SSH rules, the derived positive and negative tests, and the structural readback."),
+      li(text: "**P7. The fleet zone (D5)**, after the nameserver move. Canonical host and service names are under gunb.ai. The OAuth redirect registration and any certificates move to them, and the ts.net-embedding debt reaches zero."),
+    ]),
+  ]
+}
+
+fn risks() -> List<MarkdownBlock> {
+  [
+    h2(text: "8. Risks and open items"),
+    ul(items: [
+      li(text: "**Overlapping site subnets.** Two sites can share one private range, so plain subnet routes collide. Reach through a site anchor avoids that (see the site plan), and Tailscale 4via6 routing is the later route."),
+      li(text: "**A WIF credential carries a fixed tag set.** Distinct role sets may each need their own federated identity. P2 decides this from the modeled demand population, not by widening one credential."),
+      li(text: "**To verify upstream:** the devices API fields that carry device and node identity, and how ephemeral-node expiry behaves for vast and AWS instances."),
+      li(text: "**Bootstrap reach before attachment.** OpenSSH principals and pinned host keys work before a member joins the overlay, so the bootstrap route never depends on the overlay it is enrolling into."),
+    ]),
+  ]
+}
+
+data fleet_naming_reach_access_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "fleet-naming-reach-access",
+  title: "Fleet naming, overlay reach and access: allocated names and service identities downstream of identity, a provider-neutral overlay realized by Tailscale, and connection gated by independent facts",
+  body: concat(concat(concat(concat(concat(concat(concat(opening(), settled()), survey()), model()), enrollment()), access_cut()), phases()), risks()),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Retire when every enrolled member has a qualified attachment through the selected fleet-overlay realization, read back and joined on provider device and node identity; no production declaration builds a name or address from a HostIdentity spelling, and no generic type names the provider; the endpoint authority is the only route to a member or service; and the read-back provider policy equals the projection of the admitted reach demands, with no member baseline grant and no Tailscale SSH rule left that no demand produces."),
+  },
+}

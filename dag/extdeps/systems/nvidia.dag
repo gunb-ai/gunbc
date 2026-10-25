@@ -76,6 +76,7 @@ data nvidia_gb10_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: [],
+  dense_tensor_throughput: [],
 }
 
 data dgx_spark_cpu_core_clusters: List<CpuCoreCluster> = [
