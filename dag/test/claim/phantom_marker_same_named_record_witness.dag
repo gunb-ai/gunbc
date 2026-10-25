@@ -34,3 +34,17 @@ test fn imported_record_arm_owes_no_marker() -> Bool {
     ["pub struct GlobalKeyScope;", "compile_error!"]
   )
 }
+
+// THE BOUND-BUT-UNIDENTIFIED RED. The arm Pending shares its name with a data item of its own module.
+// The scope binds the name (bare_occurrence_binding finds the file's declaration), but the binding is
+// not a type declaration, so the type-declaration index cannot identify it and the occurrence is
+// Undecided. Read as unbound, the arm owed `pub struct Pending;` beside the item the scope binds;
+// the decision refuses, located, instead. The unit variant Done, which binds nothing, keeps its marker.
+test fn arm_bound_to_an_unindexed_declaration_refuses() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_witness.unindexed\n\ndata Pending: Int = 1\n\ntype Phase = Pending | Done\n\nfn is_done(p: Phase) -> Bool {\n  match p {\n    Pending => false\n    Done => true\n  }\n}\n",
+    "src/phantom_marker_witness_unindexed.rs",
+    ["compile_error!", "binds a declaration the type-declaration index does not identify", "PartialEq, Eq, serde::Serialize, serde::Deserialize)]\npub struct Done;"],
+    ["pub struct Pending;"]
+  )
+}
