@@ -50,11 +50,10 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal, fleet
 import gunbc.auth.approval_broker_state_directories {
   approval_broker_state_directories,
   approval_assertion_counter_directory,
-  approval_device_push_directory,
   approval_decision_store_directory,
 }
 import gunbc.auth.approval_assertion_counter { approval_assertion_counter_root }
-import gunbc.auth.approval_device_routes { approval_device_push_root }
+import gunbc.auth.approval_device_redemption { approval_device_store_root, approval_device_store_directory }
 import gunbc.auth.approval_decision_store { approval_decision_store_root }
 import gunbc.managed_directory { managed_directory_admit, managed_directory_mode_octal, managed_directory_permissions, ManagedDirectory, ManagedDirectoryAdmitted, ManagedDirectoryRefused, DirectoryDependent, EntriesUnmanaged }
 import gunbc.ownership { Ensured }
@@ -325,17 +324,19 @@ test fn the_state_directory_plan_includes_the_assertion_counter_root() -> Bool {
 
 // THE CENSUS IS THE BROKER STATE ROOTS THE SERVE PATH READS OR WRITES: every serve-written root has a
 // row — the device store and JWKS cache that were converged before this change, the counter root (the
-// observed 503), the push-registration root (the same miss one route later), and the decision store
-// (serve-written at redemption commit, serve-read on every status route). A root joins the deploy by
-// being a row here; adding a broker state root without a row is visible at review in this one list.
+// observed 503), and the decision store (serve-written at redemption commit, serve-read on every status
+// route). A root joins the deploy by being a row here; adding a broker state root without a row is
+// visible at review in this one list. PUSH REGISTRATIONS ARE NOT A ROOT OF THEIR OWN: since the APNs
+// device cutover stage A (#15124) the PUT push-token route commits its slot under
+// approval_device_store_root — the device store row covers them, and a second row for that directory
+// would be the §3 two-rows-one-directory defect.
 test fn the_census_names_every_broker_serve_path_state_root() -> Bool {
   let rows = approval_broker_state_directories()
   let paths = list_map(xs: rows, f: d => d.path as String)
-  count(rows) == 5
+  count(rows) == 4
     && any(paths, p => p == "/var/lib/gunbc/approval-devices")
     && any(paths, p => p == "/var/lib/gunbc/approval-jwks")
     && any(paths, p => p == approval_assertion_counter_root as String)
-    && any(paths, p => p == approval_device_push_root as String)
     && any(paths, p => p == approval_decision_store_root as String)
 }
 
@@ -386,16 +387,22 @@ test fn a_census_row_with_an_uncovered_writer_refuses_the_install() -> Bool {
   }
 }
 
-// THE PUSH AND DECISION ROWS ARE THE SAME SHAPE, DERIVED FROM THEIR OWNERS: the census's whole point is
-// that a new root joins by being a row, not a branch — so a row's ownership story is the device store's,
-// restated once by broker_state_directory.
-test fn the_push_and_decision_rows_are_derived_owner_only() -> Bool {
-  let push = approval_device_push_directory()
+// THE DEVICE-STORE ROW COVERS PUSH REGISTRATIONS, AND THE DECISION ROW IS THE SAME SHAPE, DERIVED FROM
+// ITS OWNER: the census's whole point is that a new root joins by being a row, not a branch — so a row's
+// ownership story is the device store's, restated once by broker_state_directory. The push-registration
+// slots are not their own directory since #15124: the PUT push-token route commits each slot under
+// approval_device_store_root (approval_device_redemption commit_push_registration), so this claim
+// asserts the census carries a row FOR that directory — a live row, not a locally re-minted one, so
+// dropping the store row from the census fails it — and that the row stands at the owner-only shape the
+// push slots and enrolment records need (operator-owned, 0700).
+test fn the_device_store_row_covers_push_registrations_and_the_decision_row_is_derived_owner_only() -> Bool {
+  let store = approval_device_store_directory()
   let decision = approval_decision_store_directory()
-  push.path as String == approval_device_push_root as String
+  any(list_map(xs: approval_broker_state_directories(), f: d => d.path as String), p => p == approval_device_store_root as String)
+    && store.path as String == approval_device_store_root as String
     && decision.path as String == approval_decision_store_root as String
-    && managed_directory_mode_octal(d: push) == "0700"
+    && managed_directory_mode_octal(d: store) == "0700"
     && managed_directory_mode_octal(d: decision) == "0700"
-    && push.owner == fleet_posix_operator_user
+    && store.owner == fleet_posix_operator_user
     && decision.ownership == Ensured
 }
