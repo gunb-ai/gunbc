@@ -161,8 +161,7 @@ fn operation_argv_closed_unevaluated_executable_operations() -> List<ArgvClassif
 
 data operation_argv_unbound_data_reference_operations: List<ArgvClassifiedOperation> = [
   ArgvClassifiedOperation { operation: "dag/gunbc/machine_intake/sol_hold.dag gunbc.machine_intake.sol_hold.ActivateHeld", reason: operation_argv_reason_data_ref },
-  ArgvClassifiedOperation { operation: "dag/gunbc/machine_intake/sol_hold.dag gunbc.machine_intake.sol_hold.ReleaseHeld", reason: operation_argv_reason_data_ref },
-  ArgvClassifiedOperation { operation: "dag/gunbc/owned_process.dag gunbc.owned_process.launch.LaunchOwned", reason: operation_argv_reason_data_ref }
+  ArgvClassifiedOperation { operation: "dag/gunbc/machine_intake/sol_hold.dag gunbc.machine_intake.sol_hold.ReleaseHeld", reason: operation_argv_reason_data_ref }
 ]
 
 data operation_argv_legacy_vocabulary: List<String> = ["package", "bin", "args", "unit", "property"]
