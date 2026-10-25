@@ -54,9 +54,10 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
     intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
-    param_node_name_at, param_node_type_expr, qualified_last_segment,
-    resolved_node_is_kernel_identity_for_name, source_text_at, Cardinality, CompilerDiagnostic,
-    Connective, DeclarationMarker, ExprData, InferredNode, InternTable, NewlineIndex, Node,
+    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
+    qualified_last_segment, resolved_node_is_kernel_identity_for_name, source_text_at, Cardinality,
+    CompilerDiagnostic, Connective, DeclarationMarker, ExprData, InferredNode, InternTable,
+    NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -3531,17 +3532,360 @@ pub fn settled_type(
                 declaration: d,
                 ..
             } => match alias_rhs_of_declaration(d.clone(), env.clone()) {
-                std::option::Option::None => Some(Rc::new(SettledType {
-                    head: d.clone(),
-                    args: n.children.clone(),
-                })),
-                Some(rhs) => {
-                    settled_alias_rhs(rhs.clone(), source_indices.clone(), env.clone(), fuel)
-                }
+                std::option::Option::None => match parameterized_alias_of_declaration(
+                    d.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                ) {
+                    std::option::Option::None => Some(Rc::new(SettledType {
+                        head: d.clone(),
+                        args: n.children.clone(),
+                    })),
+                    Some(pa) => match settled_parameterized_alias(
+                        pa.clone(),
+                        n.children.clone(),
+                        source_indices.clone(),
+                        env.clone(),
+                        fuel.clone(),
+                    ) {
+                        Some(through) => Some(through.clone()),
+                        std::option::Option::None => Some(Rc::new(SettledType {
+                            head: d.clone(),
+                            args: n.children.clone(),
+                        })),
+                    },
+                },
+                Some(rhs) => settled_alias_rhs(
+                    rhs.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                    fuel.clone(),
+                ),
             },
             _ => std::option::Option::None,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParameterizedAlias {
+    pub params: Rc<Vec<String>>,
+    pub rhs: Rc<Node>,
+}
+
+pub fn parameterized_alias_rhs(
+    pre: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<ParameterizedAlias>> {
+    if (((((pre.connective.clone() != Connective::NoConnective)
+        || ((pre.params.clone().len() as i64) == 0))
+        || (pre.type_annotation.clone() != std::option::Option::None))
+        || ((pre.children.clone().len() as i64) > 0))
+        || (pre.return_cardinality.clone() != Cardinality::Required))
+    {
+        std::option::Option::None
+    } else {
+        match pre.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rhs, .. }) => {
+                if (((rhs.connective.clone() != Connective::NoConnective)
+                    || (rhs.return_cardinality.clone() != Cardinality::Required))
+                    || (rhs.type_annotation.clone() != std::option::Option::None))
+                {
+                    std::option::Option::None
+                } else {
+                    Some(Rc::new(ParameterizedAlias {
+                        params: Rc::new({
+                            let mut __result = Vec::new();
+                            for p in pre.params.clone().iter().cloned() {
+                                __result.push(crate::v1_std_core::param_node_name_at(
+                                    p.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                        rhs: rhs.clone(),
+                    }))
+                }
+            }
+            _ => std::option::Option::None,
+        }
+    }
+}
+
+pub fn parameterized_alias_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<ParameterizedAlias>> {
+    match symbol_index_lookup(
+        env.symbol_index.clone(),
+        v1_rt::concat(
+            v1_rt::concat(item_ref.module_path.clone(), ".".to_string()),
+            item_ref.decl_name.clone(),
+        ),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(item) => match parameterized_alias_rhs(item.clone(), source_indices) {
+            std::option::Option::None => std::option::Option::None,
+            Some(pa) => match pa.rhs.declaration.clone() {
+                Some(_) => Some(pa.clone()),
+                std::option::Option::None => match alias_rhs_with_index_identity(
+                    pa.rhs.clone(),
+                    item_ref.module_path.clone(),
+                    env.clone(),
+                ) {
+                    Some(headed) => Some(Rc::new(ParameterizedAlias {
+                        params: pa.params.clone(),
+                        rhs: headed.clone(),
+                    })),
+                    std::option::Option::None => std::option::Option::None,
+                },
+            },
+        },
+    }
+}
+
+pub fn settled_parameterized_alias(
+    alias: Rc<ParameterizedAlias>,
+    use_args: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+    fuel: i64,
+) -> Option<Rc<SettledType>> {
+    if (((alias.params.clone().len() as i64) != (use_args.clone().len() as i64))
+        || (fuel.clone() <= 0))
+    {
+        std::option::Option::None
+    } else {
+        {
+            let slot_seed = v1_rt::rc_empty_map::<String, Rc<Node>>();
+            let slot_bindings = Rc::new(
+                alias
+                    .params
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            .fold(
+                slot_seed.clone(),
+                |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, String)| match use_args
+                    .clone()
+                    .get((pair.0.clone()) as usize)
+                    .cloned()
+                {
+                    Some(arg) => v1_rt::rc_map_insert(acc.clone(), pair.1.clone(), arg.clone()),
+                    std::option::Option::None => acc.clone(),
+                },
+            );
+            let substituted = substitute_type_slots_mode(
+                alias.rhs.clone(),
+                slot_bindings,
+                "".to_string(),
+                source_indices.clone(),
+                false,
+                true,
+            );
+            match substituted.declaration.clone() {
+                Some(head) => settled_rhs(
+                    substituted.clone(),
+                    head.clone(),
+                    source_indices.clone(),
+                    env,
+                    v1_rt::int_sub(fuel.clone(), 1),
+                ),
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
+    }
+}
+
+pub fn substitute_type_slots(
+    n: Rc<Node>,
+    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
+    decl_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    substitute_type_slots_scoped(n, slot_bindings, decl_name, source_indices, false)
+}
+
+pub fn substitute_type_slots_scoped(
+    n: Rc<Node>,
+    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
+    decl_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bind_type_variables: bool,
+) -> Rc<Node> {
+    substitute_type_slots_mode(
+        n,
+        slot_bindings,
+        decl_name,
+        source_indices,
+        bind_type_variables,
+        false,
+    )
+}
+
+pub fn substitute_type_slots_mode(
+    n: Rc<Node>,
+    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
+    decl_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bind_type_variables: bool,
+    resolved_slots: bool,
+) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let tv_slot = if bind_type_variables.clone() {
+            match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
+                    v1_rt::map_get(&slot_bindings, tv_id.clone())
+                }
+                _ => std::option::Option::None,
+            }
+        } else {
+            std::option::Option::None
+        };
+        if (tv_slot.clone() != std::option::Option::None) {
+            return crate::v1_std_core::preserve_outer_optional_cardinality(
+                n.clone(),
+                tv_slot.clone().unwrap(),
+            );
+        }
+        let leaf = ((((n.children.clone().len() as i64) == 0)
+            && (n.connective.clone() == Connective::NoConnective))
+            && (n.body.clone() == std::option::Option::None));
+        let is_slot = (leaf.clone()
+            && ((n.inferred.clone() == std::option::Option::None)
+                || (resolved_slots.clone()
+                    && v1_rt::map_has(
+                        &slot_bindings,
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+                    ))));
+        if is_slot.clone() {
+            match v1_rt::map_get(
+                &slot_bindings,
+                crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+            ) {
+                Some(concrete) => crate::v1_std_core::preserve_outer_optional_cardinality(
+                    n.clone(),
+                    concrete.clone(),
+                ),
+                std::option::Option::None => n.clone(),
+            }
+        } else {
+            {
+                let new_children = Rc::new({
+                    let mut __result = Vec::new();
+                    for child in n.children.clone().iter().cloned() {
+                        __result.push(
+                            if (crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                child.clone(),
+                            ) == decl_name.clone())
+                            {
+                                {
+                                    let substituted_args = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for arg in child.children.clone().iter().cloned() {
+                                            __result.push(substitute_type_slots_mode(
+                                                arg.clone(),
+                                                slot_bindings.clone(),
+                                                decl_name.clone(),
+                                                source_indices.clone(),
+                                                bind_type_variables.clone(),
+                                                resolved_slots.clone(),
+                                            ));
+                                        }
+                                        __result
+                                    });
+                                    Rc::new(Node {
+                                        occurrence_identity: child.occurrence_identity.clone(),
+                                        name: child.name.clone(),
+                                        span: child.span.clone(),
+                                        ident_span: child.ident_span.clone(),
+                                        children: substituted_args.clone(),
+                                        connective: child.connective.clone(),
+                                        params: child.params.clone(),
+                                        inferred: child.inferred.clone(),
+                                        return_cardinality: child.return_cardinality.clone(),
+                                        uses: child.uses.clone(),
+                                        body: child.body.clone(),
+                                        transport: child.transport.clone(),
+                                        properties: child.properties.clone(),
+                                        type_annotation: child.type_annotation.clone(),
+                                        is_self_recursive: child.is_self_recursive.clone(),
+                                        has_non_tail_self_call: child
+                                            .has_non_tail_self_call
+                                            .clone(),
+                                        match_pattern: child.match_pattern.clone(),
+                                        module_item_kind: child.module_item_kind.clone(),
+                                        declaration_marker: child.declaration_marker.clone(),
+                                        declaration: child.declaration.clone(),
+                                        expr_data: child.expr_data.clone(),
+                                        ident: None,
+                                    })
+                                }
+                            } else {
+                                substitute_type_slots_mode(
+                                    child.clone(),
+                                    slot_bindings.clone(),
+                                    decl_name.clone(),
+                                    source_indices.clone(),
+                                    bind_type_variables.clone(),
+                                    resolved_slots.clone(),
+                                )
+                            },
+                        );
+                    }
+                    __result
+                });
+                let new_inferred = match n.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        Some(Rc::new(InferredNode::Resolved {
+                            node: substitute_type_slots_mode(
+                                rt.clone(),
+                                slot_bindings.clone(),
+                                decl_name.clone(),
+                                source_indices.clone(),
+                                bind_type_variables.clone(),
+                                resolved_slots.clone(),
+                            ),
+                        }))
+                    }
+                    _ => n.inferred.clone(),
+                };
+                Rc::new(Node {
+                    occurrence_identity: n.occurrence_identity.clone(),
+                    name: n.name.clone(),
+                    span: n.span.clone(),
+                    ident_span: n.ident_span.clone(),
+                    children: new_children.clone(),
+                    connective: n.connective.clone(),
+                    params: n.params.clone(),
+                    inferred: new_inferred.clone(),
+                    return_cardinality: n.return_cardinality.clone(),
+                    uses: n.uses.clone(),
+                    body: n.body.clone(),
+                    transport: n.transport.clone(),
+                    properties: n.properties.clone(),
+                    type_annotation: n.type_annotation.clone(),
+                    is_self_recursive: n.is_self_recursive.clone(),
+                    has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                    match_pattern: n.match_pattern.clone(),
+                    module_item_kind: n.module_item_kind.clone(),
+                    declaration_marker: n.declaration_marker.clone(),
+                    declaration: n.declaration.clone(),
+                    expr_data: n.expr_data.clone(),
+                    ident: None,
+                })
+            }
+        }
+    })
 }
 
 pub fn settled_alias_rhs(
