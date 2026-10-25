@@ -814,10 +814,14 @@ fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
       match roster_label_splices(before: before, edits: labels) {
         RosterApplyRefused { reason: r } => RosterApplyRefused { reason: r }
         RosterApplyWritten { content: relabelled } =>
-          if roster_labels_below(labels: labels, at: end) && roster_import_and_labels_admitted(start: start, end: end, text: text, labels: labels) {
-            roster_splice(before: relabelled, start: start, end: end, replacement: roster_edit_replacement(text: text, own_line: own_line))
-          } else {
-            RosterApplyRefused { reason: RefusalExtentMismatch }
+          match roster_import_and_labels_disjoint(start: start, end: end, text: text, labels: labels) {
+            Present { value: r } => RosterApplyRefused { reason: r }
+            Absent =>
+              if roster_labels_below(labels: labels, at: end) {
+                roster_splice(before: relabelled, start: start, end: end, replacement: roster_edit_replacement(text: text, own_line: own_line))
+              } else {
+                RosterApplyRefused { reason: RefusalExtentMismatch }
+              }
           }
       }
   }
@@ -832,13 +836,6 @@ fn roster_import_and_labels_disjoint(start: Int, end: Int, text: String, labels:
     LabelsRenameRefused { reason: r } => Present { value: r }
     LabelsSelected { edits: _ } => Absent
     LabelsAmbiguous => Present { value: RefusalLabelSitesAmbiguous }
-  }
-}
-
-fn roster_import_and_labels_admitted(start: Int, end: Int, text: String, labels: List<RosterLabelEdit>) -> Bool {
-  match roster_import_and_labels_disjoint(start: start, end: end, text: text, labels: labels) {
-    Present { value: _ } => false
-    Absent => true
   }
 }
 
