@@ -1211,8 +1211,8 @@ test fn the_lab_publishes_into_its_integration_branch_and_live_into_main() -> Bo
 // stops its consumer at the first read: credential slots on 2026-10-16, worktree claims on 2026-10-20. The
 // join is over the roots the instance's durable slot stores read under it, and the creator it asks for is the
 // one instance directory list. The session slot store is the declared exception: its creator is
-// belt_session_slots_ensure, which creates exactly stores.slots_root, the path session_placement_stores
-// derives; consolidating it into the list is a named follow-up. THE LIST OF STORES IS AUTHORED, which is the
+// belt_session_slots_ensure, which creates exactly the root of stores.slots, the SlotStore session_placement_stores
+// builds and every lifecycle write uses; consolidating it into the list is a named follow-up. THE LIST OF STORES IS AUTHORED, which is the
 // same declared limit as the directory list itself (D14 step 4).
 fn slot_store_roots_without_a_creator(instance: HostDashboardInstance, demands: List<OwnedDirectoryTarget>) -> List<FilePath> {
   filter([

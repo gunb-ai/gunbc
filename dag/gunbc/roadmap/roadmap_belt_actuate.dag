@@ -1607,20 +1607,21 @@ fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id
   }
 }
 
-// THE SLOT STORE IS CREATED BY THE SAME CAPABILITY THAT CREATES ATTEMPT STATE, before the settlement
+// THE SLOT STORE IS CREATED BY THE SAME CAPABILITY THAT CREATES ATTEMPT STATE, at the root read off
+// the very SlotStore every lifecycle write in stores.slots goes to (one root, not a path beside it), before the settlement
 // pass reads it and before any slot is opened in it, so "the store is missing" never has to be told
 // apart from "the store could not be listed" by reading an error string. Present carries the refusal.
 fn belt_session_slots_ensure(instance: HostDashboardInstance, stores: SessionPlacementStores) -> String? {
   match belt_exec(
     cmd: host_exec_argv(
       program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
-      args: ["-d", "-m", "0700", stores.slots_root as String],
+      args: ["-d", "-m", "0700", stores.slots.root as String],
     ),
     workdir: belt_observe_workdir as String,
   ) {
     ExecOk { stdout: _ } => none
-    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
-    ExecRefused { program, reason } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, "): ", reason], "") }
+    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", stores.slots.root as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
+    ExecRefused { program, reason } => Present { value: join(["the session slot store ", stores.slots.root as String, " could not be created (", program, "): ", reason], "") }
   }
 }
 
