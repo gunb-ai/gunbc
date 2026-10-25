@@ -8,7 +8,8 @@ import v2.test.claim.parse.supplied_token_stream_support {
   supplied_stream_parse
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.node { Node, NodeFold, Symbol, fold_node, name_occurrences }
+import v2.std.node { Node, NodeFold, Symbol, fold_node, name_occurrences, node_subtree_nodes }
+import v2.extdeps.languages.dag { dag_node_is_int_literal_atom }
 import v2.std.integer { Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -40,6 +41,22 @@ fn cb2_normalizes(o: Outcome<NormalizedTree>) -> Bool {
 // B -- dag_grammar_generic_arg_expr (std.integer `MachineWidth<8>`).
 test fn int_literal_generic_argument_parses_holds() -> Bool {
   cb2_parses(o: cb2_parsed_0())
+}
+
+// The argument of `W<8>` is a literal VALUE node (the int-literal atom, magnitude child), not a type
+// atom named "8": exactly one int-literal atom in the parsed tree, so the value survives parse.
+fn cb2_int_literal_atoms(o: Outcome<Node>) -> Int {
+  match o {
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree), init: 0, f: fn(acc, n) {
+        if dag_node_is_int_literal_atom(node: n) { acc + 1 } else { acc }
+      })
+    Rejected { diagnostics: _ } => -1
+  }
+}
+
+test fn int_literal_generic_argument_is_a_literal_value_node_holds() -> Bool {
+  cb2_int_literal_atoms(o: cb2_parsed_0()) == 1
 }
 
 test fn bare_int_literal_is_not_a_type_holds() -> Bool {

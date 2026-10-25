@@ -97,7 +97,7 @@ test fn witness_live_themes_clear_hardened_law() -> Bool {
 }
 
 fn mud_theme() -> Theme {
-  Theme { name: "mud", scheme: "dark", assignments: [
+  Theme { name: "mud", scheme: SchemeDark, assignments: [
     assign(role: CanvasRole, material: night_canvas),
     assign(role: SurfaceRole, material: night_canvas),
     assign(role: TextRole, material: night_canvas),

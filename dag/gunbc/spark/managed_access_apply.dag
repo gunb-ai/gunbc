@@ -1,6 +1,6 @@
 module gunbc.spark.managed_access_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Int, Secret }
+import std.types { String, Bool, List, NonEmptyStr, Int, Secret, PathSegment }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, serialize_content_hash }
@@ -15,15 +15,24 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
 }
-import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
+import gunbc.auth.private_secret_file {
+  with_private_secret_file,
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
+}
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text,
   FleetSshExecutionContext,
   FleetSshAttemptIdentity,
   fleet_ssh_attempt_identity,
   FleetSshCredentialBinding,
   fleet_ssh_execution_context_of,
+  materialize_fleet_ssh_multiplex_directory,
+  fleet_ssh_multiplex_receipt,
   materialize_fleet_known_hosts_anchor,
   known_hosts_materialization_receipt,
   SshTarget,
@@ -80,6 +89,23 @@ type SparkApplyStep {
 type SparkApplyReport
   = ApplyAttempted { first: SparkApplyStep, more: List<SparkApplyStep> }
   | ApplyNotAttempted { cause: String }
+
+// A CREDENTIAL FILE THAT OUTLIVED THE LEGS IS A STEP THAT FAILED, not a reason to report that nothing
+// ran: the privileged legs have already acted, so their steps stay and the removal is appended as a
+// refused step. Reporting ApplyNotAttempted here would hide applied changes behind a false "no".
+fn report_with_credential_residue(report: SparkApplyReport) -> SparkApplyReport {
+  match report {
+    ApplyAttempted { first: f, more: m } => ApplyAttempted {
+      first: f,
+      more: concat(m, [SparkApplyStep {
+        effect_label: "remove-administrator-credential-file",
+        outcome: ApplyRefused { cause: "the administrator credential file could not be removed after the legs ran, so it may remain on disk and requires cleanup" },
+      }]),
+    }
+    ApplyNotAttempted { cause: c } =>
+      ApplyNotAttempted { cause: join([c, "; and the administrator credential file could not be removed, so it may remain on disk and requires cleanup"], "") }
+  }
+}
 
 fn spark_apply_steps(report: SparkApplyReport) -> List<SparkApplyStep> {
   match report {
@@ -162,8 +188,8 @@ fn apply_outcome_label(outcome: SparkApplyOutcome) -> String {
 // not by itself PREVENT a future caller putting the credential in argv -- `as String` is still
 // writable -- so this is mitigatable, not structural; what it buys is that the wrong move now
 // requires an explicit unwrap at the site that makes it, where a reader and a lens can both see it.
-fn spark_admin_credential_file_name(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
-  join(["gunbc-spark-attempt-", attempt as String, "-admin-password"], "") as NonEmptyStr
+fn spark_admin_credential_file_name(attempt: FleetSshAttemptIdentity) -> PathSegment {
+  join(["gunbc-spark-attempt-", attempt as String, "-admin-password"], "") as PathSegment
 }
 
 // THE PASSWORD SESSION IS NO LONGER CHOSEN HERE, IT IS DERIVED. This leg was already correct --
@@ -185,12 +211,12 @@ fn privileged_leg(
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
     Absent => ApplyRefused { cause: "the privileged invocation is not expressible as portable remote words" }
     Present { value: words } =>
+      match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host), principal: admin_principal as NonEmptyStr) {
+      SshTargetRefused { endpoint: e, refusal: why } => ApplyRefused { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
+      SshTargetResolved { target: target } =>
       match exec_as_fleet_principal_with_stdin(
         context: context,
-        target: SshTarget {
-          endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
-          principal: admin_principal as NonEmptyStr,
-        },
+        target: target,
         words: words,
         stdin_payload: join([admin_credential as String, "\n", script, "\n"], ""),
         credential: BootstrapCredentialFileHeld { path: admin_credential_file },
@@ -202,6 +228,7 @@ fn privileged_leg(
           } else {
             ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
           }
+      }
       }
   }
 }
@@ -229,12 +256,12 @@ fn managed_principal_leg(
   match portable_remote_words(raws: raw_words) {
     Absent => ApplyRefused { cause: "non-portable remote word" }
     Present { value: words } =>
+      match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host), principal: managed_principal as NonEmptyStr) {
+      SshTargetRefused { endpoint: e, refusal: why } => ApplyRefused { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
+      SshTargetResolved { target: target } =>
       match exec_as_fleet_principal_with_stdin(
         context: context,
-        target: SshTarget {
-          endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
-          principal: managed_principal as NonEmptyStr,
-        },
+        target: target,
         words: words,
         stdin_payload: "",
         credential: BootstrapCredentialNotHeld,
@@ -246,6 +273,7 @@ fn managed_principal_leg(
           } else {
             ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
           }
+      }
       }
   }
 }
@@ -406,9 +434,10 @@ fn spark_managed_access_apply_with_resolved_credentials(
     Absent => ApplyNotAttempted { cause: "attempt identity is not a safe path segment" }
     Present { value: attempt } => {
       let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
-      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential_binding) {
+      let multiplex = materialize_fleet_ssh_multiplex_directory()
+      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential_binding, multiplex: multiplex) {
         Absent => ApplyNotAttempted {
-          cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""),
+          cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization), " ", fleet_ssh_multiplex_receipt(preparation: multiplex)], ""),
         }
         Present { value: context } => match portable_remote_word(raw: spark_managed_login) {
           Absent => ApplyNotAttempted { cause: "the managed login is not a portable word, so no script may name it" }
@@ -416,9 +445,9 @@ fn spark_managed_access_apply_with_resolved_credentials(
             Absent => ApplyNotAttempted { cause: "the inference login is not a portable word, so no script may name it" }
             Present { value: inference_word } => {
           let admin_principal = fleet_bootstrap_principal_login() as String
-          match with_materialized_ssh_key_file(
-            identity_file_name: spark_admin_credential_file_name(attempt: attempt),
-            secret_bytes: admin_credential,
+          match with_private_secret_file(
+            file_name: spark_admin_credential_file_name(attempt: attempt),
+            content: admin_credential,
             use: fn(admin_credential_file) {
           let create = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
@@ -448,9 +477,12 @@ fn spark_managed_access_apply_with_resolved_credentials(
           }
             },
           ) {
-            MaterializedSshKeyFileBracketCompleted { value: report } => report
-            MaterializedSshKeyFileBracketRefused { cause: cause } =>
+            PrivateSecretFileCompleted { value: report } => report
+            PrivateSecretFileCompletedResidueRemains { value: report } => report_with_credential_residue(report: report)
+            PrivateSecretFileNotEntered { cause: cause } =>
               ApplyNotAttempted { cause: join(["the administrator credential could not be materialized owner-only, so no privileged leg ran: ", cause as String], "") }
+            PrivateSecretFileNotEnteredResidueRemains { cause: cause } =>
+              ApplyNotAttempted { cause: join(["the administrator credential could not be materialized owner-only, so no privileged leg ran, and material may remain on disk: ", cause as String], "") }
           }
             }
           }

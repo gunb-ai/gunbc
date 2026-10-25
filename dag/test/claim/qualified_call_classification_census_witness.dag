@@ -1,0 +1,109 @@
+module test.claim.qualified_call_classification_census_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE QUALIFIED SPELLING, EVERY CALL PATH: THE FORK CENSUS FOR "QUALIFIED FUNCTION VS METHOD ON RECEIVER".
+//
+// Whether `a.b.f(...)` is a call into module `a.b`, a method on a receiver, or a service operation
+// was decided at several sites that each re-read the spelling (`contains(name, ".")`) or a
+// symbol-index hit, and was patched one site at a time (#13925, #14085, #14089 -- the last reverted
+// by #14147 because it turned effect operations into missing functions). v1.compiler.env
+// `declared_module_owner` is now the one classifier. Each arm below pushes one distinct denotation
+// through the real compile seam over a supplied multi-module manifest, so a fix to one site cannot
+// hide a sibling that still forks. The eight accept arms are the regression control for the
+// consolidation (the census is green before and after on main); the one refuse arm is the control
+// that the classifier did not widen: a service is registered under its AUTHORED name (v1.compiler.infer
+// scope fold, `svc_registry`), so a module-qualified service spelling names no service and must refuse
+// rather than be reclassified as a module call or a receiver method.
+//
+// dissolve-on: none. Per DESIGN section 4b(4) the discriminating evidence stays enrolled.
+
+fn qc_provider_b() -> String {
+  "module a.b\n\nfn f(xs: List<Int>) -> List<Int> {\n  xs\n}\n"
+}
+
+fn qc_provider_c() -> String {
+  "module a.c\n\nfn f(xs: List<Int>) -> Int {\n  xs |> count\n}\n"
+}
+
+fn qc_service() -> String {
+  "module svc.probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n"
+}
+
+fn qc_run(consumer: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("a/b.dag", qc_provider_b()),
+      fixture_source("a/c.dag", qc_provider_c()),
+      fixture_source("svc/probe.dag", qc_service()),
+      fixture_source("consumer.dag", consumer),
+    ],
+    entry: "consumer.dag",
+  })
+}
+
+fn qc_accepts(consumer: String) -> Bool {
+  match qc_run(consumer) {
+    FixtureCompileCompleted { module_count: _, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(rows) == 0 && count(files) > 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn module_path_call_in_call_position_accepts() -> Bool {
+  qc_accepts("module consumer\n\nimport a.b { f }\n\nfn run() -> Int {\n  a.b.f(xs: [1, 0, 2]) |> count\n}\n")
+}
+
+test fn module_path_call_in_pipe_position_accepts() -> Bool {
+  qc_accepts("module consumer\n\nimport a.b { f }\n\nfn run() -> Int {\n  [1, 0, 2] |> a.b.f() |> count\n}\n")
+}
+
+test fn module_path_call_without_importing_the_leaf_accepts() -> Bool {
+  qc_accepts("module consumer\n\nimport a.b\n\nfn run() -> Int {\n  a.b.f(xs: [1]) |> count\n}\n")
+}
+
+test fn same_leaf_in_two_modules_each_reaches_its_own_accepts() -> Bool {
+  qc_accepts("module consumer\n\nimport a.b\nimport a.c\n\nfn run() -> Int {\n  let l = a.b.f(xs: [1])\n  a.c.f(xs: l)\n}\n")
+}
+
+test fn same_named_local_fn_does_not_capture_the_qualified_call_accepts() -> Bool {
+  qc_accepts("module consumer\n\nimport a.b\n\nfn f(xs: List<Int>) -> Int {\n  0\n}\n\nfn run() -> Int {\n  let l = a.b.f(xs: [1])\n  f(xs: l)\n}\n")
+}
+
+test fn kernel_method_on_a_local_stays_a_method_accepts() -> Bool {
+  qc_accepts("module consumer\n\nimport a.b\n\nfn run(xs: List<Int>) -> Int {\n  xs |> count\n}\n")
+}
+
+test fn local_root_shadowing_a_module_root_is_a_receiver_accepts() -> Bool {
+  qc_accepts("module consumer\n\nimport a.b\n\ntype Inner {\n  items: List<Int>\n}\n\ntype Holder {\n  b: Inner\n}\n\nfn run(a: Holder) -> Int {\n  a.b.items |> count\n}\n")
+}
+
+test fn service_operation_through_an_imported_service_name_accepts() -> Bool {
+  qc_accepts("module consumer\n\nimport svc.probe { Probe }\n\nfn run() -> String {\n  let r = Probe.Version()\n  \"\"\n}\n")
+}
+
+// The refusal must be the COMPILER's judgment (FixtureCompileRefused with a blocking row), not the
+// harness's: FixtureInstrumentRefused is a broken manifest and cannot stand for it. Its paired
+// positive control is service_operation_through_an_imported_service_name_accepts, the same
+// manifest with only the module qualification removed.
+test fn module_qualified_service_spelling_is_refused_not_reclassified() -> Bool {
+  match qc_run("module consumer\n\nimport svc.probe { Probe }\n\nfn run() -> String {\n  let r = svc.probe.Probe.Version()\n  \"\"\n}\n") {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(fixture_blocking_rows(rows)) > 0
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}

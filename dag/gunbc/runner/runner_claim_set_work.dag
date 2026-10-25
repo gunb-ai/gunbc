@@ -1,0 +1,126 @@
+module gunbc.runner.runner_claim_set_work
+
+import std.types { String, List, NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import std.optional { Present, Absent }
+import extdeps.bazel.label { Label }
+import extdeps.crypto.hash { Sha256, Sha512 }
+import product.fabric.work { ExecutionRequirements }
+import gunbc.repository { gunbc_repository }
+import gunbc.repo.repo_self_build { repo_self_build_package }
+import extdeps.rust.cargo_build { cargo_build_release_bin_offline_command }
+import extdeps.exec.command { argv_words }
+import gunbc.cli_invoke { gunbc_bin_name, release_bin_rel_path }
+import gunbc.runner.microvm_guest_artifacts {
+  GuestBaseArtifact, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable,
+  runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact,
+}
+import gunbc.runner.runner_guest_image {
+  runner_guest_job_path_name, runner_guest_job_path_value, runner_guest_job_home_name, runner_guest_job_home_value,
+}
+import gunbc.fabric.fabric_witness_run {
+  FabricCiSource, FabricCiExecutionSpec, FabricCiEnvironmentEntry, ClaimSetRun,
+  FabricCiWorkBinding, FabricCiWorkRefused, FabricCiCoordinateMissing,
+  bind_fabric_ci_work,
+}
+
+// THE CLAIM-SET WORK AS A FRESH MICROVM REALIZES IT (FCI-0 for the revision job).
+//
+// gunbc.fabric.fabric_witness_run owns what a fabric CI Work IS; this module supplies the
+// coordinates a microVM realization makes true, so the fabric module never imports the guest image
+// and the guest image never decides Work identity.
+//
+// What each coordinate pins, and where its authority lives:
+// - source: the caller's FabricCiSource; only a verified commit-and-tree reaches Work, so a moving
+//   ref or a working directory refuses before any guest boots (the stale-head and FETCH_HEAD class).
+// - toolchain: the guest kernel and base rootfs by their pinned SHA-256
+//   (gunbc.runner.microvm_guest_artifacts), plus rust-toolchain.toml read from the verified tree.
+//   The channel is not restated here: that file is its sole authority and the tree already pins it.
+//   An artifact without a pinned digest refuses rather than entering identity as a name.
+// - executable: the one binary the claims invoke, built once, offline and locked, by exactly the
+//   command the guest unit runs (gunbc.runner.runner_revision_job_guest), and its path.
+// - environment: the guest job's PATH and HOME (gunbc.runner.runner_guest_image).
+// - cache: none. Every run starts from a fresh rootfs and a fresh target directory; closure reuse by
+//   revision is the next rung, after a receipt makes the job trustworthy.
+// - credentials: a read of the public repository needs none, and the run is granted none.
+//
+// CONSUMERS. The witness test.claim.runner.runner_claim_set_work_witness, in this change. The
+// executor that starts the guest for a committed grant (FCI-2 and FCI-3, owned by this lane) is the
+// production consumer, and is the next change.
+
+data claim_set_checkout_materialization: List<NonEmptyStr> = [
+  "fresh-microvm-rootfs",
+  "git-fetch-exact-commit",
+  "verify-commit-tree-before-exec",
+]
+
+data claim_set_cache_policy: List<NonEmptyStr> = ["no-cache", "fresh-target-dir"]
+
+data claim_set_permitted_credential_refs: List<NonEmptyStr> = ["none:public-repository-read"]
+
+data claim_set_output_manifest: List<NonEmptyStr> = ["claim-set-build-log", "claim-set-claim-logs"]
+
+data claim_set_terminal_result_manifest: List<NonEmptyStr> = ["claim-set-per-claim-exit-status", "claim-set-receipt"]
+
+fn guest_artifact_pin_material(artifact: GuestBaseArtifact) -> NonEmptyStr? {
+  match artifact.integrity {
+    ArtifactDigestPinned { digest, provenance: _ } => match digest.algorithm {
+      Sha256 => Present { value: concat("guest-artifact:", concat(artifact.filename as String, concat("@sha256:", digest.hex as String))) }
+      Sha512 => Present { value: concat("guest-artifact:", concat(artifact.filename as String, concat("@sha512:", digest.hex as String))) }
+    }
+    ArtifactDigestUnpinned { cause: _ } => none
+    ArtifactDigestNotPinnable { cause: _ } => none
+  }
+}
+
+fn claim_set_toolchain_provenance(kernel: GuestBaseArtifact, rootfs: GuestBaseArtifact) -> List<NonEmptyStr>? {
+  match guest_artifact_pin_material(artifact: kernel) {
+    Absent => none
+    Present { value: kernel_pin } => match guest_artifact_pin_material(artifact: rootfs) {
+      Absent => none
+      Present { value: rootfs_pin } => Present { value: [kernel_pin, rootfs_pin, "rust-toolchain.toml@verified-tree"] }
+    }
+  }
+}
+
+// The guest artifacts are parameters so a witness can supply an unpinned one; production passes the
+// two rows microvm_guest_artifacts declares.
+fn claim_set_run_work_with_guest(
+  source: FabricCiSource,
+  claims: FreeSemigroup<Label>,
+  requirements: ExecutionRequirements,
+  kernel: GuestBaseArtifact,
+  rootfs: GuestBaseArtifact,
+) -> FabricCiWorkBinding {
+  match claim_set_toolchain_provenance(kernel: kernel, rootfs: rootfs) {
+    Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "guest-artifact-pinned-digest" } }
+    Present { value: toolchain } => bind_fabric_ci_work(
+      principal: "gunbc",
+      spec: FabricCiExecutionSpec {
+        subject: ClaimSetRun { repository: gunbc_repository, claims: claims, requirements: requirements },
+        source: source,
+        checkout_materialization: claim_set_checkout_materialization,
+        toolchain_provenance: toolchain,
+        executable_provenance: [join(argv_words(command: cargo_build_release_bin_offline_command(package: repo_self_build_package as String, bin: gunbc_bin_name as String)), " ") as NonEmptyStr, release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr],
+        environment: [
+          FabricCiEnvironmentEntry { name: runner_guest_job_path_name, value: runner_guest_job_path_value },
+          FabricCiEnvironmentEntry { name: runner_guest_job_home_name, value: runner_guest_job_home_value },
+        ],
+        cache_policy: claim_set_cache_policy,
+        permitted_credential_refs: claim_set_permitted_credential_refs,
+        output_manifest: claim_set_output_manifest,
+        terminal_result_manifest: claim_set_terminal_result_manifest,
+      },
+    )
+  }
+}
+
+fn claim_set_run_work(source: FabricCiSource, claims: FreeSemigroup<Label>, requirements: ExecutionRequirements) -> FabricCiWorkBinding {
+  claim_set_run_work_with_guest(
+    source: source,
+    claims: claims,
+    requirements: requirements,
+    kernel: runner_guest_kernel_artifact,
+    rootfs: runner_guest_base_rootfs_artifact,
+  )
+}

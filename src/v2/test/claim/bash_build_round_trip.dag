@@ -1,5 +1,6 @@
 module v2.test.claim.bash_build_round_trip
 
+
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
@@ -16,9 +17,7 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_cmd_wc_minus_c_emitted,
   bash_fold_target_model_for_emitted_witness
 }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

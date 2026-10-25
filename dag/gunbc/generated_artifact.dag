@@ -16,7 +16,7 @@ import gunbc.fleet.fleet_intent { ComputeHost }
 import product.host_identity { HostIdentity }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
+import std.dissolution { unbound_dissolution }
 
 type GeneratedArtifact
   = WitnessFloorYamlArtifact
@@ -61,6 +61,10 @@ type GeneratedArtifact
   | ApproveIosProtocolSwiftArtifact
   | ApproveIosWireSwiftArtifact
   | ApproveIosProtocolVectorTestsSwiftArtifact
+  | ApproveIosEnrolmentMachineSwiftArtifact
+  | ApproveIosOperationErrorsSwiftArtifact
+  | ApproveIosEnrolmentMachineTestsSwiftArtifact
+  | ApproveIosOperationErrorsTestsSwiftArtifact
 
 // CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
 // resolves (gunbc.whole_corpus_compile_demand_projection).
@@ -161,6 +165,10 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     ApproveIosProtocolSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "Protocol.swift" }
     ApproveIosWireSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "Wire.swift" }
     ApproveIosProtocolVectorTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "ProtocolVectorTests.swift" }
+    ApproveIosEnrolmentMachineSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "EnrolmentMachine.swift" }
+    ApproveIosOperationErrorsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "OperationErrors.swift" }
+    ApproveIosEnrolmentMachineTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "EnrolmentMachineTests.swift" }
+    ApproveIosOperationErrorsTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "OperationErrorsTests.swift" }
     Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_layout_generated.dag" }
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
@@ -246,6 +254,10 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     ApproveIosProtocolSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     ApproveIosWireSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     ApproveIosProtocolVectorTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    ApproveIosEnrolmentMachineSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    ApproveIosOperationErrorsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    ApproveIosEnrolmentMachineTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    ApproveIosOperationErrorsTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
@@ -319,6 +331,10 @@ fn artifact_is_project_documentation(a: GeneratedArtifact) -> Bool {
     ApproveIosProtocolSwiftArtifact => false
     ApproveIosWireSwiftArtifact => false
     ApproveIosProtocolVectorTestsSwiftArtifact => false
+    ApproveIosEnrolmentMachineSwiftArtifact => false
+    ApproveIosOperationErrorsSwiftArtifact => false
+    ApproveIosEnrolmentMachineTestsSwiftArtifact => false
+    ApproveIosOperationErrorsTestsSwiftArtifact => false
   }
 }
 
@@ -340,12 +356,9 @@ fn artifact_is_commit_required_project_documentation(a: GeneratedArtifact) -> Bo
 }
 
 // Disposition authority (reference only; do not fork the lifecycle here):
-// gunbc.non_fold_residue.non_fold_residue_frontier enrolls
-// dag/gunbc/generated_artifact.dag::artifact_eq with the typed nfr_reason_land_red_era reason and
-// nfr_dissolve_owning_fold trigger. The live non_fold_residue_clean_holds witness refuses both an
-// unrostered predicate and a stale roster row; its synthetic malformed-row RED witnesses that
-// reason without a dissolution trigger is invalid. This equality residue therefore grows only under
-// that one bounded census row and deletes when the owning fold derives equality from inhabitance.
+// gunbc.non_fold_residue.non_fold_residue_frontier enrolls artifact_eq below with a keyed-identity
+// reason: its payload arms compare key projections (host, slug), so it is not the structural
+// equality a derived == replaces. It deletes when each payload type declares that key as its identity.
 
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {
@@ -376,6 +389,10 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     ApproveIosProtocolSwiftArtifact => match b { ApproveIosProtocolSwiftArtifact => true  _ => false }
     ApproveIosWireSwiftArtifact => match b { ApproveIosWireSwiftArtifact => true  _ => false }
     ApproveIosProtocolVectorTestsSwiftArtifact => match b { ApproveIosProtocolVectorTestsSwiftArtifact => true  _ => false }
+    ApproveIosEnrolmentMachineSwiftArtifact => match b { ApproveIosEnrolmentMachineSwiftArtifact => true  _ => false }
+    ApproveIosOperationErrorsSwiftArtifact => match b { ApproveIosOperationErrorsSwiftArtifact => true  _ => false }
+    ApproveIosEnrolmentMachineTestsSwiftArtifact => match b { ApproveIosEnrolmentMachineTestsSwiftArtifact => true  _ => false }
+    ApproveIosOperationErrorsTestsSwiftArtifact => match b { ApproveIosOperationErrorsTestsSwiftArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
@@ -454,6 +471,10 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     ApproveIosProtocolSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol", decl_name: "expected_approve_ios_protocol_swift")
     ApproveIosWireSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "expected_approve_ios_wire_swift")
     ApproveIosProtocolVectorTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol_vector_tests", decl_name: "expected_approve_ios_protocol_vector_tests_swift")
+    ApproveIosEnrolmentMachineSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_enrolment_machine", decl_name: "expected_approve_ios_enrolment_machine_swift")
+    ApproveIosOperationErrorsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_operation_errors", decl_name: "expected_approve_ios_operation_errors_swift")
+    ApproveIosEnrolmentMachineTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_enrolment_machine", decl_name: "expected_approve_ios_enrolment_machine_tests_swift")
+    ApproveIosOperationErrorsTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_operation_errors", decl_name: "expected_approve_ios_operation_errors_tests_swift")
     Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
     Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
     Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")
@@ -487,7 +508,7 @@ fn artifact_producer_row(a: GeneratedArtifact) -> GeneratedArtifactProducerRow {
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "artifact_eq" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
+      reason: "KEYED-IDENTITY equality, not structural: the nullary arms are same-constructor tests, but AutoinstallUserDataArtifact compares spec.host, RunnerHostSudoersArtifact compares host as String and PlanArtifact compares plan.slug, each a key projection rather than the whole payload, so a derived == would change what two artifacts are 'the same' (landed unrostered in the land-red era, declared so the ratchet re-arms)",
+      dissolution: unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY: each payload-carrying GeneratedArtifact arm declares the key that identifies it as a declared identity on its payload type, so equality is the derived == over that declared key and the hand fold deletes with this row. Until a key is declared the fold is the only place that decision lives"),
     },
 ]

@@ -1,0 +1,90 @@
+module test.claim.record_escapes_declared_optional_return_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Class: gunbc.recurring_failure_mode.record_value_escapes_declared_optional_return. Specimen: snappy-seal-211,
+// extdeps.cpu.types soc_family_architecture at e5d277c5c42 (declared Architecture?, returned a
+// CpuModelCatalogRow; compared a field against the row). THE ORACLE IS A DIFFERENTIAL, not a bare zero: a total-zero over a fixture
+// importing std.types is not exact evidence (compile_diagnostic_census), so each enrolled red is paired with a ONE-AXIS green source
+// and asserts red_count > green_count. Each source, red and green, also has a NON-ENROLLED census_ran control, so a
+// CensusNotRunnable (counted -1) reds the floor instead of reading as a held red. A and B are this row's class; C and C' are
+// gunbc.recurring_failure_mode cross_type_comparison_answers_instead_of_refusing.
+fn census_ran(source: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+fn refusing_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data liveness_source: String = "module probe_liveness\nimport std.types { Int }\nfn probe() -> Int { \"not an int\" }\n"
+
+test fn w_the_census_refuses_a_blatant_mismatch() -> Bool {
+  refusing_count(source: liveness_source) > 0
+}
+
+data a_red_source: String = "module probe_a_red\nimport std.types { String }\ntype Arch = X86 | Arm\ntype Row { name: String, arch: Arch }\nfn probe(r: Row) -> Arch? { Present { value: r } }\n"
+
+data a_green_source: String = "module probe_a_green\nimport std.types { String }\ntype Arch = X86 | Arm\ntype Row { name: String, arch: Arch }\nfn probe(r: Row) -> Arch? { Present { value: r.arch } }\n"
+
+data b_red_source: String = "module probe_b_red\nimport std.types { String }\ntype Arch = X86 | Arm\ntype Row { name: String, arch: Arch }\nfn probe(r: Row) -> Arch { r }\n"
+
+data b_green_source: String = "module probe_b_green\nimport std.types { String }\ntype Arch = X86 | Arm\ntype Row { name: String, arch: Arch }\nfn probe(r: Row) -> Arch { r.arch }\n"
+
+data c_red_source: String = "module probe_c_red\nimport std.types { String, Bool }\ntype Arch = X86 | Arm\ntype Row { name: String, arch: Arch }\nfn probe(r: Row) -> Bool { r.arch == r }\n"
+
+data c_green_source: String = "module probe_c_green\nimport std.types { String, Bool }\ntype Arch = X86 | Arm\ntype Row { name: String, arch: Arch }\nfn probe(r: Row, a: Arch) -> Bool { r.arch == a }\n"
+
+data cprime_red_source: String = "module probe_cp_red\nimport std.types { String, Bool, Int }\ntype Row { name: String }\ntype Other { x: Int }\nfn probe(r: Row, o: Other) -> Bool { r == o }\n"
+
+data cprime_green_source: String = "module probe_cp_green\nimport std.types { String, Bool, Int }\ntype Row { name: String }\nfn probe(r: Row, o: Row) -> Bool { r == o }\n"
+
+// NON-ENROLLED: every source above was actually censused (reds AND greens), so a CensusNotRunnable reds the floor.
+test fn w_every_source_in_this_witness_is_actually_censused() -> Bool {
+  census_ran(source: a_red_source) && census_ran(source: a_green_source)
+    && census_ran(source: b_red_source) && census_ran(source: b_green_source)
+    && census_ran(source: c_red_source) && census_ran(source: c_green_source)
+    && census_ran(source: cprime_red_source) && census_ran(source: cprime_green_source)
+}
+
+// NON-ENROLLED: the one-axis greens are admitted (zero blocking), so the differential below is a real axis.
+test fn w_the_one_axis_green_sources_are_admitted() -> Bool {
+  refusing_count(source: a_green_source) == 0 && refusing_count(source: b_green_source) == 0
+    && refusing_count(source: c_green_source) == 0 && refusing_count(source: cprime_green_source) == 0
+}
+
+// HOLE A (this row): Present { value: r } vs Present { value: r.arch } at a declared Arch?.
+test fn w_a_record_inside_present_at_a_declared_optional_coproduct_is_refused() -> Bool {
+  refusing_count(source: a_red_source) > refusing_count(source: a_green_source)
+}
+
+// HOLE B (this row): r vs r.arch at a declared (non-optional) Arch return.
+test fn w_a_record_at_a_declared_coproduct_return_is_refused() -> Bool {
+  refusing_count(source: b_red_source) > refusing_count(source: b_green_source)
+}
+
+// HOLE C (row cross_type_comparison_answers_instead_of_refusing): r.arch == r vs r.arch == a.
+test fn w_an_equality_between_a_coproduct_and_a_record_is_refused() -> Bool {
+  refusing_count(source: c_red_source) > refusing_count(source: c_green_source)
+}
+
+// HOLE C' (same row): == between unrelated records vs a same-type equality.
+test fn w_an_equality_between_unrelated_records_is_refused() -> Bool {
+  refusing_count(source: cprime_red_source) > refusing_count(source: cprime_green_source)
+}

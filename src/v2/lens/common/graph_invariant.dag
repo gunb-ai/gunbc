@@ -18,7 +18,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Conj,
   Edge,
   Edit,
@@ -27,6 +27,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 
 // Reachability handler repair contract (mark-on-carrier, §3): an unreachable node is fixed by
@@ -61,7 +62,7 @@ type GraphInvariant<Projection> {
 }
 
 fn graph_node_eq(a: Node, b: Node) -> Bool {
-  a == b
+  node_same_occurrence(a: a, b: b)
 }
 
 fn graph_reach_contains(reached: List<Node>, n: Node) -> Bool {
@@ -146,8 +147,8 @@ fn graph_reach_add_edge_repair(root: Node, edge_target: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: root },
-      Edge { label: Positional, target: edge_target }
+      Edge { label: Positional, target: root, declaration: NotADeclaration },
+      Edge { label: Positional, target: edge_target, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

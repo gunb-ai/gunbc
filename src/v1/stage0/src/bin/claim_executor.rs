@@ -278,6 +278,19 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // it. Exiting zero here would make the producer's own entry point disagree with
                 // the phase that names it as the remedy.
                 let unresolved = outcome.divergent().len();
+                // THE TYPED REPORT, on stdout: callers read the drifted population from here and
+                // never from the diagnostic lines above.
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "schema": "gunbc.partition_boundary_report.v1",
+                        "divergent": outcome
+                            .divergent()
+                            .iter()
+                            .map(|f| f.path.clone())
+                            .collect::<Vec<_>>(),
+                    })
+                );
                 return if emit_partition_crates_write || unresolved == 0 {
                     Ok(ExitCode::SUCCESS)
                 } else {
@@ -364,7 +377,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             "v2-native-route: emitted-native compiler executes the derived native-lane universe (operator-invoked; not a required lane)"
         );
         // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes no pattern: the emitted binary
-        // adjudicates by `gunbc.witness.v2_native_route` `native_route_default_pattern`, read inside
+        // adjudicates by `gunbc.native_route_universe` `native_route_default_pattern`, read inside
         // the compiler where it is declared, and this caller holds no spelling of it. A narrower
         // pattern reaches the same runner through `gunbc test <operand>`.
         return match v1_compiler::cli_run::run_required_v2_native(&roots, None) {

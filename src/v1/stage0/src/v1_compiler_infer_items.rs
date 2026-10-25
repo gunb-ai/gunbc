@@ -4,18 +4,19 @@
 use self::ItemKind::*;
 use self::ItemLookup::*;
 use self::ModuleTypecheckProgress::*;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
+pub use crate::std_dissolution::{
+    dissolution_description, unbound_dissolution, DissolutionCondition,
+};
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
-pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
-pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
+pub use crate::std_interface_summary::{
+    interface_summary_rollup, signature_contract, ExportEntry, ExportKind, InterfaceSummary,
+};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceTransport};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
-pub use crate::v1_compiler_infer_env::empty_type_env_cache;
-pub use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};
+pub use crate::v1_compiler_infer_env::{empty_type_env_cache, TypeEnv, TypeEnvCache};
 pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
@@ -24,13 +25,12 @@ use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::LeafOwner::{LeafAmbiguous, SingleOwner};
+use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemResource, ModuleItemTypeDeclaration};
 pub use crate::v1_std_core::{
     authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
     make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
-    resource_use_name_at, resource_use_resource,
-};
-pub use crate::v1_std_core::{
-    Cardinality, Connective, ErrorNode, InferredNode, LeafOwner, NewlineIndex, Node,
+    resource_use_name_at, resource_use_resource, Cardinality, Connective, ErrorNode, InferredNode,
+    LeafOwner, NewlineIndex, Node, ParsedModuleItemKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -55,6 +55,7 @@ pub enum ItemKind {
     TypeItem,
     DataItem,
     ServiceItem,
+    ResourceItem,
     OtherItem,
 }
 
@@ -276,28 +277,33 @@ pub fn inferred_to_outputs(
 
 pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
-        let kind = if ((item.connective.clone() != Connective::NoConnective)
+        let kind = if ((item.module_item_kind.clone()
+            == ParsedModuleItemKind::ModuleItemTypeDeclaration)
             && (item.transport.clone() == std::option::Option::None))
         {
             ItemKind::TypeItem
         } else {
-            if (item.transport.clone() != std::option::Option::None) {
-                ItemKind::ServiceItem
+            if (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemResource) {
+                ItemKind::ResourceItem
             } else {
-                if ((item.body.clone() != std::option::Option::None)
-                    && ((item.params.clone().len() as i64) > 0))
-                {
-                    ItemKind::FnItem
+                if (item.transport.clone() != std::option::Option::None) {
+                    ItemKind::ServiceItem
                 } else {
                     if ((item.body.clone() != std::option::Option::None)
-                        && (item.type_annotation.clone() != std::option::Option::None))
+                        && ((item.params.clone().len() as i64) > 0))
                     {
-                        ItemKind::DataItem
+                        ItemKind::FnItem
                     } else {
-                        if (item.body.clone() != std::option::Option::None) {
-                            ItemKind::FnItem
+                        if ((item.body.clone() != std::option::Option::None)
+                            && (item.type_annotation.clone() != std::option::Option::None))
+                        {
+                            ItemKind::DataItem
                         } else {
-                            ItemKind::OtherItem
+                            if (item.body.clone() != std::option::Option::None) {
+                                ItemKind::FnItem
+                            } else {
+                                ItemKind::OtherItem
+                            }
                         }
                     }
                 }
@@ -352,6 +358,8 @@ pub struct TypeItem;
 pub struct DataItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceItem;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ResourceItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OtherItem;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

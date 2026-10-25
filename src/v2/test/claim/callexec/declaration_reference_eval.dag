@@ -17,7 +17,7 @@ import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, contains, fold_list, list_map }
+import std.algebra { Cons, Empty, contains, fold_list, list_map, list_at_optional }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic {
@@ -28,7 +28,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence, positional_child_target_nodes,
   ParameterReferenceBody,
   DeclarationReferenceKind,
   Symbol,
@@ -42,9 +42,9 @@ import v2.std.node {
   TypeNode,
   ComputationNode,
   Transform,
-  fold_node
+  fold_node,
+  NotADeclaration
 }
-import v2.std.node_query { node_positional_child_targets }
 import v2.test.lens_common.infer_fixture {
   ClaimParam,
   claim_int_literal,
@@ -58,7 +58,7 @@ import v2.std.qualified_name { declaration_reference_node }
 import v2.std.diagnostic { outcome_accepted }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List }
-import v2.std.collection { list_at_optional }
+
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 
 import v2.std.runtime { RuntimePrimitive, RuntimeValue }
@@ -205,7 +205,7 @@ fn cref_node_in(xs: List<Node>, wanted: Node) -> Bool {
   fold_list(
     xs: xs,
     empty: false,
-    cons: fn(rest, item) { if item == wanted { true } else { rest } }
+    cons: fn(rest, item) { if node_same_occurrence(a: item, b: wanted) { true } else { rest } }
   )
 }
 
@@ -350,7 +350,7 @@ fn cref_supplied(callee: Symbol, params: List<ClaimParam>, codomain: Symbol, bod
 }
 
 fn cref_actual(lexeme: String) -> List<Edge> {
-  [Edge { label: Authored { name: ^only_arg }, target: claim_int_literal(lexeme: lexeme, n: 23) }]
+  [Edge { label: Authored { name: ^only_arg }, target: claim_int_literal(lexeme: lexeme, n: 23), declaration: NotADeclaration }]
 }
 
 fn cref_zero_arg_reading() -> CrefReading {
@@ -674,7 +674,7 @@ fn cref_unbound_call() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: [^p, ^absent_callee], occurrence_id: OccurrenceSynthetic) }
+      Edge { label: Positional, target: declaration_reference_node(qn: [^p, ^absent_callee], occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

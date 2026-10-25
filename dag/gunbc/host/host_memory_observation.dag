@@ -8,11 +8,16 @@ import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_mtcollins1 }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused,
+}
 import gunbc.machine_intake.host_capture_envelope {
   BoundHostCaptureEnvelope, host_capture_section_reading, host_capture_run_identity_value,
+  host_capture_bind_transcript,
+  HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound,
   SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
 }
 import gunbc.machine_intake.host_resource_observation {
@@ -60,7 +65,7 @@ import gunbc.machine_intake.host_resource_observation {
 type HostFixedOverhead
   = HostFixedOverheadMeasured { bytes: ByteSize, provenance: NonEmptyStr }
   | HostFixedOverheadAllowance { bytes: ByteSize, reason: NonEmptyStr }
-  | HostFixedOverheadUnmeasured
+  | HostFixedOverheadUnmeasured { reason: NonEmptyStr }
 
 // THREE ARMS BECAUSE THERE ARE THREE FACTS, and the row that stood here fused two of them under the
 // name of the third. gunbc_ci_host_fixed_overhead was a single fleet-wide HostFixedOverheadMeasured
@@ -140,8 +145,12 @@ fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
     gunbc_ci_managed_host_fixed_overhead
   } else if (host as String) == (operator_host_srv4 as String) {
     gunbc_ci_managed_host_fixed_overhead
+  } else if (host as String) == (operator_host_mtcollins1 as String) {
+    host_fixed_overhead_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
   } else {
-    HostFixedOverheadUnmeasured
+    HostFixedOverheadUnmeasured {
+      reason: "host is not classified in gunbc_ci_host_fixed_overhead_for" as NonEmptyStr,
+    }
   }
 }
 
@@ -210,7 +219,7 @@ data gunbc_ci_legacy_host_fixed_overhead_disposition: Disposition = Scaffold {
 type HostUsableRam
   = HostUsableRamMeasured { bytes: ByteSize, provenance: NonEmptyStr }
   | HostUsableRamConservativeLowerBound { bytes: ByteSize, basis: NonEmptyStr }
-  | HostUsableRamUnmeasured
+  | HostUsableRamUnmeasured { reason: NonEmptyStr }
 
 data gunbc_ci_host_usable_ram_kind_note: String = "OS-USABLE RAM IS A PER-HOST FACT AND WAS STORED AS A FLEET CONSTANT, which is the same grain defect gunbc_ci_host_fixed_overhead_kind_note repaired for overhead -- so this carrier is deliberately that carrier's shape rather than a new invention.\n\nTHE DIMM-REPLACEMENT CLAIM HAS NOW BEEN WRONG IN BOTH DIRECTIONS AND IS SETTLED BY MEASUREMENT. An earlier revision said a 2026-08-11 replacement had raised memory on part of the fleet; that was written from an in-flight operator report before any observation existed, and it was wrong (the attempt failed, operator 2026-08-12). This revision records the opposite and does so from a read rather than a report: srv3 and srv4 were each observed at 512 GiB over BMC Redfish on 2026-08-22 -- 8 x Samsung M393A8G40D40-CRB at 64 GiB, one per channel, all Enabled/OK -- while srv1 was upgraded to the same 8 x Samsung population on operator report and srv2's identical attempt FAILED memory training and was reverted to 8 x 16 GiB Hynix. The hosts no longer share one nominal population.\n\nTWO ARMS HAVE NOW MOVED AND TWO HAVE NOT, WHICH IS THE GRAIN DOING ITS JOB. srv3 and srv4 carry HostUsableRamMeasured from /proc/meminfo reads taken over SSH on 2026-08-22 (about 502.25 GiB each); srv1 and srv2 still carry HostUsableRamConservativeLowerBound at 125 GiB, because no MemTotal read has been taken on either. What promoted the two was a KERNEL read, never the Redfish 512 GiB figure -- that is NOMINAL DIMM capacity, which this carrier does not hold and must never be fed. A lower bound does not become false when the machine gets bigger; it becomes LOOSE, and srv1's is now loose by roughly 4x while remaining sound. The remedy is unchanged and is now half-applied: one ordinary read per host, taken any time, promoting that host's row and leaving the others untouched.\n\nTHREE ARMS BECAUSE THERE ARE THREE FACTS. MEASURED means a read of THIS host produced the number and the row names the read. CONSERVATIVE LOWER BOUND means no such read exists and the carried figure is known not to exceed the host's real usable RAM, with basis stating why. UNMEASURED is the fail-closed floor for a host nobody classified.\n\nTHE MIDDLE ARM IS A BOUND AND NOT A SUBSTITUTION, and the heterogeneity above is exactly why that distinction was worth paying for in advance. While the fleet was uniform an equivalence argument was also available, and naming the arm for equivalence would have licensed the move the wall cannot survive: carrying a reading from a host with MORE memory onto one with less. That move is now AUTHORABLE for the first time -- srv3 and srv4 are the hosts with more -- and the bound's name is what forbids it. The safety property is monotonicity, and it did not have to be re-argued when the fleet's uniformity ended.\n\nWHY srv1 AND srv2 ARE STILL BOUNDS: no MemTotal read has been taken on either. A NEARBY RECEIPT IS NOT ONE, and it is named because it looks like one: gunbc_ci_srv3_memavailable_high_water, whose host_total is MemTotal-shaped but was captured as an arm-time line from a memory governor rather than a read taken to answer this question, only on srv3, and -- now load-bearing -- against srv3's PREVIOUS 128 GiB population, so it is a receipt about hardware that is no longer in that chassis.\n\nDissolving these is CHEAPER THAN THE FIXED-OVERHEAD ROW BESIDE THEM and must not be confused with it. That row needs a QUIESCENT read because it estimates non-reclaimable residency from MemAvailable, which moves with load. MemTotal does not: the kernel reports total usable RAM after firmware and kernel reservations, so an ordinary read while the host serves work is a complete answer. One read per host, taken any time, promotes that host's row to MEASURED and leaves the others untouched -- which is the entire point of the grain."
 
@@ -274,8 +283,12 @@ fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
     gunbc_ci_srv3_memtotal_measured
   } else if (host as String) == (operator_host_srv4 as String) {
     gunbc_ci_srv4_memtotal_measured
+  } else if (host as String) == (operator_host_mtcollins1 as String) {
+    host_usable_ram_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
   } else {
-    HostUsableRamUnmeasured
+    HostUsableRamUnmeasured {
+      reason: "host is not classified in gunbc_ci_host_usable_ram_for" as NonEmptyStr,
+    }
   }
 }
 
@@ -295,7 +308,7 @@ fn host_usable_ram_ceiling_bytes(host: HostIdentity) -> ByteSize {
   match gunbc_ci_host_usable_ram_for(host: host) {
     HostUsableRamMeasured { bytes: b, provenance: _ } => b
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => b
-    HostUsableRamUnmeasured => byte_size(0)
+    HostUsableRamUnmeasured { reason: _ } => byte_size(0)
   }
 }
 
@@ -336,6 +349,24 @@ type CensusMeminfoUnread
   | CensusMeminfoSectionMalformed { reason: String }
   | CensusMeminfoExitNonzero { exit_code: String }
   | CensusMeminfoUnparsed { cause: ResourceUnread }
+  | CensusMeminfoReceiptUnreadable { error: String }
+  | CensusMeminfoEnvelopeOpen
+  | CensusMeminfoEnvelopeNotBegun
+  | CensusMeminfoCaptureUnbound { reason: String }
+
+fn census_meminfo_unread_text(c: CensusMeminfoUnread) -> String {
+  match c {
+    CensusMeminfoSectionAbsent => "census meminfo section is absent"
+    CensusMeminfoSectionPending => "census meminfo section is pending"
+    CensusMeminfoSectionMalformed { reason: r } => concat("census meminfo section is malformed: ", r)
+    CensusMeminfoExitNonzero { exit_code: code } => concat("census meminfo section exited ", code)
+    CensusMeminfoUnparsed { cause: _ } => "census meminfo section did not parse as MemTotal/MemAvailable"
+    CensusMeminfoReceiptUnreadable { error: e } => concat("census capture Filesystem.Read refused: ", e)
+    CensusMeminfoEnvelopeOpen => "census capture envelope is open (no END marker); a complete meminfo section may be inspected for refusal but must not be accepted"
+    CensusMeminfoEnvelopeNotBegun => "census capture has not begun"
+    CensusMeminfoCaptureUnbound { reason: r } => concat("census capture unbound: ", r)
+  }
+}
 
 // ONE PARSE OF THE RECEIPT, TWO ROWS FROM IT. The usable-RAM row and the fixed-overhead row
 // below both project this one reading, so a census boot is a single enrolment trigger for both.
@@ -401,5 +432,140 @@ fn host_fixed_overhead_from_capture(envelope: BoundHostCaptureEnvelope) -> Obser
           ], "")),
         },
       }
+  }
+}
+
+// THE ONE POINTER TO THE LATEST COMMITTED CENSUS BOOT. It changes ONLY in the PR that commits that
+// run's artifacts under artifacts/bmc/mtcollins1-boot-run-<id>/, so evidence and pointer land as one
+// transition and the pointer never names an uncommitted directory (claim
+// mtcollins1_census_capture_file_is_the_committed_receipt reads the derived path). The RAM reading and
+// the CPU model reading both fold over it. Named frontier, not this change: the boot job emitting an
+// evidence record the corpus can fold over, which removes this row edit.
+data mtcollins1_census_boot_run: NonEmptyStr = "39010930690"
+
+fn mtcollins1_census_boot_capture_path_of(run: NonEmptyStr) -> String {
+  join(["artifacts/bmc/mtcollins1-boot-run-", run as String, "/mtcollins1-boot-sol.capture"], "")
+}
+
+fn mtcollins1_census_boot_capture_path() -> String {
+  mtcollins1_census_boot_capture_path_of(run: mtcollins1_census_boot_run)
+}
+
+// WHY THE lscpu READ HAS ITS OWN REFUSAL TYPE: a missing or unparsable lscpu section is a fact about
+// the CPU-model reading, and reporting it under a meminfo-named cause would mislocate it (DESIGN §5).
+// A failure of the capture itself (file unreadable, envelope open or unbound) is not an lscpu fact and
+// rides CensusLscpuCaptureUnread unchanged, so the two readings still agree on why the capture failed.
+type CensusLscpuUnread
+  = CensusLscpuSectionAbsent
+  | CensusLscpuSectionPending
+  | CensusLscpuSectionMalformed { reason: String }
+  | CensusLscpuExitNonzero { exit_code: String }
+  | CensusLscpuNoBiosModelLine
+  | CensusLscpuAmbiguousBiosModelLines
+  | CensusLscpuCaptureUnread { cause: CensusMeminfoUnread }
+
+// THE MODEL NAME FIRMWARE REPORTS, FROM THE lscpu SECTION OF THE SAME ENVELOPE. lscpu prints the core
+// ("Model name: Neoverse-N1") and, indented beneath it, the SMBIOS processor string ("BIOS Model name:
+// Ampere(R) Altra(R) Processor Q80-30 CPU @ 3.0GHz"); the latter names the part and its frequency.
+fn census_cpu_bios_model_reading(envelope: BoundHostCaptureEnvelope) -> ObservationAttempt<String, CensusLscpuUnread> {
+  match host_capture_section_reading(envelope: envelope, name: "lscpu") {
+    SectionAbsent => ObservationRefused { cause: CensusLscpuSectionAbsent }
+    SectionPending { output: _ } => ObservationRefused { cause: CensusLscpuSectionPending }
+    SectionMalformed { reason: r } => ObservationRefused { cause: CensusLscpuSectionMalformed { reason: r } }
+    SectionComplete { exit_code: code, output: out } =>
+      if code != "0" {
+        ObservationRefused { cause: CensusLscpuExitNonzero { exit_code: code } }
+      } else {
+        let lines = filter(out, l => string_contains(s: l, pattern: "BIOS Model name:"))
+        match first(lines) {
+          Present { value: line } =>
+            if count(lines) == 1 {
+              ObservationEstablished { observed: line }
+            } else {
+              ObservationRefused { cause: CensusLscpuAmbiguousBiosModelLines }
+            }
+          Absent => ObservationRefused { cause: CensusLscpuNoBiosModelLine }
+        }
+      }
+  }
+}
+
+// THE RECEIPT ObservedByReceipt POINTS AT: the BIOS model line read from the committed census capture.
+fn mtcollins1_census_cpu_bios_model() -> ObservationAttempt<String, CensusLscpuUnread> {
+  match mtcollins1_census_envelope_attempt() {
+    ObservationRefused { cause: c } => ObservationRefused { cause: CensusLscpuCaptureUnread { cause: c } }
+    ObservationEstablished { observed: e } => census_cpu_bios_model_reading(envelope: e)
+  }
+}
+
+fn census_envelope_from_capture_text(capture: String, machine: NonEmptyStr) -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
+  match host_capture_bind_transcript(capture: capture, machine: machine) {
+    HostCaptureBound { envelope: e } => ObservationEstablished { observed: e }
+    HostCaptureOpen { envelope: _ } => ObservationRefused { cause: CensusMeminfoEnvelopeOpen }
+    HostCaptureNotBegun => ObservationRefused { cause: CensusMeminfoEnvelopeNotBegun }
+    HostCaptureUnbound { reason: r } => ObservationRefused { cause: CensusMeminfoCaptureUnbound { reason: r } }
+  }
+}
+
+fn census_envelope_from_read(success: Bool, content: String, error: String, machine: NonEmptyStr) -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
+  match filesystem_read_outcome(content: content, success: success, error: error) {
+    FilesystemReadSucceeded { content: c } => census_envelope_from_capture_text(capture: c, machine: machine)
+    FilesystemReadRefused { error: e } => ObservationRefused { cause: CensusMeminfoReceiptUnreadable { error: e } }
+  }
+}
+
+fn mtcollins1_census_envelope_attempt() -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
+  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path())
+  census_envelope_from_read(
+    success: read.success,
+    content: read.content,
+    error: read.error,
+    machine: operator_host_mtcollins1 as NonEmptyStr,
+  )
+}
+
+fn host_usable_ram_from_census_envelope_attempt(attempt: ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread>) -> HostUsableRam {
+  match attempt {
+    ObservationRefused { cause: c } =>
+      HostUsableRamUnmeasured { reason: census_meminfo_unread_text(c: c) as NonEmptyStr }
+    ObservationEstablished { observed: e } =>
+      match host_usable_ram_from_capture(envelope: e) {
+        ObservationEstablished { observed: r } => r
+        ObservationRefused { cause: c } =>
+          HostUsableRamUnmeasured { reason: census_meminfo_unread_text(c: c) as NonEmptyStr }
+      }
+  }
+}
+
+fn host_fixed_overhead_from_census_envelope_attempt(attempt: ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread>) -> HostFixedOverhead {
+  match attempt {
+    ObservationRefused { cause: c } =>
+      HostFixedOverheadUnmeasured { reason: census_meminfo_unread_text(c: c) as NonEmptyStr }
+    ObservationEstablished { observed: e } =>
+      match host_fixed_overhead_from_capture(envelope: e) {
+        ObservationEstablished { observed: o } => o
+        ObservationRefused { cause: c } =>
+          HostFixedOverheadUnmeasured { reason: census_meminfo_unread_text(c: c) as NonEmptyStr }
+      }
+  }
+}
+
+type HostMemoryObservation {
+  usable_ram: HostUsableRam
+  fixed_overhead: HostFixedOverhead
+}
+
+fn gunbc_ci_host_memory_observation_for(host: HostIdentity) -> HostMemoryObservation {
+  if (host as String) == (operator_host_mtcollins1 as String) {
+    let attempt = mtcollins1_census_envelope_attempt()
+    HostMemoryObservation {
+      usable_ram: host_usable_ram_from_census_envelope_attempt(attempt: attempt),
+      fixed_overhead: host_fixed_overhead_from_census_envelope_attempt(attempt: attempt),
+    }
+  } else {
+    HostMemoryObservation {
+      usable_ram: gunbc_ci_host_usable_ram_for(host: host),
+      fixed_overhead: gunbc_ci_host_fixed_overhead_for(host: host),
+    }
   }
 }

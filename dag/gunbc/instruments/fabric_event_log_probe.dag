@@ -9,7 +9,8 @@ import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric
 import product.capacity.pool { Pool, NoReplenishment, pool_of }
 import product.capacity.event_chain { PartitionId, EventId, ChainEvent, HeadExpectation, HeadAbsent, HeadAt, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, SeatRequest }
-import product.capacity.lease { LeasePolicy, FencedResource }
+import std.resource_release_law { FencedResource }
+import product.capacity.lease { LeasePolicy }
 import gunbc.fabric.fabric_event_log {
   HeadObservation, HeadObserved, HeadObservationRefused, event_log_observe_head,
   PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition,

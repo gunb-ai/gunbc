@@ -1,0 +1,819 @@
+module product.fabric.flex_vast_loop
+
+import std.types { String, NonEmptyStr, Bool, Int, List, Secret, EpochMs }
+import std.optional { Present, Absent }
+import std.resources { Network }
+import std.apply_mode { ApplyMode, Plan, Apply }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.fleet.host_credential_custody_converge { CustodyStanding, CustodyHeld, CustodyNotHeld }
+import std.list { first_where }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.decimal { ExactDecimal }
+import std.integer { int_to_decimal_string }
+import std.measure {
+  MoneyPerHour, MoneyAmountMicro, Second, ByteSize,
+  money_amount_micro, money_amount_micro_count, money_per_hour_micros, measure_add, measure_le,
+  second_count, byte_size_count, DecimalMoneyConverted,
+  exact_decimal_to_money_amount_micro_ceil,
+}
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.cloud.vast_ai
+import extdeps.entropy
+import extdeps.cloud.vast_ai { VastAiOffer, VastAiInstance, VastAiCharge }
+import extdeps.external_authority { CitedFigureStanding }
+import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import product.host_identity { HostIdentity }
+import product.fabric.flex_policy { FlexPolicy, FlexBidAdmission, FlexBidAdmitted, flex_liability_for_horizon }
+import product.fabric.flex_market {
+  FlexOwnerLabel, FlexOwnedCard, FlexCapAssessment, FlexCapUnder,
+  FlexCleanupAction, FlexDestroy, FlexKeep, FlexReleasePlan, flex_release_pass,
+}
+import product.fabric.serving_recipe { ServingRecipe, ServingSelectionQuote, SelectionQuoteEstablished }
+import product.fabric.flex_vast_shadow {
+  flex_roster_restrict,
+  FlexInstancesStanding, FlexInstancesComplete, FlexChargesStanding, FlexChargesComplete,
+  FlexCompleteInstanceRoster, FlexWriteDecision, FlexWriteHeldDry, FlexWriteWetUnwired,
+  FlexShadowFieldEntry, ShadowEntryEstablished, ShadowEntryEstimated, ShadowEntryExcluded,
+  FlexCreateStanding, FlexCreateAnswered, FlexCreateLost, FlexCreateRefused,
+  FlexReconcileVerdict, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire, FlexReconcileNeedsExhaustedRoster,
+  FlexTemplateRealization, FlexTemplateResolved, FlexServingTemplate,
+  flex_write_decision, flex_cap_from_roster, flex_reconcile_acquisition, flex_instance_ours,
+  flex_serving_template, flex_trial_total,
+  flex_vast_api_read_grant,
+}
+import gunbc.flex_vast_credential { flex_vast_api_key_secret_ref, flex_vast_api_key_host_path, flex_vast_api_key_custody_host }
+import gunbc.serving.rented_allocation {
+  RentedServingAllocation, RentedAllocationAcquired, RentedContractUnread, RentedEndCondition,
+  RentedDesiredEngine, RentedHostAccessDeclaration, RentedAccessRoute,
+  rented_allocation_identity,
+}
+import gunbc.serving.rented_replica { RentedGpuDevice }
+import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow }
+import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths }
+import gunbc.serving.rented_release {
+  RentedReleaseReadings, RentedReleaseReceiptV1, RentedInstanceReading, RentedDestroyRequest,
+  RentedReleasePending, rented_release_receipt, rented_bound_instance_id, RentedObservedInstance,
+}
+
+// THE EXECUTING WET LOOP of the flex tier (acquisition and release only). ONE PASS reads a sealed
+// roster and charge walk, decides the write through flex_write_decision, and performs at most ONE
+// create or ONE destroy. It stops at the first typed failure and never plans a second write from a
+// state the first write changed; the next pass plans from what the observation then shows.
+//
+// DRY IS THE DEFAULT. FlexPolicy.actuation (std.apply_mode ApplyMode) is the one switch: Plan runs
+// everything up to the write and records the write it WOULD make; Apply performs it. The switch is a
+// policy fact, never an argv literal. No per-rental approval exists.
+//
+// ISOLATION. ctrl shares the Vast account under other labels. The loop reduces every roster to the
+// instances carrying policy.owner BEFORE it reconciles, counts, or destroys, so a foreign instance is
+// invisible to all three.
+//
+// HAND-OFF. An answered (or reconciled-held) create yields a RentedServingAllocation and stops there:
+// startup, key binding, enrollment and settlement belong to the serving slices.
+
+// ---- WET GATE. The key is OBSERVED live, by the route that will use it, and a wet write needs it live.
+// Two routes reach the one secret (flex_vast_api_key_secret_ref): the srv1 fleet-converge job reads it from
+// Secret Manager under the identity the custody delivery already holds (that job runs as the runner
+// account, which the operator-only host copy does not admit), and a process running as the operator reads
+// the host copy, whose standing is gunbc.fleet.host_credential_custody_converge host_credential_custody.
+// The route is carried so a receipt says which copy was live. The release leg (a card that never came up
+// must be returnable) is not a row here: it is gated on the typed outcomes of gunbc.serving.rented_release
+// (flex_pass_step), which holds a silent card with an ambiguous vantage and destroys only the allocation's
+// bound id.
+type FlexKeyRoute
+  = FlexKeyFromSecretManager { resolved_version: NonEmptyStr }
+  | FlexKeyFromHostCustody
+
+type FlexKeyStanding
+  = FlexKeyLive { route: FlexKeyRoute }
+  | FlexKeyNotLive { causes: List<String> }
+
+type FlexWetGates {
+  key: FlexKeyStanding
+}
+
+fn flex_key_from_custody(custody: CustodyStanding) -> FlexKeyStanding {
+  match custody {
+    CustodyHeld => FlexKeyLive { route: FlexKeyFromHostCustody }
+    CustodyNotHeld { causes: cs } => FlexKeyNotLive { causes: cs }
+  }
+}
+
+data flex_run_pass_caller_frontier: DissolutionCondition = unbound_dissolution(description: "flex_run_pass has a production caller, gunbc.fleet.flex_pass_run pass (fleet-converge mode flex_pass), which reads the key from Secret Manager, walks the instance and charge pages, and runs the pass with no cards, no allocations and no prior create standing. TWO GAPS REMAIN. (1) It has not executed: TRIGGER a dispatched flex_pass on srv1 whose receipt shows complete instance and charge walks and the planned outcome; SUFFICIENT FOR narrowing this row to (2). (2) Nothing feeds a previous pass's create standing through flex_reconcile_ours into flex_reconciled_allocation, and the pass's cards and allocations are not yet built from the labelled instances it observes: TRIGGER the entry builds FlexOwnedCard and RentedServingAllocation from the observed labelled roster and reconciles a lost create from that observation (the A3 placement-after-create slice); SUFFICIENT FOR deleting this row once both triggers hold.")
+
+data flex_select_supply_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "No wet or dry pass quotes shadow-field offers through serving_card_hourly into product.fabric.selection select_supply with flex_objective and flex_delay_unvalued: flex_plan_pass takes its candidate offer and quote as supplied, so those two values and serving_cache_bytes have no production consumer. TRIGGER: the srv1 fleet-converge entry (flex_run_pass_caller_frontier) builds FlexPassInput's offer and quote through select_supply under flex_objective. SUFFICIENT FOR deleting this row.")
+
+data flex_rented_allocation_enrollment_frontier: DissolutionCondition = unbound_dissolution(description: "The allocation join stops at constructing RentedServingAllocation; handing it to rented_allocation_enrollment (startup, key binding, enroll-and-seat) is deep-bear-539's S-plan (S3 #14109, S4), not this loop. TRIGGER: rented_allocation_enrollment has a production caller that receives the allocation from flex_created_outcome or flex_reconciled_allocation. SUFFICIENT FOR deleting this row.")
+
+// The Secret read from the host copy by the entry. It is named only by reference here.
+type FlexKeyCustodyDeclaration {
+  secret: SecretRef
+  host: HostIdentity
+  host_path: NonEmptyStr
+}
+
+data flex_key_custody_declaration: FlexKeyCustodyDeclaration = FlexKeyCustodyDeclaration {
+  secret: flex_vast_api_key_secret_ref,
+  host: flex_vast_api_key_custody_host,
+  host_path: flex_vast_api_key_host_path,
+}
+
+// ---- TEMPLATE HASH. The Vast create body names a Vast template, which the recipe's template does not
+// carry. A recipe with no row here has no Vast template hash and refuses typed.
+type FlexTemplateHashRow {
+  recipe: DeclarationRef
+  hash: NonEmptyStr
+}
+
+data flex_vast_template_hashes: List<FlexTemplateHashRow> = [
+  FlexTemplateHashRow {
+    recipe: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
+    hash: "c6793d31e3204da102145c4c331e42ae" as NonEmptyStr,
+  },
+]
+
+fn flex_vast_template_hash(rows: List<FlexTemplateHashRow>, recipe: DeclarationRef) -> NonEmptyStr? {
+  match first_where(rows, row => (row.recipe.module_path == recipe.module_path) && (row.recipe.decl_name == recipe.decl_name)) {
+    Present { value: row } => Present { value: row.hash }
+    Absent => none
+  }
+}
+
+// ---- THE PASS INPUT.
+type FlexPassObservation {
+  roster: FlexInstancesStanding
+  charges: FlexChargesStanding
+}
+
+// What the allocation carries that a Vast create answer cannot say (the card, end, engine, artifact,
+// host and route). Supplied by the placement slice; this loop never invents a host.
+type FlexAllocationPlacement {
+  card: RentedGpuDevice
+  end: RentedEndCondition
+  engine: RentedDesiredEngine
+  artifact: NinferModelRow
+  host: RentedHostAccessDeclaration
+  route: RentedAccessRoute
+}
+
+// The ask the pass would make: the offer, its screened standing, its quote, the bid admission the
+// market produced and where the allocation will be placed.
+// The card, host and route a Vast create answer cannot say are READ by the startup placement slice
+// (S3, #14109), never by this loop: a placement is supplied only with the declaration that produced it,
+// and an unread placement stays typed unread, so no create is asked for a card that cannot be carried.
+type FlexPlacementStanding
+  = FlexPlacementSupplied { placement: FlexAllocationPlacement, producer: DeclarationRef }
+  | FlexPlacementUnread { obligation: NonEmptyStr }
+
+type FlexCreateIntent {
+  offer: VastAiOffer
+  entry: FlexShadowFieldEntry
+  quote: ServingSelectionQuote
+  admission: FlexBidAdmission
+  placement: FlexPlacementStanding
+}
+
+type FlexRentCooldown {
+  asked_at: EpochMs
+  until: EpochMs
+}
+
+type FlexPassInput {
+  policy: FlexPolicy
+  gates: FlexWetGates
+  now: EpochMs
+  cooldown: FlexRentCooldown?
+  observation: FlexPassObservation
+  cards: List<FlexOwnedCard>
+  allocations: List<RentedServingAllocation>
+  intent: FlexCreateIntent?
+  recipe: ServingRecipe
+  template_hashes: List<FlexTemplateHashRow>
+  no_room: Bool
+  replacement_serving: Bool
+}
+
+// ---- THE CREATE REQUEST AND ITS WALLS.
+type FlexCreateRequest {
+  offer_id: Int
+  machine_id: Int
+  price: ExactDecimal
+  bid: MoneyPerHour
+  disk: ByteSize
+  template_hash_id: NonEmptyStr
+  label: NonEmptyStr
+  reservation: MoneyAmountMicro
+}
+
+type FlexCreateRefusal
+  = FlexRefusedEntryEstimated { standings: List<CitedFigureStanding> }
+  | FlexRefusedEntryExcluded
+  | FlexRefusedQuoteNotEstablished
+  | FlexRefusedAdmissionNotAdmitted
+  | FlexRefusedTemplateUnresolved
+  | FlexRefusedTemplateHashUnread
+  | FlexRefusedChargesUnreadable
+  | FlexRefusedBudgetCeiling { spent: MoneyAmountMicro, unattributed: MoneyAmountMicro, reservation: MoneyAmountMicro, ceiling: MoneyAmountMicro }
+  | FlexRefusedKeyNotLive { custody: FlexKeyCustodyDeclaration, causes: List<String> }
+  | FlexRefusedPlacementUnread { obligation: NonEmptyStr }
+
+fn flex_entry_wall(entry: FlexShadowFieldEntry) -> List<FlexCreateRefusal> {
+  match entry {
+    ShadowEntryEstablished => []
+    ShadowEntryEstimated { provisional_member: _, standings: s } => [FlexRefusedEntryEstimated { standings: s }]
+    ShadowEntryExcluded => [FlexRefusedEntryExcluded]
+  }
+}
+
+fn flex_quote_wall(quote: ServingSelectionQuote) -> List<FlexCreateRefusal> {
+  match quote {
+    SelectionQuoteEstablished { amount: _, currency: _ } => []
+    _ => [FlexRefusedQuoteNotEstablished]
+  }
+}
+
+// THE MONEY THE CEILING IS CHECKED AGAINST, from a COMPLETE charge walk, with every row's owner read three
+// ways (extdeps.cloud.vast_ai VastAiChargeMetadata: an absent label is an UNREAD owner, never a verdict):
+// a row labelled ours is OURS; a row labelled with another label is FOREIGN (ctrl shares the account) and is
+// not counted; a row with no metadata or no label is UNATTRIBUTED, and since it could be ours it counts
+// against the ceiling. So the ceiling can be over-counted, never under-counted, and the refusal names how
+// much of the total was unattributed. An incomplete walk or a counted row that does not convert refuses: the
+// ceiling is never checked against a guess.
+type FlexChargeOwner
+  = FlexChargeOurs
+  | FlexChargeForeign
+  | FlexChargeUnattributed
+
+type FlexSpentStanding
+  = FlexSpentRead { ours: MoneyAmountMicro, unattributed: MoneyAmountMicro }
+  | FlexSpentUnreadable
+
+fn flex_charge_owner(charge: VastAiCharge, ours: FlexOwnerLabel) -> FlexChargeOwner {
+  match charge.metadata {
+    Absent => FlexChargeUnattributed
+    Present { value: m } =>
+      match m.label {
+        Absent => FlexChargeUnattributed
+        Present { value: l } => if l == (ours as String) { FlexChargeOurs } else { FlexChargeForeign }
+      }
+  }
+}
+
+fn flex_spent(charges: FlexChargesStanding, ours: FlexOwnerLabel) -> FlexSpentStanding {
+  match charges {
+    FlexChargesComplete { roster: complete } =>
+      fold(
+        complete.results,
+        init: FlexSpentRead { ours: money_amount_micro(count: 0), unattributed: money_amount_micro(count: 0) },
+        f: (acc, row) =>
+          match acc {
+            FlexSpentUnreadable => FlexSpentUnreadable
+            FlexSpentRead { ours: o, unattributed: u } =>
+              match flex_charge_owner(charge: row, ours: ours) {
+                FlexChargeForeign => acc
+                FlexChargeOurs =>
+                  match exact_decimal_to_money_amount_micro_ceil(d: row.amount) {
+                    DecimalMoneyConverted { amount: a } => FlexSpentRead { ours: measure_add(a: o, b: a), unattributed: u }
+                    _ => FlexSpentUnreadable
+                  }
+                FlexChargeUnattributed =>
+                  match exact_decimal_to_money_amount_micro_ceil(d: row.amount) {
+                    DecimalMoneyConverted { amount: a } => FlexSpentRead { ours: o, unattributed: measure_add(a: u, b: a) }
+                    _ => FlexSpentUnreadable
+                  }
+              }
+          },
+      )
+    _ => FlexSpentUnreadable
+  }
+}
+
+// The reservation of one rental is the bid held for the acquisition horizon. The ceiling holds ours, the
+// unattributed rows and the reservation together.
+fn flex_budget_wall(policy: FlexPolicy, charges: FlexChargesStanding, bid: MoneyPerHour) -> List<FlexCreateRefusal> {
+  match flex_spent(charges: charges, ours: policy.owner) {
+    FlexSpentUnreadable => [FlexRefusedChargesUnreadable]
+    FlexSpentRead { ours: o, unattributed: u } =>
+      let reservation = flex_liability_for_horizon(rate: bid, horizon: policy.acquisition_horizon)
+      if measure_le(a: measure_add(a: measure_add(a: o, b: u), b: reservation), b: flex_trial_total) {
+        []
+      } else {
+        [FlexRefusedBudgetCeiling { spent: o, unattributed: u, reservation: reservation, ceiling: flex_trial_total }]
+      }
+  }
+}
+
+fn flex_wet_gate_wall(gates: FlexWetGates) -> List<FlexCreateRefusal> {
+  match gates.key {
+    FlexKeyLive { route: _ } => []
+    FlexKeyNotLive { causes: cs } => [FlexRefusedKeyNotLive { custody: flex_key_custody_declaration, causes: cs }]
+  }
+}
+
+fn flex_placement_wall(placement: FlexPlacementStanding) -> List<FlexCreateRefusal> {
+  match placement {
+    FlexPlacementSupplied { placement: _, producer: _ } => []
+    FlexPlacementUnread { obligation: o } => [FlexRefusedPlacementUnread { obligation: o }]
+  }
+}
+
+fn flex_admitted_bid(admission: FlexBidAdmission) -> MoneyPerHour? {
+  match admission {
+    FlexBidAdmitted { bid: b, selection: _, account: _, occupancy: _, window: _ } => Present { value: b }
+    _ => none
+  }
+}
+
+// The Vast price is the bid in micro-dollars an hour, six fraction digits.
+fn flex_bid_price(bid: MoneyPerHour) -> ExactDecimal {
+  ExactDecimal { units: money_per_hour_micros(q: bid), fraction_digits: 6 }
+}
+
+// Vast takes the disk as a bare integer of gigabytes (extdeps.cloud.vast_ai Asks.Create); the unit is
+// uncited there, so the request keeps ByteSize and this rounds UP to whole 10^9 bytes, which can only
+// over-ask under either reading of the unit, never undersize the recipe's disk.
+fn flex_vast_disk_gigabytes(disk: ByteSize) -> Int {
+  (byte_size_count(b: disk) + 999999999) / 1000000000
+}
+
+// Every wall the create meets, in a fixed order. WET refuses at the first; DRY reports them all beside
+// the write it would make.
+fn flex_create_walls(policy: FlexPolicy, observation: FlexPassObservation, intent: FlexCreateIntent, recipe: ServingRecipe, hashes: List<FlexTemplateHashRow>) -> List<FlexCreateRefusal> {
+  concat(
+    flex_placement_wall(placement: intent.placement),
+    concat(
+    flex_entry_wall(entry: intent.entry),
+    concat(
+      flex_quote_wall(quote: intent.quote),
+      concat(
+        match flex_admitted_bid(admission: intent.admission) {
+          Absent => [FlexRefusedAdmissionNotAdmitted]
+          Present { value: bid } => flex_budget_wall(policy: policy, charges: observation.charges, bid: bid)
+        },
+        match flex_serving_template(recipe: recipe) {
+          FlexTemplateResolved { template: _ } =>
+            match flex_vast_template_hash(rows: hashes, recipe: recipe.id) {
+              Absent => [FlexRefusedTemplateHashUnread]
+              Present { value: _ } => []
+            }
+          _ => [FlexRefusedTemplateUnresolved]
+        },
+      ),
+    ),
+    ),
+  )
+}
+
+// The create request, only when the bid, the template and its Vast hash all exist.
+fn flex_create_request(policy: FlexPolicy, intent: FlexCreateIntent, recipe: ServingRecipe, hashes: List<FlexTemplateHashRow>) -> FlexCreateRequest? {
+  match flex_admitted_bid(admission: intent.admission) {
+    Absent => none
+    Present { value: bid } =>
+      match flex_serving_template(recipe: recipe) {
+        FlexTemplateResolved { template: t } =>
+          match flex_vast_template_hash(rows: hashes, recipe: recipe.id) {
+            Absent => none
+            Present { value: hash } =>
+              Present {
+                value: FlexCreateRequest {
+                  offer_id: intent.offer.id,
+                  machine_id: intent.offer.machine_id,
+                  price: flex_bid_price(bid: bid),
+                  bid: bid,
+                  disk: t.disk,
+                  template_hash_id: hash,
+                  label: policy.owner as NonEmptyStr,
+                  reservation: flex_liability_for_horizon(rate: bid, horizon: policy.acquisition_horizon),
+                },
+              }
+          }
+        _ => none
+      }
+  }
+}
+
+// ---- THE PER-RENTAL SERVER PASSWORD. POOL_API_KEY is the bearer password the rented card's own inference
+// server requires (it is not a pool credential); the secret-free template carries none, so each create
+// draws a fresh one from extdeps.entropy Urandom and sends it only in the create body's env. It is a
+// Secret and is never rendered: FlexCreateRequest, the printable plan, holds none, and the draw happens
+// in flex_run_create, the write path, not in the pure plan. ctrl's pool reads it per instance.
+data flex_pool_password_length_chars: Int = 48
+
+fn mint_flex_pool_password() -> Secret {
+  concat("-e POOL_API_KEY=", Urandom.ReadPassword(count: flex_pool_password_length_chars).password) as Secret
+}
+
+// ---- THE CREATE ACTUATION. An answer with success is Answered; a refusal that proves no rental (a
+// 4xx other than an undecodable answer) is Refused; every uncertain completion (transport lost, a 5xx,
+// an answer that did not decode) is Lost, because the machine may have rented.
+fn flex_create_perform(api_key: Secret, request: FlexCreateRequest, pool_password: Secret) -> FlexCreateStanding uses net: Network {
+  let sent = vast_ai.Asks.Create(
+    api_key: api_key,
+    offer_id: request.offer_id,
+    price: request.price,
+    disk: flex_vast_disk_gigabytes(disk: request.disk),
+    template_hash_id: request.template_hash_id,
+    label: request.label,
+    env: pool_password,
+  )
+  match sent {
+    RestAnswered { answer: a } =>
+      if a.success {
+        FlexCreateAnswered { instance_id: a.new_contract, machine_id: request.machine_id, ask_id: request.offer_id }
+      } else {
+        FlexCreateRefused { ask_id: request.offer_id, machine_id: request.machine_id }
+      }
+    RestRefused { refusal: RestStatusRefused { status: status, body: _ } } =>
+      if status >= 500 {
+        FlexCreateLost { ask_id: request.offer_id, machine_id: request.machine_id }
+      } else {
+        FlexCreateRefused { ask_id: request.offer_id, machine_id: request.machine_id }
+      }
+    RestRefused { refusal: RestTransportRefused { cause: _ } } =>
+      FlexCreateLost { ask_id: request.offer_id, machine_id: request.machine_id }
+    RestRefused { refusal: RestBodyUndecodable { status: _, cause: _ } } =>
+      FlexCreateLost { ask_id: request.offer_id, machine_id: request.machine_id }
+  }
+}
+
+// ---- ISOLATION. The roster the loop reasons over holds only instances carrying our label.
+fn flex_ours_roster(roster: FlexInstancesStanding, ours: FlexOwnerLabel) -> FlexInstancesStanding {
+  flex_roster_restrict(roster: roster, keep: i => flex_instance_ours(instance: i, ours: ours))
+}
+
+// A lost create plus an observed instance of ours on the machine reconciles to HELD, never to a second
+// acquisition. The reconcile sees only our instances, so a foreign rental on the same machine is not
+// ours.
+fn flex_reconcile_ours(standing: FlexCreateStanding, roster: FlexInstancesStanding, ours: FlexOwnerLabel) -> FlexReconcileVerdict {
+  flex_reconcile_acquisition(standing: standing, roster: flex_ours_roster(roster: roster, ours: ours))
+}
+
+// ---- THE ALLOCATION JOIN. The identity is the provider declaration plus the instance id; the origin
+// records the ask. The contract is unread (the create answer carries no offer terms).
+data flex_provider_declaration: DeclarationRef = decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor")
+
+data flex_contract_unread_obligation: NonEmptyStr = "the create answer names the instance but not the contract terms; read them from the instance" as NonEmptyStr
+
+fn flex_acquired_allocation(
+  policy: FlexPolicy,
+  request: FlexCreateRequest,
+  placement: FlexAllocationPlacement,
+  instance_id: Int,
+  asked_at: EpochMs,
+) -> RentedServingAllocation {
+  RentedServingAllocation {
+    identity: rented_allocation_identity(provider: flex_provider_declaration, contract: int_to_decimal_string(value: instance_id) as NonEmptyStr),
+    origin: RentedAllocationAcquired {
+      owner: policy.owner as NonEmptyStr,
+      asked_at: asked_at,
+      asked_rate: request.bid,
+    },
+    contract: RentedContractUnread { obligation: flex_contract_unread_obligation },
+    card: placement.card,
+    end: placement.end,
+    engine: placement.engine,
+    artifact: placement.artifact,
+    host: placement.host,
+    route: placement.route,
+  }
+}
+
+// ---- THE COOLDOWN. It starts at ASK time: a create that timed out may have rented, so the span runs from
+// the moment the ask was sent whatever the answer was. The span is the acquisition horizon.
+fn flex_cooldown_from_ask(policy: FlexPolicy, asked_at: EpochMs) -> FlexRentCooldown {
+  FlexRentCooldown { asked_at: asked_at, until: asked_at + (second_count(s: policy.acquisition_horizon) * 1000) }
+}
+
+// ---- THE PASS PLAN. Pure: it decides what the pass would do, and flex_run_pass performs it.
+type FlexPassRefusal
+  = FlexPassRosterNotComplete { decision: FlexWriteDecision }
+  | FlexPassReleaseReadingsUnread { allocation: RentedServingAllocation }
+  | FlexPassCreateRefused { refusal: FlexCreateRefusal }
+  | FlexPassNoAllocationForCard { id: NonEmptyStr }
+  | FlexPassCooldownActive { until: EpochMs }
+  | FlexPassNotAWritePlan
+
+type FlexPassPlan
+  = FlexPlanRefused { refusal: FlexPassRefusal }
+  | FlexPlanIdle
+  | FlexPlanDryCreate { would: FlexCreateRequest?, walls: List<FlexCreateRefusal> }
+  | FlexPlanDryDestroy { would: FlexCleanupAction }
+  | FlexPlanCreate { request: FlexCreateRequest, intent: FlexCreateIntent }
+  | FlexPlanDestroy { action: FlexCleanupAction, allocation: RentedServingAllocation }
+
+fn flex_first_destroy(plan: FlexReleasePlan) -> FlexCleanupAction? {
+  first_where(plan.actions, a =>
+    match a {
+      FlexDestroy { id: _, why: _ } => true
+      FlexKeep { id: _ } => false
+    })
+}
+
+fn flex_allocation_for_card(allocations: List<RentedServingAllocation>, id: NonEmptyStr) -> RentedServingAllocation? {
+  first_where(allocations, a => (rented_bound_instance_id(allocation: a) as String) == (id as String))
+}
+
+fn flex_first_refusal(walls: List<FlexCreateRefusal>) -> FlexCreateRefusal? {
+  first_where(walls, w => true)
+}
+
+fn flex_plan_destroy(input: FlexPassInput, action: FlexCleanupAction) -> FlexPassPlan {
+  match input.policy.actuation {
+    Plan => FlexPlanDryDestroy { would: action }
+    Apply =>
+      match action {
+        FlexKeep { id: _ } => FlexPlanIdle
+        FlexDestroy { id: id, why: _ } =>
+          match flex_first_refusal(walls: flex_wet_gate_wall(gates: input.gates)) {
+            Present { value: first } => FlexPlanRefused { refusal: FlexPassCreateRefused { refusal: first } }
+            Absent =>
+              match flex_allocation_for_card(allocations: input.allocations, id: id) {
+                Absent => FlexPlanRefused { refusal: FlexPassNoAllocationForCard { id: id } }
+                Present { value: a } => FlexPlanDestroy { action: action, allocation: a }
+              }
+          }
+      }
+  }
+}
+
+fn flex_plan_create(input: FlexPassInput, intent: FlexCreateIntent) -> FlexPassPlan {
+  let walls = flex_create_walls(policy: input.policy, observation: input.observation, intent: intent, recipe: input.recipe, hashes: input.template_hashes)
+  match input.policy.actuation {
+    Plan => FlexPlanDryCreate { would: flex_create_request(policy: input.policy, intent: intent, recipe: input.recipe, hashes: input.template_hashes), walls: concat(walls, flex_wet_gate_wall(gates: input.gates)) }
+    Apply =>
+      match flex_first_refusal(walls: concat(walls, flex_wet_gate_wall(gates: input.gates))) {
+        Present { value: first } => FlexPlanRefused { refusal: FlexPassCreateRefused { refusal: first } }
+        Absent =>
+          match flex_create_request(policy: input.policy, intent: intent, recipe: input.recipe, hashes: input.template_hashes) {
+            Absent => FlexPlanRefused { refusal: FlexPassCreateRefused { refusal: FlexRefusedAdmissionNotAdmitted } }
+            Present { value: request } => FlexPlanCreate { request: request, intent: intent }
+          }
+      }
+  }
+}
+
+fn flex_plan_create_if_writable(input: FlexPassInput, intent: FlexCreateIntent, decision: FlexWriteDecision) -> FlexPassPlan {
+  match decision {
+    FlexWriteHeldDry => flex_plan_create(input: input, intent: intent)
+    FlexWriteWetUnwired => flex_plan_create(input: input, intent: intent)
+    other => FlexPlanRefused { refusal: FlexPassRosterNotComplete { decision: other } }
+  }
+}
+
+fn flex_plan_pass(input: FlexPassInput) -> FlexPassPlan {
+  let ours = flex_ours_roster(roster: input.observation.roster, ours: input.policy.owner)
+  let decision = flex_write_decision(policy: input.policy, roster: ours)
+  let cap = flex_cap_from_roster(policy: input.policy, roster: ours)
+  match ours {
+    FlexInstancesComplete { roster: _ } =>
+      match flex_first_destroy(plan: flex_release_pass(cards: input.cards, ours: input.policy.owner, cap: cap, no_room: input.no_room, replacement_serving: input.replacement_serving)) {
+        Present { value: action } => flex_plan_destroy(input: input, action: action)
+        Absent =>
+          match input.intent {
+            Absent => FlexPlanIdle
+            Present { value: intent } =>
+              match input.cooldown {
+                Present { value: c } =>
+                  if input.now < c.until {
+                    FlexPlanRefused { refusal: FlexPassCooldownActive { until: c.until } }
+                  } else {
+                    flex_plan_create_if_writable(input: input, intent: intent, decision: decision)
+                  }
+                Absent => flex_plan_create_if_writable(input: input, intent: intent, decision: decision)
+              }
+          }
+      }
+    _ => FlexPlanRefused { refusal: FlexPassRosterNotComplete { decision: decision } }
+  }
+}
+
+// ---- THE PASS RECORD.
+type FlexPassOutcome
+  = FlexPassStopped { refusal: FlexPassRefusal }
+  | FlexPassIdle
+  | FlexPassDryCreate { would: FlexCreateRequest?, walls: List<FlexCreateRefusal> }
+  | FlexPassDryDestroy { would: FlexCleanupAction }
+  | FlexPassCreated {
+      standing: FlexCreateStanding
+      cooldown: FlexRentCooldown
+      allocation: RentedServingAllocation?
+    }
+  | FlexPassReleased { receipt: RentedReleaseReceiptV1, destroy_status: String? }
+
+// The executor: observation is already supplied in the input; the single write is performed here.
+// A create's cooldown is recorded at ASK time before the answer is read. After the write the pass
+// ends: the reconcile of an uncertain create is the NEXT pass's observation (flex_reconcile_ours).
+fn flex_created_outcome(input: FlexPassInput, request: FlexCreateRequest, intent: FlexCreateIntent, standing: FlexCreateStanding) -> FlexPassOutcome {
+  FlexPassCreated {
+    standing: standing,
+    cooldown: flex_cooldown_from_ask(policy: input.policy, asked_at: input.now),
+    allocation: match standing {
+      FlexCreateAnswered { instance_id: id, machine_id: _, ask_id: _ } =>
+        match intent.placement {
+          FlexPlacementSupplied { placement: p, producer: _ } =>
+            Present { value: flex_acquired_allocation(policy: input.policy, request: request, placement: p, instance_id: id, asked_at: input.now) }
+          FlexPlacementUnread { obligation: _ } => none
+        }
+      _ => none
+    },
+  }
+}
+
+fn flex_run_create(input: FlexPassInput, api_key: Secret, request: FlexCreateRequest, intent: FlexCreateIntent) -> FlexPassOutcome uses net: Network {
+  flex_created_outcome(input: input, request: request, intent: intent, standing: flex_create_perform(api_key: api_key, request: request, pool_password: mint_flex_pool_password()))
+}
+
+// A create whose answer was lost and whose instance the NEXT pass's observation shows carrying our label
+// is the same acquisition: it yields the allocation, and no second ask is planned from it.
+fn flex_reconciled_allocation(policy: FlexPolicy, request: FlexCreateRequest, placement: FlexAllocationPlacement, verdict: FlexReconcileVerdict, asked_at: EpochMs) -> RentedServingAllocation? {
+  match verdict {
+    FlexAlreadyHeld { instance: i } =>
+      Present { value: flex_acquired_allocation(policy: policy, request: request, placement: placement, instance_id: i.id, asked_at: asked_at) }
+    _ => none
+  }
+}
+
+// RELEASE BINDING: the FlexDestroy card is bound to its allocation and handed to S5's release entry
+// with the policy's actuation as the mode and the policy owner as the required label.
+fn flex_release_card(
+  input: FlexPassInput,
+  allocation: RentedServingAllocation,
+  roots: ServingStoreRoots,
+  protected: ServingProtectedPaths,
+  readings: RentedReleaseReadings,
+) -> FlexPassOutcome {
+  FlexPassReleased {
+    destroy_status: none,
+    receipt: rented_release_receipt(
+      allocation: allocation,
+      roots: roots,
+      protected: protected,
+      required_label: input.policy.owner as NonEmptyStr,
+      mode: input.policy.actuation,
+      readings: readings,
+    ),
+  }
+}
+
+// The dry/stopped/idle outcomes of a plan; the write plans are performed by flex_run_create and
+// flex_release_card.
+fn flex_outcome_without_write(plan: FlexPassPlan) -> FlexPassOutcome? {
+  match plan {
+    FlexPlanRefused { refusal: r } => Present { value: FlexPassStopped { refusal: r } }
+    FlexPlanIdle => Present { value: FlexPassIdle }
+    FlexPlanDryCreate { would: w, walls: ws } => Present { value: FlexPassDryCreate { would: w, walls: ws } }
+    FlexPlanDryDestroy { would: w } => Present { value: FlexPassDryDestroy { would: w } }
+    _ => none
+  }
+}
+
+// WHAT A RELEASE READS: the card's store roots, its protected paths and S5's readings of the host and the
+// instance. They are read for ONE allocation, only when a wet destroy is planned for it; a pass that plans
+// no release reads none of them, so a dry or idle pass is never handed readings it would have to invent.
+type FlexReleaseInputs {
+  roots: ServingStoreRoots
+  protected: ServingProtectedPaths
+  readings: RentedReleaseReadings
+}
+
+// THE PASS STEP. Pure: it plans from the supplied observation and names the one write the plan holds, so a
+// release is witnessed without a transport. A destroy is due only when S5's receipt reports it Pending (the
+// id and label guards passed and the card still listed); every other receipt outcome is final here. A
+// planned release with no readings supplied stops typed, naming the allocation whose readings are owed.
+type FlexPassStep
+  = FlexPassDone { outcome: FlexPassOutcome }
+  | FlexPassCreateDue { request: FlexCreateRequest, intent: FlexCreateIntent }
+  | FlexPassDestroyDue { receipt: RentedReleaseReceiptV1, request: RentedDestroyRequest }
+
+fn flex_pass_step(input: FlexPassInput, releasing: FlexReleaseInputs?) -> FlexPassStep {
+  let plan = flex_plan_pass(input: input)
+  match flex_outcome_without_write(plan: plan) {
+    Present { value: outcome } => FlexPassDone { outcome: outcome }
+    Absent =>
+      match plan {
+        FlexPlanCreate { request: request, intent: intent } => FlexPassCreateDue { request: request, intent: intent }
+        FlexPlanDestroy { action: _, allocation: allocation } =>
+          match releasing {
+            Absent => FlexPassDone { outcome: FlexPassStopped { refusal: FlexPassReleaseReadingsUnread { allocation: allocation } } }
+            Present { value: r } =>
+          match flex_release_card(input: input, allocation: allocation, roots: r.roots, protected: r.protected, readings: r.readings) {
+            FlexPassReleased { receipt: receipt, destroy_status: _ } =>
+              match receipt.outcome {
+                RentedReleasePending { request: q, status: _ } => FlexPassDestroyDue { receipt: receipt, request: q }
+                _ => FlexPassDone { outcome: FlexPassReleased { receipt: receipt, destroy_status: none } }
+              }
+            other => FlexPassDone { outcome: other }
+          }
+          }
+        _ => FlexPassDone { outcome: FlexPassStopped { refusal: FlexPassNotAWritePlan } }
+      }
+  }
+}
+
+// THE ENTRY. One pass: step from the supplied observation, then perform the one write the step holds. The
+// destroy's gone readback is the next pass's observation.
+fn flex_run_pass(input: FlexPassInput, api_key: Secret, releasing: FlexReleaseInputs?) -> FlexPassOutcome uses net: Network {
+  match flex_pass_step(input: input, releasing: releasing) {
+    FlexPassDone { outcome: outcome } => outcome
+    FlexPassCreateDue { request: request, intent: intent } => flex_run_create(input: input, api_key: api_key, request: request, intent: intent)
+    FlexPassDestroyDue { receipt: receipt, request: q } =>
+      FlexPassReleased { receipt: receipt, destroy_status: Present { value: flex_vast_destroy_perform(api_key: api_key, roster: input.observation.roster, ours: input.policy.owner, request: q) } }
+  }
+}
+
+// ---- THE VAST ROW'S HALF OF RELEASE. gunbc.serving.rented_release reads a supplier-agnostic instance; the
+// Vast instance maps into it here (id, label, actual_status), and the authorized destroy, which names the
+// instance by the agnostic id, is performed against the Vast instance of that id in the COMPLETE roster
+// this pass observed, REDUCED TO OUR LABEL first: a destroy can only ever name an instance this pass read
+// carrying policy.owner, never a parsed number and never a foreign row that shares the id string.
+fn flex_vast_rented_instance(instance: VastAiInstance) -> RentedObservedInstance {
+  RentedObservedInstance {
+    id: int_to_decimal_string(value: instance.id) as NonEmptyStr,
+    owner_label: instance.label,
+    status: instance.actual_status,
+  }
+}
+
+fn flex_vast_destroy_target(roster: FlexInstancesStanding, ours: FlexOwnerLabel, request: RentedDestroyRequest) -> VastAiInstance? {
+  match flex_ours_roster(roster: roster, ours: ours) {
+    FlexInstancesComplete { roster: r } => first_where(r.instances, i => int_to_decimal_string(value: i.id) == (request.instance_id as String))
+    _ => none
+  }
+}
+
+fn flex_vast_destroy_perform(api_key: Secret, roster: FlexInstancesStanding, ours: FlexOwnerLabel, request: RentedDestroyRequest) -> String uses net: Network {
+  match flex_vast_destroy_target(roster: roster, ours: ours, request: request) {
+    Absent => "destroy not sent: no instance of ours with that id is in this pass's complete Vast roster"
+    Present { value: target } =>
+      match vast_ai.InstanceLifecycle.Destroy(api_key: api_key, instance_id: target.id) {
+        RestAnswered { answer: _ } => "destroy answered"
+        RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["destroy refused with status ", to_string(status)], "")
+        RestRefused { refusal: RestTransportRefused { cause: _ } } => "destroy got no response"
+        RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["destroy status ", to_string(status), " body undecodable"], "")
+      }
+  }
+}
+
+// ---- THE RECEIPT LINE of one pass outcome: what was decided, the write it would make or made, and every
+// wall in front of a create, named. It renders no secret (the create request carries none).
+fn flex_create_refusal_wire(r: FlexCreateRefusal) -> String {
+  match r {
+    FlexRefusedEntryEstimated { standings: ss } => concat("entry-estimated uncited=", int_to_decimal_string(value: length(ss)))
+    FlexRefusedEntryExcluded => "entry-excluded"
+    FlexRefusedQuoteNotEstablished => "quote-not-established"
+    FlexRefusedAdmissionNotAdmitted => "admission-not-admitted"
+    FlexRefusedTemplateUnresolved => "template-unresolved"
+    FlexRefusedTemplateHashUnread => "template-hash-unread"
+    FlexRefusedChargesUnreadable => "charges-unreadable"
+    FlexRefusedBudgetCeiling { spent: s, unattributed: u, reservation: r2, ceiling: c } =>
+      join(["budget-ceiling spent_micro=", int_to_decimal_string(value: money_amount_micro_count(m: s)), " unattributed_micro=", int_to_decimal_string(value: money_amount_micro_count(m: u)), " reservation_micro=", int_to_decimal_string(value: money_amount_micro_count(m: r2)), " ceiling_micro=", int_to_decimal_string(value: money_amount_micro_count(m: c))], "")
+    FlexRefusedKeyNotLive { custody: _, causes: cs } => concat("key-not-live ", join(cs, "; "))
+    FlexRefusedPlacementUnread { obligation: _ } => "placement-unread"
+  }
+}
+
+fn flex_pass_refusal_wire(r: FlexPassRefusal) -> String {
+  match r {
+    FlexPassRosterNotComplete { decision: _ } => "roster-not-complete"
+    FlexPassReleaseReadingsUnread { allocation: a } => concat("release-readings-unread instance=", rented_bound_instance_id(allocation: a) as String)
+    FlexPassCreateRefused { refusal: c } => concat("create-refused ", flex_create_refusal_wire(r: c))
+    FlexPassNoAllocationForCard { id: id } => concat("no-allocation-for-card ", id as String)
+    FlexPassCooldownActive { until: u } => concat("cooldown-active until_ms=", int_to_decimal_string(value: u))
+    FlexPassNotAWritePlan => "not-a-write-plan"
+  }
+}
+
+fn flex_create_request_wire(q: FlexCreateRequest) -> String {
+  join([
+    "ask=", int_to_decimal_string(value: q.offer_id), " machine=", int_to_decimal_string(value: q.machine_id),
+    " bid_micro_per_hour=", int_to_decimal_string(value: money_per_hour_micros(q: q.bid)),
+    " disk_gb=", int_to_decimal_string(value: flex_vast_disk_gigabytes(disk: q.disk)),
+    " template=", q.template_hash_id as String, " label=", q.label as String,
+    " reservation_micro=", int_to_decimal_string(value: money_amount_micro_count(m: q.reservation)),
+  ], "")
+}
+
+fn flex_pass_outcome_wire(outcome: FlexPassOutcome) -> String {
+  match outcome {
+    FlexPassStopped { refusal: r } => concat("stopped ", flex_pass_refusal_wire(r: r))
+    FlexPassIdle => "idle"
+    FlexPassDryCreate { would: w, walls: ws } =>
+      join([
+        "dry-create would=", match w { Present { value: q } => flex_create_request_wire(q: q) Absent => "none" },
+        " walls=[", join(map(ws, x => flex_create_refusal_wire(r: x)), ", "), "]",
+      ], "")
+    FlexPassDryDestroy { would: a } =>
+      match a {
+        FlexDestroy { id: id, why: _ } => concat("dry-destroy instance=", id as String)
+        FlexKeep { id: id } => concat("dry-keep instance=", id as String)
+      }
+    FlexPassCreated { standing: st, cooldown: _, allocation: _ } =>
+      match st {
+        FlexCreateAnswered { instance_id: i, machine_id: _, ask_id: _ } => concat("created instance=", int_to_decimal_string(value: i))
+        FlexCreateLost { ask_id: a, machine_id: _ } => concat("create-lost ask=", int_to_decimal_string(value: a))
+        FlexCreateRefused { ask_id: a, machine_id: _ } => concat("create-refused-by-vast ask=", int_to_decimal_string(value: a))
+      }
+    FlexPassReleased { receipt: _, destroy_status: d } =>
+      concat("released destroy=", match d { Present { value: s } => s Absent => "not-performed" })
+  }
+}

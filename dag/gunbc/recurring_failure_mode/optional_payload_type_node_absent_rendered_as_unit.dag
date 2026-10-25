@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.optional_payload_type_node_absent_rendered_as_unit
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
 
 data optional_payload_type_node_absent_rendered_as_unit: RecurringFailureMode = RecurringFailureMode {
   identity: "optional_payload_type_node_absent_rendered_as_unit" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
 
   receipts: [
     "**an Optional carrier whose payload type node is absent on the declared children was rendered with a fabricated `()` payload** (INVALID STATE: `Optional<List<Optional<Int>>>` emitted as `Option<Rc<Vec<Option<()>>>>` because render_rust_optional_carrier_inner took `Absent => \"()\"`; the element payload was erased to Unit).",
@@ -22,6 +24,8 @@ data optional_payload_type_node_absent_rendered_as_unit: RecurringFailureMode = 
     "NEXT-RUNG TRIGGER, phrased as the capability: a typed emit-refusal carrier that render_rust_optional_carrier_inner returns instead of splicing compile_error! text, so an absent payload type node surfaces as a located typed diagnostic before any output is written. Owner: Manager 2 (emitter).",
 
     "RECOGNITION RULE: an emitted `Option<()>` or `Option<Rc<Vec<..<()>..>>>` for a declared Optional of a non-Unit payload is this class; inspect the inferred tree of the nested generic argument before the renderer.",
+
+    "OCCURRENCE, 2026-10-22 (filed by royal-bee-327 from gunbc#14622, merged; recorded rather than absorbed): AN OPTIONAL AS A MAP VALUE. `v2.compiler.infer` `infer_arm_resolutions` was authored returning `Outcome<Map<Node, Optional<ResolvedArm>>>`. The front end accepted it; the v2-bootstrap emission refused at cargo with this row's own interim seam, `compile_error!` `optional carrier payload type node absent for V`, located at the infer.dag declaration and the emitted `v2_compiler_infer` module (v2-bootstrap job 119038945252, on the parent of gunbc#14622 commit ca06999847e). So the refusal this row installed fired as designed -- loud and located, not the fabricated `()` -- and the producer-side stamping (gunbc#13939) does not reach an Optional standing as the VALUE argument of an applied `Map`: the carrier arrives at `render_rust_optional_carrier_inner` childless. THE WORKAROUND, NAMED AS ONE: #14622 replaced the map value with the coproduct `v2.compiler.arm_resolution` `ArmTestDecision` (`ArmDecided` | `ArmUndecided`), whose own comment says it exists so a Map value is never a nested optional. That coproduct is an emitter-limit avoidance, not a modelling decision; `Optional<ResolvedArm>` is the declaration the meaning calls for, and the replaced shape is the discriminating RED. RUNG FOR THIS OCCURRENCE: 1, as the row states (mitigation by the compile_error! seam). CEILING and NEXT-RUNG TRIGGER unchanged in kind, and this occurrence adds the position they must cover: infer stamping of an Optional payload type node at every applied generic argument position, Map values included, sufficient that render_rust_optional_carrier_inner never receives a childless carrier from Accepted source; then the typed emit refusal above for any residue. Owner of the emitter capability: Charter 1 (`v1.compiler.emit_rust`)."
   ],
 
   evidence: [],

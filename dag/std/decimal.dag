@@ -1,9 +1,9 @@
 module std.decimal
 
 import std.types { String, Int, Bool, range }
+import std.error_primitives { pure_dag_seam_unreachable_int }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.algebra { string_concat_join }
-import std.error_primitives { pure_dag_seam_unreachable }
 import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_multiply, checked_int_subtract }
 
 data decimal_note: String = "Positional decimal notation for a FIXED-POINT magnitude: an integer paired with the power of ten it is scaled by. It exists because two unrelated boundaries needed the identical projection and neither is the right owner of it — WebAudio's gain and time arguments are decimal seconds and a linear amplitude in [0, 1], and CSS transform scale factors are decimal ratios. Each carried its magnitude integrally upstream (a fractional literal in a .dag row would be a second representation of the same number), so each needed to divide exactly once, at its own wire. Giving each boundary its own formatter would have put the same numeral logic in two places for no reason other than that the two consumers are far apart in the layer graph, which is the horizontal redundancy DESIGN section 2 names — the concept is one, so it is modeled once and both uses derive.
@@ -37,6 +37,18 @@ fn fixed_point_wire(value: Int, decimals: Int) -> String {
     to_string(whole)
   } else {
     string_concat_join(fields: [to_string(whole), ".", zero_pad_left(digits: to_string(frac), width: decimals)], separator: "")
+  }
+}
+
+// The same projection with trailing fraction zeros dropped (0.400 -> 0.4, 56.000 -> 56): a boundary whose
+// numeral grammar is the shortest decimal (CSS <number>) states that as this option, not as its own
+// formatter. Each recursion divides value by ten and lowers decimals by one, so decimals strictly
+// descends to the base case.
+fn fixed_point_trimmed_wire(value: Int, decimals: Int) -> String {
+  if decimals > 0 && value % 10 == 0 {
+    fixed_point_trimmed_wire(value: value / 10, decimals: decimals - 1)
+  } else {
+    fixed_point_wire(value: value, decimals: decimals)
   }
 }
 
@@ -109,7 +121,7 @@ fn admit_exact_decimal(units: Int, fraction_digits: Int) -> ExactDecimalAdmissio
 // because dropping a zero there would change the number rather than its spelling.
 fn canonical_exact_decimal(d: ExactDecimal) -> ExactDecimal {
   if d.fraction_digits < 0 {
-    ExactDecimal { units: pure_dag_seam_unreachable(), fraction_digits: 0 }
+    ExactDecimal { units: pure_dag_seam_unreachable_int(), fraction_digits: 0 }
   } else if d.fraction_digits == 0 {
     ExactDecimal { units: d.units, fraction_digits: 0 }
   } else if d.units - ((d.units / 10) * 10) == 0 {

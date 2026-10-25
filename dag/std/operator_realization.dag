@@ -7,6 +7,7 @@ import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, D
 import std.types { List, String, Bool, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.syntax { BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce }
+import std.algebra { collection_concat_shape, collection_count_shape }
 
 // OPERATOR REALIZATION BY EXACT OPERAND STRUCTURE (DESIGN section 4b, the floor: an operator is
 // admitted by algebra inhabitance, but what it RENDERS AS is a fact about the operand's declaration

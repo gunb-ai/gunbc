@@ -64,6 +64,14 @@ fn ls_one_per_line_command(path: String) -> ArgvCommand {
   argv_command(program: ls_program(), arguments: ["-1", path])
 }
 
+// -1 -A: ONE ENTRY PER LINE, INCLUDING DOTFILES. ls(1) `-A, --almost-all`: do not ignore entries
+// starting with `.`, but omit the implied `.` and `..`. A caller asking "does this directory hold an
+// entry named N" must see a dot-prefixed N, or a hidden entry reads as absent. `--` ends options so a
+// directory path beginning with `-` is an operand.
+fn ls_almost_all_one_per_line_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program(), arguments: ["-1", "-A", "--", path])
+}
+
 // mktemp -d WITH A TEMPLATE: coreutils creates a NEW directory named from the template (trailing
 // X's replaced), mode 0700, and prints its path; it refuses rather than reuse an existing name
 // (coreutils manual, "mktemp invocation"). That exclusive creation is what makes the directory one
@@ -87,6 +95,13 @@ fn mkdir_parents_command(path: String) -> ArgvCommand {
 // lets the NAME of the directory be the record and a repeated invocation be harmless.
 fn mkdir_create_only_command(path: String) -> ArgvCommand {
   argv_command(program: mkdir_program(), arguments: ["--", path])
+}
+
+// mkdir -m: the mode is applied at creation (coreutils manual, "mkdir invocation": -m sets the file mode
+// as in chmod, not a=rwx - umask), so the directory is never visible with a wider mode. Without -p this is
+// still create-only: success proves the name did not exist, so the new directory is empty.
+fn mkdir_create_only_with_mode_command(path: String, octal_mode: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: mkdir_program(), arguments: ["-m", octal_mode as String, "--", path])
 }
 
 // ln WITHOUT -s IS A HARD LINK, and without -f it REFUSES when the destination exists (coreutils
@@ -130,6 +145,12 @@ fn cp_command(source: String, destination: String) -> ArgvCommand {
   argv_command(program: cp_program(), arguments: [source, destination])
 }
 
+// `--update=none` (coreutils 9.3+, "cp invocation"): copy only when the destination does not exist,
+// and exit 0 either way -- a postinst's "install from default if absent", not an overwrite.
+fn cp_preserve_if_absent_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: cp_program(), arguments: ["-p", "--update=none", source, destination])
+}
+
 // install(1) COPYING /dev/null CREATES AN EMPTY FILE WITH ITS FINAL OWNER AND MODE IN ONE STEP.
 // The point is the ORDER it makes possible: a file that will later hold a secret exists with its
 // restrictive mode before a single secret byte is written, so there is no window in which the bytes
@@ -171,6 +192,12 @@ fn rm_recursive_force_command(path: String) -> ArgvCommand {
 // which an absence readback then reports, rather than a host path being emptied through a mount.
 fn rm_recursive_force_one_file_system_command(path: String) -> ArgvCommand {
   argv_command(program: rm_program(), arguments: [coreutils_rm_force_recursive_flags as String, coreutils_rm_one_file_system_flag as String, path])
+}
+
+// THE ARGV TAIL FORM of the delete above, for a caller that hands the command to another program to run
+// per entry (find -exec). The operand paths follow it.
+fn rm_recursive_force_one_file_system_exec_argv() -> List<String> {
+  [rm_program().invocation as String, coreutils_rm_force_recursive_flags as String, coreutils_rm_one_file_system_flag as String]
 }
 
 // ln(1) -- GNU coreutils, "ln: Make links between files". -s makes a SYMBOLIC link, -f removes an
@@ -395,6 +422,22 @@ fn coreutils_install_directory_owned_argv(
   )
 }
 
+// THE ARGV COMMAND OVER THE ONE SPELLING OF install -d -m -o -g (coreutils_install_directory_owned_arguments).
+// install -d CREATES A DIRECTORY WITH ITS FINAL OWNER, GROUP AND MODE IN ONE STEP (coreutils manual, "install
+// invocation"): who OWNS what a privileged process creates is the point, since a mkdir run as root leaves a
+// root-owned directory its real consumer cannot rename. Owner and group are NAMES because install(1) accepts
+// either spelling and callers hold declared account names. Consumer: gunbc.roadmap.roadmap_attempt_exit_spool
+// attempt_exit_hook, which renders it as the ExecStopPost record creation, and the per-attempt grant that creates
+// .git/worktrees/<key> at spawn time: that directory has no topology to assert at plan time and an ADDITIVE sweep
+// cannot reach a declared mode from a ~0755 top, so it needs the same three-field restatement. -o is permitted
+// without privilege when it names the invoking principal itself, and -g when it names a group the invoker belongs to.
+fn install_directory_owned_argv_command(mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> ArgvCommand {
+  argv_command(
+    program: install_program(),
+    arguments: coreutils_install_directory_owned_arguments(mode: mode, owner: owner, group: group, path: path),
+  )
+}
+
 // install(1) WITHOUT OWNER OR GROUP FLAGS: copy SOURCE to DEST setting the mode at creation,
 // ownership following the invoking principal. Its one caller reaches it through
 // sudo_elevate_command, so the invoking principal IS root and -o/-g would be restatements of the
@@ -540,4 +583,10 @@ fn mv_exact_destination_command(source: String, destination: String) -> ArgvComm
 // same path is safe). Byte order needs LC_ALL=C in the environment, which is the caller's binding.
 fn sort_in_place_command(path: String) -> ArgvCommand {
   argv_command(program: sort_program(), arguments: ["-o", path, path])
+}
+
+// cat(1): the contents of ONE file on stdout (`cat -- PATH`). `--` ends options, so a path beginning with `-`
+// is a file and never a flag.
+fn cat_file_command(path: String) -> ArgvCommand {
+  argv_command(program: cat_program(), arguments: ["--", path])
 }

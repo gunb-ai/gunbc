@@ -1801,7 +1801,7 @@ fn floor_isolation_requirement() -> IsolationProfile {
 }
 
 // THE FLEET'S OWN TRUST DOMAIN, AS A ROW RATHER THAN A LITERAL, because a second consumer now
-// decides on it: gunbc.runner.runner_attempt_launch admits the reservation-authorized planner arm only for
+// decides on it: gunbc.runner.runner_attempt_launch admits the cell-grant planner arm (plan_attempt_launch_cell_granted) only for
 // a Work whose trust_domain IS this row -- the untrusted-CI route carries another domain and cannot
 // reach that arm by construction. Two spellings of the domain would let the two drift apart and
 // the selection silently widen or narrow.

@@ -26,10 +26,8 @@ import v2.extdeps.languages.dag {
   dag_named_edge,
   dag_surface_edge,
 }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.collection {
-  list_at_optional
-}
+import std.algebra { Cons, Empty, FreeMonoid, list_at_optional }
+
 import std.optional {
   Absent,
   Optional,
@@ -56,7 +54,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   symbol_lexeme,
-  fold_list_node
+  fold_list_node,
+  NotADeclaration
 }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.resolution_policy { ImportScoped }
@@ -102,7 +101,8 @@ fn pbf_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -125,7 +125,8 @@ fn pbf_subject_with_import_use() -> Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_imported_decl } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -190,7 +191,8 @@ fn pbf_unbound_atom_tree() -> Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_unbound_sym } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -227,7 +229,8 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_ambiguous_export_sym } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

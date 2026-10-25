@@ -2,9 +2,11 @@ module test.claim.machine_intake.mtcollins1_census_member_readback_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
+import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import gunbc.host.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, ssh_target_wire }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
+import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import gunbc.machine_intake.mtcollins1_census_member_readback {
   census_member_readback_from_readings, census_member_readback_holds, render_census_member_readback,
   MemberReading, MemberRead, MemberUnread, IsoReading, IsoMeasured, IsoUnmeasured,
@@ -13,7 +15,7 @@ import gunbc.machine_intake.mtcollins1_census_member_readback {
   census_member_readback,
   CasperKernel, CasperInitrd, GrubConfig, StockSide, CensusSide,
   census_pin_gate, PinsAdmitted, PinsRefused, CensusPinGate, CensusMemberReadings,
-  census_member_attempt_of,
+  census_member_attempt_of, census_member_workspace_prefix_of, census_member_readback_attempt_raw,
   CensusMemberReadbackAttempt, census_member_attempt_holds, render_census_member_attempt,
   member_reading_after_extract, member_reading_of_measure, BootChainWorkspaceUnavailable,
 }
@@ -24,33 +26,38 @@ import gunbc.host_command_binding {
   Removed, RemovalFailed, RemovalUnconfirmed, RemovalNotDispatched,
 }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.machine_intake.mtcollins1_census_medium_readback { RemoteAnswer }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data stock_iso: NonEmptyStr = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
 data census_iso: NonEmptyStr = "30ca88d43f8913995078f6c2c917d5049842f927f3fc886a103f460dd146a706"
-data census: BootMedium = mtcollins1_census_boot_medium(output_digest: census_iso)
+data census: BootMedium = census_boot_medium(image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, output_digest: census_iso)
 
 // THE SAME CENSUS MEDIUM -- genuine name, digest, directory and label -- NAMING ANOTHER EXPORTER. Only the
 // export's SSH target differs: another endpoint, or another principal at the supported endpoint. Its
 // bytes live on an exporter these readers never read, so a successful readback from the supported one
 // would answer for bytes the medium did not name (side-chat review at cad3011782).
-fn census_at(endpoint: String, principal: String) -> BootMedium {
+// Another exporter host, by name, at the standard port.
+fn other_exporter_address() -> SocketAddress {
+  socket_address(host: host_by_name(name: HostName { name: DomainName { labels: ["fixture-other-exporter" as DnsLabel] }, qualification: PartiallyQualified }), port: 22)
+}
+
+fn census_at(address: SocketAddress, principal: String) -> BootMedium {
   BootMedium {
     image_name: census.image_name,
     digest: census.digest,
-    export: BootImageExport { target: SshTarget { endpoint: endpoint as NonEmptyStr, principal: principal as NonEmptyStr }, dir: census.export.dir },
+    export: BootImageExport { target: SshTarget { address: address, principal: principal as NonEmptyStr }, dir: census.export.dir },
     terminal: census.terminal,
   }
 }
 
 fn census_at_other_endpoint() -> BootMedium {
-  census_at(endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
+  census_at(address: other_exporter_address(), principal: census.export.target.principal as String)
 }
 
 fn census_as_other_principal() -> BootMedium {
-  census_at(endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
+  census_at(address: census.export.target.address, principal: "fixture-other-principal")
 }
 
 fn read(d: NonEmptyStr) -> MemberReading { MemberRead { digest: d } }
@@ -58,7 +65,7 @@ fn read(d: NonEmptyStr) -> MemberReading { MemberRead { digest: d } }
 // Supplied member digests: the fold is over readings, the producer is the srv2 run.
 fn over(stock_grub: MemberReading, census_grub: MemberReading, census_kernel: MemberReading, census_initrd: MemberReading) -> CensusMemberReadback {
   census_member_readback_from_readings(
-    medium: census,
+    medium: census, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id,
     stock_iso: IsoMeasured { digest: stock_iso },
     census_iso: IsoMeasured { digest: census_iso },
     stock_grub: stock_grub, census_grub: census_grub,
@@ -112,7 +119,7 @@ test fn an_unread_census_initrd_is_unread_not_identical() -> Bool {
 
 test fn a_census_iso_off_its_pin_refuses_before_any_member_is_compared() -> Bool {
   let r = census_member_readback_from_readings(
-    medium: census,
+    medium: census, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id,
     stock_iso: IsoMeasured { digest: stock_iso },
     census_iso: IsoMeasured { digest: stock_iso },
     stock_grub: read(d: "g0"), census_grub: read(d: "g1"),
@@ -127,7 +134,7 @@ test fn a_census_iso_off_its_pin_refuses_before_any_member_is_compared() -> Bool
 
 test fn the_stock_medium_row_has_no_census_boot_chain_to_read() -> Bool {
   let r = census_member_readback_from_readings(
-    medium: stock_installer_boot_medium,
+    medium: stock_installer_boot_medium, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id,
     stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso },
     stock_grub: read(d: "g0"), census_grub: read(d: "g1"),
     stock_kernel: read(d: "k0"), census_kernel: read(d: "k0"),
@@ -146,11 +153,11 @@ data stock_member_digest: NonEmptyStr = "deb2c288c12e6f35c2b9242134116ea03f7d4eb
 // THE PIN GATE PRECEDES EXTRACTION: an off-pin census ISO is refused by the gate the producer
 // evaluates before it acquires a workspace, so the gate's refusal carries no member reading at all.
 test fn an_off_pin_iso_is_refused_by_the_gate_that_precedes_extraction() -> Bool {
-  match census_pin_gate(medium: census, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: stock_iso }) {
+  match census_pin_gate(medium: census, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: stock_iso }) {
     PinsRefused { readback: BootChainIsoNotPinned { side: CensusSide, expected: _, observed: _ } } => true
     _ => false
   }
-    && match census_pin_gate(medium: census, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+    && match census_pin_gate(medium: census, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
       PinsAdmitted { stock_iso: _, census_iso: _ } => true
       _ => false
     }
@@ -179,7 +186,16 @@ fn not_dispatched(reason: String) -> HostLeg { host_leg_of_typed_argv(outcome: T
 
 data admitted: CensusPinGate = PinsAdmitted { stock_iso: stock_iso, census_iso: census_iso }
 
-data workspace_dir: String = "/tmp/gunbc-mtcollins1-census-member.Ab12Cd34"
+// The scratch directory mktemp creates on srv2, exactly as a real `mktemp -d` echo: the ATTEMPT'S
+// derived prefix plus the eight X's replaced with letters and digits -- never a hand-typed prefix, so
+// what the fold admits is always what the attempt owns.
+data workspace_dir: String = concat(census_member_workspace_prefix_of(attempt: census_member_readback_attempt_raw as NonEmptyStr), "Ab12Cd34")
+// A SECOND SUBJECT'S OWN attempt identity, its derived prefix, and its disjoint namespace: a safe path
+// segment (passes admission), with a prefix neither equal to nor nested under mtcollins1's.
+data census2_attempt_raw: NonEmptyStr = "census2-census-member-readback"
+data census2_workspace_dir: String = concat(census_member_workspace_prefix_of(attempt: census2_attempt_raw), "Zx8Y7W6V")
+// An attempt identity that CANNOT be a path segment: admission must refuse it before any agent or leg.
+data unsafe_attempt_raw: NonEmptyStr = "unsafe/attempt"
 
 // Supplied member readings for an acquired workspace: an identical chain, so a non-holding attempt is
 // attributable to its workspace outcome alone.
@@ -191,8 +207,10 @@ fn identical_readings(dir: NonEmptyStr) -> CensusMemberReadings {
   }
 }
 
+// The supplied-answer fold runs under mtcollins1's OWN attempt identity (the wet wrapper's row), so
+// these claims exercise the fold with the attempt identity mtcollins1's receipt names.
 fn attempt(gate: CensusPinGate, creation: HostLeg, cleanup: HostLeg) -> CensusMemberReadbackAttempt {
-  census_member_attempt_of(kind: FleetSshTransport, gate: gate, creation: creation, readings: d => identical_readings(dir: d), cleanup: d => cleanup)
+  census_member_attempt_of(kind: FleetSshTransport, attempt: census_member_readback_attempt_raw as NonEmptyStr, gate: gate, creation: creation, readings: d => identical_readings(dir: d), cleanup: d => cleanup)
 }
 
 fn says(a: CensusMemberReadbackAttempt, pattern: String) -> Bool { string_contains(s: render_census_member_attempt(attempt: a), pattern: pattern) }
@@ -208,7 +226,7 @@ test fn an_acquired_workspace_that_is_removed_holds() -> Bool {
 // A PIN REFUSAL ISSUES NO CREATION: the creation leg is never consulted, and "never created" is
 // justified because it was never requested.
 test fn a_pin_refusal_requests_no_creation() -> Bool {
-  let refused = census_pin_gate(medium: census, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: stock_iso })
+  let refused = census_pin_gate(medium: census, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: stock_iso })
   let a = attempt(gate: refused, creation: ran(code: 0, stdout: workspace_dir, stderr: ""), cleanup: ran(code: 0, stdout: "", stderr: ""))
   !census_member_attempt_holds(attempt: a)
     && match a.workspace { CreationNotRequested => true _ => false }
@@ -282,7 +300,7 @@ test fn a_reported_rm_failure_and_an_undispatched_rm_are_distinct_from_a_lost_re
 
 fn member_exporter_unsupported_naming(r: CensusMemberReadback, endpoint: String, principal: String) -> Bool {
   match r {
-    BootChainMediumExporterUnsupported { supported: _, named: n } => (n.target.endpoint as String) == endpoint && (n.target.principal as String) == principal
+    BootChainMediumExporterUnsupported { supported: _, named: n } => (ssh_target_wire(target: n.target) as String) == endpoint && (n.target.principal as String) == principal
     _ => false
   }
 }
@@ -293,16 +311,16 @@ test fn the_pin_gate_refuses_a_census_medium_naming_another_exporter() -> Bool {
   let e = census_at_other_endpoint()
   let p = census_as_other_principal()
   let pe = census.export.target.principal as String
-  let ee = census.export.target.endpoint as String
-  (match census_pin_gate(medium: e, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+  let ee = ssh_target_wire(target: census.export.target) as String
+  (match census_pin_gate(medium: e, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
     PinsRefused { readback: r } => member_exporter_unsupported_naming(r: r, endpoint: "fixture-other-exporter", principal: pe)
     PinsAdmitted { stock_iso: _, census_iso: _ } => false
   })
-    && (match census_pin_gate(medium: p, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+    && (match census_pin_gate(medium: p, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
       PinsRefused { readback: r } => member_exporter_unsupported_naming(r: r, endpoint: ee, principal: "fixture-other-principal")
       PinsAdmitted { stock_iso: _, census_iso: _ } => false
     })
-    && (match census_pin_gate(medium: census_at(endpoint: ee, principal: pe), stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+    && (match census_pin_gate(medium: census_at(address: census.export.target.address, principal: pe), image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
       PinsAdmitted { stock_iso: _, census_iso: _ } => true
       PinsRefused { readback: _ } => false
     })
@@ -311,8 +329,57 @@ test fn the_pin_gate_refuses_a_census_medium_naming_another_exporter() -> Bool {
 // THE PRODUCTION ENTRY QUALIFIES BEFORE ANY LEG IS DISPATCHED: for either changed exporter it requests
 // no workspace and reads nothing, and the attempt does not hold.
 test fn the_member_readback_refuses_another_exporter_before_any_leg() -> Bool {
-  let ae = census_member_readback(medium: census_at_other_endpoint())
-  let ap = census_member_readback(medium: census_as_other_principal())
+  let ae = census_member_readback(medium: census_at_other_endpoint(), image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: census_member_readback_attempt_raw as NonEmptyStr)
+  let ap = census_member_readback(medium: census_as_other_principal(), image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: census_member_readback_attempt_raw as NonEmptyStr)
   member_exporter_unsupported_naming(r: ae.readback, endpoint: "fixture-other-exporter", principal: census.export.target.principal as String) && !census_member_attempt_holds(attempt: ae)
-    && member_exporter_unsupported_naming(r: ap.readback, endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
+    && member_exporter_unsupported_naming(r: ap.readback, endpoint: ssh_target_wire(target: census.export.target) as String, principal: "fixture-other-principal")
+}
+
+// CONTROL (d) -- A SECOND SUBJECT RUNS UNDER ITS OWN ATTEMPT, AND THE RECEIPT SAYS SO. The fold is
+// driven with a second subject's attempt identity and its own created directory: the receipt stores
+// WHICH attempt prepared the SSH context, the workspace outcome names THAT attempt's derived
+// namespace, and the rendered receipt names the second attempt rather than mtcollins1. A fold that
+// still baked mtcollins1's attempt in (the defect) leaves this red: the stored attempt, the admitted
+// directory, and the rendered namespace would all name mtcollins1.
+fn second_attempt(creation: HostLeg, cleanup: HostLeg) -> CensusMemberReadbackAttempt {
+  census_member_attempt_of(kind: FleetSshTransport, attempt: census2_attempt_raw, gate: admitted, creation: creation, readings: d => identical_readings(dir: d), cleanup: d => cleanup)
+}
+
+test fn a_second_subject_attempt_owns_its_receipt_and_its_namespace() -> Bool {
+  let a = second_attempt(creation: ran(code: 0, stdout: concat(census2_workspace_dir, "\n"), stderr: ""), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  // The receipt names its own attempt...
+  (a.attempt as String) == (census2_attempt_raw as String)
+    // ...the admitted workspace is the directory under THAT attempt's derived prefix...
+    && match a.workspace { Removed { dir: d } => d as String == census2_workspace_dir _ => false }
+    // ...the rendered receipt names the second attempt and its namespace...
+    && says(a: a, pattern: concat("attempt=", census2_attempt_raw as String))
+    && says(a: a, pattern: concat("workspace=", concat(census2_workspace_dir, " removed")))
+    // ...and names neither mtcollins1's attempt identity nor mtcollins1's namespace.
+    && !says(a: a, pattern: census_member_readback_attempt_raw as String)
+    && !says(a: a, pattern: "/tmp/gunbc-mtcollins1-census-member")
+}
+
+// CONTROL (e) -- AN UNSAFE ATTEMPT IDENTITY REFUSES AT ATTEMPT ADMISSION, BEFORE ANY SSH-AGENT OR
+// REMOTE WORK. The producer takes the attempt as an input and admits it before touching the agent:
+// the refusal is the safe-path-segment admission itself (not the later SSH_AUTH_SOCK or credential
+// refusals, which an attempt that WAS admitted could still produce), and no workspace was ever
+// requested. The report entry refuses the same attempt the same way. If the producer still used its
+// own baked mtcollins1 row (the defect), a caller passing this attempt would watch it ignored: the
+// baked identity is safe, so the attempt would proceed past admission and this claim goes red.
+test fn an_unsafe_attempt_identity_refuses_at_admission_before_any_agent_or_remote_work() -> Bool {
+  let a = census_member_readback(medium: census, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: unsafe_attempt_raw)
+  match a.readback {
+    BootChainHostUnreached { reason: r } =>
+      // The refusal is admission's own words, naming the caller's attempt (not the baked row)...
+      string_contains(s: r, pattern: "is not a safe path segment")
+        && string_contains(s: r, pattern: unsafe_attempt_raw as String)
+        // ...before any workspace: nothing was requested, nothing was created.
+        && match a.workspace { CreationNotRequested => true _ => false }
+    _ => false
+  }
+    // The attempt does not hold, and the rendered receipt says so under the caller's attempt.
+    && !census_member_attempt_holds(attempt: a)
+    && says(a: a, pattern: concat("attempt=", unsafe_attempt_raw as String))
+    // The mapped-attributes report refuses the same attempt at the same admission gate.
+    && string_contains(s: census_member_mapped_attributes(medium: census, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: unsafe_attempt_raw), pattern: "is not a safe path segment")
 }

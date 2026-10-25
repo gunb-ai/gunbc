@@ -16,6 +16,7 @@ import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_path_wire, spark_r
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy,
   SshTarget, portable_remote_words,
+  SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
@@ -110,18 +111,19 @@ fn spark_pair_privileged_session(trust: FleetOpenSshTrustPolicy, path: SparkReac
       match spark_reach_endpoint(host: plan.host, path: path) {
         Absent => PrivilegedSessionNotRun { cause: join(["no ", spark_reach_path_wire(p: path), " endpoint: the host has no fabric lane"], "") }
         Present { value: endpoint } =>
+          match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: fleet_bootstrap_principal_login()) {
+          SshTargetRefused { endpoint: e, refusal: why } => PrivilegedSessionNotRun { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
+          SshTargetResolved { target: target } =>
           match exec_as_fleet_principal_trusting_with_stdin(
             trust: trust,
-            target: SshTarget {
-              endpoint: endpoint as NonEmptyStr,
-              principal: fleet_bootstrap_principal_login(),
-            },
+            target: target,
             words: words,
             stdin_payload: join([admin_credential as String, "\n", spark_pair_leg_payload(script: plan.script), "\n"], ""),
             credential: BootstrapCredentialFileHeld { path: admin_credential_file },
           ) {
             FleetPrincipalLegRefused { cause: why } => PrivilegedSessionNotRun { cause: why as String }
             FleetPrincipalLegRan { session: _, result: r } => PrivilegedSessionRan { result: r }
+          }
           }
       }
   }

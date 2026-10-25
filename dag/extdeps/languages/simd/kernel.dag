@@ -4,12 +4,12 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.types { NonEmptyStr, Int, List, Float }
+import std.error_primitives { pure_dag_seam_unreachable_int, pure_dag_seam_unreachable_float }
 import std.numerical_contract {
   FmaContractionPolicy,
   FmaContractionRefused,
   FmaContractionPermitted,
 }
-import std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -91,7 +91,7 @@ fn contiguous_loop_elementwise_kernel(
   b: List<Int>,
   c: List<Int>
 ) -> List<Int> {
-  [pure_dag_seam_unreachable()]
+  [pure_dag_seam_unreachable_int()]
 }
 
 fn contiguous_loop_elementwise_float_kernel(

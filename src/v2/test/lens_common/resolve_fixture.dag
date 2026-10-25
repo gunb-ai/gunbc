@@ -25,10 +25,10 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.node { Atom, Authored, Conj, Edge, Node, Symbol, TypeNode, allocate_pending_occurrences, content_hash, node_occurrence_allocator_after, node_with_occurrence_id, fold_list_node }
-import std.occurrence_identity { LexicalValueOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic, scoped_occurrence_allocator }
+import std.occurrence_identity { LexicalValueOccurrence, NodeOccurrenceIdentity, OccurrenceCategory, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic, scoped_occurrence_allocator }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
 import std.optional { Absent, Present, Optional, optional_absent, optional_present }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_map, list_snoc_item }
 
@@ -189,8 +189,9 @@ fn claim_lowered_symbol_index(modules: List<ClaimLoweredModule>) -> Outcome<Symb
 }
 
 // A RESOLVE CONTEXT FOR ONE NARROW RESOLVE FUNCTION: module `module`, its namespace's index the one above, a
-// root scope over that namespace, the dag language model and the default policy.
-fn claim_resolve_context(module: QualifiedName, index: SymbolIndex) -> ResolveContext {
+// root scope over that namespace, the dag language model and the default policy. `category` is the reference
+// position the path is read in: a record type is a TypeOccurrence declaration, inadmissible to a value reference.
+fn claim_resolve_context(module: QualifiedName, index: SymbolIndex, category: OccurrenceCategory) -> ResolveContext {
   let empty = empty_namespace()
   let namespace = Namespace {
     bindings: empty.bindings,
@@ -211,7 +212,7 @@ fn claim_resolve_context(module: QualifiedName, index: SymbolIndex) -> ResolveCo
     lm: dag_language_model(),
     under_module_root: false,
     declaring: NotDeclaring,
-    reference_category: LexicalValueOccurrence
+    reference_category: category
   }
 }
 

@@ -1,0 +1,33 @@
+module gunbc.guarantee_stall.compute_cold_reserve_durable_commit_stall
+
+import std.types { String, List }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// A STALL, NOT A DROP (DESIGN section 4b(2)): WAVE-0 can drive a unit cold through
+// gunbc.compute.work_provider_local compute_run_unit and can name the durable store and staging
+// sibling from HostDashboardInstance.materialization_store_root. It cannot reserve on a declared
+// compute ledger and then durable-commit under that reservation, because that ledger is not an
+// executing host fact. Touching gunbc.compute.compute_reserve or the ledger while this grounding is
+// missing would author a second path beside the one the stall waits on.
+//
+// WHAT HOLDS MEANWHILE: the cold instrument runs compute_run_unit with a hermetic instance whose
+// store root is disjoint from srv1-live; production compute_provide still opens
+// compute_store(instance) and stages beside that root. Those are mitigations. They do not
+// make an unreserved durable commit structurally impossible.
+data compute_cold_reserve_durable_commit_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a cold compute unit reserves on a declared compute ledger and durable-commits its outputs under that reservation",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding {
+    grounding: GroundingUndeclared
+  },
+  population: BoundedPopulation {
+    members: [
+      "gunbc.compute.work_provider_local compute_run_unit on the fleet cold instrument: runs the unit without a ledger reservation",
+      "gunbc.compute.work_provider_local compute_provide_admitted durable commit: stages and links beside the instance store root without a ledger reservation",
+    ]
+  },
+  next_rung_trigger: climbs_when(capability: "an executing host with a declared compute ledger")
+}

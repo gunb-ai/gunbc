@@ -1,6 +1,8 @@
 module std.kernel_type_denotation
 
 import std.types { Bool, List, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.algebra { Cons, Empty, list_snoc_item }
 import std.kernel_type_name { KernelTypeName, KernelTypeNameAdmission, KernelTypeNameAdmitted, NotAKernelTypeName, kernel_type_name }
 import extdeps.standards.ieee_754_2019 { BinaryInterchangeFormat, binary64 }
 
@@ -21,8 +23,13 @@ import extdeps.standards.ieee_754_2019 { BinaryInterchangeFormat, binary64 }
 type KernelTypeMeaning
   = BinaryInterchangeFormatMeaning { format: BinaryInterchangeFormat }
 
+// THE DECLARATION THE MEANING IS OF (operator kernel-type layer rule, 2026-10-18): a denotation is joined to
+// the one language-facing declaration by identity, so a target binding keyed on that declaration is checked
+// against THIS meaning (gunbc.rust_declaration_realization rust_declaration_float_verdict), not against a row
+// found by spelling. The kernel name is kept for the readers that still key on it.
 type KernelTypeDenotation {
   kernel_name: KernelTypeName
+  declaration: DeclarationRef
   meaning: KernelTypeMeaning
 }
 
@@ -30,16 +37,16 @@ type KernelTypeDenotationAdmission
   = KernelTypeDenotationAdmitted { denotation: KernelTypeDenotation }
   | KernelTypeDenotationRefused { refusal: KernelTypeNameAdmission }
 
-fn kernel_type_denotation_row(kernel_name: String, meaning: KernelTypeMeaning) -> KernelTypeDenotationAdmission {
+fn kernel_type_denotation_row(kernel_name: String, declaration: DeclarationRef, meaning: KernelTypeMeaning) -> KernelTypeDenotationAdmission {
   let admission = kernel_type_name(name: kernel_name)
   match admission {
-    KernelTypeNameAdmitted { kernel_name: k } => KernelTypeDenotationAdmitted { denotation: KernelTypeDenotation { kernel_name: k, meaning: meaning } }
+    KernelTypeNameAdmitted { kernel_name: k } => KernelTypeDenotationAdmitted { denotation: KernelTypeDenotation { kernel_name: k, declaration: declaration, meaning: meaning } }
     NotAKernelTypeName { name: _ } => KernelTypeDenotationRefused { refusal: admission }
   }
 }
 
 data kernel_type_denotation_rows: List<KernelTypeDenotationAdmission> = [
-  kernel_type_denotation_row(kernel_name: "Float", meaning: BinaryInterchangeFormatMeaning { format: binary64 })
+  kernel_type_denotation_row(kernel_name: "Float", declaration: decl_ref(module_path: "std.float", decl_name: "Float"), meaning: BinaryInterchangeFormatMeaning { format: binary64 })
 ]
 
 fn kernel_type_denotation_rows_admitted(rows: List<KernelTypeDenotationAdmission>) -> Bool {
@@ -63,4 +70,30 @@ fn kernel_type_denotation_for(kernel_name: KernelTypeName, rows: List<KernelType
       KernelTypeDenotationRefused { refusal: _ } => acc
     }
   })
+}
+
+// WHAT ONE DECLARATION MEANS, by its identity: zero, one or several rows, and only one is an answer. A
+// declaration with no row is undenoted; nothing is read from its spelling. A declaration with SEVERAL rows is
+// ambiguous whether or not they agree: the meaning has one authority, so a second row is a contradiction or a
+// duplicate to remove, and refusing keeps the answer independent of row order. The rows are a parameter so a
+// claim can plant a table at this one interface.
+type KernelTypeDeclarationDenotationLookup
+  = DeclarationDenoted { meaning: KernelTypeMeaning }
+  | DeclarationUndenoted { declaration: DeclarationRef }
+  | DeclarationDenotationAmbiguous { declaration: DeclarationRef }
+
+fn kernel_type_denotation_denotes(d: KernelTypeDenotation, declaration: DeclarationRef) -> Bool {
+  (d.declaration.module_path as String) == (declaration.module_path as String) && (d.declaration.decl_name as String) == (declaration.decl_name as String)
+}
+
+fn kernel_type_denotation_for_declaration(declaration: DeclarationRef, rows: List<KernelTypeDenotationAdmission>) -> KernelTypeDeclarationDenotationLookup {
+  let meanings = rows |> fold(init: [], f: (acc, r) => match r {
+    KernelTypeDenotationAdmitted { denotation: d } => if kernel_type_denotation_denotes(d: d, declaration: declaration) { list_snoc_item(xs: acc, item: d.meaning) } else { acc }
+    KernelTypeDenotationRefused { refusal: _ } => acc
+  })
+  match meanings {
+    Empty => DeclarationUndenoted { declaration: declaration }
+    Cons { head: meaning, tail: Empty } => DeclarationDenoted { meaning: meaning }
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => DeclarationDenotationAmbiguous { declaration: declaration }
+  }
 }

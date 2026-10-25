@@ -1,16 +1,23 @@
 module test.claim.roadmap.roadmap_belt_actuate_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, dispatch_attempt_state_path_for_instance, dispatch_worktree_path_for_instance }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
-import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_outcome_with_release }
+import gunbc.roadmap.roadmap_belt_actuate {
+  belt_spawn_outcome_with_release, belt_commit_git_argv,
+  belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
+  attempt_process_for_node, BeltAttemptPanesObserved,
+  belt_seat_discharge_pass_outcome_from,
+}
+import gunbc.compute.compute_seat_ensure { SeatDischargeRan, SeatDischargeRefused, SeatDischargeSkipped, SeatEnsureNoop, SeatEnsureRefused, SeatEnsureRed }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
-import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessExited, WorkerProcessRunning, WorkerProcessSignaled, WorkerProcessUnobserved }
+import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessAbsent, WorkerProcessExited, WorkerProcessRunning, WorkerProcessSignaled, WorkerProcessUnobserved }
 import std.types { String, Int, List, Bool }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
@@ -82,16 +89,7 @@ import gunbc.worker_lifecycle {
   worker_observation_without_provider_probe,
   worker_observation_without_provider_probe_for_process,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_tmux_session_name,
-  HostExecArgv,
-  host_exec_argv,
-  DispatchLiveSession,
-  CodexDispatchProvider,
-  dispatch_provider_instance_for_kind,
-  filter_dispatch_tmux_sessions,
-  dispatch_worker_attempt_identity,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_tmux_session_name, HostExecArgv, host_exec_argv, DispatchLiveSession, dispatch_provider_instance_for_kind, filter_dispatch_tmux_sessions, dispatch_worker_attempt_identity }
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
@@ -126,7 +124,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed,
   BeltTeardownOutcome, ReapedSession, TeardownFailed,
   belt_actuate_spawn_member,
-  belt_actuate_teardown_member,
+  belt_actuate_teardown_member_for_instance,
   BeltObserve, BeltSessionsObserved, ObserveRefused,
   belt_observe_from_result,
   belt_spawn_session_uuid,
@@ -189,8 +187,8 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltTickResult,
   BeltTickWholesale, TickPassesRun, TickPassesWithheld,
   belt_dispatch_node_staged_over,
-  srv1_live_dashboard_instance,
 }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_belt { ManualReady }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts, ContinuationTurnKnown, ContinuationEscalate,
@@ -286,10 +284,11 @@ import gunbc.roadmap.roadmap_verification_receipt {
 }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_addressing }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_launch, dispatch_worktree_path_for_instance, dispatch_attempt_state_path_for_instance, DispatchSpawnReady, DispatchSpawnRefused }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_launch, DispatchSpawnReady, DispatchSpawnRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch { SnapshotFreeLaunch, CodexWithoutSnapshot }
+import gunbc.compute.compute_seat_ensure { SeatDischargeSkipped }
 import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
 import test.claim.roadmap.roadmap_dispatch_actuator_witness { fx_prepared_launch, sized_derivable, fixture_ready_resolution }
 
@@ -397,6 +396,7 @@ fn is_spawn_failed(o: BeltSpawnOutcome) -> Bool {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnNotAdmitted { node_id: _, refusal: _ } => false
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => false
   }
 }
 
@@ -485,7 +485,7 @@ test fn witness_named_exec_steps_locate_the_first_failure() -> Bool {
 
 test fn witness_spawn_member_refuses_observed_shape() -> Bool {
   let m = ObservedMember { node_id: "z", session: live_session(node_id: "z", verdict: Converged) }
-  is_spawn_failed(o: belt_actuate_spawn_member(m: m, workdir: "/", launch: launch_identity_exemplar()))
+  is_spawn_failed(o: belt_actuate_spawn_member(instance: srv1_live_dashboard_instance(), m: m, workdir: "/", launch: launch_identity_exemplar()))
 }
 
 // review 5059520727 finding 4: the admitted identity SURVIVES an actuation failure -- the failed
@@ -494,7 +494,7 @@ test fn witness_spawn_member_refuses_observed_shape() -> Bool {
 test fn witness_identity_survives_actuation_failure() -> Bool {
   let m = ObservedMember { node_id: "z", session: live_session(node_id: "z", verdict: Converged) }
   let id = launch_identity_exemplar()
-  match belt_actuate_spawn_member(m: m, workdir: "/", launch: id) {
+  match belt_actuate_spawn_member(instance: srv1_live_dashboard_instance(), m: m, workdir: "/", launch: id) {
     SpawnFailed { node_id: _, step, detail: _, provider: _, launch } =>
       step == "member-shape"
         && launch.node_id == id.node_id
@@ -503,12 +503,13 @@ test fn witness_identity_survives_actuation_failure() -> Bool {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnNotAdmitted { node_id: _, refusal: _ } => false
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => false
   }
 }
 
 test fn witness_teardown_member_refuses_desired_shape() -> Bool {
   let m = DesiredMember { node_id: "a", node: ready_node(id: "a") }
-  is_teardown_failed(o: belt_actuate_teardown_member(m: m))
+  is_teardown_failed(o: belt_actuate_teardown_member_for_instance(instance: srv1_live_dashboard_instance(), m: m))
 }
 
 fn observe_live_count(o: BeltObserve) -> Int {
@@ -603,19 +604,19 @@ fn uuid_char(u: String, i: Int) -> String {
 }
 
 test fn witness_uuid_deterministic() -> Bool {
-  let a = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
-  let b = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
+  let a = belt_spawn_session_uuid(node_id: "5-regen-cutover", attempt_key: "feedfacefeedface")
+  let b = belt_spawn_session_uuid(node_id: "5-regen-cutover", attempt_key: "feedfacefeedface")
   a == b
 }
 
 test fn witness_uuid_distinct_nodes() -> Bool {
-  let a = belt_spawn_session_uuid(node_id: "node-a", probed_at: "2026-07-25T20:00:00Z")
-  let b = belt_spawn_session_uuid(node_id: "node-b", probed_at: "2026-07-25T20:00:00Z")
+  let a = belt_spawn_session_uuid(node_id: "node-a", attempt_key: "feedfacefeedface")
+  let b = belt_spawn_session_uuid(node_id: "node-b", attempt_key: "feedfacefeedface")
   !(a == b)
 }
 
 test fn witness_uuid_rfc4122_shape() -> Bool {
-  let u = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
+  let u = belt_spawn_session_uuid(node_id: "5-regen-cutover", attempt_key: "feedfacefeedface")
   string_length(s: u) == 36
     && uuid_char(u: u, i: 8) == "-"
     && uuid_char(u: u, i: 13) == "-"
@@ -871,7 +872,7 @@ fn every_launch_refusal_arm_has_an_exemplar() -> Bool {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 20
+  belt_dispatch_label_band_rows().length() == 21
     && band_key_for_label(label: "no_placement_grant") == "loud"
     && band_key_for_label(label: "supervisor_convened") == "ok"
     && band_key_for_label(label: "stale_session") == "loud"
@@ -891,10 +892,13 @@ test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
     && band_key_for_label(label: "observe_refused") == "loud"
     && band_key_for_label(label: "authority_refused") == "loud"
     && band_key_for_label(label: "spawn_failed") == "loud"
+    && band_key_for_label(label: "launch_pending") == "in-progress"
 }
 
-test fn witness_no_result_maps_to_in_progress() -> Bool {
-  all(belt_dispatch_label_band_rows(), row => row.band_key != "in-progress")
+// BandInProgress MEANS "the start request is enqueued and its answer has not been read": exactly the
+// launch_pending result carries it, and no other result may (DispatchBand comment in roadmap_belt_actuate).
+test fn witness_only_launch_pending_maps_to_in_progress() -> Bool {
+  all(belt_dispatch_label_band_rows(), row => (row.band_key == "in-progress") == (row.wire_label == "launch_pending"))
 }
 
 test fn witness_ok_labels_derive_from_band_fold() -> Bool {
@@ -923,6 +927,7 @@ fn d4_wire_contract_labels() -> List<String> {
   [
     "spawned",
     "supervisor_convened",
+    "launch_pending",
     "spawn_failed",
     "no_instance",
     "disabled",
@@ -1419,6 +1424,7 @@ test fn observe_refused_spawn_does_not_zero_the_discovery_pass() -> Bool {
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
+    seat_discharge: SeatDischargeSkipped { why: "witness" },
     discovery: BeltDiscovered { owed: 1, enqueues: [BeltObligationStarted { unit: "gunbc-obligation-attempt-n-k.service" as NonEmptyStr }] },
   }
   let receipt = belt_tick_receipt_from_result(
@@ -1438,6 +1444,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscoveryRefused { reason: "the attempts ledger is unobservable" },
     },
     observed_at: "2026-08-02T02:00:00Z",
@@ -1450,6 +1457,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscovered { owed: 2, enqueues: [
         BeltObligationHeld { unit: "gunbc-obligation-attempt-a-1.service" as NonEmptyStr },
         BeltObligationEnqueueRefused { unit: "gunbc-obligation-attempt-b-2.service" as NonEmptyStr, reason: "systemd-run exited 1" },
@@ -1500,6 +1508,7 @@ test fn verification_presentation_reads_the_attempts_own_verify_step() -> Bool {
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRefused { reason: "the attempts ledger is unobservable" },
   }
   let blocked = belt_verification_presentation_detail(
@@ -1592,6 +1601,7 @@ test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
     "\"observed_at\":\"2026-08-02T02:00:00Z\",",
     "\"spawn_pass\":{\"outcome\":\"recorded\"},",
     "\"teardown_pass\":{\"outcome\":\"recorded\"},",
+    "\"seat_discharge_pass\":{\"outcome\":\"recorded\"},",
     "\"discovery_pass\":{\"outcome\":\"refused\"}}",
   ], "")
   match belt_tick_receipt_decode(raw: raw) {
@@ -2406,6 +2416,7 @@ test fn transition_halted_tick_refuses_every_pass() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscoveryRefused { reason: launch_refusal_reason(r: refusal) },
     },
     observed_at: "2026-08-30T02:00:00Z",
@@ -2422,6 +2433,7 @@ test fn revision_refusal_keeps_discovery_independently_recorded() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscovered { owed: 0, enqueues: [] },
     },
     observed_at: "2026-08-30T02:00:00Z",
@@ -2930,13 +2942,13 @@ test fn the_two_production_lineages_escalate_and_convene_naming_their_derived_su
   match production_escalation(node_id: "shell-dag-cron-entry-line-builder") {
     Absent => false
     Present { value: e1 } =>
-      match production_escalation(node_id: "shell-dag-floor-peak-calibration-rows") {
+      match production_escalation(node_id: "shell-dag-ci-fmt-gate-line") {
         Absent => false
         Present { value: e2 } =>
           match production_node(id: "shell-dag-cron-entry-line-builder") {
             Absent => false
             Present { value: n1 } =>
-              match production_node(id: "shell-dag-floor-peak-calibration-rows") {
+              match production_node(id: "shell-dag-ci-fmt-gate-line") {
                 Absent => false
                 Present { value: n2 } => {
                   let b1 = belt_supervisor_convene_brief(
@@ -3326,6 +3338,7 @@ fn release_note_carried(o: BeltSpawnOutcome) -> Bool {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnNotAdmitted { node_id: _, refusal: _ } => false
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => false
   }
 }
 
@@ -3344,6 +3357,7 @@ test fn a_failed_release_after_placement_is_carried_on_every_non_spawned_arm() -
       SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
       SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
       SpawnNotAdmitted { node_id: _, refusal: _ } => false
+      SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => false
     }
 }
 
@@ -3485,10 +3499,88 @@ test fn the_belt_addresses_the_attempt_its_spawn_commands_were_built_for() -> Bo
               pattern: join(["\0", dispatch_worktree_path_for_instance(instance: addressing.instance, node_id: addressing.node.node, attempt_key: addressing.attempt_key)], ""),
             )
             && string_contains(
-              s: join(commands.attempt_state_prepare.args, separator: "\0"),
+              s: join(fold(commands.attempt_state_prepare, init: [], f: (acc, a) => concat(acc, a.args)), separator: "\0"),
               pattern: join(["\0", dispatch_attempt_state_path_for_instance(instance: addressing.instance, node_id: addressing.node.node, attempt_key: addressing.attempt_key)], ""),
             )
       }
     }
   }
+}
+
+// A worker-planted post-commit hook must not be the hooksPath belt_commit_git uses: command-line
+// `-c core.hooksPath=/dev/null` wins over repository and worktree config (git-config(1)).
+test fn belt_commit_git_does_not_use_a_worker_planted_hooks_path() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  let git_dir = join([inst.repo_root as String, "/.git/worktrees/probe"], "")
+  let work_tree = "/tmp/probe-wt"
+  let cmd = belt_commit_git_argv(instance: inst, git_dir: git_dir, work_tree: work_tree, args: ["commit", "-q", "-m", "probe"])
+  let wire = join(cmd.args, separator: "\0")
+  cmd.program == "/usr/bin/env"
+    && string_contains(s: wire, pattern: "GIT_CONFIG_NOSYSTEM=1")
+    && string_contains(s: wire, pattern: "GIT_CONFIG_GLOBAL=/dev/null")
+    && string_contains(s: wire, pattern: join(["--git-dir=", git_dir], ""))
+    && string_contains(s: wire, pattern: join(["--work-tree=", work_tree], ""))
+    && string_contains(s: wire, pattern: "core.hooksPath=/dev/null")
+    && string_contains(s: wire, pattern: "core.fsmonitor=false")
+}
+
+test fn a_mismatched_gitfile_or_commondir_is_untrusted() -> Bool {
+  let expected_git = "/opt/gunbc/gunbc/.git/worktrees/n-ak"
+  let expected_common = "/opt/gunbc/gunbc/.git"
+  belt_commit_gitfile_points_at(contents: join(["gitdir: ", expected_git, "\n"], ""), expected_git_dir: expected_git)
+    && !belt_commit_gitfile_points_at(contents: "gitdir: /tmp/evil\n", expected_git_dir: expected_git)
+    && belt_commit_commondir_points_at(contents: "../..\n", expected_common: expected_common)
+    && belt_commit_commondir_points_at(contents: expected_common, expected_common: expected_common)
+    && !belt_commit_commondir_points_at(contents: "/tmp/evil\n", expected_common: expected_common)
+}
+
+fn unit_name_overlong_node() -> String {
+  join([
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  ], "")
+}
+
+fn belt_unit_process(node_id: String) -> WorkerProcessEvidence {
+  attempt_process_for_node(
+    instance: srv1_live_dashboard_instance(),
+    panes: BeltAttemptPanesObserved { panes: [] },
+    node_id: node_id,
+    attempt_key: "k",
+  )
+}
+
+test fn an_empty_node_id_is_an_unreadable_worker_process_observation() -> Bool {
+  match belt_unit_process(node_id: "") {
+    WorkerProcessUnobserved { reason } => string_contains(s: reason as String, pattern: "empty")
+    WorkerProcessAbsent => false
+    WorkerProcessRunning { command: _ } => false
+    WorkerProcessExited { exit_code: _, last_command: _ } => false
+    WorkerProcessSignaled { signal: _, last_command: _ } => false
+  }
+}
+
+test fn an_overlong_node_id_is_an_unreadable_worker_process_observation() -> Bool {
+  match belt_unit_process(node_id: unit_name_overlong_node()) {
+    WorkerProcessUnobserved { reason } => string_contains(s: reason as String, pattern: "255")
+    WorkerProcessAbsent => false
+    WorkerProcessRunning { command: _ } => false
+    WorkerProcessExited { exit_code: _, last_command: _ } => false
+    WorkerProcessSignaled { signal: _, last_command: _ } => false
+  }
+}
+
+// A SEAT DISCHARGE REACHES THE DURABLE TICK RECEIPT TYPED AND COUNTED: a red is Failed (and outranks a refusal),
+// a kept charge is Refused with its cause, a clean pass is Recorded, a refused pass is Refused. None is dropped.
+test fn the_seat_discharge_pass_reaches_the_tick_receipt_typed_and_counted() -> Bool {
+  let noop = SeatEnsureNoop { reference: "r1", why: "live" }
+  let refused = SeatEnsureRefused { reference: "r2", reason: "unit lifecycle unknown" }
+  let red = SeatEnsureRed { reference: "r3", reason: "settled but still charged" }
+  (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [noop] }) { BeltPassRecorded => true  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeSkipped { why: "none" }) { BeltPassRecorded => true  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [noop, refused] }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "r2") && string_contains(s: r, pattern: "charge kept")  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [refused, red, noop] }) { BeltPassFailed { reason: r } => string_contains(s: r, pattern: "r3")  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRefused { reason: "stage unreadable" }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "stage unreadable")  _ => false })
 }

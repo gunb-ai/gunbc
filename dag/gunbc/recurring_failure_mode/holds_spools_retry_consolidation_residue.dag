@@ -1,0 +1,47 @@
+module gunbc.recurring_failure_mode.holds_spools_retry_consolidation_residue
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
+
+data holds_spools_retry_consolidation_residue: RecurringFailureMode = RecurringFailureMode {
+  identity: "holds_spools_retry_consolidation_residue" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
+
+  receipts: [
+    "INVALID STATE: the holds/spools/retry consolidation (gunbc#13821) left named leftover authorities beside the new homes, so a later durable work-queue can still fork against the old spelling. HARM: a second decision algebra, a second stall bound, a second unit-liveness spelling, or a systemd RestartSec that is not the retry law's earliest time reappears as if the consolidation had not happened. These are not rung drops: nothing fell; the class sits unbuilt.",
+
+    "SITE — ProcessLeasePlan and DispatchLeasePlan remain separate from std.temporal_effect decision_for_held_lease_verdict. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: one UpsertDecision fold consumed by gunbc.session_lease and gunbc.roadmap_dispatch_actuator, with ProcessLeasePlan/DispatchLeasePlan deleted.",
+
+    "SITE — flock, exclusive-create lease files, and the git-ref lease remain realizations of occupancy, not rewritten onto std.durable_exclusive_hold. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: each realization's acquire/release assess through durable_hold_acquire_assess / durable_hold_release_assess without a parallel occupancy type; flock stays until kernel auto-release and -w wait are preserved.",
+
+    "SITE — stall_budget_verdict is not yet the stall half of event_backlog_judge, systemd_workload_stall_fired, or runner_broker_progress_silence_bound_seconds. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: those three consumers call std.temporal_effect stall_budget_verdict and their local stall numbers are deleted.",
+
+    "SITE — gunbc.roadmap_dispatch_actuator AttemptUnitObservation still answers LoadState/SubState/exit, beside gunbc.systemd_unit_invocation_liveness unit_invocation_holder_liveness which answers InvocationID holder liveness. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: belt exit-reconcile consumes unit_invocation_holder_liveness; AttemptUnitObservation is deleted or kept only if SubState/exit remains a distinct observation with its own name.",
+
+    "SITE — gunbc.workspace_acquisition_invocation WorkspacePriorActorStanding wraps unit_invocation_holder_liveness into PriorActorRunning/Terminal/Unobservable. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: workspace_actor_takeover_decision consumes DurableHoldHolderLiveness directly and WorkspacePriorActorStanding is deleted.",
+
+    "SITE — spark transfer StartLimitBurst/StartLimitIntervalSec are systemd burst-window facts, independent of spark_transfer_retry_law; RestartSec still projects the law's initial_delay. The unit restarts without asking retry_admissibility. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: the transfer supervisor consumes retry_admissibility for whether another start is admissible; RestartSec remains the law's earliest delay.",
+
+    "SITE — retry_hint_from_http maps a real HttpRetryAfter into RetryHint on the hosted 429 classify path (hosted_http_failure_wire), and retry_admissibility refuses RetryHintUnresolved, but no retrying client yet feeds that hint into a retry decision. Hosted POST /chat/completions is not idempotent and must not. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: the first retrying idempotent HTTP client (not chat POST) passes retry_hint_from_http into retry_admissibility; spark RestartSec is not that client.",
+
+    "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration. Age-based recovery at four sites is a different class: gunbc.recurring_failure_mode.hold_recovered_by_age_not_observed_holder_death.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.session_lease", decl_name: "ProcessLeasePlan"),
+    decl_ref(module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "DispatchLeasePlan"),
+    decl_ref(module_path: "std.temporal_effect", decl_name: "decision_for_held_lease_verdict"),
+    decl_ref(module_path: "std.temporal_effect", decl_name: "stall_budget_verdict"),
+    decl_ref(module_path: "std.durable_transfer", decl_name: "LocalCommitStanding"),
+    decl_ref(module_path: "gunbc.fleet_observation.capture_chunk", decl_name: "local_commit_from_cas"),
+    decl_ref(module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "AttemptUnitObservation"),
+    decl_ref(module_path: "gunbc.workspace_acquisition_invocation", decl_name: "WorkspacePriorActorStanding"),
+    decl_ref(module_path: "gunbc.systemd_unit_invocation_liveness", decl_name: "unit_invocation_holder_liveness"),
+    decl_ref(module_path: "gunbc.spark.model_snapshot_materialize", decl_name: "spark_transfer_retry_law"),
+    decl_ref(module_path: "gunbc.retry_http_hint", decl_name: "retry_hint_from_http"),
+    decl_ref(module_path: "gunbc.harness.hosted_failure", decl_name: "hosted_http_failure_wire"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.hold_recovered_by_age_not_observed_holder_death", decl_name: "hold_recovered_by_age_not_observed_holder_death"),
+  ],
+}

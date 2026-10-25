@@ -72,7 +72,9 @@ import gunbc.crate_partition {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
 import std.types { NonEmptyStr }
-import v2.std.collection { Absent, Present, empty_map, map_get_checked, map_insert }
+import std.optional { Absent, Present }
+import std.algebra { empty_map, map_insert }
+import v2.std.witness { map_get_checked }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.compilation_unit { ModuleDag, partition_provenance_eq, partition_unit_by_id }
 import gunbc.rust_emitted_edge {
@@ -348,7 +350,7 @@ test fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
   let derived = partition_provenance_policy_derived(
     policy: DeclarationRef {
       module_path: "v2.workflow.rust_crate_partition" as NonEmptyStr,
-      decl_name: "resolve_partition" as NonEmptyStr,
+      decl_name: "resolve_partition_outcome" as NonEmptyStr,
       field: WholeDeclaration,
     }
   )

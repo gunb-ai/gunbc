@@ -1,6 +1,7 @@
 module v2.test.claim.generated.idempotent_operation_conformance
 
-import std.types { List }
+
+import std.types { List, Map }
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
@@ -23,7 +24,7 @@ import v2.lens.testgen {
 }
 import std.algebra { length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection { Map }
+
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

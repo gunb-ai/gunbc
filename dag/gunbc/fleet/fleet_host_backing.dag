@@ -1,11 +1,14 @@
 module gunbc.fleet.fleet_host_backing
 
 import std.types { Bool, NonEmptyStr }
+import std.optional { Absent, Present }
 import std.decl_ref { DeclarationRef }
 import std.measure { ByteSize, HardwareThreadCount }
 import extdeps.toolchain.types { Architecture }
 import product.fabric.provider_route { ProviderRoute }
 import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.machine_intake.subject { UnitKey, UnitKeyRefusalCause, UnitKeyStanding }
+import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
 
 // WHAT SUPPLIES A FLEET HOST, as a fact separate from what the host is FOR. Backing, provisioning and
 // service intent were one fact in practice -- a CI host was assumed to be an owned machine with a BMC
@@ -42,18 +45,82 @@ type ProviderResourceBinding
   = ProviderResourceAwaited { read_obligation: NonEmptyStr }
   | ProviderResourceAcquired { acquisition: ProviderResourceAcquisition }
 
-// HOW AN OWNED MACHINE'S OPERATING SYSTEM ARRIVES. This is not implied by ownership: an Ampere
-// Altra server is installed over its BMC's virtual media, while an appliance such as a DGX Spark has
-// no BMC to converge and provisions itself through its own first boot. A provider guest has no arm
-// here because its OS always arrives as the provider's image -- that is what ProviderGuest means --
-// so a rented guest owing a BMC operation has no constructor.
-type OwnedProvisioning
-  = BmcVirtualMediaInstall
-  | ApplianceFirstBoot
+// TWO INDEPENDENT FACTS ABOUT AN OWNED MACHINE, which one fused enum used to state as one. HOW IT IS
+// CONTROLLED and HOW ITS OPERATING SYSTEM ARRIVES are separate: an Ampere Altra server is controlled
+// over a BMC and installed over that BMC's virtual media; a DGX Spark appliance has no BMC and
+// provisions itself through its own first boot; and a diskless Altra board is controlled over a BMC
+// yet receives no install at all, because its OS is a RAM image it boots from. The fused arms could
+// not say the third (a BMC-controlled host owing no install), and a consumer keyed on the fused arm
+// answered one fact from the other. Each consumer keys on exactly the fact it asks about: BMC
+// credential convergence and the enrolled control route on the control route, the install phases and
+// the converge realization on the delivery. A provider guest has no constructor here because its OS
+// always arrives as the provider's image and its control is the provider's API -- that is what
+// ProviderGuest means -- so a rented guest owing a BMC operation cannot be written.
+type OwnedControlRoute
+  = Bmc
+  | NoOutOfBand
+
+type OwnedOsDelivery
+  = InstalledViaVirtualMedia
+  | ApplianceImage
+  | RamImageBoot
+
+type OwnedProvisioning { control: OwnedControlRoute, delivery: OwnedOsDelivery }
+
+// THE ONE ADMISSION OVER THE {control, delivery} PAIR. The two facts are independent by ruling (merry-fox-82,
+// 2026-10-22), so the product can still spell a machine that cannot exist: an OS installed over virtual media is
+// delivered THROUGH a BMC, so {NoOutOfBand, InstalledViaVirtualMedia} has no route to run its install. Every
+// consumer of the pair reads this result instead of crossing the two matches itself. Rung (DESIGN 4b):
+// mechanically preventable, ceiling structurally impossible; trigger, as a capability: the delivery medium
+// becomes a capability of the control route, so a delivery cannot name a medium its route lacks, owed at the
+// first non-BMC delivery medium (PXE, the network-boot cut). Splitting the medium out of delivery alone is not
+// sufficient.
+type OwnedProvisioningAdmission
+  = OwnedProvisioningAdmitted
+  | OwnedProvisioningRefused { provisioning: OwnedProvisioning }
+
+fn admit_owned_provisioning(provisioning: OwnedProvisioning) -> OwnedProvisioningAdmission {
+  match provisioning.control {
+    Bmc => OwnedProvisioningAdmitted
+    NoOutOfBand => match provisioning.delivery {
+      InstalledViaVirtualMedia => OwnedProvisioningRefused { provisioning: provisioning }
+      ApplianceImage => OwnedProvisioningAdmitted
+      RamImageBoot => OwnedProvisioningAdmitted
+    }
+  }
+}
 
 type HostBacking
-  = OwnedMachine { provisioning: OwnedProvisioning }
+  // The `unit` fact is the host-to-hardware allocation: the UnitKey this owned machine
+  // is bound to. It is an Optional because a backing row exists the moment a machine is
+  // provisioned, but its board serial (the identity that grounds the UnitKey) is only
+  // read on first out-of-band observation. Absent means "no board-serial observation has
+  // been taken for this row"; Present carries bind_unit_key's standing, which itself keeps
+  // UnitKeyBound from UnitKeyRefused (a read serial that duplicates or contradicts is a
+  // different fact from a never-read one). An owned machine whose serial was read and found
+  // duplicated is not the same fact as one never read.
+  = OwnedMachine { provisioning: OwnedProvisioning, unit: UnitKeyStanding? }
   | ProviderGuest { route: ProviderRoute, entitlement: GuestEntitlement, resource: ProviderResourceBinding }
+
+// HOW A HOST'S RUNNER PROGRAM REACHES IT. A host whose OS carries mutable state is converged in place
+// (ConvergeApplied: the SSH-applied knobs of gunbc.host.host_converge). A host that boots a RAM image
+// holds no state a converge could apply or re-read, so the same slots and knobs are inputs to the image
+// build instead (ImageBaked). The partition is exhaustive over OwnedOsDelivery, so a new delivery does
+// not compile until it names its arm: a host can neither be converge-applied by accident nor dropped.
+type ConvergeRealization
+  = ConvergeApplied
+  | ImageBaked
+
+fn backing_converge_realization(backing: HostBacking) -> ConvergeRealization {
+  match backing {
+    OwnedMachine { provisioning: OwnedProvisioning { control: _, delivery: d }, unit: _ } => match d {
+      InstalledViaVirtualMedia => ConvergeApplied
+      ApplianceImage => ConvergeApplied
+      RamImageBoot => ImageBaked
+    }
+    ProviderGuest { route: _, entitlement: _, resource: _ } => ConvergeApplied
+  }
+}
 
 // THE ONE RULE FOR WHETHER A BACKING CAN HOST THE FLEET'S MICROVM EXECUTION PATH, before anything is
 // observed: an owned machine can (its readiness is then observed), and a provider guest can only when
@@ -64,5 +131,61 @@ fn backing_microvm_forbidding_offer(backing: HostBacking) -> DeclarationRef? {
     OwnedMachine { provisioning: _ } => none
     ProviderGuest { route: _, entitlement: e, resource: _ } =>
       if e.nested_virtualization { none } else { Present { value: e.offer } }
+  }
+}
+
+// THE UNIT-KEY ALLOCATION, read off an owned machine's backing row. This is the join between fleet
+// identity (the HostIdentity that owns the row) and the physical unit it is bound to. A board swap is
+// a change to the row's `unit` standing, and it is what makes a receipt bound to the old unit refuse
+// against the new one. The three outcomes are kept distinct -- resolved (the serial was read and
+// uniquely bound a key), refused (it was read but the standing is UnitKeyRefused, carrying its cause),
+// and unobserved (no board-serial observation has been taken for this row) -- because each has a
+// different remedy: resolved is the only outcome from which a unit may be resolved, a refused row
+// refuses with its cause, and an unobserved row names the read obligation.
+type HostUnitAllocationStanding
+  = HostUnitResolved { unit: UnitKey }
+  | HostUnitRefused { cause: UnitKeyRefusalCause }
+  | HostUnitUnobserved {
+      // §4b: A FRONTIER BELOW CEILING NAMES ITS NEXT-RUNG TRIGGER ON A CARRIER, NOT IN PROSE.
+      // The old field was a NonEmptyStr the fold matched with `_` -- an obligation only a reader
+      // of this file could see. The carrier is the repository's own NextRungTrigger (gunbc.guarantee_stall):
+      // the capability names the observation that lifts the row out of unobserved, and `awaiting`
+      // stays empty because no OTHER LANE is owed -- the producer is the machine-intake arrival lane:
+      // the same identity_bind_provisional derivation gunbc.machine_intake.arrival_converge runs for
+      // mtcollins1/mtjade1 (it derives the UnitKey from committed FRU and SMBIOS captures). srv1-4's
+      // serials are NOT invented (their observation is the named frontier); when that read lands, the
+      // row flips from Unobserved{trigger} to Resolved/Refused at the next bind_unit_key.
+      trigger: NextRungTrigger,
+    }
+  | HostUnitNotOwned
+
+// Provider guests are not physical machines: they carry no UnitKey, and that is correct -- there is
+// no board serial to read. They are therefore neither resolved nor unobserved.
+fn resolve_host_unit(backing: HostBacking) -> HostUnitAllocationStanding {
+  match backing {
+    OwnedMachine { provisioning: _, unit: unit_standing } =>
+      match unit_standing {
+        Absent => HostUnitUnobserved {
+          // THE TRAVELLING FORM OF THE OBLIGATION: what observation lifts this row out of
+          // unobserved, and who produces it. The capability names the read; the producer is the
+          // machine-intake arrival lane -- gunbc.machine_intake.arrival_converge's
+          // identity_bind_provisional derives the UnitKey from committed FRU and SMBIOS captures
+          // (that is how mtcollins1/mtjade1 got theirs), and srv1-4 reach it the same way once
+          // their observation is taken. `awaiting: []` because no other lane is owed first
+          // (climbs_when, not climbs_when_awaiting); NO SRV SERIAL IS INVENTED meanwhile.
+          trigger: climbs_when("read the owned host's board serial (SMBIOS type 2, or the FRU through its controller) and run bind_unit_key on it, as gunbc.machine_intake.arrival_converge identity_bind_provisional does for the enrolled machines that already have one"),
+        }
+        Present { value: standing } =>
+          match standing {
+            UnitKeyBound { key: k } => HostUnitResolved { unit: k }
+            UnitKeyRefused { cause: c } => HostUnitRefused { cause: c }
+          }
+      }
+    ProviderGuest { route: _, entitlement: _, resource: _ } =>
+      // A provider guest is not a physical machine: there is no board serial to read and no unit to
+      // bind, so the allocation is not "unobserved" (which would owe a read) and not "refused" (which
+      // would carry a cause) -- it is simply not an owned machine. Naming it keeps a refactor that
+      // reclassified a rented guest as a unit visible.
+      HostUnitNotOwned
   }
 }

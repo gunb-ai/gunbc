@@ -31,11 +31,14 @@ import v2.compiler.compile {
   run_required_lens_gates_on_subtree,
   required_lenses_at_grain,
   CompileLensGrain,
-  CompileLensRoot,
-  CompileLensSubtree,
   compile_lens_grain_eq,
   RequiredLensCoverageRow,
   LensGateWitness,
+  join_required_lens_coverage,
+  required_compile_lens_roster,
+  required_lens_roster_digest,
+  CompileLensRoot,
+  CompileLensSubtree,
   ObservationUnregistered,
   RegistrationDuplicated,
   ObservedAtWrongGrain,
@@ -43,10 +46,7 @@ import v2.compiler.compile {
   RequiredLensCoverageClosed,
   RequiredLensCoverageRefused,
   RequiredLensRosterEmpty,
-  RootLensObservedMoreThanOnce,
-  join_required_lens_coverage,
-  required_compile_lens_roster,
-  required_lens_roster_digest
+  RootLensObservedMoreThanOnce
 }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { list_append, Cons, Empty, fold_list, length, list_reverse }

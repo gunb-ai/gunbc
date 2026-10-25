@@ -12,6 +12,7 @@ import gunbc.emit_stage_blocking_population_census {
   PristineAtRevision,
   LocallyPerturbed
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // TWO LANES RAN ONE COMMAND ON ONE COMMIT AND GOT OPPOSITE VERDICTS, AND BOTH WERE RIGHT.
 //
@@ -28,7 +29,7 @@ import gunbc.emit_stage_blocking_population_census {
 // TREE AND ITS REVISION ALONE, and a receipt that omits which build produced it is not a
 // measurement of anything a reader can return to.
 data annotation_parse_instrument_agreement_disposition: Disposition = Terminal {
-  reason: "A RECEIPT, NOT A GATE. Nothing here executes on any push and nothing refuses. It records three things that were established by execution: that the compile frontend reaches one annotation admission seam (v1.compiler.annotation_bind bind_annotations), that the reported refusal reproduces on an installed compiler build and not on one built from the revision under test, and that a red control against this compiler must discriminate on diagnostic identity rather than on population size. Annotation grain is not a required parse-sweep phase: B0 deleted claim_executor --required-ci --required-lane witnesses, run_dag_parse_sweep reconstructs declarations and does not call bind_annotations, and this module adds no wall."
+  reason: "A RECEIPT, NOT A GATE. Nothing here executes on any push and nothing refuses. It records three things that were established by execution: that annotation admission runs at exactly one seam (v1.compiler.annotation_bind bind_annotations), that the reported refusal reproduces on an installed compiler build and not on one built from the revision under test, and that a red control against this compiler must discriminate on diagnostic identity rather than on population size. WHICH ROUTES REACH THAT SEAM CHANGED (gunbc P0.2, v1-interface-cull-audit lane B, 2026-10-19): the compile route's front_end_sources no longer calls bind_annotations -- its bound graph fed no consumer, ~35 s of the frontend's 55 s per the audit's section 3a -- so the readers that want bindings demand their own (v1.tests.claim.annotation_gap_round_trip_test, v2.test.claim.manual.annotation_gap_v1_v2_agreement), and gunbc compile itself no longer reaches the seam. That deletion removes demand, not admission: the seam is still reached, still once, and a claim that said otherwise would have been a fabricated citation, so the rows below say this. Annotation grain is not a required parse-sweep phase: B0 deleted claim_executor --required-ci --required-lane witnesses, run_dag_parse_sweep reconstructs declarations and does not call bind_annotations, and this module adds no wall."
 }
 
 // ── WHICH PARSE EACH ENTRY POINT TAKES ────────────────────────────────────────────────────────
@@ -59,19 +60,22 @@ type GrammarAuthorityStanding
 
 data annotation_admission_seam: DeclarationRef = decl_ref(module_path: "v1.compiler.annotation_bind", decl_name: "bind_annotations")
 
-// THE COMPILER CLI. `gunbc compile` routes its whole-root subject through cli_run compile_emission
-// into the modeled pipeline; front_end_sources is the caller that reaches bind_annotations.
-// parse_revision_declarations_with_environment is not that caller.
-data gunbc_compile_entry: ParseEntryPoint = ParseEntryPoint {
-  invoked_as: "gunbc compile --source-root dag --source-root src/v2" as NonEmptyStr,
+// THE ROUTE THAT REACHES THE SEAM TODAY. Since gunbc P0.2 (v1-interface-cull-audit lane B) the
+// compile route (v1.compiler.compile compile_to_resolved_with_options) no longer reaches
+// bind_annotations, so it is not an entry point of this question. The readers that want bindings
+// bind for themselves; the annotation gap claim is the one recorded here. The measurements above
+// were taken when the compile frontend still bound and remain readings of that revision.
+// parse_revision_declarations_with_environment never reached the seam.
+data annotation_gap_claim_entry: ParseEntryPoint = ParseEntryPoint {
+  invoked_as: "claim v1.tests.claim.annotation_gap_round_trip_test" as NonEmptyStr,
   first_route: RouteInDeclaration {
-    declaration: decl_ref(module_path: "v1.compiler.compile", decl_name: "compile_to_resolved_with_options")
+    declaration: decl_ref(module_path: "v1.tests.claim.annotation_gap_round_trip_test", decl_name: "gap_parse")
   },
   reaches_admission: annotation_admission_seam
 }
 
-// THE FINDING'S ORIGINAL QUESTION, ANSWERED FOR THE COMPILE FRONTEND. That path arrives at one
-// seam. The parse sweep is not a second grammar and is not a second admission: it never binds.
+// THE FINDING'S ORIGINAL QUESTION, ANSWERED FOR THE ROUTES THAT STILL BIND. They arrive at one
+// seam. The compile route and the parse sweep are not second admissions: neither binds.
 data parse_entry_standing: GrammarAuthorityStanding = OneSharedAdmission { admission: annotation_admission_seam }
 
 fn entry_points_share_one_grammar(s: GrammarAuthorityStanding) -> Bool {
@@ -132,7 +136,7 @@ data measured_revision: CommitSha = "b6003a45e58a5775022f911cc4aabb2ad475da8b"
 // gunbc`, roughly three and a half minutes on a session container.
 data source_build: CompilerBuild = CompilerBuild {
   observed_on: "session quick-lynx-237 (measured by this receipt's author)" as NonEmptyStr,
-  path: "target/release/gunbc" as NonEmptyStr,
+  path: concat(cargo_default_release_dir_rel, "/gunbc") as NonEmptyStr,
   content_digest: "md5:e5f35d562fe512cbb965e8b39adc7937" as NonEmptyStr,
   byte_length: byte_size(count: 25936008),
   provenance: BuiltFromRevision { revision: measured_revision, working_tree_dirty: false }

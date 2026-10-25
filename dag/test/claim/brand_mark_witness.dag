@@ -1,0 +1,141 @@
+module test.claim.brand_mark_witness
+import test.fixture.markup_render { render_html, render_markup, render_jsx }
+
+import std.types { Bool, Int, String }
+import std.optional { Absent, Present }
+import extdeps.languages.html { serialize_html_source, EmitOk, EmitRejected }
+import gunbc.design.brand_mark {
+  BrandMark, BrandMarkBox, FaceMark, RobotMark, Stencil, UnderpaintedStencil,
+  brand_mark, brand_mark_frame, brand_mark_shape_bounds, brand_mark_stencil_path, brand_mark_antenna_path,
+  brand_mark_box_path, brand_mark_figure, brand_mark_svg,
+}
+import gunbc.site.brand { site_favicon_source }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ═══ FLAT-OUTPUT PRESERVATION ═══
+//
+// THE ORACLE IS THE FIRST AUTHORED DRAWING, NOT THIS MODULE'S OWN OUTPUT. Each literal below is a
+// path from gunb-ai/frontend legacy/moodboard.html (#stoic-idle, #stoic-robot) and assets/mark.svg,
+// carried into the mark's frame by hand: a body coordinate v becomes 12v - 120 (the original group's
+// translate(-12 -12) scale(1.2)), an antenna coordinate becomes 10v, and a radius r becomes 12r
+// (body) or 10r (antenna). So "M40,20 H80 A30,30 ..." is written "M360,120 H840 A360,360 ...". A
+// model edit that moves either mark goes red here rather than re-deriving its own expectation.
+data squircle_shell: String = "M360,120 H840 A360,360 0 0,1 1200,480 V720 A360,360 0 0,1 840,1080 H360 A360,360 0 0,1 0,720 V480 A360,360 0 0,1 360,120 Z"
+
+data mouth_spelling: String = "M528,528 H672 A24,24 0 0,1 696,552 V576 A24,24 0 0,1 672,600 H528 A24,24 0 0,1 504,576 V552 A24,24 0 0,1 528,528 Z"
+
+data face_eyes_and_mouth: String = join(["M204,456 A96,96 0 0,1 396,456 A96,96 0 0,1 204,456 Z M804,456 A96,96 0 0,1 996,456 A96,96 0 0,1 804,456 Z", mouth_spelling], " ")
+
+data robot_eyes_and_mouth: String = join(["M240,372 H360 A24,24 0 0,1 384,396 V516 A24,24 0 0,1 360,540 H240 A24,24 0 0,1 216,516 V396 A24,24 0 0,1 240,372 Z M840,372 H960 A24,24 0 0,1 984,396 V516 A24,24 0 0,1 960,540 H840 A24,24 0 0,1 816,516 V396 A24,24 0 0,1 840,372 Z", mouth_spelling], " ")
+
+data antenna_spelling: String = "M580,60 H620 V120 H580 Z M550,50 A50,50 0 0,1 650,50 A50,50 0 0,1 550,50 Z"
+
+test fn the_robot_stencil_is_the_symbols_drawing() -> Bool {
+  let robot = brand_mark(kind: RobotMark)
+  brand_mark_stencil_path(mark: robot) == join([squircle_shell, robot_eyes_and_mouth], " ")
+    && match robot.antenna {
+      Absent => false
+      Present { value } => brand_mark_antenna_path(antenna: value) == antenna_spelling
+    }
+}
+
+test fn the_face_stencil_is_the_seals_drawing() -> Bool {
+  brand_mark_stencil_path(mark: brand_mark(kind: FaceMark)) == join([squircle_shell, face_eyes_and_mouth], " ")
+}
+
+// The favicon the workspace serves is the face on the stone badge, painted in the ink.
+test fn the_favicon_is_the_face_on_the_stone_badge() -> Bool {
+  match site_favicon_source() {
+    EmitOk { html: svg } =>
+      string_contains(s: svg, pattern: face_eyes_and_mouth)
+        && string_contains(s: svg, pattern: "fill=\"#f4f1ec\"")
+        && string_contains(s: svg, pattern: "color=\"#0f0f0f\"")
+    EmitRejected { reason: _ } => false
+  }
+}
+
+// ═══ STRUCTURE ═══
+
+fn box_inside(inner: BrandMarkBox, outer: BrandMarkBox) -> Bool {
+  inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h
+}
+
+fn box_eq(a: BrandMarkBox, b: BrandMarkBox) -> Bool {
+  a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h && a.r == b.r
+}
+
+// Mirror image across the frame's vertical centre line.
+fn mirrored(a: BrandMarkBox, b: BrandMarkBox) -> Bool {
+  a.x + a.w + b.x == brand_mark_frame && a.y == b.y && a.w == b.w && a.h == b.h && a.r == b.r
+}
+
+fn centred(b: BrandMarkBox) -> Bool {
+  2 * b.x + b.w == brand_mark_frame
+}
+
+fn symmetric_and_contained(mark: BrandMark) -> Bool {
+  let left = brand_mark_shape_bounds(shape: mark.left_eye)
+  let right = brand_mark_shape_bounds(shape: mark.right_eye)
+  centred(b: mark.shell)
+    && mirrored(a: left, b: right)
+    && centred(b: mark.mouth)
+    && box_inside(inner: left, outer: mark.shell)
+    && box_inside(inner: right, outer: mark.shell)
+    && box_inside(inner: mark.mouth, outer: mark.shell)
+    && mark.shell.x >= 0 && mark.shell.y >= 0 && mark.shell.x + mark.shell.w <= brand_mark_frame && mark.shell.y + mark.shell.h <= brand_mark_frame
+}
+
+test fn both_marks_are_symmetric_with_features_inside_the_shell() -> Bool {
+  symmetric_and_contained(mark: brand_mark(kind: FaceMark)) && symmetric_and_contained(mark: brand_mark(kind: RobotMark))
+}
+
+// The eyes share centres across kinds: only their shape differs.
+test fn face_and_robot_eyes_share_centres() -> Bool {
+  let f = brand_mark_shape_bounds(shape: brand_mark(kind: FaceMark).left_eye)
+  let r = brand_mark_shape_bounds(shape: brand_mark(kind: RobotMark).left_eye)
+  2 * f.x + f.w == 2 * r.x + r.w && 2 * f.y + f.h == 2 * r.y + r.h
+}
+
+// The kinds differ in exactly the eyes and the antenna: the shell and mouth are one, and only the
+// robot has an antenna.
+test fn the_kinds_differ_only_in_eyes_and_antenna() -> Bool {
+  let f = brand_mark(kind: FaceMark)
+  let r = brand_mark(kind: RobotMark)
+  box_eq(a: f.shell, b: r.shell)
+    && box_eq(a: f.mouth, b: r.mouth)
+    && !box_eq(a: brand_mark_shape_bounds(shape: f.left_eye), b: brand_mark_shape_bounds(shape: r.left_eye))
+    && match f.antenna { Absent => true Present { value: _ } => false }
+    && match r.antenna { Absent => false Present { value: _ } => true }
+}
+
+// The antenna is centred, its tip sits on its stem, and its stem stands on the shell's top edge.
+test fn the_antenna_is_centred_and_stands_on_the_shell() -> Bool {
+  let r = brand_mark(kind: RobotMark)
+  match r.antenna {
+    Absent => false
+    Present { value } => centred(b: value.stem)
+      && 2 * value.tip.cx == brand_mark_frame
+      && value.tip.cy + value.tip.r >= value.stem.y
+      && value.stem.y + value.stem.h == r.shell.y
+  }
+}
+
+// A treatment does not change the silhouette: the underpaint is the shell itself, and the stencil
+// over it is the same stencil Stencil draws.
+test fn treatments_share_one_silhouette() -> Bool {
+  let r = brand_mark(kind: RobotMark)
+  let plain = join(map(brand_mark_figure(mark: r, treatment: Stencil), f => render_html(serialize_html_source(node: f))), "")
+  let under = join(map(brand_mark_figure(mark: r, treatment: UnderpaintedStencil { underpaint: "var(--surface)" }), f => render_html(serialize_html_source(node: f))), "")
+  string_contains(s: under, pattern: plain)
+    && string_contains(s: under, pattern: join(["d=\"", brand_mark_box_path(b: r.shell), "\""], ""))
+    && !string_contains(s: plain, pattern: "var(--surface)")
+}
+
+// The rendered robot carries its antenna; the face does not.
+test fn only_the_robot_renders_an_antenna() -> Bool {
+  let face = render_html(serialize_html_source(node: brand_mark_svg(kind: FaceMark, class_name: "f", label: "f")))
+  let robot = render_html(serialize_html_source(node: brand_mark_svg(kind: RobotMark, class_name: "r", label: "r")))
+  !string_contains(s: face, pattern: antenna_spelling) && string_contains(s: robot, pattern: antenna_spelling)
+}

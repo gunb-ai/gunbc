@@ -1,9 +1,10 @@
 module extdeps.ninfer.ninfer_serve
 
-import std.types { NonEmptyStr, String, Bool, List, Int }
+import std.types { NonEmptyStr, String, Bool, List, Int, Port }
 import std.optional { Present, Absent }
 import std.nat { Nat, nat_max }
-import std.measure { Millisecond, TokenCount }
+import std.algebra { list_append }
+import std.measure { TokenCount, Mebibyte, mebibyte_count, token_count, token_count_value }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
@@ -66,17 +67,96 @@ type NinferKvDtype
 type NinferSpeculation
   = NinferMtp { draft_tokens: Nat, lm_head_draft: Bool }
 
+fn ninfer_kv_dtype_wire(d: NinferKvDtype) -> NonEmptyStr {
+  match d {
+    NinferKvBf16 => "ninfer-kv-bf16" as NonEmptyStr
+    NinferKvInt8 => "ninfer-kv-int8" as NonEmptyStr
+    NinferKvFp8 => "ninfer-kv-fp8" as NonEmptyStr
+    NinferKvNvfp4 => "ninfer-kv-nvfp4" as NonEmptyStr
+    NinferKvK8V4 => "ninfer-kv-k8v4" as NonEmptyStr
+  }
+}
+
+fn ninfer_speculation_wire(s: NinferSpeculation) -> NonEmptyStr {
+  match s {
+    NinferMtp { draft_tokens: n, lm_head_draft: h } =>
+      join(["ninfer-mtp-", to_string(n), if h { "-lmhead" } else { "" }], "") as NonEmptyStr
+  }
+}
+
 type NinferServeLaunch {
+  bind_host: NonEmptyStr
   model_id: NonEmptyStr
   max_concurrency: Nat
   max_context: TokenCount
-  max_pending_requests: Nat
-  pending_timeout: Millisecond
   default_max_tokens: TokenCount
   kv_dtype: NinferKvDtype
-  kv_capacity_auto: Bool
   speculation: NinferSpeculation
+  device_state_slots: Nat
+  preserve_thinking: Bool
+  host_context: Mebibyte
   standing: CitedFigureStanding
+}
+
+// THE FLAGS, as spelled by `ninfer-serve --help` at rev 81c8ce09 (2917 bytes, sha256
+// 5717d1b1a127121a6a4c8324435cae08abdb6f5216729ebce17652442281ea7c, read read-only on the card 2026-10-15)
+// and by the card's run.sh line: <model.ninfer> positional; --host --port --model-id --max-context
+// --kv-capacity N|auto (ONLY auto is modeled: a numeric capacity has no field, so a launch cannot ask for one and nothing is dropped) --max-concurrency --kv-dtype bf16|int8|fp8|nvfp4|k8v4 --device-state-slots
+// --spec mtp --draft-tokens N --lm-head-draft --preserve-thinking --host-context-mib N.
+//
+// max-pending-requests and pending-timeout-ms are unread for the launch the card runs (its line omits both),
+// so the launch record has no field for them and no flag carries a figure. default_max_tokens is rendered only when it differs from the help's stated default, 8192,
+// which makes the row's 8192 the cited default and not a passed flag. --api-key is a credential and is not
+// an argument of this renderer: a launch leg binds it as a grant or refuses.
+data ninfer_default_max_tokens_help_default: TokenCount = token_count(count: 8192)
+
+fn ninfer_kv_dtype_flag_value(d: NinferKvDtype) -> String {
+  match d {
+    NinferKvBf16 => "bf16"
+    NinferKvInt8 => "int8"
+    NinferKvFp8 => "fp8"
+    NinferKvNvfp4 => "nvfp4"
+    NinferKvK8V4 => "k8v4"
+  }
+}
+
+fn ninfer_serve_speculation_arguments(s: NinferSpeculation) -> List<String> {
+  match s {
+    NinferMtp { draft_tokens: n, lm_head_draft: lm } =>
+      list_append(
+        left: ["--spec", "mtp", "--draft-tokens", to_string(n)],
+        right: if lm { ["--lm-head-draft"] } else { [] },
+      )
+  }
+}
+
+fn ninfer_serve_launch_argv(launch: NinferServeLaunch, model_path: NonEmptyStr, listen_port: Port) -> List<String> {
+  let base = [
+    model_path as String,
+    "--host", launch.bind_host as String,
+    "--port", to_string(listen_port),
+    "--model-id", launch.model_id as String,
+    "--max-context", to_string(token_count_value(t: launch.max_context)),
+    "--max-concurrency", to_string(launch.max_concurrency),
+    "--kv-dtype", ninfer_kv_dtype_flag_value(d: launch.kv_dtype),
+    "--device-state-slots", to_string(launch.device_state_slots),
+  ]
+  let kv_capacity = ["--kv-capacity", "auto"]
+  let tail = [
+    "--host-context-mib", to_string(mebibyte_count(m: launch.host_context)),
+  ]
+  let max_tokens = if token_count_value(t: launch.default_max_tokens) == token_count_value(t: ninfer_default_max_tokens_help_default) {
+    []
+  } else {
+    ["--default-max-tokens", to_string(token_count_value(t: launch.default_max_tokens))]
+  }
+  list_append(
+    left: list_append(left: base, right: ninfer_serve_speculation_arguments(s: launch.speculation)),
+    right: list_append(
+      left: list_append(left: kv_capacity, right: if launch.preserve_thinking { ["--preserve-thinking"] } else { [] }),
+      right: list_append(left: tail, right: max_tokens),
+    ),
+  )
 }
 
 // ── THE CHAT-COMPLETIONS READING, observed live 2026-10-11 (qwen3.8-27b through the srv1 tunnel) ───

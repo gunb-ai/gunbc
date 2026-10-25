@@ -1,0 +1,42 @@
+module test.claim.native_serve_probe_plan_witness
+
+import std.types { Bool, String, List }
+import gunbc.native_serve_probe_plan {
+  NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
+  native_serve_phase_refusals, native_serve_phase_names,
+}
+
+// THE JOIN OF A BINDING ROW'S DECLARED PHASES TO ITS READER'S JUDGED PHASES, with its discriminating
+// controls (gunbc.native_serve_probe_plan). The host evaluates this same fold before it spawns
+// anything, so a refusal here is the refusal the instrument gives; the claims below are the
+// fold-level controls, and the host-level one is that `gunbc test` on a row whose declaration and
+// reader disagree exits 1 with the cause, which the dispatch that lands this change runs.
+
+fn all_three() -> List<NativeServePhase> {
+  [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit]
+}
+
+// A declaration the reader judges completely is not refused: both sides empty, and both sides full.
+test fn a_declaration_the_reader_judges_is_not_refused() -> Bool {
+  count(native_serve_phase_refusals(declared: [], judged: [])) == 0
+    && count(native_serve_phase_refusals(declared: native_serve_phase_names(phases: all_three()), judged: all_three())) == 0
+}
+
+// THE CONTROL: a row declaring a phase its reader cannot judge is refused, and the refusal names that
+// phase -- not a count, the phase.
+test fn a_declared_phase_the_reader_cannot_judge_is_refused_by_name() -> Bool {
+  let refusals = native_serve_phase_refusals(declared: ["peer-instance"], judged: [])
+  count(refusals) == 1 && contains(refusals, "declared but not judged by the reader: peer-instance")
+}
+
+// The converse: a phase the reader judges that no row runs would read defaults as observations.
+test fn a_judged_phase_nobody_declares_is_refused_by_name() -> Bool {
+  let refusals = native_serve_phase_refusals(declared: [], judged: [NativeServeStuckCeilingExit])
+  count(refusals) == 1 && contains(refusals, "judged by the reader but not declared: stuck-ceiling-exit")
+}
+
+// Each refusal is independent: one satisfied phase does not hide an unsatisfied one.
+test fn a_satisfied_phase_does_not_hide_an_unsatisfied_one() -> Bool {
+  let refusals = native_serve_phase_refusals(declared: ["peer-instance", "refused-launch"], judged: [NativeServePeerInstance])
+  count(refusals) == 1 && contains(refusals, "declared but not judged by the reader: refused-launch")
+}

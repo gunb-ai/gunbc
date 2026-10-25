@@ -3,6 +3,7 @@ import std.optional { Absent, Present }
 
 import std.types { List, Bool, Int, String }
 import std.keyed_row { KeyedRow, keyed_row_find }
+import std.algebra { collection_concat_shape }
 
 // Keyed roster set/map CONSTRUCTION semantics (generated-file conflict policy lane 4, operator
 // ruling 2026-08-01). Path-keyed grant and roster carriers are row 3 in the four-case policy: never

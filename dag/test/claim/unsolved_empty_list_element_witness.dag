@@ -1,0 +1,39 @@
+module test.claim.unsolved_empty_list_element_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, total_blocking_census, census_exit}
+import std.process { ProcessExit }
+
+// THE EXECUTING EVIDENCE for gunbc.recurring_failure_mode unsolved_placeholder_reads_back_as_unit,
+// at its field-access reader. An empty list literal at a fold accumulator (the fold's A) carries the
+// unsolved `empty_list_element` placeholder; `cons` returns acc unchanged, so nothing ever solves it.
+// Reading a field of an element of that list must REFUSE as an unestablished type, never be accepted
+// (a deferred field access on a type nobody established) and never read back as Unit.
+
+data unsolved_element_source: String = "module test.claim.unsolved_element_probe\nimport std.types { List, Int }\nimport std.algebra { fold_list }\nimport std.optional { Absent, Present }\ntype UeItem { v: Int }\nfn probe(xs: List<UeItem>) -> Int {\n  let kept = fold_list(xs: xs, empty: [], cons: fn(acc, m) { acc })\n  match kept |> first {\n    Present { value: e } => e.v\n    Absent => 0\n  }\n}\n"
+
+data declared_element_source: String = "module test.claim.declared_element_probe\nimport std.types { List, Int }\nimport std.algebra { fold_list }\nimport std.optional { Absent, Present }\ntype UeItem { v: Int }\nfn seed() -> List<UeItem> { [] }\nfn probe(xs: List<UeItem>) -> Int {\n  let kept = fold_list(xs: xs, empty: seed(), cons: fn(acc, m) { acc })\n  match kept |> first {\n    Present { value: e } => e.v\n    Absent => 0\n  }\n}\n"
+
+data lambda_unsolved_source: String = "module test.claim.lambda_unsolved_probe\nimport std.types { List, Int }\nimport std.algebra { fold_list }\ntype UeItem { v: Int }\nfn probe(xs: List<UeItem>) -> List<Int> {\n  let kept = fold_list(xs: xs, empty: [], cons: fn(acc, m) { acc })\n  kept |> map(e => e.v)\n}\n"
+
+data lambda_declared_source: String = "module test.claim.lambda_declared_probe\nimport std.types { List, Int }\nimport std.algebra { fold_list }\ntype UeItem { v: Int }\nfn seed() -> List<UeItem> { [] }\nfn probe(xs: List<UeItem>) -> List<Int> {\n  let kept = fold_list(xs: xs, empty: seed(), cons: fn(acc, m) { acc })\n  kept |> map(e => e.v)\n}\n"
+
+// CALLABLE-PATH RED: the lambda parameter keeps the unsolved identity, so `e.v` refuses.
+// Goes red if the ExprLambda arm collapses empty_list_element to callable_param.
+test fn a_field_of_an_unsolved_element_lambda_param_refuses() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: lambda_unsolved_source, wanted_class: "InternalError"), holds: fn(n) { n >= 1 }))
+}
+
+test fn a_declared_seed_lambda_param_field_is_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: lambda_declared_source), holds: fn(n) { n == 0 }))
+}
+
+// DISCRIMINATING RED: refused while the element stays unsolved. Goes red if the deferral accepts it.
+test fn a_field_of_an_unsolved_empty_list_element_refuses() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: unsolved_element_source, wanted_class: "InternalError"), holds: fn(n) { n >= 1 }))
+}
+
+// ACCEPTED POSITIVE CONTROL: the same fold seeded by a declared List<UeItem> reads `e.v` cleanly.
+test fn a_declared_seed_element_field_is_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: declared_element_source), holds: fn(n) { n == 0 }))
+}

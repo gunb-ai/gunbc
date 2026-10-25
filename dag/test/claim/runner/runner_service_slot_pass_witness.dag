@@ -1,0 +1,273 @@
+module test.claim.runner.runner_service_slot_pass_witness
+
+// THE PASS'S ORDER, EXECUTED: service_slot_pass_over is the one fold that decides mint -> launch -> deregister, and
+// every exit arm must reach the deregistration. The effects are stand-ins that return values CARRYING what they were
+// handed, so the VALUE the pass returns shows which calls ran and what each saw: the stand-in deregistration answers
+// TokenRefused, so the pass reports RegistrationRemains{exit} with the exit the deregistration was handed, and the
+// launch's answer shows in that exit. Deleting the launch call or the deregistration call changes that value.
+// Pairing frontier: the stand-ins cannot build a JitRunnerDeregistered (its receipt is sealed behind
+// conclude_from_readback), so the Deregistered arm is witnessed only through the real producer, which runs on the host.
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.decl_ref { decl_ref }
+import gunbc.host.managed_host { ManagedHost, managed_hosts }
+import gunbc.runner.runner_host_unit_slot { HostUnitSlot }
+import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused, dispatch_jit_mint, receive_jit_mint }
+import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
+import gunbc.runner.runner_jit_deregistration { JitSlotExit, SlotListenerExitedClean, SlotListenerExitedNonzero, SlotNeverLaunched, JitRegistration, jit_registration_of, JitDeregistrationRefused, AuthorizedDispatchRegistration, JitDeregistrationSubject, DeregistrationAuthorityForAnotherInstallation }
+import gunbc.runner.runner_jit_mint_binding { JitMintBinding, JitBoundMint, JitBindingDeregistration, JitBindingDeregistrationTokenRefused, JitBindingDeregistrationRan }
+import gunbc.github_effect_perform { JitMintPerformance, JitMintReceived, JitMintClockUnread }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import extdeps.auth.jws { JwsSigningKeyRef }
+import extdeps.github.actions_jit_runner { EncodedJitConfig, jit_config_mint_outcome }
+import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref }
+import gunbc.runner.runner_group_restriction_observation { observe_runner_group_restriction }
+import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
+import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
+import extdeps.transports.rest { RestAnswered }
+import gunbc.fleet.host_credential_custody_converge { host_credential_custody_row, ServiceSlotAppKey, CustodyPathAsDeclared }
+import gunbc.runner.runner_service_slot_controller {
+  ServiceSlotPass, ServiceSlotPassDeregistered, ServiceSlotPassNothingRegistered, ServiceSlotPassRegistrationRemains,
+  ServiceSlotMintAdmission, ServiceSlotKeyHeld, ServiceSlotListenerIsolated, ServiceSlotPassId, ListenerRun, ListenerNotLaunched, ListenerExited,
+  ServiceSlotAdmission, ServiceSlotAdmitted, ServiceSlotAdmissionRefused, ServiceSlotKeyStanding, ServiceSlotKeyHeldStanding, ServiceSlotKeyNotHeld,
+  ServiceSlotIsolation, ServiceSlotIsolated, ServiceSlotPassIdReading, ServiceSlotPassIdRead, ServiceSlotPassIdRefused, service_slot_pass_over,
+}
+import test.claim.runner.runner_service_slot_admission_witness { unit_name, admission_over, key_over, isolate_as, pass_of, boot_a, pass_one }
+
+data minted_config: String = "ZmFrZS1qaXQtY29uZmlnLXRoYXQtaXMtbG9uZy1lbm91Z2gtdG8tcGFzcy10aGUtZmxvb3ItY2hlY2stZm9yLXRoZS13aXRuZXNz"
+
+fn observe_stub(signer: JwsSigningKeyRef, reason: NonEmptyStr) -> GitHubAppControlPlaneState {
+  observed_grant(perms: runner_grant)
+}
+
+// The delivered mint, as the microVM witness builds one: a dispatch for this binding's own subject, then upstream's 201 fold.
+fn delivering_mint(binding: JitMintBinding, state: GitHubAppControlPlaneState) -> JitBoundMint admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "pass_with"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "clean_exit_deregisters_with_the_clean_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "nonzero_exit_deregisters_with_the_nonzero_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "a_listener_that_never_launched_still_deregisters"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "the_deregistration_is_handed_the_slots_own_registration_name"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "a_launch_handed_another_pass_is_visible_in_the_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "a_launch_handed_another_credential_is_visible_in_the_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "a_launch_handed_another_principal_is_visible_in_the_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "a_launch_handed_another_slot_is_visible_in_the_exit"),
+] {
+  match dispatch_jit_mint(
+    subject: binding.subject,
+    authority: app_credential,
+    control_plane: state,
+    organization: gunbai_org_ref,
+    runner_group: observe_runner_group_restriction(
+      name: binding.runner_group_name,
+      selected_workflow: binding.selected_workflow,
+      listed: runner_groups_of_rest_read(outcome: RestAnswered { answer: OrgRunnerGroupListWire {
+        total_count: 1,
+        runner_groups: [OrgRunnerGroupWire {
+          id: 1,
+          name: binding.runner_group_name as String,
+          visibility: "selected",
+          allows_public_repositories: false,
+          restricted_to_workflows: true,
+          selected_workflows: [binding.selected_workflow as String],
+          workflow_restrictions_read_only: false,
+        }],
+      } }),
+    ),
+    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+  ) {
+    JitMintDispatchAuthorized { dispatch: d } =>
+      JitBoundMint {
+        performance: JitMintReceived { delivery: receive_jit_mint(
+          dispatch: JitMintDispatchAuthorized { dispatch: d },
+          outcome: jit_config_mint_outcome(status: 201, encoded: minted_config, runner_id: 4242, error_body: ""),
+        ) },
+        registration: jit_registration_of(dispatch: JitMintDispatchAuthorized { dispatch: d }),
+      }
+    JitMintDispatchRefused { refusal: _ } => JitBoundMint { performance: JitMintClockUnread { detail: "refused" }, registration: none }
+  }
+}
+
+fn refusing_mint(binding: JitMintBinding, state: GitHubAppControlPlaneState) -> JitBoundMint {
+  JitBoundMint { performance: JitMintClockUnread { detail: "no dispatch" }, registration: none }
+}
+
+// THE LAUNCH STAND-IN ANSWERS FROM ITS ARGUMENTS: status 0 only when the slot, the principal, the pass and the
+// credential it was handed are the expected ones, otherwise a distinct nonzero status per mismatch. A stand-in that
+// ignored them would let the pass hand the launch anything.
+fn launch_expecting(
+  unit: String, user: String, pass_text: String, credential_text: String, status: Int,
+  slot: HostUnitSlot, isolated: ServiceSlotListenerIsolated, pass: ServiceSlotPassId, credential: EncodedJitConfig,
+) -> ListenerRun {
+  if (slot.unit as String) != unit {
+    ListenerExited { exit_code: 91 }
+  } else if (isolated.user as String) != user {
+    ListenerExited { exit_code: 92 }
+  } else if (pass.invocation as String) != pass_text {
+    ListenerExited { exit_code: 93 }
+  } else if (credential.encoded as String) != credential_text {
+    ListenerExited { exit_code: 94 }
+  } else {
+    ListenerExited { exit_code: status }
+  }
+}
+
+fn expected_unit() -> String {
+  match managed_hosts() |> first() {
+    Absent => ""
+    Present { value: m } => unit_name(m: m, id: boot_a, index: 0)
+  }
+}
+
+fn launch_status(status: Int) -> fn(HostUnitSlot, ServiceSlotListenerIsolated, ServiceSlotPassId, EncodedJitConfig) -> ListenerRun {
+  (slot, isolated, pass, credential) => launch_expecting(unit: expected_unit(), user: "gunbc-runner", pass_text: pass_one, credential_text: minted_config, status: status, slot: slot, isolated: isolated, pass: pass, credential: credential)
+}
+fn launch_other_pass() -> fn(HostUnitSlot, ServiceSlotListenerIsolated, ServiceSlotPassId, EncodedJitConfig) -> ListenerRun {
+  (slot, isolated, pass, credential) => launch_expecting(unit: expected_unit(), user: "gunbc-runner", pass_text: "not-the-pass", credential_text: minted_config, status: 0, slot: slot, isolated: isolated, pass: pass, credential: credential)
+}
+fn launch_other_credential() -> fn(HostUnitSlot, ServiceSlotListenerIsolated, ServiceSlotPassId, EncodedJitConfig) -> ListenerRun {
+  (slot, isolated, pass, credential) => launch_expecting(unit: expected_unit(), user: "gunbc-runner", pass_text: pass_one, credential_text: "another-credential", status: 0, slot: slot, isolated: isolated, pass: pass, credential: credential)
+}
+fn launch_other_principal() -> fn(HostUnitSlot, ServiceSlotListenerIsolated, ServiceSlotPassId, EncodedJitConfig) -> ListenerRun {
+  (slot, isolated, pass, credential) => launch_expecting(unit: expected_unit(), user: "root", pass_text: pass_one, credential_text: minted_config, status: 0, slot: slot, isolated: isolated, pass: pass, credential: credential)
+}
+fn launch_other_slot() -> fn(HostUnitSlot, ServiceSlotListenerIsolated, ServiceSlotPassId, EncodedJitConfig) -> ListenerRun {
+  (slot, isolated, pass, credential) => launch_expecting(unit: "another.service", user: "gunbc-runner", pass_text: pass_one, credential_text: minted_config, status: 0, slot: slot, isolated: isolated, pass: pass, credential: credential)
+}
+fn launch_never(slot: HostUnitSlot, isolated: ServiceSlotListenerIsolated, pass: ServiceSlotPassId, credential: EncodedJitConfig) -> ListenerRun {
+  ListenerNotLaunched { cause: "the unit did not start" as NonEmptyStr }
+}
+
+// THE DEREGISTRATION STAND-IN ECHOES WHAT IT WAS HANDED as a refused deregistration carrying the registration it
+// was asked about and the exit it was given, so the pass value shows exactly what the pass passed.
+fn dereg_stub(binding: JitMintBinding, state: GitHubAppControlPlaneState, registration: JitRegistration, exit: JitSlotExit) -> JitBindingDeregistration {
+  JitBindingDeregistrationRan { deregistration: JitDeregistrationRefused {
+    subject: AuthorizedDispatchRegistration { registration: registration },
+    exit: exit,
+    refusal: DeregistrationAuthorityForAnotherInstallation,
+  } }
+}
+
+fn pass_with(
+  admission: ServiceSlotMintAdmission,
+  key: ServiceSlotKeyHeld,
+  isolated: ServiceSlotListenerIsolated,
+  pass: ServiceSlotPassId,
+  mint: fn(JitMintBinding, GitHubAppControlPlaneState) -> JitBoundMint,
+  launch: fn(HostUnitSlot, ServiceSlotListenerIsolated, ServiceSlotPassId, EncodedJitConfig) -> ListenerRun,
+) -> ServiceSlotPass admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "fixture_pass"),
+] {
+  service_slot_pass_over(admission: admission, key: key, isolated: isolated, pass: pass, observe: observe_stub, mint: mint, launch: launch, deregister: dereg_stub)
+}
+
+// The carriers come from the real admit folds over the real host row; only the three effects are stand-ins.
+fn fixture_pass(
+  mint: fn(JitMintBinding, GitHubAppControlPlaneState) -> JitBoundMint,
+  launch: fn(HostUnitSlot, ServiceSlotListenerIsolated, ServiceSlotPassId, EncodedJitConfig) -> ListenerRun,
+) -> ServiceSlotPass? admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "clean_exit_deregisters_with_the_clean_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "nonzero_exit_deregisters_with_the_nonzero_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "a_listener_that_never_launched_still_deregisters"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "the_deregistration_is_handed_the_slots_own_registration_name"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "a_launch_handed_another_pass_is_visible_in_the_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "a_launch_handed_another_credential_is_visible_in_the_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "a_launch_handed_another_principal_is_visible_in_the_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "a_launch_handed_another_slot_is_visible_in_the_exit"),
+  decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "no_dispatch_means_nothing_to_deregister"),
+] {
+  match managed_hosts() |> first() {
+    Absent => none
+    Present { value: m } =>
+      match admission_over(m: m, population_id: boot_a, current_id: boot_a, unit_id: boot_a, index: 0) {
+        ServiceSlotAdmissionRefused { cause: _ } => none
+        ServiceSlotAdmitted { admission: a } =>
+          match key_over(file: CustodyPathAsDeclared, dir: CustodyPathAsDeclared) {
+            ServiceSlotKeyNotHeld { causes: _ } => none
+            ServiceSlotKeyHeldStanding { held: k } =>
+              match isolate_as(row: host_credential_custody_row(c: ServiceSlotAppKey), user: "gunbc-runner") {
+                ServiceSlotIsolated { isolated: i } =>
+                  match pass_of(text: pass_one) {
+                    ServiceSlotPassIdRefused { cause: _ } => none
+                    ServiceSlotPassIdRead { pass: p } => Present { value: pass_with(admission: a, key: k, isolated: i, pass: p, mint: mint, launch: launch) }
+                  }
+                _ => none
+              }
+          }
+      }
+  }
+}
+
+fn acknowledged_name(p: ServiceSlotPass?) -> String {
+  match p {
+    Present { value: ServiceSlotPassRegistrationRemains { unit: _, exit: _, detail: _, acknowledged: Present { value: AuthorizedDispatchRegistration { registration: r } } } } => r.name.value as String
+    _ => ""
+  }
+}
+
+fn remains_with(p: ServiceSlotPass?) -> JitSlotExit? {
+  match p {
+    Present { value: ServiceSlotPassRegistrationRemains { unit: _, exit: e, detail: _, acknowledged: _ } } => Present { value: e }
+    _ => none
+  }
+}
+
+test fn clean_exit_deregisters_with_the_clean_exit() -> Bool {
+  match remains_with(p: fixture_pass(mint: delivering_mint, launch: launch_status(status: 0))) {
+    Present { value: SlotListenerExitedClean } => true
+    _ => false
+  }
+}
+
+test fn nonzero_exit_deregisters_with_the_nonzero_exit() -> Bool {
+  match remains_with(p: fixture_pass(mint: delivering_mint, launch: launch_status(status: 3))) {
+    Present { value: SlotListenerExitedNonzero { cause: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_listener_that_never_launched_still_deregisters() -> Bool {
+  match remains_with(p: fixture_pass(mint: delivering_mint, launch: launch_never)) {
+    Present { value: SlotNeverLaunched { cause: _ } } => true
+    _ => false
+  }
+}
+
+test fn no_dispatch_means_nothing_to_deregister() -> Bool {
+  match fixture_pass(mint: refusing_mint, launch: launch_status(status: 0)) {
+    Present { value: ServiceSlotPassNothingRegistered { unit: _, cause: _ } } => true
+    _ => false
+  }
+}
+
+test fn the_deregistration_is_handed_the_slots_own_registration_name() -> Bool {
+  acknowledged_name(p: fixture_pass(mint: delivering_mint, launch: launch_status(status: 0))) == expected_unit()
+}
+
+test fn a_launch_handed_another_pass_is_visible_in_the_exit() -> Bool {
+  match remains_with(p: fixture_pass(mint: delivering_mint, launch: launch_other_pass())) {
+    Present { value: SlotListenerExitedNonzero { cause: c } } => (c as String) == "listener exited with status 93"
+    _ => false
+  }
+}
+
+test fn a_launch_handed_another_credential_is_visible_in_the_exit() -> Bool {
+  match remains_with(p: fixture_pass(mint: delivering_mint, launch: launch_other_credential())) {
+    Present { value: SlotListenerExitedNonzero { cause: c } } => (c as String) == "listener exited with status 94"
+    _ => false
+  }
+}
+
+test fn a_launch_handed_another_principal_is_visible_in_the_exit() -> Bool {
+  match remains_with(p: fixture_pass(mint: delivering_mint, launch: launch_other_principal())) {
+    Present { value: SlotListenerExitedNonzero { cause: c } } => (c as String) == "listener exited with status 92"
+    _ => false
+  }
+}
+
+test fn a_launch_handed_another_slot_is_visible_in_the_exit() -> Bool {
+  match remains_with(p: fixture_pass(mint: delivering_mint, launch: launch_other_slot())) {
+    Present { value: SlotListenerExitedNonzero { cause: c } } => (c as String) == "listener exited with status 91"
+    _ => false
+  }
+}

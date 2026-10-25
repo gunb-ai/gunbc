@@ -187,9 +187,22 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_elsewhere(path: "src/main.rs", cause: EmitterProducedDivergentSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "emitter_produced_divergent_registrations"),
   retained_support_dir_member(path: "src/cli_run/floor_discovery_snapshot.rs"),
   retained_support_dir_member(path: "src/cli_run/materialization_provider_consumer.rs"),
+  retained_reason_elsewhere(
+    path: "src/cli_run/native_lane_runner.rs",
+    cause: SupportDirectoryMemberSource,
+    module_path: "gunbc.parse_compiler_identity_seed_growth",
+    decl_name: "parse_compiler_identity_seed_growth_justification"
+  ),
   retained_support_dir_member(path: "src/cli_run/roadmap_acceptance_history_carrier.rs"),
   retained_support_dir_member(path: "src/cli_run/test_module_hygiene_bridge.rs"),
-  retained_support_dir_member(path: "src/cli_run/user_work_scope.rs"),
+  SeedRetentionFrontierRow {
+    crate_relative_path: "src/cli_run/user_work_scope.rs",
+    cause: SupportDirectoryMemberSource,
+    reason: ReasonDeclaredHere {
+      detail: "Test/Run wrap trampoline, including RECOGNIZED_SYSTEM_SLICES, the wrap-time census of gunbc.compute.unit_bounds recognized_system_slice. Seed cannot eval that fold at wrap time; standing_from_supplied plus standing_fixture_tests join the fold wires.",
+      dissolution: unbound_dissolution(description: "native emission of the Test/Run wrap trampoline from gunbc.compute.unit_bounds (the seed evals that fold at wrap time); then src/cli_run/user_work_scope.rs and the mirrored RECOGNIZED_SYSTEM_SLICES census delete together. Unbound because that emission declaration does not exist yet; naming it would be the fabricated-citation class (DESIGN 3).")
+    }
+  },
   retained_support_dir_member(path: "src/module_path_index/index.rs"),
   retained_support_dir_member(path: "src/module_path_index/mod.rs"),
   retained_support_dir_member(path: "src/module_path_index/parsed_dag_file.rs"),

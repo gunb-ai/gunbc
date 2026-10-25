@@ -9,6 +9,7 @@ import v2.lens.common.algebraic_composition {
   ParallelismKindPolicy,
   ParallelismRelation,
   ReadsParallelismFacts,
+  StructuralNotACoupling,
   UnresolvedCoupling,
   parallelism_classifier
 }
@@ -16,9 +17,7 @@ import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent, inferred_facts_subject_node, infer_facts_lookup_miss_diagnostic }
 import std.algebra { list_snoc_item, bag_eq }
-import v2.std.collection {
-  optional_present_witness
-}
+
 import std.optional {
   Optional,
   optional_absent,
@@ -40,7 +39,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.node { Symbol }
-import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
+import v2.std.witness { Holds, Violates, Witness, witness_from_optional, optional_present_witness }
 
 type ParallelismFact {
   dependencies: List<ClassifiedDependencyView<ParallelismRelation>>
@@ -105,6 +104,14 @@ fn parallelism_relation_for_reads_parallelism_facts(
   )
 }
 
+fn parallelism_structural_view_diagnostic(view: DependencyView) -> Diagnostic {
+  Diagnostic {
+    reason: ^parallelism_reason_structural_view_is_not_a_coupling,
+    at: node_locus(node: view.usage_site),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
 fn parallelism_relation_for_policy(
   tree: InferredTree,
   view: DependencyView,
@@ -113,6 +120,7 @@ fn parallelism_relation_for_policy(
   match policy {
     KnownParallelismRelation { relation: r } => r
     ReadsParallelismFacts => parallelism_relation_for_reads_parallelism_facts(tree: tree, view: view)
+    StructuralNotACoupling => UnresolvedCoupling { diagnostic: parallelism_structural_view_diagnostic(view: view) }
   }
 }
 

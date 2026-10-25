@@ -2,12 +2,12 @@ module gunbc.live_deploy.deployed_tree_observation
 
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, List, Bool, Int }
-import std.algebra { trim }
+import std.algebra { list_append, string_concat_join, trim }
 import extdeps.git
 import extdeps.git { git_in_trusted_repository_args }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.live_deploy.candidate { scan_checkout_status, scan_ignored_deployed_paths }
 import gunbc.host.host_effect_realize {
   run_typed_argv_transport,
@@ -321,7 +321,7 @@ fn deployed_tree_content_reading(entries_nul: String, ignored_nul: String) -> De
     if length(changed) == 0 {
       ContentRead { state: DeployedScopeMatchesCommit }
     } else {
-      ContentRead { state: DeployedScopeDiverged { changed_paths: join(changed, " ") as NonEmptyStr } }
+      ContentRead { state: DeployedScopeDiverged { changed_paths: string_concat_join(fields: changed, separator: " ") as NonEmptyStr } }
     }
   }
 }
@@ -346,6 +346,17 @@ fn deployed_tree_content_reading(entries_nul: String, ignored_nul: String) -> De
 // observation, because a modification count without a revision to attach it to is a fact about no
 // particular commit -- and reporting it beside a fabricated or absent revision is the state-space
 // conflation this type exists to prevent.
+// THE OBSERVATION AT A FLEET HOST'S RESOLVED TARGET. A target that does not resolve is a leg that was
+// not attempted, read as unobservable with the target's own refusal, never a leg run at unexamined
+// text.
+fn observe_deployed_tree_at(context: FleetSshExecutionContext, target: SshTargetResolution, repo: NonEmptyStr) -> DeployedTreeObservation {
+  match target {
+    SshTargetResolved { target: t } => observe_deployed_tree(locus: deployed_tree_locus(context: context, target: t, repo: repo))
+    SshTargetRefused { endpoint: e, refusal: why } =>
+      DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "target", reason: ssh_target_refusal_text(endpoint: e, refusal: why) } }
+  }
+}
+
 fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
   match deployed_tree_leg(locus: locus, argv: deployed_tree_revision_argv(repo: locus.repo)) {
     DeployedTreeLegNotAttempted { reason: why } =>

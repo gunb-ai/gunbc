@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.enum_variant_glob_rooted_at_the_importing_module
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data enum_variant_glob_rooted_at_the_importing_module: RecurringFailureMode = RecurringFailureMode {
+  identity: "enum_variant_glob_rooted_at_the_importing_module" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "a module that imports a coproduct AND its arms (`import std.types \{ Bool, True, False \}` in v2.std.logic) declares neither, yet a consumer importing the coproduct from it was emitted `use crate::v2_std_logic::Bool::*;`, a path no crate can resolve. INVALID STATE: a use-line whose module is the module the name was imported THROUGH rather than the module that DECLARES it. HARM: E0432 `unresolved import crate::v2_std_logic::Bool` at stage0/src/v2_compiler_infer.rs, in the emitted compiler build of gunbc test //gunbc/instruments:v2-native-census-scoped; reported by silent-raven-360 (PR #14217). Importing Bool alone emitted fine.",
+
+    "MECHANISM, located with a discriminating red (2026-10-17, clever-ant-666): v1.compiler.emit_rust import_module_enum_scope counts a re-exported variant's parent as an enum OF the import module, so Bool landed in final_imported_enums, and wildcard_enum_lines in emit_specific_import_use_lines rendered the glob at mod_name, the import module's filename. The hypothesis that a variant-keyed index resolved the parent to the arm's importing module was FALSIFIED for the single-line `\{ ... \}` use-lines: type_direct_lines and the parent lines already key the module through graph_type_import_module_filename / variant_parent_defining_module_filename. Only the wildcard sibling ignored the declaring module.",
+
+    "REPAIR: the wildcard line takes its module (and its target_module edge) from graph_type_import_module_filename, the authority its sibling lines already use, so no per-site module rule remains. MEASURED TRANSITION through the real emitter, one variable each: test.claim.imported_coproduct_arms_use_line_witness a_relay_importing_only_the_coproduct (control) true before and after; a_relay_importing_the_coproduct_and_its_arms and a_consumer_of_logic_bool_never_roots_the_variant_glob_at_logic false before, true after. The fixture is test.fixture.imported_arms (provider declares ArmT = ArmX | ArmY; two relays import it with and without the arms). The first draft of the fixture asserted the wrong string (`::\{ArmT`) and was green on the unrepaired emitter; it was only made discriminating after the emitted text was read.",
+
+    "RUNG FOUND AT: 1, mitigatable (only rustc refused, in the emitted build). RUNG AFTER THE FIRST REPAIR: 2, mechanically preventable, the red and its control are enrolled and execute at fixture and corpus grain. SECOND REPAIR (the sibling, this row's own trigger): other_direct_line was the last line builder built from mod_name. It is folded into the same grouping as the type lines, so type_direct_lines, other_direct_line and wildcard_enum_lines all take their module from graph_type_import_module_filename (and their owner path from graph_type_import_module_path); parent_main_lines and variant_lines take theirs from variant_parent_defining_module_filename / item_defining_module_filename, which key on the declaring parent. Enrolled: test.claim.imported_coproduct_arms_use_line_witness a_consumer_of_a_relayed_plain_function_routes_its_use_line_to_the_declarer (relay_plain_fn re-imports a provider function) with a_consumer_importing_a_plain_function_from_its_declarer_keeps_its_use_line as its positive control. RUNG: 2. CEILING 3. NEXT-RUNG TRIGGER, at capability grain: the enum-parent lines (parent_main_lines, variant_lines) share the declaring-module function with the direct and wildcard lines, SUFFICIENT FOR no use-line module in emit_specific_import_use_lines to be derived by more than one function.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_specific_import_use_lines", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "import_module_enum_scope", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "graph_type_import_module_filename", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.logic", decl_name: "bool_boolean_algebra", field: WholeDeclaration },
+  ],
+}

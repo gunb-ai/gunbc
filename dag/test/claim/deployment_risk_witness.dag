@@ -2,7 +2,7 @@ module test.claim.deployment_risk_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.ntfy.ntfy { NtfyTopic }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_ci_declared }

@@ -1,6 +1,6 @@
 module extdeps.package_managers.dpkg
 import extdeps.exec.command {ArgvCommand,argv_command}
-import extdeps.exec.program {uncataloged_program}
+import extdeps.exec.program {ProgramIdentity, uncataloged_program}
 
 import std.types { NonEmptyStr, Bool, List, Int, Unit }
 import std.algebra { Cons, Empty, trim }
@@ -18,7 +18,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // dpkg_status_argv was DELETED here rather than kept beside this row. It respelled this
 // operation's own `transport shell { argv: [...] }` as a second List<String> authority, and its
 // last consumer (gunbc.live_deploy.emit's package-ensure predicate) now derives argv from this
-// declaration through v2.std.operation_argv. A witness comparing the two spellings for equality
+// declaration through std.operation_argv. A witness comparing the two spellings for equality
 // was all that held the fork together; equality is not single authority.
 service dpkg.Package {
   operation Status {
@@ -47,6 +47,7 @@ service dpkg.Package {
 // 36375956111, srv1: "remote words are not portable under the far-side shell re-parse"), because the
 // word carries shell metacharacters. The Status line of the plain record is the same fact.
 data dpkg_query_program: NonEmptyStr = "dpkg-query"
+fn dpkg_query_identity() -> ProgramIdentity = uncataloged_program(invocation: dpkg_query_program)
 
 fn dpkg_query_status_argv(package: NonEmptyStr) -> List<String> {
   [dpkg_query_program as String, "-s", package as String]
@@ -136,3 +137,4 @@ fn dpkg_query_status_verdict_of(exit_code: Int, stdout: String, stderr: String) 
 fn dpkg_query_status_command(package:NonEmptyStr) -> ArgvCommand {
  argv_command(program:uncataloged_program(invocation:dpkg_query_program),arguments:dpkg_query_status_argv(package:package).skip(n:1))
 }
+

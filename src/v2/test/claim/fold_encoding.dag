@@ -1,8 +1,9 @@
 module v2.test.claim.fold_encoding
 
+import v2.std.node { positional_child_target_nodes, NotADeclaration }
 import std.algebra { Empty }
 import v2.std.anonymous_binder { is_fold_carrier_binder }
-import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text  }
 import v2.extdeps.languages.dag { qualified_name_from_module_node }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -92,7 +93,7 @@ fn fe_first_encoding(root: Node) -> Optional<Node> {
 }
 
 fn fe_normalized(source: String) -> Optional<NormalizedTree> {
-  match conserved_normalize_of_text(path: fe_path, text: source, explained: no_explained_drops()) {
+  match conserved_normalize_of_text(path: fe_path, text: source) {
     Accepted { value: tree, diagnostics: _ } => Present { value: tree }
     Rejected { diagnostics: _ } => Absent
   }
@@ -127,7 +128,7 @@ fn fe_slots(encoding: Node) -> Optional<FeSlots> {
   match fold_recurrence_loop(encoding: encoding) {
     Absent => Absent
     Present { value: lp } =>
-      match list_at_optional(xs: node_positional_child_targets(node: encoding), index: 1) {
+      match list_at_optional(xs: positional_child_target_nodes(node: encoding), index: 1) {
         Absent => Absent
         Present { value: init } =>
           match fe_lookup_target(l: loop_domain_value_target(children: lp.children)) {
@@ -139,7 +140,7 @@ fn fe_slots(encoding: Node) -> Optional<FeSlots> {
                   match fe_lookup_target(l: loop_carrier_binder_target(children: lp.children)) {
                     Absent => Absent
                     Present { value: carrier } =>
-                      match list_at_optional(xs: node_positional_child_targets(node: lp), index: 0) {
+                      match list_at_optional(xs: positional_child_target_nodes(node: lp), index: 0) {
                         Absent => Absent
                         Present { value: step } =>
                           if fe_atom_is(n: init, sym: ^seed) && fe_atom_is(n: collection, sym: ^xs)
@@ -210,7 +211,7 @@ fn fe_pipe_slots_hold(source: String) -> Bool {
               match fe_lookup_target(l: loop_domain_value_target(children: lp.children)) {
                 Absent => false
                 Present { value: domain } =>
-                  match list_at_optional(xs: node_positional_child_targets(node: encoding), index: 1) {
+                  match list_at_optional(xs: positional_child_target_nodes(node: encoding), index: 1) {
                     Absent => false
                     Present { value: init } =>
                       fe_atom_is(n: init, sym: ^seed) && fe_domain_reads_xs(domain: domain)
@@ -274,7 +275,7 @@ fn fe_step_binders(encoding: Node) -> List<Symbol> {
   match fold_recurrence_loop(encoding: encoding) {
     Absent => []
     Present { value: lp } =>
-      match list_at_optional(xs: node_positional_child_targets(node: lp), index: 0) {
+      match list_at_optional(xs: positional_child_target_nodes(node: lp), index: 0) {
         Absent => []
         Present { value: step } =>
           match arrow_first_positional_target(children: step.children) {
@@ -353,7 +354,7 @@ fn fe_rebuilt(n: Node, drop: FeDrop) -> Node {
         }
       FeDropInit => false
     }
-    if cut { acc } else { list_snoc_item(xs: acc, item: Edge { label: e.label, target: fe_mutated(n: e.target, drop: drop) }) }
+    if cut { acc } else { list_snoc_item(xs: acc, item: Edge { label: e.label, target: fe_mutated(n: e.target, drop: drop), declaration: e.declaration }) }
   }))
 }
 
@@ -407,7 +408,7 @@ fn dropping_the_head_edge_turns_conservation_red_at_it_verdict() -> Bool {
 // ---- resolve: the head binds the one realization, or refuses at the head --------------------------
 
 fn fe_resolved(source: String) -> Outcome<Node> {
-  match conserved_normalize_of_text(path: fe_path, text: source, explained: no_explained_drops()) {
+  match conserved_normalize_of_text(path: fe_path, text: source) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: root, diagnostics: _ } =>
       match qualified_name_from_module_node(root: root.root) {

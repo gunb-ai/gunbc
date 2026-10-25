@@ -1,34 +1,18 @@
 module v2.lens.fallback_arm_census
 import std.optional { Absent, Optional, Present }
-
-
 import std.types { List }
-import v2.lens.common.construction_justification {
-  ConstructionJustification,
-  WallAfterGrounding
-}
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import std.algebra { Empty, list_snoc_item, fold_list, skip, length }
-import v2.std.collection { Absent, Optional, Present }
+import std.algebra { Empty, list_snoc_item, fold_list, skip, length, list_tail }
 import v2.std.integer { Int }
 import v2.std.text { String }
-import v2.std.node {
-  ComputationNode,
-  Match,
-  Node,
-  Symbol,
-  TypeNode,
-  MatchArmBodyEdge,
-  MatchArmPatternEdge,
-}
-import v2.std.node_query { node_positional_child_targets, find_core_child }
+import v2.std.node { positional_child_target_nodes, ComputationNode, Match, Node, Symbol, TypeNode, MatchArmBodyEdge, MatchArmPatternEdge }
+import v2.std.node_query { find_core_child }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.extdeps.languages.dag {
-  dag_match_arm_node,
-  dag_match_body_from_arms,
-  dag_type_atom_node
-}
+import v2.extdeps.languages.dag { dag_match_arm_node, dag_match_body_from_arms, dag_type_atom_node }
 import v2.std.grammar { node_atom_identity_optional }
+
+
 
 data fallback_arm_census_law: String = "W2 fallback-arm census (docs/plans/fallback-arm-census.md; DESIGN §5 absorbing fallback): every match wildcard arm (_ => / MatchPattern::Wildcard) lands in exactly one FallbackArmClass. AnswersOnOpen is the defect (success-shaped body over an open unmatched space — exemplar: wrap-decision Instantiation bypass). CompletesClosedTotal is healthy-but-counted (forfeits exhaustiveness). ClassifierUnknown is counted, never silently binned healthy. The classifier's own matches are total — no answering _. Corpus walk is host-seamed until #5364 exposes MatchPattern to .dag; substrate planted fixtures classify here without the host. Zero production behavior change — register and route only. Dissolves when W3 promotes this lens to a compile refusal (zero-false-positive corpus-wide)."
 
@@ -180,7 +164,7 @@ fn planted_match_with_wildcard_opaque() -> Node {
 fn match_positional_arms(match_node: Node) -> List<Node> {
   match match_node.kind {
     ComputationNode { behavior: Match } =>
-      skip(xs: node_positional_child_targets(node: match_node), n: 1)
+      skip(xs: positional_child_target_nodes(node: match_node), n: 1)
     TypeNode { connective: _ } => Empty
     ComputationNode { behavior: _ } => Empty
   }

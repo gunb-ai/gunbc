@@ -1,6 +1,14 @@
 module gunbc.workspace_request_consumer
 
-import std.types { String, NonEmptyStr, Timestamp, List }
+import std.types { String, NonEmptyStr, Timestamp, List, EpochSecs }
+import std.nat { Zero, Succ, nat_range_inclusive }
+import std.measure { second }
+import std.retry_law {
+  RetryLaw, RetryHistoryEvent, RealWorkFailure, retry_admissibility, retry_no_hint,
+  RetryAdmissible, RetryAdmissibleNow, RetryTerminalExhausted, RetryTerminalCancelled, RetryAlreadySucceeded,
+  RetryHintUnreadable, RetryHintUnanchored,
+}
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation_store {
@@ -24,6 +32,87 @@ type WorkspaceConsumerNext
   | WorkspaceConsumerRoute { allocation: WorkspaceAllocation }
   | WorkspaceConsumerSettled { allocation: WorkspaceAllocation }
   | WorkspaceConsumerRetry
+
+data workspace_consumer_retry_law: RetryLaw = RetryLaw {
+  initial_delay: second(count: Zero),
+  delay_cap: second(count: 1),
+  real_work_failure_bound: 3,
+}
+
+fn workspace_consumer_retry_from_history(history: List<RetryHistoryEvent>) -> WorkspaceConsumerNext {
+  match retry_admissibility(
+    law: workspace_consumer_retry_law,
+    history: history,
+    hint: retry_no_hint(),
+    jitter: second(count: Zero),
+  ) {
+    RetryAdmissible { earliest: _, real_work_failures: _ } => WorkspaceConsumerRetry
+    RetryAdmissibleNow { real_work_failures: _ } => WorkspaceConsumerRetry
+    RetryTerminalExhausted { real_work_failures: _ } =>
+      WorkspaceConsumerRefused { reason: "workspace store conflicts exhausted the retry law" }
+    RetryTerminalCancelled { by: who } => WorkspaceConsumerRefused { reason: who as String }
+    RetryAlreadySucceeded => WorkspaceConsumerIdle
+    RetryHintUnreadable { cause: c } => WorkspaceConsumerRefused { reason: c as String }
+    RetryHintUnanchored { delay: _ } =>
+      WorkspaceConsumerRefused { reason: "retry hint has no real-work failure to anchor" }
+  }
+}
+
+type WorkspaceWriteAcc
+  = WorkspaceWriteClosed { result: WorkspaceStoreWrite }
+  | WorkspaceWriteOpen { history: List<RetryHistoryEvent> }
+
+type WorkspaceConsumerWriteKind
+  = WorkspaceWriteSettleUnplanned
+  | WorkspaceWriteRecordExpiry
+
+// A lost CAS cannot persist the count on the slot that lost. This pass therefore re-issues the
+// same write while accumulating history, so the bound is reachable without a second store.
+fn workspace_consumer_issue_write(kind: WorkspaceConsumerWriteKind, store: FabricStorageBinding,
+  owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  match kind {
+    WorkspaceWriteSettleUnplanned => workspace_settle_unplanned_retirement(
+      store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at)
+    WorkspaceWriteRecordExpiry => workspace_record_expiry(
+      store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at)
+  }
+}
+
+fn workspace_consumer_write_until_law(kind: WorkspaceConsumerWriteKind, store: FabricStorageBinding,
+  owner: PrincipalRef, idempotency_key: NonEmptyStr, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  if !utc_instant_is_canonical(t: observed_at) {
+    WorkspaceStoreWriteRefused { reason: "consumer clock is unreadable" }
+  } else {
+  let at = utc_instant_seconds(t: observed_at)
+  match fold(
+    nat_range_inclusive(lo: Succ { prev: Zero }, hi: workspace_consumer_retry_law.real_work_failure_bound),
+    init: WorkspaceWriteOpen { history: [] },
+    f: (acc, _) => match acc {
+      WorkspaceWriteClosed { result: r } => WorkspaceWriteClosed { result: r }
+      WorkspaceWriteOpen { history: h } => match workspace_consumer_issue_write(
+        kind: kind, store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at,
+      ) {
+        WorkspaceStoreConflict => {
+          let next_history = concat(h, [RetryHistoryEvent { class: RealWorkFailure, at: at }])
+          match workspace_consumer_retry_from_history(history: next_history) {
+            WorkspaceConsumerRetry => WorkspaceWriteOpen { history: next_history }
+            WorkspaceConsumerRefused { reason: d } =>
+              WorkspaceWriteClosed { result: WorkspaceStoreWriteRefused { reason: d } }
+            _ => WorkspaceWriteClosed {
+              result: WorkspaceStoreWriteRefused { reason: "workspace conflict retry produced a non-write next" }
+            }
+          }
+        }
+        other => WorkspaceWriteClosed { result: other }
+      }
+    },
+  ) {
+    WorkspaceWriteClosed { result: r } => r
+    WorkspaceWriteOpen { history: _ } =>
+      WorkspaceStoreWriteRefused { reason: "workspace store conflicts exhausted the retry law" }
+  }
+  }
+}
 
 fn workspace_consumer_select(read: WorkspaceStoreRead, observed_at: Timestamp) -> WorkspaceConsumerNext {
   match read {
@@ -58,7 +147,8 @@ fn workspace_consumer_discover(store: FabricStorageBinding, owner: PrincipalRef,
 
 fn workspace_consumer_settlement_result(result: WorkspaceStoreWrite) -> WorkspaceConsumerNext {
   match result {
-    WorkspaceStoreConflict => WorkspaceConsumerRetry
+    WorkspaceStoreConflict =>
+      WorkspaceConsumerRefused { reason: "workspace store conflicts exhausted the retry law" }
     WorkspaceStoreWriteRefused { reason: detail } => WorkspaceConsumerRefused { reason: detail }
     WorkspaceStoreWritten { allocation: allocation } => if (allocation.phase == WorkspaceReleased) {
       WorkspaceConsumerSettled { allocation: allocation }
@@ -80,19 +170,26 @@ fn workspace_consumer_retire(store: FabricStorageBinding, owner: PrincipalRef,
       } else if (allocation.desired == WorkspaceRetired) {
         match allocation.plan {
           Present { value: _ } => WorkspaceConsumerRoute { allocation: allocation }
-          Absent => workspace_consumer_settlement_result(result: workspace_settle_unplanned_retirement(
-            store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at))
+          Absent => workspace_consumer_settlement_result(result: workspace_consumer_write_until_law(
+            kind: WorkspaceWriteSettleUnplanned, store: store, owner: owner,
+            idempotency_key: idempotency_key, observed_at: observed_at,
+          ))
         }
-      } else { match workspace_record_expiry(store: store, owner: owner,
-        idempotency_key: idempotency_key, observed_at: observed_at) {
-        WorkspaceStoreConflict => WorkspaceConsumerRetry
+      } else { match workspace_consumer_write_until_law(
+        kind: WorkspaceWriteRecordExpiry, store: store, owner: owner,
+        idempotency_key: idempotency_key, observed_at: observed_at,
+      ) {
+        WorkspaceStoreConflict =>
+          WorkspaceConsumerRefused { reason: "workspace store conflicts exhausted the retry law" }
         WorkspaceStoreWriteRefused { reason: detail } => WorkspaceConsumerRefused { reason: detail }
         WorkspaceStoreWritten { allocation: current } => if (current.desired != WorkspaceRetired) {
-          WorkspaceConsumerRetry
+          WorkspaceConsumerRefused { reason: "expiry recorded but desired is not retired" }
         } else { match current.plan {
           Present { value: _ } => WorkspaceConsumerRoute { allocation: current }
-          Absent => workspace_consumer_settlement_result(result: workspace_settle_unplanned_retirement(
-            store: store, owner: owner, idempotency_key: idempotency_key, observed_at: observed_at))
+          Absent => workspace_consumer_settlement_result(result: workspace_consumer_write_until_law(
+            kind: WorkspaceWriteSettleUnplanned, store: store, owner: owner,
+            idempotency_key: idempotency_key, observed_at: observed_at,
+          ))
         } }
       } }
     }
@@ -100,7 +197,7 @@ fn workspace_consumer_retire(store: FabricStorageBinding, owner: PrincipalRef,
 }
 
 // One bounded pass consumes retirement immediately, before any caller may ask for supply.
-// A CAS conflict yields to a later pass; no unbounded retry hides contention or extends a lease.
+// A CAS conflict is re-issued in this pass until the retry law exhausts; no unbounded retry hides contention or extends a lease.
 fn workspace_consumer_reconcile_owner(store: FabricStorageBinding, owner: PrincipalRef,
   observed_at: Timestamp) -> WorkspaceConsumerNext {
   match workspace_consumer_discover(store: store, owner: owner, observed_at: observed_at) {

@@ -2102,6 +2102,10 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// For this probe a resolving citation would mean the control had lost its discriminating
 /// power. The two directions do not coincide, so the citation stays false on purpose with
 /// the other fixture carriers.
+// FROZEN: no new rows. The native census `gunbc test //gunbc/instruments:decl-ref-census` judges these
+// citations against `v2.compiler.decl_ref_disposition_roster` (typed reason per row, shrink-only). This
+// seed roster is retained only until the seed-side wall is deleted; dissolve-on: substrate construction
+// refuses unresolvable DeclarationRef literals.
 const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &[
     (
         "test.claim.altra_placement_witness",
@@ -2202,20 +2206,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "",
     ),
     (
-        "test.claim.keyed_roster_witness",
-        "frontier_rows_keyed_build_admits_distinct_decl_fields",
-        "synthetic.mod",
-        "HostConfig",
-        "",
-    ),
-    (
-        "test.claim.keyed_roster_witness",
-        "frontier_rows_keyed_build_admits_distinct_decl_fields",
-        "synthetic.mod",
-        "HostConfig",
-        "memory_swap",
-    ),
-    (
         "test.claim.language_target_subject_registration",
         "red_unregistered_subject_ref_is_not_reported_as_present",
         "extdeps.languages.nonexistent.subject",
@@ -2244,13 +2234,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "no_such_field_KEYED_RED",
     ),
     (
-        "test.claim.decl_ref_keyed_read_agreement_witness",
-        "keyed_and_population_routes_agree_on_module_absent",
-        "synthetic.keyed_read_module_absent_RED",
-        "anything",
-        "",
-    ),
-    (
         "test.claim.long.decl_ref_resolution_witness",
         "decl_ref_refuses_ambiguous_binding",
         "v2.std.node",
@@ -2262,13 +2245,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "decl_ref_refuses_declaration_absent",
         "v2.std.node",
         "NoSuchDecl_G1_RED",
-        "",
-    ),
-    (
-        "test.claim.long.decl_ref_resolution_witness",
-        "decl_ref_refuses_module_absent",
-        "synthetic.g1_module_absent_RED",
-        "any",
         "",
     ),
     (
@@ -2333,13 +2309,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "test.claim.repository_census_observation_witness",
         "census_witness_classifier",
         "rows",
-    ),
-    (
-        "test.claim.witness_purpose_taxonomy_witness",
-        "fixture_population_ref",
-        "dag.test.claim.witness_purpose_taxonomy_witness",
-        "witness_purpose_taxonomy_witness_note",
-        "",
     ),
     (
         "test.fixture.decl_facts_reflection.specimens",
@@ -2413,6 +2382,10 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
     ),
 ];
 
+// FROZEN: no new rows. The native census `gunbc test //gunbc/instruments:decl-ref-census` judges these
+// citations against `v2.compiler.decl_ref_disposition_roster` (typed reason per row, shrink-only). This
+// seed roster is retained only until the seed-side wall is deleted; dissolve-on: substrate construction
+// refuses unresolvable DeclarationRef literals.
 const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
     (
         "extdeps.docker.container_inspect",
@@ -2434,27 +2407,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "extdeps.docker.container_stats",
         "ContainerStats",
         "cpu_percent",
-    ),
-    (
-        "extdeps.github.actions_runner",
-        "actions_runner_base_dir_ensure_script_scaffold",
-        "gunbc.host.host_effect",
-        "host_effect_apply",
-        "",
-    ),
-    (
-        "extdeps.github.actions_runner",
-        "actions_runner_slot_extract_script_scaffold",
-        "gunbc.host.host_effect",
-        "host_effect_apply",
-        "",
-    ),
-    (
-        "extdeps.git.publication_transport",
-        "extdeps_model_scope",
-        "extdeps.git.publication_transport",
-        "PublicationTransport",
-        "",
     ),
     // RE-KEYED, NOT GROWN (DCH-1). These five rows are the same debt they were: the shape they
     // cite moved WHOLE from `extdeps.llm.anthropic` to `extdeps.llm.anthropic_messages_api`, so
@@ -2541,13 +2493,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "gunbc.executor_privileged_operation",
-        "executor_privileged_operation_shell_scaffold",
-        "gunbc.host.host_effect",
-        "host_effect_apply",
-        "",
-    ),
-    (
         "gunbc.fabric.fabric_capacity_class_gap",
         "no_class_carrier",
         "product.fabric.supply",
@@ -2569,13 +2514,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "",
     ),
     (
-        "gunbc.host.host_budget_source",
-        "host_budget_source_seed_mirror_disposition",
-        "gunbc.host.host_budget_source",
-        "host_budget_source_emitted_into_stage0",
-        "",
-    ),
-    (
         "gunbc.host.host_memory_observation",
         "gunbc_ci_legacy_host_fixed_overhead_disposition",
         "gunbc.ci.ci_floor_measurement",
@@ -2594,20 +2532,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "compiler_tests_harness_trigger",
         "v2.test.workflow.claim_witness_corpus_ci_runner",
         "ClaimWitnessCorpusClaimRunRow",
-        "",
-    ),
-    (
-        "gunbc.runner.runner_connectivity_repair_plan",
-        "runner_jit_installation_token_cache_scaffold",
-        "gunbc.runner.runner_lifecycle",
-        "EnsureRunnerJitWrapper",
-        "",
-    ),
-    (
-        "gunbc.runner.runner_slot_provision",
-        "runner_slot_provision_scaffold",
-        "gunbc.host.host_effect",
-        "host_effect_apply",
         "",
     ),
     (
@@ -2685,13 +2609,6 @@ const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
         "utf8_decode_bytes_host_realization_marker",
         "std.bytes",
         "builtin_function_registry",
-        "",
-    ),
-    (
-        "gunbc.instruments.rust_stage0_gates",
-        "unit_must_run_staged_note",
-        "gunbc.instruments.rust_stage0_gates",
-        "per_unit_test_selector",
         "",
     ),
 ];
@@ -2879,6 +2796,10 @@ pub fn planted_control_findings_against(
 /// underlying trigger (citation used to refuse, now does not), materially different contract,
 /// so a different name, kind, and message. A comment asserting direction coincidence is not
 /// a second contract.
+// FROZEN: no new rows. The native census `gunbc test //gunbc/instruments:decl-ref-census` judges these
+// citations against `v2.compiler.decl_ref_disposition_roster` (typed reason per row, shrink-only). This
+// seed roster is retained only until the seed-side wall is deleted; dissolve-on: substrate construction
+// refuses unresolvable DeclarationRef literals.
 const NEXT_RUNG_TRIGGER_CITATIONS: &[(&str, &str, &str, &str, &str)] = &[
     (
         "v2.lens.enforcement.complexity_contract_subject",
@@ -3202,10 +3123,14 @@ fn span_offset_in(location: &SourceLocation, rel_path: &str) -> Option<i64> {
 
 /// Render one finding as a typed, LOCATED refusal line.
 ///
-/// The offset becomes `line:col` by reading the offending file only — a finding is rare, and
-/// holding the corpus's text resident so a green run could render nothing is the cost shape
-/// this module exists to remove. A finding with no offset renders as the path alone, never a
-/// fabricated `1:1`.
+/// THE LOCATION IS THE AUTHORITY'S, not this module's. It used to do its own arithmetic here --
+/// `build_newline_index` then `byte_to_line_col`, then `format!("{}:{}:{}", path, lc.line, lc.col)`
+/// -- which is a SECOND renderer in host Rust, the exact fork this PR removes (DESIGN 6b: one
+/// authority owns the arithmetic AND the format). It now calls the function emitted from the seed's
+/// span authority, through the stream entry, so a file that lexes to nothing but trivia gets the
+/// authority's typed unlocated phrase naming its own file rather than a position the file does not
+/// have. The file is read only when a finding exists -- a finding is rare, and holding the corpus
+/// resident so a green run could render nothing is the cost shape this module exists to remove.
 pub fn render_finding(
     workspace: &std::path::Path,
     finding: &DeclarationIntegrityFinding,
@@ -3213,13 +3138,53 @@ pub fn render_finding(
     let located = match finding.offset {
         Some(offset) => match std::fs::read_to_string(workspace.join(&finding.rel_path)) {
             Ok(content) => {
-                let index =
-                    crate::v1_std_core::build_newline_index(finding.rel_path.clone(), content);
-                let lc = crate::v1_std_core::byte_to_line_col(index, offset);
-                format!("{}:{}:{}", finding.rel_path, lc.line, lc.col)
+                let tokens = crate::v1_compiler_tokenize::tokenize(
+                    content.clone(),
+                    finding.rel_path.clone(),
+                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                );
+                let index = crate::v1_std_core::build_newline_index(
+                    finding.rel_path.clone(),
+                    content.clone(),
+                );
+                let mut source_indices: im::HashMap<
+                    String,
+                    std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                > = im::HashMap::new();
+                source_indices.insert(finding.rel_path.clone(), index);
+                let span = crate::v1_std_core::SourceSpan {
+                    file: finding.rel_path.clone(),
+                    // A finding carries ONE offset: the site's start. End is the same boundary --
+                    // the renderer's start arm is what an author reads, and the authority, not this
+                    // number, decides whether a position exists at all.
+                    start: offset,
+                    end: offset,
+                };
+                // THE STREAM SAYS WHETHER THE FILE HAS ANY LEXEME; the authority says what that
+                // means, in its own words. This module never formats a position.
+                crate::v1_compiler_tokenize::render_span_location_in_stream(
+                    std::rc::Rc::new(span),
+                    tokens,
+                    std::rc::Rc::new(source_indices),
+                )
             }
-            Err(_) => finding.rel_path.clone(),
+            // THE FILE COULD NOT BE READ, so there is genuinely no source index for it. That is
+            // the authority's `NoSourceIndex` cause, and it renders as
+            // `<path>: (no position: no source index for this file)` -- typed, and it keeps the
+            // file name. Not a bare path (which reads as a location with the position missing) and
+            // not a `1:1`.
+            Err(_) => crate::v1_std_core::render_span_location(
+                std::rc::Rc::new(crate::v1_std_core::SourceSpan {
+                    file: finding.rel_path.clone(),
+                    start: offset,
+                    end: offset,
+                }),
+                std::rc::Rc::new(im::HashMap::new()),
+            ),
         },
+        // NO OFFSET AT ALL: this finding carries no site, so there is no position to render and
+        // nothing to dress one up from. The path alone, as before -- it carries no digit-after-colon
+        // run, so it does not read as a location.
         None => finding.rel_path.clone(),
     };
     format!(
@@ -3518,7 +3483,7 @@ mod import_binding_authority_tests {
 
     /// The declaration must sit in a PARENT env: `callable_lookup_over_candidates` checks
     /// `func_env.local` first and returns immediately on a hit, so a local declaration never
-    /// reaches the authored-membership branch. `v2.std.collection` / `map_get_checked` is not an arbitrary
+    /// reaches the authored-membership branch. `v2.std.witness` / `map_get_checked` is not an arbitrary
     /// choice -- it is the specimen carrying `DivergentProjection` fidelity, which is the condition
     /// `declared_candidate_rivals_the_builtin` requires.
     fn parent_env_declaring_map_get_checked() -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>
@@ -3537,7 +3502,7 @@ mod import_binding_authority_tests {
             variant_provenance: crate::v1_rt::rc_empty_map(),
         });
         let parent = Rc::new(ResolvedFuncEnv {
-            name: "v2.std.collection".to_string(),
+            name: "v2.std.witness".to_string(),
             local: Rc::new(crate::v1_rt::map_insert(
                 crate::v1_rt::empty_map(),
                 "map_get_checked".to_string(),
@@ -3565,7 +3530,7 @@ mod import_binding_authority_tests {
     /// That is an OBSERVATION-BOUNDARY defect, not a bad fixture spelling.
     ///
     /// AND IT DOES NOT MEAN THE POLICY IS DEAD. That convenient reading is refuted by a specimen in
-    /// the tree: `map_get_checked` is declared at `v2.std.collection` with `DivergentProjection` fidelity in
+    /// the tree: `map_get_checked` is declared at `v2.std.witness` with `DivergentProjection` fidelity in
     /// `std.primitive_projection`, which is exactly the condition
     /// `declared_candidate_rivals_the_builtin` tests. So the collision is real, reachable from
     /// authored source, and already witnessed by `callable_candidate_ambiguity_witness_test`.
@@ -3597,7 +3562,7 @@ mod import_binding_authority_tests {
         // shape a comparison cannot detect.
         match &*named {
             FuncSigLookup::FuncSigResolved { declared, .. } => {
-                assert_eq!(declared.owner_module_path, "v2.std.collection");
+                assert_eq!(declared.owner_module_path, "v2.std.witness");
                 assert_eq!(declared.decl_name, "map_get_checked");
             }
             other => panic!(
@@ -3609,7 +3574,7 @@ mod import_binding_authority_tests {
         // THE OLD map_get FORK IS DISSOLVED, AND THIS ARM IS ITS PERMANENT REGRESSION CONTROL,
         // checked by its exact identity set rather than a count or list order. Before the rename,
         // omitting the declaration from the authored list while calling the bare name minted TWO
-        // rival authorities -- `builtin:map_get` and `declared:v2.std.collection:map_get` -- and
+        // rival authorities -- `builtin:map_get` and `declared:v2.std.witness:map_get` -- and
         // went ambiguous. The rename moved the declaration to `map_get_checked`, so the bare
         // spelling now has no declared candidate at all: only the builtin remains, which this
         // route leaves unresolved (builtins reach inference through the method path).
@@ -3623,7 +3588,7 @@ mod import_binding_authority_tests {
         // (v1_compiler_infer_method.rs). parent_closure_callable_candidates takes the declared
         // identity's decl_name from the LOOKUP KEY, so no lookup name can carry both a rival
         // declaration and a builtin co-candidate; a synthetic fixture that "declares map_get"
-        // mints the identity (v2.std.collection, map_get), which the roster does not cover. A
+        // mints the identity (v2.std.witness, map_get), which the roster does not cover. A
         // re-widening that reclaimed the bare spelling under a registry-keyed name would
         // re-ambient the join, but THIS arm would still green until a lookup name carried both
         // authorities -- so the rival predicate's own discriminating control
@@ -3682,12 +3647,12 @@ mod import_binding_authority_tests {
 
         // The compiled roster's one DivergentProjection row: the declaration must rival.
         assert!(declared_candidate_rivals_the_builtin(candidate_for(
-            "v2.std.collection",
+            "v2.std.witness",
             "map_get_checked"
         )));
         // A modeled projection is a faithful alias, never a rival.
         assert!(!declared_candidate_rivals_the_builtin(candidate_for(
-            "v2.std.collection",
+            "std.algebra",
             "empty_map"
         )));
         // An unprojected declaration is never a rival.

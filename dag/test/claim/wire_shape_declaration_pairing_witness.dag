@@ -1,0 +1,69 @@
+module test.claim.wire_shape_declaration_pairing_witness
+
+import std.types { String, List, Bool }
+import v2.std.decl_index { decl_facts, DeclFact }
+import v2.std.node { Node, symbol_lexeme }
+import v2.std.node_query { declared_field_list }
+import gunbc.auth.wire_strict_reader { WireShape, WireRecord, WireSum, WireField, WireFreeString }
+import test.claim.wire_admission_differential_witness { enrolment_shape, signing_input_shape, key_shape, challenge_shape }
+
+// THE DECLARATION-TO-SHAPE PAIRING for every record shape the encoder witness consumes, in ONE batched
+// decl_facts observation (the pool read runs once here, not per decode assertion): each supplied record
+// shape's member names, in order, equal the field list of the declaration it is paired to. ReadAuthentication
+// is paired by wire_schema_derivation_witness. The two SUM shapes (push_shape, evidence_shape) are not paired
+// here: a sum arm's payload is a variant of the declaration, which declared_field_list does not read (typed
+// frontier row on WireShape in wire_strict_reader, trigger feature:value-reflection).
+fn pairs() -> List<ShapePair> {
+  [
+    ShapePair { qualified: "extdeps.crypto.signature.VerifyingKey", shape: key_shape() },
+    ShapePair { qualified: "gunbc.auth.approval_device_wire.RedemptionChallenge", shape: challenge_shape() },
+    ShapePair { qualified: "gunbc.auth.approval_device_wire.DeviceRedemptionSigningInput", shape: signing_input_shape() },
+    ShapePair { qualified: "gunbc.auth.approval_device_wire.GoogleEnrolmentRequest", shape: enrolment_shape() },
+  ]
+}
+
+type ShapePair {
+  qualified: String
+  shape: WireShape
+}
+
+fn shape_member_names(shape: WireShape) -> List<String> {
+  match shape {
+    WireRecord { fields: fs } => map(fs, f => f.name)
+    WireSum { arms: _, admitted: _, cause: _ } => Empty
+  }
+}
+
+fn node_field_names(n: Node) -> List<String> {
+  fold(declared_field_list(payload: n), init: Empty, f: fn(acc, fld) { concat(acc, [symbol_lexeme(sym: fld.name)]) })
+}
+
+fn paired(p: ShapePair, facts: List<DeclFact>, shape: WireShape) -> Bool {
+  let hits = facts |> filter(f => f.qualified_name == p.qualified)
+  count(hits) == 1 && all(hits, f => node_field_names(n: f.node) == shape_member_names(shape: shape))
+}
+
+fn all_facts() -> List<DeclFact> {
+  decl_facts(pool_roots: ["dag", "src/v2"])
+}
+
+test fn every_supplied_record_shape_is_paired_to_its_declaration() -> Bool {
+  let facts = all_facts()
+  all(pairs(), p => paired(p: p, facts: facts, shape: p.shape))
+}
+
+// RED: a shape paired to the wrong declaration (the key's shape against the challenge's declaration) is not paired.
+test fn a_shape_against_another_declaration_is_not_paired() -> Bool {
+  let facts = all_facts()
+  !paired(p: ShapePair { qualified: "gunbc.auth.approval_device_wire.RedemptionChallenge", shape: key_shape() }, facts: facts, shape: key_shape())
+}
+
+// RED: the same shape with two members swapped is not the declared order.
+test fn a_reordered_shape_is_not_paired() -> Bool {
+  let facts = all_facts()
+  !paired(
+    p: ShapePair { qualified: "gunbc.auth.approval_device_wire.RedemptionChallenge", shape: challenge_shape() },
+    facts: facts,
+    shape: WireRecord { fields: [WireField { name: "nonce_hex", rule: WireFreeString }, WireField { name: "expires_at", rule: WireFreeString }] },
+  )
+}

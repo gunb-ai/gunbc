@@ -16,13 +16,13 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_gunbc_binary, microvm_controller_slice_unit_name,
   microvm_slot_reserve_unit_name, microvm_slot_unit_path, microvm_slot_unit_file, microvm_slot_unit_timeout_stop_sec,
 }
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_tree_receipt_path_for, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_tree_receipt_path, RevisionBoundAtEmission }
 import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 import gunbc.fabric.fabric_cell_acquire { fabric_cell_read_boundary, fabric_cell_boundary_address_probe, fabric_cell_read_boundary_property, PropertyRead, PropertyReadRefused }
 import gunbc.fabric.fabric_cell_observe { AddressStateRead, AddressStateReadRefused }
 import gunbc.fabric.fabric_cell_converge { fabric_cell_desired_state_digest, FabricCellResourceBoundaryAddress }
-import gunbc.ci.ci_runner_placement { runner_deployment_plan, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused }
+import gunbc.ci.ci_runner_placement { runner_fleet_capacity_plan, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused }
 import gunbc.runner.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
 import gunbc.workspace_tool_observer { workspace_observe_tools, WorkspaceToolsReady, WorkspaceToolsUnobserved }
 
@@ -32,7 +32,7 @@ import gunbc.workspace_tool_observer { workspace_observe_tools, WorkspaceToolsRe
 fn workspace_commissioning_runtime_refusal(provenance: WorkspaceCommissioningProvenance,
   release_dir: NonEmptyStr, login: NonEmptyStr) -> String? {
   let slot = provenance.slot
-  let expected_release = approval_broker_release_dir(root: microvm_controller_root,
+  let expected_release = release_locus_dir(root: microvm_controller_root,
     revision: RevisionBoundAtEmission { revision: provenance.source_revision as CommitSha })
   if (release_dir as String) != expected_release {
     Present { value: "commissioning source revision does not name this installed controller locus" }
@@ -60,7 +60,7 @@ fn workspace_commissioning_runtime_refusal(provenance: WorkspaceCommissioningPro
 // A derived host deployment is downstream of the existing conservation verdict, including the
 // whole shakedown cell and separate controller charge. Do not author another memory calculation.
 fn workspace_commissioning_host_budget_admitted(slot: RunnerSlotIdentity) -> Bool {
-  count(filter(runner_deployment_plan().hosts, standing => match standing {
+  count(filter(runner_fleet_capacity_plan().hosts, standing => match standing {
     HostRunnerDeploymentDerived { deployment } => deployment.identity == slot.host
     HostRunnerDeploymentRefused { refusal: _ } => false
   })) == 1
@@ -116,7 +116,7 @@ fn workspace_commissioning_prior_broker_withdrawn() -> Bool {
 // A revision-shaped directory and the gunbc binary do not identify the interpreted DAG tree.
 // Consume the installer's root-owned tree receipt and bind both recorded fields to the plan.
 fn workspace_commissioning_installed_tree_matches(provenance: WorkspaceCommissioningProvenance) -> Bool {
-  let path = approval_broker_tree_receipt_path_for(root: microvm_controller_root,
+  let path = release_locus_tree_receipt_path(root: microvm_controller_root,
     revision: RevisionBoundAtEmission { revision: provenance.source_revision as CommitSha })
   match read_store_ownership(path: path) {
     OwnershipRead { ownership: StoreRootOwned } => {

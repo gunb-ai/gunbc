@@ -4,8 +4,8 @@ import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
 import std.types { Bool, CommitSha, String, List, Int }
+import std.algebra { list_append }
 import gunbc.live_deploy.deployed_tree_scope { path_is_deployed }
-import std.content_hash { Fnv1a64Structural }
 import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity {
   RunningReleaseIdentity,
@@ -239,13 +239,19 @@ fn observe_candidate_release() -> CandidateObservation {
           }
         }
       CandidateCheckoutClean =>
-        CandidateObserved {
-          candidate: CandidateRelease {
-            revision: head.sha,
-            expected_surface_identity: materialize_live_roadmap_site_surface_bundle().bundle_identity,
-          },
-        }
+        candidate_observed_from_checkout_revision(revision: head.sha)
     }
+  }
+}
+
+fn candidate_observed_from_checkout_revision(revision: CommitSha) -> CandidateObservation {
+  let bundle = materialize_live_roadmap_site_surface_bundle()
+  CandidateObserved {
+    candidate: CandidateRelease {
+      revision: revision,
+      expected_surface_identity: bundle.bundle_identity,
+      expected_dispatch_digest: bundle.dispatch_json.digest,
+    },
   }
 }
 

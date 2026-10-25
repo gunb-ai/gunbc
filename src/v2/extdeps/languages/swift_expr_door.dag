@@ -1,0 +1,239 @@
+module v2.extdeps.languages.swift_expr_door
+
+import std.types { String, List, Bool, Int, Map }
+import std.algebra { list_append, Cons, Empty, map_insert }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.optional { Absent, Present }
+import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
+import v2.extdeps.languages.swift { swift_operator_realizations_catalog_node, swift_target_model, swift_value_expression_projection }
+import v2.extdeps.languages.swift.syntax { SwiftArgument, SwiftAwaitExpr, SwiftArrayLiteral, SwiftBooleanLiteral, SwiftClosure, SwiftDictionaryLiteral, SwiftExplicitMemberExpr, SwiftExpr, SwiftFunctionCallExpr, SwiftIdentifierExpr, SwiftImplicitMemberExpr, SwiftInfixExpr, SwiftIntegerLiteral, SwiftKeyPathExpr, SwiftNilLiteral, SwiftOptionalChainingExpr, SwiftParenthesizedExpr, SwiftPrefixExpr, SwiftStringLiteral, SwiftSubscriptExpr, SwiftTernaryConditionalExpr, SwiftTryExpr, SwiftTupleExpr, SwiftTypeCastingExpr, SwiftWildcardExpr, sw_add, sw_arg, sw_arr, sw_asq, sw_await, sw_calln, sw_callt, sw_chain, sw_cloe, sw_dict, sw_id, sw_keypath, sw_kv, sw_not, sw_pos, sw_raw, sw_str, sw_sub, sw_t, sw_ternary, sw_try }
+import v2.std.compilers.target_model {
+  TargetModel,
+  TargetValueExprFieldInitSlot,
+  TargetValueExpression,
+  render_target_text,
+  target_value_expr_diagnostic,
+  target_value_expression_binding_ref,
+  target_value_expression_bool_literal,
+  target_value_expression_callable_apply,
+  target_value_expression_field_access,
+  target_value_expression_int_literal,
+  target_value_expression_record_construct,
+  target_value_expression_to_concrete_tokens
+}
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted, outcome_rejected }
+import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme }
+
+// The overlap forms of SwiftExpr (identifier, positional call of a named callee, member access,
+// bool and int literal, memberwise init) lower to the door's value-expression nodes and print
+// through swift_value_expression_projection. Every other SwiftExpr form is outside
+// TargetValueExpressionProjection and refuses with swift_expr_door_outside_projection; it is
+// spelled by the swift.dag productions under the convergence frontier row
+// swift_syntax_forms_outside_value_expression_projection_frontier.
+data swift_syntax_forms_outside_value_expression_projection_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Swift syntax forms outside TargetValueExpressionProjection: labelled call arguments, string, raw-string, array and dictionary literals, infix and prefix operators, ternary, closures, subscript, try and await, key paths, casts, optional chaining and control flow. (A call nested as a call argument is NOT listed: the projection spells it, pinned by swift_expr_door_byte_identity nested_call_argument_prints_identically_both_ways_holds.) v2.extdeps.languages.swift_expr_door refuses each with swift_expr_door_outside_projection; the rows printer v2.extdeps.languages.swift.rows still spells them and is frozen. CONSUMER: the generator switch that retires rows.dag (statements and member syntax family, next in the sequence). DISSOLVES WHEN the shared TargetValueExpressionProjection gains columns for these forms, SUFFICIENT FOR every SwiftExpr the four approve_ios_swift generators author to print through the projection with no swift.dag production beside it."
+)
+
+// THE TYPED FORM OF THE FRONTIER ROW ABOVE: one specimen SwiftExpr per form the row lists, in the
+// row's order. It is read by v2.test.claim.emit.swift_expr_door_byte_identity, which requires every
+// specimen to refuse on the door path (so no listed form is one the projection can spell) and a
+// specimen the door does spell to fail that same check. The row's prose and this roster are one
+// fact stated twice; the claim is what keeps the prose from claiming a form the door prints.
+data swift_expr_door_outside_specimens: List<SwiftExpr> = [
+  sw_calln(f: "callee", a: [sw_arg(l: "tag", v: sw_id(n: "a")), sw_pos(v: sw_id(n: "b"))]),
+  sw_str(s: "text"),
+  sw_raw(s: "text"),
+  sw_arr(e: [sw_id(n: "a")]),
+  sw_dict(e: [sw_kv(k: sw_id(n: "a"), v: sw_id(n: "b"))]),
+  sw_add(l: sw_id(n: "a"), r: sw_id(n: "b")),
+  sw_not(e: sw_id(n: "a")),
+  sw_ternary(c: sw_id(n: "a"), t: sw_id(n: "b"), e: sw_id(n: "c")),
+  SwiftClosure { closure: sw_cloe(e: sw_id(n: "a")) },
+  sw_callt(f: sw_id(n: "callee"), a: [], c: sw_cloe(e: sw_id(n: "a"))),
+  sw_sub(b: sw_id(n: "a"), a: [sw_pos(v: sw_id(n: "i"))]),
+  sw_try(e: sw_id(n: "a")),
+  sw_await(e: sw_id(n: "a")),
+  sw_keypath(c: ["a"]),
+  sw_asq(e: sw_id(n: "a"), t: sw_t(n: "T")),
+  sw_chain(b: sw_id(n: "a"))
+]
+
+// A SwiftExpr is authored syntax with no source span, so a refusal is located by the form that
+// caused it: the site is an atom named for the SwiftExpr constructor.
+fn swift_expr_door_site(form: String) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: form) } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn swift_expr_door_form_name(e: SwiftExpr) -> String {
+  match e {
+    SwiftIdentifierExpr { name: _ } => "SwiftIdentifierExpr"
+    SwiftWildcardExpr => "SwiftWildcardExpr"
+    SwiftImplicitMemberExpr { name: _ } => "SwiftImplicitMemberExpr"
+    SwiftExplicitMemberExpr { base: _, member: _ } => "SwiftExplicitMemberExpr"
+    SwiftOptionalChainingExpr { base: _ } => "SwiftOptionalChainingExpr"
+    SwiftFunctionCallExpr { callee: _, arguments: _, trailing_closure: _ } => "SwiftFunctionCallExpr"
+    SwiftSubscriptExpr { base: _, arguments: _ } => "SwiftSubscriptExpr"
+    SwiftStringLiteral { delimiter: _, segments: _ } => "SwiftStringLiteral"
+    SwiftIntegerLiteral { value: _ } => "SwiftIntegerLiteral"
+    SwiftBooleanLiteral { value: _ } => "SwiftBooleanLiteral"
+    SwiftNilLiteral => "SwiftNilLiteral"
+    SwiftArrayLiteral { elements: _ } => "SwiftArrayLiteral"
+    SwiftDictionaryLiteral { elements: _ } => "SwiftDictionaryLiteral"
+    SwiftTupleExpr { elements: _ } => "SwiftTupleExpr"
+    SwiftParenthesizedExpr { inner: _ } => "SwiftParenthesizedExpr"
+    SwiftClosure { closure: _ } => "SwiftClosure"
+    SwiftTryExpr { operator: _, operand: _ } => "SwiftTryExpr"
+    SwiftAwaitExpr { operand: _ } => "SwiftAwaitExpr"
+    SwiftPrefixExpr { operator: _, operand: _ } => "SwiftPrefixExpr"
+    SwiftInfixExpr { lhs: _, operator: _, rhs: _ } => "SwiftInfixExpr"
+    SwiftTernaryConditionalExpr { condition: _, then_value: _, else_value: _ } => "SwiftTernaryConditionalExpr"
+    SwiftTypeCastingExpr { operand: _, operator: _, target: _ } => "SwiftTypeCastingExpr"
+    SwiftKeyPathExpr { components: _ } => "SwiftKeyPathExpr"
+  }
+}
+
+fn swift_expr_door_outside(reason: Symbol, e: SwiftExpr) -> Outcome<TargetValueExpression> {
+  outcome_rejected(target_value_expr_diagnostic(reason: reason, node: swift_expr_door_site(form: swift_expr_door_form_name(e: e))))
+}
+
+fn swift_expr_door_args_labelled(args: List<SwiftArgument>) -> Bool {
+  fold(args, init: true, f: fn(acc, a) { acc && swift_expr_door_arg_is_labelled(a: a) })
+}
+
+fn swift_expr_door_args_positional(args: List<SwiftArgument>) -> Bool {
+  fold(args, init: true, f: fn(acc, a) { acc && !swift_expr_door_arg_is_labelled(a: a) })
+}
+
+fn swift_expr_door_arg_value(a: SwiftArgument) -> SwiftExpr {
+  a.value
+}
+
+fn swift_expr_door_arg_label_names(a: SwiftArgument) -> List<String> {
+  match a.label { Present { value: l } => [l]  Absent => [] }
+}
+
+fn swift_expr_door_arg_is_labelled(a: SwiftArgument) -> Bool {
+  match a.label { Present { value: _ } => true  Absent => false }
+}
+
+fn swift_expr_door_lower_args(args: List<SwiftArgument>) -> Outcome<List<TargetValueExpression>> {
+  match args {
+    Empty => outcome_accepted(Empty)
+    Cons { head: h, tail: t } =>
+      bind_outcome(o: swift_expr_door_lower(e: swift_expr_door_arg_value(a: h)), f: fn(x) {
+        bind_outcome(o: swift_expr_door_lower_args(args: t), f: fn(rest) { outcome_accepted(Cons { head: x, tail: rest }) })
+      })
+  }
+}
+
+fn swift_expr_door_slot(a: SwiftArgument, x: TargetValueExpression) -> Outcome<TargetValueExprFieldInitSlot> {
+  match a.label {
+    Present { value: l } => outcome_accepted(TargetValueExprFieldInitSlot { label: symbol_intern_lexeme(lexeme: l), value: x })
+    Absent => outcome_rejected(target_value_expr_diagnostic(reason: ^swift_expr_door_outside_projection, node: swift_expr_door_site(form: "SwiftArgument")))
+  }
+}
+
+fn swift_expr_door_lower_slots(args: List<SwiftArgument>) -> Outcome<List<TargetValueExprFieldInitSlot>> {
+  match args {
+    Empty => outcome_accepted(Empty)
+    Cons { head: h, tail: t } =>
+      bind_outcome(o: swift_expr_door_lower(e: swift_expr_door_arg_value(a: h)), f: fn(x) {
+        bind_outcome(o: swift_expr_door_slot(a: h, x: x), f: fn(slot) {
+          bind_outcome(o: swift_expr_door_lower_slots(args: t), f: fn(rest) { outcome_accepted(Cons { head: slot, tail: rest }) })
+        })
+      })
+  }
+}
+
+fn swift_expr_door_lower(e: SwiftExpr) -> Outcome<TargetValueExpression> {
+  match e {
+    SwiftIdentifierExpr { name: n } => outcome_accepted(target_value_expression_binding_ref(binding: symbol_intern_lexeme(lexeme: n)))
+    SwiftBooleanLiteral { value: b } => outcome_accepted(target_value_expression_bool_literal(value: b))
+    SwiftIntegerLiteral { value: n } =>
+      outcome_accepted(target_value_expression_int_literal(lexeme: to_string(n), source: swift_expr_door_site(form: "SwiftIntegerLiteral")))
+    SwiftExplicitMemberExpr { base: b, member: m } =>
+      bind_outcome(o: swift_expr_door_lower(e: b), f: fn(x) {
+        outcome_accepted(target_value_expression_field_access(base: x, field_name: symbol_intern_lexeme(lexeme: m)))
+      })
+    SwiftFunctionCallExpr { callee: c, arguments: a, trailing_closure: tc } =>
+      match tc {
+        Present { value: _ } => swift_expr_door_outside(reason: ^swift_expr_door_outside_projection, e: e)
+        Absent =>
+          match c {
+            SwiftIdentifierExpr { name: n } =>
+              if swift_expr_door_args_positional(args: a) {
+                bind_outcome(o: swift_expr_door_lower_args(args: a), f: fn(xs) {
+                  outcome_accepted(target_value_expression_callable_apply(callee: symbol_intern_lexeme(lexeme: n), args: xs))
+                })
+              } else if swift_expr_door_args_labelled(args: a) {
+                bind_outcome(o: swift_expr_door_lower_slots(args: a), f: fn(slots) {
+                  outcome_accepted(target_value_expression_record_construct(type_name: symbol_intern_lexeme(lexeme: n), fields: slots))
+                })
+              } else {
+                swift_expr_door_outside(reason: ^swift_expr_door_outside_projection, e: e)
+              }
+            _ => swift_expr_door_outside(reason: ^swift_expr_door_outside_projection, e: e)
+          }
+      }
+    _ => swift_expr_door_outside(reason: ^swift_expr_door_outside_projection, e: e)
+  }
+}
+
+// The identifiers the expression names, so the printed spelling is the source's own name.
+fn swift_expr_door_arg_names(args: List<SwiftArgument>) -> List<String> {
+  match args {
+    Empty => []
+    Cons { head: h, tail: t } =>
+      list_append(
+        left: list_append(left: swift_expr_door_arg_label_names(a: h), right: swift_expr_door_names(e: swift_expr_door_arg_value(a: h))),
+        right: swift_expr_door_arg_names(args: t)
+      )
+  }
+}
+
+fn swift_expr_door_names(e: SwiftExpr) -> List<String> {
+  match e {
+    SwiftIdentifierExpr { name: n } => [n]
+    SwiftExplicitMemberExpr { base: b, member: m } => list_append(left: swift_expr_door_names(e: b), right: [m])
+    SwiftFunctionCallExpr { callee: c, arguments: a, trailing_closure: _ } =>
+      list_append(left: swift_expr_door_names(e: c), right: swift_expr_door_arg_names(args: a))
+    _ => []
+  }
+}
+
+fn swift_expr_door_spell(names: List<String>, spellings: Map<Symbol, String>) -> Map<Symbol, String> {
+  match names {
+    Empty => spellings
+    Cons { head: n, tail: t } => swift_expr_door_spell(names: t, spellings: map_insert(spellings, symbol_intern_lexeme(lexeme: n), n))
+  }
+}
+
+fn swift_expr_door_target(e: SwiftExpr) -> TargetModel {
+  TargetModel {
+    produced_decl_support: swift_target_model().produced_decl_support,
+    bundle: swift_target_model().bundle,
+    lex: swift_target_model().lex,
+    binding_spellings: swift_expr_door_spell(names: swift_expr_door_names(e: e), spellings: swift_target_model().binding_spellings),
+    token_class_emit_transforms: swift_target_model().token_class_emit_transforms,
+    authority_source_text: swift_target_model().authority_source_text,
+    runtime_row: swift_target_model().runtime_row
+  }
+}
+
+fn swift_expr_door_print(e: SwiftExpr) -> Outcome<String> {
+  bind_outcome(o: swift_expr_door_lower(e: e), f: fn(x) {
+    bind_outcome(
+      o: target_value_expression_to_concrete_tokens(
+        expr: x,
+        projection: swift_value_expression_projection(),
+        catalog: swift_operator_realizations_catalog_node()
+      ),
+      f: fn(tokens) {
+        bind_outcome(o: serialize_concrete_syntax_tokens_to_source_string(target: swift_expr_door_target(e: e), tokens: tokens), f: fn(text) {
+          outcome_accepted(render_target_text(t: text))
+        })
+      }
+    )
+  })
+}

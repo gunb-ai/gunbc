@@ -1,0 +1,21 @@
+module v2.test.claim.manual.ctor_tag_forge_red
+
+// A tag must not be forgeable: nothing a caller can write may produce a ConstructorTag that
+// matches an arm it does not denote. Three routes, each in its own file-compile so one refusal
+// cannot hide another route's verdict -- they are three separate tests here because they all
+// refuse for compile-time reasons and a file that refuses yields no verdict for ANY test in it.
+//
+// Route 1: the record literal. `sole_constructor` refuses construction outside std.
+// Route 2: a predicate-taking elaboration entry. DELETED from std rather than documented as
+//   elaboration-only: it took an arbitrary fn, so `fn(_w) { true }` minted an always-matching tag.
+// Route 3: passing a predicate to the entry that remains. tag_of takes a VALUE; there is no
+//   parameter a predicate can be passed to.
+
+import std.primitives { ConstructorTag, tag_of, same_arm }
+
+type Fg = A { a: Int } | B { b: Bool } | C
+
+test fn r1_record_literal_outside_std_must_refuse() -> Bool {
+  let forged = ConstructorTag { accepts: fn(_w) { true } }
+  same_arm(tag: forged, v: A { a: 1 })
+}

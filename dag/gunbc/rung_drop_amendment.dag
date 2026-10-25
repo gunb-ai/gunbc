@@ -1,7 +1,7 @@
 module gunbc.rung_drop_amendment
 
 import std.types { String, NonEmptyStr, List, Bool }
-import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded }
+import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded, Dissolved }
 
 // A LATER RULING AMENDING A STANDING RUNG DROP -- THE ONE THING gunbc.rung_drop COULD NOT CARRY.
 // A DESIGN section 4b(3) declaration is written once, at the moment the guarantee falls: previous
@@ -89,9 +89,10 @@ fn rung_drop_amendment_message(a: RungDropAmendment, standing: RungDropStanding)
 // its amendment as one whose trigger still stands.
 fn standing_sentence(standing: RungDropStanding) -> String {
   match standing {
-    Standing => "The restoration trigger above stands whole."
-    Retired { trigger_fired: _ } => "The trigger above has since fired; the retirement stated with this row is what ends the drop."
-    Superseded { ruling: _, decision_record: _, loss_holder: h } => concat(concat("The trigger above did NOT fire; a superseding ruling ended this drop, and its loss is held by ", (h as String)), ".")
+    Standing { declaration: _ } => "The restoration trigger above stands whole."
+    Retired { trigger_fired: _, declaration: _ } => "The trigger above has since fired; the retirement stated with this row is what ends the drop."
+    Superseded { ruling: _, decision_record: _, loss_holder: h, declaration: _ } => concat(concat("The trigger above did NOT fire; a superseding ruling ended this drop, and its loss is held by ", (h as String)), ".")
+    Dissolved { removal: _, declaration: _ } => "The trigger above did NOT fire; a ruling removed the population this drop covered from the tree, so nothing remains for it to restore."
   }
 }
 

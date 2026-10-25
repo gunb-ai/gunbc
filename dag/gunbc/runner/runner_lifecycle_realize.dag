@@ -6,15 +6,28 @@ import gunbc.host.host_effect {
   HostEffectIntent,
   HostEffectEvidence,
   HostEffectTransport,
+  ShellEffectApplied,
+  LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun,
+  ActivateRunnerSlot, DrainAndMaskRunnerSlot,
 }
-import std.realization_reconcile { Reconciliation, NotConverged }
+import std.realization_reconcile { Reconciliation, NotConverged, Converged }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.runner.runner_slot_actuation {
+  SlotActuationOutcome,
+  activate_runner_slot_over,
+  drain_and_mask_runner_slot_over,
+  slot_actuation_settled,
+  slot_actuation_outcome_wire,
+}
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.runner.runner_lifecycle { RunnerSlotIdentity }
 import extdeps.github.actions_runner { ActionsRunnerBinaryArtifact }
 import std.types { NonEmptyStr, String }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-// All nine runner_lifecycle HostEffect realize arms delegate here until wet transport lands.
+// The runner_lifecycle HostEffect realize arms other than ActivateRunnerSlot and DrainAndMaskRunnerSlot
+// (realized below over the FleetSsh administrator edge) delegate here until wet transport lands.
 // Honest scaffold: typed, located NotConverged — not an absorbing fallback and not a converged receipt.
 // Dissolves when the add path is bound through LocalShell on an in-band job targeted at the host
 // label AND the executing principal holds the enumerated sudo grants (ReadEffectivePosixPrincipal +
@@ -82,10 +95,60 @@ fn runner_lifecycle_realize_ensure_runner_memory_caps(
   runner_lifecycle_realize_scaffold(effect_label: "EnsureRunnerMemoryCaps", intent: intent)
 }
 
+// THE TWO SLOT LIFECYCLE ARMS ARE REAL, AND ONLY OVER THE ADMINISTRATOR EDGE. Their scaffold's
+// trigger named a transport binding, enumerated sudo grants and independent read-back; all three are
+// the FleetSsh administrator route gunbc.runner.runner_host_file_converge already uses -- the sealed
+// known-hosts context, the declared administrator principal's non-interactive sudo, and a re-read
+// before Converged (gunbc.runner.runner_slot_actuation). Any other transport refuses by name rather
+// than reaching the host some second way.
+fn runner_slot_actuation_reconciliation(
+  intent: HostEffectIntent,
+  outcome: SlotActuationOutcome,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  if slot_actuation_settled(o: outcome) {
+    Converged { evidence: ShellEffectApplied { exit_code: 0, stdout: slot_actuation_outcome_wire(o: outcome), stderr: "" }, applied: intent }
+  } else {
+    NotConverged { reason: concat("host_effect_apply: ", slot_actuation_outcome_wire(o: outcome)), applied: intent }
+  }
+}
+
+fn runner_slot_actuation_wrong_transport(effect_label: String, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  NotConverged {
+    reason: join(["host_effect_apply: ", effect_label, " runs only over the FleetSsh administrator edge (sealed known-hosts context, declared administrator's sudo); this transport is refused rather than used as a second route"], ""),
+    applied: intent,
+  }
+}
+
 fn runner_lifecycle_realize_activate_runner_slot(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  runner_lifecycle_realize_scaffold(effect_label: "ActivateRunnerSlot", intent: intent)
+  match intent.effect {
+    ActivateRunnerSlot { slot: slot } =>
+      match intent.transport {
+        FleetSsh { target: t, context: c } =>
+          runner_slot_actuation_reconciliation(intent: intent, outcome: activate_runner_slot_over(target: t, context: c, unit: runner_slot_unit_name(slot: slot)))
+        LocalShell => runner_slot_actuation_wrong_transport(effect_label: "ActivateRunnerSlot", intent: intent)
+        SshShell { ssh_host: _ } => runner_slot_actuation_wrong_transport(effect_label: "ActivateRunnerSlot", intent: intent)
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => runner_slot_actuation_wrong_transport(effect_label: "ActivateRunnerSlot", intent: intent)
+      }
+    _ => NotConverged { reason: "host_effect_apply: activate realization reached with a different effect", applied: intent }
+  }
+}
+
+fn runner_lifecycle_realize_drain_and_mask_runner_slot(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match intent.effect {
+    DrainAndMaskRunnerSlot { slot: slot } =>
+      match intent.transport {
+        FleetSsh { target: t, context: c } =>
+          runner_slot_actuation_reconciliation(intent: intent, outcome: drain_and_mask_runner_slot_over(target: t, context: c, unit: runner_slot_unit_name(slot: slot)))
+        LocalShell => runner_slot_actuation_wrong_transport(effect_label: "DrainAndMaskRunnerSlot", intent: intent)
+        SshShell { ssh_host: _ } => runner_slot_actuation_wrong_transport(effect_label: "DrainAndMaskRunnerSlot", intent: intent)
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => runner_slot_actuation_wrong_transport(effect_label: "DrainAndMaskRunnerSlot", intent: intent)
+      }
+    _ => NotConverged { reason: "host_effect_apply: drain realization reached with a different effect", applied: intent }
+  }
 }
 
 fn runner_lifecycle_realize_replace_runner_incarnation(

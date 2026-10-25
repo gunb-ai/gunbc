@@ -21,6 +21,7 @@ import gunbc.auth.approval_gate {
   approval_standing_read, StandingReadAt, StandingClockUnreadable,
 }
 import gunbc.auth.approval_request_client { stored_request_from_authorization, ApprovalPollStanding }
+import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge {
   GcpIamEstateDiff, GcpIamEstatePlan, GcpIamEstateNoop, GcpIamEstateApply, GcpIamEstatePartialNoop, GcpIamEstateRefused, estate_refused_texts,
   GcpIamRequest, GcpIamRequested, GcpIamUnrequestable,
@@ -58,8 +59,11 @@ data gcp_iam_converge_submit_timeout: Second = second(count: 30)
 // THE STEP BUDGET IS DERIVED FROM THE CONSENT WINDOW, not chosen beside it: the request step waits at
 // most the filing window for the tap, and plan, apply and readback are bounded API calls. Ten
 // minutes over the window is the actuation allowance, the same as the impersonated token's lifetime.
+// THE WAITS CANNOT OUTLAST THE TOKEN (review 81321): every create's operation reads share the one
+// impersonated token, so past its lifetime a read is refused as unreadable (typed, the create is never
+// reissued) whatever the step timeout allows; the lifetime is therefore the whole actuation bound.
 fn gcp_iam_converge_step_timeout_minutes() -> Int {
-  second_count(s: gcp_iam_converge_file_window) / 60 + 10
+  (second_count(s: gcp_iam_converge_file_window) + second_count(s: iam_converge_token_lifetime) + 59) / 60
 }
 
 // THE ACTUATION TOKEN'S VARIABLE. The workflow's impersonating auth step publishes it to the apply
@@ -108,34 +112,42 @@ fn gcp_iam_converge_admission(poll: ApprovalPollStanding, request: Authorization
 
 // ── The request step ─────────────────────────────────────────────────────────────────────────
 
-fn mark_approved(request: AuthorizationRequest<GcpIamEstateDiff>) -> ProcessExit
+// THE FILE-AND-WAIT HALF IS ONE PROTOCOL FOR EVERY APPROVAL-GATED GCP IAM STEP (this converge and
+// gunbc.auth.gcp_iam_bootstrap_delta_run): each supplies its request, its label, its body file name and
+// its step output, and the window, cadence and live gate are this module's.
+fn mark_approved_as(label: String, output: String) -> ProcessExit
 {
   let path = actions_variable_trimmed(name: github_output_variable_name as NonEmptyStr)
   if path == "" {
-    exit_failure(reason: "gcp iam converge: approved, but GITHUB_OUTPUT is unset so the approval cannot be handed to the impersonating step; nothing applied")
+    exit_failure(reason: concat(label, ": approved, but GITHUB_OUTPUT is unset so the approval cannot be handed to the impersonating step; nothing applied"))
   } else {
-    let w = Filesystem.Write(path: path, content: join([gcp_iam_converge_approved_output, "=true\n"], ""))
-    if w.success { ExitSuccess } else { exit_failure(reason: concat("gcp iam converge: could not write the approval output; nothing applied: ", w.error)) }
+    let w = Filesystem.Write(path: path, content: join([output, "=true\n"], ""))
+    if w.success { ExitSuccess } else { exit_failure(reason: join([label, ": could not write the approval output; nothing applied: ", w.error], "")) }
   }
 }
 
 fn request_and_wait(request: AuthorizationRequest<GcpIamEstateDiff>) -> ProcessExit
 {
+  request_and_wait_as(request: request, label: "gcp iam converge", body_file_name: "gcp-iam-converge-submit.json", output: gcp_iam_converge_approved_output)
+}
+
+fn request_and_wait_as<Subject>(request: AuthorizationRequest<Subject>, label: String, body_file_name: String, output: String) -> ProcessExit
+{
   match approval_instant_now() {
-    Absent => exit_failure(reason: "gcp iam converge: clock unreadable; the request cannot be filed")
+    Absent => exit_failure(reason: concat(label, ": clock unreadable; the request cannot be filed"))
     Present { value: issued } => {
       let expires = approval_expires_at(issued: issued, window: gcp_iam_converge_file_window)
       let stored = stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires)
-      match approval_file_stored_request(stored: stored, body_file_name: "gcp-iam-converge-submit.json", submit_timeout: gcp_iam_converge_submit_timeout) {
-        ApprovalFilingRefused { reason: r } => exit_failure(reason: concat("gcp iam converge: filing refused: ", r))
+      match approval_file_stored_request(stored: stored, body_file_name: body_file_name, submit_timeout: gcp_iam_converge_submit_timeout) {
+        ApprovalFilingRefused { reason: r } => exit_failure(reason: join([label, ": filing refused: ", r], ""))
         ApprovalFiled =>
           match approval_poll_ticks(remaining: gcp_iam_converge_poll_ticks(), cadence: gcp_iam_converge_poll_cadence, escalation_id: request.escalation_id, expires_at: expires) {
-            PollClockUnreadable => exit_failure(reason: "gcp iam converge: clock unreadable while waiting for the decision")
-            PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "gcp iam converge: filed; no decision within the window, nothing applied")
+            PollClockUnreadable => exit_failure(reason: concat(label, ": clock unreadable while waiting for the decision"))
+            PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: concat(label, ": filed; no decision within the window, nothing applied"))
             PollObservedAt { standing: s, observed_at: at } =>
-              match gcp_iam_converge_admission(poll: s, request: request, observed_at: at) {
-                GateRefused { cause: c } => exit_failure(reason: concat("gcp iam converge: not admitted, nothing applied: ", approval_refusal_text(cause: c)))
-                GateAdmitted { authorization: _ } => mark_approved(request: request)
+              match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
+                GateRefused { cause: c } => exit_failure(reason: join([label, ": not admitted, nothing applied: ", approval_refusal_text(cause: c)], ""))
+                GateAdmitted { authorization: _ } => mark_approved_as(label: label, output: output)
               }
           }
       }

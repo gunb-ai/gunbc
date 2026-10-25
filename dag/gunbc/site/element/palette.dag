@@ -112,7 +112,7 @@ fn palette_var(slot: PaletteSlot) -> String {
 // The meter slots are the build meter's (gunbc.site.element.build_meter). The seven kind colours
 // are the ones the worker scene's prototype settled, one per operation kind. The worker paints are
 // the brand's stark colourway of the gunbai mark: ink on cream by day, stone on void by night
-// (gunb-ai/frontend legacy/moodboard.html, the same source gunbc.site.robot_mark cites); the light
+// (gunb-ai/frontend legacy/moodboard.html, where gunbc.design.brand_mark's geometry was first authored); the light
 // and shade paints are that body colour's two neighbours, used for a one-pixel highlight and
 // shadow. The finish colour marks a published attempt's strip.
 fn palette_day(slot: PaletteSlot) -> Srgb8 {

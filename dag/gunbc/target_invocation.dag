@@ -32,7 +32,7 @@ import extdeps.bazel.target_pattern {
 //
 // THERE ARE TWO EXECUTORS AND THE OPERAND SAYS WHICH, BY CONTAINMENT RATHER THAN BY SPELLING.
 // The native test route owns one universe, and that universe is itself a target pattern
-// (`gunbc.witness.v2_native_route` `native_route_default_pattern`, `//v2/...`). So "does this
+// (`gunbc.native_route_universe` `native_route_default_pattern`, `//v2/...`). So "does this"
 // operand belong to the native route" is the cited authority's own containment question, asked
 // once, here: `extdeps.bazel.target_pattern` `target_pattern_within`. An operand inside it --
 // single target or set form alike -- is `TestOperandNativeRoute` and enters the native
@@ -298,6 +298,18 @@ fn invocation_exit_status(t: InvocationTermination) -> Int {
   }
 }
 
+// ONE CLAIM'S VERDICT AS ITS `gunbc test` EXIT, AND BACK. A claim run alone in a guest returns only
+// its exit, so a reader of that exit decodes into ClaimRouteVerdict. The exit is DERIVED from the
+// route's own fold over that one verdict -- not a second table -- and decoding is the inverse over
+// the three verdicts, so a status the fold never produces has no verdict and the reader refuses it.
+fn claim_route_verdict_exit(v: ClaimRouteVerdict) -> Int {
+  invocation_exit_status(t: claim_route_termination(verdicts: [v]))
+}
+
+fn claim_route_verdict_of_exit(code: Int) -> ClaimRouteVerdict? {
+  filter([ClaimHeld, ClaimDidNotHold, ClaimUnobserved], v => claim_route_verdict_exit(v: v) == code).first()
+}
+
 // THE CANONICALITY CAUSE REACHES THE USER, WHICH IS THE POINT OF CARRYING IT AT ALL.
 //
 // `extdeps.bazel.label` splits a non-canonical label into two facts with two different repairs: a
@@ -423,8 +435,8 @@ fn binary_built_elsewhere(binary: String, path: String) -> BinaryFreshness {
 fn assess_binary_freshness(observed: BinaryInputObservation) -> BinaryFreshness {
   match observed {
     DepInfoUnreadable { binary: b, reason: r } => BinaryFreshnessUndecided { binary: b, reason: r }
-    InputsObserved { binary: b, inputs: is } =>
-      fold(is, init: BinaryFresh { binary: b, inputs: 0 }, f: fn(acc, i) {
+    InputsObserved { binary: b, inputs: ins } =>
+      fold(ins, init: BinaryFresh { binary: b, inputs: 0 }, f: fn(acc, i) {
         binary_freshness_step(acc: acc, input: i)
       })
   }

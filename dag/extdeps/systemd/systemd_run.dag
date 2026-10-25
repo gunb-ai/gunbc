@@ -11,16 +11,22 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.uri { Uri, Https }
-import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
+import extdeps.systemd {
+  SystemdUnitProperty, systemd_unit_property_wire,
+}
 // The manager's version line has ONE spelling for the whole systemd upstream, so the major is read
 // with the existing parser rather than a second one (DESIGN section 3: no fork of one concept).
 import extdeps.systemd.systemctl { systemd_major_version }
 import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 
-type SystemdRunProperty {
-  property: SystemdUnitProperty,
-  value: NonEmptyStr,
-}
+// EmptyCapabilityBoundingSet is the empty capability-set carrier: systemd.exec(5)
+// CapabilityBoundingSet= with no names drops every capability. It is its own arm, not a
+// SystemdUnitProperty under NamedUnitSetting: SystemdUnitProperty is the show surface
+// (gunbc.systemd_property_directive_overlap), and a capability set is not a free-text value, so a
+// non-empty or misspelled set has no constructor here rather than a refusal at run time.
+type SystemdRunProperty
+  = NamedUnitSetting { property: SystemdUnitProperty, value: NonEmptyStr }
+  | EmptyCapabilityBoundingSet
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -113,6 +119,14 @@ type SystemdRunOptionWordsRefusedCause
   | SetenvNameMultiline
   | SetenvValueMultiline
 
+type SystemdRunPropertyAssignmentReading
+  = SystemdRunPropertyAssignmentReady { assignment: String }
+  | SystemdRunPropertyAssignmentRefused { cause: SystemdRunOptionWordsRefusedCause }
+
+type SystemdRunPropertyAssignmentsReading
+  = SystemdRunPropertyAssignmentsReady { assignments: List<String> }
+  | SystemdRunPropertyAssignmentsRefused { cause: SystemdRunOptionWordsRefusedCause }
+
 type SystemdRunOptionWordsReading
   = SystemdRunOptionWordsProjected { words: List<String> }
   | SystemdRunOptionWordsRefused { cause: SystemdRunOptionWordsRefusedCause }
@@ -147,8 +161,40 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
 // forms below and by any carrier that records the properties a unit was started with as text (the
 // session placement record). Recording the typed property where text was declared is what made every
 // harness spawn fail after the typed options landed (srv1 lab, 2026-10-11).
-fn systemd_run_property_assignment(property: SystemdRunProperty) -> String {
-  concat(systemd_unit_property_wire(property: property.property), concat("=", property.value as String))
+// A setting value is one line (systemd.syntax(7)): a value carrying a newline is refused here, the one
+// place every consumer of the assignment text reads it, rather than rendered and split downstream.
+fn systemd_run_named_setting_assignment(property: SystemdUnitProperty, value: NonEmptyStr) -> SystemdRunPropertyAssignmentReading {
+  if systemd_run_option_word_has_newline(s: value as String) {
+    SystemdRunPropertyAssignmentRefused { cause: UnitSettingValueMultiline { property: property } }
+  } else {
+    SystemdRunPropertyAssignmentReady {
+      assignment: concat(systemd_unit_property_wire(property: property) as String, concat("=", value as String)),
+    }
+  }
+}
+
+// systemd.exec(5) spells the empty bounding set as the directive with no names.
+data systemd_run_empty_capability_bounding_set_assignment: String = "CapabilityBoundingSet="
+
+fn systemd_run_property_assignment(property: SystemdRunProperty) -> SystemdRunPropertyAssignmentReading {
+  match property {
+    EmptyCapabilityBoundingSet =>
+      SystemdRunPropertyAssignmentReady { assignment: systemd_run_empty_capability_bounding_set_assignment }
+    NamedUnitSetting { property: p, value: v } => systemd_run_named_setting_assignment(property: p, value: v)
+  }
+}
+
+fn systemd_run_property_assignments(properties: List<SystemdRunProperty>) -> SystemdRunPropertyAssignmentsReading {
+  fold(properties, init: SystemdRunPropertyAssignmentsReady { assignments: [] }, f: (acc, p) =>
+    match acc {
+      SystemdRunPropertyAssignmentsRefused { cause: c } => SystemdRunPropertyAssignmentsRefused { cause: c }
+      SystemdRunPropertyAssignmentsReady { assignments: words } =>
+        match systemd_run_property_assignment(property: p) {
+          SystemdRunPropertyAssignmentRefused { cause: c } => SystemdRunPropertyAssignmentsRefused { cause: c }
+          SystemdRunPropertyAssignmentReady { assignment: a } =>
+            SystemdRunPropertyAssignmentsReady { assignments: list_append(left: words, right: [a]) }
+        }
+    })
 }
 
 fn systemd_run_property_options_long(properties: List<SystemdRunProperty>) -> List<SystemdRunOption> {
@@ -177,16 +223,16 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
         RunUserManager => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--user"]) }
         RunScope => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--scope"]) }
         PropertyShort { property: p } =>
-          if systemd_run_option_word_has_newline(s: p.value as String) {
-            systemd_run_option_word_refused(cause: UnitSettingValueMultiline { property: p.property })
-          } else {
-            SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["-p", systemd_run_property_assignment(property: p)]) }
+          match systemd_run_property_assignment(property: p) {
+            SystemdRunPropertyAssignmentRefused { cause: c } => systemd_run_option_word_refused(cause: c)
+            SystemdRunPropertyAssignmentReady { assignment: a } =>
+              SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["-p", a]) }
           }
         PropertyLong { property: p } =>
-          if systemd_run_option_word_has_newline(s: p.value as String) {
-            systemd_run_option_word_refused(cause: UnitSettingValueMultiline { property: p.property })
-          } else {
-            SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--property=", systemd_run_property_assignment(property: p))]) }
+          match systemd_run_property_assignment(property: p) {
+            SystemdRunPropertyAssignmentRefused { cause: c } => systemd_run_option_word_refused(cause: c)
+            SystemdRunPropertyAssignmentReady { assignment: a } =>
+              SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--property=", a)]) }
           }
         SetEnv { binding: b } =>
           if string_contains(s: b.name as String, pattern: "=") {
@@ -349,6 +395,14 @@ fn systemd_run_transient_retained_unit_command(unit: NonEmptyStr, properties: Li
 // recoverable as an exact child status through this boundary.
 fn systemd_run_transient_wait_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Wait, Quiet, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
+}
+
+// The waiting transient whose STDIN is the caller's: `--pipe` (systemd-run(1): "the standard input, output and
+// error of the invoked process are connected to the invoking process") forwards what the caller writes to the
+// unit's main process, so a secret can reach the process through a pipe and never through the unit's argv,
+// Environment= or a file. The wait/quiet/collect vocabulary is the plain waiting form's.
+fn systemd_run_transient_wait_pipe_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Wait, Pipe, Quiet, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
 }
 
 

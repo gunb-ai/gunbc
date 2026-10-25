@@ -20,7 +20,7 @@ import gunbc.auth.approval_store_receipt { verify_store_receipt, StoreReceiptAut
 
 // ── THE FABRIC STORE'S PER-OPERATION WALL ─────────────────────────────────────────────────────
 //
-// gunbc.spark.pair_serving_d0 d0_store_operation_wall: the fabric DB admits an advance of a
+// gunbc.fabric.fabric_store_operation_admission operation_requirement: the fabric DB admits an advance of a
 // pair-serving authority partition, the host-placement partition or a D0 consent slot ONLY under a
 // credential the STORE verifies for that operation (operator ruling A, 2026-09-27). This module is
 // that decision, as one fold over supplied readings -- the head, the advanced-to object's text, what
@@ -30,7 +30,7 @@ import gunbc.auth.approval_store_receipt { verify_store_receipt, StoreReceiptAut
 // A DECLARED FRONTIER (DESIGN §3c): admit_store_operation's consumer is gunbc.fabric.fabric_storage_serve's
 // advance arm, which reads the advanced-to object, the presented credential, the presenting
 // principal's grants (a per-principal roster over jolly-owl-158's door principal, gunbc#12482) and
-// the receipt keyring, and calls this before fabric_storage_file_advance (d0_store_operation_wall
+// the receipt keyring, and calls this before fabric_storage_file_advance (the store-operation wall (gunbc.fabric.fabric_store_operation_admission)
 // PR 4b). TRIGGER: that change lands; if the door decides some other way, this module goes with it.
 //
 // THE OPERATION IS READ FROM THE OBJECT, NEVER FROM THE WRITER. An advance names a head and the
@@ -137,10 +137,10 @@ type OperationRequirement
 // NoApprovalFlowForOperation until a flow for another group is ruled and lands. EstablishAuthority and RecoverHostEffect have
 // NO admissible scope yet: the operator entries that perform them (pair_serving_authority_establish_wet,
 // host_effect_recover_wet) select operator approval (gunbc.auth.privileged_effect_census). The
-// recover, finalize and abort flows are d0_store_operation_wall PR 5b, which the flip depends on, so
+// recover, finalize and abort flows are an unmodeled capability the enforcing door depends on, so
 // no enforcing door runs without the manual repair path (proud-deer-538, 2026-09-28); their scopes
-// join RecoverHostEffect's, FinalizePlacement's and AbortPlacement's lists. Establish's flow is PR 7:
-// it runs once per group, and both groups are established. An empty list refuses
+// join RecoverHostEffect's, FinalizePlacement's and AbortPlacement's lists. Establish's flow is a
+// separate unmodeled capability: it runs once per group, and both groups are established. An empty list refuses
 // (NoApprovalFlowForOperation) rather than admitting: an operation nobody can approve is refused,
 // never exempted.
 fn operation_requirement(operation: StoreOperation) -> OperationRequirement {

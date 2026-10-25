@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.created_resource_read_back_before_its_operation_reported_done
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { CurrentRungUnstatedAfterClimb, RecurringFailureMode, RungUnread }
+
+data created_resource_read_back_before_its_operation_reported_done: RecurringFailureMode = RecurringFailureMode {
+  identity: "created_resource_read_back_before_its_operation_reported_done" as NonEmptyStr,
+
+  rung: RungUnread { cause: CurrentRungUnstatedAfterClimb },
+
+  receipts: [
+    "**a create that answers with a google.longrunning.Operation is treated as the resource existing, and the readback that follows refuses or mis-reads because the operation had not finished** (INVALID STATE: a run holds a 200 whose body is an Operation, discards it, and reads the resource back at once; the resource is not yet visible, so the readback reports a subject not yet present over a create that is committed.",
+
+    "HARM: a refusal over a create that succeeded. Each one cost a whole rerun and another operator approval tap; the rerun succeeded with no change, so it was a race and not a configuration defect. The worse neighbour, not observed here, is a retry that reissues the create.",
+
+    "DISTINGUISHING FACT: the create's 200 establishes that the request was accepted, not that the resource exists. `done` is omitted by proto3 JSON when false, so the answer to read is the operation, and absence of `done` means running.",
+
+    "RECOGNITION RULE: for every create whose upstream response type is an Operation, name where the operation is observed to Done, Failed or a declared budget before the readback. A spent budget, an unreadable operation or a name that does not name the subject just created refuses and never reissues the create.",
+
+    "SPECIMENS: fleet-converge run 38758599437 (2026-10-15), the mtjade1-arrival provider created and then refused 'a created subject is not yet visible on readback -- nothing granted'; fleet-converge run 38671697905, printer-lan; the rerun 38761692372 succeeded with no change.",
+
+    "REPAIRED SITES: `gunbc.auth.gcp_iam_converge` execute_create (provider) and `gunbc.auth.heal_publisher_provision` create_absent_subjects (pool and provider), both through `gunbc.auth.gcp_operation_wait` wif_create_operation_wait over `extdeps.cloud.gcp.gcp` gcp_operation_standing.",
+
+    "REMAINING POPULATION, each with its trigger: `gunbc.auth.gcp_iam_bootstrap` iam_bootstrap_deny_creation_readback (IamDeny.CreatePolicy answers an Operation of a different API, policies/*/operations, and the site already bounds a readback by a typed refusal without reissuing the create; trigger: an iam_deny operations.get operation lands, after which that site folds through gcp_operation_standing); `gunbc.assimilate.bmc_bootstrap_provision` ServiceUsage BatchEnableServices (an Operation of serviceusage.googleapis.com whose consumer is the next create in the chain, not a readback; trigger: a serviceusage operations.get operation, or a readback in that chain refusing as not yet visible); and `extdeps.cloud.gcp.iam` and `extdeps.cloud.gcp.serviceusage` operations answering GcpOperation with no consumer yet.",
+
+    "RUNG FOUND AT: 1, mitigatable, by an operator rerun. CURRENT RUNG: 2 for the repaired sites, a witnessed pure standing fold, step decision and name parse, with the wet create-poll-readback route executed only by a live gcp_iam_converge run. CEILING: 2, because whether the service has made a resource visible is an external fact observed at a declared boundary. NEXT TRIGGER: the first live gcp_iam_converge or heal-publisher provisioning run that creates a provider, which executes the wet route."
+  ],
+
+  evidence: [],
+}

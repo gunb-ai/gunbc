@@ -17,7 +17,7 @@ import v2.std.orchestration {
   Run,
   StrEq
 }
-import v2.std.collection { Absent }
+import std.optional { Absent }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

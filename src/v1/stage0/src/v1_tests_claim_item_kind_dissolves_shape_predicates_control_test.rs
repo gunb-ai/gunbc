@@ -9,7 +9,6 @@ pub use crate::v1_compiler_emit_python::emit_py_resource_def;
 pub use crate::v1_compiler_infer_env::empty_type_env;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::no_span;
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -18,7 +17,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemResource, ModuleItemTypeDeclaration, NotAModuleItem,
 };
 pub use crate::v1_std_core::{
-    Cardinality, Connective, DeclarationMarker, ExprData, Node, ParsedModuleItemKind,
+    no_span, Cardinality, Connective, DeclarationMarker, ExprData, Node, ParsedModuleItemKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

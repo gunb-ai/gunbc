@@ -1,6 +1,6 @@
 module v2.test.claim.name_resolve.where_refinement_per_declaration
 
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   native_test_context_from_ingest,
   native_lane_file_refusal_index,
   native_module_resolve_verdict,

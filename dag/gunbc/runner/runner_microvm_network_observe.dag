@@ -14,7 +14,7 @@ import gunbc.command_runner { run_shell_commands, run_shell_command_capture, Loc
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh, SshShell, EmitArtifactThenThinRun }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.runner.runner_host_deploy {
@@ -45,9 +45,12 @@ import gunbc.runner.runner_microvm_network_apply { runner_microvm_administrator_
 // reading. Five of them -- the installed table's listing (whose digest is the converged digest), the
 // whole ruleset, the legacy xtables rules, the userspace conntrack helpers and the conntrack
 // expectations -- are readable only by root. The job user this step runs as is granted none of
-// them, and must not be: operator decision 2026-09-22 keeps gunbc-ghrunner.sudoers modeled and
-// uninstalled, because the principal every CI step runs as holding even readbacks is a grant with
-// no need behind it once the administrator can read. So those five are read by the host's
+// them, and must not be. The 2026-09-22 decision that kept gunbc-ghrunner.sudoers modeled and
+// uninstalled is REVERSED (ruling gunbc.design_ruling runner_host_sudoers_is_installed, from msg_b6241e41): the rendered
+// file is now installed by gunbc.runner.runner_host_file_converge, validated by visudo and read
+// back. The reversal installs the rendered rule only, and does not move these reads: the principal
+// every CI step runs as holding even readbacks is still a grant with no need behind it once the
+// administrator can read. So those five are read by the host's
 // ADMINISTRATOR, gunbc.fleet.fleet_bootstrap_principal executor_bootstrap_principal, over the fleet SSH
 // edge -- the same principal and the same target gunbc.runner.runner_microvm_network_apply installs through
 // -- and everything an unprivileged principal CAN read (procfs, ip, uname) is still read locally.
@@ -137,12 +140,17 @@ fn observe_admitted_host_wet(deploy: RunnerHostDeploy, host: HostIdentity, gener
     match prepare_fleet_ssh_agent_context(attempt_raw: runner_microvm_network_observe_attempt_raw) {
       FleetSshContextRefused { cause: c } => exit_failure(reason: join(["microvm-network-observe: ", c], ""))
       FleetSshContextReady { context: context, receipt: _ } =>
-        record_converge_readback_wet(
-          slots: runner_microvm_network_slot_identities_of(deploy: deploy),
-          host: host,
-          generation: generation,
-          reads: read_privileged_network(transport: FleetSsh { target: runner_microvm_administrator_target(host: host), context: context }),
-        )
+        match runner_microvm_administrator_target(host: host) {
+          SshTargetRefused { endpoint: e, refusal: why } =>
+            exit_failure(reason: join(["microvm-network-observe: ", ssh_target_refusal_text(endpoint: e, refusal: why)], ""))
+          SshTargetResolved { target: target } =>
+            record_converge_readback_wet(
+              slots: runner_microvm_network_slot_identities_of(deploy: deploy),
+              host: host,
+              generation: generation,
+              reads: read_privileged_network(transport: FleetSsh { target: target, context: context }),
+            )
+        }
     }
   }
 }

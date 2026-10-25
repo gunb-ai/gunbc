@@ -13,8 +13,6 @@ use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved};
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, make_error_node, module_items,
-};
-pub use crate::v1_std_core::{
     CompilerDiagnostic, Connective, ContainerSpellingVerdict, ErrorNode, ExprData, InferredNode,
     NewlineIndex, Node,
 };

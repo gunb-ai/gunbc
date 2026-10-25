@@ -1,8 +1,8 @@
 module test.claim.roadmap.roadmap_authority_subtree_fixture
 import gunbc.site.document { site_styles }
 
-import std.types { String, Bool, List }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.types { String, Bool, List, Map }
+import std.algebra { empty_map, map_insert, map_lookup }
 import std.markup { Fragment }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapEdge, section_group }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }

@@ -17,6 +17,7 @@ module std.durable_compare_and_set
 // rather than to a lock the caller happens to hold.
 
 import std.types { NonEmptyStr, Int, String }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.checked_arithmetic { int_inclusive_max }
 
@@ -286,8 +287,34 @@ fn cas_generation_exhausted<T>(head: CasGeneration) -> CasOutcome<T> {
   CasStoreRefused { cause: CasGenerationSpaceExhausted { head: head } }
 }
 
+fn cas_generation_some(g: CasGeneration) -> CasGeneration? {
+  Present { value: g }
+}
+
+fn cas_generation(n: Int) -> CasGeneration? {
+  if n < 1 { none } else { cas_generation_some(g: n) }
+}
+
 fn cas_generation_first() -> CasGeneration {
   1
+}
+
+// The generation after an integer prior. prior 0 is "no generation yet" and yields first.
+// A negative prior or an exhausted successor is none — not first (DESIGN §5).
+fn cas_generation_following(prior: Int) -> CasGeneration? {
+  if prior < 0 {
+    none
+  } else if prior == 0 {
+    cas_generation_some(g: cas_generation_first())
+  } else {
+    match cas_generation(n: prior) {
+      Absent => none
+      Present { value: g } => match cas_generation_successor(g: g) {
+        CasSuccessorGeneration { generation: n } => cas_generation_some(g: n)
+        CasSuccessorExhausted { head: _ } => none
+      }
+    }
+  }
 }
 
 // The generation a successful commit lands on, derived from the observation

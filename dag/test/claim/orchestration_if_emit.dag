@@ -22,7 +22,7 @@ import v2.std.orchestration {
   DiscardAll,
   IgnoreFail
 }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.diagnostic { Accepted, None, Rejected }
 
 // Hand-authored goldens below are independent of the orch_* grammar row spellings in

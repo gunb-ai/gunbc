@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, BlockerClassUnstated }
+
+data a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize" as NonEmptyStr,
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a host's apply script carries a `sudo -n` argv that no line of that host's rendered sudoers grant authorizes. The plan and the grants are two derivations of one privileged-operation set, and they can diverge without either being wrong alone.",
+
+    "HARM: sudo refuses the line at apply time (`sudo: a password is required`), the script runs under `set -e`, and every later line never runs. A refusal at the first ungranted line therefore also withholds every effect ordered after it, not only its own.",
+
+    "INSTANCE, srv1: fleet-converge plan run 39180831266 (mode plan, srv1, main at 1d4ae500041) emitted `sudo -n systemctl mask --now actions-runner@srv1-NN.service` for srv1-14, 03, 04, 05, 06 ahead of the fabric-cell-srv1-13 and -14 slice lines. The retirement was authorized (gunbc.runner.runner_slot_retirement srv1_width_cut_2026_10_16_interruption_authorization), and no grant existed anywhere: not on the live host, not in provisioning/srv1/gunbc-ghrunner.sudoers, not in the full regen at 1d4ae500, not in gunbc.runner.runner_host_grants. The fabric-cell slices came after the mask lines, so they would never have applied either.",
+
+    "INSTANCE, srv4: apply run 39128728092 died at its first sudo line with `sudo: a password is required`.",
+
+    "INSTANCE, srv1 microvm controller install: run 39284886844 (operator-approved) downloaded both images, then failed at its first privileged write, `/usr/bin/sudo -n dd of=/etc/systemd/system/gunbc-microvm-controller.slice.gunbc-stage status=none` (host_effect_apply MicrovmControllerInstall, step 'controller slice unit (stage)'), with `sudo: a password is required`. No rendered or live sudoers grants it. This instance differs from the mask lines: the repair is NOT a grant. Granting dd or install into /etc/systemd/system to the job user would make it root-equivalent (gunbc.plans.srv1_deploy_principal_split D1, D5), so the root-evaluated effects of MicrovmControllerInstall route through the AdministratorEdge pattern that the privileged-effect selection returns for host-root writes, from the deploy slot, once deploy_route_switch_admitted holds. The Oct 9 srv1 install ran operator-locally.",
+
+    "DISTINGUISHING FACT: the mask argv was rendered through sudo_elevate_argv at the plan site while the grant set is rendered from gunbc.executor_privileged_operation operations, so the two spellings had no shared source. The repair gives the effect one operation (SystemdMaskNowUnit) that both the apply line and the grant render, and derives both sides from ONE static set, gunbc.runner.runner_slot_retirement host_maskable_units (the units the host's InterruptionAuthorization scopes cover): the grants render one exact-unit line per member, and the apply masks only actuation candidates inside it, withholding every other candidate as a typed line instead of a mask sudo would refuse. RECEIPT, review 82316 on #14367: an earlier derivation granted the evidence-conjunction and missed the membership-removal arm, which would have masked srv1-14 with no grant; the witness had run with empty observed_slots and so never reached it.",
+
+    "RUNG FOUND AT: 1, mitigatable, only by sudo refusing at apply time. CEILING: 3, structurally guaranteed. The set of privileged argv a plan may emit and the set the grants render are both derivable from modeled structure, so a join over them is decidable, but a plan author can still write a raw argv that bypasses the operation type, so the invalid state stays writable.",
+
+    "CLIMBED TO RUNG 2: test.claim.runner.runner_apply_grants_join_witness joins every `sudo -n` line of the srv1 apply to the host's rendered grants over removed members inside and outside the authorization, with controls: an outside candidate is withheld and not masked, dropping one mask grant goes red, dropping the non-mask grants goes red. NEXT-RUNG TRIGGER: the apply script rendered only from the operation set, with no string-built privileged line, so an ungranted line has no constructor.",
+  ],
+
+  evidence: [],
+}

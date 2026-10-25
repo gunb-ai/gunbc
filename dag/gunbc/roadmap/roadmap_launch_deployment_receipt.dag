@@ -56,8 +56,9 @@ import gunbc.roadmap.roadmap_belt_actuate {
 }
 import gunbc.roadmap.roadmap_belt { SpawnMode, ManualReady, spawn_mode_label }
 import gunbc.roadmap.roadmap_launch_deployment_observe {
-  EventBacklogFact, EventBacklogClear, StaleBacklog, EventBacklogUnobserved, event_backlog_text, event_backlog_stage_label,
+  EventBacklogFact, EventBacklogClear, StaleBacklog, EventSpoolStalled, EventBacklogUnobserved, event_backlog_text,
 }
+import gunbc.durable_handoff_host { host_spool_stage_wire }
 
 // THE ONE JOIN THE ROADMAP LAUNCH MVP'S RLM-2 GATE PRODUCES. Every independent read RUNS -- desired
 // revision, plan receipt, apply receipt, dashboard receipt, deployed root tree, release binding,
@@ -267,7 +268,7 @@ fn desired_revision_blockers(s: RoadmapLaunchDeploymentSubject, f: DesiredRevisi
 fn run_binding_blockers(member: String, s: RoadmapLaunchDeploymentSubject, run: ActionsRunBinding, expected_run_id: String) -> List<RoadmapLaunchDeploymentBlocker> {
   concat(
     concat(
-      if run.run_revision != s.revision { blocker(member: member, detail: join(["run ", run.run_id, " executed at ", run.run_revision, ", not R ", s.revision], "")) } else { [] },
+      if run.execution_revision != s.revision { blocker(member: member, detail: join(["run ", run.run_id, " executed at ", run.execution_revision, ", not R ", s.revision], "")) } else { [] },
       if run.run_id != expected_run_id { blocker(member: member, detail: join(["receipt was minted by run ", run.run_id, " but the transaction names run ", expected_run_id], "")) } else { [] },
     ),
     concat(
@@ -470,11 +471,19 @@ fn unit_standing_blockers(f: LaunchUnitStanding) -> List<RoadmapLaunchDeployment
     BeltEventPathConverged { unit: _ } => []
     BeltEventPathRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_event_path_standing_text(s: f.answer_path))
   }
+  let publication_path = match f.publication_path {
+    BeltEventPathConverged { unit: _ } => []
+    BeltEventPathRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_event_path_standing_text(s: f.publication_path))
+  }
+  let publication_helper = match f.publication_helper {
+    BeltOneshotConverged { unit: _, active_state: _ } => []
+    BeltOneshotRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_oneshot_standing_text(s: f.publication_helper))
+  }
   let oneshot = match f.oneshot {
     BeltOneshotConverged { unit: _, active_state: _ } => []
     BeltOneshotRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_oneshot_standing_text(s: f.oneshot))
   }
-  concat(concat(concat(dashboard, exit_path), answer_path), oneshot)
+  concat(concat(concat(concat(concat(dashboard, exit_path), answer_path), publication_path), publication_helper), oneshot)
 }
 
 fn tick_blockers(s: RoadmapLaunchDeploymentSubject, f: TickFact) -> List<RoadmapLaunchDeploymentBlocker> {
@@ -503,6 +512,7 @@ fn event_backlog_blockers(f: EventBacklogFact) -> List<RoadmapLaunchDeploymentBl
   match f {
     EventBacklogClear { inbox: _, queued: _ } => []
     StaleBacklog { stage: _, entry: _, age: _, bound: _ } => blocker(member: "event_backlog", detail: event_backlog_text(f: f))
+    EventSpoolStalled { waiting: _, head: _ } => blocker(member: "event_backlog", detail: event_backlog_text(f: f))
     EventBacklogUnobserved { detail: _ } => blocker(member: "event_backlog", detail: event_backlog_text(f: f))
   }
 }
@@ -593,30 +603,38 @@ fn window_blockers(f: ObservationWindowFact) -> List<RoadmapLaunchDeploymentBloc
 }
 
 // THE TOTAL FOLD: every member consulted, in declaration order, blockers accumulated.
-fn predecessor_run_blockers(which: String, s: RoadmapLaunchDeploymentSubject, expected_run_id: String, p: PredecessorRunProvenance) -> List<RoadmapLaunchDeploymentBlocker> {
+// API PROVENANCE reads the DISPATCH field: the workflow-runs API's head_sha is the commit GitHub
+// dispatched the run at, which is the receipt's run_revision and need not be R (apply and dashboard
+// execute at the plan's revision while dispatched from main's later head). The receipt's dispatch
+// revision is absent when its receipt is unreadable; that member already refuses.
+fn predecessor_run_blockers(which: String, s: RoadmapLaunchDeploymentSubject, expected_run_id: String, p: PredecessorRunProvenance, receipt_dispatch: String?) -> List<RoadmapLaunchDeploymentBlocker> {
   concat(
     concat(
       if p.run_id != expected_run_id { blocker(member: "run_provenance", detail: join([which, " run record is ", p.run_id, ", not the subject's ", expected_run_id], "")) } else { [] },
       if p.conclusion_wire != "success" { blocker(member: "run_provenance", detail: join([which, " run ", p.run_id, " concluded ", p.conclusion_wire, ", not success"], "")) } else { [] },
     ),
     concat(
-      if p.head_sha != s.revision { blocker(member: "run_provenance", detail: join([which, " run ", p.run_id, " ran at ", p.head_sha, ", not R=", s.revision], "")) } else { [] },
+      match receipt_dispatch {
+        Absent => []
+        Present { value: dispatched } =>
+          if p.head_sha != dispatched { blocker(member: "run_provenance", detail: join([which, " run ", p.run_id, " was dispatched at ", p.head_sha, " per the workflow-runs API, but its receipt records ", dispatched], "")) } else { [] }
+      },
       if p.workflow_path != s.workflow_path { blocker(member: "run_provenance", detail: join([which, " run ", p.run_id, " ran workflow ", p.workflow_path, ", not ", s.workflow_path], "")) } else { [] },
     ),
   )
 }
 
-fn run_provenance_blockers(s: RoadmapLaunchDeploymentSubject, f: RunProvenanceFact) -> List<RoadmapLaunchDeploymentBlocker> {
+fn run_provenance_blockers(s: RoadmapLaunchDeploymentSubject, f: RunProvenanceFact, plan_dispatch: String?, apply_dispatch: String?, dashboard_dispatch: String?) -> List<RoadmapLaunchDeploymentBlocker> {
   match f {
     RunProvenanceUnobserved { detail: d } => blocker(member: "run_provenance", detail: join(["unobserved: ", d], ""))
     RunProvenanceObserved { receipt_repository: rr, plan: p, apply: a, dashboard: d, receipt_workflow_ref: named } =>
       concat(
         concat(
-          predecessor_run_blockers(which: "plan", s: s, expected_run_id: s.plan_run_id, p: p),
-          predecessor_run_blockers(which: "apply", s: s, expected_run_id: s.apply_run_id, p: a),
+          predecessor_run_blockers(which: "plan", s: s, expected_run_id: s.plan_run_id, p: p, receipt_dispatch: plan_dispatch),
+          predecessor_run_blockers(which: "apply", s: s, expected_run_id: s.apply_run_id, p: a, receipt_dispatch: apply_dispatch),
         ),
         concat(
-          predecessor_run_blockers(which: "dashboard", s: s, expected_run_id: s.dashboard_run_id, p: d),
+          predecessor_run_blockers(which: "dashboard", s: s, expected_run_id: s.dashboard_run_id, p: d, receipt_dispatch: dashboard_dispatch),
           concat(
             if rr != s.repository { blocker(member: "run_provenance", detail: join(["the receipt run executes in ", rr, ", not the canonical ", s.repository], "")) } else { [] },
             match named {
@@ -703,7 +721,13 @@ fn roadmap_launch_deployment_blockers(s: RoadmapLaunchDeploymentSubject, f: Road
         concat(dispatch_preflight_blockers(s: s, f: f.dispatch_preflight), workflow_endpoint_blockers(tick: f.tick_standing, f: f.workflow_endpoint)),
         concat(
           concat(instance_endpoint_blockers(s: s, f: f.instance_endpoint), principal_blockers(s: s, f: f.principal)),
-          concat(concat(host_blockers(s: s, f: f.observed_host), window_blockers(f: f.observation_window)), run_provenance_blockers(s: s, f: f.run_provenance)),
+          concat(concat(host_blockers(s: s, f: f.observed_host), window_blockers(f: f.observation_window)), run_provenance_blockers(s: s, f: f.run_provenance,
+            plan_dispatch: (match f.plan_receipt { PlanReceiptRead { receipt: p } => Present { value: p.run.run_revision }  PlanReceiptUnreadable { reason: _ } => Absent }),
+            apply_dispatch: (match f.apply_receipt { ApplyReceiptRead { receipt: a } => Present { value: a.run.run_revision }  ApplyReceiptUnreadable { reason: _ } => Absent }),
+            dashboard_dispatch: (match f.dashboard_receipt {
+              DashboardReceiptRead { receipt: d } => match d.provenance { FleetTransactionProvenance { run, expected_revision: _, fleet: _ } => Present { value: run.run_revision }  OperatorLocalApply { host: _, principal: _ } => Absent }
+              DashboardReceiptUnreadable { reason: _ } => Absent
+            }))),
         ),
       ),
     ),
@@ -794,16 +818,16 @@ fn facts_lines(f: RoadmapLaunchDeploymentFacts) -> List<String> {
       DesiredRevisionUnobserved { detail: d } => join(["unobserved: ", d], "")
     }], ""),
     join(["plan_receipt: ", match f.plan_receipt {
-      PlanReceiptRead { receipt: p } => join(["identity=", fleet_converge_plan_receipt_identity_hex(r: p), " run=", p.run.run_id, " revision=", p.run.run_revision, " host=", p.observed_host, " hash=", p.plan_artifact_hash, " lease=", p.lease_key, " generation=", to_string(p.planned_generation)], "")
+      PlanReceiptRead { receipt: p } => join(["identity=", fleet_converge_plan_receipt_identity_hex(r: p), " run=", p.run.run_id, " dispatch=", p.run.run_revision, " execution=", p.run.execution_revision, " host=", p.observed_host, " hash=", p.plan_artifact_hash, " lease=", p.lease_key, " generation=", to_string(p.planned_generation)], "")
       PlanReceiptUnreadable { reason: r } => join(["unreadable: ", r], "")
     }], ""),
     join(["apply_receipt: ", match f.apply_receipt {
-      ApplyReceiptRead { receipt: a } => join(["identity=", fleet_converge_apply_receipt_identity_hex(r: a), " run=", a.run.run_id, " revision=", a.run.run_revision, " plan_run=", a.plan_run_id, " plan_identity=", a.plan_receipt_identity, " exit=", to_string(a.locked_apply_exit_code)], "")
+      ApplyReceiptRead { receipt: a } => join(["identity=", fleet_converge_apply_receipt_identity_hex(r: a), " run=", a.run.run_id, " dispatch=", a.run.run_revision, " execution=", a.run.execution_revision, " plan_run=", a.plan_run_id, " plan_identity=", a.plan_receipt_identity, " exit=", to_string(a.locked_apply_exit_code)], "")
       ApplyReceiptUnreadable { reason: r } => join(["unreadable: ", r], "")
     }], ""),
     join(["dashboard_receipt: ", match f.dashboard_receipt {
       DashboardReceiptRead { receipt: d } => join(["identity=", live_deploy_apply_receipt_identity_hex(r: d), " ", match d.provenance {
-        FleetTransactionProvenance { run, expected_revision: _, fleet: _ } => join(["run=", run.run_id, " revision=", run.run_revision], "")
+        FleetTransactionProvenance { run, expected_revision: _, fleet: _ } => join(["run=", run.run_id, " dispatch=", run.run_revision, " execution=", run.execution_revision], "")
         OperatorLocalApply { host, principal } => join(["operator_local host=", host as String, " principal=", principal as String], "")
       }, " candidate=", d.candidate_revision, " tree=", d.candidate_tree_oid, " completed_at=", d.completed_at], "")
       DashboardReceiptUnreadable { reason: r } => join(["unreadable: ", r], "")
@@ -958,7 +982,8 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
     }),
     json_kv(key: "event_backlog", value: match f.event_backlog {
       EventBacklogClear { inbox: i, queued: q } => fact_arm(arm: "clear", members: [json_kv(key: "inbox", value: json_string(s: to_string(value: i))), json_kv(key: "queued", value: json_string(s: to_string(value: q)))])
-      StaleBacklog { stage: st, entry: en, age: ag, bound: bd } => fact_arm(arm: "stale", members: [json_kv(key: "stage", value: json_string(s: event_backlog_stage_label(stage: st))), json_kv(key: "entry", value: json_string(s: en)), json_kv(key: "age_seconds", value: json_string(s: to_string(value: second_count(s: ag)))), json_kv(key: "bound_seconds", value: json_string(s: to_string(value: second_count(s: bd))))])
+      StaleBacklog { stage: st, entry: en, age: ag, bound: bd } => fact_arm(arm: "stale", members: [json_kv(key: "stage", value: json_string(s: host_spool_stage_wire(stage: st))), json_kv(key: "entry", value: json_string(s: en)), json_kv(key: "age_seconds", value: json_string(s: to_string(value: second_count(s: ag)))), json_kv(key: "bound_seconds", value: json_string(s: to_string(value: second_count(s: bd))))])
+      EventSpoolStalled { waiting: w, head: h } => fact_arm(arm: "stalled", members: [json_kv(key: "waiting", value: json_string(s: to_string(value: w))), json_kv(key: "head", value: json_string(s: h))])
       EventBacklogUnobserved { detail: d } => fact_arm(arm: "unobserved", members: [json_kv(key: "detail", value: json_string(s: d))])
     }),
     json_kv(key: "footprint", value: match f.footprint {

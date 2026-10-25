@@ -1,0 +1,78 @@
+module gunbc.machine_intake.mtcollins1_sol_notice_facts
+
+import std.types { NonEmptyStr, String }
+import std.measure { Second, second }
+
+// THE SOL-NOTICE / SOL-CAPTURE FACTS THIS UNIT'S OBSERVERS READ. These leaf facts live on the mtcollins1
+// row, not in the boot procedure: the SOL-notice watcher (gunbc.machine_intake.mtcollins1_sol_notice
+// mtcollins1_sol_notice_wet) and the boot step's shell (gunbc.ci.ci_spec) read them beside the capture,
+// and the watcher is a SEPARATE PROCESS that must resolve cheaply. Importing the 3006-line boot module
+// (gunbc.machine_intake.mtcollins1_boot_run) just for these constants dragged that module's whole
+// 1288-module closure into the watcher process and refused the slot's memory envelope (runs
+// 38639170770 / 38640990281, MemoryStallRefusedPageThrash). Cut here at the earliest unjustified
+// boundary (DESIGN 6b); the watcher's resolve collapses to its own small closure. Values unchanged;
+// this is a pure move from gunbc.machine_intake.mtcollins1_boot_run.
+
+data mtcollins1_boot_sol_capture_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_CAPTURE"
+
+data mtcollins1_boot_sol_pid_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_PID_FILE"
+
+data mtcollins1_sol_notice_final_allowance: Second = second(count: 10)
+
+// THE COLLECTOR'S OWN WORDS LIVE BESIDE THE HOST'S, NEVER AMONG THEM. gunbc.machine_intake.sol_hold
+// sends the collector's stdout (the host console) to the capture and its stderr plus the hold's exit
+// record to this file; both carry the capture's name so the boot's artifact glob keeps them together.
+fn mtcollins1_sol_client_diagnostic_path(capture_path: String) -> String {
+  concat(capture_path, mtcollins1_sol_client_suffix)
+}
+
+// Where a lost observation channel is frozen the moment it is observed (mtcollins1_sol_loss_freeze).
+// Bound to the attempt with the capture, so an earlier attempt's incident is never read as this one's.
+// THIS FILE IS THE OPERATOR ROUTE'S SOURCE (operator ruling 2026-09-27: no ntfy, no new credential):
+// the boot step (gunbc.ci.ci_spec gunbc_ci_mtcollins1_boot_invoke) watches it and,
+// within a second of it becoming non-empty, prints it as one Actions `::error::` annotation in the
+// live run log and appends it to the step summary -- so the notice leaves the runner while the watch
+// is still returning, before any enrichment read, teardown or diagnostic bundle. The suffix is one
+// row both sides read.
+data mtcollins1_sol_incident_suffix: String = ".loss"
+
+// THE WORKFLOW'S OWN SOL ACTS, RECORDED APART FROM EVERYTHING THE COLLECTOR SAYS. When this run
+// deactivates the session, the client's next words ("SOL session closed by BMC", then an exit) are
+// the CONSEQUENCE of that act, not evidence the BMC dropped the session -- in both failed runs of
+// #12423 (runs 36333687404 and 36335369059) the workflow deactivated at the watch timeout before
+// re-reading the collector, so their untimestamped close line cannot be dated before that act. Only
+// this module writes this file (no racing append with the supervisor), one timestamped line per act.
+data mtcollins1_sol_workflow_suffix: String = ".workflow"
+
+data mtcollins1_sol_client_suffix: String = ".client"
+
+// Where the step's watcher records every notice delivery outcome (gunbc.ci.ci_spec), beside the capture.
+data mtcollins1_sol_delivery_suffix: String = ".delivery"
+
+// Every line the workflow writes to its events file starts with this, so a reader -- the step's exit
+// notice included -- can say which of this run's own acts preceded an exit, at requested strength.
+data mtcollins1_sol_workflow_event_prefix: String = "gunbc-workflow: "
+
+fn mtcollins1_sol_workflow_events_path(capture_path: String) -> String {
+  concat(capture_path, mtcollins1_sol_workflow_suffix)
+}
+
+fn mtcollins1_sol_incident_path(capture_path: String) -> String {
+  concat(capture_path, mtcollins1_sol_incident_suffix)
+}
+
+// THE NOTICE WATCHER IS A REQUIRED OBSERVER, SUPERVISED AS ONE OWNED SIBLING. The step records the
+// watcher it started as "<pid> <starttime>" at capture + mtcollins1_sol_notice_file_infix + "watcher".
+// Before each further hardware effect -- the attach and the handoff, the two checkpoints
+// mtcollins1_sol_supervised guards -- the boot requires that record to name a live, non-zombie process
+// with that start time. A gone, replaced or unobservable watcher refuses the effect: no further BMC
+// write is made without the observer that would report the collector's loss. This stops effects; it
+// does not power the machine off. The step's trap separately collects the watcher's exit status.
+data mtcollins1_sol_notice_file_infix: String = ".notice."
+
+// READINESS IS BOUND TO THIS STEP'S OWNED PROCESS. The step starts the watcher with a fresh token in
+// mtcollins1_sol_notice_token_env and records the child it started; the watcher writes that token to
+// capture + mtcollins1_sol_notice_ready_suffix once it is polling. The boot waits for both (below).
+data mtcollins1_sol_notice_ready_suffix: String = concat(mtcollins1_sol_notice_file_infix, "ready")
+
+data mtcollins1_sol_notice_token_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_NOTICE_TOKEN"

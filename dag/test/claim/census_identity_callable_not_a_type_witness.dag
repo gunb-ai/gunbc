@@ -1,0 +1,63 @@
+module test.claim.census_identity_callable_not_a_type_witness
+
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// 743bd53: a unique census fn taken as a type via lookup_type_by_name, so
+// `census_exit("x")` inhabited Named(census_exit) rather than ProcessExit
+// (srv3_boot_once_cd if-branches). census_exit has params, so it is
+// DeclaredCallableResolved; IdentityResolved is the OtherItem residual
+// (Present identity + FuncSigUnresolved), covered by
+// type_match_for_direct_call_target and the seed control in
+// census_identity_call_type.rs. This fixture is isolated: census_exit is
+// the only such name in the pool and is unimported.
+
+data decoy_identity_callable: String = "module kmfx.ident_decoy\n\ntype ProcessExit = ExitSuccess | ExitFailure { reason: String }\n\ntype ProbeBox = { n: Int }\n\nfn census_exit(reason: String) -> ProcessExit {\n  ExitFailure { reason: reason }\n}\n"
+
+data probe_identity_and_ctor: String = "module kmfx.ident_probe\n\nimport kmfx.ident_decoy { ProcessExit, ExitSuccess, ProbeBox }\n\nfn pick(flag: Bool) -> ProcessExit {\n  if flag { ExitSuccess } else { census_exit(\"x\") }\n}\n\nfn boxed() -> ProbeBox { ProbeBox { n: 1 } }\n"
+
+data probe_missing_callee: String = "module kmfx.ident_probe\n\nfn broken() -> Int { definitely_not_a_callee(1) }\n"
+
+fn run_with_decoy(probe: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(fixture: MultiModuleCompileFixture {
+    sources: [
+      fixture_source(path: "kmfx_ident_decoy.dag", content: decoy_identity_callable),
+      fixture_source(path: "kmfx_ident_probe.dag", content: probe)
+    ],
+    entry: "kmfx_ident_probe.dag"
+  })
+}
+
+fn completed_without_blocking(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { diagnostics: rows, module_count: _, emitted_files: _, resolved_rust_functions: _, source_digest: _, compiler_digest: _ } =>
+      (fixture_blocking_rows(rows: rows) |> count) == 0
+    FixtureCompileRefused { diagnostics: _, module_count: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn a_census_identity_exit_call_inhabits_process_exit() -> Bool {
+  completed_without_blocking(o: run_with_decoy(probe: probe_identity_and_ctor))
+}
+
+test fn a_missing_census_identity_callee_still_refuses() -> Bool {
+  match run_with_decoy(probe: probe_missing_callee) {
+    FixtureCompileRefused { diagnostics: rows, module_count: _, source_digest: _, compiler_digest: _ } =>
+      (fixture_blocking_rows(rows: rows) |> count) > 0
+    FixtureCompileCompleted { diagnostics: _, module_count: _, emitted_files: _, resolved_rust_functions: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}

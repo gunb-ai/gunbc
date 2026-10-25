@@ -1,0 +1,438 @@
+module product.electrical.continuity
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import product.electrical.connectivity {
+  ElectricalTerminalRef,
+  terminal_ref_equal,
+  component_local_label,
+}
+
+// WHAT A MULTIMETER OBSERVED ON A BUILT BOARD, KEPT AS OBSERVATIONS. product.electrical.connectivity
+// owns identity -- which component, which terminal, which design -- and ElectricalNet, the direct
+// conductor relation. A bench reading is neither: it is a receipt that, on one physical asset under
+// stated conditions, two terminals beeped or did not, or a diode-mode display with the probes where
+// they were. Every reading names exactly two ElectricalTerminalRefs and the evidence it rests on.
+//
+// WHAT IS DERIVED IS REACHABILITY, NEVER A NET. A buzzer asserts below its threshold through an intact
+// fuse, a milliohm shunt, an inductor, a closed switch, a zero-ohm link. So two terminals that beep are
+// observed LOW-IMPEDANCE REACHABLE under the test conditions, and that relation is transitive over
+// readings; it is not that they are one copper net, and nothing here constructs an ElectricalNet. A
+// fuse that beeps end to end stays a component between two terminals.
+//
+// A SILENT BUZZER IS NOT AN OPEN CIRCUIT. Continuity mode beeps below a threshold (tens of ohms on most
+// meters); silence says only that the path measured above it. A junction, a resistor or a powered-down
+// regulator can sit behind that silence, so a silent reading separates low-impedance classes and asserts
+// nothing about infinite resistance.
+//
+// STANDINGS ARE TOTAL AND NEVER FIRST-MATCH. A pair is Reachable with every reading that supports it,
+// ReadAboveThreshold with every silent reading that separates it, Contradicted when its class contains a
+// pair read silent, or Unestablished. A junction is Forward with its forward readings and a reverse standing that
+// stays ReverseUnread until someone reads it, Contradicted when readings disagree, or Unestablished.
+
+type PowerState
+  = Unpowered
+  | Energized
+
+// Whether the module sat on the carrier while it was read; a session that did not say is unrecorded,
+// never assumed removed.
+type ModuleState
+  = ModuleRemoved
+  | ModuleInstalled { asset: PhysicalAssetIdentity }
+  | ModuleUnrecorded
+
+type BenchConditions {
+  power: PowerState
+  module: ModuleState
+}
+
+// What a reading rests on. The words and locators are transcriptions; no derivation reads their text.
+type EvidenceRef
+  = OperatorStatement { stated_on: NonEmptyStr, verbatim: NonEmptyStr }
+  | OperatorPhotograph { taken_on: NonEmptyStr, locator: NonEmptyStr }
+  | SellerListingPhotograph { listing: NonEmptyStr, read_on: NonEmptyStr }
+
+// An evidence reference as a report quotes it.
+fn evidence_ref_text(e: EvidenceRef) -> String {
+  match e {
+    OperatorStatement { stated_on, verbatim } => join(["'", verbatim as String, "' (", stated_on as String, ")"], "")
+    OperatorPhotograph { taken_on, locator } => join(["photograph ", locator as String, " (", taken_on as String, ")"], "")
+    SellerListingPhotograph { listing, read_on } => join(["listing photograph ", listing as String, " (read ", read_on as String, ")"], "")
+  }
+}
+
+type ContinuityResult
+  = BuzzerAsserted
+  | BuzzerNotAsserted
+
+// WHETHER EACH PROBE POINT WAS RECORDED OR INFERRED. An operator's "this beeps to ground" names one point;
+// the other is the reference they were using, which the record infers from what they said earlier. A
+// statement over a population ("everything I touched", "nothing goes to ground", "the very middle pin")
+// names no exact first point either: the visible terminals it covers each stand for a touch, inferred
+// with that basis. An inferred point is kept, typed with its basis, and every derivation that rests on
+// one says so -- an inference neither deleted nor promoted to a recorded point (DESIGN section 4d).
+type PointProvenance
+  = PointRecorded
+  | PointInferred { basis: NonEmptyStr }
+
+type ProbeRecord {
+  first: PointProvenance
+  second: PointProvenance
+}
+
+data both_points_recorded: ProbeRecord = ProbeRecord { first: PointRecorded, second: PointRecorded }
+
+fn second_point_inferred(basis: NonEmptyStr) -> ProbeRecord {
+  ProbeRecord { first: PointRecorded, second: PointInferred { basis: basis } }
+}
+
+fn both_points_inferred(first_basis: NonEmptyStr, second_basis: NonEmptyStr) -> ProbeRecord {
+  ProbeRecord { first: PointInferred { basis: first_basis }, second: PointInferred { basis: second_basis } }
+}
+
+fn point_is_inferred(p: PointProvenance) -> Bool {
+  match p {
+    PointRecorded => false
+    PointInferred { basis: _ } => true
+  }
+}
+
+type ContinuityObservation {
+  asset: PhysicalAssetIdentity
+  first: ElectricalTerminalRef
+  second: ElectricalTerminalRef
+  record: ProbeRecord
+  conditions: BenchConditions
+  result: ContinuityResult
+  evidence: EvidenceRef
+}
+
+// What a derivation's readings rest on: recorded probe points only, or some inferred ones (named).
+type EvidenceGrade
+  = RecordedPointsOnly
+  | IncludesInferredPoints { readings: List<ContinuityObservation> }
+
+fn probe_record_inferred(r: ProbeRecord) -> Bool {
+  point_is_inferred(p: r.first) || point_is_inferred(p: r.second)
+}
+
+fn is_inferred(o: ContinuityObservation) -> Bool {
+  probe_record_inferred(r: o.record)
+}
+
+fn evidence_grade(readings: List<ContinuityObservation>) -> EvidenceGrade {
+  let inferred = filter(readings, o => is_inferred(o: o))
+  match inferred.first() {
+    Absent => RecordedPointsOnly
+    Present { value: _ } => IncludesInferredPoints { readings: inferred }
+  }
+}
+
+type DiodeProbes
+  = RedBlack { red: ElectricalTerminalRef, black: ElectricalTerminalRef }
+  | ProbesUnrecorded { a: ElectricalTerminalRef, b: ElectricalTerminalRef }
+
+type DiodeDisplay
+  = ForwardMillivolts { millivolts: Nat }
+  | OverLimit
+
+type DiodeModeObservation {
+  asset: PhysicalAssetIdentity
+  probes: DiodeProbes
+  display: DiodeDisplay
+  conditions: BenchConditions
+  evidence: EvidenceRef
+}
+
+// ── REACHABILITY ──────────────────────────────────────────────────────────────────────────────
+
+type ReachabilityClass {
+  members: List<ElectricalTerminalRef>
+  supporting: List<ContinuityObservation>
+}
+
+type ReachabilityStanding
+  = Reachable { supporting: List<ContinuityObservation> }
+  | ReadAboveThreshold { readings: List<ContinuityObservation> }
+  | ReachabilityContradicted { supporting: List<ContinuityObservation>, silent: List<ContinuityObservation> }
+  | ReachabilityUnestablished
+
+fn terminal_in(ts: List<ElectricalTerminalRef>, t: ElectricalTerminalRef) -> Bool {
+  any(ts, m => terminal_ref_equal(a: m, b: t))
+}
+
+fn add_terminal(ts: List<ElectricalTerminalRef>, t: ElectricalTerminalRef) -> List<ElectricalTerminalRef> {
+  if terminal_in(ts: ts, t: t) { ts } else { concat(ts, [t]) }
+}
+
+fn on_asset(asset: PhysicalAssetIdentity, a: PhysicalAssetIdentity) -> Bool {
+  physical_asset_identity_eq(a: asset, b: a)
+}
+
+fn is_buzzer(o: ContinuityObservation) -> Bool {
+  match o.result {
+    BuzzerAsserted => true
+    BuzzerNotAsserted => false
+  }
+}
+
+fn touches(c: ReachabilityClass, o: ContinuityObservation) -> Bool {
+  terminal_in(ts: c.members, t: o.first) || terminal_in(ts: c.members, t: o.second)
+}
+
+// One buzzer reading folded into the classes so far: the classes it touches and its two terminals
+// become one class carrying every supporting reading; the classes it does not touch are kept.
+fn merge_reading(classes: List<ReachabilityClass>, o: ContinuityObservation) -> List<ReachabilityClass> {
+  let touching = filter(classes, c => touches(c: c, o: o))
+  let apart = filter(classes, c => !touches(c: c, o: o))
+  let members = fold(concat(flat_map(touching, c => c.members), [o.first, o.second]), init: [], f: (acc, t) => add_terminal(ts: acc, t: t))
+  concat(apart, [ReachabilityClass { members: members, supporting: concat(flat_map(touching, c => c.supporting), [o]) }])
+}
+
+fn reachability_classes(observations: List<ContinuityObservation>, asset: PhysicalAssetIdentity) -> List<ReachabilityClass> {
+  fold(filter(observations, o => on_asset(asset: asset, a: o.asset) && is_buzzer(o: o)), init: [], f: (acc, o) => merge_reading(classes: acc, o: o))
+}
+
+fn class_of(classes: List<ReachabilityClass>, t: ElectricalTerminalRef) -> ReachabilityClass? {
+  filter(classes, c => terminal_in(ts: c.members, t: t)).first()
+}
+
+// The members a terminal is reachable to: its class, or the terminal alone when no buzzer reached it.
+fn reach_of(classes: List<ReachabilityClass>, t: ElectricalTerminalRef) -> List<ElectricalTerminalRef> {
+  match class_of(classes: classes, t: t) {
+    Absent => [t]
+    Present { value: c } => c.members
+  }
+}
+
+fn silences_between(observations: List<ContinuityObservation>, asset: PhysicalAssetIdentity, xs: List<ElectricalTerminalRef>, ys: List<ElectricalTerminalRef>) -> List<ContinuityObservation> {
+  filter(observations, o => on_asset(asset: asset, a: o.asset) && !is_buzzer(o: o)
+    && ((terminal_in(ts: xs, t: o.first) && terminal_in(ts: ys, t: o.second)) || (terminal_in(ts: ys, t: o.first) && terminal_in(ts: xs, t: o.second))))
+}
+
+// THE CLASSES ARE BUILT ONCE PER BOARD. Every standing on one board reads the same classes, so a caller
+// asking several questions of one board builds the graph once and asks each through reach.
+type ReachabilityGraph {
+  asset: PhysicalAssetIdentity
+  observations: List<ContinuityObservation>
+  classes: List<ReachabilityClass>
+}
+
+fn reachability_graph(observations: List<ContinuityObservation>, asset: PhysicalAssetIdentity) -> ReachabilityGraph {
+  ReachabilityGraph { asset: asset, observations: observations, classes: reachability_classes(observations: observations, asset: asset) }
+}
+
+fn reachability(observations: List<ContinuityObservation>, asset: PhysicalAssetIdentity, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> ReachabilityStanding {
+  reach(g: reachability_graph(observations: observations, asset: asset), a: a, b: b)
+}
+
+fn reach(g: ReachabilityGraph, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> ReachabilityStanding {
+  let observations = g.observations
+  let asset = g.asset
+  let classes = g.classes
+  let reach_a = reach_of(classes: classes, t: a)
+  let reach_b = reach_of(classes: classes, t: b)
+  if terminal_in(ts: reach_a, t: b) {
+    let supporting = match class_of(classes: classes, t: a) {
+      Absent => []
+      Present { value: c } => c.supporting
+    }
+    let inside = silences_between(observations: observations, asset: asset, xs: reach_a, ys: reach_a)
+    match inside.first() {
+      Absent => Reachable { supporting: supporting }
+      Present { value: _ } => ReachabilityContradicted { supporting: supporting, silent: inside }
+    }
+  } else {
+    let separating = silences_between(observations: observations, asset: asset, xs: reach_a, ys: reach_b)
+    match separating.first() {
+      Absent => ReachabilityUnestablished
+      Present { value: _ } => ReadAboveThreshold { readings: separating }
+    }
+  }
+}
+
+fn is_reachable(s: ReachabilityStanding) -> Bool {
+  match s {
+    Reachable { supporting: _ } => true
+    ReadAboveThreshold { readings: _ } => false
+    ReachabilityContradicted { supporting: _, silent: _ } => false
+    ReachabilityUnestablished => false
+  }
+}
+
+fn is_read_above_threshold(s: ReachabilityStanding) -> Bool {
+  match s {
+    Reachable { supporting: _ } => false
+    ReadAboveThreshold { readings: _ } => true
+    ReachabilityContradicted { supporting: _, silent: _ } => false
+    ReachabilityUnestablished => false
+  }
+}
+
+fn is_reachability_contradicted(s: ReachabilityStanding) -> Bool {
+  match s {
+    Reachable { supporting: _ } => false
+    ReadAboveThreshold { readings: _ } => false
+    ReachabilityContradicted { supporting: _, silent: _ } => true
+    ReachabilityUnestablished => false
+  }
+}
+
+fn supporting_readings(s: ReachabilityStanding) -> List<ContinuityObservation> {
+  match s {
+    Reachable { supporting } => supporting
+    ReadAboveThreshold { readings } => readings
+    ReachabilityContradicted { supporting, silent } => concat(supporting, silent)
+    ReachabilityUnestablished => []
+  }
+}
+
+// ── JUNCTIONS ─────────────────────────────────────────────────────────────────────────────────
+
+type ReverseStanding
+  = ReverseUnread
+  | ReverseOverLimit { readings: List<DiodeModeObservation> }
+
+type JunctionStanding
+  = JunctionForward { anode: ElectricalTerminalRef, cathode: ElectricalTerminalRef, forward: List<DiodeModeObservation>, reverse: ReverseStanding }
+  | JunctionContradicted { readings: List<DiodeModeObservation> }
+  | JunctionUnestablished { readings: List<DiodeModeObservation> }
+
+fn probes_pair(p: DiodeProbes) -> List<ElectricalTerminalRef> {
+  match p {
+    RedBlack { red, black } => [red, black]
+    ProbesUnrecorded { a, b } => [a, b]
+  }
+}
+
+fn across_pair(o: DiodeModeObservation, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> Bool {
+  let ps = probes_pair(p: o.probes)
+  terminal_in(ts: ps, t: a) && terminal_in(ts: ps, t: b) && !terminal_ref_equal(a: a, b: b)
+}
+
+fn is_forward(d: DiodeDisplay) -> Bool {
+  match d {
+    ForwardMillivolts { millivolts: _ } => true
+    OverLimit => false
+  }
+}
+
+// Readings with red on x and black on y, forward or over limit as asked.
+fn oriented(rs: List<DiodeModeObservation>, x: ElectricalTerminalRef, y: ElectricalTerminalRef, forward: Bool) -> List<DiodeModeObservation> {
+  filter(rs, o => is_forward(d: o.display) == forward && match o.probes {
+    RedBlack { red, black } => terminal_ref_equal(a: red, b: x) && terminal_ref_equal(a: black, b: y)
+    ProbesUnrecorded { a: _, b: _ } => false
+  })
+}
+
+fn reverse_standing(over: List<DiodeModeObservation>) -> ReverseStanding {
+  match over.first() {
+    Absent => ReverseUnread
+    Present { value: _ } => ReverseOverLimit { readings: over }
+  }
+}
+
+// In diode mode the red probe is positive: a forward display with red on x and black on y puts the
+// anode on x and the cathode on y. Forward both ways, or forward and over limit in one orientation, is a
+// contradiction; a reading with probe placement unrecorded orients nothing.
+fn junction_between(observations: List<DiodeModeObservation>, asset: PhysicalAssetIdentity, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> JunctionStanding {
+  let rs = filter(observations, o => on_asset(asset: asset, a: o.asset) && across_pair(o: o, a: a, b: b))
+  let fwd_ab = oriented(rs: rs, x: a, y: b, forward: true)
+  let fwd_ba = oriented(rs: rs, x: b, y: a, forward: true)
+  let over_ab = oriented(rs: rs, x: a, y: b, forward: false)
+  let over_ba = oriented(rs: rs, x: b, y: a, forward: false)
+  let ab = count(fwd_ab) > 0
+  let ba = count(fwd_ba) > 0
+  if (ab && ba) || (ab && count(over_ab) > 0) || (ba && count(over_ba) > 0) {
+    JunctionContradicted { readings: rs }
+  } else {
+    if ab {
+      JunctionForward { anode: a, cathode: b, forward: fwd_ab, reverse: reverse_standing(over: over_ba) }
+    } else {
+      if ba {
+        JunctionForward { anode: b, cathode: a, forward: fwd_ba, reverse: reverse_standing(over: over_ab) }
+      } else {
+        JunctionUnestablished { readings: rs }
+      }
+    }
+  }
+}
+
+// ── RENDERING (diagnostics only; nothing above reads these strings) ──────────────────────────
+
+fn terminal_text(t: ElectricalTerminalRef) -> String {
+  join([component_local_label(c: t.component) as String, " ", t.terminal as String], "")
+}
+
+fn continuity_result_text(r: ContinuityResult) -> String {
+  match r {
+    BuzzerAsserted => "beep"
+    BuzzerNotAsserted => "no beep (above the continuity threshold)"
+  }
+}
+
+fn provenance_text(r: ProbeRecord) -> String {
+  match r.first {
+    PointRecorded => match r.second {
+      PointRecorded => ""
+      PointInferred { basis: _ } => " (second point inferred)"
+    }
+    PointInferred { basis: _ } => match r.second {
+      PointRecorded => " (first point inferred)"
+      PointInferred { basis: _ } => " (both points inferred)"
+    }
+  }
+}
+
+fn continuity_text(o: ContinuityObservation) -> String {
+  join(["'", terminal_text(t: o.first), "' to '", terminal_text(t: o.second), "': ", continuity_result_text(r: o.result), provenance_text(r: o.record)], "")
+}
+
+fn evidence_grade_text(g: EvidenceGrade) -> String {
+  match g {
+    RecordedPointsOnly => "on recorded probe points"
+    IncludesInferredPoints { readings } => join(["resting on ", to_string(count(readings)), " readings with a probe point inferred from the operator's words"], "")
+  }
+}
+
+fn display_text(d: DiodeDisplay) -> String {
+  match d {
+    ForwardMillivolts { millivolts: mv } => join([to_string(mv), " mV"], "")
+    OverLimit => "over limit"
+  }
+}
+
+fn diode_text(o: DiodeModeObservation) -> String {
+  match o.probes {
+    RedBlack { red, black } => join(["red on '", terminal_text(t: red), "', black on '", terminal_text(t: black), "': ", display_text(d: o.display)], "")
+    ProbesUnrecorded { a, b } => join(["across '", terminal_text(t: a), "' and '", terminal_text(t: b), "', probe placement unrecorded: ", display_text(d: o.display)], "")
+  }
+}
+
+fn reachability_text(s: ReachabilityStanding) -> String {
+  match s {
+    Reachable { supporting } => join(["reachable (", join(map(supporting, o => continuity_text(o: o)), "; "), ")"], "")
+    ReadAboveThreshold { readings } => join(["separated above the continuity threshold (", join(map(readings, o => continuity_text(o: o)), "; "), ")"], "")
+    ReachabilityContradicted { supporting, silent } => join(["CONTRADICTED: joined by (", join(map(supporting, o => continuity_text(o: o)), "; "), ") but read silent by (", join(map(silent, o => continuity_text(o: o)), "; "), ")"], "")
+    ReachabilityUnestablished => "unestablished: no reading joins or separates them"
+  }
+}
+
+fn junction_text(s: JunctionStanding) -> String {
+  match s {
+    JunctionForward { anode, cathode, forward, reverse } => join([
+      "anode '", terminal_text(t: anode), "', cathode '", terminal_text(t: cathode), "' (", join(map(forward, o => diode_text(o: o)), "; "), "); ",
+      match reverse {
+        ReverseUnread => "the reverse direction was not read"
+        ReverseOverLimit { readings } => join(["reverse read over limit (", join(map(readings, o => diode_text(o: o)), "; "), ")"], "")
+      },
+    ], "")
+    JunctionContradicted { readings } => join(["CONTRADICTED diode readings (", join(map(readings, o => diode_text(o: o)), "; "), ")"], "")
+    JunctionUnestablished { readings } => match readings.first() {
+      Absent => "no diode-mode reading"
+      Present { value: _ } => join(["orientation not established (", join(map(readings, o => diode_text(o: o)), "; "), ")"], "")
+    }
+  }
+}

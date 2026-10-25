@@ -1,12 +1,13 @@
 module test.claim.typed_module_cache_capacity_witness
 
 import std.logic { Bool }
-import std.types { String, Int }
+import std.types { String, Int, NonEmptyStr }
 import std.measure { byte_size }
 import gunbc.host.host_budget_source {
   HostBudgetResolution,
   HostBudgetResolved,
   HostBudgetUnreadable,
+  HostBudgetExternallyBounded,
   BudgetSourceCgroupMemoryMax,
   host_budget_resolved_observation,
 }
@@ -14,12 +15,16 @@ import gunbc.typed_module_cache_capacity {
   TypedModuleCacheCap,
   CapEntries,
   CapEntryRefused,
+  CapEntriesExternallyBounded,
   typed_module_cache_entry_cap,
   typed_module_cache_entry_cap_with_override,
   typed_module_cache_entries_floor,
   typed_module_cache_entries_ceiling,
+  cap_entries_externally_bounded_still_interim,
+  typed_module_cache_externally_bounded_disposition,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.disposition { Scaffold, Terminal }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -55,6 +60,7 @@ fn cap_entries_or(c: TypedModuleCacheCap, fallback: Int) -> Int {
   match c {
     CapEntries { entries: n } => n
     CapEntryRefused { reason: _ } => fallback
+    CapEntriesExternallyBounded { entries: _, run_id: _ } => fallback
   }
 }
 
@@ -79,6 +85,7 @@ test fn unreadable_budget_refuses_rather_than_defaulting() -> Bool {
   match typed_module_cache_entry_cap(r: unreadable_budget()) {
     CapEntries { entries: _ } => false
     CapEntryRefused { reason: _ } => true
+    CapEntriesExternallyBounded { entries: _, run_id: _ } => false
   }
 }
 
@@ -109,5 +116,26 @@ test fn a_zero_override_on_an_unreadable_budget_still_refuses() -> Bool {
   match typed_module_cache_entry_cap_with_override(override_entries: 0, r: unreadable_budget()) {
     CapEntries { entries: _ } => false
     CapEntryRefused { reason: _ } => true
+    CapEntriesExternallyBounded { entries: _, run_id: _ } => false
   }
+}
+
+test fn an_externally_bounded_executor_does_not_reuse_derived_cap_entries() -> Bool {
+  match typed_module_cache_entry_cap(
+    r: HostBudgetExternallyBounded { run_id: "bb77f2ae-888b-4f04-9bef-6dab045b1548" as NonEmptyStr }
+  ) {
+    CapEntries { entries: _ } => false
+    CapEntryRefused { reason: _ } => false
+    CapEntriesExternallyBounded { entries: n, run_id: id } =>
+      n == typed_module_cache_entries_floor
+        && (id as String) == "bb77f2ae-888b-4f04-9bef-6dab045b1548"
+  }
+}
+
+test fn the_externally_bounded_cap_arm_carries_a_read_dissolution() -> Bool {
+  cap_entries_externally_bounded_still_interim()
+    && match typed_module_cache_externally_bounded_disposition {
+      Scaffold { dissolves_to: _, bind: r } => (r.decl_name as String) == "CapEntriesExternallyBounded"
+      Terminal { reason: _ } => false
+    }
 }

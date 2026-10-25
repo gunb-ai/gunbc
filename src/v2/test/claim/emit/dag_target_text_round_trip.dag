@@ -22,8 +22,8 @@ import v2.std.compilers.target_model {
   render_target_text,
   target_model_emit_transforms_empty
 }
-import std.algebra { list_append, list_map }
-import v2.std.collection { Map, empty_map, map_insert }
+import std.algebra { list_append, list_map, empty_map, map_insert }
+import std.types { Map }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }

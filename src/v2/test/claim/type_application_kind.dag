@@ -6,16 +6,16 @@ import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, empty_map, map_insert }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Atom, Authored, BinderTypeEdge, Conj, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, core_edge }
+import v2.std.node { node_same_occurrence, Atom, Authored, BinderTypeEdge, Conj, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, core_edge, NotADeclaration }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, KindInhabitance, TypeApplicationArityMismatch, TypeApplicationConforms, TypeApplicationKindNotInhabited, type_application_conformance, type_binder_set_children }
 import std.types { List, Map }
 import v2.compiler.body_lowering_fold { body_lower_rename_fresh_type_variables }
-import v2.std.collection { empty_map, map_insert }
+
 import v2.std.node { type_binder_conj_conforms }
 import v2.std.type_binder { binder_conj_names }
 
@@ -78,6 +78,21 @@ fn tak_order_authored() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_
 fn tak_order_swapped() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type Swapped = Pair<Ak, Zk>\n")) }
 fn tak_arity_nongeneric() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type NotGeneric = Other<Foreign>\n")) }
 
+// A kinded parameter whose kind admits Nat literals is ONE declaration with two readings: the type
+// argument at an application and the value a body names (A0-1). RED on main: the body read of `bits` is
+// NoSuchVariable.
+fn tak_body_reads_kinded_parameter() -> Outcome<ResolvedTree> {
+  tak_assemble(src: concat(tak_prelude(), "fn width_of<bits: Resolution>() -> Resolution {\n  bits\n}\n"))
+}
+
+test fn tak_kinded_parameter_is_readable_as_a_value_in_the_body() -> Bool {
+  tak_accepts(o: tak_body_reads_kinded_parameter())
+}
+
+test fn tak_plain_type_parameter_read_as_a_value_refuses() -> Bool {
+  tak_refuses_with(o: tak_assemble(src: concat(tak_prelude(), "fn plain_of<t>() -> Int {\n  t\n}\n")), reason: ^resolve_reason_type_parameter_in_value_position)
+}
+
 test fn tak_kinded_parameter_accepts_a_variant_of_its_kind() -> Bool {
   tak_accepts(o: tak_kind_conforms())
 }
@@ -91,7 +106,7 @@ test fn tak_kinded_parameter_refuses_a_variant_of_another_coproduct() -> Bool {
 }
 
 test fn tak_kinded_parameter_refuses_a_kernel_type() -> Bool {
-  tak_refuses_with(o: tak_kind_kernel_type(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
+  tak_refuses_with(o: tak_kind_kernel_type(), reason: ^resolve_reason_reference_category_mismatch)
 }
 
 test fn tak_arguments_pair_with_parameters_in_authored_order() -> Bool {
@@ -102,8 +117,32 @@ test fn tak_arguments_swapped_against_authored_order_refuse() -> Bool {
   tak_refuses_with(o: tak_order_swapped(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
 }
 
-test fn tak_unkinded_parameter_is_unchanged() -> Bool {
-  tak_accepts(o: tak_unkinded())
+// An UNKINDED parameter admits types only. The old claim here asserted `Plain<Foreign>` ACCEPTED, which
+// was wrong: Foreign is a variant (a constructor), and an unkinded position has no kind that admits one.
+// It refuses as the category mismatch it is -- the name exists, in the wrong category -- never as an
+// unbound name and never accepted. The control is the same position given a type.
+test fn tak_unkinded_parameter_refuses_a_variant_as_a_category_mismatch() -> Bool {
+  tak_refuses_with(o: tak_unkinded(), reason: ^resolve_reason_reference_category_mismatch)
+}
+
+test fn tak_unkinded_parameter_accepts_a_type() -> Bool {
+  tak_accepts(o: tak_assemble(src: concat(tak_prelude(), "type UsesPlainType = Plain<Other>\n")))
+}
+
+// A name with NO candidate at all stays unbound: category mismatch is the answer for a name that exists in
+// another category, not for a name that binds nothing.
+test fn tak_unkinded_parameter_with_an_undeclared_name_reads_unbound() -> Bool {
+  tak_refuses_with(o: tak_assemble(src: concat(tak_prelude(), "type UsesMissing = Plain<Nowhere>\n")), reason: ^resolve_reason_unbound_symbol)
+}
+
+// No current kind admits both a type and a variant: only a coproduct kind resolves, and it admits its
+// variants alone. A kind naming a record admits no variant and keeps type eligibility at its position, so
+// a type argument reaches the conformance verdict (kind_unresolved) instead of being excluded by category.
+test fn tak_record_kind_keeps_type_eligibility() -> Bool {
+  tak_refuses_with(
+    o: tak_assemble(src: concat(tak_prelude(), "type Rec {\n  field: Int\n}\n\ntype Wr<b: Rec>\n\ntype UsesRec = Wr<Other>\n")),
+    reason: ^resolve_reason_type_parameter_kind_unresolved
+  )
 }
 
 test fn tak_application_with_more_arguments_than_binders_refuses() -> Bool {
@@ -126,7 +165,8 @@ fn tak_atom(id: Symbol) -> Node {
 fn tak_binder(name: Symbol, kind: Symbol) -> Edge {
   Edge {
     label: Authored { name: name },
-    target: Node { kind: TypeNode { connective: Atom { identity: name } }, children: [core_edge(marker: BinderTypeEdge, target: tak_atom(id: kind))], occurrence_id: OccurrenceSynthetic }
+    target: Node { kind: TypeNode { connective: Atom { identity: name } }, children: [core_edge(marker: BinderTypeEdge, target: tak_atom(id: kind))], occurrence_id: OccurrenceSynthetic },
+    declaration: NotADeclaration
   }
 }
 
@@ -155,8 +195,8 @@ fn tak_pair_binders_label_sorted() -> Node {
 
 // The supplied judgment: an argument inhabits a kind exactly when it is that kind's one variant.
 fn tak_pair_judge(argument: Node, kind: Node) -> KindInhabitance {
-  let expected = if kind == tak_atom(id: ^ZKind) { tak_atom(id: ^Zk) } else { tak_atom(id: ^Ak) }
-  if argument == expected { ArgumentInhabitsKind } else { ArgumentOutsideKind }
+  let expected = if node_same_occurrence(a: kind, b: tak_atom(id: ^ZKind)) { tak_atom(id: ^Zk) } else { tak_atom(id: ^Ak) }
+  if node_same_occurrence(a: argument, b: expected) { ArgumentInhabitsKind } else { ArgumentOutsideKind }
 }
 
 
@@ -197,7 +237,7 @@ test fn tak_arity_is_decided_before_kind() -> Bool {
 // The route through the real assembly is held by v2.test.claim.body_type_annotation_refusal
 // btar_unannotated_fn_literal_is_not_erased and the fold_encoding claims.
 fn tak_unkinded_binder(name: Symbol) -> Edge {
-  Edge { label: Authored { name: name }, target: tak_atom(id: name) }
+  Edge { label: Authored { name: name }, target: tak_atom(id: name), declaration: NotADeclaration }
 }
 
 fn tak_position_renames() -> Map<Symbol, Symbol> {
@@ -214,4 +254,13 @@ test fn tak_renamed_function_value_binder_set_keeps_its_declared_order() -> Bool
 test fn tak_binder_set_outside_the_rename_map_is_unchanged() -> Bool {
   let kept = body_lower_rename_fresh_type_variables(node: tak_set(binders: [tak_unkinded_binder(name: ^T)]), renames: tak_position_renames(), arrow_body: false)
   type_binder_conj_conforms(t: kept) && (binder_conj_names(conj: kept) == [^T])
+}
+
+// A kinded type parameter and a value parameter of ONE arrow sharing a spelling share one index key, so
+// the later insert would overwrite the earlier declaration. It refuses, located at the type-parameter set.
+test fn tak_kinded_type_param_sharing_a_value_parameter_spelling_refuses() -> Bool {
+  tak_refuses_with(
+    o: tak_assemble(src: concat(tak_prelude(), "fn clash<bits: Resolution>(bits: Int) -> Int {\n  bits\n}\n")),
+    reason: ^resolve_reason_type_parameter_shadows_visible_name
+  )
 }

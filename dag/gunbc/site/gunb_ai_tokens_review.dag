@@ -1,0 +1,70 @@
+module gunbc.site.gunb_ai_tokens_review
+
+import std.types { String, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
+import std.optional { Absent, Present }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.site.gunb_ai_tokens { review_render, ReviewHtml, ReviewEmitRefused }
+
+// Writes the tokens-layer review page to an out-dir so it can be served on srv1
+// over the tailnet (`python3 -m http.server <port> --bind <tailnet address>`).
+// Fail closed (DESIGN §5): BOTH failure channels exit non-zero with the typed
+// cause — an emit refusal (ReviewEmitRefused from gunbc.site.gunb_ai_tokens)
+// never reaches the filesystem at all, and an unwritable path reports its cause.
+// There is no path where a refused render is written or exits success.
+//
+// Invocation (either entry renders identical bytes from the same call):
+//   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_tokens_review.dag \
+//     --function v2_cli_main <out-dir>          (NativeCliDriver positional argv)
+//   gunbc run --source-root dag --entry dag/gunbc/site/gunb_ai_tokens_review.dag \
+//     --function review_write_arg --arg dir=<out-dir>
+//
+data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
+
+// Consumers (DESIGN §3c): the operator's browser on the tailnet review site, and
+// the srv1 headless-chromium screenshot pass that precedes showing the page. One
+// file, one render home: gunbc.site.gunb_ai_tokens.review_render().
+
+type ReviewRun
+  = ReviewWritten { path: String, bytes: Int }
+  | ReviewEmitRefusedRun { reason: String }
+  | ReviewWriteRefused { cause: String }
+
+fn review_write(dir: String) -> ReviewRun {
+  match review_render() {
+    // The refusal arm exits BEFORE any Filesystem.Write is attempted.
+    ReviewEmitRefused { reason: r } => ReviewEmitRefusedRun { reason: r }
+    ReviewHtml { html: h } => {
+      let path = join([dir, "/tokens.html"], "")
+      let outcome = Filesystem.Write(path: path, content: h)
+      if outcome.success {
+        ReviewWritten { path: outcome.path, bytes: outcome.bytes_written }
+      } else {
+        ReviewWriteRefused { cause: join([path, ": ", outcome.error], "") }
+      }
+    }
+  }
+}
+
+fn v2_cli_exit(run: ReviewRun) -> ProcessExit {
+  match run {
+    ReviewWritten { path: p, bytes: b } => ExitSuccess
+    ReviewEmitRefusedRun { reason: r } => exit_failure(reason: join(["tokens review emit refused: ", r], ""))
+    ReviewWriteRefused { cause: c } => exit_failure(reason: join(["tokens review write refused: ", c], ""))
+  }
+}
+
+// Named-arg entry, for `gunbc run --function review_write_arg --arg dir=<out>`:
+// gunbc run forwards --arg name=value to the entry function's parameters. Both this
+// and the positional NativeCliDriver entry render the same bytes from the same call.
+fn review_write_arg(dir: String) -> ProcessExit {
+  v2_cli_exit(run: review_write(dir: dir))
+}
+
+fn v2_cli_main(argv: List<String>) -> ProcessExit {
+  match get(argv, 0) {
+    Present { value: dir } => v2_cli_exit(run: review_write(dir: dir))
+    Absent => exit_failure(reason: "usage: gunb_ai_tokens_review <out-dir>")
+  }
+}

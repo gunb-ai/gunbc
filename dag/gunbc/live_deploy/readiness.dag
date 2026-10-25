@@ -1,6 +1,6 @@
 module gunbc.live_deploy.readiness
 
-import std.types { String, Bool, Int, NonEmptyStr, List, CommitSha }
+import std.types { String, Bool, Int, NonEmptyStr, List, CommitSha, HttpStatus }
 import std.evaluation_budget { LimitSet, LimitUnset }
 import std.measure { positive_millisecond_count, Second, second, second_count }
 import std.optional { Present, Absent }
@@ -51,7 +51,7 @@ import gunbc.running_release_identity {
   SurfaceBundleIdentityMalformed,
   observe_running_release_identity,
 }
-import gunbc.roadmap.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
+import gunbc.roadmap.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused, HealthzAnsweredUnhealthy }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   deployment_plan_listen_port,
@@ -79,7 +79,9 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import extdeps.http.client
-import extdeps.http.client { http_client_get_argv, http_client_get_unix_socket_argv, http_client_max_time_flag }
+import extdeps.http.client { http_client_get_argv, http_client_localhost_connect_timeout_flag, http_client_get_with_status_argv, http_client_get_unix_socket_argv, http_client_max_time_flag }
+import extdeps.ietf.http_semantics { http_status_class_of, HttpStatusClass, Informational, Successful, Redirection, ClientError, ServerError }
+import extdeps.tools.curl { classify_curl_http_code_after_newline, curl_body_before_http_code, CurlWriteOutHttpStatus, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
 import gunbc.serve_liveness {
   ServeLivenessRead, ServeLivenessUnreachable, serve_liveness_read_from_probe,
 }
@@ -102,6 +104,11 @@ type HealthzRefusalCause
 
 type ServiceReadinessPending
   = ServiceProbeUnanswered { detail: String }
+  // The reply the probe got said NOT SERVING. It is Pending, never Ready -- readiness is a claim
+  // about the release being served, and this is the opposite claim -- but it is not Unanswered: the
+  // process answered, and saying so is what lets the plan carry a replacement instead of refusing
+  // (gunbc.recurring_failure_mode a_deploy_that_observes_its_own_service_cannot_repair_it).
+  | ServiceObservedUnhealthy { status: HttpStatus, detail: String }
   | ServiceReadinessIdentityPending { cause: HealthzRefusalCause }
   | ServiceTailnetDoorPending { socket: NonEmptyStr, detail: String }
 
@@ -116,6 +123,8 @@ fn service_readiness_reason(r: ServiceReadiness) -> String {
   match r {
     Ready { evidence: e } => e.body
     Pending { cause: ServiceProbeUnanswered { detail } } => detail
+    Pending { cause: ServiceObservedUnhealthy { status, detail } } =>
+      join(["the process is answering and is not serving: ", to_string(status) as String, " -- ", detail], "")
     Pending { cause: ServiceReadinessIdentityPending { cause } } =>
       healthz_refusal_reason(cause: cause)
     Pending { cause: ServiceTailnetDoorPending { socket, detail } } =>
@@ -135,6 +144,8 @@ fn observe_service_readiness_from_healthz(
   match read {
     HealthzProbeRefused { probe_error: detail } =>
       Pending { cause: ServiceProbeUnanswered { detail: detail } }
+    HealthzAnsweredUnhealthy { status, detail } =>
+      Pending { cause: ServiceObservedUnhealthy { status: status, detail: detail } }
     HealthzBodyRead { body: observed_body } =>
       match healthz_body_verdict(
         body: observed_body,
@@ -175,15 +186,75 @@ fn live_deploy_healthz_probe_deadline(spec: DeploymentSpec) -> Second? {
 
 data healthz_probe_deadline_ungrounded: String = "the serve unit declares no wall limit, so no probe deadline can be derived from it"
 
+// THE PROBE ANSWERS THE QUESTION "DID THE SERVER ANSWER, AND HOW". The plain http.Client.GetWithin
+// spells curl with -fsS, which DISCARDS THE BODY AND EXITS 22 on any 4xx/5xx: it cannot tell a serve
+// crash-looping with 503 from a host that answers nothing, and those two have opposite repairs (the
+// first is replaced by this deploy, the second refuses it). This arm spells curl WITHOUT -f and with
+// -w '\n%{http_code}', so a server-error reply arrives as an ANSWER carrying its status and body,
+// while a transport failure still exits nonzero -- the distinction is curl's exit, not a comparison
+// of reply codes, so a 403, an unreadable body, or a principal failure keep their own refusals
+// downstream instead of collapsing into 'unhealthy' (the guard the RFM row states). The body/status
+// split is the one authority that owns this wire form: extdeps.tools.curl
+// curl_body_before_http_code / classify_curl_http_code_after_newline.
+fn healthz_probe_status_detail(status: HttpStatus) -> String {
+  match extdeps.ietf.http_semantics.http_status_class_of(status: status) {
+    Successful => "the healthz endpoint answered successfully"
+    Redirection => "the healthz endpoint redirected"
+    ClientError => "the healthz endpoint refused the request as the probing principal"
+    ServerError => "the healthz endpoint answered a server error: the process is up but not serving"
+    Informational => "the healthz endpoint answered only an informational status"
+  }
+}
+
+// THE REPLY IS ROUTED BY WHETHER IT NAMES A RELEASE, by the one authority that knows that
+// (gunbc.running_release_identity), and not by a Boolean a caller passes in. A reply that identifies
+// a release is read AS that release whatever status carried it -- the serve may answer 503 while
+// still reporting which revision it is (claim 3: it is not unhealthy, it is a release to compare).
+// Only a reply that names no release AND arrives in the server-error class says what the RFM row
+// needs said: the process answered, and it is not serving. Anything else (a 403 with no identity, an
+// unparseable 200) keeps its existing body verdict, so an arbitrary 403 still cannot become absent.
+fn healthz_effective_read_from_status_body(status: HttpStatus, body: String) -> HealthzEffectiveRead {
+  match observe_running_release_identity(healthz_body: body) {
+    RunningReleaseIdentified { observation: _ } => HealthzBodyRead { body: body }
+    RunningReleaseUnidentified { cause: _ } =>
+      match http_status_class_of(status: status) {
+        ServerError =>
+          HealthzAnsweredUnhealthy {
+            status: status,
+            detail: join([
+              healthz_probe_status_detail(status: status),
+              "; body: ",
+              if string_length(s: body) > 160 { substring(s: body, start: 0, end: 160) } else { body },
+            ], ""),
+          }
+        _ => HealthzBodyRead { body: body }
+      }
+  }
+}
+
+// ONE FOLD ROUTES EVERY REPLY, so no leg can re-decide what an answer means (DESIGN 3d: one name
+// per meaning). success=false is curl saying it obtained NO response -- the transport and principal
+// refusals stay refusals (the RFM row's guard, and claim 2); success=true carries a status it wrote.
+fn healthz_effective_read_from_status_get(success: Bool, stdout: String, error: String) -> HealthzEffectiveRead {
+  if !success {
+    HealthzProbeRefused { probe_error: error }
+  } else {
+    match classify_curl_http_code_after_newline(stdout: stdout) {
+      CurlWroteHttpStatus { status } => healthz_effective_read_from_status_body(status: status, body: curl_body_before_http_code(stdout: stdout))
+      CurlWroteNoHttpStatus { cause } => HealthzProbeRefused { probe_error: join([error, ": the reply carried no HTTP status: ", cause as String], "") }
+    }
+  }
+}
+
 fn live_deploy_healthz_get_local(port: Int, spec: DeploymentSpec) -> HealthzEffectiveRead {
   let url = live_deploy_health_url_for_port(port: port)
   match live_deploy_healthz_probe_deadline(spec: spec) {
     Absent => HealthzProbeRefused { probe_error: healthz_probe_deadline_ungrounded }
     Present { value: deadline } => {
-      let got = http.Client.GetWithin(url: url, max_seconds: http_client_max_time_flag(max_time: deadline))
-      healthz_effective_read_from_get(
+      let got = http.Client.GetWithinWithStatus(url: url, connect_seconds: http_client_localhost_connect_timeout_flag(), max_seconds: http_client_max_time_flag(max_time: deadline))
+      healthz_effective_read_from_status_get(
         success: got.success,
-        body: got.body,
+        stdout: got.body,
         error: join(["http client GET failed within the ", http_client_max_time_flag(max_time: deadline) as String, " s probe deadline derived from the serve wall limit"], "")
       )
     }
@@ -202,6 +273,21 @@ fn healthz_effective_read_from_outcome(outcome: TypedArgvExecOutcome) -> Healthz
   }
 }
 
+// THE SAME FOLD OVER THE SSH LEG, so a remote probe is not a weaker observation than a local one:
+// it must be able to say 'answered 503', not only 'answered' or 'refused' (DESIGN 3d). The argv is
+// the status-bearing spelling, so the reply ends with the line curl wrote its code on.
+fn healthz_effective_read_from_status_outcome(outcome: TypedArgvExecOutcome) -> HealthzEffectiveRead {
+  match outcome {
+    TypedArgvExecConverged { result: r } =>
+      healthz_effective_read_from_status_get(
+        success: r.success,
+        stdout: r.stdout,
+        error: "http client GET over ssh failed"
+      )
+    TypedArgvExecRefused { reason: why } => HealthzProbeRefused { probe_error: why }
+  }
+}
+
 fn live_deploy_healthz_get_fleet_ssh(
   port: Int,
   spec: DeploymentSpec,
@@ -211,11 +297,11 @@ fn live_deploy_healthz_get_fleet_ssh(
   match live_deploy_healthz_probe_deadline(spec: spec) {
     Absent => HealthzProbeRefused { probe_error: healthz_probe_deadline_ungrounded }
     Present { value: deadline } =>
-      healthz_effective_read_from_outcome(
+      healthz_effective_read_from_status_outcome(
         outcome: typed_argv_exec_over_fleet_ssh(
           target: target,
           context: context,
-          argv: http_client_get_argv(url: live_deploy_health_url_for_port(port: port), max_time: deadline),
+          argv: http_client_get_with_status_argv(url: live_deploy_health_url_for_port(port: port), max_time: deadline),
         ),
       )
   }
@@ -230,15 +316,15 @@ fn live_deploy_healthz_get_ssh(port: Int, spec: DeploymentSpec, host: NonEmptySt
 }
 
 fn live_deploy_healthz_get_ssh_within(url: NonEmptyStr, host: NonEmptyStr, deadline: Second) -> HealthzEffectiveRead {
-  let argv = http_client_get_argv(url: url, max_time: deadline)
+  let argv = http_client_get_with_status_argv(url: url, max_time: deadline)
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => HealthzProbeRefused { probe_error: why }
     Absent =>
       match typed_argv_exec_over_ssh(host: host, argv: argv) {
         TypedArgvExecConverged { result: r } =>
-          healthz_effective_read_from_get(
+          healthz_effective_read_from_status_get(
             success: r.success,
-            body: r.stdout,
+            stdout: r.stdout,
             error: "http client GET over ssh failed"
           )
         TypedArgvExecRefused { reason: why } =>
@@ -344,12 +430,12 @@ fn live_deploy_healthz_get_for_url(url: NonEmptyStr, spec: DeploymentSpec, trans
     Present { value: deadline } =>
       match transport {
         LocalShell => {
-          let got = http.Client.GetWithin(url: url, max_seconds: http_client_max_time_flag(max_time: deadline))
-          healthz_effective_read_from_get(success: got.success, body: got.body, error: "http client GET through the tailnet route failed within the probe deadline")
+          let got = http.Client.GetWithinWithStatus(url: url, connect_seconds: http_client_localhost_connect_timeout_flag(), max_seconds: http_client_max_time_flag(max_time: deadline))
+          healthz_effective_read_from_status_get(success: got.success, stdout: got.body, error: "http client GET through the tailnet route failed within the probe deadline")
         }
         SshShell { ssh_host: h } => live_deploy_healthz_get_ssh_within(url: url, host: h, deadline: deadline)
         FleetSsh { target: t, context: c } =>
-          healthz_effective_read_from_outcome(outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: http_client_get_argv(url: url, max_time: deadline)))
+          healthz_effective_read_from_status_outcome(outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: http_client_get_with_status_argv(url: url, max_time: deadline)))
         EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
           HealthzProbeRefused { probe_error: "health probe refused EmitArtifactThenThinRun transport" }
       }

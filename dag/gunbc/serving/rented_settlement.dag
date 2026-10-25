@@ -1,0 +1,336 @@
+module gunbc.serving.rented_settlement
+
+import std.types { String, NonEmptyStr, Bool, Int, List, EpochMs }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.algebra { list_head, list_tail }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure {
+  MoneyAmountMicro, money_amount_micro, measure_add, measure_le, measure_scale_fraction_ceil,
+  DecimalMoneyConversion, DecimalMoneyConverted, DecimalMoneyNegativeRefused, DecimalMoneyScaleRefused,
+  DecimalMoneyUnrepresentable, exact_decimal_to_money_amount_micro_ceil,
+}
+import extdeps.currency.currency { CurrencyCode }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.cloud.vast_ai {
+  VastAiCharge, VastAiChargeSourceKind, VastAiChargeFromInstance, VastAiChargeSourceUnrecognized,
+  VastAiChargesDayRange, VastAiChargesRefusal,
+  vast_ai_charge_source_kind, vast_ai_instance_charge_source, vast_ai_charge_amount_rounding,
+  vast_ai_quote_currency, vast_ai_show_charges_page,
+}
+import product.fabric.flex_vast_shadow {
+  FlexChargesStanding, FlexChargesComplete, FlexChargesPartial, FlexChargesUnreadable, FlexChargesUnobserved,
+}
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired, RentedAllocationImported, rented_allocation_wire }
+import gunbc.serving.rented_release { RentedGoneVerdict, RentedGone, RentedPendingStillListed, RentedGoneReadRefused, rented_bound_instance_id }
+
+// THE SETTLEMENT OF ONE RENTED ALLOCATION: the money the provider's own charge rows say it cost, joined to the
+// allocation by the instance id. It is a reading taken over the allocation's life, so it is a standing keyed by
+// the allocation (rented_allocation_wire, the key the release receipt carries) and never a field of
+// RentedServingAllocation (see that module on what is decided versus what was seen).
+//
+// THE OBSERVED CHARGES ARE THE AUTHORITY FOR MONEY SPENT. asked_rate x duration is an EXPECTATION, an interval
+// stated beside the settled amount and never substituted for it. A divergence beyond the declared tolerance is
+// reported with the observed amount and its rows; nothing is corrected, clamped or re-derived from the rate.
+//
+// ATTRIBUTION IS Vast's DOCUMENTED SOURCE, NOT A GUESS. A charge belongs to the allocation exactly when its
+// source equals the instance source Vast writes for the allocation's contract id (extdeps.cloud.vast_ai
+// vast_ai_instance_charge_source, cited there to docs.vast.ai show-charges). The Vast account is shared with
+// ctrl, so a row for another instance, for a volume, a serverless wrapper, or a source in no documented form is
+// EXCLUDED with a typed reason and is never summed. A volume row is excluded even if its instance is ours:
+// nothing documented joins a volume to an instance, so that is a coverage obligation, not a guess.
+//
+// WHAT COMPLETE MEANS IS THE EXISTING ROSTER'S. FlexChargesStanding already walks the token-chained pages and
+// mints FlexChargesComplete only when the unique rows match the reported total (product.fabric.flex_vast_shadow
+// flex_fold_charge_pages); this module reads that standing and does not re-walk pages, so a partial read can
+// never settle.
+
+// WHAT A CALLER HANDS OVER ABOUT THE READ: the day range the request carried (required by Vast) beside the
+// walk it produced, or the documented refusal, or nothing at all. Nothing read is its own arm: it is not zero.
+type RentedChargesReading
+  = RentedChargesWalked { standing: FlexChargesStanding, window: VastAiChargesDayRange }
+  | RentedChargesRefused { refusal: VastAiChargesRefusal }
+  | RentedChargesNotRead
+
+// THE TOLERANCE IS A DECLARED POLICY WITH ITS STANDING. The rounding allowance is per row and cited:
+// show-charges documents amount as rounded to 3 decimals, so each row is within 500 micro-dollars. The relative
+// allowance covers bid-rate-versus-billed variance and the uncertainty of the contract's end instant; no Vast
+// document states a figure for it, so it is a transcribed operator policy and says what would ground it.
+type RentedSettlementTolerance {
+  per_row_rounding: MoneyAmountMicro
+  rounding_standing: CitedFigureStanding
+  relative_permille: Nat
+  relative_standing: CitedFigureStanding
+}
+
+data rented_settlement_tolerance: RentedSettlementTolerance = RentedSettlementTolerance {
+  per_row_rounding: vast_ai_charge_amount_rounding,
+  rounding_standing: CitedToAuthority { authority: vast_ai_show_charges_page },
+  relative_permille: 100,
+  relative_standing: TranscribedUncited { read_obligation: "an operator figure of 10 percent for how far billed spend may sit from asked_rate x lifetime; ground it with a measured distribution of settled versus expected spend over released allocations" as NonEmptyStr },
+}
+
+// THE READINGS A SETTLEMENT NEEDS, supplied together. rented_since is the earliest instant the rental is known
+// to have existed (for an imported card, read from the provider; for an acquired one the ask time bounds it).
+// listed_through is the latest instant a read still listed the instance, so the contract cannot have ended
+// before it; gone_read_at is the instant of the gone readback, so the contract cannot have ended after it.
+type RentedSettlementReadings {
+  gone: RentedGoneVerdict
+  rented_since: EpochMs
+  listed_through: EpochMs
+  gone_read_at: EpochMs
+  charges: RentedChargesReading
+}
+
+type RentedExcludedReason
+  = RentedExcludedAnotherInstance { source: String }
+  | RentedExcludedNotInstanceContract { source: String, kind: VastAiChargeSourceKind }
+  | RentedExcludedSourceUnrecognized { source: String }
+
+type RentedExcludedCharge {
+  row: VastAiCharge
+  reason: RentedExcludedReason
+}
+
+type RentedSettlementPeriod {
+  first_start: Int
+  last_end: Int
+}
+
+// THE EXPECTATION IS AN INTERVAL, because the contract's end lies between the last read that listed the
+// instance and the gone readback. Unavailable when no rate was ever read (an imported card) or the instants
+// are out of order.
+type RentedCostExpectation
+  = RentedExpectedWithin { low: MoneyAmountMicro, high: MoneyAmountMicro }
+  | RentedExpectationUnavailable { obligation: NonEmptyStr }
+
+type RentedChargesUnreadCause
+  = RentedChargesNeverRead
+  | RentedChargesWalkUnobserved
+  | RentedChargesWalkIncomplete
+  | RentedChargesWalkUnreadable
+  | RentedChargesRefusedByVast { refusal: VastAiChargesRefusal }
+  | RentedChargesWindowDoesNotCover { window: VastAiChargesDayRange, needed_gte: Int, needed_lte: Int }
+
+type RentedSettlementPendingCause
+  = RentedPendingNotGone { verdict: RentedGoneVerdict }
+  | RentedPendingNoAttributableCharge
+  | RentedPendingChargesNotPostedPastGone { latest_end: Int, listed_through: Int }
+
+type RentedSettlementDirection
+  = RentedObservedAboveExpected
+  | RentedObservedBelowExpected
+
+type RentedSettlementRefusal
+  = RentedSettlementAmountUnconvertible { row: VastAiCharge, conversion: DecimalMoneyConversion }
+
+type RentedSettlement
+  = RentedSettled { allocation: NonEmptyStr, amount: MoneyAmountMicro, currency: CurrencyCode, period: RentedSettlementPeriod, rows: List<VastAiCharge>, excluded: List<RentedExcludedCharge>, expectation: RentedCostExpectation }
+  | RentedSettlementPending { allocation: NonEmptyStr, cause: RentedSettlementPendingCause }
+  | RentedSettlementChargesUnread { allocation: NonEmptyStr, cause: RentedChargesUnreadCause }
+  | RentedSettlementDiverged { allocation: NonEmptyStr, observed: MoneyAmountMicro, currency: CurrencyCode, expected_low: MoneyAmountMicro, expected_high: MoneyAmountMicro, allowance: MoneyAmountMicro, direction: RentedSettlementDirection, rows: List<VastAiCharge>, excluded: List<RentedExcludedCharge> }
+  | RentedSettlementRefused { allocation: NonEmptyStr, refusal: RentedSettlementRefusal }
+
+data rented_settlement_imported_no_rate_obligation: NonEmptyStr = "an imported allocation has no rate read from the provider, so there is no asked_rate to form an expectation from" as NonEmptyStr
+
+data rented_settlement_rate_currency_obligation: NonEmptyStr = "the allocation's asked rate is in a currency other than the one Vast bills in, so the expectation cannot be compared with the charges" as NonEmptyStr
+
+data rented_settlement_instants_unordered_obligation: NonEmptyStr = "the ask time, the last listed instant and the gone readback are not in order, so the lifetime is not an interval"  as NonEmptyStr
+
+fn rented_charge_exclusion(allocation: RentedServingAllocation, row: VastAiCharge) -> RentedExcludedReason? {
+  if row.source == vast_ai_instance_charge_source(instance_id: rented_bound_instance_id(allocation: allocation)) {
+    none
+  } else {
+    match vast_ai_charge_source_kind(source: row.source) {
+      VastAiChargeFromInstance => Present { value: RentedExcludedAnotherInstance { source: row.source } }
+      VastAiChargeSourceUnrecognized => Present { value: RentedExcludedSourceUnrecognized { source: row.source } }
+      other => Present { value: RentedExcludedNotInstanceContract { source: row.source, kind: other } }
+    }
+  }
+}
+
+type RentedAttribution {
+  ours: List<VastAiCharge>
+  excluded: List<RentedExcludedCharge>
+}
+
+fn rented_attribute(allocation: RentedServingAllocation, rows: List<VastAiCharge>) -> RentedAttribution {
+  fold(
+    rows,
+    init: RentedAttribution { ours: [], excluded: [] },
+    f: (acc, row) =>
+      match rented_charge_exclusion(allocation: allocation, row: row) {
+        Present { value: why } => RentedAttribution { ours: acc.ours, excluded: concat(acc.excluded, [RentedExcludedCharge { row: row, reason: why }]) }
+        Absent => RentedAttribution { ours: concat(acc.ours, [row]), excluded: acc.excluded }
+      },
+  )
+}
+
+type RentedChargeSum
+  = RentedChargeSumming { total: MoneyAmountMicro, rounding: MoneyAmountMicro }
+  | RentedChargeSumFailed { row: VastAiCharge, conversion: DecimalMoneyConversion }
+
+fn rented_charge_sum_step(acc: RentedChargeSum, row: VastAiCharge) -> RentedChargeSum {
+  match acc {
+    RentedChargeSumFailed { row: r, conversion: c } => RentedChargeSumFailed { row: r, conversion: c }
+    RentedChargeSumming { total: t, rounding: g } =>
+      match exact_decimal_to_money_amount_micro_ceil(d: row.amount) {
+        DecimalMoneyConverted { amount: a } =>
+          RentedChargeSumming { total: measure_add(a: t, b: a), rounding: measure_add(a: g, b: rented_settlement_tolerance.per_row_rounding) }
+        DecimalMoneyNegativeRefused { units: u } => RentedChargeSumFailed { row: row, conversion: DecimalMoneyNegativeRefused { units: u } }
+        DecimalMoneyScaleRefused { fraction_digits: f } => RentedChargeSumFailed { row: row, conversion: DecimalMoneyScaleRefused { fraction_digits: f } }
+        DecimalMoneyUnrepresentable { cause: c } => RentedChargeSumFailed { row: row, conversion: DecimalMoneyUnrepresentable { cause: c } }
+      }
+  }
+}
+
+fn rented_expected_at(rate: MoneyAmountMicro, ms: Nat) -> MoneyAmountMicro {
+  measure_scale_fraction_ceil(m: rate, num: ms, den: 3600000)
+}
+
+fn rented_cost_expectation(allocation: RentedServingAllocation, readings: RentedSettlementReadings) -> RentedCostExpectation {
+  match allocation.origin {
+    RentedAllocationImported { imported_by: _, imported_at: _, found_running: _ } =>
+      RentedExpectationUnavailable { obligation: rented_settlement_imported_no_rate_obligation }
+    RentedAllocationAcquired { owner: _, asked_at: asked, asked_rate: rate } =>
+      if rate.currency != vast_ai_quote_currency {
+        RentedExpectationUnavailable { obligation: rented_settlement_rate_currency_obligation }
+      } else {
+        match checked_int_to_nat(n: readings.listed_through - asked) {
+          Absent => RentedExpectationUnavailable { obligation: rented_settlement_instants_unordered_obligation }
+          Present { value: low_ms } =>
+            match checked_int_to_nat(n: readings.gone_read_at - readings.listed_through) {
+              Absent => RentedExpectationUnavailable { obligation: rented_settlement_instants_unordered_obligation }
+              Present { value: spread_ms } =>
+                RentedExpectedWithin {
+                  low: rented_expected_at(rate: rate.amount, ms: low_ms),
+                  high: rented_expected_at(rate: rate.amount, ms: low_ms + spread_ms),
+                }
+            }
+        }
+      }
+  }
+}
+
+// The earliest instant the request's day range must reach: the rental's start, never later than the ask.
+fn rented_window_start_seconds(allocation: RentedServingAllocation, readings: RentedSettlementReadings) -> Int {
+  match allocation.origin {
+    RentedAllocationImported { imported_by: _, imported_at: _, found_running: _ } => readings.rented_since / 1000
+    RentedAllocationAcquired { owner: _, asked_at: asked, asked_rate: _ } =>
+      if asked < readings.rented_since { asked / 1000 } else { readings.rented_since / 1000 }
+  }
+}
+
+fn rented_period_of(first: VastAiCharge, rest: List<VastAiCharge>) -> RentedSettlementPeriod {
+  fold(
+    rest,
+    init: RentedSettlementPeriod { first_start: first.start, last_end: first.end },
+    f: (acc, row) =>
+      RentedSettlementPeriod {
+        first_start: if row.start < acc.first_start { row.start } else { acc.first_start },
+        last_end: if row.end > acc.last_end { row.end } else { acc.last_end },
+      },
+  )
+}
+
+fn rented_settle_attributed(
+  allocation: RentedServingAllocation,
+  readings: RentedSettlementReadings,
+  first: VastAiCharge,
+  rest: List<VastAiCharge>,
+  excluded: List<RentedExcludedCharge>,
+) -> RentedSettlement {
+  let id = rented_allocation_wire(id: allocation.identity)
+  let rows = concat([first], rest)
+  let period = rented_period_of(first: first, rest: rest)
+  if period.last_end < (readings.listed_through / 1000) {
+    RentedSettlementPending { allocation: id, cause: RentedPendingChargesNotPostedPastGone { latest_end: period.last_end, listed_through: readings.listed_through / 1000 } }
+  } else {
+    match fold(rows, init: RentedChargeSumming { total: money_amount_micro(count: 0), rounding: money_amount_micro(count: 0) }, f: (acc, row) => rented_charge_sum_step(acc: acc, row: row)) {
+      RentedChargeSumFailed { row: r, conversion: c } =>
+        RentedSettlementRefused { allocation: id, refusal: RentedSettlementAmountUnconvertible { row: r, conversion: c } }
+      RentedChargeSumming { total: observed, rounding: rounding } =>
+        match rented_cost_expectation(allocation: allocation, readings: readings) {
+          RentedExpectationUnavailable { obligation: o } =>
+            RentedSettled { allocation: id, amount: observed, currency: vast_ai_quote_currency, period: period, rows: rows, excluded: excluded, expectation: RentedExpectationUnavailable { obligation: o } }
+          RentedExpectedWithin { low: low, high: high } => {
+            let allowance = measure_add(a: rounding, b: measure_scale_fraction_ceil(m: high, num: rented_settlement_tolerance.relative_permille, den: 1000))
+            if !measure_le(a: observed, b: measure_add(a: high, b: allowance)) {
+              RentedSettlementDiverged { allocation: id, observed: observed, currency: vast_ai_quote_currency, expected_low: low, expected_high: high, allowance: allowance, direction: RentedObservedAboveExpected, rows: rows, excluded: excluded }
+            } else if !measure_le(a: low, b: measure_add(a: observed, b: allowance)) {
+              RentedSettlementDiverged { allocation: id, observed: observed, currency: vast_ai_quote_currency, expected_low: low, expected_high: high, allowance: allowance, direction: RentedObservedBelowExpected, rows: rows, excluded: excluded }
+            } else {
+              RentedSettled { allocation: id, amount: observed, currency: vast_ai_quote_currency, period: period, rows: rows, excluded: excluded, expectation: RentedExpectedWithin { low: low, high: high } }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn rented_settle_roster(
+  allocation: RentedServingAllocation,
+  readings: RentedSettlementReadings,
+  window: VastAiChargesDayRange,
+  roster: List<VastAiCharge>,
+) -> RentedSettlement {
+  let id = rented_allocation_wire(id: allocation.identity)
+  let needed_gte = rented_window_start_seconds(allocation: allocation, readings: readings)
+  let needed_lte = readings.gone_read_at / 1000
+  if window.gte > needed_gte || window.lte < needed_lte {
+    RentedSettlementChargesUnread { allocation: id, cause: RentedChargesWindowDoesNotCover { window: window, needed_gte: needed_gte, needed_lte: needed_lte } }
+  } else {
+    let split = rented_attribute(allocation: allocation, rows: roster)
+    match list_head(xs: split.ours) {
+      Absent => RentedSettlementPending { allocation: id, cause: RentedPendingNoAttributableCharge }
+      Present { value: first } =>
+        match list_tail(xs: split.ours) {
+          Absent => RentedSettlementPending { allocation: id, cause: RentedPendingNoAttributableCharge }
+          Present { value: rest } => rented_settle_attributed(allocation: allocation, readings: readings, first: first, rest: rest, excluded: split.excluded)
+        }
+    }
+  }
+}
+
+// THE SETTLEMENT. Order of refusal: not gone, then charges unread (never read, refused, partial, unreadable,
+// or a day range that does not reach the lifetime), then no attributable row, then rows not posted past the
+// listing, then conversion, then the comparison with the expectation.
+fn rented_settle(allocation: RentedServingAllocation, readings: RentedSettlementReadings) -> RentedSettlement {
+  let id = rented_allocation_wire(id: allocation.identity)
+  match readings.gone {
+    RentedPendingStillListed { status: s } => RentedSettlementPending { allocation: id, cause: RentedPendingNotGone { verdict: RentedPendingStillListed { status: s } } }
+    RentedGoneReadRefused { reason: r } => RentedSettlementPending { allocation: id, cause: RentedPendingNotGone { verdict: RentedGoneReadRefused { reason: r } } }
+    RentedGone =>
+      match readings.charges {
+        RentedChargesNotRead => RentedSettlementChargesUnread { allocation: id, cause: RentedChargesNeverRead }
+        RentedChargesRefused { refusal: f } => RentedSettlementChargesUnread { allocation: id, cause: RentedChargesRefusedByVast { refusal: f } }
+        RentedChargesWalked { standing: st, window: w } =>
+          match st {
+            FlexChargesUnobserved => RentedSettlementChargesUnread { allocation: id, cause: RentedChargesWalkUnobserved }
+            FlexChargesUnreadable => RentedSettlementChargesUnread { allocation: id, cause: RentedChargesWalkUnreadable }
+            FlexChargesPartial { next_token: _, observed: _, total: _ } => RentedSettlementChargesUnread { allocation: id, cause: RentedChargesWalkIncomplete }
+            FlexChargesComplete { roster: r } => rented_settle_roster(allocation: allocation, readings: readings, window: w, roster: r.results)
+          }
+      }
+  }
+}
+
+// DECLARED FRONTIER (DESIGN 3c). Consumers: the release receipt (gunbc.serving.rented_release
+// RentedReleaseReceiptV1 is keyed by the same rented_allocation_wire and has no settlement leg), a fleet spend
+// roll-up, and flex's budget (product.fabric.budget) each read a RentedSettlement; none does yet, and the wet
+// Charges.Show caller that produces RentedSettlementReadings is unwired.
+data rented_settlement_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_settlement", decl_name: "rented_settle"),
+    reason: "no caller invokes rented_settle yet: the release receipt carries no settlement leg and neither a fleet spend roll-up nor flex's budget reads a RentedSettlement, so only the witnesses execute it",
+    dissolution: unbound_dissolution(description: "trigger:the flex lane that calls rented_release_receipt also reads the allocation's charges through vast_ai.Charges Show with a day range covering its lifetime, folds them with flex_fold_charge_pages, and passes the standing to rented_settle; sufficient for deleting this row once a claim drives that route"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "vast_ai_charges_refusal"),
+    reason: "no caller maps a non-200 vast_ai.Charges Show answer to a VastAiChargesRefusal yet: the wet read of GET /charges is unwired, so only the witnesses construct the refusal",
+    dissolution: unbound_dissolution(description: "trigger:the wet caller that executes vast_ai.Charges Show maps a RestStatusRefused status and its VastAiApiError error text through vast_ai_charges_refusal into RentedChargesRefused; sufficient for deleting this row once a claim drives that route"),
+  ),
+]

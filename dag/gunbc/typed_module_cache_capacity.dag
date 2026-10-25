@@ -6,11 +6,13 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.realization_width { int_min, int_max }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, DissolutionUnbound, DissolutionPending, DissolutionFired, unbound_dissolution, dissolution_status }
 import gunbc.host.host_budget_source {
   HostBudgetResolution,
   HostBudgetResolved,
   HostBudgetDeclaredUnverified,
   HostBudgetUnreadable,
+  HostBudgetExternallyBounded,
 }
 
 // WHY THIS MODULE EXISTS. extdeps.realization.reconcile_in_process declares the
@@ -46,12 +48,19 @@ data typed_module_cache_entries_floor: Int = 100
 
 data typed_module_cache_entries_ceiling: Int = 4000
 
-// Two states, because "derived a bound" and "could not" have different remedies
-// and only the first may bound a resolve. There is deliberately no arm carrying
-// a fallback number.
+// Derived bound vs refusal stay disjoint: only CapEntries may bound a resolve from
+// observed or declared bytes. An externally bounded executor is not a derived bound
+// and must not reuse CapEntries (review 80724). CapEntriesExternallyBounded names
+// that standing; the floor is the working-set size under that standing, not a
+// fabricated host RSS. It dissolves when the executor exposes a readable memory.max.
+data typed_module_cache_externally_bounded_dissolves_on: DissolutionCondition = unbound_dissolution(
+  description: "the BuildBuddy (or other ExternallyBoundedExecutor) namespace exposes a readable cgroup memory.max or memory.high, so typed_module_cache_entry_cap derives CapEntries from HostBudgetResolved and CapEntriesExternallyBounded deletes"
+)
+
 type TypedModuleCacheCap
   = CapEntries { entries: Int }
   | CapEntryRefused { reason: NonEmptyStr }
+  | CapEntriesExternallyBounded { entries: Int, run_id: NonEmptyStr }
 
 // The derivation the seed hand-realizes. Division by the per-entry estimate,
 // then clamped into the declared band -- the clamp is what keeps a very small
@@ -67,6 +76,8 @@ fn typed_module_cache_entry_cap(r: HostBudgetResolution) -> TypedModuleCacheCap 
     HostBudgetDeclaredUnverified { requested_bytes: requested, reason: _ } =>
       CapEntries { entries: clamp_to_declared_band(raw: raw_entry_cap(budget: requested)) }
     HostBudgetUnreadable { reason: why } => CapEntryRefused { reason: why }
+    HostBudgetExternallyBounded { run_id: id } =>
+      CapEntriesExternallyBounded { entries: typed_module_cache_entries_floor, run_id: id }
   }
 }
 
@@ -100,6 +111,27 @@ fn typed_module_cache_cap_is_refused(c: TypedModuleCacheCap) -> Bool {
   match c {
     CapEntries { entries: _ } => false
     CapEntryRefused { reason: _ } => true
+    CapEntriesExternallyBounded { entries: _, run_id: _ } => false
+  }
+}
+
+data typed_module_cache_externally_bounded_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.typed_module_cache_capacity",
+    decl_name: "CapEntriesExternallyBounded",
+    field: WholeDeclaration
+  }
+}
+
+fn cap_entries_externally_bounded_still_interim() -> Bool {
+  match dissolution_status(
+    condition: typed_module_cache_externally_bounded_dissolves_on,
+    present_decls: [],
+  ) {
+    DissolutionUnbound => true
+    DissolutionPending => false
+    DissolutionFired => false
   }
 }
 

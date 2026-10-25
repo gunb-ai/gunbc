@@ -15,11 +15,8 @@ use crate::gunbc_emitted_crate_workspace::EmittedWorkspaceRedOutcome::{
 use crate::gunbc_emitted_crate_workspace::EmittedWorkspaceRefusal::*;
 pub use crate::gunbc_emitted_crate_workspace::{
     emitted_workspace_build, emitted_workspace_red_over, emitted_workspace_refusal_message,
-    emitted_workspace_root_crate_dir,
-};
-pub use crate::gunbc_emitted_crate_workspace::{
-    EmittedWorkspaceBuild, EmittedWorkspaceBuildOutcome, EmittedWorkspaceRedDrop,
-    EmittedWorkspaceRedOutcome, EmittedWorkspaceRefusal,
+    emitted_workspace_root_crate_dir, EmittedWorkspaceBuild, EmittedWorkspaceBuildOutcome,
+    EmittedWorkspaceRedDrop, EmittedWorkspaceRedOutcome, EmittedWorkspaceRefusal,
 };
 pub use crate::gunbc_rust_emitted_crate::EmittedRustCrate;
 pub use crate::gunbc_rust_emitted_edge::EmittedEdge;
@@ -30,13 +27,12 @@ pub use crate::v1_compiler_emit_rust::{
     emit_emitted_population_manifest, emitted_population_manifest_path,
     rust_emitted_module_basename, rust_source_ext, rust_source_root, string_without_suffix,
 };
-pub use crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome;
 use crate::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome::{
     Stage0CrateBoundaryEmitOk, Stage0CrateBoundaryEmitRefused,
 };
 pub use crate::v1_compiler_stage0_crates::{
     emitted_crate_dependencies, partition_crate_boundary_emit_outcome_over,
-    stage0_crate_boundary_emit_refusal_message,
+    stage0_crate_boundary_emit_refusal_message, Stage0CrateBoundaryEmitOutcome,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -281,12 +277,7 @@ pub fn emitted_workspace_realization(
                     },
                 )
             } else {
-                emitted_workspace_realization_of(
-                    files.clone(),
-                    edges.clone(),
-                    rust_crate.clone(),
-                    bin_name.clone(),
-                )
+                emitted_workspace_realization_of(files, edges, rust_crate.clone(), bin_name)
             }
         }
     }
@@ -396,7 +387,7 @@ pub fn emitted_workspace_realization_of(
     std::option::Option::None => Rc::new(EmittedWorkspaceRealization::EmittedWorkspaceRealizationRefused {
     cause: Rc::new(EmittedWorkspaceRealizationRefusal::EmittedWorkspaceEntryAbsent),
 }),
-    Some(entry) => match (*crate::gunbc_emitted_crate_workspace::emitted_workspace_build(basenames.clone(), edges.clone(), rust_crate.crate_name.clone(), bin_name.clone())).clone() {
+    Some(entry) => match (*crate::gunbc_emitted_crate_workspace::emitted_workspace_build(basenames, edges, rust_crate.crate_name.clone(), bin_name)).clone() {
     EmittedWorkspaceBuildOutcome::EmittedWorkspaceBuildRefused { cause: c, .. } => Rc::new(EmittedWorkspaceRealization::EmittedWorkspaceRealizationRefused {
     cause: Rc::new(EmittedWorkspaceRealizationRefusal::EmittedWorkspacePlanRefused {
     cause: c.clone(),
@@ -486,7 +477,7 @@ pub fn emitted_workspace_red_realization(
     workspace: Rc<EmittedWorkspaceRealized>,
 ) -> Rc<EmittedWorkspaceRedRealization> {
     match (*crate::gunbc_emitted_crate_workspace::emitted_workspace_red_over(
-        workspace.build.clone().layout.clone(),
+        workspace.build.layout.clone(),
     ))
     .clone()
     {
@@ -502,7 +493,7 @@ pub fn emitted_workspace_red_realization(
                 red_rows.clone(),
                 Rc::new({
                     let mut __result = Vec::new();
-                    for r in workspace.build.clone().rows.clone().iter().cloned() {
+                    for r in workspace.build.rows.clone().iter().cloned() {
                         if (r.crate_dir.clone() == emitted_workspace_root_crate_dir()) {
                             __result.push(r);
                         }

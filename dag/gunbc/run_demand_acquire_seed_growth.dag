@@ -1,0 +1,55 @@
+module gunbc.run_demand_acquire_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Ctrl receipt (review 80383) for the hand-Rust that makes plain `gunbc run` acquire an
+// entry through gunbc.source_layout instead of tokenizing every --source-root file.
+// Dissolution is the native compiler owning that lookup (v2.compiler.source_authority
+// module_file / v2.compiler.module_acquisition), not a smaller seed rewrite of the same walk.
+data run_demand_acquire_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "build_demand_acquired_index", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "acquire_layout_closure", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "demanded_module_names", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "longest_layout_module_prefix", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "read_layout_module", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "source_root_is_governed_layout", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "custom_root_module_census", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "read_derived_roster_module", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "under_source_roots", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "module_graph_facts_from_acquired", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "tests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "FIXTURE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "repo_root", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "fixture_dir", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "unparseable_module_outside_the_closure_does_not_change_resolve", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "write_identity_fixture", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "acquired_module_names", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "custom_source_root_acquires_an_imported_sibling", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "custom_source_root_demand_and_tree_arms_acquire_the_imported_module", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "diag_msgs", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.demand_acquire.tests", decl_name: "demand_matches_whole_tree_resolve_on_selected_entries", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup", decl_name: "module_storage_relative", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup", decl_name: "module_name_segment_is_identifier", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup", decl_name: "ident_start", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup", decl_name: "ident_continue", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup", decl_name: "tests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup.tests", decl_name: "v2_elides_the_namespace_directory", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup.tests", decl_name: "default_tree_is_dag", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup.tests", decl_name: "v2_namespace_alone_has_no_file", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.source_layout_lookup.tests", decl_name: "layout_tree_directory_literals_match_policy_source", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "new_multi_entry_index_acquired", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.pre_entry_phase", decl_name: "mark_demand_acquired_path", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.pre_entry_phase", decl_name: "record_demand_acquired_modules", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.pre_entry_phase", decl_name: "demand_acquired_modules", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.pre_entry_phase", decl_name: "index_scale", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.pre_entry_phase.tests", decl_name: "pool_module_count_does_not_publish_the_demand_set_as_the_pool", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST RATHER THAN .dag: wet `gunbc run` is still the v1 interpreter. It cannot call v2.compiler.source_authority module_file or v2.compiler.module_acquisition acquire_closure_of, and it cannot execute gunbc.source_layout layout_tree_directory as a fold. The seed therefore locates module a.b.c at <root(a)>/b/c.dag, BFS-acquires import lines plus dotted authored types, mints the two derived ledger rosters in memory, and hands resolve an index whose source_files are that set. gunbc compile still walks the tree (parse-as-check). layout_tree_directory_literals_match_policy_source is a declared seed copy of the policy file's two tree prefixes and the v2-elision row, not a second layout authority; v2.test.claim.source_layout_lookup already inhabits module_file. WHY ADMITTED AGAINST THE v1 FREEZE: gunbc.v1.v1_maintenance_standing v1_seed_standing admits by PURPOSE — collapsing the whole-tree tokenize on the wet verb the self-host workflows actually run.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these declarations when wet `gunbc run` is a native compiler that acquires the entry through v2.compiler.source_authority module_file and v2.compiler.module_acquisition, SUFFICIENT FOR gunbc.machine_intake.mtcollins1_boot_admission, mtcollins1_boot_run and mtcollins1_sol_notice to resolve without v1_compiler.cli_run.demand_acquire or source_layout_lookup. WHAT DOES NOT RETIRE IT: shrinking the seed BFS; an env fallback to resolve_entry_graph; a second hand copy of the layout prefixes.",
+  current_boundary: "v1_compiler.cli_run.demand_acquire resolve_entry_graph_demand_acquired is the only resolve `gunbc run` (src/v1/stage0/src/main.rs run_verb) calls. Governed roots dag and src/v2 use source_layout_lookup module_storage_relative. Other --source-root trees are custom_root_module_census (walk that root only). Derived rosters still go through v1_compiler.cli_run.derived_row_roster (separate justification). Controls: unparseable_module_outside_the_closure_does_not_change_resolve, custom_source_root_demand_and_tree_arms_acquire_the_imported_module, and src/v1/stage0/tests/scoped_run_observation.rs scoped_declaration_identity_follows_the_selected_function_node."
+}

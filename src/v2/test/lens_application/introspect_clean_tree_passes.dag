@@ -1,7 +1,12 @@
 module v2.test.lens_application.introspect_clean_tree_passes
 
 import std.decl_ref { decl_ref }
-import v2.compiler.compile { CompileLens, CompileLensRoot, CompileLensIntrospect, apply_compile_lens }
+import v2.compiler.compile {
+  CompileLens,
+  apply_compile_lens,
+  CompileLensRoot,
+  CompileLensIntrospect
+}
 import v2.compiler.infer { InferredTree }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.node { Atom, Node, Symbol }

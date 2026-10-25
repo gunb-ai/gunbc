@@ -8,7 +8,9 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
-import product.capacity.lease { LeaseGrant, LeasePolicy, QuiescenceRequired, lease_grant, lease_fence_of }
+import std.durable_compare_and_set { cas_generation, cas_generation_first }
+import std.resource_release_law { QuiescenceRequired }
+import product.capacity.lease { LeaseGrant, LeasePolicy, lease_grant, lease_fence_of }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import product.capacity.event_chain { EventId, HeadAbsent, HeadAt, head_expectation_eq }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
@@ -16,8 +18,9 @@ import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_authority_for, pair_serving_successor_may_launch }
 import gunbc.spark.host_commitment {
   SparkHostAdmitted, SparkHostRefused, HostEffectHandle, admit_unplaced_host_over, release_host_effect_over,
-  HostEffectSettled, HostEffectStillHeld, settle_host_effect_over, spark_host_standings_over, CurrentStandingsRead, CurrentStandingsUnread, spark_standing_of, SparkHostCommitted, SparkHostUncommitted, spark_commitment_causes, AuthorityHeldCommitment, OccupiedByHostEffect,
+  HostEffectSettled, HostEffectStillHeld, settle_host_effect_over, spark_host_standings_over, spark_host_standings_over_roster, admit_unplaced_host_over_roster, CurrentStandingsRead, CurrentStandingsUnread, spark_standing_of, SparkHostCommitted, SparkHostUncommitted, spark_commitment_causes, AuthorityHeldCommitment, OccupiedByHostEffect,
 }
+import gunbc.spark.serving_arm_placement { ServingArmHostClaim, glm_group_b_serving_arm }
 import product.host_identity { HostIdentity, host_identity_eq }
 import std.measure { second }
 import extdeps.shell
@@ -89,7 +92,7 @@ fn alr_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
 fn alr_w_pending(h: ContentHash) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
     group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}), transaction: "tx-real" as NonEmptyStr, authorization_binding: h,
-    lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected),
+    lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: cas_generation_first() }, observed: LeaseRunningExpected),
   }
 }
 
@@ -99,13 +102,13 @@ fn alr_w_pending(h: ContentHash) -> PairServingGroupAuthority {
 // sees it stale. A grant whose fence names another event, or another transaction, is refused
 // BEFORE anything is appended.
 fn alr_w_grant(admitting: EventId, reference: NonEmptyStr, generation: Int) -> LeaseGrant {
-  lease_grant(reference: reference, fence: lease_fence_of(admitting_event: admitting, generation: generation), granted_at: 1000, policy: LeasePolicy { maximum_duration_seconds: 1000, release_law: QuiescenceRequired })
+  lease_grant(reference: reference, fence: lease_fence_of(admitting_event: admitting, generation: match cas_generation(n: generation) { Present { value: g } => g  Absent => cas_generation_first() }), granted_at: 1000, policy: LeasePolicy { maximum_duration_seconds: 1000, release_law: QuiescenceRequired })
 }
 
 fn alr_w_suspended(h: ContentHash) -> PairServingGroupAuthority {
   SuspendedForAuthorizedSuccessor {
     group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}), authorization: "esc-real" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h },
-    lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected),
+    lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: cas_generation_first() }, observed: LeaseRunningExpected),
     cleanup: QuiescentReservedBaseline,
   }
 }
@@ -226,8 +229,11 @@ fn alr_local_leg(argv: List<String>) -> ArgvRun {
   }
 }
 
+// The live unit roster is empty (every procured unit is sold), so a host's standing over the real
+// store is read with the host SUPPLIED as a unit; the_live_rosters_hold_no_spark_unit_and_admission_refuses_by_real_execution pairs this
+// with the route over the live rosters.
 fn alr_occupied(store: FabricStorageBinding, host: HostIdentity, at: Int) -> Bool {
-  match spark_host_standings_over(store: store, at: at) {
+  match spark_host_standings_over_roster(store: store, at: at, units: [host], arm_claims: [] as List<ServingArmHostClaim>) {
     CurrentStandingsUnread { cause: _ } => false
     CurrentStandingsRead { standings: st } =>
       match spark_standing_of(standings: st, host: host) {
@@ -506,17 +512,41 @@ test fn a_saga_never_frees_a_host_early_and_a_consumed_preparation_cannot_be_abo
   })
 }
 
-// THE CURRENT-STATE WET ROUTE OF admit_unplaced_host_over, which the image-build entries and the V4.1
-// runtime-image probe reach through admit_unplaced_host_live: over a real temp store, a retained Group B
-// host (srv9, placed by the GLM serving arm) is refused for that real serving-arm commitment, and the
+// THE ARM-COMMITMENT ROUTE OF admit_unplaced_host_over, which the image-build entries and the V4.1
+// runtime-image probe reach through admit_unplaced_host_live: the live unit and arm rosters are empty
+// (every Spark is sold), so over a real temp store a unit (srv9) carrying a SUPPLIED arm claim is refused for that real serving-arm commitment, and the
 // refusal appends nothing -- the placement partition reads back with no host-effect record. RED: an
 // admission that ignored the arm commitment would claim the host and append a host effect.
 test fn a_serving_arm_host_is_refused_by_the_real_commitment_and_nothing_is_appended_by_real_execution() -> Bool {
   alr_with_temp_dir(scenario: fn(dir) {
     let store = alr_witness_layout(dir: dir)
     alr_witness_root_ready(dir: dir)
-      && (match admit_unplaced_host_over(raw: "srv9", purpose: "a witness build" as NonEmptyStr, term: second(count: 100), residue: alr_residue(pattern: "/srv/build"), store: store, executor: "executor-1" as NonEmptyStr, at: 1000) {
+      && (match admit_unplaced_host_over_roster(raw: "srv9", units: [alr_srv(s: "srv9")], arm_claims: [ServingArmHostClaim { arm: glm_group_b_serving_arm, host: alr_srv(s: "srv9"), basis: "fixture: retired canary placement on sold srv9" as NonEmptyStr }], purpose: "a witness build" as NonEmptyStr, term: second(count: 100), residue: alr_residue(pattern: "/srv/build"), store: store, executor: "executor-1" as NonEmptyStr, at: 1000) {
         SparkHostRefused { cause: c } => string_contains(s: c as String, pattern: "a serving arm is placed on it")
+        SparkHostAdmitted { host: _, claim: _ } => false
+      })
+      && (match placement_read(store: store) {
+        PlacementReadAt { head: _, effects: effs, preparations: _ } => length(effs) == 0
+        PlacementUnread { step: _, reason: _ } => false
+      })
+  })
+}
+
+// THE LIVE ROUTE, UNSUPPLIED: the two claims above supply a unit roster and an arm claim to
+// admit_unplaced_host_over_roster / spark_host_standings_over_roster, so this is the one execution of
+// the delegations that apply the LIVE rosters. Every Spark is sold, so the real store reads with no
+// standing at all and admission refuses srv9 as not a unit, appending nothing. RED: deleting the
+// live delegation, or supplying a roster on it, changes this verdict.
+test fn the_live_rosters_hold_no_spark_unit_and_admission_refuses_by_real_execution() -> Bool {
+  alr_with_temp_dir(scenario: fn(dir) {
+    let store = alr_witness_layout(dir: dir)
+    alr_witness_root_ready(dir: dir)
+      && (match spark_host_standings_over(store: store, at: 1000) {
+        CurrentStandingsRead { standings: st } => length(st) == 0
+        CurrentStandingsUnread { cause: _ } => false
+      })
+      && (match admit_unplaced_host_over(raw: "srv9", purpose: "a witness build" as NonEmptyStr, term: second(count: 100), residue: alr_residue(pattern: "/srv/build"), store: store, executor: "executor-1" as NonEmptyStr, at: 1000) {
+        SparkHostRefused { cause: c } => string_contains(s: c as String, pattern: "not a DGX Spark unit")
         SparkHostAdmitted { host: _, claim: _ } => false
       })
       && (match placement_read(store: store) {

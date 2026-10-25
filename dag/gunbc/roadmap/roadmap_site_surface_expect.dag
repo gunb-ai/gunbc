@@ -14,10 +14,10 @@ import extdeps.languages.json.parse {
   JsonMemberDuplicated,
   JsonMemberNotAnObject,
 }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, serialize_json }
 import extdeps.http.server { media_type_wire_label, application_json_utf8 }
-import gunbc.roadmap.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact, HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
+import gunbc.roadmap.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact, HealthzEffectiveRead, HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused }
 
 // PURE bundle predicates for roadmap served-surface witnesses. Every function here takes an
 // already-materialized RoadmapSiteSurfaceBundle (or a typed HTTP read) and performs no filesystem,
@@ -165,6 +165,9 @@ fn healthz_round_trip_receipt_holds(bundle: RoadmapSiteSurfaceBundle) -> Bool {
 fn healthz_read_grounds(bundle: RoadmapSiteSurfaceBundle, read: HealthzEffectiveRead) -> Bool {
   match read {
     HealthzProbeRefused { probe_error: _ } => false
+    // An answered-unhealthy read carries no surface body, so it grounds nothing -- and it is not
+    // reported as an unanswered probe either: the serve answered, and said it is not serving.
+    HealthzAnsweredUnhealthy { status: _, detail: _ } => false
     HealthzBodyRead { body: observed_body } =>
       roadmap_site_healthz_json_string_parses(body: observed_body)
         && roadmap_site_healthz_surface_is_current(bundle: bundle, observed_body: observed_body)

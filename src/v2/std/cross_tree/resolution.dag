@@ -1,16 +1,21 @@
 module v2.std.cross_tree.resolution
 import v2.std.qualified_name { QualifiedName }
 import v2.std.cross_tree.import_model { CoFundamental, CrossTreeAdmitted, CrossTreeDenied, CrossTreeImport, DagTree, LessFundamental, MoreFundamental, SourceRootRef, SourceRootSet, TreeFundamentalityOrder, V2Tree, cross_tree_import_admitted, source_root_ref_eq, source_root_set_contains }
-import std.algebra { Cons, Empty, FreeMonoid }
-type SourceRootBinding {
-  module: QualifiedName
-  root: SourceRootRef
+import std.algebra { Cons, Empty, FreeMonoid, empty_map, map_insert, map_lookup }
+import std.types { Map }
+import std.optional { Absent, Present }
+
+// WHICH SOURCE TREE EACH MODULE WAS READ FROM, KEYED BY MODULE. Every import's cross-tree gate asks
+// it twice (the importer and the target), once per import of every module, so it is one map read per
+// question; a list folded per question made the gate modules x imports x modules over a whole tree.
+// A module bound to two DIFFERENT trees is ambiguous and stays so; binding it again to the same tree
+// changes nothing. That judgment is made once, at insert, so lookup only reads it.
+type SourceRootIndex {
+  by_module: Map<QualifiedName, SourceRootLookup>
 }
 
-type SourceRootIndex = FreeMonoid<SourceRootBinding>
-
 fn source_root_index_empty() -> SourceRootIndex {
-  Empty
+  SourceRootIndex { by_module: empty_map() }
 }
 
 fn source_root_index_insert(
@@ -18,7 +23,23 @@ fn source_root_index_insert(
   module: QualifiedName,
   root: SourceRootRef
 ) -> SourceRootIndex {
-  Cons { head: SourceRootBinding { module: module, root: root }, tail: index }
+  SourceRootIndex {
+    by_module: map_insert(
+      m: index.by_module,
+      key: module,
+      value: match map_lookup(m: index.by_module, key: module) {
+        Absent => SourceRootResolved { root: root }
+        Present { value: SourceRootResolved { root: prev } } =>
+          if source_root_ref_eq(a: prev, b: root) {
+            SourceRootResolved { root: prev }
+          } else {
+            SourceRootAmbiguous
+          }
+        Present { value: SourceRootAmbiguous } => SourceRootAmbiguous
+        Present { value: SourceRootAbsent } => SourceRootResolved { root: root }
+      }
+    )
+  }
 }
 
 type SourceRootLookup
@@ -30,26 +51,10 @@ fn source_root_index_lookup(
   index: SourceRootIndex,
   module: QualifiedName
 ) -> SourceRootLookup {
-  fold_list(
-    xs: index,
-    empty: SourceRootAbsent,
-    cons: fn(acc, binding) {
-      if binding.module == module {
-        match acc {
-          SourceRootAbsent => SourceRootResolved { root: binding.root }
-          SourceRootResolved { root: prev } =>
-            if source_root_ref_eq(a: prev, b: binding.root) {
-              SourceRootResolved { root: prev }
-            } else {
-              SourceRootAmbiguous
-            }
-          SourceRootAmbiguous => SourceRootAmbiguous
-        }
-      } else {
-        acc
-      }
-    }
-  )
+  match map_lookup(m: index.by_module, key: module) {
+    Present { value: found } => found
+    Absent => SourceRootAbsent
+  }
 }
 
 fn tree_fundamentality_order(

@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.emitter_clones_a_whole_record_to_read_one_field
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+
+data emitter_clones_a_whole_record_to_read_one_field: RecurringFailureMode = RecurringFailureMode {
+  identity: "emitter_clones_a_whole_record_to_read_one_field" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "INVALID STATE: the Rust emitter lowers every variable read as `x.clone()`, including the receiver of a field access, so reading ONE field of an immutable record emits a clone of the WHOLE record first. The source `r.window.w0` is emitted as `r.window.clone().w0.clone()`: the 16-field Sha256Window is copied to read one i64, and the copy is dropped.",
+
+    "SPECIMEN, emitted 2026-10-18 from gunbc#14334 head 00049d9e36a1 by `gunbc compile --target rust --entry dag/extdeps/crypto/sha2.dag` (emit only, no cargo build of the output): extdeps_crypto_sha2.rs sha256_round contains `r.window.clone().w0.clone()` and passes `r.window.clone()` to sha256_window_push and sha256_window_next by value; the rebuilt Sha256Rounds is allocated with Rc::new per round. The window record is an authored 16-field .dag record (the rebuild per round is an authoring choice); the clone-before-select is the emitter's.",
+
+    "HARM: cost only, never a wrong answer. A copied accumulator is a proven cost-shape defect regardless of n (DESIGN section 6). Measured share is NOT established: the dominant per-round cost in sha256 is the machine-word operator seam (about 40 word ops per round, each a runtime String label plus table search), and the record clones are secondary and unmeasured. This row records the defect; it does not claim it is the 1.6 us/octet cost.",
+
+    "RUNG FOUND AT: mitigatable (silent cost). CEILING: 3 -- a field select on an immutable binding needs no clone, and the emitter can derive that from the Node tree (field access whose receiver is a plain variable read). NEXT TRIGGER: the emitter lowers a field access on a variable receiver without cloning the receiver, and the emitted sha256_round contains no `.clone().w` pattern, observed by the same emit-only compile.",
+  ],
+
+  evidence: [],
+}

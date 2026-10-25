@@ -1,6 +1,7 @@
 module v2.test.claim.execution.emit_host_fold_closure_equals_eval
 
-import std.types { List }
+
+import std.types { List, Map }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -22,11 +23,7 @@ import v2.test.claim.emit.fold_call_closure_fixture {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection {
-  Map,
-  list_at_optional,
-  list_nth
-}
+import std.algebra { list_at_optional }
 import std.optional {
   Optional,
   Present,
@@ -89,7 +86,7 @@ import v2.std.verification {
   Tier3,
   manual_claim_anchor
 }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.witness { Holds, Violates, Witness, list_nth }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

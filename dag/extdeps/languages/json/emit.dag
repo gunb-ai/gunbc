@@ -8,6 +8,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

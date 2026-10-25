@@ -16,7 +16,7 @@ import v1.std.core { Unmarked,
   field_from_key_property_name,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
-  InternalError, ArityMismatch, UnresolvedType, UnlistedImportUse, TypeArgumentKindMismatch,
+  InternalError, TypeAliasCycle, ArityMismatch, UnresolvedType, UnlistedImportUse, TypeArgumentKindMismatch,
   Cardinality, Required,
   StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
@@ -43,7 +43,7 @@ import v1.std.core { Unmarked,
 }
 
 import v1.compiler.infer_types {
-  resolved_type, child_type_node, is_type_expr_annotation, node_is_keyed_collection, is_declared_container_alias_spelling
+  resolved_type, child_type_node, is_type_expr_annotation, node_is_keyed_collection, node_is_keyed_algebra_spelling, node_is_collection, is_declared_container_alias_spelling
 }
 
 import std.induction { SubValueUnknown }
@@ -52,7 +52,7 @@ import v1.compiler.infer_env {
   TypeEnv, TypeBinding, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
-  lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
+  width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   UnitVariantContribution
 }
 
@@ -251,6 +251,41 @@ fn type_arg_name_is_bound_generic_parameter(name: String, env: TypeEnv) -> Bool 
   }
 }
 
+// A literal argument is the Nat-indexed width arm only where the applied type's parameter at that
+// position is of kind WidthResolution. The kind is read from the declaration of the type being
+// applied (`MachineWidth<bits: WidthResolution>`): its __param_kind property names the kind, which is
+// resolved in the APPLIED TYPE'S DECLARING module through the symbol index and compared to the
+// WidthResolution declaration by source location. Any other kind (or none) is not a width position.
+fn applied_arg_is_width_resolution_position(applied: Node, arg: Node, env: TypeEnv) -> Bool {
+  if !is_user_generic_use_site(n: applied, env: env) { false }
+  else {
+    let decl = resolve_generic_use_decl(env: env, n: applied)
+    match width_resolution_declaration(env: env) {
+      Absent => false
+      Present { value: width_decl } =>
+        match map_get(env.symbol_index.file_modules, decl.span.file) {
+          Absent => false
+          Present { value: declaring_module } =>
+            decl.params |> enumerate |> any(pair =>
+              match applied.children |> skip(pair.first) |> first {
+                Absent => false
+                Present { value: supplied } =>
+                  supplied.span.file == arg.span.file && supplied.span.start == arg.span.start && supplied.span.end == arg.span.end
+                  && match find_property(props: pair.second.properties, prop_name: type_param_kind_property_name(), source_indices: env.source_indices) {
+                    Absent => false
+                    Present { value: kind_node } =>
+                      match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(declaring_module, ".", authored_name(env: env, node: kind_node))) {
+                        Present { value: kind_decl } => kind_decl.span.file == width_decl.span.file && kind_decl.span.start == width_decl.span.start
+                        Absent => false
+                      }
+                  }
+              }
+            )
+        }
+    }
+  }
+}
+
 fn is_width_nat_type_literal(n: Node) -> Bool {
   match n.expr_data {
     ExprLiteral { value: LitInt { value: _ } } => true
@@ -311,11 +346,13 @@ fn node_is_type_parameter_reference(n: Node) -> Bool {
   }
 }
 
-fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> Node {
-  if node_is_type_parameter_reference(n: n) { n } else { peel_nominal_alias_identity_by_name(n: n, env: env, module_name: module_name) }
+// EXPANSION, NOT IDENTITY: reads the structure an alias RHS expands to (connective, children, kernel head). Which declaration a type
+// denotes, or whether two types are the same, is alias_settled_agree / alias_identity_in_judgment (DESIGN 6b: one relation).
+fn expand_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> Node {
+  if node_is_type_parameter_reference(n: n) { n } else { expand_nominal_alias_rhs_by_name(n: n, env: env, module_name: module_name) }
 }
 
-fn peel_nominal_alias_identity_by_name(n: Node, env: TypeEnv, module_name: String) -> Node {
+fn expand_nominal_alias_rhs_by_name(n: Node, env: TypeEnv, module_name: String) -> Node {
   let source_indices = env.source_indices
   let brand = authored_name_at(source_indices: source_indices, node: n)
   match lookup_type_for(env: env, node: n) {
@@ -405,13 +442,21 @@ type ResourceUseResult {
 // expansion. resolve_node_bounded reaches it after resolving authored arguments; a caller that
 // already holds resolved arguments -- an operation's output record is one, and re-resolving its
 // fields as type names would be wrong -- reaches the same construction with those arguments.
+// THE APPLICATION NAMES THE DECLARATION IT APPLIES. A reference the resolver already stamped keeps
+// its identity; otherwise the declaration node the lookup landed on is the definition of it (the
+// same mint field_inferred_with_declaration writes through), so `Optional<T>` as a return or
+// parameter type is identified at the node the checker reads, not left to a spelling.
 fn generic_declaration_application(n: Node, decl: Node, type_name: String, resolved_args: List<Node>, slot_bindings: Map<String, Node>, env: TypeEnv) -> Node {
   let substituted_children = decl.children |> map(child =>
     substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: type_name, source_indices: env.source_indices)
   )
   let is_recursive = is_recursive_type_by_name(env: env, name: type_name)
-  let expanded_node = Node { occurrence_identity: OccurrenceSynthetic, name: type_name, span: n.span, ident_span: n.ident_span, children: substituted_children, connective: decl.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
-  Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: Present { value: Resolved { node: expanded_node } }, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
+  let applied_declaration = match n.declaration {
+    Present { value: d } => Present { value: d }
+    Absent => declaration_ref_of_declaration_node(decl: decl, source_indices: env.source_indices, env: env)
+  }
+  let expanded_node = Node { occurrence_identity: OccurrenceSynthetic, name: type_name, span: n.span, ident_span: n.ident_span, children: substituted_children, connective: decl.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: applied_declaration, expr_data: n.expr_data }
+  Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: Present { value: Resolved { node: expanded_node } }, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: applied_declaration, expr_data: n.expr_data }
 }
 
 fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {
@@ -467,7 +512,10 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   else {
     let decl = resolve_generic_use_decl(env: env, n: n)
     if decl.params |> count > 0 {
-      if is_container_type(name: n.name) { false }
+      // RESIDUE: second consumer of the leaf-spelling classifier (the first is the emitter's
+      // node_is_keyed_collection); tracked by gunbc.recurring_failure_mode
+      // emitter_keyed_container_lowering_is_keyed_by_leaf_spelling, whose trigger covers both sites.
+      if is_container_type(name: n.name) || node_is_keyed_algebra_spelling(n: n, source_indices: env.source_indices) { false }
       else if decl.inferred != none { true }
       else { true }
     } else { false }
@@ -575,7 +623,7 @@ fn resolve_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> Node
   }
 }
 
-data resolve_node_bounded_masked_boundary: String = "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (peel_nominal_alias_identity :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561, and the field-access alias peel — v1.compiler.infer peel_alias_once_for_field_access, added 2026-09-09 after the census measured it charging definer-tree names to importers), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority."
+data resolve_node_bounded_masked_boundary: String = "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (expand_nominal_alias_rhs :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561, and the field-access alias peel — v1.compiler.infer peel_alias_once_for_field_access, added 2026-09-09 after the census measured it charging definer-tree names to importers), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority."
 
 // N1a MEASUREMENT ARM (quiet-hawk-219): when type_ref_hit_ne_bind_measure_active (v1_rt host
 // bracket), a masked leaf pool-hit without type_ref_measure_binding_authority emits UnresolvedType
@@ -723,7 +771,15 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     } else { [] }
     let kind_diags = type_param_kind_diagnostics(carrier: n, decl: decl, type_name: type_name, env: env, module_name: module_name)
     let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1, masked: masked))
-    let resolved_args = map(arg_results, ar => ar.resolved)
+    // A nested type application is a use site, the same fact rendered_use_site_type stamps at a
+    // parameter root. The container arm leaves List.inferred empty; without this wrap, Optional<List<T>>
+    // carries an unstamped List while List<T> as the root is stamped -- one construction of one question.
+    let resolved_args = n.children |> enumerate |> map(pair =>
+      match arg_results |> skip(pair.first) |> first {
+        Present { value: ar } => rendered_use_site_type(authored: pair.second, resolved: ar.resolved)
+        Absent => pair.second
+      }
+    )
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
     let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
       let idx = pair.first
@@ -770,7 +826,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       let resolved_key_child = Node { occurrence_identity: key_child_node.occurrence_identity, name: key_param_name, span: key_child_node.span, ident_span: key_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: key_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       let resolved_val_child = Node { occurrence_identity: val_child_node.occurrence_identity, name: val_param_name, span: val_child_node.span, ident_span: val_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: val_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
       NodeResolveResult {
-        resolved: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_key_child, resolved_val_child], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData },
+        resolved: stamp_kernel_collection(n: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_key_child, resolved_val_child], connective: n.connective, params: n.params, inferred: none, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData }),
         diagnostics: concat(key_diags, val_diags)
       }
     } else if n.children |> count == 1 {
@@ -784,7 +840,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
         let el_param_name = if child_node.inferred != none { authored_name(env: env, node: child_node) } else { match container_param_name(kind_name: type_name, index: 0) { Present { value: pn } => pn  Absent => authored_name(env: env, node: child_node) } }
         let resolved_child = Node { occurrence_identity: child_node.occurrence_identity, name: el_param_name, span: child_node.span, ident_span: child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: el_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
         NodeResolveResult {
-          resolved: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_child], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData },
+          resolved: stamp_kernel_collection(n: reference_with_declaration(env: env, n: Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_child], connective: n.connective, params: n.params, inferred: none, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: NoExprData })),
           diagnostics: el_diags
         }
       Absent => NodeResolveResult { resolved: n, diagnostics: [] }
@@ -922,6 +978,14 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResolve
   }
 }
 
+// Kernel collections (List/Set/Map) are the producer of their own use-site stamp. The parse
+// node carries inferred=none; leaving it that way meant only a later rendered_use_site_type at a
+// parameter root stamped List, so Optional<List<T>> / a record field / another generic's argument
+// kept an unstamped collection. Stamp here, once, wherever the container arm runs.
+fn stamp_kernel_collection(n: Node) -> Node {
+  Node { occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: Present { value: Resolved { node: n } }, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
+}
+
 fn rendered_use_site_type(authored: Node, resolved: Node) -> Node {
   if authored.children |> count > 0 {
     Node { occurrence_identity: authored.occurrence_identity, name: authored.name, span: authored.span, ident_span: authored.ident_span, children: resolved.children, connective: authored.connective, params: authored.params, inferred: Present { value: Resolved { node: resolved } }, return_cardinality: authored.return_cardinality, uses: authored.uses, body: authored.body, transport: authored.transport, properties: resolved.properties, type_annotation: authored.type_annotation, is_self_recursive: authored.is_self_recursive, has_non_tail_self_call: authored.has_non_tail_self_call, match_pattern: authored.match_pattern, module_item_kind: authored.module_item_kind, declaration_marker: authored.declaration_marker, declaration: authored.declaration, expr_data: authored.expr_data }
@@ -971,16 +1035,6 @@ fn resolve_resource_use(ru: Node, env: TypeEnv, module_name: String) -> Resource
   }
 }
 
-fn resolve_named_arg(arg: Node, env: TypeEnv, module_name: String) -> NamedArgResolveResult {
-  let value_result = resolve_expr_types(texpr: arg_value(n: arg), env: env, module_name: module_name)
-  let value_expr = value_result.expr
-  let value_diags = value_result.diagnostics
-  NamedArgResolveResult {
-    arg: make_arg_node(occurrence_identity: arg.occurrence_identity, name: arg_name_at(n: arg, source_indices: env.source_indices), value: value_expr, span: arg.span, name_span: node_name_span(n: arg)),
-    diagnostics: value_diags
-  }
-}
-
 fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> FieldInitResolveResult {
   let value_result = resolve_expr_types(texpr: field_init_node_value(n: field_init), env: env, module_name: module_name)
   let value_expr = value_result.expr
@@ -988,51 +1042,6 @@ fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> Fi
   FieldInitResolveResult {
     field_init: make_field_init_node(occurrence_identity: field_init.occurrence_identity, name: field_init_node_name_at(n: field_init, source_indices: env.source_indices), value: value_expr, span: field_init.span, name_span: node_name_span(n: field_init)),
     diagnostics: value_diags
-  }
-}
-
-fn resolve_match_arm(arm: Node, env: TypeEnv, module_name: String) -> MatchArmResolveResult {
-  let arm_g = arm_guard(n: arm)
-  let guard_result = match arm_g {
-    Present { value: guard } => Present { value: resolve_expr_types(texpr: guard, env: env, module_name: module_name) }
-    Absent => none
-  }
-  let guard_diags = match guard_result {
-    Present { value: result } => result.diagnostics
-    Absent => []
-  }
-  let body_result = resolve_expr_types(texpr: arm_body(n: arm), env: env, module_name: module_name)
-  let body_expr = body_result.expr
-  let body_diags = body_result.diagnostics
-  MatchArmResolveResult {
-    arm: make_arm_node(occurrence_identity: arm.occurrence_identity,
-      pattern: arm_pattern(n: arm),
-      guard: match guard_result {
-        Present { value: result } => Present { value: result.expr }
-        Absent => none
-      },
-      body: body_expr,
-      span: arm.span
-    ),
-    diagnostics: concat(guard_diags, body_diags)
-  }
-}
-
-fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> StringPartResolveResult {
-  match part {
-    Text { value: value } =>
-      StringPartResolveResult {
-        part: Text { value: value },
-        diagnostics: []
-      }
-    Interpolation { expr: expr } =>
-      let expr_result = resolve_expr_types(texpr: expr, env: env, module_name: module_name)
-      let resolved_expr = expr_result.expr
-      let expr_diags = expr_result.diagnostics
-      StringPartResolveResult {
-        part: Interpolation { expr: resolved_expr },
-        diagnostics: expr_diags
-      }
   }
 }
 
@@ -1274,7 +1283,7 @@ fn first_duplicate_type_param_name(names: List<String>) -> String? {
 // left as authored.
 fn field_inferred_with_declaration(field: Node, binders: List<String>, env: TypeEnv) -> InferredNode? {
   match field.inferred {
-    Present { value: Resolved { node: authored } } => Present { value: Resolved { node: reference_tree_with_declaration(n: authored, binders: binders, env: env) } }
+    Present { value: Resolved { node: authored } } => Present { value: Resolved { node: stamp_collections_in_reference(n: reference_tree_with_declaration(n: authored, binders: binders, env: env), source_indices: env.source_indices) } }
     _ => field.inferred
   }
 }
@@ -1294,6 +1303,38 @@ fn field_inferred_with_declaration(field: Node, binders: List<String>, env: Type
 // A SIGNATURE'S PARAMETER TYPES AND ITS RETURN ARE THE SAME POSITIONS on a function item
 // (resolve_item_types): std.authorization_profile's generic fns return AccessRequest<..>, and their
 // signature references were unstamped until this walk reached them.
+// A FIELD'S TYPE REFERENCE CARRIES THE USE-SITE STAMP OF EVERY COLLECTION BENEATH IT. A field typed
+// `Optional<List<T>>` reaches the emitter as the authored reference; the container arm of
+// resolve_node_bounded stamps a collection's use site only where it resolves one, and a field's
+// authored reference never passes through it, so the nested List stayed unresolved and the seed Rust
+// emit read it as `()`. This writes nothing but `inferred` on a collection that has none, through
+// stamp_kernel_collection, the one writer the resolve arm uses, and walks arguments and the
+// reference a carrier argument holds in `inferred`.
+fn stamp_collections_in_reference(n: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  if n.children |> count == 0 {
+    n
+  } else {
+    let children = map(n.children, c => stamp_collections_in_reference(n: c, source_indices: source_indices))
+    let inferred = match n.inferred {
+      Present { value: Resolved { node: t } } => Present { value: Resolved { node: stamp_collections_in_reference(n: t, source_indices: source_indices) } }
+      _ => n.inferred
+    }
+    let walked = node_with_children_params_inferred(n: n, children: children, params: n.params, inferred: inferred)
+    if n.inferred == none && node_is_collection(n: n, source_indices: source_indices) {
+      stamp_kernel_collection(n: walked)
+    } else {
+      walked
+    }
+  }
+}
+
+fn field_children_with_stamped_type(field: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  match field.children |> first {
+    Present { value: te } => concat([stamp_collections_in_reference(n: te, source_indices: source_indices)], field.children |> skip(1))
+    Absent => field.children
+  }
+}
+
 fn reference_tree_with_declaration(n: Node, binders: List<String>, env: TypeEnv) -> Node {
   let name = authored_name(env: env, node: n)
   let is_binder_reference = n.children |> count == 0 && n.params |> count == 0 && binders |> any(b => b == name)
@@ -1436,6 +1477,10 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       [make_error_node(diagnostic: InternalError { message: concat(concat(concat("the name '", dup), concat("' is bound twice in the header of '", authored_name_at(source_indices: env.source_indices, node: item))), "': either a type parameter is repeated (`type Pair<T, T>`), or a value parameter shares a type parameter's name (`fn f<T>(T: T)`). A type parameter's identity is (owner, name), so one header may bind a name once. Rename one of them."), span: item.span }, module_name: module_name)]
     Absent => []
   }
+  let alias_cycle_diags = match map_get(env.symbol_index.alias_cycles, concat(module_name, ".", authored_name(env: env, node: item))) {
+    Present { value: members } => [make_error_node(diagnostic: TypeAliasCycle { members: members, span: item.span }, module_name: module_name)]
+    Absent => []
+  }
   let env = env_with_type_variable_bindings(env: env, tp_names: tp_names)
   let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
   let resolved_params = map(param_results, pr => pr.param)
@@ -1491,7 +1536,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
       let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
       ItemResolveResult {
-        item: Node { occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: child.children, connective: child.connective, params: child.params, inferred: field_inferred_with_declaration(field: child, binders: tp_names, env: env), return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: child.module_item_kind, declaration_marker: child.declaration_marker, declaration: child.declaration, expr_data: NoExprData },
+        item: Node { occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: field_children_with_stamped_type(field: child, source_indices: env.source_indices), connective: child.connective, params: child.params, inferred: field_inferred_with_declaration(field: child, binders: tp_names, env: env), return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: child.module_item_kind, declaration_marker: child.declaration_marker, declaration: child.declaration, expr_data: NoExprData },
         diagnostics: type_diags
       }
     )
@@ -1502,7 +1547,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
         let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
         let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
         ItemResolveResult {
-          item: Node { occurrence_identity: field.occurrence_identity, name: field.name, span: field.span, ident_span: field.ident_span, children: field.children, connective: field.connective, params: field.params, inferred: field_inferred_with_declaration(field: field, binders: tp_names, env: env), return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: field.module_item_kind, declaration_marker: field.declaration_marker, declaration: field.declaration, expr_data: NoExprData },
+          item: Node { occurrence_identity: field.occurrence_identity, name: field.name, span: field.span, ident_span: field.ident_span, children: field_children_with_stamped_type(field: field, source_indices: env.source_indices), connective: field.connective, params: field.params, inferred: field_inferred_with_declaration(field: field, binders: tp_names, env: env), return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: field.module_item_kind, declaration_marker: field.declaration_marker, declaration: field.declaration, expr_data: NoExprData },
           diagnostics: type_diags
         }
       )
@@ -1539,6 +1584,6 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       properties: resolved_props, type_annotation: resolved_anno,
       is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: item.module_item_kind, declaration_marker: item.declaration_marker, declaration: item.declaration, expr_data: NoExprData
     },
-    diagnostics: concat(collision_diags, param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, prop_diags, child_diags)
+    diagnostics: concat(collision_diags, alias_cycle_diags, param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, prop_diags, child_diags)
   }
 }

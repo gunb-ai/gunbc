@@ -22,13 +22,9 @@ import std.types { List }
 // receipt on the PR. v1 seed-reader change is admissible because it unblocks residue
 // burn-down for the v2 program.
 
-data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
-
 data nfr_reason_land_red_era: String = "landed unrostered while the gate was red during the land-red-with-local-proof era (revoked 2026-07-12); declared so the ratchet re-arms"
 
 data nfr_dissolve_owning_fold: DissolutionCondition = unbound_dissolution(description: "the owning file's fold migration totals the match and the row deletes")
-
-data nfr_reason_structural_eq_mint: String = "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor"
 
 data nfr_reason_typed_census_ca5ed1724b: String = "a top-level wildcard arm over a closed coproduct found by the whole-corpus TYPED census at main ca5ed1724b (#12610's joint landing; nfr_whole_corpus_typed_census, srv1, 2026-10-02). The typed walk keys on the scrutinee's inferred type, so it sees the local-binding, field and call scrutinees the deleted parameter-keyed scan never could; these sites predate the walk and are un-migrated modeling (DESIGN §6), rostered so the ratchet arms at unrostered=0"
 
@@ -42,11 +38,6 @@ data nfr_dissolve_binding_outcome_resolution_wildcard: DissolutionCondition = un
 
 // Seed-mirrored subjects and extdeps coverage receipts: lists stay here.
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::section13_population_law_id_eq" },
-      reason: nfr_reason_structural_eq_mint,
-      dissolution: unbound_dissolution(description: "DISSOLVE-ON: Section13PopulationLawId equality becomes derived from inhabitance (dag/std/algebra, DESIGN §3/§4) and the hand nested-match equality fold deletes with the row"),
-    },
   FrontierRow {
       subject: PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict" },
       reason: nfr_reason_trait_derive_shape_table,

@@ -1,7 +1,7 @@
 module v2.workflow.namespace_xl2_subject_tree_id
 
-import std.types { Bool, Int, List, String }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.types { Bool, Int, List, Map, String }
+import std.algebra { empty_map, map_insert, map_lookup }
 import std.optional { Present }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 import extdeps.crypto.sha1 { sha1_hex }

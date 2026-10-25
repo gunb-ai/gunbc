@@ -1,6 +1,6 @@
 module std.materialization_store_grant
 
-import std.types { String, Bool, List }
+import std.types { String, Bool, List, Int }
 import std.access { AccessDecision }
 import std.effect_grant {
   Verb, Read, Write,
@@ -13,40 +13,38 @@ import std.effect_grant {
 import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_tmp_scratch_store_root }
+import gunbc.persistent_instance_roots { PersistentInstanceScope, persistent_instance_scope_root }
 
-// THE DURABLE ROOT GRANT FOR THE MATERIALIZATION STORE, AND WHY IT IS A COPRODUCT RATHER THAN A PATH.
+// THE STORE ROOT IS A COPRODUCT SO DURABILITY IS CONSTRUCTED, NOT INFERRED FROM A PATH. Every arm
+// carries exactly the operand its path is derived from, and nothing rides beside it: no caller hands
+// a store a directory.
 //
-// std.artifact_store_scratch_grant admits /tmp/gunbc_* roots, which are frame-owned scratch: on a
-// Firecracker runner the guest /tmp dies with the attempt, so a store rooted there is a per-attempt
-// cache and can never discharge a reuse obligation whose lifetime spans runs (DESIGN section 2:
-// retention must span the obligated lifetime). The native CI job needs a store that outlives the
-// attempt, so its root is a gunbc-owned PERSISTENT HOST VOLUME reached through the declared guest
-// boundary, not guest /tmp.
+// DurableHostVolume is fieldless: the live host volume is one declared path
+// (`materialization_store_host_volume_path`). DurableAcrossRuns.
 //
-// The caller does not supply that path. `DurableHostVolumeRoot` carries no field: the durable root
-// is the one declared datum below, so a consumer that asks for durability cannot be handed an
-// arbitrary directory (including /tmp) under that name. `WitnessScratchRoot` is the only arm that
-// takes a path, it admits only the existing /tmp/gunbc_* scratch grant, and its durability is
-// DERIVED as ephemeral -- so an executed control can exercise the real store realization in a
-// throwaway directory without that directory ever being able to answer "durable".
+// PersistentInstanceWorkspace { scope } — DurableAcrossRuns. The scope is a closed enum of the
+// declared persistent instances (gunbc.persistent_instance_roots); the store is the leaf
+// `materialization-store` under that scope's root, and the grant is that path.
 //
-// DECLARED FRONTIER, stated so the grant is not read as the whole boundary: this module grants the
-// guest-side PATH. Attaching the gunbc-owned host volume as a Firecracker drive and mounting it at
-// that path inside the guest is the runner lane's act (gunbc.runner runner_attempt_launch attaches
-// drives today; it attaches no materialization-store volume yet). Until that attachment lands, a
-// durable-root open on a runner guest finds no initialized store and REFUSES as unavailable
-// (extdeps.realization.materialization_store_local), never falls back to scratch -- there is no
-// shadow store. TRIGGER: the runner attempt launch attaches the persistent host volume at
-// materialization_store_durable_root_path. Discharged for srv1 by gunbc.live_deploy.spec
-// deployment_ensured_srv1_host_directories, the MaterializationStoreDirectory row.
+// FrameJobWorkspace { frame } — EphemeralToFrame. The store is
+// `/tmp/gunbc_compute_<frame>/materialization-store`: it lives under the frame-owned scratch grant
+// (std.artifact_store_scratch_grant) by construction, so it cannot alias a durable store, and it is
+// job-scoped because /tmp/gunbc_* is. A constructor whose root is a parameter it does not own may
+// not choose this arm by picking a path.
 //
-// LIFECYCLE GRADE: LifecycleByConvention, honestly. A durable store is not released by frame
-// teardown -- that is its purpose -- so it cannot claim LifecycleByConstruction; its release is the
-// retention and eviction the provider machinery owns (std.artifact_store accounting under the
-// provider), which is a cleanup that can fail or be forgotten, i.e. the weaker grade.
+// WitnessScratchRoot { root } admits only /tmp/gunbc_* scratch, checked at admission.
+//
+// DECLARED FRONTIER: this module grants the guest-side PATH. Attaching a gunbc-owned host volume
+// as a Firecracker drive is the runner lane's act. Until that attachment lands, a DurableHostVolume
+// open on a runner guest finds no initialized store and REFUSES as unavailable
+// (extdeps.realization.materialization_store_local), never falls back to scratch. srv1's instance
+// declares DurableHostVolume; discharged there by gunbc.live_deploy.spec
+// deployment_ensured_srv1_host_directories.
 
 type MaterializationStoreRoot
-  = DurableHostVolumeRoot
+  = DurableHostVolume
+  | PersistentInstanceWorkspace { scope: PersistentInstanceScope }
+  | FrameJobWorkspace { frame: Int }
   | WitnessScratchRoot { root: String }
 
 type MaterializationStoreDurability
@@ -58,34 +56,37 @@ data materialization_store_frame: Frame = Frame {
   kind: SharedStateFrame
 }
 
-data materialization_store_durable_root_path: String = "/var/lib/gunbc/materialization-store"
+data materialization_store_host_volume_path: String = "/var/lib/gunbc/materialization-store"
 
-// DERIVED from the path, never restated as segments (review 63898): the grant root and the
-// admission target are the same projection of one datum, so they cannot drift apart.
-data materialization_store_durable_root: NamespacePosition = absolute_path_position(
-  path: materialization_store_durable_root_path
-)
+data materialization_store_workspace_leaf: String = "materialization-store"
+
+data materialization_store_frame_root_prefix: String = "/tmp/gunbc_compute_"
+
+// The frame's own root, which a hermetic instance also takes as its instance_root.
+fn materialization_store_frame_root(frame: Int) -> String {
+  join([materialization_store_frame_root_prefix, to_string(value: frame)], "")
+}
 
 fn materialization_store_root_path(root: MaterializationStoreRoot) -> String {
   match root {
-    DurableHostVolumeRoot => materialization_store_durable_root_path
+    DurableHostVolume => materialization_store_host_volume_path
+    PersistentInstanceWorkspace { scope } =>
+      join([persistent_instance_scope_root(scope: scope), "/", materialization_store_workspace_leaf], "")
+    FrameJobWorkspace { frame } =>
+      join([materialization_store_frame_root(frame: frame), "/", materialization_store_workspace_leaf], "")
     WitnessScratchRoot { root: r } => r
   }
 }
 
-// THE STAGING SIBLING BELONGS TO THE STORE, so its path derives here, once, for both the producer
-// that stages into it (gunbc.compute.work_provider_local compute_staging_dir) and the deployment
-// that must create it. It was spelled only at the producer, so the deploy created the store and not
-// its sibling, and every build on srv1 refused 'store unavailable' because the service user cannot
-// create a directory under the root-owned /var/lib/gunbc (srv1 lab, 2026-10-11). A sibling and not a
-// child because the store lists its root. It lies outside the grant root above: declared, not modeled.
 fn materialization_store_staging_root_path(root: MaterializationStoreRoot) -> String {
   join([materialization_store_root_path(root: root), "-staging"], "")
 }
 
 fn materialization_store_durability(root: MaterializationStoreRoot) -> MaterializationStoreDurability {
   match root {
-    DurableHostVolumeRoot => DurableAcrossRuns
+    DurableHostVolume => DurableAcrossRuns
+    PersistentInstanceWorkspace { scope: _ } => DurableAcrossRuns
+    FrameJobWorkspace { frame: _ } => EphemeralToFrame
     WitnessScratchRoot { root: _ } => EphemeralToFrame
   }
 }
@@ -94,6 +95,20 @@ fn materialization_store_durability_name(d: MaterializationStoreDurability) -> S
   match d {
     DurableAcrossRuns => "durable_across_runs"
     EphemeralToFrame => "ephemeral_to_frame"
+  }
+}
+
+fn materialization_store_path_envelope(path: String) -> Envelope {
+  Envelope {
+    frame: materialization_store_frame,
+    grants: materialization_store_grants(root_position: absolute_path_position(path: path))
+  }
+}
+
+fn materialization_store_scratch_envelope() -> Envelope {
+  Envelope {
+    frame: materialization_store_frame,
+    grants: materialization_store_grants(root_position: artifact_store_scratch_root)
   }
 }
 
@@ -106,17 +121,12 @@ fn materialization_store_grants(root_position: NamespacePosition) -> List<Grant>
 
 fn materialization_store_envelope(root: MaterializationStoreRoot) -> Envelope {
   match root {
-    DurableHostVolumeRoot =>
-      Envelope {
-        frame: materialization_store_frame,
-        grants: materialization_store_grants(root_position: materialization_store_durable_root)
-      }
+    DurableHostVolume => materialization_store_path_envelope(path: materialization_store_host_volume_path)
+    PersistentInstanceWorkspace { scope: _ } => materialization_store_path_envelope(path: materialization_store_root_path(root: root))
+    FrameJobWorkspace { frame: _ } => materialization_store_scratch_envelope()
     WitnessScratchRoot { root: r } =>
       if is_gunbc_tmp_scratch_store_root(store_root: r) {
-        Envelope {
-          frame: materialization_store_frame,
-          grants: materialization_store_grants(root_position: artifact_store_scratch_root)
-        }
+        materialization_store_scratch_envelope()
       } else {
         Envelope { frame: materialization_store_frame, grants: [] }
       }

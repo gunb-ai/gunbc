@@ -305,7 +305,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // vocabulary discriminates: removing the second peel in
 // direct_call_structured_record_literal_resolved_type_mismatch was proposed as the same class and
 // REFUSED on evidence — a differential control over the whole corpus found
-// peel_nominal_alias_identity is not idempotent, so peel(peel(x)) is not a redundant call and its
+// expand_nominal_alias_rhs is not idempotent, so peel(peel(x)) is not a redundant call and its
 // removal would not be behavior-preserving. The control read zero counterexamples through 240,000
 // calls before the first appeared, which is why the count was taken to completion rather than
 // sampled: 21 non-idempotent results over 600,000+ calls. A span-blind rerun then classified them,
@@ -345,8 +345,8 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // is a FIELD LIST, and it exists to type the literal's field initializers. DOWNSTREAM,
 // direct_call_structured_record_literal_resolved_type_mismatch asks
 // application_type_names_compatible, a SEMANTIC relation over authored names:
-// application_type_name_identity per name (lookup_type_by_name followed by
-// peel_nominal_alias_identity), dag_can_cast, type_name_transparently_aliases_to in BOTH
+// application_type_expansion_head_name per name (lookup_type_by_name followed by
+// expand_nominal_alias_rhs), dag_can_cast, type_name_transparently_aliases_to in BOTH
 // directions, and brand_grounds_transparently_to against the formal's declaration. The fact it
 // produces is a NAME IDENTITY verdict, and it exists to decide whether to emit a diagnostic.
 //
@@ -366,10 +366,10 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // admissible, and the item is retired rather than re-scoped.
 //
 // THE ONE FACT THAT WOULD ACTUALLY BE CARRYABLE, named so the next reader does not have to find it
-// again and does not mistake it for live work: application_type_name_identity is a pure function of
+// again and does not mistake it for live work: application_type_expansion_head_name is a pure function of
 // (type_name, type_env, module_name) recomputed per call at this seam. That is the memo class,
 // whose implementation is REJECTED and whose draft (gunbc#8452) is closed as quarry with its design
-// record preserved -- including that peel_nominal_alias_identity is not idempotent (21
+// record preserved -- including that expand_nominal_alias_rhs is not idempotent (21
 // non-idempotent results over 600,000-plus calls; 6 structural, all FreeMonoid gaining a child),
 // which is why the neighbouring second-peel removal at this same function was already refused
 // above. It is not reopened here.

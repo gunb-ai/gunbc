@@ -1,0 +1,21 @@
+module test.claim.runner.runner_revision_job_image_wet_witness
+
+import std.types { Bool, String }
+import gunbc.runner.runner_revision_job_main { revision_job_admit_image }
+import gunbc.runner.runner_revision_job_image { RevisionJobImageNotAdmitted, RevisionJobImageVerified }
+
+// THE IMAGE WALL'S EFFECTFUL ARM, BY REAL EXECUTION: a pinned identity over a directory holding no
+// installed image is refused by the verifier (which runs argv to read ownership and digest), not
+// waved through and not mistaken for the unpinned refusal.
+
+fn admitted(image_sha256: String) -> String {
+  match revision_job_admit_image(image_dir: "/nonexistent", image_sha256: image_sha256) {
+    RevisionJobImageNotAdmitted { reason: r } => r
+    RevisionJobImageVerified { image: _ } => "verified"
+  }
+}
+
+test fn a_pinned_identity_over_an_uninstalled_image_is_refused_by_the_verifier() -> Bool {
+  let r = admitted(image_sha256: "0000000000000000000000000000000000000000000000000000000000000000")
+  r != "no image identity is pinned for this job" && r != "verified"
+}

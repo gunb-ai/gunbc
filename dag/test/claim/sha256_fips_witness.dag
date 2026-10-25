@@ -4,14 +4,14 @@ import std.logic { Bool }
 import std.types { Int, List }
 import std.integer { UInt8 }
 import std.bytes { bytes_octets, utf8_encode_bytes }
-import std.bitwise { word32_and, word32_xor, word32_or, word32_not, word32_add, word32_rotr, word32_shr, Word64, word64_add, word64_rotr, word64_xor }
+import std.machine_word { word32_and, word32_xor, word32_or, word32_not, word32_add, word32_rotr, word32_shr, Word64, word64_add, word64_rotr, word64_xor }
 import extdeps.crypto.sha2 { sha256_hex }
 
 fn ascii(s: String) -> List<UInt8> {
   bytes_octets(b: utf8_encode_bytes(s: s))
 }
 
-// ── std.bitwise against values computed by an independent implementation (Python int ops) ─────
+// ── std.machine_word against values computed by an independent implementation (Python int ops) ─────
 test fn word32_xor_and_or_not_match_the_bit_definitions() -> Bool {
   word32_xor(a: 305419896, b: 2596069104) == 2290649224
     && word32_and(a: 305419896, b: 2596069104) == 305419888

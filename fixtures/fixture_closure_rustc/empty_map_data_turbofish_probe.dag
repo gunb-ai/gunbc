@@ -10,7 +10,7 @@ import std.types { String }
 // the shape -- measured: with no import of this module the emission was already
 // `rc_empty_map::<String, String>()`. extdeps.rust.cargo_build, where this was found, imports
 // neither and reaches the module transitively; this import reproduces that reach at one symbol.
-import v2.std.collection { map_insert }
+import std.algebra { map_insert }
 
 // THE EMPTY-MAP TURBOFISH, POSED TO RUSTC RATHER THAN TO A SUBSTRING ORACLE. The subject is
 // v1.compiler.emit_rust rust_empty_map_init_expr: a `Map<K, V>` literal built by empty_map() must be

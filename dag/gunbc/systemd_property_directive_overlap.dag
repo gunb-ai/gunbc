@@ -11,6 +11,7 @@ import extdeps.systemd {
   ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty, JobProperty,
+  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, DelegateProperty, ReadOnlyPathsProperty, InaccessiblePathsProperty,
   systemd_unit_property_wire, PartOf, Unit }
 
 data systemd_property_directive_overlap_scope: ConstructionMechanism = SingleAuthority
@@ -139,6 +140,7 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     Result => ObservationOnly
     ExecMainStatus => ObservationOnly
     ExecStartProperty => SettableDirective
+    ExecStopProperty => SettableDirective
     ExecStopPostProperty => SettableDirective
     User => SettableDirective
     WorkingDirectoryProperty => SettableDirective
@@ -147,6 +149,8 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     NextElapseUSecMonotonic => ObservationOnly
     AccuracyUSec => ObservationOnly
     TimersMonotonic => ObservationOnly
+    ExecMainStartTimestampMonotonic => ObservationOnly
+    ExecMainExitTimestampMonotonic => ObservationOnly
     NeedDaemonReload => ObservationOnly
     IdProperty => ObservationOnly
     KillModeProperty => SettableDirective
@@ -157,6 +161,9 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     ProtectHomeProperty => SettableDirective
     PrivateTmpProperty => SettableDirective
     ReadWritePathsProperty => SettableDirective
+    BindPathsProperty => SettableDirective
+    ReadOnlyPathsProperty => SettableDirective
+    InaccessiblePathsProperty => SettableDirective
     RemainAfterExitProperty => SettableDirective
     RuntimeMaxSecProperty => SettableDirective
     CollectModeProperty => SettableDirective
@@ -168,6 +175,9 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     InvocationIDProperty => ObservationOnly
     FragmentPathProperty => ObservationOnly
     JobProperty => ObservationOnly
+    NoNewPrivilegesProperty => SettableDirective
+    RestrictSUIDSGIDProperty => SettableDirective
+    DelegateProperty => SettableDirective
   }
 }
 
@@ -201,13 +211,14 @@ fn systemd_property_is_settable(property: SystemdUnitProperty) -> Bool {
 data systemd_unit_property_members: List<SystemdUnitProperty> = [
   MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, CPUQuota, CPUQuotaPerSecUSec, TasksMax,
   MemoryCurrent, MemoryPeak, TasksCurrent, ControlGroup, SliceProperty, ActiveEnterTimestampMonotonic, ActiveState, MainPID,
-  LoadState, UnitFileState, SubState, Result, ExecMainStatus, ExecStartProperty, ExecStopPostProperty,
-  User, WorkingDirectoryProperty, RuntimeDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic, NeedDaemonReload,
+  LoadState, UnitFileState, SubState, Result, ExecMainStatus, ExecStartProperty, ExecStopProperty, ExecStopPostProperty,
+  User, WorkingDirectoryProperty, RuntimeDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic, ExecMainStartTimestampMonotonic, ExecMainExitTimestampMonotonic, NeedDaemonReload,
   IdProperty, KillModeProperty, ExitTypeProperty,
   StandardOutputProperty, StandardErrorProperty, ProtectSystemProperty, ProtectHomeProperty,
-  PrivateTmpProperty, ReadWritePathsProperty, RemainAfterExitProperty, RuntimeMaxSecProperty, CollectModeProperty,
+  PrivateTmpProperty, ReadWritePathsProperty, ReadOnlyPathsProperty, InaccessiblePathsProperty, BindPathsProperty, RemainAfterExitProperty, RuntimeMaxSecProperty, CollectModeProperty,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty, JobProperty,
+  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, DelegateProperty,
 ]
 
 fn settable_property_wires() -> List<String> {

@@ -1,6 +1,6 @@
 module gunbc.compute.attempt_lifecycle
 
-import std.types { String, Bool, Int, NonEmptyStr, EpochSecs, Seconds }
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, Seconds }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set {
@@ -13,8 +13,8 @@ import std.durable_compare_and_set {
 }
 import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
-  CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly,
-  observe_cas_slot_state,
+  CasAttemptKeyNotSlotAddressable, admit_cas_attempt, DefaultAccessCreateOnly, SlotStore, slot_observe, slot_commit, slot_keys,
+  CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused,
 }
 import std.decl_ref { decl_ref }
 import gunbc.compute.work_request { WorkEnding, work_ending_wire, work_ending_decode }
@@ -166,6 +166,30 @@ fn attempt_state_wire(s: AttemptState) -> String {
 // lease terms and now_epoch_seconds carry, so the comparison recovery makes against the deadline is
 // between two values of one type. The unit and the epoch appear as bare numbers only at the JSON
 // boundary below, where the wire keeps its spelling (granted_kib) and the decode re-admits them.
+//
+// THE OWNER IS A TWO-ARM FACT RECORDED AT OPEN, NOT AN OPTIONAL (DESIGN 3b, cardinality: an absent
+// owner would read as "no owner" and mean two things). DispatchOwned names the dispatch attempt
+// whose end derives this seat's discharge; DirectInvocation says why no dispatch attempt owns it (an
+// operator CLI, a test). A caller that JOINS an existing build acquires nothing and is not an owner.
+type AttemptOwner
+  = DispatchOwned { node_id: String, attempt_key: String }
+  | DirectInvocation { why: String }
+  | OwnerUnrecorded { why: String }
+
+fn attempt_owner_wire(o: AttemptOwner) -> String {
+  match o {
+    DispatchOwned { node_id: n, attempt_key: k } => join(["dispatch:", n, "#", k], "")
+    DirectInvocation { why: w } => join(["direct:", w], "")
+    OwnerUnrecorded { why: w } => join(["unrecorded:", w], "")
+  }
+}
+
+// A record written before the owner was a fact has no owner member. It decodes to the typed
+// OwnerUnrecorded arm with this reason: neither a dispatch owner it cannot name nor a DirectInvocation,
+// which would fabricate the fact that no dispatch attempt owns it. The seat ensure refuses it and keeps
+// the charge; the debris sweep (a later slice) is what settles such records.
+data attempt_owner_legacy_why: String = "record predates the recorded owner"
+
 type AttemptRecord {
   identity: String
   reference: String
@@ -174,6 +198,7 @@ type AttemptRecord {
   opened_at: EpochSecs
   launch_deadline: EpochSecs
   state: AttemptState
+  owner: AttemptOwner
 }
 
 fn attempt_record_json(r: AttemptRecord) -> JsonValue {
@@ -185,6 +210,9 @@ fn attempt_record_json(r: AttemptRecord) -> JsonValue {
     json_kv(key: "opened_at", value: json_int(n: r.opened_at)),
     json_kv(key: "launch_deadline", value: json_int(n: r.launch_deadline)),
     json_kv(key: "state", value: json_string(s: attempt_state_wire(s: r.state))),
+    json_kv(key: "owner_kind", value: json_string(s: match r.owner { DispatchOwned { node_id: _, attempt_key: _ } => "dispatch"  DirectInvocation { why: _ } => "direct"  OwnerUnrecorded { why: _ } => "unrecorded" })),
+    json_kv(key: "owner_node", value: json_string(s: match r.owner { DispatchOwned { node_id: n, attempt_key: _ } => n  DirectInvocation { why: _ } => ""  OwnerUnrecorded { why: _ } => "" })),
+    json_kv(key: "owner_key", value: json_string(s: match r.owner { DispatchOwned { node_id: _, attempt_key: k } => k  DirectInvocation { why: w } => w  OwnerUnrecorded { why: w } => w })),
     json_kv(key: "detail", value: json_string(s: match r.state { AttemptTerminal { verdict: _, detail: d } => d  AttemptReserved => ""  AttemptLaunching => "" })),
   ])
 }
@@ -194,7 +222,7 @@ fn attempt_record_wire(r: AttemptRecord) -> String {
 }
 
 fn attempt_record_with_state(r: AttemptRecord, state: AttemptState) -> AttemptRecord {
-  AttemptRecord { identity: r.identity, reference: r.reference, unit: r.unit, granted: r.granted, opened_at: r.opened_at, launch_deadline: r.launch_deadline, state: state }
+  AttemptRecord { identity: r.identity, reference: r.reference, unit: r.unit, granted: r.granted, opened_at: r.opened_at, launch_deadline: r.launch_deadline, state: state, owner: r.owner }
 }
 
 // ── READING THE SLOT, AND UNREADABLE IS NEVER ABSENT ──────────────────────────────────────────
@@ -272,16 +300,43 @@ fn attempt_record_decode(text: String) -> AttemptRecord? {
                           match attempt_member(doc: doc, key: "state") {
                             Absent => none
                             Present { value: word } =>
+                              match attempt_owner_decode(doc: doc) {
+                                Absent => none
+                                Present { value: owner } =>
                               match attempt_state_decode(word: word, detail: match attempt_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" }) {
                                 Absent => none
                                 Present { value: state } =>
-                                  Present { value: AttemptRecord { identity: identity, reference: reference, unit: unit, granted: granted, opened_at: opened, launch_deadline: deadline, state: state } }
+                                  Present { value: AttemptRecord { identity: identity, reference: reference, unit: unit, granted: granted, opened_at: opened, launch_deadline: deadline, state: state, owner: owner } }
+                              }
                               }
                           }
                       }
                       }
                   }
               }
+          }
+      }
+  }
+}
+
+fn attempt_owner_decode(doc: JsonValue) -> AttemptOwner? {
+  match attempt_member(doc: doc, key: "owner_kind") {
+    Absent => Present { value: OwnerUnrecorded { why: attempt_owner_legacy_why } }
+    Present { value: kind } =>
+      match attempt_member(doc: doc, key: "owner_key") {
+        Absent => none
+        Present { value: key } =>
+          if kind == "dispatch" {
+            match attempt_member(doc: doc, key: "owner_node") {
+              Absent => none
+              Present { value: node } => Present { value: DispatchOwned { node_id: node, attempt_key: key } }
+            }
+          } else if kind == "direct" {
+            Present { value: DirectInvocation { why: key } }
+          } else if kind == "unrecorded" {
+            Present { value: OwnerUnrecorded { why: key } }
+          } else {
+            none
           }
       }
   }
@@ -302,18 +357,46 @@ fn attempt_state_decode(word: String, detail: String) -> AttemptState? {
   }
 }
 
-fn attempt_slot_read(root: NonEmptyStr, reference: NonEmptyStr) -> AttemptSlotReading {
-  match observe_cas_slot_state(root: root, key: reference) {
-    CasObservedUnreadable { cause: c } => AttemptSlotUnreadable { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
+fn attempt_slot_read(store: SlotStore, reference: NonEmptyStr) -> AttemptSlotReading {
+  match attempt_payload_read(store: store, reference: reference, codec: attempt_record_codec()) {
+    AttemptPayloadAbsent => AttemptSlotAbsent
+    AttemptPayloadHeld { record: rec, generation: g } => AttemptSlotHeld { record: rec, generation: g }
+    AttemptPayloadUnreadable { detail: d } => AttemptSlotUnreadable { detail: d }
+  }
+}
+
+// A TYPED PAYLOAD READ AND THE ENUMERATION OF A STORE'S ATTEMPTS, so a payload domain (the worktree claim)
+// reads and lists through this layer and never imports the CAS library. Both answer through the store it
+// was handed; neither takes or returns a path (a refusal names the store by what it could not do).
+type AttemptPayloadReading<P>
+  = AttemptPayloadAbsent
+  | AttemptPayloadHeld { record: P, generation: CasGeneration }
+  | AttemptPayloadUnreadable { detail: String }
+
+fn attempt_payload_read<P>(store: SlotStore, reference: NonEmptyStr, codec: AttemptPayloadCodec<P>) -> AttemptPayloadReading<P> {
+  match slot_observe(store: store, key: reference) {
+    CasObservedUnreadable { cause: c } => AttemptPayloadUnreadable { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
     CasObservedReadable { readable: r } =>
       match r {
-        CasReadableAbsent => AttemptSlotAbsent
+        CasReadableAbsent => AttemptPayloadAbsent
         CasReadablePresent { version: v } =>
-          match attempt_record_decode(text: v.value as String) {
-            Absent => AttemptSlotUnreadable { detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], "") }
-            Present { value: rec } => AttemptSlotHeld { record: rec, generation: v.generation }
+          match codec.decode(v.value as String) {
+            Absent => AttemptPayloadUnreadable { detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], "") }
+            Present { value: rec } => AttemptPayloadHeld { record: rec, generation: v.generation }
           }
       }
+  }
+}
+
+type AttemptSlotKeysReading
+  = AttemptSlotKeysListed { keys: List<NonEmptyStr> }
+  | AttemptSlotKeysRefused { detail: String }
+
+fn attempt_slot_keys(store: SlotStore) -> AttemptSlotKeysReading {
+  match slot_keys(store: store) {
+    CasSlotKeysListed { keys: ks } => AttemptSlotKeysListed { keys: ks }
+    CasSlotKeysListingRefused { root: _, detail: d } => AttemptSlotKeysRefused { detail: join(["the attempt store could not be listed: ", d], "") }
+    CasSlotKeysSubjectRefused { root: _, cause: c } => AttemptSlotKeysRefused { detail: join(["the attempt store is not admissible: ", c], "") }
   }
 }
 
@@ -361,7 +444,7 @@ fn attempt_record_codec() -> AttemptPayloadCodec<AttemptRecord> {
 }
 
 fn attempt_commit_bytes(
-  root: NonEmptyStr,
+  store: SlotStore,
   reference: NonEmptyStr,
   state: AttemptState,
   payload: NonEmptyStr,
@@ -382,7 +465,7 @@ fn attempt_commit_bytes(
     CasAttemptDigestMismatch { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest did not match its bytes" }
     CasAttemptDigestIncomparable { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest was incomparable" }
     CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+      match slot_commit(store: store, publication: DefaultAccessCreateOnly, verified: v) {
         CasCommitted { committed: c } => AttemptAdvanced { state: state, generation: c.generation }
         CasPreconditionFailed { expected: e, observed: o } =>
           AttemptLostRace {
@@ -426,7 +509,7 @@ fn attempt_commit_bytes(
 data compute_pre_launch_ceiling_seconds: Seconds = 300
 
 fn attempt_advance_payload<P>(
-  root: NonEmptyStr,
+  store: SlotStore,
   reference: NonEmptyStr,
   expected: CasGeneration,
   next_state: AttemptState,
@@ -438,7 +521,7 @@ fn attempt_advance_payload<P>(
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_terminate_payload"),
   ]
 {
-  match observe_cas_slot_state(root: root, key: reference) {
+  match slot_observe(store: store, key: reference) {
     CasObservedUnreadable { cause: c } =>
       AttemptTransitionRefused { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
     CasObservedReadable { readable: r } =>
@@ -467,7 +550,7 @@ fn attempt_advance_payload<P>(
                     match codec.state_of(rec) {
                       AttemptReserved =>
                         attempt_commit_bytes(
-                          root: root,
+                          store: store,
                           reference: reference,
                           state: next_state,
                           payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
@@ -481,7 +564,7 @@ fn attempt_advance_payload<P>(
                     AttemptTransitionRefused { detail: "advance will not rewrite a slot back to Reserved" }
                   AttemptTerminal { verdict: _, detail: _ } =>
                     attempt_commit_bytes(
-                      root: root,
+                      store: store,
                       reference: reference,
                       state: next_state,
                       payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
@@ -494,13 +577,13 @@ fn attempt_advance_payload<P>(
 }
 
 fn attempt_advance(
-  root: NonEmptyStr,
+  store: SlotStore,
   reference: NonEmptyStr,
   expected: CasGeneration,
   next_state: AttemptState,
 ) -> AttemptTransition {
   attempt_advance_payload(
-    root: root,
+    store: store,
     reference: reference,
     expected: expected,
     next_state: next_state,
@@ -511,10 +594,11 @@ fn attempt_advance(
 // ExpectSlotAbsent is what makes a duplicated reference a refusal rather than a silent overwrite of
 // somebody else's attempt. Unit and grant are established here and never resupplied on later
 // transitions.
-fn attempt_open_payload<P>(root: NonEmptyStr, record: P, codec: AttemptPayloadCodec<P>) -> AttemptTransition
+fn attempt_open_payload<P>(store: SlotStore, record: P, codec: AttemptPayloadCodec<P>) -> AttemptTransition
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open"),
     decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_open"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_open"),
   ]
 {
   let reserved = codec.with_state(record, AttemptReserved)
@@ -537,7 +621,7 @@ fn attempt_open_payload<P>(root: NonEmptyStr, record: P, codec: AttemptPayloadCo
     }
   } else {
     attempt_commit_bytes(
-      root: root,
+      store: store,
       reference: codec.reference_of(reserved) as NonEmptyStr,
       state: AttemptReserved,
       payload: codec.encode(reserved) as NonEmptyStr,
@@ -545,15 +629,15 @@ fn attempt_open_payload<P>(root: NonEmptyStr, record: P, codec: AttemptPayloadCo
   }
 }
 
-fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
-  attempt_open_payload(root: root, record: record, codec: attempt_record_codec())
+fn attempt_open(store: SlotStore, record: AttemptRecord) -> AttemptTransition {
+  attempt_open_payload(store: store, record: record, codec: attempt_record_codec())
 }
 
 // THE LAUNCH GATE. Called BEFORE the reader is admitted, never after. It reads the current slot,
 // changes only state, and re-encodes the unit and grant the open wrote. A caller cannot hand
 // another unit or grant into this generation.
 fn attempt_begin_launch_payload<P>(
-  root: NonEmptyStr,
+  store: SlotStore,
   reference: NonEmptyStr,
   expected: CasGeneration,
   codec: AttemptPayloadCodec<P>,
@@ -564,22 +648,22 @@ fn attempt_begin_launch_payload<P>(
   ]
 {
   attempt_advance_payload(
-    root: root,
+    store: store,
     reference: reference,
     expected: expected,
     next_state: AttemptLaunching,
     codec: codec)
 }
 
-fn attempt_begin_launch(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration) -> AttemptTransition {
-  attempt_begin_launch_payload(root: root, reference: reference, expected: expected, codec: attempt_record_codec())
+fn attempt_begin_launch(store: SlotStore, reference: NonEmptyStr, expected: CasGeneration) -> AttemptTransition {
+  attempt_begin_launch_payload(store: store, reference: reference, expected: expected, codec: attempt_record_codec())
 }
 
 // THE TERMINAL TRANSITION. Carries the verdict AND why, so the generation that records the end also
 // records the reason -- history the next reader can act on rather than a bare flag. Same read and
 // state-only rewrite as begin_launch: unit and grant are not parameters.
 fn attempt_terminate_payload<P>(
-  root: NonEmptyStr,
+  store: SlotStore,
   reference: NonEmptyStr,
   expected: CasGeneration,
   verdict: AttemptVerdict,
@@ -589,19 +673,20 @@ fn attempt_terminate_payload<P>(
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_terminate"),
     decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_terminate"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_close"),
   ]
 {
   attempt_advance_payload(
-    root: root,
+    store: store,
     reference: reference,
     expected: expected,
     next_state: AttemptTerminal { verdict: verdict, detail: detail },
     codec: codec)
 }
 
-fn attempt_terminate(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration, verdict: AttemptVerdict, detail: String) -> AttemptTransition {
+fn attempt_terminate(store: SlotStore, reference: NonEmptyStr, expected: CasGeneration, verdict: AttemptVerdict, detail: String) -> AttemptTransition {
   attempt_terminate_payload(
-    root: root,
+    store: store,
     reference: reference,
     expected: expected,
     verdict: verdict,
@@ -681,7 +766,7 @@ type RecoveryTrigger
   = RecoveryMayTerminate { reason: String }
   | RecoveryTooEarly { deadline: EpochSecs, now: EpochSecs }
   | RecoveryUnitNotEnded { lifecycle: UnitLifecycle }
-  | RecoveryStateNotRecoverable { state: AttemptState }
+  | RecoveryTerminalRecordMayRelease { state: AttemptState }
 
 fn recovery_trigger(record: AttemptRecord, lifecycle: UnitLifecycle, now: EpochSecs) -> RecoveryTrigger {
   match record.state {
@@ -703,7 +788,7 @@ fn recovery_trigger(record: AttemptRecord, lifecycle: UnitLifecycle, now: EpochS
       } else {
         RecoveryUnitNotEnded { lifecycle: lifecycle }
       }
-    AttemptTerminal { verdict: v, detail: d } => RecoveryStateNotRecoverable { state: AttemptTerminal { verdict: v, detail: d } }
+    AttemptTerminal { verdict: v, detail: d } => RecoveryTerminalRecordMayRelease { state: AttemptTerminal { verdict: v, detail: d } }
   }
 }
 
@@ -712,7 +797,7 @@ fn recovery_trigger_fires(t: RecoveryTrigger) -> Bool {
     RecoveryMayTerminate { reason: _ } => true
     RecoveryTooEarly { deadline: _, now: _ } => false
     RecoveryUnitNotEnded { lifecycle: _ } => false
-    RecoveryStateNotRecoverable { state: _ } => false
+    RecoveryTerminalRecordMayRelease { state: _ } => false
   }
 }
 
@@ -722,6 +807,6 @@ fn recovery_trigger_wire(t: RecoveryTrigger) -> String {
     RecoveryTooEarly { deadline: d, now: n } =>
       join(["TOO EARLY: the attempt declared a launch deadline of ", to_string(value: d), " and it is only ", to_string(value: n), "; a producer inside its own declared window is not dead"], "")
     RecoveryUnitNotEnded { lifecycle: u } => join(["the unit has not ended: ", unit_lifecycle_wire(u: u)], "")
-    RecoveryStateNotRecoverable { state: s } => join(["the attempt is already ", attempt_state_wire(s: s), ", so there is nothing to recover"], "")
+    RecoveryTerminalRecordMayRelease { state: s } => join(["the attempt is already ", attempt_state_wire(s: s), ", so there is no transition to make; its seat is released only once the unit is proven ended"], "")
   }
 }

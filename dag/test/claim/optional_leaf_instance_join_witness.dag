@@ -1,0 +1,44 @@
+module test.claim.optional_leaf_instance_join_witness
+
+import gunbc.compile_census_probe { census_delta_verdict, total_blocking_census, census_exit}
+import std.process { ProcessExit }
+import std.types { Bool, Int, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ONE TYPE, TWO REPRESENTATIONS: `T?` (the payload type carrying CardOptional) and the std.optional
+// coproduct `Optional<P>` are the same type exactly when P is identical to T. The relation lives in
+// v1.compiler.infer_types node_type_compatible, the one compatibility authority, so every consumer
+// of it (the if-join, a let against a declared `T?`) answers alike -- gunbc.recurring_failure_mode
+// optional_equality_answers_by_representation.
+//
+// The pair differs ONLY in the instance's payload, so the difference of blocking totals cancels the
+// live-tree baseline. The accept control is the shape of std.source_annotation annotation_gap_in
+// (`let c: T? = if n == 0 { Absent } else { <Optional<T>> }`); the refusal twin has the payload
+// String against an Int?. Before the bare `Absent` took its expected `T?` as its type the then-branch
+// was a kernel Optional whose unbound payload read as a type variable, so the twin was silently
+// ACCEPTED: it is the standalone discriminator for that adoption, and it stays enrolled after the
+// unbound payload became visible (type_read).
+
+data optional_join_accept_source: String = "module probe_optjoin_same_payload\nimport std.optional { Optional }\nfn wrapped() -> Optional<Int> {\n  Absent\n}\nfn pick(b: Bool) -> Int? {\n  let r: Int? = if b { Absent } else { wrapped() }\n  r\n}\n"
+data optional_join_refuse_source: String = "module probe_optjoin_other_payload\nimport std.optional { Optional }\nfn wrapped() -> Optional<String> {\n  Absent\n}\nfn pick(b: Bool) -> Int? {\n  let r: Int? = if b { Absent } else { wrapped() }\n  r\n}\n"
+
+test fn an_optional_leaf_joins_the_optional_instance_at_the_same_payload_and_only_that() -> ProcessExit {
+  census_exit(census_delta_verdict(red: total_blocking_census(source: optional_join_refuse_source), control: total_blocking_census(source: optional_join_accept_source), holds: fn(n) { n == 1 }))
+}
+
+// A USER COPRODUCT'S NULLARY ARM KEEPS ITS REFUSAL AT AN OPTIONAL POSITION. `Red` at a declared `Color?`
+// return is a Required value at an Optional position, refused by variant_reference_inferred_node
+// ("does not inhabit its declared type"); `Absent` at `Int?` is the Optional's own nullary arm and
+// is accepted. This is a regression control for the route, not a discriminator of the owner gate in
+// optional_nullary_arm_of: expected_deciding_variant_owner elects only the kernel Optional under an
+// Optional expectation (kernel_optional_owner_declaring), so a user coproduct never reaches the
+// shortcut and the identity check there is defensive. Its RED is not authorable while that election
+// holds (DESIGN.md 4b); if the election ever widens, this pair is the control that goes red.
+data optional_nullary_accept_source: String = "module probe_nullary_optional_arm\nfn pick() -> Int? {\n  Absent\n}\n"
+data optional_nullary_refuse_source: String = "module probe_nullary_user_arm\ntype Color = Red | Green\nfn pick() -> Color? {\n  Red\n}\n"
+
+test fn only_the_optionals_own_nullary_arm_adopts_an_optional_expectation() -> ProcessExit {
+  census_exit(census_delta_verdict(red: total_blocking_census(source: optional_nullary_refuse_source), control: total_blocking_census(source: optional_nullary_accept_source), holds: fn(n) { n == 1 }))
+}

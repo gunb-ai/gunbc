@@ -2,7 +2,7 @@ module v2.test.claim.field_projection.field_projection_stages
 
 import v2.compiler.resolve { Namespace, ResolvedTree, empty_namespace, root_binding_names_value }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
-import v2.std.collection { map_insert }
+
 import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -10,14 +10,14 @@ import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, contains }
+import std.algebra { Cons, Empty, contains, map_insert }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic {
   Some,
   Diagnostic, Unavailable, UserInputBoundary, diagnostics_singleton, node_locus,
   diagnostics_has_reason, Accepted, NodeLocus, Outcome, Rejected }
-import v2.std.node { Arrow, Atom, Conj, Connective, Node, Symbol, TypeNode, symbol_eq }
+import v2.std.node { node_equal_ignoring_provenance, Arrow, Atom, Conj, Connective, Node, Symbol, TypeNode, symbol_eq, NotADeclaration }
 import v2.std.qualified_name {
   parameter_reference_path_optional,
   qualified_name_last_segment, declaration_reference_path_optional, qualified_name_spine_shape_present }
@@ -25,7 +25,7 @@ import v2.std.node_query { FieldProjection, declared_field_named, field_projecti
 import v2.std.symbol_index { symbol_index_lookup }
 import v2.compiler.infer {
   infer_atom_binding_sym,
-  infer_type_equal_ignoring_provenance,
+  node_equal_ignoring_provenance,
   inferred_facts_grounding_derived,
   inferred_facts_resolved_type
 }
@@ -40,7 +40,7 @@ import v2.std.runtime {
   RuntimeValue
 }
 import v2.std.integer { Int, integer_int_to_signed_i32_le_bytes, integer_signed_i32_le_bytes_to_int }
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceSynthetic, TypeOccurrence }
 import v2.std.witness { Holds, Violates }
 import v2.std.node { NodeFold, fold_node }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -449,7 +449,7 @@ fn fps_int_parameter_type_optional() -> Optional<Node> {
     params: [fps_field(name: ^i, type_node: fps_int(n: 3))],
     codomain: fps_int(n: 2),
     body: parameter_reference_node(qn: [^p, ^g, ^i], occurrence_id: claim_minted(n: 4)),
-    actuals: [Edge { label: Authored { name: ^i }, target: claim_int_literal(lexeme: "3", n: 23) }],
+    actuals: [Edge { label: Authored { name: ^i }, target: claim_int_literal(lexeme: "3", n: 23), declaration: NotADeclaration }],
     reference_site: 21
   ))) {
     Absent => optional_absent()
@@ -516,7 +516,7 @@ test fn fps_two_fields_of_different_types_ground_differently_holds() -> Bool {
       match fps_two_field_flag_reading().projection_type {
         Absent => false
         Present { value: bool_ty } =>
-          !infer_type_equal_ignoring_provenance(a: int_ty, b: bool_ty)
+          !node_equal_ignoring_provenance(a: int_ty, b: bool_ty)
       }
   }
 }
@@ -528,7 +528,7 @@ test fn fps_the_int_field_grounds_as_an_int_parameter_does_holds() -> Bool {
       match fps_int_parameter_type_optional() {
         Absent => false
         Present { value: param_ty } =>
-          infer_type_equal_ignoring_provenance(a: field_ty, b: param_ty)
+          node_equal_ignoring_provenance(a: field_ty, b: param_ty)
       }
   }
 }
@@ -669,30 +669,21 @@ test fn fps_a_match_binder_receiver_resolves_holds() -> Bool {
   fps_resolves_of(o: fps_match_binder_source(field: "tree"))
 }
 
-// A MATCH-ARM BINDER AS A RECEIVER IS NOT YET TYPED, AND THIS ROW PINS EXACTLY HOW. It is the population of
-// the DECLARED RUNG DROP gunbc.rung_drop match_arm_binder_typing_lost_to_lexical_carrier: gunbc#12641 typed a
-// match-arm binder, and that typing rode on infer_parameter_scope_search, which #12766 narrowed to lambdas and
-// main's lexical-reference cut deleted. The binder's use is now a lexical reference whose recorded binding
-// declares no type, so the program INFERS and the projection off the binder is accepted UNDERIVED -- not
-// refused, and not fabricated. (Before the pattern-field reader read a lexical binder, the whole program
-// refused with infer_grounding_not_derived; that was a reader defect, repaired in gunbc#12506, and is why this
-// row no longer asserts a refusal.)
-//
+// A MATCH-ARM BINDER AS A RECEIVER IS TYPED, AND THIS ROW PINS THE ROUTE. It was the population of the
+// rung drop match_arm_binder_typing_lost_to_lexical_carrier (retired): the binder's use is a lexical
+// reference whose binding records the matched variant field, and infer types it at the scrutinee's
+// instantiation, so the projection off it GROUNDS. It stays as the control that the restoration is real
+// (DESIGN section 4b(4)); the discriminating RED is the parameter receiver's absent field
+// (fps_an_absent_field_does_not_infer) and the binder's own undeclared field
+// (v2.test.claim.match_binder.match_binder_typing).
 // EXACT ROUTE, SO AN UNRELATED REFUSAL REDS IT: the program must infer, the projection node must be found in
-// the inferred tree, and ITS facts must carry no derived grounding. A program refused for any cause, or a
-// projection typed by some other route, makes it false.
-//
-// WHY THIS IS NOT "EVERYTHING IS UNDERIVED": the PARAMETER receiver in this same file grounds
-// (fps_a_valid_field_projection_grounds) and its absent field IS refused (fps_an_absent_field_does_not_infer).
-// Those are the discriminating positive controls. RESTORATION TRIGGER, the drop's: match-arm binder typing
-// through the lexical-binding carrier (N7-3). This row then flips to the projection grounded, and under DESIGN
-// section 4b(4) it stays as the control that the restoration is real.
+// the inferred tree, and ITS facts must carry a derived grounding.
 // projection_grounded is Present only on exactly that route (resolved, inferred, the projection node found
 // in the inferred tree, its facts present), so Absent -- any refusal, a missing node, missing facts -- reds it.
-test fn fps_a_match_binder_receiver_is_not_yet_typed_holds() -> Bool {
+test fn fps_a_match_binder_receiver_is_typed_holds() -> Bool {
   match fps_projection_grounded_of(o: fps_match_binder_source(field: "tree")) {
     Absent => false
-    Present { value: derived } => !derived
+    Present { value: derived } => derived
   }
 }
 
@@ -808,7 +799,7 @@ test fn fps_a_root_bound_type_projected_as_value_refuses_holds() -> Bool {
 fn fps_lowered_provider_box() -> ClaimLoweredModule {
   ClaimLoweredModule {
     module: [^a, ^b, ^c],
-    members: [Edge { label: Authored { name: ^Box }, target: claim_lowered_record(fields: [ClaimLoweredParam { name: ^tree, type_node: claim_lowered_atom(identity: ^Int, n: 11) }], site: 10) }],
+    members: [Edge { label: Authored { name: ^Box }, target: claim_lowered_record(fields: [ClaimLoweredParam { name: ^tree, type_node: claim_lowered_atom(identity: ^Int, n: 11) }], site: 10), declaration: NotADeclaration }],
     records: [^Box],
     imports: []
   }
@@ -819,7 +810,7 @@ fn fps_qualified_path_reads_as_the_declaration() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: index, diagnostics: _ } =>
       match resolve_dotted_path_reading(
-        ctx: claim_resolve_context(module: [^p], index: index),
+        ctx: claim_resolve_context(module: [^p], index: index, category: TypeOccurrence),
         n: claim_lowered_path(segments: [^a, ^b, ^c, ^Box], n: 50),
         path: [^a, ^b, ^c, ^Box],
         head_binding: BoundAtRoot { canonical: ^a },
@@ -874,7 +865,7 @@ test fn fps_a_frame_binder_is_still_projected_through_holds() -> Bool {
 // rows go to the step their subject is: v2.compiler.name_resolve closure_declarations_demand, which walks
 // each root and indexes the declarations of every one that resolves (v2.test.lens_common.resolve_fixture
 // claim_closure_declarations). Each RESOLVE row asserts the closure index real resolve builds EQUALS a named
-// record where infer reads it (provenance aside, v2.compiler.infer infer_type_equal_ignoring_provenance);
+// record where infer reads it (provenance aside, v2.compiler.infer node_equal_ignoring_provenance);
 // each INFER row hands infer EXACTLY that named record. A supplied record that drifted from what resolve
 // indexes reds the resolve row, so the join is entailed rather than designed.
 //
@@ -903,7 +894,7 @@ fn fps_closure_holds(modules: List<ClaimLoweredModule>, record: ClaimRecord) -> 
     Accepted { value: index, diagnostics: _ } =>
       match symbol_index_lookup(index: index, qualified_path: record.path) {
         Absent => false
-        Present { value: indexed } => infer_type_equal_ignoring_provenance(a: indexed, b: claim_record_declaration(r: record))
+        Present { value: indexed } => node_equal_ignoring_provenance(a: indexed, b: claim_record_declaration(r: record))
       }
   }
 }
@@ -922,7 +913,7 @@ fn fps_closure_lacks(modules: List<ClaimLoweredModule>, path: QualifiedName) -> 
 // THE RESOLVE HALF OF THE CROSS-MODULE ROW: the provider's record enters the closure index exactly as named.
 test fn fps_an_imported_record_enters_the_closure_index_holds() -> Bool {
   fps_closure_holds(
-    modules: [fps_lowered_module(module: [^q], members: [Edge { label: Authored { name: ^Leg }, target: fps_lowered_leg_record() }], records: [^Leg])],
+    modules: [fps_lowered_module(module: [^q], members: [Edge { label: Authored { name: ^Leg }, target: fps_lowered_leg_record(), declaration: NotADeclaration }], records: [^Leg])],
     record: fps_imported_leg()
   )
 }
@@ -977,15 +968,18 @@ test fn fps_a_cross_module_record_projection_infers_holds() -> Bool {
 // IT ASSERTS BOTH DIRECTIONS. The unavailable reason must be present AND declares_no_fields must be absent,
 // because the whole defect being repaired was a correct program being told its receiver declares no fields.
 
-// THE RESOLVE HALF: a provider carrying an unresolvable body beside the record is DROPPED from the closure
-// index, so its record is not there to retrieve. Its control is the cross-module resolve row above: the same
-// provider without the broken body does index the record.
+// THE RESOLVE HALF: the closure publishes by DECLARATION (v2.compiler.name_resolve closure_declarations_demand),
+// so a provider carrying an unresolvable body beside the record publishes the record and withholds the broken
+// function. This row used to assert the whole provider was dropped; that held only because the index was empty
+// for every grafted module (closure_filter_root_published had dropped the module shell), so it greened for the
+// wrong reason. Its control is the cross-module resolve row above: the same provider without the broken body
+// indexes the record too.
 fn fps_lowered_broken_provider() -> ClaimLoweredModule {
   fps_lowered_module(
     module: [^q],
     members: [
-      Edge { label: Authored { name: ^Leg }, target: fps_lowered_leg_record() },
-      Edge { label: Authored { name: ^broken }, target: claim_lowered_function(site: 30, params: [], codomain: claim_lowered_atom(identity: ^Int, n: 31), body: claim_lowered_atom(identity: ^no_such_name_anywhere, n: 32)) }
+      Edge { label: Authored { name: ^Leg }, target: fps_lowered_leg_record(), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^broken }, target: claim_lowered_function(site: 30, params: [], codomain: claim_lowered_atom(identity: ^Int, n: 31), body: claim_lowered_atom(identity: ^no_such_name_anywhere, n: 32)), declaration: NotADeclaration }
     ],
     records: [^Leg]
   )
@@ -1001,8 +995,10 @@ fn fps_broken_provider_is_refused_as_named() -> Bool {
   }
 }
 
-test fn fps_an_unresolvable_provider_drops_from_the_closure_index_holds() -> Bool {
-  fps_closure_lacks(modules: [fps_lowered_broken_provider()], path: [^q, ^Leg]) && fps_broken_provider_is_refused_as_named()
+test fn fps_an_unresolvable_declaration_is_withheld_from_the_closure_index_holds() -> Bool {
+  fps_closure_holds(modules: [fps_lowered_broken_provider()], record: fps_imported_leg())
+    && fps_closure_lacks(modules: [fps_lowered_broken_provider()], path: [^q, ^broken])
+    && fps_broken_provider_is_refused_as_named()
 }
 
 // THE NAMED ROSTER ENTRY: provider q, refused as unbound at its body.
@@ -1056,8 +1052,8 @@ test fn fps_a_scalar_receiver_still_declares_no_fields_holds() -> Bool {
 test fn fps_a_multi_root_ingest_does_not_itself_break_retrieval_holds() -> Bool {
   fps_closure_holds(
     modules: [
-      fps_lowered_module(module: [^a, ^b, ^c], members: [Edge { label: Authored { name: ^Unused }, target: claim_lowered_record(fields: [ClaimLoweredParam { name: ^n, type_node: claim_lowered_atom(identity: ^Int, n: 51) }], site: 50) }], records: [^Unused]),
-      fps_lowered_module(module: [^p], members: [Edge { label: Authored { name: ^Leg }, target: fps_lowered_leg_record() }], records: [^Leg])
+      fps_lowered_module(module: [^a, ^b, ^c], members: [Edge { label: Authored { name: ^Unused }, target: claim_lowered_record(fields: [ClaimLoweredParam { name: ^n, type_node: claim_lowered_atom(identity: ^Int, n: 51) }], site: 50), declaration: NotADeclaration }], records: [^Unused]),
+      fps_lowered_module(module: [^p], members: [Edge { label: Authored { name: ^Leg }, target: fps_lowered_leg_record(), declaration: NotADeclaration }], records: [^Leg])
     ],
     record: fps_local_leg()
   )

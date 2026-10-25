@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.unidentified_clients_exhaust_a_hosts_sshd_startups
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
+
+data unidentified_clients_exhaust_a_hosts_sshd_startups: RecurringFailureMode = RecurringFailureMode {
+  identity: "unidentified_clients_exhaust_a_hosts_sshd_startups" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
+
+  receipts: [
+    "INVALID STATE: a fleet host's sshd admits MaxStartups 10:30:100 (the default), and clients nobody has identified hold its unauthenticated startup slots, so a converge leg's key exchange is reset (kex_exchange_identification: Connection reset by peer) and the leg refuses. On srv1 the journal at 16:30Z on 2026-10-15 shows drop connection #11 past MaxStartups, with connections from an IPv6 client on srv1 itself and from 192.168.1.188 beside the converge's own.",
+
+    "HARM: srv1 fleet-converge run 38767890891 lost two of five slot legs; the run refused (typed, located), so the cost is a failed converge and a rerun, not a silent wrong answer.",
+
+    "DISTINGUISHING FACTS: the converge route makes one startup per leg sequentially and so cannot alone exceed ten concurrent unauthenticated connections; the excess is load from other clients. The tell is a kex reset with a MaxStartups drop line in the host journal.",
+
+    "RUNG FOUND AT: mitigatable (the leg refuses, and the route now opens one connection per target per attempt by multiplexing, gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_multiplex_options, which reduces its exposure but does not remove the load; connection sharing needs OpenSSH 5.6 or later for ControlPersist, per openssh.com/txt/release-5.6, and the fleet runs OpenSSH_10.0p2). CEILING: outside the modeled guarantee until the other clients are identified -- they are external to this route; once named, each is either a modeled fleet consumer whose connections are bounded or an unadmitted client the host refuses.",
+
+    "NEXT TRIGGER: identify the IPv6 client on srv1 and 192.168.1.188 from the sshd journal (source address, principal, cadence), then model or refuse each. Raising MaxStartups is not the repair: it hides the load rather than naming it.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "fleet_ssh_multiplex_options"),
+  ],
+}

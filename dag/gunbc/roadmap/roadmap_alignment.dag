@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_alignment
 
-import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.types { String, Int, Bool, List, NonEmptyStr, Map }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -47,7 +47,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   continuation_alignment_ask,
 }
 import std.content_hash { content_hash_atom }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 
 // The recursive alignment ladder follows the parent each row declares, never reverse blocking. Each
 // level carries the node's declared ticket structure and the edge's contribution argument.

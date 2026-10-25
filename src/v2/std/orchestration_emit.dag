@@ -1,7 +1,7 @@
 module v2.std.orchestration_emit
 
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.collection { Map }
+import std.types { Map }
 import v2.std.diagnostic { Outcome }
 import v2.std.node { Node, Symbol }
 import v2.std.orchestration { Run }

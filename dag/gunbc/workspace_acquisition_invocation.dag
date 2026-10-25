@@ -16,6 +16,11 @@ import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_
 import gunbc.runner.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import extdeps.systemd { InvocationIDProperty, MainPID, systemd_unit_property_wire }
+import std.durable_exclusive_hold { HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }
+import gunbc.systemd_unit_invocation_liveness {
+  UnitInvocationObservation, UnitInvocationPresent, UnitInvocationAbsent, UnitInvocationUnreadable,
+  unit_invocation_holder_liveness,
+}
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_value }
 
@@ -170,10 +175,24 @@ fn workspace_slot_invocation_reading(plan: WorkspaceReservationPlan) -> Workspac
 
 // An invocation ID names one start of the unit. If the unit now carries another (or none), the
 // recorded actor's process has ended and can issue no further hold effect.
-fn workspace_prior_actor_standing(recorded: NonEmptyStr, slot: WorkspaceSlotInvocationReading) -> WorkspacePriorActorStanding {
+fn workspace_slot_as_unit_invocation(slot: WorkspaceSlotInvocationReading) -> UnitInvocationObservation {
   match slot {
-    SlotInvocationUnreadable => PriorActorUnobservable { reason: "the slot unit's invocation is unreadable; the elected actor may still be running" }
-    SlotInvocationObserved { current } => if current == (recorded as String) { PriorActorRunning } else { PriorActorTerminal }
+    SlotInvocationUnreadable =>
+      UnitInvocationUnreadable { cause: "the slot unit's invocation is unreadable; the elected actor may still be running" as NonEmptyStr }
+    SlotInvocationObserved { current } =>
+      if current == "" {
+        UnitInvocationAbsent
+      } else {
+        UnitInvocationPresent { invocation_id: current as NonEmptyStr }
+      }
+  }
+}
+
+fn workspace_prior_actor_standing(recorded: NonEmptyStr, slot: WorkspaceSlotInvocationReading) -> WorkspacePriorActorStanding {
+  match unit_invocation_holder_liveness(recorded_invocation: recorded, observed: workspace_slot_as_unit_invocation(slot: slot)) {
+    HolderObservedLive { evidence: _ } => PriorActorRunning
+    HolderObservedDead { evidence: _ } => PriorActorTerminal
+    HolderLivenessUnobservable { cause: c } => PriorActorUnobservable { reason: c }
   }
 }
 

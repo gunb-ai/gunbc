@@ -87,16 +87,19 @@ fn fixture_credential() -> AmbientCodexCredentialContext {
 }
 
 test fn witness_supervised_binding_uses_held_session_lease_policy() -> Bool {
-  let binding = codex_supervised_turn_binding(
+  match codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
     prior_generation: 0,
     observed: LeaseAbsent,
     standing_receipt: none,
-  )
+  ) {
+    Absent => false
+    Present { value: binding } =>
   match binding.execution_policy {
     HeldSessionLease { lease_key: k } => k == ("attempt-1/turn-1" as NonEmptyStr)
     _ => false
+  }
   }
 }
 
@@ -122,16 +125,19 @@ test fn witness_busy_thread_refuses_outcome_unobserved() -> Bool {
 }
 
 test fn witness_running_lease_observation_is_expected_not_absent() -> Bool {
-  let binding = codex_supervised_turn_binding(
+  match codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
     prior_generation: 0,
     observed: LeaseRunningExpected,
     standing_receipt: none,
-  )
+  ) {
+    Absent => false
+    Present { value: binding } =>
   match binding.lease.observed {
     LeaseRunningExpected => true
     _ => false
+  }
   }
 }
 
@@ -157,13 +163,15 @@ test fn witness_parse_supervised_stdout_turn_completed_disposition() -> Bool {
 }
 
 test fn witness_terminal_receipt_carries_client_command_id() -> Bool {
-  let binding = codex_supervised_turn_binding(
+  match codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
     prior_generation: 0,
     observed: LeaseAbsent,
     standing_receipt: none,
-  )
+  ) {
+    Absent => false
+    Present { value: binding } => {
   let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
   let receipt = codex_runner_turn_terminal_receipt(
     binding: binding,
@@ -174,6 +182,8 @@ test fn witness_terminal_receipt_carries_client_command_id() -> Bool {
   (receipt.client_command_id as String) == "attempt-1/turn-1"
     && codex_supervised_turn_client_command_id(turn: fixture_turn()) == receipt.client_command_id
     && press_display_finished(disposition: receipt.disposition)
+    }
+  }
 }
 
 test fn witness_parse_turn_failed_notification_disposition() -> Bool {

@@ -1,14 +1,17 @@
 module gunbc.recurring_failure_mode.create_only_writer_used_for_reconcilable_staging
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data create_only_writer_used_for_reconcilable_staging: RecurringFailureMode = RecurringFailureMode {
   identity: "create_only_writer_used_for_reconcilable_staging" as NonEmptyStr,
+  rung: RungUnread { cause: NoRungStated },
+
   receipts: [
     "2026-10-09, PR #13607: the local network apply at 682c32644e8 refused File exists for its prior root-owned staging artifacts. No network install operation ran. Filesystem.WriteOwnerOnly creates an exclusive 0600 file; the caller chose it for its custody contract but also assumed replacement semantics it does not provide. A fresh staging directory would hide the defect until the next converge.",
     "Repair at the write realization: mktemp creates a unique 0600 inode inside the already-verified staging directory, Filesystem.Write fills that inode, and the existing mv_exact_destination_command atomically publishes it on the same filesystem. Scope admission applies to the destination and temporary path. Failures remove only this invocation's temporary inode and report cleanup refusal; final exact byte readback and the outer root-custody readback remain required.",
     "Discriminator: test.manual.runner_microvm_network_local_stage_probe.local_stage_replaces_owned_bytes_wet executes the real production writer for creation, replacement with different bytes and replay, checks 0600 mode and trailing newlines, refuses a destination outside the supplied scope, and checks no temporary inode remains. This is a manual native filesystem control, not a hermetic CI claim. Rung: external byte/custody facts are observed and refused; constructor-level distinction between exclusive creation and replacement remains the ceiling for callers choosing a filesystem operation. Trigger: operation admission requires the caller's intended publication semantics rather than relying on the writer's name.",
+    "SECOND SPECIMEN (2026-10-25, the APNs publish change, session lively-newt-806): gunbc.auth.approval_device_routes store_push_registration wrote the enrolled phone's APNs registration with Filesystem.WriteOwnerOnly under a root nothing ensured. The first PUT could store; every later one -- a ROTATED token, the case gunbc.auth.approval_device_redemption approval_device_routes_frontier names -- refused File exists, so the stored token would have gone stale exactly when APNs answered 410 for it. Found by reading the consumer's need (a sender that reads the CURRENT token), not by a red. Repair: the registration is a head-only windowed CAS slot in the device store (approval_device_redemption commit_push_registration over gunbc.durable_cas_file_store file_compare_and_set_windowed), so replacement is the operation's declared semantics, a lost race is its own answer, and the root is the ensured device store. Same rung and trigger as the first specimen: nothing yet makes a caller state replace-versus-create before it can name a writer.",
   ],
   evidence: [],
 }

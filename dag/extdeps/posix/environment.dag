@@ -1,0 +1,8 @@
+module extdeps.posix.environment
+
+import std.types { NonEmptyStr }
+
+// POSIX.1-2017 Base Definitions, Environment Variables: HOME is the user's home directory pathname.
+// A tool that resolves per-user state from $HOME reads this variable, so a caller that must keep the tool
+// out of the invoking user's real home binds this one name to a directory it owns.
+data posix_home_env: NonEmptyStr = "HOME"

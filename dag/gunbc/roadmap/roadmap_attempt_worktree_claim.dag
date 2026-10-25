@@ -1,0 +1,551 @@
+module gunbc.roadmap.roadmap_attempt_worktree_claim
+
+import std.types { String, Bool, List, NonEmptyStr, EpochSecs }
+import std.upsert_decision { ObservationVerdict, Noop, Apply, Refuse, UpsertClassification, Converged, Drifted, Inaccessible, UnknownRefused }
+import std.decl_ref { decl_ref }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count }
+import gunbc.compute.attempt_lifecycle {
+  AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
+  AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused, AttemptPayloadCodec,
+  UnitLifecycle, UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended,
+  attempt_state_wire, attempt_state_decode, attempt_member, attempt_member_epoch, attempt_transition_wire,
+  attempt_open_payload, attempt_terminate_payload, attempt_owner_wire, DispatchOwned,
+  attempt_payload_read, AttemptPayloadAbsent, AttemptPayloadHeld, AttemptPayloadUnreadable,
+  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
+}
+import gunbc.roadmap.roadmap_attempt_worktree_claim_root { WorktreeClaimStore }
+import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable }
+import gunbc.roadmap.roadmap_session_placement {
+  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent,
+  SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, session_release_settled,
+  SessionPlacementStores, session_placement_observe_at, session_unit_wire, session_unit_unnameable_detail,
+}
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+
+// ONE OWNERSHIP RECORD FOR AN ATTEMPT'S WORKTREE (gunbc.recurring_failure_mode
+// an_attempt_worktree_has_no_owner_until_the_attempt_state_exists).
+//
+// THE INVARIANT: the worktree is recorded under the attempt BEFORE `git worktree add` runs, so a kill
+// at any later instant leaves a record that names the tree, and every release is derived from that
+// record. The record is a create-only CAS slot written through the sealed attempt writer
+// (attempt_open_payload, the route gunbc.dispatch_credential_acquisition already inhabits with its
+// own codec); this module adds a payload and a codec, not a store, a CAS or an identity. The
+// attempt's identity is slice 1's (DispatchOwned: node and attempt key), the worktree PATH stays
+// derived from it (dispatch_worktree_path_for_instance) and is recorded only so that a mismatch can
+// refuse: a release is never derived from the recorded path alone.
+//
+// The worker process needs no second record. Its unit name is session_unit of the same node and
+// attempt, recorded by the placement record BEFORE the unit is started (session_placement_record_write)
+// and collected from that record by gunbc.roadmap.roadmap_session_activation_ensure; this module only
+// READS that standing to know whether the tree may be released.
+//
+// THE DECISION TABLE (record R, tree T, worker W; every row that is not Apply keeps the tree):
+//
+//   R absent,  T present                         -> Refuse, KEPT (legacy or debris: the slice-4 sweep owns it)
+//   R absent,  T absent                          -> Noop
+//   R unreadable, foreign or path mismatch       -> Refuse, KEPT
+//   R open,    T absent, W in flight             -> Noop (the add may be in flight)
+//   R open,    T absent, W never started/ended   -> Apply: close the record (nothing was acquired or it is gone)
+//   R closed,  T absent                          -> Noop
+//   R closed,  T present                         -> Refuse, KEPT (someone else made it; the record no longer names it)
+//   R open,    T present, W live or in flight    -> Noop
+//   R open,    T present, W unknown              -> Refuse, KEPT
+//   R open,    T present, W ended, capture owed  -> Noop (release waits on the capture commit)
+//   R open,    T present, W ended, capture unknown -> Refuse, KEPT
+//   R open,    T present, W ended/never started, dirty / unpushed commits / unobserved -> Refuse, KEPT
+//   R open,    T present, W ended/never started, clean branch or pushed, capture settled -> Apply: remove
+//                                                  exactly the derived path WITHOUT force, read back absent, close the record
+//
+// REMOVAL ORDER: the tree is removed first and the record closed after the readback finds the tree
+// absent, so a kill between the two leaves an open record over an absent tree, which the next pass
+// closes. The reverse order would leave a tree no record names.
+//
+// SCAFFOLD: the observation seams (tree_of, content_of, remove, capture_of) are supplied by the belt
+// so this module imports no host; retirement condition: the belt's host adapters become one typed
+// worktree observation surface in extdeps, at which point the seams are that surface's operations.
+type WorktreeClaim {
+  identity: String
+  node_id: String
+  attempt_key: String
+  reference: String
+  worktree_path: String
+  opened_at: EpochSecs
+  launch_deadline: EpochSecs
+  state: AttemptState
+}
+
+// The reference is the worktree's own directory name, so the record and the tree it owns share one name.
+fn worktree_claim_reference(node_id: String, attempt_key: String) -> String {
+  join([node_id, "-a", attempt_key], "")
+}
+
+fn worktree_claim_identity(node_id: String, attempt_key: String) -> String {
+  attempt_owner_wire(o: DispatchOwned { node_id: node_id, attempt_key: attempt_key })
+}
+
+fn worktree_claim_with_state(c: WorktreeClaim, state: AttemptState) -> WorktreeClaim {
+  WorktreeClaim {
+    identity: c.identity, node_id: c.node_id, attempt_key: c.attempt_key, reference: c.reference,
+    worktree_path: c.worktree_path, opened_at: c.opened_at, launch_deadline: c.launch_deadline, state: state,
+  }
+}
+
+fn worktree_claim_json(c: WorktreeClaim) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "identity", value: json_string(s: c.identity)),
+    json_kv(key: "node_id", value: json_string(s: c.node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: c.attempt_key)),
+    json_kv(key: "reference", value: json_string(s: c.reference)),
+    json_kv(key: "worktree_path", value: json_string(s: c.worktree_path)),
+    json_kv(key: "opened_at", value: json_int(n: c.opened_at)),
+    json_kv(key: "launch_deadline", value: json_int(n: c.launch_deadline)),
+    json_kv(key: "state", value: json_string(s: attempt_state_wire(s: c.state))),
+    json_kv(key: "detail", value: json_string(s: match c.state { AttemptTerminal { verdict: _, detail: d } => d  AttemptReserved => ""  AttemptLaunching => "" })),
+  ]))
+}
+
+fn worktree_claim_decode(text: String) -> WorktreeClaim? {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: doc } =>
+      match attempt_member(doc: doc, key: "identity") {
+        Absent => none
+        Present { value: identity } =>
+          match attempt_member(doc: doc, key: "node_id") {
+            Absent => none
+            Present { value: node_id } =>
+              match attempt_member(doc: doc, key: "attempt_key") {
+                Absent => none
+                Present { value: attempt_key } =>
+                  match attempt_member(doc: doc, key: "reference") {
+                    Absent => none
+                    Present { value: reference } =>
+                      match attempt_member(doc: doc, key: "worktree_path") {
+                        Absent => none
+                        Present { value: worktree_path } =>
+                          match attempt_member_epoch(doc: doc, key: "opened_at") {
+                            Absent => none
+                            Present { value: opened_at } =>
+                              match attempt_member_epoch(doc: doc, key: "launch_deadline") {
+                                Absent => none
+                                Present { value: launch_deadline } =>
+                                  match attempt_member(doc: doc, key: "state") {
+                                    Absent => none
+                                    Present { value: word } =>
+                                      match attempt_state_decode(word: word, detail: match attempt_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" }) {
+                                        Absent => none
+                                        Present { value: state } =>
+                                          Present { value: WorktreeClaim {
+                                            identity: identity, node_id: node_id, attempt_key: attempt_key, reference: reference,
+                                            worktree_path: worktree_path, opened_at: opened_at, launch_deadline: launch_deadline, state: state,
+                                          } }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn worktree_claim_reference_of(c: WorktreeClaim) -> String { c.reference }
+fn worktree_claim_state_of(c: WorktreeClaim) -> AttemptState { c.state }
+fn worktree_claim_opened_at_of(c: WorktreeClaim) -> EpochSecs { c.opened_at }
+fn worktree_claim_launch_deadline_of(c: WorktreeClaim) -> EpochSecs { c.launch_deadline }
+
+fn worktree_claim_codec() -> AttemptPayloadCodec<WorktreeClaim>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_open"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_read"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_close"),
+  ]
+{
+  AttemptPayloadCodec {
+    encode: worktree_claim_json,
+    decode: worktree_claim_decode,
+    reference_of: worktree_claim_reference_of,
+    state_of: worktree_claim_state_of,
+    with_state: worktree_claim_with_state,
+    opened_at: worktree_claim_opened_at_of,
+    launch_deadline: worktree_claim_launch_deadline_of,
+  }
+}
+
+type WorktreeClaimReading
+  = WorktreeClaimAbsent
+  | WorktreeClaimHeld { claim: WorktreeClaim, generation: CasGeneration }
+  | WorktreeClaimUnreadable { detail: String }
+
+fn worktree_claim_read(claims: WorktreeClaimStore, reference: NonEmptyStr) -> WorktreeClaimReading {
+  match attempt_payload_read(store: claims.slots, reference: reference, codec: worktree_claim_codec()) {
+    AttemptPayloadAbsent => WorktreeClaimAbsent
+    AttemptPayloadHeld { record: c, generation: g } => WorktreeClaimHeld { claim: c, generation: g }
+    AttemptPayloadUnreadable { detail: d } => WorktreeClaimUnreadable { detail: join(["the worktree claim could not be read: ", d], "") }
+  }
+}
+
+// THE CLAIM IS WRITTEN FIRST, create-only, and read back by the caller's next step. A duplicate
+// reference is a lost race, never an overwrite of another attempt's claim.
+fn worktree_claim_open(claims: WorktreeClaimStore, claim: WorktreeClaim) -> AttemptTransition {
+  attempt_open_payload(store: claims.slots, record: claim, codec: worktree_claim_codec())
+}
+
+fn worktree_claim_close(claims: WorktreeClaimStore, reference: NonEmptyStr, expected: CasGeneration, detail: String) -> AttemptTransition {
+  attempt_terminate_payload(store: claims.slots, reference: reference, expected: expected, verdict: AttemptRecovered, detail: detail, codec: worktree_claim_codec())
+}
+
+fn worktree_claim_new(node_id: String, attempt_key: String, worktree_path: String, opened_at: EpochSecs, launch_deadline: EpochSecs) -> WorktreeClaim {
+  WorktreeClaim {
+    identity: worktree_claim_identity(node_id: node_id, attempt_key: attempt_key),
+    node_id: node_id, attempt_key: attempt_key,
+    reference: worktree_claim_reference(node_id: node_id, attempt_key: attempt_key),
+    worktree_path: worktree_path, opened_at: opened_at, launch_deadline: launch_deadline,
+    state: AttemptReserved,
+  }
+}
+
+// THE BELT'S WRITE-BEFORE-ACQUIRE: the claim is written and read back as THIS attempt's open record
+// before the caller may run `git worktree add`; anything else refuses the spawn step.
+type WorktreeClaimWritten
+  = WorktreeClaimRecorded
+  | WorktreeClaimNotRecorded { detail: String }
+
+fn worktree_claim_record_before_add(claims: WorktreeClaimStore, claim: WorktreeClaim) -> WorktreeClaimWritten {
+  match worktree_claim_open(claims: claims, claim: claim) {
+    AttemptAdvanced { state: _, generation: _ } =>
+      match worktree_claim_read(claims: claims, reference: claim.reference as NonEmptyStr) {
+        WorktreeClaimHeld { claim: held, generation: _ } =>
+          if held.identity == claim.identity && held.worktree_path == claim.worktree_path {
+            WorktreeClaimRecorded
+          } else {
+            WorktreeClaimNotRecorded { detail: "the claim slot reads back as another attempt's record" }
+          }
+        WorktreeClaimAbsent => WorktreeClaimNotRecorded { detail: "the claim was written and reads back absent" }
+        WorktreeClaimUnreadable { detail } => WorktreeClaimNotRecorded { detail: detail }
+      }
+    AttemptLostRace { expected: e, observed: o } => WorktreeClaimNotRecorded { detail: join(["a claim for this attempt already exists: expected ", e, ", observed ", o], "") }
+    AttemptTransitionRefused { detail } => WorktreeClaimNotRecorded { detail: detail }
+  }
+}
+
+// ── OBSERVATIONS THE DECISION READS, each a closed standing ─────────────────────────────────────
+
+type ClaimRemoval
+  = ClaimRemoved
+  | ClaimRemoveDeclined { detail: String }
+  | ClaimRemoveUnexecuted { detail: String }
+
+type ClaimTree
+  = ClaimTreePresent
+  | ClaimTreeAbsent
+  | ClaimTreeUnobserved { detail: String }
+
+type ClaimContent
+  = ClaimContentDirty { detail: String }
+  | ClaimContentPushed
+  | ClaimContentUnpushedCommits { detail: String }
+  | ClaimContentUnobserved { detail: String }
+
+type ClaimWorker
+  = ClaimWorkerLive
+  | ClaimWorkerInFlight
+  | ClaimWorkerNeverStarted
+  | ClaimWorkerEnded
+  | ClaimWorkerUnknown { detail: String }
+
+type ClaimCapture
+  = ClaimCaptureSettled
+  | ClaimCaptureOwed { detail: String }
+  | ClaimCaptureUnknown { detail: String }
+
+fn worktree_claim_worker_standing(
+  observation: SessionPlacementObservation,
+  loaded: AttemptUnitObservation,
+  lifecycle: UnitLifecycle,
+  now: EpochSecs,
+  deadline: EpochSecs,
+) -> ClaimWorker {
+  match observation {
+    SessionPlacementUnreadable { unit: _, detail } => ClaimWorkerUnknown { detail: detail }
+    SessionPlacementForeign { unit: _, detail } => ClaimWorkerUnknown { detail: detail }
+    SessionPlacementUnnameable { detail } => ClaimWorkerUnknown { detail: detail }
+    SessionPlacementAbsent { unit: _ } =>
+      match loaded {
+        AttemptUnitActive => ClaimWorkerLive
+        AttemptUnitFinished { exit_status: _ } => ClaimWorkerUnknown { detail: "a unit lingers ended with no placement record" }
+        AttemptUnitUnreadable { reason } => ClaimWorkerUnknown { detail: reason }
+        AttemptUnitAbsent => if now >= deadline { ClaimWorkerNeverStarted } else { ClaimWorkerInFlight }
+      }
+    SessionPlacementObserved { slot: _, grant: _, returned } =>
+      match loaded {
+        AttemptUnitActive => ClaimWorkerLive
+        AttemptUnitUnreadable { reason } => ClaimWorkerUnknown { detail: reason }
+        AttemptUnitFinished { exit_status: _ } => ClaimWorkerEnded
+        AttemptUnitAbsent =>
+          if session_release_settled(r: returned) || unit_lifecycle_ended(u: lifecycle) {
+            ClaimWorkerEnded
+          } else {
+            match lifecycle {
+              UnitStillRunning { detail: _ } => ClaimWorkerLive
+              UnitLifecycleUnknown { detail: _ } => ClaimWorkerInFlight
+              _ => ClaimWorkerInFlight
+            }
+          }
+      }
+  }
+}
+
+// ── THE PURE DECISION ───────────────────────────────────────────────────────────────────────────
+
+type WorktreeClaimPlan
+  = ClaimRemoveTree { path: String, reason: String }
+  | ClaimCloseRecord { reason: String }
+
+fn claim_refuse(verdict: ObservationVerdict, reason: String) -> UpsertClassification<WorktreeClaimPlan> {
+  UpsertClassification { verdict: verdict, decision: Refuse { reason: reason as NonEmptyStr } }
+}
+
+fn claim_noop() -> UpsertClassification<WorktreeClaimPlan> {
+  UpsertClassification { verdict: Converged, decision: Noop }
+}
+
+fn claim_apply(plan: WorktreeClaimPlan) -> UpsertClassification<WorktreeClaimPlan> {
+  UpsertClassification { verdict: Drifted, decision: Apply { plan: plan } }
+}
+
+fn claim_state_open(s: AttemptState) -> Bool {
+  match s {
+    AttemptReserved => true
+    AttemptLaunching => true
+    AttemptTerminal { verdict: _, detail: _ } => false
+  }
+}
+
+fn worktree_claim_classify(
+  reading: WorktreeClaimReading,
+  derived_path: String,
+  node_id: String,
+  attempt_key: String,
+  tree: ClaimTree,
+  worker: ClaimWorker,
+  content: ClaimContent,
+  capture: ClaimCapture,
+) -> UpsertClassification<WorktreeClaimPlan> {
+  match reading {
+    WorktreeClaimUnreadable { detail } => claim_refuse(verdict: Inaccessible, reason: join(["the claim could not be read (", detail, "); nothing is changed"], ""))
+    WorktreeClaimAbsent =>
+      match tree {
+        ClaimTreeAbsent => claim_noop()
+        ClaimTreePresent => claim_refuse(verdict: UnknownRefused, reason: join(["a worktree is present at ", derived_path, " and no claim names it; it is kept (legacy or debris, left to the one-time sweep)"], ""))
+        ClaimTreeUnobserved { detail } => claim_refuse(verdict: Inaccessible, reason: join(["the worktree could not be observed (", detail, "); nothing is changed"], ""))
+      }
+    WorktreeClaimHeld { claim: c, generation: _ } =>
+      if c.identity != worktree_claim_identity(node_id: node_id, attempt_key: attempt_key) || c.reference != worktree_claim_reference(node_id: node_id, attempt_key: attempt_key) {
+        claim_refuse(verdict: UnknownRefused, reason: "the claim names another attempt; it is never touched")
+      } else if c.worktree_path != derived_path {
+        claim_refuse(verdict: UnknownRefused, reason: join(["the claim records path ", c.worktree_path, " and this attempt derives ", derived_path, "; nothing is removed on a recorded path alone"], ""))
+      } else if !claim_state_open(s: c.state) {
+        match tree {
+          ClaimTreeAbsent => claim_noop()
+          ClaimTreePresent => claim_refuse(verdict: UnknownRefused, reason: join(["the claim is closed and a worktree is present at ", derived_path, "; the record no longer names it and it is kept"], ""))
+          ClaimTreeUnobserved { detail } => claim_refuse(verdict: Inaccessible, reason: join(["the worktree could not be observed (", detail, "); nothing is changed"], ""))
+        }
+      } else {
+        worktree_claim_classify_open(path: derived_path, tree: tree, worker: worker, content: content, capture: capture)
+      }
+  }
+}
+
+fn worktree_claim_classify_open(
+  path: String,
+  tree: ClaimTree,
+  worker: ClaimWorker,
+  content: ClaimContent,
+  capture: ClaimCapture,
+) -> UpsertClassification<WorktreeClaimPlan> {
+  match tree {
+    ClaimTreeUnobserved { detail } => claim_refuse(verdict: Inaccessible, reason: join(["the worktree could not be observed (", detail, "); nothing is changed"], ""))
+    ClaimTreeAbsent =>
+      match worker {
+        ClaimWorkerLive => claim_noop()
+        ClaimWorkerInFlight => claim_noop()
+        ClaimWorkerUnknown { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worker's standing is unknown (", detail, "); the record stays open"], ""))
+        ClaimWorkerNeverStarted => claim_apply(plan: ClaimCloseRecord { reason: "the worktree was never created and the attempt never started" })
+        ClaimWorkerEnded => claim_apply(plan: ClaimCloseRecord { reason: "the worktree is already gone and the attempt ended" })
+      }
+    ClaimTreePresent =>
+      match worker {
+        ClaimWorkerLive => claim_noop()
+        ClaimWorkerInFlight => claim_noop()
+        ClaimWorkerUnknown { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worker's standing is unknown (", detail, "); the worktree is kept"], ""))
+        ClaimWorkerNeverStarted => worktree_claim_classify_captured(path: path, content: content, capture: capture, reason: "the worktree was created and the attempt never started")
+        ClaimWorkerEnded => worktree_claim_classify_captured(path: path, content: content, capture: capture, reason: "the attempt ended and its capture is committed")
+      }
+  }
+}
+
+fn worktree_claim_classify_captured(path: String, content: ClaimContent, capture: ClaimCapture, reason: String) -> UpsertClassification<WorktreeClaimPlan> {
+  match capture {
+    ClaimCaptureOwed { detail: _ } => claim_noop()
+    ClaimCaptureUnknown { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["whether the capture is committed is unknown (", detail, "); the worktree is kept"], ""))
+    ClaimCaptureSettled => worktree_claim_classify_release(path: path, content: content, reason: reason)
+  }
+}
+
+fn worktree_claim_classify_release(path: String, content: ClaimContent, reason: String) -> UpsertClassification<WorktreeClaimPlan> {
+  match content {
+    ClaimContentDirty { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worktree has uncommitted changes (", detail, "); it is kept"], ""))
+    ClaimContentUnpushedCommits { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worktree's branch holds commits no remote has (", detail, "); it is kept"], ""))
+    ClaimContentUnobserved { detail } => claim_refuse(verdict: Inaccessible, reason: join(["the worktree's content could not be observed (", detail, "); it is kept"], ""))
+    ClaimContentPushed => claim_apply(plan: ClaimRemoveTree { path: path, reason: reason })
+  }
+}
+
+// ── APPLY, READBACK, THE PASS ───────────────────────────────────────────────────────────────────
+
+type WorktreeClaimOutcome
+  = WorktreeClaimNoop { subject: String, why: String }
+  | WorktreeClaimRemoved { subject: String, detail: String }
+  | WorktreeClaimClosed { subject: String, detail: String }
+  | WorktreeClaimKept { subject: String, reason: String }
+  | WorktreeClaimRed { subject: String, reason: String }
+
+type WorktreeClaimPass
+  = WorktreeClaimPassRan { outcomes: List<WorktreeClaimOutcome> }
+  | WorktreeClaimPassRefused { detail: String }
+
+fn worktree_claim_close_recorded(claims: WorktreeClaimStore, reference: String, generation: CasGeneration, detail: String) -> AttemptTransition {
+  worktree_claim_close(claims: claims, reference: reference as NonEmptyStr, expected: generation, detail: detail)
+}
+
+// ONE ATTEMPT: observe, decide, apply, read back. The readback of a removal is the tree observed
+// absent AFTER the remove, independent of the remove's own report.
+fn worktree_claim_ensure_one(
+  claims: WorktreeClaimStore,
+  node_id: String,
+  attempt_key: String,
+  derived_path: String,
+  observation: SessionPlacementObservation,
+  loaded: AttemptUnitObservation,
+  lifecycle: UnitLifecycle,
+  now: EpochSecs,
+  tree_of: fn(String) -> ClaimTree,
+  content_of: fn(String) -> ClaimContent,
+  remove_tree: fn(String) -> ClaimRemoval,
+  capture_of: fn(String, String) -> ClaimCapture,
+) -> WorktreeClaimOutcome {
+  let reference = worktree_claim_reference(node_id: node_id, attempt_key: attempt_key)
+  let reading = worktree_claim_read(claims: claims, reference: reference as NonEmptyStr)
+  let deadline = match reading { WorktreeClaimHeld { claim: c, generation: _ } => c.launch_deadline  WorktreeClaimAbsent => 0  WorktreeClaimUnreadable { detail: _ } => 0 }
+  let classified = worktree_claim_classify(
+    reading: reading, derived_path: derived_path, node_id: node_id, attempt_key: attempt_key,
+    tree: tree_of(derived_path),
+    worker: worktree_claim_worker_standing(observation: observation, loaded: loaded, lifecycle: lifecycle, now: now, deadline: deadline),
+    content: content_of(derived_path),
+    capture: capture_of(node_id, attempt_key))
+  match classified.decision {
+    Noop => WorktreeClaimNoop { subject: reference, why: "converged, in flight, live, or waiting on the capture commit" }
+    Refuse { reason } => WorktreeClaimKept { subject: reference, reason: reason as String }
+    Apply { plan } =>
+      match reading {
+        WorktreeClaimHeld { claim: _, generation: g } =>
+          match plan {
+            ClaimCloseRecord { reason } =>
+              match worktree_claim_close_recorded(claims: claims, reference: reference, generation: g, detail: reason) {
+                AttemptAdvanced { state: _, generation: _ } => WorktreeClaimClosed { subject: reference, detail: reason }
+                other => WorktreeClaimRed { subject: reference, reason: join(["the record could not be closed: ", attempt_transition_wire(t: other)], "") }
+              }
+            ClaimRemoveTree { path, reason } =>
+              match remove_tree(path) {
+                ClaimRemoveDeclined { detail } => WorktreeClaimKept { subject: reference, reason: join(["git declined to remove the worktree at ", path, " (", reason, "): ", detail, "; it is kept"], "") }
+                ClaimRemoveUnexecuted { detail } => WorktreeClaimRed { subject: reference, reason: join(["git could not be run to remove the worktree at ", path, ": ", detail], "") }
+                ClaimRemoved =>
+                match tree_of(path) {
+                  ClaimTreeAbsent =>
+                    match worktree_claim_close_recorded(claims: claims, reference: reference, generation: g, detail: reason) {
+                      AttemptAdvanced { state: _, generation: _ } => WorktreeClaimRemoved { subject: reference, detail: reason }
+                      other => WorktreeClaimRed { subject: reference, reason: join(["the worktree was removed and the record could not be closed (", attempt_transition_wire(t: other), "); the next pass closes it"], "") }
+                    }
+                  ClaimTreePresent => WorktreeClaimRed { subject: reference, reason: join(["git reported the worktree removed and it is still present at ", path], "") }
+                  ClaimTreeUnobserved { detail } => WorktreeClaimRed { subject: reference, reason: join(["the worktree could not be read back after removal: ", detail], "") }
+                }
+              }
+          }
+        WorktreeClaimAbsent => WorktreeClaimRed { subject: reference, reason: "a plan was derived from a claim that is not held" }
+        WorktreeClaimUnreadable { detail } => WorktreeClaimRed { subject: reference, reason: detail }
+      }
+  }
+}
+
+// THE PASS enumerates the claim store -- the attempts' own records -- never the worktree population, so
+// a tree no claim names is not even a subject. node and attempt are READ FROM the record; ensure_one
+// re-derives the reference from them and the classification keeps any record that does not match.
+// The worker's standing is the slice-1 placement record plus the unit manager, read through the same
+// seams the activation ensure uses; this pass owns no unit.
+fn worktree_claim_ensure_pass_at(
+  stores: SessionPlacementStores,
+  claims: WorktreeClaimStore,
+  host: String,
+  path_of: fn(String, String) -> String,
+  loaded_of: fn(NonEmptyStr) -> AttemptUnitObservation,
+  lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle,
+  now: EpochSecs,
+  tree_of: fn(String) -> ClaimTree,
+  content_of: fn(String) -> ClaimContent,
+  remove_tree: fn(String) -> ClaimRemoval,
+  capture_of: fn(String, String) -> ClaimCapture,
+) -> WorktreeClaimPass {
+  match attempt_slot_keys(store: claims.slots) {
+    AttemptSlotKeysListed { keys } =>
+      WorktreeClaimPassRan {
+        outcomes: map(keys, k =>
+          match worktree_claim_read(claims: claims, reference: k) {
+            WorktreeClaimHeld { claim: c, generation: _ } =>
+              match session_unit_wire(node_id: c.node_id, attempt_key: c.attempt_key) {
+                Absent => WorktreeClaimKept { subject: k as String, reason: session_unit_unnameable_detail(node_id: c.node_id, attempt_key: c.attempt_key) }
+                Present { value: unit } =>
+                  worktree_claim_ensure_one(
+                    claims: claims, node_id: c.node_id, attempt_key: c.attempt_key,
+                    derived_path: path_of(c.node_id, c.attempt_key),
+                    observation: session_placement_observe_at(stores: stores, host: host, node_id: c.node_id, attempt_key: c.attempt_key),
+                    loaded: loaded_of(unit), lifecycle: lifecycle_of(unit), now: now,
+                    tree_of: tree_of, content_of: content_of, remove_tree: remove_tree, capture_of: capture_of)
+              }
+            WorktreeClaimAbsent => WorktreeClaimNoop { subject: k as String, why: "no claim is held" }
+            WorktreeClaimUnreadable { detail } => WorktreeClaimKept { subject: k as String, reason: detail }
+          }),
+      }
+    AttemptSlotKeysRefused { detail: d } => WorktreeClaimPassRefused { detail: join(["the worktree claim store: ", d], "") }
+  }
+}
+
+fn worktree_claim_outcome_wire(o: WorktreeClaimOutcome) -> String {
+  match o {
+    WorktreeClaimNoop { subject, why } => join([subject, ": noop (", why, ")"], "")
+    WorktreeClaimRemoved { subject, detail } => join([subject, ": worktree removed (", detail, ")"], "")
+    WorktreeClaimClosed { subject, detail } => join([subject, ": record closed (", detail, ")"], "")
+    WorktreeClaimKept { subject, reason } => join([subject, ": kept (", reason, ")"], "")
+    WorktreeClaimRed { subject, reason } => join([subject, ": RED (", reason, ")"], "")
+  }
+}
+
+fn worktree_claim_pass_wire(p: WorktreeClaimPass) -> String {
+  match p {
+    WorktreeClaimPassRan { outcomes } => join(map(outcomes, o => worktree_claim_outcome_wire(o: o)), "; ")
+    WorktreeClaimPassRefused { detail } => join(["worktree claim ensure refused: ", detail], "")
+  }
+}
+
+fn worktree_claim_outcome_is_red(o: WorktreeClaimOutcome) -> Bool {
+  match o {
+    WorktreeClaimRed { subject: _, reason: _ } => true
+    WorktreeClaimNoop { subject: _, why: _ } => false
+    WorktreeClaimRemoved { subject: _, detail: _ } => false
+    WorktreeClaimClosed { subject: _, detail: _ } => false
+    WorktreeClaimKept { subject: _, reason: _ } => false
+  }
+}

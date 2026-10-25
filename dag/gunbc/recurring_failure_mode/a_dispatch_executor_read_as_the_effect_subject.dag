@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.a_dispatch_executor_read_as_the_effect_subject
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_dispatch_executor_read_as_the_effect_subject: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_dispatch_executor_read_as_the_effect_subject" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: one dispatch input is read both as the runner label the job is placed on and as the host the effect lands on, so a subject that has no runner slots can never be acted on. HARM: the job waits for a runner label no host carries -- no refusal fires, no receipt is written, and the precondition it was dispatched to establish silently stays unmet.",
+    "SPECIMEN: fleet-converge run 38763925660 (2026-10-15), mode=host_credential_custody_converge host=srv2 credential=cursor_worker_turn_api_key, sat queued for over an hour with labels [self-hosted, linux, arm64, srv2] and was cancelled before placement. srv2's runner units have been masked since 2026-09-19 and its width refuses (gunbc.runner.runner_host_deploy), while the Cursor and Codex custody rows are scoped to srv2 (CustodyOnlyOnHost). gunbc.fleet.host_credential_custody_converge read FLEET_CONVERGE_EXPECTED_HOST as the custody target, although the workflow declares that input as the executor (gunbc.fleet.fleet_converge_workflow fleet_converge_dispatch_input_rows host: Executor fleet host) and gunbc.machine_intake.arrival_admission already reads it that way.",
+    "DISTINGUISHING FACTS: the effect already reached its subject over an SSH administrator edge (custody_host, administrator_ssh_target), so running on the subject was never required; the coupling lived only in reading the subject off the placement input. gunbc#11902 had already decoupled the custody SUBJECT from slot width, and that claim stayed green while the run could not be placed -- a subject-resolution witness cannot see job placement.",
+    "RUNG FOUND AT: silent (outside the ladder) -- an indefinite queue, not a typed refusal. RUNG NOW for custody: structurally impossible that the dispatch names the target -- custody_target_host reads it off the row (CustodyOnlyOnHost delivers to its host from any executor; CustodyAnyRunnerHost delivers to the executor), held by test.claim.host_credential_custody_converge_witness the_cursor_row_dispatched_from_srv1_targets_srv2 and the_ntfy_token_is_delivered_to_srv1_only. RESIDUAL: the executor input still offers every enrolled host (fleet_converge_enrolled_host_options), so host=srv2 still queues silently in every mode. CEILING: structurally impossible -- the executor options are hosts with a runner deploy row, so a label no runner carries has no constructor in the dispatch form. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: fleet-converge's executor input options derived from gunbc.runner.runner_host_deploy deploy rows and regenerated into the emitted workflow, so the dispatch form cannot name an unplaceable executor.",
+  ],
+
+  evidence: [],
+}

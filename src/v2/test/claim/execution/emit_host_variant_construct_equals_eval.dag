@@ -1,6 +1,7 @@
 module v2.test.claim.execution.emit_host_variant_construct_equals_eval
 
-import std.types { List }
+
+import std.types { List, Map }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -22,10 +23,7 @@ import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
 import v2.extdeps.languages.rust_fixtures { rust_variant_construct_target_model_staging }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection {
-  Map,
-  list_at_optional
-}
+import std.algebra { list_at_optional }
 import std.optional {
   Optional,
   Absent,
@@ -59,7 +57,7 @@ import v2.std.node {
 import v2.std.node_query {
   find_core_child,
 }
-import v2.std.runtime {
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,
   ControlTransfer,
@@ -267,11 +265,11 @@ fn emit_variant_construct_eval_arm_body_node(arm_wire: Node) -> Outcome<Node> {
 }
 
 fn emit_variant_construct_eval_scrutinee_is_holds(value: RuntimeValue) -> Bool {
-  value == emit_variant_construct_eval_octet_value(n: 1)
+  (runtime_value_equality(a: value, b: emit_variant_construct_eval_octet_value(n: 1)) == RuntimeValuesEqual)
 }
 
 fn emit_variant_construct_eval_scrutinee_is_true(value: RuntimeValue) -> Bool {
-  value == emit_variant_construct_eval_octet_value(n: 0)
+  (runtime_value_equality(a: value, b: emit_variant_construct_eval_octet_value(n: 0)) == RuntimeValuesEqual)
 }
 
 fn emit_variant_construct_eval_choose_arm(

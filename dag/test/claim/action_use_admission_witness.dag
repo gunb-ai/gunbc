@@ -28,7 +28,8 @@ import gunbc.action_use_admission {
   realized_census_cost_standing,
   action_use_admitted, action_use_admission_reason, admit_action_release, admit_action_release_against, admit_realized_action_use,
   admit_workflow_action_uses, realized_workflow_reading, realized_distinct_uses,
-  upload_artifact_action, checkout_action, setup_rust_action,
+  upload_artifact_action, checkout_action, setup_rust_action, cache_save_action,
+  download_artifact_action, google_auth_action,
   realized_use_is_a_repository_selection,
 }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow }
@@ -124,7 +125,7 @@ test fn green_composite_with_exact_nested_use_is_admitted() -> Bool {
 
 // The same composite shape with a nested node20 release refuses, and says it was the NESTED use.
 test fn red_composite_with_substituted_nested_use_refuses_as_nested() -> Bool {
-  let composite = ActionRelease { owner: "example", repo: "composite", tag: "v1", commit: "1111111111111111111111111111111111111111" }
+  let composite = ActionRelease { owner: "example", repo: "composite", tag: "v1", commit: "1111111111111111111111111111111111111111", subdirectory: none }
   let readings = [
     ActionManifestReading { action_release: composite, declared: CompositeAction { nested: [upload_artifact_v4_6_2] } },
     ActionManifestReading { action_release: upload_artifact_v4_6_2, declared: JavaScriptAction { node_major: 20 } },
@@ -134,12 +135,12 @@ test fn red_composite_with_substituted_nested_use_refuses_as_nested() -> Bool {
 
 // A release whose action.yml was never read has no declaration to admit.
 test fn red_unobserved_producer_declaration_refuses() -> Bool {
-  is_unobserved(a: admit_action_release(action_release: ActionRelease { owner: "actions", repo: "upload-artifact", tag: "v6.0.0", commit: "0000000000000000000000000000000000000000" }))
+  is_unobserved(a: admit_action_release(action_release: ActionRelease { owner: "actions", repo: "upload-artifact", tag: "v6.0.0", commit: "0000000000000000000000000000000000000000", subdirectory: none }))
 }
 
 // A declaration the platform policy does not answer refuses rather than being presumed exact.
 test fn red_unmodeled_platform_disposition_refuses() -> Bool {
-  let r = ActionRelease { owner: "example", repo: "node16", tag: "v1", commit: "2222222222222222222222222222222222222222" }
+  let r = ActionRelease { owner: "example", repo: "node16", tag: "v1", commit: "2222222222222222222222222222222222222222", subdirectory: none }
   is_unmodeled_platform(a: admit_action_release_against(
     readings: [ActionManifestReading { action_release: r, declared: JavaScriptAction { node_major: 16 } }],
     action_release: r,
@@ -184,6 +185,11 @@ test fn red_pinned_node20_release_realized_refuses_as_forced_substitution() -> B
 
 test fn green_pinned_selected_release_realized_is_admitted() -> Bool {
   action_use_admitted(a: admit_realized_action_use(u: step_use(text: action_release_uses_text(action_release: upload_artifact_action))))
+}
+
+test fn green_cache_save_subdirectory_release_is_admitted() -> Bool {
+  action_use_admitted(a: admit_action_release(action_release: cache_save_action))
+    && action_use_admitted(a: admit_realized_action_use(u: step_use(text: action_release_uses_text(action_release: cache_save_action))))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -284,7 +290,8 @@ fn census_holds(c: RealizedCensus) -> Bool {
 // eval-step budget. This join is what makes the per-file claims the census: a workflow added without
 // a claim, or a claim naming a file that is gone, refuses here, by name.
 data realized_workflow_files: List<String> = [
-  "fleet-converge.yml", "heal.yml", "instrument-dispatch.yml", "microvm-shakedown.yml", "witnesses.yml"
+  "fleet-converge.yml", "heal.yml", "instrument-dispatch.yml", "microvm-shakedown.yml", "witnesses.yml",
+  "branch-run-grant-broker.yml", "drift-watch.yml", "heal-publish.yml"
 ]
 
 fn listed_workflow_files() -> List<String> {
@@ -401,6 +408,44 @@ test fn census_witnesses_uses_are_modeled_and_executed_exactly() -> Bool {
   census_holds(c: c)
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
+}
+
+// THE GRANT BROKER RUNS THE BROKER FROM A CHECKOUT, NOT FROM AN ARTIFACT. Its one job checks the
+// repository out and builds the broker under the pinned toolchain (its .github/workflows header and
+// gunbc's run-grant flow); a census that skipped this file would admit a tag-pin or an unmodeled
+// action reintroduced there unseen. The claim pins both admissions by name, so it is this file's
+// reader, not the roster's echo: census_file reads the bytes from the checkout.
+test fn census_branch_run_grant_broker_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "branch-run-grant-broker.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
+}
+
+// DRIFT-WATCH READS THE TREE TO COMPARE IT. It is the scheduled lane that refuses silent main drift
+// (#13724); it uses the same two admitted releases as the broker. The pin distinguishes a real read
+// from a vacuous no-refusal: an empty census_file would satisfy census_holds only through uses > 0
+// and would have nothing in admitted_texts to match here.
+test fn census_drift_watch_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "drift-watch.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
+}
+
+// HEAL-PUBLISH IS THE ONLY WORKFLOW THAT DOWNLOADS AND AUTHENTICATES. It carries the heal artifact's
+// publish path (#13641): checkout, the download-artifact step the heal job's upload is paired with,
+// the pinned toolchain, and google-github-actions/auth in front of the push. All four are admitted
+// releases (gunbc.action_use_admission download_artifact_action, google_auth_action); pinning them
+// here is what makes this file's per-file claim its own census -- dropping any one of the four from
+// the admission set reds exactly this claim, and no other.
+test fn census_heal_publish_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "heal-publish.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: download_artifact_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: google_auth_action))
 }
 
 // ADMITTED IS NOT SELECTED. Swatinem/rust-cache v2.9.1 declares node24 and is admitted exactly, but

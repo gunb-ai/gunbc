@@ -1,6 +1,8 @@
 module extdeps.formats.dnsmasq
 
 import std.types { Int, String, List }
+import std.algebra { trim }
+import std.list { first_where }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority }
 import std.layout {
@@ -17,9 +19,23 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// A TAGGED dhcp-boot CARRIES AT LEAST ONE TAG BY CONSTRUCTION (first_tag): an untagged dhcp-boot
-// applies to every client on the segment, so an empty tag list would silently invert a restricted
-// boot line into a permissive one.
+data dnsmasq_man_page_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html"
+  }
+}
+
+// IN PROXY-DHCP MODE THE BOOT FILE IS A pxe-service, NOT A dhcp-boot. The man page: with the proxy
+// keyword on dhcp-range, "dnsmasq simply provides the information given in --pxe-prompt and
+// --pxe-service to allow netbooting". A tagged pxe-service carries at least one tag by construction
+// (first_tag): an untagged one applies to every PXE client on the segment, so an empty tag list would
+// silently invert a restricted boot line into a permissive one.
+// THE CLIENT SYSTEM TYPE IS RENDERED AS AN INTEGER, never one of dnsmasq's names. The man page's named
+// types follow RFC 4578's table (x86-64_EFI is 9, BC_EFI is 7), while x64 UEFI firmware presents 7
+// under the IANA Processor Architecture Types registry; the integer is what the wire carries, and the
+// man page admits "an integer ... for other types". The basename is a filename complete with its
+// suffix, so PXE adds no layer suffix; one menu item per client type boots without a prompt.
 type DnsmasqDirective =
     DnsmasqComment { text: String }
   | DnsmasqPort { value: Int }
@@ -27,7 +43,7 @@ type DnsmasqDirective =
   | DnsmasqDhcpMatchSet { tag: String, option: String, value: String }
   | DnsmasqDhcpOptionForceTag { tag: String, option: String, value: String }
   | DnsmasqDhcpHostSetTag { mac: String, tag: String }
-  | DnsmasqDhcpBootTags { first_tag: String, more_tags: List<String>, target: String, server_name: String, server_address: String }
+  | DnsmasqPxeServiceTags { first_tag: String, more_tags: List<String>, client_system_type: Int, menu_text: String, basename: String, server_address: String }
   | DnsmasqLogDhcp
   | DnsmasqEnableTftp
   | DnsmasqTftpRoot { path: String }
@@ -45,11 +61,11 @@ fn dnsmasq_directive_line(d: DnsmasqDirective) -> String {
       concat(concat(concat("dhcp-option-force=tag:", tag), concat(",", option)), concat(",", value))
     DnsmasqDhcpHostSetTag { mac: mac, tag: tag } =>
       concat(concat("dhcp-host=", mac), concat(",set:", tag))
-    DnsmasqDhcpBootTags { first_tag: first, more_tags: more, target: target, server_name: name, server_address: address } =>
+    DnsmasqPxeServiceTags { first_tag: first, more_tags: more, client_system_type: csa, menu_text: menu, basename: basename, server_address: address } =>
       join([
-        "dhcp-boot=tag:", first, ",",
+        "pxe-service=tag:", first, ",",
         fold(more, init: "", f: (acc, t) => concat(acc, concat(concat("tag:", t), ","))),
-        target, ",", name, ",", address,
+        to_string(csa), ",\"", menu, "\",", basename, ",", address,
       ], "")
     DnsmasqLogDhcp => "log-dhcp"
     DnsmasqEnableTftp => "enable-tftp"
@@ -63,4 +79,25 @@ fn dnsmasq_to_doc(directives: List<DnsmasqDirective>) -> Doc {
 
 fn serialize_dnsmasq(directives: List<DnsmasqDirective>) -> String {
   render(doc: dnsmasq_to_doc(directives: directives), proto: dnsmasq_protocol)
+}
+
+// A CONFIGURATION AS READ BACK, which this module did not necessarily render: a proxy-DHCP config
+// (a dhcp-range line ending ",proxy") that carries a dhcp-boot line names a boot file dnsmasq does not
+// offer in that mode (man page, --pxe-service). The rendering above cannot spell dhcp-boot at all, so
+// this judges bytes that came from elsewhere, and names the first offending line.
+type DnsmasqProxyBootStanding
+  = DnsmasqProxyBootByPxeService
+  | DnsmasqProxyBootIgnoredDhcpBoot { line: String }
+  | DnsmasqNotProxyMode
+
+fn dnsmasq_proxy_boot_standing(config: String) -> DnsmasqProxyBootStanding {
+  let lines = map(split(s: config, delimiter: "\n"), l => trim(s: l))
+  if any(lines, l => starts_with(s: l, prefix: "dhcp-range=") && ends_with(s: l, suffix: ",proxy")) {
+    match first_where(xs: lines, keep: l => starts_with(s: l, prefix: "dhcp-boot=")) {
+      Present { value: l } => DnsmasqProxyBootIgnoredDhcpBoot { line: l }
+      Absent => DnsmasqProxyBootByPxeService
+    }
+  } else {
+    DnsmasqNotProxyMode
+  }
 }

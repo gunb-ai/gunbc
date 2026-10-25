@@ -1,0 +1,48 @@
+module extdeps.electronic_component.bourns_5_0smdj60a
+
+import std.measure { volt, millivolt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.bourns { bourns }
+import extdeps.electronic_component.types { ElectronicComponentRow, TvsDiodeSpec, TvsSpecification, Unidirectional }
+
+// Bourns's 5.0SMDJ datasheet, REV. 08/26, read 2026-10-15. Its electrical table pairs part number
+// 5.0SMDJ60A with marking 5PGK (unidirectional; the bidirectional 5.0SMDJ60CA is 5BGK), and gives
+// VBR 66.70 to 73.70 V at 1 mA, VRWM 60.0 V, IR 2 uA at VRWM, and Vc 96.8 V at Ipp 51.7 A
+// (10/1000 us). The family is 5000 W, DO-214AB (SMC). Other makers sell 5.0SMDJ60A too; this row
+// is Bourns's, and a board part carrying the 5PGK code under another maker's logo matches it by code.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.bourns.com/docs/product-datasheets/5-0smdj.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.bourns_5_0smdj60a",
+      decl_name: "tvs_5_0smdj60a",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data tvs_5_0smdj60a: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: bourns,
+  ordering_code: "5.0SMDJ60A",
+  package: "DO-214AB (SMC)",
+  top_marking: "5PGK",
+  specification: TvsDiodeSpec { tvs: TvsSpecification {
+    polarity: Unidirectional,
+    reverse_standoff: volt(count: 60),
+    breakdown_minimum: millivolt(count: 66700),
+    breakdown_maximum: millivolt(count: 73700),
+  } },
+  vendor_application_statements: [
+    "Polarity: Cathode band indicates unidirectional device",
+  ],
+}

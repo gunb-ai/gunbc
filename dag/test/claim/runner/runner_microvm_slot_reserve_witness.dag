@@ -3,10 +3,10 @@ module test.claim.runner.runner_microvm_slot_reserve_witness
 import std.types { String, NonEmptyStr, Bool, List }
 import std.measure { second, MoneyOnce, MoneyPerSecond, money_amount_micro }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.durable_compare_and_set { cas_generation_first }
+import std.durable_compare_and_set { cas_generation_first, CasGeneration }
 import std.durable_exclusive_hold {
   DurableHoldHeld, HoldSlotAbsent, HoldSlotHeld, HoldAcquireEligible, HoldAcquireRefused,
-  HoldAcquireOccupied, durable_hold_acquire_assess, durable_hold_owner_equal,
+  HoldAcquireOccupied, durable_hold_acquire_assess, durable_hold_owner_equal, DurableHoldOwnerRef,
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, ExecStart, ServiceUser, NotInstallable, serialize_systemd_unit_file,
@@ -29,7 +29,7 @@ import gunbc.executor_privileged_operation { SystemdStartUnit, executor_privileg
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, gunbc_ci_github_app }
 import gunbc.runner.runner_host_grants { microvm_slot_reserve_start_operations }
 import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
-import gunbc.runner.runner_microvm_shakedown { microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_account }
+import gunbc.runner.runner_microvm_shakedown { microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_account, microvm_shakedown_attempt_id }
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_reserve_unit_file, microvm_slot_reserve_unit_name, microvm_slot_reserve_entry_function,
   microvm_controller_owner,
@@ -43,6 +43,12 @@ import gunbc.runner.runner_microvm_slot_reserve {
   microvm_shakedown_candidate_field, microvm_shakedown_route_facts, microvm_shakedown_sanctions,
   microvm_shakedown_scope, microvm_shakedown_broker_decide, ShakedownBrokerDecided,
 }
+import gunbc.fabric.fabric_cell_grant { CellGrantNotSelected, cell_grant_lease,
+}
+import gunbc.fabric.fabric_required_build_cell {
+  judge_cell_holder, ExpectGrantHolder, HolderMatches, HolderPreCutover, HolderMismatch, HeldByGrant, HeldByReservation,
+}
+import product.fabric.grant_issue { derive_grant_key }
 import gunbc.fabric.fabric_executor_class { CapacityClassRefused }
 import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity }
 import std.decl_ref { declaration_ref_eq }
@@ -67,25 +73,45 @@ fn shakedown_owner() -> NonEmptyStr {
   )) as NonEmptyStr
 }
 
-// THE HOLD THE BROKER WRITES IS OWNED BY THE SHAKEDOWN DEMAND, AND BY NOTHING ELSE. The slot payload
-// the broker commits (the shared hold codec over the reservation reference) decodes to a hold whose
-// owner is the one observe_required_build_cell_wet compares against for this demand and offer. The
-// RED is a hold owned by another demand on the same offer -- the FCI-1 probe's demand key -- which
-// the controller would report as ReservationPayloadWorkMismatch: if the broker keyed the reservation
-// on anything but the shakedown demand, this is the claim that goes false.
-test fn the_committed_hold_is_owned_by_the_shakedown_demand() -> Bool {
-  let demand = microvm_shakedown_demand(slot: slot())
-  let offer = microvm_shakedown_offer(slot: slot())
-  let written = hold_slot_payload(state: DurableHoldHeld { owner: fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand.id, offer: offer.id)) })
-  let other = FabricIdentity { principal: demand.id.principal, key: "demand-floor-1" as DemandKey }
-  match decode_hold_slot_payload(payload: written) {
-    HoldPayloadUndecodable { detail: _ } => false
-    HoldPayloadDecoded { state: DurableHoldHeld { owner: held } } =>
-      durable_hold_owner_equal(left: held, right: fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand.id, offer: offer.id)))
-        && !durable_hold_owner_equal(left: held, right: fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: other, offer: offer.id)))
-        && (demand.id.key as String).contains(pattern: "srv1-13")
-    HoldPayloadDecoded { state: _ } => false
+// THE HOLD THE BROKER WRITES IS OWNED BY THE SHAKEDOWN ATTEMPT'S GRANT, AND A PRE-CUTOVER HOLD IS
+// NEITHER THAT GRANT NOR FREE. The controller's producer (gunbc.fabric.fabric_required_build_cell
+// judge_cell_holder) re-derives the grant key for the shakedown attempt at the generation it reads:
+// - the grant-key owner is HeldByGrant (the positive control);
+// - the reservation-reference owner the broker wrote BEFORE the grant cutover is HolderPreCutover,
+//   so a reservation that may still be running is never planned over (the RED the cutover owes);
+// - a grant at another generation, or another attempt's, is a mismatch.
+fn shakedown_grant_owner(generation: CasGeneration) -> DurableHoldOwnerRef {
+  (derive_grant_key(
+    work: microvm_shakedown_demand(slot: slot()).work,
+    attempt: microvm_shakedown_attempt_id(slot: slot()),
+    offer: microvm_shakedown_offer(slot: slot()).id,
+    lease: cell_grant_lease(slot_key: "srv1-13", generation: generation),
+  ) as String) as DurableHoldOwnerRef
+}
+
+fn shakedown_holder_judgement(held: DurableHoldOwnerRef, generation: CasGeneration) -> String {
+  match judge_cell_holder(
+    held: held,
+    expected: ExpectGrantHolder { attempt: microvm_shakedown_attempt_id(slot: slot()) },
+    work: microvm_shakedown_demand(slot: slot()).work,
+    demand: microvm_shakedown_demand(slot: slot()).id,
+    offer: microvm_shakedown_offer(slot: slot()).id,
+    slot_key: "srv1-13",
+    generation: generation,
+  ) {
+    HolderMatches { holder: HeldByGrant { attempt: _, grant: _ } } => "grant"
+    HolderMatches { holder: HeldByReservation } => "reservation"
+    HolderPreCutover => "pre-cutover"
+    HolderMismatch => "mismatch"
   }
+}
+
+test fn the_committed_hold_is_the_shakedown_grant_and_a_pre_cutover_hold_is_not_planned_over() -> Bool {
+  let g1 = cas_generation_first()
+  shakedown_holder_judgement(held: shakedown_grant_owner(generation: g1), generation: g1) == "grant"
+    && shakedown_holder_judgement(held: shakedown_owner() as DurableHoldOwnerRef, generation: g1) == "pre-cutover"
+    && shakedown_holder_judgement(held: shakedown_grant_owner(generation: 2), generation: g1) == "mismatch"
+    && shakedown_holder_judgement(held: "some-other-holder" as DurableHoldOwnerRef, generation: g1) == "mismatch"
 }
 
 // A SECOND RESERVE OF A HELD CELL REFUSES, INCLUDING A RESERVE BY THE SAME SHAKEDOWN DEMAND. The
@@ -162,13 +188,13 @@ test fn the_roster_binding_refuses_an_offer_that_is_not_the_cell() -> Bool {
   own.length() == 1 && neighbour.length() == 1 && bound && refused
 }
 
-// THE RECEIPT NAMES THE HOLDER. The subject line carries the demand identity and the hold owner the
-// controller will compare against, and a committed reservation renders on the line the reserve step
+// THE RECEIPT NAMES WHO THE CELL IS GRANTED TO. The subject line carries the demand identity and the
+// attempt the controller re-derives the grant key for, and a committed reservation renders on the line the reserve step
 // admits on. A lost reservation renders on another line, which the step refuses.
 test fn the_broker_receipt_names_the_demand_and_the_holder() -> Bool {
   let subject = shakedown_broker_subject_text(slot: slot())
   subject.contains(pattern: join(["demand=", microvm_shakedown_demand(slot: slot()).id.principal as String, "/", microvm_shakedown_demand(slot: slot()).id.key as String], ""))
-    && subject.contains(pattern: join(["hold-owner=", shakedown_owner() as String], ""))
+    && subject.contains(pattern: join(["attempt=", microvm_shakedown_attempt_id(slot: slot()).key as String], ""))
     && cell_reservation_text(r: CellReserved { offer: microvm_shakedown_offer(slot: slot()).id, slot_key: "srv1-13", generation: 1, account: microvm_shakedown_account() }).starts_with("reservation=committed ")
     && cell_reservation_text(r: ReservationLost { slot_key: "srv1-13" }).starts_with("reservation=lost ")
 }
@@ -307,9 +333,9 @@ test fn workspace_transfer_blocks_the_production_ci_broker_before_reservation() 
   let field = microvm_shakedown_candidate_field(slot: selected)
   field.admitted.count() == 1 && match microvm_shakedown_broker_decide(
     root: "/__workspace_purpose_test_has_no_hold_store__" as NonEmptyStr,
-    slot: selected, field: field,
+    slot: selected, field: field, issued_at: "2026-10-15T00:00:00Z",
   ) {
-    ShakedownBrokerDecided { reservation: NoCellAdmissible { considered: _, refused: refusals } } =>
+    ShakedownBrokerDecided { decision: CellGrantNotSelected { refusal: NoCellAdmissible { considered: _, refused: refusals } } } =>
       refusals.count() == 1 && match refusals.first() {
         Present { value: CapacityClassRefused { executor: cell, required: ControlPlaneCapacity, sanctioned: CustomerExecutableCapacity } } =>
           (cell as String) == "srv1-13"

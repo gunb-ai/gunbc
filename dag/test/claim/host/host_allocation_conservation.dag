@@ -517,7 +517,7 @@ data bound_arm_fixture: HostUsableRam = HostUsableRamConservativeLowerBound {
 test fn a_larger_host_reading_is_not_admissible_as_a_lower_bound() -> Bool {
   match bound_arm_fixture {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
-    HostUsableRamUnmeasured => false
+    HostUsableRamUnmeasured { reason: _ } => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } =>
       byte_size_count(b: b) <= byte_size_count(b: usable_ram_of(host: operator_host_srv1))
   }
@@ -534,7 +534,7 @@ test fn measured_usable_ram_is_the_kernel_figure_not_the_dimm_total() -> Bool {
       byte_size_count(b: b) == 539282522112
         && byte_size_count(b: b) < 549755813888
     HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => false
-    HostUsableRamUnmeasured => false
+    HostUsableRamUnmeasured { reason: _ } => false
   }
 }
 
@@ -554,7 +554,7 @@ test fn middle_arm_is_a_bound_not_a_measurement() -> Bool {
   match bound_arm_fixture {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b) == 134217728000
-    HostUsableRamUnmeasured => false
+    HostUsableRamUnmeasured { reason: _ } => false
   }
 }
 
@@ -567,7 +567,7 @@ test fn every_enrolled_host_carries_its_own_measured_reading() -> Bool {
     h => match gunbc_ci_host_usable_ram_for(host: h) {
       HostUsableRamMeasured { bytes: _, provenance: _ } => true
       HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => false
-      HostUsableRamUnmeasured => false
+      HostUsableRamUnmeasured { reason: _ } => false
     }
   )
 }
@@ -1111,14 +1111,28 @@ test fn w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot() -> Bool 
     && committed_equals_memory_admission(host: operator_host_srv3)
 }
 
-// THE SHAKEDOWN CHARGE IS WHAT SEPARATES THE TWO VERDICTS, WITH EVERY OTHER TERM SUPPLIED. A 485 GiB
-// host with srv1's other charges (16 GiB overhead, 31 GiB headroom, 52 GiB sessions, 87 GiB served,
-// no compile pool, no control plane) sits between the two runner charges at width 11: 11 fleet slots
-// (286 GiB) conserve, and the real charge (10 fleet slots + the 52 GiB shakedown slot = 312 GiB)
-// does not. So a verdict fed the old charge answers Conserves where the host cannot hold it.
+// THE SHAKEDOWN CHARGE IS WHAT SEPARATES THE TWO VERDICTS, WITH EVERY OTHER TERM SUPPLIED. A host
+// with srv1's other charges (16 GiB overhead, 31 GiB headroom, 52 GiB sessions, 87 GiB served, no
+// compile pool, no control plane) is sized to sit between the two runner charges at width 11: 11
+// fleet slots conserve, and the real charge (10 fleet slots plus the shakedown slot) does not. So a
+// verdict fed the old charge answers Conserves where the host cannot hold it.
+//
+// THE HOST SIZE IS DERIVED FROM THE TWO CHARGES, NOT WRITTEN DOWN. It was 485 GiB, sized when the
+// slot was 26 GiB (286 conserved, 312 did not); at the 22 GiB slot the charges are 242 and 272 GiB,
+// both under the 299 GiB that host left, and the claim went red with nothing wrong. The midpoint of
+// the two charges keeps the fixture between them at any slot size. The red control is unchanged: a
+// charge that ignores the shakedown slot equals the blind one, both conserve, and the claim fails.
+data witness_srv1_shaped_fixture_width: Int = 11
+
+fn witness_srv1_shaped_host() -> ByteSize {
+  let blind = byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: witness_srv1_shaped_fixture_width))
+  let real = byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: witness_srv1_shaped_fixture_width))
+  byte_size((16 + 31 + 52 + 87) * 1073741824 + (blind + real) / 2)
+}
+
 fn witness_srv1_shaped_conserves(runner_pool: ByteSize) -> Bool {
   witness_allocation_conserves(
-    host: byte_size(485 * 1073741824),
+    host: witness_srv1_shaped_host(),
     overhead: byte_size(16 * 1073741824),
     headroom: byte_size(31 * 1073741824),
     runner_pool: runner_pool,
@@ -1130,6 +1144,6 @@ fn witness_srv1_shaped_conserves(runner_pool: ByteSize) -> Bool {
 }
 
 test fn the_shakedown_charge_separates_conserves_from_oversubscribed() -> Bool {
-  witness_srv1_shaped_conserves(runner_pool: gunbc_runner_slice_cap_for_width(slots: 11))
-    && !witness_srv1_shaped_conserves(runner_pool: host_runner_pool_charge(host: operator_host_srv1, slots: 11))
+  witness_srv1_shaped_conserves(runner_pool: gunbc_runner_slice_cap_for_width(slots: witness_srv1_shaped_fixture_width))
+    && !witness_srv1_shaped_conserves(runner_pool: host_runner_pool_charge(host: operator_host_srv1, slots: witness_srv1_shaped_fixture_width))
 }

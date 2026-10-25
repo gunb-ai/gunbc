@@ -1,0 +1,239 @@
+module test.claim.fleet_fan_policy_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { Celsius, celsius, celsius_count, percent }
+import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import extdeps.cpu.types { CpuModelCatalogRow, ProcessorThermalLimits }
+import extdeps.vendor.cisco { cisco }
+import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog, ampere_altra_max_m12830_thermal_limits, ampere_altra_thermal_limits_for_catalog }
+import std.measure { celsius_delta_count }
+import product.fleet_fan_policy {
+  ChassisOutlet,
+  DimmChannel,
+  FirmwareAutomatic,
+  FleetFanControl,
+  FleetFanGuardVerdict,
+  GuardTrip,
+  FleetFanPolicy,
+  GuardHolds,
+  GuardRestoreAutomatic,
+  HeldAtDutyFloor,
+  SocJunction,
+  ThermalGuardRole,
+  VoltageRegulator,
+  fleet_fan_control_after,
+  fleet_fan_guard_reading,
+  fleet_fan_policy,
+  fleet_fan_run_exit,
+  fleet_fan_trip_for,
+  AbsoluteTrip,
+  MarginBelowCeiling,
+}
+import gunbc.machine_intake.megarac_fan_thermal_guard {
+  CeilingUnestablished,
+  MegaRacSensorCeilingUnestablished,
+  MegaRacSensorHolds,
+  MegaRacSensorTrips,
+  MegaRacTempObserved,
+  MegaRacTempReading,
+  MegaRacThermalGuardCeilingUnestablished,
+  MegaRacThermalGuardHolds,
+  MegaRacThermalGuardTrip,
+  MegaRacThermalGuardUnread,
+  ReEnableCoolingManager,
+  megarac_fan_safety_restore,
+  megarac_sensor_verdict,
+  megarac_thermal_guard_verdict,
+}
+
+// SUPPLIED: temperatures. EXECUTED: the policy fold and, for the MegaRAC arm, the real
+// megarac_sensor_verdict path that now reads the fleet policy (the inhabitance claim: deleting
+// that wiring reds witness_megarac_guard_reads_the_fleet_policy).
+
+fn held_policy() -> FleetFanPolicy {
+  FleetFanPolicy { control: HeldAtDutyFloor { floor: percent(20) }, guard: fleet_fan_policy.guard }
+}
+
+fn is_restore(v: FleetFanGuardVerdict) -> Bool {
+  match v {
+    GuardHolds => false
+    GuardRestoreAutomatic { cause: _ } => true
+  }
+}
+
+fn is_automatic(c: FleetFanControl) -> Bool {
+  match c {
+    FirmwareAutomatic => true
+    HeldAtDutyFloor { floor: _ } => false
+  }
+}
+
+// The machine row's ceilings, as the MegaRAC adapter supplies them: only the SoC has one.
+fn ceiling_of(role: ThermalGuardRole) -> Celsius? {
+  match role {
+    SocJunction => Present { value: ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature }
+    DimmChannel => Absent
+    VoltageRegulator => Absent
+    ChassisOutlet => Absent
+  }
+}
+
+fn reading_trips(role: ThermalGuardRole, c: Int) -> Bool {
+  is_restore(fleet_fan_guard_reading(policy: fleet_fan_policy, role: role, component_ceiling: ceiling_of(role: role), reading: Present { value: celsius(c) }))
+}
+
+// THE FLEET REST POSTURE IS FIRMWARE AUTOMATIC.
+test fn witness_fleet_policy_rests_in_automatic() -> Bool {
+  is_automatic(fleet_fan_policy.control)
+}
+
+// TRIP IS AT-OR-ABOVE, PER ROLE. The oracle is the datasheet (100C continuous junction, Ampere) less
+// the stated 15C margin, and the three uncited figures as authored; each is checked on both sides.
+test fn witness_guard_trips_at_boundary_per_role() -> Bool {
+  reading_trips(role: SocJunction, c: 85) && !reading_trips(role: SocJunction, c: 84)
+    && reading_trips(role: DimmChannel, c: 85) && !reading_trips(role: DimmChannel, c: 84)
+    && reading_trips(role: VoltageRegulator, c: 90) && !reading_trips(role: VoltageRegulator, c: 89)
+    && reading_trips(role: ChassisOutlet, c: 70) && !reading_trips(role: ChassisOutlet, c: 69)
+}
+
+// AN UNREADABLE SENSOR ALWAYS TRIPS TOWARD AUTOMATIC: no FleetFanPolicy value describes otherwise, so
+// the held policy (the one that would otherwise keep manual duty) is the discriminating subject.
+test fn witness_unreadable_sensor_trips_toward_automatic() -> Bool {
+  let held = held_policy()
+  is_restore(fleet_fan_guard_reading(policy: held, role: SocJunction, component_ceiling: ceiling_of(role: SocJunction), reading: Absent))
+    && is_automatic(fleet_fan_control_after(policy: held, verdict: fleet_fan_guard_reading(policy: held, role: SocJunction, component_ceiling: ceiling_of(role: SocJunction), reading: Absent)))
+}
+
+// EVERY RESTORE LEAVES AUTOMATIC, WHATEVER THE POLICY WAS HOLDING; HOLDS KEEPS THE POLICY'S POSTURE.
+test fn witness_every_exit_leaves_automatic() -> Bool {
+  let held = held_policy()
+  let tripped = fleet_fan_guard_reading(policy: held, role: SocJunction, component_ceiling: ceiling_of(role: SocJunction), reading: Present { value: celsius(99) })
+  is_automatic(fleet_fan_control_after(policy: held, verdict: tripped))
+    && is_automatic(fleet_fan_control_after(policy: held, verdict: fleet_fan_run_exit()))
+    && !is_automatic(fleet_fan_control_after(policy: held, verdict: GuardHolds))
+}
+
+// THE FLEET CARRIES ONLY THE SOC MARGIN (the ceiling is the machine row's), AND THE OTHER THREE
+// FIGURES STAY TYPED BETS (DESIGN 4d).
+fn is_bet(t: GuardTrip) -> Bool {
+  match t {
+    AbsoluteTrip { trip: _, standing: st } => match st {
+      TranscribedUncited { read_obligation: _ } => true
+      CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { observed: _ } => false
+    }
+    MarginBelowCeiling { margin: _, standing: st2 } => match st2 {
+      TranscribedUncited { read_obligation: _ } => true
+      CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { observed: _ } => false
+    }
+  }
+}
+
+test fn witness_guard_standing_cited_versus_bet() -> Bool {
+  let soc_margin = match fleet_fan_policy.guard.soc {
+    MarginBelowCeiling { margin: m, standing: _ } => celsius_delta_count(m) == 15
+    AbsoluteTrip { trip: _, standing: _ } => false
+  }
+  soc_margin && is_bet(fleet_fan_policy.guard.dimm) && is_bet(fleet_fan_policy.guard.vrd) && is_bet(fleet_fan_policy.guard.outlet)
+}
+
+// A MARGIN BELOW A CEILING THE MACHINE ROW DOES NOT STATE HAS NO TEMPERATURE, SO IT TRIPS TOWARD
+// AUTOMATIC; it is never read as "no guard".
+test fn witness_trip_lookup_is_total_over_the_policy_roles() -> Bool {
+  let outlet = match fleet_fan_trip_for(policy: fleet_fan_policy, role: ChassisOutlet, component_ceiling: Absent) {
+    Absent => false
+    Present { value: t } => celsius_count(t) == 70
+  }
+  let soc_unstated = is_restore(fleet_fan_guard_reading(policy: fleet_fan_policy, role: SocJunction, component_ceiling: Absent, reading: Present { value: celsius(40) }))
+  let soc_other_part = match fleet_fan_trip_for(policy: fleet_fan_policy, role: SocJunction, component_ceiling: Present { value: celsius(95) }) {
+    Absent => false
+    Present { value: t } => celsius_count(t) == 80
+  }
+  outlet && soc_unstated && soc_other_part
+}
+
+// INHABITANCE: the MegaRAC guard's own predicate agrees with the fleet fold on both sides of a trip,
+// so the real adapter path reads the policy and not a private copy.
+test fn witness_megarac_guard_reads_the_fleet_policy() -> Bool {
+  let m128 = ampere_altra_thermal_limits_for_catalog(row: altra_max_m12830_catalog)
+  sensor_trips(sensor: "CPU0_SOC_Temp", c: 85, l: m128)
+    && !sensor_trips(sensor: "CPU0_SOC_Temp", c: 84, l: m128)
+    && sensor_trips(sensor: "Outlet_1_Temp", c: 70, l: m128)
+    && !sensor_trips(sensor: "Not_A_Guard_Sensor", c: 120, l: m128)
+    && !is_present_limits(ampere_altra_thermal_limits_for_catalog(row: altra_q8030_catalog))
+    && !is_present_limits(ampere_altra_thermal_limits_for_catalog(row: foreign_vendor_m128()))
+}
+
+// SAME MODEL NUMBER, FOREIGN VENDOR: the lookup identifies the catalog row by vendor and model, so a
+// row merely named M128-30 borrows no Ampere limits.
+fn foreign_vendor_m128() -> CpuModelCatalogRow {
+  CpuModelCatalogRow {
+    model_number: altra_max_m12830_catalog.model_number,
+    oem_listing_id: altra_max_m12830_catalog.oem_listing_id,
+    vendor: cisco,
+    architecture: altra_max_m12830_catalog.architecture,
+    cores: altra_max_m12830_catalog.cores,
+    threads: altra_max_m12830_catalog.threads,
+    nominal_sustained_per_thread_hz: altra_max_m12830_catalog.nominal_sustained_per_thread_hz,
+    socket: altra_max_m12830_catalog.socket,
+    tdp_watts: altra_max_m12830_catalog.tdp_watts,
+    l1_cache: altra_max_m12830_catalog.l1_cache,
+    l1_cache_citations: altra_max_m12830_catalog.l1_cache_citations,
+    l2_cache: altra_max_m12830_catalog.l2_cache,
+    l2_cache_citations: altra_max_m12830_catalog.l2_cache_citations,
+    l3_cache: altra_max_m12830_catalog.l3_cache,
+    l3_cache_citations: altra_max_m12830_catalog.l3_cache_citations,
+  }
+}
+
+fn soc_readings(soc: Int) -> List<MegaRacTempReading> {
+  [
+    MegaRacTempObserved { sensor: "CPU0_SOC_Temp", value: celsius(soc) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG0_Temp", value: celsius(34) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG1_Temp", value: celsius(32) },
+    MegaRacTempObserved { sensor: "CPU0_SOC_VRDTemp", value: celsius(36) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMVRDTemp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_1_Temp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_2_Temp", value: celsius(35) },
+  ]
+}
+
+fn sensor_trips(sensor: String, c: Int, l: ProcessorThermalLimits?) -> Bool {
+  match megarac_sensor_verdict(sensor: sensor as NonEmptyStr, temperature: celsius(c), cpu_limits: l) {
+    MegaRacSensorTrips => true
+    MegaRacSensorHolds => false
+    MegaRacSensorCeilingUnestablished => false
+  }
+}
+
+// mtcollins1's Q80-30 has no limits row: the SoC reading is a CEILING-UNESTABLISHED verdict, not a
+// temperature trip at 30C, and it still restores automatic. Whole-guard path through the real verdict.
+test fn witness_unestablished_ceiling_is_not_a_temperature_trip() -> Bool {
+  let q80 = ampere_altra_thermal_limits_for_catalog(row: altra_q8030_catalog)
+  let sensor = match megarac_sensor_verdict(sensor: "CPU0_SOC_Temp" as NonEmptyStr, temperature: celsius(30), cpu_limits: q80) {
+    MegaRacSensorCeilingUnestablished => true
+    MegaRacSensorTrips => false
+    MegaRacSensorHolds => false
+  }
+  let whole = match megarac_thermal_guard_verdict(readings: soc_readings(soc: 30), cpu: altra_q8030_catalog) {
+    MegaRacThermalGuardCeilingUnestablished { sensor: s, model: m, read_obligation: _ } =>
+      (s as String) == "CPU0_SOC_Temp" && (m as String) == (altra_q8030_catalog.model_number as String)
+    MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
+    MegaRacThermalGuardHolds => false
+    MegaRacThermalGuardUnread { sensor: _ } => false
+  }
+  let restores_automatic = match megarac_fan_safety_restore(verdict: megarac_thermal_guard_verdict(readings: soc_readings(soc: 30), cpu: altra_q8030_catalog)) {
+    Present { value: ReEnableCoolingManager { cause: CeilingUnestablished { sensor: _, model: _, read_obligation: _ } } } => true
+    _ => false
+  }
+  sensor && whole && restores_automatic
+}
+
+fn is_present_limits(v: ProcessorThermalLimits?) -> Bool {
+  match v {
+    Present { value: _ } => true
+    Absent => false
+  }
+}

@@ -8,7 +8,8 @@ import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.scoped_authorization { AttemptIdentity }
-import std.temporal_effect { LeaseEpoch, LeaseRunningExpected, LeaseRunningStale, held_lease }
+import std.durable_compare_and_set { cas_generation_first }
+import std.temporal_effect { LeaseEpoch, LeaseRunningExpected, LeaseRunningPastExpiry, held_lease }
 import extdeps.bmc.ipmi_sel {
   FirmwareProgress,
   InitiatedByPowerUp,
@@ -433,7 +434,7 @@ data mtcollins1_console_lease_epoch: LeaseEpoch = LeaseEpoch {
   lease_key: "ipmi-sol:192.168.1.228",
   resource_fingerprint: Sha256Hash(Sha256Digest { hex: "3aea4368b8745ae7bdca3c7ec052a324032974f7b849bca460e7d0e14f5e0871" }),
   owner_fingerprint: Sha256Hash(Sha256Digest { hex: "e3c4d19c11446f35179b90e61f9396652caf155216ef87915bfcf22452e2efe0" }),
-  generation: 1,
+  generation: cas_generation_first(),
 }
 
 data mtcollins1_ac_cycle_collectors_as_run: List<CollectorStanding> = [
@@ -453,7 +454,7 @@ fn mtcollins1_ac_cycle_readiness_as_run() -> CollectorsReadiness {
     attempt: mtcollins1_ac_cycle_attempt,
     profile: mtcollins1_pre_os_capabilities,
     sink: EvidenceSinkPresent { directory: mtcollins1_32dimm_artifact_dir },
-    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningStale),
+    console_lease: held_lease(epoch: mtcollins1_console_lease_epoch, observed: LeaseRunningPastExpiry),
     collectors: mtcollins1_ac_cycle_collectors_as_run,
   )
 }

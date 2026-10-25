@@ -128,8 +128,24 @@ type SystemdUnitDirective
   | StartLimitBurst { count: NonEmptyStr }
   | OnSuccess { unit: NonEmptyStr }
   | OnFailure { unit: NonEmptyStr }
+  | Condition { kind: SystemdConditionKind, negated: Bool, argument: NonEmptyStr }
   | SuccessAction { action: SystemdUnitStateAction }
   | FailureAction { action: SystemdUnitStateAction }
+
+// systemd.unit(5) (v255), Condition*=: a [Unit] condition checked when the unit's start job runs. A false
+// condition SKIPS the start -- the unit is not started and not failed (ConditionResult=no, Result=success).
+// `negated` is the `!` prefix upstream defines on every condition's argument. Only the kinds a consumer
+// reads are modeled; the set is upstream's and a consumer needing another adds one variant and one wire row.
+type SystemdConditionKind
+  = ConditionPathExists
+  | ConditionDirectoryNotEmpty
+
+fn systemd_condition_kind_wire(kind: SystemdConditionKind) -> String {
+  match kind {
+    ConditionPathExists => "ConditionPathExists"
+    ConditionDirectoryNotEmpty => "ConditionDirectoryNotEmpty"
+  }
+}
 
 // systemd.unit(5) (v255), SuccessAction=/FailureAction=: what the MANAGER does when the unit stops
 // cleanly or enters the failed state. The value set is upstream's and CLOSED, so it is a coproduct
@@ -306,6 +322,8 @@ type SystemdServiceDirective
   | ServiceKillMode { mode: SystemdKillMode }
   | RestartSec { duration: NonEmptyStr }
   | ServiceTasksMax { count: Int }
+  // systemd.resource-control(5) on the service's own cgroup; the knob and value have one owner each.
+  | ServiceResourceControl { directive: SystemdServiceResourceDirective }
   | TimeoutStopSec { duration: NonEmptyStr }
 
 
@@ -690,6 +708,31 @@ fn slice_memory_swap_max_unlimited() -> SystemdSliceDirective {
   SystemdSliceDirective { property: MemorySwapMax, value: DirectiveUnlimited }
 }
 
+// THE [Service] SECTION'S RESOURCE-CONTROL DIRECTIVES: the same knob-and-value pairing as
+// SystemdSliceDirective, as its own sealed type because this module keeps one directive type per
+// section (see SystemdSliceDirective). The knob name is `systemd_unit_property_wire`'s and the value
+// `systemd_directive_value_wire`'s, so nothing is spelled twice; the mints below are the only pairings.
+type SystemdServiceResourceDirective sole_constructor {
+  property: SystemdUnitProperty
+  value: SystemdDirectiveValue
+}
+
+fn service_memory_max(bytes: ByteSize) -> SystemdServiceResourceDirective {
+  SystemdServiceResourceDirective { property: MemoryMax, value: DirectiveByteCount { bytes: bytes } }
+}
+
+fn service_memory_swap_max(bytes: ByteSize) -> SystemdServiceResourceDirective {
+  SystemdServiceResourceDirective { property: MemorySwapMax, value: DirectiveByteCount { bytes: bytes } }
+}
+
+fn systemd_service_resource_directive_line(directive: SystemdServiceResourceDirective) -> String {
+  join([
+    systemd_unit_property_wire(property: directive.property) as String,
+    "=",
+    systemd_directive_value_wire(value: directive.value),
+  ], "")
+}
+
 // `TasksMax=` IS A CARDINAL AND NOT A MAGNITUDE THIS REPOSITORY HAS A CARRIER FOR. `extdeps.systemd`
 // already declares that gap against its own read-side parse (feature:task-count-measure-carrier),
 // and inventing a `TaskCount` here to avoid a bare `Int` would mint the concept in the consumer
@@ -738,6 +781,7 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     StartLimitBurst { count: v } => join(["StartLimitBurst=", v as String], "")
     OnSuccess { unit: v } => join(["OnSuccess=", v as String], "")
     OnFailure { unit: v } => join(["OnFailure=", v as String], "")
+    Condition { kind: k, negated: n, argument: v } => join([systemd_condition_kind_wire(kind: k), "=", if n { "!" } else { "" }, v as String], "")
     SuccessAction { action: a } => join(["SuccessAction=", systemd_unit_state_action_wire(action: a)], "")
     FailureAction { action: a } => join(["FailureAction=", systemd_unit_state_action_wire(action: a)], "")
   }
@@ -775,6 +819,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceKillMode { mode: v } => join(["KillMode=", systemd_kill_mode_wire(mode: v)], "")
     RestartSec { duration: v } => join(["RestartSec=", v as String], "")
     ServiceTasksMax { count: v } => join(["TasksMax=", to_string(v)], "")
+    ServiceResourceControl { directive: d } => systemd_service_resource_directive_line(directive: d)
     TimeoutStopSec { duration: v } => join(["TimeoutStopSec=", v as String], "")
   }
 }

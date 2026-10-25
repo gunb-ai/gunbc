@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.a_drop_whose_population_was_deleted_has_no_standing_to_say_so
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_drop_whose_population_was_deleted_has_no_standing_to_say_so: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_drop_whose_population_was_deleted_has_no_standing_to_say_so" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**a rung drop whose covered population was deleted has no honest standing, so it is written as Superseded with a prose loss holder that names nobody.** (INVALID STATE: a Superseded row whose loss_holder is the prose 'none: ...' rather than a rostered Standing drop. The trigger did not fire, so Retired is false; no drop holds the loss, so Superseded is false; the row is ended by deleting its subject, which no standing arm said until Dissolved.)",
+
+    "HARM: the roster join gunbc.rung_drop.standing superseded_loss_holders_stand cannot hold such a row, so the claim test.claim rung_drop_superseded_standing_witness the_live_roster_loss_holders_resolve_and_stand is RED on main with no owner. A red nobody owns is read as noise, and the escape (re-standing the row with its subject and trigger rewritten under the same identity) is a meaning fork (DESIGN section 3) and rung inflation (4b(1)).",
+
+    "SPECIMEN (gunbc#13641): d0_store_walls_single_lifecycle, ended by the Group A decommissioning (operator, 2026-10-07). Its typed population is three prose bounds over D0 lifecycles whose ids are no longer listed anywhere, so its emptiness cannot be derived from the tree, and a hand-emptied list satisfies any emptiness law by editing the declaration (DESIGN section 5, review 81146). The sibling sha256_span_program_serialize_new_witness_eval_step_cost derives its population from floor_eval_step_cost_drop_span_program_rows, which is [], and is the case Dissolved admits.",
+
+    "RUNG FOUND AT: mitigatable. The prose loss_holder is a typed outcome that the roster join refuses loudly; nothing is silently wrong. CEILING: 3, structurally guaranteed. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: d0's population becomes derivable from the tree (a listed, computed set of the lifecycles it covered) so Dissolved admits it by dissolved_populations_empty, OR Superseded gains a typed 'no holder' form so a deleted-subject row carries no prose holder. Either restores a standing the join can judge without a hand-edited declaration.",
+
+    "RECOGNITION RULE: when a Superseded row's loss_holder starts with 'none', the drop is ended by deletion; ask whether its population is derivable (then Dissolved) or not (then this class owns the red until the capability above lands). Never clear the typed population to satisfy the law.",
+  ],
+
+  evidence: [
+    DeclarationRef {
+      module_path: "gunbc.rung_drop.d0_store_walls_single_lifecycle" as NonEmptyStr,
+      decl_name: "d0_store_walls_single_lifecycle" as NonEmptyStr,
+      field: WholeDeclaration
+    },
+  ],
+}

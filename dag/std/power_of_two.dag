@@ -1,8 +1,9 @@
 module std.power_of_two
 
 import std.types { Int, List }
+import std.algebra { list_push }
 
-// 2^n over bit positions, below both std.bitwise and std.bounded_nat so the pair has no import cycle.
+// 2^n over bit positions, below std.machine_word and std.machine_width_range so neither has an import cycle.
 // NOT std.induction int_pow_bounded: that is a PARTIAL, linear, capped pow (Int? answer), a different
 // contract; callers here (shifts, rotations, word moduli) need a TOTAL 2^n for n in [0, 62], and
 // shr/rotr are hot. The domain is a comment because no bounded-exponent type exists yet.

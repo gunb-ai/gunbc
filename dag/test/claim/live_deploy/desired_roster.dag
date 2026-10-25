@@ -54,7 +54,7 @@ import gunbc.live_deploy.release_locus {
 }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_dispatch_worktree_root }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -96,6 +96,7 @@ fn witness_colliding_same_host_roster() -> List<DesiredDeployment> {
       target: lab.target,
       names: live.names,
       selected_identity: lab.selected_identity,
+      admitted_branch: lab.admitted_branch,
     },
   ]
 }
@@ -247,6 +248,7 @@ test fn a_row_that_carries_another_row_selected_identity_is_a_mismatch() -> Bool
     target: live.target,
     names: live.names,
     selected_identity: srv1_lab_selected_identity(),
+    admitted_branch: live.admitted_branch,
   }
   match bind_desired_selected_identity(desired: forged) {
     DesiredSelectedIdentityMismatch { carried, rostered } =>

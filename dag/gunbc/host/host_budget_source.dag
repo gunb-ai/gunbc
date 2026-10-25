@@ -11,6 +11,10 @@ import extdeps.linux.cgroup_v2_memory {
 import gunbc.required_ci_phase_roster { floor_log_row_fields, floor_log_field_value }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.compute.unit_bounds {
+  UserWorkScopeStanding,
+  ExternallyBoundedExecutor,
+}
 import extdeps.linux.procfs {
   ProcfsPath,
   ProcSelfCgroup,
@@ -112,12 +116,38 @@ type HostBudgetResolution
     }
   | HostBudgetDeclaredUnverified { requested_bytes: ByteSize, reason: NonEmptyStr }
   | HostBudgetUnreadable { reason: NonEmptyStr }
+  | HostBudgetExternallyBounded { run_id: NonEmptyStr }
 
 fn host_budget_resolution_bytes(r: HostBudgetResolution) -> ByteSize? {
   match r {
     HostBudgetResolved { effective_bytes: b, requested_bytes: _, observation: _ } => Present { value: b }
     HostBudgetDeclaredUnverified { requested_bytes: requested, reason: _ } => Present { value: requested }
     HostBudgetUnreadable { reason: _ } => none
+    HostBudgetExternallyBounded { run_id: _ } => none
+  }
+}
+
+// An unreadable local budget under wrap standing ExternallyBoundedExecutor is not
+// HostBudgetUnreadable: that standing already lives in gunbc.compute.unit_bounds. This fold
+// consumes it; it does not re-read BUILDBUDDY_RUN_ID. The bound is the executor identity,
+// never a fabricated byte count. Operator standing: sleek-owl-397 ruling 2026-10-15
+// (external boundary), the same row unit_bounds cites for ExternallyBoundedExecutor.
+fn host_budget_with_external_executor(
+  resolution: HostBudgetResolution,
+  standing: UserWorkScopeStanding
+) -> HostBudgetResolution {
+  match resolution {
+    HostBudgetUnreadable { reason: r } =>
+      match standing {
+        ExternallyBoundedExecutor { run_id: id } =>
+          HostBudgetExternallyBounded { run_id: id }
+        _ => HostBudgetUnreadable { reason: r }
+      }
+    HostBudgetResolved { effective_bytes: e, requested_bytes: q, observation: o } =>
+      HostBudgetResolved { effective_bytes: e, requested_bytes: q, observation: o }
+    HostBudgetDeclaredUnverified { requested_bytes: b, reason: r } =>
+      HostBudgetDeclaredUnverified { requested_bytes: b, reason: r }
+    HostBudgetExternallyBounded { run_id: id } => HostBudgetExternallyBounded { run_id: id }
   }
 }
 
@@ -350,7 +380,7 @@ data host_budget_source_seed_mirror_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.host.host_budget_source",
-    decl_name: "host_budget_source_emitted_into_stage0",
+    decl_name: "HostBudgetSource",
     field: WholeDeclaration
   }
 }

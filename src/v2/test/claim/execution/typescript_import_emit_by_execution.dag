@@ -1,5 +1,7 @@
 module v2.test.claim.execution.typescript_import_emit_by_execution
 
+import v2.std.node { NotADeclaration }
+
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -23,7 +25,7 @@ fn ts_import_block_node(names: List<Symbol>) -> Node {
       cons: fn(acc, sym) {
         list_append(
           left: acc,
-          right: [Edge { label: Positional, target: ts_import_symbol_atom(sym: sym) }]
+          right: [Edge { label: Positional, target: ts_import_symbol_atom(sym: sym), declaration: NotADeclaration }]
         )
       }
     ),
@@ -41,15 +43,18 @@ fn ts_import_carrier_node(segments: List<Symbol>, names: List<Symbol>) -> Node {
     children: [
       Edge {
         label: dag_surface_edge_label(edge: ^dag_surface_import_decl),
-        target: ts_import_symbol_atom(sym: ^dag_surface_import_decl)
+        target: ts_import_symbol_atom(sym: ^dag_surface_import_decl),
+        declaration: NotADeclaration
       },
       Edge {
         label: dag_surface_edge_label(edge: ^dag_surface_import_decl_qualified_name),
-        target: ts_import_qn_node(segments: segments)
+        target: ts_import_qn_node(segments: segments),
+        declaration: NotADeclaration
       },
       Edge {
         label: dag_surface_edge_label(edge: ^dag_surface_import_decl_block),
-        target: ts_import_block_node(names: names)
+        target: ts_import_block_node(names: names),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -62,11 +67,13 @@ fn ts_import_missing_qn_carrier_node(names: List<Symbol>) -> Node {
     children: [
       Edge {
         label: dag_surface_edge_label(edge: ^dag_surface_import_decl),
-        target: ts_import_symbol_atom(sym: ^dag_surface_import_decl)
+        target: ts_import_symbol_atom(sym: ^dag_surface_import_decl),
+        declaration: NotADeclaration
       },
       Edge {
         label: dag_surface_edge_label(edge: ^dag_surface_import_decl_block),
-        target: ts_import_block_node(names: names)
+        target: ts_import_block_node(names: names),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -94,6 +101,7 @@ fn ts_import_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_import_witness_target_model() -> TargetModel {
   TargetModel {
+    primitive_realizations: PrimitiveRealizationsUnwired,
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),
@@ -114,7 +122,7 @@ fn ts_import_qualified_name_symbols(qn: QualifiedName) -> List<Symbol> {
 
 fn ts_import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
   fold(
-    node_positional_child_targets(node: block),
+    positional_child_target_nodes(node: block),
     init: outcome_accepted(value: std.algebra.Empty),
     f: fn(acc, nd) {
       bind_outcome(

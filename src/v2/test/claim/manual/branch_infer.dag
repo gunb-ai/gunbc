@@ -1,5 +1,7 @@
 module v2.test.claim.manual.branch_infer
 
+import v2.std.node { NotADeclaration }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn branch_infer_atom(s: Symbol) -> Node {
@@ -26,9 +28,9 @@ fn branch_infer_if_body_from_arms(
   Node {
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: condition },
-      Edge { label: Positional, target: then_arm },
-      Edge { label: Positional, target: else_arm }
+      Edge { label: Positional, target: condition, declaration: NotADeclaration },
+      Edge { label: Positional, target: then_arm, declaration: NotADeclaration },
+      Edge { label: Positional, target: else_arm, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -69,7 +71,7 @@ fn branch_infer_resolved_tree(root: Node) -> ResolvedTree {
 }
 
 fn branch_infer_positional_target(body: Node, index: Int) -> Node {
-  match list_at_optional(xs: node_positional_child_targets(node: body), index: index) {
+  match list_at_optional(xs: positional_child_target_nodes(node: body), index: index) {
     Present { value: target } => target
     Absent => branch_infer_atom(s: ^branch_infer_missing_child)
   }

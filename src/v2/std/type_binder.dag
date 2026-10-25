@@ -2,7 +2,7 @@ module v2.std.type_binder
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
-import std.algebra { Cons, Empty, list_snoc_item, zip_map }
+import std.algebra { Cons, Empty, list_snoc_item, zip_map, collection_concat_shape, collection_count_shape }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.arrow_contract { arrow_contract_conforms }
 import v2.std.arrow_signature { signature_order_edge, arrow_signature_order_head_is_list_introduction }
@@ -16,7 +16,6 @@ import v2.extdeps.languages.dag_surface_item_standing {
 import v2.std.node {
   production_edge_label,
   Disj,
-  Occupancy,
   MatchArmScopeExitEdge,
   arrow_named_edge_is_non_binder,
   arrow_first_positional_target,
@@ -29,6 +28,10 @@ import v2.std.node {
   Instantiation,
   Behavior,
   Bind,
+  Branch,
+  Loop,
+  Match,
+  Value,
   ComputationNode,
   Conj,
   Edge,
@@ -63,6 +66,7 @@ import v2.std.node {
   StructuralLabel,
   edge_is_core,
   is_positional,
+  NotADeclaration
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -98,7 +102,7 @@ fn edge_is_type_body(e: Edge) -> Bool {
 
 // THE ONE PRODUCER of the edge on an Arrow (consumed by v2.compiler.body_lowering_fold).
 fn type_params_edge(conj: Node) -> Edge {
-  Edge { label: core_edge_label(marker: TypeParamsEdge), target: conj }
+  Edge { label: core_edge_label(marker: TypeParamsEdge), target: conj, declaration: NotADeclaration }
 }
 
 // A GENERIC TYPE DECLARATION'S TARGET IS A WRAPPER BESIDE ITS MEMBER, NEVER A MEMBER WITH ITS
@@ -112,8 +116,8 @@ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders },
-      Edge { label: core_edge_label(marker: TypeBodyEdge), target: member }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: TypeBodyEdge), target: member, declaration: NotADeclaration }
     ]
   )
 }
@@ -151,8 +155,8 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders },
-      Edge { label: core_edge_label(marker: TypeAliasEdge), target: aliased }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: TypeAliasEdge), target: aliased, declaration: NotADeclaration }
     ]
   )
 }
@@ -165,7 +169,7 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
 fn type_opaque_wrapper(binders: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders }]
+    children: [Edge { label: core_edge_label(marker: TypeParamsEdge), target: binders, declaration: NotADeclaration }]
   )
 }
 
@@ -179,7 +183,6 @@ fn type_decl_wrapper_params_once(n: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
   }
@@ -381,6 +384,55 @@ fn type_param_kind_optional(binder: Node) -> Optional<Node> {
   })
 }
 
+// The kinded names of one binder set, in declared order. A named fn, not a closure body, so the
+// accumulator's element type is the declared List<Symbol> rather than inferred through a nested fold.
+fn kinded_binder_conj_names(conj: Node) -> List<Symbol> {
+  fold(binder_conj_names(conj: conj), init: Empty, f: fn(names, name) {
+    match type_binder_target_of(binders: conj, name: name) {
+      Present { value: b } =>
+        match type_param_kind_optional(binder: b) {
+          Present { value: _ } => list_snoc_item(xs: names, item: name)
+          Absent => names
+        }
+      Absent => names
+    }
+  })
+}
+
+// THE KINDED TYPE PARAMETERS A NODE DECLARES, in declaration order: the binders whose Atom carries a
+// BinderTypeEdge (type_param_kind_optional). The ONE producer of "binder n is kinded", so the value
+// key v2.compiler.resolve mints and the entry v2.compiler.symbol_index_fill indexes cannot disagree.
+fn kinded_type_param_names(n: Node) -> List<Symbol> {
+  let carried = fold(n.children, init: Empty, f: fn(acc, e) {
+    if edge_is_type_params(e: e) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+  })
+  if count(carried) == 1 {
+    fold(carried, init: Empty, f: fn(acc, t) { kinded_binder_conj_names(conj: t) })
+  } else {
+    Empty
+  }
+}
+
+// THE KIND OF ONE KINDED TYPE PARAMETER, by name: the declaration that says what its argument may be.
+// The value read of the binder has exactly this type (v2.compiler.symbol_index_fill
+// symbol_index_fill_kinded_type_params), because the argument is a Nat literal OR a named inhabitant
+// of the kind (std.machine_constraints machine_width_literal_roster_frontier) and only the kind covers both.
+fn kinded_type_param_kind_optional(n: Node, name: Symbol) -> Optional<Node> {
+  let carried = fold(n.children, init: Empty, f: fn(acc, e) {
+    if edge_is_type_params(e: e) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+  })
+  if count(carried) == 1 {
+    fold(carried, init: optional_absent(), f: fn(acc, t) {
+      match type_binder_target_of(binders: t, name: name) {
+        Present { value: b } => type_param_kind_optional(binder: b)
+        Absent => optional_absent()
+      }
+    })
+  } else {
+    optional_absent()
+  }
+}
+
 // WHAT A BINDER'S ANNOTATION BOUNDS IT BY, READ FROM THE MARKER THE BINDER WAS BUILT WITH -- never guessed
 // from the annotation's shape. A BinderTypeEdge (type_param_kind_optional) carries a KIND -- a type
 // expression whose inhabitants are the parameter's admissible arguments, judged at resolve by
@@ -417,16 +469,25 @@ fn type_param_bound(binder: Node) -> BinderBound {
 // judgment needs the declarations the kind and argument resolve to, which only resolve holds, so it
 // is supplied; the PAIRING it is applied over is decided here and nowhere else. ArgumentLiteralUnjudged
 // is the language-level Nat literal rule: a literal is admitted in any kinded position and is NOT
-// judged against the kind's roster. ArgumentTypeParameterUnjudged is an argument that is itself a type
-// parameter of an enclosing declaration (`MachineWidth<bits>` inside a generic over bits): its
-// instances are judged where that declaration is applied, not here. Both ADMIT without crediting
-// inhabitance, and this module records no count of them: nothing would consume one. The honest
-// record of what stays unjudged is the declared frontier std.machine_constraints
-// machine_width_literal_roster_frontier, which states the rung this position sits at.
+// judged against the kind's roster. A forwarding argument USED to answer ArgumentTypeParameterUnjudged
+// -- "its instances are judged where that declaration is applied" -- and nothing ever performed that
+// deferred judgment, so the arm was an admit with a story attached
+// (gunbc.recurring_failure_mode type_parameter_kind_deferral_never_collected). A parameter of an
+// enclosing declaration is now JUDGED, by the kind its binder declares resolved to the same
+// declaration the position's kind resolves to (v2.compiler.resolve
+// resolve_forwarded_parameter_kind_matches), AND THE ARM IS DELETED RATHER THAN LEFT UNPRODUCED:
+// DESIGN section 4b requires a climb to delete the lower-rung production machinery it obsoletes, and
+// a surviving arm is an attractor (section 3) -- any future producer would have got a silent admit
+// back, with no claim watching for it. Its refusals are named separately below, so an unkinded binder,
+// a binder of a different kind and an unresolvable link are distinguishable from outside the module.
+// ArgumentLiteralUnjudged is still live and still admits: the Nat literal rule is a language-level
+// admission, not a per-kind judgment, so it is not the machinery this climb obsoletes.
 type KindInhabitance
   = ArgumentInhabitsKind
   | ArgumentLiteralUnjudged
-  | ArgumentTypeParameterUnjudged
+  | ArgumentForwardedUnkinded
+  | ArgumentForwardedKindDiffers
+  | ArgumentForwardedUnresolved
   | ArgumentOutsideKind
   | KindUnresolved
 
@@ -439,6 +500,9 @@ type TypeApplicationConformance
   | TypeApplicationArityMismatch { declared: Int, supplied: Int }
   | TypeApplicationKindNotInhabited { argument: Node, kind: Node }
   | TypeApplicationKindUnresolved { argument: Node, kind: Node }
+  | TypeApplicationForwardedParameterUnkinded { argument: Node, kind: Node }
+  | TypeApplicationForwardedParameterKindDiffers { argument: Node, kind: Node }
+  | TypeApplicationForwardedParameterUnresolved { argument: Node, kind: Node }
   | TypeApplicationBinderOrderMalformed
 
 // THE ONE AUTHORITY for checking an applied type against the binders it instantiates, consumed by
@@ -481,7 +545,9 @@ fn type_application_step(acc: TypeApplicationConformance, binders: Node, pa: Typ
               match inhabits(pa.argument, kind) {
                 ArgumentInhabitsKind => acc
                 ArgumentLiteralUnjudged => acc
-                ArgumentTypeParameterUnjudged => acc
+                ArgumentForwardedUnkinded => TypeApplicationForwardedParameterUnkinded { argument: pa.argument, kind: kind }
+                ArgumentForwardedKindDiffers => TypeApplicationForwardedParameterKindDiffers { argument: pa.argument, kind: kind }
+                ArgumentForwardedUnresolved => TypeApplicationForwardedParameterUnresolved { argument: pa.argument, kind: kind }
                 ArgumentOutsideKind => TypeApplicationKindNotInhabited { argument: pa.argument, kind: kind }
                 KindUnresolved => TypeApplicationKindUnresolved { argument: pa.argument, kind: kind }
               }
@@ -490,6 +556,12 @@ fn type_application_step(acc: TypeApplicationConformance, binders: Node, pa: Typ
     TypeApplicationArityMismatch { declared: _, supplied: _ } => acc
     TypeApplicationKindNotInhabited { argument: _, kind: _ } => acc
     TypeApplicationKindUnresolved { argument: _, kind: _ } => acc
+    // THE FIRST REFUSAL STICKS, as with the other refusals above: a later argument cannot overwrite
+    // the reason an earlier one was refused, and each forwarded refusal keeps its own name so the
+    // unkinded / wrong-kind / unresolvable cases stay distinguishable at the diagnostic.
+    TypeApplicationForwardedParameterUnkinded { argument: _, kind: _ } => acc
+    TypeApplicationForwardedParameterKindDiffers { argument: _, kind: _ } => acc
+    TypeApplicationForwardedParameterUnresolved { argument: _, kind: _ } => acc
     TypeApplicationBinderOrderMalformed => acc
   }
 }
@@ -559,7 +631,7 @@ fn type_binder_target_of(binders: Node, name: Symbol) -> Optional<Node> {
 
 // THE ONE PRODUCER of the edge.
 fn cast_target_edge(target_type: Node) -> Edge {
-  Edge { label: core_edge_label(marker: CastTargetEdge), target: target_type }
+  Edge { label: core_edge_label(marker: CastTargetEdge), target: target_type, declaration: NotADeclaration }
 }
 
 fn edge_is_cast_target(e: Edge) -> Bool {
@@ -592,7 +664,7 @@ fn cast_target_optional(n: Node) -> Optional<Node> {
 
 // THE ONE PRODUCER of the edge.
 fn type_annotation_edge(annotation: Node) -> Edge {
-  Edge { label: core_edge_label(marker: TypeAnnotationEdge), target: annotation }
+  Edge { label: core_edge_label(marker: TypeAnnotationEdge), target: annotation, declaration: NotADeclaration }
 }
 
 // 🟡 dissolve-on: edge labels on behavior nodes becoming a closed coproduct owned by v2.std.node, the
@@ -699,7 +771,6 @@ fn type_binder_node_conforms(n: Node) -> Bool {
     TypeNode { connective: Atom { identity: _ } } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     TypeNode { connective: Conj } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     TypeNode { connective: Disj } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
-    TypeNode { connective: Occupancy } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     TypeNode { connective: Instantiation } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     ComputationNode { behavior: Value } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)
     ComputationNode { behavior: Branch } => type_binder_node_conforms_otherwise(n: n, params: params, bodies: bodies, params_ok: params_ok)

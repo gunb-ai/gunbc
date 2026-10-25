@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.sandbox_properties_declared_but_not_enforced_by_the_realization
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data sandbox_properties_declared_but_not_enforced_by_the_realization: RecurringFailureMode = RecurringFailureMode {
+  identity: "sandbox_properties_declared_but_not_enforced_by_the_realization" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a unit plan names ProtectSystem, ProtectHome, and ReadWritePaths, a witness asserts those properties are rendered, and a write the properties would refuse still succeeds. DISTINGUISHING FACT: the rendered property set can be complete while the realization never applies it — silent drop, not a carve-out that reopens a named path (that class is protect_carve_out_reopens_the_protected_subject). HARM: a dispatched worker writes the deployed binary or tree; recovery is a dirty release. Silent success is below the ladder.",
+
+    "SPECIMEN (bright-moth-475, 2026-10-14, issuecomment-6175000334 on gunbc#13942): srv1 user units do not enforce ProtectSystem/ProtectHome/ReadWritePaths. systemd-run --user -p ProtectHome=read-only -p ProtectSystem=strict sh -c \"touch $HOME/x\" succeeds, even with PrivateUsers=yes. kernel.apparmor_restrict_unprivileged_userns=1 means the user manager cannot build the mount namespace, so the options are dropped without an error. The replayed live properties wrote <IR>/bin, which is not in ReadWritePaths. dispatch_worker_confinement_witness was green over the rendered properties alone.",
+
+    "OPERATOR REALIZATION (W5-enforce): system-manager transients with User= via gunbc.roadmap.attempt_system_unit_launch from a root-owned sha-addressed launcher release. Belt writes a pending request and sudo-runs one pinned gunbc run of attempt_system_unit_launch_cli; the CLI rebuilds systemd-run from the typed confinement fold and refuses any other unit, user, property set, or program. Until that grant is installed on a runner host the user-manager path remains the live RED. The wet witness stays OfflineLocalRecipe; bright-moth-475 runs those cells on srv1 lab after deploying the grant — that receipt is the evidence, not a hermetic property membership.",
+
+    "RUNG FOUND AT: mitigatable — the invalid write happens on today's user-manager route, and the wet witness is not yet a gated consumer. CEILING: mechanically preventable once the launcher grant is installed on a runner host and the wet launcher claims green. Structurally guaranteed is not this class: systemd enforcement stays a kernel/manager fact. NEXT TRIGGER: the launcher grant installed on a runner host, sufficient for writes_through_the_launcher_to_bin_and_source_hooks_are_refused to execute in a gate; evidenced by that identity going green on srv1 lab. WHAT DOES NOT CLIMB: more property-membership claims.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. The user-manager RED is test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox. The launcher wet is writes_through_the_launcher_to_bin_and_source_hooks_are_refused. The standing loss is gunbc.rung_drop.user_manager_worker_write_boundary_unenforced.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.roadmap.dispatch_worker_unit_confinement", decl_name: "dispatch_worker_unit_stream_properties"),
+    decl_ref(module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox"),
+    decl_ref(module_path: "gunbc.rung_drop.user_manager_worker_write_boundary_unenforced", decl_name: "user_manager_worker_write_boundary_unenforced"),
+  ],
+}

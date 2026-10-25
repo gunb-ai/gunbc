@@ -1,0 +1,45 @@
+module gunbc.fabric.fci1_controls_slice
+
+import std.types { String, NonEmptyStr, FilePath }
+import gunbc.live_deploy.slice_bounds {
+  fci1_controls_slice_unit_name,
+  fci1_controls_slice_memory_max,
+  fci1_controls_slice_memory_high,
+  fci1_controls_slice_memory_swap_max,
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, SliceUnitFile, Description, NotInstallable,
+  slice_memory_max, slice_memory_high, slice_memory_swap_max,
+  serialize_systemd_unit_file,
+}
+
+// The FCI-1 control slice's unit file, EMITTED from the declared row in
+// gunbc.live_deploy.slice_bounds (fci1_controls_slice_*), never hand-written. The wrap policy admits a
+// .service in this slice only when the row exists AND the live slice reports a finite memory.max
+// (user_work_scope_standing), so the file below is the thing that makes the live cap exist; the run
+// installs it under the runtime unit directory for its own duration and removes it at exit
+// (fci1_install_controls_slice / fci1_remove_controls_slice, emitted into tools/fabric_ci_fci1_bounded_execution_context.env by gunbc.fabric.fci1_bounded_execution_context_emit and called by the two FCI-1 scripts).
+fn fci1_controls_slice_unit_file() -> SystemdUnitFile {
+  SliceUnitFile {
+    unit: [
+      Description { text: "gunbc FCI-1 control cgroup bound (installed by the control run, removed at its exit)" as NonEmptyStr },
+    ],
+    slice: [
+      slice_memory_max(bytes: fci1_controls_slice_memory_max()),
+      slice_memory_high(bytes: fci1_controls_slice_memory_high()),
+      slice_memory_swap_max(bytes: fci1_controls_slice_memory_swap_max),
+    ],
+    install: NotInstallable,
+  }
+}
+
+fn fci1_controls_slice_unit_text() -> String {
+  serialize_systemd_unit_file(file: fci1_controls_slice_unit_file())
+}
+
+// Runtime unit directory: /run is tmpfs, so a crash cannot leave the slice installed across a reboot.
+data fci1_controls_slice_unit_directory: FilePath = "/run/systemd/system"
+
+fn fci1_controls_slice_unit_path() -> String {
+  join([fci1_controls_slice_unit_directory as String, "/", fci1_controls_slice_unit_name as String], "")
+}

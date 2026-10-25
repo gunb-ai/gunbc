@@ -6,6 +6,7 @@ import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_module_path,
   direct_rust_door_target_model
 }
+import v2.std.symbol_index { empty_symbol_index }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.text { String }
 
@@ -24,11 +25,14 @@ import v2.std.text { String }
 data structural_red_control_mint_site_qualified_name: String = "v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture.structural_red_control_mint_site_probe"
 
 fn structural_red_control_mint_site_probe() -> Bool {
+  // DECLARED GAP: this probe mints over a hand-built inferred tree with no ResolvedTree, so it
+  // cannot thread resolved.resolved_declarations. Production ingest/observe paths do.
   let mint_ok = match mint_written_provenanced_rust_artifact(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
     module_path: direct_rust_door_module_path,
-    workspace_dir: "/tmp/structural_red_control_mint_site_probe"
+    workspace_dir: "/tmp/structural_red_control_mint_site_probe",
+    declarations: empty_symbol_index()
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

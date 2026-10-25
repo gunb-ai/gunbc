@@ -1,12 +1,24 @@
 module test.claim.workspace_executor_install_witness
 
-import std.types { Bool, String }
-import gunbc.live_deploy.emit { emit_pipeline_or_poison, microvm_controller_install_intent, workspace_executor_install_steps, microvm_slot_unit_write_steps, microvm_slot_unit_file_with_workspace_root }
+import std.types { Bool, String, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.live_deploy.emit { microvm_slot_unit_file_with_workspace_root }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
-import v2.std.orchestration { Pipeline, FailFast }
 import gunbc.live_deploy.release_environment { installed_release_unit }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_file, microvm_slot_unit_timeout_stop_sec, microvm_controller_requires_ci_reservation_unit }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import gunbc.host.host_effect_realize {
+  MicrovmControllerInstallStep, MicrovmControllerInstallReady, MicrovmControllerInstallRefused,
+  microvm_controller_install_staging, microvm_controller_step_text, microvm_controller_step_name,
+}
+
+// THE TWO INSTALL-PLAN CLAIMS USED TO READ A SHELL PIPELINE (emit.dag
+// workspace_executor_install_steps / microvm_slot_unit_write_steps, rendered by
+// the since-deleted emit_pipeline_or_poison and grepped for `systemctl start`). Those builders are
+// retired with census W5; the claims now read the TYPED PLAN the controller
+// install folds, which is the same question asked of the artifact that actually
+// runs. The unit-text claim below is untouched -- it was never about the script.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn workspace_install_revision() -> ReleaseRevisionBinding {
   RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }
@@ -19,25 +31,37 @@ fn installed_and_observed_controller_units_are_identical_control() -> Bool {
       release_dir: dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()), release_dir: dir))
 }
 
-// Rendered over the executor's own install steps (the interface the claim is about), with one
-// structural check that the real controller install pipeline carries exactly those steps.
+fn workspace_install_plan() -> List<MicrovmControllerInstallStep> {
+  match microvm_controller_install_staging(revision: workspace_install_revision()) {
+    MicrovmControllerInstallReady { steps: steps } => steps
+    MicrovmControllerInstallRefused { reason: _ } => []
+  }
+}
+
+// Rendered over the controller's own install PLAN (the interface the claim is
+// about): the three commissioning legs are there, and nothing in the whole plan
+// starts or enables anything.
 fn workspace_install_includes_executor_without_starting_it_control() -> Bool {
-  let steps = workspace_executor_install_steps(revision: workspace_install_revision())
-  let script = emit_pipeline_or_poison(p: Pipeline { steps: steps, on_failure: FailFast }, refused: "")
-  all(steps, step => any(microvm_controller_install_intent(revision: workspace_install_revision()).steps, installed => installed == step))
-    && string_contains(s: script, pattern: "workspace-commissioning-executor.sh")
-    && string_contains(s: script, pattern: "workspace-commissioning-helper")
-    && string_contains(s: script, pattern: "gunbc-workspace-commissioning@.service")
-    && !string_contains(s: script, pattern: "systemctl start")
-    && !string_contains(s: script, pattern: "systemctl enable")
+  let plan = workspace_install_plan()
+  let surface = join(map(plan, s => microvm_controller_step_text(step: s)), "\n")
+  let names = join(map(plan, s => microvm_controller_step_name(step: s)), "\n")
+  list_length(items: plan) > 0
+    && string_contains(s: surface, pattern: "workspace-commissioning-executor.sh")
+    && string_contains(s: surface, pattern: "workspace-commissioning-helper")
+    && string_contains(s: surface, pattern: "gunbc-workspace-commissioning@.service")
+    && string_contains(s: names, pattern: "commissioning executor script")
+    && string_contains(s: names, pattern: "commissioning helper")
+    && string_contains(s: names, pattern: "commissioning executor unit")
+    && !string_contains(s: surface, pattern: "systemctl start")
+    && !string_contains(s: surface, pattern: "systemctl enable")
 }
 
 // The reservation unit is gated by one fact; the slot-unit steps the install writes are checked
 // for it directly rather than by rendering the whole controller install.
 fn workspace_install_does_not_restore_competing_ci_reservation_control() -> Bool {
+  let plan_surface = join(map(workspace_install_plan(), s => microvm_controller_step_text(step: s)), "\n")
   !microvm_controller_requires_ci_reservation_unit()
-    && !string_contains(s: emit_pipeline_or_poison(p: Pipeline { steps: microvm_slot_unit_write_steps(revision: workspace_install_revision()), on_failure: FailFast }, refused: ""),
-      pattern: "gunbc-microvm-slot-reserve.service")
+    && !string_contains(s: plan_surface, pattern: "gunbc-microvm-slot-reserve.service")
 }
 
 test fn installed_and_observed_controller_units_are_identical() -> Bool { installed_and_observed_controller_units_are_identical_control() }

@@ -12,6 +12,7 @@ import gunbc.os_install_actuator_selection {
 import gunbc.provisioning.seeded_install_media_publish { SeededImageResolved }
 import gunbc.srv3.srv3_nbd_proxy_serve_intent { srv3_nbd_proxy_serve_host_effect }
 import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_resolve }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 type Srv3TypedReceipt {
   lines: List<String>
@@ -90,8 +91,10 @@ fn srv3_seeded_install_media_remaster_apply() -> Srv3ApplyDisposition {
   srv3_host_effect_apply(effect: Srv3SeededInstallMediaRemaster)
 }
 
-fn srv3_bmcweb_session_login_apply() -> Srv3ApplyDisposition {
-  srv3_host_effect_apply(effect: Srv3BmcwebSessionLogin)
+// The body file is the caller's private, owner-only one (gunbc.srv3.srv3_os_install_actuate), so the
+// effect carries its path rather than reading a fixed name.
+fn srv3_bmcweb_session_login_apply(request_body_file: NonEmptyStr) -> Srv3ApplyDisposition {
+  srv3_host_effect_apply(effect: Srv3BmcwebSessionLogin { request_body_file: request_body_file })
 }
 
 fn srv3_bmcweb_token_extract_apply() -> Srv3ApplyDisposition {

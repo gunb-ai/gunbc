@@ -1,7 +1,8 @@
 module v2.std.grounding
 
+import v2.std.witness { map_get_checked }
 import std.types { Map }
-import v2.std.collection { empty_map, map_insert }
+import std.algebra { empty_map, map_insert }
 import v2.std.compilers.target_model { FunctionBoundarySite, TargetModel }
 import v2.std.diagnostic {
   Accepted,
@@ -76,7 +77,7 @@ fn insert_per_language_fact_bundle_entry(
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
-  match v2.std.collection.map_get_checked(m: registry.by_key, key: key) {
+  match map_get_checked(m: registry.by_key, key: key) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: _ } =>
         outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
@@ -110,7 +111,7 @@ fn per_language_fact_bundle_insert_subject_axis(
   target: TargetModel,
   fact_axis: ModelCorePrimitiveFactAxis
 ) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
-  match v2.std.collection.map_get_checked(
+  match map_get_checked(
     m: registry.by_key,
     key: per_language_fact_bundle_subject_axis_key(
       subject_carrier: subject_carrier,

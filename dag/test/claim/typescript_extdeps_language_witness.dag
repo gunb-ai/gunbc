@@ -169,3 +169,17 @@ test fn ts_method_spec_count_covers_higher_order() -> Bool {
   let has_all    = specs |> any(s => s.method_name == "all")
   has_filter && has_any && has_all
 }
+
+// std.host_text chars IS THE UNICODE SCALAR SEQUENCE ON THIS TARGET TOO (operator ruling H4). Array.from
+// splits a string into code points; each must be read with codePointAt, because charCodeAt reads only a
+// code point's first UTF-16 code unit and turns U+1F600 into its high surrogate 55357
+// (gunbc.recurring_failure_mode typescript_chars_realizes_utf16_code_units_not_scalars). This reads the
+// realization row, it does not execute it: executing every target's host-text realizations against the
+// declared contract is that row's next-rung trigger.
+test fn ts_chars_reads_code_points_not_utf16_code_units() -> Bool {
+  ts_simple_method_specs |> any(spec =>
+    spec.method_name == "chars"
+      && string_contains(spec.template, "codePointAt(0)")
+      && !string_contains(spec.template, "charCodeAt")
+  )
+}

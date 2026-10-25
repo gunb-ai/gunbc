@@ -1,19 +1,20 @@
 module v2.test.lens_common.infer_fixture
+
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_modules }
 import std.optional { optional_absent }
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.resolve { ClosureProviderRefusal, ModuleOutcome, ResolvedTree }
+import v2.compiler.resolve { empty_module_outcome_index, module_outcome_index, module_outcome_module, ClosureProviderRefusal, ModuleOutcome, ResolvedTree }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree, infer_facts_lookup_miss_diagnostic }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection { Map, empty_map }
+import std.types { Map }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
 }
-import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Node, Symbol, TypeNode, NotADeclaration }
 import std.optional { Present }
 import v2.std.witness { Holds, StructuralPropertyWitness, Witness, witness_from_optional }
 
@@ -21,20 +22,20 @@ import v2.compiler.body_lowering_fold { body_lower_callable_arrow }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.node_query { binder_edge, field_projection_node }
 import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme }
-import v2.std.symbol_index { SymbolIndex, symbol_index_insert }
+import v2.std.symbol_index { SymbolIndex, symbol_index_insert, symbol_index_mark_module_root }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, parameter_reference_node, qualified_name_last_segment }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted }
 import v2.std.node { Authored, ComputationNode, Conj, Edge, Positional, Transform }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, optional_present }
-import std.algebra { Cons, list_append, list_map }
+import std.algebra { Cons, list_append, list_map, empty_map }
 
 // A HAND-BUILT TREE SUPPLIED AT INFER'S INTERFACE (DESIGN section 3: a witness supplies its input
 // rather than executing the layers beneath it). infer takes resolve's output, which carries the index
 // resolution consulted; a supplied tree was never resolved, so it carries an index holding NO
 // declarations -- the name says so, and a declaration lookup through it finds nothing and refuses.
 fn claim_resolved_tree_without_declarations(root: Node) -> ResolvedTree {
-  ResolvedTree { root: root, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), module_outcomes: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }
+  ResolvedTree { root: root, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), occurrence_bindings: empty_map(), duplicate_binding_records: [], module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }
 }
 
 fn claim_atom_node(s: Symbol) -> Node {
@@ -73,7 +74,8 @@ fn claim_inferred_facts_witness(
   InferredFacts {
     grounding: DerivedGrounding { grounding: grounding },
     descent: descent,
-    denotation: optional_absent()
+    denotation: optional_absent(),
+    type_instances: []
   }
 }
 
@@ -213,17 +215,18 @@ fn claim_resolved_call_tree(
     root: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Authored { name: callee }, target: declaration },
+        Edge { label: Authored { name: callee }, target: declaration, declaration: NotADeclaration },
         Edge {
           label: Authored { name: ^claim_supplied_call },
           target: Node {
             kind: ComputationNode { behavior: Transform },
             children: Cons {
-              head: Edge { label: Positional, target: declaration_reference_node(qn: callee_path, occurrence_id: claim_minted(n: reference_site)) },
+              head: Edge { label: Positional, target: declaration_reference_node(qn: callee_path, occurrence_id: claim_minted(n: reference_site)), declaration: NotADeclaration },
               tail: actuals
             },
             occurrence_id: OccurrenceSynthetic
-          }
+          },
+          declaration: NotADeclaration
         }
       ],
       occurrence_id: OccurrenceSynthetic
@@ -234,8 +237,8 @@ fn claim_resolved_call_tree(
       callee_path: callee_path,
       params: params
     ),
-    lexical_bindings: empty_map(),
-    module_outcomes: [],
+    occurrence_bindings: empty_map(), duplicate_binding_records: [],
+    module_outcomes: [], outcome_index: empty_module_outcome_index(),
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent()
   }
@@ -288,19 +291,23 @@ fn claim_resolved_projection_tree(
     root: Node {
       kind: TypeNode { connective: Conj },
       children: list_append(
-        left: list_map(xs: records, f: fn(r) { Edge { label: Authored { name: claim_path_leaf(path: r.path) }, target: claim_record_declaration(r: r) } }),
-        right: [Edge { label: Authored { name: fn_name }, target: declaration }]
+        left: list_map(xs: records, f: fn(r) { Edge { label: Authored { name: claim_path_leaf(path: r.path) }, target: claim_record_declaration(r: r), declaration: NotADeclaration } }),
+        right: [Edge { label: Authored { name: fn_name }, target: declaration, declaration: NotADeclaration }]
       ),
       occurrence_id: OccurrenceSynthetic
     },
-    symbol_index: empty_symbol_index(),
+    // THE PRE-RESOLVE FILL NAMES EVERY OBSERVED MODULE ROOT: a closure miss reads its provider's refusal through
+    // the declaration's fill-time owning module (unavailable_provider_for_path), so each supplied outcome's module
+    // is a root here, while resolved_declarations stays the index the miss is read against.
+    symbol_index: fold(unavailable, init: empty_symbol_index(), f: fn(acc, o) { symbol_index_mark_module_root(index: acc, qualified_path: module_outcome_module(o: o)) }),
     resolved_declarations: claim_parameter_entries(
       index: symbol_index_insert(index: with_records, qualified_path: fn_path, resolved: declaration),
       callee_path: fn_path,
       params: [param]
     ),
-    lexical_bindings: empty_map(),
+    occurrence_bindings: empty_map(), duplicate_binding_records: [],
     module_outcomes: unavailable,
+    outcome_index: module_outcome_index(outcomes: unavailable),
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent()
   }

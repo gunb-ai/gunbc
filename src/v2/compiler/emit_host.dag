@@ -25,7 +25,7 @@ import v2.compiler.eval {
 }
 import extdeps.communication.medium { Medium }
 import std.algebra { Cons, Empty }
-import v2.std.collection { optional_present }
+import std.optional { optional_present }
 import v2.std.host_transport {
   ByteString,
   EmitHostRuntimeRow,

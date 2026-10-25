@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_sum_type_name_accepted_as_a_record_constructor
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_sum_type_name_accepted_as_a_record_constructor: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_sum_type_name_accepted_as_a_record_constructor" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "A sum type's NAME used as a record constructor type-checks: `SystemdRunProperty { property: MemoryMax, value: ... }` where extdeps.systemd.systemd_run declares `type SystemdRunProperty = NamedUnitSetting { property, value } | EmptyCapabilityBoundingSet`. The name is not a variant, so the value inhabits no declared variant and every total match over the sum fails at run time. Invalid state: a value built under a type name that no constructor carries. Harm: a typed-clean production function whose consumers all hit a non-exhaustive match.",
+
+    "SPECIMEN, found 2026-10-17 on gunbc#14310 (srv1 job-14310, reported by bright-moth-475). `gunbc compile` typechecked runner_revision_job_launch with 0 blocking errors while revision_job_jailer_memory_property, and the MemorySwapMax and CPUQuota properties beside it, built `SystemdRunProperty { ... }`. The launch witness reported RuntimeError PatternMatchFailure 'non-exhaustive pattern match on: SystemdRunProperty { property: MemoryMax, value: 23622320128 }', and the same witness then failed to resolve with 'variant SystemdRunProperty not found in type SystemdRunProperty' when matched by that name. Every renderer of the jailer unit's properties matches NamedUnitSetting, so a real launch would have hit it. Repair: construct NamedUnitSetting.",
+
+    "RUNG FOUND AT: mitigatable (an executed witness surfaced it; the typechecker did not). This is a floor defect (DESIGN section 4b: values inhabit declared types). ATTAINABLE CEILING: structurally impossible -- construction of a record literal must resolve its head to a variant of the expected sum, or to a record type, and refuse a sum type's own name. NEXT-RUNG TRIGGER, at capability grain: record-literal construction resolves its head to a declared constructor and refuses a name that denotes a sum type, in every position (let, argument, return, list element). Not reproduced locally by this lane; the receipt is the srv1 run.",
+
+    "RECOGNITION RULE: a clean typecheck followed by a total match that reports an impossible value whose printed head is the TYPE name. Read the declaration of that name: if it is a sum, the author wrote the type where a variant belonged. Related but distinct from a_bare_type_name_binds_the_wrong_declaration, where two declarations share the name.",
+  ],
+
+  evidence: [],
+}

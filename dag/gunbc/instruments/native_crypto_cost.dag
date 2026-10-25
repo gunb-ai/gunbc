@@ -1,0 +1,227 @@
+module gunbc.instruments.native_crypto_cost
+
+import std.types { Int, List, String, Bool, NonEmptyStr }
+import std.measure { Nanosecond, nanosecond }
+import std.bignat { BigNat, bignat_one, bignat_sub, bignat_zero_limbs, bignat_add_scaled, bignat_pad, bignat_drop_lowest, montgomery_step }
+import extdeps.crypto.sha2 { sha256 }
+import extdeps.crypto.signature {
+  SignatureSuite, EcdsaP256Sha256, PublicKeyEncoding, Sec1Uncompressed, SignatureEncoding, P1363FixedWidth,
+  VerifyingKey, SignatureBytes, SignatureVerification, SignatureVerified, verify_signature,
+}
+import extdeps.crypto.nist_p256 { p256_curve, p256_gx, p256_gy, p256_n, p256_affine, p256_double_scalar }
+import extdeps.crypto.nist_prime_curve { curve_fmul, curve_double, curve_add, JacobianPoint, jacobian_is_infinity }
+import extdeps.apple.app_attest { verify_attestation, verify_assertion, base64_of, decode_attestation, AttestationDecodeOk, AttestationDecodeRefused }
+import extdeps.standards.rfc_6979 { rfc6979_a25_p256_public_key, rfc6979_a25_message_sample, rfc6979_a25_p256_sha256_sample_signature }
+import gunbc.instruments.app_attest_sample_rows { ios_14_4_sample, assertion_expectation, AppAttestSample, owed_attestation_holds, owed_assertion_holds }
+
+// THE NATIVE CRYPTO COST ROWS: how long, natively, each verifier on the approval broker's per-request
+// path takes, in ONE process, so one remote dispatch itemizes the whole chain. The rows are consumed
+// by gunbc.instruments.native_crypto_vectors, whose `gunbc test //gunbc/instruments:native-crypto-vectors`
+// emits the closure, builds it release and runs it; nothing is interpreted. They ride that label
+// rather than a new one because a label is also a row in the seed's hand-written registry
+// (target_invocation_host), and a cost reading does not earn a seed-growth debt row.
+//
+// EACH ROW IS THE ELAPSED NANOSECONDS between two observed_monotonic_nanos readings (the seam
+// std.realization_measurement ObserveElapsedAtSubject names) around ONE call, and `held` says the
+// call answered what it owes (the verdict), so a fast wrong answer is a not_held row and not a
+// number. Rows are joined by identity against the declared roster, as the vectors instrument does.
+// The numbers are observations of the host that ran it; this program holds no threshold, and the
+// change that moves a cost quotes the before/after rows this program prints.
+type CostRow {
+  identity: String
+  held: Bool
+  nanos: Nanosecond
+}
+
+fn octet_run(n: Int, acc: List<Int>) -> List<Int> {
+  if n <= 0 { acc } else { octet_run(n: n - 1, acc: acc |> list_push((n * 7) % 251)) }
+}
+
+// ── sha2 over N octets: three sizes, so a quadratic shape shows as a ratio and not a guess.
+fn sha256_row(n: Int) -> CostRow {
+  let message = octet_run(n: n, acc: [])
+  let t0 = observed_monotonic_nanos(concat("sha256-start-", to_string(n)))
+  let digest = sha256(message: message)
+  let t1 = observed_monotonic_nanos(concat("sha256-end-", to_string(n)))
+  CostRow { identity: concat("sha256_over_", concat(to_string(n), "_octets")), held: count(digest) == 32, nanos: nanosecond(count: t1 - t0) }
+}
+
+// ── the field: 200 chained Montgomery multiplications and 50 doublings / additions on P-256.
+fn fmul_chain(a: BigNat, n: Int) -> BigNat {
+  fold(octet_run(n: n, acc: []), init: a, f: (acc, _) => curve_fmul(c: p256_curve, a: acc, b: a))
+}
+
+fn fmul_row() -> CostRow {
+  let g = p256_affine(x: p256_gx, y: p256_gy)
+  let t0 = observed_monotonic_nanos("fmul-start")
+  let out = fmul_chain(a: g.x, n: 200)
+  let t1 = observed_monotonic_nanos("fmul-end")
+  CostRow { identity: "p256_field_multiplication_x200", held: !(out == g.x), nanos: nanosecond(count: t1 - t0) }
+}
+
+fn point_chain_double(p: JacobianPoint, n: Int) -> JacobianPoint {
+  fold(octet_run(n: n, acc: []), init: p, f: (acc, _) => curve_double(c: p256_curve, p: acc))
+}
+
+fn point_chain_add(p: JacobianPoint, q: JacobianPoint, n: Int) -> JacobianPoint {
+  fold(octet_run(n: n, acc: []), init: p, f: (acc, _) => curve_add(c: p256_curve, p: acc, q: q))
+}
+
+fn point_double_row() -> CostRow {
+  let g = p256_affine(x: p256_gx, y: p256_gy)
+  let t0 = observed_monotonic_nanos("double-start")
+  let out = point_chain_double(p: g, n: 50)
+  let t1 = observed_monotonic_nanos("double-end")
+  CostRow { identity: "p256_point_doubling_x50", held: !jacobian_is_infinity(p: out), nanos: nanosecond(count: t1 - t0) }
+}
+
+fn point_add_row() -> CostRow {
+  let g = p256_affine(x: p256_gx, y: p256_gy)
+  let two_g = curve_double(c: p256_curve, p: g)
+  let t0 = observed_monotonic_nanos("add-start")
+  let out = point_chain_add(p: two_g, q: g, n: 50)
+  let t1 = observed_monotonic_nanos("add-end")
+  CostRow { identity: "p256_point_addition_x50", held: !jacobian_is_infinity(p: out), nanos: nanosecond(count: t1 - t0) }
+}
+
+// ── the scalar multiplication the verifier does: (n-1)*G + (n-2)*G, full-width scalars.
+fn scalar_row() -> CostRow {
+  let g = p256_affine(x: p256_gx, y: p256_gy)
+  let one = bignat_one()
+  match bignat_sub(a: p256_n, b: one) {
+    Absent => CostRow { identity: "p256_double_scalar_multiplication", held: false, nanos: nanosecond(count: 0) }
+    Present { value: nm1 } => {
+      match bignat_sub(a: nm1, b: one) {
+        Absent => CostRow { identity: "p256_double_scalar_multiplication", held: false, nanos: nanosecond(count: 0) }
+        Present { value: nm2 } => {
+          let t0 = observed_monotonic_nanos("scalar-start")
+          let out = p256_double_scalar(u1: nm1, g: g, u2: nm2, q: g)
+          let t1 = observed_monotonic_nanos("scalar-end")
+          CostRow { identity: "p256_double_scalar_multiplication", held: !jacobian_is_infinity(p: out), nanos: nanosecond(count: t1 - t0) }
+        }
+      }
+    }
+  }
+}
+
+// ── extdeps.crypto.signature verify_signature (P-256) over the RFC 6979 A.2.5 sample vector.
+fn verify_signature_row() -> CostRow {
+  match base64_of(octets: rfc6979_a25_p256_public_key, url_safe: true) {
+    Absent => CostRow { identity: "signature_verify_p256", held: false, nanos: nanosecond(count: 0) }
+    Present { value: key_b64 } =>
+      match base64_of(octets: rfc6979_a25_p256_sha256_sample_signature, url_safe: true) {
+        Absent => CostRow { identity: "signature_verify_p256", held: false, nanos: nanosecond(count: 0) }
+        Present { value: sig_b64 } => {
+          let key = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: key_b64 as NonEmptyStr }
+          let signature = SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: sig_b64 as NonEmptyStr }
+          let t0 = observed_monotonic_nanos("verify-signature-start")
+          let v = verify_signature(key: key, signature: signature, message: rfc6979_a25_message_sample as NonEmptyStr)
+          let t1 = observed_monotonic_nanos("verify-signature-end")
+          CostRow { identity: "signature_verify_p256", held: signature_verified(v: v), nanos: nanosecond(count: t1 - t0) }
+        }
+      }
+  }
+}
+
+fn signature_verified(v: SignatureVerification) -> Bool {
+  match v {
+    SignatureVerified { verified: _ } => true
+    _ => false
+  }
+}
+
+// ── extdeps.apple.app_attest over Apple's iOS 14.4 sample: the whole fold, as the broker runs it.
+// The sample carries no extensions map, so the fold's owed verdict is the success arm (AppAttestSample
+// owed_attestation / owed_assertion). `held` is that exact owed verdict, so a refusal is not_held.
+fn attestation_rows(s: AppAttestSample) -> List<CostRow> {
+  let t0 = observed_monotonic_nanos("verify-attestation-start")
+  let whole = verify_attestation(object: s.attestation, e: s.expectation)
+  let t1 = observed_monotonic_nanos("verify-attestation-end")
+  let first = CostRow { identity: "app_attest_verify_attestation", held: owed_attestation_holds(owed: s.owed_attestation, v: whole), nanos: nanosecond(count: t1 - t0) }
+  match decode_attestation(object: s.attestation) {
+    AttestationDecodeRefused { cause: _ } => [first, CostRow { identity: "app_attest_verify_assertion", held: false, nanos: nanosecond(count: 0) }]
+    AttestationDecodeOk { decoded: d } =>
+      match assertion_expectation(s: s, d: d) {
+        Absent => [first, CostRow { identity: "app_attest_verify_assertion", held: false, nanos: nanosecond(count: 0) }]
+        Present { value: e } =>
+          match s.assertion {
+            Absent => [first, CostRow { identity: "app_attest_verify_assertion", held: false, nanos: nanosecond(count: 0) }]
+            Present { value: object } => {
+              let a0 = observed_monotonic_nanos("verify-assertion-start")
+              let a = verify_assertion(object: object, e: e)
+              let a1 = observed_monotonic_nanos("verify-assertion-end")
+              [first, CostRow { identity: "app_attest_verify_assertion", held: owed_assertion_holds(owed: s.owed_assertion, v: a), nanos: nanosecond(count: a1 - a0) }]
+            }
+          }
+      }
+  }
+}
+
+// ── the pieces inside one Montgomery multiplication, 1000 calls each on 11 limbs (P-256's field
+// width): a copied accumulator or a quadratic list op shows as one piece costing more than its
+// share of montgomery_step. `held` is the piece's arithmetic answer (its limb count).
+fn limb_run(w: Int) -> List<Int> {
+  fold(octet_run(n: w, acc: []), init: [], f: (acc, o) => acc |> list_push(16777000 - o))
+}
+
+fn piece_row(identity: String, held: Bool, t0: Int, t1: Int) -> CostRow {
+  CostRow { identity: identity, held: held, nanos: nanosecond(count: t1 - t0) }
+}
+
+fn add_scaled_row() -> CostRow {
+  let t = limb_run(w: 11)
+  let x = limb_run(w: 11)
+  let t0 = observed_monotonic_nanos("add-scaled-start")
+  let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(bignat_add_scaled(t: t, x: x, k: 16777000, carry: 0, acc: [])))
+  let t1 = observed_monotonic_nanos("add-scaled-end")
+  piece_row(identity: "bignat_add_scaled_x1000", held: n >= 11000, t0: t0, t1: t1)
+}
+
+fn pad_row() -> CostRow {
+  let t = limb_run(w: 11)
+  let t0 = observed_monotonic_nanos("pad-start")
+  let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(bignat_pad(limbs: t, width: 12)))
+  let t1 = observed_monotonic_nanos("pad-end")
+  piece_row(identity: "bignat_pad_x1000", held: n == 12000, t0: t0, t1: t1)
+}
+
+fn drop_lowest_row() -> CostRow {
+  let t = limb_run(w: 12)
+  let t0 = observed_monotonic_nanos("drop-start")
+  let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(bignat_drop_lowest(limbs: t)))
+  let t1 = observed_monotonic_nanos("drop-end")
+  piece_row(identity: "bignat_drop_lowest_x1000", held: n == 11000, t0: t0, t1: t1)
+}
+
+fn montgomery_step_row() -> CostRow {
+  let t = limb_run(w: 12)
+  let b = limb_run(w: 11)
+  let t0 = observed_monotonic_nanos("step-start")
+  let n = fold(octet_run(n: 1000, acc: []), init: 0, f: (acc, _) => acc + count(montgomery_step(ctx: p256_curve.field, t: t, ai: 12345, b: b)))
+  let t1 = observed_monotonic_nanos("step-end")
+  piece_row(identity: "montgomery_step_x1000", held: n == 12000, t0: t0, t1: t1)
+}
+
+fn native_crypto_cost_rows() -> List<CostRow> {
+  concat(
+    [sha256_row(n: 4096), sha256_row(n: 16384), sha256_row(n: 65536), fmul_row(), add_scaled_row(), pad_row(), drop_lowest_row(), montgomery_step_row(), point_double_row(), point_add_row(), scalar_row(), verify_signature_row()],
+    attestation_rows(s: ios_14_4_sample())
+  )
+}
+
+data native_crypto_cost_expected_identities: List<String> = [
+  "sha256_over_4096_octets",
+  "sha256_over_16384_octets",
+  "sha256_over_65536_octets",
+  "p256_field_multiplication_x200",
+  "bignat_add_scaled_x1000",
+  "bignat_pad_x1000",
+  "bignat_drop_lowest_x1000",
+  "montgomery_step_x1000",
+  "p256_point_doubling_x50",
+  "p256_point_addition_x50",
+  "p256_double_scalar_multiplication",
+  "signature_verify_p256",
+  "app_attest_verify_attestation",
+  "app_attest_verify_assertion"
+]

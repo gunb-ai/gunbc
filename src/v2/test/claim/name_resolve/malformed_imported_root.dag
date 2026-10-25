@@ -7,20 +7,22 @@ import v2.compiler.name_resolve {
   AdmissionState,
   Import,
   ImportVisible,
-  admit_import_entry
+  ValidatedModuleRoots,
+  admit_import_entry,
+  validate_module_roots
 }
-import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.std.declaration_marker { test_code_index_empty, test_marker_channel_empty }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.std.cross_tree.resolution { source_root_index_empty }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_named_edge,
   dag_surface_edge,
 }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.collection { empty_map }
-import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, fold_list_node }
+import std.algebra { Cons, Empty, FreeMonoid, empty_map, map_insert }
+
+import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, fold_list_node, NotADeclaration }
 import v2.std.qualified_name { QualifiedName }
 
 fn malformed_qn_node() -> Node {
@@ -50,7 +52,8 @@ fn malformed_root_node() -> Node {
           kind: TypeNode { connective: Atom { identity: ^malformed_child_sym } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -82,19 +85,42 @@ fn admit_result_is_rejected(state: AdmissionState) -> Bool {
   }
 }
 
+// A malformed root is refused where production meets it first: validate_module_roots refuses the whole
+// context before any import is admitted, with the same reason the admission guard gives.
 test fn witness_malformed_root_is_rejected_holds() -> Bool {
   match roots_with_malformed_entry() {
     Rejected { diagnostics: _ } => false
     Accepted { value: roots, diagnostics: _ } =>
-  admit_result_is_rejected(
-    state: admit_import_entry(
-      roots: roots,
-      import_edge: import_edge_for_malformed(),
-      state: initial_admission_state(),
-      subject_qn: malformed_entry_name(),
-      index: source_root_index_empty(),
-      active_roots: Empty
-    )
-  )
+      match validate_module_roots(roots: roots) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_malformed_imported_root
+      }
+  }
+}
+
+// The admission guard behind it: handed a validated set that maps the name to a malformed root
+// (supplied at this interface; validation never produces one), the import still refuses.
+test fn witness_admission_guard_refuses_a_malformed_import_root_holds() -> Bool {
+  match roots_with_malformed_entry() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match roots {
+        Empty => false
+        Cons { head: root, tail: _ } =>
+          admit_result_is_rejected(
+            state: admit_import_entry(
+              roots: ValidatedModuleRoots {
+                roots: roots,
+                by_name: map_insert(m: empty_map(), key: malformed_entry_name(), value: root),
+                test_code: test_code_index_empty()
+              },
+              import_edge: import_edge_for_malformed(),
+              state: initial_admission_state(),
+              subject_qn: malformed_entry_name(),
+              index: source_root_index_empty(),
+              active_roots: Empty
+            )
+          )
+      }
   }
 }

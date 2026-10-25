@@ -63,16 +63,17 @@ import gunbc.runner.runner_jit_perform {
 import extdeps.uri { Uri, uri_https }
 import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.host.managed_host { ManagedHost, managed_hosts, managed_host_binding, ManagedHostAccessUnobserved }
+import gunbc.host.managed_host { ManagedHost, managed_hosts }
+import gunbc.host.bmc_control_binding { BmcControlAccessUnobserved }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.github.actions_runner { ActionsRunnerLinuxArm64 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_labels, ephemeral_slot_command }
-import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, readback_subject_refusal, DeregistrationReadbackForAnotherSubject }
+import gunbc.runner.runner_jit_deregistration { JitRegistration, JitDeregistrationSubject, AuthorizedDispatchRegistration, jit_registration_of, readback_subject_refusal, DeregistrationReadbackForAnotherSubject }
 import gunbc.host.host_control_route { bmc_controlled_host, BmcRouteNotBound }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotHostNotControlled, host_unit_slot_for, host_unit_slot_listener_argv,
+  HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotHostNotControlled, host_unit_slot_for, AttemptSlot, host_unit_slot_listener_argv, host_unit_slot_root,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -1362,7 +1363,7 @@ fn group_restricted_to(workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
 }
 
 fn host_unit_slot(h: ManagedHost) -> HostUnitSlotStanding {
-  host_unit_slot_for(host: bmc_controlled_host(standing: managed_host_binding(host: h)), attempt: "q-1", workflow: qualification_workflow)
+  host_unit_slot_for(host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)), purpose: AttemptSlot { attempt: "q-1" }, workflow: qualification_workflow)
 }
 
 fn host_unit_planned(standing: HostUnitSlotStanding, perms: List<GitHubAppPermission>, group: MicrovmRunnerGroupStanding) -> JitMintPlan {
@@ -1390,7 +1391,7 @@ test fn witness_jit_mint_authorizes_a_managed_host_unit_slot_under_the_routes_ow
           && runner_label_sets_equal(a: map(req.labels, l => l.value as String), b: ephemeral_slot_labels(host: h.host, attempt: "q-1"))
           && match host_unit_slot(h: h) {
             HostUnitSlotBound { slot: u } =>
-              match ephemeral_slot_command(unit: u.unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()) {
+              match ephemeral_slot_command(unit: u.unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv(root: host_unit_slot_root(unit: u.unit))) {
                 SystemdRunCommandReady { command: c } => u.argv == c
                 SystemdRunCommandRefused { cause: _ } => false
               }
@@ -1429,13 +1430,13 @@ test fn witness_jit_mint_refuses_a_group_restricted_to_another_workflow() -> Boo
 // RED: A HOST THE MANAGED-HOST SEAM DOES NOT BIND HAS NO SLOT, and the refusal carries the seam's own
 // standing rather than a re-coined cause -- even with a fully sufficient credential.
 test fn witness_jit_mint_refuses_a_host_the_managed_host_seam_does_not_bind() -> Bool {
-  let unbound = ManagedHostAccessUnobserved { endpoint: BmcControllerEndpoint { host: "fixture-bmc" } }
+  let unbound = BmcControlAccessUnobserved { endpoint: BmcControllerEndpoint { host: "fixture-bmc" } }
   match host_unit_planned(
-    standing: host_unit_slot_for(host: bmc_controlled_host(standing: unbound), attempt: "q-1", workflow: qualification_workflow),
+    standing: host_unit_slot_for(host: bmc_controlled_host(host: operator_host_srv2, standing: unbound), purpose: AttemptSlot { attempt: "q-1" }, workflow: qualification_workflow),
     perms: runner_grant,
     group: group_restricted_to(workflow: qualification_workflow),
   ) {
-    JitMintRefusedSubject { refusal: SubjectHostUnitSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: BmcRouteNotBound { standing: ManagedHostAccessUnobserved { endpoint: e } } } } } =>
+    JitMintRefusedSubject { refusal: SubjectHostUnitSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: BmcRouteNotBound { standing: BmcControlAccessUnobserved { endpoint: e } } } } } =>
       (e.host as String) == "fixture-bmc"
     _ => false
   }
@@ -1473,7 +1474,7 @@ test fn witness_a_deregistration_subject_exists_only_for_an_authorized_dispatch(
 // `other-name` -- or one taken in another organization or with another installation's token -- must
 // refuse before its answer is read, and the registration's own subject must pass.
 fn readback_for_another_subject_refuses(reg: JitRegistration, org: NonEmptyStr, name: NonEmptyStr, app: DeclaredGitHubApp, i: GitHubAppInstallationId) -> Bool {
-  match readback_subject_refusal(registration: reg, organization: org, name: name, app: app, installation: i) {
+  match readback_subject_refusal(subject: AuthorizedDispatchRegistration { registration: reg }, organization: org, name: name, app: app, installation: i) {
     Present { value: DeregistrationReadbackForAnotherSubject { organization: _, name: _, app: _, installation: _ } } => true
     _ => false
   }
@@ -1483,7 +1484,7 @@ test fn witness_a_readback_for_another_subject_is_refused() -> Bool {
   match jit_registration_of(dispatch: dispatched(owned: true, perms: runner_grant)) {
     Absent => false
     Present { value: reg } =>
-      (match readback_subject_refusal(registration: reg, organization: reg.organization.login, name: reg.name.value, app: reg.app, installation: reg.installation) {
+      (match readback_subject_refusal(subject: AuthorizedDispatchRegistration { registration: reg }, organization: reg.organization.login, name: reg.name.value, app: reg.app, installation: reg.installation) {
         Absent => true
         Present { value: _ } => false
       })

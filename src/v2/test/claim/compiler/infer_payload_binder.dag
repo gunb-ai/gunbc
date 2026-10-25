@@ -4,7 +4,7 @@ import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer, fmi_reason
 import v2.std.node { Symbol }
 import v2.std.text { String }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, None, diagnostics_has_reason }
-import v2.std.collection { List }
+import std.types { List }
 import std.algebra { Cons, Empty, contains, list_map }
 
 // SUBJECT: a match arm's payload binder takes the field type the SCRUTINEE'S arguments instantiate
@@ -17,15 +17,15 @@ import std.algebra { Cons, Empty, contains, list_map }
 // gunbc.recurring_failure_mode payload_binder_is_owed_its_field_type_not_refused_at_resolve.
 
 
-data ipb_grounds: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> Int {\n  match xs {\n    Cons { head: h, tail: t } => h\n    Empty => 0\n  }\n}\n"
-data ipb_head_is_bool: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Bool>) -> Int {\n  match xs {\n    Cons { head: h, tail: t } => h\n    Empty => 0\n  }\n}\n"
-data ipb_tail_is_list: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> List<Int> {\n  match xs {\n    Cons { head: h, tail: t } => t\n    Empty => xs\n  }\n}\n"
-data ipb_tail_as_int: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> Int {\n  match xs {\n    Cons { head: h, tail: t } => t\n    Empty => 0\n  }\n}\n"
+data ipb_grounds: String = "module p\n\nimport std.types { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> Int {\n  match xs {\n    Cons { head: h, tail: t } => h\n    Empty => 0\n  }\n}\n"
+data ipb_head_is_bool: String = "module p\n\nimport std.types { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Bool>) -> Int {\n  match xs {\n    Cons { head: h, tail: t } => h\n    Empty => 0\n  }\n}\n"
+data ipb_tail_is_list: String = "module p\n\nimport std.types { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> List<Int> {\n  match xs {\n    Cons { head: h, tail: t } => t\n    Empty => xs\n  }\n}\n"
+data ipb_tail_as_int: String = "module p\n\nimport std.types { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> Int {\n  match xs {\n    Cons { head: h, tail: t } => t\n    Empty => 0\n  }\n}\n"
 data ipb_sibling_own: String = "module p\n\ntype Box<Q> = Pk { v: Q }\n\ntype Res<T> = Ok { value: T } | Er\n\nfn f(b: Box<Bool>, r: Res<Int>) -> Int {\n  match r {\n    Ok { value: n } => n\n    Er => 0\n  }\n}\n"
 data ipb_sibling_leak: String = "module p\n\ntype Box<Q> = Pk { v: Q }\n\ntype Res<T> = Ok { value: T } | Er\n\nfn f(b: Box<Bool>, r: Res<Int>) -> Bool {\n  match r {\n    Ok { value: n } => n\n    Er => false\n  }\n}\n"
 data ipb_param_scope_leak: String = "module p\n\ntype Box<Q> = Pk { v: Q }\n\nfn f(x: Int) -> Q {\n  x\n}\n"
-data ipb_signature_instantiation: String = "module p\n\nimport v2.std.collection { List }\n\nfn f(xs: List<Bool>) -> Int {\n  0\n}\n"
-data ipb_empty_fold: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> List<Int> {\n  fold(xs, init: Empty, f: fn(acc, x) { Cons { head: x, tail: acc } })\n}\n"
+data ipb_signature_instantiation: String = "module p\n\nimport std.types { List }\n\nfn f(xs: List<Bool>) -> Int {\n  0\n}\n"
+data ipb_empty_fold: String = "module p\n\nimport std.types { List }\nimport std.algebra { Cons, Empty }\n\nfn f(xs: List<Int>) -> List<Int> {\n  fold(xs, init: Empty, f: fn(acc, x) { Cons { head: x, tail: acc } })\n}\n"
 data ipb_untyped_lambda: String = "module p\n\nfn f(a: Int) -> Int {\n  let g = fn(x) { x }\n  g(a)\n}\n"
 
 fn ipb_reasons(o: Outcome<Bool>) -> List<Symbol> {

@@ -4,6 +4,10 @@
 use self::AnnotationLineShape::*;
 use self::AnnotationPlacement::*;
 use self::AnnotationScope::*;
+pub use crate::std_algebra::{
+    collection_concat_shape, empty_map, int_total_order, length, list_at_optional, list_push,
+    list_snoc_item, list_sort_by_key, map_insert, map_lookup, map_support_keys,
+};
 pub use crate::std_coercion::unicode_scalar_unfold;
 pub use crate::std_occurrence_identity::OccurrenceId;
 pub use crate::std_optional::Optional;
@@ -111,10 +115,7 @@ pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>
 }
 
 pub fn advance_line_prefix_indent_only_text(previous: bool, lexeme: String) -> bool {
-    advance_line_prefix_indent_only(
-        previous.clone(),
-        crate::std_coercion::unicode_scalar_unfold(lexeme.clone()),
-    )
+    advance_line_prefix_indent_only(previous, crate::std_coercion::unicode_scalar_unfold(lexeme))
 }
 
 pub fn placement_from_line_prefix(indent_only: bool) -> AnnotationPlacement {
@@ -201,20 +202,25 @@ pub struct AnnotationRegionIndex {
     pub children: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
 }
 
+pub fn region_extent_start(r: Rc<AnnotationRegion>) -> i64 {
+    r.extent.start.clone()
+}
+
 pub fn annotation_region_index(
     regions: Rc<Vec<Rc<AnnotationRegion>>>,
 ) -> Rc<AnnotationRegionIndex> {
     {
+        let grouped_seed = v1_rt::rc_empty_map::<_, _>();
         let grouped = regions.iter().cloned().fold(
-            v1_rt::rc_empty_map::<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>(),
+            grouped_seed.clone(),
             |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
              region: Rc<AnnotationRegion>| {
                 let key = region.parent.clone();
-                match v1_rt::map_get(&acc, key.clone()) {
+                match v1_rt::lookup(&acc, key.clone()) {
                     Some(siblings) => v1_rt::rc_map_insert(
                         acc.clone(),
                         key.clone(),
-                        v1_rt::rc_list_push(siblings.clone(), region.clone()),
+                        crate::std_algebra::list_snoc_item(siblings.clone(), region.clone()),
                     ),
                     std::option::Option::None => v1_rt::rc_map_insert(
                         acc.clone(),
@@ -224,38 +230,30 @@ pub fn annotation_region_index(
                 }
             },
         );
+        let children_seed = v1_rt::rc_empty_map::<_, _>();
         Rc::new(AnnotationRegionIndex {
-            children: Rc::new(v1_rt::map_keys(&grouped)).iter().cloned().fold(
-                v1_rt::rc_empty_map::<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>(),
-                |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
-                 key: Rc<AnnotationScope>| match v1_rt::map_get(
-                    &grouped,
-                    key.clone(),
-                ) {
-                    Some(siblings) => v1_rt::rc_map_insert(
-                        acc.clone(),
+            children: crate::std_algebra::map_support_keys(grouped.clone())
+                .iter()
+                .cloned()
+                .fold(
+                    children_seed.clone(),
+                    |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
+                     key: Rc<AnnotationScope>| match v1_rt::lookup(
+                        &grouped,
                         key.clone(),
-                        Rc::new({
-                            let mut __sorted: Vec<_> = siblings.iter().cloned().collect();
-                            __sorted.sort_by(
-                                |a: &Rc<AnnotationRegion>, b: &Rc<AnnotationRegion>| {
-                                    let __ka =
-                                        (|r: Rc<AnnotationRegion>| r.extent.clone().start.clone())(
-                                            a.clone(),
-                                        );
-                                    let __kb =
-                                        (|r: Rc<AnnotationRegion>| r.extent.clone().start.clone())(
-                                            b.clone(),
-                                        );
-                                    v1_rt::canonical_key_cmp(&__ka, &__kb)
-                                },
-                            );
-                            __sorted
-                        }),
-                    ),
-                    std::option::Option::None => acc.clone(),
-                },
-            ),
+                    ) {
+                        Some(siblings) => v1_rt::rc_map_insert(
+                            acc.clone(),
+                            key.clone(),
+                            crate::std_algebra::list_sort_by_key(
+                                siblings.clone(),
+                                region_extent_start,
+                                crate::std_algebra::int_total_order(),
+                            ),
+                        ),
+                        std::option::Option::None => acc.clone(),
+                    },
+                ),
         })
     }
 }
@@ -264,7 +262,7 @@ pub fn annotation_children(
     index: Rc<AnnotationRegionIndex>,
     scope: Rc<AnnotationScope>,
 ) -> Rc<Vec<Rc<AnnotationRegion>>> {
-    match v1_rt::map_get(&index.children.clone(), scope.clone()) {
+    match v1_rt::lookup(&index.children.clone(), scope) {
         Some(siblings) => siblings.clone(),
         std::option::Option::None => Rc::new(vec![]),
     }
@@ -289,9 +287,10 @@ pub fn siblings_starting_at_or_before(
             break lo.clone();
         } else {
             let mid = v1_rt::int_div(v1_rt::int_add(lo.clone(), hi.clone()), 2);
-            match siblings.clone().get((mid.clone()) as usize).cloned() {
+            let item = v1_rt::list_get_optional(&siblings, mid.clone());
+            match item.clone() {
                 Some(r) => {
-                    if (r.extent.clone().start.clone() <= at.clone()) {
+                    if (r.extent.start.clone() <= at.clone()) {
                         {
                             let __tco_0 = siblings;
                             let __tco_1 = at;
@@ -325,6 +324,16 @@ pub fn siblings_starting_at_or_before(
     }
 }
 
+pub fn region_when(
+    keep: bool,
+    region: Option<Rc<AnnotationRegion>>,
+) -> Option<Rc<AnnotationRegion>> {
+    match keep.clone() {
+        true => region,
+        false => std::option::Option::None,
+    }
+}
+
 pub fn region_scope(region: Option<Rc<AnnotationRegion>>) -> Option<Rc<AnnotationScope>> {
     match region.clone() {
         Some(r) => Some(r.scope.clone()),
@@ -352,26 +361,18 @@ pub fn annotation_gap_in(
             siblings.clone(),
             origin.start.clone(),
             0,
-            (siblings.clone().len() as i64),
+            crate::std_algebra::length(siblings.clone()),
         );
         let candidate = if (n.clone() == 0) {
             std::option::Option::None
         } else {
-            siblings
-                .clone()
-                .get((v1_rt::int_sub(n.clone(), 1)) as usize)
-                .cloned()
+            v1_rt::list_get_optional(&siblings, v1_rt::int_sub(n.clone(), 1))
         };
-        let containing = match candidate.clone() {
-            Some(c) => {
-                if (region_contains(c.extent.clone(), origin.clone()) && (depth.clone() > 0)) {
-                    Some(c.clone())
-                } else {
-                    std::option::Option::None
-                }
-            }
-            std::option::Option::None => std::option::Option::None,
+        let inside = match candidate.clone() {
+            Some(c) => (region_contains(c.extent.clone(), origin.clone()) && (depth.clone() > 0)),
+            std::option::Option::None => false,
         };
+        let containing = region_when(inside, candidate.clone());
         match containing.clone() {
             Some(inner) => {
                 let __tco_0 = index;
@@ -388,7 +389,7 @@ pub fn annotation_gap_in(
                 break Rc::new(AnnotationGap {
                     scope: scope.clone(),
                     before: region_scope(candidate.clone()),
-                    after: region_scope(siblings.clone().get((n.clone()) as usize).cloned()),
+                    after: region_scope(v1_rt::list_get_optional(&siblings, n.clone())),
                 });
             }
         }
@@ -400,12 +401,7 @@ pub fn annotation_gap_of(
     origin: Rc<SourceSpan>,
     depth: i64,
 ) -> Rc<AnnotationGap> {
-    annotation_gap_in(
-        index.clone(),
-        Rc::new(AnnotationScope::FileScope),
-        origin.clone(),
-        depth.clone(),
-    )
+    annotation_gap_in(index, Rc::new(AnnotationScope::FileScope), origin, depth)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -429,7 +425,7 @@ pub fn annotation_attach_step(
     depth: i64,
 ) -> Rc<AnnotationAttachAcc> {
     {
-        let gap = annotation_gap_of(index.clone(), capture.origin.clone(), depth.clone());
+        let gap = annotation_gap_of(index, capture.origin.clone(), depth);
         let continues = ((capture.preceded_by_annotation_line.clone()
             && !capture.preceded_by_blank_line.clone())
             && acc.pending_adjacent.clone());
@@ -445,9 +441,9 @@ pub fn annotation_attach_step(
                                 v1_rt::concat("\n".to_string(), capture.text.clone()),
                             ),
                             origin: Rc::new(SourceSpan {
-                                file: open.origin.clone().file.clone(),
-                                start: open.origin.clone().start.clone(),
-                                end: capture.origin.clone().end.clone(),
+                                file: open.origin.file.clone(),
+                                start: open.origin.start.clone(),
+                                end: capture.origin.end.clone(),
                             }),
                             placement: open.placement.clone(),
                         })),
@@ -486,7 +482,7 @@ pub fn attach_annotations(
 ) -> Rc<SourceAnnotationGraph> {
     {
         let index = annotation_region_index(regions.clone());
-        let depth = v1_rt::int_add((regions.clone().len() as i64), 1);
+        let depth = v1_rt::int_add(crate::std_algebra::length(regions.clone()), 1);
         let acc = captures.iter().cloned().fold(
             Rc::new(AnnotationAttachAcc {
                 rows: Rc::new(vec![]),
@@ -549,7 +545,7 @@ pub fn keyed_annotation_rows_agree(
                 }),
             },
         );
-        (walk.agreed.clone() && ((walk.rest.clone().len() as i64) == 0))
+        (walk.agreed.clone() && (crate::std_algebra::length(walk.rest.clone()) == 0))
     }
 }
 

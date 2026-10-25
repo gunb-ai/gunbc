@@ -1,6 +1,8 @@
 module test.claim.serving.rented_host_access_witness
 
-import std.types { String, Bool, NonEmptyStr }
+import std.types { String, Bool, NonEmptyStr, Int, Port }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
 import product.host_identity { HostIdentity }
 import extdeps.ssh.keys { SshPublicKey, Ed25519 }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, IndependentlyAnchored }
@@ -8,30 +10,42 @@ import gunbc.serving.rented_host_access {
   RentedHostAccessDeclaration, RentedHostAccess, RentedHostAccessReady, RentedHostAccessRefused, rented_host_access,
 }
 
-data w_row: KnownHostKeyRow = KnownHostKeyRow {
+fn w_address(octet4: Int, port: Port) -> SocketAddress {
+  socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 203, octet2: 0, octet3: 113, octet4: octet4)), port: port)
+}
+
+fn w_row_at(address: SocketAddress) -> KnownHostKeyRow {
+  KnownHostKeyRow {
   host: "rental-1" as HostIdentity,
-  endpoint: "203.0.113.7",
+  address: address,
   key_type: "ssh-ed25519",
   public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFixtureFixtureFixtureFixtureFixtureFixture",
   sha256_fingerprint: "SHA256:fixture",
   provenance: IndependentlyAnchored { authority: "synthetic fixture standing for the provider console fingerprint" as NonEmptyStr },
+  }
 }
 
-fn w_declaration(endpoint: String) -> RentedHostAccessDeclaration {
+data w_row: KnownHostKeyRow = w_row_at(address: w_address(octet4: 7, port: 22))
+
+fn w_declaration_with(address: SocketAddress, row: KnownHostKeyRow) -> RentedHostAccessDeclaration {
   RentedHostAccessDeclaration {
     node: "rental-1" as NonEmptyStr,
-    endpoint: endpoint as NonEmptyStr,
+    address: address,
     principal: "root" as NonEmptyStr,
-    host_key: w_row,
+    host_key: row,
     operator_key: SshPublicKey { algorithm: Ed25519, material: "AAAAC3NzaC1lZDI1NTE5AAAAIOperatorOperatorOperatorOperatorOperatorOp" as NonEmptyStr, comment: "operator-rental" },
     operator_key_fingerprint: "SHA256:operator" as NonEmptyStr,
   }
 }
 
+fn w_declaration(octet4: Int) -> RentedHostAccessDeclaration {
+  w_declaration_with(address: w_address(octet4: octet4, port: 22), row: w_row)
+}
+
 // A HOST KEY ROW FOR ANOTHER ENDPOINT MUST NOT ANCHOR THIS NODE: the row is the whole trust anchor of a
 // rental, so accepting a mismatch would pin the declared address to a key observed elsewhere.
 test fn a_host_key_row_for_another_endpoint_is_refused_and_names_both() -> Bool {
-  match rented_host_access(declaration: w_declaration(endpoint: "203.0.113.8"), attempt_raw: "w-attempt") {
+  match rented_host_access(declaration: w_declaration(octet4: 8), attempt_raw: "w-attempt") {
     RentedHostAccessRefused { node: _, cause: c } =>
       string_contains(c, "203.0.113.7") && string_contains(c, "203.0.113.8")
     RentedHostAccessReady { node: _, transport: _, receipt: _ } => false
@@ -39,8 +53,34 @@ test fn a_host_key_row_for_another_endpoint_is_refused_and_names_both() -> Bool 
 }
 
 test fn an_unsafe_attempt_identity_refuses_before_any_leg() -> Bool {
-  match rented_host_access(declaration: w_declaration(endpoint: "203.0.113.7"), attempt_raw: "../escape") {
+  match rented_host_access(declaration: w_declaration(octet4: 7), attempt_raw: "../escape") {
     RentedHostAccessRefused { node: _, cause: c } => string_contains(c, "attempt identity")
+    RentedHostAccessReady { node: _, transport: _, receipt: _ } => false
+  }
+}
+
+// THE PORT IS PART OF WHOSE KEY A ROW PINS. A row scanned at port 22 does not anchor the same host's
+// sshd on 11055, which is a different daemon behind a provider's port mapping; the refusal names both
+// host fields in the form ssh looks them up by.
+test fn a_port_22_row_does_not_anchor_the_same_host_on_another_port() -> Bool {
+  match rented_host_access(declaration: w_declaration_with(address: w_address(octet4: 7, port: 11055), row: w_row), attempt_raw: "w-attempt") {
+    RentedHostAccessRefused { node: _, cause: c } =>
+      string_contains(c, "`203.0.113.7`") && string_contains(c, "`[203.0.113.7]:11055`")
+    RentedHostAccessReady { node: _, transport: _, receipt: _ } => false
+  }
+}
+
+// A ROW AND A DECLARATION THAT AGREE ON A NON-STANDARD PORT PASS THE ANCHOR CHECK. The attempt
+// identity is unsafe on purpose, so the next step refuses on that identity before any effect leg
+// runs. Reaching that refusal at all means neither the host-field mismatch nor the interim
+// port-22-only refusal S2(b1) carried and S2(b2) dissolved fired; this claim was that refusal's RED
+// and stays enrolled as its regression control. The port travels with the target to the shaper
+// (test.claim.fleet.fleet_ssh_target_address_witness).
+test fn a_rental_on_another_port_is_not_refused_as_a_mismatch() -> Bool {
+  let at = w_address(octet4: 7, port: 11055)
+  match rented_host_access(declaration: w_declaration_with(address: at, row: w_row_at(address: at)), attempt_raw: "../escape") {
+    RentedHostAccessRefused { node: _, cause: c } =>
+      string_contains(c, "attempt identity") && !string_contains(c, "would anchor a different host") && !string_contains(c, "cannot carry a port")
     RentedHostAccessReady { node: _, transport: _, receipt: _ } => false
   }
 }

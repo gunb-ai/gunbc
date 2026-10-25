@@ -8,6 +8,7 @@ use self::UrlPathToken::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::std_algebra::{collection_concat_shape, collection_count_shape};
 pub use crate::std_optional::Optional;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -371,10 +372,7 @@ pub fn match_path_template(template: Rc<PathTemplate>, path: String) -> Rc<PathT
             Some(p) => p.clone(),
             std::option::Option::None => path.clone(),
         };
-        match_path_tokens(
-            template.tokens.clone(),
-            match_path_segments(path_only.clone()),
-        )
+        match_path_tokens(template.tokens.clone(), match_path_segments(path_only))
     }
 }
 
@@ -556,7 +554,7 @@ pub fn parse_query_template(raw: String) -> Rc<PathTemplateParseResult> {
 pub fn uri_query_param(path: String, key: String) -> String {
     {
         let pairs = Rc::new(
-            uri_query_string(path.clone())
+            uri_query_string(path)
                 .split(&"&".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),

@@ -39,7 +39,7 @@ import v2.std.orchestration {
   PipelineStep,
   Run
 }
-import v2.std.collection { Absent }
+import std.optional { Absent }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
 
 data bmc_token_smoke_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ bmc token-smoke run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell\n"

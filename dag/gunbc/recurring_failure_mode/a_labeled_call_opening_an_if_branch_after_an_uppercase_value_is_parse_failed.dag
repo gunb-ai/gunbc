@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_labeled_call_opening_an_if_branch_after_an_uppercase_value_is_parse_failed
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data a_labeled_call_opening_an_if_branch_after_an_uppercase_value_is_parse_failed: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_labeled_call_opening_an_if_branch_after_an_uppercase_value_is_parse_failed" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "**an `if` whose condition ends in an UPPERCASE value is accepted, but the SAME `if` is parse-FAILED when its then-branch OPENS with a labelled call** -- the refusal is `expected RParen, found Colon` at the call's first label, not at the `if` (INVALID STATE: `if brand_verdict == BrandNominalDistinctDeclarations { record_lit_union_name_is_not_an_arm(decl: d, type_name: n) }` reports parse-failed at the `decl:`, while the byte-identical construct with a lowercase-final condition, `if recv_is_set && !elem_mismatch && !union_other_bad { set_kernel_ty_from_element(element: element).miss_diags }`, parses. The position and the reported token both point at the wrong construct: the failure is caused 40 characters earlier, at the closing identifier of the condition).",
+
+    "THE MECHANISM THE ERROR EXPOSES, WHICH NO DIAGNOSTIC SAYS: an uppercase-initial identifier is a record-construction name, and a `{` after one opens a record literal. After `if x == Disj` the parser is holding `Disj` and reads `{` as the start of `Disj { ... }`, so it demands `)` -- the call parenthesis opened before the condition -- and reports the first `label:` inside the branch as `found Colon` where an `RParen` belonged. A record construction and a block, both introduced by `{` after a name, are told apart only by what the name's first character is; the condition swallowed the branch's opening brace. The reported span (the colon, 40+ columns into the line) names neither the `if`, nor the condition, nor the construction ambiguity that produced it.",
+
+    "THE CLASS IS AT EXACTLY ZERO SITES, WHICH IS WHY IT WAS NEVER SEEN: across every file of the v1 seed authorities there is no `if` with a condition ending on an uppercase-initial identifier whose then-branch opens with a labelled call (measured at this head: zero across src/v1). The construct IS legal-looking, so an author adding one gets a refusal with no precedent and no hint; the shape it must be written as instead already carries precedent -- calls as match-arm values are 303 sites in `src/v1/04_infer.dag` alone (`=> f(label: ..)`), including nine matches on a `.connective` with a bare `Disj` arm, and lowercase-final conditions opening a then-branch with a labelled call exist in the same file (`if recv_is_set && !elem_mismatch && !union_other_bad { set_kernel_ty_from_element(element: element).miss_diags }`). `if x == Present { value: true } {` parses, because there the brace really is a construction the condition wanted.",
+
+    "HARM: THE WALL ITSELF, APPLIED TO THE AUTHOR OF THE WALL. This was met while ADDING the typecheck refusal that DESIGN section 4b demands (gunbc#14258, the record-literal-naming-a-union refusal, `gunbc.recurring_failure_mode.a_record_literal_naming_a_union_type_is_accepted_at_typecheck`): the refusal was written, passed every behavioural test, and then died in `heal-generated-artifacts` as `reference_closure: src/v1/04_infer.dag has no readable reference set (cause=parse-failed)` -- the reference closure of the whole module refused, on a construct the file had never carried. A refusal in the wrong construct is not a red test: it is an authority file that no longer parses, and the closure gate reports the file, not the construct.",
+
+    "CEILING: THIS ROW MEASURES THE SEED'S OWN PARSER OVER THE SEED AUTHORITIES (`v1.tokenize` + `v1.parse`, reached by `v1_src_dag_parse` and by heal's `reference_closure` reference_set_for_source). It does not claim the v2 frontend mis-lexes this; v2 is a different parser and is out of this row's scope.",
+
+    "THE WORKAROUND, WHICH IS THIS ROW'S DISCLOSE-AND-REPLACE CONTRACT: the refusal site is written as `match binding.resolved.connective { Disj => f(label: ..), _ => ... }` -- a construct with 303 precedents in the file -- instead of `if ... == Disj { f(label: ..) }`. This row is the line-stop signal (DESIGN section 5, 'noticing you are implementing a workaround IS the line-stop signal'): the replacement is to disambiguate at the point of the `{`, so a name after `==` inside an `if` condition is scanned as a value and the branch brace is a block, with a RED on the exact construct above and a positive control on the three constructs that already parse. No gate change is needed; `v1_src_dag_parse` is the driver that sees this class today.",
+  ],
+
+  evidence: [],
+}

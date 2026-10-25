@@ -33,7 +33,8 @@ import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
 import gunbc.roadmap.roadmap_result_returned { ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved }
 import gunbc.roadmap.roadmap_event_log { AttemptResultOutcome, ResultVerificationFailed, LegacyEmailPrincipal, RoadmapEventId }
 import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
-import std.durable_compare_and_set { cas_generation_first }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
@@ -43,8 +44,15 @@ import gunbc.compute.attempt_lifecycle { AttemptRecord, AttemptSlotReading, Atte
 import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementAbsent,
   SessionPlacementGrant, SessionPlacementObservation, SessionPlacementUnreadable,
-  session_unit, session_attempt_record, session_placement_record_of, session_placement_record_json,
+  session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json,
   session_placement_record_basename, session_placement_release_basename, session_placement_observation_of,
+}
+
+fn witness_cas_generation(n: Int) -> CasGeneration {
+  match cas_generation(n: n) {
+    Present { value: g } => g
+    Absent => cas_generation_first()
+  }
 }
 
 // The attempt's launch record is planted as the belt writes it (attempt_launch_record_json; a legacy
@@ -279,10 +287,16 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
   SessionPlacementGrant {
     node_id: node_id,
     attempt_key: attempt_key,
-    unit: session_unit(node_id: node_id, attempt_key: attempt_key),
+    unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+      Present { value: u } => u
+      Absent => "unnameable" as NonEmptyStr
+    },
     lease: LeaseGrant {
-      reference: session_unit(node_id: node_id, attempt_key: attempt_key),
-      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: 7 },
+      reference: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+        Present { value: u } => u
+        Absent => "unnameable" as NonEmptyStr
+      },
+      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: witness_cas_generation(n: 7) },
       granted_at: 1000,
       maximum_duration_seconds: 14400,
       expires_at: 15400,
@@ -297,7 +311,16 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
 }
 
 fn slot_a() -> AttemptRecord {
-  session_attempt_record(node_id: node_a, attempt_key: key_a, granted: kibibyte(count: 8388608), now: 1000)
+  session_attempt_record(
+    node_id: node_a,
+    attempt_key: key_a,
+    unit: match session_unit_wire(node_id: node_a, attempt_key: key_a) {
+      Present { value: u } => u
+      Absent => "unnameable" as NonEmptyStr
+    },
+    granted: kibibyte(count: 8388608),
+    now: 1000,
+  )
 }
 
 fn g5_record_bytes(node_id: String, attempt_key: String) -> String {
@@ -328,7 +351,10 @@ fn g5_held() -> AttemptSlotReading { AttemptSlotHeld { record: slot_a(), generat
 test fn a_bound_placement_observes_placement_workload_class_and_granted_resource_from_g5() -> Bool {
   let r = readings_with(node: node_a, attempt: key_a, o: g5_observe(slot: g5_held(), record_node: node_a, record_key: key_a))
   (match r.placement {
-    EvidenceObserved { value } => value.host == "srv2" && value.partition == "session-memory-srv2" && value.unit == (session_unit(node_id: node_a, attempt_key: key_a) as String)
+    EvidenceObserved { value } => value.host == "srv2" && value.partition == "session-memory-srv2" && value.unit == (match session_unit_wire(node_id: node_a, attempt_key: key_a) {
+      Present { value: u } => u as String
+      Absent => ""
+    })
     EvidenceRecordAbsent => false
     EvidenceRefused { reason: _ } => false
     EvidenceNotOwed { reason: _ } => false

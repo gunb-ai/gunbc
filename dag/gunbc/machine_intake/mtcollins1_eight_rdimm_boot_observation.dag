@@ -1,0 +1,35 @@
+module gunbc.machine_intake.mtcollins1_eight_rdimm_boot_observation
+
+import std.types { Bool, Int, NonEmptyStr }
+
+// MT. COLLINS UNIT 1, BOOT RUN 39010930690: THE FIRMWARE READ EIGHT RDIMMS, THE ATTEMPT RECEIPT SAYS FOUR.
+// Evidence: artifacts/bmc/mtcollins1-boot-run-39010930690/mtcollins1-boot-sol.capture (sha256
+// 10ec5eb02ed88559d448b3273efa1557b57e0de1ef3eb51866636d35b63bddc1). The merged attempt receipt
+// artifacts/receipts/mtcollins1-mf82-rdimm4-1.json (#14248, sha256
+// fef9275eaf441212f7245749f39e07d63da46137d6a4090fd48d131a1d1379d3) is left as merged; this module
+// is the observation beside it, not a rewrite of it.
+//
+// WHAT HAPPENED. The operator said they had taken out the NV-RDIMMs and put in four normal RDIMMs: the
+// four NV-RDIMMs were REPLACED, and the remaining modules stayed. The receipt was authored as a
+// four-module population in J1/J3/J9/J11. The firmware's DRAM table reads one RDIMM per channel on
+// socket 0, MC0..MC7: MC0, MC4, MC5, MC6 are SK Hynix HMA82GR7AFR4N-VK 16GB 1R x4 at 2666; MC1, MC2, MC3,
+// MC7 are Micron 36ASF2G72PZ-2G1A2 16GB 2R x4 at 2133. The operator also called the modules "all the
+// same rank"; they are 1R and 2R mixed, which this firmware ACCEPTED, training the set at 2133
+// ("DRAM: 128GB DDR4 2133 SYMBOL ECC"). The receipt's population is therefore wrong, and what the
+// firmware accepted is the eight-module mixed-rank set, not a four-module one.
+//
+// WHICH READING WINS. The firmware table is the reading; the receipt is the operator's attestation as
+// relayed. Nothing here claims which slot labels (J-numbers) the eight occupy: the DRAM table names
+// channels, not connectors.
+
+data mtcollins1_eight_rdimm_receipt_attested_module_count: Int = 4
+
+data mtcollins1_eight_rdimm_firmware_read_module_count: Int = 8
+
+data mtcollins1_eight_rdimm_one_rank_module_count: Int = 4
+
+data mtcollins1_eight_rdimm_two_rank_module_count: Int = 4
+
+data mtcollins1_eight_rdimm_trained_megatransfers: Int = 2133
+
+data mtcollins1_eight_rdimm_attestation_matches_firmware: Bool = mtcollins1_eight_rdimm_receipt_attested_module_count == mtcollins1_eight_rdimm_firmware_read_module_count

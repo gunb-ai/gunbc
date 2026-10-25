@@ -1,6 +1,7 @@
 module v2.test.claim.execution.long.pick_ingested_structural_lowering
 
-import std.types { List }
+
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.eval {
@@ -23,10 +24,7 @@ import v2.extdeps.languages.dag {
   dag_language_model,
   dag_node_is_int_literal_atom
 }
-import v2.std.collection {
-  Map,
-  list_at_optional
-}
+import std.algebra { list_at_optional }
 import std.optional {
   Absent,
   Optional,
@@ -63,6 +61,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.runtime { RuntimeValue }
@@ -334,7 +333,7 @@ fn pick_eval_pick_call(callee: Node) -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: callee }
+      Edge { label: Positional, target: callee, declaration: NotADeclaration }
     ]
   }
 }
@@ -344,8 +343,8 @@ fn pick_eval_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Authored { name: ^pick_eval_actual }, target: call },
-      Edge { label: Authored { name: ^pick_eval_expected }, target: expected }
+      Edge { label: Authored { name: ^pick_eval_actual }, target: call, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^pick_eval_expected }, target: expected, declaration: NotADeclaration }
     ]
   }
 }

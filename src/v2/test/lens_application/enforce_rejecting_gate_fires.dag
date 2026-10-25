@@ -3,10 +3,10 @@ module v2.test.lens_application.enforce_rejecting_gate_fires
 import std.decl_ref { decl_ref }
 import v2.compiler.compile {
   CompileLens,
-  CompileLensRoot,
-  CompileLensEnforce,
   apply_compile_lens,
-  compile_lens_gate_rejected_diagnostic
+  compile_lens_gate_rejected_diagnostic,
+  CompileLensRoot,
+  CompileLensEnforce
 }
 import v2.compiler.infer { InferredTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_rejected, invariant_port_locus }

@@ -1,0 +1,50 @@
+module test.claim.integer_signed_grounding_emit_witness
+
+import std.types { String, Bool }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ReadsLiveTree, as on every compile_dag_rust_emit_check surface: the virtual source is resolved
+// against build_module_path_index_from_witness_roots, which walks the live tree.
+
+// THE FOLD, SEEN IN THE BYTES IT EMITS (std.integer Int, operator ruling 2026-10-19). The fold
+// (v1.compiler.infer ground_kernel_views) preserves meaning -- a signed construct and the integer it
+// denotes are one value -- so only the emitted Rust can tell a folded construct from a constructor
+// value. The pair below is the discriminator: std.integer Int, which carries the signed
+// KernelGrounding row, emits the integer; a foreign declaration with the SAME constructors, fields and
+// payload type, and no row, emits its constructor. If the fold ever decided by shape or spelling
+// rather than by the row's declaration identity, the foreign arm would fold and go red.
+
+test fn grounded_int_construct_and_match_emit_integers() -> Bool {
+  compile_dag_rust_emit_check(
+    "module isg_grounded\n\nimport std.types { Bool }\nimport std.integer { NonNegative, Negative }\n\nfn minus_three() -> std.integer.Int {\n  Negative { pred: 2 }\n}\n\nfn is_negative(i: std.integer.Int) -> Bool {\n  match i {\n    NonNegative { n: _ } => false\n    Negative { pred: _ } => true\n  }\n}\n",
+    "src/isg_grounded.rs",
+    ["-3"],
+    ["Negative", "NonNegative"]
+  )
+}
+
+test fn same_shaped_foreign_type_stays_structural() -> Bool {
+  compile_dag_rust_emit_check(
+    "module isg_foreign\n\nimport std.types { Bool }\nimport std.nat { Nat }\n\ntype SignedLike = NonNegative { n: Nat } | Negative { pred: Nat }\n\nfn minus_three() -> SignedLike {\n  Negative { pred: 2 }\n}\n\nfn is_negative(i: SignedLike) -> Bool {\n  match i {\n    NonNegative { n: _ } => false\n    Negative { pred: _ } => true\n  }\n}\n",
+    "src/isg_foreign.rs",
+    ["Negative", "NonNegative"],
+    ["-3"]
+  )
+}
+
+// ROUTE, NOT EXECUTION. Arithmetic over the grounded carrier's payloads emits the overflow-refusing
+// helpers (extdeps.languages.rust.emit rust_refusing_int_operator_helper), never the wrapping infix
+// token. This reads emitted text and executes nothing: that group_completion_of_int(MIN) actually
+// refuses is a local execution receipt (PR #14490), because no enrolled witness can run a call and
+// observe its refusal -- the trigger gunbc.recurring_failure_mode
+// emitted_int_arithmetic_wraps_where_the_interpreter_refuses already names.
+test fn negative_payload_arithmetic_routes_through_refusing_helpers() -> Bool {
+  compile_dag_rust_emit_check(
+    "module isg_pair\n\nimport std.nat { Nat }\nimport std.integer { NonNegative, Negative }\n\nfn neg_component(i: std.integer.Int) -> Nat {\n  match i {\n    NonNegative { n: _ } => 0\n    Negative { pred: p } => p + 1\n  }\n}\n",
+    "src/isg_pair.rs",
+    ["v1_rt::int_add", "v1_rt::int_sub"],
+    ["Negative", "NonNegative"]
+  )
+}

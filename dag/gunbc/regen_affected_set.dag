@@ -67,8 +67,15 @@ type GeneratedAggregateProductOwner {
   source_module: String
   product: String
   generation_role: GeneratedAggregateProductGenerationRole
+  seed_membership: GeneratedAggregateProductSeedMembership
   reason: String
 }
+
+// Whether the product is compiled into the seed binary, declared on the row that owns the product.
+// The host reads it from the row alone; a product with no row has no answer and refuses.
+type GeneratedAggregateProductSeedMembership
+  = AggregateSeedEmbedded
+  | AggregateOutsideSeed
 
 type GeneratedAggregateProductGenerationRole
   = AggregateGenerationInput
@@ -110,30 +117,35 @@ data regen_generated_aggregate_product_owners: List<GeneratedAggregateProductOwn
     source_module: "v1.compiler.emit_rust",
     product: "gunbc_cli_dispatch_generated.rs",
     generation_role: AggregateGenerationSubject,
+    seed_membership: AggregateSeedEmbedded,
     reason: "emit_gunbc_cli_dispatch_generated synthesizes the modeled CLI grammar and dispatch carrier as Rust text rather than a same-named DAG module mirror; its bytes do not produce the next generation, while the independent seed-membership authority records that lib.rs compiles it into the seed"
   },
   GeneratedAggregateProductOwner {
     source_module: "v1.compiler.compiler_tests_rust",
     product: "compiler_tests.rs",
-    generation_role: AggregateNonSeedGeneratedOutput,
-    reason: "the compiler test module is emitted from compiler_tests_source rather than from a same-named DAG module, and the host shell declares it `#[cfg(test)] mod compiler_tests` in lib.rs, so it is not compiled into the seed binary. The host mints OutsideSeed only for NonSeedGeneratedOutput; any other role that is not seed-embedded is UnresolvedSeedMembership. The model also has a GenerationSubject+OutsideSeed to non-seed-publish arm, but this host never supplies that pair -- GenerationSubject here would refuse at UnresolvedSeedMembership. This row is AggregateNonSeedGeneratedOutput so the host mints OutsideSeed and the join assigns non-seed-publish."
+    generation_role: AggregateGenerationSubject,
+    seed_membership: AggregateOutsideSeed,
+    reason: "the compiler test module is emitted from compiler_tests_source rather than from a same-named DAG module, and the host shell declares it `#[cfg(test)] mod compiler_tests` in lib.rs, so it is not compiled into the seed binary: an emitted generation subject that is outside the seed"
   },
   GeneratedAggregateProductOwner {
     source_module: "v1.compiler.emit_rust",
     product: "emitted_population.rs",
     generation_role: AggregateNonSeedGeneratedOutput,
+    seed_membership: AggregateOutsideSeed,
     reason: "emit_emitted_population_manifest derives this aggregate from the complete emitted file list; the manifest is deliberately not a Rust module and therefore has no same-named DAG module identity"
   },
   GeneratedAggregateProductOwner {
     source_module: "v1.compiler.emit_rust",
     product: "lib.rs",
     generation_role: AggregateGenerationInput,
+    seed_membership: AggregateSeedEmbedded,
     reason: "emit_lib_rs_from_files derives the crate module surface from the emitted module population; lib.rs is an aggregate product rather than a same-named DAG module mirror"
   },
   GeneratedAggregateProductOwner {
     source_module: "v1.compiler.emit_rust",
     product: "main.rs",
     generation_role: AggregateNonSeedGeneratedOutput,
+    seed_membership: AggregateOutsideSeed,
     reason: "emit_main_rs derives the executable entry surface from the workflow population; main.rs is an aggregate product rather than a same-named DAG module mirror"
   }
 ]
@@ -238,6 +250,16 @@ fn regen_generated_product_generation_role_labels(product: String) -> List<Strin
       AggregateGenerationInput => "GenerationInput"
       AggregateGenerationSubject => "GenerationSubject"
       AggregateNonSeedGeneratedOutput => "NonSeedGeneratedOutput"
+    })
+}
+
+// Host-boundary projection of the declared membership, the one answer for an aggregate product.
+fn regen_generated_product_seed_membership_labels(product: String) -> List<String> {
+  regen_generated_aggregate_product_owners
+    |> filter(row => row.product == product)
+    |> map(row => match row.seed_membership {
+      AggregateSeedEmbedded => "SeedEmbedded"
+      AggregateOutsideSeed => "OutsideSeed"
     })
 }
 

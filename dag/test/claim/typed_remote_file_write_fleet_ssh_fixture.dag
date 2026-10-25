@@ -1,6 +1,6 @@
 module test.claim.typed_remote_file_write_fleet_ssh_fixture
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Bool, String }
 import std.content_hash { content_hash_of_value }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshAttemptIdentity,
@@ -14,6 +14,8 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   known_hosts_anchor_seal,
   fleet_openssh_trust_policy_seal,
   fleet_ssh_execution_context_seal,
+  FleetSshMultiplexDirectory,
+  fleet_ssh_multiplex_directory_seal,
 }
 import extdeps.ssh.keys { SshPublicKey, Ed25519 }
 import gunbc.fleet.fleet_ssh_credential_verify {
@@ -92,6 +94,32 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     decl_ref(module_path: "test.claim.typed_remote_file_converge_witness", decl_name: "the_converge_route_yields_a_receipt_naming_the_exact_write_and_target"),
     decl_ref(module_path: "test.claim.fleet.fleet_bootstrap_principal_session_witness", decl_name: "witness_leg_stdout"),
     decl_ref(module_path: "test.claim.fleet.fleet_bootstrap_principal_session_witness", decl_name: "a_missing_password_session_binary_refuses_before_the_transport"),
+    decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_key_argv"),
+    decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_password_argv"),
+    decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_renders_over"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "fleet_ssh_transport"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "over_fleet_ssh_an_npm_pin_is_unverifiable_and_installs_nothing"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "over_fleet_ssh_a_sha256_transport_mock_is_unverifiable_not_a_mismatch"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "a_non_portable_fetch_word_refuses_over_fleet_ssh_before_any_local_leg"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "fleet_ssh_argv_goes_through_the_host_effect_dispatcher"),
+    // Phase-B preamble (gunbc.host.host_effect_realize.live_deploy_apply_preamble_on_host): its
+    // real-route inhabitation claim runs the ordered typed legs over a REAL DeployAccess, and the only
+    // hermetic transport that fails closed before any exec is this context's FleetSsh arm. No privileged
+    // spawn in CI.
+    decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_preamble_witness", decl_name: "the_typed_preamble_refuses_a_fleet_ssh_transport_before_running_any_command"),
+    decl_ref(module_path: "test.claim.live_deploy.ensure_dependency_witness", decl_name: "both_subject_arms_reach_the_transport_as_argv_not_as_a_script_body"),
+    decl_ref(module_path: "test.claim.runner.runner_host_cap_bracket_witness", decl_name: "bracket_context"),
+    // The withdraw/restore witness seals the same sealed context for its runs rather than resealing it.
+    decl_ref(module_path: "test.claim.runner.runner_host_withdraw_witness", decl_name: "withdraw_run"),
+    // P4: the cap-route witness reads the sealed fleet context through this one fixture rather than
+    // resealing it -- one way to seal a fleet context, one home (DESIGN section 6).
+    decl_ref(module_path: "test.claim.runner.runner_slot_cap_observe_route_witness", decl_name: "cap_context"),
+    // The host-bound transport witness builds its FleetSsh transports to srv2 and mtcollins1 over this context.
+    decl_ref(module_path: "test.claim.host.host_bound_transport_witness", decl_name: "fleet_transport_to"),
+    // The anchored host transport witness builds its mtcollins1 and srv2 FleetSsh transports the same way.
+    decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "fleet_transport_to"),
+    decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "mtcollins1_bound_transport"),
+    decl_ref(module_path: "test.claim.host.host_bound_transport_witness", decl_name: "an_address_no_managed_host_answers_at_or_a_non_host_transport_binds_nothing"),
   ]
 {
   match fixture_attempt() {
@@ -104,6 +132,7 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
             attempt: attempt,
             trust: fleet_openssh_trust_policy_hermetic_witness_fixture(anchor: anchor),
             credential: binding,
+            multiplex: fleet_ssh_multiplex_directory_witness_fixture(),
           ),
         }
         FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
@@ -111,4 +140,64 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
       }
     }
   }
+}
+
+// THE SAME CONTEXT WITH ONE FACT VARIED AT A TIME, for the multiplexing witness: the control
+// socket must differ whenever the attempt, the registry, the anchor's content identity or the
+// credential differs, so the witness needs contexts that differ in exactly one of them.
+fn fleet_ssh_execution_context_at_witness_fixture(
+  attempt_raw: String,
+  rental: Bool,
+  content_salt: String,
+  key_material: NonEmptyStr,
+) -> FleetSshExecutionContext?
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fleet.fleet_ssh_multiplexing_witness", decl_name: "context_at"),
+  ]
+{
+  match fleet_ssh_attempt_identity(raw: attempt_raw) {
+    Absent => none
+    Present { value: attempt } => {
+      let base = if rental {
+        rental_known_hosts_anchor_hermetic_witness_fixture(attempt: attempt)
+      } else {
+        known_hosts_anchor_hermetic_witness_fixture(attempt: attempt)
+      }
+      let anchor = if content_salt == "" { base } else {
+        known_hosts_anchor_seal(
+          path: base.path,
+          registry_identity: base.registry_identity,
+          materialized_content_identity: content_hash_of_value(value: content_salt as NonEmptyStr),
+          attempt: attempt,
+        )
+      }
+      let key = SshPublicKey { algorithm: Ed25519, material: key_material, comment: "typed-remote-file-write-witness" }
+      match classify_derived_public_key_line(
+        identity_file: fixture_identity_file,
+        expected_key: key,
+        derivation_succeeded: true,
+        derivation_stdout: expected_public_key_line(key: key),
+        derivation_stderr: "",
+      ) {
+        FleetSshCredentialVerified { binding: binding } => Present {
+          value: fleet_ssh_execution_context_seal(
+            attempt: attempt,
+            trust: fleet_openssh_trust_policy_hermetic_witness_fixture(anchor: anchor),
+            credential: binding,
+            multiplex: fleet_ssh_multiplex_directory_witness_fixture(),
+          ),
+        }
+        FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
+        FleetSshCredentialDerivationRefused { cause: _ } => none
+      }
+    }
+  }
+}
+
+// A supplied job-owned directory: the shaper only reads its path, and the creation-and-readback
+// decision that mints it in production is witnessed separately over supplied facts.
+data fixture_multiplex_directory_path: NonEmptyStr = "/home/runner/work/_temp/fleet-ssh-mux"
+
+fn fleet_ssh_multiplex_directory_witness_fixture() -> FleetSshMultiplexDirectory {
+  fleet_ssh_multiplex_directory_seal(path: fixture_multiplex_directory_path)
 }

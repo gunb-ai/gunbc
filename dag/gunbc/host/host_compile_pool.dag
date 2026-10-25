@@ -19,8 +19,8 @@ data host_compile_pool_scope_disposition: ConstructionMechanism = SingleAuthorit
 // THE PRODUCER FOR HostCompilePoolReady, AND DELIBERATELY NOT A SECOND COMPILE-POOL MODEL.
 // Everything about how large the pool is and where compile RSS is charged already has an authority:
 // gunbc.fleet.fleet_host_budget owns CompilePoolPlacement and derives the size through
-// compile_pool_bytes_for from extdeps.jobserver's jobserver_build_pool_bytes, which is the same
-// cited knob that bounds build concurrency. Minting a HostCompilePool record with its own
+// compile_pool_bytes_for, which since A2 charges zero in runner slots and refuses a declared slice
+// (the jobserver token sizing was retired). Minting a HostCompilePool record with its own
 // memory_high, memory_max and token_count fields beside that would fork the sizing authority and
 // give a host two answers for how big its pool is — the DESIGN section 3 nickname defect, at the
 // carrier that decides whether a runner may take work.

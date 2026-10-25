@@ -2,9 +2,9 @@ module v2.test.lens_unit_modeling.unit_modeling_blocked_via_always_required_lens
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.compile {
-  CompileLensSubtree,
   required_lenses_at_grain,
-  run_required_lens_gates
+  run_required_lens_gates,
+  CompileLensSubtree
 }
 import v2.compiler.infer { InferredTree }
 import v2.std.diagnostic { Accepted, Rejected }

@@ -33,7 +33,7 @@ import gunbc.scm.object_store {
   store_object_count, store_rostered_rows, store_rostered_shards,
 }
 import std.content_hash { fnv1a64_structural_hex_digest }
-import v2.std.collection { map_lookup }
+import std.algebra { map_lookup }
 import gunbc.scm.object_shard_json { shard_partition, shard_identity_of, shard_members_of, shard_batch_size }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommit, commit_at_reference, empty_repository,

@@ -359,7 +359,8 @@ fn ihc_module_templates(m: TypedModule, si: Map<String, NewlineIndex>) -> List<O
 
 // Ordinals are assigned per declaration in source order, so (file, decl, ordinal) names one hole.
 fn ihc_number_holes(rows: List<HoleRow>) -> List<HoleRow> {
-  let numbered = fold(rows, init: IhcNumbering { seen: empty_map(), out: [] }, f: (acc, r) =>
+  let seen_seed: Map<String, Int> = empty_map()
+  let numbered = fold(rows, init: IhcNumbering { seen: seen_seed, out: [] }, f: (acc, r) =>
     let key = concat(concat(r.file, "::"), r.decl)
     let next = match map_get(acc.seen, key) {
       Present { value: k } => k + 1
@@ -490,7 +491,8 @@ fn ihc_row_tsv(r: HoleRow) -> String {
 }
 
 fn ihc_tally(keys: List<String>) -> Map<String, Int> {
-  fold(keys, init: empty_map(), f: (acc, k) =>
+  let tally_seed: Map<String, Int> = empty_map()
+  fold(keys, init: tally_seed, f: (acc, k) =>
     match map_get(acc, k) {
       Present { value: n } => map_insert(acc, k, n + 1)
       Absent => map_insert(acc, k, 1)

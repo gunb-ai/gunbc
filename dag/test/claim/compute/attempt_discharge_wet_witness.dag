@@ -1,0 +1,849 @@
+module test.claim.compute.attempt_discharge_wet_witness
+
+import gunbc.durable_cas_file_store { file_slot_store }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim, string_contains }
+import std.measure { Kibibyte, kibibyte, kibibyte_count }
+import std.durable_compare_and_set { cas_generation_first }
+import product.capacity.event_chain { PartitionId }
+import gunbc.compute.host_capacity {
+  ComputeCapacitySubject, compute_reserve_against, ComputeReservation, ComputeReserved,
+  ComputeRelease, ComputeReleased, compute_release,
+  ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
+}
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered, AttemptOwner, DispatchOwned, DirectInvocation, OwnerUnrecorded,
+  UnitLifecycle, UnitTerminatedSuccess, UnitStillRunning, UnitLifecycleUnknown,
+  AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
+  AttemptTransition, AttemptAdvanced, attempt_open, attempt_begin_launch, attempt_terminate,
+}
+import gunbc.compute.work_provider_local {
+  UnitLifecycleSource, SuppliedUnitLifecycle, SuppliedStoppableUnit, compute_lease_holder_line, compute_reservation_reference, compute_seat_dir,
+  compute_open_attempt_minted, ComputeLayout, ComputeRecoverRoots, RecoverRootsFound, RecoverRootsUnreadable, compute_recover_roots, AttemptGate, AttemptGateReady, AttemptGateRefused, compute_open_retry_attempt,
+}
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
+  attempt_exit_spool_stage_dir,
+}
+import gunbc.compute.compute_seat_ensure {
+  SeatEnsureOutcome, SeatEnsureNoop, SeatEnsureReleased, SeatEnsureRefused, SeatEnsureRed, SeatEnsureLeaseDropped,
+  SeatOwnerStanding, SeatOwnerEnded, SeatOwnerLive,
+  compute_seat_ensure_in,
+  SeatDischargePass, SeatDischargeSkipped, SeatDischargeRan, SeatDischargeRefused, compute_seat_discharge_all,
+  SeatDischargeStanding, SeatDischargePassRefused, seat_discharge_pass_standing,
+}
+
+// KILL-AT-EACH-TRANSITION CONTROLS FOR THE COMPUTE SEAT (gunbc.recurring_failure_mode
+// a_held_compute_seat_has_no_in_corpus_discharge). Every cell builds the state a process killed at one
+// transition leaves behind -- in a real temporary store, through the real attempt slot and the real
+// capacity ledger -- and then asks the one discharge door (compute_recover_attempt_in) through the
+// ensure what becomes of the seat. The unit's lifecycle is SUPPLIED (a unit is not available in a
+// tempdir); the supplied value is one the real observation produces, and the route is the door's.
+//
+// open -> reserve -> unit start -> unit end -> settle -> release are the transitions. A kill after
+// each one leaves: no seat | seat held, attempt Reserved | seat held, attempt Launching | seat held,
+// unit ended | seat held, attempt terminal. The seat is only ever held, never lost; the ensure returns
+// it once the owner is proven ended and keeps it otherwise.
+//
+// THIS FILE RUNS ON THE LOCAL-REPO WET LANE: rows in local_repo_wet_terminal, floor_route_gap (chunk
+// 21, the identities that reach fresh_root()) and ci_layer_roots witness_exclusion_frontier.
+
+data granted_kib: Int = 1048576
+data supplied_host: Kibibyte = kibibyte(count: 67108864)
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_seat_discharge.XXXXXX").path
+}
+
+fn subject_at(root: String) -> ComputeCapacitySubject {
+  ComputeCapacitySubject {
+    root: join([trim(s: root), "/capacity"], "") as NonEmptyStr,
+    partition: "compute-seat-discharge-wet-witness" as PartitionId,
+    appropriation: kibibyte(count: granted_kib * 4),
+    request: kibibyte(count: granted_kib),
+  }
+}
+
+// THE SEAT LOCATION FOLLOWS THE OWNER: the dispatch attempt's slot store is its own directory.
+fn attempts_at(root: String) -> NonEmptyStr {
+  seat_dir_of(root: root, key: "key-a")
+}
+
+fn seat_dir_of(root: String, key: String) -> NonEmptyStr {
+  compute_seat_dir(attempts_dir: trim(s: root), owner: DispatchOwned { node_id: "node-a", attempt_key: key })
+}
+
+fn made(path: String) -> Bool {
+  shell.Mkdir.Parents(path: path).success
+}
+
+// A REAL EXIT-SPOOL ENTRY, written the way the spool writes it: the entry's directory NAME is the record
+// (roadmap_attempt_exit_spool's own seven-part codec), placed in a stage directory.
+fn exit_recorded(root: String, key: String) -> Bool {
+  made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitQueued))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRunning))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRefused))
+    && made(path: join([attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitDone), "/node-a+", key, "+worker+0123456789abcdef0123456789abcdef+success+exited+0"], ""))
+}
+
+fn spool_unrecorded(root: String) -> Bool {
+  made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitQueued))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRunning))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitDone))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRefused))
+}
+
+fn record_of(reference: String, state: AttemptState, owner: AttemptOwner) -> AttemptRecord {
+  AttemptRecord {
+    identity: "feedfacefeedface",
+    reference: reference,
+    unit: join(["gunbc-compute-feedfacefeedface-", reference], ""),
+    granted: kibibyte(count: granted_kib),
+    opened_at: 1800,
+    launch_deadline: 2000,
+    state: state,
+    owner: owner,
+  }
+}
+
+fn dispatch_owner() -> AttemptOwner {
+  DispatchOwned { node_id: "node-a", attempt_key: "key-a" }
+}
+
+fn reserved(subject: ComputeCapacitySubject, reference: String) -> Bool {
+  match compute_reserve_against(subject: subject, reference: reference as NonEmptyStr, term_seconds: 60, total: supplied_host, available: supplied_host) {
+    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => true
+    _ => false
+  }
+}
+
+fn committed(subject: ComputeCapacitySubject) -> Int {
+  match compute_capacity_standing_on(subject: subject) {
+    ComputeCapacityStandingRead { committed: c, ceiling: _, headroom: _, observed_available: _, observed_total: _ } => kibibyte_count(k: c)
+    ComputeCapacityStandingUnread { detail: _ } => 0 - 1
+  }
+}
+
+fn opened(root: String, reference: String, owner: AttemptOwner) -> Bool {
+  made(path: attempts_at(root: root) as String) && match attempt_open(store: file_slot_store(root: attempts_at(root: root)), record: record_of(reference: reference, state: AttemptReserved, owner: owner)) {
+    AttemptAdvanced { state: _, generation: _ } => true
+    _ => false
+  }
+}
+
+fn launching(root: String, reference: String) -> Bool {
+  launching_in(dir: attempts_at(root: root), reference: reference)
+}
+
+fn launching_in(dir: NonEmptyStr, reference: String) -> Bool {
+  match attempt_slot_read(store: file_slot_store(root: dir), reference: reference as NonEmptyStr) {
+    AttemptSlotHeld { record: rec, generation: g } =>
+      match attempt_begin_launch(store: file_slot_store(root: dir), reference: rec.reference as NonEmptyStr, expected: g) {
+        AttemptAdvanced { state: _, generation: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn ended() -> UnitLifecycleSource {
+  SuppliedUnitLifecycle { lifecycle: UnitTerminatedSuccess { detail: "supplied: the unit ended" } }
+}
+
+fn running() -> UnitLifecycleSource {
+  SuppliedUnitLifecycle { lifecycle: UnitStillRunning { detail: "supplied: the unit is running" } }
+}
+
+fn unknown() -> UnitLifecycleSource {
+  SuppliedUnitLifecycle { lifecycle: UnitLifecycleUnknown { detail: "supplied: the manager did not answer" } }
+}
+
+fn stoppable() -> UnitLifecycleSource {
+  SuppliedStoppableUnit { before: UnitStillRunning { detail: "supplied: the unit is running" }, after_stop: UnitTerminatedSuccess { detail: "supplied: the unit ended after the stop" } }
+}
+
+fn leases_at(root: String) -> String {
+  join([trim(s: root), "/leases"], "")
+}
+
+// THE PRODUCER LEASE of the fixture record (identity feedfacefeedface), written as the provider writes it.
+fn lease_held(root: String) -> Bool {
+  lease_written(root: root, content: join([compute_lease_holder_line(seat_dir: attempts_at(root: root) as String), "abc 1\n"], ""))
+}
+
+fn lease_written(root: String, content: String) -> Bool {
+  made(path: leases_at(root: root)) && Filesystem.Write(path: join([leases_at(root: root), "/feedfacefeedface"], ""), content: content).success
+}
+
+fn lease_listed(root: String) -> Bool {
+  string_contains(s: Filesystem.List(path: leases_at(root: root)).entries, pattern: "feedfacefeedface")
+}
+
+fn ensure_owner(root: String, reference: String, source: UnitLifecycleSource, owner: SeatOwnerStanding) -> SeatEnsureOutcome {
+  if made(path: leases_at(root: root)) {
+    compute_seat_ensure_in(attempts_root: attempts_at(root: root), leases_dir: leases_at(root: root), subject: subject_at(root: root), reference: reference as NonEmptyStr, source: source, owner: owner)
+  } else {
+    SeatEnsureRefused { reference: reference, reason: "the fixture could not create its leases directory" }
+  }
+}
+
+fn ensure(root: String, reference: String, source: UnitLifecycleSource) -> SeatEnsureOutcome {
+  ensure_owner(root: root, reference: reference, source: source, owner: SeatOwnerLive)
+}
+
+fn is_released(o: SeatEnsureOutcome) -> Bool {
+  match o { SeatEnsureReleased { reference: _, committed_before: b, committed_after: a } => kibibyte_count(k: b) - kibibyte_count(k: a) == granted_kib  _ => false }
+}
+
+fn is_noop(o: SeatEnsureOutcome) -> Bool {
+  match o { SeatEnsureNoop { reference: _, why: _ } => true  _ => false }
+}
+
+fn is_refused(o: SeatEnsureOutcome) -> Bool {
+  match o { SeatEnsureRefused { reference: _, reason: _ } => true  _ => false }
+}
+
+fn is_terminal(root: String, reference: String) -> Bool {
+  match attempt_slot_read(store: file_slot_store(root: attempts_at(root: root)), reference: reference as NonEmptyStr) {
+    AttemptSlotHeld { record: rec, generation: _ } => match rec.state { AttemptTerminal { verdict: _, detail: _ } => true  _ => false }
+    _ => false
+  }
+}
+
+// THE REGRESSION CONTROL, ENROLLED AND PERMANENT: the failure state itself. A killed attempt's seat is
+// held, and nothing in the attempt's own terminal path returns it; only the ensure does. If this goes
+// false, the seat is being returned by something other than the door and the other cells here are
+// asserting the wrong route.
+test fn a_killed_reserved_attempt_keeps_its_seat_charged_until_the_ensure_runs() -> Bool {
+  let root = fresh_root()
+  let ok = a_killed_reserved_attempt_keeps_its_seat_charged_until_the_ensure_runs_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_killed_reserved_attempt_keeps_its_seat_charged_until_the_ensure_runs_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-kill", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-kill")
+    && committed(subject: subject) == granted_kib
+    && committed(subject: subject) == granted_kib
+}
+
+// KILL AFTER OPEN, BEFORE RESERVE: the record exists, the ledger holds nothing. The ensure closes the
+// attempt and reports that nothing was held; it releases no seat it never reserved. An unrelated seat keeps the ledger present (an empty ledger is unreadable, which the ensure refuses on) and must stay charged.
+test fn a_kill_after_open_before_reserve_holds_no_seat_and_the_ensure_closes_the_attempt() -> Bool {
+  let root = fresh_root()
+  let ok = a_kill_after_open_before_reserve_holds_no_seat_and_the_ensure_closes_the_attempt_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_kill_after_open_before_reserve_holds_no_seat_and_the_ensure_closes_the_attempt_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  reserved(subject: subject, reference: "r-other")
+    && opened(root: root, reference: "r-open", owner: dispatch_owner())
+    && is_noop(o: ensure(root: root, reference: "r-open", source: ended()))
+    && committed(subject: subject) == granted_kib
+    && is_terminal(root: root, reference: "r-open")
+}
+
+// KILL AFTER RESERVE, BEFORE UNIT START: the seat is held and the launch deadline has passed.
+test fn a_kill_after_reserve_is_discharged_once_the_launch_deadline_passes() -> Bool {
+  let root = fresh_root()
+  let ok = a_kill_after_reserve_is_discharged_once_the_launch_deadline_passes_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_kill_after_reserve_is_discharged_once_the_launch_deadline_passes_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-res", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-res")
+    && is_released(o: ensure(root: root, reference: "r-res", source: running()))
+    && committed(subject: subject) == 0
+    && is_terminal(root: root, reference: "r-res")
+}
+
+// KILL AFTER UNIT START WITH THE UNIT ENDED: Launching, the unit proven ended -> the seat comes back.
+test fn a_kill_after_unit_start_with_an_ended_unit_is_discharged() -> Bool {
+  let root = fresh_root()
+  let ok = a_kill_after_unit_start_with_an_ended_unit_is_discharged_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_kill_after_unit_start_with_an_ended_unit_is_discharged_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-end", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-end")
+    && launching(root: root, reference: "r-end")
+    && is_released(o: ensure(root: root, reference: "r-end", source: ended()))
+    && committed(subject: subject) == 0
+}
+
+// A LIVE OWNER IS NEVER DISCHARGED: Launching with the unit running is a Noop and the seat stays.
+test fn a_live_unit_keeps_its_seat_and_the_ensure_is_a_noop() -> Bool {
+  let root = fresh_root()
+  let ok = a_live_unit_keeps_its_seat_and_the_ensure_is_a_noop_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_live_unit_keeps_its_seat_and_the_ensure_is_a_noop_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-live", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-live")
+    && launching(root: root, reference: "r-live")
+    && is_noop(o: ensure(root: root, reference: "r-live", source: running()))
+    && committed(subject: subject) == granted_kib
+    && !is_terminal(root: root, reference: "r-live")
+}
+
+// AN UNKNOWN LIFECYCLE IS A REFUSAL AND THE CHARGE IS KEPT: no free on doubt.
+test fn an_unknown_unit_lifecycle_refuses_and_keeps_the_charge() -> Bool {
+  let root = fresh_root()
+  let ok = an_unknown_unit_lifecycle_refuses_and_keeps_the_charge_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn an_unknown_unit_lifecycle_refuses_and_keeps_the_charge_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-unk", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-unk")
+    && launching(root: root, reference: "r-unk")
+    && is_refused(o: ensure(root: root, reference: "r-unk", source: unknown()))
+    && committed(subject: subject) == granted_kib
+}
+
+// KILL BETWEEN THE TERMINAL GENERATION AND THE RELEASE: the attempt is already settled and the seat is
+// still charged. The old door declined this as "already terminal", making the window permanent.
+test fn a_kill_after_settle_before_release_is_discharged_from_the_terminal_record() -> Bool {
+  let root = fresh_root()
+  let ok = a_kill_after_settle_before_release_is_discharged_from_the_terminal_record_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_kill_after_settle_before_release_is_discharged_from_the_terminal_record_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  let ok = opened(root: root, reference: "r-set", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-set")
+    && launching(root: root, reference: "r-set")
+  let settled = match attempt_slot_read(store: file_slot_store(root: attempts_at(root: root)), reference: "r-set" as NonEmptyStr) {
+    AttemptSlotHeld { record: rec, generation: g } =>
+      match attempt_terminate(store: file_slot_store(root: attempts_at(root: root)), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
+        AttemptAdvanced { state: _, generation: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+  ok && settled
+    && committed(subject: subject) == granted_kib
+    && is_released(o: ensure(root: root, reference: "r-set", source: ended()))
+    && committed(subject: subject) == 0
+}
+
+// A SECOND ENSURE FINDS NOTHING HELD AND RELEASES NOTHING TWICE.
+test fn a_second_ensure_over_a_discharged_seat_releases_nothing() -> Bool {
+  let root = fresh_root()
+  let ok = a_second_ensure_over_a_discharged_seat_releases_nothing_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_second_ensure_over_a_discharged_seat_releases_nothing_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-twice", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-twice")
+    && is_released(o: ensure(root: root, reference: "r-twice", source: ended()))
+    && is_noop(o: ensure(root: root, reference: "r-twice", source: ended()))
+    && committed(subject: subject) == 0
+}
+
+// AN ABSENT SLOT IS NOT A RELEASE: the ensure refuses a reference no record names.
+test fn a_reference_no_record_names_is_refused_and_nothing_is_released() -> Bool {
+  let root = fresh_root()
+  let ok = a_reference_no_record_names_is_refused_and_nothing_is_released_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_reference_no_record_names_is_refused_and_nothing_is_released_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  reserved(subject: subject, reference: "r-orphan")
+    && is_refused(o: ensure(root: root, reference: "r-orphan", source: ended()))
+    && committed(subject: subject) == granted_kib
+}
+
+fn driver_outcomes(root: String, source: UnitLifecycleSource) -> List<SeatEnsureOutcome> {
+  match compute_seat_discharge_all(instance_root: root, attempts_dir: trim(s: root), leases_dir: leases_at(root: root), subject: subject_at(root: root), source: source) {
+    SeatDischargeRan { outcomes: os } => os
+    SeatDischargeSkipped { why: _ } => [] as List<SeatEnsureOutcome>
+    SeatDischargeRefused { reason: r } => [SeatEnsureRefused { reference: "", reason: r }]
+  }
+}
+
+// THE DRIVER KEEPS THE CHARGE WHEN NO EXIT RECORD PROVES THE ATTEMPT ENDED.
+test fn the_driver_does_not_discharge_a_seat_without_an_exit_record() -> Bool {
+  let root = fresh_root()
+  let ok = the_driver_does_not_discharge_a_seat_without_an_exit_record_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_driver_does_not_discharge_a_seat_without_an_exit_record_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-drv", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-drv")
+    && launching(root: root, reference: "r-drv")
+    && spool_unrecorded(root: root)
+    && !any(driver_outcomes(root: root, source: stoppable()), o => is_released(o: o))
+    && committed(subject: subject) == granted_kib
+}
+
+// THE DRIVER'S POSITIVE PATH, EXECUTED: a real exit-spool entry for the attempt, an ended unit, a held
+// seat under the attempt's own directory -> Apply -> Released with the independent readback at zero.
+test fn the_driver_releases_the_seat_of_an_attempt_whose_exit_record_exists_and_unit_ended() -> Bool {
+  let root = fresh_root()
+  let ok = the_driver_releases_the_seat_of_an_attempt_whose_exit_record_exists_and_unit_ended_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_driver_releases_the_seat_of_an_attempt_whose_exit_record_exists_and_unit_ended_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-pos", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-pos")
+    && exit_recorded(root: root, key: "key-a")
+    && committed(subject: subject) == granted_kib
+    && count(driver_outcomes(root: root, source: ended())) == 1
+    && committed(subject: subject) == 0
+    && is_terminal(root: root, reference: "r-pos")
+}
+
+// AN EXIT RECORD IS THE REASON TO LOOK, NOT THE PROOF: the unit is running -> the charge stays.
+test fn an_exit_record_with_a_live_unit_keeps_the_charge() -> Bool {
+  let root = fresh_root()
+  let ok = an_exit_record_with_a_live_unit_keeps_the_charge_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn an_exit_record_with_a_live_unit_keeps_the_charge_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-liv", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-liv")
+    && launching(root: root, reference: "r-liv")
+    && exit_recorded(root: root, key: "key-a")
+    && !any(driver_outcomes(root: root, source: running()), o => is_released(o: o))
+    && committed(subject: subject) == granted_kib
+}
+
+// THE TERMINATION PROOF IS THE OBSERVED LIFECYCLE, NOT THE TERMINAL RECORD: a settled attempt whose unit
+// lifecycle is unknown keeps its charge; the same attempt with the unit proven ended is released.
+test fn a_terminal_record_releases_only_when_the_unit_is_proven_ended() -> Bool {
+  let root = fresh_root()
+  let ok = a_terminal_record_releases_only_when_the_unit_is_proven_ended_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_terminal_record_releases_only_when_the_unit_is_proven_ended_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  let ok = opened(root: root, reference: "r-tm", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-tm")
+    && launching(root: root, reference: "r-tm")
+  let settled = match attempt_slot_read(store: file_slot_store(root: attempts_at(root: root)), reference: "r-tm" as NonEmptyStr) {
+    AttemptSlotHeld { record: rec, generation: g } =>
+      match attempt_terminate(store: file_slot_store(root: attempts_at(root: root)), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
+        AttemptAdvanced { state: _, generation: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+  ok && settled
+    && is_refused(o: ensure(root: root, reference: "r-tm", source: unknown()))
+    && committed(subject: subject) == granted_kib
+    && is_noop(o: ensure(root: root, reference: "r-tm", source: running()))
+    && committed(subject: subject) == granted_kib
+    && is_released(o: ensure(root: root, reference: "r-tm", source: ended()))
+    && committed(subject: subject) == 0
+}
+
+// A RECORD WITH NO RECORDED OWNER IS NOT A DIRECT INVOCATION: the ensure refuses and keeps the charge.
+test fn an_unrecorded_owner_refuses_and_keeps_the_charge() -> Bool {
+  let root = fresh_root()
+  let ok = an_unrecorded_owner_refuses_and_keeps_the_charge_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn an_unrecorded_owner_refuses_and_keeps_the_charge_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-old", owner: OwnerUnrecorded { why: "legacy record" })
+    && reserved(subject: subject, reference: "r-old")
+    && launching(root: root, reference: "r-old")
+    && is_refused(o: ensure(root: root, reference: "r-old", source: ended()))
+    && committed(subject: subject) == granted_kib
+}
+
+// THE LOCATION FOLLOWS THE OWNER, AND NOTHING IS SCANNED: attempt A's exit record discharges only the
+// seat under A's directory; another attempt's seat, held under its own directory, is never visited.
+test fn a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory() -> Bool {
+  let root = fresh_root()
+  let ok = a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  let other_dir = seat_dir_of(root: root, key: "key-b") as String
+  let other_open = made(path: other_dir)
+    && match attempt_open(store: file_slot_store(root: seat_dir_of(root: root, key: "key-b")), record: record_of(reference: "r-b", state: AttemptReserved, owner: DispatchOwned { node_id: "node-a", attempt_key: "key-b" })) {
+      AttemptAdvanced { state: _, generation: _ } => true
+      _ => false
+    }
+  opened(root: root, reference: "r-a", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-a")
+    && launching(root: root, reference: "r-a")
+    && other_open
+    && reserved(subject: subject, reference: "r-b")
+    && launching_in(dir: seat_dir_of(root: root, key: "key-b"), reference: "r-b")
+    && exit_recorded(root: root, key: "key-a")
+    && count(driver_outcomes(root: root, source: stoppable())) == 2
+    && committed(subject: subject) == granted_kib
+    && !is_terminal_in(dir: seat_dir_of(root: root, key: "key-b"), reference: "r-b")
+}
+
+fn is_terminal_in(dir: NonEmptyStr, reference: String) -> Bool {
+  match attempt_slot_read(store: file_slot_store(root: dir), reference: reference as NonEmptyStr) {
+    AttemptSlotHeld { record: rec, generation: _ } => match rec.state { AttemptTerminal { verdict: _, detail: _ } => true  _ => false }
+    _ => false
+  }
+}
+
+// THE RESERVATION REFERENCE IS THE OWNER'S IDENTITY PLUS A RECORDED ORDINAL, NEVER A CLOCK: the same
+// identity at ordinal n and n+1 differ, the same pair is the same reference on every call, and no
+// `@` clock suffix survives.
+test fn the_reservation_reference_is_the_identity_and_its_ordinal() -> Bool {
+  let owner_a = DispatchOwned { node_id: "node-a", attempt_key: "key-a" }
+  let owner_b = DispatchOwned { node_id: "node-a", attempt_key: "key-b" }
+  let a = compute_reservation_reference(identity: "feedfacefeedface", owner: owner_a, ordinal: 0) as String
+  let b = compute_reservation_reference(identity: "feedfacefeedface", owner: owner_a, ordinal: 1) as String
+  let other_attempt = compute_reservation_reference(identity: "feedfacefeedface", owner: owner_b, ordinal: 0) as String
+  a != b
+    && a == (compute_reservation_reference(identity: "feedfacefeedface", owner: owner_a, ordinal: 0) as String)
+    && !string_contains(s: a, pattern: "@")
+    && string_contains(s: a, pattern: "feedfacefeedface")
+    && a != other_attempt
+}
+
+// DEAD OWNER, LIVE COMPUTE UNIT (Apply): the owner is proven ended and the unit its own slot names is still
+// live. The unit is STOPPED, the door re-proves termination and the seat comes back. Cross-attempt safety:
+// a joiner attaches only to a stored outcome (compute_attach_under_lease), never to this running unit.
+test fn a_dead_owners_live_compute_unit_is_stopped_and_its_seat_released() -> Bool {
+  let root = fresh_root()
+  let ok = a_dead_owners_live_compute_unit_is_stopped_and_its_seat_released_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_dead_owners_live_compute_unit_is_stopped_and_its_seat_released_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-dead", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-dead")
+    && launching(root: root, reference: "r-dead")
+    && is_released(o: ensure_owner(root: root, reference: "r-dead", source: stoppable(), owner: SeatOwnerEnded))
+    && committed(subject: subject) == 0
+}
+
+// THE CONTROL: the same live unit under a LIVE owner is a Noop -- the unit is not stopped, the seat stays.
+// (The stoppable source would answer "ended" only after a stop, so a release here would prove a stop ran.)
+test fn a_live_owners_live_compute_unit_is_not_stopped() -> Bool {
+  let root = fresh_root()
+  let ok = a_live_owners_live_compute_unit_is_not_stopped_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_live_owners_live_compute_unit_is_not_stopped_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-lv", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-lv")
+    && launching(root: root, reference: "r-lv")
+    && is_noop(o: ensure_owner(root: root, reference: "r-lv", source: stoppable(), owner: SeatOwnerLive))
+    && committed(subject: subject) == granted_kib
+    && !is_terminal(root: root, reference: "r-lv")
+}
+
+// AN UNKNOWN LIFECYCLE IS NEVER STOPPED, even for a dead owner: the charge is kept.
+test fn a_dead_owners_unknown_unit_is_refused_not_stopped() -> Bool {
+  let root = fresh_root()
+  let ok = a_dead_owners_unknown_unit_is_refused_not_stopped_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_dead_owners_unknown_unit_is_refused_not_stopped_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-du", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-du")
+    && launching(root: root, reference: "r-du")
+    && is_refused(o: ensure_owner(root: root, reference: "r-du", source: unknown(), owner: SeatOwnerEnded))
+    && committed(subject: subject) == granted_kib
+}
+
+// FINISHED COMPUTE UNDER A LIVE OWNER: no worker exit record exists, the compute unit ended, the seat is
+// held. The driver enumerates the attempt's own seat directory and releases it.
+test fn a_finished_compute_unit_under_a_live_owner_is_released_by_the_driver() -> Bool {
+  let root = fresh_root()
+  let ok = a_finished_compute_unit_under_a_live_owner_is_released_by_the_driver_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_finished_compute_unit_under_a_live_owner_is_released_by_the_driver_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-fin", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-fin")
+    && launching(root: root, reference: "r-fin")
+    && spool_unrecorded(root: root)
+    && lease_held(root: root)
+    && any(driver_outcomes(root: root, source: ended()), o => is_released(o: o))
+    && committed(subject: subject) == 0
+    && !lease_listed(root: root)
+}
+
+// THE PRODUCER LEASE FOLLOWS THE SEAT: after the discharge both the ledger and the lease are gone.
+test fn the_discharge_drops_the_producer_lease_with_the_seat() -> Bool {
+  let root = fresh_root()
+  let ok = the_discharge_drops_the_producer_lease_with_the_seat_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_discharge_drops_the_producer_lease_with_the_seat_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-ls", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-ls")
+    && launching(root: root, reference: "r-ls")
+    && lease_held(root: root)
+    && lease_listed(root: root)
+    && is_released(o: ensure(root: root, reference: "r-ls", source: ended()))
+    && committed(subject: subject) == 0
+    && !lease_listed(root: root)
+}
+
+// A LEASE LEFT BEHIND AFTER THE SEAT WAS ALREADY RETURNED (the crash window between release and drop) is
+// dropped by the next pass and counted as its own outcome.
+test fn a_lease_left_after_the_seat_was_returned_is_dropped_and_counted() -> Bool {
+  let root = fresh_root()
+  let ok = a_lease_left_after_the_seat_was_returned_is_dropped_and_counted_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_lease_left_after_the_seat_was_returned_is_dropped_and_counted_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-lo", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-lo")
+    && launching(root: root, reference: "r-lo")
+    && is_released(o: ensure(root: root, reference: "r-lo", source: ended()))
+    && lease_held(root: root)
+    && match ensure(root: root, reference: "r-lo", source: ended()) { SeatEnsureLeaseDropped { reference: _ } => true  _ => false }
+    && !lease_listed(root: root)
+    && is_noop(o: ensure(root: root, reference: "r-lo", source: ended()))
+}
+
+// A LEASE IS NEVER DROPPED ON A DOUBT: unit still running under a live owner -> lease stays.
+test fn a_lease_is_kept_while_the_unit_is_live() -> Bool {
+  let root = fresh_root()
+  let ok = a_lease_is_kept_while_the_unit_is_live_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_lease_is_kept_while_the_unit_is_live_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-lk", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-lk")
+    && launching(root: root, reference: "r-lk")
+    && lease_held(root: root)
+    && is_noop(o: ensure(root: root, reference: "r-lk", source: running()))
+    && lease_listed(root: root)
+    && committed(subject: subject) == granted_kib
+}
+
+// ANOTHER ATTEMPT'S LEASE IS NOT THIS ATTEMPT'S TO DROP: A ended with its seat returned, B holds the lease for the
+// same identity. A's pass leaves B's lease standing.
+test fn another_attempts_lease_survives_this_attempts_discharge() -> Bool {
+  let root = fresh_root()
+  let ok = another_attempts_lease_survives_this_attempts_discharge_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn another_attempts_lease_survives_this_attempts_discharge_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-oa", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-oa")
+    && launching(root: root, reference: "r-oa")
+    && is_released(o: ensure(root: root, reference: "r-oa", source: ended()))
+    && lease_written(root: root, content: join([compute_lease_holder_line(seat_dir: seat_dir_of(root: root, key: "key-b") as String), "abc 1\n"], ""))
+    && is_noop(o: ensure(root: root, reference: "r-oa", source: ended()))
+    && lease_listed(root: root)
+}
+
+// A LEGACY LEASE (commit + clock, no holder) IS REFUSED AND KEPT, never guessed at.
+test fn a_legacy_lease_naming_no_holder_is_refused_and_kept() -> Bool {
+  let root = fresh_root()
+  let ok = a_legacy_lease_naming_no_holder_is_refused_and_kept_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_legacy_lease_naming_no_holder_is_refused_and_kept_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-lg", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-lg")
+    && launching(root: root, reference: "r-lg")
+    && lease_written(root: root, content: "deadbeef 1800\n")
+    && is_refused(o: ensure(root: root, reference: "r-lg", source: ended()))
+    && lease_listed(root: root)
+    && committed(subject: subject) == 0
+}
+
+// A LISTING THAT CANNOT BE READ IS NOT "NO LIVE SEATS": the pass refuses.
+test fn a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed() -> Bool {
+  let root = fresh_root()
+  let ok = a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed_cell(root: String) -> Bool {
+  match compute_seat_discharge_all(instance_root: root, attempts_dir: join([trim(s: root), "/no-such-attempts-dir"], ""), leases_dir: leases_at(root: root), subject: subject_at(root: root), source: ended()) {
+    SeatDischargeRefused { reason: _ } => true
+    SeatDischargeRan { outcomes: _ } => false
+    SeatDischargeSkipped { why: _ } => false
+  }
+}
+
+// A WHOLE-PASS REFUSAL IS NOT A REFUSAL OF ONE UNNAMED SEAT: it keeps its own standing and its cause.
+test fn a_refused_pass_is_its_own_standing_not_a_seat_refusal() -> Bool {
+  match seat_discharge_pass_standing(p: SeatDischargeRefused { reason: "attempts unreadable" }) {
+    SeatDischargePassRefused { reason: r } => r == "attempts unreadable"
+    _ => false
+  }
+}
+
+fn layout_at(root: String) -> ComputeLayout {
+  ComputeLayout {
+    root: root, work_dir: "", checkout: "", out_dir: "", leases_dir: "", lease_path: "", staging_dir: "",
+    target_dir: "", log_path: "", consumption_path: "", attempts_dir: trim(s: root),
+  }
+}
+
+fn retried(root: String, first: AttemptGate) -> AttemptGate {
+  compute_open_retry_attempt(layout: layout_at(root: root), identity: "feedfacefeedface", reference: "r-a#2" as NonEmptyStr, granted: kibibyte(count: granted_kib), first: first)
+}
+
+// A CEILING RETRY INHERITS THE FIRST ATTEMPT'S RECORDED OWNER OR IS REFUSED: it never mints one.
+test fn a_ceiling_retry_inherits_the_recorded_owner_and_is_refused_without_one() -> Bool {
+  let root = fresh_root()
+  let ok = a_ceiling_retry_inherits_the_recorded_owner_and_is_refused_without_one_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_ceiling_retry_inherits_the_recorded_owner_and_is_refused_without_one_cell(root: String) -> Bool {
+  let first = AttemptGateReady { record: record_of(reference: "r-a", state: AttemptReserved, owner: dispatch_owner()), generation: cas_generation_first() }
+  let inherited = made(path: attempts_at(root: root) as String) && match retried(root: root, first: first) {
+    AttemptGateReady { record: r, generation: _ } => match r.owner {
+      DispatchOwned { node_id: _, attempt_key: k } => k == "key-a"
+      _ => false
+    }
+    AttemptGateRefused { detail: _ } => false
+  }
+  let refused = match retried(root: root, first: AttemptGateRefused { detail: "first gate never opened" }) {
+    AttemptGateRefused { detail: _ } => true
+    AttemptGateReady { record: _, generation: _ } => false
+  }
+  inherited && refused
+}
+
+fn minted_reference(root: String, key: String) -> String {
+  match compute_open_attempt_minted(layout: layout_at(root: root), identity: "feedfacefeedface", granted: kibibyte(count: granted_kib), owner: DispatchOwned { node_id: "node-a", attempt_key: key }, ordinal: 1) {
+    AttemptGateReady { record: r, generation: _ } => r.reference as String
+    AttemptGateRefused { detail: _ } => ""
+  }
+}
+
+fn reserved_and_released(subject: ComputeCapacitySubject, reference: String) -> Bool {
+  let r = compute_reserve_against(subject: subject, reference: reference as NonEmptyStr, term_seconds: 60, total: supplied_host, available: supplied_host)
+  match r {
+    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => match compute_release(reservation: r, reason: "control release" as NonEmptyStr) {
+      ComputeReleased { partition: _, reference: _, reason: _ } => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// A REFERENCE IS UNIQUE IN THE LEDGER'S NAMESPACE, NOT ONLY IN ONE SEAT DIRECTORY: the ledger keeps a
+// released reference forever, so a second dispatch attempt of the SAME work identity -- its own seat
+// directory, its own ordinal 1 -- must still be admitted after the first reserved and released.
+test fn a_second_dispatch_attempt_of_one_work_identity_is_admitted_after_the_first_released() -> Bool {
+  let root = fresh_root()
+  let ok = a_second_dispatch_attempt_of_one_work_identity_is_admitted_after_the_first_released_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_second_dispatch_attempt_of_one_work_identity_is_admitted_after_the_first_released_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  let ref_a = made(path: seat_dir_of(root: root, key: "key-a") as String) && made(path: seat_dir_of(root: root, key: "key-b") as String)
+  let a = minted_reference(root: root, key: "key-a")
+  let b = minted_reference(root: root, key: "key-b")
+  ref_a && a != "" && b != "" && reserved_and_released(subject: subject, reference: a) && reserved_and_released(subject: subject, reference: b) && a != b
+}
+
+// THE OPERATOR DOOR FINDS A DISPATCH-OWNED SEAT. The belt's seats live under attempts/dispatch-<key>/;
+// a door that read only the flat attempts root could not see them. The resolver returns exactly the
+// directory holding a slot for the reference, nothing for a reference no slot names, and REFUSES (does
+// not read as "none") when the attempts directory cannot be listed.
+test fn the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadable_attempts_directory() -> Bool {
+  let root = fresh_root()
+  let ok = the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadable_attempts_directory_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadable_attempts_directory_cell(root: String) -> Bool {
+  let made_dirs = made(path: seat_dir_of(root: root, key: "key-a") as String) && made(path: seat_dir_of(root: root, key: "key-b") as String)
+  let a = minted_reference(root: root, key: "key-a")
+  let want = seat_dir_of(root: root, key: "key-a") as String
+  let found = made_dirs && a != "" && match compute_recover_roots(attempts_root: root, reference: a as NonEmptyStr) {
+    RecoverRootsFound { at_flat: f, dispatch_roots: rs } => !f && count(rs) == 1 && any(rs, r => r == want)
+    RecoverRootsUnreadable { reason: _ } => false
+  }
+  let nothing = match compute_recover_roots(attempts_root: root, reference: "no-such#1" as NonEmptyStr) {
+    RecoverRootsFound { at_flat: f, dispatch_roots: rs } => !f && count(rs) == 0
+    RecoverRootsUnreadable { reason: _ } => false
+  }
+  let refused = match compute_recover_roots(attempts_root: absent_of(root: root), reference: a as NonEmptyStr) {
+    RecoverRootsUnreadable { reason: _ } => true
+    RecoverRootsFound { at_flat: _, dispatch_roots: _ } => false
+  }
+  found && nothing && refused
+}
+
+fn absent_of(root: String) -> String {
+  join([root, "/absent"], "")
+}

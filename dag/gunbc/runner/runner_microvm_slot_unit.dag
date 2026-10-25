@@ -72,7 +72,7 @@ data runner_microvm_slot_unit_disposition: ConstructionMechanism = SingleAuthori
 // path-unrestricted /usr/bin/install on this host (gunbc.rung_drop
 // the_job_user_holds_a_path_unrestricted_root_grant), so the sentence "root must not exec a binary
 // the job user can write" is the OBLIGATION this ownership serves, not a property srv1 establishes
-// (review 70080). gunbc.live_deploy.emit release_locus_tree_copy_steps carries the full statement.
+// (review 70080).
 data microvm_slot_unit_template_name: NonEmptyStr = "gunbc-microvm-slot@.service" as NonEmptyStr
 
 fn microvm_slot_unit_path() -> NonEmptyStr {
@@ -167,7 +167,8 @@ fn microvm_controller_slice_unit_file() -> SystemdUnitFile {
 }
 
 // WHERE THE CONTROLLER WRITES ITS RECEIPT: a root-owned directory the install creates
-// (gunbc.live_deploy.emit microvm_controller_install_intent) and the controller writes into, one
+// (gunbc.host.host_effect_realize, the typed microVM controller install fold) and the controller
+// writes into, one
 // file per unit incarnation. It is declared here beside the unit because the deploy that writes
 // the unit is what makes the directory exist, and the controller that runs from the unit is what
 // fills it; a directory declared only in the controller (review 69796) was created by nothing.
@@ -332,6 +333,7 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
         ServiceKillMode { mode: _ } => false
         RestartSec { duration: _ } => false
         ServiceTasksMax { count: _ } => false
+        ServiceResourceControl { directive: _ } => false
         TimeoutStopSec { duration: _ } => false
       })
     TimerUnitFile { unit: _, timer: _, install: _ } => false

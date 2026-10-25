@@ -1,6 +1,6 @@
 module v2.test.claim.resolve.where_refinement_aliases_resolve
 
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeCensusModuleFileRefused,
   NativeCensusModuleResolveRefused,
   NativeCensusModuleResolved,
@@ -13,7 +13,7 @@ import v2.compiler.compile {
 }
 import v2.compiler.native_test_vocabulary { NativeTestFileRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.collection { Map }
+import std.types { Map }
 import std.algebra { Cons, Empty, fold_list }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }

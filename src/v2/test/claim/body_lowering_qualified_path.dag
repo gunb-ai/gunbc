@@ -18,7 +18,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_try_body_lowered
 }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
-import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text  }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
@@ -27,7 +27,7 @@ import std.algebra { Cons, Empty, length, list_snoc_item }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.grammar { node_atom_identity_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   Atom,
   ComputationNode,
   Conj,
@@ -38,14 +38,10 @@ import v2.std.node {
   Transform,
   TypeNode,
   content_hash,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
-import v2.std.node_query {
-  field_projection_optional,
-  find_arrow_body_child,
-  find_named_child,
-  node_positional_child_targets
-}
+import v2.std.node_query { field_projection_optional, find_arrow_body_child, find_named_child }
 import std.optional { Absent, Present }
 import v2.std.qualified_name {
   qualified_name_from_node,
@@ -105,8 +101,8 @@ fn dotted_fixture_seq(left: Node, right: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left },
-      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right }
+      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: left, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: right, declaration: NotADeclaration }
     ]
   )
 }
@@ -174,7 +170,7 @@ fn dotted_fixture_shell(captured: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: captured }
+      Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: captured, declaration: NotADeclaration }
     ]
   )
 }
@@ -266,7 +262,7 @@ fn body_lowering_body_is_path(body: Node, dotted: String) -> Bool {
 fn body_lowering_body_callee_is_path(body: Node, dotted: String) -> Bool {
   match body.kind {
     ComputationNode { behavior: Transform } =>
-      match node_positional_child_targets(node: body) {
+      match positional_child_target_nodes(node: body) {
         Cons { head: callee, tail: _ } => body_lowering_body_is_path(body: callee, dotted: dotted)
         Empty => false
       }
@@ -277,7 +273,7 @@ fn body_lowering_body_callee_is_path(body: Node, dotted: String) -> Bool {
 fn body_lowering_body_is_call_through_path(body: Node, dotted: String) -> Bool {
   match body.kind {
     ComputationNode { behavior: Transform } =>
-      match node_positional_child_targets(node: body) {
+      match positional_child_target_nodes(node: body) {
         Cons { head: callee, tail: args } =>
           body_lowering_body_is_path(body: callee, dotted: dotted) && (length(xs: args) == 0)
         Empty => false
@@ -554,7 +550,7 @@ fn body_lowering_lowered_callee_optional(node: Node) -> Node? {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: Absent, diagnostics: _ } => Absent
     Accepted { value: Present { value: lowered }, diagnostics: _ } =>
-      match node_positional_child_targets(node: lowered) {
+      match positional_child_target_nodes(node: lowered) {
         Cons { head: callee, tail: _ } => Present { value: callee }
         Empty => Absent
       }
@@ -633,9 +629,7 @@ fn body_lowering_qualified_members(root: Node) -> Outcome<Node> {
 fn body_lowering_qualified_value_normalized() -> Outcome<NormalizedTree> {
   conserved_normalize_of_text(
     path: "body_lowering_qualified_value_file",
-    text: body_lowering_qualified_value_source,
-    explained: no_explained_drops()
-  )
+    text: body_lowering_qualified_value_source)
 }
 
 test fn body_lowering_qualified_value_reaches_arrow_body_whole() -> Bool {

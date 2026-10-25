@@ -1,7 +1,8 @@
 module gunbc.runner.runner_microvm_slot_reserve
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.measure { money_amount_micro, MoneyPerSecond, MoneyOnce, second }
+import std.types { String, NonEmptyStr, Bool, List, Timestamp }
+import std.measure { money_amount_micro, MoneyPerSecond, MoneyOnce, second, Count, One }
+import std.durable_compare_and_set { cas_generation_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decl_ref { decl_ref }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
@@ -38,15 +39,27 @@ import gunbc.fabric.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, BudgetRefused,
   ReservationLost, PermitNamesAnotherUseForCell, StoreUnavailable, AttemptRefused,
   FabricCellCandidate, CellCandidateBound, OfferExecutorIsNotTheCell,
-  bind_fabric_cell_candidate, broker_reserve_for_demand, fabric_control_plane_store_root, fabric_cell_allocation_key,
-  fabric_hold_owner, fabric_money_reservation_ref,
+  bind_fabric_cell_candidate, fabric_control_plane_store_root, fabric_cell_allocation_key,
   permit_standing_wire, money_refusal_wire, cas_store_failure_wire, offer_candidacy_wire,
 }
 import gunbc.runner.runner_microvm_shakedown {
   microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_account,
   microvm_shakedown_maximum_buy_order, microvm_shakedown_route, microvm_shakedown_work,
-  microvm_shakedown_demand_id,
+  microvm_shakedown_demand_id, microvm_shakedown_attempt, microvm_shakedown_attempt_id,
+  MicroVmCellJob, microvm_shakedown_job, microvm_job_route, microvm_job_offer, microvm_job_demand, microvm_job_demand_id, microvm_job_attempt,
 }
+import gunbc.fabric.fabric_cell_grant {
+  CellGrantDecision, CellGrantDecided, CellGrantNotSelected, broker_grant_for_demand,
+  CellGrant, CellGranted, CellAlreadyGranted, CellGrantIssueRefused, CellGrantLost,
+  CellGrantStoreUnavailable, CellGrantSlotUndecodable, CellGrantGenerationsExhausted, CellGrantAttemptRefused,
+}
+import product.fabric.execution { FabricGrantEvidence }
+import product.fabric.grant_issue {
+  GrantIssueRefusal, AttemptNamesAnotherWork, AttemptPrincipalIsNotTheWorkPrincipal, OfferNotFungibleForWork,
+  OfferCapacityExhausted, GrantAlreadyIssuedForAttempt, MoneyReservationRefused, ResourceReservationRefused,
+  PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand,
+}
+import gunbc.clock_read { clock_now_probed_at }
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_reserve_unit_name, microvm_slot_reserve_receipt_prefix, microvm_slot_reserve_wait_bound,
   microvm_slot_reserve_receipt_path, microvm_unit_receipt_path,
@@ -64,8 +77,10 @@ data runner_microvm_slot_reserve_disposition: ConstructionMechanism = SingleAuth
 // allocation store for the shakedown demand and offer and refuses every attempt as
 // ReservationNotObserved when nothing holds the cell. Nothing did: gunbc.fabric.fabric_control_plane's
 // route -- partition, priced selection, money encumbrance, hold CAS -- had no production caller.
-// This module is that caller, and it calls the route as it stands: broker_reserve_for_demand, with
-// no second reservation path and no hand-written slot file.
+// This module is that caller. It ranks through the control plane's one selection and then issues
+// through gunbc.fabric.fabric_cell_grant broker_grant_for_demand (FCI-2), so the cell is held by the
+// grant key in the same write as the reservation -- no second reservation path, no hand-written slot
+// file. The controller re-derives that key (observe_granted_cell_wet) before it plans anything.
 //
 // THE BROKER IS NOT THE CONTROLLER (DESIGN 3b keeps broker and tenant distinct parties on the
 // fabric route): it runs as its own root unit, gunbc-microvm-slot-reserve.service
@@ -105,7 +120,7 @@ fn bind_shakedown_roster(slot: RunnerSlotIdentity, admitted: List<CandidateOffer
 }
 
 type ShakedownBrokerOutcome
-  = ShakedownBrokerDecided { reservation: CellReservation }
+  = ShakedownBrokerDecided { decision: CellGrantDecision }
   | ShakedownBrokerRosterRefused { binding: ShakedownRosterBinding }
 
 // THE BROKER'S DECISION FOR ONE SLOT OVER A CANDIDATE FIELD. The field is a parameter so a witness can
@@ -113,27 +128,55 @@ type ShakedownBrokerOutcome
 // The money terms are the demand's: its maximum buy order bounds the selection and the account is
 // appropriated at the same figure; the delay valuation is zero because the shakedown has no deadline
 // (microvm_shakedown_demand deadline: none), so waiting costs it nothing.
-fn microvm_shakedown_broker_decide(
+// THE GRANT'S EVIDENCE REFERENCES NAME THE DECLARATIONS THAT PRODUCED EACH FACT. product.fabric.demand
+// rules an ObservationReceiptRef opaque provenance the core never interprets, so these cite the
+// producing declaration (module and symbol) rather than inventing a receipt store that does not exist.
+fn microvm_shakedown_grant_evidence() -> FabricGrantEvidence {
+  FabricGrantEvidence {
+    fungibility_receipt: "gunbc.fabric.fabric_control_plane broker_select_for_requirements",
+    offer_authority: "gunbc.runner.runner_microvm_slot_reserve microvm_shakedown_candidate_field",
+    resource_conservation: "gunbc.fabric.fabric_cell_grant grant_selected_cell",
+    budget_conservation: "gunbc.runner.runner_microvm_shakedown microvm_shakedown_account",
+    principal_authority: "gunbc.runner.runner_fleet_ci_posture fleet_ci_posture",
+  }
+}
+
+fn microvm_job_broker_decide(
   root: NonEmptyStr,
   slot: RunnerSlotIdentity,
   field: CandidateField<NonEmptyStr>,
+  issued_at: Timestamp,
+  job: MicroVmCellJob,
 ) -> ShakedownBrokerOutcome {
   match bind_shakedown_roster(slot: slot, admitted: field.admitted) {
     ShakedownOfferIsNotTheCell { slot_key: k, executor: e } =>
       ShakedownBrokerRosterRefused { binding: ShakedownOfferIsNotTheCell { slot_key: k, executor: e } }
     ShakedownRosterBound { roster: roster } =>
       ShakedownBrokerDecided {
-        reservation: broker_reserve_for_demand(
+        decision: broker_grant_for_demand(
           root: root,
-          demand: microvm_shakedown_demand(slot: slot),
+          demand: microvm_job_demand(slot: slot, job: job),
+          work: job.work,
+          attempt: microvm_job_attempt(slot: slot, job: job),
           roster: roster,
           sanctions: [fleet_cell_sanction(slot: slot)],
           account: microvm_shakedown_account(),
           maximum_buy_order: microvm_shakedown_maximum_buy_order(),
           delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
+          evidence: microvm_shakedown_grant_evidence(),
+          issued_at: issued_at,
         ),
       }
   }
+}
+
+fn microvm_shakedown_broker_decide(
+  root: NonEmptyStr,
+  slot: RunnerSlotIdentity,
+  field: CandidateField<NonEmptyStr>,
+  issued_at: Timestamp,
+) -> ShakedownBrokerOutcome {
+  microvm_job_broker_decide(root: root, slot: slot, field: field, issued_at: issued_at, job: microvm_shakedown_job())
 }
 
 // ── the candidate field: the shakedown offer, admitted under the fleet CI posture ──────────────────
@@ -160,9 +203,9 @@ fn fleet_ci_github_path() -> ProviderPathStanding {
   }
 }
 
-fn microvm_shakedown_route_facts() -> ProviderRouteFacts {
+fn microvm_job_route_facts(job: MicroVmCellJob) -> ProviderRouteFacts {
   ProviderRouteFacts {
-    route: microvm_shakedown_route(),
+    route: microvm_job_route(job: job),
     contract_terms: fleet_ci_github_terms_ref(),
     data_paths: ProviderDataPathClosure {
       execution: fleet_ci_on_host_path(),
@@ -185,11 +228,15 @@ fn microvm_shakedown_route_facts() -> ProviderRouteFacts {
   }
 }
 
+fn microvm_shakedown_route_facts() -> ProviderRouteFacts {
+  microvm_job_route_facts(job: microvm_shakedown_job())
+}
+
 // ONE SANCTION ROW, AND ONE IS THE POINT: any other customer or data class on this route refuses.
-fn microvm_shakedown_sanctions() -> List<RouteScopeSanction> {
+fn microvm_job_sanctions(job: MicroVmCellJob) -> List<RouteScopeSanction> {
   [
     RouteScopeSanction {
-      route: microvm_shakedown_route(),
+      route: microvm_job_route(job: job),
       posture: fleet_ci_posture,
       customer_profile: fleet_ci_customer_profile_ref(),
       data_handling_profile: fleet_ci_data_handling_profile_ref(),
@@ -198,10 +245,14 @@ fn microvm_shakedown_sanctions() -> List<RouteScopeSanction> {
   ]
 }
 
-fn microvm_shakedown_scope(slot: RunnerSlotIdentity) -> ProviderUseScope<NonEmptyStr> {
+fn microvm_shakedown_sanctions() -> List<RouteScopeSanction> {
+  microvm_job_sanctions(job: microvm_shakedown_job())
+}
+
+fn microvm_job_scope(slot: RunnerSlotIdentity, job: MicroVmCellJob) -> ProviderUseScope<NonEmptyStr> {
   ProviderUseScope {
-    demand: microvm_shakedown_demand_id(slot: slot),
-    work: microvm_shakedown_work().id,
+    demand: microvm_job_demand_id(slot: slot, job: job),
+    work: job.work.id,
     customer_profile: fleet_ci_customer_profile_ref(),
     data_handling_profile: fleet_ci_data_handling_profile_ref(),
     agreement: fleet_ci_github_terms_ref(),
@@ -211,24 +262,28 @@ fn microvm_shakedown_scope(slot: RunnerSlotIdentity) -> ProviderUseScope<NonEmpt
   }
 }
 
+fn microvm_shakedown_scope(slot: RunnerSlotIdentity) -> ProviderUseScope<NonEmptyStr> {
+  microvm_job_scope(slot: slot, job: microvm_shakedown_job())
+}
+
 // THE DISPATCH COSTS ARE THE OFFER'S OWN PRICING, NOT NEW OBSERVATIONS. The fleet prices its own cells
 // at nothing (gunbc.runner.runner_microvm_shakedown microvm_shakedown_offer quotes zero), so every cost
 // component is zero and cites the same slot observation the offer does. THE SHAKEDOWN IS THE FIRST
 // EXERCISE OF ITS ROUTE (product.fabric.route_readiness ExerciseOfRoute): a route that could only be
 // used once already exercised could never be exercised, so readiness admits it for this one work, and
 // the decision instant is unread on that arm, which is why it is zero rather than a clock reading.
-fn microvm_shakedown_candidate_field(slot: RunnerSlotIdentity) -> CandidateField<NonEmptyStr> {
-  let offer = microvm_shakedown_offer(slot: slot)
-  let work = microvm_shakedown_work()
-  let receipt = "gunbc.observation.microvm-shakedown-slot" as NonEmptyStr
+fn microvm_job_candidate_field(slot: RunnerSlotIdentity, job: MicroVmCellJob) -> CandidateField<NonEmptyStr> {
+  let offer = microvm_job_offer(slot: slot, job: job)
+  let work = job.work
+  let receipt = join([job.origin as String, "-slot"], "") as NonEmptyStr
   assemble_candidate_field(
-    routes: [OfferRouteRow { offer: offer.id, facts: microvm_shakedown_route_facts() }],
-    sanctions: microvm_shakedown_sanctions(),
+    routes: [OfferRouteRow { offer: offer.id, facts: microvm_job_route_facts(job: job) }],
+    sanctions: microvm_job_sanctions(job: job),
     active: fleet_ci_posture,
-    scope: microvm_shakedown_scope(slot: slot),
+    scope: microvm_job_scope(slot: slot, job: job),
     decision_receipt: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_slot_reserve_receipt_prefix"),
     exercises: [],
-    readiness: ExerciseOfRoute { route: microvm_shakedown_route(), work: work.id },
+    readiness: ExerciseOfRoute { route: microvm_job_route(job: job), work: work.id },
     at: 0,
     requirements: work.requirements,
     requests: [
@@ -249,6 +304,10 @@ fn microvm_shakedown_candidate_field(slot: RunnerSlotIdentity) -> CandidateField
   )
 }
 
+fn microvm_shakedown_candidate_field(slot: RunnerSlotIdentity) -> CandidateField<NonEmptyStr> {
+  microvm_job_candidate_field(slot: slot, job: microvm_shakedown_job())
+}
+
 // ── the broker's root entry ─────────────────────────────────────────────────────────────────────
 
 // THE UNIT'S ENTRY TAKES NOTHING FROM ITS STARTER. The slot is the shakedown slot row, the store root
@@ -260,10 +319,14 @@ fn microvm_slot_reserve_main() -> ProcessExit {
     Absent => exit_failure(reason: join(["microvm_slot_reserve: ", systemd_invocation_id_env_name, " is not set; the broker runs only as its systemd unit"], ""))
     Present { value: invocation } => {
       let slot = srv1_microvm_shakedown_slot()
+      match clock_now_probed_at() {
+      Absent => exit_failure(reason: "microvm_slot_reserve: the clock could not be read; a grant is not issued without its issue time")
+      Present { value: now } => {
       let outcome = microvm_shakedown_broker_decide(
         root: fabric_control_plane_store_root(),
         slot: slot,
         field: microvm_shakedown_candidate_field(slot: slot),
+        issued_at: now,
       )
       let text = shakedown_broker_outcome_text(slot: slot, outcome: outcome)
       let path = microvm_unit_receipt_path(prefix: microvm_slot_reserve_receipt_prefix(), invocation_id: invocation as NonEmptyStr)
@@ -275,17 +338,17 @@ fn microvm_slot_reserve_main() -> ProcessExit {
       } else {
         ExitSuccess
       }
+      }
+      }
     }
   }
 }
 
 // ── the receipt ─────────────────────────────────────────────────────────────────────────────────
 
-// THE RECEIPT NAMES WHO THE CELL IS HELD FOR, NOT ONLY THAT IT IS HELD: the demand identity and the
-// hold owner derived from it, which is exactly the value observe_required_build_cell_wet compares the
-// slot's holder against. A reader can therefore check, from this receipt alone, that the controller
-// will recognise the hold -- a committed reservation for any other demand is the controller's
-// ReservationPayloadWorkMismatch.
+// THE RECEIPT NAMES WHO THE CELL IS GRANTED TO, NOT ONLY THAT IT IS HELD: the demand, Work, offer and
+// attempt the grant key is derived from, and on success the grant key and generation -- exactly what
+// the controller's observe_granted_cell_wet re-derives and compares the slot's holder against.
 fn shakedown_broker_subject_text(slot: RunnerSlotIdentity) -> String {
   let demand = microvm_shakedown_demand(slot: slot)
   let offer = microvm_shakedown_offer(slot: slot)
@@ -294,8 +357,47 @@ fn shakedown_broker_subject_text(slot: RunnerSlotIdentity) -> String {
     " demand=", demand.id.principal as String, "/", demand.id.key as String,
     " work=", demand.work.key as String,
     " offer=", offer.id.key as String,
-    " hold-owner=", fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand.id, offer: offer.id)) as String,
+    " attempt=", microvm_shakedown_attempt_id(slot: slot).key as String,
   ], "")
+}
+
+// THE ISSUANCE REFUSAL IS NAMED IN THE RECEIPT, with the identities it disagreed about, so a reader
+// of a failed reserve learns which wall refused rather than only that one did.
+fn grant_issue_refusal_text(r: GrantIssueRefusal<NonEmptyStr, Count, One>) -> String {
+  match r {
+    AttemptNamesAnotherWork { attempt_work: a, subject_work: w } => join(["attempt-names-another-work attempt_work=", a.key as String, " subject_work=", w.key as String], "")
+    AttemptPrincipalIsNotTheWorkPrincipal { attempt: a, subject_work: w } => join(["attempt-principal-is-not-the-work-principal attempt=", a.principal as String, " work=", w.principal as String], "")
+    OfferNotFungibleForWork { fungibility: _ } => "offer-not-fungible-for-work"
+    OfferCapacityExhausted { offer: o, quantity_bound: b, grants_outstanding: n } => join(["offer-capacity-exhausted offer=", o.key as String, " bound=", to_string(b), " outstanding=", to_string(n)], "")
+    GrantAlreadyIssuedForAttempt { existing: e } => join(["grant-already-issued-for-attempt existing=", e.key as String], "")
+    MoneyReservationRefused { refusal: m } => join(["money-reservation-refused ", money_refusal_wire(refusal: m) as String], "")
+    ResourceReservationRefused { refusal: _ } => "resource-reservation-refused"
+    PermitNamesAnotherOffer { offer: o, permit_names: n } => join(["permit-names-another-offer offer=", o.key as String, " permit_names=", n.key as String], "")
+    PermitNamesAnotherRoute { offer: o } => join(["permit-names-another-route offer=", o.key as String], "")
+    PermitNamesAnotherWork { permit_work: p, subject_work: w } => join(["permit-names-another-work permit_work=", p.key as String, " subject_work=", w.key as String], "")
+    PermitNamesAnotherDemand { permit_demand: p, subject_demand: d } => join(["permit-names-another-demand permit_demand=", p.key as String, " subject_demand=", d.key as String], "")
+  }
+}
+
+fn cell_grant_text(g: CellGrant<Count, One>) -> String {
+  match g {
+    CellGranted { grant: grant, account: _, ledger: _ } =>
+      join(["reservation=committed slot=", grant.context.lease.lease_key as String, " generation=", to_string(grant.context.lease.generation),
+        " grant=", grant.id.key as String, " offer=", grant.object.offer.key as String], "")
+    CellAlreadyGranted { slot_key: k, holder: h, generation: n } =>
+      join(["reservation=already-held slot=", k as String, " holder=", h as String, " generation=", to_string(cas_generation_count(g: n)),
+        " -- the cell is released by its holder, not by a second grant"], "")
+    CellGrantIssueRefused { slot_key: k, refusal: r } =>
+      join(["reservation=issue-refused slot=", k as String, " cause=", grant_issue_refusal_text(r: r)], "")
+    CellGrantLost { slot_key: k } => join(["reservation=lost slot=", k as String], "")
+    CellGrantStoreUnavailable { slot_key: k, cause: c } =>
+      join(["reservation=store-unavailable slot=", k as String, " cause=", cas_store_failure_wire(cause: c) as String], "")
+    CellGrantSlotUndecodable { slot_key: k, generation: n, detail: d } =>
+      join(["reservation=slot-undecodable slot=", k as String, " generation=", to_string(cas_generation_count(g: n)), " detail=", d as String], "")
+    CellGrantGenerationsExhausted { slot_key: k, head: _ } => join(["reservation=generations-exhausted slot=", k as String], "")
+    CellGrantAttemptRefused { slot_key: k, detail: d } =>
+      join(["reservation=attempt-refused slot=", k as String, " detail=", d as String], "")
+  }
 }
 
 fn cell_reservation_text(r: CellReservation) -> String {
@@ -324,7 +426,10 @@ fn cell_reservation_text(r: CellReservation) -> String {
 
 fn shakedown_broker_outcome_text(slot: RunnerSlotIdentity, outcome: ShakedownBrokerOutcome) -> String {
   let body = match outcome {
-    ShakedownBrokerDecided { reservation: r } => cell_reservation_text(r: r)
+    ShakedownBrokerDecided { decision: d } => match d {
+      CellGrantNotSelected { refusal: r } => cell_reservation_text(r: r)
+      CellGrantDecided { outcome: g } => cell_grant_text(g: g)
+    }
     ShakedownBrokerRosterRefused { binding: b } =>
       match b {
         ShakedownRosterBound { roster: _ } => "roster=bound"
@@ -340,16 +445,11 @@ fn shakedown_broker_outcome_text(slot: RunnerSlotIdentity, outcome: ShakedownBro
 // the receipt says which of the route's answers it was.
 fn shakedown_broker_reserved(outcome: ShakedownBrokerOutcome) -> Bool {
   match outcome {
-    ShakedownBrokerDecided { reservation: r } =>
-      match r {
-        CellReserved { offer: _, slot_key: _, generation: _, account: _ } => true
-        NoCellAdmissible { considered: _, refused: _ } => false
-        CellSelectionTieUnresolved { digest: _, considered: _ } => false
-        BudgetRefused { slot_key: _, refusal: _ } => false
-        ReservationLost { slot_key: _ } => false
-        PermitNamesAnotherUseForCell { standing: _ } => false
-        StoreUnavailable { slot_key: _, cause: _ } => false
-        AttemptRefused { slot_key: _, detail: _ } => false
+    ShakedownBrokerDecided { decision: d } =>
+      match d {
+        CellGrantNotSelected { refusal: _ } => false
+        CellGrantDecided { outcome: CellGranted { grant: _, account: _, ledger: _ } } => true
+        CellGrantDecided { outcome: _ } => false
       }
     ShakedownBrokerRosterRefused { binding: _ } => false
   }

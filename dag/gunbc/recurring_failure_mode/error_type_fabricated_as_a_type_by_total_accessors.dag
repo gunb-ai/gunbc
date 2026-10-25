@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.error_type_fabricated_as_a_type_by_total_accessors
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data error_type_fabricated_as_a_type_by_total_accessors: RecurringFailureMode = RecurringFailureMode {
+  identity: "error_type_fabricated_as_a_type_by_total_accessors" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a type node with name empty and no ident_span, answered where a node's inferred slot holds no type. v1.compiler.infer_types resolved_type answers the nameless error_type node for every non-Resolved state of the slot (an unbound TypeVariable, a carried CompilerError, a Divergent), so an error masquerades as a type (DESIGN section 5). child_type_node passes an UNINFERRED child and an Arrow through unchanged; only a child whose inferred slot is PRESENT and non-Resolved delegates to resolved_type's error_type fallback. The preserved pass-through branches are not fabrication sites.",
+
+    "MEASUREMENT (2026-10-17, work item adhoc-6584a70b-cf3, PR #14152 lane): in gentle-carp-16's instrumented self-host run, 228,669 type leaves printed an empty name with ident_span none; the count is bounded to that run and was not re-derived elsewhere. It is not a claim that resolved_type's fallback is the only producer: missing_kernel_container_profile_type and type_variable_node also make nameless, spanless nodes. The fallback arm is a producer of this shape, and callers are what the row addresses. Callers at base 91af1d0e04: resolved_type 79 in 04_infer, 72 in 05_emit_rust, 18 in 05_emit, 6 in 05_emit_python, 5 in 05_emit_go, 3 in 05_emit_core_support, 2 in 04_resolve, 2 in 04_types, 1 each in 04_access and 04_emit_info. child_type_node has 101 call sites (31 in 04_infer, 27 in 04_types, 22 in 05_emit_rust, 6 in 05_emit, 5 in 04_emit_info, 3 each in 04_patterns, 04_lookup, 04_resolve, 1 in 04_items).",
+
+    "PER-SITE TABLE for the 31 child_type_node sites in 04_infer.dag: PR #14312 issue comment 6241958544 (unsettled 10, refuse 14, name readers 7, classified from call shape and not yet confirmed site by site).",
+
+    "LANDED: S4 (#14221). NOT LANDED: S1a (PR #14312, the verdict site: type_resolution_verdict reading a child's inferred slot directly) was attempted and closed UNMERGED after the first newly exposed refusal (uri_validation.dag:80:7). Its controls and executed mutation (3 of 4 controls flipped) are historical evidence from the retained branch session/quiet-eagle-395-s1, not a guarantee on main, and the population of newly refusing modules was not measured. The verdict-site defect (a fabricated node verdicting FullyResolved where the child is unbound, carried-error or Divergent) therefore remains on main.",
+
+    "MEASURED NOT TO DEPEND ON THIS, FOR #14152: gentle-carp-16's probe over 254 rebind comparisons (about 10,176 printed nodes) found no node with inferred CompilerError on the compared path and 50 rows carrying TypeVariables, which their fold treats as unsettled. CLOSED (2026-10-18): gentle-carp-16 bracketed node_type_equals_core in the rebind fold and counted resolved_type minting error_type 0 times across all 254 rows, a non-vacuous bracket. The earlier claim of 7 Unit fabrications in substitute_generics_apply was struck (that function is byte-identical on main and returns the node on Absent). This bounds the dependency of #14152 only; it does not show the broader verdict-site defect absent or repaired.",
+
+    "UNATTRIBUTED: Product(Unit<>) appears in the bound side of 35 of those rows and the actual side of 1. It is passed into the fold from upstream typing, not fabricated at substitution, and its producer is not identified (rows in gentle-carp-16's scratch branch scratch/rebind-census).",
+
+    "RUNG FOUND AT: below the ladder on the type-read path (a total accessor fabricates a plausible value). CEILING: 4, since a typed read of the slot has no constructor for the fabricated node once error_type is deleted as a value. NOT SCHEDULED, AS A BOUNDED OPERATOR DECISION: the remaining slices (S1b-S6) are parked under the v1 purpose test (gunbc.v1.v1_maintenance_standing), informed by the 0-mint measurement over the 254 rebind comparisons; the decision is scoped to #14152 and is not a verdict on the verdict-site defect. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a consumer is shown to read a fabricated error_type as a type, at which point the remaining slices (child_type_node and resolved_type callers moved onto a direct match of the inferred slot, then error_type and the resolved_type delegate deleted) are admitted in that order, S1a first.",
+  ],
+
+  evidence: [],
+}

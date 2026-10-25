@@ -18,8 +18,7 @@ import product.host_identity { HostIdentity }
 import gunbc.fleet.origin_main_revision_observe { observe_origin_main_revision }
 import gunbc.fleet.fleet_main_revision { converge_target_revision }
 import gunbc.live_deploy.deployed_tree_observation {
-  deployed_tree_locus,
-  observe_deployed_tree,
+  observe_deployed_tree_at,
   deployed_tree_standing,
   deployed_tree_unobservable_text,
   DeployedTreeStanding,
@@ -126,16 +125,15 @@ fn deployed_tree_report_for_context(
         reason: "deployed tree report: origin advertises no refs/heads/main, so there is nothing to compare a host against",
       )
     Present { value: desired } => {
-      let locus = deployed_tree_locus(
-        context: context,
-        target: fleet_locus_ssh_target(host: deployed_tree_report_host),
-        repo: srv1_gunbc_repo_root as String as NonEmptyStr,
-      )
       deployed_tree_report_emit(
         context_receipt: context_receipt,
         standing: deployed_tree_standing(
           desired: desired,
-          observation: observe_deployed_tree(locus: locus),
+          observation: observe_deployed_tree_at(
+            context: context,
+            target: fleet_locus_ssh_target(host: deployed_tree_report_host),
+            repo: srv1_gunbc_repo_root as String as NonEmptyStr,
+          ),
         ),
       )
     }

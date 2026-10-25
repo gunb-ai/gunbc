@@ -1,5 +1,6 @@
 module gunbc.runner.runner_guest_image
 
+import extdeps.posix.environment { posix_home_env }
 import gunbc.runner.microvm_guest_artifacts {
   GuestArtifactDigestProvenance, PublishedByUpstream, FirstObservedOnFetch,
   GuestArtifactIntegrity, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable,
@@ -240,8 +241,15 @@ fn guest_observation_line(event: GuestEmittedEvent, image: RunnerGuestImage) -> 
 // services a default PATH, but the job's steps inherit the LISTENER's environment, so the PATH the job
 // sees is declared here rather than left to whichever init started the guest.
 data runner_guest_echo_program: String = "/usr/bin/echo"
-data runner_guest_job_path: NonEmptyStr = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" as NonEmptyStr
-data runner_guest_job_home: NonEmptyStr = "HOME=/root" as NonEmptyStr
+// Each variable is held as its name and value; the systemd assignment below is derived from them, so
+// a consumer that needs the pair (gunbc.runner.runner_claim_set_work) reads the same fact rather than
+// parsing an assignment string.
+data runner_guest_job_path_name: NonEmptyStr = "PATH" as NonEmptyStr
+data runner_guest_job_path_value: NonEmptyStr = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" as NonEmptyStr
+data runner_guest_job_home_name: NonEmptyStr = posix_home_env
+data runner_guest_job_home_value: NonEmptyStr = "/root" as NonEmptyStr
+data runner_guest_job_path: NonEmptyStr = concat(runner_guest_job_path_name, concat("=", runner_guest_job_path_value)) as NonEmptyStr
+data runner_guest_job_home: NonEmptyStr = concat(runner_guest_job_home_name, concat("=", runner_guest_job_home_value)) as NonEmptyStr
 
 fn guest_observation_emit_command(event: GuestEmittedEvent, image: RunnerGuestImage) -> NonEmptyStr {
   join([runner_guest_echo_program, " ", guest_observation_line(event: event, image: image)], "") as NonEmptyStr

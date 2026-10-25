@@ -1,0 +1,46 @@
+module test.claim.gha_actions_cache_facts_witness
+
+import std.types { Bool }
+import std.measure { second_count, byte_size_count, seconds_per_day }
+import std.cache_interface { ReleasedAfterIdle, CapacityBounded, ByteCapacity, ExactLimit }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.cache.github_actions {
+  gha_actions_cache_facts,
+  gha_actions_cache_idle_release,
+  gha_actions_cache_default_byte_cap,
+  GhaCacheDefaultBranchScope,
+  GhaCachePullRequestMergeRefScope,
+  gha_cache_entry_restorable_by,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn gha_actions_cache_releases_after_seven_idle_days() -> Bool {
+  match gha_actions_cache_facts.placement.retention.release_policy {
+    ReleasedAfterIdle { idle: idle } =>
+      (second_count(s: idle) == second_count(s: gha_actions_cache_idle_release()))
+        && (second_count(s: idle) == 7 * seconds_per_day())
+    _ => false
+  }
+}
+
+test fn gha_actions_cache_byte_cap_is_the_documented_ten_gb() -> Bool {
+  match gha_actions_cache_facts.placement.retention.capacity {
+    CapacityBounded { limit: l, at_capacity: _ } => match l {
+      ByteCapacity { limit: v } => match v {
+        ExactLimit { value: b } => byte_size_count(b: b) == byte_size_count(b: gha_actions_cache_default_byte_cap())
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn a_default_branch_cache_is_restorable_by_a_pull_request() -> Bool {
+  gha_cache_entry_restorable_by(saved: GhaCacheDefaultBranchScope, restorer: GhaCachePullRequestMergeRefScope)
+}
+
+test fn a_pull_request_cache_is_not_restorable_from_the_default_branch() -> Bool {
+  gha_cache_entry_restorable_by(saved: GhaCachePullRequestMergeRefScope, restorer: GhaCacheDefaultBranchScope) == false
+}

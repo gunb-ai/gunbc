@@ -1,8 +1,8 @@
 module extdeps.linux.psi
 
-import v2.std.collection { list_at_optional }
+
 import std.types { Bool, List, NonEmptyStr, String }
-import std.algebra { trim }
+import std.algebra { trim, list_at_optional }
 import std.nat { Nat }
 import std.checked_arithmetic { nat_magnitude }
 import std.measure { Microsecond, microsecond, microsecond_count }

@@ -60,7 +60,7 @@ fn workspace_executor_plan_bytes(plan_body: String, apply_shell: String,
   match workspace_commissioning_directive_from_text(text: credential) {
     WorkspaceCommissioningDirectiveReady { provenance } => match fleet_converge_plan_receipt_decode(raw: receipt_text) {
       FleetConvergePlanReceiptDecoded { receipt } => if receipt.observed_host != (provenance.slot.host as String)
-        || receipt.run.run_revision != (provenance.source_revision as String)
+        || receipt.run.execution_revision != (provenance.source_revision as String)
         || receipt.scope_wire != workspace_executor_scope_wire
         || receipt.prior_generation < 0 || receipt.planned_generation <= 0
         || receipt.prior_generation != receipt.planned_generation - 1

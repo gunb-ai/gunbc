@@ -1,6 +1,6 @@
 module extdeps.git.inspect
 
-import std.types { Bool, CommitSha, FilePath, GitRef, Int, Unit }
+import std.types { Bool, CommitSha, FilePath, GitRef, Int, List, String, Unit }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -314,6 +314,27 @@ service git.Inspect {
     }
   }
 
+  // The index flag letter of one path (`git ls-files -v`): `H` is an ordinary tracked entry, a lowercase letter is
+  // assume-unchanged and `S` is skip-worktree, both of which make `git status` skip the worktree check for that path.
+  operation IndexFlagsIn {
+    requires opaque
+    input { repository_path: String, path: String }
+    output {
+      entries_nul: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-c", "safe.directory={repository_path}", "-C", "{repository_path}", "ls-files", "-v", "-z", "--", "{path}"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+    mock_response {
+      0 => { entries_nul: "", success: true, stderr: "" } "hermetic git.Inspect.IndexFlagsIn: no entry"
+    }
+  }
+
   operation MergeBase {
     requires opaque
     input { repository_path: String, left: GitRef, right: GitRef }
@@ -459,6 +480,56 @@ service git.Inspect {
     exit {
       0 => Unit
       1 => String "Key is not set"
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation ConfigGetInRepo {
+    requires none
+    input { repository_path: FilePath, key: String }
+    output {
+      value: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "config", "--local", "--get", "{key}"] }
+    exit {
+      0 => Unit
+      1 => String "Key is not set"
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation ConfigGetRegexpInRepo {
+    requires none
+    input { repository_path: FilePath, pattern: String }
+    output {
+      value: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "config", "--local", "--get-regexp", "{pattern}"] }
+    exit {
+      0 => Unit
+      1 => String "No matching keys"
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation IsShallowRepository {
+    requires none
+    input { repository_path: FilePath }
+    output {
+      answer: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "rev-parse", "--is-shallow-repository"] }
+    exit {
+      0 => Unit
       128 => String "Not a git repository"
     }
   }
@@ -630,4 +701,18 @@ fn config_reading(exit_code: Int, stdout: String, stderr: String) -> ConfigReadi
       ConfigUnreadable { exit_code: exit_code, stderr: stderr }
     }
   }
+}
+
+data git_config_local_flag: String = "--local"
+
+fn git_config_get_in_repo_tail(key: String) -> List<String> {
+  ["config", git_config_local_flag, "--get", key]
+}
+
+fn git_config_get_regexp_in_repo_tail(pattern: String) -> List<String> {
+  ["config", git_config_local_flag, "--get-regexp", pattern]
+}
+
+fn git_rev_parse_is_shallow_in_repo_tail() -> List<String> {
+  ["rev-parse", "--is-shallow-repository"]
 }

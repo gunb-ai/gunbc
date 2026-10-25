@@ -1,0 +1,191 @@
+module gunbc.approve_ios_swift_enrolment_machine
+
+import std.types { NonEmptyStr, String, List }
+import std.logic { Bool }
+import std.algebra { list_append }
+import std.optional { Present }
+import gunbc.approve_ios_enrolment_machine {
+  EnrolmentPhase, EnrolmentAnswer, SignInKey, NewKey, SameKey,
+  AnswerSignedIn, AnswerRefused, AnswerUnanswered, AnswerServerReportsRevoked,
+  PhaseSignedOut, PhaseEnrolled, PhaseRevoked,
+  enrolment_phases, enrolment_answers, enrolment_next, phase_name,
+}
+import v2.extdeps.languages.swift.syntax {
+  SwiftSourceFile, SwiftDecl, SwiftExpr, SwiftStmt, SwiftPattern, SwiftSwitchCase, SwiftStaticModifier, SwiftImportDecl, SwiftAttribute,
+  SwiftFinalModifier, SwiftClassDecl, SwiftTuplePattern,
+  sw_tuple,
+  sw_t, sw_tel, sw_id, sw_dot, sw_mem, sw_path, sw_call, sw_calln, sw_pos, sw_arg, sw_str, sw_strs, 
+  sw_expr, sw_ret, sw_switch, sw_case, sw_default, sw_pexpr,
+  sw_cases, sw_case_payload, sw_param, sw_func, sw_enum, sw_doc, sw_cmt, sw_import, sw_tg
+}
+import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
+
+// TWO GENERATED SWIFT FILES FOR THE APP'S ENROLMENT STATE MACHINE (gunbc.approve_ios_enrolment_machine):
+//   apps/approve-ios/Approve/EnrolmentMachine.swift       the transition table, PRINTED BY EVALUATING
+//     enrolment_next over the closed phase x answer product: only the cells that move become cases, the
+//     rest fall to `default: return from`, so an edit to a transition in the .dag changes the table;
+//   apps/approve-ios/ApproveTests/EnrolmentMachineTests.swift   the discriminating test.
+//
+// THE TEST'S ORACLE IS NOT THE TABLE. A test printed from the same rows it checks is green after any
+// edit to them. This one states the ruling itself, independently, as expected_moves below: one row per
+// cell of the closed phase x answer product (15), written without calling enrolment_next. Changing one
+// transition in the machine .dag therefore turns the regenerated test red; skipping the regeneration
+// turns the drift gate red.
+//
+// STANDING: nothing on the merge path compiles Swift (gunbc.approve_ios_app
+// approve_ios_vector_check_unenrolled_frontier); the XCTest is executed by an operator on a Mac.
+// What the merge path does check is the printed bytes, by the drift gate.
+
+type ExpectedMove {
+  from: EnrolmentPhase
+  answer: EnrolmentAnswer
+  to: EnrolmentPhase
+}
+
+data expected_moves: List<ExpectedMove> = [
+  ExpectedMove { from: PhaseSignedOut, answer: AnswerSignedIn { key: NewKey }, to: PhaseEnrolled },
+  ExpectedMove { from: PhaseSignedOut, answer: AnswerSignedIn { key: SameKey }, to: PhaseEnrolled },
+  ExpectedMove { from: PhaseSignedOut, answer: AnswerRefused, to: PhaseSignedOut },
+  ExpectedMove { from: PhaseSignedOut, answer: AnswerUnanswered, to: PhaseSignedOut },
+  ExpectedMove { from: PhaseSignedOut, answer: AnswerServerReportsRevoked, to: PhaseSignedOut },
+  ExpectedMove { from: PhaseEnrolled, answer: AnswerSignedIn { key: NewKey }, to: PhaseEnrolled },
+  ExpectedMove { from: PhaseEnrolled, answer: AnswerSignedIn { key: SameKey }, to: PhaseEnrolled },
+  ExpectedMove { from: PhaseEnrolled, answer: AnswerRefused, to: PhaseEnrolled },
+  ExpectedMove { from: PhaseEnrolled, answer: AnswerUnanswered, to: PhaseEnrolled },
+  ExpectedMove { from: PhaseEnrolled, answer: AnswerServerReportsRevoked, to: PhaseRevoked },
+  ExpectedMove { from: PhaseRevoked, answer: AnswerSignedIn { key: NewKey }, to: PhaseEnrolled },
+  ExpectedMove { from: PhaseRevoked, answer: AnswerSignedIn { key: SameKey }, to: PhaseRevoked },
+  ExpectedMove { from: PhaseRevoked, answer: AnswerRefused, to: PhaseRevoked },
+  ExpectedMove { from: PhaseRevoked, answer: AnswerUnanswered, to: PhaseRevoked },
+  ExpectedMove { from: PhaseRevoked, answer: AnswerServerReportsRevoked, to: PhaseRevoked },
+]
+
+// ── The table ────────────────────────────────────────────────────────────────────────────────
+fn em_phase_expr(p: EnrolmentPhase) -> SwiftExpr { sw_dot(n: phase_name(p: p) as String) }
+
+fn sign_in_key_name(k: SignInKey) -> String {
+  match k {
+    NewKey => "newKey"
+    SameKey => "sameKey"
+  }
+}
+
+fn em_answer_expr(a: EnrolmentAnswer) -> SwiftExpr {
+  match a {
+    AnswerSignedIn { key: k } => sw_call(f: sw_dot(n: "signedIn"), a: [sw_pos(v: sw_dot(n: sign_in_key_name(k: k)))])
+    AnswerRefused => sw_dot(n: "refused")
+    AnswerUnanswered => sw_dot(n: "unanswered")
+    AnswerServerReportsRevoked => sw_dot(n: "serverReportsRevoked")
+  }
+}
+
+fn em_moves(from: EnrolmentPhase, a: EnrolmentAnswer) -> Bool {
+  (phase_name(p: enrolment_next(from: from, answer: a)) as String) != (phase_name(p: from) as String)
+}
+
+fn em_case(from: EnrolmentPhase, a: EnrolmentAnswer) -> SwiftSwitchCase {
+  sw_case(
+    p: [SwiftTuplePattern { elements: [sw_pexpr(e: em_phase_expr(p: from)), sw_pexpr(e: em_answer_expr(a: a))] }],
+    s: [sw_ret(e: em_phase_expr(p: enrolment_next(from: from, answer: a)))]
+  )
+}
+
+fn em_cases() -> List<SwiftSwitchCase> {
+  list_append(
+    left: flat_map(enrolment_phases(), from => map(filter(enrolment_answers(), a => em_moves(from: from, a: a)), a => em_case(from: from, a: a))),
+    right: [sw_default(s: [sw_ret(e: sw_id(n: "from"))])]
+  )
+}
+
+fn em_phase_enum() -> SwiftDecl {
+  sw_doc(
+    c: ["gunbc.approve_ios_enrolment_machine EnrolmentPhase, spelled by phase_name."],
+    d: sw_enum(n: "EnrolmentPhase", i: [sw_t(n: "String"), sw_t(n: "CaseIterable")], m: [sw_cases(n: map(enrolment_phases(), p => phase_name(p: p) as String))])
+  )
+}
+
+fn em_sign_in_key_enum() -> SwiftDecl {
+  sw_doc(
+    c: ["gunbc.approve_ios_enrolment_machine SignInKey: whether a sign-in registered a key the phone already held."],
+    d: sw_enum(n: "SignInKey", i: [sw_t(n: "Equatable")], m: [sw_cases(n: ["newKey", "sameKey"])])
+  )
+}
+
+fn em_answer_enum() -> SwiftDecl {
+  sw_doc(
+    c: ["gunbc.approve_ios_enrolment_machine EnrolmentAnswer: what the sign-in and enrol POST taught the app."],
+    d: sw_enum(n: "EnrolmentAnswer", i: [sw_t(n: "Equatable")], m: [
+      sw_cases(n: ["refused", "unanswered", "serverReportsRevoked"]),
+      sw_case_payload(n: "signedIn", a: [sw_tel(t: sw_t(n: "SignInKey"))]),
+    ])
+  )
+}
+
+fn em_machine_enum() -> SwiftDecl {
+  sw_doc(
+    c: ["gunbc.approve_ios_enrolment_machine enrolment_next. The app's UI glue calls this and persists the result; it decides nothing itself."],
+    d: sw_enum(n: "EnrolmentMachine", i: [], m: [
+      sw_func(m: [SwiftStaticModifier], n: "next", p: [sw_param(l: Present { value: "_" }, n: "from", t: sw_t(n: "EnrolmentPhase")), sw_param(l: Present { value: "on" }, n: "answer", t: sw_t(n: "EnrolmentAnswer"))], th: false, r: Present { value: sw_t(n: "EnrolmentPhase") }, b: [
+        sw_switch(e: sw_tuple(e: [sw_pos(v: sw_id(n: "from")), sw_pos(v: sw_id(n: "answer"))]), c: em_cases()),
+      ]),
+    ])
+  )
+}
+
+data em_header: List<String> = [
+  "The app's enrolment state machine, printed from gunbc.approve_ios_enrolment_machine: which phase follows which answer",
+  "of the Google sign-in and enrol POST. EnrolmentState (hand-written) keeps the payloads and persistence and calls this.",
+  "GENERATED from gunbc.approve_ios_swift_enrolment_machine from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.",
+]
+
+fn approve_ios_enrolment_machine_swift_file() -> SwiftSourceFile {
+  SwiftSourceFile { declarations: [sw_cmt(c: em_header, d: sw_import(n: "Foundation")), em_phase_enum(), em_sign_in_key_enum(), em_answer_enum(), em_machine_enum()] }
+}
+
+fn expected_approve_ios_enrolment_machine_swift() -> SwiftRowEmission {
+  swift_rows_emit_source_file(f: approve_ios_enrolment_machine_swift_file())
+}
+
+// ── The test ─────────────────────────────────────────────────────────────────────────────────
+fn em_next(from: SwiftExpr, answer: SwiftExpr) -> SwiftExpr {
+  sw_call(f: sw_path(b: "EnrolmentMachine", m: "next"), a: [sw_pos(v: from), sw_arg(l: "on", v: answer)])
+}
+
+fn em_assert(a: SwiftExpr, b: SwiftExpr, msg: SwiftExpr) -> SwiftStmt {
+  sw_expr(e: sw_calln(f: "XCTAssertEqual", a: [sw_pos(v: a), sw_pos(v: b), sw_pos(v: msg)]))
+}
+
+fn em_test(doc: List<String>, n: String, b: List<SwiftStmt>) -> SwiftDecl {
+  sw_doc(c: doc, d: sw_func(m: [], n: n, p: [], th: false, r: none, b: b))
+}
+
+fn em_move_test(m: ExpectedMove) -> SwiftStmt {
+  em_assert(a: em_next(from: em_phase_expr(p: m.from), answer: em_answer_expr(a: m.answer)), b: em_phase_expr(p: m.to), msg: sw_str(s: phase_name(p: m.from) as String))
+}
+
+fn em_tests() -> List<SwiftDecl> {
+  [
+    em_test(
+      doc: ["The ruling, one assertion per cell of the phase x answer product: sign-in enrols, any refusal or no answer leaves the phase, the server's revoked report revokes an enrolment, and only a NEW key leaves Revoked."],
+      n: "testEveryTransitionMatchesTheRuling",
+      b: map(expected_moves, m => em_move_test(m: m))
+    ),
+  ]
+}
+
+data em_tests_header: List<String> = [
+  "The enrolment machine against the ruling, stated independently of the table (expected_moves in the generator).",
+  "GENERATED from gunbc.approve_ios_swift_enrolment_machine from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.",
+]
+
+fn approve_ios_enrolment_machine_tests_swift_file() -> SwiftSourceFile {
+  SwiftSourceFile { declarations: [
+    sw_cmt(c: em_tests_header, d: sw_import(n: "XCTest")),
+    SwiftImportDecl { attributes: [SwiftAttribute { name: "testable", arguments: [] }], module_name: "Approve" },
+    SwiftClassDecl { attributes: [], modifiers: [SwiftFinalModifier], name: "EnrolmentMachineTests", inherits: [sw_t(n: "XCTestCase")], members: em_tests() },
+  ] }
+}
+
+fn expected_approve_ios_enrolment_machine_tests_swift() -> SwiftRowEmission {
+  swift_rows_emit_source_file(f: approve_ios_enrolment_machine_tests_swift_file())
+}

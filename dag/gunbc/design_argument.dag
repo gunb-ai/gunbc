@@ -307,9 +307,10 @@ data conformance_domains: List<ConformanceDomain> = [
       "urgency, priority or a deadline weight authored as a local number, queue order or tier rather than as a declared time valuation (a std.measure money rate) on the demand or supply position whose owner holds it",
       "a declared valuation and an estimated consequence carried in one number, so a new observation can silently rewrite policy -- or a missing estimate read as zero, where zero is a declaration and unknown is not",
       "one cash consequence counted twice, once as cost and again as urgency (a rental's continuing charge restated as supply urgency)",
-      "a deadline or availability bound priced as a very large valuation instead of held as a hard constraint"
+      "a deadline or availability bound priced as a very large valuation instead of held as a hard constraint",
+      "an engine-internal choice among admissible execution alternatives (tracking grain, execution partition, fusion, batching, cache versus recompute, placement, specialization) made by a local threshold, ranked list, queue tier or cost rule that neither consumes select_realization nor states beside itself why that authority is inapplicable; a mechanism is such a choice when it selects among admitted alternatives that differ in obligations, constraints, funded objective axes or observable consequences (a FIFO pop order that decides which of differently valued work waits is a priority policy), while canonicalization, protocol-mandated order and mechanically equivalent internal choices remain implementation unless evidence or policy makes their difference material"
     ],
-    owns: "A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority. Every use case that matches demand with supply or chooses how a demanded result is realized onboards here, through one interface rather than its own scoring: it supplies the required outcome, the owners' objectives and time valuations, the constraints and commitments, and each candidate's consequences as readings on declared axes, then realizes and reads back the selected plan. Fabric allocation, CI runner placement, compute sold beside internal work, standing buy orders matched against a scanned marketplace, and eval realization are named consumers. A rough estimate is an admitted reading with its standing, and improving it does not create a new choosing mechanism.",
+    owns: "A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority. Every use case that matches demand with supply or chooses how a demanded result is realized onboards here, through one interface rather than its own scoring: it supplies the required outcome, the owners' objectives and time valuations, the constraints and commitments, and each candidate's consequences as readings on declared axes, then realizes and reads back the selected plan. Fabric allocation, CI runner placement, compute sold beside internal work, standing buy orders matched against a scanned marketplace, eval realization, and the demand engine's own realization and materialization choices (execution grain and partition, fusion, batching, cache versus recompute, placement; gunbc.plans.demand_engine_program section 2.2 and M4) are named consumers. A rough estimate is an admitted reading with its standing, and improving it does not create a new choosing mechanism.",
     boundaries: [
       "The hard selection laws stay with the section 3d reviewer.",
       "Goal assessment (std.goal_assessment) checks an already chosen state; it is a boundary of this domain, not a member.",
@@ -727,6 +728,25 @@ data design_section_2_to_7_rows: List<DesignRow> = [
         "'for now', 'temporary', 'until', 'bridge', 'shim', 'compatibility' with no dissolution obligation beside it",
         "a second path beside an existing modeled route",
         "a change that routes around a substrate refusal instead of naming it"
+      ]
+    )] },
+  },
+
+  DesignRow {
+    proposition: Proposition {
+      id: "s6b.root-generalization",
+      statement: "root generalization (anti-unification) closes breadth beside chain re-derivation's depth: when a new case needs new code, every leaf of the same shape is collected, generalized to the least general rule at the earliest unjustified boundary, and deleted; a repeated pattern is rejected until the author states why it should not be generalized or names the trigger and follow-up",
+      premises: ["s2.minimize-redundancy", "s3.single-authority", "s6.how-to-work"]
+    },
+    review: ReviewableOnChange { parts: [yes_no_review(
+      part: "root-generalization",
+      question: "State what the change touches: which models, structures and behaviors, and what each does. Then look AROUND it, layer by layer up to the root of the tree: sibling arms of the same match, sibling call sites of the same general check, sibling helpers, the same rule in v1 and in v2, other stages and targets. Is the pattern the change adds or repairs REPEATED there, so that this change is one more leaf of a family rather than a single case? REPEATED means the same general question is answered by separate leaves, each taught its case in turn. The trigger is the second local implementation of one rule. List the leaves you found (the fork census). Done means a new ordinary case is data, not control flow. Failure examples. (a) Type-alias identity: node_type_compatible (v1, 04_types) takes no symbol table, so transparent_alias_identity_agrees is bolted on as a fallback at individual call sites; #13941 #14069 #13974 #14043 #14057 each taught one site, and the if-expression site, which has no fallback, broke after #13939. (b) v1 Rust trait bounds: Clone, map-key Eq+Hash and 'static each have their own seed, round, fixpoint and forwarding pipeline (v1_clone_bound_*, v1_map_key_*); #13978 #14010 #14020. (c) Qualified-call resolution: dotted names classified by string search at several sites across 04_infer and 04_lookup, patched in sequence by #13925, #14085, #14089. (d) changed_declaration_signature_consumer_unplanned (recurring_failure_mode). Generalization done well, for contrast: #14151, #14193, #13872, #14187. NOT repeated: two validations of different fields at one boundary (different questions at one site), and a corpus-wide import addition (one fact applied to every site, with no per-site logic). If it is repeated, REJECT and advise investigating generalization (DESIGN section 6b, root generalization). The author must answer with exactly one of: (1) why it should not be generalized, a stated reason (section 3b, diverges with a stated reason); or (2) it should be, but not now, naming the trigger and the follow-up (section 4b, no untracked stall). Accept or reject that answer on its merits. No answer is a reject.",
+      tells: [
+        "a new arm, call-site fallback or helper beside siblings that answer the same general question, with the general check left unable to answer it",
+        "a fix whose diff touches exactly the site named in the finding, while a sibling site, or the same rule in the other of v1 and v2, is shaped like it",
+        "a second or third fix to the same family within a short time, each patching one more site or one more pipeline",
+        "a parallel seed, round, fixpoint or forwarding pipeline per instance of one kind of obligation",
+        "a stated reason not to generalize that restates the instance rather than naming what differs, or a 'later' with no trigger and no follow-up"
       ]
     )] },
   },

@@ -21,7 +21,7 @@ import extdeps.github.rulesets {
   merge_queue_grouping_strategy_wire_label,
 }
 import gunbc.witness.witness_floor_workflow { witness_floor_triggers }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 
 // WHAT A MERGE QUEUE IS, AS A FACT ABOUT ADMISSION RATHER THAN ABOUT THROUGHPUT.
 //

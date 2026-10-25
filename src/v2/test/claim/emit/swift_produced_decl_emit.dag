@@ -1,0 +1,172 @@
+module v2.test.claim.emit.swift_produced_decl_emit
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.emit_produced { emit_produced_decl }
+import v2.extdeps.languages.dag {
+  dag_arrow_domain_conj_node,
+  dag_arrow_with_body_node,
+  dag_int_literal_fixture_node,
+  dag_int_type_binding
+}
+import v2.extdeps.languages.swift { swift_target_model }
+import v2.std.compilers.target_model { ProducedDeclUnwired, TargetModel }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_list_has_reason }
+import v2.std.node { Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, NotADeclaration }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The door's own positive control (fixtures/native_cli_door: `data native_cli_door_probe_value: Int =
+// 606060`) is the subject, so this claim and the CLI instrument read one declaration shape. The
+// golden is the line `emit --target swift` printed through the built door.
+data swift_produced_decl_golden: String = "func native_cli_door_probe_value() -> Int32 { return 606060; }"
+
+data swift_produced_decl_name: Symbol = ^native_cli_door_probe_value
+
+fn swift_produced_decl_empty_domain() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn swift_produced_decl_node() -> Outcome<Node> {
+  match dag_int_literal_fixture_node(lexeme: "606060") {
+    Accepted { value: literal, diagnostics: diagnostics } =>
+      Accepted {
+        value: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Authored { name: swift_produced_decl_name },
+              target: dag_arrow_with_body_node(
+                domain: swift_produced_decl_empty_domain(),
+                return_type_binding: dag_int_type_binding(),
+                body: literal
+              ),
+              declaration: NotADeclaration
+            }
+          ]
+        ),
+        diagnostics: diagnostics
+      }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+fn swift_produced_decl_unwired_target() -> TargetModel {
+  TargetModel {
+    primitive_realizations: swift_target_model().primitive_realizations,
+    produced_decl_support: ProducedDeclUnwired,
+    bundle: swift_target_model().bundle,
+    lex: swift_target_model().lex,
+    binding_spellings: swift_target_model().binding_spellings,
+    token_class_emit_transforms: swift_target_model().token_class_emit_transforms,
+    authority_source_text: swift_target_model().authority_source_text,
+    runtime_row: swift_target_model().runtime_row
+  }
+}
+
+fn swift_produced_decl_emit_text(target: TargetModel) -> String {
+  match swift_produced_decl_node() {
+    Accepted { value: decl, diagnostics: _ } =>
+      match emit_produced_decl(decl: decl, target: target) {
+        Accepted { value: medium, diagnostics: _ } => medium.carried
+        Rejected { diagnostics: _ } => "SWIFT_PRODUCED_DECL_REJECTED"
+      }
+    Rejected { diagnostics: _ } => "SWIFT_PRODUCED_DECL_FIXTURE_REJECTED"
+  }
+}
+
+// Positive control: the real swift rows print exactly the door's line.
+test fn swift_produced_decl_emits_the_door_line_holds() -> Bool {
+  swift_produced_decl_emit_text(target: swift_target_model()) == swift_produced_decl_golden
+}
+
+// RED: the same target with its produced-decl rows removed must not print. It refuses, and the
+// refusal is the typed produced_decl_target_unwired, not any rejection.
+test fn swift_produced_decl_unwired_refuses_holds() -> Bool {
+  match swift_produced_decl_node() {
+    Accepted { value: decl, diagnostics: _ } =>
+      match emit_produced_decl(decl: decl, target: swift_produced_decl_unwired_target()) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: diagnostics } => diagnostics.head.reason == ^produced_decl_target_unwired
+          || diagnostics_list_has_reason(xs: diagnostics.tail, reason: ^produced_decl_target_unwired)
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// A PARAMETERIZED declaration is the shape the call rows must agree with. callable_apply_form prints
+// an UNLABELED positional call (`identity(606060)`), and Swift requires an argument label unless the
+// parameter declares `_`, so the swift param_layout prints `_ NAME: TYPE`. Restoring the bare
+// `NAME: TYPE` layout prints `func f(NAME: Int32, ...)`, which a positional call cannot reach.
+data swift_produced_decl_params_golden: String = "func swift_params(_ dag_binding_param_x: Int32, _ dag_binding_param_y: Int32) -> Int32 { return 606060; }"
+
+fn swift_produced_decl_params_text(target: TargetModel) -> String {
+  match dag_int_literal_fixture_node(lexeme: "606060") {
+    Accepted { value: literal, diagnostics: _ } =>
+      match emit_produced_decl(
+        decl: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Authored { name: ^swift_params },
+              target: dag_arrow_with_body_node(
+                domain: dag_arrow_domain_conj_node(),
+                return_type_binding: dag_int_type_binding(),
+                body: literal
+              ),
+              declaration: NotADeclaration
+            }
+          ]
+        ),
+        target: target
+      ) {
+        Accepted { value: medium, diagnostics: _ } => medium.carried
+        Rejected { diagnostics: _ } => "SWIFT_PRODUCED_DECL_REJECTED"
+      }
+    Rejected { diagnostics: _ } => "SWIFT_PRODUCED_DECL_FIXTURE_REJECTED"
+  }
+}
+
+test fn swift_produced_decl_params_print_underscore_labels_holds() -> Bool {
+  swift_produced_decl_params_text(target: swift_target_model()) == swift_produced_decl_params_golden
+}
+
+// LITERAL SPELLING through the same production emitter. 0 and a general literal print their lexeme.
+// There is deliberately NO golden for the literal 1: it prints the unresolved pick binding
+// `dag_binding_pick_lit_one` on every target (C5-G owns that gap upstream of the Swift rows), and
+// pinning that text would certify the wrong emission.
+fn swift_produced_decl_literal_text(lexeme: String) -> String {
+  match dag_int_literal_fixture_node(lexeme: lexeme) {
+    Accepted { value: literal, diagnostics: _ } =>
+      match emit_produced_decl(
+        decl: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Authored { name: swift_produced_decl_name },
+              target: dag_arrow_with_body_node(
+                domain: swift_produced_decl_empty_domain(),
+                return_type_binding: dag_int_type_binding(),
+                body: literal
+              ),
+              declaration: NotADeclaration
+            }
+          ]
+        ),
+        target: swift_target_model()
+      ) {
+        Accepted { value: medium, diagnostics: _ } => medium.carried
+        Rejected { diagnostics: _ } => "SWIFT_PRODUCED_DECL_REJECTED"
+      }
+    Rejected { diagnostics: _ } => "SWIFT_PRODUCED_DECL_FIXTURE_REJECTED"
+  }
+}
+
+test fn swift_produced_decl_zero_literal_prints_its_lexeme_holds() -> Bool {
+  swift_produced_decl_literal_text(lexeme: "0") == "func native_cli_door_probe_value() -> Int32 { return 0; }"
+}
+
+test fn swift_produced_decl_general_literal_prints_its_lexeme_holds() -> Bool {
+  swift_produced_decl_literal_text(lexeme: "7") == "func native_cli_door_probe_value() -> Int32 { return 7; }"
+}

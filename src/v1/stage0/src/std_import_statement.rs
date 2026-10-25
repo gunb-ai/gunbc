@@ -6,6 +6,7 @@ use self::ImportStripOutcome::*;
 use self::ImportStripProgress::*;
 use self::ImportStripRefusal::*;
 use self::ParsedImportStatements::*;
+pub use crate::std_algebra::{collection_join_shape, list_push};
 pub use crate::std_types::{FilePath, List, NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -243,16 +244,16 @@ pub fn import_strip_step(
             coordinate_map,
             ..
         } => {
-            if !(statement.span.clone().file.clone() == source_file.clone()) {
+            if !(statement.span.file.clone() == source_file.clone()) {
                 Rc::new(ImportStripProgress::ImportStripHalted {
                     refusal: Rc::new(ImportStripRefusal::ImportSpanNamesAnotherFile {
-                        span_file: statement.span.clone().file.clone(),
+                        span_file: statement.span.file.clone(),
                         source_file: source_file.clone(),
                     }),
                 })
             } else {
-                if ((statement.span.clone().start.clone() < 0)
-                    || (statement.span.clone().end.clone() > source_length.clone()))
+                if ((statement.span.start.clone() < 0)
+                    || (statement.span.end.clone() > source_length.clone()))
                 {
                     Rc::new(ImportStripProgress::ImportStripHalted {
                         refusal: Rc::new(ImportStripRefusal::ImportSpanOutsideSource {
@@ -261,20 +262,19 @@ pub fn import_strip_step(
                         }),
                     })
                 } else {
-                    if (statement.span.clone().end.clone() <= statement.span.clone().start.clone())
-                    {
+                    if (statement.span.end.clone() <= statement.span.start.clone()) {
                         Rc::new(ImportStripProgress::ImportStripHalted {
                             refusal: Rc::new(ImportStripRefusal::ImportSpanIsEmpty {
                                 span: statement.span.clone(),
                             }),
                         })
                     } else {
-                        if (statement.span.clone().start.clone() < cursor.clone()) {
+                        if (statement.span.start.clone() < cursor.clone()) {
                             Rc::new(ImportStripProgress::ImportStripHalted {
                                 refusal: Rc::new(
                                     ImportStripRefusal::ImportSpansOutOfAscendingOrder {
                                         previous_end: cursor.clone(),
-                                        next_start: statement.span.clone().start.clone(),
+                                        next_start: statement.span.start.clone(),
                                     },
                                 ),
                             })
@@ -282,8 +282,8 @@ pub fn import_strip_step(
                             {
                                 let statement_text = v1_rt::substring(
                                     &source,
-                                    statement.span.clone().start.clone(),
-                                    statement.span.clone().end.clone(),
+                                    statement.span.start.clone(),
+                                    statement.span.end.clone(),
                                 );
                                 if !statement_text_opens_with_the_import_keyword(
                                     statement_text.clone(),
@@ -308,11 +308,11 @@ pub fn import_strip_step(
 })
                                     } else {
                                         Rc::new(ImportStripProgress::ImportStripScanning {
-                                            cursor: statement.span.clone().end.clone(),
+                                            cursor: statement.span.end.clone(),
                                             rewritten_cursor: v1_rt::int_add(
                                                 rewritten_cursor.clone(),
                                                 v1_rt::int_sub(
-                                                    statement.span.clone().start.clone(),
+                                                    statement.span.start.clone(),
                                                     cursor.clone(),
                                                 ),
                                             ),
@@ -321,7 +321,7 @@ pub fn import_strip_step(
                                                 v1_rt::substring(
                                                     &source,
                                                     cursor.clone(),
-                                                    statement.span.clone().start.clone(),
+                                                    statement.span.start.clone(),
                                                 ),
                                             ),
                                             removed_statements: v1_rt::rc_list_push(
@@ -333,16 +333,12 @@ pub fn import_strip_step(
                                                 Rc::new(ImportStripCoordinateSegment {
                                                     source_file: source_file.clone(),
                                                     original_start: cursor.clone(),
-                                                    original_end: statement
-                                                        .span
-                                                        .clone()
-                                                        .start
-                                                        .clone(),
+                                                    original_end: statement.span.start.clone(),
                                                     rewritten_start: rewritten_cursor.clone(),
                                                     rewritten_end: v1_rt::int_add(
                                                         rewritten_cursor.clone(),
                                                         v1_rt::int_sub(
-                                                            statement.span.clone().start.clone(),
+                                                            statement.span.start.clone(),
                                                             cursor.clone(),
                                                         ),
                                                     ),
@@ -428,9 +424,5 @@ pub fn strip_one_import_statement(
     source: String,
     statement: Rc<ParsedImportStatement>,
 ) -> Rc<ImportStripOutcome> {
-    strip_import_statements(
-        source_file.clone(),
-        source.clone(),
-        Rc::new(vec![statement.clone()]),
-    )
+    strip_import_statements(source_file, source, Rc::new(vec![statement.clone()]))
 }
