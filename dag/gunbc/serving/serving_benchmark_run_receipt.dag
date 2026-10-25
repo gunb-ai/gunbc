@@ -8,7 +8,7 @@ import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDiff
 import std.measure {
   TokenCount, token_count, token_count_value, ByteSize, Mebibyte, Milliwatt, Watt, Hertz, Celsius, Bandwidth, Millicore,
   CpuCoreCount, HardwareThreadCount, Microsecond, microsecond, microsecond_count, millisecond_count, milli_per_unit, basis_point_count,
-  MilliTokensPerSecond, milli_tokens_per_second, EventsPerHour, events_per_hour,
+  MilliTokensPerSecond, milli_tokens_per_second, EventsPerHour, events_per_hour, millicore, byte_size, byte_size_count,
 }
 import product.host_identity { HostIdentity }
 import extdeps.uri { Uri }
@@ -16,16 +16,18 @@ import extdeps.storage.types { PcieLink }
 import extdeps.nvidia.management_library { NvmlClocksEventMask }
 import extdeps.strata.serve_flags { StrataServeFlags }
 import extdeps.gpu_bench.request_v2 { GpuBenchPhasePrime, GpuBenchPhaseWarm, GpuBenchPhaseShort, GpuBenchRequestOk, GpuBenchRequestError }
-import extdeps.gpu_bench.request_v3 { GpuBenchRequestV3 }
+import extdeps.gpu_bench.request_v4 { GpuBenchRequestV4 }
 import gunbc.serving.serving_benchmark { ServingBenchmarkVersion }
 
 // THE RUN-LEVEL RECEIPT OF ONE SERVING-BENCHMARK RUN: row E0 of plan gunbc.plans.serving_fleet_program
 // (#14953). A per-request row cannot carry what the tiers need (the throughput curve over active levels,
 // the power cap in force, wall power, the cell that produced it), so this receipt is one observation per
 // run, admitted against ONE gunbc.serving.serving_benchmark version and built from the gpu-bench
-// request/v3 rows it aggregates (extdeps.gpu_bench.request_v3, the kit's own schema; no second
-// per-request carrier). v3 and not v2: the v2 kit has no tool delta and a fixed 512-token warm output,
-// so no v2 run can inhabit serving-benchmark/1.
+// request/v4 rows it aggregates (extdeps.gpu_bench.request_v4, the kit's own schema; no second
+// per-request carrier). v4 and not v2: the v2 kit has no tool delta and a fixed 512-token warm output,
+// so no v2 run can inhabit serving-benchmark/1; and v4 rows carry the engine cgroup's CPU time and
+// memory.current at each request's start and end, so the engine telemetry of a level is folded from the
+// same rows as its quantities instead of supplied beside them.
 //
 // WHY THE CELL IS NOT A ServingVariant. gunbc.serving.flash_next_experiment_identity ServingVariant is a
 // closed enumeration of the Flash-Next vLLM paths and its ServingRunReceipt carries that stack's fields
@@ -115,14 +117,6 @@ type GpuLevelTelemetry {
   pcie_tx_mean: Bandwidth
 }
 
-// Per engine: busy CPU threads over the level's windows (engine CPU time / wall time), and the peak of
-// the engine's own cgroup memory.current. Summed process RSS double-counts the mmap-shared experts, so
-// it is not a reading of this field.
-type EngineLevelTelemetry {
-  cpu_busy: Millicore
-  memory_current_peak: ByteSize
-}
-
 type WallPowerReading
   = WallPowerMetered { mean: Watt }
   | WallPowerUnmetered
@@ -130,7 +124,6 @@ type WallPowerReading
 type LevelTelemetry {
   active: Nat
   gpus: List<GpuLevelTelemetry>
-  engines: List<EngineLevelTelemetry>
   wall_power: WallPowerReading
 }
 
@@ -138,7 +131,7 @@ type LevelTelemetry {
 
 type ServingBenchmarkRunObservation {
   cell: ServingCellIdentity
-  requests: List<GpuBenchRequestV3>
+  requests: List<GpuBenchRequestV4>
   telemetry: List<LevelTelemetry>
 }
 
@@ -165,7 +158,8 @@ type ServingBenchmarkGap
   | GapEmptyWindow { round: Nat }
   | GapTelemetryMissing { active: Nat }
   | GapTelemetryGpus { active: Nat }
-  | GapTelemetryEngines { active: Nat }
+  | GapEngineCountersUnread { round: Nat, session: Nat }
+  | GapEngineCountersCoverOneEngine { engines: Nat }
 
 // The three quantities of a level, each in its own field (gunbc.serving.serving_benchmark
 // ServingBenchmarkQuantity).
@@ -178,12 +172,20 @@ type ServingLevelResult {
   aggregate_end_to_end: MilliTokensPerSecond
   decode_median: MilliTokensPerSecond
   completed_turns_per_hour: EventsPerHour
+  engine_cpu_busy: Millicore
+  engine_memory_current_max: ByteSize
 }
+
+// THE ENGINE OF A LEVEL, from the rows. CPU busy threads are the engine cgroup's CPU time over the level's
+// rounds / the level's windows, a round's CPU time running from its earliest request's start counter to
+// its latest request's end counter. memory.current max is the largest reading at any request boundary of
+// the level, not a continuous peak: the kit samples at t_start and t_end. memory.current is the cgroup's
+// charge, page cache included; summed process RSS double-counts the mmap-shared experts and is not read.
 
 type ServingBenchmarkRunReceipt {
   version: ServingBenchmarkVersion
   cell: ServingCellIdentity
-  requests: List<GpuBenchRequestV3>
+  requests: List<GpuBenchRequestV4>
   telemetry: List<LevelTelemetry>
 }
 
@@ -193,7 +195,7 @@ type ServingBenchmarkRunAdmission
 
 // ── TIME: ONE ORIGIN PER RUN ────────────────────────────────────────────────────────────────────
 //
-// request/v2 timestamps are wall-clock epoch seconds from one client process, so they are differenced
+// request/v4 timestamps are wall-clock epoch seconds from one client process, so they are differenced
 // against the run's earliest t_start and carried as std.measure Microsecond (floor). Only those differences
 // are read.
 
@@ -219,7 +221,7 @@ fn micros_since(origin: ExactDecimal, t: ExactDecimal) -> Microsecond? {
   }
 }
 
-fn earliest_start(requests: List<GpuBenchRequestV3>) -> ExactDecimal? {
+fn earliest_start(requests: List<GpuBenchRequestV4>) -> ExactDecimal? {
   match get(xs: requests, index: 0) {
     Absent => none
     Present { value: first } => Present {
@@ -243,13 +245,42 @@ type TimedRequest {
   started: Microsecond
   first_token: Microsecond
   completed: Microsecond
+  engine_cpu_start: Microsecond
+  engine_cpu_end: Microsecond
+  engine_memory_start: ByteSize
+  engine_memory_end: ByteSize
+}
+
+type EngineCounters {
+  cpu_start: Microsecond
+  cpu_end: Microsecond
+  memory_start: ByteSize
+  memory_end: ByteSize
+}
+
+// All four counters or none: a row the kit could not sample has no engine reading, and a level is never
+// folded from part of its rows.
+fn engine_counters(r: GpuBenchRequestV4) -> EngineCounters? {
+  match r.engine.cpu_usage_start {
+    Absent => none
+    Present { value: cs } => match r.engine.cpu_usage_end {
+      Absent => none
+      Present { value: ce } => match r.engine.memory_current_start {
+        Absent => none
+        Present { value: ms } => match r.engine.memory_current_end {
+          Absent => none
+          Present { value: me } => Present { value: EngineCounters { cpu_start: cs, cpu_end: ce, memory_start: ms, memory_end: me } }
+        }
+      }
+    }
+  }
 }
 
 type TimedRead
   = TimedRead { request: TimedRequest }
   | TimedRefused { gap: ServingBenchmarkGap }
 
-fn is_prime(r: GpuBenchRequestV3) -> Bool {
+fn is_prime(r: GpuBenchRequestV4) -> Bool {
   match r.phase {
     GpuBenchPhasePrime => true
     GpuBenchPhaseWarm => false
@@ -257,7 +288,7 @@ fn is_prime(r: GpuBenchRequestV3) -> Bool {
   }
 }
 
-fn timed_request(origin: ExactDecimal, r: GpuBenchRequestV3) -> TimedRead {
+fn timed_request(origin: ExactDecimal, r: GpuBenchRequestV4) -> TimedRead {
   match r.status {
     GpuBenchRequestError { detail: _ } => TimedRefused { gap: GapRequestFailed { round: r.round, session: r.session } }
     GpuBenchRequestOk =>
@@ -274,7 +305,9 @@ fn timed_request(origin: ExactDecimal, r: GpuBenchRequestV3) -> TimedRead {
                   Absent => TimedRefused { gap: GapTimestampsUnordered { round: r.round, session: r.session } }
                   Present { value: to_first } => match micros_since(origin: tf, t: r.t_end) {
                     Absent => TimedRefused { gap: GapTimestampsUnordered { round: r.round, session: r.session } }
-                    Present { value: to_end } => TimedRead {
+                    Present { value: to_end } => match engine_counters(r: r) {
+                    Absent => TimedRefused { gap: GapEngineCountersUnread { round: r.round, session: r.session } }
+                    Present { value: eng } => TimedRead {
                       request: TimedRequest {
                         round: r.round,
                         n_active: r.n_active,
@@ -286,7 +319,12 @@ fn timed_request(origin: ExactDecimal, r: GpuBenchRequestV3) -> TimedRead {
                         started: s,
                         first_token: microsecond(count: microsecond_count(m: s) + microsecond_count(m: to_first)),
                         completed: microsecond(count: microsecond_count(m: s) + microsecond_count(m: to_first) + microsecond_count(m: to_end)),
+                        engine_cpu_start: eng.cpu_start,
+                        engine_cpu_end: eng.cpu_end,
+                        engine_memory_start: eng.memory_start,
+                        engine_memory_end: eng.memory_end,
                       }
+                    }
                     }
                   }
                 }
@@ -302,7 +340,7 @@ type TimedFold {
   gaps: List<ServingBenchmarkGap>
 }
 
-fn timed_requests(requests: List<GpuBenchRequestV3>) -> TimedFold {
+fn timed_requests(requests: List<GpuBenchRequestV4>) -> TimedFold {
   match earliest_start(requests: requests) {
     Absent => TimedFold { requests: [], gaps: [] }
     Present { value: origin } =>
@@ -349,6 +387,14 @@ fn round_window(rs: List<TimedRequest>) -> Microsecond {
 
 fn round_spread(rs: List<TimedRequest>) -> Microsecond {
   microsecond(count: us(t: round_last_start(rs: rs)) - us(t: round_submission(rs: rs)))
+}
+
+// The engine CPU time of one round: from the earliest start counter to the latest end counter of its
+// requests. The counter is the cgroup's cumulative usage_usec, so it only grows.
+fn round_engine_cpu(rs: List<TimedRequest>) -> Microsecond {
+  let last = fold(rs, init: 0, f: (acc, r) => nat_max(a: acc, b: us(t: r.engine_cpu_end)))
+  let first = fold(rs, init: last, f: (acc, r) => nat_min(a: acc, b: us(t: r.engine_cpu_start)))
+  microsecond(count: last - first)
 }
 
 fn request_decode_milli_tps(r: TimedRequest) -> Nat? {
@@ -399,6 +445,7 @@ fn serving_level_result(requests: List<TimedRequest>, active: Nat) -> LevelRead 
     let warm = requests |> filter(r => !r.prime && r.n_active == active)
     let generated = fold(warm, init: 0, f: (acc, r) => acc + r.completion)
     let window = fold(rounds, init: 0, f: (acc, n) => acc + us(t: round_window(rs: round_requests(requests: requests, round: n))))
+    let cpu = fold(rounds, init: 0, f: (acc, n) => acc + us(t: round_engine_cpu(rs: round_requests(requests: requests, round: n))))
     let decodes = fold(warm, init: [], f: (acc, r) => match request_decode_milli_tps(r: r) {
       Present { value: v } => concat(acc, [v])
       Absent => acc
@@ -413,6 +460,8 @@ fn serving_level_result(requests: List<TimedRequest>, active: Nat) -> LevelRead 
         aggregate_end_to_end: milli_tokens_per_second(count: (generated * 1000000000) / window),
         decode_median: milli_tokens_per_second(count: median_of(values: decodes)),
         completed_turns_per_hour: events_per_hour(count: (count(warm) * 3600000000) / window),
+        engine_cpu_busy: millicore(count: (cpu * milli_per_unit()) / window),
+        engine_memory_current_max: byte_size(count: fold(warm, init: 0, f: (acc, r) => nat_max(a: acc, b: nat_max(a: byte_size_count(b: r.engine_memory_start), b: byte_size_count(b: r.engine_memory_end))))),
       }
     }
   }
@@ -437,7 +486,8 @@ fn identity_gaps(cell: ServingCellIdentity) -> List<ServingBenchmarkGap> {
       Absent => [GapPoolWorkersUnpinned]
     }
   }
-  concat(concat(no_gpu, topology), pool)
+  let one_engine = if cell.topology.engines == 1 { [] } else { [GapEngineCountersCoverOneEngine { engines: cell.topology.engines }] }
+  concat(concat(concat(no_gpu, topology), pool), one_engine)
 }
 
 fn digest_eq(a: Sha256Digest, b: Sha256Digest) -> Bool {
@@ -445,14 +495,14 @@ fn digest_eq(a: Sha256Digest, b: Sha256Digest) -> Bool {
 }
 
 // DISTINCT SESSION TEXTS are read from the prime rows: each carries the sha256 of every message it
-// sent, so two primes with one digest sent one text. request/v3 makes this a reading, not an inference
+// sent, so two primes with one digest sent one text. request/v4 makes this a reading, not an inference
 // from prompt lengths.
-fn session_text_gaps(requests: List<GpuBenchRequestV3>) -> List<ServingBenchmarkGap> {
+fn session_text_gaps(requests: List<GpuBenchRequestV4>) -> List<ServingBenchmarkGap> {
   let primes = requests |> filter(r => is_prime(r: r))
   if any(primes, p => count(primes |> filter(q => digest_eq(a: p.messages_sha256, b: q.messages_sha256))) > 1) { [GapSessionTextsNotDistinct] } else { [] }
 }
 
-fn run_shape_gaps(requests: List<GpuBenchRequestV3>) -> List<ServingBenchmarkGap> {
+fn run_shape_gaps(requests: List<GpuBenchRequestV4>) -> List<ServingBenchmarkGap> {
   let mixed = match get(xs: requests, index: 0) {
     Absent => false
     Present { value: first } => any(requests, r => r.run != first.run)
@@ -470,7 +520,7 @@ fn within_band(observed: Nat, target: Nat, band_bp: Nat) -> Bool {
   observed + slack >= target && observed <= target + slack
 }
 
-fn workload_gaps(version: ServingBenchmarkVersion, requests: List<GpuBenchRequestV3>, timed: List<TimedRequest>) -> List<ServingBenchmarkGap> {
+fn workload_gaps(version: ServingBenchmarkVersion, requests: List<GpuBenchRequestV4>, timed: List<TimedRequest>) -> List<ServingBenchmarkGap> {
   let w = version.workload
   let retained = fold(requests, init: [], f: (acc, r) =>
     if r.retained == w.retained_sessions || any(acc, g => match g { GapRetainedSessions { observed: o } => o == r.retained, _ => false }) { acc } else { concat(acc, [GapRetainedSessions { observed: r.retained }]) })
@@ -495,7 +545,7 @@ fn workload_gaps(version: ServingBenchmarkVersion, requests: List<GpuBenchReques
 // question and the template's tokens. The kit re-sends only the reply's content, which tokenizes shorter
 // than completion_tokens when the reply reasoned, so the reply is bounded above by completion_tokens and
 // below by nothing: growth over the previous prompt must lie in
-// [tool_delta, tool_delta + previous completion + tool_delta_template_allowance]. request/v3's
+// [tool_delta, tool_delta + previous completion + tool_delta_template_allowance]. request/v4's
 // delta_tokens is the kit's setting in its own unit and is not read here.
 fn previous_in_session(timed: List<TimedRequest>, r: TimedRequest) -> TimedRequest? {
   let warm_before = timed |> filter(e => e.session == r.session && !e.prime && e.round < r.round)
@@ -522,8 +572,7 @@ fn telemetry_gaps(version: ServingBenchmarkVersion, cell: ServingCellIdentity, t
       Absent => concat(acc, [GapTelemetryMissing { active: n }])
       Present { value: t } => {
         let gpus = if count(t.gpus) == count(cell.gpus) && all_gpus_covered(cell: cell, t: t) { [] } else { [GapTelemetryGpus { active: n }] }
-        let engines = if count(t.engines) == cell.topology.engines { [] } else { [GapTelemetryEngines { active: n }] }
-        concat(concat(acc, gpus), engines)
+        concat(acc, gpus)
       }
     }
   })

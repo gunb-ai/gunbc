@@ -1,12 +1,12 @@
-module test.claim.serving.serving_benchmark_v3_inhabitance
+module test.claim.serving.serving_benchmark_v4_inhabitance
 
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { Bool, String, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.nat { Nat }
-import std.measure { token_count, millisecond, basis_point, milli_tokens_per_second_count, events_per_hour_count, microsecond_count }
+import std.measure { token_count, millisecond, basis_point, milli_tokens_per_second_count, events_per_hour_count, microsecond_count, millicore_count, byte_size_count }
 import extdeps.filesystem.filesystem_io
-import extdeps.gpu_bench.request_v3 { gpu_bench_parse_v3_jsonl, GpuBenchRequestV3Parsed, GpuBenchRequestV3StreamUnreadable, GpuBenchRequestV3 }
+import extdeps.gpu_bench.request_v4 { gpu_bench_parse_v4_jsonl, GpuBenchRequestV4Parsed, GpuBenchRequestV4StreamUnreadable, GpuBenchRequestV4 }
 import gunbc.serving.serving_benchmark {
   ServingBenchmarkVersion, ServingBenchmarkWorkload, serving_benchmark_v1, AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour,
   GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower,
@@ -20,24 +20,25 @@ import test.claim.serving.serving_benchmark_run_receipt_witness { fx_cell_comple
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE INHABITANCE CLAIM OF THE PER-REQUEST BOUNDARY (DESIGN section 3, the pairing obligation). The
-// receipt witness supplies request/v3 lines; this claim reads lines the kit itself wrote against the srv3
-// Strata upstream (IQ3_S on 2x RTX 2000 Ada): gunbc-private tools/gpu-bench/runs/v3-smoke-srv3-strata.jsonl
-// at 189fea0e3b5d60876d653639c47af243ad44d33c, run v3-smoke-srv3-strata-cal (S=2, levels 1 and 2, one round
-// each, CTX 8000, DELTA_TOKENS 2000, MAX_TOKENS 128), copied byte for byte. It asserts the ROUTE: the
-// real lines parse, a version of the run's own shape ADMITS them through every check (prime band,
-// server-token delta read from prompt growth, common submission, distinct session texts), the three
-// quantities come out at the values the rows imply, and serving-benchmark/1 refuses the same run as a
-// different workload. Deleting the file makes these claims red.
+// receipt witness supplies request/v4 lines; this claim reads lines the kit itself wrote against the srv3
+// Strata upstream (IQ3_S on 2x RTX 2000 Ada) with the engine's cgroup mounted: gunbc-private
+// tools/gpu-bench/runs/v4-smoke-srv3-strata.jsonl at bc50f631d0cdf65b953ccf69cd3b69802277107d (S=2,
+// levels 1 and 2, one round each, CTX 8000, DELTA_TOKENS 2000, MAX_TOKENS 128), copied byte for byte. It
+// asserts the ROUTE: the real lines parse, a version of the run's own shape ADMITS them through every
+// check (prime band, server-token delta read from prompt growth, common submission, distinct session
+// texts, engine counters on every row), the quantities and the engine's CPU and memory come out at the
+// values the rows imply, and serving-benchmark/1 refuses the same run as a different workload. Deleting
+// the file makes these claims red.
 //
-// The serving cell and telemetry here are supplied: their first real producer is the srv3 realization
+// The serving cell and GPU telemetry here are supplied: their first real producer is the srv3 realization
 // (work item node://adhoc-ffb4b5c7-4a5, PR 2), whose receipt adds the cell's inhabitance claim.
 
-data kit_v3_run_path: String = "fixtures/gpu_bench/v3_smoke_srv3_strata/v3-smoke-srv3-strata-cal.jsonl"
+data kit_v4_run_path: String = "fixtures/gpu_bench/v4_smoke_srv3_strata/v4-smoke-srv3-strata.jsonl"
 
-fn kit_rows() -> List<GpuBenchRequestV3> {
-  match gpu_bench_parse_v3_jsonl(text: filesystem_read(path: kit_v3_run_path).content) {
-    GpuBenchRequestV3Parsed { records: rs } => rs
-    GpuBenchRequestV3StreamUnreadable { line: _, cause: _ } => []
+fn kit_rows() -> List<GpuBenchRequestV4> {
+  match gpu_bench_parse_v4_jsonl(text: filesystem_read(path: kit_v4_run_path).content) {
+    GpuBenchRequestV4Parsed { records: rs } => rs
+    GpuBenchRequestV4StreamUnreadable { line: _, cause: _ } => []
   }
 }
 
@@ -72,9 +73,10 @@ test fn the_kit_run_parses_all_five_lines() -> Bool {
   count(kit_rows()) == 5
 }
 
-// Expected values are the floor arithmetic over the committed timestamps: level 1 is one request,
-// 128 tokens over 7.108646 s; level 2 is 256 tokens from the round's common submission to its last
-// completion, 13.827940 s, with request decode rates 13.329 and 25.113 tok/s.
+// Expected values are the floor arithmetic over the committed timestamps and counters: level 1 is one
+// request, 128 tokens over 3.542952 s; level 2 is 256 tokens from the round's common submission to its
+// last completion, 6.122524 s. The engine ran 6.66 and 6.12 busy threads (6 pool workers), and
+// memory.current, page cache included, was ~105 GiB at its largest boundary reading.
 test fn the_kit_run_is_admitted_against_its_own_shape() -> Bool {
   match admit_serving_benchmark_run(version: smoke_version, observation: observation()) {
     ServingBenchmarkRunRefused { gaps: _ } => false
@@ -82,18 +84,22 @@ test fn the_kit_run_is_admitted_against_its_own_shape() -> Bool {
       match level(levels: ls, active: 1) {
         Absent => false
         Present { value: l } =>
-          microsecond_count(m: l.window) == 7108646
-            && milli_tokens_per_second_count(r: l.aggregate_end_to_end) == 18006
-            && milli_tokens_per_second_count(r: l.decode_median) == 42327
-            && events_per_hour_count(r: l.completed_turns_per_hour) == 506
+          microsecond_count(m: l.window) == 3542952
+            && milli_tokens_per_second_count(r: l.aggregate_end_to_end) == 36128
+            && milli_tokens_per_second_count(r: l.decode_median) == 39149
+            && events_per_hour_count(r: l.completed_turns_per_hour) == 1016
+            && millicore_count(m: l.engine_cpu_busy) == 6663
+            && byte_size_count(b: l.engine_memory_current_max) == 112746569728
       }
       && match level(levels: ls, active: 2) {
         Absent => false
         Present { value: l } =>
-          microsecond_count(m: l.window) == 13827940
-            && milli_tokens_per_second_count(r: l.aggregate_end_to_end) == 18513
-            && milli_tokens_per_second_count(r: l.decode_median) == 19221
-            && events_per_hour_count(r: l.completed_turns_per_hour) == 520
+          microsecond_count(m: l.window) == 6122524
+            && milli_tokens_per_second_count(r: l.aggregate_end_to_end) == 41812
+            && milli_tokens_per_second_count(r: l.decode_median) == 23765
+            && events_per_hour_count(r: l.completed_turns_per_hour) == 1175
+            && millicore_count(m: l.engine_cpu_busy) == 6122
+            && byte_size_count(b: l.engine_memory_current_max) == 112853544960
       }
   }
 }
