@@ -110,7 +110,7 @@ type NginxDirective
   | InternalLocationOnly
   | ProxyMethodPost
   | LuaPhaseBlock { phase: LuaPhase, lines: List<String> }
-  | LuaSharedDict { name: NginxToken, size: NginxToken }
+  | LuaSharedDict { name: NginxToken, size: ByteSize }
   | EnvPassthrough { name: NginxToken }
   | ListenTlsOn { address: NginxToken, port: Port }
   | SslCertificate { path: NginxToken }
@@ -202,7 +202,7 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     ProxySslVerifyDepth { depth: n } => nginx_line(text: "proxy_ssl_verify_depth " + to_string(n), indent: indent)
     ProxySslTrustedCertificate { path: pa } => nginx_line(text: "proxy_ssl_trusted_certificate " + (pa as String), indent: indent)
     ProxyPassSchemeAndHostVariables { scheme: sc, host: h } => nginx_line(text: "proxy_pass $" + (sc as String) + "://$" + (h as String), indent: indent)
-    LuaSharedDict { name: n, size: z } => nginx_line(text: "lua_shared_dict " + (n as String) + " " + (z as String), indent: indent)
+    LuaSharedDict { name: n, size: z } => nginx_line(text: "lua_shared_dict " + (n as String) + " " + to_string(byte_size_count(b: z)), indent: indent)
   }
 }
 
