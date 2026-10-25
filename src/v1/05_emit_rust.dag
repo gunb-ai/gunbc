@@ -2,7 +2,7 @@ module v1.compiler.emit_rust
 
 import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, NamedField, TypeParameter, declaration_ref_in_list, declaration_ref_eq }
+import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
   VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
   VariantTargetValueAmbiguous, VariantParentIdentityUnavailable, variant_value_realization_refusal_message,
@@ -2274,35 +2274,15 @@ fn rust_fold_rendered_type_has_any_spurious_generic(type_str: String, generic_pa
   rust_fold_rendered_type_has_spurious_from_pos(type_str: type_str, search_from: 0, generic_param_names: generic_param_names)
 }
 
-// WHETHER A LEAF NAMES A GENERIC IS ITS DECLARATION'S ANSWER, NOT ITS SPELLING'S. A leaf that
-// resolve stamped (v1.compiler.infer_resolve reference_with_declaration, binder_marked_type) is a generic
-// exactly when its declaration is a TypeParameter, and it is unbound here when that parameter is not
-// one this fn binds; a stamped reference to a declared type is concrete whether or not this fn's
-// environment binds its spelling. The spelling arm survives only for a leaf that carries no
-// declaration, which is most of what infer builds after resolution, and there an environment miss is
-// still read as unbound: that residual, and the capability that retires it (declaration identity
-// carried through infer's node-copying constructors), are gunbc.recurring_failure_mode
-// generic_identity_decided_by_spelling. "Binds" is membership in the fn's own binder list, because
-// the emitter carries no identity for the fn it is emitting; a parameter of another owner spelled
-// like one of this fn's binders is the residual that identity would close.
-fn type_leaf_is_unbound_in_closure_scope(n: Node, name: String, generic_param_names: List<String>, env: TypeEnv) -> Bool {
-  match n.declaration {
-    Present { value: d } =>
-      match d.field {
-        TypeParameter { name: p } => !type_var_in_fn_generic_scope(id: p as String, generic_param_names: generic_param_names)
-        WholeDeclaration => false
-        NamedField { field_name: _ } => false
-      }
-    Absent =>
-      if type_var_in_fn_generic_scope(id: name, generic_param_names: generic_param_names) {
-        false
-      } else {
-        match lookup_type_by_name(env: env, name: name) {
-          Present { value: resolved_node } =>
-            if resolved_node.inferred != none && is_type_variable(inferred: resolved_node.inferred.value) { true } else { false }
-          Absent => true
-        }
-      }
+fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List<String>, env: TypeEnv) -> Bool {
+  if type_var_in_fn_generic_scope(id: name, generic_param_names: generic_param_names) {
+    false
+  } else {
+    match lookup_type_by_name(env: env, name: name) {
+      Present { value: resolved_node } =>
+        if resolved_node.inferred != none && is_type_variable(inferred: resolved_node.inferred.value) { true } else { false }
+      Absent => true
+    }
   }
 }
 
@@ -2356,7 +2336,7 @@ fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List
   }
   let leaf_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 && leaf_name != "" {
-    if type_leaf_is_unbound_in_closure_scope(n: n, name: leaf_name, generic_param_names: generic_param_names, env: env) { return true }
+    if type_leaf_is_unbound_in_closure_scope(name: leaf_name, generic_param_names: generic_param_names, env: env) { return true }
   }
   if n.inferred != none {
     match n.inferred.value {
