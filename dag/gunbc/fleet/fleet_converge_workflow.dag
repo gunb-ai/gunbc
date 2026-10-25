@@ -203,6 +203,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_runner_guest_image_converge_invoke,
   gunbc_ci_runner_microvm_host_converge_invoke,
   gunbc_ci_runner_browser_toolchain_converge_invoke,
+  gunbc_ci_runner_user_session_converge_invoke,
   gunbc_ci_runner_host_file_observe_invoke,
   gunbc_ci_host_memory_envelope_observe_invoke,
   gunbc_ci_runner_host_file_converge_invoke,
@@ -355,6 +356,7 @@ type FleetConvergeWorkflowMode
   | SitePxeEdgeConverge
   | RunnerPasswordSessionToolConverge
   | RunnerBrowserToolchainConverge
+  | RunnerUserSessionConverge
   | HostCredentialCustodyConverge
   | R2MintPreflight
   | R2BucketEnsure
@@ -436,6 +438,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     SitePxeEdgeConverge => "site_pxe_edge_converge"
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
     RunnerBrowserToolchainConverge => "runner_browser_toolchain_converge"
+    RunnerUserSessionConverge => "runner_user_session_converge"
     HostCredentialCustodyConverge => "host_credential_custody_converge"
     R2MintPreflight => "r2_mint_preflight"
     R2BucketEnsure => "r2_bucket_ensure"
@@ -498,7 +501,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -548,6 +551,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     SitePxeEdgeConverge => SixteenBinaryPack
     RunnerPasswordSessionToolConverge => SixteenBinaryPack
     RunnerBrowserToolchainConverge => SixteenBinaryPack
+    RunnerUserSessionConverge => SixteenBinaryPack
     R2MintPreflight => SixteenBinaryPack
     R2ObjectWriteMint => SixteenBinaryPack
     R2WorkspaceObjectReadMint => SixteenBinaryPack
@@ -662,6 +666,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SitePxeEdgeConverge => none
     RunnerPasswordSessionToolConverge => none
     RunnerBrowserToolchainConverge => none
+    RunnerUserSessionConverge => none
     HostCredentialCustodyConverge => none
     R2MintPreflight => none
     R2BucketEnsure => none
@@ -870,6 +875,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     SitePxeEdgeConverge => FleetSshKeyConsumed
     RunnerPasswordSessionToolConverge => FleetSshKeyConsumed
     RunnerBrowserToolchainConverge => FleetSshKeyConsumed
+    RunnerUserSessionConverge => FleetSshKeyConsumed
     HostCredentialCustodyConverge => FleetSshKeyConsumed
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
@@ -1698,6 +1704,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     SitePxeEdgeConverge => ExecutorDomain
     RunnerPasswordSessionToolConverge => ExecutorDomain
     RunnerBrowserToolchainConverge => ExecutorDomain
+    RunnerUserSessionConverge => ExecutorDomain
     HostCredentialCustodyConverge => ExecutorDomain
     R2MintPreflight => ExecutorDomain
     R2BucketEnsure => ExecutorDomain
@@ -2263,11 +2270,17 @@ fn fleet_converge_runner_host_restore_step() -> Step {
 // (converge, withdraw, restore) drain and mask EVERY slot of their subject; if the job runs on that
 // subject, the drain waits for the job's own executor slot and can never finish. The split is executor
 // (inputs.host, where the job pins) != subject (inputs.subject_host, who the run acts on), and it is
-// enforced HERE, as a step emitted only for the three act modes and ordered BEFORE all of them: its
-// script holds no entry invocation, and its `if:` fires exactly when the two inputs are equal -- so
-// when it prints, it prints, exits 1, and no drain or mask leg can have run. The control
-// (test.claim.fleet.fleet_converge_executor_subject_split_witness) pins the ordering, the refusal
+// enforced HERE, as a step that runs in every one of the three act modes and is ordered BEFORE all of
+// them: its script holds no entry invocation and decides both refusals itself (either name empty, or
+// executor == subject), so when it refuses it exits 1 and no drain or mask leg can have run. The control
+// (test.claim.fleet.fleet_converge_host_cap_linkage_witness) pins the ordering, the refusal
 // text, and the absence of any actuation invoke in the step.
+// The gate step's `if:` tree: the three act modes and nothing else. The step serializes exactly this
+// tree, and the linkage control evaluates it (test.claim.fleet.fleet_converge_host_cap_linkage_witness).
+fn fleet_converge_executor_subject_split_gate_if() -> Expression {
+  fleet_converge_any_mode_expression(modes: [RunnerHostFileConverge, RunnerHostWithdraw, RunnerHostRestore])
+}
+
 fn fleet_converge_executor_subject_split_gate_step() -> Step {
   RunStep {
     name: Present { value: "Split precondition: refuse a run whose executor host is its own subject (self-drain deadlock, run 40085967610)" },
@@ -2281,20 +2294,23 @@ fn fleet_converge_executor_subject_split_gate_step() -> Step {
       ]
     },
     working_directory: none,
-    if_condition: Present {
-      value: concat(
-        concat(fleet_converge_three_act_modes_step_if, " && "),
-        concat(serialize_expression(expression: Equals { left: ContextAccess { context: Github, path: ["event", "inputs", "host"] }, right: ContextAccess { context: Github, path: ["event", "inputs", "subject_host"] } }), ""),
-      )
-    },
+    // THE MODE DISJUNCTION ONLY, as one expression tree from the mode roster's builder. The `if:` says
+    // WHEN the precondition applies; the script says WHETHER it holds. A host comparison in the `if:`
+    // fails open: `(A || B || C) && host == subject_host` is false when subject_host is empty and host
+    // is not, so a restore with no subject skipped the gate and actuated (review 86194; DESIGN.md §5).
+    // Before that, gluing two serialized strings made GitHub read `A || B || C && D` as
+    // A || B || (C && D) (review 38602, review 386096). With the decision in the script, every
+    // dispatch of an act mode executes the gate and no input combination can step around it.
+    if_condition: Present { value: serialize_expression(expression: fleet_converge_executor_subject_split_gate_if()) },
     continue_on_error: none,
     timeout_minutes: none
   }
 }
 
-// The three act modes' own gate: exactly converge, withdraw, restore, composed from the mode roster's
-// own expression builder (fleet_converge_any_mode_expression) so the gate and the roster cannot drift.
-data fleet_converge_three_act_modes_step_if: String = serialize_expression(expression: fleet_converge_any_mode_expression(modes: [RunnerHostFileConverge, RunnerHostWithdraw, RunnerHostRestore]))
+// THE THREE ACT MODES' OWN GATE is composed in the gate step (fleet_converge_executor_subject_split_gate_step)
+// as ONE expression tree from the mode roster's own builder (fleet_converge_any_mode_expression), so the
+// gate and the roster cannot drift. It is deliberately NOT a serialized string glued to more text: see the
+// gate step's if_condition comment for the precedence defect that gluing caused (review 38602/386096).
 
 // THE CAP BRACKET'S always() RELEASE: runs after the converge step whatever its fate (success, failure,
 // cancel or its own timeout) and re-admits the declared-live slots, reading each back. always() is a
@@ -2333,6 +2349,40 @@ fn fleet_converge_runner_password_session_tool_converge_step() -> Step {
     invoke: gunbc_ci_runner_password_session_tool_converge_invoke(),
     if_condition: fleet_converge_runner_password_session_tool_converge_step_if,
   )
+}
+
+// THE USER SESSION MODE (gunbc.runner.runner_user_session; operator decision relayed on gunbc#14972, 2026-10-25).
+// A step in the host-pinned job like the browser toolchain mode: one host per dispatch, effects over the
+// administrator edge. The host input offers every fleet host; the mode converges only the hosts named by
+// gunbc.runner.runner_host_deploy runner_job_user_session_hosts and refuses any other before an effect.
+data fleet_converge_runner_user_session_converge_step_if: String = fleet_converge_mode_step_if(mode: RunnerUserSessionConverge)
+
+fn fleet_converge_runner_user_session_converge_step() -> Step {
+  fleet_converge_runner_host_file_step(
+    id: "runner_user_session_converge",
+    name: "User session: loginctl enable-linger for the host's job account as the administrator, then read back that its user manager answers over /run/user/<uid>/bus",
+    invoke: gunbc_ci_runner_user_session_converge_invoke(),
+    if_condition: fleet_converge_runner_user_session_converge_step_if,
+  )
+}
+
+// Uploaded on failure too: a refused linger or a manager that never answered is what an operator reads.
+fn fleet_converge_runner_user_session_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload user session converge receipt" },
+    id: Present { value: "runner_user_session_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "runner-user-session-converge-receipt")),
+      kv(key: "path", value: yaml_string(s: "target/runner-user-session-converge-receipt.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_user_session_converge_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
 }
 
 fn fleet_converge_runner_browser_toolchain_converge_step() -> Step {
@@ -4891,6 +4941,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_runner_password_session_tool_receipt_upload_step(),
         fleet_converge_runner_browser_toolchain_converge_step(),
         fleet_converge_runner_browser_toolchain_receipt_upload_step(),
+        fleet_converge_runner_user_session_converge_step(),
+        fleet_converge_runner_user_session_receipt_upload_step(),
         fleet_converge_host_credential_custody_converge_step(),
         fleet_converge_host_credential_custody_receipt_upload_step(),
         fleet_converge_runner_host_file_receipt_upload_step(),
@@ -5107,6 +5159,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     SitePxeEdgeConverge => fleet_converge_shared_job_id
     RunnerPasswordSessionToolConverge => fleet_converge_shared_job_id
     RunnerBrowserToolchainConverge => fleet_converge_shared_job_id
+    RunnerUserSessionConverge => fleet_converge_shared_job_id
     R2MintPreflight => fleet_converge_shared_job_id
     R2ObjectWriteMint => fleet_converge_shared_job_id
     OrgRunnerRosterObserve => fleet_converge_shared_job_id
@@ -6347,6 +6400,10 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet.fleet_converge_workflow: v2.workflow.bash_emit refused the gcp-iam-converge refusal script, so no workflow is emitted rather than a step with no script",
         }
+      } else if !fleet_converge_split_gate_script_admitted() {
+        FleetConvergeYamlGenerationRefused {
+          reason: "REFUSED gunbc.fleet.fleet_converge_workflow: v2.workflow.bash_emit refused the executor/subject split-gate script (gunbc.fleet.fleet_converge_executor_subject_split fleet_converge_split_gate_statements), so no workflow is emitted rather than a precondition step whose shell fails to parse -- a syntax error is neither a full success nor a typed refusal (review 38602/386096 found string-built shell here emitting exactly that)",
+        }
       } else if !fleet_ssh_multiplex_teardown_admitted() {
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet.fleet_converge_workflow: v2.workflow.bash_emit refused the fleet ssh master teardown (gunbc.fleet.fleet_workflow_steps fleet_ssh_multiplex_teardown_statements), so no workflow is emitted rather than a cleanup step that leaves masters running",
@@ -6599,6 +6656,17 @@ fn fleet_converge_namecheap_observe_job() -> Job {
 // Preparation (CAD and slicing) plus the 15-minute bed-clear approval window must fit one pass.
 data printer_converge_step_timeout_minutes: Duration = 45
 
+// THE PRINTER CREDENTIAL IS SIGNED IN ONLY ON REVIEWED MAIN (operator ruling 2026-10-25, design A).
+// A branch run may prepare and record a request, which needs no credential; the approval-and-start
+// pass is main's code (gunbc.fleet.print_converge print_pass_route), so off main the job holds no
+// printer token at all. The printer-lan pool is pinned to main as well; this keeps branch code from
+// ever asking.
+fn fleet_converge_printer_wif_auth_step() -> Step {
+  ci_wif_auth_step_with_condition(name: "WIF auth (dedicated printer credential reader; reviewed main only)", id: "wif_auth",
+    provider_resource: printer_provider_resource(), service_account: printer_service_account as String,
+    if_condition: Present { value: serialize_expression(expression: fleet_converge_github_ref_is_reviewed_main()) })
+}
+
 fn fleet_converge_printer_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
@@ -6606,8 +6674,7 @@ fn fleet_converge_printer_job() -> Job {
     environment: Present { value: printer_environment as String },
     steps: [
       fleet_converge_event_sha_checkout_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(),
-      ci_wif_auth_step_for(name: "WIF auth (dedicated printer credential reader)",
-        provider_resource: printer_provider_resource(), service_account: printer_service_account as String),
+      fleet_converge_printer_wif_auth_step(),
       RunStep {
         name: Present { value: "Printer: observe the credential or converge one print request" },
         id: Present { value: "printer" }, run: gunbc_ci_printer_workflow_invoke(), shell: none,

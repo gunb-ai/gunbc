@@ -1,0 +1,141 @@
+module v2.test.claim.anonymous_tuple_element_inhabitance
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the v2 side of the anonymous-tuple receipt on gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel. The seed admits a collection whose element is
+// its ANONYMOUS tuple (v1.compiler.infer_types make_tuple_type: no name, no span; the element of the
+// kernel `enumerate` template) at a declared collection position whatever the declared element is.
+//
+// WHAT v2 ESTABLISHES, in two parts, because v2 has no anonymous tuple at all:
+// (A) OUTSIDE v2'S CURRENT REACH. There is no `enumerate` declaration for an application to bind
+//     (resolve refuses resolve_reason_unbound_symbol) and no tuple production in the grammar (a tuple
+//     type refuses at parse, and so does a tuple literal, each in its own fixture), each beside a
+//     control that differs only in not being a tuple. So
+//     the seed's specimen has no v2 counterpart to admit or refuse. TRIGGER: v2 gaining an enumerate or
+//     a tuple production; then these arms are rewritten to construct the anonymous element and assert
+//     its refusal.
+// (B) NOT COVERAGE OF THE ANONYMOUS ROUTE. The only tuple-like element v2 can write is a declared
+//     product, and at the two seed positions it is judged: a Seq<Pair<Int, Bool>> refuses where Seq<Bool> is declared, and where a generic's
+//     element is fixed at Int by another argument. This is the case the seed also judges (a named
+//     element); it is recorded so the defence reads "unconstructible, and its nearest writable form is
+//     refused", not "refused".
+//
+// ROUTE: source text assembled through assemble_program_from_ingest (lowering and resolve run for
+// real), then infer_and_discharge, over two modules: `pa` declares the sequence, the pair, a declared
+// enumerate1 and the two consumers, and `pb` calls them.
+//
+// DISCRIMINATION: each refusal has a control that changes one thing -- the element of the argument
+// (Pair<Int, Bool> against Bool for want_bools, Pair<Int, Bool> against Int for same_element with the
+// probe held at 3), or for (A) the spelling of the absent construct -- and every control is accepted.
+
+fn tuple_witness(src: String, path: String, cu: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: cu, file_path: path },
+    compilation_unit: cu,
+    source_root: V2Tree
+  }
+}
+
+fn tuple_program(body: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: tuple_witness(
+        src: "module pa\n\ntype Seq<T> = Nil | More { head: T, tail: Seq<T> }\n\ntype Pair<A, B> { first: A, second: B }\n\nfn produce_b() -> Seq<Bool> { More { head: true, tail: Nil } }\n\nfn produce_i() -> Seq<Int> { More { head: 1, tail: Nil } }\n\nfn enumerate1<T>(xs: Seq<T>) -> Seq<Pair<Int, T>> { match xs { Nil => Nil  More { head: h, tail: _ } => More { head: Pair { first: 0, second: h }, tail: Nil } } }\n\nfn want_bools(xs: Seq<Bool>) -> Int { 0 }\n\nfn same_element<T>(xs: Seq<T>, probe: T) -> Int { 0 }\n",
+        path: "src/v2/pa.dag",
+        cu: ^anonymous_tuple_element_pa_cu
+      ),
+      tail: Cons {
+        head: tuple_witness(
+          src: concat("module pb\n\nimport pa { More, Nil, Pair, Seq, enumerate1, produce_b, produce_i, same_element, want_bools }\n\nfn g() -> Int { ", concat(body, " }\n")),
+          path: "src/v2/pb.dag",
+          cu: ^anonymous_tuple_element_pb_cu
+        ),
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^pb, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn tuple_infers(body: String) -> Bool {
+  match tuple_program(body: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer_and_discharge(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn tuple_refuses_at_infer_with(body: String, reason: Symbol) -> Bool {
+  match tuple_program(body: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer_and_discharge(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+      }
+  }
+}
+
+fn tuple_refuses_before_infer_with(body: String, reason: Symbol) -> Bool {
+  match tuple_program(body: body) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// (A1) NO ENUMERATE TO BIND: the kernel template the seed's specimen comes from has no v2 declaration.
+// Its control is the same position with a declared producer.
+test fn there_is_no_v2_enumerate_to_produce_an_anonymous_tuple() -> Bool {
+  tuple_refuses_before_infer_with(body: "want_bools(xs: enumerate(produce_b()))", reason: ^resolve_reason_unbound_symbol)
+    && tuple_infers(body: "want_bools(xs: produce_b())")
+}
+
+// (A2) NO TUPLE TYPE: a tuple type annotation refuses at parse; the same binding with a one-term type
+// is accepted. The binding's value is not a tuple, so the refusal is the type's alone.
+test fn there_is_no_v2_tuple_type() -> Bool {
+  tuple_refuses_before_infer_with(body: "let t: (Int, Bool) = 1\n  0", reason: ^parse_g0_tokens_remain)
+    && tuple_infers(body: "let t: Int = 1\n  0")
+}
+
+// (A3) NO TUPLE LITERAL: a tuple literal refuses at parse with no annotation at all; the same binding with a
+// one-term value is accepted.
+test fn there_is_no_v2_tuple_literal() -> Bool {
+  tuple_refuses_before_infer_with(body: "let t = (1, true)\n  0", reason: ^parse_g0_tokens_remain)
+    && tuple_infers(body: "let t = 1\n  0")
+}
+
+// (B0) CONTROLS for (B1) and (B2): the same consumers, one variable changed.
+test fn the_declared_product_controls_infer() -> Bool {
+  tuple_infers(body: "want_bools(xs: produce_b())") && tuple_infers(body: "same_element(xs: produce_i(), probe: 3)")
+}
+
+// (B1) A SEQUENCE OF DECLARED PAIRS DOES NOT INHABIT A DECLARED SEQUENCE OF BOOL.
+test fn a_declared_pair_element_does_not_inhabit_a_declared_bool_element() -> Bool {
+  tuple_refuses_at_infer_with(body: "want_bools(xs: enumerate1(xs: produce_b()))", reason: ^application_argument_does_not_inhabit)
+}
+
+// (B2) A GENERIC WHOSE ELEMENT ANOTHER ARGUMENT FIXES AT Int REFUSES A DECLARED PAIR ELEMENT.
+test fn a_declared_pair_element_does_not_bind_a_generic_fixed_at_int() -> Bool {
+  tuple_refuses_at_infer_with(body: "same_element(xs: enumerate1(xs: produce_b()), probe: 3)", reason: ^application_argument_does_not_inhabit)
+}
