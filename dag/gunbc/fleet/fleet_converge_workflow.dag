@@ -490,7 +490,7 @@ fn fleet_converge_target_description() -> String {
   join([
     "The host a target-acting mode acts on, never the executor host. ",
     if count(fleet_converge_spark_target_options) == 0 { "" } else { join(["spark_* modes: a rostered Spark (", join(fleet_converge_spark_target_options, ", "), "). "], "") },
-    "host_primary_network_*: a host with a primary network row (
+    "host_primary_network_*: a host with a primary network row (",
     join(fleet_converge_primary_network_target_options, ", "),
     "), run from another host named in `host`",
   ], "")
