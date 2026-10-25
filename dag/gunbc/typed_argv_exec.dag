@@ -18,10 +18,12 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   portable_remote_words,
   shape_ssh_shell_exec, ssh_target_wire,
   posix_quoted_remote_words,
-  PosixLoginShellProof,
   LoginShellStanding,
   LoginShellUnreadable,
+  LoginShellPosix,
+  LoginShellNotPosix,
   login_shell_standing,
+  posix_proof_admits,
 }
 import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal,
@@ -215,33 +217,38 @@ fn typed_argv_exec_over_fleet_ssh(
 fn read_fleet_login_shell(target: SshTarget, context: FleetSshExecutionContext) -> LoginShellStanding {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["getent", "passwd", target.principal as String]) {
     TypedArgvExecRefused { reason: why } => LoginShellUnreadable { principal: target.principal, reason: why }
-    TypedArgvExecConverged { result: r } => login_shell_standing(principal: target.principal, success: r.success, output: r.stdout)
+    TypedArgvExecConverged { result: r } => login_shell_standing(target: target, success: r.success, output: r.stdout)
   }
 }
 
-// THE QUOTED ROUTE: the same leg as typed_argv_exec_over_fleet_ssh, for words the alphabet refuses, admitted only under a
-// proof that the target principal's login shell is a POSIX sh. A proof for another principal refuses the leg.
+// THE QUOTED ROUTE: the same leg as typed_argv_exec_over_fleet_ssh, for words the alphabet refuses. It reads the target
+// principal's login shell ITSELF, in this call, over the same target and context, and quotes only under the proof that
+// read mints, so no proof carried in from elsewhere (another target, an earlier read) can authorize it.
 fn typed_argv_exec_over_fleet_ssh_posix(
   target: SshTarget,
   context: FleetSshExecutionContext,
   argv: List<String>,
-  shell: PosixLoginShellProof,
 ) -> TypedArgvExecOutcome {
-  if (shell.principal as String) != (target.principal as String) {
-    TypedArgvExecRefused { reason: "the login shell proof is for another principal than the leg's" }
-  } else {
-    match posix_quoted_remote_words(raws: argv, shell: shell) {
-      Absent => TypedArgvExecRefused {
-        reason: concat("a remote word carries NUL, newline or carriage return, which no quoting carries, so the leg was NOT attempted for ", ssh_target_wire(target: target) as String),
-      }
-      Present { value: words } =>
-        match exec_as_fleet_principal(
-          context: context, target: target, words: words,
-          credential: BootstrapCredentialInRunEnvironment,
-        ) {
-          FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
-          FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
+  match read_fleet_login_shell(target: target, context: context) {
+    LoginShellUnreadable { principal: _, reason: r } => TypedArgvExecRefused { reason: concat("the target's login shell could not be read, so no word is quoted: ", r) }
+    LoginShellNotPosix { principal: _, shell: sh } => TypedArgvExecRefused { reason: concat("the target's login shell is not a POSIX sh, so no word is quoted: ", sh) }
+    LoginShellPosix { proof: shell } =>
+      if posix_proof_admits(proof: shell, target: target) == false {
+        TypedArgvExecRefused { reason: "the login shell proof is for another target than the leg's" }
+      } else {
+        match posix_quoted_remote_words(raws: argv, shell: shell) {
+          Absent => TypedArgvExecRefused {
+            reason: concat("a remote word carries NUL, newline or carriage return, which no quoting carries, so the leg was NOT attempted for ", ssh_target_wire(target: target) as String),
+          }
+          Present { value: words } =>
+            match exec_as_fleet_principal(
+              context: context, target: target, words: words,
+              credential: BootstrapCredentialInRunEnvironment,
+            ) {
+              FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
+              FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
+            }
         }
-    }
+      }
   }
 }
