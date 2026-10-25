@@ -1458,7 +1458,7 @@ fn roster_rename_pipe_edit(text: String, head: Node, spans: SpanIndex, row: Rost
   if length(xs: slots) + 1 != length(xs: positional) {
     LabelsRenameRefused { reason: RefusalRenameCallArity { call: row.call } }
   } else {
-    match roster_pipe_arg_texts(text: text, spans: spans, slots: slots, call: row.call) {
+    match roster_pipe_arg_texts(text: text, spans: spans, slots: slots, labels: roster_drop_first(xs: positional), call: row.call) {
       RosterArgTextsRefused { plan: p } => p
       RosterArgTexts { texts: args } =>
         match roster_text_between(text: text, start: left.start, end: left.end) {
@@ -1467,7 +1467,7 @@ fn roster_rename_pipe_edit(text: String, head: Node, spans: SpanIndex, row: Rost
             match roster_text_between(text: text, start: left.start, end: call.end) {
               Absent => LabelsAmbiguous
               Present { value: original } =>
-                let values = list_append(left: [lhs], right: args)
+                let values = list_append(left: [RosterArgText { text: lhs, labelled: false }], right: args)
                 let labelled = zip_map(a: positional, b: values, f: roster_labelled_value)
                 LabelsSelected { edits: [RosterLabelEdit { start: left.start, end: call.end, from: original, to: to + "(" + roster_join(xs: labelled, sep: ", ") + ")" }] }
             }
@@ -1476,37 +1476,72 @@ fn roster_rename_pipe_edit(text: String, head: Node, spans: SpanIndex, row: Rost
   }
 }
 
-fn roster_labelled_value(label: String, value: String) -> String {
-  label + ": " + value
+fn roster_drop_first(xs: List<String>) -> List<String> {
+  match xs {
+    Empty => xs
+    Cons { head: _, tail: t } => t
+  }
+}
+
+fn roster_labelled_value(label: String, value: RosterArgText) -> String {
+  if value.labelled { value.text } else { label + ": " + value.text }
+}
+
+// One argument's source text; `labelled` when the author already wrote the row's label for it (the named-argument rule).
+type RosterArgText {
+  text: String
+  labelled: Bool
+}
+
+fn roster_arg_is_named(arg: Node) -> Bool {
+  match dag_named_arg_value_optional(arg_capture: arg) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn roster_named_arg_label_is(arg: Node, label: String) -> Bool {
+  match dag_named_arg_name_node_optional(arg_capture: arg) {
+    Absent => false
+    Present { value: name_node } =>
+      match node_atom_identity_optional(node: name_node) {
+        Present { value: sym } => symbol_lexeme(sym: sym) == label
+        Absent => false
+      }
+  }
 }
 
 type RosterArgTextsRead
-  = RosterArgTexts { texts: List<String> }
+  = RosterArgTexts { texts: List<RosterArgText> }
   | RosterArgTextsRefused { plan: RosterLabelPlan }
 
-fn roster_pipe_arg_texts(text: String, spans: SpanIndex, slots: List<Optional<Node>>, call: String) -> RosterArgTextsRead {
-  fold_list(xs: slots, empty: RosterArgTexts { texts: [] }, cons: fn(acc, slot) {
-    match acc {
-      RosterArgTextsRefused { plan: p } => RosterArgTextsRefused { plan: p }
-      RosterArgTexts { texts: ts } =>
-        match slot {
-          Absent => RosterArgTextsRefused { plan: LabelsAmbiguous }
-          Present { value: arg } =>
-            match dag_named_arg_value_optional(arg_capture: arg) {
-              Present { value: _ } => RosterArgTextsRefused { plan: LabelsRenameRefused { reason: RefusalRenameCallNamedArgument { call: call } } }
-              Absent =>
-                match roster_node_byte_range(node: arg, spans: spans) {
+fn roster_pipe_arg_texts(text: String, spans: SpanIndex, slots: List<Optional<Node>>, labels: List<String>, call: String) -> RosterArgTextsRead {
+  fold_list(xs: roster_zip_slots(slots: slots, labels: labels), empty: RosterArgTexts { texts: [] }, cons: fn(acc, pair) { roster_pipe_arg_text_step(acc: acc, pair: pair, text: text, spans: spans, call: call) })
+}
+
+fn roster_pipe_arg_text_step(acc: RosterArgTextsRead, pair: RosterSlotLabel, text: String, spans: SpanIndex, call: String) -> RosterArgTextsRead {
+  let slot = pair.slot
+  match acc {
+    RosterArgTextsRefused { plan: p } => RosterArgTextsRefused { plan: p }
+    RosterArgTexts { texts: ts } =>
+      match slot {
+        Absent => RosterArgTextsRefused { plan: LabelsAmbiguous }
+        Present { value: arg } =>
+          let labelled = roster_arg_is_named(arg: arg)
+          if labelled && !roster_named_arg_label_is(arg: arg, label: pair.label) {
+            RosterArgTextsRefused { plan: LabelsRenameRefused { reason: RefusalRenameCallNamedArgument { call: call } } }
+          } else {
+            match roster_node_byte_range(node: arg, spans: spans) {
+              Absent => RosterArgTextsRefused { plan: LabelsAmbiguous }
+              Present { value: r } =>
+                match roster_text_between(text: text, start: r.start, end: r.end) {
                   Absent => RosterArgTextsRefused { plan: LabelsAmbiguous }
-                  Present { value: r } =>
-                    match roster_text_between(text: text, start: r.start, end: r.end) {
-                      Absent => RosterArgTextsRefused { plan: LabelsAmbiguous }
-                      Present { value: a } => RosterArgTexts { texts: list_snoc_item(xs: ts, item: a) }
-                    }
+                  Present { value: a } => RosterArgTexts { texts: list_snoc_item(xs: ts, item: RosterArgText { text: a, labelled: labelled }) }
                 }
             }
-        }
-    }
-  })
+          }
+      }
+  }
 }
 
 // WHERE A CALL HEAD SITS RELATIVE TO A PIPE, read off the parse tree's binary infix nodes (the operator at
@@ -1645,7 +1680,15 @@ fn roster_positional_label_edit(edits: List<RosterLabelEdit>, pair: RosterSlotLa
     Absent => LabelsAmbiguous
     Present { value: arg } =>
       match dag_named_arg_value_optional(arg_capture: arg) {
-        Present { value: _ } => LabelsRenameRefused { reason: RefusalRenameCallNamedArgument { call: call } }
+        // THE NAMED-ARGUMENT RULE: a named argument whose label IS the row's label at its position already binds, so it is
+        // left as authored; any other label refuses typed. A reordered named argument therefore refuses (its label is not the
+        // one at its position): the rewrite never reorders arguments, which would reorder their evaluation.
+        Present { value: _ } =>
+          if roster_named_arg_label_is(arg: arg, label: pair.label) {
+            LabelsSelected { edits: edits }
+          } else {
+            LabelsRenameRefused { reason: RefusalRenameCallNamedArgument { call: call } }
+          }
         Absent =>
           match roster_node_byte_range(node: arg, spans: spans) {
             Absent => LabelsAmbiguous
@@ -2214,7 +2257,12 @@ fn roster_rename_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> S
     + roster_rename_expect_text(companions: companions, name: "companion imports only the tags used", before: only_present, after: only_present_after, prepared: prepared, lex: lex)
     + roster_rename_expect_text(companions: companions, name: "companion tags already imported", before: tags_imported, after: tags_imported_after, prepared: prepared, lex: lex)
     + roster_rename_expect_text(companions: companions, name: "no renamed call: ambient tags left for their own wave", before: unrenamed, after: unrenamed, prepared: prepared, lex: lex)
-    + roster_rename_expect_refusal(companions: companions, name: "rename-named-argument", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, key: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
+    // THE NAMED-ARGUMENT RULE: a label equal to the row's label at its position binds as authored; a mismatched label refuses;
+    // a reordered pair refuses (never remapped, which would reorder evaluation).
+    + roster_rename_expect_text(companions: companions, name: "rename-named-argument-matching", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "rename-named-argument-mixed", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m, key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)
+    + roster_rename_expect_refusal(companions: companions, name: "rename-named-argument-mismatched", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m: m, k: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
+    + roster_rename_expect_refusal(companions: companions, name: "rename-named-argument-reordered", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(key: k, m: m)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
     + roster_rename_expect_refusal(companions: companions, name: "rename-companion-tag-undecided", text: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String, o: Optional<String>) -> String {\n  match o {\n    Present => match map_lookup(m: m, key: k) {\n      Present { value: v } => v\n      Absent => k\n    }\n    Absent => k\n  }\n}\n", want: "companion-tag-undecided call=map_get tag=Present", prepared: prepared, lex: lex)
     + roster_rename_expect_refusal(companions: companions, name: "rename-arity", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_get(m)\n}\n", want: "rename-call-arity call=map_get", prepared: prepared, lex: lex)
     + roster_rename_expect_text(companions: companions, name: "rename-parameter-bound", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(map_get: fn(String) -> String, k: String) -> String {\n  map_get(k)\n}\n", prepared: prepared, lex: lex)
@@ -2233,7 +2281,8 @@ fn roster_rename_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> S
     // REDs: an operand the pipe does not cleanly hand to the call, a pipe arity mismatch, and a named argument after the pipe.
     + roster_rename_expect_refusal(companions: companions, name: "rename-pipe-operand-unclean", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Int {\n  m |> map_get(k) + 1\n}\n", want: "rename-pipe-operand-unclean call=map_get", prepared: prepared, lex: lex)
     + roster_rename_expect_refusal(companions: companions, name: "rename-pipe-arity", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k, k)\n}\n", want: "rename-call-arity call=map_get", prepared: prepared, lex: lex)
-    + roster_rename_expect_refusal(companions: companions, name: "rename-pipe-named-argument", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(key: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
+    + roster_rename_expect_text(companions: companions, name: "rename-pipe-named-argument-matching", before: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(key: k)\n}\n", after: "module c.rename\n\nimport std.algebra { Cons, map_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  map_lookup(m: m, key: k)\n}\n", prepared: prepared, lex: lex)
+    + roster_rename_expect_refusal(companions: companions, name: "rename-pipe-named-argument-mismatched", text: "module c.rename\n\nimport std.algebra { Cons }\n\nfn f(m: Map<String, String>, k: String) -> Optional<String> {\n  m |> map_get(k2: k)\n}\n", want: "rename-call-named-argument call=map_get", prepared: prepared, lex: lex)
     + roster_companion_underivable_control(prepared: prepared, lex: lex)
 }
 
