@@ -83,3 +83,22 @@ fn cloud_init_generated_file_state(d: CloudInitDisposition) -> CloudInitGenerate
     RegeneratedEachBoot
   }
 }
+
+data cloud_init_network_config_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.cloud-init.io/en/latest/reference/network-config.html"
+  }
+}
+
+// TURNING OFF ONLY THE NETWORK WRITER, independently of the marker file. network-config "Disabling
+// network configuration": cloud-init reads `network: {config: disabled}` from "the combined
+// cloud-init configuration dictionary, merged from /etc/cloud/cloud.cfg and
+// /etc/cloud/cloud.cfg.d/*", and system config outranks the datasource (only the kernel command
+// line's network-config=disabled outranks it). So a host whose marker file is removed -- the
+// `cloud-init clean --machine-id` the marker itself prints -- still never regenerates
+// 50-cloud-init.yaml while this key is in the merged config. The marker and this key are two
+// different switches: the marker stops every module, this key stops one.
+data cloud_init_system_config_dir: NonEmptyStr = "/etc/cloud/cloud.cfg.d"
+
+data cloud_init_network_config_disabled_text: NonEmptyStr = "network: \{config: disabled}\n"
