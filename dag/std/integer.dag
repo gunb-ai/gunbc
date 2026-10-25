@@ -301,6 +301,19 @@ fn int_to_decimal_string(value: Int) -> String {
   }
 }
 
+// DECIMAL TEXT TO MACHINE INTEGER: the partial inverse of int_to_decimal_string, and the one declared
+// home of the primitive `parse_int` (root-coordinator decision, sleek-owl-397; NAMESPACE-XL). PARTIAL,
+// so the refusal is the result: text that is not an optional sign followed by one or more ASCII decimal
+// digits denoting a value inside Int -- empty text, any other character, surrounding whitespace, or a
+// magnitude past the host integer -- is Absent, never a default. Optional<Int> is the type the ambient
+// primitive already carried, so a caller that imports this declaration reads the same result. A pure
+// declared operation whose host realization binds by THIS declaration's identity
+// (std.primitive_projection primitive_parse_int, a HostRealizedSeam row), so the body is a self-call no
+// realization ever reaches (std.host_text chars is the precedent).
+fn parse_int(s: String) -> Int? {
+  parse_int(s: s)
+}
+
 // The digits of an Int's magnitude WITHOUT negating it: the minimum host integer has no
 // representable negation, so the recursion divides the signed value by ten and reads each units
 // digit through decimal_digit_of_units, which answers for either sign of remainder.
