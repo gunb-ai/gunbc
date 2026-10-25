@@ -13,7 +13,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
 import v2.compiler.reference_site_collector { HeadBindingUndecided, HeadBoundAtRootValue, HeadBoundInFrame, HeadLexicallyUnbound, ScopedReferenceSite, ScopedReferenceSiteCollection, SiteHeadBinding, collect_scoped_module_reference_sites, scoped_reference_site_collection_is_total }
-import v2.compiler.source_authority { ModuleFileAbsent, ModuleFileDerived, ModuleFilePresent, ModuleFileProbe, ModuleFileRef, ModuleFileRefused, ModuleNameUnderivable, DagSourceReadWitness, ReferenceContinue, ReferenceCrossTreeDenied, ReferenceDecided, ReferenceLookup, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, SourceRootIngest, SourceStorageLayout, module_file, module_file_key, module_namespace, reference_after_probe, reference_next_read, reference_prefixes, source_root_ref_label, text_set_has, text_set_of, DerivedRosterRowMisplaced, DerivedRosterSelected, DerivedRosterSibling, StorageDerivedRoster, derived_roster_module, derived_roster_named, derived_roster_row_module, derived_roster_select, derived_roster_stem, derived_roster_text }
+import v2.compiler.source_authority { ModuleFileAbsent, ModuleFileDerived, ModuleFilePresent, ModuleFileProbe, ModuleFileRef, ModuleFileRefused, ModuleNameUnderivable, DagSourceReadWitness, ReferenceContinue, ReferenceCrossTreeDenied, ReferenceDecided, ReferenceLookup, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, SourceRootIngest, SourceStorageLayout, module_file, module_file_key, module_namespace, reference_after_probe, reference_next_read, reference_prefixes, source_root_ref_label, text_set_has, text_set_of, DerivedRosterRowMisplaced, DerivedRosterSelected, DerivedRosterSibling, StorageDerivedRoster, derived_roster_module, derived_roster_named, derived_roster_row_module, derived_roster_select, derived_roster_sibling_of, derived_roster_stem, derived_roster_text }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.lens.reference_deps { admission_from_module_root }
@@ -124,6 +124,7 @@ type DerivedRosterRefusal
   | DerivedRosterProbeRefused { file: ModuleFileRef, cause: String }
   | DerivedRosterUnlisted { directory: String, cause: String }
   | DerivedRosterSiblingUnread { file: ModuleFileRef, cause: String }
+  | DerivedRosterSiblingMisfiled { file: ModuleFileRef, held: ModuleFileRef }
   | DerivedRosterMisplacedRow { stem: String, declared: String }
 
 type AcquisitionRefusal
@@ -154,9 +155,11 @@ type AcquisitionEnv {
 
 // The pending requests are a stack (a member's requests are pushed in front), so a push costs the
 // size of the push and not of the queue. `known` is the modules already acquired and `absent` the
-// file keys already probed absent. `prefetched` is the bytes of every file a roster derivation read
-// that is not (yet) a member, by file key: a later request for one of those modules is answered from
-// them, so a file a derivation read is never read a second time.
+// file keys already probed absent. `held` is every roster sibling's file this acquisition read
+// (v2.compiler.source_authority derived_roster_sibling_of), sealed as read, by file key: a roster
+// derivation takes a sibling from here instead of reading it again, and a later request for a sibling a
+// derivation read is answered from here, so no file is read a second time. It holds siblings only, so
+// the closure's other members are not kept twice.
 type AcquisitionState {
   pending: List<AcquisitionRequest>
   modules: List<AcquiredModule>
@@ -164,7 +167,7 @@ type AcquisitionState {
   absent: Map<String, Bool>
   absent_probes: Int
   reads: List<String>
-  prefetched: Map<String, String>
+  held: Map<String, HeldSourceRead>
 }
 
 type CandidateVerdict
@@ -224,13 +227,85 @@ fn acquisition_host_directory(bindings: List<SourceRootBinding>, tree: SourceRoo
 // One exact read of one candidate file, answered as the lookup's tri-state. A host failure other
 // than not-found is a refusal of the file and never an absence.
 fn acquisition_probe(host_directory: String, file: ModuleFileRef) -> ModuleFileProbe {
+  held_source_probe(read: acquisition_read_source(host_directory: host_directory, file: file))
+}
+
+// A FILE'S BYTES AS THIS ACQUISITION READ THEM. The type is sole_constructor and its one construction is
+// in acquisition_read_source, the read itself, so a value of it is the bytes of exactly `file` as read at
+// its host directory: bytes a caller did not read cannot be handed to a roster derivation as a sibling's
+// (a construction outside this module is refused, v2.compiler.infer infer_sole_constructor_diags). What
+// the seal cannot say is under which key a caller files it, so the derivation checks that too
+// (derived_roster_read_siblings).
+type HeldSourceRead sole_constructor {
+  file: ModuleFileRef
+  content: String
+}
+
+type HeldSourceProbe
+  = HeldSourcePresent { read: HeldSourceRead }
+  | HeldSourceAbsent { file: ModuleFileRef }
+  | HeldSourceRefused { file: ModuleFileRef, cause: String }
+
+fn acquisition_read_source(host_directory: String, file: ModuleFileRef) -> HeldSourceProbe {
   match source_root_read_file(path: source_root_child_path(directory: host_directory, name: file.relative_path)) {
-    FilesystemExactPathRead { path: _, content: content } => ModuleFilePresent { file: file, content: content }
-    FilesystemExactPathAbsent { path: _ } => ModuleFileAbsent { file: file }
+    FilesystemExactPathRead { path: _, content: content } => HeldSourcePresent { read: HeldSourceRead { file: file, content: content } }
+    FilesystemExactPathAbsent { path: _ } => HeldSourceAbsent { file: file }
     FilesystemExactPathUnreadable { path: _, kind: kind, error: cause } =>
-      ModuleFileRefused { file: file, cause: concat(filesystem_failure_kind_name(kind: kind), ": ", cause) }
+      HeldSourceRefused { file: file, cause: concat(filesystem_failure_kind_name(kind: kind), ": ", cause) }
     FilesystemExactPathKindUnrecognized { path: _, observed: kind, error: cause } =>
-      ModuleFileRefused { file: file, cause: concat("unrecognized filesystem failure kind ", kind, ": ", cause) }
+      HeldSourceRefused { file: file, cause: concat("unrecognized filesystem failure kind ", kind, ": ", cause) }
+  }
+}
+
+fn held_source_probe(read: HeldSourceProbe) -> ModuleFileProbe {
+  match read {
+    HeldSourcePresent { read: held } => ModuleFilePresent { file: held.file, content: held.content }
+    HeldSourceAbsent { file: file } => ModuleFileAbsent { file: file }
+    HeldSourceRefused { file: file, cause: cause } => ModuleFileRefused { file: file, cause: cause }
+  }
+}
+
+// The state holding `read` when it is a roster sibling's file; any other read is not kept.
+fn acquisition_holding(state: AcquisitionState, layout: SourceStorageLayout, module: String, read: HeldSourceProbe) -> AcquisitionState {
+  match read {
+    HeldSourcePresent { read: held } =>
+      match derived_roster_sibling_of(layout: layout, module: module) {
+        Present { value: _ } => acquisition_with_held(state: state, read: held)
+        Absent => state
+      }
+    _ => state
+  }
+}
+
+// What the acquisition holds for `file`. A read is filed under its own file's key by this module, but the
+// state is an ordinary value a caller can assemble, so a read filed under another file's key is refused
+// where it is looked up and never consumed as that file's bytes.
+type HeldReadLookup
+  = HeldReadFor { read: HeldSourceRead }
+  | HeldReadNone
+  | HeldReadMisfiled { held: ModuleFileRef }
+
+fn held_read_of(held: Map<String, HeldSourceRead>, file: ModuleFileRef) -> HeldReadLookup {
+  match map_lookup(m: held, key: module_file_key(file: file)) {
+    Absent => HeldReadNone {}
+    Present { value: read } =>
+      if module_file_key(file: read.file) == module_file_key(file: file) { HeldReadFor { read: read } } else { HeldReadMisfiled { held: read.file } }
+  }
+}
+
+fn held_misfiled_cause(file: ModuleFileRef, held: ModuleFileRef) -> String {
+  concat("the read held under ", module_file_key(file: file), " is the read of ", module_file_key(file: held), ", so it is not that file's bytes")
+}
+
+fn acquisition_with_held(state: AcquisitionState, read: HeldSourceRead) -> AcquisitionState {
+  AcquisitionState {
+    pending: state.pending,
+    modules: state.modules,
+    known: state.known,
+    absent: state.absent,
+    absent_probes: state.absent_probes,
+    reads: state.reads,
+    held: map_insert(m: state.held, key: module_file_key(file: read.file), value: read)
   }
 }
 
@@ -261,7 +336,7 @@ fn acquisition_with_absent(state: AcquisitionState, key: String) -> AcquisitionS
     absent: map_insert(m: state.absent, key: key, value: true),
     absent_probes: state.absent_probes + 1,
     reads: state.reads,
-    prefetched: state.prefetched
+    held: state.held
   }
 }
 
@@ -273,7 +348,7 @@ fn acquisition_with_read(state: AcquisitionState, key: String) -> AcquisitionSta
     absent: state.absent,
     absent_probes: state.absent_probes,
     reads: Cons { head: key, tail: state.reads },
-    prefetched: state.prefetched
+    held: state.held
   }
 }
 
@@ -372,26 +447,31 @@ fn acquisition_probe_candidate(
   directory: String,
   rest: List<String>
 ) -> CandidateProbe {
-  match map_lookup(m: state.prefetched, key: module_file_key(file: file)) {
-    Present { value: content } =>
+  match held_read_of(held: state.held, file: file) {
+    HeldReadMisfiled { held: other } =>
+      CandidateProbeSettled {
+        lookup: acquisition_refused_lookup(state: state, lookup: ReferenceRefused { module: module, file: file, cause: held_misfiled_cause(file: file, held: other) })
+      }
+    HeldReadFor { read: held } =>
       match reference_after_probe(
         reader: acquisition_header_reader(env: env),
         reference: request.spelling,
         module: module,
         rest: rest,
-        probe: ModuleFilePresent { file: file, content: content }
+        probe: ModuleFilePresent { file: held.file, content: held.content }
       ) {
         ReferenceContinue { rest: remaining } => CandidateProbeContinue { state: state, rest: remaining }
         ReferenceDecided { lookup: lookup } =>
-          CandidateProbeSettled { lookup: acquisition_decided_prefetched(state: state, directory: directory, lookup: lookup) }
+          CandidateProbeSettled { lookup: acquisition_decided_held(state: state, directory: directory, lookup: lookup) }
       }
-    Absent =>
+    HeldReadNone => {
+      let read = acquisition_read_source(host_directory: directory, file: file)
       match reference_after_probe(
         reader: acquisition_header_reader(env: env),
         reference: request.spelling,
         module: module,
         rest: rest,
-        probe: acquisition_probe(host_directory: directory, file: file)
+        probe: held_source_probe(read: read)
       ) {
         ReferenceContinue { rest: remaining } =>
           CandidateProbeContinue {
@@ -399,14 +479,17 @@ fn acquisition_probe_candidate(
             rest: remaining
           }
         ReferenceDecided { lookup: lookup } =>
-          CandidateProbeSettled { lookup: acquisition_decided(state: state, directory: directory, lookup: lookup) }
+          CandidateProbeSettled {
+            lookup: acquisition_decided(state: acquisition_holding(state: state, layout: env.layout, module: module, read: read), directory: directory, lookup: lookup)
+          }
       }
+    }
   }
 }
 
 // A module whose file a derivation already read is decided from those bytes and records no second read:
 // the read was recorded when the derivation made it.
-fn acquisition_decided_prefetched(state: AcquisitionState, directory: String, lookup: ReferenceLookup) -> CandidateLookup {
+fn acquisition_decided_held(state: AcquisitionState, directory: String, lookup: ReferenceLookup) -> CandidateLookup {
   match lookup {
     ReferenceResolved { module: module, member: _, file: file, content: content } =>
       CandidateLookup { state: state, verdict: CandidateFresh { module: module, file: file, host_directory: directory, content: content } }
@@ -425,8 +508,9 @@ fn acquisition_decided_prefetched(state: AcquisitionState, directory: String, lo
 // roster being absent, and the lookup falls back to a shorter prefix exactly as for an absent file; any
 // other failed listing or read refuses rather than shortening the roster.
 //
-// A sibling already acquired is read from its member and not again; a sibling a request has not yet
-// admitted is read here, and its bytes are kept (prefetched) so a later request for it reads nothing.
+// A sibling the acquisition already read is taken from its sealed read (AcquisitionState held) and not
+// read again; any other sibling is read here, and its sealed read is held so a later request for it
+// reads nothing.
 fn acquisition_derive_refused(state: AcquisitionState, module: String, refusal: DerivedRosterRefusal) -> CandidateProbe {
   CandidateProbeSettled {
     lookup: CandidateLookup {
@@ -445,10 +529,11 @@ fn derived_roster_relative_directory(file: ModuleFileRef) -> String {
 // refused if a file occupies it, the row directory listed, every sibling's bytes taken from `held` or
 // read, the members selected and the roster rendered (v2.compiler.source_authority derived_roster_select
 // and derived_roster_text). The routes differ only in what they already hold and in what they do with
-// the result: a compile holds the bytes of the members it acquired and of the files an earlier
-// derivation prefetched, a population job holds nothing; a compile records the reads this derivation
-// made and admits the selected rows from these bytes, a population job carries the roster as one member.
-// `held` is keyed by file key (v2.compiler.source_authority module_file_key).
+// the result: a compile holds the sealed reads of the siblings it already read (AcquisitionState
+// held), a population job holds nothing; a compile records the reads this derivation made and admits
+// the selected rows from these bytes, a population job carries the roster as one member.
+// `held` is keyed by file key (v2.compiler.source_authority module_file_key), and every entry is a
+// HeldSourceRead, so the bytes a derivation takes from it are a read of that file and nothing else.
 type DerivedRosterDerivation
   = DerivedRosterDerived { content: String, inputs: List<String>, members: List<String>, siblings: List<DerivedSiblingRead> }
   | DerivedRosterAbsent
@@ -458,8 +543,7 @@ type DerivedRosterDerivation
 // what the caller held.
 type DerivedSiblingRead {
   module: String
-  file: ModuleFileRef
-  content: String
+  read: HeldSourceRead
   fresh: Bool
 }
 
@@ -481,7 +565,7 @@ fn derived_roster_read_siblings(
   roster: StorageDerivedRoster,
   roster_file: ModuleFileRef,
   host_directory: String,
-  held: Map<String, String>,
+  held: Map<String, HeldSourceRead>,
   pending: List<String>,
   read: List<DerivedSiblingRead>
 ) -> DerivedSiblingsRead {
@@ -490,23 +574,24 @@ fn derived_roster_read_siblings(
     Present { value: stem } => {
       let file = derived_sibling_file(roster_file: roster_file, stem: stem)
       let module = derived_roster_row_module(roster: roster, stem: stem)
-      match map_lookup(m: held, key: module_file_key(file: file)) {
-        Present { value: content } =>
+      match held_read_of(held: held, file: file) {
+        HeldReadMisfiled { held: other } => DerivedSiblingsReadRefused { refusal: DerivedRosterSiblingMisfiled { file: file, held: other } }
+        HeldReadFor { read: sibling } =>
           derived_roster_read_siblings(
             roster: roster, roster_file: roster_file, host_directory: host_directory, held: held,
             pending: skip(xs: pending, n: 1),
-            read: list_snoc_item(xs: read, item: DerivedSiblingRead { module: module, file: file, content: content, fresh: false })
+            read: list_snoc_item(xs: read, item: DerivedSiblingRead { module: module, read: sibling, fresh: false })
           )
-        Absent =>
-          match acquisition_probe(host_directory: host_directory, file: file) {
-            ModuleFilePresent { file: _, content: content } =>
+        HeldReadNone =>
+          match acquisition_read_source(host_directory: host_directory, file: file) {
+            HeldSourcePresent { read: sibling } =>
               derived_roster_read_siblings(
                 roster: roster, roster_file: roster_file, host_directory: host_directory, held: held,
                 pending: skip(xs: pending, n: 1),
-                read: list_snoc_item(xs: read, item: DerivedSiblingRead { module: module, file: file, content: content, fresh: true })
+                read: list_snoc_item(xs: read, item: DerivedSiblingRead { module: module, read: sibling, fresh: true })
               )
-            ModuleFileAbsent { file: _ } => DerivedSiblingsReadRefused { refusal: DerivedRosterSiblingUnread { file: file, cause: "the listing named the file and it is absent" } }
-            ModuleFileRefused { file: _, cause: cause } => DerivedSiblingsReadRefused { refusal: DerivedRosterSiblingUnread { file: file, cause: cause } }
+            HeldSourceAbsent { file: _ } => DerivedSiblingsReadRefused { refusal: DerivedRosterSiblingUnread { file: file, cause: "the listing named the file and it is absent" } }
+            HeldSourceRefused { file: _, cause: cause } => DerivedSiblingsReadRefused { refusal: DerivedRosterSiblingUnread { file: file, cause: cause } }
           }
       }
     }
@@ -516,21 +601,21 @@ fn derived_roster_read_siblings(
 fn derived_roster_selected(roster: StorageDerivedRoster, siblings: List<DerivedSiblingRead>) -> DerivedRosterDerivation {
   match derived_roster_select(
     roster: roster,
-    siblings: list_map(xs: siblings, f: fn(s) { DerivedRosterSibling { stem: derived_sibling_stem(roster: roster, sibling: s), content: s.content } })
+    siblings: list_map(xs: siblings, f: fn(s) { DerivedRosterSibling { stem: derived_sibling_stem(roster: roster, sibling: s), content: s.read.content } })
   ) {
     DerivedRosterRowMisplaced { stem: stem, declared: declared } =>
       DerivedRosterDerivationRefused { refusal: DerivedRosterMisplacedRow { stem: stem, declared: declared } }
     DerivedRosterSelected { members: members } =>
       DerivedRosterDerived {
         content: derived_roster_text(roster: roster, members: members),
-        inputs: list_map(xs: siblings, f: fn(s) { module_file_key(file: s.file) }),
+        inputs: list_map(xs: siblings, f: fn(s) { module_file_key(file: s.read.file) }),
         members: members,
         siblings: siblings
       }
   }
 }
 
-fn derived_roster_derive(roster: StorageDerivedRoster, file: ModuleFileRef, host_directory: String, held: Map<String, String>) -> DerivedRosterDerivation {
+fn derived_roster_derive(roster: StorageDerivedRoster, file: ModuleFileRef, host_directory: String, held: Map<String, HeldSourceRead>) -> DerivedRosterDerivation {
   match acquisition_probe(host_directory: host_directory, file: file) {
     ModuleFilePresent { file: occupied, content: _ } => DerivedRosterDerivationRefused { refusal: DerivedRosterOccupied { file: occupied } }
     ModuleFileRefused { file: refused, cause: cause } => DerivedRosterDerivationRefused { refusal: DerivedRosterProbeRefused { file: refused, cause: cause } }
@@ -550,29 +635,11 @@ fn derived_roster_derive(roster: StorageDerivedRoster, file: ModuleFileRef, host
 
 // ---- the demand route's adapter ----
 
-// What a compile already holds, by file key: every acquired member's bytes, and every file an earlier
-// derivation read that no request has yet admitted.
-fn acquisition_held_contents(state: AcquisitionState) -> Map<String, String> {
-  fold_list(xs: state.modules, empty: state.prefetched, cons: fn(acc, m) { map_insert(m: acc, key: module_file_key(file: m.file), value: m.content) })
-}
-
-fn acquisition_with_prefetched_read(state: AcquisitionState, key: String, content: String) -> AcquisitionState {
-  AcquisitionState {
-    pending: state.pending,
-    modules: state.modules,
-    known: state.known,
-    absent: state.absent,
-    absent_probes: state.absent_probes,
-    reads: Cons { head: key, tail: state.reads },
-    prefetched: map_insert(m: state.prefetched, key: key, value: content)
-  }
-}
-
-// Every read the derivation made is a read of the closure, recorded once, and its bytes are kept so a
-// later request for that module reads nothing.
+// Every read the derivation made is a read of the closure, recorded once, and its sealed read is held so
+// a later request for that module reads nothing.
 fn acquisition_with_derivation_reads(state: AcquisitionState, siblings: List<DerivedSiblingRead>) -> AcquisitionState {
   fold_list(xs: siblings, empty: state, cons: fn(acc, s) {
-    if s.fresh { acquisition_with_prefetched_read(state: acc, key: module_file_key(file: s.file), content: s.content) } else { acc }
+    if s.fresh { acquisition_with_held(state: acquisition_with_read(state: acc, key: module_file_key(file: s.read.file)), read: s.read) } else { acc }
   })
 }
 
@@ -582,7 +649,7 @@ fn derived_rows_to_admit(state: AcquisitionState, roster: StorageDerivedRoster, 
   let selected = text_set_of(names: members)
   fold_list(xs: siblings, empty: [], cons: fn(acc, sibling) {
     if !text_set_has(set: state.known, name: sibling.module) && text_set_has(set: selected, name: derived_sibling_stem(roster: roster, sibling: sibling)) {
-      list_snoc_item(xs: acc, item: DerivedRowRead { module: sibling.module, file: sibling.file, content: sibling.content })
+      list_snoc_item(xs: acc, item: DerivedRowRead { module: sibling.module, file: sibling.read.file, content: sibling.read.content })
     } else {
       acc
     }
@@ -597,7 +664,7 @@ fn acquisition_derive_candidate(
   directory: String,
   rest: List<String>
 ) -> CandidateProbe {
-  match derived_roster_derive(roster: roster, file: file, host_directory: directory, held: acquisition_held_contents(state: state)) {
+  match derived_roster_derive(roster: roster, file: file, host_directory: directory, held: state.held) {
     DerivedRosterAbsent => CandidateProbeContinue { state: acquisition_with_absent(state: state, key: module_file_key(file: file)), rest: rest }
     DerivedRosterDerivationRefused { refusal: refusal } => acquisition_derive_refused(state: state, module: module, refusal: refusal)
     DerivedRosterDerived { content: content, inputs: inputs, members: members, siblings: siblings } => {
@@ -933,7 +1000,7 @@ fn acquisition_admitted(
       absent: state.absent,
       absent_probes: state.absent_probes,
       reads: state.reads,
-      prefetched: state.prefetched
+      held: state.held
     }
   }
 }
@@ -1044,7 +1111,7 @@ fn acquisition_popped(state: AcquisitionState) -> AcquisitionState {
     absent: state.absent,
     absent_probes: state.absent_probes,
     reads: state.reads,
-    prefetched: state.prefetched
+    held: state.held
   }
 }
 
@@ -1102,7 +1169,7 @@ fn acquisition_start(env: AcquisitionEnv, entries: List<String>) -> Acquisition 
     AcquisitionEntriesDerived { requests: requests } =>
       acquisition_loop(
         env: env,
-        state: AcquisitionState { pending: requests, modules: [], known: empty_map(), absent: empty_map(), absent_probes: 0, reads: [], prefetched: empty_map() },
+        state: AcquisitionState { pending: requests, modules: [], known: empty_map(), absent: empty_map(), absent_probes: 0, reads: [], held: empty_map() },
         entries: entries
       )
   }
@@ -1298,7 +1365,7 @@ fn census_with_member_block(
       absent: state.absent,
       absent_probes: state.absent_probes,
       reads: state.reads,
-      prefetched: state.prefetched
+      held: state.held
     },
     blocked_members: map_insert(m: acc.blocked_members, key: module, value: acc.block_count),
     blocks: Cons {
@@ -1400,7 +1467,7 @@ fn acquire_census_closure_of(layout: SourceStorageLayout, bindings: List<SourceR
           census_acquisition_loop(
             env: env,
             acc: CensusAcquisitionState {
-              state: AcquisitionState { pending: requests, modules: [], known: empty_map(), absent: empty_map(), absent_probes: 0, reads: [], prefetched: empty_map() },
+              state: AcquisitionState { pending: requests, modules: [], known: empty_map(), absent: empty_map(), absent_probes: 0, reads: [], held: empty_map() },
               blocked_members: empty_map(),
               blocks: [],
               block_count: 0
@@ -1744,6 +1811,7 @@ fn derived_roster_refusal_text(refusal: DerivedRosterRefusal) -> String {
     DerivedRosterProbeRefused { file: file, cause: cause } => concat("its storage path ", module_file_key(file: file), " could not be probed: ", cause)
     DerivedRosterUnlisted { directory: directory, cause: cause } => concat("its row directory ", directory, " could not be listed: ", cause)
     DerivedRosterSiblingUnread { file: file, cause: cause } => concat("sibling ", module_file_key(file: file), " could not be read, and the roster is not derived from fewer rows: ", cause)
+    DerivedRosterSiblingMisfiled { file: file, held: held } => concat("sibling ", module_file_key(file: file), ": ", held_misfiled_cause(file: file, held: held))
     DerivedRosterMisplacedRow { stem: stem, declared: declared } =>
       concat("sibling ", stem, " declares a row named ", declared, "; a row is declared under its own file stem")
   }

@@ -1593,6 +1593,17 @@ fn derived_roster_row_module(roster: StorageDerivedRoster, stem: String) -> Stri
   concat(roster.row_namespace, ".", stem)
 }
 
+// The ledger `module` is a sibling of, if it is one: a module directly under a roster's row namespace,
+// other than the roster itself. Its bytes are an input of that roster's derivation.
+fn derived_roster_sibling_of(layout: SourceStorageLayout, module: String) -> Optional<StorageDerivedRoster> {
+  list_find_first(xs: layout.derived_rosters, predicate: fn(r) {
+    let prefix = concat(r.row_namespace, ".")
+    module.starts_with(prefix: prefix)
+      && module != derived_roster_module(roster: r)
+      && length(xs: split(s: substring(s: module, start: string_length(s: prefix), end: string_length(s: module)), delimiter: ".")) == 1
+  })
+}
+
 // One sibling of a roster: a module directly under the row namespace, by its file stem, with the bytes
 // acquisition read for it.
 type DerivedRosterSibling {
