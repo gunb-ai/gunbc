@@ -1,12 +1,11 @@
 module v2.test.lens_structural_resolution.facts_lookup_miss
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
 
 import v2.std.dependency { DependencyView }
 
-import v2.std.node { Authored }
+import v2.std.node { node_same_occurrence, Authored, NotADeclaration }
 import std.types { Map }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.dependency { BindsTo, ClassifiedDependencyView, DependencyView }
@@ -28,7 +27,7 @@ data sr_lookup_use: Node = sr_lookup_claim_atom(s: ^sr_lookup_use_symbol)
 data sr_lookup_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_lookup_use }
+    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_lookup_use, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -56,7 +55,7 @@ fn sr_lookup_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
   let resolved = sr_lookup_resolved_facts()
   PartialFunction {
     lookup: fn(key) {
-      if key == sr_lookup_use {
+      if node_same_occurrence(a: key, b: sr_lookup_use) {
         optional_absent()
       } else {
         optional_present(value: resolved)
@@ -68,8 +67,7 @@ fn sr_lookup_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
 fn sr_lookup_claim_tree() -> InferredTree {
   InferredTree {
     root: sr_lookup_decl,
-    facts: sr_lookup_claim_fact_map(),
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: sr_lookup_claim_fact_map()
   }
 }
 

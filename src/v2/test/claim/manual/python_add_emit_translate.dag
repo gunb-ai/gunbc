@@ -1,6 +1,5 @@
 module v2.test.claim.manual.python_add_emit_translate
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
@@ -64,7 +63,7 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   node_locus
 }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   Conj,
   Edge,
@@ -152,49 +151,49 @@ fn python_add_canonical_grounding(
 }
 
 fn python_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == python_add_emitted_root {
+  if node_same_occurrence(a: node, b: python_add_emitted_root) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
-  } else if node == python_add_int_inhabitant {
+  } else if node_same_occurrence(a: node, b: python_add_int_inhabitant) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^python_inhabitant_int) {
+  } else if node_same_occurrence(a: node, b: python_inhabitant_atom(id: ^python_inhabitant_int)) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_inhabitant
       )
     }
-  } else if node == python_add_int_facts_node {
+  } else if node_same_occurrence(a: node, b: python_add_int_facts_node) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^python_surface_spelling_int) {
+  } else if node_same_occurrence(a: node, b: python_inhabitant_atom(id: ^python_surface_spelling_int)) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^python_repr_int_arbitrary_precision) {
+  } else if node_same_occurrence(a: node, b: python_inhabitant_atom(id: ^python_repr_int_arbitrary_precision)) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
         algebra: python_add_int_facts_node
       )
     }
-  } else if node == python_inhabitant_atom(id: ^std_projection_additive_numeric) {
+  } else if node_same_occurrence(a: node, b: python_inhabitant_atom(id: ^std_projection_additive_numeric)) {
     Holds {
       value: python_add_canonical_grounding(
         node: node,
@@ -235,8 +234,7 @@ data python_add_inferred_tree: InferredTree = InferredTree {
   root: python_add_emitted_root,
   facts: PartialFunction {
     lookup: python_add_facts_lookup
-  },
-  arm_resolutions: constructed_root_arm_resolutions()
+  }
 }
 
 fn anchor_python_add_emit_accepts() -> Outcome<Medium<String>> {

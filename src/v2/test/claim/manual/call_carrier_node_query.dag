@@ -1,6 +1,6 @@
 module v2.test.claim.manual.call_carrier_node_query
 
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
   Edge,
@@ -9,7 +9,8 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 import v2.std.compilers.body_lowering {
   Application,
@@ -49,9 +50,9 @@ fn call_carrier_call_node() -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: call_carrier_callee_ref() },
-      Edge { label: Positional, target: call_carrier_arg_x() },
-      Edge { label: Positional, target: call_carrier_arg_y() }
+      Edge { label: Positional, target: call_carrier_callee_ref(), declaration: NotADeclaration },
+      Edge { label: Positional, target: call_carrier_arg_x(), declaration: NotADeclaration },
+      Edge { label: Positional, target: call_carrier_arg_y(), declaration: NotADeclaration }
     ]
   )
 }
@@ -64,8 +65,8 @@ fn call_carrier_callee_free_transform() -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: call_carrier_value_node() },
-      Edge { label: Positional, target: call_carrier_value_node() }
+      Edge { label: Positional, target: call_carrier_value_node(), declaration: NotADeclaration },
+      Edge { label: Positional, target: call_carrier_value_node(), declaration: NotADeclaration }
     ]
   )
 }
@@ -119,7 +120,7 @@ test fn call_carrier_value_not_callee_reference() -> Bool {
 
 test fn call_carrier_callee_target_matches() -> Bool {
   match application_read(site: call_carrier_call_node()) {
-    Application { view: v } => v.head == call_carrier_callee_ref()
+    Application { view: v } => node_same_occurrence(a: v.head, b: call_carrier_callee_ref())
     NotApplication => false
     ApplicationRefused { diagnostics: _ } => false
   }
@@ -135,11 +136,11 @@ test fn call_carrier_arguments_match() -> Bool {
       let args = v.operands
       let arity_two = count(args) == 2
       let first_is_x = match list_at_optional(xs: args, index: 0) {
-        Present { value: a0 } => a0 == call_carrier_arg_x()
+        Present { value: a0 } => node_same_occurrence(a: a0, b: call_carrier_arg_x())
         Absent => false
       }
       let second_is_y = match list_at_optional(xs: args, index: 1) {
-        Present { value: a1 } => a1 == call_carrier_arg_y()
+        Present { value: a1 } => node_same_occurrence(a: a1, b: call_carrier_arg_y())
         Absent => false
       }
       arity_two && first_is_x && second_is_y

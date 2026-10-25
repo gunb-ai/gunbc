@@ -1,6 +1,5 @@
 module v2.test.claim.execution.emit_host_match_equals_eval
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List, Map }
 import v2.std.node_query { find_core_child }
@@ -66,7 +65,7 @@ import v2.std.node {
   TypeNode,
   MatchArmBodyEdge,
 }
-import v2.std.runtime {
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,
   ControlTransfer,
@@ -122,8 +121,7 @@ fn emit_match_eval_producer_tree() -> Outcome<InferredTree> {
       outcome_accepted(
         value: InferredTree {
           root: root,
-          facts: PartialFunction { lookup: emit_match_eval_composed_facts },
-          arm_resolutions: constructed_root_arm_resolutions()
+          facts: PartialFunction { lookup: emit_match_eval_composed_facts }
         }
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -136,8 +134,7 @@ fn emit_match_eval_swapped_producer_tree() -> Outcome<InferredTree> {
       outcome_accepted(
         value: InferredTree {
           root: root,
-          facts: PartialFunction { lookup: emit_match_eval_composed_facts },
-          arm_resolutions: constructed_root_arm_resolutions()
+          facts: PartialFunction { lookup: emit_match_eval_composed_facts }
         }
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -162,11 +159,11 @@ fn emit_match_eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 }
 
 fn emit_match_eval_bool_true(value: RuntimeValue) -> Bool {
-  value == emit_match_eval_octet_value(n: 1)
+  (runtime_value_equality(a: value, b: emit_match_eval_octet_value(n: 1)) == RuntimeValuesEqual)
 }
 
 fn emit_match_eval_bool_false(value: RuntimeValue) -> Bool {
-  value == emit_match_eval_octet_value(n: 0)
+  (runtime_value_equality(a: value, b: emit_match_eval_octet_value(n: 0)) == RuntimeValuesEqual)
 }
 
 fn emit_match_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {

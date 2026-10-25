@@ -25,6 +25,7 @@ import v2.std.node {
   Node,
   Positional,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.text { String }
 import v2.std.grammar {
@@ -373,7 +374,7 @@ fn english_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
 data english_add_fn_source_text: String = "the add is a function. the add takes the x. the add takes the y. the add returns the sum. the sum adds the x. the sum adds the y."
 
 fn english_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn english_inhabitant_atom(id: Symbol) -> Node {

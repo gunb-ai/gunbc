@@ -1,6 +1,5 @@
 module v2.test.claim.emit.rust_call_emit
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Optional, Present, Absent }
@@ -45,6 +44,7 @@ import v2.std.node {
   node_synthetic,
   ArrowBodyEdge,
   core_edge,
+  NotADeclaration
 }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.witness { Violates, Witness }
@@ -65,11 +65,11 @@ fn rust_call_type_atom(id: Symbol) -> Node {
 }
 
 fn rust_call_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn rust_call_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn rust_call_add_signature() -> DeclaredSignatureEdges {
@@ -206,8 +206,8 @@ data rust_call_eval_arg_literal: Node = Node {
 data rust_call_helper_eval_subgraph: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: rust_call_eval_arg_literal },
-    Edge { label: Positional, target: rust_call_eval_arg_literal }
+    Edge { label: Positional, target: rust_call_eval_arg_literal, declaration: NotADeclaration },
+    Edge { label: Positional, target: rust_call_eval_arg_literal, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -232,8 +232,7 @@ fn rust_call_facts_miss(key: Node) -> Optional<InferredFacts> {
 fn rust_call_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: PartialFunction { lookup: rust_call_facts_miss },
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: PartialFunction { lookup: rust_call_facts_miss }
   }
 }
 

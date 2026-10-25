@@ -1,6 +1,5 @@
 module v2.test.claim.manual.english_emit_add
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -44,7 +43,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.grammar { ParseTree }
-import v2.std.node { Edge, Authored, Node, Positional, StructuralLabel }
+import v2.std.node { node_same_occurrence, Edge, Authored, Node, Positional, StructuralLabel }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.verification {
   BoolWitness,
@@ -84,42 +83,42 @@ fn english_emit_add_canonical_grounding(
 }
 
 fn english_emit_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == english_emit_add_emitted_root {
+  if node_same_occurrence(a: node, b: english_emit_add_emitted_root) {
     Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
-  } else if node == english_emit_add_noun_inhabitant {
+  } else if node_same_occurrence(a: node, b: english_emit_add_noun_inhabitant) {
     Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: english_emit_add_noun_facts_node
       )
     }
-  } else if node == english_inhabitant_atom(id: ^english_inhabitant_noun) {
+  } else if node_same_occurrence(a: node, b: english_inhabitant_atom(id: ^english_inhabitant_noun)) {
     Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: english_emit_add_noun_inhabitant
       )
     }
-  } else if node == english_emit_add_noun_facts_node {
+  } else if node_same_occurrence(a: node, b: english_emit_add_noun_facts_node) {
     Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: node
       )
     }
-  } else if node == english_inhabitant_atom(id: ^english_surface_spelling_noun) {
+  } else if node_same_occurrence(a: node, b: english_inhabitant_atom(id: ^english_surface_spelling_noun)) {
     Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
         algebra: english_emit_add_noun_facts_node
       )
     }
-  } else if node == english_inhabitant_atom(id: ^english_category_formal_noun_phrase) {
+  } else if node_same_occurrence(a: node, b: english_inhabitant_atom(id: ^english_category_formal_noun_phrase)) {
     Holds {
       value: english_emit_add_canonical_grounding(
         node: node,
@@ -160,8 +159,7 @@ data english_emit_add_inferred_tree: InferredTree = InferredTree {
   root: english_emit_add_emitted_root,
   facts: PartialFunction {
     lookup: english_emit_add_facts_lookup
-  },
-  arm_resolutions: constructed_root_arm_resolutions()
+  }
 }
 
 fn anchor_english_emit_add_accepts() -> Outcome<Medium<String>> {
@@ -209,7 +207,7 @@ fn english_emit_add_identity_edge_matches(e: Edge, expected: Node) -> Bool {
   match e.label {
     StructuralLabel { label: _ } => false
     Authored { name: n } =>
-      (n == ^grammar_production_identity_node_projection) && (e.target == expected)
+      (n == ^grammar_production_identity_node_projection) && (node_same_occurrence(a: e.target, b: expected))
     Positional => false
   }
 }

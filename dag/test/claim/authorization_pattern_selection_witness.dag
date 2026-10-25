@@ -38,8 +38,8 @@ import std.human_intervention {
   NoDischargeSiteModeled,
 }
 import gunbc.auth.privileged_effect_census {
-  manual_api_effect_beside_unlanded_approval_adapter, open_policy_srv1_root_step_effects,
-  github_environment_gate_is_not_the_approval_route,
+  manual_api_effect_beside_unlanded_approval_adapter, srv1_root_step_by_hand_beside_the_broker_route,
+  github_environment_gate_is_not_the_approval_route, fleet_host_file_converge_edge_beside_the_broker_route,
 }
 import gunbc.cloudflare.r2_origin { cloudflare_account_allocation_intervention }
 import gunbc.spark.dgx_pxe_boot { spark_pxe_firmware_enablement_intervention }
@@ -596,6 +596,15 @@ test fn the_belt_exit_stall_rearm_selects_the_federated_grant_and_diverges_with_
       && match v.conformance { DivergesWithReason { reason: _ } => true _ => false })
 }
 
+// ONE site serves both stalled spools: attempt_unit_stall_release_cli re-arms through the same
+// belt_exit_stall_rearm_at, so the selection run for it is this row's (federated scoped grant, diverging under the
+// interim reason), and the row's subject names both path units.
+test fn the_attempt_unit_stall_release_shares_the_rearm_site_and_its_selection() -> Bool {
+  any(census_verdicts(), v =>
+    (v.site.decl_name as String) == "belt_exit_stall_rearm_at"
+      && selected_federated(s: v.selection))
+}
+
 // D3: the deploy route's root may not switch while srv1 shares its job uid with pull request jobs.
 test fn the_deploy_route_switch_is_refused_while_srv1_shares_the_job_uid() -> Bool {
   !deploy_route_switch_admitted(r: srv1_deploy_route_requirement, observed: srv1_observed_job_tenancy)
@@ -635,15 +644,53 @@ test fn the_srv1_production_protection_row_selects_the_approval_route_for_the_gi
   row_diverges_for_exactly(key: "gunbc.auth.github_deployment_environment::srv1_production_protection_standing", expected: github_environment_gate_is_not_the_approval_route, selects_approved: true)
 }
 
-// FleetOnce plus host-root reach: the approved capability and the administrator edge are incomparable.
-// One open question, shared with no row; this goes RED when a policy resolves it.
-test fn manual_srv1_root_steps_are_the_open_fleet_once_host_root_policy_question() -> Bool {
-  let effects = open_policy_srv1_root_step_effects()
-  (effects |> count) == 3
-    && all(effects, e => match select_authorization_pattern(e: e) {
-      PatternSelectionNeedsPolicy { survivors: _ } => true
-      _ => false
-    })
+// OPERATOR RULING 2026-10-22 (one_approval_route_for_every_privileged_action): host-root reach that a
+// human can attend selects the broker route, never the administrator edge. These rows realize it by hand
+// or by a GitHub click, and each pins the exact reason authority.
+test fn the_ntfy_srv1_root_steps_select_the_approval_route_for_the_by_hand_reason() -> Bool {
+  row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_account_intervention", expected: srv1_root_step_by_hand_beside_the_broker_route, selects_approved: true)
+    && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_server_install_intervention", expected: srv1_root_step_by_hand_beside_the_broker_route, selects_approved: true)
+    && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_subscriber_grant_intervention", expected: srv1_root_step_by_hand_beside_the_broker_route, selects_approved: true)
+}
+
+test fn the_per_dispatch_srv1_environment_gate_selects_the_approval_route_for_the_github_gate_reason() -> Bool {
+  row_diverges_for_exactly(key: "gunbc.fleet.fleet_converge_workflow::fleet_converge_srv1_root_mutation_environment", expected: github_environment_gate_is_not_the_approval_route, selects_approved: true)
+}
+
+fn host_root_effect_at(f: HumanInterventionFrequency) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "a root write on a fleet host" as NonEmptyStr, frequency: f, reversibility: ReversibleByReapply,
+    surface: ApiSurface, workload_identity: WorkloadIdentityUnbindable { cause: "fixture" as NonEmptyStr },
+    minted_reach: MintsHostRootReach, billing: NoBillingConsequence, witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn selected_approved_capability(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    _ => false
+  }
+}
+
+// THE RULING ITSELF, over every frequency a human can attend; EveryProvision keeps the edge (control above).
+test fn an_attendable_host_root_effect_selects_the_approval_capability_never_the_edge() -> Bool {
+  all([FleetOnce, DeviceOnce, EveryOperatorRequest, BreakGlassOnly], f => selected_approved_capability(s: select_authorization_pattern(e: host_root_effect_at(f: f))))
+}
+
+// THE FLEET HOST FILE CONVERGE, run through the real fold. Both of its entries realize the administrator
+// edge; because the operator names the host on every dispatch the selection names the approval capability,
+// so each row diverges under the stated reason. Filing the effect as EveryProvision would select the edge
+// and make the row conform, which this claim refuses, as it refuses a changed realization or a dropped row.
+fn row_realizes_the_edge(key: String) -> Bool {
+  let rows = filter(privileged_effect_census, row => declaration_ref_display_key(ref: row.site) == key)
+  (rows |> count) == 1 && all(rows, row => match row.realized { RealizedAdministratorEdge => true _ => false })
+}
+
+test fn the_fleet_host_file_converge_realizes_the_edge_and_selects_the_approval_route() -> Bool {
+  row_realizes_the_edge(key: "gunbc.runner.runner_host_file_converge::runner_host_file_converge_ci_wet")
+    && row_realizes_the_edge(key: "gunbc.runner.runner_host_file_converge::runner_host_cap_release_ci_wet")
+    && row_diverges_for_exactly(key: "gunbc.runner.runner_host_file_converge::runner_host_file_converge_ci_wet", expected: fleet_host_file_converge_edge_beside_the_broker_route, selects_approved: true)
+    && row_diverges_for_exactly(key: "gunbc.runner.runner_host_file_converge::runner_host_cap_release_ci_wet", expected: fleet_host_file_converge_edge_beside_the_broker_route, selects_approved: true)
 }
 
 fn frequency_name(f: HumanInterventionFrequency) -> String {

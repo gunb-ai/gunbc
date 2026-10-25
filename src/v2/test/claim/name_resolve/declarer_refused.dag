@@ -14,12 +14,27 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.std.diagnostic {
   Accepted,
+  NodeLocus,
+  Textual,
+  SourcePortLocus,
+  InvariantPortLocus,
+  DeclarationLocus,
   NonEmptyDiagnostics,
   Outcome,
   Rejected,
+  DeclarerRefused,
+  Suggested,
+  Unavailable,
+  UserInputBoundary,
+  AmbiguousIntent,
+  CorrectionNotModeled,
+  ExternalContractUnknown,
+  diagnostics_fatal,
   diagnostics_fatal_reason,
   diagnostics_list_has_reason
 }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.grammar { node_atom_identity_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import std.types { Bool }
@@ -43,11 +58,25 @@ data dr_rec_user_source: String = "module v2.test.dr.rec_user\n\nimport v2.test.
 
 data dr_missing_source: String = "module v2.test.dr.missing\n\nfn f(x: Nowhere) -> Int { 1 }\n"
 
+data dr_body_decl_source: String = "module v2.test.dr.body_decl\n\nfn helper(x: Int) -> Int { dr_body_nowhere(x) }\n"
+
+data dr_body_user_source: String = "module v2.test.dr.body_user\n\nimport v2.test.dr.body_decl { helper }\nfn f(x: Int) -> Int { helper(x) }\n"
+
 data dr_p_source: String = "module v2.test.dr.p\n\nimport v2.test.dr.v2lib { Lib }\n"
 
 data dr_p_child_source: String = "module v2.test.dr.p.child\n\ntype R { value: Unit }\ntype Unit = | U\n"
 
 data dr_nested_user_source: String = "module v2.test.dr.nested_user\n\nimport v2.test.dr.p.child { R }\nfn f(x: R) -> R { x }\n"
+
+// A COPRODUCT REFUSED THROUGH ONE VARIANT, a user naming only its OTHER variant, and a relay that
+// publishes a declaration mentioning that variant with a user of the relay.
+data dr_sum_source: String = "module v2.test.dr.sum\n\ntype Sum = Good | Bad { value: Nowhere }\n"
+
+data dr_variant_user_source: String = "module v2.test.dr.variant_user\n\nimport v2.test.dr.sum { Good }\nfn f(x: Int) -> Int {\n  let g = Good\n  x\n}\n"
+
+data dr_relay_source: String = "module v2.test.dr.relay\n\nimport v2.test.dr.sum { Good }\nfn relay(x: Int) -> Int {\n  let g = Good\n  x\n}\n"
+
+data dr_relay_user_source: String = "module v2.test.dr.relay_user\n\nimport v2.test.dr.relay { relay }\nfn h(x: Int) -> Int { relay(x: x) }\n"
 
 fn dr_read(text: String, id: Symbol, path: String, root: SourceRootRef) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -69,7 +98,13 @@ fn dr_context() -> Outcome<NativeTestContext> {
     dr_read(text: dr_missing_source, id: ^dr_missing, path: "src/v2/test/fixture/dr/missing.dag", root: DagTree),
     dr_read(text: dr_p_source, id: ^dr_p, path: "src/v2/test/fixture/dr/p.dag", root: DagTree),
     dr_read(text: dr_p_child_source, id: ^dr_p_child, path: "src/v2/test/fixture/dr/p_child.dag", root: DagTree),
-    dr_read(text: dr_nested_user_source, id: ^dr_nested_user, path: "src/v2/test/fixture/dr/nested_user.dag", root: DagTree)
+    dr_read(text: dr_nested_user_source, id: ^dr_nested_user, path: "src/v2/test/fixture/dr/nested_user.dag", root: DagTree),
+    dr_read(text: dr_sum_source, id: ^dr_sum, path: "src/v2/test/fixture/dr/sum.dag", root: DagTree),
+    dr_read(text: dr_variant_user_source, id: ^dr_variant_user, path: "src/v2/test/fixture/dr/variant_user.dag", root: DagTree),
+    dr_read(text: dr_relay_source, id: ^dr_relay, path: "src/v2/test/fixture/dr/relay.dag", root: DagTree),
+    dr_read(text: dr_relay_user_source, id: ^dr_relay_user, path: "src/v2/test/fixture/dr/relay_user.dag", root: DagTree),
+    dr_read(text: dr_body_decl_source, id: ^dr_body_decl, path: "src/v2/test/fixture/dr/body_decl.dag", root: DagTree),
+    dr_read(text: dr_body_user_source, id: ^dr_body_user, path: "src/v2/test/fixture/dr/body_user.dag", root: DagTree)
   ])
 }
 
@@ -79,6 +114,9 @@ type DrVerdicts {
   rec_user: NativeModuleResolveVerdict
   missing: NativeModuleResolveVerdict
   nested_user: NativeModuleResolveVerdict
+  variant_user: NativeModuleResolveVerdict
+  relay_user: NativeModuleResolveVerdict
+  body_user: NativeModuleResolveVerdict
 }
 
 fn dr_verdicts() -> Optional<DrVerdicts> {
@@ -92,7 +130,10 @@ fn dr_verdicts() -> Optional<DrVerdicts> {
           ctor_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.ctor_user", path: ^dr_ctor_user).verdict,
           rec_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.rec_user", path: ^dr_rec_user).verdict,
           missing: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.missing", path: ^dr_missing).verdict,
-          nested_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.nested_user", path: ^dr_nested_user).verdict
+          nested_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.nested_user", path: ^dr_nested_user).verdict,
+          variant_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.variant_user", path: ^dr_variant_user).verdict,
+          relay_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.relay_user", path: ^dr_relay_user).verdict,
+          body_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.dr.body_user", path: ^dr_body_user).verdict
         })
       }
   }
@@ -182,5 +223,108 @@ test fn an_actual_declaring_provider_refusal_chain_survives() -> Bool {
     Present { value: vs } =>
       dr_refuses_with(v: vs.user, reason: ^resolve_reason_declarer_refused)
         && dr_chain_names_cause(v: vs.user, reason: ^resolve_cross_tree_import_denied)
+  }
+}
+
+// THE TYPED DECLARER (DESIGN section 6b: born where the resolver finds the refused provider). The
+// fatal diagnostic's correction names the refused declarer's module, so the census attributes by
+// identity. Every other correction, including the one an unbound name carries, reads as no declarer.
+fn dr_fatal_declarer(v: NativeModuleResolveVerdict) -> String {
+  match dr_refused_first(v: v) {
+    Absent => "none"
+    Present { value: d } =>
+      match diagnostics_fatal(d: d).correction {
+        Suggested { node: _ } => "other"
+        Unavailable { reason: r } =>
+          match r {
+            DeclarerRefused { declarer: q } => qualified_name_to_dotted_string(qn: q)
+            UserInputBoundary => "other"
+            AmbiguousIntent => "other"
+            ExternalContractUnknown => "other"
+            CorrectionNotModeled => "other"
+          }
+      }
+  }
+}
+
+test fn a_declarer_refused_diagnostic_carries_the_refused_declarer_module() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      dr_fatal_declarer(v: vs.user) == "v2.test.dr.decl"
+        && dr_fatal_declarer(v: vs.ctor_user) == "v2.test.dr.decl"
+  }
+}
+
+test fn an_unbound_name_carries_no_declarer() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } => dr_fatal_declarer(v: vs.missing) == "other"
+  }
+}
+
+// A VARIANT OF A REFUSED COPRODUCT IS REFUSED WITH IT. The closure records availability per module-root
+// declaration (v2.test.dr.sum.Sum), and a variant's declaring path sits under it (v2.test.dr.sum.Sum.Good),
+// so resolve reads the variant through the coproduct's row (v2.std.symbol_index
+// symbol_index_enclosing_declaration_paths). RED under an exact-path lookup: the user resolved, and its
+// importer refused only at infer, on a declaration body the closure never published.
+test fn a_variant_of_a_refused_coproduct_is_declarer_refused() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      dr_refuses_with(v: vs.variant_user, reason: ^resolve_reason_declarer_refused)
+        && dr_chain_names_cause(v: vs.variant_user, reason: ^resolve_reason_unbound_symbol)
+        && dr_fatal_declarer(v: vs.variant_user) == "v2.test.dr.sum"
+  }
+}
+
+// A DECLARATION THAT MENTIONS SUCH A VARIANT IS BLOCKED IN THE CLOSURE, so its own users are refused with
+// the relay as declarer (v2.compiler.name_resolve closure_callee_blocking_refusal, the same enclosing read).
+// RED under an exact-path callee lookup: relay published, and relay_user resolved against it.
+test fn a_declaration_mentioning_a_refused_variant_blocks_its_users() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      dr_refuses_with(v: vs.relay_user, reason: ^resolve_reason_declarer_refused)
+        && dr_fatal_declarer(v: vs.relay_user) == "v2.test.dr.relay"
+  }
+}
+
+// THE CHAIN ORDER OF A DECLARER-BODY REFUSAL, PINNED (gunbc.recurring_failure_mode
+// cascade_chain_head_names_a_node_the_importer_never_wrote). The declarer v2.test.dr.body_decl refuses for an
+// unbound name inside its own fn body; the importer only calls helper. Today the importer's chain HEAD is the
+// declarer's own diagnostic, whose node is dr_body_nowhere (a name only the declarer wrote), and the LAST link is
+// declarer_refused naming the declarer. A census filing by the last link attributes it correctly; a reader of the
+// head sees a node the importer never wrote. This control goes red on any reorder, so a fix is deliberate.
+fn dr_head_atom(v: NativeModuleResolveVerdict) -> String {
+  match dr_refused_first(v: v) {
+    Absent => "none"
+    Present { value: d } =>
+      match d.head.at {
+        NodeLocus { anchor: a } =>
+          match node_atom_identity_optional(node: a.at) {
+            Present { value: id } => if id == ^dr_body_nowhere { "dr_body_nowhere" } else { "other-atom" }
+            Absent => "not-an-atom"
+          }
+        Textual { file: _, extent: _ } => "not-a-node-locus"
+        SourcePortLocus { anchor: _, file: _, extent: _ } => "not-a-node-locus"
+        InvariantPortLocus { anchor: _, invariant: _ } => "not-a-node-locus"
+        DeclarationLocus { declaration: _ } => "not-a-node-locus"
+      }
+  }
+}
+
+test fn a_declarer_body_refusal_heads_the_importer_chain_and_declarer_refused_is_last() -> Bool {
+  match dr_verdicts() {
+    Absent => false
+    Present { value: vs } =>
+      match dr_refused_first(v: vs.body_user) {
+        Absent => false
+        Present { value: d } =>
+          d.head.reason == ^resolve_reason_unbound_symbol
+            && dr_head_atom(v: vs.body_user) == "dr_body_nowhere"
+            && diagnostics_fatal_reason(d: d) == ^resolve_reason_declarer_refused
+            && dr_fatal_declarer(v: vs.body_user) == "v2.test.dr.body_decl"
+      }
   }
 }

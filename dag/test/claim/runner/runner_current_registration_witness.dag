@@ -1,0 +1,221 @@
+module test.claim.runner.runner_current_registration_witness
+
+// THE CURRENT REGISTRATION IDENTITY READ, witnessed over the route it actually uses.
+//
+// A fleet listener is registered through a JIT MINT (gunbc.runner.runner_jit_mint): jit-runner.sh mints
+// '<prefix>-<epoch>-<pid>' per job and passes it only inside the encoded jitconfig, and the decoded
+// registration file the runner writes under its instance directory carries that name as AgentName
+// (extdeps/github/actions_runner.dag actions_runner_state_paths). So the name a slot's CURRENT listener
+// registered under is a fact about the HOST, never derivable from the slot's bare name: the srv3 roster
+// proves it, every registration on it suffixed and none a bare slot name.
+//
+// These controls run read_slot_registration_over and slot_current_registration_over_unit through the REAL
+// route: the hermetic ssh/REST fixture's ssh.Session.ExecPortableWords leg, with the command the reader
+// issued read back from the dispatcher's ledger. What is tested is the reader plus the argv it sends.
+//
+// WHAT THIS FILE IS NOT: it is not the §3 inhabitance claim. A witness cannot reach a real host. The
+// inhabitance evidence for this read is the live runner_host_file_observe receipt from a srv3 host,
+// showing a suffixed AgentName actually read off that host's tree.
+
+import std.types { Bool, String, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.algebra { string_contains, list_head }
+import gunbc.runner.runner_slot_actuation {
+  read_slot_registration_over, slot_current_registration_over_unit, slot_registration_file_command,
+  RegistrationIdentityRead, SlotRegistrationUnreadable,
+  UnitRegistrationRead, UnitRegistrationUnreadable,
+}
+import gunbc.runner.runner_slot_provision { runner_slot_instance_dir }
+import gunbc.runner.runner_host_file_converge {
+  runner_host_current_registration_line, FleetHostFilesObserveOnly, FleetHostFilesApply,
+}
+import extdeps.github.actions_runner { actions_runner_registration_file_name }
+import extdeps.transports.shell { ShellProcessExited }
+// THE HARNESS IS THE BRACKET WITNESS'S OWN, imported rather than cloned: the frame that seals the fleet ssh
+// execution context and consumes the scripted answers is one authority, and a second copy of it could drift
+// from the route this read walks -- and from the one the bracket will walk when its join lands.
+import test.claim.runner.runner_host_cap_bracket_witness {
+  bracket_run, Leg, shell_ok, ledger_of, count_containing, BracketRunReturned,
+}
+
+data witness_minted_name: String = "srv3-02-1792746455-1106408"
+data witness_stale_name: String = "srv3-02-1792727100-199001"
+
+fn witness_unit(n: String) -> NonEmptyStr {
+  concat("actions-runner@", n, ".service") as NonEmptyStr
+}
+
+// THE FILE THE HOST IS ASKED FOR, spelled from the same two authorities the reader composes it from: the
+// instance directory the unit's WorkingDirectory is, and the runner's own registration file name.
+fn registration_file_path(instance: String) -> String {
+  concat(runner_slot_instance_dir(instance_name: instance as NonEmptyStr) as String, "/", actions_runner_registration_file_name)
+}
+
+fn registration_leg(instance: String, name: String) -> Leg {
+  Leg {
+    needle: registration_file_path(instance: instance),
+    answer: shell_ok(stdout: concat("{\"AgentId\":\"7\",\"AgentName\":\"", name, "\",\"Ephemeral\":\"True\",\"PoolId\":\"1\"}")),
+  }
+}
+
+fn registration_leg_without_agent_name(instance: String) -> Leg {
+  Leg { needle: registration_file_path(instance: instance), answer: shell_ok(stdout: "{\"AgentId\":\"7\",\"Ephemeral\":\"True\"}") }
+}
+
+fn registration_leg_unreadable_bytes(instance: String) -> Leg {
+  Leg { needle: registration_file_path(instance: instance), answer: shell_ok(stdout: "cat: not json at all") }
+}
+
+fn registration_leg_command_failed(instance: String) -> Leg {
+  Leg {
+    needle: registration_file_path(instance: instance),
+    answer: ShellProcessExited { exit_code: 1, stdout: "", stderr: "cat: /opt/actions-runner/srv3-02/.runner: Permission denied" },
+  }
+}
+
+// THE COMMAND IS THE ONE AUTHORITY'S OWN WORDS: two portable words, no shell, no elevation, and the path is
+// the instance directory the unit's WorkingDirectory is, never a name guessed from the slot.
+test fn the_read_asks_the_host_for_the_slot_s_registration_file_by_path() -> Bool {
+  let argv = slot_registration_file_command(instance: "srv3-02" as NonEmptyStr)
+  length(argv) == 2 && argv == ["cat", registration_file_path(instance: "srv3-02")]
+}
+
+// THE POSITIVE CONTROL: the name the host holds comes back suffixed and untouched, though the bare slot
+// name appears nowhere in it. This is the identity the cap bracket will join the organization roster on
+// once its join lands; at this head the bracket still joins on the bare slot name.
+test fn the_host_s_minted_name_is_returned_untouched_though_the_slot_name_is_bare() -> Bool {
+  let r = bracket_run(
+    legs: [registration_leg(instance: "srv3-02", name: witness_minted_name)],
+    body: fn(target, context) { read_slot_registration_over(target: target, context: context, instance: "srv3-02" as NonEmptyStr) },
+  )
+  // The ledger is read from the dispatcher's own route, so an argv that differed from the expected command
+  // would answer as a client error and red this, rather than being quietly agreed with.
+  let asked_once = match list_head(xs: ledger_of(r: r)) {
+    Present { value: cmd } =>
+      string_contains(s: cmd, pattern: "cat /opt/actions-runner/srv3-02/.runner")
+        // EXACTLY ONE command, and no elevated leg: a read that asked twice, or that reached for
+        // systemctl to open the file, is not the read this route is allowed to make.
+        && count_containing(legs: ledger_of(r: r), needle: "cat ") == 1
+        && count_containing(legs: ledger_of(r: r), needle: "systemctl") == 0
+    Absent => false
+  }
+  match r {
+    BracketRunReturned { value: RegistrationIdentityRead { instance: i, name: n }, legs: _, calls: _ } =>
+      (i as String) == "srv3-02" && (n as String) == witness_minted_name && asked_once
+    _ => false
+  }
+}
+
+// A STALE MINT IS NOT THE CURRENT ONE, and the reader is what proves it: it returns the name the host
+// answered with, never a name it built from the slot. The refusal of an answer that is not on the roster is
+// the bracket's, in the change that introduces that join, and it can only be that refusal because this
+// read hands over the stale name unchanged instead of a current-looking one.
+test fn an_earlier_mint_is_returned_as_itself_and_never_as_a_current_name() -> Bool {
+  match bracket_run(
+    legs: [registration_leg(instance: "srv3-02", name: witness_stale_name)],
+    body: fn(target, context) { read_slot_registration_over(target: target, context: context, instance: "srv3-02" as NonEmptyStr) },
+  ) {
+    BracketRunReturned { value: RegistrationIdentityRead { instance: _, name: n }, legs: _, calls: _ } =>
+      (n as String) == witness_stale_name && (n as String) != witness_minted_name
+    _ => false
+  }
+}
+
+// NO READABLE IDENTITY IS A TYPED REFUSAL NAMING THE SLOT, in every shape of it: the command could not
+// read the file, the bytes are not the file, and a file that holds no AgentName. None may fall back to the
+// slot's bare name, and none is reported as an idle slot.
+// ONE SHAPE OF THE REFUSAL, asked of three different host failures. A refusal must name the slot it failed
+// on: a reader that could not say which slot it could not read would leave an operator with nothing to act
+// on, and a refusal that answered with the slot's bare name instead would hand that name to the roster join.
+fn refuses_naming_the_slot(leg: Leg) -> Bool {
+  match bracket_run(
+    legs: [leg],
+    body: fn(target, context) { read_slot_registration_over(target: target, context: context, instance: "srv3-02" as NonEmptyStr) },
+  ) {
+    BracketRunReturned { value: SlotRegistrationUnreadable { instance: i, cause: c }, legs: _, calls: _ } =>
+      (i as String) == "srv3-02" && string_contains(s: c, pattern: "srv3-02")
+    _ => false
+  }
+}
+
+test fn a_host_that_holds_no_readable_identity_refuses_naming_the_slot() -> Bool {
+  refuses_naming_the_slot(leg: registration_leg_command_failed(instance: "srv3-02"))
+    && refuses_naming_the_slot(leg: registration_leg_unreadable_bytes(instance: "srv3-02"))
+    && refuses_naming_the_slot(leg: registration_leg_without_agent_name(instance: "srv3-02"))
+}
+
+// A FILE THAT HOLDS NO AGENTNAME REFUSES WITH THE MEMBER NAMED, so an operator can tell "the runner never
+// wrote it" from "the file could not be read".
+test fn a_registration_file_without_an_agent_name_names_the_member_it_is_missing() -> Bool {
+  match bracket_run(
+    legs: [registration_leg_without_agent_name(instance: "srv3-02")],
+    body: fn(target, context) { read_slot_registration_over(target: target, context: context, instance: "srv3-02" as NonEmptyStr) },
+  ) {
+    BracketRunReturned { value: SlotRegistrationUnreadable { instance: _, cause: c }, legs: _, calls: _ } =>
+      string_contains(s: c, pattern: "AgentName")
+    _ => false
+  }
+}
+
+// ADDRESSED BY UNIT, WHICH IS HOW THE BRACKET AND THE OBSERVE RECEIPT BOTH SPEAK: the instance inside the
+// unit addresses the file, so the receipt and the future bracket consumer cannot derive different slots
+// from one unit -- which is why that change is expected to call this function rather than re-derive.
+test fn a_unit_is_read_to_the_registration_its_own_instance_holds() -> Bool {
+  match bracket_run(
+    legs: [registration_leg(instance: "srv3-02", name: witness_minted_name)],
+    body: fn(target, context) { slot_current_registration_over_unit(target: target, context: context, unit: witness_unit(n: "srv3-02")) },
+  ) {
+    BracketRunReturned { value: UnitRegistrationRead { unit: u, instance: i, name: n }, legs: _, calls: _ } =>
+      (u as String) == "actions-runner@srv3-02.service" && (i as String) == "srv3-02" && (n as String) == witness_minted_name
+    _ => false
+  }
+}
+
+// A UNIT THAT IS NOT A RUNNER UNIT REFUSES WITHOUT COSTING A LEG: there is no slot whose tree to open, and
+// no fallback name to join on. A refusal that had cost a leg would mean the reader guessed at a target.
+test fn a_unit_that_is_not_a_runner_unit_refuses_without_costing_a_leg() -> Bool {
+  match bracket_run(
+    legs: [registration_leg(instance: "srv3-02", name: witness_minted_name)],
+    body: fn(target, context) { slot_current_registration_over_unit(target: target, context: context, unit: "nginx.service" as NonEmptyStr) },
+  ) {
+    BracketRunReturned { value: UnitRegistrationUnreadable { unit: u, cause: _ }, legs: l, calls: _ } =>
+      (u as String) == "nginx.service" && length(l) == 0
+    _ => false
+  }
+}
+
+// THE OBSERVE RECEIPT CARRIES THE IDENTITY, AND APPLY READS NOTHING FROM THE HOST: the bracket will read the
+// identity itself in its cap phase and carry it in its own verdict, so an apply-mode read here would be a
+// redundant leg on the way to a WRITE -- and it would read the host after this run's writes had landed. The
+// leg is therefore gated out of apply entirely, and BOTH halves are decided by the dispatcher's ledger, not
+// by a comment: observe emits exactly one cat and apply emits none.
+test fn the_observe_receipt_reports_the_identity_and_apply_costs_no_leg() -> Bool {
+  let observed = bracket_run(
+    legs: [registration_leg(instance: "srv3-02", name: witness_minted_name)],
+    body: fn(target, context) {
+      runner_host_current_registration_line(
+        mode: FleetHostFilesObserveOnly, target: target, context: context,
+        units: [witness_unit(n: "srv3-02")],
+      )
+    },
+  )
+  let applied = bracket_run(
+    legs: [registration_leg(instance: "srv3-02", name: witness_minted_name)],
+    body: fn(target, context) {
+      runner_host_current_registration_line(
+        mode: FleetHostFilesApply, target: target, context: context,
+        units: [witness_unit(n: "srv3-02")],
+      )
+    },
+  )
+  let line = match observed {
+    BracketRunReturned { value: text, legs: _, calls: _ } =>
+      string_contains(s: text, pattern: concat("slot-registration unit=actions-runner@srv3-02.service agent_name=", witness_minted_name))
+    _ => false
+  }
+  let applied_silent = match applied {
+    BracketRunReturned { value: text, legs: l, calls: _ } => text == "" && count_containing(legs: l, needle: "cat ") == 0
+    _ => false
+  }
+  line && applied_silent
+}

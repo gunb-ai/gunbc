@@ -324,7 +324,7 @@ pub fn rust_traits_for_construction_contract(
     deserialize_forbidden: bool,
 ) -> Rc<Vec<RustCapability>> {
     if deserialize_forbidden.clone() {
-        rust_traits_without_deserialize(traits.clone())
+        rust_traits_without_deserialize(traits)
     } else {
         traits.clone()
     }

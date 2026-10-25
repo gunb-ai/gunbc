@@ -1,6 +1,5 @@
 module v2.test.claim.manual.eval_runtime
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -77,7 +76,7 @@ import v2.std.runtime {
   runtime_reject_match_arm
 }
 import v2.std.machine { Byte }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
   Edge,
@@ -89,6 +88,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
+  NotADeclaration
 }
 import v2.std.verification {
   EqualsClaim,
@@ -135,8 +135,8 @@ data eval_two_literal: Node = Node {
 data eval_add_subgraph_node: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: eval_two_literal },
-    Edge { label: Positional, target: eval_two_literal }
+    Edge { label: Positional, target: eval_two_literal, declaration: NotADeclaration },
+    Edge { label: Positional, target: eval_two_literal, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -177,7 +177,7 @@ fn eval_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<Ru
 fn eval_arg_is_two_literal(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == eval_i64_node()) && (count(p.bytes) == 2)
+      (node_same_occurrence(a: p.primitive_type, b: eval_i64_node())) && (count(p.bytes) == 2)
     RuntimeAggregate { value: _ } => false
     RuntimeReference { value: _ } => false
     RuntimeClosure { value: _ } => false
@@ -307,9 +307,9 @@ fn eval_facts_for_node(node: Node) -> InferredFacts {
 }
 
 fn eval_fact_lookup(node: Node) -> Optional<InferredFacts> {
-  if node == eval_two_literal {
+  if node_same_occurrence(a: node, b: eval_two_literal) {
     optional_present(value: eval_facts_for_node(node: eval_two_literal))
-  } else if node == eval_add_subgraph_node {
+  } else if node_same_occurrence(a: node, b: eval_add_subgraph_node) {
     optional_present(value: eval_facts_for_node(node: eval_add_subgraph_node))
   } else {
     optional_absent()
@@ -321,8 +321,7 @@ fn eval_inferred_tree() -> InferredTree {
     root: eval_add_subgraph(),
     facts: PartialFunction {
       lookup: eval_fact_lookup
-    },
-    arm_resolutions: constructed_root_arm_resolutions()
+    }
   }
 }
 
@@ -342,7 +341,7 @@ fn eval_empty_environment() -> EvaluationEnvironment {
 
 data witness_eval_add_accepts_five: Bool = match eval_actual() {
   Accepted { value: RuntimePrimitive { value: p }, diagnostics: None } =>
-    (p.primitive_type == eval_i64_node()) && (count(p.bytes) == 5)
+    (node_same_occurrence(a: p.primitive_type, b: eval_i64_node())) && (count(p.bytes) == 5)
   Accepted { value: _, diagnostics: _ } => false
   Rejected { diagnostics: _ } => false
 }

@@ -1,6 +1,5 @@
 module v2.test.claim.execution.long.loop_eval_by_execution
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -58,7 +57,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.machine { Byte }
-import v2.std.node { positional_child_target_nodes,
+import v2.std.node { node_same_occurrence, positional_child_target_nodes,
   Atom,
   Arrow,
   ComputationNode,
@@ -71,6 +70,7 @@ import v2.std.node { positional_child_target_nodes,
   Symbol,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -160,7 +160,7 @@ fn loop_runtime_diagnostic(n: Node) -> Diagnostic {
 fn loop_runtime_int_is_one(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == loop_i64_node()) && (count(p.bytes) == 1)
+      (node_same_occurrence(a: p.primitive_type, b: loop_i64_node())) && (count(p.bytes) == 1)
     _ => false
   }
 }
@@ -274,7 +274,7 @@ fn loop_pick_call(callee: Node) -> Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Positional, target: callee }
+      Edge { label: Positional, target: callee, declaration: NotADeclaration }
     ]
   }
 }
@@ -284,8 +284,8 @@ fn loop_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Authored { name: ^loop_actual }, target: call },
-      Edge { label: Authored { name: ^loop_expected }, target: expected }
+      Edge { label: Authored { name: ^loop_actual }, target: call, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^loop_expected }, target: expected, declaration: NotADeclaration }
     ]
   }
 }
@@ -329,8 +329,7 @@ fn loop_admitted_tree(root: Node) -> InferredTree {
     root: root,
     facts: PartialFunction {
       lookup: loop_facts_lookup
-    },
-    arm_resolutions: constructed_root_arm_resolutions()
+    }
   }
 }
 

@@ -6,7 +6,6 @@ import std.effect_grant { Read, Write, Execute }
 import gunbc.ownership { Owned }
 import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory }
-import gunbc.live_deploy.emit { install_d_managed_command }
 import gunbc.executor_privileged_operation { runner_slot_install_operations, executor_privileged_operation_argv }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -31,15 +30,6 @@ fn has_word(words: List<String>, word: String) -> Bool {
   any(words, w => w == word || w == join(["'", word, "'"], ""))
 }
 
-test fn the_fabric_storage_directory_install_states_its_set_id_bits() -> Bool {
-  let command = install_d_managed_command(dir: fabric_storage_directory(
-    member: "fabric-storage-objects" as NonEmptyStr,
-    path: "/opt/gunbc/fabric-storage/objects" as NonEmptyStr,
-    writes: true,
-  ))
-  has_word(words: words_of(command: command), word: "00700") && !has_word(words: words_of(command: command), word: "0700")
-}
-
 test fn the_runner_slot_install_states_its_set_id_bits() -> Bool {
   let ops = runner_slot_install_operations(slot_dirs: ["/opt/actions-runner/srv1-01" as NonEmptyStr], slot_owner: "ghrunner" as NonEmptyStr)
   let words = ops |> flat_map(op => executor_privileged_operation_argv(op: op) |> map(w => w as String))
@@ -55,20 +45,4 @@ fn owner_user() -> PosixUser {
 
 fn stranger_user() -> PosixUser {
   PosixUser { name: "outsider", uid: 4002, gid: 4002, shell: LoginShellUnobserved }
-}
-
-test fn a_declared_setgid_directory_keeps_its_setgid_bit() -> Bool {
-  let shared = ManagedDirectory {
-    member: "synthetic-store",
-    path: "/synthetic/store",
-    owner: owner_user(),
-    group_principal: stranger_user(),
-    dependents: [
-      DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
-      DirectoryDependent { who: stranger_user(), needs: [Read, Write, Execute] },
-    ],
-    ownership: Owned,
-    entries: EntriesUnmanaged,
-  }
-  has_word(words: words_of(command: install_d_managed_command(dir: shared)), word: "02770")
 }

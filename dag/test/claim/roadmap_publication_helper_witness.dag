@@ -490,7 +490,22 @@ test fn the_publication_helper_is_triggered_by_a_path_unit_not_a_timer() -> Bool
   any(lines, l => l == join(["DirectoryNotEmpty=", request_dir], ""))
     && any(lines, l => l == join(["Unit=", deployment_publication_service_unit_name(names: spec.names) as String], ""))
     && !any(lines, l => string_contains(s: l, pattern: "OnUnitInactiveSec"))
-    && !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons), s => string_contains(s: s.path as String, pattern: "-publication.timer"))
+    && !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan), s => string_contains(s: s.path as String, pattern: "-publication.timer"))
+}
+
+// THE PATH UNIT BOUNDS ITS TRIGGER AND START RATES (restored from the deleted
+// test.claim.live_deploy.emit apply_retires_leftover_belt_and_publication_timers_and_installs_publication_path,
+// c11aa2317029, which carried the first three conjuncts beside its bash-text ones; StartLimitBurst is added as
+// the other half of StartLimitIntervalSec, which bounds nothing alone). The claim above reads only
+// DirectoryNotEmpty= and Unit=; at main head d2b027b5f41 deleting the TriggerLimitBurst line left it and every
+// other surviving claim green. A request directory that stays non-empty re-triggers the path unit on every
+// check, so without these limits a stuck spool is a start storm rather than a bounded, failed unit.
+test fn the_publication_path_unit_bounds_its_trigger_and_start_rates() -> Bool {
+  let lines = systemd_unit_file_lines(file: live_deploy_publication_path_unit_file(spec: live_spec()))
+  any(lines, l => starts_with(s: l, prefix: "TriggerLimitIntervalSec="))
+    && any(lines, l => starts_with(s: l, prefix: "TriggerLimitBurst="))
+    && any(lines, l => starts_with(s: l, prefix: "StartLimitIntervalSec="))
+    && any(lines, l => starts_with(s: l, prefix: "StartLimitBurst="))
 }
 
 test fn a_second_write_of_the_same_publication_request_key_is_refused_not_overwritten() -> Bool {

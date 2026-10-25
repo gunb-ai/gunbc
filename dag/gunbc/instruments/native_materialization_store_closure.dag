@@ -1,6 +1,6 @@
 module gunbc.instruments.native_materialization_store_closure
 
-import std.types { List, String, Bool, NonEmptyStr }
+import std.types { List, String, Bool, NonEmptyStr, bool_text }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.authorization_profile { UniversalAudience, EnumeratedAudience, audience_subset, audience_join }
 import std.effect_grant { namespace_tree_of_label, namespace_tree_label }
@@ -64,9 +64,6 @@ type StoreClosureCase {
   observed: String
 }
 
-fn bool_text(b: Bool) -> String {
-  if b { "true" } else { "false" }
-}
 
 fn held_as(identity: String, observed: String, expected: String) -> StoreClosureCase {
   StoreClosureCase { identity: identity, held: observed == expected, observed: observed }

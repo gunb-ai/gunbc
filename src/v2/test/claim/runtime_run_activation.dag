@@ -1,6 +1,5 @@
 module v2.test.claim.runtime_run_activation
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 import std.algebra { Cons, Empty, PartialFunction, fold_list, length, list_at_optional }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -38,7 +37,7 @@ import v2.program {
 }
 import v2.std.dependency { BindsTo, Contains, DataDependsOn, DependencyKind, DependencyView }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_eq, diagnostics_fatal_reason, diagnostics_singleton, non_empty_diagnostics_eq }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Behavior,
   Bind,
   Branch,
@@ -50,6 +49,7 @@ import v2.std.node {
   MatchArmBodyEdge,
   MatchArmPatternEdge,
   Node,
+  NotADeclaration,
   Positional,
   Symbol,
   Transform,
@@ -111,9 +111,9 @@ import v2.workflow.runtime_run {
 // value is one of those; Bool: a site that chooses its own condition. v2.program's own lookup answers the
 // rest.
 fn rr_facts(node: Node) -> InferredFacts {
-  if node == program_literal_two() || node == rr_false_site || node == rr_inner_site || node == rr_nested_site || node == rr_bind_over_branch || node == rr_untaken_malformed_site {
+  if node_same_occurrence(a: node, b: program_literal_two()) || node_same_occurrence(a: node, b: rr_false_site) || node_same_occurrence(a: node, b: rr_inner_site) || node_same_occurrence(a: node, b: rr_nested_site) || node_same_occurrence(a: node, b: rr_bind_over_branch) || node_same_occurrence(a: node, b: rr_untaken_malformed_site) {
     program_facts_typed(node: node, algebra: program_i64_type())
-  } else if node == rr_shared_site {
+  } else if node_same_occurrence(a: node, b: rr_shared_site) {
     program_facts_typed(node: node, algebra: program_bool_type())
   } else {
     match program_facts_lookup(node: node) {
@@ -128,15 +128,15 @@ fn rr_facts_everywhere(node: Node) -> Optional<InferredFacts> {
 }
 
 fn rr_tree(root: Node) -> InferredTree {
-  InferredTree { root: root, facts: PartialFunction { lookup: rr_facts_everywhere }, arm_resolutions: constructed_root_arm_resolutions() }
+  InferredTree { root: root, facts: PartialFunction { lookup: rr_facts_everywhere } }
 }
 
 fn rr_tree_with(root: Node, lookup: fn(Node) -> Optional<InferredFacts>) -> InferredTree {
-  InferredTree { root: root, facts: PartialFunction { lookup: lookup }, arm_resolutions: constructed_root_arm_resolutions() }
+  InferredTree { root: root, facts: PartialFunction { lookup: lookup } }
 }
 
 fn rr_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn rr_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
@@ -151,8 +151,8 @@ fn rr_arm(pattern: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern },
-      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body }
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -203,12 +203,12 @@ data rr_nested_site: Node = rr_branch(condition: program_kw_true(), then_arm: rr
 
 // The site's facts are absent; every other node has them.
 fn rr_facts_except_true_site(node: Node) -> Optional<InferredFacts> {
-  if node == program_pick_if_branch_with_effect_io { optional_absent() } else { rr_facts_everywhere(node: node) }
+  if node_same_occurrence(a: node, b: program_pick_if_branch_with_effect_io) { optional_absent() } else { rr_facts_everywhere(node: node) }
 }
 
 // The site's declared result is Bool while its chosen arm produces Int.
 fn rr_facts_true_site_typed_bool(node: Node) -> Optional<InferredFacts> {
-  if node == program_pick_if_branch_with_effect_io {
+  if node_same_occurrence(a: node, b: program_pick_if_branch_with_effect_io) {
     optional_present(value: claim_inferred_facts_from_nodes(
       resolved: node,
       algebra: program_bool_type(),
@@ -366,15 +366,15 @@ fn rr_rejected_for(o: Outcome<RuntimeValue>, reason: Symbol) -> Bool {
 fn rr_role_is(receipt: RuntimeRunReceipt, kind: Int, site: Node) -> Bool {
   match receipt.role {
     RuntimeRunRoot => kind == 0
-    RuntimeRunSelectorOf { site: s } => kind == 1 && s == site
-    RuntimeRunSelectedBy { site: s, selections: _ } => kind == 2 && s == site
+    RuntimeRunSelectorOf { site: s } => kind == 1 && node_same_occurrence(a: s, b: site)
+    RuntimeRunSelectedBy { site: s, selections: _ } => kind == 2 && node_same_occurrence(a: s, b: site)
   }
 }
 
 fn rr_receipt_is(log: RuntimeRunLog, index: Int, node: Node, kind: Int, site: Node, accepted: Bool) -> Bool {
   match list_at_optional(xs: log.entries, index: index) {
     Present { value: receipt } =>
-      receipt.node == node && rr_role_is(receipt: receipt, kind: kind, site: site) && rr_accepted(o: receipt.result) == accepted
+      node_same_occurrence(a: receipt.node, b: node) && rr_role_is(receipt: receipt, kind: kind, site: site) && rr_accepted(o: receipt.result) == accepted
     Absent => false
   }
 }
@@ -384,7 +384,7 @@ fn rr_receipt_count(log: RuntimeRunLog) -> Int {
 }
 
 fn rr_no_receipt_for(log: RuntimeRunLog, node: Node) -> Bool {
-  fold_list(xs: log.entries, empty: true, cons: fn(ok, receipt) { ok && receipt.node != node })
+  fold_list(xs: log.entries, empty: true, cons: fn(ok, receipt) { ok && !node_same_occurrence(a: receipt.node, b: node) })
 }
 
 fn rr_run(root: Node) -> RuntimeRunResult {

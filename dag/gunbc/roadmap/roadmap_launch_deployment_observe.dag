@@ -5,8 +5,7 @@ import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatRea
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
-import extdeps.units.iso8601 { iso8601_seconds_per_minute }
-import extdeps.units.iso8601_calendar { iso8601_days_from_civil, iso8601_gregorian_days_in_month, iso8601_seconds_per_day, iso8601_seconds_per_hour }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_gregorian_days_in_month, iso8601_seconds_since_midnight, iso8601_unix_seconds_at }
 import extdeps.http.client
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json }
 import extdeps.languages.json.parse {
@@ -306,7 +305,10 @@ fn iso8601_utc_epoch_seconds(text: String) -> Second? {
                               none
                             } else {
                               {
-                                let epoch = iso8601_days_from_civil(y: y, m: m, d: d) * iso8601_seconds_per_day() + hh * iso8601_seconds_per_hour() + mm * (iso8601_seconds_per_minute() as Int) + ss
+                                let epoch = iso8601_unix_seconds_at(
+                                  date: Iso8601CivilDate { year: y, month: m, day: d },
+                                  since_midnight: iso8601_seconds_since_midnight(hour: hh, minute: mm, second: ss),
+                                )
                                 if epoch < 0 {
                                   none
                                 } else {
@@ -389,7 +391,7 @@ fn event_backlog_health_bounds() -> List<HostSpoolHealthBound> {
 // spool's projection of that one queue-health type.
 //
 // THE STALL RECORD COMES FIRST. `stalled` is the entries the exit drain recorded as unmovable
-// (gunbc.roadmap.roadmap_belt_actuate belt_exit_stall_read_at): while any exist the belt-exit service is
+// (gunbc.roadmap.spool_stall spool_stall_read_at): while any exist the belt-exit service is
 // held, so ageing says nothing about them and every spooled entry is waiting behind the head. This is the
 // stall record's consumer (DESIGN section 3c).
 fn event_backlog_judge(stalled: List<String>, entries: List<EventBacklogEntry>) -> EventBacklogFact {

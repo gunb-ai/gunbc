@@ -2,28 +2,47 @@ module v2.test.claim.refinement_discharge
 
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer { infer }
+import v2.test.claim.compiler.literal_refinement_judgment_witness { lrj_resolve }
+import v2.std.text { String }
 import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree, RefinementObligation }
 import v2.compiler.refinement_discharge { discharge_refinement_obligations }
 import v2.extdeps.languages.dag { dag_arrow_with_body_node, dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.roster_frontier { FrontierRow, frontier_row_path }
+import std.dissolution { unbound_dissolution }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
+import v2.std.node { node_same_occurrence, ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, NotADeclaration }
+import std.algebra { Cons, Empty }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUBJECT: v2.compiler.refinement_discharge discharge_refinement_obligations, at ONE interface -- an
-// ObligatedInferredTree in, an InferredTree or a located refusal out. The obligation is SUPPLIED
-// (DESIGN section 3 witness rule): infer records none until where-predicates bind to their
-// declarations (node adhoc-46630399-82b), and that change lands the producer with its inhabitance
-// claim. What is NOT supplied is the tree and its facts: the application is inferred by
-// v2.compiler.infer infer, so the evaluation discharge performs is the one evaluator's, reading
-// infer's real grounding for every node it touches.
+// SUBJECT: v2.compiler.refinement_discharge discharge_refinement_obligations. Three kinds of claim live here.
+// (a) ZERO OBLIGATIONS and (b) an UNEVALUABLE application are independent: the application is hand-built
+// at ONE interface and the obligation is SUPPLIED (DESIGN section 3 witness rule), because both outcomes
+// are decided before or without any grounded value. (c) The EVALUABLE-BOOLEAN pair
+// (rdt_a_*) is a PRODUCER-CONSUMER PAIRING, not an isolated consumer witness: real ingest plus
+// v2.compiler.infer produce a grounded ObligatedInferredTree, discharge is called directly on it, and a
+// true predicate and a false one must reach different arms. The evaluator reads grounding only on nodes
+// real ingest produced, so a hand-built application cannot be evaluable (see the frontier below).
 //
 // The v2 evaluator realizes no comparison, so each predicate's body is a constant: what these rows
-// discriminate is the ROUTE -- the inferred application evaluated, and its value mapped to exactly
-// one arm -- not a predicate's arithmetic.
+// discriminate is the ROUTE -- the application evaluated, and its value mapped to exactly one arm --
+// not a predicate's arithmetic.
+
+// FRONTIER, DISCOVERED NOT DROPPED: the old hand-built rdt_a_* controls were already red on main before
+// the literal-only judgment (no earlier working state is claimed). The real infer->discharge path is
+// executed and discriminates true from false, but no fixture can supply a grounded evaluable application
+// plus facts without running infer_demands_to_obligations, so the pair is an integration pairing and
+// producer-independent coverage of the evaluable-Boolean arms is open. Population is exactly the two
+// arms (a supplied grounded obligation evaluating true admits; evaluating false refuses
+// refinement_predicate_violated); zero-obligation and unevaluable stay independently covered above.
+data discharge_evaluable_boolean_arms_frontier: FrontierRow = frontier_row_path(
+  path: "src/v2/test/claim/refinement_discharge.dag",
+  reason: "producer-independent coverage of discharge_refinement_obligations' evaluable-Boolean arms: the real infer->discharge path is executed and discriminates true/false, but no fixture can supply a grounded evaluable application and facts without running infer_demands_to_obligations",
+  dissolution: unbound_dissolution(description: "DISSOLVES WHEN a fixture can supply an ObligatedInferredTree carrying an ingested grounded application and its facts without executing infer_demands_to_obligations (a general selector/lift of an ingested node, not a one-off grounding fabricator): the true/false claims then invoke only discharge, and today's pairing stays as the producer inhabitance claim.")
+)
 
 // The closed application `pred(1)` in the shape infer derives an application: the predicate's
 // declaration (an Arrow over `x: Int` returning Bool) applied to an Int literal. This is the node
@@ -41,9 +60,10 @@ fn rdt_application(body: Node) -> Node {
           ),
           return_type_binding: ^bool_node_symbol,
           body: body
-        )
+        ),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ]
   )
 }
@@ -54,32 +74,6 @@ fn rdt_true() -> Node {
 
 fn rdt_false() -> Node {
   dag_type_atom_node(identity: ^dag_token_kw_false)
-}
-
-// infer's own output over the application, with ONE supplied obligation naming it.
-fn rdt_obligated(body: Node) -> Optional<ObligatedInferredTree> {
-  let app = rdt_application(body: body)
-  match infer(tree: claim_resolved_tree_without_declarations(root: app)) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: t, diagnostics: _ } =>
-      optional_present(value: ObligatedInferredTree {
-        root: t.root,
-        facts: t.facts,
-        arm_resolutions: t.arm_resolutions,
-        obligations: [RefinementObligation {
-          site: app,
-          application: app,
-          target: dag_type_atom_node(identity: ^rdt_refinement)
-        }]
-      })
-  }
-}
-
-fn rdt_discharged(body: Node) -> Optional<Outcome<InferredTree>> {
-  match rdt_obligated(body: body) {
-    Absent => optional_absent()
-    Present { value: t } => optional_present(value: discharge_refinement_obligations(t: t))
-  }
 }
 
 fn rdt_refused_at_site_with(o: Optional<Outcome<InferredTree>>, reason: Symbol) -> Bool {
@@ -104,12 +98,27 @@ fn rdt_admitted(o: Optional<Outcome<InferredTree>>) -> Bool {
 // its value to exactly one arm: a `true` body admits, a `false` body refuses
 // refinement_predicate_violated at the site. The pair is the discriminator for "the value is read":
 // the two bodies must land on DIFFERENT arms.
+// PRODUCER-CONSUMER PAIRING: a hand-built application is GroundingNotDerived (undischargeable whatever its
+// body), so the application comes from an ingested module whose predicate is a resolved declaration applied
+// to an Int literal. The obligated tree is infer's; discharge is called DIRECTLY on it, and the pair must
+// land on different arms.
+fn rdt_pairing_over_inferred_obligations(subject: String) -> Optional<Outcome<InferredTree>> {
+  match lrj_resolve(subject: subject) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: r, diagnostics: _ } =>
+      match infer(tree: r) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: t, diagnostics: _ } => optional_present(value: discharge_refinement_obligations(t: t))
+      }
+  }
+}
+
 test fn rdt_a_holding_predicate_admits_holds() -> Bool {
-  rdt_admitted(o: rdt_discharged(body: rdt_true()))
+  rdt_admitted(o: rdt_pairing_over_inferred_obligations(subject: "v2.test.lrj_int_holds"))
 }
 
 test fn rdt_a_violated_predicate_refuses_at_the_site_holds() -> Bool {
-  rdt_refused_at_site_with(o: rdt_discharged(body: rdt_false()), reason: ^refinement_predicate_violated)
+  rdt_refused_at_site_with(o: rdt_pairing_over_inferred_obligations(subject: "v2.test.lrj_int_violated"), reason: ^refinement_predicate_violated)
 }
 
 // (1b) AN APPLICATION THE ONE EVALUATOR CANNOT RUN IS UNDISCHARGEABLE -- never admitted, never
@@ -130,9 +139,10 @@ fn rdt_unevaluable_application(body: Node) -> Node {
           ),
           return_type_binding: ^rdt_undenoted_return,
           body: body
-        )
+        ),
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ]
   )
 }
@@ -145,7 +155,6 @@ fn rdt_discharged_unevaluable(body: Node) -> Optional<Outcome<InferredTree>> {
       optional_present(value: discharge_refinement_obligations(t: ObligatedInferredTree {
         root: t.root,
         facts: t.facts,
-        arm_resolutions: t.arm_resolutions,
         obligations: [RefinementObligation {
           site: app,
           application: app,
@@ -166,7 +175,7 @@ test fn rdt_zero_obligations_discharge_to_the_same_tree() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
       match discharge_refinement_obligations(t: t) {
-        Accepted { value: d, diagnostics: _ } => d.root == t.root
+        Accepted { value: d, diagnostics: _ } => node_same_occurrence(a: d.root, b: t.root)
         Rejected { diagnostics: _ } => false
       }
   }

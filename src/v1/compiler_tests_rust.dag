@@ -196,6 +196,39 @@ fn ct_tokenizer_tests() -> String {
     "    }\n\n")
 }
 
+// DIFFERENTIAL CONTROL (seed half): `c is V` parses to the same Match shape as the explicit
+// `match c { V => true  _ => false }` (v1 02_parse parse_is_arm_test); the v2 half is
+// v2.test.claim.is_surface is_unit_shape_equals_explicit_match. The shape is expr_data, arm pattern and
+// children, which carry no occurrence identity, so a swapped-arms lowering changes it.
+fn ct_is_arm_seed_lowering_test() -> String {
+  concat(
+    "    fn is_shape(n: &std::rc::Rc<crate::v1_std_core::Node>) -> String {\n",
+    "        let mut s = format!(\"{:?}|{:?}\", n.expr_data, n.match_pattern);\n",
+    "        if let Some(b) = n.body.as_ref() { s.push_str(&format!(\"[body:{}]\", is_shape(b))); }\n",
+    "        for c in n.children.iter() { s.push_str(&format!(\"[{}]\", is_shape(c))); }\n",
+    "        s\n",
+    "    }\n\n",
+    "    fn is_body_shape(src: &str) -> Option<String> {\n",
+    "        let tokens = tokenize(src.to_string(), \"test.dag\".to_string(), crate::extdeps_languages_dag_syntax::dag_parse_environment());\n",
+    "        let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));\n",
+    "        if result.error.is_some() { return None; }\n",
+    "        let module = result.module.as_ref()?;\n",
+    "        let items = crate::v1_std_core::module_items(module.clone());\n",
+    "        let f = items.iter().find(|it| it.name == \"f\")?;\n",
+    "        Some(is_shape(f.body.as_ref()?))\n",
+    "    }\n\n",
+    "    #[test]\n",
+    "    fn is_arm_seed_lowering_agrees_with_explicit_match() {\n",
+    "        let is_src = \"module t\\nfn f(c: Color) -> Bool {\\n  c is Red\\n}\\n\";\n",
+    "        let explicit = \"module t\\nfn f(c: Color) -> Bool {\\n  match c {\\n    Red => true\\n    _ => false\\n  }\\n}\\n\";\n",
+    "        let swapped = \"module t\\nfn f(c: Color) -> Bool {\\n  match c {\\n    Red => false\\n    _ => true\\n  }\\n}\\n\";\n",
+    "        let a = is_body_shape(is_src).expect(\"is parses\");\n",
+    "        assert_eq!(a, is_body_shape(explicit).expect(\"explicit parses\"));\n",
+    "        assert_ne!(a, is_body_shape(swapped).expect(\"swapped parses\"));\n",
+    "        assert!(is_body_shape(\"module t\\nfn f(c: Color) -> Bool {\\n  c is red\\n}\\n\").is_none(), \"lowercase V must refuse\");\n",
+    "    }\n\n")
+}
+
 fn ct_parse_tests() -> String {
   concat(
     "    #[test]\n",
@@ -4356,6 +4389,66 @@ fn ct_contracts_sidecar_witness_test() -> String {
     "    }\n\n")
 }
 
+fn ct_record_literal_phantom_follows_declaration_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn record_literal_phantom_field_follows_the_constructed_declaration() {\n",
+    "        // DISCRIMINATING RED for the class-2 emitter defect (stern-bat-401's emitter-debt list):\n",
+    "        // gunbc.roadmap.roadmap_model's `Group { group: .. }` is an arm of SectionElement, but the\n",
+    "        // phantom-field decision looked the constructor SPELLING up and found std.algebra's record\n",
+    "        // `Group<T>`, whose T is unused, so the variant literal was emitted with `_phantom` (E0559).\n",
+    "        // probe.algebra declares the record `Group<T>`; probe.sections constructs the variant arm\n",
+    "        // `Group`. The control is the record literal itself, which must keep its phantom field.\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let source = |path: &str, content: &str| {\n",
+    "                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                        path: path.to_string(),\n",
+    "                        content: content.to_string(),\n",
+    "                    })\n",
+    "                };\n",
+    "                let sources = im::vector![\n",
+    "                    source(\"probe_algebra.dag\", \"module probe.algebra\\ntype Group<T> { carrier: Int }\\nfn trivial_group() -> Group<Int> { Group { carrier: 1 } }\\n\"),\n",
+    "                    source(\"probe_sections.dag\", \"module probe.sections\\ntype SectionElement = Prose { text: Int } | Group { size: Int }\\nfn group_of(n: Int) -> SectionElement { Group { size: n } }\\n\")\n",
+    "                ];\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(\n",
+    "                    std::rc::Rc::new(sources),\n",
+    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                );\n",
+    "                for d in result.diagnostics.iter() {\n",
+    "                    eprintln!(\"DIAG {} {}\", d.module_name, crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()));\n",
+    "                }\n",
+    "                let emitted = |suffix: &str| -> String {\n",
+    "                    result.files.iter()\n",
+    "                        .find(|f| f.path.ends_with(suffix))\n",
+    "                        .map(|f| f.content.clone())\n",
+    "                        .unwrap_or_else(|| panic!(\"no emitted file ending {}; files: {:?}\", suffix, result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()))\n",
+    "                };\n",
+    "                let sections = emitted(\"probe_sections.rs\");\n",
+    "                let algebra = emitted(\"probe_algebra.rs\");\n",
+    "                assert!(\n",
+    "                    !sections.contains(\"_phantom\"),\n",
+    "                    \"the variant literal Group(size) constructs an arm of SectionElement, which declares no phantom field; probe.sections:\\n{}\",\n",
+    "                    sections\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    !sections.contains(\"compile_error!\"),\n",
+    "                    \"the variant literal's type resolves to one declaration; probe.sections:\\n{}\",\n",
+    "                    sections\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    algebra.contains(\"_phantom: std::marker::PhantomData,\"),\n",
+    "                    \"the record literal Group(carrier) constructs Group<T>, whose unused T owes the phantom field; probe.algebra:\\n{}\",\n",
+    "                    algebra\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"record_literal_phantom_field_follows_the_constructed_declaration panicked\");\n",
+    "    }\n\n")
+}
+
 fn ct_call_shape_wall_witness_test() -> String {
   concat(
     "    #[test]\n",
@@ -6021,6 +6114,7 @@ fn compiler_tests_source() -> String {
     ct_source_builders(),
     ct_tokenizer_tests(),
     ct_parse_tests(),
+    ct_is_arm_seed_lowering_test(),
     ct_test_marker_item_kind_test(),
     ct_test_reference_import_all_test(),
     ct_tco_tail_call_assigns_every_loop_slot_test(),
@@ -6074,6 +6168,7 @@ fn compiler_tests_source() -> String {
     ct_constructor_call_admission_qualified_caller_test(),
     ct_sole_constructor_fieldless_witness_test(),
     ct_contracts_sidecar_witness_test(),
+    ct_record_literal_phantom_follows_declaration_test(),
     ct_self_resolve_test(),
     ct_self_compile_test(),
     ct_self_compile_cargo_check_test(),

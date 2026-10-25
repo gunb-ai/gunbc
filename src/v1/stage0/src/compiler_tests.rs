@@ -341,6 +341,47 @@ mod compiler_tests {
         result.expect("self-parse test panicked");
     }
 
+    fn is_shape(n: &std::rc::Rc<crate::v1_std_core::Node>) -> String {
+        let mut s = format!("{:?}|{:?}", n.expr_data, n.match_pattern);
+        if let Some(b) = n.body.as_ref() {
+            s.push_str(&format!("[body:{}]", is_shape(b)));
+        }
+        for c in n.children.iter() {
+            s.push_str(&format!("[{}]", is_shape(c)));
+        }
+        s
+    }
+
+    fn is_body_shape(src: &str) -> Option<String> {
+        let tokens = tokenize(
+            src.to_string(),
+            "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
+        let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+        if result.error.is_some() {
+            return None;
+        }
+        let module = result.module.as_ref()?;
+        let items = crate::v1_std_core::module_items(module.clone());
+        let f = items.iter().find(|it| it.name == "f")?;
+        Some(is_shape(f.body.as_ref()?))
+    }
+
+    #[test]
+    fn is_arm_seed_lowering_agrees_with_explicit_match() {
+        let is_src = "module t\nfn f(c: Color) -> Bool {\n  c is Red\n}\n";
+        let explicit = "module t\nfn f(c: Color) -> Bool {\n  match c {\n    Red => true\n    _ => false\n  }\n}\n";
+        let swapped = "module t\nfn f(c: Color) -> Bool {\n  match c {\n    Red => false\n    _ => true\n  }\n}\n";
+        let a = is_body_shape(is_src).expect("is parses");
+        assert_eq!(a, is_body_shape(explicit).expect("explicit parses"));
+        assert_ne!(a, is_body_shape(swapped).expect("swapped parses"));
+        assert!(
+            is_body_shape("module t\nfn f(c: Color) -> Bool {\n  c is red\n}\n").is_none(),
+            "lowercase V must refuse"
+        );
+    }
+
     fn parse_item_kinds(
         src: &'static str,
     ) -> Result<
@@ -3782,6 +3823,63 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("contracts_sidecar_wired_into_emit_scope panicked");
+    }
+
+    #[test]
+    fn record_literal_phantom_field_follows_the_constructed_declaration() {
+        // DISCRIMINATING RED for the class-2 emitter defect (stern-bat-401's emitter-debt list):
+        // gunbc.roadmap.roadmap_model's `Group { group: .. }` is an arm of SectionElement, but the
+        // phantom-field decision looked the constructor SPELLING up and found std.algebra's record
+        // `Group<T>`, whose T is unused, so the variant literal was emitted with `_phantom` (E0559).
+        // probe.algebra declares the record `Group<T>`; probe.sections constructs the variant arm
+        // `Group`. The control is the record literal itself, which must keep its phantom field.
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let source = |path: &str, content: &str| {
+                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.to_string(),
+                        content: content.to_string(),
+                    })
+                };
+                let sources = im::vector![
+                    source("probe_algebra.dag", "module probe.algebra\ntype Group<T> { carrier: Int }\nfn trivial_group() -> Group<Int> { Group { carrier: 1 } }\n"),
+                    source("probe_sections.dag", "module probe.sections\ntype SectionElement = Prose { text: Int } | Group { size: Int }\nfn group_of(n: Int) -> SectionElement { Group { size: n } }\n")
+                ];
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(sources),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                for d in result.diagnostics.iter() {
+                    eprintln!("DIAG {} {}", d.module_name, crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()));
+                }
+                let emitted = |suffix: &str| -> String {
+                    result.files.iter()
+                        .find(|f| f.path.ends_with(suffix))
+                        .map(|f| f.content.clone())
+                        .unwrap_or_else(|| panic!("no emitted file ending {}; files: {:?}", suffix, result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()))
+                };
+                let sections = emitted("probe_sections.rs");
+                let algebra = emitted("probe_algebra.rs");
+                assert!(
+                    !sections.contains("_phantom"),
+                    "the variant literal Group(size) constructs an arm of SectionElement, which declares no phantom field; probe.sections:\n{}",
+                    sections
+                );
+                assert!(
+                    !sections.contains("compile_error!"),
+                    "the variant literal's type resolves to one declaration; probe.sections:\n{}",
+                    sections
+                );
+                assert!(
+                    algebra.contains("_phantom: std::marker::PhantomData,"),
+                    "the record literal Group(carrier) constructs Group<T>, whose unused T owes the phantom field; probe.algebra:\n{}",
+                    algebra
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("record_literal_phantom_field_follows_the_constructed_declaration panicked");
     }
 
     #[test]

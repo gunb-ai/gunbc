@@ -7,8 +7,7 @@ import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePendi
 import std.algebra { list_snoc_item, PartialFunction, empty_map, map_insert, map_lookup }
 import std.optional { Absent, Optional, Present }
 import v2.std.constraints { CanonicalGrounding }
-import v2.std.node { Node }
-import v2.compiler.arm_resolution { ResolvedArm }
+import v2.std.node { node_same_occurrence, Node }
 import std.optional { Optional, optional_absent }
 import v2.std.witness { Witness }
 import v2.std.inhabitance { TypeVariableInstance }
@@ -54,6 +53,7 @@ type NotDerivedSite
   | ConstructFieldsUnbound
   | ConstructFormalsAuthored
   | ConstructTypeAbsent
+  | FunctionValueSignatureUndetermined
 
 // Why GroundingNotDerived exists: before this arm, a node no derivation rule covered was routed
 // through solve_constraints with the singleton candidate set [root], and the resulting grounding
@@ -95,30 +95,9 @@ type InferredFacts {
   type_instances: List<TypeVariableInstance>
 }
 
-// `arm_resolutions` is SPARSE BY CONSTRUCTION: its domain is the arm tests (`x is V`) whose operand type
-// infer derived, so it is not a field of InferredFacts every other node would default. A consumer that
-// holds an arm test and finds no entry refuses; it never decides the arm itself.
-// THE ONE EMPTY arm_resolutions LOOKUP, for a root that carries no source arm test: an emitter- or
-// orchestration-constructed root (a compiler-authored emitted shape, never an ingested program) and a
-// supplied test fixture. A production path that holds a source program passes the lookup infer produced
-// or the one it received (v2.compiler.refinement_discharge, program_partition, compile); it never calls
-// this, because an empty answer for a program that could carry `x is V` would be a fabricated default.
-fn constructed_root_arm_resolutions() -> ArmResolutions {
-  ArmResolutions { tests: [], decided: PartialFunction { lookup: fn(_key) { Absent } } }
-}
-
-// WHAT INFER DECIDED ABOUT THE ARM TESTS OF A ROOT, carried so no realizer re-finds them: `tests` is every
-// arm test infer met (the one tree walk that found them), `decided` the ResolvedArm of those whose operand
-// type is derived. A test in `tests` with no `decided` entry is still on the counted frontier.
-type ArmResolutions {
-  tests: List<Node>
-  decided: PartialFunction<Node, ResolvedArm>
-}
-
 type InferredTree {
   root: Node
   facts: PartialFunction<Node, InferredFacts>
-  arm_resolutions: ArmResolutions
 }
 
 type InferredFactsEntry {
@@ -146,7 +125,6 @@ type RefinementObligation {
 type ObligatedInferredTree {
   root: Node
   facts: PartialFunction<Node, InferredFacts>
-  arm_resolutions: ArmResolutions
   obligations: List<RefinementObligation>
 }
 
@@ -185,7 +163,7 @@ fn authored_occurrence_census_step(acc: AuthoredOccurrenceCensus, n: Node) -> Au
       match map_lookup(m: acc.seen, key: id.value) {
         Absent => AuthoredOccurrenceCensus { seen: map_insert(m: acc.seen, key: id.value, value: n), collisions: acc.collisions }
         Present { value: held } =>
-          if held == n {
+          if node_same_occurrence(a: held, b: n) {
             acc
           } else {
             AuthoredOccurrenceCensus {
