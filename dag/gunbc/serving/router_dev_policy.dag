@@ -62,9 +62,11 @@ fn router_dev_models_lines() -> List<String> {
     "local cjson = require('cjson.safe')",
     "local h = ngx.var.http_authorization or ''",
     "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\",\"type\":\"authentication_error\"}}') return end",
-    "local seen, data = \{}, \{}",
-    "for _, u in ipairs(ROUTER_UPSTREAMS) do if not seen[u.model] then seen[u.model] = true data[#data + 1] = \{id = u.model, object = 'model', owned_by = 'gunbc'} end end",
-    "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc'}",
+    "local lens, order, all_len = \{}, \{}, nil",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do local n = tonumber(u.max_model_len) if lens[u.model] == nil then order[#order + 1] = u.model lens[u.model] = false end if n and n > 0 then if not lens[u.model] or n < lens[u.model] then lens[u.model] = n end if not all_len or n < all_len then all_len = n end end end",
+    "local data = \{}",
+    "for _, m in ipairs(order) do data[#data + 1] = \{id = m, object = 'model', owned_by = 'gunbc', max_model_len = lens[m] or nil} end",
+    "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc', max_model_len = all_len}",
     "ngx.header['Content-Type'] = 'application/json'",
     "ngx.say(cjson.encode(\{object = 'list', data = data}))",
   ]
@@ -258,6 +260,10 @@ type RouterUpstreamScheme
   = | UpstreamHttp
   | UpstreamHttps
 
+// max_model_len is the upstream's context window under vLLM's own member name, the one a pool client reads from
+// /v1/models to place a session (ctrl pool-router refuses a router whose list carries none). srv1 vLLM reports
+// 262144 itself; srv3 Strata reports none, so its row carries the engine's configured n_ctx, 229376. The router
+// answers each model id with the MIN over that model's upstreams, and the alias with the min over all of them.
 type RouterDevUpstream {
   name: String
   scheme: RouterUpstreamScheme
@@ -266,6 +272,7 @@ type RouterDevUpstream {
   tls_name: String?
   model: String
   cap: Int
+  max_model_len: Int
 }
 
 fn upstream_scheme_text(s: RouterUpstreamScheme) -> String {
@@ -284,6 +291,7 @@ fn router_dev_upstream_value(u: RouterDevUpstream) -> JsonValue {
   ], tls), [
     json_kv(key: "model", value: json_string(s: u.model)),
     json_kv(key: "cap", value: json_int(n: u.cap)),
+    json_kv(key: "max_model_len", value: json_int(n: u.max_model_len)),
   ]))
 }
 
@@ -291,8 +299,8 @@ fn no_members() -> List<JsonKeyValue> { [] }
 
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
   [
-    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4 },
-    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4 },
+    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144 },
+    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376 },
   ]
 }
 
