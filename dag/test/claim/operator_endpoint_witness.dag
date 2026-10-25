@@ -8,7 +8,8 @@ import gunbc.harness.harness_operator_route {
   OperatorClassAdmitted, OperatorClassRefused,
   OperatorModelsReading, OperatorHealthUnanswered, OperatorHealthUnhealthy, OperatorModelsRefused, OperatorModelsAnswered,
   OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
-  operator_custody_file_path, OperatorCredentialHandedByManager, OperatorCredentialInHome, OperatorCredentialUnlocated,
+  operator_custody_file_path, operator_credential_custody_of, OperatorCredentialCustody,
+  OperatorCredentialHandedByManager, OperatorCredentialInHome, OperatorCredentialUnlocated,
 }
 import gunbc.harness.harness_operator_credential { operator_route_credential_file }
 import gunbc.harness.harness_backend {
@@ -118,6 +119,14 @@ fn custody_path_text(path: NonEmptyStr?) -> String {
   }
 }
 
+fn custody_text(custody: OperatorCredentialCustody) -> String {
+  match custody {
+    OperatorCredentialHandedByManager { directory: d } => join(["handed:", d as String], "")
+    OperatorCredentialInHome { home: h } => join(["home:", h as String], "")
+    OperatorCredentialUnlocated => "unlocated"
+  }
+}
+
 // WHERE THE KEY IS FOUND. A harness the manager handed a credentials directory reads the route's key there under
 // the route's identifier -- the identifier the dedicated worker unit loads it as
 // (test.claim.roadmap.dispatch_worker_traversal_witness the_dedicated_worker_unit_loads_the_route_key_from_the_root_credstore),
@@ -136,6 +145,10 @@ test fn handed_credentials_are_read_from_the_managers_directory_and_a_home_only_
     && custody_path_text(path: operator_custody_file_path(custody: home, file: file))
       == "/home/svc/.config/gunbc-gpu-pod/api-key"
     && custody_path_text(path: operator_custody_file_path(custody: OperatorCredentialUnlocated, file: file)) == ""
+    && custody_text(custody: operator_credential_custody_of(credentials_directory: Present { value: "/run/c" }, home: Present { value: "/home/svc" })) == "handed:/run/c"
+    && custody_text(custody: operator_credential_custody_of(credentials_directory: Present { value: "" }, home: Present { value: "/home/svc" })) == "unlocated"
+    && custody_text(custody: operator_credential_custody_of(credentials_directory: Absent, home: Present { value: "/home/svc" })) == "home:/home/svc"
+    && custody_text(custody: operator_credential_custody_of(credentials_directory: Absent, home: Absent)) == "unlocated"
 }
 
 test fn the_operator_backend_access_hands_the_turn_its_header_file_and_a_seat_has_none() -> Bool {

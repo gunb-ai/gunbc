@@ -143,10 +143,18 @@ type OperatorCredentialCustody
   | OperatorCredentialUnlocated
 
 fn operator_credential_custody() -> OperatorCredentialCustody {
-  match shell.Env.Get(name: "CREDENTIALS_DIRECTORY").value {
+  operator_credential_custody_of(
+    credentials_directory: shell.Env.Get(name: "CREDENTIALS_DIRECTORY").value,
+    home: shell.Env.Get(name: "HOME").value,
+  )
+}
+
+// The precedence over the two readings, apart from the environment read so a claim can supply them.
+fn operator_credential_custody_of(credentials_directory: String?, home: String?) -> OperatorCredentialCustody {
+  match credentials_directory {
     Present { value: d } => if d == "" { OperatorCredentialUnlocated } else { OperatorCredentialHandedByManager { directory: d as NonEmptyStr } }
     Absent =>
-      match shell.Env.Get(name: "HOME").value {
+      match home {
         Absent => OperatorCredentialUnlocated
         Present { value: h } => if h == "" { OperatorCredentialUnlocated } else { OperatorCredentialInHome { home: h as NonEmptyStr } }
       }
