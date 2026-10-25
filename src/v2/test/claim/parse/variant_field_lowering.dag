@@ -11,7 +11,7 @@ import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional_layers { type_node_occupancy_child }
-import v2.std.node { positional_child_target_nodes,
+import v2.std.node { node_equal_ignoring_provenance, positional_child_target_nodes,
   Atom,
   ComputationNode,
   Conj,
@@ -456,7 +456,7 @@ test fn vf_distinct_payloads_normalize_distinct() -> Bool {
       match vfs_normalized_10() {
         Rejected { diagnostics: _ } => false
         Accepted { value: right, diagnostics: _ } =>
-          canonicalize_node_strip_provenance(n: left.root) != canonicalize_node_strip_provenance(n: right.root)
+          !node_equal_ignoring_provenance(a: canonicalize_node_strip_provenance(n: left.root), b: canonicalize_node_strip_provenance(n: right.root))
       }
   }
 }

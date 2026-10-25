@@ -177,7 +177,7 @@ test fn the_gallop_probes_the_int_maximum_instead_of_overflowing_by_real_executi
 // AN UNINITIALIZED STORE IS NOT AN EMPTY ONE. The slot root is missing, so the host answers
 // NotFound for generation 1 exactly as it would for an empty slot; the observation must refuse
 // rather than read "absent", and a writer expecting absence must be refused before it publishes.
-// Before gunbc.durable_cas_file_store cas_first_generation_absent_over this read CasReadableAbsent.
+// Before gunbc.durable_cas_file_store cas_first_generation_absent this read CasReadableAbsent.
 test fn a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution() -> Bool {
   let root_path = fresh_root()
   let missing = concat(root_path, "/never-created")

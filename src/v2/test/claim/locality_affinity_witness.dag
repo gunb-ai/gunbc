@@ -12,7 +12,7 @@ import std.machine_shape {
 import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count }
 import std.content_hash { ContentHash, Fnv1a64 }
 import std.algebra { length }
-import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
+import v2.std.dependency { dependency_view_equal, BarrierBefore, DataDependsOn, DependencyView }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, TypeNode, content_hash }
 import v2.workflow.locality_affinity {
@@ -215,7 +215,7 @@ test fn witness_derive_affinity_refuses_single_consumer() -> Bool {
 test fn witness_derive_affinity_refuses_unresolved_operand_edge() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_unresolved, domain: locality_domain) {
     AffinityRefused { operand: op, cause: AffinityFlowRefused { edge: e, cause: OperandFlowNoOperand { edge: _ } } } =>
-      op == locality_shared_hash && e == locality_edge_unresolved
+      op == locality_shared_hash && dependency_view_equal(a: e, b: locality_edge_unresolved)
     AffinityRefused { operand: _, cause: _ } => false
     AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
   }
