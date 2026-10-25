@@ -6026,7 +6026,8 @@ pub fn equality_resolved_declaration_structure(
             equality_product_walk(
                 identity.clone(),
                 equality_structure_reference(rt.clone(), peeled.clone(), scope.clone()),
-                ((rt.params.clone().len() as i64) > 0),
+                (((rt.params.clone().len() as i64) > 0)
+                    || ((peeled.children.clone().len() as i64) > 0)),
                 name.clone(),
                 rt.children.clone(),
                 scope.clone(),
@@ -6038,7 +6039,8 @@ pub fn equality_resolved_declaration_structure(
                 equality_coproduct_walk(
                     identity.clone(),
                     equality_structure_reference(rt.clone(), peeled.clone(), scope.clone()),
-                    ((rt.params.clone().len() as i64) > 0),
+                    (((rt.params.clone().len() as i64) > 0)
+                        || ((peeled.children.clone().len() as i64) > 0)),
                     name.clone(),
                     rt.children.clone(),
                     scope.clone(),
