@@ -171,6 +171,19 @@ data primary_network_ready_poll_wait: Second = second(count: 2)
 data primary_network_verdict_polls: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
 data primary_network_verdict_poll_wait: Second = second(count: 10)
 
+// THE WORST-CASE WALL TIME OF ONE APPLY, as the phases it can spend: the try's own timeout, and
+// every bounded poll at its wait plus one leg's connect deadline. A step that hosts the apply is
+// given at least this, so a run is never cancelled with a try in flight and its shadows unremoved.
+data primary_network_leg_allowance: Second = second(count: 10)
+
+fn primary_network_apply_phase_budgets() -> List<Second> {
+  [
+    primary_network_try_timeout,
+    second(count: length(primary_network_ready_polls) * (second_count(s: primary_network_ready_poll_wait) + second_count(s: primary_network_leg_allowance))),
+    second(count: length(primary_network_verdict_polls) * (second_count(s: primary_network_verdict_poll_wait) + second_count(s: primary_network_leg_allowance))),
+  ]
+}
+
 // ── Legs ─────────────────────────────────────────────────────────────────────────────────────────
 
 type PrimaryReadbackVantage

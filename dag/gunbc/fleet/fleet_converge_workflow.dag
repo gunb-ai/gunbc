@@ -227,6 +227,7 @@ import gunbc.ci.ci_spec {
 import gunbc.fleet.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name, fleet_converge_target_host_env_name }
 import gunbc.host.host_primary_network { host_primary_network_rows }
+import gunbc.host.host_primary_network_apply { primary_network_apply_phase_budgets }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
 import gunbc.fleet.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
@@ -487,9 +488,9 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
 // invalidated by an edit somewhere else, with nothing to catch it. It is now joined from the roster.
 fn fleet_converge_target_description() -> String {
   join([
-    "The host a target-acting mode acts on, never the executor host. spark_* modes: a rostered Spark (",
-    join(fleet_converge_spark_target_options, ", "),
-    "). host_primary_network_*: a host with a primary network row (",
+    "The host a target-acting mode acts on, never the executor host. ",
+    if count(fleet_converge_spark_target_options) == 0 { "" } else { join(["spark_* modes: a rostered Spark (", join(fleet_converge_spark_target_options, ", "), "). "], "") },
+    "host_primary_network_*: a host with a primary network row (
     join(fleet_converge_primary_network_target_options, ", "),
     "), run from another host named in `host`",
   ], "")
@@ -2370,7 +2371,7 @@ fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
 // dispatched host and ON the target, because a readback taken from the target itself never crosses
 // the uplink it judges: the shared job runs on inputs.host, so the operator names an observer there
 // and the host to converge in `target`. The entry refuses when the two are one host.
-fn fleet_converge_host_primary_network_step(id: String, name: String, invoke: String, if_condition: String) -> Step {
+fn fleet_converge_host_primary_network_step(id: String, name: String, invoke: String, if_condition: String, timeout_minutes: Int) -> Step {
   RunStep {
     name: Present { value: name },
     id: Present { value: id },
@@ -2385,7 +2386,7 @@ fn fleet_converge_host_primary_network_step(id: String, name: String, invoke: St
     working_directory: none,
     if_condition: Present { value: if_condition },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
+    timeout_minutes: Present { value: timeout_minutes }
   }
 }
 
@@ -2395,6 +2396,7 @@ fn fleet_converge_host_primary_network_observe_step() -> Step {
     name: "Primary network: read the target's links, lease, default route and /etc/netplan from the observer and plan (no writes)",
     invoke: gunbc_ci_host_primary_network_observe_invoke(),
     if_condition: fleet_converge_host_primary_network_observe_step_if,
+    timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
   )
 }
 
@@ -2404,6 +2406,7 @@ fn fleet_converge_host_primary_network_converge_step() -> Step {
     name: "Primary network: stage the population, netplan try on the target, confirm only on a readback from the observer",
     invoke: gunbc_ci_host_primary_network_converge_invoke(),
     if_condition: fleet_converge_host_primary_network_converge_step_if,
+    timeout_minutes: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: primary_network_apply_phase_budgets()),
   )
 }
 
