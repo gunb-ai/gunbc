@@ -1459,7 +1459,10 @@ fn node_with_declaration(n: Node, declaration: DeclarationRef) -> Node {
 // v1.tests.claim.carrier_realization_census reads: declaration fields, signature parameter types,
 // the return, the type arguments beneath them, and an arrow's parameter and return positions.
 fn binder_marked_type(n: Node, owner: DeclarationRef, binders: List<String>, source_indices: Map<String, NewlineIndex>) -> Node {
-  let name = authored_name_at(source_indices: source_indices, node: n)
+  // A field's Resolved copy carries no authored span (field_type_expr_is_stripped_placeholder), so its
+  // name is the node's own `name`; without it the copy a record literal substitutes through stays unmarked.
+  let authored = authored_name_at(source_indices: source_indices, node: n)
+  let name = if authored == "" && n.ident_span == none { n.name } else { authored }
   let is_binder_reference = n.declaration == none
     && n.children |> count == 0
     && n.params |> count == 0
