@@ -72,7 +72,7 @@ import v2.std.coercion { coercion_cast_crossing }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.machine_width_range { machine_width_admits }
+import std.machine_width_range { machine_width_admits, machine_width_reading, machine_width_carrier_signedness, MachineWidthReading, NotWidthConstrained, WidthReadable, WidthUnreadable, MachineWidthUnreadable, WidthComposeMalformed, WidthNotStatic, WidthCarrierSignednessUndeclared, MachineWidthTypeArgument }
 import std.integer { Signedness, Signed, Unsigned }
 
 
@@ -4776,8 +4776,9 @@ fn infer_alias_body_is_phantom(aliased: Node) -> Bool {
 // formal, 255 included, refused application_argument_does_not_inhabit before the width was read (measured on the real
 // closure, v2.test.claim.compiler.width_literal_admission_real). The rule is the CLASS -- a Phantom-bodied alias keeps
 // its head and its arguments, which still normalize (UInt -> Nat) -- not one declaration's name, so a second
-// Phantom-bodied constraint alias inherits it. Why the width READER (infer_machine_width_of) still names Compose and
-// MachineWidth: it is the one consumer that gives their arguments meaning; the opacity above is not.
+// Phantom-bodied constraint alias inherits it. Why the width READER (std.machine_width_range machine_width_reading,
+// through infer_machine_width_of) still names Compose and MachineWidth: it is the one consumer that gives their
+// arguments meaning; the opacity above is not.
 fn infer_type_alias_unfolded_at(t: Node, bodies: SymbolIndex, bindings: SymbolIndex) -> Optional<Node> {
   match declaration_denotation_of_type(t: t) {
     Absent => optional_absent()
@@ -5096,60 +5097,35 @@ fn infer_int_literal_value_at(value: Int, expected: Node, declarations: SymbolIn
           } else {
             InferLiteralElaborationRefused { cause: ^infer_reason_literal_outside_machine_width }
           }
-        WidthUnreadable { reason: r } => InferLiteralElaborationRefused { cause: r }
+        WidthUnreadable { cause: c } => InferLiteralElaborationRefused { cause: infer_machine_width_unreadable_reason(cause: c) }
         NotWidthConstrained => infer_int_literal_value_at_declared(value: value, wanted: wanted, destination: destination)
       }
   }
 }
 
-// A WIDTH-CONSTRAINED INTEGER READ FROM ITS TYPE, IN THREE ANSWERS (fail closed, DESIGN section 5): a type is
-// NotWidthConstrained (it names no MachineWidth, so the grounding and homomorphism path decides),
-// WidthReadable (Compose<A, MachineWidth<N>> with a Nat literal N and a carrier A that is the kernel Int, signed, or
-// std.nat Nat, unsigned), or WidthUnreadable -- it IS width-constrained but the width cannot be read: a malformed
-// Compose, a named width such as MachineWidth<PointerWidth> (IntPlatform, UIntPlatform), a carrier whose signedness is
-// not declared. Unreadable refuses, typed: a width that cannot be read is neither admitted by guessing one nor
-// handed to ordinary grounding, which would accept any literal the carrier accepts. The meaning of a readable width
-// is std.machine_width_range machine_width_admits, not a table here.
-type InferMachineWidth
-  = NotWidthConstrained
-  | WidthReadable { signedness: Signedness, bits: BitWidth }
-  | WidthUnreadable { reason: Symbol }
+// A WIDTH-CONSTRAINED INTEGER READ FROM ITS TYPE: the decision is std.machine_width_range machine_width_reading,
+// the one derivation every compiler that reads a width consults. This compiler only extracts the parts that
+// decision reads from its own Node tree -- the type's head, and for each type argument its head, whether it is
+// the kernel Int, and its sole literal argument -- and judges nothing itself. The meaning of a readable width is
+// std.machine_width_range machine_width_admits, not a table here.
+fn infer_machine_width_of(t: Node) -> MachineWidthReading {
+  machine_width_reading(head: infer_type_declaration_ref(t: t), arguments: infer_type_head_and_args(t: t).args |> map(a => infer_machine_width_argument(t: a)))
+}
 
-fn infer_machine_width_of(t: Node) -> InferMachineWidth {
-  match infer_type_declaration_ref(t: t) {
-    Absent => NotWidthConstrained
-    Present { value: head } =>
-      if head == decl_ref(module_path: "std.machine_constraints", decl_name: "Compose") {
-        match infer_type_head_and_args(t: t).args {
-          Cons { head: carrier, tail: Cons { head: width, tail: Empty } } =>
-            if infer_type_names_machine_width(t: width) {
-              match infer_machine_width_bits(t: width) {
-                Absent => WidthUnreadable { reason: ^infer_reason_machine_width_not_static }
-                Present { value: bits } =>
-                  match infer_machine_width_signedness(carrier: carrier) {
-                    Absent => WidthUnreadable { reason: ^infer_reason_machine_width_carrier_signedness_undeclared }
-                    Present { value: signedness } => WidthReadable { signedness: signedness, bits: bits }
-                  }
-              }
-            } else {
-              NotWidthConstrained
-            }
-          Cons { head: _, tail: _ } => WidthUnreadable { reason: ^infer_reason_machine_width_compose_malformed }
-          Empty => WidthUnreadable { reason: ^infer_reason_machine_width_compose_malformed }
-        }
-      } else {
-        NotWidthConstrained
-      }
+fn infer_machine_width_argument(t: Node) -> MachineWidthTypeArgument {
+  MachineWidthTypeArgument { head: infer_type_declaration_ref(t: t), is_kernel_int: node_equal_ignoring_provenance(a: t, b: integer_int_type_node()), sole_literal_argument: infer_machine_width_bits(t: t) }
+}
+
+// The located reason each unreadable cause refuses with.
+fn infer_machine_width_unreadable_reason(cause: MachineWidthUnreadable) -> Symbol {
+  match cause {
+    WidthComposeMalformed => ^infer_reason_machine_width_compose_malformed
+    WidthNotStatic => ^infer_reason_machine_width_not_static
+    WidthCarrierSignednessUndeclared => ^infer_reason_machine_width_carrier_signedness_undeclared
   }
 }
 
-fn infer_type_names_machine_width(t: Node) -> Bool {
-  match infer_type_declaration_ref(t: t) {
-    Absent => false
-    Present { value: head } => head == decl_ref(module_path: "std.machine_constraints", decl_name: "MachineWidth")
-  }
-}
-
+// EXTRACTION, NOT JUDGMENT: a type's sole argument when it is an integer literal.
 fn infer_machine_width_bits(t: Node) -> Optional<BitWidth> {
   match infer_type_head_and_args(t: t).args {
     Cons { head: literal, tail: Empty } =>
@@ -5162,19 +5138,8 @@ fn infer_machine_width_bits(t: Node) -> Optional<BitWidth> {
   }
 }
 
-// std.integer's own carriers need no case here: its Int is the kernel Int by the roster (infer_kernel_value_type_optional) and
-// its UInt = Nat unfolds by the alias rule before this reads it (measured, v2.test.claim.compiler.width_literal_admission,
-// whose peer states those two declarations as std.integer writes them).
 fn infer_machine_width_signedness(carrier: Node) -> Optional<Signedness> {
-  if node_equal_ignoring_provenance(a: carrier, b: integer_int_type_node()) {
-    optional_present(value: Signed)
-  } else {
-    match infer_type_declaration_ref(t: carrier) {
-      Present { value: d } =>
-        if d == decl_ref(module_path: "std.nat", decl_name: "Nat") { optional_present(value: Unsigned) } else { optional_absent() }
-      Absent => optional_absent()
-    }
-  }
+  machine_width_carrier_signedness(carrier: infer_machine_width_argument(t: carrier))
 }
 
 fn infer_int_literal_value_at_declared(value: Int, wanted: Node, destination: DeclarationRef) -> InferLiteralElaboration {
