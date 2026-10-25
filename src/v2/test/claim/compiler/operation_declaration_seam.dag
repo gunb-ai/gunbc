@@ -18,6 +18,9 @@ module v2.test.claim.compiler.operation_declaration_seam
 // walked, module-qualified path, so the walk-based claims here are the delta the swap must show.
 import std.algebra { Cons, Empty, fold_list, length, list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
+// The hermetic read authority: filesystem_read dispatches only when Filesystem.Read is in the
+// import closure -- the route production_ingest takes to make file bytes the authority.
+import extdeps.filesystem.filesystem_io
 import std.decl_ref { decl_ref }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.primitive_projection { HostRealizedSeam, primitive_projection_roster }
