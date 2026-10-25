@@ -2,6 +2,8 @@ module test.claim.fleet.posix_quoted_remote_word_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import gunbc.remote_shell_command { remote_exec_command_string, remote_exec_command_rendered, RemoteExecCommandBuilt, RemoteExecCommandRefused, PosixShellInterpreted }
 import extdeps.ssh.openssh_remote_command { openssh_remote_command_string, openssh_remote_command_execution, openssh_release_of_version_output }
 import gunbc.fleet.fleet_known_hosts_anchor {
   SshTarget,
@@ -16,10 +18,8 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   LoginShellUnreadable,
   login_shell_standing,
   portable_remote_words,
-  posix_quoted_remote_word_text,
-  posix_quoted_remote_command,
-  posix_quoted_remote_command_strings,
-  PosixQuotedRemoteCommand,
+  fleet_posix_quoted_leg,
+  FleetRemoteLeg,
   PosixRemoteRoute,
   PosixRemoteRouteStanding,
   PosixRemoteRouteCovered,
@@ -78,42 +78,21 @@ fn route_or_fail(p: PosixLoginShellProof, claim: fn(PosixRemoteRoute) -> Bool) -
   }
 }
 
-fn rendered(raw: String, p: PosixLoginShellProof) -> String {
-  match route_standing_command(raws: [raw], p: p) {
-    Present { value: c } => c.first as String
-    Absent => "<refused>"
-  }
-}
-
-fn command_or_fail(raws: List<String>, p: PosixLoginShellProof, claim: fn(PosixQuotedRemoteCommand) -> Bool) -> Bool {
-  match route_standing_command(raws: raws, p: p) {
-    Present { value: c } => claim(c)
+fn leg_or_fail(raws: List<String>, p: PosixLoginShellProof, claim: fn(FleetRemoteLeg) -> Bool) -> Bool {
+  route_or_fail(p: p, claim: r => match fleet_posix_quoted_leg(route: r, argv: raws) {
+    Present { value: leg } => claim(leg)
     Absent => false
-  }
-}
-
-fn route_standing_command(raws: List<String>, p: PosixLoginShellProof) -> PosixQuotedRemoteCommand? {
-  match posix_remote_route_standing(proof: p, client_success: true, client_output: executor_client_version, server_success: true, server_output: ubuntu_noble_server_version) {
-    PosixRemoteRouteCovered { route: r } => posix_quoted_remote_command(raws: raws, route: r)
-    PosixRemoteRouteUnmeasured { side: _, reason: _ } => Absent
-    PosixRemoteRouteUncovered { side: _, release_name: _ } => Absent
-  }
-}
-
-// CONTROL: a leg whose words are all in the alphabet renders byte-identically under either leg constructor, so every
-// existing bare leg sends the same command as before the quoted route existed.
-test fn bare_words_render_identically_under_both_constructors() -> Bool {
-  let argv = ["sha256sum", "/srv/gunbc-site-pxe-edge/tftp/snponly.efi"]
-  bash_proof(claim: p => match portable_remote_words(raws: argv) {
-    Absent => false
-    Present { value: bare } => command_or_fail(raws: argv, p: p, claim: c =>
-      fleet_remote_leg_strings(leg: FleetBareWordLeg { target: p.target, words: bare })
-        == fleet_remote_leg_strings(leg: FleetPosixQuotedLeg { command: c })
-        && portable_remote_words_strings(words: bare) == posix_quoted_remote_command_strings(command: c))
   })
 }
 
-// THE BARE ROUTE STILL REFUSES what it always refused; only the proof-bearing route quotes.
+fn leg_refused(raws: List<String>, p: PosixLoginShellProof) -> Bool {
+  route_or_fail(p: p, claim: r => match fleet_posix_quoted_leg(route: r, argv: raws) {
+    Present { value: _ } => false
+    Absent => true
+  })
+}
+
+// THE BARE ROUTE STILL REFUSES what it always refused; only the measured route quotes.
 test fn the_bare_route_still_refuses_a_plus() -> Bool {
   match portable_remote_words(raws: ["dpkg-deb", "-x", "grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb", "/tmp/x"]) {
     Absent => true
@@ -121,27 +100,29 @@ test fn the_bare_route_still_refuses_a_plus() -> Bool {
   }
 }
 
-// THE QUOTED RENDERING, word by word: whitespace, a version '+', a glob, a dollar expansion, a backtick, a separator
-// and a backslash each become one single-quoted word; an embedded quote closes, escapes and reopens.
-test fn hostile_words_render_as_single_quoted_words() -> Bool {
-  bash_proof(claim: p =>
-    rendered(raw: "grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb", p: p) == "'grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb'"
-      && rendered(raw: "a b", p: p) == "'a b'"
-      && rendered(raw: "*", p: p) == "'*'"
-      && rendered(raw: "$(id)", p: p) == "'$(id)'"
-      && rendered(raw: "`id`", p: p) == "'`id`'"
-      && rendered(raw: "x;rm -rf /", p: p) == "'x;rm -rf /'"
-      && rendered(raw: "a\\b", p: p) == "'a\\b'"
-      && rendered(raw: "it's", p: p) == "'it'\\''s'"
-  )
+// ONE QUOTING AUTHORITY (review 86131): the quoted leg's command is gunbc.remote_shell_command's own rendering of the
+// argv under PosixShellInterpreted -- every word posix_single_quote'd by extdeps.posix.shell_command_language and
+// space-joined -- not a second encoding in the fleet layer. Pinned against both: the module's mint, and the cited
+// function applied word by word.
+test fn the_quoted_leg_carries_remote_shell_commands_own_rendering() -> Bool {
+  let argv = ["dpkg-deb", "-x", "grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb", "it's $(id)"]
+  bash_proof(claim: p => leg_or_fail(raws: argv, p: p, claim: leg =>
+    match remote_exec_command_string(argv: map(argv, w => w as NonEmptyStr), interpretation: PosixShellInterpreted) {
+      RemoteExecCommandRefused { cause: _ } => false
+      RemoteExecCommandBuilt { command: c } =>
+        fleet_remote_leg_strings(leg: leg) == [remote_exec_command_rendered(command: c) as String]
+          && fleet_remote_leg_strings(leg: leg) == [join(map(argv, w => posix_single_quote(spelling: w)), " ")]
+    }))
 }
 
-// RED: NUL, newline and carriage return have no carrier and refuse at construction, so the whole leg refuses.
-test fn nul_newline_and_carriage_return_refuse() -> Bool {
+// RED: a NUL cannot ride a C argv and refuses, as does an empty word or an empty argv; a newline is literal inside
+// single quotes and is carried, as remote_shell_command states (RFC 4254 section 6.5 has no line discipline).
+test fn nul_empty_words_and_empty_argv_refuse_and_a_newline_is_carried() -> Bool {
   bash_proof(claim: p =>
-    rendered(raw: "a\nb", p: p) == "<refused>"
-      && rendered(raw: "a\rb", p: p) == "<refused>"
-      && route_or_fail(p: p, claim: r => match posix_quoted_remote_command(raws: ["printf", "a\nb"], route: r) { Absent => true Present { value: _ } => false })
+    leg_refused(raws: ["printf", "a\x00b"], p: p)
+      && leg_refused(raws: ["printf", ""], p: p)
+      && leg_refused(raws: [], p: p)
+      && leg_or_fail(raws: ["printf", "a\nb"], p: p, claim: leg => fleet_remote_leg_strings(leg: leg) == ["'printf' 'a\nb'"])
   )
 }
 
@@ -186,8 +167,8 @@ test fn only_the_principals_own_posix_passwd_entry_mints_the_proof() -> Bool {
 // target, which is sound because its words are literal under any shell. (Spelling a target into a quoted leg, or a
 // quoted word into PortableRemoteWords, has no constructor; this claim pins the route, not that unwritability.)
 test fn a_quoted_leg_runs_against_the_target_its_proof_was_read_from() -> Bool {
-  bash_proof(claim: p => command_or_fail(raws: ["dpkg-deb", "-x", "a b+c.deb", "/tmp/x"], p: p, claim: c =>
-    fleet_remote_leg_target(leg: FleetPosixQuotedLeg { command: c }) == p.target
+  bash_proof(claim: p => leg_or_fail(raws: ["dpkg-deb", "-x", "a b+c.deb", "/tmp/x"], p: p, claim: leg =>
+    fleet_remote_leg_target(leg: leg) == p.target
       && (p.target.principal as String) == "ubuntu"
       && with_target(endpoint: "192.0.2.11", principal: "ubuntu", claim: other =>
         match portable_remote_words(raws: ["hostname"]) {
@@ -202,15 +183,12 @@ test fn a_quoted_leg_runs_against_the_target_its_proof_was_read_from() -> Bool {
 // V_9_6_P1), and sshd runs that string as the login shell's -c argument (session.c). So the string the remote shell
 // parses is exactly openssh_remote_command_string of the rendered words.
 test fn the_final_remote_string_is_the_space_join_of_the_rendered_words() -> Bool {
-  bash_proof(claim: p => match route_standing_command(raws: ["dpkg-deb", "-x", "a b+c.deb", "/tmp/x"], p: p) {
-    Absent => false
-    Present { value: command } => {
-      let rendered = fleet_remote_leg_strings(leg: FleetPosixQuotedLeg { command: command })
-      shape_ssh_shell_exec(host: "192.0.2.10", argv: rendered) == concat(["192.0.2.10", "--"], rendered)
-        && openssh_remote_command_string(arguments: rendered) == "dpkg-deb -x 'a b+c.deb' /tmp/x"
-        && openssh_remote_command_execution(login_shell: p.shell as String, command: openssh_remote_command_string(arguments: rendered)) == ["/bin/bash", "-c", "dpkg-deb -x 'a b+c.deb' /tmp/x"]
-    }
-  })
+  bash_proof(claim: p => leg_or_fail(raws: ["dpkg-deb", "-x", "a b+c.deb", "/tmp/x"], p: p, claim: leg => {
+    let rendered = fleet_remote_leg_strings(leg: leg)
+    shape_ssh_shell_exec(host: "192.0.2.10", argv: rendered) == concat(["192.0.2.10", "--"], rendered)
+      && openssh_remote_command_string(arguments: rendered) == "'dpkg-deb' '-x' 'a b+c.deb' '/tmp/x'"
+      && openssh_remote_command_execution(login_shell: p.shell as String, command: openssh_remote_command_string(arguments: rendered)) == ["/bin/bash", "-c", "'dpkg-deb' '-x' 'a b+c.deb' '/tmp/x'"]
+  }))
 }
 
 // THE `-V` LINE, PARSED (ssh.c and sshd.c case 'V'; version.h SSH_RELEASE): the release is the token after

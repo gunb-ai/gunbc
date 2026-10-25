@@ -12,7 +12,6 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   SshTargetResolved,
   SshTargetRefused,
   fleet_ssh_target_at_standard_port,
-  FleetPosixQuotedLeg,
   fleet_remote_leg_target,
   fleet_remote_leg_strings,
   LoginShellStanding,
@@ -22,7 +21,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   LoginShellNotPosix,
   LoginShellUnreadable,
   login_shell_standing,
-  posix_quoted_remote_command,
+  fleet_posix_quoted_leg,
   PosixRemoteRouteCovered,
   PosixRemoteRouteUnmeasured,
   PosixRemoteRouteUncovered,
@@ -109,10 +108,9 @@ test fn hostile_words_reach_sh_as_one_literal_word_each() -> Bool {
           PosixRemoteRouteUnmeasured { side: _, reason: _ } => false
           PosixRemoteRouteUncovered { side: _, release_name: _ } => false
           PosixRemoteRouteCovered { route: route } =>
-        match posix_quoted_remote_command(raws: concat(["printf", "%s\\n"], words), route: route) {
+        match fleet_posix_quoted_leg(route: route, argv: concat(["printf", "%s\\n"], words)) {
           Absent => false
-          Present { value: quoted } => {
-            let leg = FleetPosixQuotedLeg { command: quoted }
+          Present { value: leg } => {
             let command = openssh_remote_command_string(arguments: fleet_remote_leg_strings(leg: leg))
             let ran = shell.Sh.ReparseWith(shell: p.shell, command: command as NonEmptyStr)
             let canary_present = shell.Test.IsFile(path: canary as FilePath)

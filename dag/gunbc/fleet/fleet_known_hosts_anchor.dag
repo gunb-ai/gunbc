@@ -22,9 +22,15 @@ import std.content_hash {
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 import extdeps.ssh.openssh_remote_command { openssh_release_of_version_output, openssh_remote_command_release_covered }
+import gunbc.remote_shell_command {
+  RemoteExecCommand,
+  RemoteExecCommandBuilt,
+  RemoteExecCommandRefused,
+  PosixShellInterpreted,
+  remote_exec_command_string,
+  remote_exec_command_rendered,
+}
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Int }
 import extdeps.ssh.client_options {
@@ -735,37 +741,28 @@ fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
   }
 }
 
-// THE QUOTED ROUTE: POSIX single-quoted words, for words the alphabet above refuses. They are NOT PortableRemoteWords
-// (review 86015): a PortableRemoteWord is literal under ANY far-side shell, and consumers rely on exactly that -- some
-// interpolate one into a script (gunbc.spark.managed_access_apply) or hand it on as a raw argv word (gunbc.spark
-// grant_privileged_operation) -- while a quoted word is literal only under the POSIX shell its proof names. A
-// materially different contract takes a materially different name (DESIGN section 3), so the quoted words live in their
-// own sealed carrier, PosixQuotedRemoteCommand, which carries the proof and so the target it was read from. The ONE type
-// with two constructors (merry-fox-82, msg_2c9dcc3c) is the leg the transport takes, FleetRemoteLeg below: a bare
-// leg or a quoted leg through one shaper, never a second transport path. A word in the alphabet still renders bare
-// inside a quoted command, so a leg whose words are all in the alphabet sends identical bytes either way.
+// THE QUOTED ROUTE, for words the alphabet above refuses. Its quoting is not this module's: gunbc.remote_shell_command
+// already composes an argv into one RFC 4254 command string, every word single-quoted by
+// extdeps.posix.shell_command_language posix_single_quote (XCU 2.2.2), sealed as RemoteExecCommand, and minted only
+// for a target whose interpretation is PosixShellInterpreted (review 86131: one quoting authority, one route). What
+// this module adds is the EVIDENCE for that interpretation on one fleet target -- the target principal's login shell
+// read from its passwd entry, and the client and server OpenSSH releases measured and covered by
+// extdeps.ssh.openssh_remote_command -- bound into a sealed PosixRemoteRoute, so the interpretation is measured per
+// target rather than asserted for every OpenSSH host (remote_shell_command openssh_login_shell_interpretation, a
+// declared row; its own consumer, extdeps.exec.command command_over_transport, still reads it). The quoted words are
+// NOT PortableRemoteWords (review 86015): a PortableRemoteWord is literal under ANY shell, and consumers rely on that
+// (gunbc.spark.managed_access_apply interpolates one into a script). The ONE type with two constructors
+// (merry-fox-82, msg_2c9dcc3c) is the leg the transport takes, FleetRemoteLeg below.
 //
-// WHY QUOTING IS EXACT HERE, when the comment on portable_remote_word refuses it: that refusal rests on the far-side
-// shell being UNKNOWN. A quoted word requires a PosixLoginShellProof, minted only from the target principal's own
-// passwd entry read in the same run, so the shell is known to be a POSIX sh. Inside single quotes POSIX sh gives no
-// character a meaning except the closing quote (POSIX.1-2017 XCU 2.2.2): globs, `$`, backticks, `;`, `|`, `&`,
-// redirections, `\` and whitespace are all literal. The one character that cannot appear inside is `'`, so each
-// becomes `'\''` (close, escaped quote, reopen), which re-joins into one word. NUL cannot be carried by a C argv at
-// all, and a newline or carriage return breaks the transported line, so those three refuse at construction.
-data posix_quoting_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_02_02"
-  }
-}
-
-// The login shells this route treats as POSIX sh, by path as passwd records them. A shell outside the list (zsh,
-// fish, a nologin) refuses the quoted route; it is not guessed compatible.
+// THE LOGIN SHELLS THIS ROUTE ADMITS, by path as passwd records them. This is an ADMISSION POLICY of this route, not
+// an upstream fact (review 86131): it names the implementations (bash, dash, and the /bin/sh they provide on the
+// fleet's Ubuntu hosts) whose single-quote handling is the POSIX one this route relies on. A shell outside the list
+// (zsh, fish, a nologin) refuses the quoted route; it is not guessed compatible.
 data posix_login_shell_paths: List<String> = ["/bin/sh", "/usr/bin/sh", "/bin/bash", "/usr/bin/bash", "/bin/dash", "/usr/bin/dash"]
 
-// THE PROOF IS BOUND TO THE TARGET IT WAS READ FROM (address and principal). A quoted command carries it, and a quoted
-// leg has no target of its own: it runs against the proof's target, so it cannot be sent to another host or principal.
-// The route that mints commands reads the proof in the same call (gunbc.typed_argv_exec
+// THE PROOF IS BOUND TO THE TARGET IT WAS READ FROM (address and principal). A quoted leg carries it inside its route
+// and has no target of its own: it runs against the proof's target, so it cannot be sent to another host or principal.
+// The route that mints legs reads the proof in the same call (gunbc.typed_argv_exec
 // typed_argv_exec_over_fleet_ssh_posix), so a proof read before a login-shell change is never the one a leg runs under.
 type PosixLoginShellProof sole_constructor {
   target: SshTarget
@@ -806,34 +803,6 @@ fn login_shell_standing(target: SshTarget, success: Bool, output: String) -> Log
           }
       }
     }
-  }
-}
-
-fn remote_word_char_refused_under_quotes(cp: Int) -> Bool {
-  cp == 0 || cp == 10 || cp == 13
-}
-
-fn remote_word_quotable(text: String, i: Int, len: Int) -> Bool {
-  if i >= len { true } else {
-    if remote_word_char_refused_under_quotes(cp: code_point(ch: char_at(text, i))) { false } else { remote_word_quotable(text: text, i: i + 1, len: len) }
-  }
-}
-
-fn posix_single_quote(raw: String) -> String {
-  join(["'", join(split(s: raw, delimiter: "'"), "'\\''"), "'"], "")
-}
-
-// A word the alphabet admits stays bare; any other word is single-quoted, or refused when it carries NUL, newline or
-// carriage return.
-fn posix_quoted_remote_word_text(raw: String) -> NonEmptyStr? {
-  match portable_remote_word(raw: raw) {
-    Present { value: bare } => Present { value: bare.value }
-    Absent =>
-      if raw != "" && remote_word_quotable(text: raw, i: 0, len: length(raw)) {
-        Present { value: posix_single_quote(raw: raw) as NonEmptyStr }
-      } else {
-        none
-      }
   }
 }
 
@@ -912,53 +881,43 @@ fn openssh_measured_side_wire(side: OpenSshMeasuredSide) -> String {
   }
 }
 
-// Head-plus-tail like PortableRemoteWords, so an empty quoted command has no constructor either.
-type PosixQuotedRemoteCommand sole_constructor {
-  route: PosixRemoteRoute
-  first: NonEmptyStr
-  more: List<NonEmptyStr>
-}
-
-fn posix_quoted_remote_command(raws: List<String>, route: PosixRemoteRoute) -> PosixQuotedRemoteCommand? {
-  let admitted = fold(raws, init: Present { value: [] }, f: fn(acc, r) {
-    match acc {
-      Absent => none
-      Present { value: ws } => match posix_quoted_remote_word_text(raw: r) {
-        Present { value: w } => Present { value: concat(ws, [w]) }
-        Absent => none
-      }
-    }
-  })
-  match admitted {
-    Absent => none
-    Present { value: ws } => match list_head(xs: ws) {
-      Absent => none
-      Present { value: h } => Present { value: PosixQuotedRemoteCommand { route: route, first: h, more: skip(xs: ws, n: 1) } }
-    }
-  }
-}
-
-fn posix_quoted_remote_command_strings(command: PosixQuotedRemoteCommand) -> List<String> {
-  concat([command.first as String], map(command.more, w => w as String))
-}
-
 // THE LEG THE TRANSPORT TAKES: one type, two constructors. A bare leg names its target beside words literal under any
-// shell; a quoted leg names none, because its command's route already binds the one target it is literal for.
+// shell; a quoted leg names none, because its route already binds the one target its command is literal for. The
+// quoted leg's command crosses the shaper as ONE word after `--`, so the string ssh sends is exactly the
+// RemoteExecCommand's rendering (extdeps.ssh.openssh_remote_command openssh_remote_command_string of one argument).
 type FleetRemoteLeg
   = FleetBareWordLeg { target: SshTarget, words: PortableRemoteWords }
-  | FleetPosixQuotedLeg { command: PosixQuotedRemoteCommand }
+  | FleetPosixQuotedLeg { route: PosixRemoteRoute, command: RemoteExecCommand }
 
 fn fleet_remote_leg_target(leg: FleetRemoteLeg) -> SshTarget {
   match leg {
     FleetBareWordLeg { target: t, words: _ } => t
-    FleetPosixQuotedLeg { command: c } => c.route.proof.target
+    FleetPosixQuotedLeg { route: r, command: _ } => r.proof.target
   }
 }
 
 fn fleet_remote_leg_strings(leg: FleetRemoteLeg) -> List<String> {
   match leg {
     FleetBareWordLeg { target: _, words: w } => portable_remote_words_strings(words: w)
-    FleetPosixQuotedLeg { command: c } => posix_quoted_remote_command_strings(command: c)
+    FleetPosixQuotedLeg { route: _, command: c } => [remote_exec_command_rendered(command: c) as String]
+  }
+}
+
+// A NUL is the one byte no C argv carries (execve takes NUL-terminated strings), so a word holding one cannot reach
+// the ssh client at all and refuses here; every other byte is literal inside single quotes (XCU 2.2.2), newline
+// included (RFC 4254 section 6.5 carries the exec command with no line discipline), as remote_shell_command states.
+fn remote_word_carries_nul(text: String, i: Int, len: Int) -> Bool {
+  if i >= len { false } else {
+    if code_point(ch: char_at(text, i)) == 0 { true } else { remote_word_carries_nul(text: text, i: i + 1, len: len) }
+  }
+}
+
+fn fleet_posix_quoted_leg(route: PosixRemoteRoute, argv: List<String>) -> FleetRemoteLeg? {
+  if any(argv, w => w == "" || remote_word_carries_nul(text: w, i: 0, len: length(w))) { Absent } else {
+    match remote_exec_command_string(argv: map(argv, w => w as NonEmptyStr), interpretation: PosixShellInterpreted) {
+      RemoteExecCommandBuilt { command: c } => Present { value: FleetPosixQuotedLeg { route: route, command: c } }
+      RemoteExecCommandRefused { cause: _ } => Absent
+    }
   }
 }
 

@@ -19,9 +19,8 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   SshTarget,
   portable_remote_words,
   shape_ssh_shell_exec, ssh_target_wire,
-  posix_quoted_remote_command,
+  fleet_posix_quoted_leg,
   PosixLoginShellProof,
-  FleetPosixQuotedLeg,
   PosixRemoteRouteStanding,
   PosixRemoteRouteCovered,
   PosixRemoteRouteUnmeasured,
@@ -284,13 +283,13 @@ fn typed_argv_exec_over_fleet_ssh_posix(
         PosixRemoteRouteUnmeasured { side: sd, reason: r } => TypedArgvExecRefused { reason: concat("no word is quoted: ", posix_remote_route_refusal_text(standing: PosixRemoteRouteUnmeasured { side: sd, reason: r })) }
         PosixRemoteRouteUncovered { side: sd, release_name: rl } => TypedArgvExecRefused { reason: concat("no word is quoted: ", posix_remote_route_refusal_text(standing: PosixRemoteRouteUncovered { side: sd, release_name: rl })) }
         PosixRemoteRouteCovered { route: route } =>
-          match posix_quoted_remote_command(raws: argv, route: route) {
+          match fleet_posix_quoted_leg(route: route, argv: argv) {
             Absent => TypedArgvExecRefused {
-              reason: concat("a remote word carries NUL, newline or carriage return, which no quoting carries, so the leg was NOT attempted for ", ssh_target_wire(target: target) as String),
+              reason: concat("a remote word is empty or carries NUL, which no argv carries, so the leg was NOT attempted for ", ssh_target_wire(target: target) as String),
             }
-            Present { value: command } =>
+            Present { value: leg } =>
               match exec_fleet_remote_leg(
-                context: context, leg: FleetPosixQuotedLeg { command: command },
+                context: context, leg: leg,
                 credential: BootstrapCredentialInRunEnvironment,
               ) {
                 FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
