@@ -39,16 +39,12 @@ import gunbc.deploy_transition_lease_store { TransitionLeaseStore, TransitionLea
 // THE ONE DECLARATION OF THE STORE: the member it is under the instance root. The store is a single file
 // directly in the instance root, which the instance itself provisions; the store owns no directory, so there is
 // no directory row to derive (and no directory mode to declare -- the file's owner-only mode is the exclusive
-// create's). The path, the mint and the store's every operation derive from this row, so deleting it breaks
-// every reader.
+// create's). The mint, the store's path (transition_inhibition_store_path, over a minted store only) and every
+// operation derive from this row, so deleting it breaks every reader.
 type TransitionInhibitionDeclaration { member: NonEmptyStr }
 
 data transition_inhibition_slots: TransitionInhibitionDeclaration = TransitionInhibitionDeclaration {
   member: "transition-inhibition.json" as NonEmptyStr,
-}
-
-fn transition_inhibition_path(instance: HostDashboardInstance) -> String {
-  join([instance.instance_root as String, "/", transition_inhibition_slots.member as String], "")
 }
 
 // What a store write answers. The refusal detail names the path, because the host's error is about the path and

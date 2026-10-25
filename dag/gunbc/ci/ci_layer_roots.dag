@@ -602,6 +602,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_tempdir_write_dissolve},
   WitnessExclusionRow {
+    pattern: "posix_quoted_remote_word_real_execution_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_tempdir_write_dissolve},
+  WitnessExclusionRow {
     pattern: "site_pxe_edge_chainloader_real_execution_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,

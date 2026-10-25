@@ -12,7 +12,7 @@ import gunbc.deploy_transition_store {
   TransitionInhibitionStoreReady,
   TransitionInhibitionStoreUnready,
   transition_inhibition_store,
-  transition_inhibition_path,
+  transition_inhibition_store_path,
   TransitionContext,
   TransitionContextReading,
   TransitionContextReady,
@@ -615,7 +615,7 @@ test fn the_durable_records_sit_outside_the_repository_they_protect() -> Process
     TransitionContextUnready { detail: d } => failed(test: t, reason: join(["the context mint refused: ", d], ""))
     TransitionContextReady { context: c } => {
       let lease = cas_file_slot_path(root: c.lease.root, key: transition_lease_slots.member, generation: cas_generation_first())
-      let inhibition = transition_inhibition_path(instance: instance)
+      let inhibition = transition_inhibition_store_path(store: c.inhibition)
       if lease != inhibition
         && !string_contains(s: lease, pattern: repo)
         && !string_contains(s: inhibition, pattern: repo)
