@@ -42,24 +42,6 @@ fn install_media_store_path(tree: HostStateTree) -> NonEmptyStr {
   join([host_state_tree_path(tree: tree) as String, "/", install_media_slots.member as String], "") as NonEmptyStr
 }
 
-// THE ONE FORMULATION OF A MEDIA PATH, used by both the tree-based and the record-based routes so the
-// two cannot drift: it is the upstream module's own path function (extdeps carries the filename fact),
-// fed the derived root -- no second concatenation exists.
-fn install_media_path_under(root: NonEmptyStr, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
-  ubuntu_install_media_install_path(dir: root, artifact: artifact)
-}
-
-// THE OLD FORMULATION, kept verbatim as the byte-for-byte reference for the readback witness: this is
-// what the deleted gunbc-side trio computed (dir from the deleted artifacts_dir(), the filename joined
-// by extdeps). The witness writes bytes with THIS expression and reads them back through the sealed
-// store's paths -- the on-disk names are the same because both routes join identically.
-fn install_media_pre_cutover_install_path(root: NonEmptyStr, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
-  concat(
-    concat(root as String, "/"),
-    ubuntu_install_media_filename(artifact: artifact) as String,
-  ) as NonEmptyStr
-}
-
 // THE SEALED STORE (the operator's sealed-store shape): data only, sole_constructor, non-generic, never
 // a variant arm (the seal does not reach those: test.claim.sole_constructor_completeness_audit_probe
 // f13/f19). Construction is sealed to install_media_store below; the rung claimed here is construction
@@ -93,10 +75,10 @@ fn install_media_store_on_production_host() -> InstallMediaStoreReading {
 }
 
 // THE BUSINESS PATHS. The install path of a row is the store root plus the row's cited filename; the
-// `.part` sibling is the staging path of the same file. The record-based pair is what the fetch and the
-// seeded publication use -- a holder of the sealed record cannot be pointed at another directory.
+// `.part` sibling is the staging path of the same file. The root reaches the upstream join only from
+// INSIDE this module -- a caller chooses a sealed record or a sealed tree, never a directory.
 fn install_media_install_path(store: InstallMediaStore, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
-  install_media_path_under(root: store.root, artifact: artifact)
+  ubuntu_install_media_install_path(dir: store.root, artifact: artifact)
 }
 
 fn install_media_part_path(store: InstallMediaStore, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
@@ -106,7 +88,7 @@ fn install_media_part_path(store: InstallMediaStore, artifact: UbuntuInstallMedi
 // THE TREE-BASED PAIR, for pure path shapes (module data rows, the seeded write boundary): the same
 // formulation over the derived root.
 fn install_media_install_path_on_tree(tree: HostStateTree, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
-  install_media_path_under(root: install_media_store_path(tree: tree), artifact: artifact)
+  ubuntu_install_media_install_path(dir: install_media_store_path(tree: tree), artifact: artifact)
 }
 
 fn install_media_part_path_on_tree(tree: HostStateTree, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {

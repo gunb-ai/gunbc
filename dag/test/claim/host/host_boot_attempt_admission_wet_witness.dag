@@ -54,6 +54,7 @@ fn refused_as_consumed(cause: AttemptReceiptRefusal) -> Bool {
     ReceiptHostHasNoRoute { host: _ } => false
     ReceiptExecutorForAnotherHost { executor_host: _, bound: _ } => false
     ReceiptExecutorNotOnStoreHost { reason: _ } => false
+    ReceiptAttemptStoreUnready { detail: _ } => false
     ReceiptHostUnbound { detail: _ } => false
     ReceiptNonceMissing { variable: _, detail: _ } => false
     ReceiptNonceNotSlotSafe { nonce: _ } => false
