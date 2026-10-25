@@ -13,3 +13,8 @@
 node_dag_sweep|src/v2/std/node.dag
 infer_dag_sweep|src/v2/compiler/infer.dag
 refuse_escaped_path|../outside_repository.dag
+# lexical_scope_sweep exercises the EDIT-row shape: the file's std.algebra import binds none of the
+# ruling-B shapes its bare concat/join calls need, so the sweep must emit EDIT rows recomputing that
+# block. node.dag and infer.dag are sweep-CLEAN (their imports already carry every needed shape),
+# so only this case can tell an empty-but-correct report from a sweep that silently did nothing.
+lexical_scope_sweep|src/v2/test/claim/lexical_scope.dag
