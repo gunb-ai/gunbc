@@ -4,6 +4,7 @@ import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port }
 import std.measure { second }
 import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, serialize_json }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.proxy.openresty {
@@ -271,17 +272,22 @@ fn upstream_scheme_text(s: RouterUpstreamScheme) -> String {
   match s { UpstreamHttp => "http" UpstreamHttps => "https" }
 }
 
-// A JSON string literal (RFC 8259 section 7): the backslash and the quote are escaped; a control
-// character has no place in a name, host or model id, so a row carrying one is a defect upstream of here.
-fn json_string(s: String) -> String {
-  "\"" + join(split(s: join(split(s: s, delimiter: "\\"), "\\\\"), delimiter: "\""), "\\\"") + "\""
+// One upstream row as a JsonValue, rendered by the repository's JSON emitter (extdeps.languages.json.emit),
+// which escapes every string from its named and control-character escape rows.
+fn router_dev_upstream_value(u: RouterDevUpstream) -> JsonValue {
+  let tls = match u.tls_name { Present { value: n } => [json_kv(key: "sni", value: json_string(s: n))] Absent => no_members() }
+  json_object(members: concat(concat([
+    json_kv(key: "name", value: json_string(s: u.name)),
+    json_kv(key: "scheme", value: json_string(s: upstream_scheme_text(s: u.scheme))),
+    json_kv(key: "host", value: json_string(s: u.host)),
+    json_kv(key: "port", value: json_int(n: u.port as Int)),
+  ], tls), [
+    json_kv(key: "model", value: json_string(s: u.model)),
+    json_kv(key: "cap", value: json_int(n: u.cap)),
+  ]))
 }
 
-fn router_dev_upstream_json(u: RouterDevUpstream) -> String {
-  let tls = match u.tls_name { Present { value: n } => ",\"sni\":" + json_string(s: n) Absent => "" }
-  "\{\"name\":" + json_string(s: u.name) + ",\"scheme\":" + json_string(s: upstream_scheme_text(s: u.scheme)) + ",\"host\":" + json_string(s: u.host)
-    + ",\"port\":" + to_string(u.port as Int) + tls + ",\"model\":" + json_string(s: u.model) + ",\"cap\":" + to_string(u.cap) + "}"
-}
+fn no_members() -> List<JsonKeyValue> { [] }
 
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
   [
@@ -291,7 +297,7 @@ fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
 }
 
 fn router_dev_first_party_json() -> String {
-  "[" + join(map(router_dev_first_party_upstreams(), u => router_dev_upstream_json(u: u)), ",") + "]"
+  serialize_json(v: json_array(elements: map(router_dev_first_party_upstreams(), u => router_dev_upstream_value(u: u))))
 }
 
 // The deploy's second render step: the first-party rows, without keys, for the deploy to join keys into
