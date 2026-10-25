@@ -1,0 +1,37 @@
+module extdeps.ssh.openssh_remote_command
+
+import std.types { List, String }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+
+// WHAT OpenSSH DOES WITH A REMOTE COMMAND, as its source states it at V_9_6_P1 (the release Ubuntu 24.04 ships).
+// Client, ssh.c main(): when arguments follow the destination, "A command has been specified. Store it into the
+// buffer." -- each argument is appended with sshbuf_putf(command, "%s%s", i ? " " : "", av[i]), i.e. the arguments
+// are joined by single spaces, with nothing quoted or escaped, into ONE string sent in the exec request.
+// Server, session.c do_child(): "Execute the command using the user's shell. This uses the -c option to execute the
+// command." -- execve(shell, { shell0, "-c", command, NULL }), shell being the user's login shell from passwd.
+// So the remote words a client hands ssh after `--` reach the remote side as exactly one login-shell re-parse of
+// their space-joined string; that string is what a quoting route has to be correct against.
+data openssh_client_command_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openssh/openssh-portable/blob/V_9_6_P1/ssh.c"
+  }
+}
+
+data openssh_server_command_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openssh/openssh-portable/blob/V_9_6_P1/session.c"
+  }
+}
+
+// The client's join (ssh.c): the arguments after the destination, space-separated, unquoted.
+fn openssh_remote_command_string(arguments: List<String>) -> String {
+  join(arguments, " ")
+}
+
+// The server's execution (session.c do_child): the login shell, -c, the command string.
+fn openssh_remote_command_execution(login_shell: String, command: String) -> List<String> {
+  [login_shell, "-c", command]
+}

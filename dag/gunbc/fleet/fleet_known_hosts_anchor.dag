@@ -755,9 +755,16 @@ data posix_quoting_authority: ExternalAuthority = ExternalAuthority {
 // fish, a nologin) refuses the quoted route; it is not guessed compatible.
 data posix_login_shell_paths: List<String> = ["/bin/sh", "/usr/bin/sh", "/bin/bash", "/usr/bin/bash", "/bin/dash", "/usr/bin/dash"]
 
+// THE PROOF IS BOUND TO THE TARGET IT WAS READ FROM (address and principal), and the only route that uses it reads it
+// in the same call (gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_posix), so a proof read before a login-shell
+// change, or for another host, never authorizes a quoted leg.
 type PosixLoginShellProof sole_constructor {
-  principal: NonEmptyStr
+  target: SshTarget
   shell: NonEmptyStr
+}
+
+fn posix_proof_admits(proof: PosixLoginShellProof, target: SshTarget) -> Bool {
+  proof.target == target
 }
 
 type LoginShellStanding
@@ -765,9 +772,10 @@ type LoginShellStanding
   | LoginShellNotPosix { principal: NonEmptyStr, shell: String }
   | LoginShellUnreadable { principal: NonEmptyStr, reason: String }
 
-// THE ONE MINT OF THE PROOF: stdout of `getent passwd <principal>` (name:passwd:uid:gid:gecos:home:shell). The entry
-// must be the principal's own and carry exactly seven fields; its seventh is the login shell.
-fn login_shell_standing(principal: NonEmptyStr, success: Bool, output: String) -> LoginShellStanding {
+// THE ONE MINT OF THE PROOF: stdout of `getent passwd <principal>` (name:passwd:uid:gid:gecos:home:shell) as read from
+// `target`. The entry must be the target principal's own and carry exactly seven fields; its seventh is the login shell.
+fn login_shell_standing(target: SshTarget, success: Bool, output: String) -> LoginShellStanding {
+  let principal = target.principal
   if success == false {
     LoginShellUnreadable { principal: principal, reason: "getent passwd did not answer for this principal" }
   } else {
@@ -785,7 +793,7 @@ fn login_shell_standing(principal: NonEmptyStr, success: Bool, output: String) -
               Absent => LoginShellUnreadable { principal: principal, reason: "the passwd entry has no shell field" }
               Present { value: shell } =>
                 if any(posix_login_shell_paths, p => p == shell) && shell != "" {
-                  LoginShellPosix { proof: PosixLoginShellProof { principal: principal, shell: shell as NonEmptyStr } }
+                  LoginShellPosix { proof: PosixLoginShellProof { target: target, shell: shell as NonEmptyStr } }
                 } else {
                   LoginShellNotPosix { principal: principal, shell: shell }
                 }
@@ -857,9 +865,9 @@ data remote_word_quoting_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "typed_argv_exec_over_fleet_ssh_posix"),
-    reason: "no fleet leg runs a quoted word yet; its first consumer is the srv4 placement step, which names the 24.04.3 ISO's pool .debs (versions carrying '+')",
+    reason: "no fleet leg runs a quoted word yet; its first consumer is the srv4 placement step, which names the 24.04.3 ISO's pool .debs (versions carrying '+'). The final remote string is proven structurally (extdeps.ssh.openssh_remote_command, cited to OpenSSH V_9_6_P1) and executed under a real login shell locally; it has not crossed a live sshd",
     dissolution: unbound_dissolution(
-      description: "dissolves when a site_pxe_edge_converge apply dispatch on srv4 runs a leg with a quoted word through typed_argv_exec_over_fleet_ssh_posix under a proof read in that run, and the placed member's sha256 readback agrees with its pin; a hermetic rendering check does not fire this"
+      description: "dissolves when a site_pxe_edge_converge apply dispatch on srv4 runs a leg with a quoted word through typed_argv_exec_over_fleet_ssh_posix, the proof read inside that call, and the placed member's sha256 readback agrees with its pin; a hermetic rendering check does not fire this"
     )
   ),
   frontier_row_decl(

@@ -1,8 +1,15 @@
 module test.claim.fleet.posix_quoted_remote_word_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.ssh.openssh_remote_command { openssh_remote_command_string, openssh_remote_command_execution }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTarget,
+  SshTargetResolved,
+  SshTargetRefused,
+  fleet_ssh_target_at_standard_port,
+  shape_ssh_shell_exec,
+  posix_proof_admits,
   PosixLoginShellProof,
   LoginShellStanding,
   LoginShellPosix,
@@ -25,8 +32,22 @@ fn proof_or_fail(standing: LoginShellStanding, claim: fn(PosixLoginShellProof) -
   }
 }
 
+fn target_at(endpoint: String, principal: String) -> SshTarget? {
+  match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: principal as NonEmptyStr) {
+    SshTargetResolved { target: t } => Present { value: t }
+    SshTargetRefused { endpoint: _, refusal: _ } => Absent
+  }
+}
+
+fn with_target(endpoint: String, principal: String, claim: fn(SshTarget) -> Bool) -> Bool {
+  match target_at(endpoint: endpoint, principal: principal) {
+    Present { value: t } => claim(t)
+    Absent => false
+  }
+}
+
 fn bash_proof(claim: fn(PosixLoginShellProof) -> Bool) -> Bool {
-  proof_or_fail(standing: login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash\n"), claim: claim)
+  with_target(endpoint: "192.0.2.10", principal: "ubuntu", claim: t => proof_or_fail(standing: login_shell_standing(target: t, success: true, output: "ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash\n"), claim: claim))
 }
 
 fn rendered(raw: String, p: PosixLoginShellProof) -> String {
@@ -84,31 +105,60 @@ test fn nul_newline_and_carriage_return_refuse() -> Bool {
 // THE PROOF IS READ, NOT ASSUMED: a POSIX shell mints it; a non-POSIX shell, another principal's entry, a truncated
 // entry, two entries (an NSS answer with more than one line) and a failed read do not.
 test fn only_the_principals_own_posix_passwd_entry_mints_the_proof() -> Bool {
-  bash_proof(claim: p => (p.shell as String) == "/bin/bash" && (p.principal as String) == "ubuntu")
-    && proof_or_fail(standing: login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/bin/sh"), claim: p => (p.shell as String) == "/bin/sh")
-    && (match login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/usr/bin/zsh\n") {
+  with_target(endpoint: "192.0.2.10", principal: "ubuntu", claim: t =>
+  bash_proof(claim: p => (p.shell as String) == "/bin/bash" && (p.target.principal as String) == "ubuntu")
+    && proof_or_fail(standing: login_shell_standing(target: t, success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/bin/sh"), claim: p => (p.shell as String) == "/bin/sh")
+    && (match login_shell_standing(target: t, success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/usr/bin/zsh\n") {
       LoginShellNotPosix { principal: _, shell: s } => s == "/usr/bin/zsh"
       LoginShellPosix { proof: _ } => false
       LoginShellUnreadable { principal: _, reason: _ } => false
     })
-    && (match login_shell_standing(principal: "ubuntu", success: true, output: "root:x:0:0:root:/root:/bin/bash\n") {
+    && (match login_shell_standing(target: t, success: true, output: "root:x:0:0:root:/root:/bin/bash\n") {
       LoginShellUnreadable { principal: _, reason: _ } => true
       LoginShellPosix { proof: _ } => false
       LoginShellNotPosix { principal: _, shell: _ } => false
     })
-    && (match login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000:/bin/bash\n") {
+    && (match login_shell_standing(target: t, success: true, output: "ubuntu:x:1000:1000:/bin/bash\n") {
       LoginShellUnreadable { principal: _, reason: _ } => true
       LoginShellPosix { proof: _ } => false
       LoginShellNotPosix { principal: _, shell: _ } => false
     })
-    && (match login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/bin/bash\nubuntu:x:1001:1001::/home/u2:/bin/bash\n") {
+    && (match login_shell_standing(target: t, success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/bin/bash\nubuntu:x:1001:1001::/home/u2:/bin/bash\n") {
       LoginShellUnreadable { principal: _, reason: _ } => true
       LoginShellPosix { proof: _ } => false
       LoginShellNotPosix { principal: _, shell: _ } => false
     })
-    && (match login_shell_standing(principal: "ubuntu", success: false, output: "") {
+    && (match login_shell_standing(target: t, success: false, output: "") {
       LoginShellUnreadable { principal: _, reason: _ } => true
       LoginShellPosix { proof: _ } => false
       LoginShellNotPosix { principal: _, shell: _ } => false
     })
+  )
+}
+
+
+// FRESHNESS RED (merry-fox-82 hold 1): a proof binds the target it was read from, so it does not admit a leg to another
+// principal on the same host, nor the same principal on another host.
+test fn a_proof_admits_only_the_target_it_was_read_from() -> Bool {
+  bash_proof(claim: p =>
+    posix_proof_admits(proof: p, target: p.target)
+      && with_target(endpoint: "192.0.2.10", principal: "root", claim: other => posix_proof_admits(proof: p, target: other) == false)
+      && with_target(endpoint: "192.0.2.11", principal: "ubuntu", claim: other => posix_proof_admits(proof: p, target: other) == false)
+  )
+}
+
+// THE FINAL STRING, STRUCTURALLY (merry-fox-82 hold 2): the fleet shaper hands ssh the rendered words verbatim after
+// `--`, OpenSSH joins the arguments after the destination with single spaces (extdeps.ssh.openssh_remote_command, ssh.c
+// V_9_6_P1), and sshd runs that string as the login shell's -c argument (session.c). So the string the remote shell
+// parses is exactly openssh_remote_command_string of the rendered words.
+test fn the_final_remote_string_is_the_space_join_of_the_rendered_words() -> Bool {
+  bash_proof(claim: p => match posix_quoted_remote_words(raws: ["dpkg-deb", "-x", "a b+c.deb", "/tmp/x"], shell: p) {
+    Absent => false
+    Present { value: words } => {
+      let rendered = portable_remote_words_strings(words: words)
+      shape_ssh_shell_exec(host: "192.0.2.10", argv: rendered) == concat(["192.0.2.10", "--"], rendered)
+        && openssh_remote_command_string(arguments: rendered) == "dpkg-deb -x 'a b+c.deb' /tmp/x"
+        && openssh_remote_command_execution(login_shell: p.shell as String, command: openssh_remote_command_string(arguments: rendered)) == ["/bin/bash", "-c", "dpkg-deb -x 'a b+c.deb' /tmp/x"]
+    }
+  })
 }
