@@ -37,11 +37,12 @@ import gunbc.runner.runner_slot_actuation { slot_is_masked }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
-import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonBool, JsonArray, serialize_json, json_object, json_kv, json_string, json_bool, json_array }
+import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, serialize_json, json_object, json_kv, json_string, json_bool, json_int, json_array }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound }
 import extdeps.systemd.systemctl { systemctl_mask_argv, systemctl_stop_argv }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import gunbc.fleet.fleet_workflow_steps { gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
@@ -56,6 +57,7 @@ import extdeps.linux.proc_self_cgroup { read_unified_cgroup_membership, CurrentC
 import gunbc.runner.runner_unit { NotARunnerUnit, RunnerUnitInstanceMalformed, RunnerUnitInstance, read_runner_unit_name, runner_unit_name_of_registration }
 import extdeps.github.actions_environment { github_runner_name_variable_name }
 import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound }
+import gunbc.runner.runner_slot_cap_converge { HolderDeferralLedger, LedgerFresh, LedgerCount, LedgerUnwritable }, SlotCapOutcome, SlotCapsSelfAtDesired, SlotCapsSelfDeferred
 
 // THE DRAIN BRACKET OVER ONE HOST, AS A PURE STEP MACHINE PLUS THE THREE EFFECTS IT SEQUENCES.
 //
@@ -1126,5 +1128,160 @@ fn acquire_bracket_over(target: SshTarget, context: FleetSshExecutionContext, ho
         Present { value: why } => BracketNotAcquired { refusal: BracketRefusedObligationNotRecorded { cause: why } }
         Absent => BracketAcquired { owned: owned }
       }
+  }
+}
+
+// ── The holder deferral ledger ─────────────────────────────────────────────────────────────────
+
+// THE COUNT THAT BOUNDS THE HOLDER'S DEFERRAL (review 86146, finding 2; DESIGN §4b meta-obligation 2: a
+// class below ceiling names its next-rung trigger; §5: a degradation is countable, never quietly success).
+// A DEFERRED-SELF holder is owed a bracket from a pass dispatched on ANOTHER slot; if placement keeps
+// landing every pass on this same slot, the deferral must not be a permanent green. The count lives on the
+// HOST, next to the obligation file and under the same RUNNER_TEMP key -- a per-run file could not carry
+// state across passes, and that is exactly the state this ledger exists to carry. It is keyed to the
+// HOST AND THE UNIT: slot 02's debt is not slot 03's. A pass that finds the holder at desired DELETES the
+// file (convergence clears the debt); a pass that finds it owed increments the count; past the fleet bound
+// the cap module turns the same reading into a REFUSAL. A ledger this pass cannot read or write -- no
+// RUNNER_TEMP, an unreadable file -- yields an UNCOUNTED deferral, typed as such: uncounted is greppable
+// and red-flagged on the wire, never silently treated as counted or unbounded.
+data HolderDeferralLedgerFile {
+  key: String
+  deferred_passes: Int
+}
+
+data holder_deferral_ledger_file_name: String = "runner-host-cap-holder-deferral"
+
+fn holder_deferral_ledger_key(host: String, unit: String) -> String {
+  join(["host=", host, " unit=", unit], "")
+}
+
+// THE LEDGER LIVES IN THE HOLDER'S OWN SLOT DIRECTORY (/opt/actions-runner/<instance>/), NOT RUNNER_TEMP.
+// RUNNER_TEMP is per-run and cleaned between runs, so a count kept there resets on every pass and the
+// bound below could never fire -- the very hole the bound exists to close. The slot directory is durable,
+// per-unit, and is the same tree the pass already reads (.runner_path) and the same account owns. An
+// instance the unit does not name has no directory and no ledger: that is unwritable, not fresh.
+fn holder_deferral_ledger_path(unit: NonEmptyStr) -> String?
+{
+  match read_runner_unit_name(observed: unit) {
+    RunnerUnitInstance { registration_name: i } => Present { value: join([actions_runner_base_dir, "/", i as String, "/", holder_deferral_ledger_file_name], "") }
+    RunnerUnitInstanceMalformed { observed: _, cause: _ } => none
+    NotARunnerUnit { observed: _ } => none
+  }
+}
+
+fn holder_deferral_ledger_text(o: HolderDeferralLedgerFile) -> String {
+  serialize_json(v: json_object(members: [json_kv(key: "key", value: json_string(s: o.key)), json_kv(key: "deferred_passes", value: json_int(n: o.deferred_passes))]))
+}
+
+type HolderDeferralLedgerReading
+  = LedgerReadingAbsent
+  | LedgerReadingHeld { passes: Int }
+  | LedgerReadingStale { found: String }
+  | LedgerReadingUnreadable { cause: String }
+
+fn holder_deferral_ledger_reading_of_text(text: String, expected_key: String) -> HolderDeferralLedgerReading {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => LedgerReadingUnreadable { cause: concat("the deferral ledger is not a JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: doc } =>
+      match doc {
+        JsonObject { members: ms } =>
+          if length(ms) != 2 {
+            LedgerReadingUnreadable { cause: "the deferral ledger does not carry exactly the members key and deferred_passes" }
+          } else {
+            match json_object_unique_member(v: doc, key: "key") {
+              JsonMemberFound { value: JsonString { value: k } } =>
+                if k != expected_key {
+                  LedgerReadingStale { found: k }
+                } else {
+                  match json_object_unique_member(v: doc, key: "deferred_passes") {
+                    JsonMemberFound { value: JsonNumber { lexeme: l } } =>
+                      match parse_int(s: l) {
+                        Present { value: n } => if n < 0 { LedgerReadingUnreadable { cause: "the deferral ledger counts a negative number of passes" } } else { LedgerReadingHeld { passes: n } }
+                        Absent => LedgerReadingUnreadable { cause: concat("the deferral ledger's deferred_passes is not an integer: ", l) }
+                      }
+                    _ => LedgerReadingUnreadable { cause: "the deferral ledger's deferred_passes member is missing, duplicated or not a number" }
+                  }
+                }
+              _ => LedgerReadingUnreadable { cause: "the deferral ledger's key member is missing, duplicated or not a string" }
+            }
+          }
+        _ => LedgerReadingUnreadable { cause: "the deferral ledger is not a JSON object" }
+      }
+  }
+}
+
+fn holder_deferral_ledger_reading_of(observation: FilesystemFileObservation, expected_key: String) -> HolderDeferralLedgerReading {
+  match observation {
+    FilesystemFileAbsent(_) => LedgerReadingAbsent
+    FilesystemFileRead { path: _, content: c } => holder_deferral_ledger_reading_of_text(text: c, expected_key: expected_key)
+    FilesystemFileIndeterminate { cause: c } => LedgerReadingUnreadable { cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => LedgerReadingUnreadable { cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => LedgerReadingUnreadable { cause: c }
+  }
+}
+
+// THE LEDGER READING, FOLDED TO THE CAP MODULE'S INPUT. Stale and unreadable both become UNCOUNTED (with
+// the cause named), never Fresh: a file that exists but cannot be trusted says the host HAS deferral
+// state this pass cannot see, and pretending freshness would restart the bound for free.
+fn holder_deferral_ledger_read(host: String, unit: NonEmptyStr) -> HolderDeferralLedger
+{
+  let key = holder_deferral_ledger_key(host: host, unit: unit as String)
+  match holder_deferral_ledger_path(unit: unit) {
+    Absent => LedgerUnwritable { cause: "the holder unit names no parseable slot instance, so it has no slot directory to carry a deferral ledger" }
+    Present { value: path } =>
+      match holder_deferral_ledger_reading_of(observation: filesystem_file_observation_of_path(path: path), expected_key: key) {
+        LedgerReadingAbsent => LedgerFresh
+        LedgerReadingHeld { passes: n } => LedgerCount { prior: n }
+        LedgerReadingStale { found: k } => LedgerUnwritable { cause: concat("the ledger on this host belongs to another subject: ", k) }
+        LedgerReadingUnreadable { cause: c } => LedgerUnwritable { cause: c }
+      }
+  }
+}
+
+// RECORDING ONE MORE DEFERRED PASS, OR CLEARING THE DEBT. Both return a cause instead of raising: a
+// ledger that cannot be written makes the NEXT pass's reading uncounted, which the wire already names;
+// it must never itself be the reason a cap phase withholds.
+fn holder_deferral_ledger_record(host: String, unit: NonEmptyStr, passes: Int) -> String?
+{
+  match holder_deferral_ledger_path(unit: unit) {
+    Absent => Present { value: "RUNNER_TEMP is unset" }
+    Present { value: path } => {
+      let w = Filesystem.Write(path: path, content: holder_deferral_ledger_text(o: HolderDeferralLedgerFile { key: holder_deferral_ledger_key(host: host, unit: unit as String), deferred_passes: passes }))
+      if w.success { none } else { Present { value: w.error } }
+    }
+  }
+}
+
+fn holder_deferral_ledger_clear(host: String, unit: NonEmptyStr) -> String?
+{
+  match holder_deferral_ledger_path(unit: unit) {
+    Absent => none
+    Present { value: path } =>
+      match Filesystem.Delete(path: path) {
+        FilesystemDeleted { path: _ } => none
+        FilesystemDeleteTargetAbsent { path: _ } => none
+        FilesystemDeleteRefused { path: p, kind: _, error: e } => Present { value: join(["delete of ", p, " refused: ", e], "") }
+        FilesystemDeleteKindUnrecognized { path: p, observed: o, error: e } => Present { value: join(["delete of ", p, " refused (kind ", o, "): ", e], "") }
+      }
+  }
+}
+
+// THE LEDGER STEP THE DRIVER RUNS AROUND THE HOLDER'S VERDICT. One place decides what the host's count
+// does for each verdict shape: converged clears the debt; deferred counts one more pass (from whatever
+// the read said, fresh = 1); ANY refusal -- unread cgroup, or the bound having blown -- leaves the count
+// exactly as it was: a refusal is not a pass where progress was possible, and a blown bound must stay red
+// until something actually changes. Returns a cause when the bookkeeping itself could not land; the
+// driver reports it on the wire but never lets it change the verdict.
+fn holder_ledger_after_verdict(host: String, unit: NonEmptyStr, verdict: SlotCapOutcome, ledger: HolderDeferralLedger) -> String?
+{
+  match verdict {
+    SlotCapsSelfAtDesired { unit: _ } => holder_deferral_ledger_clear(host: host, unit: unit)
+    SlotCapsSelfDeferred { unit: _, detail: _ } =>
+      match ledger {
+        LedgerCount { prior: p } => holder_deferral_ledger_record(host: host, unit: unit, passes: p + 1)
+        LedgerFresh => holder_deferral_ledger_record(host: host, unit: unit, passes: 1)
+        LedgerUnwritable { cause: _ } => none
+      }
+    _ => none
   }
 }

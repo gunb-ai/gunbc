@@ -46,6 +46,12 @@ import gunbc.runner.runner_slot_cap_converge {
   slot_cap_outcome_host_settled,
   slot_cap_outcome_wire,
   slot_cap_holder_standing,
+  slot_cap_holder_deferral_outcome,
+  HolderDeferralLedger,
+  LedgerFresh,
+  LedgerCount,
+  LedgerUnwritable,
+  slot_cap_holder_deferral_bound,
 }
 import gunbc.runner.runner_host_file_converge {
   runner_host_cap_files,
@@ -680,4 +686,59 @@ test fn a_ran_phase_with_a_deferred_holder_settles_and_lists_the_debt() -> Bool 
     && !slot_cap_outcome_settled(o: deferred)
     && string_contains(s: runner_host_cap_phase_text(phase: ran_with(rl: ManagerReloaded, slots: [SlotCapsRestartedAndRead { unit: unit(n: "01") }, deferred])), pattern: "actions-runner@srv3-02.service")
     && !runner_host_cap_phase_settled(phase: ran_with(rl: ManagerReloaded, slots: [SlotCapsRefused { unit: unit(n: "01"), step: "live-readback", reason: "x" }]))
+}
+
+// THE BOUND, CLAIMED (DESIGN §4b meta-obligation 2 / §5, review 86146): a deferral must name its
+// next-rung trigger AND be countable. The host ledger (runner_host_cap_bracket) carries the count;
+// this fold turns each count into a typed verdict: under the bound, deferred with the pass number;
+// AT the bound, a REFUSAL -- red, unsettled at both levels, obligation held -- because a holder that
+// has been deferred across the bound's worth of passes means the next rung was never taken (placement
+// is stuck on this slot, or the reload does not apply caps to live cgroups: only an operator, with
+// set-property as break-glass, stands between this and a bracket from another slot).
+fn owed_live() -> SlotCapLive {
+  holder_live(max: "27917287424", swap: "34359738368", high: Present { value: "34359738368\n" })
+}
+
+test fn the_first_deferral_counts_pass_one_of_the_bound() -> Bool {
+  match slot_cap_holder_deferral_outcome(ledger: LedgerFresh, unit: unit(n: "02"), live: owed_live(), desired: desired()) {
+    SlotCapsSelfDeferred { unit: u, detail: d } =>
+      (u as String) == "actions-runner@srv3-02.service"
+        && string_contains(s: d, pattern: "pass 1 of 3")
+        && string_contains(s: d, pattern: "DIFFERENT slot")
+    _ => false
+  }
+}
+
+test fn the_last_deferral_before_the_bound_still_defers_and_says_so() -> Bool {
+  match slot_cap_holder_deferral_outcome(ledger: LedgerCount { prior: slot_cap_holder_deferral_bound - 1 }, unit: unit(n: "02"), live: owed_live(), desired: desired()) {
+    SlotCapsSelfDeferred { unit: _, detail: d } => string_contains(s: d, pattern: concat("pass ", to_string(slot_cap_holder_deferral_bound), " of ", to_string(slot_cap_holder_deferral_bound)))
+    _ => false
+  }
+}
+
+// RED AT THE BOUND: no more green deferral. Refused, unsettled at both levels, and the reason says
+// how many passes were spent and what the operator's options are.
+test fn a_holder_deferred_past_the_bound_is_refused_not_deferred() -> Bool {
+  let r = slot_cap_holder_deferral_outcome(ledger: LedgerCount { prior: slot_cap_holder_deferral_bound }, unit: unit(n: "02"), live: owed_live(), desired: desired())
+  match r {
+    SlotCapsRefused { unit: u, step: s, reason: why } =>
+      (u as String) == "actions-runner@srv3-02.service"
+        && s == "holder-live-read"
+        && !slot_cap_outcome_settled(o: r)
+        && !slot_cap_outcome_host_settled(o: r)
+        && string_contains(s: why, pattern: "3 consecutive passes")
+        && string_contains(s: why, pattern: "break-glass")
+    _ => false
+  }
+}
+
+// AN UNCOUNTED DEFERRAL SAYS SO LOUDLY: an unwritable ledger still defers (the next pass from another
+// slot is still the right rung) but the detail carries DEFERRAL UNCOUNTED with its cause, so no one
+// mistakes an unbounded deferral for a bounded one.
+test fn an_unwritable_ledger_defers_but_announces_it_is_uncounted() -> Bool {
+  match slot_cap_holder_deferral_outcome(ledger: LedgerUnwritable { cause: "no slot directory" }, unit: unit(n: "02"), live: owed_live(), desired: desired()) {
+    SlotCapsSelfDeferred { unit: _, detail: d } =>
+      string_contains(s: d, pattern: "DEFERRAL UNCOUNTED") && string_contains(s: d, pattern: "no slot directory")
+    _ => false
+  }
 }
