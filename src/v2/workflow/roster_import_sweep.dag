@@ -3410,6 +3410,7 @@ fn roster_rename_control_names() -> List<String> {
     "wave-duplicate-keys",
     "wave-leg-overlap",
     "wave-wrong-binding",
+    "wave-prefix-home",
     "wave-candidate-wrong-binding",
     "wave-applies-text",
     "wave-applies-half-imported",
@@ -3563,6 +3564,15 @@ fn roster_wave_control_double_binding() -> String {
   "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\nimport std.types { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { to_string(value: v) + to_string(value: n) }\n"
 }
 
+fn roster_wave_control_prefix_home() -> String {
+  // RED PROOF (port of ad8885f4380's control onto the parent generator bb58e243f13, which carries the DEFECTIVE
+  // prefix accept (t == h) || starts_with(h + ".")): the nat row's name is visible from std.nat AND bound from
+  // std.nat.compat -- a different module whose qualified name merely starts with "std.nat.". The prefix accept calls
+  // it same-home, so no refusal fires and the wave PLANS a rename onto the ambiguous spelling -- exactly the silent
+  // retarget the admission exists to stop. Expected here: CONTROL-FAIL (got a plan, want REFUSE).
+  "module c.wave\n\nimport std.nat { nat_to_decimal_string }\nimport std.nat.compat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { to_string(value: v) + to_string(value: n) }\n"
+}
+
 fn roster_wave_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
   let plain = roster_wave_control_plain()
   let named = roster_wave_control_named()
@@ -3587,7 +3597,8 @@ fn roster_wave_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules
   roster_control_verdict(name: "wave-applies-text", fail: roster_wave_control_expect_applied(name: "wave-applies-text", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat, b: Bool) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) + to_string(b) }\n", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-applies-half-imported", fail: roster_wave_control_expect_applied(name: "wave-applies-half-imported", fixture: int_imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) }\n", prepared: prepared, lex: lex))]
   let imported_labels = roster_control_verdict(name: "wave-imported-labels", fail: roster_wave_control_expect(name: "wave-imported-labels", fixture: imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:43"], nk: ["control/wave.dag:6:58"]), want: "LABEL control/wave.dag 144 153 to_string int_to_decimal_string\nLABEL control/wave.dag 154 154  value: \nLABEL control/wave.dag 159 168 to_string nat_to_decimal_string\nLABEL control/wave.dag 169 169  value: \n", prepared: prepared, lex: lex))
-  let partial = list_snoc_item(xs: [], item: imported_labels)
+  let prefix_home = roster_control_verdict(name: "wave-prefix-home", fail: roster_wave_control_expect_refusal(name: "wave-prefix-home", fixture: roster_wave_control_prefix_home(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=nat_to_decimal_string expected-home=std.nat bound-home=std.nat.compat.nat_to_decimal_string", prepared: prepared, lex: lex))
+  let partial = list_snoc_item(xs: list_snoc_item(xs: [], item: imported_labels), item: prefix_home)
   list_append(left: full, right: partial)
 }
 
