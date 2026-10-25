@@ -271,7 +271,7 @@ import v2.compiler.dependency_demand {
   OperationFact,
 }
 import v2.compiler.decl_ref_census { LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
-import v2.compiler.effect_pair_census { BodyOrdered, EffectPairCensusReport, UnobservedRoot, effect_pair_census_exit, effect_pair_census_lines, effect_pair_census_of_module, effect_reach_table, module_ordered_bodies, not_derived_keys_of, unobserved_roots_add, use_edges_of }
+import v2.compiler.effect_pair_census { BodyOrdered, EffectPairCensusReport, ImporteeRefusedCause, ResolveRefusedCause, ResolveUnclassifiedCause, UnobservedRoot, effect_pair_census_exit, effect_pair_census_lines, effect_pair_census_of_module, effect_reach_table, module_ordered_bodies, not_derived_keys_of, unobserved_roots_add, use_edges_of }
 import v2.compiler.value_use_dependency { value_use_dispositions }
 import v2.compiler.dependency_demand_census {
   AuthoredRowReading,
@@ -5878,17 +5878,17 @@ type ModuleOrderedBodies {
 
 fn native_effect_pair_unobserved(w: NativeEffectPairCensusWalk, step: NativeTestResolved, module_qn: QualifiedName, d: NonEmptyDiagnostics) -> NativeEffectPairCensusWalk {
   let standing = native_demand_census_resolve_refused(context: step.context, module_qn: module_qn, authored: Empty, d: d)
-  let root = match standing {
-    DemandModuleImporteeRefused { authored: _, importee_file: f, importee_cause: c } => UnobservedRoot { root: symbol_lexeme(sym: f), cause: symbol_lexeme(sym: c), modules: 1, example: module_qn }
-    DemandModuleResolveRefused { authored: _, first_reason: r, first_unbound: _ } => UnobservedRoot { root: "resolve", cause: symbol_lexeme(sym: r), modules: 1, example: module_qn }
-    DemandModuleResolved { readings: _ } => UnobservedRoot { root: "resolve", cause: "unclassified", modules: 1, example: module_qn }
+  let cause = match standing {
+    DemandModuleImporteeRefused { authored: _, importee_file: f, importee_cause: c } => ImporteeRefusedCause { file: f, cause: c }
+    DemandModuleResolveRefused { authored: _, first_reason: r, first_unbound: _ } => ResolveRefusedCause { reason: r }
+    DemandModuleResolved { readings: _ } => ResolveUnclassifiedCause
   }
   NativeEffectPairCensusWalk {
     context: step.context,
     functions: w.functions,
     operations: w.operations,
     modules: w.modules,
-    roots: unobserved_roots_add(roots: w.roots, root: root.root, cause: root.cause, module: module_qn),
+    roots: unobserved_roots_add(roots: w.roots, cause: cause, module: module_qn),
     unobserved_modules: w.unobserved_modules + 1
   }
 }

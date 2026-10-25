@@ -7,7 +7,7 @@ import v2.std.integer { Int }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 import std.occurrence_identity { OccurrenceId }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol, symbol_lexeme }
 import v2.std.provenance { node_occurrence_id_optional }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.compiler.value_use_dependency {
@@ -51,6 +51,12 @@ type ReachReason
 // `occurrence` is the walk tick, the internal join key and NEVER printed; `locus` is the real OccurrenceId key
 // or the typed CallSiteUnlocated; `ordinal` is the site's admission order in its own function body (reset per
 // body, advanced once per admitted call site, reaching or not).
+// A structural context one call site is evaluated in, typed: the activation role of a Branch/Match extent, or a
+// repeated extent. Rendered only by epc_contexts_word.
+type SiteContext
+  = ActivationContext { role: FactSpanRole }
+  | RepeatedContext { repetition: FactRepetition }
+
 type SiteLocus
   = SiteLocated { occurrence_id: Int }
   | CallSiteUnlocated
@@ -61,7 +67,7 @@ type EffectSite {
   ordinal: Int
   callee: FactCallee
   reason: ReachReason
-  contexts: String
+  contexts: List<SiteContext>
 }
 
 // What the derivations say about the two sites' resources. Distinct never means independent.
@@ -91,7 +97,7 @@ type RepeatedEffectSite {
   module: QualifiedName
   function: QualifiedName
   site: EffectSite
-  repetition_source: String
+  repetition: FactRepetition
 }
 
 type ModuleEffectPairTotals {
@@ -316,7 +322,7 @@ type BodyOrdered {
   orders: List<OrderEdge>
   exclusive: List<OrderEdge>
   not_derived: List<NotDerivedKey>
-  activation_not_derived: List<String>
+  activation_not_derived: List<ActivationNotDerivedReason>
   repeated: List<RepeatedOccurrence>
   repetition_unknown: List<RepeatedOccurrence>
   groups: List<FactGroup>
@@ -324,14 +330,14 @@ type BodyOrdered {
 
 type RepeatedOccurrence {
   occurrence: Int
-  source: String
+  source: FactRepetition
 }
 
 // A value-use row the derivation could NOT produce, keyed by the occurrence it was asked about.
 // Absent is not independent: a body with a pair carries the rows that touch its own sites.
 type NotDerivedKey {
   key: Int
-  reason: String
+  reason: NotDerivedReason
 }
 
 // ACTIVATION of one Branch/Match: the first child span is the selector, so every site in it orders before
@@ -348,15 +354,7 @@ fn activation_arm_sites(sites: List<FactCallSite>, span: FactSpan) -> List<Int> 
 type ActivationEdges {
   orders: List<OrderEdge>
   exclusive: List<OrderEdge>
-  refusals: List<String>
-}
-
-fn activation_refusal_word(r: ActivationNotDerivedReason) -> String {
-  match r {
-    BranchNotConditionThenElse { children: _, positional: _ } => "branch_not_condition_then_else"
-    MatchScrutineeAbsent => "match_scrutinee_absent"
-    MatchArmMalformed { arm: _ } => "match_arm_malformed"
-  }
+  refusals: List<ActivationNotDerivedReason>
 }
 
 fn activation_span_sites(sites: List<FactCallSite>, spans: List<FactSpan>, want: FactSpanRole) -> List<List<Int>> {
@@ -374,7 +372,7 @@ fn activation_edges(sites: List<FactCallSite>, groups: List<FactGroup>) -> Activ
       FactRepeatedGroup { children: _, repetition: _ } => acc
       FactActivationGroup { children: children, not_derived: nd } =>
         match nd {
-          Present { value: why } => ActivationEdges { orders: acc.orders, exclusive: acc.exclusive, refusals: list_snoc_item(xs: acc.refusals, item: activation_refusal_word(r: why)) }
+          Present { value: why } => ActivationEdges { orders: acc.orders, exclusive: acc.exclusive, refusals: list_snoc_item(xs: acc.refusals, item: why) }
           Absent => {
             let selectors = activation_span_sites(sites: sites, spans: children, want: FactSelector)
             let arms = activation_span_sites(sites: sites, spans: children, want: FactAlternative)
@@ -408,7 +406,7 @@ fn activation_exclusive(arms: List<List<Int>>, acc: List<OrderEdge>) -> List<Ord
 
 // The module's not-derived rows indexed once by the occurrence they were asked about, so a body reads
 // only the keys its own sites and operands name, never the module's whole row list.
-fn not_derived_index(rows: List<NotDerivedKey>) -> Map<Int, List<String>> {
+fn not_derived_index(rows: List<NotDerivedKey>) -> Map<Int, List<NotDerivedReason>> {
   fold_list(xs: rows, empty: empty_map(), cons: fn(m, r) {
     match map_lookup(m: m, key: r.key) {
       Present { value: seen } => map_insert(m: m, key: r.key, value: list_snoc_item(xs: seen, item: r.reason))
@@ -417,7 +415,7 @@ fn not_derived_index(rows: List<NotDerivedKey>) -> Map<Int, List<String>> {
   })
 }
 
-fn body_not_derived_at(index: Map<Int, List<String>>, o: Optional<OccurrenceId>, acc: List<NotDerivedKey>) -> List<NotDerivedKey> {
+fn body_not_derived_at(index: Map<Int, List<NotDerivedReason>>, o: Optional<OccurrenceId>, acc: List<NotDerivedKey>) -> List<NotDerivedKey> {
   match extract_occurrence_key(o: o) {
     Absent => acc
     Present { value: k } =>
@@ -428,7 +426,7 @@ fn body_not_derived_at(index: Map<Int, List<String>>, o: Optional<OccurrenceId>,
   }
 }
 
-fn body_not_derived(sites: List<FactCallSite>, index: Map<Int, List<String>>) -> List<NotDerivedKey> {
+fn body_not_derived(sites: List<FactCallSite>, index: Map<Int, List<NotDerivedReason>>) -> List<NotDerivedKey> {
   fold_list(xs: sites, empty: Empty, cons: fn(acc, site) {
     fold_list(xs: site.operands, empty: body_not_derived_at(index: index, o: site.occurrence, acc: acc), cons: fn(a, o) { body_not_derived_at(index: index, o: o, acc: a) })
   })
@@ -438,23 +436,19 @@ fn body_not_derived(sites: List<FactCallSite>, index: Map<Int, List<String>>) ->
 // Branch/Match extent that contains it (selector / alternative / unroled) and each repeated extent (the Loop's
 // iterated body, or a lambda whose instantiation is unknown). One occurrence in several contexts lists them all;
 // outside every extent it is "none". The tick is only the join key into the spans.
-fn site_contexts(sites: List<FactCallSite>, groups: List<FactGroup>, tick: Int) -> String {
-  let words = fold_list(xs: groups, empty: Empty, cons: fn(acc, g) {
+fn site_contexts(sites: List<FactCallSite>, groups: List<FactGroup>, tick: Int) -> List<SiteContext> {
+  fold_list(xs: groups, empty: Empty, cons: fn(acc, g) {
     match g {
       FactActivationGroup { children: spans, not_derived: _ } =>
         fold_list(xs: spans, empty: acc, cons: fn(a, sp) {
-          if tick >= sp.enter && tick < sp.exit { list_snoc_item(xs: a, item: concat("activation:", span_role_word(r: sp.role))) } else { a }
+          if tick >= sp.enter && tick < sp.exit { list_snoc_item(xs: a, item: ActivationContext { role: sp.role }) } else { a }
         })
       FactRepeatedGroup { children: spans, repetition: rep } =>
         fold_list(xs: spans, empty: acc, cons: fn(a, sp) {
-          if tick >= sp.enter && tick < sp.exit { list_snoc_item(xs: a, item: concat("repeated:", repetition_word(r: rep))) } else { a }
+          if tick >= sp.enter && tick < sp.exit { list_snoc_item(xs: a, item: RepeatedContext { repetition: rep }) } else { a }
         })
     }
   })
-  match words {
-    Empty => "none"
-    Cons { head: h, tail: rest } => fold_list(xs: rest, empty: h, cons: fn(a, w) { concat(concat(a, "+"), w) })
-  }
 }
 
 fn span_role_word(r: FactSpanRole) -> String {
@@ -471,9 +465,9 @@ fn repeated_occurrences(sites: List<FactCallSite>, groups: List<FactGroup>, want
     match g {
       FactActivationGroup { children: _, not_derived: _ } => acc
       FactRepeatedGroup { children: children, repetition: rep } =>
-        if repetition_word(r: rep) == repetition_word(r: want) {
+        if rep == want {
           fold_list(xs: children, empty: acc, cons: fn(a, sp) {
-            fold_list(xs: activation_arm_sites(sites: sites, span: sp), empty: a, cons: fn(a2, o) { list_snoc_item(xs: a2, item: RepeatedOccurrence { occurrence: o, source: repetition_word(r: rep) }) })
+            fold_list(xs: activation_arm_sites(sites: sites, span: sp), empty: a, cons: fn(a2, o) { list_snoc_item(xs: a2, item: RepeatedOccurrence { occurrence: o, source: rep }) })
           })
         } else { acc }
     }
@@ -545,7 +539,7 @@ type BodyNotDerived {
   module: QualifiedName
   function: QualifiedName
   rows: List<NotDerivedKey>
-  activation: List<String>
+  activation: List<ActivationNotDerivedReason>
 }
 
 type ModuleEffectPairCensus {
@@ -563,7 +557,7 @@ fn body_repeated_sites(body: BodyOrdered, table: EffectReachTable, rows: List<Re
   let facts = body_effect_facts(body: body, table: table)
   fold_list(xs: rows, empty: Empty, cons: fn(acc, r) {
     fold_list(xs: facts.sites, empty: acc, cons: fn(a, s) {
-      if s.occurrence == r.occurrence { list_snoc_item(xs: a, item: RepeatedEffectSite { module: body.module, function: body.function, site: s, repetition_source: r.source }) } else { a }
+      if s.occurrence == r.occurrence { list_snoc_item(xs: a, item: RepeatedEffectSite { module: body.module, function: body.function, site: s, repetition: r.source }) } else { a }
     })
   })
 }
@@ -751,45 +745,79 @@ fn use_edges_of(deps: ValueUseDependencies) -> List<UseEdge> {
   })
 }
 
-fn not_derived_word(r: NotDerivedReason) -> String {
-  match r {
-    NotDerivedStanding { standing: _ } => "binder_standing_has_no_value"
-// Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
-    ValuedUseNotLocated { value: _value, why: _ } => "valued_use_not_located"
-    ValuedBinderSiteUnkeyed { value: _ } => "valued_binder_site_unkeyed"
-    ValuedBinderNotLocated { value: _value, why: _ } => "valued_binder_not_located"
-    RecordAbsent => "record_absent"
-  }
-}
-
 fn not_derived_keys_of(deps: ValueUseDependencies) -> List<NotDerivedKey> {
   fold_list(xs: deps.not_derived, empty: Empty, cons: fn(acc, r) {
-    list_snoc_item(xs: acc, item: NotDerivedKey { key: r.occurrence.value, reason: not_derived_word(r: r.reason) })
+    list_snoc_item(xs: acc, item: NotDerivedKey { key: r.occurrence.value, reason: r.reason })
   })
 }
 
 // ---- THE UNOBSERVED POPULATION, GROUPED BY ROOT. A module that did not resolve is never a module with
 // zero pairs: it is counted here under the first refused file and cause that stranded it (or, when the
 // census names none, under its own resolve reason), so one run says how many modules each root strands.
+// The typed standing that stranded the module: the importee file and its refusal cause, a resolve refusal reason,
+// or a resolve refusal the census could not classify. Rendered only by epc_root_word / epc_cause_word.
+type UnobservedCause
+  = ImporteeRefusedCause { file: Symbol, cause: Symbol }
+  | ResolveRefusedCause { reason: Symbol }
+  | ResolveUnclassifiedCause
+
 type UnobservedRoot {
-  root: String
-  cause: String
+  cause: UnobservedCause
   modules: Int
   example: QualifiedName
 }
 
-fn unobserved_roots_add(roots: List<UnobservedRoot>, root: String, cause: String, module: QualifiedName) -> List<UnobservedRoot> {
-  let known = fold_list(xs: roots, empty: false, cons: fn(hit, r) { hit || ((r.root == root) && (r.cause == cause)) })
+fn unobserved_cause_same(a: UnobservedCause, b: UnobservedCause) -> Bool {
+  match a {
+    ImporteeRefusedCause { file: f, cause: c } =>
+      match b {
+        ImporteeRefusedCause { file: f2, cause: c2 } => f == f2 && c == c2
+        ResolveRefusedCause { reason: _ } => false
+        ResolveUnclassifiedCause => false
+      }
+    ResolveRefusedCause { reason: r } =>
+      match b {
+        ResolveRefusedCause { reason: r2 } => r == r2
+        ImporteeRefusedCause { file: _, cause: _ } => false
+        ResolveUnclassifiedCause => false
+      }
+    ResolveUnclassifiedCause =>
+      match b {
+        ResolveUnclassifiedCause => true
+        ImporteeRefusedCause { file: _, cause: _ } => false
+        ResolveRefusedCause { reason: _ } => false
+      }
+  }
+}
+
+fn unobserved_roots_add(roots: List<UnobservedRoot>, cause: UnobservedCause, module: QualifiedName) -> List<UnobservedRoot> {
+  let known = fold_list(xs: roots, empty: false, cons: fn(hit, r) { hit || unobserved_cause_same(a: r.cause, b: cause) })
   if known {
     fold_list(xs: roots, empty: Empty, cons: fn(acc, r) {
-      if (r.root == root) && (r.cause == cause) {
-        list_snoc_item(xs: acc, item: UnobservedRoot { root: r.root, cause: r.cause, modules: r.modules + 1, example: r.example })
+      if unobserved_cause_same(a: r.cause, b: cause) {
+        list_snoc_item(xs: acc, item: UnobservedRoot { cause: r.cause, modules: r.modules + 1, example: r.example })
       } else {
         list_snoc_item(xs: acc, item: r)
       }
     })
   } else {
-    list_snoc_item(xs: roots, item: UnobservedRoot { root: root, cause: cause, modules: 1, example: module })
+    list_snoc_item(xs: roots, item: UnobservedRoot { cause: cause, modules: 1, example: module })
+  }
+}
+
+fn epc_root_word(c: UnobservedCause) -> String {
+  match c {
+    ImporteeRefusedCause { file: f, cause: _ } => symbol_lexeme(sym: f)
+    ResolveRefusedCause { reason: _ } => "resolve"
+    ResolveUnclassifiedCause => "resolve"
+  }
+}
+
+fn epc_cause_word(c: UnobservedCause) -> String {
+  match c {
+    ImporteeRefusedCause { file: _, cause: k } => symbol_lexeme(sym: k)
+    ResolveRefusedCause { reason: r } => symbol_lexeme(sym: r)
+    ResolveUnclassifiedCause => "unclassified"
   }
 }
 
@@ -841,7 +869,7 @@ fn epc_callee_word(c: FactCallee) -> String {
 }
 
 fn epc_site_text(s: EffectSite) -> String {
-  epc_text(parts: [epc_callee_word(c: s.callee), "@", epc_locus_word(l: s.locus), " contexts=", s.contexts, " call_ordinal_in_function=", to_string(s.ordinal), "(", epc_reason_word(r: s.reason), ")"])
+  epc_text(parts: [epc_callee_word(c: s.callee), "@", epc_locus_word(l: s.locus), " contexts=", epc_contexts_word(cs: s.contexts), " call_ordinal_in_function=", to_string(s.ordinal), "(", epc_reason_word(r: s.reason), ")"])
 }
 
 fn epc_pair_line(p: EffectPairRow) -> String {
@@ -853,12 +881,47 @@ fn epc_pair_line(p: EffectPairRow) -> String {
   ])
 }
 
+fn epc_activation_word(r: ActivationNotDerivedReason) -> String {
+  match r {
+    BranchNotConditionThenElse { children: _, positional: _ } => "branch_not_condition_then_else"
+    MatchScrutineeAbsent => "match_scrutinee_absent"
+    MatchArmMalformed { arm: _ } => "match_arm_malformed"
+  }
+}
+
+
+fn epc_not_derived_word(r: NotDerivedReason) -> String {
+  match r {
+    NotDerivedStanding { standing: _ } => "binder_standing_has_no_value"
+// Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
+    ValuedUseNotLocated { value: _value, why: _ } => "valued_use_not_located"
+    ValuedBinderSiteUnkeyed { value: _ } => "valued_binder_site_unkeyed"
+    ValuedBinderNotLocated { value: _value, why: _ } => "valued_binder_not_located"
+    RecordAbsent => "record_absent"
+  }
+}
+
+
+fn epc_context_word(c: SiteContext) -> String {
+  match c {
+    ActivationContext { role: r } => concat("activation:", span_role_word(r: r))
+    RepeatedContext { repetition: r } => concat("repeated:", repetition_word(r: r))
+  }
+}
+
+fn epc_contexts_word(cs: List<SiteContext>) -> String {
+  match cs {
+    Empty => "none"
+    Cons { head: h, tail: rest } => fold_list(xs: rest, empty: epc_context_word(c: h), cons: fn(a, c) { concat(concat(a, "+"), epc_context_word(c: c)) })
+  }
+}
+
 fn epc_not_derived_lines(b: BodyNotDerived) -> List<String> {
   fold_list(xs: b.rows, empty: Empty, cons: fn(acc, r) {
     list_snoc_item(xs: acc, item: epc_text(parts: [
       "[effect-pair-not-derived] module=", qualified_name_to_dotted_string(qn: b.module),
       " function=", qualified_name_to_dotted_string(qn: b.function),
-      " occurrence=", to_string(r.key), " reason=", r.reason
+      " occurrence=", to_string(r.key), " reason=", epc_not_derived_word(r: r.reason)
     ]))
   })
 }
@@ -867,7 +930,7 @@ fn epc_activation_lines(b: BodyNotDerived) -> List<String> {
   fold_list(xs: b.activation, empty: Empty, cons: fn(acc, r) {
     list_snoc_item(xs: acc, item: epc_text(parts: [
       "[effect-pair-activation-not-derived] module=", qualified_name_to_dotted_string(qn: b.module),
-      " function=", qualified_name_to_dotted_string(qn: b.function), " reason=", r
+      " function=", qualified_name_to_dotted_string(qn: b.function), " reason=", epc_activation_word(r: r)
     ]))
   })
 }
@@ -892,7 +955,7 @@ fn epc_repeated_line(p: RepeatedEffectSite) -> String {
   epc_text(parts: [
     "[effect-pair-repeated] module=", qualified_name_to_dotted_string(qn: p.module),
     " function=", qualified_name_to_dotted_string(qn: p.function),
-    " site=", epc_site_text(s: p.site), " repetition_source=", p.repetition_source,
+    " site=", epc_site_text(s: p.site), " repetition_source=", repetition_word(r: p.repetition),
     " resource_standing=alias_unknown"
   ])
 }
@@ -918,7 +981,7 @@ fn effect_pair_census_lines(r: EffectPairCensusReport) -> List<String> {
     list_snoc_item(xs: acc, item: epc_text(parts: ["[effect-pair-unclassified] operation=", qualified_name_to_dotted_string(qn: q), " semantics=execution_semantics_unknown reaches=true"]))
   })
   let roots = fold_list(xs: r.roots, empty: named, cons: fn(acc, x) {
-    list_snoc_item(xs: acc, item: epc_text(parts: ["[effect-pair-root] root=", x.root, " cause=", x.cause, " modules=", to_string(x.modules), " example=", qualified_name_to_dotted_string(qn: x.example)]))
+    list_snoc_item(xs: acc, item: epc_text(parts: ["[effect-pair-root] root=", epc_root_word(c: x.cause), " cause=", epc_cause_word(c: x.cause), " modules=", to_string(x.modules), " example=", qualified_name_to_dotted_string(qn: x.example)]))
   })
   fold_list(xs: r.modules, empty: roots, cons: fn(acc, m) {
     let with_pairs = fold_list(xs: m.repeated, empty: fold_list(xs: m.pairs, empty: acc, cons: fn(a, p) { list_snoc_item(xs: a, item: epc_pair_line(p: p)) }), cons: fn(a, p) { list_snoc_item(xs: a, item: epc_repeated_line(p: p)) })
