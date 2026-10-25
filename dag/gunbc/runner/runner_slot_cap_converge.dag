@@ -592,7 +592,7 @@ data slot_cap_holder_cgroup_files: List<NonEmptyStr> = ["memory.max" as NonEmpty
 // break-glass rung (systemctl set-property, operator-only, fleet slot rulings 2026-10-10). A ledger the
 // pass could not read defers UNCOUNTED, named as such on the wire -- uncounted is typed and greppable,
 // never silently counted and never silently unbounded.
-data HolderDeferralLedger
+type HolderDeferralLedger
   = LedgerFresh
   | LedgerCount { prior: Int }
   | LedgerUnwritable { cause: String }

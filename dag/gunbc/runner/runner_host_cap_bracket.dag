@@ -1143,9 +1143,9 @@ fn acquire_bracket_over(target: SshTarget, context: FleetSshExecutionContext, ho
 // HOST AND THE UNIT: slot 02's debt is not slot 03's. A pass that finds the holder at desired DELETES the
 // file (convergence clears the debt); a pass that finds it owed increments the count; past the fleet bound
 // the cap module turns the same reading into a REFUSAL. A ledger this pass cannot read or write -- no
-// RUNNER_TEMP, an unreadable file -- yields an UNCOUNTED deferral, typed as such: uncounted is greppable
+// no slot directory for the unit, an unreadable file -- yields an UNCOUNTED deferral, typed as such: uncounted is greppable
 // and red-flagged on the wire, never silently treated as counted or unbounded.
-data HolderDeferralLedgerFile {
+type HolderDeferralLedgerFile {
   key: String
   deferred_passes: Int
 }
