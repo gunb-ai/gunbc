@@ -8,9 +8,13 @@ import extdeps.docker.cli_service { DockerCli }
 import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, ListenOn, LocationBlock, ExactMatch, PrefixMatch,
-  LuaPhaseBlock, ContentPhase, LuaSharedDict, nginx_token, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
+  LuaPhaseBlock, ContentPhase, LuaSharedDict, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
+  ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
-import gunbc.serving.router_proxy_config { RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config }
+import gunbc.serving.router_proxy_config {
+  RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
+  router_proxy_callouts, RouterCalloutHook, AuthzCapture, StreamEndPost,
+}
 
 // THE ROUTER PROXY FALSIFIER (plan gunbc.plans.fabric_serving_router, S1b). `gunbc test
 // //gunbc/instruments:router-proxy-falsifier` emits this closure, builds it and runs it: the pinned
@@ -89,14 +93,19 @@ fn fixture_server(port: Int, locations: List<NginxDirective>) -> List<NginxDirec
   }
 }
 
-// The authz stub admits every request except one carrying x-deny, naming the upstream and a permit that
-// records the request's x-case; the sink counts stream-end notices and keeps the last permit; the upstream
+// The authz stub refuses a request carrying x-deny; otherwise it reads the forwarded body and answers an
+// upstream and a permit naming the request's x-case and the body's model, except that the noupstream,
+// nopermit and badupstream cases omit the upstream, omit the permit, or answer an upstream that is not an
+// address; the sink counts stream-end notices and keeps the last permit; the upstream
 // counts its hits and sends one SSE event, flushes, optionally waits four seconds, and sends a second.
 fn fixture_directives() -> List<NginxDirective> {
   let authz = fixture_location(path: "/authz", exact: true, lines: [
     "if ngx.var.http_x_deny then return ngx.exit(403) end",
-    "ngx.header['x-upstream'] = '127.0.0.1:19003'",
-    "ngx.header['x-seat-permit'] = 'p-' .. (ngx.var.http_x_case or 'none')",
+    "ngx.req.read_body()",
+    "local model = string.match(ngx.req.get_body_data() or '', '\"model\":\"([%w%-]+)\"') or 'nobody'",
+    "local case = ngx.var.http_x_case or 'none'",
+    "if case ~= 'noupstream' then ngx.header['x-upstream'] = (case == 'badupstream') and 'not an address' or '127.0.0.1:19003' end",
+    "if case ~= 'nopermit' then ngx.header['x-seat-permit'] = 'p-' .. case .. '-' .. model end",
     "ngx.say('ok')",
   ])
   let stream_end = fixture_location(path: "/stream-end", exact: true, lines: [
@@ -112,6 +121,8 @@ fn fixture_directives() -> List<NginxDirective> {
   ])
   let upstream = fixture_location(path: "/v1/", exact: false, lines: [
     "ngx.shared.seen:incr('hits', 1, 0)",
+    "ngx.req.read_body()",
+    "ngx.say('body: ', ngx.req.get_body_data() or '')",
     "ngx.say('data: one') ngx.say('') ngx.flush(true)",
     "if ngx.var.arg_slow then ngx.sleep(4) end",
     "ngx.say('data: two') ngx.say('')",
@@ -133,7 +144,11 @@ fn curl(arguments: List<String>) -> String {
 }
 
 fn request(port: String, case_header: String, query: String, max_seconds: String) -> String {
-  curl(arguments: ["-sS", "-N", "--max-time", max_seconds, "-H", case_header, "-w", "\n%\{http_code\}", concat(concat(concat("http://127.0.0.1:", port), "/v1/x"), query)])
+  request_with(port: port, case_header: case_header, query: query, max_seconds: max_seconds, model: "alpha")
+}
+
+fn request_with(port: String, case_header: String, query: String, max_seconds: String, model: String) -> String {
+  curl(arguments: ["-sS", "-N", "--max-time", max_seconds, "-H", case_header, "-d", concat(concat("\{\"model\":\"", model), "\"\}"), "-w", "\n%\{http_code\}", concat(concat(concat("http://127.0.0.1:", port), "/v1/x"), query)])
 }
 
 fn sink(n: String) -> String {
@@ -174,6 +189,61 @@ fn start_with(name: NonEmptyStr, network: NonEmptyStr, conf_path: String) -> Int
 
 fn contains(s: String, p: String) -> Bool { string_contains(s: s, pattern: p) }
 
+// THE ROW CASES: what the emitted configuration's rows say, read from router_proxy_directives before any
+// container runs. The process cases below establish what the proxy does with them.
+fn rows() -> List<NginxDirective> {
+  match router_proxy_vocabulary() {
+    Present { value: v } => router_proxy_directives(v: v, listen_port: 18443 as Port, authz_port: 19001 as Port, stream_end_port: 19002 as Port)
+    Absent => [] as List<NginxDirective>
+  }
+}
+
+// The body of the router location (the /v1/ prefix), reached by walking http -> server -> location.
+fn v1_body(ds: List<NginxDirective>) -> List<NginxDirective> {
+  fold(ds, init: [] as List<NginxDirective>, f: (acc, d) => concat(acc, match d {
+    HttpBlock { body: b } => v1_body(ds: b)
+    ServerBlock { body: b } => v1_body(ds: b)
+    LocationBlock { matching: m, body: b } => match m { PrefixMatch { path: _ } => b _ => [] as List<NginxDirective> }
+    _ => [] as List<NginxDirective>
+  }))
+}
+
+fn is_pass(d: NginxDirective) -> Bool { match d { ProxyPassDirective { target: _, variable: _ } => true _ => false } }
+fn is_fixed_pass(d: NginxDirective) -> Bool { match d { ProxyPassToHost { host: _, port: _, path: _ } => true _ => false } }
+fn is_retry_off(d: NginxDirective) -> Bool { match d { ProxyNextUpstreamDirective { value: _ } => true _ => false } }
+fn is_buffering_off(d: NginxDirective) -> Bool {
+  match d { ProxyBufferingDirective { value: _ } => true ProxyRequestBufferingDirective { value: _ } => true _ => false }
+}
+fn is_authz(h: RouterCalloutHook) -> Bool {
+  match h.callout { AuthzCapture { location: _, failure_status: st, copies: cs } => (st as Int) == 503 && count(cs) == 2 _ => false }
+}
+fn is_stream_end(h: RouterCalloutHook) -> Bool {
+  match h.callout { StreamEndPost { host: _, port: pt, path: _, timeout_ms: _, only_when_set: _, header: _, header_value: _ } => (pt as Int) == 19002 _ => false }
+}
+fn callouts() -> List<RouterCalloutHook> {
+  match router_proxy_vocabulary() {
+    Present { value: v } => router_proxy_callouts(v: v, stream_end_port: 19002 as Port)
+    Absent => [] as List<RouterCalloutHook>
+  }
+}
+
+fn row_cases() -> List<FalsifierCase> {
+  let body = v1_body(ds: rows())
+  let passes = count(filter(body, d => is_pass(d: d)))
+  let fixed = count(filter(body, d => is_fixed_pass(d: d)))
+  [
+    case_of(identity: "rows_router_location_proxies_only_to_the_authz_supplied_upstream", held: passes == 1 && fixed == 0, observed: concat(concat(to_string(passes), "/"), to_string(fixed))),
+    case_of(identity: "rows_retries_and_buffering_are_off", held: count(filter(body, d => is_retry_off(d: d))) == 1 && count(filter(body, d => is_buffering_off(d: d))) == 2, observed: to_string(count(body))),
+    case_of(identity: "rows_one_authz_hook_and_one_stream_end_hook", held: count(filter(callouts(), h => is_authz(h: h))) == 1 && count(filter(callouts(), h => is_stream_end(h: h))) == 1 && count(callouts()) == 2, observed: to_string(count(callouts()))),
+    case_of(identity: "rows_red_unsafe_tokens_have_no_constructor_result", held:
+      (match nginx_token(text: "x'; os.execute('x") { Absent => true Present { value: _ } => false })
+      && (match nginx_variable(text: "a$b") { Absent => true Present { value: _ } => false })
+      && (match nginx_token(text: "x#") { Absent => true Present { value: _ } => false })
+      && (match nginx_variable(text: "a-b") { Absent => true Present { value: _ } => false })
+      && (match nginx_token(text: "x-seat-permit") { Absent => false Present { value: _ } => true }), observed: "tokens"),
+  ]
+}
+
 fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let router = text_of(r: router_proxy_config(listen_port: 18443 as Port, authz_port: 19001 as Port, stream_end_port: 19002 as Port))
   let unreachable = text_of(r: router_proxy_config(listen_port: 18444 as Port, authz_port: 19009 as Port, stream_end_port: 19002 as Port))
@@ -194,12 +264,16 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let ready_unreachable = ready(port: "18444")
   let full = request(port: "18443", case_header: "x-case: full", query: "", max_seconds: "10")
   let after_full = sink(n: "1")
+  let full_beta = request_with(port: "18443", case_header: "x-case: full", query: "", max_seconds: "10", model: "beta")
+  let after_beta = sink(n: "2")
   let aborted = request(port: "18443", case_header: "x-case: abort", query: "?slow=1", max_seconds: "1")
-  let after_abort = sink(n: "2")
+  let after_abort = sink(n: "3")
   let denied = request(port: "18443", case_header: "x-deny: 1", query: "", max_seconds: "10")
-  let after_denied = sink(n: "0")
+  let no_upstream = request(port: "18443", case_header: "x-case: noupstream", query: "", max_seconds: "10")
+  let no_permit = request(port: "18443", case_header: "x-case: nopermit", query: "", max_seconds: "10")
+  let bad_upstream = request(port: "18443", case_header: "x-case: badupstream", query: "", max_seconds: "10")
   let no_authz = request(port: "18444", case_header: "x-case: noauthz", query: "", max_seconds: "10")
-  let after_no_authz = sink(n: "0")
+  let after_refusals = sink(n: "0")
   let removed = remove_all()
   [
     case_of(identity: "daemon_red_absent_daemon_reads_unavailable", held: match daemon_control { DaemonUnavailable { stderr: _ } => true DaemonAnswered => false }, observed: match daemon_control { DaemonUnavailable { stderr: _ } => "unavailable" DaemonAnswered => "answered" }),
@@ -208,28 +282,44 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "nginx_t_accepts_the_emitted_config_with_an_unreachable_authz_port", held: contains(s: t_unreachable, p: " exit=0 setup=0"), observed: t_unreachable),
     case_of(identity: "nginx_t_red_unknown_directive_fails", held: contains(s: t_broken, p: "unknown directive") && contains(s: t_broken, p: "test failed") && !contains(s: t_broken, p: " exit=0 "), observed: t_broken),
     case_of(identity: "sse_completes_through_the_authz_upstream", held: contains(s: full, p: "data: one") && contains(s: full, p: "data: two") && contains(s: full, p: "\n200 exit=0"), observed: full),
-    case_of(identity: "stream_end_fires_on_completion_with_its_permit", held: contains(s: after_full, p: "ends=1 last=p-full hits=1"), observed: after_full),
+    case_of(identity: "the_upstream_receives_the_client_body_unchanged", held: contains(s: full, p: "body: \{\"model\":\"alpha\"\}") && contains(s: full_beta, p: "body: \{\"model\":\"beta\"\}"), observed: full_beta),
+    case_of(identity: "stream_end_fires_on_completion_with_its_permit", held: contains(s: after_full, p: "ends=1 last=p-full-alpha hits=1"), observed: after_full),
+    case_of(identity: "authz_reads_the_body_so_two_models_get_two_answers", held: contains(s: after_beta, p: "ends=2 last=p-full-beta hits=2") && contains(s: after_full, p: "p-full-alpha"), observed: after_beta),
     case_of(identity: "sse_is_relayed_before_the_upstream_ends", held: contains(s: aborted, p: "data: one") && !contains(s: aborted, p: "data: two") && contains(s: aborted, p: "exit=28"), observed: aborted),
-    case_of(identity: "stream_end_fires_on_client_abort", held: contains(s: after_abort, p: "ends=2 last=p-abort hits=2"), observed: after_abort),
-    case_of(identity: "authz_refusal_answers_503_and_never_forwards", held: contains(s: denied, p: "\n503 exit=0") && contains(s: after_denied, p: "ends=2 last=p-abort hits=2"), observed: concat(denied, after_denied)),
-    case_of(identity: "unreachable_authz_answers_503_and_never_forwards", held: contains(s: no_authz, p: "\n503 exit=0") && contains(s: after_no_authz, p: "ends=2 last=p-abort hits=2"), observed: concat(no_authz, after_no_authz)),
+    case_of(identity: "stream_end_fires_on_client_abort", held: contains(s: after_abort, p: "ends=3 last=p-abort-alpha hits=3"), observed: after_abort),
+    case_of(identity: "authz_refusal_answers_503", held: contains(s: denied, p: "\n503 exit=0"), observed: denied),
+    case_of(identity: "an_answer_without_upstream_answers_503", held: contains(s: no_upstream, p: "\n503 exit=0"), observed: no_upstream),
+    case_of(identity: "an_answer_without_permit_answers_503", held: contains(s: no_permit, p: "\n503 exit=0"), observed: no_permit),
+    case_of(identity: "an_answer_with_a_malformed_upstream_answers_503", held: contains(s: bad_upstream, p: "\n503 exit=0"), observed: bad_upstream),
+    case_of(identity: "unreachable_authz_answers_503", held: contains(s: no_authz, p: "\n503 exit=0"), observed: no_authz),
+    case_of(identity: "no_refusal_forwarded_or_fired_stream_end", held: contains(s: after_refusals, p: "ends=3 last=p-abort-alpha hits=3"), observed: after_refusals),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
   ]
 }
 
 fn falsifier_expected_identities() -> List<String> {
   [
+    "rows_router_location_proxies_only_to_the_authz_supplied_upstream",
+    "rows_retries_and_buffering_are_off",
+    "rows_one_authz_hook_and_one_stream_end_hook",
+    "rows_red_unsafe_tokens_have_no_constructor_result",
     "daemon_red_absent_daemon_reads_unavailable",
     "world_starts",
     "nginx_t_accepts_the_emitted_config",
     "nginx_t_accepts_the_emitted_config_with_an_unreachable_authz_port",
     "nginx_t_red_unknown_directive_fails",
     "sse_completes_through_the_authz_upstream",
+    "the_upstream_receives_the_client_body_unchanged",
     "stream_end_fires_on_completion_with_its_permit",
+    "authz_reads_the_body_so_two_models_get_two_answers",
     "sse_is_relayed_before_the_upstream_ends",
     "stream_end_fires_on_client_abort",
-    "authz_refusal_answers_503_and_never_forwards",
-    "unreachable_authz_answers_503_and_never_forwards",
+    "authz_refusal_answers_503",
+    "an_answer_without_upstream_answers_503",
+    "an_answer_without_permit_answers_503",
+    "an_answer_with_a_malformed_upstream_answers_503",
+    "unreachable_authz_answers_503",
+    "no_refusal_forwarded_or_fired_stream_end",
     "world_is_removed",
   ]
 }
@@ -244,7 +334,7 @@ fn native_claim_report() -> NativeClaimReport {
     DaemonUnavailable { stderr: e } => NativeClaimReport { stdout: "", terminal: NativeClaimNoObservation { reason: concat("docker daemon unavailable: ", e) } }
     DaemonAnswered => {
       let control = DockerCli.VersionAtHost(docker: docker(), host: absent_daemon())
-      let cases = falsifier_cases(daemon_control: daemon_reading(exit_code: control.exit_code, stderr: control.stderr))
+      let cases = concat(row_cases(), falsifier_cases(daemon_control: daemon_reading(exit_code: control.exit_code, stderr: control.stderr)))
       let roster = join(["roster ", join(falsifier_expected_identities(), ","), "\n"], "")
       let failed = map(filter(cases, c => !c.held), c => c.identity)
       let terminal = if count(failed) == 0 { held_terminal() } else { not_held_terminal(reason: concat("not held: ", join(failed, ","))) }
