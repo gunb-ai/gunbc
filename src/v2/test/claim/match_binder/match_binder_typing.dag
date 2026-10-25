@@ -346,8 +346,13 @@ data mbt_hiding_src: String = mbt_decls + "fn g(artifact: Int, h: Outcome<ParseA
 
 fn mbt_hiding_reading() -> MbtReading { mbp_reading(src: mbt_hiding_src) }
 
+// RELABELLED, NOT REVERSED (tidy-ant-251, 2026-10-25): a pattern atom naming a frame value now refuses
+// with v2.compiler.resolve resolve_reason_pattern_atom_names_visible_value, which replaced
+// binder_hides_visible_value for pattern atoms. The program refuses exactly as before; only the cause and
+// remedy ("rename to bind, or use an equality guard to compare") changed, since the compiler cannot tell
+// a shadowing binder from a comparison against the parameter.
 test fn mbt_a_binder_hiding_a_same_named_parameter_refuses_holds() -> Bool {
-  mbp_reports(reading: mbt_hiding_reading(), reason: ^resolve_reason_binder_hides_visible_value)
+  mbp_reports(reading: mbt_hiding_reading(), reason: ^resolve_reason_pattern_atom_names_visible_value)
 }
 
 // (2) REFUSALS, EACH DISCRIMINATING: the same match with one pattern edit, so the positive control

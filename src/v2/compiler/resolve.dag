@@ -8,7 +8,7 @@ import v2.compiler.lexical_scope { ArmPatternBinderSite, ArrowAuthoredSlot, Arro
 import v2.std.declaration_marker { ReachesNoTestCode, ReachesTestMarkedDeclaration, TestCodeIndex, test_code_index_add_module, test_code_index_empty, test_code_reach }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.occurrence_identity { LexicalValueOccurrence, OccurrenceCategory, TypeOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
+import std.occurrence_identity { CallableOccurrence, ConstructorOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence, NamespaceSegmentOccurrence, OccurrenceCategory, TypeOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
 import std.occurrence_binding_resolve { OccurrenceCategoryBindingAdmissible, OccurrenceCategoryBindingInadmissible, occurrence_category_binding_verdict }
 import v2.extdeps.languages.dag { dag_kernel_string_type_spelling, dag_string_literal_value_optional, dag_kernel_type_binding_optional, dag_kernel_type_declaration_binding_optional, dag_kernel_type_foreign_declaration, ForeignDeclarationBinds, ForeignDeclarationRefuses, dag_node_is_float_literal_atom, dag_node_is_int_literal_atom, dag_symbol_literal_name_optional, dag_string_literal_value_symbol_optional, dag_node_is_module_root_conj, dag_resolve_preserve_module_metadata_subtree, dag_surface_module_header_metadata_edge, dag_surface_operator_canonicalization_lookup, namespace_graft_spine_body_optional, qualified_name_from_module_node }
 import v2.compiler.parse { parse_tree_projection_edge }
@@ -24,7 +24,7 @@ import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, Fol
 import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string, qualified_name_snoc, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node, qualified_name_spine_segment_nodes, lexical_reference_node, declaration_denotation_of_type, declaration_denotation_is_optional }
 import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY, default_name_resolution_policy }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
-import v2.std.symbol_index { ExcludedCandidate, symbol_index_enclosing_declaration_paths, symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of, EligibleLookup, ExcludedByCategory, LexicalEligibility, symbol_index_lexical_eligibility }
+import v2.std.symbol_index { symbol_index_candidate_category, ExcludedCandidate, symbol_index_enclosing_declaration_paths, symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of, EligibleLookup, ExcludedByCategory, LexicalEligibility, symbol_index_lexical_eligibility }
 import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, positional_child_target_nodes, BinderTypeEdge, core_edge, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, match_positional_slot, node_child_slots }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentForwardedKindDiffers, ArgumentForwardedUnkinded, ArgumentForwardedUnresolved, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationForwardedParameterUnkinded, TypeApplicationForwardedParameterKindDiffers, TypeApplicationForwardedParameterUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names, type_binder_target_of }
 import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
@@ -4090,6 +4090,14 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
     Accepted { value: pat, diagnostics: _ } =>
+      match resolve_pattern_atom_naming_a_frame_value(ctx: ctx, pat: pat) {
+        Present { value: atom } =>
+          resolve_walk_refused_one(chain: diagnostics_singleton(d: Diagnostic {
+            reason: ^resolve_reason_pattern_atom_names_visible_value,
+            at: node_locus(node: atom),
+            correction: Unavailable { reason: UserInputBoundary }
+          }))
+        Absent =>
       match gate_value_binders(names: pattern_binder_name_list(ctx: ctx, pat: pat), outer: ctx.scope, at: pat) {
         BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
         BinderGateAdmitted =>
@@ -4099,6 +4107,77 @@ fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
             walk: resolve_match_arm_admitted(ctx: ctx, arm: arm, pat: pat, fb: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_binders_empty()))
           )
       }
+      }
+  }
+}
+
+// A PATTERN ATOM THAT NAMES A VALUE OF AN ENCLOSING FRAME IS REFUSED BY ONE CAUSE THAT NAMES BOTH READINGS.
+// The grammar gives a bare name in pattern position one form, and an atom naming no declared payload reads
+// as a binder (pattern_binders). When the name is a parameter or `let` the arm can already see, the
+// author meant either to COMPARE against that value (a constant pattern, which neither compiler has:
+// v2.extdeps.languages.wasm matched facts against its `data` rows, and the seed bound every value in
+// the first arm) or to SHADOW it with a fresh binder (which value-name shadowing forbids). The compiler
+// cannot tell which, so resolve_reason_pattern_atom_names_visible_value does not guess: its remedy is
+// "rename to bind, or use an equality guard to compare". It REPLACES binder_hides_visible_value for
+// pattern atoms, at either pattern position (one cause per situation): it runs before gate_value_binders,
+// so a pattern binder that hides a frame value never reaches that gate's cause, which stays for `let`,
+// parameter and lambda binders. Frame values only: a module-level name is not decided here, because the
+// symbol index classifies a module function and a `data` row alike as values (LexicalValueOccurrence);
+// telling a constant from a callable needs a declaration-shape fact it does not yet carry, and root
+// shadowing stays admitted (admit_one_named_value_binder). Decided by tidy-ant-251 (Manager 1),
+// 2026-10-25. The first such atom, in the pre-order resolution binds them.
+fn resolve_pattern_atom_naming_a_frame_value(ctx: ResolveContext, pat: Node) -> Optional<Node> {
+  fold(pattern_binders(ctx: ctx, pat: pat), init: Absent, f: fn(found, c) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if resolve_pattern_atom_names_frame_value(ctx: ctx, id: c.name) {
+          Present { value: c.atom }
+        } else {
+          Absent
+        }
+    }
+  })
+}
+
+fn resolve_pattern_atom_names_frame_value(ctx: ResolveContext, id: Symbol) -> Bool {
+  match lookup_chain(s: ctx.scope, name: id) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: bound, diagnostics: _ } =>
+      match bound {
+        BoundInFrame { canonical: _, kind: _ } => true
+        BoundAtRoot { canonical: _ } => resolve_pattern_atom_names_module_value(ctx: ctx, id: id)
+        ScopeUnbound => false
+      }
+  }
+}
+
+// A MODULE-LEVEL CONSTANT: a lexically visible declaration whose own category is a value (a `data` row),
+// now that the index tells it from a callable (v2.std.symbol_index type_decl_member_shape). A module
+// function stays a name a binder may share, as root shadowing always allowed.
+fn resolve_pattern_atom_names_module_value(ctx: ResolveContext, id: Symbol) -> Bool {
+  match symbol_index_lexical_lookup(
+    index: ctx.namespace.symbol_index,
+    position: symbol_index_lookup_position(ctx: ctx),
+    name: id
+  ) {
+    LexicalHit { node: node, path: path } =>
+      resolve_candidate_is_value(ctx: ctx, candidate: LexicalBindingCandidate { path: path, node: node })
+    LexicalAmbiguous { candidates: candidates } =>
+      any(xs: candidates, predicate: fn(c) { resolve_candidate_is_value(ctx: ctx, candidate: c) })
+    LexicalUnbound => false
+  }
+}
+
+fn resolve_candidate_is_value(ctx: ResolveContext, candidate: LexicalBindingCandidate) -> Bool {
+  match symbol_index_candidate_category(index: ctx.namespace.symbol_index, candidate: candidate) {
+    LexicalValueOccurrence => true
+    TypeOccurrence => false
+    CallableOccurrence => false
+    ConstructorOccurrence => false
+    NamespaceSegmentOccurrence => false
+    FieldOccurrence => false
+    MethodOccurrence => false
   }
 }
 
