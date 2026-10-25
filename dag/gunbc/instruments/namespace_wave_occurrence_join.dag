@@ -9,6 +9,7 @@ import v2.compiler.parse { PreparedGrammar }
 import v2.compiler.tokenize { PreparedLexRules }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.workflow.roster_import_sweep {
+  roster_rename_companions,
   RosterApplied,
   RosterApplyRefused,
   RosterApplyWritten,
@@ -179,7 +180,10 @@ fn proof_round(state: ProofState, path: String, prepared: PreparedGrammar, lex: 
     state
   } else {
     let scope = OneHome { home: qualified_name_from_dotted_string(dotted: home), rows: EveryRowOfHome }
-    let outcome = roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: scope)), path: path, text: state.text, prepared: prepared, lex: lex, scope: scope, closures: closures)
+    // The same companions the apply step derives from the scope's rows (a RenameHead row's companion import), so the
+    // recomputation reproduces exactly what the generator writes.
+    let rows = roster_rows_for_scope(scope: scope)
+    let outcome = roster_sweep_text_scoped(sides: roster_home_sides(rows: rows), companions: roster_rename_companions(rows: rows, prepared: prepared, lex: lex), path: path, text: state.text, prepared: prepared, lex: lex, scope: scope, closures: closures)
     match outcome {
       RosterClean => ProofState { text: state.text, rounds: state.rounds, done: true, stuck: "" }
       RosterRefused { reason: _ } => ProofState { text: state.text, rounds: state.rounds, done: false, stuck: "the sweep generator refused the module" }
