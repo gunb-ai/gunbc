@@ -1,0 +1,24 @@
+ELEMENT CLASSES
+ 14176  S kernel String
+    86  T text refinement or brand
+    22  S kernel String (read by name only)
+    15  U unknown (unidentified)
+    13  U unknown (tyvar)
+     1  V v2-native declared type (v2.std.node.String)
+     1  N kernel non-text (Unit)
+SEPARATOR CLASSES
+ 14313  S kernel String
+     1  U unknown (no-separator)
+ELEMENT READINGS OUTSIDE kernel String (with declaration line)
+    55  decl:std.types.FilePath/req  type FilePath      = String where string_non_empty
+    30  decl:std.types.NonEmptyStr/req  type NonEmptyStr     = String where string_non_empty
+    15  unidentified/req  
+    13  tyvar:empty_list_element/req  
+     1  decl:std.types.PathSegment/req  type PathSegment   = NonEmptyStr where brand("PathSegment")
+     1  decl:v2.std.node.String/req  type String
+     1  kernel:Unit:mint/req  
+SEPARATOR READINGS OUTSIDE kernel String
+     1  no-separator  
+ROUTES: bare 13806, method 508
+BY POPULATION: corpus compile (dag primary) 13781, src/v1 self-compile 360, src/v2 per-file entry compile (outside the dag-primary population) 173
+TOTAL typed join sites: 14314; optional elements: 1

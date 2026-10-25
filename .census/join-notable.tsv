@@ -1,0 +1,32 @@
+dag/extdeps/networkmanager/nmcli.dag:212:88	U unknown (unidentified)	unidentified/req	S kernel String
+dag/gunbc/action_use_admission.dag:301:5	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+dag/gunbc/action_use_admission.dag:438:5	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+dag/gunbc/compute/compute_seat_ensure.dag:441:18	U unknown (unidentified)	unidentified/req	S kernel String
+dag/gunbc/fabric/workspace_transcript_rate.dag:167:22	U unknown (unidentified)	unidentified/req	S kernel String
+dag/gunbc/host/verified_binary_install.dag:496:3	U unknown (unidentified)	unidentified/req	S kernel String
+dag/gunbc/instruments/append_chain_ladder_native.dag:132:49	U unknown (unidentified)	unidentified/req	S kernel String
+dag/gunbc/instruments/layout_migration_rewrite.dag:460:100	U unknown (unidentified)	unidentified/req	S kernel String
+dag/gunbc/instruments/member_home_cost_native.dag:197:49	U unknown (unidentified)	unidentified/req	S kernel String
+dag/gunbc/instruments/namespace_wave_binding_diff.dag:876:67	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+dag/gunbc/instruments/namespace_wave_occurrence_join.dag:614:31	U unknown (unidentified)	unidentified/req	S kernel String
+dag/gunbc/instruments/tier_o_drift_check.dag:42:31	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+dag/gunbc/live_deploy/emit.dag:1425:32	U unknown (unidentified)	unidentified/req	S kernel String
+dag/gunbc/roadmap/dispatch_worker_handed_set.dag:145:3	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+dag/gunbc/roadmap/roadmap_belt_actuate.dag:4574:5	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+dag/gunbc/roadmap/roadmap_belt_actuate.dag:5917:55	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+dag/gunbc/roadmap/roadmap_event_carrier.dag:509:59	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+dag/gunbc/roadmap/roadmap_event_carrier.dag:513:63	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+dag/gunbc/roadmap/roadmap_result_returned.dag:374:113	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+dag/gunbc/runner/runner_browser_toolchain.dag:461:3	U unknown (unidentified)	unidentified/req	S kernel String
+dag/gunbc/spark/first_party_serving.dag:692:49	U unknown (unidentified)	unidentified/req	S kernel String
+dag/product/printed_chassis/print_preparation_kernel.dag:10:24	S kernel String	kernel:String:mint/req	U unknown (no-separator)
+dag/std/filesystem.dag:77:20	U unknown (unidentified)	unidentified/req	S kernel String
+dag/test/claim/compute/output_capture_absence_wet_witness.dag:464:11	S kernel String	kernel:String:mint/opt	S kernel String
+dag/test/claim/roadmap/attempt_system_unit_launch_witness.dag:930:45	U unknown (unidentified)	unidentified/req	S kernel String
+dag/test/claim/roadmap/roadmap_provider_events_witness.dag:422:7	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+src/v1/04_patterns.dag:729:68	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+src/v2/compiler/source_authority.dag:1636:3	U unknown (unidentified)	unidentified/req	S kernel String
+src/v2/lens/text_string_importer_census.dag:1719:3	U unknown (tyvar)	tyvar:empty_list_element/req	S kernel String
+src/v2/lens/text_string_importer_census.dag:1799:64	U unknown (unidentified)	unidentified/req	S kernel String
+src/v2/std/diagnostic.dag:71:3	V v2-native declared type (v2.std.node.String)	decl:v2.std.node.String/req	S kernel String
+src/v2/test/claim/execution/self_host_candidate_generation_stage_verdicts.dag:53:3	N kernel non-text (Unit)	kernel:Unit:mint/req	S kernel String

@@ -1,0 +1,117 @@
+ENTRY src/v2/lens/complexity_accumulator_copy/corpus_census.dag rc=1 census_in_file=3
+SITE error[src/v2/lens/complexity_accumulator_copy/corpus_census.dag:406:35]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/lens/complexity_accumulator_copy/corpus_census.dag:407:43]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/lens/complexity_accumulator_copy/corpus_census.dag:408:25]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/lens/text_string_importer_census.dag rc=1 census_in_file=4
+SITE error[src/v2/lens/text_string_importer_census.dag:1454:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=var
+SITE error[src/v2/lens/text_string_importer_census.dag:1719:3]: JOINCENSUS bare elem=tyvar:empty_list_element/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/lens/text_string_importer_census.dag:1796:203]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/lens/text_string_importer_census.dag:1799:64]: JOINCENSUS bare elem=unidentified/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/body_let_annotation.dag rc=1 census_in_file=1
+SITE error[src/v2/test/claim/body_let_annotation.dag:939:62]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/cause_assertion_census_witness.dag rc=1 census_in_file=2
+SITE error[src/v2/test/claim/cause_assertion_census_witness.dag:68:101]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/cause_assertion_census_witness.dag:113:26]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/cli/population_verbs.dag rc=1 census_in_file=1
+SITE error[src/v2/test/claim/cli/population_verbs.dag:498:53]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/compiler/callback_argument_formal.dag rc=1 census_in_file=1
+SITE error[src/v2/test/claim/compiler/callback_argument_formal.dag:37:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/compiler/equality_judged.dag rc=1 census_in_file=2
+SITE error[src/v2/test/claim/compiler/equality_judged.dag:31:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/compiler/equality_judged.dag:113:27]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/compiler/fold_domain_alias.dag rc=1 census_in_file=1
+SITE error[src/v2/test/claim/compiler/fold_domain_alias.dag:107:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/compiler/let_binder_frame.dag rc=1 census_in_file=1
+SITE error[src/v2/test/claim/compiler/let_binder_frame.dag:36:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/compiler/payload_binder_declared_type.dag rc=1 census_in_file=1
+SITE error[src/v2/test/claim/compiler/payload_binder_declared_type.dag:73:62]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/execution/self_host_candidate_generation_stage_verdicts.dag rc=1 census_in_file=1
+SITE error[src/v2/test/claim/execution/self_host_candidate_generation_stage_verdicts.dag:53:3]: JOINCENSUS bare elem=kernel:Unit:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/lexical_scope.dag rc=1 census_in_file=2
+SITE error[src/v2/test/claim/lexical_scope.dag:385:11]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/lexical_scope.dag:386:16]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/manual/unary_prefix_v1_canon_lib.dag rc=1 census_in_file=0
+ENTRY src/v2/test/claim/manual/unary_prefix_v1_v2_agreement.dag rc=1 census_in_file=1
+SITE error[src/v2/test/claim/manual/unary_prefix_v1_v2_agreement.dag:157:67]: JOINCENSUS method elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/manual/unary_prefix_v2_canon_lib.dag rc=1 census_in_file=2
+SITE error[src/v2/test/claim/manual/unary_prefix_v2_canon_lib.dag:100:225]: JOINCENSUS method elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/manual/unary_prefix_v2_canon_lib.dag:103:67]: JOINCENSUS method elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/workflow/cause_identifier_cost_probe.dag rc=1 census_in_file=2
+SITE error[src/v2/workflow/cause_identifier_cost_probe.dag:17:38]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_identifier_cost_probe.dag:19:36]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/workflow/floor_cost_debt_edit.dag rc=1 census_in_file=6
+SITE error[src/v2/workflow/floor_cost_debt_edit.dag:129:42]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/floor_cost_debt_edit.dag:296:160]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/floor_cost_debt_edit.dag:457:86]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/floor_cost_debt_edit.dag:471:56]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/floor_cost_debt_edit.dag:520:114]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/floor_cost_debt_edit.dag:548:75]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/workflow/floor_terminal_ledger_wire.dag rc=1 census_in_file=2
+SITE error[src/v2/workflow/floor_terminal_ledger_wire.dag:313:28]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/floor_terminal_ledger_wire.dag:314:48]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/workflow/namespace_xl2_subject_tree_id.dag rc=1 census_in_file=8
+SITE error[src/v2/workflow/namespace_xl2_subject_tree_id.dag:140:43]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/namespace_xl2_subject_tree_id.dag:147:53]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/namespace_xl2_subject_tree_id.dag:150:57]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/namespace_xl2_subject_tree_id.dag:186:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/namespace_xl2_subject_tree_id.dag:208:38]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/namespace_xl2_subject_tree_id.dag:226:56]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/namespace_xl2_subject_tree_id.dag:234:54]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/namespace_xl2_subject_tree_id.dag:256:103]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/workflow/native_frontier_ratchet.dag rc=1 census_in_file=25
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:324:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:331:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:429:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:439:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:441:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:498:20]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:506:16]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:510:28]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:516:9]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:663:16]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:671:16]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:679:8]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:681:35]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:715:49]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:716:49]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:717:41]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:718:42]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:734:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:736:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:741:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:745:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:777:9]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:778:9]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:779:9]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_frontier_ratchet.dag:780:9]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/workflow/native_route_progress_guard.dag rc=1 census_in_file=18
+SITE error[src/v2/workflow/native_route_progress_guard.dag:355:29]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:818:17]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1561:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1563:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1565:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1567:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1569:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1571:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1573:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1575:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1577:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1585:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1591:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1598:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1603:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1608:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1614:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/native_route_progress_guard.dag:1619:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/workflow/source_reference_repoint.dag rc=1 census_in_file=11
+SITE error[src/v2/workflow/source_reference_repoint.dag:46:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/source_reference_repoint.dag:115:53]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/source_reference_repoint.dag:258:92]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/source_reference_repoint.dag:310:31]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/source_reference_repoint.dag:321:28]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/source_reference_repoint.dag:323:28]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/source_reference_repoint.dag:325:28]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/source_reference_repoint.dag:349:67]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=var
+SITE error[src/v2/workflow/source_reference_repoint.dag:349:31]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/source_reference_repoint.dag:360:28]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/source_reference_repoint.dag:375:28]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr

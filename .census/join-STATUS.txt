@@ -1,3 +1,2 @@
 JOIN CENSUS, planning only (throwaway; never merge). Instrument census-local-join f66074a88b2 over main 594064185d0; v1-scoped variant census-local-join-v1.
-LANDED: src/v1 self-compile 360 (join-v1-raw.txt); dag-primary corpus 13781 (join-corpus-raw.txt, run log join-corpus-run.out); src/v2 per-file entries: 8 of 30 files so far (join-v2-entry-partial.out).
-IN FLIGHT: the other 22 src/v2 files on srv2 (~/after-join-entry.txt), then the classified TSV.
+COMPLETE: join-sites.tsv, 14314 typed sites over three populations (dag-primary corpus 13781, src/v1 self-compile 360, src/v2 per-file entry 173 for the 30 src/v2 files outside the dag-primary population that contain join text). Summary in join-summary.txt; non-String and unknown sites in join-notable.tsv.
