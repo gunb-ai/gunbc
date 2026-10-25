@@ -116,6 +116,8 @@ type SystemdUnitProperty
   | JobProperty
   | NoNewPrivilegesProperty
   | RestrictSUIDSGIDProperty
+  // systemd.exec(5) UMask=: the file mode creation mask of the unit's processes (an octal word).
+  | UMaskProperty
   // systemd.resource-control(5) Delegate=: the unit owns its cgroup subtree, so a non-root User= can write the
   // memory controller files below it and the memory envelope read of its cgroup is bounded, not absent.
   | DelegateProperty
@@ -207,6 +209,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     JobProperty => "Job" as NonEmptyStr
     NoNewPrivilegesProperty => "NoNewPrivileges" as NonEmptyStr
     RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
+    UMaskProperty => "UMask" as NonEmptyStr
     DelegateProperty => "Delegate" as NonEmptyStr
   }
 }
@@ -282,6 +285,7 @@ fn systemd_property_carries_paths(property: SystemdUnitProperty) -> Bool {
     JobProperty => false
     NoNewPrivilegesProperty => false
     RestrictSUIDSGIDProperty => false
+    UMaskProperty => false
     DelegateProperty => false
   }
 }
