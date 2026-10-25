@@ -7,10 +7,13 @@ import std.measure { TokenCount, token_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, File }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
-import extdeps.languages.json.emit { JsonValue }
+import std.decimal { ExactDecimal }
+import std.algebra { string_concat_join }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.number { read_json_number, JsonNumberExact, JsonNumberOutsideExactFragment, json_number_fragment_refusal_text }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
-  json_field_string, json_field_nat,
+  json_field, json_field_string, json_field_nat,
   FieldRead, FieldAbsent, FieldMalformed,
 }
 
@@ -54,6 +57,12 @@ type GpuBenchRequestStatus
   = GpuBenchRequestOk
   | GpuBenchRequestError { detail: String? }
 
+// THE THREE TIMESTAMPS (longctx.py call(), read on srv2 at 1a128b28 and unchanged at 12a4983) are
+// time.time() wall-clock epoch seconds from the one client process: t_start when the record is built,
+// before the HTTP request; t_first at the first streamed delta carrying content, reasoning_content or
+// reasoning (null when none arrived); t_end after the stream ends, on error too. They are kept as the
+// exact decimal the line wrote. Wall-clock time is not monotonic, so only differences between lines of
+// one run mean anything, and a clock step during the run is outside what the line can show.
 type GpuBenchRequestV2 {
   run: String
   phase: GpuBenchPhase
@@ -64,6 +73,9 @@ type GpuBenchRequestV2 {
   max_tokens: TokenCount
   prompt_tokens: TokenCount?
   completion_tokens: TokenCount?
+  t_start: ExactDecimal
+  t_first: ExactDecimal?
+  t_end: ExactDecimal
   status: GpuBenchRequestStatus
 }
 
@@ -100,6 +112,52 @@ fn gpu_bench_optional_token_count(obj: JsonValue, key: String) -> GpuBenchOption
     FieldAbsent => GpuBenchOptionalTokenRead { value: none }
     FieldMalformed { cause: c } => GpuBenchOptionalTokenUnreadable { cause: c as NonEmptyStr }
     FieldRead { value: n } => GpuBenchOptionalTokenRead { value: Present { value: token_count(count: n) } }
+  }
+}
+
+type GpuBenchEpochSecondsRead
+  = GpuBenchEpochSecondsRead { value: ExactDecimal? }
+  | GpuBenchEpochSecondsUnreadable { cause: NonEmptyStr }
+
+fn gpu_bench_epoch_seconds(obj: JsonValue, key: String) -> GpuBenchEpochSecondsRead {
+  match json_field(obj: obj, key: key) {
+    FieldAbsent => GpuBenchEpochSecondsRead { value: none }
+    FieldMalformed { cause: c } => GpuBenchEpochSecondsUnreadable { cause: c as NonEmptyStr }
+    FieldRead { value: v } =>
+      match v {
+        JsonNull => GpuBenchEpochSecondsRead { value: none }
+        JsonNumber { lexeme: lx } =>
+          match read_json_number(lexeme: lx) {
+            JsonNumberExact { value: d } => GpuBenchEpochSecondsRead { value: Present { value: d } }
+            JsonNumberOutsideExactFragment { lexeme: _, refusal: r } => GpuBenchEpochSecondsUnreadable { cause: json_number_fragment_refusal_text(r: r) }
+          }
+        JsonBool { value: _ } => GpuBenchEpochSecondsUnreadable { cause: string_concat_join(fields: [key, " is a bool where epoch seconds were expected"], separator: "") as NonEmptyStr }
+        JsonString { value: _ } => GpuBenchEpochSecondsUnreadable { cause: string_concat_join(fields: [key, " is a string where epoch seconds were expected"], separator: "") as NonEmptyStr }
+        JsonArray { elements: _ } => GpuBenchEpochSecondsUnreadable { cause: string_concat_join(fields: [key, " is an array where epoch seconds were expected"], separator: "") as NonEmptyStr }
+        JsonObject { members: _ } => GpuBenchEpochSecondsUnreadable { cause: string_concat_join(fields: [key, " is an object where epoch seconds were expected"], separator: "") as NonEmptyStr }
+      }
+  }
+}
+
+// t_start and t_end are written on every line, failures included; t_first is null when no delta arrived.
+type GpuBenchTimestampsRead
+  = GpuBenchTimestampsRead { t_start: ExactDecimal, t_first: ExactDecimal?, t_end: ExactDecimal }
+  | GpuBenchTimestampsUnreadable { cause: NonEmptyStr }
+
+fn gpu_bench_timestamps(obj: JsonValue) -> GpuBenchTimestampsRead {
+  match gpu_bench_epoch_seconds(obj: obj, key: "t_start") {
+    GpuBenchEpochSecondsUnreadable { cause: c } => GpuBenchTimestampsUnreadable { cause: c }
+    GpuBenchEpochSecondsRead { value: Absent } => GpuBenchTimestampsUnreadable { cause: "t_start member absent" as NonEmptyStr }
+    GpuBenchEpochSecondsRead { value: Present { value: t_start } } =>
+      match gpu_bench_epoch_seconds(obj: obj, key: "t_end") {
+        GpuBenchEpochSecondsUnreadable { cause: c } => GpuBenchTimestampsUnreadable { cause: c }
+        GpuBenchEpochSecondsRead { value: Absent } => GpuBenchTimestampsUnreadable { cause: "t_end member absent" as NonEmptyStr }
+        GpuBenchEpochSecondsRead { value: Present { value: t_end } } =>
+          match gpu_bench_epoch_seconds(obj: obj, key: "t_first") {
+            GpuBenchEpochSecondsUnreadable { cause: c } => GpuBenchTimestampsUnreadable { cause: c }
+            GpuBenchEpochSecondsRead { value: t_first } => GpuBenchTimestampsRead { t_start: t_start, t_first: t_first, t_end: t_end }
+          }
+      }
   }
 }
 
@@ -148,6 +206,9 @@ fn gpu_bench_request_v2_from_json(obj: JsonValue) -> GpuBenchRequestV2Read {
                                             match gpu_bench_optional_token_count(obj: obj, key: "completion_tokens") {
                                               GpuBenchOptionalTokenUnreadable { cause: c } => GpuBenchRequestV2Unreadable { cause: c }
                                               GpuBenchOptionalTokenRead { value: completion_tokens } =>
+                                                match gpu_bench_timestamps(obj: obj) {
+                                                GpuBenchTimestampsUnreadable { cause: c } => GpuBenchRequestV2Unreadable { cause: c }
+                                                GpuBenchTimestampsRead { t_start: t_start, t_first: t_first, t_end: t_end } =>
                                                 match json_field_string(obj: obj, key: "status") {
                                                   FieldAbsent => GpuBenchRequestV2Unreadable { cause: "status member absent" as NonEmptyStr }
                                                   FieldMalformed { cause: c } => GpuBenchRequestV2Unreadable { cause: c as NonEmptyStr }
@@ -164,6 +225,9 @@ fn gpu_bench_request_v2_from_json(obj: JsonValue) -> GpuBenchRequestV2Read {
                                                           max_tokens: token_count(count: max_tokens),
                                                           prompt_tokens: prompt_tokens,
                                                           completion_tokens: completion_tokens,
+                                                          t_start: t_start,
+                                                          t_first: t_first,
+                                                          t_end: t_end,
                                                           status: GpuBenchRequestOk,
                                                         }
                                                       }
@@ -182,6 +246,9 @@ fn gpu_bench_request_v2_from_json(obj: JsonValue) -> GpuBenchRequestV2Read {
                                                               max_tokens: token_count(count: max_tokens),
                                                               prompt_tokens: prompt_tokens,
                                                               completion_tokens: completion_tokens,
+                                                              t_start: t_start,
+                                                              t_first: t_first,
+                                                              t_end: t_end,
                                                               status: GpuBenchRequestError { detail: Absent },
                                                             }
                                                           }
@@ -196,6 +263,9 @@ fn gpu_bench_request_v2_from_json(obj: JsonValue) -> GpuBenchRequestV2Read {
                                                               max_tokens: token_count(count: max_tokens),
                                                               prompt_tokens: prompt_tokens,
                                                               completion_tokens: completion_tokens,
+                                                              t_start: t_start,
+                                                              t_first: t_first,
+                                                              t_end: t_end,
                                                               status: GpuBenchRequestError { detail: Present { value: e } },
                                                             }
                                                           }
@@ -204,6 +274,7 @@ fn gpu_bench_request_v2_from_json(obj: JsonValue) -> GpuBenchRequestV2Read {
                                                         GpuBenchRequestV2Unreadable { cause: "status is not ok or error" as NonEmptyStr }
                                                       }
                                                     }
+                                                }
                                                 }
                                             }
                                         }

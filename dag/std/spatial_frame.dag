@@ -94,6 +94,7 @@ fn length_scale_is_decimal(s: Scale) -> Bool {
     DegreeAngle    => false
     TurnAngle      => false
     Sixty          => false
+    ThirtySixHundred => false
     RackUnitHeight => false
     SquareFootArea => false
   }
