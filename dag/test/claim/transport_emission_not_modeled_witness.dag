@@ -120,6 +120,25 @@ test fn w_rest_and_shell_transports_are_not_refused_at_their_own_operations() ->
     && own_operation_refusal_count(source: rest_and_shell_source, subject: "Net.Fetch") == 0
 }
 
+// THE QUALIFIED-SPELLING CONTROL. extdeps.transports.rest spells rest_method_verb's return type
+// std.effect_grant.Verb and imports std.effect_grant selectively; production binds that name, and
+// so must the census, or the importing fixtures above stop emitting (gunbc#15097,
+// gunbc.recurring_failure_mode a_census_measurement_mode_changes_whether_emit_runs). Keyed on both
+// classes the measure can charge it to, so neither a revert of the import arm (UnresolvedType)
+// nor a disagreement reading of an imported module (TypeRefMeasureBindingDisagreement) passes.
+fn qualified_verb_blocking_count(diagnostic_class: String) -> Int {
+  match compile_dag_diagnostic_census(rest_and_shell_source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: diagnostic_class, subject_name: "std.effect_grant.Verb", blocking: true)
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn w_rest_qualified_return_type_binds_under_the_census() -> Bool {
+  qualified_verb_blocking_count(diagnostic_class: "UnresolvedType") == 0
+    && qualified_verb_blocking_count(diagnostic_class: "TypeRefMeasureBindingDisagreement") == 0
+}
+
 test fn w_importing_fixture_reports_a_planted_refusal_at_its_own_operation() -> Bool {
   own_operation_refusal_count(source: rest_and_shell_with_planted_refusal_source, subject: "Sh.Chmod") == 1
     && own_operation_refusal_count(source: rest_and_shell_with_planted_refusal_source, subject: "Sh.ListDirs") == 0

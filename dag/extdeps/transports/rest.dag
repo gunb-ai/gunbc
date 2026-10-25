@@ -6,7 +6,7 @@ import std.types { FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List 
 import std.content_hash { Fnv1a64Structural }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
-import std.effect_grant { Envelope, HandlerBinding, Read, Write, Verb, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
+import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto }
 import std.operation_argv { OperationRef }
@@ -349,7 +349,7 @@ fn rest_exchange_fixture_lookup(
 // TRACE is a safe method (RFC 9110 section 9.3.8), so it reads. CONNECT (9.3.6) is neither safe
 // nor idempotent and opens a tunnel whose traffic the grant cannot see, so it demands the stronger
 // verb rather than being admitted as a read.
-fn rest_method_verb(method: HttpMethod) -> Verb {
+fn rest_method_verb(method: HttpMethod) -> std.effect_grant.Verb {
   match method {
     GET => Read
     HEAD => Read
