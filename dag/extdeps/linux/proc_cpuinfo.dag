@@ -1,0 +1,119 @@
+module extdeps.linux.proc_cpuinfo
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.algebra { trim, skip }
+import std.measure { HardwareThreadCount, hardware_thread_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.numeric.base16 { base16_word_value }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// /proc/cpuinfo AS THE KERNEL PRINTS IT: one `key<tab>: value` block per logical CPU, blocks separated by
+// a blank line, each opening with `processor : N`. What names the CPU differs by architecture, and both
+// are the kernel's own format:
+//   x86 (arch/x86/kernel/cpu/proc.c show_cpuinfo) prints `model name : <brand string>`;
+//   arm64 (arch/arm64/kernel/cpuinfo.c c_show) prints no name, only the MIDR_EL1 fields `CPU implementer`,
+//   `CPU variant`, `CPU part` (hex) and `CPU revision` (decimal).
+// A name such as Neoverse-N1 for part 0xd0c is a lookup over Arm's part numbers that no module here owns,
+// so the arm64 reading keeps the fields.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/torvalds/linux/blob/master/arch/arm64/kernel/cpuinfo.c" as NonEmptyStr
+  }
+}
+
+data proc_cpuinfo_x86_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/torvalds/linux/blob/master/arch/x86/kernel/cpu/proc.c" as NonEmptyStr
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.proc_cpuinfo",
+      decl_name: "CpuModelReading",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [proc_cpuinfo_x86_authority],
+}
+
+type CpuModelReading
+  = CpuModelNamed { name: NonEmptyStr }
+  | CpuArmMidr { implementer: Nat, variant: Nat, part: Nat, revision: Nat }
+
+type ProcCpuinfoRead
+  = ProcCpuinfoParsed { model: CpuModelReading, logical_cpus: HardwareThreadCount }
+  | ProcCpuinfoUnreadable { cause: NonEmptyStr }
+
+type CpuinfoField {
+  key: String
+  value: String
+}
+
+fn cpuinfo_field(line: String) -> CpuinfoField? {
+  let parts = split(s: line, delimiter: ":")
+  match first(parts) {
+    Absent => none
+    Present { value: k } =>
+      if count(parts) < 2 { none } else {
+        Present { value: CpuinfoField { key: trim(s: k), value: trim(s: join(parts |> skip(n: 1), ":")) } }
+      }
+  }
+}
+
+fn cpuinfo_fields(text: String) -> List<CpuinfoField> {
+  flat_map(split(s: text, delimiter: "\n"), l => match cpuinfo_field(line: l) { Absent => [] as List<CpuinfoField>, Present { value: f } => [f] })
+}
+
+// The first block's value for a key: every logical CPU of one host reports the same model.
+fn cpuinfo_first(fields: List<CpuinfoField>, key: String) -> String? {
+  match first(fields |> filter(f => f.key == key)) { Absent => none, Present { value: f } => Present { value: f.value } }
+}
+
+fn cpuinfo_hex(fields: List<CpuinfoField>, key: String) -> Nat? {
+  match cpuinfo_first(fields: fields, key: key) {
+    Absent => none
+    Present { value: v } => if starts_with(s: v, prefix: "0x") { base16_word_value(word: substring(s: v, start: 2, end: length(v)), max_digits: 15) } else { none }
+  }
+}
+
+fn cpuinfo_decimal(fields: List<CpuinfoField>, key: String) -> Nat? {
+  match cpuinfo_first(fields: fields, key: key) {
+    Absent => none
+    Present { value: v } => match parse_int(s: v) { Absent => none, Present { value: n } => if n < 0 { none } else { Present { value: n } } }
+  }
+}
+
+fn cpuinfo_model(fields: List<CpuinfoField>) -> CpuModelReading? {
+  match cpuinfo_first(fields: fields, key: "model name") {
+    Present { value: name } => if name == "" { none } else { Present { value: CpuModelNamed { name: name as NonEmptyStr } } }
+    Absent =>
+      match cpuinfo_hex(fields: fields, key: "CPU implementer") { Absent => none, Present { value: i } =>
+      match cpuinfo_hex(fields: fields, key: "CPU variant") { Absent => none, Present { value: v } =>
+      match cpuinfo_hex(fields: fields, key: "CPU part") { Absent => none, Present { value: p } =>
+      match cpuinfo_decimal(fields: fields, key: "CPU revision") { Absent => none, Present { value: r } =>
+        Present { value: CpuArmMidr { implementer: i, variant: v, part: p, revision: r } }
+      } } } }
+  }
+}
+
+fn parse_proc_cpuinfo(text: String) -> ProcCpuinfoRead {
+  let fields = cpuinfo_fields(text: text)
+  let processors = count(fields |> filter(f => f.key == "processor"))
+  if processors == 0 {
+    ProcCpuinfoUnreadable { cause: "no processor entry" as NonEmptyStr }
+  } else {
+    match cpuinfo_model(fields: fields) {
+      Absent => ProcCpuinfoUnreadable { cause: "neither a model name nor the four MIDR fields" as NonEmptyStr }
+      Present { value: m } => ProcCpuinfoParsed { model: m, logical_cpus: hardware_thread_count(count: processors) }
+    }
+  }
+}

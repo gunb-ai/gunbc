@@ -11,6 +11,7 @@ import std.measure {
   MilliTokensPerSecond, milli_tokens_per_second, EventsPerHour, events_per_hour, millicore, byte_size, byte_size_count,
 }
 import product.host_identity { HostIdentity }
+import extdeps.linux.proc_cpuinfo { CpuModelReading }
 import extdeps.uri { Uri }
 import extdeps.storage.types { PcieLink }
 import extdeps.nvidia.management_library { NvmlClocksEventMask }
@@ -67,14 +68,8 @@ type ServingArtifact {
   digest: Sha256Digest
 }
 
-// WHAT THE HOST SAYS ITS CPU IS, as it says it. x86 Linux prints a model name; arm64 Linux prints
-// only the MIDR_EL1 fields (implementer, variant, part, revision; arch/arm64/kernel/cpuinfo.c), and a
-// name such as Neoverse-N1 is a table lookup over the part number that no authority here owns yet.
-// So the reading keeps the fields rather than a name this repository would have to coin.
-type CpuModelReading
-  = CpuModelNamed { name: NonEmptyStr }
-  | CpuArmMidr { implementer: Nat, variant: Nat, part: Nat, revision: Nat }
-
+// What the host says its CPU is, as /proc/cpuinfo says it (extdeps.linux.proc_cpuinfo CpuModelReading):
+// a model name on x86, the MIDR fields on arm64.
 // The logical CPUs the kernel lists (/proc/cpuinfo processor entries). Cores and sockets are not read:
 // arm64 /proc/cpuinfo carries neither, and a field no producer can fill would be a fabricated default.
 type ObservedCpu {
@@ -352,18 +347,33 @@ fn timed_requests(requests: List<GpuBenchRequestV4>) -> TimedFold {
   match earliest_start(requests: requests) {
     Absent => TimedFold { requests: [], gaps: [] }
     Present { value: origin } =>
-      fold(requests, init: TimedFold { requests: [], gaps: [] }, f: (acc, r) => match timed_request(origin: origin, r: r) {
-        TimedRead { request: t } => TimedFold { requests: concat(acc.requests, [t]), gaps: acc.gaps }
-        TimedRefused { gap: g } => TimedFold { requests: acc.requests, gaps: concat(acc.gaps, [g]) }
-      })
+      {
+        let reads = map(requests, r => timed_request(origin: origin, r: r))
+        TimedFold {
+          requests: flat_map(reads, t => match t { TimedRead { request: q } => [q], TimedRefused { gap: _ } => [] as List<TimedRequest> }),
+          gaps: flat_map(reads, t => match t { TimedRead { request: _ } => [] as List<ServingBenchmarkGap>, TimedRefused { gap: g } => [g] }),
+        }
+      }
   }
 }
 
 // ── THE THREE QUANTITIES ────────────────────────────────────────────────────────────────────────
 
+type DistinctScan {
+  values: List<Nat>
+  last: Nat
+  seen: Bool
+}
+
+// The distinct values of a list, ascending: one sort and one pass that pushes a value when it differs
+// from the one before it.
+fn distinct_ascending(xs: List<Nat>) -> List<Nat> {
+  fold(sort_by(xs, x => x), init: DistinctScan { values: [], last: 0, seen: false }, f: (acc, x) =>
+    if acc.seen && acc.last == x { acc } else { DistinctScan { values: acc.values |> list_push(x), last: x, seen: true } }).values
+}
+
 fn round_numbers(requests: List<TimedRequest>, active: Nat) -> List<Nat> {
-  let warm = requests |> filter(r => !r.prime && r.n_active == active)
-  fold(warm, init: [], f: (acc, r) => if any(acc, n => n == r.round) { acc } else { concat(acc, [r.round]) })
+  distinct_ascending(xs: map(requests |> filter(r => !r.prime && r.n_active == active), r => r.round))
 }
 
 fn round_requests(requests: List<TimedRequest>, round: Nat) -> List<TimedRequest> {
@@ -440,10 +450,10 @@ type LevelRead
 // the rows say, and whether the rows inhabit a version is admission's question.
 fn serving_level_result(requests: List<TimedRequest>, active: Nat) -> LevelRead {
   let rounds = round_numbers(requests: requests, active: active)
-  let size_gaps = fold(rounds, init: [], f: (acc, n) =>
-    if count(round_requests(requests: requests, round: n)) == active { acc } else { concat(acc, [GapRoundSize { round: n, active: active, observed: count(round_requests(requests: requests, round: n)) }]) })
-  let window_gaps = fold(rounds, init: [], f: (acc, n) =>
-    if us(t: round_window(rs: round_requests(requests: requests, round: n))) == 0 { concat(acc, [GapEmptyWindow { round: n }]) } else { acc })
+  let size_gaps = flat_map(rounds, n =>
+    if count(round_requests(requests: requests, round: n)) == active { [] as List<ServingBenchmarkGap> } else { [GapRoundSize { round: n, active: active, observed: count(round_requests(requests: requests, round: n)) }] })
+  let window_gaps = flat_map(rounds, n =>
+    if us(t: round_window(rs: round_requests(requests: requests, round: n))) == 0 { [GapEmptyWindow { round: n }] } else { [] as List<ServingBenchmarkGap> })
   let gaps = concat(size_gaps, window_gaps)
   if count(rounds) == 0 {
     LevelRefused { gaps: [GapLevelRounds { active: active, observed: 0 }] }
@@ -454,9 +464,9 @@ fn serving_level_result(requests: List<TimedRequest>, active: Nat) -> LevelRead 
     let generated = fold(warm, init: 0, f: (acc, r) => acc + r.completion)
     let window = fold(rounds, init: 0, f: (acc, n) => acc + us(t: round_window(rs: round_requests(requests: requests, round: n))))
     let cpu = fold(rounds, init: 0, f: (acc, n) => acc + us(t: round_engine_cpu(rs: round_requests(requests: requests, round: n))))
-    let decodes = fold(warm, init: [], f: (acc, r) => match request_decode_milli_tps(r: r) {
-      Present { value: v } => concat(acc, [v])
-      Absent => acc
+    let decodes = flat_map(warm, r => match request_decode_milli_tps(r: r) {
+      Present { value: v } => [v]
+      Absent => [] as List<Nat>
     })
     LevelRead {
       result: ServingLevelResult {
@@ -476,8 +486,7 @@ fn serving_level_result(requests: List<TimedRequest>, active: Nat) -> LevelRead 
 }
 
 fn observed_levels(requests: List<TimedRequest>) -> List<Nat> {
-  let warm = requests |> filter(r => !r.prime)
-  fold(warm, init: [], f: (acc, r) => if any(acc, n => n == r.n_active) { acc } else { concat(acc, [r.n_active]) })
+  distinct_ascending(xs: map(requests |> filter(r => !r.prime), r => r.n_active))
 }
 
 // ── ADMISSION AGAINST A VERSION ─────────────────────────────────────────────────────────────────
@@ -530,21 +539,19 @@ fn within_band(observed: Nat, target: Nat, band_bp: Nat) -> Bool {
 
 fn workload_gaps(version: ServingBenchmarkVersion, requests: List<GpuBenchRequestV4>, timed: List<TimedRequest>) -> List<ServingBenchmarkGap> {
   let w = version.workload
-  let retained = fold(requests, init: [], f: (acc, r) =>
-    if r.retained == w.retained_sessions || any(acc, g => match g { GapRetainedSessions { observed: o } => o == r.retained, _ => false }) { acc } else { concat(acc, [GapRetainedSessions { observed: r.retained }]) })
+  let retained = map(distinct_ascending(xs: map(requests, r => r.retained)) |> filter(n => n != w.retained_sessions), n => GapRetainedSessions { observed: n })
   let primes = timed |> filter(r => r.prime)
   let prime_count = if count(requests |> filter(r => is_prime(r: r))) == w.retained_sessions { [] } else { [GapPrimeCount { observed: count(requests |> filter(r => is_prime(r: r))) }] }
-  let band = fold(primes, init: [], f: (acc, r) =>
-    if within_band(observed: r.prompt, target: token_count_value(t: w.retained_context), band_bp: basis_point_count(bp: w.retained_context_band)) { acc } else { concat(acc, [GapPrimeContextOutsideBand { session: r.session, prompt: token_count(count: r.prompt) }]) })
-  let max_tokens = fold(timed |> filter(r => !r.prime), init: [], f: (acc, r) =>
-    if token_count_value(t: r.max_tokens) == token_count_value(t: w.max_output) { acc } else { concat(acc, [GapMaxTokens { round: r.round, observed: r.max_tokens }]) })
-  let levels = fold(observed_levels(requests: timed), init: [], f: (acc, n) =>
-    if any(w.active_levels, l => l == n) { acc } else { concat(acc, [GapLevelNotInVersion { active: n }]) })
-  let rounds = fold(w.active_levels, init: [], f: (acc, n) =>
-    if count(round_numbers(requests: timed, active: n)) == w.rounds_per_level { acc } else { concat(acc, [GapLevelRounds { active: n, observed: count(round_numbers(requests: timed, active: n)) }]) })
+  let band = map(primes |> filter(r => !within_band(observed: r.prompt, target: token_count_value(t: w.retained_context), band_bp: basis_point_count(bp: w.retained_context_band))),
+    r => GapPrimeContextOutsideBand { session: r.session, prompt: token_count(count: r.prompt) })
+  let max_tokens = map(timed |> filter(r => !r.prime && token_count_value(t: r.max_tokens) != token_count_value(t: w.max_output)),
+    r => GapMaxTokens { round: r.round, observed: r.max_tokens })
+  let levels = map(observed_levels(requests: timed) |> filter(n => !any(w.active_levels, l => l == n)), n => GapLevelNotInVersion { active: n })
+  let rounds = flat_map(w.active_levels, n =>
+    if count(round_numbers(requests: timed, active: n)) == w.rounds_per_level { [] as List<ServingBenchmarkGap> } else { [GapLevelRounds { active: n, observed: count(round_numbers(requests: timed, active: n)) }] })
   let spread_bound = millisecond_count(m: w.submission_spread_bound) * milli_per_unit()
-  let spread = fold(w.active_levels, init: [], f: (acc, n) => concat(acc, fold(round_numbers(requests: timed, active: n), init: [], f: (inner, k) =>
-    if us(t: round_spread(rs: round_requests(requests: timed, round: k))) <= spread_bound { inner } else { concat(inner, [GapSubmissionSpread { round: k, spread: round_spread(rs: round_requests(requests: timed, round: k)) }]) })))
+  let spread = flat_map(w.active_levels, n => flat_map(round_numbers(requests: timed, active: n), k =>
+    if us(t: round_spread(rs: round_requests(requests: timed, round: k))) <= spread_bound { [] as List<ServingBenchmarkGap> } else { [GapSubmissionSpread { round: k, spread: round_spread(rs: round_requests(requests: timed, round: k)) }] }))
   concat(concat(concat(concat(concat(concat(concat(retained, prime_count), band), max_tokens), levels), rounds), spread), tool_delta_gaps(version: version, timed: timed))
 }
 
@@ -566,23 +573,18 @@ fn previous_in_session(timed: List<TimedRequest>, r: TimedRequest) -> TimedReque
 fn tool_delta_gaps(version: ServingBenchmarkVersion, timed: List<TimedRequest>) -> List<ServingBenchmarkGap> {
   let delta = token_count_value(t: version.workload.tool_delta)
   let allowance = token_count_value(t: version.workload.tool_delta_template_allowance)
-  fold(timed |> filter(r => !r.prime), init: [], f: (acc, r) => match previous_in_session(timed: timed, r: r) {
-    Absent => concat(acc, [GapToolDelta { round: r.round, session: r.session }])
+  flat_map(timed |> filter(r => !r.prime), r => match previous_in_session(timed: timed, r: r) {
+    Absent => [GapToolDelta { round: r.round, session: r.session }]
     Present { value: p } =>
-      if r.prompt >= p.prompt + delta && r.prompt <= p.prompt + delta + p.completion + allowance { acc } else { concat(acc, [GapToolDelta { round: r.round, session: r.session }]) }
+      if r.prompt >= p.prompt + delta && r.prompt <= p.prompt + delta + p.completion + allowance { [] as List<ServingBenchmarkGap> } else { [GapToolDelta { round: r.round, session: r.session }] }
   })
 }
 
 fn telemetry_gaps(version: ServingBenchmarkVersion, cell: ServingCellIdentity, telemetry: List<LevelTelemetry>) -> List<ServingBenchmarkGap> {
-  fold(version.workload.active_levels, init: [], f: fn(acc, n) {
-    let entries = telemetry |> filter(t => t.active == n)
-    match get(xs: entries, index: 0) {
-      Absent => concat(acc, [GapTelemetryMissing { active: n }])
-      Present { value: t } => {
-        let gpus = if count(t.gpus) == count(cell.gpus) && all_gpus_covered(cell: cell, t: t) { [] } else { [GapTelemetryGpus { active: n }] }
-        concat(acc, gpus)
-      }
-    }
+  flat_map(version.workload.active_levels, n => match get(xs: telemetry |> filter(t => t.active == n), index: 0) {
+    Absent => [GapTelemetryMissing { active: n }]
+    Present { value: t } =>
+      if count(t.gpus) == count(cell.gpus) && all_gpus_covered(cell: cell, t: t) { [] as List<ServingBenchmarkGap> } else { [GapTelemetryGpus { active: n }] }
   })
 }
 
@@ -591,10 +593,11 @@ fn all_gpus_covered(cell: ServingCellIdentity, t: LevelTelemetry) -> Bool {
 }
 
 fn level_results(version: ServingBenchmarkVersion, timed: List<TimedRequest>) -> LevelFold {
-  fold(version.workload.active_levels, init: LevelFold { results: [], gaps: [] }, f: (acc, n) => match serving_level_result(requests: timed, active: n) {
-    LevelRead { result: r } => LevelFold { results: concat(acc.results, [r]), gaps: acc.gaps }
-    LevelRefused { gaps: g } => LevelFold { results: acc.results, gaps: concat(acc.gaps, g) }
-  })
+  let reads = map(version.workload.active_levels, n => serving_level_result(requests: timed, active: n))
+  LevelFold {
+    results: flat_map(reads, l => match l { LevelRead { result: r } => [r], LevelRefused { gaps: _ } => [] as List<ServingLevelResult> }),
+    gaps: flat_map(reads, l => match l { LevelRead { result: _ } => [] as List<ServingBenchmarkGap>, LevelRefused { gaps: g } => g }),
+  }
 }
 
 type LevelFold {
