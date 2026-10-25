@@ -361,7 +361,7 @@ pub fn primitive_projection_row(
 ) -> Rc<PrimitiveProjection> {
     Rc::new(PrimitiveProjection {
         primitive: primitive.clone(),
-        declaration: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+        declaration: crate::std_decl_ref::decl_ref(module_path, decl_name),
         fidelity: fidelity.clone(),
     })
 }
