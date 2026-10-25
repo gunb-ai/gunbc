@@ -361,7 +361,7 @@ pub fn primitive_projection_row(
 ) -> Rc<PrimitiveProjection> {
     Rc::new(PrimitiveProjection {
         primitive: primitive.clone(),
-        declaration: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+        declaration: crate::std_decl_ref::decl_ref(module_path, decl_name),
         fidelity: fidelity.clone(),
     })
 }
@@ -548,7 +548,7 @@ pub fn primitive_projection_row_for_declaration(
 ) -> Option<Rc<PrimitiveProjection>> {
     primitive_projection_roster().iter().cloned().fold(
         std::option::Option::None,
-        |acc: Option<Rc<PrimitiveProjection>>, row: Rc<PrimitiveProjection>| match acc.clone() {
+        |acc: _, row: Rc<PrimitiveProjection>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 if crate::std_decl_ref::declaration_ref_eq(

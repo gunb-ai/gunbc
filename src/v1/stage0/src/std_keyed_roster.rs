@@ -121,7 +121,7 @@ pub fn keyed_roster_locate_first_row<K: Clone, V: Clone>(
 ) -> Option<Rc<KeyedRow<K, V>>> {
     rows.iter().cloned().fold(
         std::option::Option::None,
-        |acc: Option<Rc<KeyedRow<K, V>>>, row: Rc<KeyedRow<K, V>>| match acc.clone() {
+        |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 if key_eq(row.row_key.clone(), wanted_key.clone()) {
@@ -140,9 +140,7 @@ pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
 ) -> Option<Rc<KeyedRosterDuplicateEvidence<K, V>>> {
     rows.clone().iter().cloned().fold(
         std::option::Option::None,
-        |acc: Option<Rc<KeyedRosterDuplicateEvidence<K, V>>>, row: Rc<KeyedRow<K, V>>| match acc
-            .clone()
-        {
+        |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 if (keyed_occurrence_count(rows.clone(), row.row_key.clone(), key_eq.clone()) > 1) {
@@ -226,11 +224,7 @@ pub fn keyed_roster_insert_into_unique<K: Clone, V: Clone>(
     incoming: Rc<KeyedRow<K, V>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> Rc<KeyedRosterInsert<K, V>> {
-    match crate::std_keyed_row::keyed_row_find(
-        rows.clone(),
-        incoming.row_key.clone(),
-        key_eq.clone(),
-    ) {
+    match crate::std_keyed_row::keyed_row_find(rows.clone(), incoming.row_key.clone(), key_eq) {
         Some(existing) => Rc::new(KeyedRosterInsert::KeyedRosterDuplicateKey {
             key: incoming.row_key.clone(),
             existing: existing.clone(),
@@ -312,5 +306,5 @@ pub fn keyed_roster_union<K: Clone, V: Clone>(
     right: Rc<Vec<Rc<KeyedRow<K, V>>>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> Rc<KeyedRosterBuild<K, V>> {
-    keyed_roster_build(v1_rt::concat(left.clone(), right.clone()), key_eq.clone())
+    keyed_roster_build(v1_rt::concat(left.clone(), right.clone()), key_eq)
 }
