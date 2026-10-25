@@ -10,7 +10,8 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // spelling's cost contract. Retiring the ambient authority (the chars precedent, #14520) deleted the row, and with it the cost
 // fact, because no carrier keyed by declaration exists for the declared home to receive it. The values, so they are not lost:
 // list_push work 1, output_size n + 1, Amortized, CarrierSensitive { ephemeral_work: n, persistent_work: log n };
-// chars work n, output_size n, Proven, CarrierInsensitive. No executing consumer priced either name from its row (the
+// chars work n, output_size n, Proven, CarrierInsensitive; sha256_hex_of_text work n, output_size 64, Proven,
+// CarrierInsensitive (its row's comment measured the pure fold at ~500-600k interpreted eval steps over a ~150-byte text). No executing consumer priced any of these names from its row (the
 // roster's readers check names and spellings; only concat_contract's cost is read), so what was lost is a modeled fact a
 // reviewer could cite, which is mitigation at most (the accumulator-copy lens prices list_snoc_item from v2.lens.cost
 // copied_port_citations, not from these rows). The restoration is a separate change (zesty-ibex-193).
@@ -26,7 +27,7 @@ data retired_contract_cost_facts_drop: RungDrop = RungDrop {
     previous: Mitigatable,
     temporary: OutsideTheLadder,
     reason: DeletedWithoutReplacement,
-    population: Enumerated { members: FreeSemigroup { head: "std.primitives list_push_contract (retired by #14751, declared home std.algebra list_push)", tail: ["std.primitives chars_contract (retired by #14520, declared home std.host_text chars)"] } },
-    restoration_trigger: "a modeled cost fact for each declaration (std.algebra list_push, std.host_text chars), read by an executing declaration-keyed lookup, with a RED -- the existing modeled home is std.primitive_identity PrimitiveCostFact joined through std.primitive_projection; sufficient when that lookup returns each declaration's cost fact on an executed path and a RED refuses a declaration with none"
+    population: Enumerated { members: FreeSemigroup { head: "std.primitives list_push_contract (retired by #14751, declared home std.algebra list_push)", tail: ["std.primitives chars_contract (retired by #14520, declared home std.host_text chars)", "std.primitives sha256_hex_of_text_contract (retired with the declared home std.content_hash sha256_hex_of_text)"] } },
+    restoration_trigger: "a modeled cost fact for each declaration (std.algebra list_push, std.host_text chars, std.content_hash sha256_hex_of_text), read by an executing declaration-keyed lookup, with a RED -- the existing modeled home is std.primitive_identity PrimitiveCostFact joined through std.primitive_projection; sufficient when that lookup returns each declaration's cost fact on an executed path and a RED refuses a declaration with none"
   } }
 }

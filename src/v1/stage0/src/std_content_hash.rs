@@ -170,6 +170,10 @@ pub fn sha256_hex_digest(hex: String) -> Option<Rc<Sha256Digest>> {
     }
 }
 
+pub fn sha256_hex_of_text(text: String) -> String {
+    panic!("unrealized host seam 'sha256_hex_of_text' in std.content_hash: this declaration's whole body is a self-call, so it has no behaviour on this target. It compiles as a refusal rather than as recursion. Give it a row in extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers.")
+}
+
 pub fn sha1_hex_digest(hex: String) -> Option<Rc<Sha1Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 40) {
         Some(Rc::new(Sha1Digest { hex: hex.clone() }))
