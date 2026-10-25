@@ -688,6 +688,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("scratch-s2-node-after"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/scratch_s2_node.dag",
+                function: "scratch_s2_node_after_wire",
+            },
+        ),
+        (
             instrument_label("scratch-s2-node"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/scratch_s2_node.dag",

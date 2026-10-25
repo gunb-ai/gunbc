@@ -3,7 +3,6 @@ module gunbc.instruments.scratch_s2_node
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.process { ExitSuccess }
 import std.integer { int_to_decimal_string }
-import std.algebra { fold_list }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.compiler.parse { PreparedGrammar }
@@ -15,12 +14,6 @@ import v2.workflow.roster_import_sweep { RosterHeadRow, RosterHomeClosure, Roste
 // BuildBuddy's cap). The census before, the file converged IN MEMORY by roster_applied (the apply's own splice), the census
 // after, and the final text between markers, because a fleet runner's writes are not kept.
 data s2_path: String = "src/v2/std/node.dag"
-
-type S2Pass {
-  text: String
-  log: String
-  done: Bool
-}
 
 fn s2_scope() -> RosterHomeScope {
   OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyOccurrences { call: "sort_by", within: "symbols_are_one_distinct_set", texts: ["symbol_total_order()"] } }
@@ -56,42 +49,59 @@ fn s2_outcome_word(outcome: RosterOutcome) -> String {
   }
 }
 
+// ONE ANALYSIS: the census of the original file IS the apply's first pass (roster_census_text_rows returns the outcome the
+// apply splices), so its census line is the before-census, and the spliced text is the swept file. The after-census and the
+// binding census read that swept file in a second run (s2_after_run), never re-deriving the first pass.
 fn s2_run(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let scope = s2_scope()
   let rows = roster_rows_for_scope(scope: scope)
   let closures = roster_home_closures(root: "", scope: scope)
   let read = Filesystem.Read(path: s2_path)
   if read.success {
-    let before = s2_census(label: "BEFORE", text: read.content, rows: rows, closures: closures, call: "sort_by", prepared: prepared, lex: lex)
-    let last = fold_list(xs: [1, 2, 3, 4], empty: S2Pass { text: read.content, log: "", done: false }, cons: fn(acc, i) { s2_pass(acc: acc, i: i, rows: rows, closures: closures, prepared: prepared, lex: lex) })
-    let after = s2_census(label: "AFTER", text: last.text, rows: rows, closures: closures, call: "sort_by", prepared: prepared, lex: lex)
-    let bound = s2_census(label: "TO-BOUND", text: last.text, rows: [s2_to_row()], closures: closures, call: "list_sort_by_key", prepared: prepared, lex: lex)
-    before + last.log + after + bound + "FINAL-BEGIN\n" + last.text + "\nFINAL-END\n"
+    let c = roster_census_text_rows(sides: roster_home_sides(rows: rows), companions: [], path: s2_path, text: read.content, prepared: prepared, lex: lex, candidates: rows, closures: closures, census_call: Present { value: "sort_by" })
+    let census = "CENSUS-BEFORE " + s2_path + " call=sort_by heads=" + int_to_decimal_string(value: c.heads) + " selected=" + int_to_decimal_string(value: c.selected) + "\n" + roster_render_outcome(path: s2_path, outcome: c.outcome) + "OUTCOME-BEFORE " + s2_outcome_word(outcome: c.outcome) + "\n"
+    census + s2_splice_report(before: read.content, outcome: c.outcome)
   } else {
     "S2 unreadable\n"
   }
 }
 
-fn s2_pass(acc: S2Pass, i: Int, rows: List<RosterHeadRow>, closures: List<RosterHomeClosure>, prepared: PreparedGrammar, lex: PreparedLexRules) -> S2Pass {
-  if acc.done {
-    acc
-  } else {
-    s2_step(acc: acc, i: i, outcome: roster_census_text_rows(sides: roster_home_sides(rows: rows), companions: [], path: s2_path, text: acc.text, prepared: prepared, lex: lex, candidates: rows, closures: closures, census_call: Absent).outcome)
-  }
-}
-
-fn s2_step(acc: S2Pass, i: Int, outcome: RosterOutcome) -> S2Pass {
-  let head = "PASS " + int_to_decimal_string(value: i) + " "
+fn s2_splice_report(before: String, outcome: RosterOutcome) -> String {
   match outcome {
-    RosterClean => S2Pass { text: acc.text, log: acc.log + head + "CLEAN\n", done: true }
-    RosterRefused { reason: r } => S2Pass { text: acc.text, log: acc.log + head + "REFUSED " + roster_refusal_text(reason: r) + "\n", done: true }
-    other => s2_applied(acc: acc, head: head, row: roster_render_outcome(path: s2_path, outcome: other), outcome: other)
+    RosterClean => "SPLICE none (clean)\n"
+    RosterRefused { reason: r } => "SPLICE none (refused " + roster_refusal_text(reason: r) + ")\n"
+    other =>
+      match roster_applied(before: before, outcome: other) {
+        RosterApplyRefused { reason: r } => "SPLICE-REFUSED " + roster_refusal_text(reason: r) + "\n"
+        RosterApplyWritten { content: c } => "FINAL-BEGIN\n" + c + "\nFINAL-END\n"
+      }
   }
 }
 
-fn s2_applied(acc: S2Pass, head: String, row: String, outcome: RosterOutcome) -> S2Pass {
-  match roster_applied(before: acc.text, outcome: outcome) {
-    RosterApplyRefused { reason: r } => S2Pass { text: acc.text, log: acc.log + head + "SPLICE-REFUSED " + roster_refusal_text(reason: r) + "\n", done: true }
-    RosterApplyWritten { content: c } => S2Pass { text: c, log: acc.log + head + row, done: false }
+// THE SECOND RUN, over the swept file committed on this scratch branch: the after-census over the same selection (a Clean
+// outcome is the fixed point), and list_sort_by_key's census as a KeepHead row of std.algebra, whose outcome is Clean
+// exactly when every such head is free and the module imports it from std.algebra.
+fn scratch_s2_node_after_wire() -> CliWireResponse {
+  CliWirePrintable { bytes: s2_after_report(), exit: ExitSuccess }
+}
+
+fn s2_after_report() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "S2 grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } => s2_after_run(prepared: prepared, lex: dag_prepared_lex())
   }
 }
+
+fn s2_after_run(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let scope = s2_scope()
+  let rows = roster_rows_for_scope(scope: scope)
+  let closures = roster_home_closures(root: "", scope: scope)
+  let read = Filesystem.Read(path: s2_path)
+  if read.success {
+    s2_census(label: "AFTER", text: read.content, rows: rows, closures: closures, call: "sort_by", prepared: prepared, lex: lex)
+      + s2_census(label: "TO-BOUND", text: read.content, rows: [s2_to_row()], closures: closures, call: "list_sort_by_key", prepared: prepared, lex: lex)
+  } else {
+    "S2 unreadable\n"
+  }
+}
+
