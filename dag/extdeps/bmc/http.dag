@@ -68,7 +68,9 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 // input is Secret. That missing declared-input TYPE on the row is this class's next-rung trigger;
 // until it lands the class sits at mitigatable and this note is diligence.
 //
-// A REQUEST BODY THAT HOLDS A PASSWORD REACHES CURL ON STDIN, NOT AS A FILE. SetAccountPassword and
+// A REQUEST BODY THAT HOLDS A PASSWORD REACHES CURL ON STDIN, NOT AS A FILE: the StdinPassword
+// binding of gunbc.auth.materialized_secret SecretBinding, realized here by the transport row's
+// `stdin:` rather than by a materialization leg. SetAccountPassword and
 // CreateAccount once took `request_body_file` and read it with `--data @{request_body_file}`, so
 // every caller had to put a plaintext password on disk first. gunbc.tools.bmc_onboard wrote
 // /tmp/bmc_onboard_pwbody.json with the default mode and never removed it. `--data-binary @-` reads

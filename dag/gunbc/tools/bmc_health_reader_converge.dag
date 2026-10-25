@@ -49,7 +49,7 @@ import gunbc.auth.private_secret_file {
   PrivateSecretFileNotEntered,
   PrivateSecretFileNotEnteredResidueRemains,
 }
-import gunbc.auth.netrc_binding { with_private_netrc_binding }
+import gunbc.auth.netrc_binding { netrc_binding_path, with_private_netrc_binding }
 import gunbc.auth.access_token_source {
   AccessTokenEnsureRefused,
   AccessTokenReady,
@@ -160,7 +160,7 @@ fn bmc_health_reader_converge_as_admin(plan: BmcOnboardingPlan, token: Secret, a
     machine: plan.bmc.host,
     login: plan.factory_login.username,
     password: admin_password,
-    use: fn(netrc) { bmc_health_reader_admin_session(plan: plan, token: token, netrc: netrc) },
+    use: fn(binding) { bmc_health_reader_admin_session(plan: plan, token: token, netrc: netrc_binding_path(binding: binding) as NonEmptyStr) },
   ) {
     PrivateSecretFileCompleted { value: exit } => exit
     PrivateSecretFileCompletedResidueRemains { value: _ } =>

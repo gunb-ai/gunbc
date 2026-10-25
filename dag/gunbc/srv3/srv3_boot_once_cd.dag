@@ -35,7 +35,7 @@ import gunbc.auth.private_secret_file {
   PrivateSecretFileNotEntered,
   PrivateSecretFileNotEnteredResidueRemains,
 }
-import gunbc.auth.netrc_binding { with_private_netrc_binding }
+import gunbc.auth.netrc_binding { netrc_binding_path, with_private_netrc_binding }
 import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim }
 import gunbc.tools.bmc_onboard {
   boot_override_body,
@@ -168,7 +168,7 @@ fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExi
     machine: host as NonEmptyStr,
     login: account as NonEmptyStr,
     password: password as Secret,
-    use: fn(netrc) { srv3_boot_once_cd_with_netrc(host: host as NonEmptyStr, netrc: netrc) },
+    use: fn(binding) { srv3_boot_once_cd_with_netrc(host: host as NonEmptyStr, netrc: netrc_binding_path(binding: binding) as NonEmptyStr) },
   ) {
     PrivateSecretFileCompleted { value: exit } => exit
     PrivateSecretFileCompletedResidueRemains { value: _ } =>
