@@ -8095,9 +8095,10 @@ fn fold_carrier_closed_at_step(carrier: Node, typed_args: List<Node>, scope: Inf
 
 // THE STEP IS INFERRED AGAIN UNDER THE CLOSED CARRIER, one extra round of the same argument
 // inference, as call_needs_generic_rebinding_pass runs a call's argument fold again from the
-// substitution its first round ended with. Round 1 infers the step against the open carrier, whose
-// return the lambda arm does not check the body against (an open type is never a body's expected
-// type: `none` would type every `Present` arm as a unit optional); the carrier is closed at what round 1
+// substitution its first round ended with. Round 1 infers the step against the open carrier; the
+// lambda arm does not hand a body a declared return whose element is the unit placeholder (`none`
+// would type every `Present` arm as a unit optional), while a bare declaration still selects the
+// owner of the body's arm literals; the carrier is closed at what round 1
 // produced; round 2 infers the step with the closed carrier as its accumulator and its declared
 // return, so the typed lambda the emitter reads agrees with the call's result. Bounded at two rounds:
 // round 2 runs only when the closed carrier is itself closed, and nothing is fed back from it. A
@@ -10631,7 +10632,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           match exp.inferred {
             Present { value: Resolved { node: declared_ret } } =>
               if type_node_is_established(n: declared_ret, source_indices: scope.type_env.source_indices)
-                && !fold_carrier_is_open(carrier: declared_ret, scope: scope) {
+                && is_fully_resolved(n: declared_ret, source_indices: scope.type_env.source_indices)
+                && !join_operand_element_is_unit(n: declared_ret, source_indices: scope.type_env.source_indices) {
                 Present { value: declared_ret }
               } else { none }
             _ => none
@@ -15241,7 +15243,8 @@ fn unify_callable_param_pairs(formals: List<Node>, actuals: List<Node>, generic_
 // BINDING YIELDS TO IT: when an earlier argument bound the generic to an open type (`empty: none`, a
 // bare `Empty`, `[]`; v1.compiler.infer fold_carrier_is_open), the lambda's informative return is a
 // sighting of the same generic, and the binding becomes their branch join (branch_join_type), the
-// carrier first, so it moves only to a strictly more specific type. This is the kernel fold's carrier
+// carrier first, when that join is itself closed: it moves only to a strictly more specific, closed
+// type, never from one open type to another (`[]` joined with a bare `Cons` literal stays `[]`'s). This is the kernel fold's carrier
 // rule (fold_carrier_closed_at_step) at the generic-callee seam: fold_list(xs, empty: none, cons: ..)
 // closes A at what cons produces. A closed binding is never overridden, as before. Its
 // return is computed under a substitution that may not yet bind its own parameters, so it can be
@@ -15264,7 +15267,7 @@ fn unify_lambda_solves(solved: Map<String, Node>, returned: Map<String, Node>, g
               if unify_binding_is_uninformative(n: sighting) { st }
               else {
                 match branch_join_type(types: [bound, sighting], scope: scope) {
-                  Present { value: joined } => map_insert(st, g, joined)
+                  Present { value: joined } => if fold_carrier_is_open(carrier: joined, scope: scope) { st } else { map_insert(st, g, joined) }
                   Absent => st
                 }
               }
