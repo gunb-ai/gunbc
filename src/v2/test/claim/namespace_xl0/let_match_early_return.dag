@@ -324,10 +324,14 @@ test fn a_bare_constructor_binding_arm_stays_a_constructor_pattern() -> Bool {
   }
 }
 
-// (c) The arm binder `v` hides the parameter `v`: refused, judged against the authored arm scope.
+// (c) The arm binder `v` hides the parameter `v`: refused, judged against the authored arm scope. The cause
+// is v2.compiler.resolve resolve_reason_pattern_atom_names_visible_value, which replaced
+// binder_hides_visible_value for pattern atoms (tidy-ant-251, 2026-10-25): the program refuses exactly as
+// before, and only the stated cause and remedy ("rename to bind, or use an equality guard to compare")
+// changed, because the compiler cannot tell a shadowing binder from a comparison here.
 test fn an_arm_binder_hiding_an_outer_parameter_still_refuses() -> Bool {
   match lme_outcomes() {
-    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: v, some_none: _, literal: _ } => match v { LmeRefused { reason: r, at_atom: _ } => r == ^resolve_reason_binder_hides_visible_value
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: v, some_none: _, literal: _ } => match v { LmeRefused { reason: r, at_atom: _ } => r == ^resolve_reason_pattern_atom_names_visible_value
  _ => false }
     LmeContextRefused => false
   }
