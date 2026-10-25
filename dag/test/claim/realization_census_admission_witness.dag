@@ -1,0 +1,150 @@
+module test.claim.realization_census_admission_witness
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import gunbc.realization_census { ModuleCensusReading, EvidenceDeclaration, EvidenceUncited, PhaseP2 }
+import gunbc.realization_census_rows_gen {
+  RealizationCensusAdmission,
+  RealizationCensusAdmitted,
+  RealizationCensusRefused,
+  CensusCellRefusal,
+  CauseOutsideVocabulary,
+  VocabPhase,
+  CauseIdentityDuplicated,
+  admit_realization_census_text,
+  dag_string_literal,
+}
+
+// SUPPLIED TSV TEXT AT THE ADMISSION BOUNDARY. Each refusal control differs from the accepted
+// control in exactly one cell or row, so a fold that admitted everything, or refused everything,
+// fails one side. The inhabitance claim that the real receipt reaches this admission is the
+// generated module itself: gunbc.realization_census_rows exists only if the receipt admitted.
+
+data mh: String = "module\tclass\tstorage_site\tstorage_level\tcaching_site\tcaching_level\taccess_site\taccess_level\tauthz_site\tauthz_level\tplacement_site\tplacement_level\tambient_calls\tworst_site\tworst_finding\tevidence_symbols\tphase"
+
+data m1: String = "gunbc.a\tproduction\tLiteral\tL4\tNone\tL0\tNone\tL0\tNone\tL0\tNone\tL0\t3\tLiteral\tf1\tdata_root\tP2"
+
+data m2: String = "gunbc.b\tseed\tForked\tL5\tNone\tL0\tNone\tL0\tNone\tL0\tHome\tL1\t0\tForked\tf2\troot_dir\tP2"
+
+data fh: String = "finding_id\tclass_id\tmodule\tclass\tdimension\tsite\tlevel\tsymbol\tspecimen\tnote\texisting_authority\tfix_shape"
+
+data f1: String = "f1\tstorage_root\tgunbc.a\tproduction\tstorage\tLiteral\tL4\tdata_root\tformat!(\"\{root}/x\")\tn\tgunbc.owned_directory\tderive"
+
+data f2: String = "f2\t\tgunbc.b\tseed\tother\tOther\tL5\troot_dir\ts\tn\ta\tf"
+
+data ch: String = "class_id\tdimension\tdecision_site\tpattern\tinstances\tmodules\tproduction_modules\textdeps_modules\tseed_modules\tmodule_list\tcurrent_rung\tattainable_ceiling\towning_authority\twall\tred_control\tresidual\tnext_trigger"
+
+data c1: String = "storage_root\tstorage\tForked/Literal\tp\t1\t1\t1\t0\t0\tfindings.tsv where class_id = storage_root\t0\t4: no spelling outside its declaration\ta\tw\tr\tres\tt"
+
+fn tsv(lines: List<String>) -> String { concat(join(lines, "\n"), "\n") }
+
+fn admit(modules: List<String>, findings: List<String>, classes: List<String>) -> RealizationCensusAdmission {
+  admit_realization_census_text(modules_tsv: tsv(lines: modules), findings_tsv: tsv(lines: findings), classes_tsv: tsv(lines: classes))
+}
+
+fn refusals(a: RealizationCensusAdmission) -> List<CensusCellRefusal> {
+  match a {
+    RealizationCensusRefused { refusals: rs } => rs
+    RealizationCensusAdmitted { modules: _, findings: _, classes: _ } => []
+  }
+}
+
+fn refused_once_at(a: RealizationCensusAdmission, table: String, line: Int, column: String) -> Bool {
+  let rs = refusals(a: a)
+  count(rs) == 1 && count(filter(rs, r => r.table == table && r.line == line && r.column == column)) == 1
+}
+
+test fn accepted_control_admits_every_row_and_drops_the_stated_counts() -> Bool {
+  match admit(modules: [mh, m1, m2], findings: [fh, f1, f2], classes: [ch, c1]) {
+    RealizationCensusAdmitted { modules: ms, findings: fs, classes: cs } =>
+      count(ms) == 2 && count(fs) == 2 && count(cs) == 1
+    RealizationCensusRefused { refusals: _ } => false
+  }
+}
+
+test fn empty_module_identity_refuses_at_its_cell() -> Bool {
+  let empty = concat("", substring(s: m2, start: 7, end: string_length(s: m2)))
+  refused_once_at(a: admit(modules: [mh, m1, empty], findings: [fh, f1], classes: [ch, c1]), table: "modules.tsv", line: 3, column: "module")
+}
+
+test fn duplicate_module_identity_refuses_at_the_second_line() -> Bool {
+  refused_once_at(a: admit(modules: [mh, m1, m1], findings: [fh, f1], classes: [ch, c1]), table: "modules.tsv", line: 3, column: "module")
+}
+
+// The duplicate also doubles the class's projected instance count, so the stated count refuses too:
+// both are true of this input, and the claim is that the duplicate is located at its second line.
+test fn duplicate_finding_identity_refuses_at_the_second_line() -> Bool {
+  let rs = refusals(a: admit(modules: [mh, m1, m2], findings: [fh, f1, f2, f1], classes: [ch, c1]))
+  count(filter(rs, r => r.table == "findings.tsv" && r.line == 4 && r.column == "finding_id")) == 1
+    && count(filter(rs, r => r.table == "findings.tsv" && r.line == 2)) == 0
+}
+
+test fn decision_site_outside_the_closed_set_refuses() -> Bool {
+  let bad = replace(m1, "\tLiteral\tL4\t", "\tCached\tL4\t")
+  refused_once_at(a: admit(modules: [mh, bad, m2], findings: [fh, f1, f2], classes: [ch, c1]), table: "modules.tsv", line: 2, column: "storage_site")
+}
+
+test fn finding_naming_an_absent_module_refuses() -> Bool {
+  refused_once_at(a: admit(modules: [mh, m1], findings: [fh, f1, f2], classes: [ch, c1]), table: "findings.tsv", line: 3, column: "module")
+}
+
+test fn stated_class_count_disagreeing_with_the_findings_refuses() -> Bool {
+  let bad = replace(c1, "\tp\t1\t1\t", "\tp\t2\t1\t")
+  refused_once_at(a: admit(modules: [mh, m1, m2], findings: [fh, f1, f2], classes: [ch, bad]), table: "classes.tsv", line: 2, column: "instances")
+}
+
+test fn missing_header_column_refuses_before_any_row() -> Bool {
+  let short = replace(mh, "\tphase", "")
+  count(filter(refusals(a: admit(modules: [short, m1], findings: [fh, f1], classes: [ch, c1])), r => r.table == "modules.tsv" && r.line == 1 && r.column == "phase")) == 1
+}
+
+test fn interpolation_brace_and_quote_are_escaped_in_the_rendered_literal() -> Bool {
+  dag_string_literal(t: "format!(\"\{root}\")") == "\"format!(\\\"\\\{root}\\\")\""
+}
+
+
+
+test fn phase_outside_its_vocabulary_refuses_with_the_typed_cause() -> Bool {
+  let bad = replace(m1, "\tP2", "\tP9")
+  let rs = refusals(a: admit(modules: [mh, bad, m2], findings: [fh, f1, f2], classes: [ch, c1]))
+  count(rs) == 1 && count(filter(rs, r => r.column == "phase" && match r.cause { CauseOutsideVocabulary { vocabulary: VocabPhase } => true  _ => false })) == 1
+}
+
+test fn duplicated_identity_carries_the_first_line_as_data() -> Bool {
+  let rs = refusals(a: admit(modules: [mh, m1, m1, m2], findings: [fh, f1, f2], classes: [ch, c1]))
+  count(filter(rs, r => r.line == 3 && match r.cause { CauseIdentityDuplicated { first_line: l } => l == 2  _ => false })) == 1
+}
+
+fn first_module(a: RealizationCensusAdmission) -> List<ModuleCensusReading> {
+  match a {
+    RealizationCensusAdmitted { modules: ms, findings: _, classes: _ } => ms
+    RealizationCensusRefused { refusals: _ } => []
+  }
+}
+
+// A bare name and a keyword-prefixed name are declarations of the row's module; an effect
+// operation and a parenthetical are kept as text; the phase is the constructor.
+test fn evidence_citations_split_into_references_and_text() -> Bool {
+  let row = replace(m1, "\tdata_root\t", "\tdata data_root; root_dir; Filesystem.Write; anchor (Open Group)\t")
+  match first(first_module(a: admit(modules: [mh, row, m2], findings: [fh, f1, f2], classes: [ch, c1]))) {
+    Present { value: m } =>
+      count(m.evidence_symbols) == 4
+        && count(filter(m.evidence_symbols, c => match c {
+             EvidenceDeclaration { ref: r } => (r.module_path as String) == "gunbc.a" && ((r.decl_name as String) == "data_root" || (r.decl_name as String) == "root_dir")
+             EvidenceUncited { text: _ } => false
+           })) == 2
+        && count(filter(m.evidence_symbols, c => match c {
+             EvidenceUncited { text: t } => (t as String) == "Filesystem.Write" || (t as String) == "anchor (Open Group)"
+             EvidenceDeclaration { ref: _ } => false
+           })) == 2
+        && match m.phase { PhaseP2 => true  _ => false }
+    Absent => false
+  }
+}
+
+// The classes tab's module_list is determined by class_id; a cell changed in that column alone
+// refuses, at that cell.
+test fn a_module_list_pointer_naming_another_class_refuses() -> Bool {
+  let bad = replace(c1, "class_id = storage_root", "class_id = something_else")
+  refused_once_at(a: admit(modules: [mh, m1, m2], findings: [fh, f1, f2], classes: [ch, bad]), table: "classes.tsv", line: 2, column: "module_list")
+}

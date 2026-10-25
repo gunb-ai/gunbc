@@ -18,10 +18,10 @@ pub use crate::std_algebra::{
     algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile,
     AlgebraTypeTemplate, ContainerSource,
 };
-use crate::std_coercion::RefinementCarrier::{
-    NotARefinementTarget, RefinementCarrierAmbiguous, RefinesCarrier,
+use crate::std_coercion::SubtractionRefinement::{
+    SubtractionEscapesTo, SubtractionRefinementAmbiguous, SubtractionStaysInOperandAlgebra,
 };
-pub use crate::std_coercion::{dag_refinement_carrier, RefinementCarrier};
+pub use crate::std_coercion::{dag_subtraction_refinement, SubtractionRefinement};
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclField, DeclarationRef};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -2170,25 +2170,27 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn normalize_access_type_node(mut __tco_loop_n: Rc<Node>) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        let has_structure = (n.connective.clone() != Connective::NoConnective);
-        let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
-            && has_structure.clone())
-        {
-            n.children.clone().first().cloned()
-        } else {
-            std::option::Option::None
-        };
-        match unwrapped.clone() {
-            Some(base) => {
-                let __tco_0 = base.clone();
-                __tco_loop_n = __tco_0;
-                continue;
-            }
-            std::option::Option::None => {
-                break n;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            let has_structure = (n.connective.clone() != Connective::NoConnective);
+            let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
+                && has_structure.clone())
+            {
+                n.children.clone().first().cloned()
+            } else {
+                std::option::Option::None
+            };
+            match unwrapped.clone() {
+                Some(base) => {
+                    let __tco_0 = base.clone();
+                    __tco_loop_n = __tco_0;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break n;
+                }
             }
         }
     }
@@ -2476,29 +2478,31 @@ pub fn declaration_carried_through_resolution(
     mut __tco_loop_n: Rc<Node>,
     mut __tco_loop_hops: i64,
 ) -> Option<Rc<DeclarationRef>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut hops = __tco_loop_hops;
-        match whole_declaration_carried(n.clone()) {
-            Some(d) => {
-                break Some(d.clone());
-            }
-            std::option::Option::None => {
-                if (hops.clone() <= 0) {
-                    break std::option::Option::None;
-                } else {
-                    match n.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: r, .. }) => {
-                            let __tco_0 = r.clone();
-                            let __tco_1 = v1_rt::int_sub(hops, 1);
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_hops = __tco_1;
-                            continue;
-                        }
-                        _ => {
-                            break std::option::Option::None;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut hops = __tco_loop_hops;
+            match whole_declaration_carried(n.clone()) {
+                Some(d) => {
+                    break Some(d.clone());
+                }
+                std::option::Option::None => {
+                    if (hops.clone() <= 0) {
+                        break std::option::Option::None;
+                    } else {
+                        match n.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: r, .. }) => {
+                                let __tco_0 = r.clone();
+                                let __tco_1 = v1_rt::int_sub(hops, 1);
+                                __tco_loop_n = __tco_0;
+                                __tco_loop_hops = __tco_1;
+                                continue;
+                            }
+                            _ => {
+                                break std::option::Option::None;
+                            }
                         }
                     }
                 }
@@ -3703,37 +3707,39 @@ pub fn first_matching_algebra_field(
     mut __tco_loop_candidates: Rc<Vec<AlgebraFieldKind>>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<AlgebraFieldMatch>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut candidates = __tco_loop_candidates;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        match candidates.clone().first().cloned() {
-            std::option::Option::None => {
-                break std::option::Option::None;
-            }
-            Some(kind) => {
-                match crate::v1_std_core::find_child_named(
-                    n.clone(),
-                    algebra_field_kind_name(kind.clone()),
-                    source_indices.clone(),
-                ) {
-                    Some(f) => {
-                        break Some(Rc::new(AlgebraFieldMatch {
-                            field_kind: kind.clone(),
-                            field_node: f.clone(),
-                        }));
-                    }
-                    std::option::Option::None => {
-                        let __tco_0 = n;
-                        let __tco_1 = Rc::new(v1_rt::list_skip(&candidates, 1));
-                        let __tco_2 = source_indices;
-                        __tco_loop_n = __tco_0;
-                        __tco_loop_candidates = __tco_1;
-                        __tco_loop_source_indices = __tco_2;
-                        continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut candidates = __tco_loop_candidates;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            match candidates.clone().first().cloned() {
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+                Some(kind) => {
+                    match crate::v1_std_core::find_child_named(
+                        n.clone(),
+                        algebra_field_kind_name(kind.clone()),
+                        source_indices.clone(),
+                    ) {
+                        Some(f) => {
+                            break Some(Rc::new(AlgebraFieldMatch {
+                                field_kind: kind.clone(),
+                                field_node: f.clone(),
+                            }));
+                        }
+                        std::option::Option::None => {
+                            let __tco_0 = n;
+                            let __tco_1 = Rc::new(v1_rt::list_skip(&candidates, 1));
+                            let __tco_2 = source_indices;
+                            __tco_loop_n = __tco_0;
+                            __tco_loop_candidates = __tco_1;
+                            __tco_loop_source_indices = __tco_2;
+                            continue;
+                        }
                     }
                 }
             }
@@ -3751,14 +3757,16 @@ pub fn subtraction_refinement_of(
     left_type: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
-) -> Rc<RefinementCarrier> {
+) -> Rc<SubtractionRefinement> {
     match crate::v1_compiler_infer_env::type_reference_declaration_ref(
         left_type,
         source_indices,
         env,
     ) {
-        Some(operand) => crate::std_coercion::dag_refinement_carrier(operand.clone()),
-        std::option::Option::None => Rc::new(RefinementCarrier::NotARefinementTarget),
+        Some(operand) => crate::std_coercion::dag_subtraction_refinement(operand.clone()),
+        std::option::Option::None => {
+            Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
+        }
     }
 }
 
@@ -3773,24 +3781,26 @@ pub fn infer_binop_type_node(
             match (*subtraction_refinement_of(left_type.clone(), source_indices.clone(), env))
                 .clone()
             {
-                RefinementCarrier::RefinesCarrier {
+                SubtractionRefinement::SubtractionEscapesTo {
                     from_type: from_type,
                     ..
                 } => Rc::new(BinOpInferred {
                     result_type: nominal_type_ref(from_type.clone()),
                     algebra_field: std::option::Option::None,
                 }),
-                RefinementCarrier::RefinementCarrierAmbiguous { from_types: _, .. } => {
+                SubtractionRefinement::SubtractionRefinementAmbiguous { from_types: _, .. } => {
                     Rc::new(BinOpInferred {
                         result_type: error_type(),
                         algebra_field: std::option::Option::None,
                     })
                 }
-                RefinementCarrier::NotARefinementTarget => infer_arithmetic_binop_type_node(
-                    op.clone(),
-                    left_type.clone(),
-                    source_indices.clone(),
-                ),
+                SubtractionRefinement::SubtractionStaysInOperandAlgebra => {
+                    infer_arithmetic_binop_type_node(
+                        op.clone(),
+                        left_type.clone(),
+                        source_indices.clone(),
+                    )
+                }
             }
         }
         _ => {

@@ -8,7 +8,7 @@ use self::CrossingPlanSelection::*;
 use self::RealizationGround::*;
 use self::RealizationRefusalCause::*;
 use self::ReferenceIdentityUnavailableCause::*;
-use self::RefinementCarrier::*;
+use self::SubtractionRefinement::*;
 use self::TextPlanEndpoint::*;
 use self::TextRepresentation::*;
 use self::TypeDeclarationProvenance::*;
@@ -216,13 +216,13 @@ pub fn dag_cast_requires_proof(source_type: String, target_type: String) -> bool
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum RefinementCarrier {
-    NotARefinementTarget,
-    RefinesCarrier { from_type: String },
-    RefinementCarrierAmbiguous { from_types: Rc<Vec<String>> },
+pub enum SubtractionRefinement {
+    SubtractionStaysInOperandAlgebra,
+    SubtractionEscapesTo { from_type: String },
+    SubtractionRefinementAmbiguous { from_types: Rc<Vec<String>> },
 }
 
-pub fn dag_refinement_carrier(operand: Rc<DeclarationRef>) -> Rc<RefinementCarrier> {
+pub fn dag_subtraction_refinement(operand: Rc<DeclarationRef>) -> Rc<SubtractionRefinement> {
     {
         let hits = Rc::new({
             let mut __result = Vec::new();
@@ -237,14 +237,16 @@ pub fn dag_refinement_carrier(operand: Rc<DeclarationRef>) -> Rc<RefinementCarri
             __result
         });
         match hits.clone().first().cloned() {
-            std::option::Option::None => Rc::new(RefinementCarrier::NotARefinementTarget),
+            std::option::Option::None => {
+                Rc::new(SubtractionRefinement::SubtractionStaysInOperandAlgebra)
+            }
             Some(r) => {
                 if ((hits.clone().len() as i64) == 1) {
-                    Rc::new(RefinementCarrier::RefinesCarrier {
+                    Rc::new(SubtractionRefinement::SubtractionEscapesTo {
                         from_type: r.from_type.clone(),
                     })
                 } else {
-                    Rc::new(RefinementCarrier::RefinementCarrierAmbiguous {
+                    Rc::new(SubtractionRefinement::SubtractionRefinementAmbiguous {
                         from_types: Rc::new({
                             let mut __result = Vec::new();
                             for h in hits.iter().cloned() {

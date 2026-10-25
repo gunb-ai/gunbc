@@ -66,6 +66,12 @@ fn spreadsheet_read_of(sheets_read: List<SheetsSheetRead>) -> SpreadsheetRead {
   SpreadsheetRead { spreadsheetId: none, sheets: Present { value: sheets_read } }
 }
 
+data prospects_title: NonEmptyStr = "Prospects 2026"
+
+fn classify_prospects(read: SpreadsheetRead) -> ReviewTabClassification {
+  classify_review_tabs(read: read, title: prospects_title)
+}
+
 data witness_spreadsheet_id: NonEmptyStr = "1ciProspectSheetFileId"
 
 // (1) EXACTLY ONE TAB IS LOCATED, AND THE PAYLOAD IS ASSERTED RATHER THAN THE VARIANT. The ids are
@@ -74,7 +80,7 @@ data witness_spreadsheet_id: NonEmptyStr = "1ciProspectSheetFileId"
 // ("CI prospect sheet", gunbc.review_sheet_converge_cli ci_prospect_sheet_name). A mutation taking
 // either from anywhere but properties fails this claim on the value, not on the arm.
 test fn one_tab_is_located_with_the_observed_sheet_id_and_the_observed_title() -> Bool {
-  match classify_review_tabs(
+  match classify_prospects(
     read: spreadsheet_read_of(sheets_read: [sheet_read(sheet_id: 1836271154, title: "Prospects 2026", index: 0)]),
   ) {
     ClassifiedExactlyOne { candidate: c } => (c.sheet_id == 1836271154) && ((c.title as String) == "Prospects 2026")
@@ -111,7 +117,7 @@ test fn the_conversion_of_exactly_one_carries_the_observed_id_the_observed_title
 // nothing to format, and the remedy is to look at the request that asked -- not to send an
 // operator hunting for an unreadable workbook.
 test fn no_tabs_is_absent_rather_than_unreadable() -> Bool {
-  match classify_review_tabs(read: spreadsheet_read_of(sheets_read: [])) {
+  match classify_prospects(read: spreadsheet_read_of(sheets_read: [])) {
     ClassifiedNone => true
     ClassifiedExactlyOne { candidate: _ } => false
     ClassifiedMany { candidates: _ } => false
@@ -120,7 +126,7 @@ test fn no_tabs_is_absent_rather_than_unreadable() -> Bool {
 }
 
 test fn an_absent_sheets_field_is_absent_rather_than_unreadable() -> Bool {
-  match classify_review_tabs(read: SpreadsheetRead { spreadsheetId: none, sheets: none }) {
+  match classify_prospects(read: SpreadsheetRead { spreadsheetId: none, sheets: none }) {
     ClassifiedNone => true
     ClassifiedExactlyOne { candidate: _ } => false
     ClassifiedMany { candidates: _ } => false
@@ -140,11 +146,11 @@ fn candidate_titles(cs: List<ReviewTabCandidate>) -> List<String> {
 // the failure being removed is "take the first", which would answer TabLocated with sheetId 0 here
 // and is exactly what the constant did. The candidate list is asserted at its payload so that an
 // arm returning an empty TabAmbiguous -- refusing without saying what it saw -- also fails.
-test fn two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_titles() -> Bool {
-  match classify_review_tabs(
+test fn two_tabs_with_one_declared_title_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_titles() -> Bool {
+  match classify_prospects(
     read: spreadsheet_read_of(
       sheets_read: [
-        sheet_read(sheet_id: 0, title: "Sheet1", index: 0),
+        sheet_read(sheet_id: 0, title: "Prospects 2026", index: 0),
         sheet_read(sheet_id: 918273645, title: "Prospects 2026", index: 1),
       ],
     ),
@@ -152,7 +158,7 @@ test fn two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_ti
     ClassifiedMany { candidates: cs } =>
       (count(cs) == 2)
         && (candidate_ids(cs: cs) == [0, 918273645])
-        && (candidate_titles(cs: cs) == ["Sheet1", "Prospects 2026"])
+        && (candidate_titles(cs: cs) == ["Prospects 2026", "Prospects 2026"])
     ClassifiedExactlyOne { candidate: _ } => false
     ClassifiedNone => false
     ClassifiedUnreadable { cause: _ } => false
@@ -164,7 +170,7 @@ test fn two_tabs_are_ambiguous_and_the_candidates_carry_both_observed_ids_and_ti
 // field was not read. Substituting the Drive file's name there is mutation M2 in reverse and is
 // what this arm forbids.
 test fn a_tab_with_no_observed_title_is_unreadable_rather_than_named_by_this_module() -> Bool {
-  match classify_review_tabs(
+  match classify_prospects(
     read: spreadsheet_read_of(
       sheets_read: [
         sheet_read_from_properties(
@@ -185,7 +191,7 @@ test fn a_tab_with_no_observed_title_is_unreadable_rather_than_named_by_this_mod
 // did parse is a confident answer derived from an incomplete reading -- the absorbing fallback
 // DESIGN section 5 refuses, arriving as a skip rather than as a widen.
 test fn an_unreadable_tab_beside_a_readable_one_poisons_the_reading_rather_than_being_skipped() -> Bool {
-  match classify_review_tabs(
+  match classify_prospects(
     read: spreadsheet_read_of(
       sheets_read: [
         sheet_read(sheet_id: 55, title: "Prospects 2026", index: 0),
@@ -207,7 +213,7 @@ test fn an_unreadable_tab_beside_a_readable_one_poisons_the_reading_rather_than_
 // the colour channels already ran under -- it is not a substituted default, and the claim is here
 // so that a future tightening of the title arm cannot quietly take this one with it.
 test fn the_first_tabs_absent_sheet_id_reads_as_zero_rather_than_refusing() -> Bool {
-  match classify_review_tabs(
+  match classify_review_tabs(title: "Sheet1" as NonEmptyStr, 
     read: spreadsheet_read_of(
       sheets_read: [
         sheet_read_from_properties(
@@ -231,11 +237,43 @@ test fn the_first_tabs_absent_sheet_id_reads_as_zero_rather_than_refusing() -> B
 test fn a_refused_status_is_unreadable_and_carries_the_status_rather_than_reading_as_absent() -> Bool {
   match review_tab_standing_of_outcome(
     spreadsheet_id: witness_spreadsheet_id,
+    title: prospects_title,
     outcome: RestRefused { refusal: RestStatusRefused { status: 403, body: "caller lacks Sheets access" } },
   ) {
     TabUnreadable { cause: c } => string_contains(s: c as String, pattern: "403")
     TabAbsent => false
     TabLocated { tab: _ } => false
     TabAmbiguous { candidates: _ } => false
+  }
+}
+
+// (8) THE GENERALIZATION: "exactly one tab per declared title". A workbook carrying a kind's three
+// declared tabs answers each title independently, each locating its own sheetId, and a title no
+// tab carries is absent for that title alone -- which is what lets a converge add the missing tab.
+fn census_workbook() -> SpreadsheetRead {
+  spreadsheet_read_of(
+    sheets_read: [
+      sheet_read(sheet_id: 0, title: "modules", index: 0),
+      sheet_read(sheet_id: 71, title: "findings", index: 1),
+      sheet_read(sheet_id: 72, title: "classes", index: 2),
+    ],
+  )
+}
+
+test fn each_declared_title_locates_its_own_tab_in_a_multi_tab_workbook() -> Bool {
+  match classify_review_tabs(read: census_workbook(), title: "findings" as NonEmptyStr) {
+    ClassifiedExactlyOne { candidate: c } => (c.sheet_id == 71) && (c.index == 1)
+    ClassifiedNone => false
+    ClassifiedMany { candidates: _ } => false
+    ClassifiedUnreadable { cause: _ } => false
+  }
+}
+
+test fn a_declared_title_no_tab_carries_is_absent_beside_tabs_with_other_titles() -> Bool {
+  match classify_review_tabs(read: census_workbook(), title: "ledger" as NonEmptyStr) {
+    ClassifiedNone => true
+    ClassifiedExactlyOne { candidate: _ } => false
+    ClassifiedMany { candidates: _ } => false
+    ClassifiedUnreadable { cause: _ } => false
   }
 }
