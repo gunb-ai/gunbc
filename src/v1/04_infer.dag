@@ -176,7 +176,7 @@ import std.termination {
   proportional_divisor_from_int_at_least_two,
   OneStep
 }
-import v1.compiler.infer_resolve {
+import std.algebra { FreeSemigroup, CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral, NamedTemplate, ReceiverSelf }
 import v1.compiler.infer_resolve { is_declaration_body, is_applied_declaration_carrier, generic_application_reapplied,
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
