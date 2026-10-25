@@ -7460,11 +7460,7 @@ fn body_lower_postfix_repeat_head_optional(repeat_capture: Node) -> Optional<Nod
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
       Accepted { value: elem, diagnostics: _ } => optional_present(value: elem)
-      Rejected { diagnostics: _ } =>
-        match find_named_child(root: repeat_capture, name: ^grammar_repeat_element_node_projection) {
-          Accepted { value: elem, diagnostics: _ } => optional_present(value: elem)
-          Rejected { diagnostics: _ } => optional_absent()
-        }
+      Rejected { diagnostics: _ } => optional_absent()
     }
   }
 }
@@ -9624,22 +9620,14 @@ fn body_lower_match_arms_wired(items: List<Node>) -> Outcome<List<Node>> {
 fn body_lower_match_spine_left(spine: Node) -> Optional<Node> {
   match find_named_child(root: spine, name: ^grammar_sequence_left_node_projection) {
     Accepted { value: left, diagnostics: _ } => Present { value: left }
-    Rejected { diagnostics: _ } =>
-      match sugar_sequence_pair_optional(node: spine) {
-        Present { value: pair } => Present { value: pair.left }
-        Absent => Absent
-      }
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
 fn body_lower_match_spine_right(spine: Node) -> Optional<Node> {
   match find_named_child(root: spine, name: ^grammar_sequence_right_node_projection) {
     Accepted { value: right, diagnostics: _ } => Present { value: right }
-    Rejected { diagnostics: _ } =>
-      match sugar_sequence_pair_optional(node: spine) {
-        Present { value: pair } => Present { value: pair.right }
-        Absent => Absent
-      }
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
