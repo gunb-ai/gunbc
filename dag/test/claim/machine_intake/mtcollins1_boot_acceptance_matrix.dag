@@ -53,7 +53,7 @@ import gunbc.runner.runner_browser_toolchain {
   runner_browser_toolchain_node, runner_browser_toolchain_automation, browser_toolchain_probe_title, browser_toolchain_probe_width_px,
 }
 import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_path }
-import gunbc.host_state_root { host_state_tree }
+import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { MtCollins1EndMedia, EndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan, run_record_text, MtCollins1BootRunRecord }
 import gunbc.machine_intake.megarac_media_attach { MegaRacOwnSessionEnded, OwnSessionStopped, SessionReleased }
@@ -453,7 +453,7 @@ data first_worker_start: Int = 5000
 fn worker_filesystem() -> ModeledFilesystem {
   worker_process_started(
     fs: ModeledFilesystem {
-      directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/tmp", runner_temp, "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_path(tree: host_state_tree()) as String],
+      directories: ["/", "/home", "/home/runner", "/home/runner/work", "/home/runner/work/gunbc", "/home/runner/work/gunbc/gunbc", "/home/runner/work/gunbc/gunbc/target", "/run", "/proc", "/tmp", runner_temp, "/var", "/var/lib", host_state_tree_path(tree: host_state_tree()) as String, unit_hold_store_path(tree: host_state_tree()) as String],
       files: [ModeledFile { path: credential_path, content: "secret" }],
       refused_reads: [],
       stats: [ModeledPathStat { path: runner_temp, mode: runner_temp_mode, owner: runner_principal }],
