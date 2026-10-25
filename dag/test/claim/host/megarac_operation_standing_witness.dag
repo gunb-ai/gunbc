@@ -6,7 +6,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
-import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.host.megarac_operation_standing {
@@ -16,7 +16,7 @@ import gunbc.host.megarac_operation_standing {
   megarac_operation_standings, megarac_operation_executed_at, megarac_identity_eq,
 }
 import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_identity }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_identity, mtcollins1_current_build_identity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -56,9 +56,11 @@ test fn w_a_receipt_across_a_reflash_grounds_no_build() -> Bool {
 
 // THE INHABITANCE CLAIM OVER THE COMMITTED ROWS, AND IT ASSERTS THE ROUTE. mtcollins1 at its 0.32 intake
 // identity: virtual media and SDR naming are grounded by EXECUTION (the diskless boot, the 32-DIMM SDR
-// read); the KVM still has no standing. Nothing is grounded at 0.45.3, because no
-// reading of that build is committed and the 2026-10-03 run's receipts sit across the 2026-10-02 reflash
-// from the only reading there is.
+// read); the KVM still has no standing THERE. At the CURRENT build -- the one the committed hpm check
+// reading mints -- all three operations are grounded, by the 2026-10-03 run-37102391062 receipts: the
+// reflash window closed before those receipts, so they join the NEW reading, not the 0.32 one. Nothing is
+// grounded at the PAGE LABEL "0.45.3" -- no reading carries it and none ever will; that is the vendor
+// page's name for the release, not the controller's, and the page label never becomes a key.
 fn standing_is(s: MegaRacOperationStanding, operation: MegaRacOperation, executed: Bool) -> Bool {
   megarac_identity_eq(a: s.identity, b: mtcollins1_identity) && megarac_operation_eq(a: s.operation, b: operation) && match s.grounding {
     OperationExecutedAtBuild { receipt: _, build: _ } => executed
@@ -69,17 +71,43 @@ fn grounded_by(standings: List<MegaRacOperationStanding>, operation: MegaRacOper
   count(filter(standings, st => standing_is(s: st, operation: operation, executed: executed))) > 0
 }
 
-test fn w_the_committed_rows_ground_0_32_by_route_and_nothing_at_0_45_3() -> Bool {
+test fn w_the_committed_rows_ground_0_32_by_route_and_the_read_build_by_the_run() -> Bool {
   let ev = mtcollins1_megarac_operation_evidence()
   let standings = megarac_operation_standings(evidence: ev)
-  let later = BmcObservedIdentity { board: mtcollins1_identity.board, chassis_part_number: mtcollins1_identity.chassis_part_number, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3") }
+  let page_label = BmcObservedIdentity { board: mtcollins1_identity.board, chassis_part_number: mtcollins1_identity.chassis_part_number, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3") }
+  // AT 0.32: the two September receipts ground virtual media and SDR naming; the KVM still has no
+  // standing at the intake build (its only receipt is the October run, across the reflash from that read).
   grounded_by(standings: standings, operation: MegaRacVirtualMediaAttach, executed: true)
     && grounded_by(standings: standings, operation: MegaRacSdrSocketNaming, executed: true)
     && !grounded_by(standings: standings, operation: MegaRacKvmCanvasStill, executed: true)
-    && count(standings) == 2
-    && !megarac_operation_executed_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: later)
-    && !megarac_operation_executed_at(evidence: ev, operation: MegaRacKvmCanvasStill, identity: later)
-    && !megarac_operation_executed_at(evidence: ev, operation: MegaRacSdrSocketNaming, identity: later)
+    // FIVE STANDINGS TOTAL: two at the 0.32 read, three at the current-build read. Counting them is the
+    // discriminator -- with the transition's to: back on the page label, or the reading row removed, the
+    // October receipts join nothing and this count falls to 2.
+    && count(standings) == 5
+    && count(filter(standings, st => bmc_firmware_release_identity_eq(a: st.identity.firmware, b: mtcollins1_identity.firmware))) == 2
+    // THE CURRENT-BUILD JOIN, PAIRED WITH THE READ (reviews 86103/86139). The current build is
+    // BmcFirmwareReleaseIdentity? / BmcObservedIdentity? -- it exists only because the committed hpm check
+    // established it -- so this claim reads the Optional honestly: NO build, NO join, and this claim goes
+    // red beside every other claim that leans on the reading, never passing vacuously against a missing
+    // build. The Absent arm here is the same shape the ledger enforces by construction (no reading row, no
+    // transition); reaching it while the counts above still hold would be the fabricated-default state §5
+    // forbids, and it fails LOUD.
+    && (match mtcollins1_current_build_identity {
+      Absent => false
+      Present { value: current_build_identity } =>
+        count(filter(standings, st => bmc_firmware_release_identity_eq(a: st.identity.firmware, b: current_build_identity.firmware))) == 3
+        // THE THREE OCT-3 RECEIPTS JOIN THE NEW READING: media attach, the KVM still, and SDR socket
+        // naming are all executed at the identity the committed hpm check mints.
+        && megarac_operation_executed_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: current_build_identity)
+        && megarac_operation_executed_at(evidence: ev, operation: MegaRacKvmCanvasStill, identity: current_build_identity)
+        && megarac_operation_executed_at(evidence: ev, operation: MegaRacSdrSocketNaming, identity: current_build_identity)
+    })
+    // AND NOTHING AT THE PAGE LABEL. The vendor's name for the release is not the controller's, and no
+    // join may ever key on it: restoring the transition's to: to "0.45.3" with no reading behind it
+    // grounds these three at the label instead, and the arms below go red.
+    && !megarac_operation_executed_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: page_label)
+    && !megarac_operation_executed_at(evidence: ev, operation: MegaRacKvmCanvasStill, identity: page_label)
+    && !megarac_operation_executed_at(evidence: ev, operation: MegaRacSdrSocketNaming, identity: page_label)
 }
 
 // THE KVM STILL HAS NO STANDING AT 0.32: no committed still exists from that build, and the only KVM

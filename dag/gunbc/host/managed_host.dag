@@ -613,9 +613,9 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_handoff_admission_discriminates_on_every_managed_hosts_rows"),
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_second_machine_with_the_same_profile_gets_the_same_selection"),
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_reflash_resolves_the_new_builds_row_or_refuses_with_no_per_unit_edit"),
-    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_observed_reflash_to_0_45_3_resolves_that_builds_row_and_still_admits"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_observed_reflash_resolves_the_machine_read_builds_row_and_still_admits"),
     // The 0.45.3 attestation claim rebuilds the host fixture at that release, so it is an admitted caller too.
-    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_0_45_3_row_is_attested_and_never_rendered_as_machine_read"),
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_0_45_row_is_machine_read_and_the_page_label_is_never_its_key"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_controller_observed_as_openbmc_is_refused_for_every_megarac_operation"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_controller_whose_family_is_unobserved_is_refused_for_every_megarac_operation"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_megarac_build_no_operation_was_executed_on_is_refused_for_every_operation"),
