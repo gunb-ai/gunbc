@@ -103,8 +103,10 @@ type CompileDiagnosticCensus
 // realization rather than falling back to the spelling. It adds no judgment and no Rust: the seam is the existing
 // builtin, so it dissolves with compile_diagnostic_census_hand_rust_dissolve_trigger. No std.primitives
 // *_contract row ever admitted the name (it is only a builtin_registry_surface_names entry, which mirrors the
-// registry that still holds it), so there is no contract to retire. First consumer: gunbc.compile_census_probe,
-// whose census_rows_for gunbc.namespace_cut.migration_kit calls.
+// registry that still holds it), so there is no contract to retire. Consumers: the declared-home claims
+// (test.claim.compile_dag_diagnostic_census_declared_home) import it today; gunbc.compile_census_probe, whose
+// census_rows_for gunbc.namespace_cut.migration_kit calls, still calls the ambient spelling and moves onto this
+// import with the generated roster sweep the namespace gate tip lands.
 fn compile_dag_diagnostic_census(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source: source)
 }
