@@ -732,13 +732,20 @@ test fn a_holder_deferred_past_the_bound_is_refused_not_deferred() -> Bool {
   }
 }
 
-// AN UNCOUNTED DEFERRAL SAYS SO LOUDLY: an unwritable ledger still defers (the next pass from another
-// slot is still the right rung) but the detail carries DEFERRAL UNCOUNTED with its cause, so no one
-// mistakes an unbounded deferral for a bounded one.
-test fn an_unwritable_ledger_defers_but_announces_it_is_uncounted() -> Bool {
-  match slot_cap_holder_deferral_outcome(ledger: LedgerUnwritable { cause: "no slot directory" }, unit: unit(n: "02"), live: owed_live(), desired: desired()) {
-    SlotCapsSelfDeferred { unit: _, detail: d } =>
-      string_contains(s: d, pattern: "DEFERRAL UNCOUNTED") && string_contains(s: d, pattern: "no slot directory")
+// AN UNREADABLE LEDGER IS RED, NOT A FREE PASS (review 86323, finding 1; DESIGN §5: an uncounted
+// degradation is a hard reject). The file that cannot be read is never rewritten by the pass that
+// failed to read it, so a deferral here would be read back forever and the bound above could never
+// fire. The fold refuses, naming the cause; the bracket pass then RESETS the ledger (loud counted step).
+test fn an_unreadable_ledger_refuses_instead_of_deferring_forever() -> Bool {
+  let r = slot_cap_holder_deferral_outcome(ledger: LedgerUnwritable { cause: "not a JSON document" }, unit: unit(n: "02"), live: owed_live(), desired: desired())
+  match r {
+    SlotCapsRefused { unit: u, step: s, reason: why } =>
+      (u as String) == "actions-runner@srv3-02.service"
+        && s == "holder-deferral-ledger"
+        && !slot_cap_outcome_settled(o: r)
+        && !slot_cap_outcome_host_settled(o: r)
+        && string_contains(s: why, pattern: "not a JSON document")
+        && string_contains(s: why, pattern: "resets the ledger")
     _ => false
   }
 }

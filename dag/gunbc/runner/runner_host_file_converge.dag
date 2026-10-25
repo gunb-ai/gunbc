@@ -2539,13 +2539,22 @@ fn write_reload_and_restart_admitted_over(
   // REFUSAL, not a deferral (review 86146, finding 1; DESIGN §5: a failure arm refuses, never widens).
   let holder_ledger = holder_deferral_ledger_read(host: subject.host as String, unit: holder)
   let holder_slot = slot_cap_holder_standing_over(target: subject.target, context: context, unit: holder, desired: desired, ledger: holder_ledger)
-  // BOOKKEEPING FOLLOWS THE VERDICT: clear on converged, count on deferred, untouched on any refusal. A
-  // bookkeeping failure is REPORTED (the next pass's count would be wrong) but never rewrites the verdict.
-  let holder_ledger_note = match holder_ledger_after_verdict(host: subject.host as String, unit: holder, verdict: holder_slot, ledger: holder_ledger) {
-    Present { value: why } => [SlotCapsSelfDeferred { unit: holder, detail: join(["the deferral ledger could not be written: ", why, " -- the NEXT pass counts this holder UNCOUNTED"], "") }]
-    Absent => []
+  // BOOKKEEPING FOLLOWS THE VERDICT: clear on converged, count on deferred, reset behind the ledger
+  // refusal, untouched otherwise. A bookkeeping failure on a DEFERRAL upgrades the holder to a REFUSAL
+  // (review 86323, finding 1, same principle DESIGN §5): a deferral whose count cannot be written would
+  // be read back at the SAME stale number by every future pass, and a count that never advances can never
+  // reach the bound -- that is a permanent green wearing a number, which is exactly the uncounted
+  // degradation the bound exists to make impossible. Refusing here is loud, counted, and self-healing:
+  // the next pass retries the write from the same number.
+  let holder_bookkeeping = holder_ledger_after_verdict(host: subject.host as String, unit: holder, verdict: holder_slot, ledger: holder_ledger)
+  let holder_final = match holder_bookkeeping {
+    Absent => holder_slot
+    Present { value: why } => match holder_slot {
+      SlotCapsSelfDeferred { unit: u, detail: _ } => SlotCapsRefused { unit: u, step: "holder-deferral-ledger", reason: join(["the holder is owed caps but its deferral could not be counted on the host: ", why, " -- a deferral whose count cannot advance is a permanent green the bound can never stop, so it refuses; the next pass retries the count from where this one stopped"], "") }
+      other => other
+    }
   }
-  let slots = concat(concat(concat(owned_slots, foreign_slots), [holder_slot]), holder_ledger_note)
+  let slots = concat(concat(concat(owned_slots, foreign_slots), [holder_final]), [])
   // DISCHARGED ONLY AFTER A READ-BACK THAT THE HOST ADMITS AGAIN; otherwise the obligation stays held.
   // The host-settled fold is used, not the unit-settled one: a DEFERRED SELF is the bracket physically
   // completing everything it CAN do on this host (see slot_cap_outcome_host_settled), so it must not strand

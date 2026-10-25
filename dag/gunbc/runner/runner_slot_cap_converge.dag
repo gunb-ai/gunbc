@@ -615,7 +615,13 @@ fn slot_cap_holder_deferral_outcome(ledger: HolderDeferralLedger, unit: NonEmpty
         SlotCapsSelfDeferred { unit: unit, detail: join([detail, next_rung, " (host-tracked deferral pass ", to_string(p + 1), " of ", to_string(slot_cap_holder_deferral_bound), ")"], "") }
       }
     LedgerFresh => SlotCapsSelfDeferred { unit: unit, detail: join([detail, next_rung, " (host-tracked deferral pass 1 of ", to_string(slot_cap_holder_deferral_bound), ")"], "") }
-    LedgerUnwritable { cause: why } => SlotCapsSelfDeferred { unit: unit, detail: join([detail, next_rung, " (DEFERRAL UNCOUNTED: the host ledger is unwritable: ", why, " -- an uncounted deferral must never be mistaken for a bounded one)"], "") }
+    // AN UNREADABLE LEDGER IS RED, NOT A FREE PASS (review 86323, finding 1; DESIGN §5: a degradation is
+    // countable; an uncounted degradation or escape hatch is a hard reject). A deferral here would settle
+    // green forever: the file that cannot be read is never rewritten by the pass that failed to read it,
+    // so the same unreadable bytes would be read on every future pass and the bound below could never fire.
+    // The refusal IS the loud step; the bracket pass then RESETS the ledger to pass 1 (see
+    // holder_ledger_after_verdict), so a corrupted ledger costs one red run, not a permanent green.
+    LedgerUnwritable { cause: why } => SlotCapsRefused { unit: unit, step: "holder-deferral-ledger", reason: join(["the holder is owed caps (", detail, ") but its deferral ledger is unreadable or unwritable: ", why, " -- an UNCOUNTED deferral is a permanent green the bound can never stop, so it refuses. This red pass is the loud, counted step; the pass resets the ledger to pass 1, and the next pass is counted again."], "") }
   }
 }
 
