@@ -1,0 +1,36 @@
+module gunbc.machine_intake.supermicro_h11ssl_post_code_receipt
+
+import std.types { Int, List, NonEmptyStr }
+import extdeps.firmware.ami_aptio_status_codes { PostCodeDecode, ami_aptio_decode }
+import extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide { supermicro_ami_aptio_v_post_codes_guide_table }
+
+// RECEIPT, NOT UPSTREAM FACT (DESIGN section 3, external upstream decomposition). The POST-code bytes
+// the operator read from ONE H11SSL unit's BMC Snooping PostCode (Redfish /redfish/v1/Managers/1/Snooping,
+// a hex byte) during hand bring-up, reported 2026-10-22. What each byte MEANS is decoded by the AMI
+// table; the circumstance and the reading are ours. The unit's variant and revision are not established here.
+type H11sslPostCodeObservation {
+  code: Int
+  circumstance: NonEmptyStr
+}
+
+data supermicro_h11ssl_post_code_observations: List<H11sslPostCodeObservation> = [
+  H11sslPostCodeObservation { code: 21, circumstance: "Ordinary ECC RDIMMs in C1: first reading, then it advanced." },
+  H11sslPostCodeObservation { code: 34, circumstance: "Ordinary ECC RDIMMs in C1: held here." },
+  H11sslPostCodeObservation { code: 63, circumstance: "NVDIMM: reading before it advanced." },
+  H11sslPostCodeObservation { code: 208, circumstance: "NVDIMM: held here." },
+  H11sslPostCodeObservation { code: 255, circumstance: "Stale board: this reading, an observation of ours; the AMI table gives 0xFF no meaning." },
+]
+
+// CONSUMER (DESIGN section 3c): this fold is the executing route for the decode. It is exercised by
+// test.claim.supermicro_h11ssl_post_code_witness. The first BMC-read PostCode SEQUENCES are recorded,
+// per unit, in gunbc.machine_intake.supermicro_h11ssl_unit_observation supermicro_h11ssl_post_traces,
+// decoded there through ami_aptio_decode with the same table; the live Snooping reader stays a later change.
+fn supermicro_h11ssl_decoded_observations() -> List<PostCodeDecode> {
+  supermicro_h11ssl_post_code_observations
+    |> map(o => ami_aptio_decode(table: supermicro_ami_aptio_v_post_codes_guide_table, code: o.code))
+}
+
+// FRONTIER (DESIGN section 3c / 4b): the OEM-range codes (0x22, 0x3F) decode to 'OEM-defined, meaning
+// not given by this source'. The AMD AGESA / ABL postcode table is a separately governed upstream and
+// is not modeled. Trigger: reading that table (AMD's documentation for the EPYC 7001/7002 AGESA
+// firmware) and landing it as its own extdeps module; this receipt then gains a second decode.

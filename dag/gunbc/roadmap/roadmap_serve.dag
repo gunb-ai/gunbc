@@ -185,14 +185,14 @@ import extdeps.google.issue_tracker {
 }
 import gunbc.roadmap.roadmap_presentation { stale_attempt_nodes }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
-  belt_dispatch_node, belt_dispatch_node_for_instance_over,
+  belt_dispatch_node_for_instance_over,
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
   WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   BeltStopResult, StopProcessStopped, StopRetainedSessionCleared, StopSignaledSessionCleared, StopDisabled,
   StopRefusedResult, StopObserveRefused, StopTeardownFailed,
-  belt_stop_node, belt_stop_node_for_instance,
+  belt_stop_node_for_instance,
   belt_stop_result_json_value, belt_stop_http_status,
   BeltPublishOutcome,
   PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable, PublishWriteFailed,
@@ -232,7 +232,7 @@ import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 // artifact table and this serve table are two projections of one authority set, never two copies of
 // content, and every body is computed at request time so the served page is the LIVE roadmap, not a
 // deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove).
-// Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS
+// Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap.roadmap_belt_actuate.belt_dispatch_node_for_instance_over IN-PROCESS
 // — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel.
 // The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page
 // (lane agreement 2026-07-20): the page never knows which backend answers.
@@ -507,7 +507,10 @@ fn serve_page_response_with_status(page: Fragment, status: HttpStatus) -> ServeH
 // (transition inhibited, revision unobserved or drifted, authority unobserved, sessions
 // unobservable, liveness unobserved, gate not evaluated) = 503, a retry can succeed; SpawnFailed =
 // 502 (actuation behind the server failed; the receipt carries step, detail and the admitted launch
-// identity).
+// identity); SpawnLaunchPending = 202 (the start request is on the attempt-unit spool and its answer
+// was not there at the single read made right after the enqueue; the body names the entry, and the
+// client follows the attempt through /attempts.json, which serves the placement slot's
+// attempt_record_json for the node).
 
 fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
   match r {
@@ -536,6 +539,7 @@ fn belt_dispatch_status(r: BeltSpawnOutcome) -> HttpStatus {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => 200
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => 200
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => 502
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => 202
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_http_status(r: refusal)
   }
 }
@@ -594,6 +598,8 @@ fn serve_dispatch_with_follow_ups(instance: HostDashboardInstance, r: BeltSpawnO
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
     SpawnNotAdmitted { node_id: _, refusal: _ } => response
   }
@@ -678,18 +684,6 @@ fn serve_dispatch_handler_response_over(
         )
     }
   }
-}
-
-fn serve_dispatch_handler_response_for_instance(
-  instance: HostDashboardInstance,
-  params: List<PathParamBinding>,
-) -> ServeHttpResponse {
-  serve_dispatch_handler_response_over(
-    instance: instance,
-    plan: roadmap_plan_projection(),
-    params: params,
-    executor_word: "",
-  )
 }
 
 // POST /publish/NODE_ID is the publication producer's live trigger, and it exists because belt_tick
@@ -794,6 +788,8 @@ fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
     DeviceRequestHandler => false
     DeviceEnrollmentReadbackHandler => false
     DevicePushUpdateHandler => false
+    DeviceListHandler => false
+    DeviceRevokeHandler => false
   }
 }
 
@@ -1248,6 +1244,8 @@ fn serve_fabric_assignment_response(node_id: String, assignee_display: String, e
       serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
     SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
       serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry } =>
+      serve_text_response(status: 202, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: launch pending at spool entry ", entry, "\n"], ""))
     SpawnNotAdmitted { node_id: _, refusal } =>
       serve_text_response(status: launch_refusal_http_status(r: refusal), content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nwaiting on fabric: ", launch_refusal_label(r: refusal), " — ", launch_refusal_reason(r: refusal), " — the assignment stands; the request joins the existing attempt when one is live\n"], ""))
   }
@@ -1340,13 +1338,6 @@ fn serve_comment_recorded_response(node_id: String, comments: List<IssueComment>
 // The body is a decoded value; its newlines and field-looking text are never reparsed.
 fn issue_comment_body_of(wire: String) -> String {
   issue_form_field(body: wire, name: "body")
-}
-
-fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
-  serve_dispatch_handler_response_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    params: params,
-  )
 }
 
 fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
@@ -1534,21 +1525,6 @@ fn roadmap_serve_invoke_for_instance(
   )
 }
 
-fn roadmap_serve_invoke(
-  handler: RoadmapServeHandler,
-  params: List<PathParamBinding>,
-  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
-  release_revision: CommitSha,
-) -> ServeHttpResponse {
-  roadmap_serve_invoke_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    handler: handler,
-    params: params,
-    request: request,
-    release_revision: release_revision,
-  )
-}
-
 fn serve_stop_handler_response_for_instance(
   instance: HostDashboardInstance,
   params: List<PathParamBinding>,
@@ -1568,21 +1544,10 @@ fn serve_stop_handler_response_for_instance(
   }
 }
 
-fn serve_stop_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
-  serve_stop_handler_response_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    params: params,
-  )
-}
-
 fn serve_attempts_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
   served_observation_surface_response_for_instance(instance: instance, kind: AttemptsJson)
-}
-
-fn serve_attempts_response() -> ServeHttpResponse {
-  serve_attempts_response_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 // GET /workflow.json is the evidence-derived attempt pipeline. One observation joins current
@@ -1651,10 +1616,6 @@ fn serve_workflow_response_for_instance(
   served_observation_surface_response_for_instance(instance: instance, kind: WorkflowJson)
 }
 
-fn serve_workflow_response() -> ServeHttpResponse {
-  serve_workflow_response_for_instance(instance: srv1_live_dashboard_instance())
-}
-
 // GET /sessions.json performs one session-container observation and one independently adjudicated
 // pane/process observation. Session-list refusal serves 503 because container presence is
 // unknowable. Pane refusal stays in each known session as process unobserved and cleanup
@@ -1665,10 +1626,6 @@ fn serve_sessions_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
   served_observation_surface_response_for_instance(instance: instance, kind: SessionsJson)
-}
-
-fn serve_sessions_response() -> ServeHttpResponse {
-  serve_sessions_response_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 fn roadmap_serve_selection_response_over(
@@ -1715,19 +1672,6 @@ fn roadmap_serve_selection_response_for_instance(
     instance: instance,
     plan: fn() { roadmap_plan_projection() },
     daily_body: DailyBodyRenderedUnderThisPlan,
-    sel: sel,
-    request: request,
-    release_revision: release_revision,
-  )
-}
-
-fn roadmap_serve_selection_response(
-  sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
-  release_revision: CommitSha,
-) -> ServeHttpResponse {
-  roadmap_serve_selection_response_for_instance(
-    instance: srv1_live_dashboard_instance(),
     sel: sel,
     request: request,
     release_revision: release_revision,
@@ -1924,25 +1868,6 @@ fn roadmap_serve_respond_for_instance(
     body: body,
     tailscale_identity: tailscale_identity,
     ingress: IngressUnattested,
-    cookie_header: cookie_header,
-    release_revision: release_revision,
-  )
-}
-
-fn roadmap_serve_respond(
-  method_label: String,
-  path: String,
-  body: String,
-  tailscale_identity: String,
-  cookie_header: String = "",
-  release_revision: CommitSha,
-) -> ServeHttpResponse {
-  roadmap_serve_respond_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    method_label: method_label,
-    path: path,
-    body: body,
-    tailscale_identity: tailscale_identity,
     cookie_header: cookie_header,
     release_revision: release_revision,
   )

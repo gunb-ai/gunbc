@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.heal_round_one_bootstraps_from_the_mirror_the_change_must_repair
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data heal_round_one_bootstraps_from_the_mirror_the_change_must_repair: RecurringFailureMode = RecurringFailureMode {
+  identity: "heal_round_one_bootstraps_from_the_mirror_the_change_must_repair" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "heal round 1 always bootstrapping from the BASE ref's committed stage0 mirror, never the pull request branch's own, with a receipt naming the mirror it built from; selected unconditionally, not as a fallback after a branch-mirror build refuses (DESIGN section 5: a fallback would be a second path). Sufficient for: no refusal that a pull request's own .dag repairs can block that pull request's regeneration." } },
+
+  receipts: [
+    "**heal round 1 bootstraps from the mirror the change must repair** (a bootstrap deadlock). Heal's first round builds the seed from the pull request branch's OWN committed stage0 mirror. When that mirror carries a refusal that the same pull request's .dag fixes, the seed that heal builds refuses the very source whose regeneration would remove the refusal, so the change cannot regenerate itself.",
+
+    "INVALID STATE: a regeneration round whose builder is a projection of the state under repair. The mirror on the branch is an output of an earlier round; using it as the input to the next round makes the fix a precondition of its own installation.",
+
+    "WHY IT IS NOT A FAILING CHANGE: the .dag is correct and v2-bootstrap would accept it from a correct mirror. The refusal reads as the change's own defect, so the cheap response is to weaken or work around the .dag, which is the DESIGN section 5 concealment rather than a repair.",
+
+    "SPECIMEN (gunb-ai/gunbc#13936, head 4377851b539a). Heal (run 40064940799, job heal-generated-artifacts) and v2-bootstrap (run 40064940687) both refused with EmittedCompilerBuildFailed, shared layer refused for 'Nat': TypeDeclNotDeclared, at the emitted accessors of std.measure PositiveMeasureCount and credits_per_minute and of std.checked_arithmetic PrefixedLineNat and prefixed_line_last_space_nat (the four declarations in evidence; those runs print the mirror positions). The installed mirror came from auto-heal commit 44903b32b6d9, which installed the shared-type re-key WITHOUT the accompanying fix, so the branch's own stage0 built a seed that refused the branch's .dag.",
+
+    "REMEDY USED: reset the branch's stage0 mirror to the base ref's and let heal regenerate. That is the manual form of the trigger capability, applied by hand to one pull request.",
+
+    "RUNG: mitigatable. The deadlock is loud (a typed refusal, not silent wrongness), and an operator who recognises it can discharge it by the manual reset; nothing prevents the next pull request reaching the same state.",
+
+    "CEILING: structurally guaranteed. Which mirror round 1 builds from is a decidable policy fact of heal. If round 1 always builds from the base ref's mirror, a branch mirror can never be the builder of its own repair, and the state has no route into an accepted heal round.",
+
+    "NEXT-RUNG TRIGGER, per stern-bat-401's ruling: heal round 1 ALWAYS bootstraps from the base ref's mirror and emits a receipt naming the mirror used. It is NOT a fallback taken when the branch-mirror build fails: a fallback is a second path beside the modeled route (DESIGN section 5) and would hide which mirror produced a given round. That heal change is routed separately; this row names it and builds nothing.",
+
+    "REVIEW TELL: a heal or v2-bootstrap refusal on a pull request whose cited sites sit in generated mirror files, and whose .dag change is the repair of exactly those sites. Ask which mirror built the seed before diagnosing the change.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.measure", decl_name: "PositiveMeasureCount", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.measure", decl_name: "credits_per_minute", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.checked_arithmetic", decl_name: "PrefixedLineNat", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.checked_arithmetic", decl_name: "prefixed_line_last_space_nat", field: WholeDeclaration },
+  ],
+}

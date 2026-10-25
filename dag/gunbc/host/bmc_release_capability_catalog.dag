@@ -143,6 +143,17 @@ type MegaRacVersionRefusal
   | StandingNamesAComponentListedTwice { component: NonEmptyStr, ids: List<Int> }
   | StandingComponentCarriesNoVersion { component: NonEmptyStr }
 
+// THE REFUSAL AS A RECEIPT READS IT, beside the type so every arm is rendered here and nowhere else.
+fn megarac_version_refusal_text(cause: MegaRacVersionRefusal) -> String {
+  match cause {
+    StandingTableUnreadable { detail: d } => concat("the hpm check table is unreadable: ", d as String)
+    StandingIsAnUpgradeListing { header: h } => concat("the output is an upgrade listing, not installed versions: ", h as String)
+    StandingNamesNoComponentInTable { component: c, listed: l } => join(["component ", c as String, " is not in the table (listed: ", join(map(l, n => n as String), ", "), ")"], "")
+    StandingNamesAComponentListedTwice { component: c, ids: _ } => join(["component ", c as String, " is listed more than once"], "")
+    StandingComponentCarriesNoVersion { component: c } => join(["component ", c as String, " carries no active version"], "")
+  }
+}
+
 // THE IDENTITY A STANDING ESTABLISHES, DERIVED AT THE ONE POINT IT IS EVER NAMED. The instrument arm goes
 // through the corpus's own reading of the tool: hpm_check_table_of (the parser a live read uses), then
 // hpm_component_named (lookup by name; refuses an absent component and a duplicate rather than picking

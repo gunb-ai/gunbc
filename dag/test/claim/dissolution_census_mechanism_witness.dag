@@ -10,9 +10,16 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { bound_dissolution, unbound_dissolution, retires_dissolution, dissolution_is_bound }
 import extdeps.bmc.serial_console { sol_console_send_bash_emit_dissolution_trigger }
 import extdeps.storage.nbd { nbd_server_config_render_dissolution_trigger }
-import extdeps.cache.sccache { sccache_install_dissolution_trigger }
 import extdeps.container.docker_ce { docker_ce_install_dissolution_trigger }
 import extdeps.standards.rfc_8118 { project_navigable_uri_fragment_decompose_dissolve_on }
+// THE TWO ROWS W7 ADDED. They are imported from the modules that CARRY them, not from a fixture:
+// the obligation has to live on the declaration that still ships the shell leaf, or it is prose.
+import gunbc.host.verified_binary_install {
+  verified_binary_install_shell_dissolution_trigger,
+  verified_binary_install_shell_bash_emit_dissolution_trigger,
+}
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
+import gunbc.host.sccache_verified_install { sccache_verified_install_script_dissolution_trigger }
 import gunbc.dissolution_observation {
   DissolutionCensusAnswered,
   DissolutionCensusRefused,
@@ -99,23 +106,99 @@ test fn a_retirement_trigger_fires_once_its_declaration_is_gone() -> Bool {
 }
 
 // THE PRODUCTION CONSUMERS. Three live retirement obligations whose condition was a
-// description string until this change and is now a trigger the fold can answer.
-// `dissolution_is_bound` was FALSE for all three before the migration, which is what
-// makes this an executing before/after rather than a restatement of the constructor.
+// description string until this change and is now a trigger the fold can answer (three at
+// that change; the assertion below carries four, two having joined the census since, and the
+// discharges are recorded after it). `dissolution_is_bound` was FALSE for all three before
+// the migration, which is what makes this an executing before/after rather than a
+// restatement of the constructor.
 //
-// FIVE OBLIGATIONS REMAIN, NOT SIX: the configfs renderer's obligation (named by
+// ONE DISCHARGE RECORDED HERE (state at that change: FIVE REMAINED, NOT SIX): the configfs renderer's obligation (named by
 // `configfs_op_render_dissolution_trigger`) was DISCHARGED by the shell-typed-invocation
 // migration -- the declaration it retired (`configfs_op_line`) was deleted by the change
 // that described the transport, and the trigger went with it, because an obligation whose
 // declaration no longer exists is complete and a trigger citing an absent declaration is
 // the dead vocabulary this repository removes. Recorded here rather than silently
 // dropped: a census row that vanishes unexplained cannot be told from one never measured.
+//
+// SIX OBLIGATIONS, NOT FOUR -- AND THE FIFTH AND SIXTH ARE THE POINT. The sccache
+// installer's obligation (once named by `sccache_install_dissolution_trigger`) was PARTLY
+// discharged by W7, and an earlier revision of this comment said DISCHARGED, full stop. That
+// word was wrong and review 81885 caught it: the trigger's own text set the condition as
+// "host_effect_apply binds a verified-download-plus-install effect (FetchAndVerify then
+// InstallBinary) WITHOUT THE SHELL LEAF", and only half of that happened.
+//
+//   WHAT IS DISCHARGED: the build-cache consumer. gunbc.host.verified_binary_install is the
+//   generic effect (FetchAndVerify = `curl_download_command` then the `sha256sum_file_command`
+//   digest observation, gated by `verified_binary_install_admission`, which on a mismatch
+//   returns the `RefusedToInstall` arm carrying BOTH digests -- not an empty plan: the two
+//   helpers that flattened a refusal to "nothing to do" are deleted in this change, because a
+//   fabricated nothing-to-do is a silent default; InstallBinary = `tar_extract_command` then
+//   the cited move/mode/cleanup, the binary-presence precondition kept as a `test -x`
+//   observation), gunbc.host.sccache_verified_install supplies sccache's url, digest, member,
+//   destination, mode and privilege as PARAMETERS, and gunbc.host.build_cache_daemon_ensure
+//   sequences it through the typed plan with no shell leaf anywhere. `sccache_install_script`
+//   is deleted and its trigger went with it -- required-ci refuses CITED-DECLARATION-ABSENT, so
+//   a bound answer on a name nothing defines would be the dead vocabulary this removes.
+//
+//   WHAT IS STILL CARRIED: the runner prerequisite. `runner_host_sccache_provision_script` and
+//   `runner_host_sccache_provision_aarch64` (gunbc.runner.runner_host_deploy) still hand a
+//   `set -e` string down through `sccache_verified_install_script` into
+//   `verified_binary_install_shell`, including the hand-built `echo ... | sha256sum -c -`
+//   pipeline. The typed plan is not on that path. Deleting the trigger there would have turned
+//   tracked debt into untracked debt (DESIGN 4b: a rung is lowered only by declaring previous
+//   rung, temporary rung, reason, bounded population and restoration trigger), so the
+//   obligation is now carried on the two declarations that actually hold it -- the two rows
+//   asserted below, whose population is exactly those three consumers, and whose trigger is the
+//   runner provisioning binding `verified_binary_install_admitted_plan` through typed argv.
+//   Routing it there is out of this change's scope (runner_host_deploy is not a retained_srvn
+//   site), which is precisely why it needs a tracked trigger rather than a paragraph.
+//
+// WHAT THE NEXT ROW IS: the four older triggers above include docker_ce, whose installer is the
+// same effect shape with apt-keyring bytes as the archive member -- the lane rule says it is a
+// later consumer, so it is NOT migrated here and its trigger stays live and bound.
 test fn migrated_production_retirement_conditions_are_bound() -> Bool {
   dissolution_is_bound(condition: sol_console_send_bash_emit_dissolution_trigger)
     && dissolution_is_bound(condition: nbd_server_config_render_dissolution_trigger)
-    && dissolution_is_bound(condition: sccache_install_dissolution_trigger)
     && dissolution_is_bound(condition: docker_ce_install_dissolution_trigger)
     && dissolution_is_bound(condition: project_navigable_uri_fragment_decompose_dissolve_on)
+    // THE TWO CARRIED ROWS, and they are the only ones in this list that were minted by the
+    // change being reviewed. What `dissolution_is_bound` proves here is the CONSTRUCTOR, exactly
+    // as the authority defines it: it calls `dissolution_status` with `present_decls: []`, so
+    // BoundDissolution is Pending and an UnboundDissolution is Unbound -- the predicate answers
+    // "is this a trigger at all", NOT "does the retired declaration resolve". Deleting either
+    // `data` declaration below reddens this claim (the module no longer compiles), and rewriting
+    // either into `unbound_dissolution` reddens it by verdict; renaming the retired declaration
+    // does NOT, and the reason is stated rather than assumed: firing needs a real
+    // `present_decls`, which is the roster's job and lives in
+    // dag/test/claim/long/dissolution_census_witness.dag, not here.
+    && dissolution_is_bound(condition: verified_binary_install_shell_dissolution_trigger)
+    && dissolution_is_bound(condition: sccache_verified_install_script_dissolution_trigger)
+}
+
+// THE ON-CARRIER MARKER IS BOUND TO THE SAME DECLARATION AS THE TRIGGER, AND NAMES A CAPABILITY THAT
+// DISSOLVES. The ctrl repo's review policy (its scripts/INVARIANTS.md Rule 12 — a path in THAT repo; it does
+// not exist in gunbc, so follow it there, review 82112) lets a hand-shell renderer exist only when the intent is
+// modelled AND the shell carries an on-carrier marker NAMING THE CAPABILITY that will generate it; this repo's
+// own equivalent bar is DESIGN 4b meta-obligation 3 with DESIGN 6 (the mark travels on the carrier). `DissolutionCondition` has no field for the end state -- it carries only a TRIGGER (the
+// declaration whose retirement discharges the debt) -- so the end state rides on the companion
+// `Disposition` row, and a marker nobody compares is decoration. This claim pins the pair: the marker is
+// `Scaffold` (not `Terminal`: the bash-emit path exists, this renderer just has not been routed through
+// it yet), it dissolves to a `RealizationDispatch`, and its `bind` names THE SAME DECLARATION the trigger
+// retires -- `gunbc.host.verified_binary_install` `verified_binary_install_shell`. Deleting the marker,
+// flipping it to `Terminal`, or binding it to any other declaration reddens this claim; that is what makes
+// it the RED for the marker rather than a comment with a `data` row beside it. Form follows
+// `test.claim.generated_artifact_merge_driver_recipe`, which asserts its own Scaffold row the same way.
+test fn the_shell_renderers_on_carrier_marker_binds_the_trigger_subject() -> Bool {
+  match verified_binary_install_shell_bash_emit_dissolution_trigger {
+    Scaffold { dissolves_to: to, bind: b } =>
+      match to {
+        RealizationDispatch => true
+        _ => false
+      }
+        && b.module_path as String == "gunbc.host.verified_binary_install"
+        && b.decl_name as String == "verified_binary_install_shell"
+    Terminal { reason: _ } => false
+  }
 }
 
 // THE LIVE DISCRIMINATOR, AND IT IS DELIBERATELY NOT A COUNT.

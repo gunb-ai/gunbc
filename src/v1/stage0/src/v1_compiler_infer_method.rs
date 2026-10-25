@@ -9,9 +9,9 @@ use crate::std_algebra::AlgebraTypeTemplate::{
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 pub use crate::std_algebra::{
-    algebra_templates_for_profile, all_algebra_profiles, free_monoid_scalar_templates,
-    kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate,
-    ContainerSource,
+    algebra_templates_for_profile, all_algebra_profiles, collection_join_shape,
+    free_monoid_scalar_templates, kernel_algebra_profile, AlgebraFieldTemplate, AlgebraProfile,
+    AlgebraTypeTemplate, ContainerSource,
 };
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -1645,6 +1645,10 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: type_variable_node("roadmap_acceptance_history_projection".to_string()),
     }));
+                __m.insert("witness_deferral_freeze_population_census".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![]),
+        returns: string_type(),
+    }));
                 __m.insert("commit_witness_claim_roster_unresolvable_count".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: int_type(),
@@ -2189,6 +2193,73 @@ pub fn builtin_host_text_param_names(name: String) -> Rc<Vec<String>> {
                 __result
             })
         }
+    }
+}
+
+pub fn template_renders_receiver_elements_as_host_text(template: Rc<AlgebraFieldTemplate>) -> bool {
+    (template.clone() == crate::std_algebra::collection_join_shape())
+}
+
+pub fn builtin_receiver_self_host_text_param_names(name: String) -> Rc<Vec<String>> {
+    match builtin_signature(name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(sig) => {
+            if {
+                let mut __found = false;
+                for t in crate::std_algebra::free_monoid_scalar_templates()
+                    .iter()
+                    .cloned()
+                {
+                    if (t.name.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for p in Rc::new({
+                        let mut __result = Vec::new();
+                        for p in sig.params.clone().iter().cloned() {
+                            if match (*p.ty.clone()).clone() {
+                                AlgebraTypeTemplate::ReceiverSelf => true,
+                                _ => false,
+                            } {
+                                __result.push(p);
+                            }
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(p.name.clone());
+                    }
+                    __result
+                })
+            } else {
+                Rc::new(vec![])
+            }
+        }
+    }
+}
+
+pub fn host_display_deferred_formals() -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, Rc<Vec<String>>>> = {
+            let mut __m = HashMap::new();
+            __m.insert("to_string".to_string(), Rc::new(vec!["value".to_string()]));
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, Rc<Vec<String>>>>| c.clone())
+}
+
+pub fn builtin_host_display_deferred_param_names(name: String) -> Rc<Vec<String>> {
+    match v1_rt::map_get(&host_display_deferred_formals(), name.clone()) {
+        Some(names) => names.clone(),
+        std::option::Option::None => Rc::new(vec![]),
     }
 }
 

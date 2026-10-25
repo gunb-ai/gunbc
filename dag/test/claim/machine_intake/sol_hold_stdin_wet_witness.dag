@@ -11,7 +11,7 @@ import std.process { ExitSuccess, ExitFailure }
 import gunbc.machine_intake.sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line, sol_hold_pid_not_published_unstopped_line, mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_owned_check_script, mtcollins1_sol_hold_supervisor_script }
 import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_incident_path, mtcollins1_sol_workflow_events_path }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_await_capture_terminal, TerminalWatch, mtcollins1_sol_teardown_record, mtcollins1_sol_pre_teardown_suffix, mtcollins1_sol_await_establishment, SolEstablishment, SolEstablished, SolNotEstablished, SolActivationUnconfirmed, SolActivateRefused, SolAdoptedActivationUnproven, mtcollins1_sol_adopted_activation, mtcollins1_sol_release_owned, SolReleaseOutcome, SolReleased, SolReleaseForeignRecord, SolReleaseNoRecord, mtcollins1_sol_collector_observe, SolCollectorHeld, SolCollectorExited, mtcollins1_sol_notice_watcher_path }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
@@ -122,7 +122,7 @@ fn observer_alive(run: ProbeLaunch) -> Bool {
 // the medium it boots; there is no other mint (gunbc.host.managed_host_boot AdmittedBootSubject is
 // sole_constructor).
 fn admitted_witness_subject() -> AdmittedBootSubject? {
-  match boot_subject_admission_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1, medium: mtcollins1_boot_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+  match boot_subject_admission_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1, medium: mtcollins1_census_boot_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
     BootSubjectAdmitted { subject: s } => Present { value: s }
     BootSubjectRefused { host: _, cause: _ } => none
   }
