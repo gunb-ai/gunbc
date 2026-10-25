@@ -88,8 +88,10 @@ fn mint_frame(fs: ModeledFilesystem, denied: String) -> WitnessEvaluationFrame<M
       identity: realization_identity,
       initial: fs,
       epoch: virtual_clock_origin(),
+      // The model's bindings with its own List handler REMOVED (admission refuses one identity bound
+      // twice), then this machine's List: every other verb keeps the model's answer.
       bindings: concat(
-        filesystem_bindings(get: fn(w) { w }, put: fn(_w, v) { v }, cwd: fn(_w) { "/" }),
+        filter(filesystem_bindings(get: fn(w) { w }, put: fn(_w, v) { v }, cwd: fn(_w) { "/" }), b => b.at.service != "Filesystem" || b.at.operation != "List"),
         [OperationBinding { at: filesystem_operation(operation: "List"), handler: listing }],
       ),
       advance: fn(w, now) { w },
