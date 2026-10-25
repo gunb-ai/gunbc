@@ -26,10 +26,11 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_
 // cassette_review all_parts). It was already a distinct selection -- a different part set from the
 // residential print assembly -- reached implicitly through review_realization main. Naming it keeps
 // the two from being confused for one another.
-// The four A16 roots are the two card mounts, each as a full duct and as a fit ring.
-type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | A16PlugDuct | A16SleeveDuct | A16PlugFitRing | A16SleeveFitRing
+// The four A16 axial roots are the two card mounts, each as a full duct and as a fit ring; the blower
+// root is the radial-blower duct on the plug mount.
+type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | A16PlugDuct | A16SleeveDuct | A16PlugFitRing | A16SleeveFitRing | A16BlowerDuct
 
-data printed_assembly_roots: List<PrintedAssemblyRoot> = [ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing]
+data printed_assembly_roots: List<PrintedAssemblyRoot> = [ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct]
 
 fn printed_assembly_root_wire(root: PrintedAssemblyRoot) -> String {
   match root {
@@ -39,6 +40,7 @@ fn printed_assembly_root_wire(root: PrintedAssemblyRoot) -> String {
     A16SleeveDuct => "a16-sleeve-duct"
     A16PlugFitRing => "a16-plug-fit-ring"
     A16SleeveFitRing => "a16-sleeve-fit-ring"
+    A16BlowerDuct => "a16-blower-duct"
   }
 }
 

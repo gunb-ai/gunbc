@@ -1,0 +1,53 @@
+module extdeps.fans.delta
+
+import std.types { NonEmptyStr }
+import std.measure { micrometer }
+import extdeps.fans.types { RadialBlowerEnvelope }
+import extdeps.vendor.delta { delta_electronics }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.deltaww.com/en-US/products/DC-Brushless-Fans/All"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.fans.delta",
+      decl_name: "delta_bfb1012m_envelope",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE DELTA BFB1012M: a 97 x 94 x 33 mm 12 V radial blower, the medium-speed member of the BFB1012
+// series. The operator ordered this exact model (2026-10-25) to cool one A16 through
+// product.printed_chassis.gpu_duct's blower root.
+data delta_bfb1012m_model: NonEmptyStr = "BFB1012M"
+
+// THE HOUSING BOX IS THE SERIES' NOMINAL SIZE; THE OUTLET AND HOLE FIGURES ARE NOT READ FROM ANY
+// DRAWING. They were written from recollection of the series' outline so a first fit print could be
+// made, and nothing here has been checked against Delta's outline or a caliper. A part built on them
+// is a fit test of these numbers, not of a verified envelope.
+data delta_bfb1012m_envelope: RadialBlowerEnvelope = RadialBlowerEnvelope {
+  vendor: delta_electronics,
+  model: delta_bfb1012m_model,
+  housing_length: micrometer(count: 97000),
+  housing_depth: micrometer(count: 94000),
+  thickness: micrometer(count: 33000),
+  outlet_offset: micrometer(count: 4500),
+  outlet_width: micrometer(count: 45000),
+  outlet_height: micrometer(count: 27000),
+  mounting_hole_diameter: micrometer(count: 4500),
+}
+
+data delta_bfb1012m_figures_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read the Delta BFB1012M datasheet outline drawing (or caliper the delivered fan) and confirm the 97 x 94 x 33 mm housing, the outlet aperture's offset, width and height on the 97 mm edge, and the mounting-hole diameter.",
+}

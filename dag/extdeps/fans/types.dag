@@ -328,3 +328,21 @@ fn fan_mounting_pattern_is_verified(p: FanMountingPattern) -> Bool {
     ConventionUnverified { convention: _ } => false
   }
 }
+
+// A RADIAL (CENTRIFUGAL) BLOWER'S ENVELOPE, as a part designed around it needs it: the housing box and
+// the outlet aperture on one housing edge. The housing lies with its broad face in a plane and its
+// thickness across it; the outlet is on the edge face that is housing_length long, starting
+// outlet_offset from that edge's near end, outlet_width along the edge and outlet_height across the
+// thickness. Air enters through the broad face, so a part may enclose the outlet edge but must leave
+// that face open. The figures' standing is a sibling row in the product's own module.
+type RadialBlowerEnvelope {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  housing_length: Micrometer
+  housing_depth: Micrometer
+  thickness: Micrometer
+  outlet_offset: Micrometer
+  outlet_width: Micrometer
+  outlet_height: Micrometer
+  mounting_hole_diameter: Micrometer
+}
