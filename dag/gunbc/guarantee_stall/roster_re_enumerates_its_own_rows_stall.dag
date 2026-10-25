@@ -112,11 +112,11 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // THE ROW MOVED OFF THE LADDER'S OUTSIDE, AND THE TRIGGER THAT MOVED IT IS DISCHARGED, RECORDED
 // HERE BECAUSE THE FIELDS BELOW NOW SAY SOMETHING DIFFERENT THAN THEY DID. The declared trigger --
 // a declared-versus-rostered identity join executing as a merge-blocking check on every rostered
-// row type -- is built and enrolled: `gunbc.rostered_row_join` declares the enrolled row types,
-// `v1_compiler.cli_run.rostered_row_join` executes the join inside the required-CI PARSE phase, and
-// it therefore runs on every push and pull request, in whichever lane owns that phase, with no job
-// added -- the phase's own lane ownership answers for the join, so there is no second routing fact
-// to drift. The
+// row type -- is BUILT AND ENROLLED BUT DOES NOT EXECUTE: `gunbc.rostered_row_join` declares the
+// enrolled row types and `v1_compiler.cli_run.rostered_row_join` implements the join, but its entry
+// point has no caller and no required context reaches it (corrected; see the paragraph at the top
+// of this row). This paragraph once said it ran inside the required-CI parse phase on every push.
+// The
 // declared population is read through `v2.std.decl_index` `data_decl_type_facts` -- the same host
 // walk that builtin marshals, shared rather than re-derived -- and each roster's membership is read
 // out of the parse that phase has already performed, because a list literal's element NAMES are
@@ -125,12 +125,11 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // WHAT IT ESTABLISHES IS THE OMISSION GOING LOUD, AND NOTHING MORE, FOR EVERY CARRIER THAT STILL
 // HAND-APPENDS. Every author of those carriers still writes the row and then writes the roster
 // entry; the double authoring is untouched there, the invalid state stays writable, and safety
-// depends on this check executing and staying enrolled. The three derived rosters
+// would depend on this check executing, which it does not. The three derived rosters
 // (`gunbc.recurring_failure_mode.roster`, `gunbc.rung_drop.roster`, `gunbc.guarantee_stall.roster`)
 // are no longer in that set. Calling the RecurringFailureMode directory fold a climb of this stall
-// would be inflation: the host writer is not value binding, and the join remains enrolled. That is
-// `MechanicallyPreventable` by the definition in DESIGN section 4b, and calling it anything higher
-// would be the inflation the paragraphs above already warn about.
+// would be inflation: the host writer is not value binding. With the join executing this would be
+// `MechanicallyPreventable`; without it the reading is `Mitigatable` (top of this row).
 //
 // IT REFUSED FIVE ROWS ON ITS FIRST EXECUTION, inside this row's own carrier, which is the evidence
 // that the population was not theoretical: five valid GuaranteeStall declarations were standing
