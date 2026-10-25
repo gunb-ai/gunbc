@@ -2,12 +2,14 @@ module gunbc.recurring_failure_mode.a_wrong_arity_use_of_a_container_alias_is_si
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundBelowTheLadder, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_wrong_arity_use_of_a_container_alias_is_silently_accepted: RecurringFailureMode = RecurringFailureMode {
   identity: "a_wrong_arity_use_of_a_container_alias_is_silently_accepted" as NonEmptyStr,
 
-  rung: RungUnread { cause: BlockerClassUnstated },
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "resolve decides every type use's arity from the declaration it resolves to, container-family uses included" } },
 
   receipts: [
     "INVALID STATE: a use of a parameterized container alias with the wrong number of type arguments is ACCEPTED with no diagnostic. A module importing std.types Map (`type Map<key, value> = FinitelySupportedFunction<key, value>`, two parameters) that writes `fn f(m: Map<String>) -> Map<String> { m }` compiles clean: exit 0, 0 blocking errors, no TypeArgumentArityMismatch.",
