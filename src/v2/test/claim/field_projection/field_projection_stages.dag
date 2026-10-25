@@ -17,7 +17,7 @@ import v2.std.diagnostic {
   Some,
   Diagnostic, Unavailable, UserInputBoundary, diagnostics_singleton, node_locus,
   diagnostics_has_reason, Accepted, NodeLocus, Outcome, Rejected }
-import v2.std.node { Arrow, Atom, Conj, Connective, Node, Symbol, TypeNode, symbol_eq, NotADeclaration }
+import v2.std.node { node_equal_ignoring_provenance, Arrow, Atom, Conj, Connective, Node, Symbol, TypeNode, symbol_eq, NotADeclaration }
 import v2.std.qualified_name {
   parameter_reference_path_optional,
   qualified_name_last_segment, declaration_reference_path_optional, qualified_name_spine_shape_present }
@@ -25,7 +25,7 @@ import v2.std.node_query { FieldProjection, declared_field_named, field_projecti
 import v2.std.symbol_index { symbol_index_lookup }
 import v2.compiler.infer {
   infer_atom_binding_sym,
-  infer_type_equal_ignoring_provenance,
+  node_equal_ignoring_provenance,
   inferred_facts_grounding_derived,
   inferred_facts_resolved_type
 }
@@ -516,7 +516,7 @@ test fn fps_two_fields_of_different_types_ground_differently_holds() -> Bool {
       match fps_two_field_flag_reading().projection_type {
         Absent => false
         Present { value: bool_ty } =>
-          !infer_type_equal_ignoring_provenance(a: int_ty, b: bool_ty)
+          !node_equal_ignoring_provenance(a: int_ty, b: bool_ty)
       }
   }
 }
@@ -528,7 +528,7 @@ test fn fps_the_int_field_grounds_as_an_int_parameter_does_holds() -> Bool {
       match fps_int_parameter_type_optional() {
         Absent => false
         Present { value: param_ty } =>
-          infer_type_equal_ignoring_provenance(a: field_ty, b: param_ty)
+          node_equal_ignoring_provenance(a: field_ty, b: param_ty)
       }
   }
 }
@@ -865,7 +865,7 @@ test fn fps_a_frame_binder_is_still_projected_through_holds() -> Bool {
 // rows go to the step their subject is: v2.compiler.name_resolve closure_declarations_demand, which walks
 // each root and indexes the declarations of every one that resolves (v2.test.lens_common.resolve_fixture
 // claim_closure_declarations). Each RESOLVE row asserts the closure index real resolve builds EQUALS a named
-// record where infer reads it (provenance aside, v2.compiler.infer infer_type_equal_ignoring_provenance);
+// record where infer reads it (provenance aside, v2.compiler.infer node_equal_ignoring_provenance);
 // each INFER row hands infer EXACTLY that named record. A supplied record that drifted from what resolve
 // indexes reds the resolve row, so the join is entailed rather than designed.
 //
@@ -894,7 +894,7 @@ fn fps_closure_holds(modules: List<ClaimLoweredModule>, record: ClaimRecord) -> 
     Accepted { value: index, diagnostics: _ } =>
       match symbol_index_lookup(index: index, qualified_path: record.path) {
         Absent => false
-        Present { value: indexed } => infer_type_equal_ignoring_provenance(a: indexed, b: claim_record_declaration(r: record))
+        Present { value: indexed } => node_equal_ignoring_provenance(a: indexed, b: claim_record_declaration(r: record))
       }
   }
 }

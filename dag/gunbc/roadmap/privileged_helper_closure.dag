@@ -1,0 +1,25 @@
+module gunbc.roadmap.privileged_helper_closure
+
+import std.types { String, Bool, List }
+import std.algebra { FreeMonoid, contains, for_all }
+import v2.std.text { string_eq }
+
+// THE ROOT HELPER'S DEMAND IS A DECLARED EXCLUSION, NOT A COUNT. The attempt-unit launch helper
+// (gunbc.roadmap.attempt_system_unit_launch attempt_system_unit_launch_cli) runs as root once per
+// spawn and re-derives its whole import closure from source each time, so every module it reaches is
+// paid for on every dispatch (DESIGN section 2). It reached the dispatch actuator, the belt and the
+// harness backend -- about 920 of ~930 files -- for seven declarations of confinement fold, which now
+// live in gunbc.roadmap.dispatch_worker_unit_confinement. These four paths are the named dispatch
+// brain: a closure that reaches any of them has re-imported the credential, harness, tmux and LLM
+// world into a root process. Identity grain (a path), because a size threshold would drift with
+// unrelated growth and pass a closure that swapped one heavy import for another.
+data privileged_helper_forbidden_paths: List<String> = [
+  "dag/gunbc/roadmap/roadmap_dispatch_actuator.dag",
+  "dag/gunbc/roadmap/roadmap_belt.dag",
+  "dag/gunbc/roadmap/roadmap_belt_actuate.dag",
+  "dag/gunbc/harness/harness_backend.dag"
+]
+
+fn privileged_helper_closure_excludes_forbidden(closure: FreeMonoid<String>) -> Bool {
+  for_all(xs: closure, predicate: fn(path) { !contains(xs: privileged_helper_forbidden_paths, item: path, eq: string_eq) })
+}
