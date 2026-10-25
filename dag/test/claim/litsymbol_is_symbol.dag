@@ -4,6 +4,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
+  census_blocking_rows_of_class,
   census_total_count,
 }
 
@@ -25,4 +26,29 @@ test fn two_carets_compare() -> Bool {
 
 test fn quoted_string_still_inhabits_string() -> Bool {
   blocking_count(source: "module litsymbol.litstr\nfn f() -> String { \"tag\" }\n") == 0
+}
+
+fn blocking_in_class(source: String, wanted_class: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: wanted_class))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+// RED for the widening: Symbol is outside kernel_type_set, so conformance once emitted nothing at ANY
+// ground type and `-> Int { ^tag }` passed. Each refusal asserts the class, not only a nonzero count.
+test fn symbol_at_int_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atint\nfn f() -> Int { ^tag }\n", wanted_class: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn symbol_at_bool_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atbool\nfn f() -> Bool { ^tag }\n", wanted_class: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn symbol_at_record_refuses() -> Bool {
+  blocking_in_class(source: "module litsymbol.atrec\ntype P { x: Int }\nfn f() -> P { ^tag }\n", wanted_class: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn symbol_at_symbol_accepts() -> Bool {
+  blocking_count(source: "module litsymbol.atsym\nfn f() -> Symbol { ^tag }\n") == 0
 }
