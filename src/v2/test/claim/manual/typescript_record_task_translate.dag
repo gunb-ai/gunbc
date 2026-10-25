@@ -1,6 +1,5 @@
 module v2.test.claim.manual.typescript_record_task_translate
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import v2.compiler.emit { emit }
 import v2.compiler.compile {
@@ -51,7 +50,7 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   node_locus
 }
-import v2.std.node { Conj, Node, Symbol, TypeNode, content_hash }
+import v2.std.node { node_same_occurrence, Conj, Node, Symbol, TypeNode, content_hash }
 import v2.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -89,15 +88,15 @@ fn typescript_record_task_canonical_grounding(node: Node, algebra: Node) -> Cano
 }
 
 fn typescript_record_task_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
-  if node == typescript_record_task_emitted_root {
+  if node_same_occurrence(a: node, b: typescript_record_task_emitted_root) {
     Holds {
       value: typescript_record_task_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_token_ty_string) {
+  } else if node_same_occurrence(a: node, b: ts_inhabitant_atom(id: ^ts_token_ty_string)) {
     Holds {
       value: typescript_record_task_canonical_grounding(node: node, algebra: node)
     }
-  } else if node == ts_inhabitant_atom(id: ^ts_surface_record_type) {
+  } else if node_same_occurrence(a: node, b: ts_inhabitant_atom(id: ^ts_surface_record_type)) {
     Holds {
       value: typescript_record_task_canonical_grounding(node: node, algebra: node)
     }
@@ -137,8 +136,7 @@ fn typescript_record_task_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data typescript_record_task_inferred_tree: InferredTree = InferredTree {
   root: typescript_record_task_emitted_root,
-  facts: PartialFunction { lookup: typescript_record_task_facts_lookup },
-  arm_resolutions: constructed_root_arm_resolutions()
+  facts: PartialFunction { lookup: typescript_record_task_facts_lookup }
 }
 
 fn anchor_typescript_record_task_emit_accepts() -> Outcome<Medium<String>> {

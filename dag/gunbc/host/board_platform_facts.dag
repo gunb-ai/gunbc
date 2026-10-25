@@ -22,11 +22,12 @@ import extdeps.board_soc { BoardSocEdge, BoardSocArchitectureStanding, board_soc
 import extdeps.cpu.types { SoCFamily }
 import gunbc.board_authority_binding { board_authority_bindings }
 import extdeps.ampere.mt_collins_board { mt_collins_board_soc_edge }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_board_soc_edge }
 
 // THE CONSUMER-LAYER TABLE OF PER-BOARD SoC EDGES. Each row is the per-board data from its board
 // module; the host's board is joined to exactly the edge its authority names. A second board with a
 // different set of SoC families adds a row; no code names a board here.
-data board_soc_edges: List<BoardSocEdge> = [mt_collins_board_soc_edge]
+data board_soc_edges: List<BoardSocEdge> = [mt_collins_board_soc_edge, supermicro_h11ssl_board_soc_edge]
 
 // THE ONE BOARD LOOKUP: the host's observed board -> the SoC edge its authority names, or NONE.
 //

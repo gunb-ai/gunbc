@@ -55,6 +55,10 @@ import extdeps.git.object_store { git_object_id_wire_hex }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap.roadmap_presentation { AttemptRevisionObservation, stale_attempt_nodes }
+import gunbc.roadmap.roadmap_session_placement {
+  session_placement_stores, SessionStoresResolved, SessionStoresUnresolved,
+  session_placement_slot_records, SessionSlotRecordsRefused,
+}
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltPassOutcome, BeltPassRecorded, BeltPassFailed,
   belt_launch_host_standing_for_page_over,
@@ -305,7 +309,11 @@ fn served_observation_profiles_for_instance(instance: HostDashboardInstance) -> 
 
 fn served_observation_attempts_surface_for_instance(instance: HostDashboardInstance) -> ServedObservationSurface {
   let a = belt_attempts_observe_for_instance(instance: instance)
-  ServedObservationSurface { kind: AttemptsJson, status: belt_attempts_http_status(a: a), body: belt_attempts_observed_json(a: a) }
+  let slots = match session_placement_stores(instance: instance) {
+    SessionStoresResolved { stores } => session_placement_slot_records(stores: stores)
+    SessionStoresUnresolved { detail } => SessionSlotRecordsRefused { detail: detail }
+  }
+  ServedObservationSurface { kind: AttemptsJson, status: belt_attempts_http_status(a: a), body: belt_attempts_observed_json(a: a, slots: slots) }
 }
 
 // The workflow wire names each attempt's compact view revision, and that view includes whether

@@ -1,0 +1,397 @@
+module gunbc.serving.flash_next_quant_matrix
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { byte_size, byte_size_count, ByteSize, centi_gibibyte_to_byte_size, gibibyte, gibibyte_to_byte_size, BasisPoint, basis_point, basis_point_count, Milliwatt, milliwatt, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count, Microsecond, microsecond, microsecond_count, Millisecond, millisecond, millisecond_count }
+import gunbc.serving.gpu_bench_warm_standing { GpuBenchWarmStanding, WarmValid }
+import gunbc.serving.gpu_observed_memory_receipt { observed_memory_bytes, h200_nvl_observed_memory, b200_observed_memory, max_q_observed_memory }
+import gunbc.serving.flash_next_experiment_identity { ServingVariant, Pro6000MaxQNative, H200UpstreamV032, B200UpstreamV032, serving_variant_eq }
+
+// THE QUANTIZATION MATRIX: raw capacity and throughput per card x weight dtype x KV dtype, no quality assessment (the
+// operator infers quality from the dtype). The indexer KV follows the KV dtype. A cell that does not fit is Refused with
+// the cause; a cell nobody ran is Unobserved; neither is ever a zero.
+type WeightDtype = WeightNvfp4LilQad | WeightFp8Qwen128Blocks | WeightBf16
+
+type KvDtype = KvFp8 | KvBf16
+
+type QuantCell {
+  weights: WeightDtype
+  kv: KvDtype
+}
+
+fn weight_dtype_eq(a: WeightDtype, b: WeightDtype) -> Bool {
+  match a {
+    WeightNvfp4LilQad => match b { WeightNvfp4LilQad => true, _ => false }
+    WeightFp8Qwen128Blocks => match b { WeightFp8Qwen128Blocks => true, _ => false }
+    WeightBf16 => match b { WeightBf16 => true, _ => false }
+  }
+}
+
+fn kv_dtype_eq(a: KvDtype, b: KvDtype) -> Bool {
+  match a {
+    KvFp8 => match b { KvFp8 => true, _ => false }
+    KvBf16 => match b { KvBf16 => true, _ => false }
+  }
+}
+
+fn quant_cell_eq(a: QuantCell, b: QuantCell) -> Bool {
+  weight_dtype_eq(a: a.weights, b: b.weights) && kv_dtype_eq(a: a.kv, b: b.kv)
+}
+
+// Throughput of one concurrency level of the session-replay bench (base 90k context, +16k new per turn, 1100 output
+// tokens per turn, ignore_eos, MTP-3). Tenths of tok/s and microseconds keep the figures integral.
+// A warm throughput row is scoreable only under WarmValid from gunbc.serving.gpu_bench_warm_standing (working set within
+// the measured KV, prefix reuse proven; recurring failure mode benchmark_warm_capacity_violation_read_as_engine_performance).
+// Rows replayed before the bench emitted gpu-bench/request/v2 records have no standing and are NotYetAdmitted.
+type WarmAdmission
+  = WarmAdmissionStanding { standing: GpuBenchWarmStanding }
+  | WarmNotYetAdmitted { trigger: NonEmptyStr }
+
+fn throughput_scoreable(a: WarmAdmission) -> Bool {
+  match a {
+    WarmAdmissionStanding { standing: WarmValid { working_set_tokens: _, measured_kv_tokens: _ } } => true
+    _ => false
+  }
+}
+
+data bench_v2_records_trigger: NonEmptyStr = "the bench emits gpu-bench/request/v2 records and gpu_bench_warm_run_admission plus gpu_bench_warm_standing_after_replay return WarmValid for this run" as NonEmptyStr
+
+type ConcurrencyReading {
+  admission: WarmAdmission
+  concurrency: Nat
+  decode_tokens_per_second_per_request: MilliTokensPerSecond
+  inter_token_gap_microseconds: Microsecond?
+  ttft_median_milliseconds: Millisecond?
+  ttft_max_milliseconds: Millisecond?
+  aggregate_tokens_per_second: MilliTokensPerSecond?
+  preemptions: Nat?
+  capacity_boundary: Bool
+}
+
+type CellOutcome
+  = CellMeasured {
+      // Review 84973: the capacity screenshots printed these GiB figures to two decimals
+      // (73.39 GiB logged as 7339); they are now ByteSize, minted through std.measure's
+      // centi_gibibyte_to_byte_size, so the unit lives in the type and no field name carries it.
+      weights_bytes: ByteSize?
+      kv_bytes: ByteSize?
+      kv_tokens: Nat?
+      gpu_memory_utilization: BasisPoint
+      throughput: List<ConcurrencyReading>
+    }
+  | CellRefusedWeightsExceedUsableMemory { weights_bytes: ByteSize, usable_bytes: ByteSize }
+  | CellRefusedOther { cause: NonEmptyStr }
+  | CellUnobserved { trigger: NonEmptyStr }
+
+type QuantMatrixRow {
+  variant: ServingVariant
+  cell: QuantCell
+  outcome: CellOutcome
+}
+
+// A weight set larger than the utilization-scaled observed memory cannot be loaded: refused, with both numbers.
+fn weights_outcome_for(memory_bytes: ByteSize, utilization: BasisPoint, weights_bytes: ByteSize, fits: CellOutcome) -> CellOutcome {
+  let usable = byte_size_count(b: memory_bytes) * basis_point_count(bp: utilization) / 10000
+  if byte_size_count(b: weights_bytes) >= usable {
+    CellRefusedWeightsExceedUsableMemory { weights_bytes: weights_bytes, usable_bytes: byte_size(count: usable) }
+  } else {
+    fits
+  }
+}
+
+data bf16_weights_bytes: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 335))
+
+data cell_needs_run_trigger: NonEmptyStr = "a committed run receipt of this card with this weight and KV dtype" as NonEmptyStr
+
+data maxq_unobserved_trigger: NonEmptyStr = "a spare RTX PRO 6000 is rented and this cell is run; the production card serves only the fork b12x NVFP4 + FP8 KV path" as NonEmptyStr
+
+fn unobserved() -> CellOutcome {
+  CellUnobserved { trigger: cell_needs_run_trigger }
+}
+
+fn refused_bf16(memory_bytes: ByteSize, utilization: BasisPoint) -> CellOutcome {
+  weights_outcome_for(memory_bytes: memory_bytes, utilization: utilization, weights_bytes: bf16_weights_bytes, fits: unobserved())
+}
+
+
+fn nat_present(n: Nat) -> Nat? {
+  Present { value: n }
+}
+
+// Review 84774 (flat-scalar unit fields): the relayed throughput rows carry std.measure carriers
+// instead of a bare Nat whose scale lives only in the field name. The upstream bench logged tok/s to
+// one decimal; the stored literals are that print figure times ten (the deci the old field names
+// carried), and the milli carrier takes the print figure times a hundred, so 2987 still means
+// exactly 298.7 tok/s.
+fn milli_tokens_present(print_deci: Nat) -> MilliTokensPerSecond? {
+  Present { value: milli_tokens_per_second(count: print_deci * 100) }
+}
+
+fn milli_tokens(print_deci: Nat) -> MilliTokensPerSecond {
+  milli_tokens_per_second(count: print_deci * 100)
+}
+
+// A bare `none` at call-argument position loses the payload type (checker), so the absent arms of
+// the sweep rows are declared with their carrier spelled.
+data no_gap: Microsecond? = none
+
+data no_ttft: Millisecond? = none
+
+fn micro_present(print_us: Nat) -> Microsecond? {
+  Present { value: microsecond(count: print_us) }
+}
+
+fn milli_present(print_ms: Nat) -> Millisecond? {
+  Present { value: millisecond(count: print_ms) }
+}
+
+// One level of the upstream sweep. agg is the server-counted generation_tokens_total delta over the level's wall time
+// (warm-turn tokens included), per_request the median per-request decode rate, both in tenths of tok/s. A level with
+// preemptions or a collapse is capacity-boundary evidence, never engine throughput.
+fn sweep_level(c: Nat, agg: Nat, per_request: Nat, gap_us: Microsecond?, ttft_ms: Millisecond?, preempt: Nat, boundary: Bool) -> ConcurrencyReading {
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: c, decode_tokens_per_second_per_request: milli_tokens(print_deci: per_request), inter_token_gap_microseconds: gap_us, ttft_median_milliseconds: ttft_ms, ttft_max_milliseconds: none, aggregate_tokens_per_second: milli_tokens_present(print_deci: agg), preemptions: nat_present(n: preempt), capacity_boundary: boundary }
+}
+
+data b200_nvfp4_kvfp8_sweep: List<ConcurrencyReading> = [
+  sweep_level(c: 1, agg: 2120, per_request: 3570, gap_us: micro_present(print_us: 8900), ttft_ms: milli_present(print_ms: 1680), preempt: 0, boundary: false),
+  sweep_level(c: 4, agg: 3970, per_request: 2240, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+  sweep_level(c: 8, agg: 4690, per_request: 1310, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+  sweep_level(c: 16, agg: 5200, per_request: 760, gap_us: no_gap, ttft_ms: milli_present(print_ms: 2200), preempt: 0, boundary: false),
+]
+
+data b200_nvfp4_kvbf16_sweep: List<ConcurrencyReading> = [
+  sweep_level(c: 1, agg: 2180, per_request: 4160, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+  sweep_level(c: 4, agg: 3660, per_request: 1780, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+  sweep_level(c: 8, agg: 4630, per_request: 1270, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+  sweep_level(c: 16, agg: 4020, per_request: 310, gap_us: no_gap, ttft_ms: milli_present(print_ms: 4260), preempt: 0, boundary: false),
+]
+
+data b200_fp8w_kvfp8_sweep: List<ConcurrencyReading> = [
+  sweep_level(c: 1, agg: 1920, per_request: 3470, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+  sweep_level(c: 4, agg: 3380, per_request: 1850, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+  sweep_level(c: 8, agg: 3670, per_request: 940, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+  sweep_level(c: 16, agg: 2790, per_request: 230, gap_us: no_gap, ttft_ms: milli_present(print_ms: 15500), preempt: 31, boundary: true),
+]
+
+data b200_fp8w_kvbf16_sweep: List<ConcurrencyReading> = [
+  sweep_level(c: 1, agg: 2050, per_request: 3230, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+  sweep_level(c: 4, agg: 3440, per_request: 1730, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+  sweep_level(c: 8, agg: 2790, per_request: 430, gap_us: no_gap, ttft_ms: no_ttft, preempt: 2, boundary: true),
+  sweep_level(c: 16, agg: 2430, per_request: 410, gap_us: no_gap, ttft_ms: milli_present(print_ms: 33500), preempt: 17, boundary: true),
+]
+
+data h200_nvfp4_kvbf16_sweep: List<ConcurrencyReading> = [
+  sweep_level(c: 1, agg: 1200, per_request: 2800, gap_us: no_gap, ttft_ms: milli_present(print_ms: 4290), preempt: 0, boundary: false),
+  sweep_level(c: 4, agg: 1760, per_request: 1200, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+  sweep_level(c: 8, agg: 1860, per_request: 700, gap_us: no_gap, ttft_ms: no_ttft, preempt: 0, boundary: false),
+]
+
+// Per-request only (no aggregate relayed); the c16 level collapsed (gap 443 ms, TTFT 21 s) and is capacity-boundary evidence.
+// The operator marked this cell to be re-measured.
+
+// Upstream log, H200 at gpu-memory-utilization 0.95: available KV 1.53 GiB against 4.21 GiB (FP8 KV) / 7.57 GiB (BF16 KV)
+// for one 262,144-token request (estimated max length 51,200 / 25,600). The checkpoint loads but cannot serve the length.
+data h200_fp8w_refusal_cause: NonEmptyStr = "upstream refused to start: available KV 1.53 GiB at gpu-memory-utilization 0.95 is below the 4.21 GiB (FP8 KV) or 7.57 GiB (BF16 KV) one 262144-token request needs; estimated max model len 51200 (FP8 KV) / 25600 (BF16 KV)" as NonEmptyStr
+
+// Per-request only (no aggregate relayed); the c16 level collapsed (gap 443 ms, TTFT 21 s) and is capacity-boundary evidence.
+// The operator marked this cell to be re-measured.
+data h200_nvfp4_kvfp8_levels: List<ConcurrencyReading> = [
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 1, decode_tokens_per_second_per_request: milli_tokens(print_deci: 2987), inter_token_gap_microseconds: micro_present(print_us: 11700), ttft_median_milliseconds: milli_present(print_ms: 1820) , ttft_max_milliseconds: none, aggregate_tokens_per_second: none, preemptions: none, capacity_boundary: false },
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 4, decode_tokens_per_second_per_request: milli_tokens(print_deci: 981), inter_token_gap_microseconds: micro_present(print_us: 16400), ttft_median_milliseconds: milli_present(print_ms: 1900) , ttft_max_milliseconds: none, aggregate_tokens_per_second: none, preemptions: none, capacity_boundary: false },
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 8, decode_tokens_per_second_per_request: milli_tokens(print_deci: 580), inter_token_gap_microseconds: micro_present(print_us: 22000), ttft_median_milliseconds: milli_present(print_ms: 2040) , ttft_max_milliseconds: milli_present(print_ms: 18100), aggregate_tokens_per_second: none, preemptions: none, capacity_boundary: false },
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 12, decode_tokens_per_second_per_request: milli_tokens(print_deci: 380), inter_token_gap_microseconds: none, ttft_median_milliseconds: none, ttft_max_milliseconds: none, aggregate_tokens_per_second: none, preemptions: none, capacity_boundary: false },
+  ConcurrencyReading { admission: WarmNotYetAdmitted { trigger: bench_v2_records_trigger }, concurrency: 16, decode_tokens_per_second_per_request: milli_tokens(print_deci: 98), inter_token_gap_microseconds: micro_present(print_us: 443000), ttft_median_milliseconds: milli_present(print_ms: 21000), ttft_max_milliseconds: none, aggregate_tokens_per_second: none, preemptions: none, capacity_boundary: true },
+]
+
+fn kv_cell(weights: WeightDtype, kv: KvDtype) -> QuantCell {
+  QuantCell { weights: weights, kv: kv }
+}
+
+data flash_next_quant_matrix: List<QuantMatrixRow> = [
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_bytes: Present { value: centi_gibibyte_to_byte_size(centi: 7339) }, kv_bytes: Present { value: centi_gibibyte_to_byte_size(centi: 4223) }, kv_tokens: Present { value: 2626530 }, gpu_memory_utilization: basis_point(count: 8500), throughput: h200_nvfp4_kvfp8_levels } },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: CellMeasured { weights_bytes: none, kv_bytes: none, kv_tokens: Present { value: 1462338 }, gpu_memory_utilization: basis_point(count: 8500), throughput: h200_nvfp4_kvbf16_sweep } },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: CellRefusedOther { cause: h200_fp8w_refusal_cause } },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: CellRefusedOther { cause: h200_fp8w_refusal_cause } },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvFp8), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: h200_nvl_observed_memory), utilization: basis_point(count: 8500)) },
+  QuantMatrixRow { variant: H200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvBf16), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: h200_nvl_observed_memory), utilization: basis_point(count: 8500)) },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_bytes: Present { value: centi_gibibyte_to_byte_size(centi: 7434) }, kv_bytes: Present { value: centi_gibibyte_to_byte_size(centi: 8125) }, kv_tokens: Present { value: 5051998 }, gpu_memory_utilization: basis_point(count: 9000), throughput: b200_nvfp4_kvfp8_sweep } },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: CellMeasured { weights_bytes: none, kv_bytes: none, kv_tokens: Present { value: 2814151 }, gpu_memory_utilization: basis_point(count: 9000), throughput: b200_nvfp4_kvbf16_sweep } },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: CellMeasured { weights_bytes: Present { value: centi_gibibyte_to_byte_size(centi: 12721) }, kv_bytes: Present { value: centi_gibibyte_to_byte_size(centi: 2919) }, kv_tokens: Present { value: 1814647 }, gpu_memory_utilization: basis_point(count: 9000), throughput: b200_fp8w_kvfp8_sweep } },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: CellMeasured { weights_bytes: none, kv_bytes: none, kv_tokens: Present { value: 1010317 }, gpu_memory_utilization: basis_point(count: 9000), throughput: b200_fp8w_kvbf16_sweep } },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvFp8), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: b200_observed_memory), utilization: basis_point(count: 9000)) },
+  QuantMatrixRow { variant: B200UpstreamV032, cell: kv_cell(weights: WeightBf16, kv: KvBf16), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: b200_observed_memory), utilization: basis_point(count: 9000)) },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), outcome: CellMeasured { weights_bytes: Present { value: centi_gibibyte_to_byte_size(centi: 7186) }, kv_bytes: Present { value: centi_gibibyte_to_byte_size(centi: 1424) }, kv_tokens: Present { value: 773026 }, gpu_memory_utilization: basis_point(count: 9600), throughput: [] } },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), outcome: CellUnobserved { trigger: maxq_unobserved_trigger } },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), outcome: CellUnobserved { trigger: maxq_unobserved_trigger } },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvBf16), outcome: CellUnobserved { trigger: maxq_unobserved_trigger } },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightBf16, kv: KvFp8), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: max_q_observed_memory), utilization: basis_point(count: 9600)) },
+  QuantMatrixRow { variant: Pro6000MaxQNative, cell: kv_cell(weights: WeightBf16, kv: KvBf16), outcome: refused_bf16(memory_bytes: observed_memory_bytes(o: max_q_observed_memory), utilization: basis_point(count: 9600)) },
+]
+
+// One row per (variant, cell); a duplicate or missing pair reads as absent, never as the first hit.
+fn quant_matrix_outcome(rows: List<QuantMatrixRow>, v: ServingVariant, c: QuantCell) -> CellOutcome? {
+  let hits = rows |> filter(r => serving_variant_eq(a: r.variant, b: v) && quant_cell_eq(a: r.cell, b: c))
+  if count(hits) == 1 {
+    fold(hits, init: none, f: (_acc, r) => Present { value: r.outcome })
+  } else {
+    none
+  }
+}
+
+// The Qwen/Qwen3.8-Flash-Next-FP8 checkpoint at revision 236dfdf285828023ca3bcd3f37366c58a3469b13 is 172.8 GiB of
+// safetensors (HF tree API sum, 131 files; PLE table FP8). Upstream offloads the PLE table to host, so the GPU-resident
+// share is below this and unmeasured: the FP8 cells stay Unobserved until a matrix row reports; they may refuse.
+data fp8_checkpoint_safetensors_bytes: ByteSize = centi_gibibyte_to_byte_size(centi: 17280)
+
+// OBSERVATIONS of the upstream 0.32.0 runs, relayed by the operator (run receipts; the remaining ServingRunReceipt
+// fields — vbios, digests, backends per layer — are owed with the snapshots).
+type UpstreamRunObservation {
+  variant: ServingVariant
+  gpu_uuid: NonEmptyStr
+  vbios: NonEmptyStr
+  // Deci-watt print precision carried as std.measure Milliwatt, finer resolution holds it exactly
+  // (review 84774; see flash_next_experiment_identity.ServingRunReceipt for the reasoning).
+  power_limit_milliwatts: Milliwatt
+  driver_version: NonEmptyStr
+  moe_backend: NonEmptyStr
+  mtp_expert_backend: NonEmptyStr
+  linear_backend: NonEmptyStr
+  attention_note: NonEmptyStr
+  ple_note: NonEmptyStr
+}
+
+data upstream_ple_note: NonEmptyStr = "PLE table re-expressed BF16: upstream rejected the checkpoint NVFP4 PLE geometry (expected (2500012,160), got (2500012,80)); cpu_offload on" as NonEmptyStr
+
+data upstream_v032_run_observations: List<UpstreamRunObservation> = [
+  UpstreamRunObservation { variant: H200UpstreamV032, gpu_uuid: "GPU-db782247-b35d-34cf-3f2a-02c3d8c2918e" as NonEmptyStr, vbios: "96.00.D9.00.0E" as NonEmptyStr, power_limit_milliwatts: milliwatt(count: 500000), driver_version: "615.71.09" as NonEmptyStr, moe_backend: "NvFp4 MoE MARLIN (recipe triton refuses NVFP4)" as NonEmptyStr, mtp_expert_backend: "marlin" as NonEmptyStr, linear_backend: "HummingMxfp8LinearKernel" as NonEmptyStr, attention_note: "fp8 KV + fp8 indexer KV" as NonEmptyStr, ple_note: upstream_ple_note },
+  UpstreamRunObservation { variant: B200UpstreamV032, gpu_uuid: "GPU-801c30bc-4111-f820-3b13-16318ba8f211" as NonEmptyStr, vbios: "97.00.C5.00.2D" as NonEmptyStr, power_limit_milliwatts: milliwatt(count: 1000000), driver_version: "580.126.09" as NonEmptyStr, moe_backend: "NvFp4 MoE FLASHINFER_TRTLLM (main experts)" as NonEmptyStr, mtp_expert_backend: "NvFp4 MoE MARLIN W4A16 (MTP experts)" as NonEmptyStr, linear_backend: "MXFP8 FlashInferCutedslMxfp8LinearKernel (main) + MarlinMxfp8LinearKernel (one other group)" as NonEmptyStr, attention_note: "FA4 Blackwell head_size 256 does not support fp8 KV; falls back to FA2 (upstream warning)" as NonEmptyStr, ple_note: upstream_ple_note },
+]
+
+// OBSERVATIONS of the upstream 0.32.0 runs that are not throughput rows (relayed by the operator, raw files under
+// /root/bench/<tag>/ on each box). A defect observed is a finding about the stack, not a property of the card.
+type UpstreamDefectObservation {
+  variant: ServingVariant
+  finding: NonEmptyStr
+}
+
+data upstream_defect_observations: List<UpstreamDefectObservation> = [
+  UpstreamDefectObservation { variant: B200UpstreamV032, finding: "FP8 KV is slower than BF16 KV at c1 (357 vs 416 tok/s per request): upstream logs that FA4 Blackwell head_size=256 does not support fp8 KV and falls back to FA2; a kernel gap, not hardware" as NonEmptyStr },
+  UpstreamDefectObservation { variant: H200UpstreamV032, finding: "max-model-len 1000000 (YaRN x4): server READY with 3068862 KV tokens (3.07x of 1M), then CUDA illegal memory access at about 900k context with zero bench rows; reproduced on the B200" as NonEmptyStr },
+  UpstreamDefectObservation { variant: B200UpstreamV032, finding: "max-model-len 1000000, both KV dtypes: EngineCore RuntimeError Triton Error [CUDA] illegal memory access within about 8 s of the first ~916k-token request; reported frame qwen4_exp/nvidia/ops/hc.py _hc_gate_mix, asynchronous so not necessarily the faulting kernel; not Hopper-specific; the PLE table is the BF16 re-expression so a PLE-path fault is not excluded; cause not established" as NonEmptyStr },
+]
+
+// THE POOL IS KEYED BY max-model-len TOO: the same cell reports a larger vLLM pool at 1,000,000 (recipe long_context: YaRN x4,
+// VLLM_ALLOW_LONG_MAX_MODEL_LEN=1) than at 262,144 (5.05M / 2.81M / 2.63M above); the difference is unexplained, so the
+// length is part of the capacity identity and these rows never replace the 262,144 rows.
+type ReportedPoolAtLength {
+  variant: ServingVariant
+  cell: QuantCell
+  max_model_len_tokens: Nat
+  kv_tokens: Nat
+}
+
+data long_context_reported_pools: List<ReportedPoolAtLength> = [
+  ReportedPoolAtLength { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), max_model_len_tokens: 1000000, kv_tokens: 5925149 },
+  ReportedPoolAtLength { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), max_model_len_tokens: 1000000, kv_tokens: 3063467 },
+  ReportedPoolAtLength { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), max_model_len_tokens: 1000000, kv_tokens: 3068862 },
+]
+
+// A HYPOTHESIS, pre-registered by the operator before the B200 bisect: int32 index overflow at tokens x hidden 2560 >= 2^31
+// predicts a threshold near 838,861 tokens. FALSIFIED: on B200 (upstream 0.32.0, YaRN x4, max-model-len 1,000,000, FP8 KV,
+// CUDA_LAUNCH_BLOCKING=1, no MTP, max-num-seqs 4, fresh prompts, max_tokens 16) single requests passed at 400k, 600k, 800k,
+// 830k, 845k, 870k and 900k (16.2-39.3 s). The cause is unknown.
+type HypothesisStanding
+  = HypothesisPreRegistered
+  | HypothesisFalsified { evidence: NonEmptyStr }
+
+type CrashThresholdHypothesis {
+  hidden_size: Nat
+  index_limit: Nat
+  standing: HypothesisStanding
+}
+
+data crash_int32_falsifying_evidence: NonEmptyStr = "B200 bisect, no MTP, fresh prompts: single requests passed at 400k/600k/800k/830k/845k/870k/900k tokens, past the 838860-token threshold" as NonEmptyStr
+
+data crash_int32_overflow_hypothesis: CrashThresholdHypothesis = CrashThresholdHypothesis { hidden_size: 2560, index_limit: 2147483648, standing: HypothesisFalsified { evidence: crash_int32_falsifying_evidence } }
+
+fn hypothesized_threshold_tokens(h: CrashThresholdHypothesis) -> Nat {
+  h.index_limit / h.hidden_size
+}
+
+// The crashing runs differed from the passing bisect in exactly two named ways; neither is a cause yet.
+data crash_open_candidates: List<NonEmptyStr> = [
+  "MTP-3 enabled at long context" as NonEmptyStr,
+  "continuation from a cached ~900k prefix (+16k new tokens, 1100 output)" as NonEmptyStr,
+]
+
+// MEASURED CEILINGS (server-counted tok/s in tenths, max over the batch sweep, preemptions 0 everywhere): decode at the batch
+// that peaked, prefill warm (+8k at B8 / +32k) and cold (32k at B8 / 128k). Raw rows /root/bench/ceil-*/results.jsonl with
+// gpu-bench/request/v2 records beside them; not yet through gpu_bench_warm_run_admission.
+type CeilingReading {
+  variant: ServingVariant
+  cell: QuantCell
+  // Review 84973: these were already MilliTokensPerSecond carried through milli_tokens
+  // (print figure * 100), so the values are right on the carrier; the _deci in the names
+  // described the print scale, not the type's scale, and lied about it. Renamed.
+  decode_tokens_per_second: MilliTokensPerSecond
+  decode_peak_batch: Nat
+  warm_prefill_8k_tokens_per_second: MilliTokensPerSecond
+  warm_prefill_32k_tokens_per_second: MilliTokensPerSecond
+  cold_prefill_32k_tokens_per_second: MilliTokensPerSecond
+  cold_prefill_128k_tokens_per_second: MilliTokensPerSecond
+}
+
+data flash_next_measured_ceilings: List<CeilingReading> = [
+  CeilingReading { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), decode_tokens_per_second: milli_tokens(print_deci: 9845), decode_peak_batch: 32, warm_prefill_8k_tokens_per_second: milli_tokens(print_deci: 145450), warm_prefill_32k_tokens_per_second: milli_tokens(print_deci: 144390), cold_prefill_32k_tokens_per_second: milli_tokens(print_deci: 153220), cold_prefill_128k_tokens_per_second: milli_tokens(print_deci: 150030) },
+  CeilingReading { variant: H200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), decode_tokens_per_second: milli_tokens(print_deci: 11107), decode_peak_batch: 32, warm_prefill_8k_tokens_per_second: milli_tokens(print_deci: 143490), warm_prefill_32k_tokens_per_second: milli_tokens(print_deci: 144990), cold_prefill_32k_tokens_per_second: milli_tokens(print_deci: 157540), cold_prefill_128k_tokens_per_second: milli_tokens(print_deci: 153740) },
+  CeilingReading { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvFp8), decode_tokens_per_second: milli_tokens(print_deci: 24545), decode_peak_batch: 64, warm_prefill_8k_tokens_per_second: milli_tokens(print_deci: 395590), warm_prefill_32k_tokens_per_second: milli_tokens(print_deci: 410000), cold_prefill_32k_tokens_per_second: milli_tokens(print_deci: 455510), cold_prefill_128k_tokens_per_second: milli_tokens(print_deci: 449280) },
+  CeilingReading { variant: B200UpstreamV032, cell: kv_cell(weights: WeightNvfp4LilQad, kv: KvBf16), decode_tokens_per_second: milli_tokens(print_deci: 29694), decode_peak_batch: 64, warm_prefill_8k_tokens_per_second: milli_tokens(print_deci: 370600), warm_prefill_32k_tokens_per_second: milli_tokens(print_deci: 417570), cold_prefill_32k_tokens_per_second: milli_tokens(print_deci: 492800), cold_prefill_128k_tokens_per_second: milli_tokens(print_deci: 470520) },
+  CeilingReading { variant: B200UpstreamV032, cell: kv_cell(weights: WeightFp8Qwen128Blocks, kv: KvFp8), decode_tokens_per_second: milli_tokens(print_deci: 13032), decode_peak_batch: 16, warm_prefill_8k_tokens_per_second: milli_tokens(print_deci: 327850), warm_prefill_32k_tokens_per_second: milli_tokens(print_deci: 328040), cold_prefill_32k_tokens_per_second: milli_tokens(print_deci: 368600), cold_prefill_128k_tokens_per_second: milli_tokens(print_deci: 358840) },
+]
+
+// BF16 KV beats FP8 KV on the decode ceiling on both cards (H200 +13%, B200 +21%): a software-path effect (FA2 fallback for
+// fp8 KV at head size 256), recorded as an observation about the stack, not a property of the dtype.
+fn decode_ceiling(rows: List<CeilingReading>, v: ServingVariant, c: QuantCell) -> MilliTokensPerSecond? {
+  let hits = rows |> filter(r => serving_variant_eq(a: r.variant, b: v) && quant_cell_eq(a: r.cell, b: c))
+  if count(hits) == 1 {
+    fold(hits, init: none, f: (_acc, r) => Present { value: r.decode_tokens_per_second })
+  } else {
+    none
+  }
+}
+
+// RESULTS THAT WERE RUN BUT NEVER RETRIEVED: the H200 and B200 rentals became unreachable (connection refused on every
+// route) at about 04:55Z on 2026-10-22, before the raw files were copied. Unobserved with the cause, not Refused and not
+// zero; the operator restarting the instances lets the parent pull and fill them. The B200 FP8-weights/BF16-KV cell keeps
+// its matrix values (KV 1,010,317 tokens, replay rows).
+type UnretrievedMode = ModeCeiling | ModeFillWithItl | ModeHitFraction | ModeOutputLength | ModeOpenLoop
+
+type UnretrievedResult {
+  variant: ServingVariant
+  cell: QuantCell
+  mode: UnretrievedMode
+  cause: NonEmptyStr
+}
+
+data rental_ended_cause: NonEmptyStr = "rental ended before results were retrieved" as NonEmptyStr
+
+fn unretrieved(v: ServingVariant, w: WeightDtype, kv: KvDtype, m: UnretrievedMode) -> UnretrievedResult {
+  UnretrievedResult { variant: v, cell: kv_cell(weights: w, kv: kv), mode: m, cause: rental_ended_cause }
+}
+
+data flash_next_unretrieved_results: List<UnretrievedResult> = [
+  unretrieved(v: B200UpstreamV032, w: WeightFp8Qwen128Blocks, kv: KvBf16, m: ModeCeiling),
+  unretrieved(v: H200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeFillWithItl),
+  unretrieved(v: H200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeHitFraction),
+  unretrieved(v: H200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeOutputLength),
+  unretrieved(v: H200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeOpenLoop),
+  unretrieved(v: B200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeFillWithItl),
+  unretrieved(v: B200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeHitFraction),
+  unretrieved(v: B200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeOutputLength),
+  unretrieved(v: B200UpstreamV032, w: WeightNvfp4LilQad, kv: KvFp8, m: ModeOpenLoop),
+]
+
+data flash_next_quant_matrix_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: server-counter aggregates replace the client agg_gen_tps for the H200 run, the B200 bench lands (throughput is empty), the Max-Q driver is committed, the FP8 cells report their GPU-resident weights, and the BF16 335 GiB figure (operator, uncited) is read from the BF16 checkpoint index." as NonEmptyStr
+)

@@ -1,6 +1,5 @@
 module v2.test.claim.execution.emit_on_demand_kernel_witness
 
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 
 import std.logic { Bool }
 import std.types { String, List }
@@ -113,8 +112,7 @@ fn kernel_native_key() -> ContentHash {
 fn kernel_alt_subject_tree() -> InferredTree {
   InferredTree {
     root: rust_fixture_emitted_add_fn,
-    facts: rust_add_inferred_tree.facts,
-    arm_resolutions: constructed_root_arm_resolutions()
+    facts: rust_add_inferred_tree.facts
   }
 }
 

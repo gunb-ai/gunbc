@@ -1349,7 +1349,7 @@ fn run_verb(
     };
 
     // ONE LOAD, MANY FUNCTIONS. Each function's verdict is decided exactly as it was when a run
-    // executed one; the run's verdict is the first non-zero status, and every function still
+    // executed one; the run's verdict is the first non-zero status (a claim run: 1 > 2 > 0), and every function still
     // runs so a claim file reports all of its reds rather than the first. A non-claim run of
     // several functions stops at the first failure, because a later function may depend on
     // the effects of an earlier one.
@@ -1364,7 +1364,9 @@ fn run_verb(
             if let Some(m) = &one.message {
                 failures.push(m.clone());
             }
-            if verdict.status == 0 {
+            // Precedence 1 > 2 > 0, as claim_batch: a failed claim outranks a no-observation,
+            // which outranks success; a non-claim run keeps its first non-zero status.
+            if verdict.status == 0 || (claim_run && one.status == 1) {
                 verdict.status = one.status;
             }
             if !claim_run {
@@ -1550,8 +1552,18 @@ fn run_one_function(
                 }
             }
         }
+        // A refused route is NO OBSERVATION (exit 2), never a failed claim: the claim did not
+        // get to say anything. Outside a claim run an evaluation error stays exit 1.
         Err(err) => Verdict {
-            status: 1,
+            status: if claim_run
+                && matches!(
+                    err,
+                    v1_compiler::v1_interpreter::InterpError::HostEffectRefused { .. }
+                ) {
+                2
+            } else {
+                1
+            },
             message: Some(format!(
                 "error: evaluating {function} in {entry_file}\n  cause: {err:?}"
             )),

@@ -464,7 +464,6 @@ dag/test/claim/sessions_panel_witness.dag	attempts_refusal_withdraws_prior_rows	
 dag/test/claim/sessions_panel_witness.dag	retained_dead_process_projects_clear_without_erasing_session	5	30550328673	srv_fleet_arm64	wall
 dag/test/claim/sessions_panel_witness.dag	sessions_banner_is_styled_loud	88	30550328673	srv_fleet_arm64	wall
 dag/test/claim/sessions_panel_witness.dag	sessions_observed_projects_to_wire	2	30550328673	srv_fleet_arm64	wall
-dag/test/claim/shell_exec_run_argv_embed_witness.dag	witness_apply_script_requires_bash_receiver	138	30550328673	srv_fleet_arm64	wall
 dag/test/claim/site_accent_study_witness.dag	witness_study_page_emits	16	30550328673	srv_fleet_arm64	wall
 dag/test/claim/site_register_witness.dag	site_register_keystone_holds	103	30550328673	srv_fleet_arm64	wall
 dag/test/claim/source_integration_landing_spine_witness.dag	witness_p0_admission_and_transition_flow_forward	2	30550328673	srv_fleet_arm64	wall

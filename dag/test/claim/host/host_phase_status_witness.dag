@@ -1,12 +1,13 @@
 module test.claim.host.host_phase_status_witness
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-import gunbc.host.host_standup { PhaseDisposition }
+import gunbc.host.host_standup { PhaseDisposition, BmcCredentialConverge, OsInstallMechanismResolved, OsInstallActuated, HostConvergePolicyDerived }
 import std.live_tree { LiveTreeDisposition }
 import std.upsert_decision { Conflict, Inaccessible, UnknownRefused }
 import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import gunbc.fleet.fleet_reach_endpoint { fleet_reach_probe_targets }
 import gunbc.host.host_assimilation_program {
+  prefix_phase_applies,
   assimilation_program_for,
   fleet_participation_canonical_roster,
   fleet_participation_in_canonical_roster,
@@ -16,7 +17,7 @@ import gunbc.host.host_assimilation_program {
   step_in_program,
   step_serves_participation,
 }
-import gunbc.fleet.fleet_host_backing { OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot }
+import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedControlRoute, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot }
 import gunbc.fleet.fleet_host_identity { operator_host_183527 }
 import gunbc.fleet.fleet_enrollment {
   enrollment_for_host,
@@ -329,13 +330,13 @@ test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
 data synthetic_inference_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: inference_serving_enrollment_participation,
-  backing: OwnedMachine { provisioning: ApplianceFirstBoot, unit: Absent },
+  backing: OwnedMachine { provisioning: OwnedProvisioning { control: NoOutOfBand, delivery: ApplianceImage }, unit: Absent },
 }
 
 data synthetic_ci_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: ci_runner_enrollment_participation,
-  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent },
+  backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent },
 }
 
 fn cell_label_is_runner_only(c: HostPhaseCellStatus) -> Bool {
@@ -381,7 +382,7 @@ test fn witness_ci_program_selects_the_whole_spine() -> Bool {
   let both = HostEnrollmentIntent {
     host: synthetic_ci_enrollment.host,
     participation: ci_runner_and_session_enrollment_participation,
-    backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent },
+    backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent },
   }
   let ci_only = program_step_count(program: assimilation_program_for(intent: synthetic_ci_enrollment))
   program_step_count(program: assimilation_program_for(intent: both)) == owned_bmc_full_program_length()
@@ -396,19 +397,19 @@ test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
 data synthetic_reordered_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [InferenceServingParticipation, CiRunnerParticipation],
-  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent },
+  backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent },
 }
 
 data synthetic_forward_order_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, InferenceServingParticipation],
-  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent },
+  backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent },
 }
 
 data synthetic_duplicated_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, CiRunnerParticipation, InferenceServingParticipation],
-  backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent },
+  backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent },
 }
 
 // Participation is a set wearing a list's carrier, so the three enrollments below must be one
@@ -659,4 +660,34 @@ test fn witness_every_covered_cell_today_is_the_authored_one() -> Bool {
     && covered.length() == authored.length() + probe_deduced.length()
     && authored.length() == 1
     && probe_deduced.length() == 2 * probed_target_count()
+}
+
+fn owned_backing(control: OwnedControlRoute, delivery: OwnedOsDelivery) -> HostBacking {
+  OwnedMachine { provisioning: OwnedProvisioning { control: control, delivery: delivery }, unit: Absent }
+}
+
+// RED: A RAM IMAGE IS BOOTED, NOT INSTALLED. A RamImageBoot host owes no install mechanism, no actuation and no
+// converge policy; keyed on the control route (or the fused arm) it would owe them because it has a BMC.
+test fn ram_image_boot_owes_no_install_phases() -> Bool {
+  let b = owned_backing(control: Bmc, delivery: RamImageBoot)
+  !prefix_phase_applies(p: OsInstallMechanismResolved, backing: b)
+    && !prefix_phase_applies(p: OsInstallActuated, backing: b)
+    && !prefix_phase_applies(p: HostConvergePolicyDerived, backing: b)
+}
+
+// The two facts are independent in both directions: the BMC credential is owed by the control route alone,
+// the install phases by the delivery alone. Control: a virtual-media install keeps all four, and an
+// appliance without a BMC owes neither the credential nor an install. The impossible pair never reaches here: it
+// is refused at the enrollment boundary (host_control_route_witness).
+test fn bmc_credential_follows_control_and_install_follows_delivery() -> Bool {
+  let full = owned_backing(control: Bmc, delivery: InstalledViaVirtualMedia)
+  let appliance = owned_backing(control: NoOutOfBand, delivery: ApplianceImage)
+  let ram = owned_backing(control: Bmc, delivery: RamImageBoot)
+  prefix_phase_applies(p: BmcCredentialConverge, backing: ram)
+    && prefix_phase_applies(p: BmcCredentialConverge, backing: full)
+    && prefix_phase_applies(p: OsInstallMechanismResolved, backing: full)
+    && prefix_phase_applies(p: OsInstallActuated, backing: full)
+    && prefix_phase_applies(p: HostConvergePolicyDerived, backing: full)
+    && !prefix_phase_applies(p: BmcCredentialConverge, backing: appliance)
+    && !prefix_phase_applies(p: OsInstallActuated, backing: appliance)
 }

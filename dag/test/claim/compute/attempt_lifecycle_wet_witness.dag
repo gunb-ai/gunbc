@@ -1,5 +1,6 @@
 module test.claim.compute.attempt_lifecycle_wet_witness
 
+import gunbc.durable_cas_file_store { file_slot_store }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_entry_presence, filesystem_listing_observation,
@@ -119,12 +120,12 @@ test fn a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet() -> Boo
 
 fn a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet_cell(root: NonEmptyStr) -> Bool {
   let record = record_for(reference: "attempt-terminate-first")
-  let opened = attempt_open(root: root, record: record)
-  let after_open = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let terminated = attempt_terminate(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "the producer never launched")
-  let after_terminal = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let late_launch = attempt_begin_launch(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open))
-  let final_read = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let opened = attempt_open(store: file_slot_store(root: root), record: record)
+  let after_open = attempt_slot_read(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr)
+  let terminated = attempt_terminate(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "the producer never launched")
+  let after_terminal = attempt_slot_read(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr)
+  let late_launch = attempt_begin_launch(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open))
+  let final_read = attempt_slot_read(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr)
   attempt_transition_advanced(t: opened)
     && generation_of(r: after_open) == 1
     && state_word_of(r: after_open) == "reserved"
@@ -151,12 +152,12 @@ test fn a_launch_that_won_refuses_a_recovery_arriving_behind_it() -> Bool {
 
 fn a_launch_that_won_refuses_a_recovery_arriving_behind_it_cell(root: NonEmptyStr) -> Bool {
   let record = record_for(reference: "attempt-launch-first")
-  let opened = attempt_open(root: root, record: record)
-  let after_open = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let launched = attempt_begin_launch(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open))
-  let after_launch = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let late_recovery = attempt_terminate(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "arrived after the launch")
-  let final_read = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let opened = attempt_open(store: file_slot_store(root: root), record: record)
+  let after_open = attempt_slot_read(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr)
+  let launched = attempt_begin_launch(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open))
+  let after_launch = attempt_slot_read(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr)
+  let late_recovery = attempt_terminate(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "arrived after the launch")
+  let final_read = attempt_slot_read(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr)
   attempt_transition_advanced(t: opened)
     && attempt_transition_advanced(t: launched)
     && state_word_of(r: after_launch) == "launching"
@@ -178,8 +179,8 @@ test fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote() -> Boo
 
 fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote_cell(root: NonEmptyStr) -> Bool {
   let record = record_for(reference: "attempt-binding")
-  let opened = attempt_open(root: root, record: record)
-  let read_back = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let opened = attempt_open(store: file_slot_store(root: root), record: record)
+  let read_back = attempt_slot_read(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr)
   let recovered = held_record(r: read_back)
   attempt_transition_advanced(t: opened)
     && recovered.unit == record.unit
@@ -203,7 +204,7 @@ fn begin_launch_refuses_a_record_whose_reference_is_not_the_slot_key_cell(root: 
   let planted = Filesystem.Write(
     path: join([root, "/attempt-mismatch.1"], ""),
     content: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-other\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
-  let t = attempt_begin_launch(root: root as NonEmptyStr, reference: "attempt-mismatch" as NonEmptyStr, expected: cas_generation_first())
+  let t = attempt_begin_launch(store: file_slot_store(root: root as NonEmptyStr), reference: "attempt-mismatch" as NonEmptyStr, expected: cas_generation_first())
   planted.success
     && (match t {
       AttemptTransitionRefused { detail: d } => string_contains(s: d, pattern: "names reference")
@@ -225,12 +226,12 @@ test fn settling_records_why_and_does_not_erase_what_it_settled() -> Bool {
 
 fn settling_records_why_and_does_not_erase_what_it_settled_cell(root: NonEmptyStr) -> Bool {
   let record = record_for(reference: "attempt-history")
-  let opened = attempt_open(root: root, record: record)
-  let g1 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let launched = attempt_begin_launch(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: g1))
-  let g2 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let settled = attempt_terminate(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: g2), verdict: AttemptWorkEnded { ending: WorkEndedFailed }, detail: "unit terminated-failure, exit 101")
-  let g3 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
+  let opened = attempt_open(store: file_slot_store(root: root), record: record)
+  let g1 = attempt_slot_read(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr)
+  let launched = attempt_begin_launch(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr, expected: generation_of(r: g1))
+  let g2 = attempt_slot_read(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr)
+  let settled = attempt_terminate(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr, expected: generation_of(r: g2), verdict: AttemptWorkEnded { ending: WorkEndedFailed }, detail: "unit terminated-failure, exit 101")
+  let g3 = attempt_slot_read(store: file_slot_store(root: root), reference: record.reference as NonEmptyStr)
   let terminal = held_record(r: g3)
   attempt_transition_advanced(t: opened) && attempt_transition_advanced(t: launched) && attempt_transition_advanced(t: settled)
     && generation_of(r: g1) == 1 && generation_of(r: g2) == 2 && generation_of(r: g3) == 3
@@ -313,8 +314,8 @@ test fn an_undecodable_slot_is_unreadable_and_never_absent() -> Bool {
 fn an_undecodable_slot_is_unreadable_and_never_absent_cell(root: NonEmptyStr) -> Bool {
   let reference = "attempt-corrupt"
   let planted = Filesystem.Write(path: join([root as String, "/", reference, ".1"], ""), content: "this is not a json document at all")
-  let reading = attempt_slot_read(root: root, reference: reference as NonEmptyStr)
-  let absent_reading = attempt_slot_read(root: root, reference: "attempt-never-written" as NonEmptyStr)
+  let reading = attempt_slot_read(store: file_slot_store(root: root), reference: reference as NonEmptyStr)
+  let absent_reading = attempt_slot_read(store: file_slot_store(root: root), reference: "attempt-never-written" as NonEmptyStr)
   let negative_instant = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-negative\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":-5,\"launch_deadline\":100,\"state\":\"reserved\"}")
   let negative_grant = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-negative\",\"unit\":\"u\",\"granted_kib\":-1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
   let well_formed = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-fine\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
@@ -395,10 +396,10 @@ fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped_cell(r
     identity: base.identity, reference: "attempt-backwards", unit: base.unit, granted: base.granted,
     opened_at: 1800, launch_deadline: 1799, state: AttemptReserved, owner: DirectInvocation { why: "wet witness" },
   }
-  let refused = attempt_open(root: root, record: greedy)
-  let admitted = attempt_open(root: root, record: at_ceiling)
-  let closed_window = attempt_open(root: root, record: backwards)
-  let greedy_slot = attempt_slot_read(root: root, reference: greedy.reference as NonEmptyStr)
+  let refused = attempt_open(store: file_slot_store(root: root), record: greedy)
+  let admitted = attempt_open(store: file_slot_store(root: root), record: at_ceiling)
+  let closed_window = attempt_open(store: file_slot_store(root: root), record: backwards)
+  let greedy_slot = attempt_slot_read(store: file_slot_store(root: root), reference: greedy.reference as NonEmptyStr)
   !attempt_transition_advanced(t: refused)
     && attempt_transition_advanced(t: admitted)
     && !attempt_transition_advanced(t: closed_window)
@@ -441,7 +442,7 @@ test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> B
 fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot_cell(root: String) -> Bool {
   let layout = layout_at(root: root)
   let rec = record_for(reference: "attempt-race")
-  let opened = attempt_open(root: root as NonEmptyStr, record: rec)
+  let opened = attempt_open(store: file_slot_store(root: root as NonEmptyStr), record: rec)
   let generation = match opened {
     AttemptAdvanced { state: _, generation: g } => g
     AttemptLostRace { expected: _, observed: _ } => cas_generation_first()
@@ -491,9 +492,9 @@ fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spa
   let layout = layout_at(root: root)
   let retry_reference = compute_ceiling_retry_reference(reference: "attempt-first" as NonEmptyStr)
   let squatter = record_for(reference: retry_reference as String)
-  let held = attempt_open(root: root as NonEmptyStr, record: squatter)
+  let held = attempt_open(store: file_slot_store(root: root as NonEmptyStr), record: squatter)
   let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", owner: DirectInvocation { why: "wet witness" }, reference: retry_reference, granted: kibibyte(count: 27262976))
-  let after = attempt_slot_read(root: root as NonEmptyStr, reference: retry_reference)
+  let after = attempt_slot_read(store: file_slot_store(root: root as NonEmptyStr), reference: retry_reference)
   attempt_transition_advanced(t: held)
     && (match opened { AttemptGateRefused { detail: d } => string_contains(s: d, pattern: "opening the attempt")  AttemptGateReady { record: _, generation: _ } => false })
     && generation_of(r: after) == 1
@@ -522,7 +523,7 @@ fn a_refused_reservation_closes_the_slot_it_was_taken_under_cell(root: String) -
   let r = compute_refused_after_open(
     instance: srv1_live_dashboard_instance(), identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: work_default_build(),
     layout: layout, opened: opened, cause: ComputeCapacityLedgerUnavailable { detail: "fixture: ledger refused" })
-  let after = attempt_slot_read(root: root as NonEmptyStr, reference: reference)
+  let after = attempt_slot_read(store: file_slot_store(root: root as NonEmptyStr), reference: reference)
   (match opened { AttemptGateReady { record: _, generation: _ } => true  AttemptGateRefused { detail: _ } => false })
     && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "fixture: ledger refused")  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
     && string_contains(s: state_word_of(r: after), pattern: "terminal:")

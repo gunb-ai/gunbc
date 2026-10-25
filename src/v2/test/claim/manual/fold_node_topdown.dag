@@ -13,6 +13,7 @@ import v2.std.node {
   TypeNode,
   fold_node_topdown,
   StructuralLabel,
+  NotADeclaration
 }
 import v2.std.verification {
   CompilesClaim,
@@ -36,7 +37,7 @@ fn topdown_one_child_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^topdown_child_a }, target: topdown_leaf() }
+      Edge { label: Authored { name: ^topdown_child_a }, target: topdown_leaf(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -46,7 +47,7 @@ fn topdown_two_level_chain() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^topdown_chain_child }, target: topdown_one_child_tree() }
+      Edge { label: Authored { name: ^topdown_chain_child }, target: topdown_one_child_tree(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -83,8 +84,8 @@ fn topdown_edge_dispatch_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Authored { name: ^topdown_left_child }, target: topdown_leaf() },
-      Edge { label: Authored { name: ^topdown_right_child }, target: topdown_leaf() }
+      Edge { label: Authored { name: ^topdown_left_child }, target: topdown_leaf(), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^topdown_right_child }, target: topdown_leaf(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }

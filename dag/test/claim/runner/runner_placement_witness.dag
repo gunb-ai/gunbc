@@ -335,6 +335,7 @@ test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
         CommittedWidthUnresolved { cause: _ } => false
         HostCpuAllocationUnchargeable { cause: _ } => false
         HostNotEnrolledInFleet => false
+        HostRealizedByImage => false
       }
     HostRunnerDeploymentDerived { deployment: _ } => false
   }
@@ -416,7 +417,7 @@ test fn a_refusal_cause_does_not_reach_a_derived_deployment() -> Bool {
 // A HOST-TARGETED CONVERGE ADMITS srv3 WHILE srv2 IS REFUSED. Convergence is a host-targeted
 // transaction, so the fleet's incompleteness is not a fact about srv3.
 test fn converge_admits_a_derived_host_while_another_is_refused() -> Bool {
-  match fleet_converge_policy_from(plan: live_plan()) {
+  match fleet_converge_policy_from(plan: live_plan(), image_baked: runner_image_baked_deployment_plan()) {
     ConvergePolicyDerived { hosts: hs } =>
       any(hs, h => (h.identity as String) == (operator_host_srv3 as String))
         && !any(hs, h => (h.identity as String) == (operator_host_srv2 as String))

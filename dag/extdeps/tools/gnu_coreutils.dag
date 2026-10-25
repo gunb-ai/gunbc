@@ -422,6 +422,22 @@ fn coreutils_install_directory_owned_argv(
   )
 }
 
+// THE ARGV COMMAND OVER THE ONE SPELLING OF install -d -m -o -g (coreutils_install_directory_owned_arguments).
+// install -d CREATES A DIRECTORY WITH ITS FINAL OWNER, GROUP AND MODE IN ONE STEP (coreutils manual, "install
+// invocation"): who OWNS what a privileged process creates is the point, since a mkdir run as root leaves a
+// root-owned directory its real consumer cannot rename. Owner and group are NAMES because install(1) accepts
+// either spelling and callers hold declared account names. Consumer: gunbc.roadmap.roadmap_attempt_exit_spool
+// attempt_exit_hook, which renders it as the ExecStopPost record creation, and the per-attempt grant that creates
+// .git/worktrees/<key> at spawn time: that directory has no topology to assert at plan time and an ADDITIVE sweep
+// cannot reach a declared mode from a ~0755 top, so it needs the same three-field restatement. -o is permitted
+// without privilege when it names the invoking principal itself, and -g when it names a group the invoker belongs to.
+fn install_directory_owned_argv_command(mode: FileMode, owner: NonEmptyStr, group: NonEmptyStr, path: String) -> ArgvCommand {
+  argv_command(
+    program: install_program(),
+    arguments: coreutils_install_directory_owned_arguments(mode: mode, owner: owner, group: group, path: path),
+  )
+}
+
 // install(1) WITHOUT OWNER OR GROUP FLAGS: copy SOURCE to DEST setting the mode at creation,
 // ownership following the invoking principal. Its one caller reaches it through
 // sudo_elevate_command, so the invoking principal IS root and -o/-g would be restatements of the
@@ -542,6 +558,12 @@ fn df_available_bytes_argv(path: String) -> List<String> {
   [df_program as String, "-B1", "--output=avail", path]
 }
 
+
+// Copy a file setting its mode at creation, ownership following the invoking principal: the unprivileged
+// sibling of install_file_owned_command, for a principal copying a file it can read into a directory it owns.
+fn install_file_mode_command(source: String, destination: String, mode: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: install_program(), arguments: [coreutils_install_mode_flag as String, mode as String, source, destination])
+}
 
 // Copy a file with ownership established before an unprivileged consumer can open it.
 fn install_file_owned_command(source: String, destination: String, mode: NonEmptyStr, uid: Int, gid: Int) -> ArgvCommand {

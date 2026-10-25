@@ -17,10 +17,30 @@ import gunbc.membership_reconcile { EffectsReady, ApplyRefused, membership_effec
 import gunbc.live_deploy.lab_host_plan { LabPlanReady, LabPlanRefused, lab_plan_refusal_reason, SystemManagerLauncherSelected }
 import extdeps.access.posix { FileMode }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan, plan_writes_unit }
+// THE GIT-WORKER SUBTREE GROUP (WORKER-ROOT-EQUIVALENT-3, typed legs). The member vocabulary, the one
+// decision accessor and the instance's own builders are imported, never re-derived here (DESIGN 4).
+import gunbc.live_deploy.member_identity {
+  plan_mutation_is, GitWorkerSubtree, RepositorySharedPosture,
+  RegroupGitWorkerSubtree, AssertRepositorySharedPosture,
+}
+import gunbc.roadmap.roadmap_dashboard_instance {
+  WorkerDedicatedAccount, WorkerIsServiceUser,
+  dashboard_git_worker_directory_children, dashboard_git_worker_directory_member,
+  is_dashboard_git_worker_directory_demand, dashboard_git_worker_subtree_path,
+  dashboard_git_worker_subtree_child_migration, dashboard_ensure_git_shared_repository_posture,
+  dashboard_git_maintenance_service_unit_file, dashboard_git_maintenance_timer_unit_file,
+  dashboard_git_maintenance_service_unit_path, dashboard_git_maintenance_timer_unit_path,
+  dashboard_git_maintenance_service_unit_name, dashboard_git_maintenance_timer_unit_name,
+}
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
+import extdeps.git { git_absolute_git_dir_premise_argv }
+import extdeps.tools.stat { stat_default_report_command }
 import gunbc.live_deploy.emit { deployment_apply_plan, owned_directory_will_install }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands, deployment_owns_the_host_approval_broker }
 import extdeps.sudo.elevation { sudo_elevate_command }
-import extdeps.tools.gnu_coreutils { coreutils_install_file_owned_argv }
+import extdeps.tools.gnu_coreutils { coreutils_install_file_owned_argv, mktemp_directory_command, install_file_mode_command, rm_force_command, rmdir_command }
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_credentials }
+import extdeps.systemd.unit_file { systemd_system_credstore_directory }
 import gunbc.live_deploy.release_locus { approval_broker_helper_root_principal, ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.emit { install_file_shared_mode }
 import gunbc.host.host_axis_caps {
@@ -50,7 +70,9 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.host.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc, convergence_receipt_path, convergence_placement_entry_path }
-import gunbc.live_deploy.release_locus { release_revision_execstart_text, HelperGrantSite, HelperRevisionReceipt }
+import gunbc.live_deploy.release_locus { HelperLocus }
+import gunbc.live_deploy.retract_legs { retract_remove_files }
+import extdeps.sudo.visudo { visudo_check_command }
 import std.measure { Second }
 import gunbc.live_deploy.member_identity { plan_reloads_manager, plan_restarts_process }
 import gunbc.live_deploy.emit {
@@ -58,21 +80,22 @@ import gunbc.live_deploy.emit {
   approval_broker_slice_unit_file, live_deploy_approval_broker_unit_file_on,
   attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused,
   attempt_unit_spool_answer_mode, publication_spool_request_mode,
+  AttemptUnitDrainServiceReady, AttemptUnitDrainServiceRefused, live_deploy_attempt_unit_drain_service_unit_file,
+  live_deploy_attempt_unit_drain_path_unit_file, retired_attempt_unit_sudo_route_paths,
 }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly }
 import gunbc.host.host_layout {
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_drain_lock_path,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus,
-  attempt_system_unit_launcher_revision_receipt_path, attempt_system_unit_sudoers_path,
-  attempt_system_unit_sudoers_body, AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
   attempt_system_unit_launch_argv_refused_detail,
 }
 import gunbc.live_deploy.spec {
   deployment_systemd_unit_path, gunbc_attempt_worker_slice_unit_path,
+  deployment_attempt_unit_drain_service_unit_path, deployment_attempt_unit_drain_path_unit_path, deployment_attempt_unit_drain_path_unit_name,
   gunbc_approval_broker_slice_unit_path, gunbc_approval_broker_unit_path, gunbc_approval_broker_unit_name,
 }
 import extdeps.systemd.systemctl { systemctl_enable_argv }
@@ -91,7 +114,7 @@ import gunbc.auth.tracker_web_oauth_client {
 }
 import gunbc.live_deploy.spec {
   DeploymentStep, ArtifactStep, Dependency, ComposeOwned, UpsertOwned,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, AttemptUnitDrainPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping,
   DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping,
   ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
 }
@@ -147,15 +170,22 @@ type DeployApplyLeg
   | ApplyLegCommand { step: String, command: ArgvCommand }
   | ApplyLegInstallFile { step: String, command: ArgvCommand, payload: String }
   | ApplyLegReport { step: String, line: String }
-  | ApplyLegHelperGrant { revision: ReleaseRevisionBinding }
   | ApplyLegObjectSource
   | ApplyLegDigestVerify { step: String, path: String, digest: Digest }
   | ApplyLegDiagnosedCommand { step: String, command: ArgvCommand, diagnosis: ArgvCommand }
-  | ApplyLegRootHelperGrant { site: HelperGrantSite, receipt: HelperRevisionReceipt, revision: ReleaseRevisionBinding }
+  | ApplyLegBrokerStateDirectories { revision: ReleaseRevisionBinding }
+  | ApplyLegRootHelperSnapshot { locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction }
   | ApplyLegBrokerTree { revision: ReleaseRevisionBinding }
   | ApplyLegRetract { step: String, leg: DeployRetractLeg }
   | ApplyLegDependency { dep: DeploymentDependencyStep }
   | ApplyLegDigestEnvFile { step: String, binary: String, env_name: String, dest: String, owner: NonEmptyStr }
+  | ApplyLegCredstoreCopy { step: String, source: NonEmptyStr, dest: NonEmptyStr, file_name: NonEmptyStr }
+
+// A root-owned release snapshot is installed before the units that name it and its superseded siblings are
+// retired after them, so the two halves are separate legs of one effect.
+type HelperSnapshotAction
+  = HelperSnapshotInstall
+  | HelperSnapshotRetireSuperseded
 
 type DeployApplyPlan
   = ApplyPlanReady { legs: List<DeployApplyLeg> }
@@ -168,15 +198,19 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegCommand { step: st, command: _ } => st
     ApplyLegInstallFile { step: st, command: _, payload: _ } => st
     ApplyLegReport { step: st, line: _ } => st
-    ApplyLegHelperGrant { revision: _ } => "helper-grant"
     ApplyLegObjectSource => "object-source"
     ApplyLegDigestVerify { step: st, path: _, digest: _ } => st
     ApplyLegDiagnosedCommand { step: st, command: _, diagnosis: _ } => st
-    ApplyLegRootHelperGrant { site: _, receipt: _, revision: _ } => "attempt-launcher-grant"
+    ApplyLegBrokerStateDirectories { revision: _ } => "broker-state-directories"
+    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: a } => match a {
+      HelperSnapshotInstall => "attempt-unit-helper-snapshot"
+      HelperSnapshotRetireSuperseded => "attempt-unit-helper-snapshot-retire"
+    }
     ApplyLegBrokerTree { revision: _ } => "approval-broker-tree"
     ApplyLegRetract { step: st, leg: _ } => st
     ApplyLegDependency { dep: _ } => "dependency"
     ApplyLegDigestEnvFile { step: st, binary: _, env_name: _, dest: _, owner: _ } => st
+    ApplyLegCredstoreCopy { step: st, source: _, dest: _, file_name: _ } => st
   }
 }
 
@@ -243,11 +277,179 @@ fn deploy_apply_directories_plan_from(targets: List<OwnedDirectoryTarget>, legs:
   }
 }
 
+// THE ONE CLAIM PREDICATE FOR THE GIT-WORKER SUBTREE DEMANDS (WORKER-ROOT-EQUIVALENT-3, typed-legs
+// port). A demand for one of the instance's git children (objects, refs, logs) belongs to the subtree
+// plan when ALL of: the tree group is ACTIVE (the plan publishes the tree AND the spec carries the
+// GunbcSourceTree step -- the only host for the group; with either absent the demands keep today's
+// standing position, so a spec without that step is unchanged: BOTH WAYS, this exclusion fires exactly
+// when the subtree plan installs them); the demand's member is one of the minted git-worker members by
+// PATH-FREE MEMBER EQUALITY at the mint authority (is_dashboard_git_worker_directory_demand -- never a
+// substring of the path, which would misclassify any unrelated owned directory whose path merely
+// contains /logs, /refs or /objects); and the owned-directory model itself says the target needs
+// installing (owned_directory_will_install -- the SAME test the standing route applies, so a declined
+// install declines in both routes and nothing is silently dropped). The standing directories plan
+// EXCLUDES exactly what this includes and the subtree plan INCLUDES by this SAME predicate:
+// complementary by construction, no demand installed twice. Prod (WorkerIsServiceUser) mints no such
+// demand at all, so nothing moves there.
+fn git_worker_subtree_group_active(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> Bool {
+  plan_publishes_tree(plan: plan) && spec_has_artifact_kind(spec: spec, kind: UpsertOwned { kind: GunbcSourceTree })
+}
+
+fn git_worker_subtree_demand_claimed(spec: DeploymentSpec, plan: ReleaseEffectPlan, t: OwnedDirectoryTarget) -> Bool {
+  git_worker_subtree_group_active(spec: spec, plan: plan)
+    && is_dashboard_git_worker_directory_demand(t: t)
+    && owned_directory_will_install(spec: spec, plan: plan, t: t)
+}
+
 fn deploy_apply_directories_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
   deploy_apply_directories_plan_from(
-    targets: filter(xs: deployment_directory_demands(spec: spec), predicate: t => owned_directory_will_install(spec: spec, plan: plan, t: t)),
+    targets: filter(xs: deployment_directory_demands(spec: spec), predicate: t =>
+      owned_directory_will_install(spec: spec, plan: plan, t: t) && !git_worker_subtree_demand_claimed(spec: spec, plan: plan, t: t)),
     legs: [],
   )
+}
+
+// A git child is SWEPT exactly when the roster DECIDED that child's regroup: plan_mutation_is over the
+// member is the ONLY authority (the same test the bash cut applied, ported unchanged), never path text.
+fn git_worker_subtree_child_decided(plan: ReleaseEffectPlan, instance: HostDashboardInstance, child: NonEmptyStr) -> Bool {
+  plan_mutation_is(
+    plan: plan,
+    member: GitWorkerSubtree { path: dashboard_git_worker_subtree_path(instance: instance, child: child) as NonEmptyStr, child: child },
+    expected: RegroupGitWorkerSubtree,
+  )
+}
+
+// THE SWEEP, RECURSIVELY, in children order. Each claimed child contributes the modeled migration legs
+// (re-group to the declared attempt group, then assert modes), named per child so a refusal on the
+// record says WHICH child stopped the fold.
+fn git_worker_subtree_sweep_legs(plan: ReleaseEffectPlan, instance: HostDashboardInstance, remaining: List<NonEmptyStr>, legs: List<DeployApplyLeg>) -> List<DeployApplyLeg> {
+  match remaining {
+    Empty => legs
+    Cons { head: child, tail: rest } =>
+      if !git_worker_subtree_child_decided(plan: plan, instance: instance, child: child) {
+        git_worker_subtree_sweep_legs(plan: plan, instance: instance, remaining: rest, legs: legs)
+      } else {
+        git_worker_subtree_sweep_legs(
+          plan: plan,
+          instance: instance,
+          remaining: rest,
+          legs: list_append(
+            left: legs,
+            right: map(
+              dashboard_git_worker_subtree_child_migration(instance: instance, child: child, group: fleet_posix_worker_shared_group_name),
+              argv => ApplyLegCommand { step: join(["git-worker-subtree-regroup-", child as String], ""), command: argv },
+            ),
+          ),
+        )
+      }
+  }
+}
+
+// THE POSTURE, RECURSIVELY, in declared order: the shared-repository git config the modeled posture
+// builder derives. Numbered per leg so a refusal names its position among the posture assertions.
+fn git_worker_subtree_posture_legs(remaining: List<ArgvCommand>, n: Int, legs: List<DeployApplyLeg>) -> List<DeployApplyLeg> {
+  match remaining {
+    Empty => legs
+    Cons { head: argv, tail: rest } =>
+      git_worker_subtree_posture_legs(remaining: rest, n: n + 1, legs: list_append(left: legs, right: [ApplyLegCommand { step: join(["repository-shared-posture-", to_string(n)], ""), command: argv }]))
+  }
+}
+
+// THE GIT-WORKER SUBTREE GROUP, AS TYPED LEGS (WORKER-ROOT-EQUIVALENT-3; typed-effects port of #14246/
+// #14270, manager ruling msg_dd453af6 + plan approval msg_d56f89c8). WHAT A COMMIT IN A LINKED WORKTREE
+// WRITES, derived rather than guessed: LOOSE OBJECTS in existing and new fan-out directories under
+// .git/objects (so those directories must be group-writable AND new ones must inherit the group -- the
+// setgid bit on directories, which the sweep asserts), REFS and REFLOGS under .git/refs and .git/logs
+// (same), the worktree's OWN .git/worktrees/<key> administrative entry (covered by the .git/refs/logs
+// sibling grant model: the per-attempt entry is written through the worktree's own gitdir, not by the
+// standing grant -- see the PR body), and CONFIG only through the modeled git tool. It does NOT rewrite
+// packed-refs: a normal commit on a new branch writes a loose ref; only branch deletion or `git
+// pack-refs` rewrite that file, and the worker does neither -- so the worker MUST NOT hold it, and the
+// .git directory itself stays unwritable (the lock files a rewrite needs live there, which is exactly
+// why #13942 keeps them out of the worker's reach and why the claim stays green).
+// THE PREMISE FIRST, AS AN EXIT STATUS: `git -c safe.directory=<repo> --git-dir=<repo>/.git rev-parse
+// --absolute-git-dir` from extdeps.git's builder. It is the ONLY leg allowed to touch the repository
+// before ownership is settled, it runs as the APPLYING principal, and a nonzero exit stops the fold AT
+// this leg (ApplyRunFailed step "git-worker-subtree-premise") so nothing downstream runs against a
+// directory that is not a repository. No shell, no capture, no comparison -- see the builder's comment
+// for why the bash-cut gate was deleted.
+// THE PRINCIPAL IS NEVER ROOT for anything that touches the repository (plan-approval ruling): a root
+// chgrp or a root `git config` under a tree the worker can already write is redirectable, and `git
+// config` writes .git/config.lock and renames it, so running it as root would leave .git/config owned by
+// root. Only the maintenance unit-file install and its systemctl legs take root, as in the belt pattern.
+// NO ACCOUNT-NAME LITERAL APPEARS HERE: owner, group and mode ride in from the owned-directory targets
+// and the fleet_posix_accounts group, never re-spelled (DESIGN section 3).
+// THE PROD PATH IS UNTOUCHED: WorkerIsServiceUser declares no dedicated-worker member, so no demand is
+// claimed and this plan emits zero legs. A spec without the GunbcSourceTree step likewise emits zero
+// legs and its demands keep today's standing position (the both-ways gate).
+fn deploy_apply_git_worker_subtree_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
+  if !git_worker_subtree_group_active(spec: spec, plan: plan) {
+    ApplyPlanReady { legs: [] }
+  } else {
+    match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+      // A fabricated default ("" for the repo root) would run the premise `git -C ""` against whatever
+      // directory the applying process happens to be in. Refuse by name at plan time, like every other
+      // unknown-instance arm; never fall through with an empty root.
+      DashboardInstanceIdUnknown { instance_id: unknown_id } =>
+        ApplyPlanRefused {
+          step: "git-worker-subtree-premise",
+          reason: join(["live-deploy apply refused: the git-worker subtree group reached an unknown dashboard instance (gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_for_id): no repository root to premise the worker grants on. instance=", unknown_id], ""),
+        }
+      DashboardInstanceForId { instance: instance } =>
+        match instance.worker {
+          WorkerIsServiceUser => ApplyPlanReady { legs: [] }
+          WorkerDedicatedAccount => deploy_apply_git_worker_subtree_group(spec: spec, plan: plan, instance: instance)
+        }
+    }
+  }
+}
+
+// THE DEDICATED-WORKER BODY: premise, installs (through the OWNED-DIRECTORY MODEL, manager ruling (a):
+// observe/decide/install/independent readback per target, owner group and mode from the target -- no
+// hand-built install argv, no account name spelled here), the re-group sweep, the shared posture, and
+// last the maintenance unit pair with its systemctl legs (the only ROOT legs, as in the belt pattern).
+// The premise leads because every later leg presumes a repository; the fold stops at the premise when it
+// fails, so the .git contents are never touched on a host whose .git is not a git directory.
+fn deploy_apply_git_worker_subtree_group(spec: DeploymentSpec, plan: ReleaseEffectPlan, instance: HostDashboardInstance) -> DeployApplyPlan {
+  let repo = instance.repo_root as NonEmptyStr
+  let premise_leg = ApplyLegDiagnosedCommand {
+    step: "git-worker-subtree-premise",
+    command: git_absolute_git_dir_premise_argv(repo: repo),
+    // The diagnosis reads the path the premise refused: owner, group and mode of <repo>/.git as they
+    // stand, which is exactly the fact a refused premise needs on the record.
+    diagnosis: stat_default_report_command(path: join([repo as String, "/.git"], "")),
+  }
+  let install_plan = deploy_apply_directories_plan_from(
+    targets: filter(xs: deployment_directory_demands(spec: spec), predicate: t => git_worker_subtree_demand_claimed(spec: spec, plan: plan, t: t)),
+    legs: [premise_leg],
+  )
+  let posture_group =
+    if plan_mutation_is(plan: plan, member: RepositorySharedPosture { path: instance.repo_root as NonEmptyStr }, expected: AssertRepositorySharedPosture) {
+      list_append(
+        left: git_worker_subtree_posture_legs(remaining: dashboard_ensure_git_shared_repository_posture(instance: instance), n: 0, legs: []),
+        right: [
+          apply_belt_unit_leg(step: "git-maintenance-service-unit", dest: dashboard_git_maintenance_service_unit_path(instance: instance), file: dashboard_git_maintenance_service_unit_file(instance: instance)),
+          apply_belt_unit_leg(step: "git-maintenance-timer-unit", dest: dashboard_git_maintenance_timer_unit_path(instance: instance), file: dashboard_git_maintenance_timer_unit_file(instance: instance)),
+          apply_root_leg(step: "git-maintenance-daemon-reload", argv: systemctl_daemon_reload_argv()),
+          apply_root_leg(step: "git-maintenance-timer-enable", argv: systemctl_enable_argv(unit: dashboard_git_maintenance_timer_unit_name(instance: instance) as NonEmptyStr)),
+        ],
+      )
+    } else {
+      []
+    }
+  match install_plan {
+    ApplyPlanRefused { step: s, reason: r } => ApplyPlanRefused { step: s, reason: r }
+    ApplyPlanReady { legs: base } =>
+      ApplyPlanReady {
+        legs: list_append(
+          left: list_append(
+            left: base,
+            right: git_worker_subtree_sweep_legs(plan: plan, instance: instance, remaining: dashboard_git_worker_directory_children, legs: []),
+          ),
+          right: posture_group,
+        ),
+      }
+  }
 }
 
 // ── MEMORY CAPS AND SLICE CONTROL ────────────────────────────────────────────────────────────────
@@ -322,12 +524,12 @@ fn deploy_apply_chain(first: DeployApplyPlan, rest: DeployApplyPlan) -> DeployAp
   }
 }
 
-// THE APPROVAL BROKER'S HELPER GRANT: one leg whose execution is the shared typed sequence
-// (device store, grant admission, root-owned snapshot, sudoers, retire) that the dark install runs.
-// Owed only on the host whose spec owns the broker and only when the plan writes the broker unit.
-fn deploy_apply_helper_grant_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
+// THE APPROVAL BROKER'S STATE DIRECTORIES (device store, JWKS cache): one leg, owed only on the host whose
+// spec owns the broker and only when the plan writes the broker unit. Its execution is the shared
+// managed-directory convergence the dark install runs.
+fn deploy_apply_broker_state_directories_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
   if deployment_owns_the_host_approval_broker(spec: spec) && plan_writes_unit(plan: plan) {
-    ApplyPlanReady { legs: [ApplyLegHelperGrant { revision: RevisionBoundAtEmission { revision: plan.target.revision } }] }
+    ApplyPlanReady { legs: [ApplyLegBrokerStateDirectories { revision: RevisionBoundAtEmission { revision: plan.target.revision } }] }
   } else {
     ApplyPlanReady { legs: [] }
   }
@@ -469,46 +671,139 @@ fn deploy_apply_attempt_spool_legs(spec: DeploymentSpec) -> List<DeployApplyLeg>
     apply_root_directory_leg(step: "attempt-spool-request", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_request_dir(instance_root: instance_root)),
     apply_root_directory_leg(step: "attempt-spool-claimed", mode: declared_directory_mode(m: DirectoryOwnerOnly), group: root, path: attempt_unit_spool_claimed_dir(instance_root: instance_root)),
     apply_root_directory_leg(step: "attempt-spool-answer", mode: attempt_unit_spool_answer_mode, group: service, path: attempt_unit_spool_answer_dir(instance_root: instance_root)),
-    apply_staged_leg(step: "attempt-spool-drain-lock", dest: attempt_unit_spool_drain_lock_path(instance_root: instance_root), payload: ""),
+    apply_root_directory_leg(step: "attempt-spool-stalled", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_stalled_dir(instance_root: instance_root)),
   ]
 }
 
-fn attempt_launcher_grant_site(instance: HostDashboardInstance, sudoers_text: String) -> HelperGrantSite {
-  let locus = attempt_system_unit_launcher_locus(instance: instance)
-  let final_path = attempt_system_unit_sudoers_path(instance: instance)
-  let stage = join(["gunbc-attempt-system-unit-", instance.instance_id as String], "")
-  HelperGrantSite {
-    locus: locus,
-    spine: [attempt_system_unit_launcher_helpers_root, locus.base],
-    sudoers_content: sudoers_text,
-    sudoers_mode: "0440" as NonEmptyStr,
-    sudoers_temp_path: join([final_path, ".new"], ""),
-    sudoers_path: final_path,
-    stage_name: stage,
-    readback_name: join([stage, "-readback"], ""),
+// THE ROOT-OWNED CREDSTORE COPY A DEDICATED WORKER UNIT IS HANDED (gunbc.roadmap.dispatch_worker_unit_confinement
+// dispatch_worker_credentials, whose credstore_path the launcher's LoadCredential= line names too). The custody
+// file is read AS THE APPLY'S PRINCIPAL -- the service user, whose file it is -- and root installs the copy, 0400
+// root:root, from a stage that principal owns. Root never opens the custody path, so a relinked custody file
+// cannot turn a deploy into a root read of an arbitrary file, and the copy can only ever hold bytes the custody
+// owner could read itself.
+//
+// THIS IS THE HOST-SIDE REALIZATION OF gunbc.auth.private_secret_file with_private_secret_file, AND A STATED
+// DIVERGENCE FROM CALLING IT. The bracket's discipline is kept exactly: a fresh `mktemp -d` (0700, the principal's
+// own), the file created owner-only inside it, the one use (here the root install), then `rm -f` of the file and
+// `rmdir` of the directory, the rmdir being the removal check; four outcomes, four remedies, and no arm carries a
+// path (a stage path dereferences to the secret). It cannot CALL the bracket: the bracket holds the secret
+// in-process (Filesystem.WriteOwnerOnly of a Secret value), and this leg must never hold it -- the bytes stay on
+// the host and are copied there by the host's own commands, so they never ride the apply's transport (under
+// SshShell, a read through the command port would carry the key to the controller and back). So the leg names
+// the five commands (credstore_copy_stage_command, credstore_copy_commands) and the runner
+// (gunbc.host.host_effect_realize credstore_copy_bracket) folds their outcomes into
+// CredstoreCopyBracket. No credential, no legs: a service-user worker reads its own custody.
+data credstore_copy_stage_template: NonEmptyStr = "/tmp/gunbc-credstore.XXXXXX"
+
+data credstore_copy_stage_file_mode: NonEmptyStr = "0600"
+
+data credstore_copy_installed_file_mode: NonEmptyStr = "0400"
+
+fn credstore_copy_stage_command() -> ArgvCommand {
+  mktemp_directory_command(template: credstore_copy_stage_template)
+}
+
+// THE FOUR COMMANDS THAT FOLLOW THE STAGE, in run order: the principal's own copy, root's install from the stage,
+// then the removal. Only root_install runs elevated, and its words name the stage file, never the source.
+type CredstoreCopyCommands {
+  user_copy: ArgvCommand
+  root_install: ArgvCommand
+  remove_file: ArgvCommand
+  remove_dir: ArgvCommand
+}
+
+fn credstore_copy_commands(stage: NonEmptyStr, source: NonEmptyStr, dest: NonEmptyStr, file_name: NonEmptyStr) -> CredstoreCopyCommands {
+  let staged = join([stage as String, "/", file_name as String], "")
+  CredstoreCopyCommands {
+    user_copy: install_file_mode_command(source: source as String, destination: staged, mode: credstore_copy_stage_file_mode),
+    root_install: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+      mode: credstore_copy_installed_file_mode,
+      owner: approval_broker_helper_root_principal, group: approval_broker_helper_root_principal,
+      source: staged, dest: dest as String)),
+    remove_file: rm_force_command(path: staged),
+    remove_dir: rmdir_command(path: stage as String),
   }
 }
 
-fn deploy_apply_attempt_grant_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+// THE BRACKET'S FOUR REMEDIES (gunbc.auth.private_secret_file PrivateSecretFileBracket). Entered means the root
+// install ran; `installed` is its result, carried because the effect may have happened.
+type CredstoreCopyBracket
+  = CredstoreCopyCompleted { installed: Bool }
+  | CredstoreCopyCompletedResidueRemains { installed: Bool }
+  | CredstoreCopyNotEntered { cause: NonEmptyStr }
+  | CredstoreCopyNotEnteredResidueRemains { cause: NonEmptyStr }
+
+fn credstore_copy_legs(instance: HostDashboardInstance) -> List<DeployApplyLeg> {
+  match dispatch_worker_credentials(instance: instance).first() {
+    Absent => []
+    Present { value: _ } =>
+      concat(
+        [apply_root_directory_leg(step: "worker-credstore-dir", mode: declared_directory_mode(m: DirectoryOwnerOnly), group: approval_broker_helper_root_principal, path: systemd_system_credstore_directory as String)],
+        map(dispatch_worker_credentials(instance: instance), c => ApplyLegCredstoreCopy {
+          step: "worker-credstore-copy",
+          source: c.custody_source,
+          dest: c.credstore_path,
+          file_name: c.identifier,
+        }),
+      )
+  }
+}
+
+// THE ROOT SIDE OF THE ATTEMPT-UNIT SPOOL, WITHOUT A SUDO GRANT. The requester writes its request into the
+// spool; a .path unit on the request directory starts the drain, a system oneshot (deploy_apply_attempt_drain_plan).
+// So the sandbox half installs the spool, removes the retired sudo route (the sudoers drop-in, the revision
+// receipt and the flock file), checks the sudoers policy still parses, and installs the root-owned release
+// snapshot the drain unit's ExecStart names. The superseded snapshots are retired by the drain plan, after
+// the units that name the new one stand.
+fn deploy_apply_attempt_launcher_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
   match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
     DashboardInstanceIdUnknown { instance_id: id } =>
-      ApplyPlanRefused { step: "attempt-launcher-grant", reason: join(["live-deploy apply refused: the attempt-system-unit sudoers grant has no HostDashboardInstance for instance ", id, ", so it will not install a host-global file or another instance's grant"], "") }
+      ApplyPlanRefused { step: "attempt-unit-drain", reason: join(["live-deploy apply refused: the attempt-unit drain has no HostDashboardInstance for instance ", id, ", so it will not install a snapshot for an unknown instance"], "") }
     DashboardInstanceForId { instance: instance } =>
-      match attempt_system_unit_sudoers_body(instance: instance, revision: revision) {
-        AttemptSystemUnitSudoersRefused { cause: c } =>
-          ApplyPlanRefused { step: "attempt-launcher-grant", reason: join(["live-deploy apply refused: the attempt-system-unit launcher argument was refused, so it will not pin a false argv: ", attempt_system_unit_launch_argv_refused_detail(cause: c)], "") }
-        AttemptSystemUnitSudoersReady { text: t } =>
-          ApplyPlanReady { legs: list_append(
-            left: deploy_apply_attempt_spool_legs(spec: spec),
-            right: [ApplyLegRootHelperGrant {
-              site: attempt_launcher_grant_site(instance: instance, sudoers_text: t),
-              receipt: HelperRevisionReceipt {
-                path: attempt_system_unit_launcher_revision_receipt_path(instance: instance),
-                text: join([release_revision_execstart_text(binding: revision), "\n"], ""),
+      match retired_attempt_unit_sudo_route_paths(instance: instance) {
+        Empty => ApplyPlanRefused { step: "attempt-unit-sudo-route-retire", reason: "live-deploy apply refused: the retired sudo route names no path" }
+        Cons { head: h, tail: rest } =>
+          ApplyPlanReady { legs: concat(
+            concat(deploy_apply_attempt_spool_legs(spec: spec), credstore_copy_legs(instance: instance)),
+            [
+              ApplyLegRetract { step: "attempt-unit-sudo-route-retire", leg: retract_remove_files(head: h as NonEmptyStr, rest: map(rest, p => p as NonEmptyStr)) },
+              ApplyLegCommand { step: "attempt-unit-sudoers-check", command: visudo_check_command(file: "/etc/sudoers") },
+              ApplyLegRootHelperSnapshot {
+                locus: attempt_system_unit_launcher_locus(instance: instance),
+                spine: [attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus(instance: instance).base],
+                revision: revision,
+                action: HelperSnapshotInstall,
               },
-              revision: revision,
-            }],
+            ],
           ) }
+      }
+  }
+}
+
+// THE DRAIN: a system oneshot service and the path unit that starts it when the request directory is
+// non-empty, then the retire of the superseded snapshots. The retire is the LAST leg: the units that name
+// the new snapshot are installed and the path unit restarted before the old release is removed.
+fn deploy_apply_attempt_drain_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+    DashboardInstanceIdUnknown { instance_id: id } =>
+      ApplyPlanRefused { step: "attempt-unit-drain", reason: join(["live-deploy apply refused: the attempt-unit drain has no HostDashboardInstance for instance ", id], "") }
+    DashboardInstanceForId { instance: instance } =>
+      match live_deploy_attempt_unit_drain_service_unit_file(spec: spec, instance: instance, revision: revision) {
+        AttemptUnitDrainServiceRefused { cause: c } =>
+          ApplyPlanRefused { step: "attempt-unit-drain", reason: join(["live-deploy apply refused: the attempt-unit launch argument was refused, so it will not pin a false argv: ", attempt_system_unit_launch_argv_refused_detail(cause: c)], "") }
+        AttemptUnitDrainServiceReady { file: service } =>
+          ApplyPlanReady { legs: concat(concat([
+            apply_staged_leg(step: "attempt-unit-drain-service-unit", dest: deployment_attempt_unit_drain_service_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: service))),
+            apply_staged_leg(step: "attempt-unit-drain-path-unit", dest: deployment_attempt_unit_drain_path_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: live_deploy_attempt_unit_drain_path_unit_file(spec: spec)))),
+            apply_root_leg(step: "attempt-unit-drain-reload", argv: systemctl_daemon_reload_argv()),
+          ], apply_enable_restart_legs(step: "attempt-unit-drain", unit: deployment_attempt_unit_drain_path_unit_name(names: spec.names))), [
+            ApplyLegRootHelperSnapshot {
+              locus: attempt_system_unit_launcher_locus(instance: instance),
+              spine: [attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus(instance: instance).base],
+              revision: revision,
+              action: HelperSnapshotRetireSuperseded,
+            },
+          ]) }
       }
   }
 }
@@ -526,7 +821,7 @@ fn deploy_apply_worker_sandbox_plan(spec: DeploymentSpec, revision: ReleaseRevis
             AttemptWorkerSliceUnitFileReady { file: f } =>
               deploy_apply_chain(
                 first: ApplyPlanReady { legs: [apply_staged_leg(step: "attempt-worker-slice", dest: gunbc_attempt_worker_slice_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))] },
-                rest: deploy_apply_attempt_grant_plan(spec: spec, revision: revision),
+                rest: deploy_apply_attempt_launcher_plan(spec: spec, revision: revision),
               )
           }
       }
@@ -740,10 +1035,14 @@ fn deploy_apply_tree_remote_legs(spec: DeploymentSpec, path: NonEmptyStr) -> Lis
 
 fn deploy_apply_upsert_plan(kind: UpsertArtifactKind, path: NonEmptyStr, spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
   match kind {
-    GunbcSourceTree => deploy_apply_tree_plan(spec: spec, plan: plan, source_root: source_root)
+    // THE GIT-WORKER SUBTREE GROUP ENTERS AT THE TREE MEMBER'S POSITION, after the tree plan's own legs
+    // (whose tail is the convergence readback): the repository must exist before the premise reads it,
+    // and nothing in the group runs if the tree step itself refuses (the chain short-circuits).
+    GunbcSourceTree => deploy_apply_chain(first: deploy_apply_tree_plan(spec: spec, plan: plan, source_root: source_root), rest: deploy_apply_git_worker_subtree_plan(spec: spec, plan: plan))
     ServeBinary => deploy_apply_executable_plan(spec: spec, plan: plan, source_root: source_root)
     PublicationHelperPathUnit => ApplyPlanReady { legs: deploy_apply_publication_legs(spec: spec, path: path) }
     BeltEventPathUnit => ApplyPlanReady { legs: deploy_apply_belt_legs(spec: spec, path: path) }
+    AttemptUnitDrainPathUnit => deploy_apply_attempt_drain_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
     DeployedTreeRemoteUnit => ApplyPlanReady { legs: deploy_apply_tree_remote_legs(spec: spec, path: path) }
     TailscaleServeMapping =>
       match deployment_tailnet_door_socket(names: spec.names) {
@@ -860,8 +1159,9 @@ fn deploy_apply_step_plan(step: DeploymentStep, effects: List<MemberEffect<Deplo
           }
         UpsertOwned { kind: uk } =>
           match uk {
-            GunbcSourceTree => deploy_apply_tree_plan(spec: spec, plan: plan, source_root: source_root)
+            GunbcSourceTree => deploy_apply_chain(first: deploy_apply_tree_plan(spec: spec, plan: plan, source_root: source_root), rest: deploy_apply_git_worker_subtree_plan(spec: spec, plan: plan))
             ServeBinary => deploy_apply_executable_plan(spec: spec, plan: plan, source_root: source_root)
+            AttemptUnitDrainPathUnit => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
             BeltEventPathUnit => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
             TailscaleServeMapping => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
             DeployedTreeRemoteUnit => deploy_apply_step_effects_plan(step: step, effects: effects, spec: spec, plan: plan, source_root: source_root)
@@ -893,7 +1193,7 @@ fn deploy_apply_family_plans(spec: DeploymentSpec, effects: List<MemberEffect<De
       rest: deploy_apply_chain(
         first: deploy_apply_slice_control_plan(spec: spec),
         rest: deploy_apply_chain(
-          first: deploy_apply_helper_grant_plan(spec: spec, plan: plan),
+          first: deploy_apply_broker_state_directories_plan(spec: spec, plan: plan),
           rest: deploy_apply_steps_plan(steps: spec.steps, effects: effects, spec: spec, plan: plan, source_root: source_root, oidc_now: oidc_now),
         ),
       ),

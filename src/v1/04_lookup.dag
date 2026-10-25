@@ -1,7 +1,7 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
-import v1.compiler.infer_items { ItemKind, FnItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
+import v1.compiler.infer_items { ItemKind, FnItem, TypeItem, ServiceItem, ResourceItem, DataItem, OtherItem, item_kind }
 import std.types { is_kernel_type }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
@@ -46,7 +46,8 @@ import v1.compiler.infer_types {
   enrich_kernel_type, is_declared_container_alias_spelling, reground_alias_carrier_identity,
   kernel_profile_lookup,
   instantiate_algebra_type,
-  instantiate_algebra_field
+  instantiate_algebra_field,
+  applied_field_type, type_node_is_callable
 }
 
 import v1.compiler.infer_env {
@@ -311,8 +312,9 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // borrowed declaration surface that carries a signature without one -- so a nullary fn reached
 // this way reads as OtherItem, and an admit-list of the callable kind refuses every member
 // of the population this arm exists to serve. The call position is what establishes that the name
-// is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE or
-// a DATA row, none of which a call may target.
+// is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE, a
+// RESOURCE or a DATA row, none of which a call may target. The match names every arm, so a kind
+// added later must be answered here rather than fall into the callable side.
 // THE CENSUS NEVER SERVES AN ALGEBRA METHOD-TEMPLATE NAME. `func_sig_from_global_bare` already
 // answers Unresolved for those names so the ExprCall known-method bridge types them. Returning a
 // census identity here made CallTargetOutcome look like a declaration, so constructor admission
@@ -328,8 +330,10 @@ fn census_declaration_identity(type_env: TypeEnv, func_name: String) -> Borrowed
       match item_kind(item: bd.node) {
         TypeItem => Absent
         ServiceItem => Absent
+        ResourceItem => Absent
         DataItem => Absent
-        _ => Present { value: bd }
+        FnItem => Present { value: bd }
+        OtherItem => Present { value: bd }
       }
     BorrowedCensusDeclAmbiguous { candidates: _ } => Absent
     BorrowedCensusDeclNotFound => Absent
@@ -1008,16 +1012,17 @@ type StructuralMethodLookup {
   kernel_diagnostics: List<ErrorNode>
 }
 
+// A FIELD READ AS AN OPERATION PRODUCES ITS FIELD TYPE'S APPLICATION, decided by callability
+// (`type_node_is_callable`), never by arity. This read used `params |> count > 0`, so a nullary
+// `f: fn() -> T` field answered its own Arrow and `x.f()` was typed `Callable(-> T)` wherever the
+// position checked the type (gunbc.recurring_failure_mode a_nullary_callable_field_call_is_typed_as_the_callable,
+// a sibling leaf of arity_proxy_for_callability_misroutes_a_found_local).
 fn product_field_result_type(field: Node) -> Node? {
   match field.inferred {
     Present { value: Resolved { node: rt } } =>
-      if rt.params |> count > 0 {
-        match rt.inferred {
-          Present { value: Resolved { node: return_type } } => Present { value: return_type }
-          _ => Present { value: rt }
-        }
-      } else {
-        Present { value: rt }
+      match applied_field_type(field_type: rt) {
+        Present { value: applied } => Present { value: applied }
+        Absent => Present { value: rt }
       }
     _ => none
   }
@@ -1117,8 +1122,8 @@ fn declared_arg_types_for_method(receiver_type: Node, method_name: String, sourc
         Absent =>
           match mfr.field_node.inferred {
             Present { value: Resolved { node: callable } } =>
-              let expanded = if callable.params |> count > 0 { callable } else { expand_field_type(callable) }
-              if expanded.params |> count > 0 {
+              let expanded = if type_node_is_callable(n: callable) { callable } else { expand_field_type(callable) }
+              if type_node_is_callable(n: expanded) {
                 ContractKnown { types: expanded.params |> map(p => param_node_type_expr(n: p)) }
               } else {
                 ContractUnavailable

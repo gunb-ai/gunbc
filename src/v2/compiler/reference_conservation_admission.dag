@@ -18,13 +18,9 @@ import v2.compiler.reference_conservation {
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.std.artifact { Artifact, SourceFile }
-import std.types { Map }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic {
   Accepted,
-  ByteRange,
-  Textual,
-  WholeFile,
   Diagnostic,
   DeclarationLocus,
   None,
@@ -36,11 +32,10 @@ import v2.std.diagnostic {
 }
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, empty_map, map_insert, map_lookup }
-import std.decl_ref { CitationIndexCoverage, DeclarationRef, OutsideDeclIndexTestWitnessModule, WholeDeclaration }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.communication.medium { Lossless, Medium }
 
 // REFERENCE CONSERVATION (MQ-6): an ADMISSION property at the fixture grain, and a FRONTIER
@@ -55,64 +50,10 @@ import extdeps.communication.medium { Lossless, Medium }
 // assertions read that tree cannot run them. A fixture that keeps its own hand-rolled
 // normalize call is outside this admission; the body-lowering fixtures are routed here.
 //
-// AN EXPECTED DROP IS DECLARED, NEVER ABSORBED. Lowering loses some shapes today, each pinned by its
-// own discriminating fixture in v2.test.claim.namespace_xl0.reference_conservation. A fixture whose
-// source necessarily contains one of those shapes names it in `explained`, one row per lost atom;
-// each row consumes exactly one DroppedReference of that identity. An explanation that consumes
-// nothing is itself a refusal (conservation_reason_explanation_stale): when lowering is repaired the
-// fixture reds and the row is deleted, so an explanation cannot outlive the drop it excused
-// (DESIGN section 5: no escape hatch that outlives its refusal).
-
-// The shapes lowering is known to lose THAT A FIXTURE NEEDS TO EXCUSE, each pinned by its own
-// discriminating claim in v2.test.claim.namespace_xl0.reference_conservation. Closed on purpose: a
-// new shape is a new pinned claim first, then a row here, and a row enters only with the fixture
-// that consumes it (gunbc#12221 changed both shapes that were pinned there without a row here: the
-// if-arm argument is now conserved, and a block's later statement now REFUSES located, so both are
-// restated in that module -- as a conserved control and as a refused-not-accepted control).
-type KnownDropShape = | StatementLetBinder
-
-// EACH SHAPE IS A DECLARED, BOUNDED DROP, NOT A STANDING ALLOWANCE. The match is exhaustive, so a
-// shape cannot enter without naming, as declaration references, the lowering authority whose repair
-// retires it and the claim that pins it. Retirement is mechanical, not remembered: once the capability lands, the drop
-// stops happening, every explanation of it consumes nothing and refuses
-// (conservation_reason_explanation_stale), and the arm and its explanations are deleted. The bound
-// is the same in the other direction: deleting an explanation while the drop still happens reds its
-// fixture with conservation_reason_dropped_reference.
-// `retired_by` is the lowering declaration whose repair retires the drop -- the owning authority,
-// not a lane or a session. `pinned_by` is the discriminating claim that measures the drop; it lives
-// in a witness module, which v2.std.decl_index does not index, so its coverage is
-// OutsideDeclIndexTestWitnessModule (std.decl_ref CitationIndexCoverage) and is carried, not dropped.
-type DropRestorationTrigger {
-  retired_by: DeclarationRef
-  pinned_by: DeclarationRef
-}
-
-data known_drop_shape_pin_coverage: CitationIndexCoverage = OutsideDeclIndexTestWitnessModule
-
-fn known_drop_shape_restoration_trigger(shape: KnownDropShape) -> DropRestorationTrigger {
-  match shape {
-    StatementLetBinder => DropRestorationTrigger {
-      retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_stmt_spine", field: WholeDeclaration },
-      pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "a_statement_let_binder_is_reported_dropped_holds", field: WholeDeclaration }
-    }
-  }
-}
-
-// AN EXPLANATION NAMES ONE OCCURRENCE, NOT A SPELLING. `start` / `end` are the lost atom's byte
-// extent in the fixture's own source (the same extent the DroppedReference's Textual locus carries),
-// and `shape` is the shape it claims that atom was lost to. A spelling-keyed join would let an
-// explanation consume a different occurrence, or a different shape, that happens to share the
-// name; this one consumes a drop only when the exact extent is dropped AND the drop's classified
-// shape (dropped_reference_shape) equals the declared one.
-type ExplainedDrop {
-  start: Int
-  end: Int
-  shape: KnownDropShape
-}
-
-fn no_explained_drops() -> FreeMonoid<ExplainedDrop> {
-  Empty
-}
+// A DROP IS NEVER EXCUSED. Lowering has no known drop left to declare (the statement let binder was
+// the last, retired by building its atom from the binder token), so the route takes no explanation
+// input: a dropped atom refuses, located at the atom. A future known drop re-enters with its own
+// carrier.
 
 // ---- the read (shared with v2.compiler.reference_conservation_census) --------------------------
 
@@ -142,93 +83,6 @@ fn conservation_subject_of_text(path: String, text: String) -> ReferenceConserva
   }
 }
 
-// ---- the explanation join ----------------------------------------------------------------------
-
-// THE SHAPE IS CLASSIFIED FROM THE DROP'S OWN PARSE CONTEXT, the chain of productions enclosing the
-// lost atom (AuthoredAtom.context), never from its spelling. A drop under no known shape's
-// production classifies Absent and no explanation can consume it.
-fn context_contains(context: FreeMonoid<Symbol>, production: Symbol) -> Bool {
-  fold_list(xs: context, empty: false, cons: fn(acc, p) { acc || p == production })
-}
-
-
-fn dropped_reference_shape(row: DroppedReference) -> Optional<KnownDropShape> {
-  let c = row.atom.context
-  match context_contains(context: c, production: ^dag_surface_let_expr) {
-    true => optional_present(value: StatementLetBinder)
-    false => optional_absent()
-  }
-}
-
-fn known_drop_shape_eq(a: KnownDropShape, b: KnownDropShape) -> Bool {
-  match a {
-    StatementLetBinder =>
-      match b {
-        StatementLetBinder => true
-      }
-  }
-}
-
-type AtomExtent {
-  start: Int
-  end: Int
-}
-
-fn dropped_reference_extent(row: DroppedReference) -> Optional<AtomExtent> {
-  match row.atom.locus {
-    Textual { file: _, extent: extent } =>
-      match extent {
-        ByteRange { start: s, end: e } => optional_present(value: AtomExtent { start: s, end: e })
-        WholeFile => Absent
-      }
-    NodeLocus { anchor: _ } => Absent
-    SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
-    InvariantPortLocus { anchor: _, invariant: _ } => Absent
-    DeclarationLocus { declaration: _ } => Absent
-  }
-}
-
-// Explanations keyed by start offset; `consumed` records which ones a drop matched.
-type ExplanationJoin {
-  by_start: Map<Int, ExplainedDrop>
-  consumed: Map<Int, Bool>
-  unexplained: FreeMonoid<DroppedReference>
-}
-
-fn explanation_index(explained: FreeMonoid<ExplainedDrop>) -> Map<Int, ExplainedDrop> {
-  fold_list(xs: explained, empty: empty_map(), cons: fn(acc, row) { map_insert(m: acc, key: row.start, value: row) })
-}
-
-fn explanation_matches(row: DroppedReference, candidate: ExplainedDrop, extent: AtomExtent) -> Bool {
-  extent.end == candidate.end && match dropped_reference_shape(row: row) {
-    Present { value: shape } => known_drop_shape_eq(a: shape, b: candidate.shape)
-    Absent => false
-  }
-}
-
-fn explanation_join(report: ReferenceConservationReport, explained: FreeMonoid<ExplainedDrop>) -> ExplanationJoin {
-  fold_list(
-    xs: report.dropped,
-    empty: ExplanationJoin { by_start: explanation_index(explained: explained), consumed: empty_map(), unexplained: Empty },
-    cons: fn(acc, row) {
-      let unmatched = ExplanationJoin { by_start: acc.by_start, consumed: acc.consumed, unexplained: list_snoc_item(xs: acc.unexplained, item: row) }
-      match dropped_reference_extent(row: row) {
-        Absent => unmatched
-        Present { value: extent } =>
-          match map_lookup(m: acc.by_start, key: extent.start) {
-            Absent => unmatched
-            Present { value: candidate } =>
-              if explanation_matches(row: row, candidate: candidate, extent: extent) {
-                ExplanationJoin { by_start: acc.by_start, consumed: map_insert(m: acc.consumed, key: extent.start, value: true), unexplained: acc.unexplained }
-              } else {
-                unmatched
-              }
-          }
-      }
-    }
-  )
-}
-
 // ---- the refusal -------------------------------------------------------------------------------
 
 fn dropped_reference_diagnostic(row: DroppedReference) -> Diagnostic {
@@ -247,37 +101,16 @@ fn module_diagnostic(path: String, reason: Symbol) -> Diagnostic {
   }
 }
 
-// An explanation no drop consumed names a drop that no longer happens (or never happened at that
-// extent under that shape).
-fn stale_explanation_diagnostics(path: String, join: ExplanationJoin, explained: FreeMonoid<ExplainedDrop>) -> FreeMonoid<Diagnostic> {
-  fold_list(
-    xs: explained,
-    empty: Empty,
-    cons: fn(acc, row) {
-      match map_lookup(m: join.consumed, key: row.start) {
-        Present { value: _ } => acc
-        Absent => list_snoc_item(xs: acc, item: module_diagnostic(path: path, reason: ^conservation_reason_explanation_stale))
-      }
-    }
-  )
-}
-
-fn conservation_refusals(report: ReferenceConservationReport, explained: FreeMonoid<ExplainedDrop>) -> FreeMonoid<Diagnostic> {
-  let join = explanation_join(report: report, explained: explained)
+fn conservation_refusals(report: ReferenceConservationReport) -> FreeMonoid<Diagnostic> {
   let unmeasured = fold_list(
     xs: report.unmeasured,
     empty: Empty,
     cons: fn(acc, _u) { list_snoc_item(xs: acc, item: module_diagnostic(path: report.path, reason: ^conservation_reason_unmeasured)) }
   )
-  let dropped = fold_list(
-    xs: join.unexplained,
+  fold_list(
+    xs: report.dropped,
     empty: unmeasured,
     cons: fn(acc, row) { list_snoc_item(xs: acc, item: dropped_reference_diagnostic(row: row)) }
-  )
-  fold_list(
-    xs: stale_explanation_diagnostics(path: report.path, join: join, explained: explained),
-    empty: dropped,
-    cons: fn(acc, d) { list_snoc_item(xs: acc, item: d) }
   )
 }
 
@@ -285,13 +118,12 @@ fn conservation_refusals(report: ReferenceConservationReport, explained: FreeMon
 
 // THE ADMITTED NORMALIZE. A parse or normalize refusal passes through unchanged (it is already a
 // refusal, and conservation_against_refusal only relocates what it lost); an accepted tree is
-// admitted only when the conservation verdict over the same subject holds after the declared
-// explanations are consumed.
-fn conserved_normalize(subject: ReferenceConservationSubject, explained: FreeMonoid<ExplainedDrop>) -> Outcome<NormalizedTree> {
+// admitted only when the conservation verdict over the same subject holds.
+fn conserved_normalize(subject: ReferenceConservationSubject) -> Outcome<NormalizedTree> {
   match subject.normalized {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: tree, diagnostics: residue } =>
-      match conservation_refusals(report: reference_conservation_of_subject(subject: subject, token_classes: dag_declared_token_classes()), explained: explained) {
+      match conservation_refusals(report: reference_conservation_of_subject(subject: subject, token_classes: dag_declared_token_classes())) {
         Empty => Accepted { value: tree, diagnostics: residue }
         Cons { head: first, tail: rest } => Rejected { diagnostics: NonEmptyDiagnostics { head: first, tail: rest } }
       }
@@ -299,8 +131,8 @@ fn conserved_normalize(subject: ReferenceConservationSubject, explained: FreeMon
 }
 
 // The route a production-fed body-lowering fixture calls with its inline source.
-fn conserved_normalize_of_text(path: String, text: String, explained: FreeMonoid<ExplainedDrop>) -> Outcome<NormalizedTree> {
-  conserved_normalize(subject: conservation_subject_of_text(path: path, text: text), explained: explained)
+fn conserved_normalize_of_text(path: String, text: String) -> Outcome<NormalizedTree> {
+  conserved_normalize(subject: conservation_subject_of_text(path: path, text: text))
 }
 
 // ---- the changed-scope grain -------------------------------------------------------------------
@@ -391,7 +223,7 @@ fn changed_scope_row(subject: ReferenceConservationSubject) -> ChangedScopeRow {
     MembershipUnreadable { diagnostics: d } => ScopeMembershipUnreadable { path: subject.path, diagnostics: d }
     InBodyLoweringScope =>
       let report = reference_conservation_of_subject(subject: subject, token_classes: dag_declared_token_classes())
-      match conservation_refusals(report: report, explained: no_explained_drops()) {
+      match conservation_refusals(report: report) {
         Empty => ScopeConserved { path: subject.path, report: report }
         Cons { head: first, tail: rest } =>
           ScopeDropped { path: subject.path, report: report, refusals: NonEmptyDiagnostics { head: first, tail: rest } }

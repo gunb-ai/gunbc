@@ -18,6 +18,10 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // them and Atom.identity is not retyped here. The general seam is deleted and its replacement does not
 // exist yet: v1.compiler.infer elaborate_arm_reference (a ConstructorTag minted from a resolved arm) is
 // deferred to the first source route that reaches it, Charter 3 R1's resolved-arm surface.
+// RECEIPT (R1 PR2, session merry-hawk-432): `x is V` landed as parse-level sugar for `match x { V => true  _ => false }`
+// (v1.parse parse_is_arm_test; v2.compiler.body_lowering_fold body_lower_is_node). It tests a value's arm; it mints no
+// ConstructorTag and gives the nine target_model payload arms no resolved-arm source, since they hold no value of the
+// owner type. The drop STANDS: its trigger is unmet and this PR discharges nothing of it.
 data payload_arm_tag_reference_hollow_value: RungDrop = RungDrop {
   identity: "payload_arm_tag_reference_hollow_value" as NonEmptyStr,
   subject: "a payload coproduct arm named by a hollow literal at discriminant to obtain its tag",

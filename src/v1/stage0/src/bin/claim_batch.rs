@@ -39,10 +39,27 @@ struct ResolveTimings {
 /// that definitely failed makes the answer "did not hold" even when another group was never
 /// evaluated. Only nothing-failed with something unobserved is "no observation". Every group's
 /// lines print either way.
-fn batch_exit_code(any_unobserved: bool, any_failed: bool) -> u8 {
-    if any_failed {
+///
+/// The cost partition's verdict is a third conjunct. An accounting that contradicts itself
+/// (rows past the parent, a nested span, in-span time past the thread total) is a measurement
+/// that did not hold: it fails the line, so a Refused verdict is never printed and then
+/// ignored. `NoSpans` made no observation at all, which is exit 2's meaning.
+fn batch_exit_code(
+    any_unobserved: bool,
+    any_failed: bool,
+    partition: &v1_compiler::cli_run::CostAccountingVerdict,
+) -> u8 {
+    use v1_compiler::cli_run::{CostAccountingRefusal, CostAccountingVerdict};
+    let (partition_unobserved, partition_failed) = match partition {
+        CostAccountingVerdict::Reconciled { .. } => (false, false),
+        CostAccountingVerdict::Refused {
+            cause: CostAccountingRefusal::NoSpans,
+        } => (true, false),
+        CostAccountingVerdict::Refused { .. } => (false, true),
+    };
+    if any_failed || partition_failed {
         1
-    } else if any_unobserved {
+    } else if any_unobserved || partition_unobserved {
         2
     } else {
         0
@@ -358,6 +375,23 @@ fn report_outcome(
         // per-smoke verdict line out to printf because this path could only print bare FAIL
         // (the 2026-07-13 srv3 forensics receipt). The reason is the single carrier now — the
         // narration op is deleted, and this arm prints what the claim itself returned.
+        // CODE 2 IS THE EXIT CONTRACT'S "NO OBSERVATION" (DESIGN: 0 held, 1 did not hold, 2 no
+        // observation). A claim that returns `ExitFailure` with code 2 says it observed nothing,
+        // so printing FAIL and exiting 1 reads a subject that was never reached as a subject that
+        // answered no. It is the typed `ObservationUnrepresentable` of the terminal ledger.
+        ClaimOutcome::ExitFailure { code: 2, reason } => {
+            match reason {
+                Some(r) => println!(
+                    "UNOBSERVED {} (returned ProcessExit::ExitFailure, code 2: {})",
+                    function, r
+                ),
+                None => println!(
+                    "UNOBSERVED {} (returned ProcessExit::ExitFailure, code 2, no reason given)",
+                    function
+                ),
+            }
+            *any_unobserved = true;
+        }
         ClaimOutcome::ExitFailure { code, reason } => {
             match reason {
                 Some(r) => println!(
@@ -416,14 +450,19 @@ fn report_outcome(
             *any_failed = true;
         }
         // A ROUTE GAP, NOT A VERDICT (`RouteGapBeforeVerdict` in `v2.workflow.floor_terminal_ledger`).
-        // The hermetic route has no arm for the capability the claim requested, so the claim never
+        // The run's route has no arm for the capability the claim requested, so the claim never
         // reached its subject: it is unobserved, not a false assertion, and reads as exit 2.
         ClaimOutcome::HostEffectRefused { operation, ground } => {
+            use v1_compiler::v1_compiler_expected_red_roster_join as modeled;
+            let ground = v1_compiler::cli_run::effect_refusal_ground_verdict(&ground);
+            let mode = modeled::effect_refusal_mode(ground.clone());
             println!(
-                "UNOBSERVED {} (hermetic route has no arm for {}: {} — route gap; re-run with --wet)",
+                "UNOBSERVED {} ({} {}: {} — route gap; {})",
                 function,
+                modeled::effect_refusal_mode_label(mode.clone()),
                 operation,
-                v1_compiler::cli_run::hermetic_effect_ground_label(&ground)
+                modeled::effect_refusal_ground_label(ground),
+                modeled::effect_refusal_remedy(mode)
             );
             *any_unobserved = true;
         }
@@ -1043,6 +1082,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
             );
         }
     }
+    let partition_verdict: v1_compiler::cli_run::CostAccountingVerdict;
     {
         let st = v1_compiler::cli_run::resolve_stage_totals();
         let ms = |n: u128| n as f64 / 1.0e6;
@@ -1081,6 +1121,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
         // witness-entry resolves. The partition below reports against the span total that
         // actually contains them, and refuses rather than quoting a share off the mismatch.
         let partition = v1_compiler::cli_run::exclusive_cost_partition();
+        partition_verdict = partition.verdict.clone();
         eprintln!(
             "[cost-partition] {}",
             v1_compiler::cli_run::render_exclusive_cost_partition_json(
@@ -1148,6 +1189,7 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
     Ok(ExitCode::from(batch_exit_code(
         timings.any_unobserved,
         timings.any_failed,
+        &partition_verdict,
     )))
 }
 
@@ -1166,10 +1208,11 @@ fn main() -> ExitCode {
     if v1_compiler::memory_governor::cgroup_bind_refusal_diagnostic(&bind).is_some() {
         return ExitCode::FAILURE;
     }
-    // ONE DECLARATION CENSUS FOR THE RUN, for the same reason the required floor registers one:
-    // the witnesses this binary evaluates ask keyed questions of it (`decl_facts_at`), and a fold
-    // over N citations makes N demands of one census. With the memo closed each demand re-walks the
-    // corpus, so the keyed read would cost more than the population read it replaces. The subject
+    // ONE DECLARATION CENSUS FOR THE RUN: the claims this binary evaluates are isolated frames that
+    // each ask keyed questions of one census (`decl_facts_at`). A fold inside a claim already asks
+    // all of its keys in one read; what this registration shares is the read ACROSS claims, whose
+    // least common ancestor is this invocation. With the memo closed each claim walks the corpus
+    // once of its own. The subject
     // this hangs on is the invocation itself: one process, one tree, roots supplied on the command
     // line, and `clear_decl_census_memo` on the way out rather than a cell that outlives its
     // subject.
@@ -1206,10 +1249,65 @@ mod cli_path_resolution_wiring_tests {
 
     #[test]
     fn exit_composition_is_failed_over_unobserved_over_clean() {
-        assert_eq!(batch_exit_code(false, false), 0);
-        assert_eq!(batch_exit_code(false, true), 1);
-        assert_eq!(batch_exit_code(true, false), 2);
-        assert_eq!(batch_exit_code(true, true), 1);
+        use v1_compiler::cli_run::CostAccountingVerdict;
+        let ok = CostAccountingVerdict::Reconciled {
+            residual_nanos: 0,
+            tolerance_nanos: 0,
+        };
+        assert_eq!(batch_exit_code(false, false, &ok), 0);
+        assert_eq!(batch_exit_code(false, true, &ok), 1);
+        assert_eq!(batch_exit_code(true, false, &ok), 2);
+        assert_eq!(batch_exit_code(true, true, &ok), 1);
+    }
+
+    /// A Refused cost partition joins the exit at the same precedence as any other verdict.
+    /// RED: an over-attributed partition (rows past the parent) fails the line even when every
+    /// claim held. POSITIVE CONTROL: a reconciled partition adds nothing, so a clean batch is 0.
+    #[test]
+    fn a_refused_partition_joins_the_batch_exit() {
+        use v1_compiler::cli_run::{CostAccountingRefusal, CostAccountingVerdict};
+        let flags = |v: CostAccountingVerdict| batch_exit_code(false, false, &v);
+        let refused = |cause| CostAccountingVerdict::Refused { cause };
+        assert_eq!(
+            flags(CostAccountingVerdict::Reconciled {
+                residual_nanos: 0,
+                tolerance_nanos: 0
+            }),
+            0,
+            "control: a reconciled partition leaves a clean batch at 0"
+        );
+        assert_eq!(
+            flags(refused(CostAccountingRefusal::OverAttributed {
+                sum_exclusive_nanos: 2,
+                parent_span_nanos: 1
+            })),
+            1,
+            "an over-attributed partition fails the line"
+        );
+        assert_eq!(
+            flags(refused(CostAccountingRefusal::InSpanExceedsThread {
+                stage: "pool_parse",
+                in_span_nanos: 2,
+                thread_nanos: 1
+            })),
+            1
+        );
+        assert_eq!(
+            flags(refused(CostAccountingRefusal::NestedSpanAttribution {
+                nested_spans: 1
+            })),
+            1
+        );
+        assert_eq!(
+            flags(refused(CostAccountingRefusal::NoSpans)),
+            2,
+            "no span ran: no observation, exit 2, never a failure"
+        );
+        // precedence against a claim-level verdict: failed over unobserved over clean.
+        assert_eq!(
+            batch_exit_code(false, true, &refused(CostAccountingRefusal::NoSpans)),
+            1
+        );
     }
 
     /// Absolute existing paths pass parse_args unchanged (resolution applied, no rewrite).

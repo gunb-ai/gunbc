@@ -752,7 +752,7 @@ fn run_required_lens_gates_on_subtree(
       algebra: NodeFold {
         init: fn(n0) {
           run_required_lens_gates(
-            inferred: InferredTree { root: n0, facts: inferred.facts, arm_resolutions: inferred.arm_resolutions },
+            inferred: InferredTree { root: n0, facts: inferred.facts },
             lenses: lenses
           )
         },

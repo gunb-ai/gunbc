@@ -1,5 +1,7 @@
 module v2.test.claim.intent_linearity.lens_unit.discriminators
 
+import v2.std.node { NotADeclaration }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -8,7 +10,7 @@ fn atom(id: Symbol) -> Node {
 }
 fn conj2(a: Node, b: Node) -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [
-    Edge { label: Positional, target: a }, Edge { label: Positional, target: b } ])
+    Edge { label: Positional, target: a, declaration: NotADeclaration }, Edge { label: Positional, target: b, declaration: NotADeclaration } ])
 }
 
 data red_chain: List<Node> = [

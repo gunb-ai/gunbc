@@ -79,7 +79,6 @@ data primitive_decl_facts: PrimitiveIdentity = primitive_identity_slug(name: "de
 data primitive_decl_facts_at: PrimitiveIdentity = primitive_identity_slug(name: "decl_facts_at")
 data primitive_export_signature_facts: PrimitiveIdentity = primitive_identity_slug(name: "export_signature_facts")
 data primitive_data_decl_type_facts: PrimitiveIdentity = primitive_identity_slug(name: "data_decl_type_facts")
-data primitive_type_declarer_qualified_names: PrimitiveIdentity = primitive_identity_slug(name: "type_declarer_qualified_names")
 data primitive_concept_decl_facts: PrimitiveIdentity = primitive_identity_slug(name: "concept_decl_facts")
 data primitive_concept_decl_facts_live: PrimitiveIdentity = primitive_identity_slug(name: "concept_decl_facts_live")
 data primitive_symbol_lexeme: PrimitiveIdentity = primitive_identity_slug(name: "symbol_lexeme")
@@ -109,6 +108,7 @@ data never_projection_declarations: List<DeclarationRef> = [
 fn never_type_qualified_path() -> String {
   concat(never_type_declaration.module_path as String, ".", never_type_declaration.decl_name as String)
 }
+data primitive_list_push: PrimitiveIdentity = primitive_identity_slug(name: "list_push")
 data primitive_string_contains: PrimitiveIdentity = primitive_identity_slug(name: "string_contains")
 data primitive_chars: PrimitiveIdentity = primitive_identity_slug(name: "chars")
 data primitive_machine_word_native_operate: PrimitiveIdentity = primitive_identity_slug(name: "machine_word_native_operate")
@@ -139,7 +139,6 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_decl_facts_at, module_path: "v2.std.decl_index", decl_name: "decl_facts_at", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_export_signature_facts, module_path: "v2.std.decl_index", decl_name: "export_signature_facts", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_data_decl_type_facts, module_path: "v2.std.decl_index", decl_name: "data_decl_type_facts", fidelity: HostRealizedSeam),
-    primitive_projection_row(primitive: primitive_type_declarer_qualified_names, module_path: "v2.std.decl_index", decl_name: "type_declarer_qualified_names", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_concept_decl_facts, module_path: "v2.std.concept_index", decl_name: "concept_decl_facts", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_concept_decl_facts_live, module_path: "v2.std.concept_index", decl_name: "concept_decl_facts_live", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_empty_map, module_path: "std.algebra", decl_name: "empty_map_primitive_delegate", fidelity: HostRealizedSeam),
@@ -153,6 +152,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_utf8_encode_bytes, module_path: "std.bytes", decl_name: "utf8_encode_bytes", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_octets_bytes, module_path: "std.bytes", decl_name: "octets_bytes", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_pure_dag_seam_unreachable, module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_list_push, module_path: "std.algebra", decl_name: "list_push", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_string_contains, module_path: "std.algebra", decl_name: "string_contains", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_chars, module_path: "std.host_text", decl_name: "chars", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_machine_word_native_operate, module_path: "std.machine_word", decl_name: "machine_word_native_operate", fidelity: HostRealizedSeam),

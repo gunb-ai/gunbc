@@ -29,7 +29,7 @@ import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary
 import v2.compiler.trait_derive_completeness { repr_grounding_derive_elem_shape }
 import std.trait_derive_shape { ReprDeriveElemNullaryEnumCopy }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   ComputationNode,
   Conj,
@@ -47,6 +47,7 @@ import v2.std.node {
   TypeParamsEdge,
   BinderTypeEdge,
   core_edge_label,
+  NotADeclaration
 }
 import v2.std.text { String }
 import std.optional { Absent, Present }
@@ -288,7 +289,7 @@ test fn tpb_infer_admits_the_resolved_generic_fn() -> Bool {
 // argument against a formal only when the operator IS an Arrow; (1) above is the inhabitance
 // claim that the real producer emits exactly this type-parameter edge shape.
 fn tpb_binder_edge(name: Symbol) -> Edge {
-  Edge { label: Authored { name: name }, target: dag_type_atom_node(identity: name) }
+  Edge { label: Authored { name: name }, target: dag_type_atom_node(identity: name), declaration: NotADeclaration }
 }
 
 fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
@@ -298,16 +299,17 @@ fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
     children: [
       signature.domain,
       signature.order,
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int), declaration: NotADeclaration },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int), declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: TypeParamsEdge),
         target: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: type_binder_set_children(binders: fold(type_params, init: [], f: fn(acc, p) { concat(acc, [tpb_binder_edge(name: p)]) }), source: node_synthetic(kind: TypeNode { connective: Conj }, children: []))
-        )
+        ),
+        declaration: NotADeclaration
       },
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: dag_int_literal_fixture_one() }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ]
   )
 }
@@ -320,8 +322,8 @@ fn tpb_apply(arrow: Node, args: List<Node>) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: concat(
-      [Edge { label: Positional, target: arrow }],
-      fold(args, init: [], f: fn(acc, a) { concat(acc, [Edge { label: Positional, target: a }]) })
+      [Edge { label: Positional, target: arrow, declaration: NotADeclaration }],
+      fold(args, init: [], f: fn(acc, a) { concat(acc, [Edge { label: Positional, target: a, declaration: NotADeclaration }]) })
     )
   )
 }
@@ -422,9 +424,11 @@ fn tpb_with_binders(decl: Node, binders: Node) -> Node {
           kind: e.target.kind,
           children: concat(e.target.children, [Edge {
             label: core_edge_label(marker: TypeParamsEdge),
-            target: binders
+            target: binders,
+            declaration: NotADeclaration
           }])
-        )
+        ),
+        declaration: NotADeclaration
       }])
     })
   )
@@ -440,8 +444,9 @@ fn tpb_kinded_t_binders() -> Node {
         label: Authored { name: ^T },
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^T } },
-          children: [Edge { label: core_edge_label(marker: BinderTypeEdge), target: dag_type_atom_node(identity: ^dag_binding_type_int) }]
-        )
+          children: [Edge { label: core_edge_label(marker: BinderTypeEdge), target: dag_type_atom_node(identity: ^dag_binding_type_int), declaration: NotADeclaration }]
+        ),
+        declaration: NotADeclaration
       }],
       source: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
     )
@@ -610,8 +615,8 @@ fn tpb_box_disj() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Authored { name: ^Full }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
-      Edge { label: Authored { name: ^Empty }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
+      Edge { label: Authored { name: ^Full }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^Empty }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []), declaration: NotADeclaration },
     ]
   )
 }
@@ -631,7 +636,7 @@ fn tpb_box_member(with_params: Bool) -> Node {
 fn tpb_box_member_mixed() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Disj },
-    children: concat(tpb_box_disj().children, [Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders() }])
+    children: concat(tpb_box_disj().children, [Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders(), declaration: NotADeclaration }])
   )
 }
 
@@ -901,7 +906,7 @@ fn tpb_index_descends(target: Node) -> Bool {
 test fn tpb_index_declares_no_member_under_an_alias() -> Bool {
   let alias_value = type_alias_wrapper(binders: tpb_t_binders(), aliased: dag_type_atom_node(identity: ^T))
   !tpb_index_descends(target: alias_value)
-    && (symbol_index_declared(target: alias_value).bound == alias_value)
+    && (node_same_occurrence(a: symbol_index_declared(target: alias_value).bound, b: alias_value))
     && !tpb_index_descends(target: type_opaque_wrapper(binders: tpb_t_binders()))
     && tpb_index_descends(target: tpb_box_member(with_params: true))
 }
@@ -914,8 +919,8 @@ test fn tpb_wrapper_with_no_view_arm_is_refused() -> Bool {
   let stray = node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders() },
-      Edge { label: Authored { name: ^stray }, target: dag_type_atom_node(identity: ^Int) }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders(), declaration: NotADeclaration },
+      Edge { label: Authored { name: ^stray }, target: dag_type_atom_node(identity: ^Int), declaration: NotADeclaration }
     ]
   )
   !type_binder_labels_conform(root: stray)

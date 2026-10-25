@@ -51,6 +51,7 @@ import v2.std.node {
   node_synthetic,
   content_hash,
   canonicalize_node_for_content_hash,
+  NotADeclaration
 }
 
 import gunbc.scm.object_store {
@@ -193,7 +194,7 @@ fn closure_doc_atom(identity: Symbol) -> Node {
 }
 
 fn closure_doc_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn closure_doc_program() -> Node {

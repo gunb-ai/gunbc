@@ -577,20 +577,6 @@ fn shell_dag_cron_entry_line_builder_execution_contract() -> WorkItemExecutionCo
   )
 }
 
-fn shell_dag_floor_peak_calibration_rows_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claims_execution_contract(
-    entry: "dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness.dag" as FilePath,
-    functions: [
-      "pre_calibration_surface_renders_no_shell_control_word" as NonEmptyStr,
-      "pre_calibration_reset_is_not_a_swallowed_echo" as NonEmptyStr,
-      "pre_calibration_surface_still_reads_the_cgroup_peak_file" as NonEmptyStr,
-      "post_calibration_surface_still_reads_the_cgroup_peak_file" as NonEmptyStr,
-      "pre_calibration_surface_keeps_its_observation_label" as NonEmptyStr,
-      "post_calibration_surface_keeps_its_observation_label" as NonEmptyStr,
-    ],
-  )
-}
-
 fn shell_dag_ci_fmt_gate_line_execution_contract() -> WorkItemExecutionContract {
   gunbc_claims_execution_contract(
     entry: "dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness.dag" as FilePath,
@@ -1854,21 +1840,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     roadmap_node(
       identity: "rn_Q8F2R5L9BN4X7WPK3HJD6MCZTG",
       id: "shell-dag-floor-peak-calibration-rows",
-      owner: "shell",
-      carriers: carrier(path: "src/v2/workflow/ci_floor_peak_emit.dag"),
-      line: ticket(t: fields(
-        headline: "Turn the floor-peak calibration echo rows into typed filesystem observations",
-        boundary: "The ci_floor_peak_*_command rows of v2.workflow.ci_floor_peak_emit — the echo/sed/2>/dev/null rows the module's own Phase-2 note names — are replaced by typed filesystem observation leaves; the consumers of those rows read typed values, never rendered shell.",
-        displaced_cost: "Each calibration row is shell text authored inside a decision fold and handed to the runner as an opaque string: a bad path or a metacharacter is invisible until the runner executes it, and 2>/dev/null swallows exactly the absence the calibration needs to refuse on.",
-        first_slice: "The acceptance witness dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing M1-M3. M1: model the calibration readings as typed filesystem observation leaves per the module's own Phase-2 declaration. M2: rebind every ci_floor_peak_*_command row and its consumers to the typed leaves and delete the echo-row text. M3: witness green by execution.",
-        red_control: "No rendered calibration surface carries set -e, ||, &&, ; or 2>/dev/null; a positive control asserts the typed observation leaves resolve on a planted fixture; a missing observed file refuses with a typed cause instead of an empty reading.",
-        out_of_scope: "The runner-facing workflow may still receive shell for genuinely foreign steps; a posix_sh_program_command wrapping the old rows is not a described operation.",
-        handback: "Typed observation leaves in place of the echo rows, consumers rebound, witness green by execution."
-      )),
-      dispatch: dispatchable(),
-      execution: bound(contract: shell_dag_floor_peak_calibration_rows_execution_contract()),
-      parent: in_project(project: "shell-typed-invocation", contribution: "Removes the echo-row calibration shell so the project's claim covers observation rows as well as invocations."),
-      centering: plan(text: "Target: src/v2/workflow/ci_floor_peak_emit.dag, the ci_floor_peak_*_command rows (the module's own Phase-2 declaration names this migration) and their consumers. Exemplar: shell-typed-invocation. (1) The acceptance witness dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness.dag is authored, pinned at launch, and RED. Do NOT edit it — an edit refuses verification as oracle-moved. Make it green by doing (2)-(4). (2) Symbols move: the echo/sed/2>/dev/null rows become typed filesystem observation leaves; the consumers read typed values. (3) Row edit: delete the echo-row text as each row rebinds; a missing observed file must refuse with a typed cause, never read as empty. Pitfall: do not leave one row half-migrated — the module's Phase-2 note is the scope, re-read it before cutting. (4) Acceptance: the named test process, pattern //dag/test/claim/shell:all."),
+      owner: "",
+      carriers: [],
+      line: SupersededLine { by: "#14467 (Charter 2 carve)", content: "v2.workflow.ci_floor_peak_emit had no consumer and was deleted with its rows, so the shell text this row would have typed no longer exists." },
     ),
     roadmap_node(
       identity: "rn_T3W8P5K2RF6N9XQL4JHB7MZCD",
@@ -4776,7 +4750,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
 
     edge(child: "shell-typed-invocation", parent: "shell-dag-cron-entry-line-builder"),
-    edge(child: "shell-typed-invocation", parent: "shell-dag-floor-peak-calibration-rows"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-ci-fmt-gate-line"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-ci-deploy-invoke-prelude"),
     edge(child: "shell-typed-invocation", parent: "shell-dag-ci-heal-regen-invoke"),

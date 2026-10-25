@@ -37,6 +37,7 @@ import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.claim_batch_function_preflight_seed_growth { claim_batch_function_preflight_seed_growth_justification }
 import gunbc.claim_batch_entry_closure_preflight_seed_growth { claim_batch_entry_closure_preflight_seed_growth_justification }
 import gunbc.claim_batch_exit_composition_seed_growth { claim_batch_exit_composition_seed_growth_justification }
+import gunbc.claim_batch_exit_two_seed_growth { claim_batch_exit_two_seed_growth_justification }
 import gunbc.declaration_index_seed_growth { declaration_index_seed_growth_justification }
 import gunbc.declaration_lookup_index_seed_growth { declaration_lookup_index_seed_growth_justification }
 import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_growth_justification }
@@ -68,7 +69,9 @@ import gunbc.parse_compiler_identity_seed_growth { parse_compiler_identity_seed_
 import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure_retention_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
-import gunbc.dependency_demand_census_seed_growth { dependency_demand_census_seed_growth_justification }
+import gunbc.native_census_verb_seed_growth { native_census_verb_seed_growth_justification }
+import gunbc.namespace_wave_binding_diff_seed_growth { namespace_wave_binding_diff_seed_growth_justification }
+import gunbc.self_host_frontier_seed_growth { self_host_frontier_seed_growth_justification }
 import gunbc.generic_identity_census_seed_growth { generic_identity_census_seed_growth_justification }
 import gunbc.bootstrap_witness_diagnostic_count_seed_growth { bootstrap_witness_diagnostic_count_seed_growth_justification }
 import gunbc.interpolation_hole_census_seed_growth { interpolation_hole_census_seed_growth_justification }
@@ -322,6 +325,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     claim_batch_function_preflight_seed_growth_justification,
     claim_batch_entry_closure_preflight_seed_growth_justification,
     claim_batch_exit_composition_seed_growth_justification,
+    claim_batch_exit_two_seed_growth_justification,
     shared_fill_attribution_seed_growth_justification,
     pool_reading_attribution_seed_growth_justification,
     source_root_eval_driver_seed_growth_justification,
@@ -331,7 +335,9 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     emitted_build_failure_retention_seed_growth_justification,
     native_claim_program_seed_growth_justification,
     native_serve_program_seed_growth_justification,
-    dependency_demand_census_seed_growth_justification,
+    native_census_verb_seed_growth_justification,
+    namespace_wave_binding_diff_seed_growth_justification,
+    self_host_frontier_seed_growth_justification,
     generic_identity_census_seed_growth_justification,
     bootstrap_witness_diagnostic_count_seed_growth_justification,
     interpolation_hole_census_seed_growth_justification,

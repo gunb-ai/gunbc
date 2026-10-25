@@ -92,7 +92,8 @@ import v2.std.node { positional_child_target_nodes,
   node_rebuild,
   node_subtree_count,
   node_subtree_nodes,
-  fold_list_node
+  fold_list_node,
+  NotADeclaration
 }
 import v2.std.type_binder {
   type_param_names
@@ -1727,8 +1728,8 @@ fn translate_apply_use_site_ownership_to_instantiation_boundary(
                 node_rebuild(
                   n: projected,
                   children: list_append(
-                    left: [Edge { label: Positional, target: projected_split.head }],
-                    right: list_map(xs: wrapped_args, f: fn(a) { Edge { label: Positional, target: a } })
+                    left: [Edge { label: Positional, target: projected_split.head, declaration: NotADeclaration }],
+                    right: list_map(xs: wrapped_args, f: fn(a) { Edge { label: Positional, target: a, declaration: NotADeclaration } })
                   )
                 )
               )
@@ -2380,7 +2381,7 @@ fn translate_type_expression_children_in_node(
             o: translate_type_expression_subtree(node: e.target, target: target, projection: projection),
             f: fn(projected) {
               outcome_accepted(
-                list_snoc_item(xs: edges, item: Edge { label: e.label, target: projected })
+                list_snoc_item(xs: edges, item: Edge { label: e.label, target: projected, declaration: e.declaration })
               )
             }
           )
@@ -2491,7 +2492,8 @@ fn translate_import_production_block_node(import_node: Node) -> Outcome<Node> {
                       kind: TypeNode { connective: Atom { identity: sym } },
                       children: [],
                       occurrence_id: OccurrenceSynthetic
-                    }
+                    },
+                    declaration: NotADeclaration
                   }
                 ]
               )
@@ -2619,7 +2621,7 @@ fn translate_fold_step(
                     n: parent_acc.rebuilt,
                     children: list_snoc_item(
                       xs: parent_acc.rebuilt.children,
-                      item: Edge { label: edge.label, target: child_acc.rebuilt }
+                      item: Edge { label: edge.label, target: child_acc.rebuilt, declaration: edge.declaration }
                     )
                   )
                 },

@@ -1,12 +1,18 @@
 module gunbc.spark.fabric_rail_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Secret }
+import std.types { String, Bool, List, NonEmptyStr, Secret, PathSegment }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
 import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
+import gunbc.auth.private_secret_file {
+  with_private_secret_file,
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
+}
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor,
@@ -82,13 +88,15 @@ fn fabric_rail_apply_wet() -> ProcessExit
             match fleet_openssh_trust_policy_of(outcome: materialization) {
               Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
               Present { value: trust } =>
-                match with_materialized_ssh_key_file(
-                  identity_file_name: "gunbc-fabric-rail-apply-admin-password" as NonEmptyStr,
-                  secret_bytes: administrator as Secret,
+                match with_private_secret_file(
+                  file_name: "gunbc-fabric-rail-apply-admin-password" as PathSegment,
+                  content: administrator as Secret,
                   use: fn(file) { fabric_rail_apply_legs(trust: trust, plans: plans, administrator: administrator as Secret, file: file) },
                 ) {
-                  MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                  MaterializedSshKeyFileBracketCompleted { value: outcomes } => {
+                  PrivateSecretFileNotEntered { cause: c } => exit_failure(reason: c as String)
+                  PrivateSecretFileNotEnteredResidueRemains { cause: c } => exit_failure(reason: c as String)
+                  PrivateSecretFileCompletedResidueRemains { value: _ } => exit_failure(reason: "the credential file could not be removed after the bracket body ran, so the secret may remain on disk and requires cleanup; the rail legs ran and their receipt was not written")
+                  PrivateSecretFileCompleted { value: outcomes } => {
                     let body = fabric_rail_receipt_body(at: probed_at_word(reading: now) as String, outcomes: outcomes)
                     let wr = Filesystem.Write(path: fabric_rail_apply_receipt_path, content: body)
                     if !wr.success {

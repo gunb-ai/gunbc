@@ -27,7 +27,8 @@ import v2.std.node {
   TypeNode,
   Value,
   content_hash,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 
 // THE BINDER NODE (XL-2 PR2b-3; docs/plans/binder-node-representation.md): a binder's target is a Conj of
@@ -98,7 +99,7 @@ fn bn_arrow(domain_members: List<Edge>) -> Node {
   let signature = declared_signature(params: domain_members, source: bn_int())
   node_synthetic(
     kind: TypeNode { connective: Arrow },
-    children: [signature.domain, Edge { label: Positional, target: bn_int() }, signature.order]
+    children: [signature.domain, Edge { label: Positional, target: bn_int(), declaration: NotADeclaration }, signature.order]
   )
 }
 
@@ -123,7 +124,7 @@ test fn a_binder_with_a_default_reads_back_both() -> Bool {
 // `binder_type` (an Authored name, so it cannot be the core BinderTypeEdge arm), and not the empty Conj.
 test fn a_record_type_is_never_read_as_a_binder() -> Bool {
   !bn_reads_as_binder(n: bn_conj(children: [binder_edge(name: ^a, type_node: bn_int())]))
-    && !bn_reads_as_binder(n: bn_conj(children: [Edge { label: Authored { name: ^binder_type }, target: bn_int() }]))
+    && !bn_reads_as_binder(n: bn_conj(children: [Edge { label: Authored { name: ^binder_type }, target: bn_int(), declaration: NotADeclaration }]))
     && !bn_reads_as_binder(n: bn_conj(children: []))
     && !bn_reads_as_binder(n: bn_int())
 }
@@ -134,29 +135,29 @@ test fn a_binder_node_with_a_foreign_edge_is_not_a_binder() -> Bool {
   bn_reads_as_binder(n: binder_node(type_node: bn_int(), default: Absent))
     && !bn_reads_as_binder(n: bn_conj(children: [
       core_edge(marker: BinderTypeEdge, target: bn_int()),
-      Edge { label: Authored { name: ^a }, target: bn_int() }
+      Edge { label: Authored { name: ^a }, target: bn_int(), declaration: NotADeclaration }
     ]))
     && !bn_reads_as_binder(n: bn_conj(children: [
       core_edge(marker: BinderTypeEdge, target: bn_int()),
       core_edge(marker: BinderTypeEdge, target: bn_int())
     ]))
-    && !bn_reads_as_binder(n: bn_conj(children: [Edge { label: Positional, target: bn_int() }]))
+    && !bn_reads_as_binder(n: bn_conj(children: [Edge { label: Positional, target: bn_int(), declaration: NotADeclaration }]))
 }
 
 // A hand-built name-to-type edge is not a binder: the reader refuses it rather than reading its raw target
 // as the type, and the member-type reader answers Absent for it while a Positional member answers its
 // target.
 test fn a_hand_built_name_to_type_edge_is_refused_by_the_readers() -> Bool {
-  bn_field_is_absent(e: Edge { label: Authored { name: ^x }, target: bn_int() })
-    && bn_member_type_is_absent(e: Edge { label: Authored { name: ^x }, target: bn_int() })
-    && bn_member_type_is(e: Edge { label: Positional, target: bn_int() }, expected: bn_int())
+  bn_field_is_absent(e: Edge { label: Authored { name: ^x }, target: bn_int(), declaration: NotADeclaration })
+    && bn_member_type_is_absent(e: Edge { label: Authored { name: ^x }, target: bn_int(), declaration: NotADeclaration })
+    && bn_member_type_is(e: Edge { label: Positional, target: bn_int(), declaration: NotADeclaration }, expected: bn_int())
 }
 
 // THE WALL: an Arrow whose domain members are built binders conforms; the same Arrow with one
 // hand-built member refuses.
 test fn an_arrow_domain_with_a_hand_built_member_refuses() -> Bool {
   type_binder_node_conforms(n: bn_arrow(domain_members: [binder_edge(name: ^x, type_node: bn_int())]))
-    && !type_binder_node_conforms(n: bn_arrow(domain_members: [Edge { label: Authored { name: ^x }, target: bn_int() }]))
+    && !type_binder_node_conforms(n: bn_arrow(domain_members: [Edge { label: Authored { name: ^x }, target: bn_int(), declaration: NotADeclaration }]))
 }
 
 // Identity: a binder's default is part of the node's content (it is authored source), and two binders
@@ -191,7 +192,7 @@ fn bn_reason_absent(r: Optional<Symbol>) -> Bool {
 // a hand-built name-to-type field as ^member_not_a_binder, located, while the same field built as a
 // binder of a non-flat type has no violation.
 test fn a_lens_refuses_a_field_that_is_not_a_binder() -> Bool {
-  bn_reason_is(r: bn_unit_lens_reason(edge: Edge { label: Authored { name: ^x }, target: bn_atom(identity: ^Text) }), expected: ^member_not_a_binder)
+  bn_reason_is(r: bn_unit_lens_reason(edge: Edge { label: Authored { name: ^x }, target: bn_atom(identity: ^Text), declaration: NotADeclaration }), expected: ^member_not_a_binder)
     && bn_reason_absent(r: bn_unit_lens_reason(edge: binder_edge(name: ^x, type_node: bn_atom(identity: ^Text))))
 }
 
@@ -207,12 +208,12 @@ fn bn_view_is_not_a_type_decl(n: Node) -> Bool {
 
 test fn an_import_decl_identity_is_not_a_type_decl() -> Bool {
   bn_view_is_not_a_type_decl(
-    n: bn_conj(children: [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: bn_atom(identity: ^dag_surface_import_decl) }])
+    n: bn_conj(children: [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: bn_atom(identity: ^dag_surface_import_decl), declaration: NotADeclaration }])
   )
 }
 
 test fn a_parse_projection_without_readable_identity_is_not_a_type_decl() -> Bool {
   bn_view_is_not_a_type_decl(
-    n: bn_conj(children: [Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: bn_atom(identity: ^bn_captured_without_identity) }])
+    n: bn_conj(children: [Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: bn_atom(identity: ^bn_captured_without_identity), declaration: NotADeclaration }])
   )
 }

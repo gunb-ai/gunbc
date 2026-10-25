@@ -6,13 +6,14 @@ import gunbc.guarantee_probe_corpus {
   floor_record_completeness_bare_name_control_probe,
   active_probe_row,
   probe_row_expectation_holds,
-  census_blocking_count_for_class,
 }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.guarantee_measurement { GuaranteeProbeId }
 import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present, Absent }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, census_premise, census_exit, CensusVerdict }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -56,11 +57,12 @@ fn row_holds(probe: GuaranteeProbeId, source: String) -> Bool {
   }
 }
 
-fn blocking_count(source: String, wanted: String) -> Int {
-  match census_blocking_count_for_class(census: census_of(source: source), wanted: wanted) {
-    Present { value: n } => n
-    Absent => -1
-  }
+fn blocking_count_is(source: String, wanted: String, expected: Int) -> CensusVerdict {
+  census_verdict(census: blocking_class_census(source: source, wanted_class: wanted), holds: fn(n) { n == expected })
+}
+
+fn row_premise(probe: GuaranteeProbeId, source: String) -> CensusVerdict {
+  census_premise(name: "the probe row's expectation holds", holds: row_holds(probe: probe, source: source))
 }
 
 // ZERO FIELDS SUPPLIED. The sibling red omits ONE of two fields; these omit ALL of them, which
@@ -76,9 +78,11 @@ data record_completeness_bare_name_product_source: String = "module probe_floor_
 // adequacy control for the zero-field family: it establishes that the completeness check DOES
 // handle zero supplied fields, so a silence on either path below would be a gap on that path
 // rather than an absent wall.
-test fn floor_record_completeness_zero_field_product_refuses_every_field() -> Bool {
-  row_holds(probe: floor_record_completeness_zero_field_product_control_probe, source: record_completeness_zero_field_product_source)
-    && blocking_count(source: record_completeness_zero_field_product_source, wanted: "MissingField") == 2
+test fn floor_record_completeness_zero_field_product_refuses_every_field() -> ProcessExit {
+  census_verdict_all([
+    row_premise(probe: floor_record_completeness_zero_field_product_control_probe, source: record_completeness_zero_field_product_source),
+    blocking_count_is(source: record_completeness_zero_field_product_source, wanted: "MissingField", expected: 2)
+  ])
 }
 
 // THE SAME OMISSION ON A COPRODUCT VARIANT REFUSES THE SAME WAY. `Circle { }` where Circle declares
@@ -86,9 +90,11 @@ test fn floor_record_completeness_zero_field_product_refuses_every_field() -> Bo
 // narrowed to the discriminant seam, then to the enumerated waiver, gunbc.rung_drop payload_arm_tag_reference_hollow_value);
 // it now refuses with exactly one MissingField, the declared field. This row was the discriminating
 // RED for that wall and stays enrolled as its regression control (DESIGN section 4b(4)).
-test fn floor_record_completeness_zero_field_variant_refuses_every_field() -> Bool {
-  row_holds(probe: floor_record_completeness_zero_field_variant_control_probe, source: record_completeness_zero_field_variant_source)
-    && blocking_count(source: record_completeness_zero_field_variant_source, wanted: "MissingField") == 1
+test fn floor_record_completeness_zero_field_variant_refuses_every_field() -> ProcessExit {
+  census_verdict_all([
+    row_premise(probe: floor_record_completeness_zero_field_variant_control_probe, source: record_completeness_zero_field_variant_source),
+    blocking_count_is(source: record_completeness_zero_field_variant_source, wanted: "MissingField", expected: 1)
+  ])
 }
 
 // A BARE NAME PRESENTS NO FIELD SET, and is judged against the declaration's field list all the
@@ -96,11 +102,13 @@ test fn floor_record_completeness_zero_field_variant_refuses_every_field() -> Bo
 // kinds reach the wall by two routes (a VariantValueBinding reference and a plain global binding),
 // so each is asserted at full strength -- one silent route would otherwise hide behind the other
 // (the same coverage lesson cursor review 63461 taught this row while it was still a hole).
-test fn floor_record_completeness_bare_name_refuses_every_field() -> Bool {
-  row_holds(probe: floor_record_completeness_bare_name_control_probe, source: record_completeness_bare_name_variant_source)
-    && blocking_count(source: record_completeness_bare_name_variant_source, wanted: "MissingField") == 1
-    && row_holds(probe: floor_record_completeness_bare_name_control_probe, source: record_completeness_bare_name_product_source)
-    && blocking_count(source: record_completeness_bare_name_product_source, wanted: "MissingField") == 2
+test fn floor_record_completeness_bare_name_refuses_every_field() -> ProcessExit {
+  census_verdict_all([
+    row_premise(probe: floor_record_completeness_bare_name_control_probe, source: record_completeness_bare_name_variant_source),
+    blocking_count_is(source: record_completeness_bare_name_variant_source, wanted: "MissingField", expected: 1),
+    row_premise(probe: floor_record_completeness_bare_name_control_probe, source: record_completeness_bare_name_product_source),
+    blocking_count_is(source: record_completeness_bare_name_product_source, wanted: "MissingField", expected: 2)
+  ])
 }
 
 // THE WAIVER IS KEYED ON THE ARM'S OWNING DECLARATION, NEVER ON THE CALLING MODULE. `discriminant(v: X {})`
@@ -115,18 +123,18 @@ data tag_reference_unlisted_owner_source: String = "module probe_floor_tag_ref_u
 data tag_reference_listed_arms_other_module_source: String = "module probe_floor_tag_ref_other_module\nimport v2.std.compilers.target_model { InfixToken, AlgebraPrimitive }\nfn f() -> Bool { discriminant(v: AlgebraPrimitive {}) == discriminant(v: InfixToken {}) }\n"
 data tag_reference_off_the_seam_source: String = "module probe_floor_tag_ref_off\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { let v = Fielded {}\n  discriminant(v: v) }\n"
 
-test fn floor_record_completeness_discriminant_tag_reference_stays_clean() -> Bool {
-  blocking_count(source: tag_reference_at_discriminant_seam_source, wanted: "MissingField") == 0
+test fn floor_record_completeness_discriminant_tag_reference_stays_clean() -> ProcessExit {
+  census_exit(blocking_count_is(source: tag_reference_at_discriminant_seam_source, wanted: "MissingField", expected: 0))
 }
 
-test fn floor_record_completeness_discriminant_tag_reference_listed_arms_from_another_module_stay_clean() -> Bool {
-  blocking_count(source: tag_reference_listed_arms_other_module_source, wanted: "MissingField") == 0
+test fn floor_record_completeness_discriminant_tag_reference_listed_arms_from_another_module_stay_clean() -> ProcessExit {
+  census_exit(blocking_count_is(source: tag_reference_listed_arms_other_module_source, wanted: "MissingField", expected: 0))
 }
 
-test fn floor_record_completeness_discriminant_tag_reference_outside_the_waiver_refuses() -> Bool {
-  blocking_count(source: tag_reference_unlisted_owner_source, wanted: "MissingField") == 1
+test fn floor_record_completeness_discriminant_tag_reference_outside_the_waiver_refuses() -> ProcessExit {
+  census_exit(blocking_count_is(source: tag_reference_unlisted_owner_source, wanted: "MissingField", expected: 1))
 }
 
-test fn floor_record_completeness_zero_field_literal_off_the_seam_refuses() -> Bool {
-  blocking_count(source: tag_reference_off_the_seam_source, wanted: "MissingField") == 1
+test fn floor_record_completeness_zero_field_literal_off_the_seam_refuses() -> ProcessExit {
+  census_exit(blocking_count_is(source: tag_reference_off_the_seam_source, wanted: "MissingField", expected: 1))
 }

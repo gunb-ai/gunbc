@@ -1,0 +1,13 @@
+{
+  "placements": [
+    {
+      "id": "DUCT",
+      "rx": 0,
+      "ry": 0,
+      "rz": 0,
+      "x_um": 40000,
+      "y_um": 70000
+    }
+  ],
+  "support_free": []
+}

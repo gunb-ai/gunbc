@@ -4,7 +4,6 @@ import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.inferred_tree { constructed_root_arm_resolutions }
 import extdeps.communication.medium { Medium }
 import v2.compiler.target_serialize { grammar_relation_row_for_emitted, target_bundle_child, target_serialize_source_from_selected_row, target_translation_rules_budget }
 import v2.compiler.translate { translate }
@@ -73,8 +72,7 @@ fn orch_emit_prepare_row(
         o: translate(
           tree: InferredTree {
             root: emitted_root,
-            facts: PartialFunction { lookup: orch_emit_facts_lookup },
-            arm_resolutions: constructed_root_arm_resolutions()
+            facts: PartialFunction { lookup: orch_emit_facts_lookup }
           },
           target: target
         ),
@@ -171,8 +169,7 @@ fn orch_emit_node_spelling(emitted_root: Node, target: TargetModel) -> Outcome<S
     o: emit(
       tree: InferredTree {
         root: emitted_root,
-        facts: PartialFunction { lookup: orch_emit_facts_lookup },
-        arm_resolutions: constructed_root_arm_resolutions()
+        facts: PartialFunction { lookup: orch_emit_facts_lookup }
       },
       target: target
     ),

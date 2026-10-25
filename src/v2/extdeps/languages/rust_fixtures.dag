@@ -1,7 +1,7 @@
 module v2.extdeps.languages.rust_fixtures
 
 import v2.extdeps.languages.rust_native_driver { RustEmitHostFamilyMember, rust_family_main_suffix }
-import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel }
+import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel, NotADeclaration }
 
 import std.algebra { Cons, Empty }
 
@@ -3555,9 +3555,9 @@ fn rust_bind_let_body_node(
   Node {
     kind: ComputationNode { behavior: Bind },
     children: [
-      Edge { label: Positional, target: rust_type_atom_node(identity: key_binding) },
-      Edge { label: Positional, target: rust_type_atom_node(identity: value_lit) },
-      Edge { label: Positional, target: rust_type_atom_node(identity: body_binding) }
+      Edge { label: Positional, target: rust_type_atom_node(identity: key_binding), declaration: NotADeclaration },
+      Edge { label: Positional, target: rust_type_atom_node(identity: value_lit), declaration: NotADeclaration },
+      Edge { label: Positional, target: rust_type_atom_node(identity: body_binding), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -3575,14 +3575,16 @@ fn rust_arrow_with_body_node(
       signature.domain,
       Edge {
         label: Positional,
-        target: rust_type_atom_node(identity: return_type_binding)
+        target: rust_type_atom_node(identity: return_type_binding),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: rust_type_atom_node(identity: return_type_binding)
+        target: rust_type_atom_node(identity: return_type_binding),
+        declaration: NotADeclaration
       },
       signature.order,
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -3761,7 +3763,7 @@ fn rust_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
           BoundToken { binding: binding, token_class: _ } =>
             list_snoc_item(
               xs: acc,
-              item: Edge { label: Positional, target: rust_inhabitant_atom(id: binding) }
+              item: Edge { label: Positional, target: rust_inhabitant_atom(id: binding), declaration: NotADeclaration }
             )
           FixedToken { token_class: _ } => acc
         }

@@ -153,13 +153,14 @@ cable length, or installed cooling performance.
   implement the port/provider relation, and consume it in review/preparation.
 - Derive selected cable routes, bends, service volumes and BOM from those
   relations. The older harness lengths remain lower-bound estimates.
-- Make preparation and `printer_batch` consume the reserved desired slots;
-  reconcile telemetry into inspection-pending inventory without releasing an
-  uncertain start. Today the runner's existing hold/start claims remain its guards.
-  `printer_batch` writes `.completed-awaiting-inspection.json` at completion, but
-  does not yet publish `PartAwaitingInspection` into this store. Inspection can
-  consume a reservation with a caller-supplied physical identity; FINISH alone
-  still cannot accept a part.
+- Make preparation and the print-request convergence (the part-D successor of the deleted
+  `gunbc.fleet.printer_batch`) consume the reserved desired slots; reconcile telemetry into
+  inspection-pending inventory without releasing an uncertain start. The start claims under
+  `/var/lib/gunbc/printer-starts`, written by `gunbc.fleet.printer_actuation`, remain the guards.
+  Nothing currently publishes `PartAwaitingInspection` into this store (the batch controller's
+  `.completed-awaiting-inspection.json` went with it); the trigger to restore it is the request
+  convergence recording a completion receipt. Inspection can consume a reservation with a
+  caller-supplied physical identity; FINISH alone still cannot accept a part.
 - Add explicit recovery/cancellation of stale reservations and unresolved
   inspection receipts. No timeout currently frees a reservation automatically.
 - Exercise real concurrent store publication and restart through the integrated

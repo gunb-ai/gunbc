@@ -27,6 +27,7 @@ import extdeps.github.action.setup_rust_toolchain { setup_rust_toolchain_manifes
 import extdeps.github.action.rust_cache { rust_cache_manifest_readings }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape, list_push }
 
 // NO PROVIDER-SUBSTITUTED ACTION RUNTIMES.
 //

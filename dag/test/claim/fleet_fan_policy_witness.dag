@@ -178,7 +178,6 @@ fn foreign_vendor_m128() -> CpuModelCatalogRow {
     threads: altra_max_m12830_catalog.threads,
     nominal_sustained_per_thread_hz: altra_max_m12830_catalog.nominal_sustained_per_thread_hz,
     socket: altra_max_m12830_catalog.socket,
-    socket_citations: altra_max_m12830_catalog.socket_citations,
     tdp_watts: altra_max_m12830_catalog.tdp_watts,
     l1_cache: altra_max_m12830_catalog.l1_cache,
     l1_cache_citations: altra_max_m12830_catalog.l1_cache_citations,

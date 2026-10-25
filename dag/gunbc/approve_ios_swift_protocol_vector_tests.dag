@@ -84,7 +84,7 @@ fn at_named_vector(n: String, input: List<SwiftDecl>) -> SwiftDecl {
 fn at_vectors() -> SwiftDecl {
   at_decodable(n: "Vectors", m: [
     at_named_vector(n: "Redemption", input: at_string_fields(names: ["audience", "enrollment_id", "challenge_expires_at", "nonce_hex", "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag_b64url"])),
-    at_named_vector(n: "Enrolment", input: at_string_fields(names: ["code", "platform", "point_b64url"])),
+    at_decodable(n: "Enrolment", m: [at_decodable(n: "Input", m: at_string_fields(names: ["attest_key_id", "platform", "point_b64url"])), sw_field(n: "name", t: at_s()), sw_field(n: "input", t: sw_t(n: "Input")), sw_field(n: "expected", t: at_s()), sw_doc(c: ["google_enrolment_nonce over `expected`, emitted by the .dag."], d: sw_field(n: "nonce", t: at_s()))]),
     at_named_vector(n: "Read", input: at_string_fields(names: ["path", "enrollment_id", "requested_at"])),
     at_decodable(n: "Envelope", m: at_string_fields(names: ["name", "body"])),
     at_decodable(n: "Refusal", m: at_string_fields(names: ["name", "body", "at", "cause"])),
@@ -208,15 +208,16 @@ fn at_tests(parts: ResourceParts) -> List<SwiftDecl> {
         at_assert(n: "XCTAssertEqual", a: [sw_calln(f: "deviceRedemptionSigningInput", a: [sw_pos(v: sw_id(n: "input"))]), at_data_utf8(e: sw_path(b: "v", m: "expected")), sw_path(b: "v", m: "name")]),
       ]),
     ]),
-    at_test(doc: [], n: "testEnrolmentTranscriptMatchesEveryVector", th: true, b: [
+    at_test(doc: ["google_enrolment_transcript and google_enrolment_nonce, byte for byte: the nonce the app hands Google is base64url(sha256(transcript)) as the .dag computes it."], n: "testEnrolmentTranscriptAndNonceMatchEveryVector", th: true, b: [
       at_each(section: "enrolment", b: [
         sw_let(n: "platform", e: sw_try(e: sw_calln(f: "XCTUnwrap", a: [sw_pos(v: sw_calln(f: "MobilePlatform", a: [sw_arg(l: "rawValue", v: at_vin(f: "platform"))])), sw_pos(v: sw_path(b: "v", m: "name"))]))),
-        sw_let(n: "got", e: sw_calln(f: "enrolmentTranscript", a: [
-          sw_arg(l: "code", v: at_vin(f: "code")),
+        sw_let(n: "got", e: sw_calln(f: "googleEnrolmentTranscript", a: [
           sw_arg(l: "decisionKey", v: sw_calln(f: "VerifyingKey", a: [sw_arg(l: "point_b64url", v: at_vin(f: "point_b64url"))])),
           sw_arg(l: "platform", v: sw_id(n: "platform")),
+          sw_arg(l: "attestKeyId", v: at_vin(f: "attest_key_id")),
         ])),
         at_assert(n: "XCTAssertEqual", a: [sw_id(n: "got"), at_data_utf8(e: sw_path(b: "v", m: "expected")), sw_path(b: "v", m: "name")]),
+        at_assert(n: "XCTAssertEqual", a: [sw_calln(f: "googleEnrolmentNonce", a: [sw_pos(v: sw_id(n: "got"))]), sw_path(b: "v", m: "nonce"), sw_path(b: "v", m: "name")]),
       ]),
     ]),
     at_test(
@@ -252,7 +253,7 @@ fn at_tests(parts: ResourceParts) -> List<SwiftDecl> {
     ])),
     at_round_trip(
       doc: ["Each request body the fixture carries is decoded by the app's strict reader and re-encoded", "by the app's encoder; the bytes must be the authority's. No input is typed here."],
-      n: "testEnrolmentRequestRoundTripsToTheFixtureBytes", v: fx_env_enrolment_request, codec: "enrolmentRequest"
+      n: "testEnrolmentRequestRoundTripsToTheFixtureBytes", v: fx_env_enrolment_request, codec: "googleEnrolmentRequest"
     ),
     at_round_trip(doc: [], n: "testSignedRedemptionRoundTripsToTheFixtureBytes", v: fx_env_signed_redemption, codec: "signedRedemption"),
     at_round_trip(doc: [], n: "testPushUpdateRoundTripsToTheFixtureBytes", v: fx_env_push_update, codec: "pushUpdate"),
@@ -332,11 +333,11 @@ fn at_tests(parts: ResourceParts) -> List<SwiftDecl> {
         sw_let(n: "arms", e: sw_callt(f: sw_mem(b: sw_mem(b: at_load(), m: "envelope"), m: "filter"), a: [], c: sw_cloe(e: sw_call(f: sw_mem(b: sw_path(b: "$0", m: "name"), m: "hasPrefix"), a: [sw_pos(v: sw_id(n: "prefix"))])))),
         at_assert(n: "XCTAssertEqual", a: [
           sw_calln(f: "Set", a: [sw_pos(v: sw_callt(f: sw_path(b: "arms", m: "map"), a: [], c: sw_cloe(e: sw_calln(f: "String", a: [sw_pos(v: sw_call(f: sw_mem(b: sw_path(b: "$0", m: "name"), m: "dropFirst"), a: [sw_pos(v: sw_mem(b: sw_id(n: "prefix"), m: "count"))]))]))))]),
-          sw_calln(f: "Set", a: [sw_pos(v: sw_callt(f: sw_mem(b: sw_path(b: "EnrolmentRefusalKind", m: "allCases"), m: "map"), a: [], c: sw_cloe(e: sw_path(b: "$0", m: "rawValue"))))]),
+          sw_calln(f: "Set", a: [sw_pos(v: sw_path(b: "GoogleEnrolmentRefusal", m: "labels"))]),
         ]),
         sw_for(n: "a", e: sw_id(n: "arms"), s: [
-          sw_let(n: "kind", e: at_decode(decoder: "enrolmentRefusal", e: at_data_utf8(e: sw_path(b: "a", m: "body")))),
-          at_assert(n: "XCTAssertEqual", a: [sw_add(l: sw_id(n: "prefix"), r: sw_path(b: "kind", m: "rawValue")), sw_path(b: "a", m: "name")]),
+          sw_let(n: "kind", e: at_decode(decoder: "googleEnrolmentRefusal", e: at_data_utf8(e: sw_path(b: "a", m: "body")))),
+          at_assert(n: "XCTAssertEqual", a: [sw_add(l: sw_id(n: "prefix"), r: sw_id(n: "kind")), sw_path(b: "a", m: "name")]),
         ]),
       ]
     ),
@@ -383,10 +384,6 @@ fn at_tests(parts: ResourceParts) -> List<SwiftDecl> {
         at_throws(decoder: "pushUpdate", e: at_data_utf8(e: sw_raw(s: "\{\"kind\": \"apns\", \"environment\": \"production\", \"topic\": \"t\", \"token\": \"k\", \"project\": \"p\"\}"))),
       ]
     ),
-    at_test(doc: ["enrollment_id_for_code, pinned by the envelope vector over the enrolment vectors' code."], n: "testEnrollmentIdForCodeMatchesTheFixture", th: true, b: [
-      sw_let(n: "code", e: sw_mem(b: sw_mem(b: sw_try(e: sw_calln(f: "XCTUnwrap", a: [sw_pos(v: sw_mem(b: sw_mem(b: at_load(), m: "enrolment"), m: "first"))])), m: "input"), m: "code")),
-      at_assert(n: "XCTAssertEqual", a: [sw_calln(f: "enrollmentIdForCode", a: [sw_pos(v: sw_id(n: "code"))]), sw_try(e: sw_calln(f: "envelope", a: [sw_pos(v: sw_add(l: sw_str(s: "enrollment_id_for_code_"), r: sw_id(n: "code")))]))]),
-    ]),
     at_test(
       doc: [
         "device_push_update_client_data frames the exact push body; the enrolment id and time are the",
@@ -492,7 +489,7 @@ fn at_round_trip(doc: List<String>, n: String, v: EnvelopeVector, codec: String)
 
 data approve_ios_tests_header: List<String> = [
   "The Swift byte builders against the vectors the .dag witness EMITS from device_redemption_signing_input",
-  "and enrolment_transcript (dag/test/fixture/approval_device_redemption/vectors.json). No expected byte",
+  "and google_enrolment_transcript and google_enrolment_nonce (dag/test/fixture/approval_device_redemption/vectors.json). No expected byte",
   "is written here: a hand-copied expectation would be a second authority for the join.",
   "GENERATED from gunbc.approve_ios_swift_protocol_vector_tests from the Swift grammar rows (v2.extdeps.languages.swift.rows); do not edit.",
 ]

@@ -4,13 +4,14 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.name_resolve { ResolutionContext, Admission, AdmissionAccepted, AdmissionRejected, AdmissionState, Import, ImportVisible, ResolutionSubject, admit_import_entry, admit_imported_modules, resolution_context, resolve_in_context, resolve_with_admission, resolve_with_admission_policy, validated_module_root_for_name, module_root_find, validate_module_roots, ValidatedModuleRoots }
 import v2.std.declaration_marker { test_code_index_empty, test_marker_channel_empty }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
-import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, SourceRootSet, V2Tree }
+import v2.std.cross_tree.resolution { SourceRootIndex, source_root_index_empty, source_root_index_insert }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_named_edge, dag_surface_edge }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, empty_map, map_insert }
 import v2.std.namespace_alias { CapturedImportTarget }
-import v2.std.diagnostic { Accepted, ByteRange, None, Outcome, Rejected, bind_outcome, outcome_accepted, Textual, diagnostics_eq, non_empty_diagnostics_eq }
+import v2.std.diagnostic { Accepted, ByteRange, None, Outcome, Rejected, bind_outcome, outcome_accepted, Textual, diagnostics_eq, non_empty_diagnostics_eq, locus_eq }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node }
+import v2.std.node { node_same_occurrence, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node, NotADeclaration }
 import v2.std.resolution_policy { ImportScoped }
 
 test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
@@ -58,7 +59,8 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
           },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -140,7 +142,8 @@ fn fc_malformed_subject_root() -> Node {
           kind: TypeNode { connective: Atom { identity: ^fc_malformed_child_sym } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -279,7 +282,8 @@ fn fc_dual_import_subject_root(seg: Symbol, use_sym: Symbol, imported_decl: Symb
           kind: TypeNode { connective: Atom { identity: imported_decl } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -517,7 +521,7 @@ test fn namespace_provider_builds_each_module_at_most_once_per_context() -> Bool
         Accepted { value: a1, diagnostics: _ } =>
           match again.resolved {
             Rejected { diagnostics: _ } => false
-            Accepted { value: a2, diagnostics: _ } => a1.root == a2.root
+            Accepted { value: a2, diagnostics: _ } => node_same_occurrence(a: a1.root, b: a2.root)
           }
       }
   })
@@ -770,4 +774,77 @@ fn fc_with_validated(o: Outcome<ValidatedModuleRoots>, f: fn(ValidatedModuleRoot
     Rejected { diagnostics: _ } => false
     Accepted { value: v, diagnostics: _ } => f(v)
   }
+}
+
+// AN IMPORT REFUSED AT ADMISSION IS LOCATED AT ITS OWN IMPORT LINE. The cross-tree gate's refusals
+// (denied, ambiguous) are minted where the subject's captured import target is in hand, and that
+// target carries the import declaration's authored span; so the refusal names the import, exactly as
+// the module-not-found arm above does, rather than the resolve port's invariant. RED on main: the
+// denial's `at` was invariant_port_locus(resolve_diagnostic_port, resolve_cross_tree_import_denied),
+// which a census reports as FileRefusalAtInvariant though the import's line was known. The subject is
+// a dag-tree module importing a v2-tree one (LessFundamental in v2.std.cross_tree.resolution
+// tree_fundamentality_order); the found root is the target, so the gate is the only refusal reachable.
+fn fc_cross_tree_index(subject: SourceRootRef, target: FreeMonoid<SourceRootRef>) -> SourceRootIndex {
+  fold_list(
+    xs: target,
+    empty: source_root_index_insert(index: source_root_index_empty(), module: fc_qn(seg: ^fc_subject_seg), root: subject),
+    cons: fn(index, root) { source_root_index_insert(index: index, module: fc_qn(seg: ^fc_found_seg), root: root) }
+  )
+}
+
+fn fc_both_trees() -> SourceRootSet {
+  Cons { head: V2Tree, tail: Cons { head: DagTree, tail: Empty } }
+}
+
+fn fc_cross_tree_admission(roots: FreeMonoid<NormalizedTree>, index: SourceRootIndex) -> AdmissionState {
+  match validate_module_roots(roots: roots) {
+    Rejected { diagnostics: d } => AdmissionRejected { diagnostics: d }
+    Accepted { value: validated, diagnostics: _ } =>
+      admit_imported_modules(
+        roots: validated,
+        modules: Cons { head: fc_located_import(target: fc_qn(seg: ^fc_found_seg)), tail: Empty },
+        state: fc_initial_admission_state(),
+        subject_qn: fc_qn(seg: ^fc_subject_seg),
+        index: index,
+        active_roots: fc_both_trees()
+      )
+  }
+}
+
+fn fc_refused_at_import_line(state: AdmissionState, reason: Symbol) -> Bool {
+  match state {
+    AdmissionAccepted { bindings: _, origins: _ } => false
+    AdmissionRejected { diagnostics: d } =>
+      (d.head.reason == reason)
+        && locus_eq(a: d.head.at, b: fc_located_import(target: fc_qn(seg: ^fc_found_seg)).at)
+  }
+}
+
+test fn cross_tree_denied_import_is_located_at_its_import_line() -> Bool {
+  fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
+    fc_refused_at_import_line(
+      state: fc_cross_tree_admission(roots: roots, index: fc_cross_tree_index(subject: DagTree, target: Cons { head: V2Tree, tail: Empty })),
+      reason: ^resolve_cross_tree_import_denied
+    )
+  })
+}
+
+test fn cross_tree_ambiguous_import_is_located_at_its_import_line() -> Bool {
+  fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
+    fc_refused_at_import_line(
+      state: fc_cross_tree_admission(roots: roots, index: fc_cross_tree_index(subject: DagTree, target: Cons { head: V2Tree, tail: Cons { head: DagTree, tail: Empty } })),
+      reason: ^resolve_cross_tree_import_ambiguous
+    )
+  })
+}
+
+// THE POSITIVE CONTROL ON THE SAME FIXTURE: the reversed edge (v2 importing dag, MoreFundamental) is
+// admitted, so the RED above is the gate's verdict and not a fixture that refuses on every route.
+test fn cross_tree_admitted_import_is_accepted_on_the_same_fixture() -> Bool {
+  fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
+    match fc_cross_tree_admission(roots: roots, index: fc_cross_tree_index(subject: V2Tree, target: Cons { head: DagTree, tail: Empty })) {
+      AdmissionAccepted { bindings: _, origins: _ } => true
+      AdmissionRejected { diagnostics: _ } => false
+    }
+  })
 }

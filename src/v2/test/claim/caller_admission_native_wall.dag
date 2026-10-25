@@ -43,7 +43,7 @@ import v2.std.symbol_index { empty_symbol_index, symbol_index_insert }
 import std.optional { optional_absent, optional_present }
 import v2.std.diagnostic { None, Some, Suggested, Unavailable, diagnostics_has_reason }
 import v2.std.logic { Bool }
-import v2.std.node { Edge, Node, Symbol, symbol_eq, Atom, Conj, TypeNode, Authored, StructuralLabel, CoreMarker, DeclarationReferenceEdge, Positional }
+import v2.std.node { Edge, Node, Symbol, symbol_eq, Atom, Conj, TypeNode, Authored, StructuralLabel, CoreMarker, DeclarationReferenceEdge, Positional, NotADeclaration }
 import std.optional { Absent, Present }
 
 // ---------------------------------------------------------------------------
@@ -72,15 +72,18 @@ fn wall_record(mp: Symbol, dn: Symbol) -> Node {
     children: [
       Edge {
         label: Authored { name: ^decl_ref },
-        target: Node { kind: TypeNode { connective: Atom { identity: ^decl_ref } }, children: [], occurrence_id: OccurrenceSynthetic }
+        target: Node { kind: TypeNode { connective: Atom { identity: ^decl_ref } }, children: [], occurrence_id: OccurrenceSynthetic },
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^module_path },
-        target: Node { kind: TypeNode { connective: Atom { identity: mp } }, children: [], occurrence_id: OccurrenceSynthetic }
+        target: Node { kind: TypeNode { connective: Atom { identity: mp } }, children: [], occurrence_id: OccurrenceSynthetic },
+        declaration: NotADeclaration
       },
       Edge {
         label: Authored { name: ^decl_name },
-        target: Node { kind: TypeNode { connective: Atom { identity: dn } }, children: [], occurrence_id: OccurrenceSynthetic }
+        target: Node { kind: TypeNode { connective: Atom { identity: dn } }, children: [], occurrence_id: OccurrenceSynthetic },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: wall_record_locus
@@ -94,7 +97,8 @@ data wall_marker_entry: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^infer_reason_admit_callers_entry_not_decl_ref },
-      target: Node { kind: TypeNode { connective: Atom { identity: ^infer_reason_admit_callers_entry_not_decl_ref } }, children: [], occurrence_id: OccurrenceSynthetic }
+      target: Node { kind: TypeNode { connective: Atom { identity: ^infer_reason_admit_callers_entry_not_decl_ref } }, children: [], occurrence_id: OccurrenceSynthetic },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: wall_marker_locus
@@ -116,11 +120,13 @@ data wall_roster_single: Node = Node {
   children: [
     Edge {
       label: Authored { name: ^grammar_sequence_left_node_projection },
-      target: wall_record(mp: ^bcb, dn: ^listed_caller)
+      target: wall_record(mp: ^bcb, dn: ^listed_caller),
+      declaration: NotADeclaration
     },
     Edge {
       label: Authored { name: ^grammar_sequence_right_node_projection },
-      target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+      target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic },
+      declaration: NotADeclaration
     }
   ],
   occurrence_id: wall_roster_locus
@@ -245,7 +251,8 @@ fn wall_decl_ref_target() -> Node {
                 kind: TypeNode { connective: Atom { identity: ^wall_callee } },
                 children: [],
                 occurrence_id: wall_call_site_locus
-              }
+              },
+              declaration: NotADeclaration
             },
             Edge {
               label: Authored { name: ^fold_list_node_tail },
@@ -253,11 +260,13 @@ fn wall_decl_ref_target() -> Node {
                 kind: TypeNode { connective: Conj },
                 children: [],
                 occurrence_id: wall_call_site_locus
-              }
+              },
+              declaration: NotADeclaration
             }
           ],
           occurrence_id: wall_call_site_locus
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: wall_decl_ref_locus
@@ -267,7 +276,7 @@ fn wall_decl_ref_target() -> Node {
 fn wall_unreadable_callee_application() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Positional, target: wall_decl_ref_target() }],
+    children: [Edge { label: Positional, target: wall_decl_ref_target(), declaration: NotADeclaration }],
     occurrence_id: wall_call_site_locus
   }
 }
@@ -342,7 +351,7 @@ fn wall_unmarked_application() -> Node {
       kind: TypeNode { connective: Atom { identity: ^wall_not_a_declaration } },
       children: [],
       occurrence_id: OccurrenceSynthetic
-    } }],
+    }, declaration: NotADeclaration }],
     occurrence_id: wall_call_site_locus
   }
 }
@@ -367,7 +376,8 @@ fn wall_roster_concat_application() -> Node {
     kind: TypeNode { connective: Conj },
     children: [Edge {
       label: Positional,
-      target: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.collection_concat_shape"), occurrence_id: OccurrenceSynthetic)
+      target: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.collection_concat_shape"), occurrence_id: OccurrenceSynthetic),
+      declaration: NotADeclaration
     }],
     occurrence_id: wall_call_site_locus
   }

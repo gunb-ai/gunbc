@@ -1,0 +1,16 @@
+module gunbc.claim_batch_exit_two_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for one new match arm in claim_batch report_outcome. HAND-ITEM DELTA: +0 declarations; report_outcome in v1_compiler.bin.claim_batch is MODIFIED (one arm, ClaimOutcome::ExitFailure with code 2, added before the generic ExitFailure arm). The cited declaration is the modified one, not an added one; no deletion is netted.
+data claim_batch_exit_two_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.bin.claim_batch", decl_name: "report_outcome", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: claim_batch is a seed-host CLI whose per-claim line and process exit are produced before any .dag frame exists, and report_outcome is the one place a ClaimOutcome becomes a printed verdict and a flag. The exit contract (0 held, 1 did not hold, 2 no observation) already has its vocabulary modeled: v2.workflow.floor_terminal_ledger ObservationUnrepresentable is the typed no-observation. A claim returning ProcessExit::ExitFailure with code 2 says it observed nothing, but the generic ExitFailure arm printed FAIL and set any_failed, so the process exited 1 and read an unreached subject as a subject that answered no. The new arm prints UNOBSERVED and sets any_unobserved, which batch_exit_code already composes to exit 2. The Rust arm is the seed's process-boundary mirror of that disposition; the code-2 recognition is the contract's own number (gunbc extdeps.process.gnu_bash_exit exit_code_misuse), not a new vocabulary.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the arm when claim_batch's verdict fold is the .dag fold over the floor terminal ledger and the per-claim line and exit are derived from its typed ObservationUnrepresentable standing rather than from a ClaimOutcome match in Rust.",
+  current_boundary: "Only ExitFailure with code exactly 2 maps to UNOBSERVED; every other code keeps FAIL and exit 1, and a Pass or other arm is unchanged. A finding elsewhere in the batch still yields exit 1 over an unobserved claim (batch_exit_code)."
+}

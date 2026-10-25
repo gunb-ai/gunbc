@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.a_deadline_armed_over_a_child_it_cannot_signal_refuses_after_the_effect_completed
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_deadline_armed_over_a_child_it_cannot_signal_refuses_after_the_effect_completed: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_deadline_armed_over_a_child_it_cannot_signal_refuses_after_the_effect_completed" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the seed deadline wait reports a failed kill as a typed outcome and does not join the unsignalable child" } },
+
+  receipts: [
+    "INVALID STATE: a wall deadline is armed over a wait on a child whose kill the waiter cannot deliver (a root process started through sudo, signalled by an unprivileged serve). The seed's wait at the deadline calls kill_shell_process_group, which discards the kill result, and then joins the worker unconditionally, so the deadline cannot preempt the child: the refusal value is built at the deadline and returned only when the child exits, replacing the child's own outcome.",
+    "RECEIPT, srv1 lab 2026-10-21 (lab-dev 2352488e, measured by the lab owner): a dispatch POST ran the inline spool drain (sudo flock gunbc run attempt_system_unit_launch_cli); the helper's front end took minutes, wrote the answer `started` and systemd started the attempt unit at 01:19:42; in the same second the serve logged `refused roadmap_serve_handle_srv1_lab on monotonic_wall clock: elapsed_ns=120001615197 limit_ms=120000`. The client received 0 bytes. The session slot stayed `launching` about 13 minutes until the recovery pass read the unit from systemd and settled it terminal:recovered.",
+    "DISTINGUISHING FACTS: elapsed_ns equals the limit (120.0016s) while the real wall exceeds it (about 265s); the answer file in the spool says `started` and the unit is active when the refusal is reported. The shape is a budget over another principal's child, not a slow computation, so raising the budget (the 120s knob) only moves the crossover.",
+    "THE CHAIN (DESIGN 6b). Slice: serve request, dispatch spawn, inline drain, root helper front end, unit start and answer, handler return, client. Earliest unjustified boundary: the inline drain, because the spool exists to decouple the requester from the root side and the handler then waited on it anyway, with an unbounded flock wait (2700s) under a 120s handler budget. Repaired at that link: the requester writes the request and reads the answer once, no wait; the root side is a system oneshot started by a .path unit on the request directory (gunbc.live_deploy.emit attempt_unit_drain_steps), so there is no sudo grant, no flock and no child for the handler to fail to signal. The outcome of a request with no answer yet is its own typed arm, LaunchPending(entry), followed on /attempts.json, never a minted Started and never a refusal.",
+    "HARM: a launch that happened is reported as a refusal; the client sees nothing; the placement is held until recovery. The fail-closed loop held (recovery settles from systemd), so the harm is a misreported actuation, not a leaked resource.",
+    "RUNG FOUND AT: mitigatable (the recovery pass). CURRENT RUNG at the grain of the dispatch request path: structurally guaranteed for the requester route, which no longer spawns a privileged child under a deadline (a RED fixes a pre-written `started` answer with no drain and requires Started or LaunchPending, never EvaluationBudgetExceeded). RESIDUAL, at the grain of the seed: v1_interpreter wait_child_honoring_wall_deadline still discards the kill result and joins unconditionally, so any OTHER caller that arms a wall deadline over a child it cannot signal reproduces the class. Ceiling: structurally guaranteed (a kill failure is a typed outcome and the wait returns without joining).",
+    "NEXT-RUNG TRIGGER, as a capability: the seed's deadline wait reports a failed kill as a typed outcome and does not join the unsignalable child. That is a seed change on a load-bearing file and is its own PR stating its admission under gunbc.v1.v1_maintenance_standing v1_seed_standing; it is not folded into the requester repair. Census of other privileged callers: the remaining sudo callers are deploy and operator modules that do not run under a serve or belt deadline.",
+  ],
+  evidence: [],
+}

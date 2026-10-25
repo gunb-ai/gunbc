@@ -101,6 +101,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.logic { bool_boolean_algebra }
 import v2.std.algebra_structure_signature { approximate_field_node, boolean_algebra_node, ordered_ring_node }
@@ -251,7 +252,7 @@ fn python_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn python_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn python_primitive_facts_node(

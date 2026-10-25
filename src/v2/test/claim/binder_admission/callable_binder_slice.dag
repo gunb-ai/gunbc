@@ -47,7 +47,7 @@ import v2.std.node { positional_child_target_nodes,
   Node,
   Positional,
   TypeNode,
-
+  NotADeclaration
 }
 import std.optional { Absent, Present, optional_absent }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
@@ -74,8 +74,8 @@ fn cbs_carrier_loop(body: Node, carrier: Symbol) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: body },
-      Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: carrier) }
+      Edge { label: Positional, target: body, declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: carrier), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -96,14 +96,15 @@ fn cbs_fn_literal_shaped_arrow() -> Node {
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Authored { name: ^found }, target: cbs_atom(id: ^tv_found) },
-            Edge { label: Authored { name: ^e }, target: cbs_atom(id: ^tv_e) }
+            Edge { label: Authored { name: ^found }, target: cbs_atom(id: ^tv_found), declaration: NotADeclaration },
+            Edge { label: Authored { name: ^e }, target: cbs_atom(id: ^tv_e), declaration: NotADeclaration }
           ],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       },
-      Edge { label: Positional, target: cbs_atom(id: ^tv_ret) },
-      Edge { label: Positional, target: cbs_atom(id: ^tv_ret) }
+      Edge { label: Positional, target: cbs_atom(id: ^tv_ret), declaration: NotADeclaration },
+      Edge { label: Positional, target: cbs_atom(id: ^tv_ret), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
