@@ -9,10 +9,11 @@ import product.capacity.lease { LeaseGrant }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
-import gunbc.durable_cas_file_store { CasSlotKeys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused, cas_slot_keys }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store }
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
+  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_record_with_state, attempt_transition_wire, attempt_state_wire,
   compute_pre_launch_ceiling_seconds,
@@ -205,8 +206,12 @@ fn session_attempt_name_of(identity: String) -> SessionAttemptName? {
 // WHERE A SESSION'S DURABLE FACTS LIVE, resolved once from the instance and then passed as a value,
 // so the settlement pass and its witnesses run the same fold over any store (the compute recovery
 // door's own row names an instance-derived root as what kept its control unwritable).
+//
+// The slot store is the ONE root of the session slots: setup (belt_session_slots_ensure) creates the
+// directory the lifecycle writes to by reading it off this store, so no second field can name a
+// directory that is set up while the writes go elsewhere.
 type SessionPlacementStores {
-  slots_root: NonEmptyStr
+  slots: SlotStore
   records_dir: String
   store: FabricStorageBinding
   partition: PartitionId
@@ -232,7 +237,7 @@ fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresRes
         ComputeSubjectHostUnresolved { host } => SessionStoresUnresolved { detail: join(["no dashboard instance is declared for host ", host as String, ", so it has no session ledger"], "") }
         ComputeSubjectResolved { subject } =>
           SessionStoresResolved { stores: SessionPlacementStores {
-            slots_root: session_placement_slots_root(instance: instance),
+            slots: file_slot_store(root: session_placement_slots_root(instance: instance)),
             records_dir: session_placement_records_dir(instance: instance),
             store: compute_capacity_store(subject: subject),
             partition: subject.partition,
@@ -292,7 +297,7 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
         Absent => SessionPlacementRefused { detail: "the host clock could not be read as epoch seconds, and the session's slot carries a launch deadline" }
         Present { value: now } => {
           let record = session_attempt_record(node_id: node_id, attempt_key: attempt_key, unit: systemd_unit_name_wire(name: name), granted: work_class_grant_amount(g: class_grant), now: now)
-          match attempt_open(root: stores.slots_root, record: record) {
+          match attempt_open(store: stores.slots, record: record) {
             AttemptLostRace { expected: e, observed: o } =>
               SessionPlacementRefused { detail: join(["a session slot already exists for ", record.unit, " (expected ", e, ", found ", o, "); one attempt holds at most one placement"], "") }
             AttemptTransitionRefused { detail: d } =>
@@ -323,7 +328,7 @@ fn session_refused_after_open(stores: SessionPlacementStores, record: AttemptRec
   SessionPlacementRefused {
     detail: join([
       refusal, "; session slot ",
-      attempt_transition_wire(t: attempt_terminate(root: stores.slots_root, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join(["reservation refused: ", refusal], ""))),
+      attempt_transition_wire(t: attempt_terminate(store: stores.slots, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join(["reservation refused: ", refusal], ""))),
     ], ""),
   }
 }
@@ -336,7 +341,7 @@ type SessionLaunchGate
   | SessionLaunchRefused { detail: String }
 
 fn session_placement_begin_launch(stores: SessionPlacementStores, grant: SessionPlacementGrant) -> SessionLaunchGate {
-  match attempt_begin_launch(root: stores.slots_root, reference: grant.slot.reference as NonEmptyStr, expected: grant.slot_generation) {
+  match attempt_begin_launch(store: stores.slots, reference: grant.slot.reference as NonEmptyStr, expected: grant.slot_generation) {
     AttemptAdvanced { state: s, generation: g } =>
       SessionLaunchAdmitted { grant: SessionPlacementGrant {
         node_id: grant.node_id, attempt_key: grant.attempt_key, unit: grant.unit, lease: grant.lease, partition: grant.partition,
@@ -385,7 +390,7 @@ fn session_abandon_kept(why: String) -> SessionAbandonment {
 }
 
 fn session_abandon_terminate_then_release(stores: SessionPlacementStores, grant: SessionPlacementGrant, record: AttemptRecord, generation: CasGeneration, reason: NonEmptyStr, why: String) -> SessionAbandonment {
-  match attempt_terminate(root: stores.slots_root, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join([reason as String, "; ", why], "")) {
+  match attempt_terminate(store: stores.slots, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join([reason as String, "; ", why], "")) {
     AttemptAdvanced { state: s, generation: _ } => session_abandon_release(stores: stores, grant: grant, reason: reason, closed: join(["closed (", attempt_state_wire(s: s), ") after re-reading: ", why], ""))
     AttemptLostRace { expected: e, observed: o } => session_abandon_kept(why: join(["the slot moved again (expected ", e, ", found ", o, "); the settlement pass decides it from the store"], ""))
     AttemptTransitionRefused { detail: d } => session_abandon_kept(why: join(["the slot would not take the terminal generation: ", d], ""))
@@ -393,11 +398,11 @@ fn session_abandon_terminate_then_release(stores: SessionPlacementStores, grant:
 }
 
 fn session_placement_abandon_at(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr, lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle) -> SessionAbandonment {
-  match attempt_terminate(root: stores.slots_root, reference: grant.slot.reference as NonEmptyStr, expected: grant.slot_generation, verdict: AttemptRecovered, detail: reason as String) {
+  match attempt_terminate(store: stores.slots, reference: grant.slot.reference as NonEmptyStr, expected: grant.slot_generation, verdict: AttemptRecovered, detail: reason as String) {
     AttemptAdvanced { state: s, generation: _ } => session_abandon_release(stores: stores, grant: grant, reason: reason, closed: join(["closed (", attempt_state_wire(s: s), ")"], ""))
     AttemptTransitionRefused { detail: d } => session_abandon_kept(why: join(["the slot would not take the terminal generation (", d, "); the settlement pass decides it from the store"], ""))
     AttemptLostRace { expected: _, observed: _ } =>
-      match attempt_slot_read(root: stores.slots_root, reference: grant.unit) {
+      match attempt_slot_read(store: stores.slots, reference: grant.unit) {
         AttemptSlotUnreadable { detail } => session_abandon_kept(why: join(["the slot close lost and the slot is now unreadable: ", detail], ""))
         AttemptSlotAbsent => session_abandon_kept(why: "the slot close lost and no slot is held under this unit")
         AttemptSlotHeld { record: rec, generation: g } => {
@@ -909,7 +914,7 @@ fn session_placement_observe_at(stores: SessionPlacementStores, host: String, no
   let release_name = session_placement_release_basename(node_id: node_id, attempt_key: attempt_key)
   session_placement_observation_of(
     node_id: node_id, attempt_key: attempt_key, host: host,
-    slot: attempt_slot_read(root: stores.slots_root, reference: unit),
+    slot: attempt_slot_read(store: stores.slots, reference: unit),
     record_path: join([stores.records_dir, "/", record_name], ""), record: session_placement_file(dir: stores.records_dir, name: record_name),
     release_path: join([stores.records_dir, "/", release_name], ""), released: session_placement_file(dir: stores.records_dir, name: release_name),
   )
@@ -1139,7 +1144,7 @@ fn session_release_settled_for_slot(stores: SessionPlacementStores, host: String
 }
 
 fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmptyStr, lifecycle: UnitLifecycle, now: EpochSecs) -> SessionSettlement {
-  let slot = attempt_slot_read(root: stores.slots_root, reference: key)
+  let slot = attempt_slot_read(store: stores.slots, reference: key)
   match session_settle_decide(key: key, slot: slot, lifecycle: lifecycle, now: now, release_settled: session_release_settled_for_slot(stores: stores, host: host, slot: slot)) {
     SettleDone { why } => SessionSettlementDone { unit: key as String, why: why }
     SettleKeep { why, explain } =>
@@ -1147,7 +1152,7 @@ fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmpt
     SettleReleaseOnly { record: _, attempt, reason } =>
       session_settle_release(stores: stores, host: host, unit: key, attempt: attempt, reason: reason)
     SettleTerminateAndRelease { record, generation, attempt, reason } =>
-      match attempt_terminate(root: stores.slots_root, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join([reason, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
+      match attempt_terminate(store: stores.slots, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join([reason, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
         AttemptLostRace { expected: e, observed: o } =>
           SessionSettlementRefused { unit: key as String, detail: join(["the slot moved while settlement was deciding (expected ", e, ", found ", o, "); the observation is stale, so nothing is released"], "") }
         AttemptTransitionRefused { detail: d } => SessionSettlementRefused { unit: key as String, detail: join(["the slot would not take the terminal generation: ", d], "") }
@@ -1197,9 +1202,9 @@ type SessionSlotObserved
   | SessionSlotObservedAbsent
 
 fn session_placement_slot_records(stores: SessionPlacementStores) -> SessionSlotRecords {
-  match cas_slot_keys(root: stores.slots_root) {
-    CasSlotKeysListed { keys } => {
-      let observed = map(keys, k => match attempt_slot_read(root: stores.slots_root, reference: k) {
+  match attempt_slot_keys(store: stores.slots) {
+    AttemptSlotKeysListed { keys } => {
+      let observed = map(keys, k => match attempt_slot_read(store: stores.slots, reference: k) {
         AttemptSlotHeld { record: r, generation: _ } => SessionSlotObservedHeld { record: r }
         AttemptSlotAbsent => SessionSlotObservedAbsent
         AttemptSlotUnreadable { detail: d } => SessionSlotObservedUnreadable { line: join([k as String, ": ", d], "") }
@@ -1217,8 +1222,7 @@ fn session_placement_slot_records(stores: SessionPlacementStores) -> SessionSlot
         }),
       }
     }
-    CasSlotKeysListingRefused { root: r, detail: d } => SessionSlotRecordsRefused { detail: join(["the session slot store at ", r as String, " could not be listed: ", d], "") }
-    CasSlotKeysSubjectRefused { root: r, cause: c } => SessionSlotRecordsRefused { detail: join(["the session slot store path ", r as String, " is not admissible: ", c], "") }
+    AttemptSlotKeysRefused { detail: d } => SessionSlotRecordsRefused { detail: join(["the session slot store: ", d], "") }
   }
 }
 
@@ -1226,10 +1230,9 @@ fn session_placement_slot_records(stores: SessionPlacementStores) -> SessionSlot
 // production passes session_worker_unit_lifecycle_for_instance, the worker's own read (unit, then its
 // exit record).
 fn session_placement_settle_pass_at(stores: SessionPlacementStores, host: String, lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle, now: EpochSecs) -> SessionSettlePass {
-  match cas_slot_keys(root: stores.slots_root) {
-    CasSlotKeysListed { keys } => SessionSettlePassRan { settlements: map(keys, k => session_settle_one(stores: stores, host: host, key: k, lifecycle: lifecycle_of(k), now: now)) }
-    CasSlotKeysListingRefused { root: r, detail: d } => SessionSettlePassRefused { detail: join(["the session slot store at ", r as String, " could not be listed: ", d], "") }
-    CasSlotKeysSubjectRefused { root: r, cause: c } => SessionSettlePassRefused { detail: join(["the session slot store path ", r as String, " is not admissible: ", c], "") }
+  match attempt_slot_keys(store: stores.slots) {
+    AttemptSlotKeysListed { keys } => SessionSettlePassRan { settlements: map(keys, k => session_settle_one(stores: stores, host: host, key: k, lifecycle: lifecycle_of(k), now: now)) }
+    AttemptSlotKeysRefused { detail: d } => SessionSettlePassRefused { detail: join(["the session slot store: ", d], "") }
   }
 }
 
