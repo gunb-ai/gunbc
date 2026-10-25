@@ -1555,19 +1555,16 @@ pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -
         {
             Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
                 candidates: cands, ..
-            }) => {
-                let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-                crate::v1_compiler_infer_occurrence_binding::ambiguity_labels_from_decide(
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for c in chain.iter().cloned() {
-                            __result.push(c.module_path.clone());
-                        }
-                        __result
-                    }),
-                    name.clone(),
-                )
-            }
+            }) => crate::v1_compiler_infer_occurrence_binding::ambiguity_labels_from_decide(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in cands.iter().cloned() {
+                        __result.push(c.module_path.clone());
+                    }
+                    __result
+                }),
+                name.clone(),
+            ),
             _ => Rc::new(vec![]),
         }
     }
