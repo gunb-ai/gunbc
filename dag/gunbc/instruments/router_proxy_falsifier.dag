@@ -7,7 +7,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.docker.cli_service { DockerCli }
 import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
 import extdeps.proxy.openresty {
-  NginxDirective, NginxToken, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, ListenOn, LocationBlock, ExactMatch, PrefixMatch,
+  NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, ListenOn, LocationBlock, ExactMatch, PrefixMatch,
   LuaPhaseBlock, ContentPhase, LuaSharedDict, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
@@ -229,6 +229,18 @@ fn callouts() -> List<RouterCalloutHook> {
   }
 }
 
+fn token_absent(t: NginxToken?) -> Bool { match t { Absent => true Present { value: _ } => false } }
+fn variable_absent(t: NginxVariable?) -> Bool { match t { Absent => true Present { value: _ } => false } }
+
+fn unsafe_tokens_are_absent() -> Bool {
+  let quote = token_absent(t: nginx_token(text: "x'; os.execute('x"))
+  let dollar = variable_absent(t: nginx_variable(text: "a$b"))
+  let hash = token_absent(t: nginx_token(text: "x#"))
+  let dash = variable_absent(t: nginx_variable(text: "a-b"))
+  let safe = !token_absent(t: nginx_token(text: "x-seat-permit"))
+  quote && dollar && hash && dash && safe
+}
+
 fn row_cases() -> List<FalsifierCase> {
   let body = v1_body(ds: rows())
   let passes = count(filter(body, d => is_pass(d: d)))
@@ -237,12 +249,7 @@ fn row_cases() -> List<FalsifierCase> {
     case_of(identity: "rows_router_location_proxies_only_to_the_authz_supplied_upstream", held: passes == 1 && fixed == 0, observed: concat(concat(to_string(passes), "/"), to_string(fixed))),
     case_of(identity: "rows_retries_and_buffering_are_off", held: count(filter(body, d => is_retry_off(d: d))) == 1 && count(filter(body, d => is_buffering_off(d: d))) == 2, observed: to_string(count(body))),
     case_of(identity: "rows_one_authz_hook_and_one_stream_end_hook", held: count(filter(callouts(), h => is_authz(h: h))) == 1 && count(filter(callouts(), h => is_stream_end(h: h))) == 1 && count(callouts()) == 2, observed: to_string(count(callouts()))),
-    case_of(identity: "rows_red_unsafe_tokens_have_no_constructor_result", held:
-      (match nginx_token(text: "x'; os.execute('x") { Absent => true Present { value: _ } => false })
-      && (match nginx_variable(text: "a$b") { Absent => true Present { value: _ } => false })
-      && (match nginx_token(text: "x#") { Absent => true Present { value: _ } => false })
-      && (match nginx_variable(text: "a-b") { Absent => true Present { value: _ } => false })
-      && (match nginx_token(text: "x-seat-permit") { Absent => false Present { value: _ } => true }), observed: "tokens"),
+    case_of(identity: "rows_red_unsafe_tokens_have_no_constructor_result", held: unsafe_tokens_are_absent(), observed: "tokens"),
   ]
 }
 
