@@ -117,6 +117,7 @@ import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
   SensorsNotTaken, mtcollins1_boot_sensors,
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_hpm_check, mtcollins1_boot_build_reading, build_reading_receipt_line, mtcollins1_boot_console,
+  mtcollins1_boot_mc_info_retain, mtcollins1_boot_fru_print_retain, mtcollins1_boot_mc_info_retained, mtcollins1_boot_fru_print_retained, mc_info_retention_receipt_line, fru_retention_receipt_line,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_findings, harness_finding_text, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
   SmproReading, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, PowerAfterUnobserved, MtCollins1BootRunRecord, run_record_not_taken, MtCollins1MediaAttachRecord, MediaAttachNotAttempted, MtCollins1HandoffMedia, recheck_text, MtCollins1EndMedia, EndMediaNotTaken, EndMediaObserved, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
@@ -2798,6 +2799,17 @@ fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, clearan
       if password_file == "" {
         attempt_configuration_with_pre_power(c: configuration, firmware: PrePowerFirmwareUnread { reason: "no BMC credential path is bound" })
       } else {
+        // THE READ-ONLY PRE-POWER PHASE now keeps THREE verbatim captures beside the hpm check: the
+        // retained hpm table (which mints the build identity), `mc info` (the channel's own account of
+        // what BMC it is), and `fru print 0` board 0 (the inventory the identity rows are made from). All
+        // three operations are declared readonly on extdeps.bmc.ipmi, all three run BEFORE any power or
+        // boot-order write, and none of the two additions answers a question the boot decides on -- the
+        // admission, the selection, and the actuation consume only the hpm table, exactly as before. The
+        // two new writes return their retention; the phase ignores the result HERE (the conclusion's
+        // receipt reads each file back BY THE RUN'S IDENTITY, where a failure surfaces with its cause --
+        // the same write-silent/read-back-loud split the hpm check uses).
+        let mc_kept = mtcollins1_boot_mc_info_retain(username: user, password_file: password_file as NonEmptyStr, run_attempt: run_attempt)
+        let fru_kept = mtcollins1_boot_fru_print_retain(username: user, password_file: password_file as NonEmptyStr, run_attempt: run_attempt)
         attempt_configuration_with_pre_power(c: configuration, firmware: mtcollins1_boot_hpm_check(username: user, password_file: password_file as NonEmptyStr, clearance: clearance, run_attempt: run_attempt))
       }
   }
@@ -3051,6 +3063,11 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
     bundle_write_receipt_line(w: write),
     kvm_observer_receipt_line(rec: attempt.screen),
     build_reading_receipt_line(r: mtcollins1_boot_build_reading(attempt: run)),
+    // THE PRE-POWER RETENTIONS, read back BY THE RUN'S OWN IDENTITY: what this run's `mc info` and
+    // `fru print 0` left on disk, with the byte count derived from the retained content. Like the build
+    // line, these speak only for this attempt -- no run identity, no file, no claim.
+    mc_info_retention_receipt_line(r: mtcollins1_boot_mc_info_retained(attempt: run)),
+    fru_retention_receipt_line(r: mtcollins1_boot_fru_print_retained(attempt: run)),
     concat("account=", join(mtcollins1_power_on_account_notes(a: findings.account), "; ")),
     concat("coverage=", join(map(filter(findings.account.coverage, c => match c.standing { CarrierRead => false CarrierReadEmpty => true CarrierPartial { detail: _ } => true CarrierRefused { cause: _ } => true CarrierNotTaken { reason: _ } => true }), c => concat(carrier_text(c: c.carrier), ": ", carrier_standing_text(s: c.standing))), "; ")),
     concat("harness=", if count(findings.harness) == 0 { "none" } else { join(map(findings.harness, f => harness_finding_text(f: f)), "; ") }),
