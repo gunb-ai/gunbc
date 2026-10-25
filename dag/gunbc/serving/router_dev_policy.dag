@@ -58,6 +58,8 @@ fn router_dev_init_lines(state_dir: String, alias: String) -> List<String> {
 }
 
 fn router_dev_models_lines() -> List<String> {
+  // Pool clients select the first advertised model. Lead with the alias so they can use every
+  // upstream, with the smallest context window that every upstream behind that alias supports.
   [
     "local cjson = require('cjson.safe')",
     "local h = ngx.var.http_authorization or ''",
@@ -65,8 +67,8 @@ fn router_dev_models_lines() -> List<String> {
     "local lens, order, all_len = \{}, \{}, nil",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do local n = tonumber(u.max_model_len) if lens[u.model] == nil then order[#order + 1] = u.model lens[u.model] = false end if n and n > 0 then if not lens[u.model] or n < lens[u.model] then lens[u.model] = n end if not all_len or n < all_len then all_len = n end end end",
     "local data = \{}",
-    "for _, m in ipairs(order) do data[#data + 1] = \{id = m, object = 'model', owned_by = 'gunbc', max_model_len = lens[m] or nil} end",
     "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc', max_model_len = all_len}",
+    "for _, m in ipairs(order) do data[#data + 1] = \{id = m, object = 'model', owned_by = 'gunbc', max_model_len = lens[m] or nil} end",
     "ngx.header['Content-Type'] = 'application/json'",
     "ngx.say(cjson.encode(\{object = 'list', data = data}))",
   ]
