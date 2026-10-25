@@ -3527,31 +3527,33 @@ pub fn expr_literal_symbol_optional(expr: Rc<Node>) -> Option<String> {
 }
 
 pub fn expr_is_any_literal(mut __tco_loop_expr: Rc<Node>) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut expr = __tco_loop_expr;
-        match (*expr.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
-                LiteralValue::LitNull => {
-                    break false;
-                }
-                _ => {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut expr = __tco_loop_expr;
+            match (*expr.expr_data.clone()).clone() {
+                ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+                    LiteralValue::LitNull => {
+                        break false;
+                    }
+                    _ => {
+                        break true;
+                    }
+                },
+                ExprData::ExprElaboratedLiteral { .. } => {
                     break true;
                 }
-            },
-            ExprData::ExprElaboratedLiteral { .. } => {
-                break true;
-            }
-            ExprData::ExprUnaryOp {
-                op: UnaryOpKind::Neg,
-                ..
-            } => {
-                let __tco_0 = unaryop_operand(expr);
-                __tco_loop_expr = __tco_0;
-                continue;
-            }
-            _ => {
-                break false;
+                ExprData::ExprUnaryOp {
+                    op: UnaryOpKind::Neg,
+                    ..
+                } => {
+                    let __tco_0 = unaryop_operand(expr);
+                    __tco_loop_expr = __tco_0;
+                    continue;
+                }
+                _ => {
+                    break false;
+                }
             }
         }
     }
