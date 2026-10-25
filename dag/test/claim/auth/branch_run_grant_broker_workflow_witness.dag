@@ -1,13 +1,22 @@
 module test.claim.auth.branch_run_grant_broker_workflow_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String }
+import std.types { Bool, String, CommitSha }
 import std.optional { Present, Absent }
-import extdeps.github.actions { PermRead, PermWrite }
+import extdeps.github.actions {
+  PermRead, PermWrite, workflow_run_display_title_at,
+  DisplayTitleIsWorkflowName, DisplayTitleIsRenderedRunName, DisplayTitleRenderingUncited,
+}
+import extdeps.github.github { GitHubUser, User }
+import extdeps.github.workflow_runs { WorkflowRun, InProgress, GitHubWorkflowRunId }
+import gunbc.auth.branch_dispatch_federation { BranchRunKey }
 import gunbc.fleet.branch_run_grant_broker_workflow {
   BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused,
   expected_branch_run_grant_broker_workflow_yml, branch_run_grant_broker_job, branch_run_grant_broker_job_condition,
+  branch_run_grant_broker_activity, branch_run_grant_broker_requesting_workflow, branch_run_grant_broker_prefilter,
+  broker_prefilter_admits, BrokerPayloadReading,
 }
+import gunbc.auth.branch_run_grant_broker { broker_decision_for, BrokerDecision, BrokerDispatchesGrant, BrokerAsksForNothing, BrokerRefused }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_job }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -20,17 +29,107 @@ fn broker_yml() -> String {
 }
 
 // THE BROKER IS MAIN'S: a workflow_run workflow, triggered when a fleet-converge run is requested, on a
-// GitHub-hosted runner, filtered to dispatched runs of this repository whose title names a run-scoped mode.
+// GitHub-hosted runner, filtered to dispatched runs of this repository. It reads no title from the event.
 test fn the_broker_is_triggered_by_a_requested_fleet_converge_run() -> Bool {
   let y = broker_yml()
   y.contains("workflow_run:")
     && y.contains("workflows: [fleet-converge]")
     && y.contains("types: [requested]")
     && y.contains("runs-on: ubuntu-24.04-arm")
-    && branch_run_grant_broker_job_condition().contains("github.event.workflow_run.event == 'workflow_dispatch'")
-    && branch_run_grant_broker_job_condition().contains("contains(github.event.workflow_run.display_title, ' hetzner_cloud_server_read ')")
-    && branch_run_grant_broker_job_condition().contains("contains(github.event.workflow_run.display_title, ' mtcollins1_boot ')")
+    && branch_run_grant_broker_job_condition() == "github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_repository.full_name == github.repository"
+    && !y.contains("display_title")
     && y.contains("${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}")
+}
+
+// THE TITLE A REQUESTED EVENT CARRIES for one dispatch, as the broker's activity renders it
+// (extdeps.github.actions workflow_run_display_title_at): at `requested`, the workflow's name.
+fn requested_title(rendered_title: String) -> String {
+  match workflow_run_display_title_at(activity: branch_run_grant_broker_activity) {
+    DisplayTitleIsWorkflowName { ground: _ } => branch_run_grant_broker_requesting_workflow
+    DisplayTitleIsRenderedRunName { ground: _ } => rendered_title
+    DisplayTitleRenderingUncited => branch_run_grant_broker_requesting_workflow
+  }
+}
+
+fn payload(event: String, same_repository: Bool) -> BrokerPayloadReading {
+  BrokerPayloadReading { originating_event: event, head_repository_is_this_repository: same_repository }
+}
+
+// THE RED FOR THE BROKER THAT NEVER FIRED (run 39895483109, skipped for boot run 39895480515): a requested
+// event for a same-repository mtcollins1_boot dispatch reaches the broker job, and the job condition reads
+// no title. The control is the shape that shipped: the title such an event carries does not contain the
+// mode word, so a title filter refuses it.
+test fn a_requested_mtcollins1_boot_dispatch_reaches_the_broker_job() -> Bool {
+  broker_prefilter_admits(p: payload(event: "workflow_dispatch", same_repository: true))
+    && !branch_run_grant_broker_job_condition().contains("display_title")
+    && !requested_title(rendered_title: "fleet-converge mtcollins1_boot srv1 nonce=mc1boot-br-20261023033132").contains(" mtcollins1_boot ")
+}
+
+// THE PREFILTER STILL REFUSES WHAT IT MUST: a fork's dispatch and a run that was not dispatched.
+test fn the_broker_job_refuses_a_fork_and_an_undispatched_run() -> Bool {
+  !broker_prefilter_admits(p: payload(event: "workflow_dispatch", same_repository: false))
+    && !broker_prefilter_admits(p: payload(event: "push", same_repository: true))
+}
+
+fn a_run(title: String, branch: String) -> WorkflowRun {
+  a_run_of(title: title, branch: branch, path: ".github/workflows/fleet-converge.yml", event: "workflow_dispatch")
+}
+
+fn a_run_of(title: String, branch: String, path: String, event: String) -> WorkflowRun {
+  WorkflowRun {
+    id: 7, name: Present { value: title }, display_title: Present { value: title }, path: Present { value: path },
+    head_sha: "0123456789abcdef0123456789abcdef01234567" as CommitSha, head_branch: Present { value: branch },
+    event: event, status: InProgress, conclusion: none,
+    workflow_id: 15, run_number: 900, run_attempt: 1,
+    actor: none, triggering_actor: Present { value: GitHubUser { login: "operator", id: 1, type: User } },
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/7", created_at: "2026-10-23T03:31:33Z",
+    updated_at: "2026-10-23T03:31:33Z", pull_requests: [],
+  }
+}
+
+// THE BROKER DECIDES FROM THE RUN'S RECORD: a rendered branch title for a granted mode dispatches the
+// grant, the same mode at main asks for nothing, and a title with no mode word -- the workflow name
+// the event carried -- refuses rather than skips.
+fn decision_word(d: BrokerDecision) -> String {
+  match d {
+    BrokerDispatchesGrant => "dispatch"
+    BrokerAsksForNothing => "nothing"
+    BrokerRefused { reason: _ } => "refused"
+  }
+}
+
+data the_key: BranchRunKey = BranchRunKey { run_id: GitHubWorkflowRunId { value: 7 }, run_attempt: 1 }
+
+test fn the_broker_decides_from_the_runs_rendered_title() -> Bool {
+  decision_word(d: broker_decision_for(key: the_key, run: a_run(title: "fleet-converge apply srv3 nonce=", branch: "session/x"))) == "dispatch"
+    && decision_word(d: broker_decision_for(key: the_key, run: a_run(title: "fleet-converge apply srv3 nonce=", branch: "main"))) == "nothing"
+    && decision_word(d: broker_decision_for(key: the_key, run: a_run(title: "fleet-converge microvm_network_apply srv3 nonce=", branch: "session/x"))) == "nothing"
+    && decision_word(d: broker_decision_for(key: the_key, run: a_run(title: "fleet-converge", branch: "session/x"))) == "refused"
+    && match broker_decision_for(key: the_key, run: untitled(r: a_run(title: "fleet-converge apply srv3 nonce=", branch: "session/x"))) {
+      BrokerRefused { reason: r } => (r as String).contains("no display_title")
+      BrokerDispatchesGrant => false
+      BrokerAsksForNothing => false
+    }
+}
+
+// RED: GetRun is an authorization input, so a record that disagrees with the run the event named refuses,
+// whatever its title says. Each control carries a granted mode on a branch, which the same record at the
+// right workflow, event and attempt dispatches (the first claim above).
+test fn the_broker_refuses_a_run_record_that_is_not_the_named_fleet_converge_dispatch() -> Bool {
+  let granted = "fleet-converge apply srv3 nonce="
+  decision_word(d: broker_decision_for(key: the_key, run: a_run_of(title: granted, branch: "session/x", path: ".github/workflows/heal.yml", event: "workflow_dispatch"))) == "refused"
+    && decision_word(d: broker_decision_for(key: the_key, run: a_run_of(title: granted, branch: "session/x", path: ".github/workflows/fleet-converge.yml", event: "pull_request"))) == "refused"
+    && decision_word(d: broker_decision_for(key: BranchRunKey { run_id: GitHubWorkflowRunId { value: 8 }, run_attempt: 1 }, run: a_run(title: granted, branch: "session/x"))) == "refused"
+    && decision_word(d: broker_decision_for(key: BranchRunKey { run_id: GitHubWorkflowRunId { value: 7 }, run_attempt: 2 }, run: a_run(title: granted, branch: "session/x"))) == "refused"
+    && decision_word(d: broker_decision_for(key: the_key, run: a_run(title: granted, branch: "session/x"))) == "dispatch"
+}
+
+fn untitled(r: WorkflowRun) -> WorkflowRun {
+  WorkflowRun {
+    id: r.id, name: r.name, display_title: none, path: r.path, head_sha: r.head_sha, head_branch: r.head_branch,
+    event: r.event, status: r.status, conclusion: r.conclusion, workflow_id: r.workflow_id, run_number: r.run_number, run_attempt: r.run_attempt,
+    actor: r.actor, triggering_actor: r.triggering_actor, html_url: r.html_url, created_at: r.created_at, updated_at: r.updated_at, pull_requests: r.pull_requests,
+  }
 }
 
 // THE DISPATCH CREDENTIAL IS THE BROKER'S ALONE: its job writes actions and mints no OIDC token, and

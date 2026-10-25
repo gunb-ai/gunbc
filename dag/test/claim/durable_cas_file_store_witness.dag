@@ -13,11 +13,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
   FilesystemPermissionDenied, FilesystemExactPathKindUnrecognized,
 }
-import gunbc.durable_cas_file_store {
-  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
-  admit_cas_attempt, cas_file_slot_path, observe_cas_slot_state, cas_key_not_slot_addressable_detail,
-  cas_outcome_from_create, cas_classify_generation_read, GenerationRefused, ProbedAbsent, cas_probe_as_observation,
-}
+import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, cas_file_slot_path, observe_cas_slot_state, cas_key_not_slot_addressable_detail, cas_outcome_from_create, cas_classify_generation_read, GenerationRefused, ProbedAbsent, cas_probe_as_observation }
 
 // Evidence for the pure half of the file-backed CAS store. What is DELIBERATELY
 // absent is a hermetic row over file_compare_and_set itself.

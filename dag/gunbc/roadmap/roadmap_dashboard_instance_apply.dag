@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_dashboard_instance_apply
 
-import std.algebra { trim }
+import std.algebra { trim, is_empty }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -22,8 +22,16 @@ import extdeps.git {
   shape_git_fetch_remote_argv,
   shape_git_reset_hard_argv,
   shape_git_rev_parse_argv,
+  git_local_config_get_command, git_shared_repository_posture_readbacks,
 }
 import extdeps.tools.chmod { chmod_binary_path }
+import extdeps.tools.findutils { find_subtree_mode_readback_command }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.access.posix { file_mode_of_octal_text }
+// THE GROUP ROW, FOR THE TWO PRODUCTION BINDINGS IN THIS MODULE: the operation the plan builds, and the
+// readback refusal that checks it. Both compare the tree's group against the SAME declaration the grant
+// argv were built with -- two spellings of a group name is how a migration and its own proof could
+// disagree while both stayed green.
 import extdeps.ssh.session { shape_scp_copy_to_argv }
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
@@ -118,6 +126,12 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardActuationPosture,
   DashboardObserveOnly,
   DashboardActuating,
+  DashboardEnsureGitSharedRepositoryPosture,
+  DashboardMigrateGitWorkerSubtree,
+  dashboard_ensure_git_shared_repository_posture, dashboard_instance_worker_git_subtree_migration,
+  dashboard_git_worker_subtree_path, dashboard_git_worker_directory_children,
+  dashboard_git_worker_subtree_confined_children, dashboard_git_subtree_readback_is_granted,
+  dashboard_git_worker_subtree_walk_depth,
 }
 import gunbc.roadmap.dashboard_provider_readiness { dashboard_provider_device_login_command }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
@@ -224,6 +238,156 @@ fn dashboard_run_target_argvs(
         acc
       },
   )
+}
+
+// THE APPLY'S ONE PROJECTION FROM A BUILT COMMAND TO WHAT IT CAN RUN. The apply's only route to the
+// target is dashboard_target_exec -- the enrolled SSH user, which on the lab IS the instance's directory
+// owner and a member of the attempt group, and that is exactly the principal the posture and the
+// migration must run under: the repository belongs to that account, and chgrp needs group membership.
+// extdeps.exec.command's argv_words, not this module, decides that argv[0] is the program, so a posture
+// or migration command cannot arrive here with the program word in the wrong slot. A command with no
+// words projects to NO argv at all, so a step the model has no argv for runs nothing rather than running
+// something plausible.
+// THE PROJECTION IS TOTAL IN THE ONLY HONEST WAY: a built command with no words projects to NO argv --
+// an empty list -- rather than to an argv with an invented program. There is no legitimate empty
+// FilePath to stand for "nothing to run", and a made-up one would be a program name the model never
+// declared: the step would then run SOMETHING and report a result, which is the fabricated output this
+// whole follow-up exists to remove. The caller folds these lists, so a wordless command contributes no
+// step at all, and dashboard_git_owned_steps_are_runnable below refuses the posture and the migration
+// before either runs if a step is missing its argv rather than skipping it silently.
+fn dashboard_git_owned_step_argv(command: ArgvCommand) -> List<DashboardArgv> {
+  let words = argv_words(command: command)
+  match words.first() {
+    Absent => []
+    Present { value: program } =>
+      [DashboardArgv { program: program as FilePath, args: words.skip(n: 1) }]
+  }
+}
+
+fn dashboard_git_owned_steps_are_runnable(commands: List<ArgvCommand>) -> Bool {
+  all(commands, c => any(argv_words(command: c), w => trim(s: w) != ""))
+}
+
+fn dashboard_run_git_owned_step(
+  instance: HostDashboardInstance,
+  command: ArgvCommand,
+) -> DashboardExecResult {
+  dashboard_run_target_argvs(
+    instance: instance,
+    commands: dashboard_git_owned_step_argv(command: command),
+  )
+}
+
+// THE POSTURE READBACK, AS GIT ANSWERS IT. `git config --local --get <key>` exits 1 with nothing on
+// stdout when the key is absent, so the decision compares TRIMMED STDOUT against the expected value
+// rather than trusting an exit status; a key git has never been told about therefore refuses, which is
+// the direction that matters. The three (key, expected) pairs come from
+// extdeps.git's git_shared_repository_posture_readbacks, built from the SAME rows the three write
+// commands are built from -- rename a key in the model and the write and its readback move together,
+// where a readback naming its own literals would keep checking the old key and call that green.
+fn dashboard_git_local_config_value_is_postured(
+  instance: HostDashboardInstance,
+  repo: FilePath,
+  key: NonEmptyStr,
+  expected: String,
+) -> Bool {
+  let read = dashboard_run_git_owned_step(
+    instance: instance,
+    command: git_local_config_get_command(repo: repo, key: key),
+  )
+  read.success && trim(s: read.stdout) == expected
+}
+
+fn dashboard_git_shared_repository_posture_readback_refusal(
+  instance: HostDashboardInstance,
+  repo: FilePath,
+) -> String {
+  let missing = filter(
+    git_shared_repository_posture_readbacks,
+    expectation =>
+      !dashboard_git_local_config_value_is_postured(
+        instance: instance,
+        repo: repo,
+        key: expectation.key,
+        expected: expectation.expected,
+      ),
+  )
+  if is_empty(missing) {
+    ""
+  } else {
+    join([
+      "the posture did not take: ",
+      join(map(missing, e => concat(e.key as String, "=", e.expected)), ", "),
+      " is not what git reports in ",
+      repo as String,
+      " -- the write ran and the readback disagreed, so the receipt refuses",
+    ], "")
+  }
+}
+
+// THE MIGRATION READBACK, SUBTREE BY SUBTREE. Each subtree gets its own bounded walk and its own
+// decision, so a refusal can name WHICH subtree failed; the decision itself is the model's
+// dashboard_git_subtree_readback_is_granted -- the same figure the claims assert -- so the apply and the
+// claims cannot drift into disagreeing about what "granted" means. An empty receipt refuses: a walk that
+// matched nothing proves nothing about an existing tree, which is precisely the failure mode this
+// follow-up exists to kill (recurring failure mode
+// directory_ownership_assertion_stops_at_the_top_level).
+// THE PRODUCTION-ROUTE FOLD FOR ONE SUBTREE: run the model's own walk over the subtree and decide with
+// the model's own fold. THE GROUP IS SUPPLIED BY THE CALLER, EXPLICITLY AND WITHOUT A DEFAULT, for the
+// same reason the migration takes one: the fold compares find's `%g` against the token the grant was
+// told, and only the caller knows which token its host resolves. The apply's refusal passes
+// fleet_posix_worker_shared_group_name, the one declaration (see
+// dashboard_git_worker_subtree_migration_readback_refusal); a witness on a machine that has no such group
+// passes the group it actually grouped to, and the dry pairing claim
+// the_production_route_names_the_declared_group_in_every_grant_command keeps the production binding
+// executed so the substituted spelling is never the only route through this code.
+fn dashboard_git_worker_subtree_is_granted(
+  instance: HostDashboardInstance,
+  child: NonEmptyStr,
+  group: NonEmptyStr,
+) -> Bool {
+  let read = dashboard_run_git_owned_step(
+    instance: instance,
+    command: find_subtree_mode_readback_command(
+      target: dashboard_git_worker_subtree_path(instance: instance, child: child),
+      pruned: dashboard_git_worker_subtree_confined_children(child: child),
+      depth: dashboard_git_worker_subtree_walk_depth,
+    ),
+  )
+  read.success && dashboard_git_subtree_readback_is_granted_under(
+    top: dashboard_git_worker_subtree_granted_directory_mode(child: child),
+    group: group,
+    files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: child),
+    receipt: read.stdout,
+  )
+}
+
+fn dashboard_git_worker_subtree_migration_readback_refusal(
+  instance: HostDashboardInstance,
+  group: NonEmptyStr,
+) -> String {
+  let missing = filter(
+    dashboard_git_worker_directory_children,
+    child => !dashboard_git_worker_subtree_is_granted(
+      instance: instance,
+      child: child,
+      // THE TOKEN THE MIGRATION'S chgrp WAS TOLD, handed down from the op. This refusal is what the apply
+      // returns when the grant did not land, so it must check exactly the group the grant set -- not a
+      // second, independent reading of the declared row, which could drift from the one the command used.
+      group: group,
+    ),
+  )
+  if is_empty(missing) {
+    ""
+  } else {
+    join([
+      "the subtree re-group did not take for ",
+      join(missing, ", "),
+      " -- the readback walk came back empty, unreadable, holding a line whose group is not the shared",
+      " attempt group, or holding a mode outside the granted set, so the receipt refuses rather than",
+      " claiming a grant it did not see",
+    ], "")
+  }
 }
 
 fn dashboard_next_path(path: FilePath) -> FilePath {
@@ -666,6 +830,90 @@ fn dashboard_apply_provision_op(
           codex_home: state_root as String,
         ),
       )
+    // THE SHARED-REPOSITORY POSTURE, EXECUTED BY THE APPLY, RUN TO COMPLETION AND READ BACK. This is
+    // the op's only execution site, and it is the FIRST thing in the plan that can touch the
+    // repository: core.sharedRepository decides the mode git gives every file and directory it creates
+    // from here on, so an attempt worktree added before this arm runs would arrive 0755/0644 and no
+    // later re-group could fix the files git had already opened without the group bit.
+    //
+    // WHY THE APPLY AND NOT A HOST STEP: the enrolled SSH user IS the repository's owner and a member
+    // of the attempt group (measured on srv1, 2026-10-17), so this needs no privilege the deploy does
+    // not already have -- and running it here is what puts its proof in the receipt the fold below
+    // builds from this result.
+    //
+    // WHY READ BACK AT ALL: writing and believing is the failure this follow-up exists to kill. Each of
+    // the three keys is asked of git itself through the model's own readback rows; if git reports
+    // anything else the arm REFUSES with the keys named, and the refusal carries the receipts of the
+    // steps that did run, so a half-applied instance is visible rather than inferred.
+    DashboardEnsureGitSharedRepositoryPosture { repo } => {
+      let posture_steps = dashboard_ensure_git_shared_repository_posture(instance: instance)
+      if !dashboard_git_owned_steps_are_runnable(commands: posture_steps) {
+        dashboard_exec_refused(detail: "the shared-repository posture has a step with no argv to run")
+      } else {
+      let wrote = dashboard_run_target_argvs(
+        instance: instance,
+        commands: flat_map(
+          posture_steps,
+          command => dashboard_git_owned_step_argv(command: command),
+        ),
+      )
+      if !wrote.success {
+        wrote
+      } else {
+        let posture_detail = dashboard_git_shared_repository_posture_readback_refusal(
+          instance: instance,
+          repo: repo,
+        )
+        if posture_detail == "" {
+          dashboard_exec_ok(stdout: concat("git shared-repository posture read back in ", repo as String))
+        } else {
+          dashboard_exec_refused(detail: posture_detail)
+        }
+      }
+      }
+    }
+    // THE ONE-TIME RE-GROUP OF THE SUBTREES AN EXISTING REPOSITORY ALREADY HOLDS, executed and read
+    // back the same way. IT RUNS UNDER THE APPLY'S PRINCIPAL BECAUSE IT MUST: chgrp to the attempt group
+    // requires the caller to be a member of it, and the existing entries belong to the instance's
+    // directory owner -- which is who this transport logs in as. The sweep is bounded and its prune
+    // group is declared (dashboard_instance_worker_git_subtree_migration says what each subtree is given
+    // and why the confined children are excluded); the readback then walks the SAME subtrees and applies
+    // the model's OWN grantedness figure to what find printed, refusing on an empty or unreadable
+    // receipt rather than accepting a grant it did not observe.
+    DashboardMigrateGitWorkerSubtree { repo: _, group: group } => {
+      // THE TOKEN THE CALLER CARRIES, USED BY BOTH HALVES OF THIS ARM: the argv that grant, and the fold
+      // that reads the grant back, get the SAME value from the operation -- not two reads of a row that
+      // could be edited independently. Production reaches here through the plan site, which binds
+      // fleet_posix_worker_shared_group_name; the wet witness binds a token its host resolves.
+      let migration_steps = dashboard_instance_worker_git_subtree_migration(
+        instance: instance,
+        group: group,
+      )
+      if !dashboard_git_owned_steps_are_runnable(commands: migration_steps) {
+        dashboard_exec_refused(detail: "the git worker subtree migration has a step with no argv to run")
+      } else {
+      let migrated = dashboard_run_target_argvs(
+        instance: instance,
+        commands: flat_map(
+          migration_steps,
+          command => dashboard_git_owned_step_argv(command: command),
+        ),
+      )
+      if !migrated.success {
+        migrated
+      } else {
+        let subtree_detail = dashboard_git_worker_subtree_migration_readback_refusal(
+          instance: instance,
+          group: group,
+        )
+        if subtree_detail == "" {
+          dashboard_exec_ok(stdout: "git worker subtree re-group read back for objects/, refs/ and logs/")
+        } else {
+          dashboard_exec_refused(detail: subtree_detail)
+        }
+      }
+      }
+    }
   }
 }
 
@@ -1978,6 +2226,12 @@ fn dashboard_bootstrap_only_ops(
       DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => false
       DashboardVerifyProviderRuntime { executable: _, state_root: _ } => false
       DashboardVerifyProviderAuth { executable: _, state_root: _ } => false
+      // Both git repository steps belong to the ACTUATING plan, not to the credential-free bootstrap:
+      // the bootstrap's job ends at creating the provider state root, and neither the posture nor the
+      // subtree re-group is anything it needs to do that. They are named here explicitly because the
+      // match is exhaustive -- a new op cannot slip into the bootstrap by accident.
+      DashboardEnsureGitSharedRepositoryPosture { repo: _ } => false
+      DashboardMigrateGitWorkerSubtree { repo: _ } => false
     })
 }
 
@@ -2119,28 +2373,12 @@ fn srv2_deploy_ensure_roots_cli() -> ProcessExit {
   )
 }
 
-fn srv1_lab_dashboard_apply() -> DashboardInstanceApplyResult {
-  dashboard_instance_apply(
-    instance: srv1_lab_dashboard_instance(),
-    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
-  )
-}
-
-fn srv1_lab_dashboard_preflight() -> DashboardApplyPreflightResult {
-  dashboard_instance_apply_preflight(
-    instance: srv1_lab_dashboard_instance(),
-    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
-  )
-}
-
-fn srv1_lab_dashboard_preflight_json() -> String {
-  serialize_json(v: dashboard_apply_preflight_json_value(
-    result: srv1_lab_dashboard_preflight(),
-  ))
-}
-
-fn srv1_lab_dashboard_preflight_wet() -> ProcessExit {
-  let result = srv1_lab_dashboard_preflight()
+// THE EXIT MAPPING TAKES THE INSTANCE AND ITS PEER; ONLY THE NAMED ENTRIES BELOW CHOOSE THEM. Each
+// entry is selected by function name, resolves its instance and peer once, and hands both down;
+// nothing beneath it names an instance, and a newly declared lab adds two one-line entries rather
+// than another copy of the exit mapping.
+fn dashboard_instance_preflight_wet(instance: HostDashboardInstance, production: DashboardProductionPeer) -> ProcessExit {
+  let result = dashboard_instance_apply_preflight(instance: instance, production: production)
   match result {
     DashboardApplyPreflightReady {
       instance_id: _,
@@ -2162,17 +2400,27 @@ fn srv1_lab_dashboard_preflight_wet() -> ProcessExit {
   }
 }
 
-fn srv1_lab_dashboard_apply_json() -> String {
-  serialize_json(v: dashboard_apply_result_json_value(result: srv1_lab_dashboard_apply()))
-}
-
-fn srv1_lab_dashboard_apply_wet() -> ProcessExit {
-  let result = srv1_lab_dashboard_apply()
+fn dashboard_instance_apply_wet(instance: HostDashboardInstance, production: DashboardProductionPeer) -> ProcessExit {
+  let result = dashboard_instance_apply(instance: instance, production: production)
   match result {
     DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
     DashboardApplyRefused { instance_id: _, step: _, detail: _, receipts: _ } =>
       exit_failure(reason: serialize_json(v: dashboard_apply_result_json_value(result: result)))
   }
+}
+
+fn srv1_lab_dashboard_preflight_wet() -> ProcessExit {
+  dashboard_instance_preflight_wet(
+    instance: srv1_lab_dashboard_instance(),
+    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
+  )
+}
+
+fn srv1_lab_dashboard_apply_wet() -> ProcessExit {
+  dashboard_instance_apply_wet(
+    instance: srv1_lab_dashboard_instance(),
+    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
+  )
 }
 
 // BEFORE THIS BLOCK THIS MODULE CONTAINED THE STRING srv2 ZERO TIMES. Roughly sixteen hundred lines
@@ -2195,59 +2443,17 @@ fn srv1_lab_dashboard_apply_wet() -> ProcessExit {
 // port nobody serves. Being disjoint from something that is not there is not a property worth
 // checking; declaring that it is not there is.
 
-fn srv2_lab_dashboard_apply() -> DashboardInstanceApplyResult {
-  dashboard_instance_apply(
-    instance: srv2_lab_dashboard_instance(),
-    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
-  )
-}
-
-fn srv2_lab_dashboard_preflight() -> DashboardApplyPreflightResult {
-  dashboard_instance_apply_preflight(
-    instance: srv2_lab_dashboard_instance(),
-    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
-  )
-}
-
-fn srv2_lab_dashboard_preflight_json() -> String {
-  serialize_json(v: dashboard_apply_preflight_json_value(
-    result: srv2_lab_dashboard_preflight(),
-  ))
-}
-
 fn srv2_lab_dashboard_preflight_wet() -> ProcessExit {
-  let result = srv2_lab_dashboard_preflight()
-  match result {
-    DashboardApplyPreflightReady {
-      instance_id: _,
-      source_revision: _,
-    } => ExitSuccess
-    DashboardApplyPreflightBootstrapPending {
-      instance_id: _,
-      source_revision: _,
-      state_root: _,
-      remediation: _,
-    } =>
-      exit_failure(reason: serialize_json(v: dashboard_apply_preflight_json_value(
-        result: result,
-      )))
-    DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
-      exit_failure(reason: serialize_json(v: dashboard_apply_preflight_json_value(
-        result: result,
-      )))
-  }
-}
-
-fn srv2_lab_dashboard_apply_json() -> String {
-  serialize_json(v: dashboard_apply_result_json_value(result: srv2_lab_dashboard_apply()))
+  dashboard_instance_preflight_wet(
+    instance: srv2_lab_dashboard_instance(),
+    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
+  )
 }
 
 fn srv2_lab_dashboard_apply_wet() -> ProcessExit {
-  let result = srv2_lab_dashboard_apply()
-  match result {
-    DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
-    DashboardApplyRefused { instance_id: _, step: _, detail: _, receipts: _ } =>
-      exit_failure(reason: serialize_json(v: dashboard_apply_result_json_value(result: result)))
-  }
+  dashboard_instance_apply_wet(
+    instance: srv2_lab_dashboard_instance(),
+    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
+  )
 }
 

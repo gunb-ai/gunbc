@@ -1,7 +1,7 @@
 module test.claim.approval_decision_store_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
+import std.types { Bool, NonEmptyStr, String, Timestamp, Secret, List }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKey, HmacSha256, mac_verify, MacVerified, MacTagMismatch, mac_key_material_hex_length, mac_suite_key_size }
 import std.measure { byte_size_count }
@@ -18,7 +18,10 @@ import gunbc.auth.approval_decision_store {
   claims_for, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
   IdentityHeaderTrustEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustNotEstablished, approval_identity_trust, approval_identity_trust_for,
   redeem_over_store, RedemptionIdentityUntrusted,
+  EscalationSlot, EscalationPending, EscalationDecided, EscalationUnreadable, EscalationNotFiled,
+  PendingFold, pending_fold_step, request_needs_attention_at,
 }
+import gunbc.auth.approval_broker { BrokerApproved, BrokerDenied, ExecutionObligation }
 import extdeps.ietf.http_semantics { POST, GET }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -162,4 +165,67 @@ test fn redemption_refuses_first_on_an_untrusted_identity_header() -> Bool {
       presented_identity: tailnet_identity_of(header_value: "briansrls@gmail.com"),
       observed_at: "2026-09-16T21:00:00Z",
     ) { RedemptionIdentityUntrusted { blocker: _ } => true  _ => false }
+}
+
+// ── what the phone lists: only the requests that still need the operator ───────────────────────
+// The slots are SUPPLIED to the listing's own step (pending_fold_step, the step pending_escalations
+// folds over the store's listing); the store route that produces them is executed by
+// test.claim.approval_decision_store_wet_witness against a real store.
+
+type ObservedEscalation {
+  escalation_id: NonEmptyStr
+  slot: EscalationSlot
+}
+
+fn fx_request_named(id: NonEmptyStr) -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: id,
+    request_revision: fixture_request().request_revision,
+    attempt: fixture_request().attempt,
+    requester: fixture_request().requester,
+    purpose: fixture_request().purpose,
+    destructive: true,
+    issued_at: fixture_request().issued_at,
+    expires_at: fixture_request().expires_at,
+    key_id: approval_mac_key_id,
+  }
+}
+
+fn fx_listed_ids(observed: List<ObservedEscalation>, at: Timestamp) -> String {
+  let f = fold(observed, init: PendingFold { pending: [], unreadable: [] }, f: (acc, o) => pending_fold_step(acc: acc, escalation_id: o.escalation_id, slot: o.slot, observed_at: at))
+  join(map(f.pending, r => r.escalation_id as String), ",") + "|" + join(map(f.unreadable, x => x as String), ",")
+}
+
+fn fx_mixed_store() -> List<ObservedEscalation> {
+  [
+    ObservedEscalation { escalation_id: "esc-open", slot: EscalationPending { request: fx_request_named(id: "esc-open") } },
+    ObservedEscalation { escalation_id: "esc-approved", slot: EscalationDecided { decision: BrokerApproved {
+      escalation_id: "esc-approved", revision: fixture_request().request_revision, decided_by: "operator", decided_at: "2026-09-17T10:00:00Z",
+      obligation: ExecutionObligation { authority: approval_capability_authority, intent_revision: fixture_request().request_revision, execute_by: fixture_request().expires_at },
+    } } },
+    ObservedEscalation { escalation_id: "esc-denied", slot: EscalationDecided { decision: BrokerDenied {
+      escalation_id: "esc-denied", revision: fixture_request().request_revision, decided_by: "operator", decided_at: "2026-09-17T10:00:00Z", reason: "no",
+    } } },
+    ObservedEscalation { escalation_id: "esc-gone", slot: EscalationNotFiled },
+  ]
+}
+
+// THE DISCRIMINATING RED for list membership: a decided request is not listed, an expired one is not
+// listed, and the open one is (the positive control) -- so the empty list at expiry is the rule, not a
+// listing that lists nothing.
+test fn only_an_open_unexpired_request_is_listed() -> Bool {
+  fx_listed_ids(observed: fx_mixed_store(), at: "2026-09-17T12:00:00Z") == "esc-open|"
+    && fx_listed_ids(observed: fx_mixed_store(), at: "2026-09-17T20:00:01Z") == "|"
+}
+
+// The boundary instant belongs to the refusal, exactly as redemption treats it (capability_live_at):
+// the last listed second is the one before expires_at.
+test fn a_request_leaves_the_list_at_its_expiry_instant() -> Bool {
+  request_needs_attention_at(request: fixture_request(), observed_at: "2026-09-17T19:59:59Z")
+    && !request_needs_attention_at(request: fixture_request(), observed_at: "2026-09-17T20:00:00Z")
+}
+
+// An unreadable slot stays a refusal beside the rows, never silently dropped with the expired ones.
+test fn an_unreadable_slot_is_still_reported_beside_the_open_rows() -> Bool {
+  fx_listed_ids(observed: concat(fx_mixed_store(), [ObservedEscalation { escalation_id: "esc-torn", slot: EscalationUnreadable { detail: "torn" } }]), at: "2026-09-17T20:00:01Z") == "|esc-torn"
 }

@@ -95,13 +95,16 @@ pub fn sorted_ascending(xs: Rc<Vec<i64>>) -> bool {
 pub fn postcondition_holds(parsed: Rc<ParseWithTableResult>) -> bool {
     {
         let ids = Rc::new({
-            let mut __sorted: Vec<_> = published_ids(parsed.clone()).iter().cloned().collect();
-            __sorted.sort_by(|a: &i64, b: &i64| {
-                let __ka = (|x: i64| x.clone())(a.clone());
-                let __kb = (|x: i64| x.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            let mut __keyed: Vec<_> = published_ids(parsed.clone())
+                .iter()
+                .cloned()
+                .map(|__e: i64| {
+                    let __k = (|x: i64| x.clone())(__e.clone());
+                    (__k, __e)
+                })
+                .collect();
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         ((parsed_ok(parsed.clone()) && {
             let mut __all = true;
@@ -119,7 +122,7 @@ pub fn postcondition_holds(parsed: Rc<ParseWithTableResult>) -> bool {
 }
 
 pub fn chain_terms(upto: i64) -> Rc<Vec<i64>> {
-    chain_terms_loop(Rc::new(vec![]), 1, upto.clone())
+    chain_terms_loop(Rc::new(vec![]), 1, upto)
 }
 
 pub fn chain_terms_loop(
@@ -127,24 +130,26 @@ pub fn chain_terms_loop(
     mut __tco_loop_next: i64,
     mut __tco_loop_upto: i64,
 ) -> Rc<Vec<i64>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        #[allow(unused_mut)]
-        let mut next = __tco_loop_next;
-        #[allow(unused_mut)]
-        let mut upto = __tco_loop_upto;
-        if (next.clone() > upto.clone()) {
-            break acc.clone();
-        } else {
-            {
-                let __tco_0 = v1_rt::concat(acc, Rc::new(vec![next.clone()]));
-                let __tco_1 = v1_rt::int_add(next.clone(), 1);
-                let __tco_2 = upto;
-                __tco_loop_acc = __tco_0;
-                __tco_loop_next = __tco_1;
-                __tco_loop_upto = __tco_2;
-                continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            #[allow(unused_mut)]
+            let mut next = __tco_loop_next;
+            #[allow(unused_mut)]
+            let mut upto = __tco_loop_upto;
+            if (next.clone() > upto.clone()) {
+                break acc.clone();
+            } else {
+                {
+                    let __tco_0 = v1_rt::concat(acc, Rc::new(vec![next.clone()]));
+                    let __tco_1 = v1_rt::int_add(next.clone(), 1);
+                    let __tco_2 = upto;
+                    __tco_loop_acc = __tco_0;
+                    __tco_loop_next = __tco_1;
+                    __tco_loop_upto = __tco_2;
+                    continue;
+                }
             }
         }
     }
@@ -154,7 +159,7 @@ pub fn chain_source(terms: i64) -> String {
     v1_rt::concat(
         v1_rt::concat(
             "module zqxalloc.user\n\ndata zqx_chain: Int = ".to_string(),
-            chain_terms(terms.clone())
+            chain_terms(terms)
                 .iter()
                 .cloned()
                 .fold("".to_string(), |s: String, k: i64| {

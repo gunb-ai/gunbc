@@ -39,7 +39,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardObserveOnly,
   DashboardActuating,
-  DashboardInstanceProvisionOp,
+  DashboardInstanceProvisionOp, DashboardEnsureGitSharedRepositoryPosture,
+  DashboardMigrateGitWorkerSubtree,
   DashboardHydrateControllerHistory,
   DashboardPrepareGitBundle,
   DashboardStageGitBundle,
@@ -124,10 +125,10 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   dashboard_instance_paths_are_owned(instance: lab)
-    && lab.provision_parent_root == "/home/briansrls/.local/share"
-    && lab.repo_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/source"
-    && dashboard_instance_dispatch_worktree_root(instance: lab) == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempts"
-    && lab.local_origin_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/origin.git"
+    && lab.provision_parent_root == "/opt/gunbc-lab"
+    && lab.repo_root == "/opt/gunbc-lab/codex-provider-feedback-v0/source"
+    && dashboard_instance_dispatch_worktree_root(instance: lab) == "/opt/gunbc-lab/codex-provider-feedback-v0/attempts"
+    && lab.local_origin_root == "/opt/gunbc-lab/codex-provider-feedback-v0/origin.git"
 }
 
 test fn dashboard_lab_and_production_owned_paths_are_disjoint() -> Bool {
@@ -236,10 +237,43 @@ fn plan_binds_source_ref_translation(
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 9
+  // ELEVEN, where srv2_lab -- the otherwise-identical instance whose worker is STILL the service user --
+  // stays at nine. The tenth and eleventh ops are WORKER-ROOT-EQUIVALENT-3's shared-repository posture
+  // and its one-time subtree migration, and they exist for one reason each: with a dedicated worker the
+  // repository must be group-shared BEFORE an attempt's linked worktree is added, because git stamps the
+  // worktree's private files (index, HEAD, logs/HEAD) with the mode it has at creation time; and the
+  // directories that ALREADY EXIST in that repository (objects/f9 and the rest of the fan-out, refs/,
+  // logs/) were created by the owner alone, so a group bit asserted on the three tops does not reach
+  // them -- the first worker commit dies inside objects/f9. Both are named by the ops below rather than
+  // only counted, and their ORDER is pinned by name in the other witness. Asserted by count as well as
+  // by name, so a rename or a silently dropped op cannot hide behind either.
+  count(plan) == 11
+    && plan_has_one_shared_repository_posture(plan: plan, instance: lab)
+    && plan_has_one_worker_subtree_migration(plan: plan, instance: lab)
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
+}
+
+// THE POSTURE OP, exactly once, bound to THIS instance's repository. Exactly once matters: two of them
+// would mean the plan is not a single pass over one instance. The claim lives here, with the plan's own
+// cardinality, because this is the claim that goes red when the op is dropped -- and a dropped posture op
+// is invisible to every other claim about this plan.
+fn plan_has_one_shared_repository_posture(plan: List<DashboardInstanceProvisionOp>, instance: HostDashboardInstance) -> Bool {
+  count(filter(xs: plan, predicate: op => match op {
+    DashboardEnsureGitSharedRepositoryPosture { repo } => repo == instance.repo_root
+    _ => false
+  })) == 1
+}
+
+// THE MIGRATION OP, exactly once, bound to THIS instance's repository. It is the op that makes the
+// follow-up to #14270 real: the provider asserts the grant on the three subtree TOPS, and this is the
+// declared, bounded, readback-checked step that carries it down into the entries git already made.
+fn plan_has_one_worker_subtree_migration(plan: List<DashboardInstanceProvisionOp>, instance: HostDashboardInstance) -> Bool {
+  count(filter(xs: plan, predicate: op => match op {
+    DashboardMigrateGitWorkerSubtree { repo } => repo == instance.repo_root
+    _ => false
+  })) == 1
 }
 
 fn lab_observed(
@@ -432,7 +466,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
         staged_bundle,
       } =>
         controller_repo == srv1_dashboard_controller_repo
-          && staged_bundle == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle"
+          && staged_bundle == "/opt/gunbc-lab/codex-provider-feedback-v0/inbox/source.bundle"
       _ => false
     })
 }
@@ -1177,8 +1211,8 @@ test fn the_lab_publishes_into_its_integration_branch_and_live_into_main() -> Bo
 // stops its consumer at the first read: credential slots on 2026-10-16, worktree claims on 2026-10-20. The
 // join is over the roots the instance's durable slot stores read under it, and the creator it asks for is the
 // one instance directory list. The session slot store is the declared exception: its creator is
-// belt_session_slots_ensure, which creates exactly stores.slots_root, the path session_placement_stores
-// derives; consolidating it into the list is a named follow-up. THE LIST OF STORES IS AUTHORED, which is the
+// belt_session_slots_ensure, which creates exactly the root of stores.slots, the SlotStore session_placement_stores
+// builds and every lifecycle write uses; consolidating it into the list is a named follow-up. THE LIST OF STORES IS AUTHORED, which is the
 // same declared limit as the directory list itself (D14 step 4).
 fn slot_store_roots_without_a_creator(instance: HostDashboardInstance, demands: List<OwnedDirectoryTarget>) -> List<FilePath> {
   filter([

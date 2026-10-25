@@ -4,13 +4,14 @@
 use crate::std_coercion::ConversionPhase::{InverseUnfoldPhase, UnfoldPhase};
 pub use crate::std_coercion::{ConversionPhase, ConversionPlan};
 pub use crate::std_decl_ref::{decl_ref, DeclarationRef};
+use crate::std_literal_elaboration::IntegerExtent::{UnboundedIntegers, UnboundedNaturals};
 use crate::std_literal_elaboration::KernelGroundingView::{
     PeanoGroundingView, SignedGroundingView,
 };
 use crate::std_literal_elaboration::LiteralSourceKind::{KernelIntLiteral, KernelStringLiteral};
 use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
 pub use crate::std_literal_elaboration::{
-    KernelGrounding, KernelGroundingArm, KernelGroundingView, KernelMintDeclaration,
+    IntegerExtent, KernelGrounding, KernelGroundingArm, KernelGroundingView, KernelMintDeclaration,
     LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
 };
 pub use crate::std_operator_realization::StructuralOrderingBinding;
@@ -32,11 +33,11 @@ pub fn peano_literal_homomorphism(
 ) -> Rc<LiteralHomomorphism> {
     Rc::new(LiteralHomomorphism {
         source_kind: LiteralSourceKind::KernelIntLiteral,
-        destination: crate::std_decl_ref::decl_ref(module_path.clone(), nat.clone()),
+        destination: crate::std_decl_ref::decl_ref(module_path.clone(), nat),
         element: std::option::Option::None,
         producer: Rc::new(LiteralUnfolding::PeanoUnfold {
-            zero: crate::std_decl_ref::decl_ref(module_path.clone(), zero.clone()),
-            succ: crate::std_decl_ref::decl_ref(module_path.clone(), succ.clone()),
+            zero: crate::std_decl_ref::decl_ref(module_path.clone(), zero),
+            succ: crate::std_decl_ref::decl_ref(module_path.clone(), succ),
             prev_field: prev_field.clone(),
         }),
     })
@@ -93,9 +94,9 @@ pub fn structural_ordering_binding(
     ordering: String,
 ) -> Rc<StructuralOrderingBinding> {
     Rc::new(StructuralOrderingBinding {
-        carrier: crate::std_decl_ref::decl_ref(carrier_module.clone(), carrier.clone()),
-        compare: crate::std_decl_ref::decl_ref(compare_module.clone(), compare.clone()),
-        ordering: crate::std_decl_ref::decl_ref(ordering_module.clone(), ordering.clone()),
+        carrier: crate::std_decl_ref::decl_ref(carrier_module, carrier),
+        compare: crate::std_decl_ref::decl_ref(compare_module, compare),
+        ordering: crate::std_decl_ref::decl_ref(ordering_module, ordering),
     })
 }
 
@@ -114,14 +115,12 @@ pub fn kernel_grounding_rows() -> Rc<Vec<Rc<KernelGrounding>>> {
                 Rc::new(vec![Rc::new(KernelGrounding {
         source_kind: LiteralSourceKind::KernelIntLiteral,
         carrier: crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
-        min: Some(0),
-        max: std::option::Option::None,
+        extent: IntegerExtent::UnboundedNaturals,
         view: Rc::new(KernelGroundingView::PeanoGroundingView),
     }), Rc::new(KernelGrounding {
         source_kind: LiteralSourceKind::KernelIntLiteral,
         carrier: crate::std_decl_ref::decl_ref("std.integer".to_string(), "Int".to_string()),
-        min: std::option::Option::None,
-        max: std::option::Option::None,
+        extent: IntegerExtent::UnboundedIntegers,
         view: Rc::new(KernelGroundingView::SignedGroundingView {
         nonnegative: Rc::new(KernelGroundingArm {
         constructor: "NonNegative".to_string(),

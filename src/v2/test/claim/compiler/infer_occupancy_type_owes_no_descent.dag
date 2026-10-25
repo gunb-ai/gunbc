@@ -32,20 +32,22 @@ import v2.std.node {
   TypeNode,
   LoopBoundEdge,
   core_edge_label,
+  NotADeclaration
 }
 
 fn cod_loop(measure: Symbol) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: dag_int_literal_fixture_one() },
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: LoopBoundEdge),
         target: Node {
           kind: TypeNode { connective: Atom { identity: measure } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

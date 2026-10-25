@@ -162,12 +162,12 @@ fn membership_subset_standing(
   match inner {
     MembershipUnobservable { cause: c } =>
       MembershipInvariantNotEvaluated { relation: relation, cause: concat("inner side unobservable: ", c) }
-    MembershipObserved { members: is } =>
+    MembershipObserved { members: ins } =>
       match outer {
         MembershipUnobservable { cause: c } =>
           MembershipInvariantNotEvaluated { relation: relation, cause: concat("outer side unobservable: ", c) }
         MembershipObserved { members: os } => {
-          let outside = members_outside(inner: is, outer: os)
+          let outside = members_outside(inner: ins, outer: os)
           if count(outside) == 0 {
             MembershipInvariantHolds
           } else {

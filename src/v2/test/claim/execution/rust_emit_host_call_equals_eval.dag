@@ -1,5 +1,6 @@
 module v2.test.claim.execution.rust_emit_host_call_equals_eval
 
+
 import std.types { List, Map }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
@@ -46,7 +47,7 @@ import v2.std.diagnostic {
   outcome_accepted
 }
 import v2.std.node { Node, Symbol }
-import v2.std.runtime {
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,
   ControlTransfer,
@@ -268,7 +269,7 @@ test fn rust_emit_host_call_eval_subgraph_holds() -> Bool {
     inputs: inputs_root_only(root: rust_call_helper_eval_subgraph)
   ) {
     Accepted { value: v, diagnostics: d } =>
-      (v == emit_call_eval_octet_value(n: 7)) && (d == None)
+      ((runtime_value_equality(a: v, b: emit_call_eval_octet_value(n: 7)) == RuntimeValuesEqual)) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }

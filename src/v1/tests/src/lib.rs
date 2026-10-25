@@ -10,6 +10,9 @@ pub mod helpers;
 mod grounded_shared_carrier_wrap_test;
 
 #[cfg(test)]
+mod sort_by_decorate_once_test;
+
+#[cfg(test)]
 mod map_insert_record_shaped_refusal_test;
 
 #[cfg(test)]
@@ -26,6 +29,8 @@ mod anonymous_record_struct_resolution_test;
 mod class_b_trim_specimen_test;
 #[cfg(test)]
 mod decl_facts_dimensionless_projection_test;
+#[cfg(test)]
+mod declaration_named_in_module_reexport_test;
 #[cfg(test)]
 mod emitted_symbol_collision_test;
 #[cfg(test)]
