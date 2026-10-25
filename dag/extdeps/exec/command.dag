@@ -229,6 +229,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_regroup_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_group_writable_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_mode_readback_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_ungranted_entry_refusal_command"),
 
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
