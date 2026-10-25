@@ -6488,8 +6488,9 @@ fn direct_call_formal_has_unbound_type_variable(n: Node) -> Bool {
 
 fn direct_call_formal_has_unbound_type_variable_at(n: Node, depth: Int) -> Bool {
   if depth >= 16 { false } else {
-  let here = match n.inferred {
-    Present { value: TypeVariable { id: _ } } => true
+  // A header parameter is a variable by its declaration identity (declaration_with_parameter_marks) as
+  // well as by the TypeVariable an inference stamps: the environment's copy carries only the former.
+  let here = generic_substitution_key(n: n) != none || match n.inferred {
     Present { value: Resolved { node: resolved } } => direct_call_formal_has_unbound_type_variable_at(n: resolved, depth: depth + 1)
     _ => false
   }
