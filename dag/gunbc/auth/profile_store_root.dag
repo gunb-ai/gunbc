@@ -61,6 +61,15 @@ fn profile_store_listing(store: ProfileStore) -> FilesystemListingObservation {
   filesystem_listing_observation(directory: store.root as String, success: listed.success, entries: listed.entries, error: listed.error)
 }
 
+// A REPEATED SHAPE, GENERALIZED LATER BY NAME (DESIGN section 6b). This outcome family and its listing fold
+// are one of three leaves of a single shape: gunbc.auth.session_store_root, gunbc.auth.profile_store_root and
+// gunbc.auth.login_transaction_store_root. Only the record and member differ. The least general rule that
+// covers them already exists: gunbc.durable_cas_file_store SlotStore, whose slot_observe / slot_commit /
+// slot_keys answer the observe, commit and list questions these leaves fold by hand. The leaves stay because the operator ruled the plain-file stores
+// sealed in place with no format change (stern-ram-763, 2026-10-24). Each store's FormatConsolidation
+// follow-up moves it onto SlotStore, which deletes the leaf, and that follow-up is the trigger. A shared
+// plain-file module in between is not written: it would be a scaffold that consolidation deletes, and its
+// fold would have to take a root, which is a caller-chosen-root route (ruling 2026-10-25).
 // ── The store's outcomes and operations ──────────────────────────────────────────────────────
 // THE STORE'S OUTCOMES, in the store's own vocabulary, so the business module (gunbc.auth.profile_projection)
 // imports nothing of the filesystem: the filesystem observations are folded once, here. Absence is established
