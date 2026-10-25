@@ -1,0 +1,140 @@
+module extdeps.qwen.qwen3_8_flash_next
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count, Mebibyte, mebibyte, mebibyte_to_byte_size }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// QWEN3.8-FLASH-NEXT AS THE MODEL'S OWN AUTHORITY: the architecture facts its config.json states, and
+// nothing about any engine, image or card that serves it (those are observations of this repository, in
+// gunbc.serving, DESIGN section 3 external upstream decomposition). The subject is the NVFP4 checkpoint
+// the lab publishes, because that is the artifact whose config.json carries the quantization the serving
+// recipes load.
+data flash_next_nvfp4_hub_repo: HubRepoId = HubRepoId {
+  kind: HubModelRepo,
+  path: "local-inference-lab/Qwen3.8-Flash-Next-NVFP4" as NonEmptyStr,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: hub_repo_https_uri(repo: flash_next_nvfp4_hub_repo),
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.qwen.qwen3_8_flash_next",
+      decl_name: "flash_next_nvfp4_hub_repo",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// TWO STANDINGS, BECAUSE TWO READINGS. On 2026-10-21 this repository fetched the repository's config.json
+// and read the fields in the first group below (a fetch summarises; the file was not retained). The
+// second group is the operator's transcription of the same config.json and of two derived totals; this
+// repository has not re-read it, so it stays TranscribedUncited rather than borrowing the first group's
+// citation. The model family is Qwen4ExpForConditionalGeneration (model_type qwen4_exp), which is why the
+// engine's refusal text says Qwen4Exp.
+//
+// GDN is Gated DeltaNet linear attention: constant-size recurrent state per layer, no per-token KV. QSA is
+// the sparse-attention layer: it keeps a per-token KV and reads at most indexer_budget_tokens of it per
+// step, chosen by an indexer. Which layer kinds exist and how many is what decides KV bytes per token.
+//
+// MTP: the config declares ONE multi-token-prediction layer; "MTP-3" in the serving recipe is the
+// speculative-decode draft depth the engine is launched with, which is an engine setting and lives with
+// the observation, not here.
+type FlashNextArchitecture {
+  layer_count: Nat
+  hidden_size: Nat
+  vocab_size: Nat
+  query_heads: Nat
+  kv_heads: Nat
+  head_dim: Nat
+  routed_experts: Nat
+  experts_per_token: Nat
+  config_read_standing: CitedFigureStanding
+
+  gdn_layers: Nat
+  qsa_layers: Nat
+  indexer_budget_tokens: Nat
+  indexer_heads: Nat
+  indexer_kv_heads: Nat
+  indexer_head_dim: Nat
+  indexer_compress: Nat
+  moe_intermediate_size: Nat
+  shared_expert_intermediate_size: Nat
+  total_parameters: Nat
+  active_parameters_per_token: Nat
+  ple_table: ByteSize
+  transcribed_standing: CitedFigureStanding
+}
+
+data flash_next_config_read_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor
+}
+
+data flash_next_transcribed_obligation: NonEmptyStr = "Re-read the GDN/QSA layer split, indexer budget/heads/head dim/compress, MoE and shared-expert intermediate sizes and the PLE table size from the checkpoint's config.json and file listing at local-inference-lab/Qwen3.8-Flash-Next-NVFP4. The 124B total and 5.9B active parameter counts are the operator's derivation from that config, not read figures; the PLE table is 26.8 GiB at print precision (stored as 27443 MiB)." as NonEmptyStr
+
+data flash_next_ple_table_mebibytes: Mebibyte = mebibyte(count: 27443)
+
+data qwen3_8_flash_next_architecture: FlashNextArchitecture = FlashNextArchitecture {
+  layer_count: 48,
+  hidden_size: 2560,
+  vocab_size: 248320,
+  query_heads: 24,
+  kv_heads: 2,
+  head_dim: 256,
+  routed_experts: 512,
+  experts_per_token: 10,
+  config_read_standing: flash_next_config_read_standing,
+  gdn_layers: 36,
+  qsa_layers: 12,
+  indexer_budget_tokens: 2048,
+  indexer_heads: 4,
+  indexer_kv_heads: 1,
+  indexer_head_dim: 128,
+  indexer_compress: 4,
+  moe_intermediate_size: 640,
+  shared_expert_intermediate_size: 640,
+  total_parameters: 124000000000,
+  active_parameters_per_token: 5900000000,
+  ple_table: mebibyte_to_byte_size(m: flash_next_ple_table_mebibytes),
+  transcribed_standing: TranscribedUncited { read_obligation: flash_next_transcribed_obligation },
+}
+
+// KV BYTES PER TOKEN OF THE QSA LAYERS, DERIVED FROM THE ARCHITECTURE: K and V, each kv_heads x head_dim
+// elements, in every QSA layer, at a given element width. The GDN layers contribute none (their state does
+// not grow with context) and the indexer's own cache is a separate term the engine decides.
+// (review 84955: element_bytes and the result ride std.measure's ByteSize, the same carrier every other
+// byte quantity in this split uses — no locally minted per-token byte alias; the denominator, per token,
+// lives in the fn name.)
+fn flash_next_qsa_kv_bytes_per_token(arch: FlashNextArchitecture, element_bytes: ByteSize) -> ByteSize {
+  byte_size(count: arch.qsa_layers * 2 * arch.kv_heads * arch.head_dim * byte_size_count(b: element_bytes))
+}
+
+// INDEXER CACHE BYTES PER TOKEN, DERIVED FROM THE CONFIG (ModelOutput): one indexer KV head of indexer_head_dim per QSA
+// layer, compressed by indexer_compress, at a given element width (384 at FP8, 768 at BF16). Per-block scale bytes, if the
+// cache stores them, are not in the config and stay a declared frontier.
+// (review 84955: same carrier treatment as the QSA fn above.)
+fn flash_next_indexer_kv_bytes_per_token(arch: FlashNextArchitecture, element_bytes: ByteSize) -> ByteSize {
+  byte_size(count: arch.qsa_layers * arch.indexer_kv_heads * arch.indexer_head_dim / arch.indexer_compress * byte_size_count(b: element_bytes))
+}
+
+// PARAMETERS HELD BY ROUTED EXPERTS: gate, up and down projections (3 x hidden x moe_intermediate) per
+// expert, per layer. This is derived from the config and is what the decode-step byte count multiplies.
+fn flash_next_params_per_routed_expert(arch: FlashNextArchitecture) -> Nat {
+  3 * arch.hidden_size * arch.moe_intermediate_size
+}
+
+fn flash_next_routed_expert_parameters(arch: FlashNextArchitecture) -> Nat {
+  arch.layer_count * arch.routed_experts * flash_next_params_per_routed_expert(arch: arch)
+}
+
+data qwen3_8_flash_next_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: qwen3_8_flash_next_architecture is consumed by gunbc.serving.flash_next_roofline (KV bytes per token, routed-expert bytes per decode step, active FLOPs per prefill token). Trigger: that fold reads these fields and deleting the row makes it fail to resolve. A witness asserting only that the row exists does not close this frontier. A HarnessServingUnit arm for Flash-Next (request wire, parser, reasoning field) stays the separate frontier recorded on product.fabric.serving_recipe serving_recipe_frontier." as NonEmptyStr
+)
