@@ -2,6 +2,8 @@ module gunbc.serving.router_dev_policy
 
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, LocationBlock, ExactMatch,
   PrefixMatch, ListenTlsOn, SslCertificate, SslCertificateKey, SetEmptyVariable, SetLiteral, ProxyHttpVersion11, ProxyBufferingDirective,
@@ -206,8 +208,17 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
   if count(rows) == 0 { RouterDevConfigRefused { token: "site" } } else { RouterDevConfigRendered { text: render_nginx_directives(rows: rows) } }
 }
 
-// The text the hand-run deploy writes to the proxy's nginx.conf:
-// gunbc run --entry dag/gunbc/serving/router_dev_policy.dag --function router_dev_srv1_config_text
-fn router_dev_srv1_config_text() -> String {
-  match router_dev_config(site: router_dev_srv1_site()) { RouterDevConfigRendered { text: t } => t RouterDevConfigRefused { token: k } => "" }
+// The hand-run deploy's render step: writes the proxy's nginx.conf into the host state directory the
+// container mounts, and refuses (exit 1) when the site's tokens are refused or the write fails:
+// gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/serving/router_dev_policy.dag --function router_dev_srv1_write_config
+fn router_dev_srv1_host_config_path() -> String { "/home/briansrls/router/nginx.conf" }
+
+fn router_dev_srv1_write_config() -> ProcessExit {
+  match router_dev_config(site: router_dev_srv1_site()) {
+    RouterDevConfigRefused { token: k } => ExitFailure { code: 1, reason: concat("refused token: ", k) }
+    RouterDevConfigRendered { text: t } => {
+      let w = Filesystem.Write(path: router_dev_srv1_host_config_path(), content: t)
+      if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: concat("write failed: ", w.error) } }
+    }
+  }
 }
