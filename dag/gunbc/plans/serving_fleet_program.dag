@@ -2,7 +2,7 @@ module gunbc.plans.serving_fleet_program
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
-import std.markdown { MarkdownBlock }
+import std.markdown { MarkdownBlock, MarkdownListItem }
 import gunbc.plans.md_helpers { h2, p, li, ul, quote }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
@@ -285,7 +285,7 @@ data serving_fleet_rows: List<ServingFleetRow> = [
   },
 ]
 
-fn sfp_section_items(s: ServingFleetSection) -> List<MarkdownBlock> {
+fn sfp_section_items(s: ServingFleetSection) -> List<MarkdownListItem> {
   map(filter(serving_fleet_rows, r => sfp_section_key(s: r.section) == sfp_section_key(s: s)), r => li(text: serving_fleet_row_text(r: r)))
 }
 

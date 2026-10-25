@@ -167,7 +167,8 @@ fn fixture_row(id: ServingFleetRowId, depends_on: List<ServingFleetRowId>) -> Se
 }
 
 fn dependency_graph_is_acyclic(rows: List<ServingFleetRow>) -> Bool {
-  let admitted = fold(rows, init: [], f: (done, round) =>
+  let none_admitted: List<ServingFleetRow> = []
+  let admitted = fold(rows, init: none_admitted, f: (done, round) =>
     filter(rows, r => any(done, d => same_row(a: d.id, b: r.id))
       || all(r.depends_on, p => any(done, d => same_row(a: d.id, b: p)))))
   admitted.length() == rows.length()
