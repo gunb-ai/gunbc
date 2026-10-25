@@ -74,6 +74,7 @@ import gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall { 
 import gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall { argument_shape_undecided_at_a_declared_position_stall }
 import gunbc.guarantee_stall.v2_lens_witnesses_unreachable_stall { v2_lens_witnesses_unreachable_stall }
 import gunbc.guarantee_stall.infer_checking_mode_expected_red_pair_stall { infer_checking_mode_expected_red_pair_stall }
+import gunbc.guarantee_stall.per_file_emission_owner_unmodeled_stall { per_file_emission_owner_unmodeled_stall }
 import gunbc.guarantee_stall.information_retrieval_transport_cannot_report_status_stall { information_retrieval_transport_cannot_report_status_stall }
 import gunbc.guarantee_stall.module_cited_only_in_annotation_prose_stall { module_cited_only_in_annotation_prose_stall }
 import gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall { joint_claim_join_private_corpus_unindexed_stall }
@@ -88,6 +89,7 @@ import gunbc.guarantee_stall.authored_record_field_list_standing_for_type_popula
 import gunbc.guarantee_stall.native_step_trip_awaits_fleet_job_cgroup_stall { native_step_trip_awaits_fleet_job_cgroup_stall }
 import gunbc.guarantee_stall.census_live_routes_interpreted_only_stall { census_live_routes_interpreted_only_stall }
 import gunbc.guarantee_stall.compute_cold_reserve_durable_commit_stall { compute_cold_reserve_durable_commit_stall }
+import gunbc.guarantee_stall.swift_source_to_text_door_walk_stall { swift_source_to_text_door_walk_stall }
 import gunbc.guarantee_stall.rust_primitive_rows_hand_spelled_from_the_seed_stall { rust_primitive_rows_hand_spelled_from_the_seed_stall }
 import gunbc.guarantee_stall.local_repo_wet_lane_per_row_wall_budget_unarmed_stall { local_repo_wet_lane_per_row_wall_budget_unarmed_stall }
 
@@ -271,9 +273,11 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   native_step_trip_awaits_fleet_job_cgroup_stall,
   census_live_routes_interpreted_only_stall,
   compute_cold_reserve_durable_commit_stall,
+  swift_source_to_text_door_walk_stall,
   approve_ios_swift_join_live_off_the_merge_path_stall,
   infer_checking_mode_expected_red_pair_stall,
   rust_primitive_rows_hand_spelled_from_the_seed_stall,
+  per_file_emission_owner_unmodeled_stall,
   local_repo_wet_lane_per_row_wall_budget_unarmed_stall,
 ]
 
