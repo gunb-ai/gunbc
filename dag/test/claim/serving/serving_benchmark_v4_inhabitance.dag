@@ -4,7 +4,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { Bool, String, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.nat { Nat }
-import std.measure { token_count, millisecond, basis_point, milli_tokens_per_second_count, events_per_hour_count, microsecond_count, millicore_count, byte_size_count }
+import std.measure { token_count, millisecond, basis_point, milli_tokens_per_second_count, events_per_hour_count, microsecond_count, millicore_count, byte_size_count, hardware_thread_count_value }
 import extdeps.filesystem.filesystem_io
 import extdeps.gpu_bench.request_v4 { gpu_bench_parse_v4_jsonl, GpuBenchRequestV4Parsed, GpuBenchRequestV4StreamUnreadable, GpuBenchRequestV4 }
 import gunbc.serving.serving_benchmark {
@@ -16,6 +16,7 @@ import gunbc.serving.serving_benchmark_run_receipt {
   GapMaxTokens, GapPrimeContextOutsideBand,
 }
 import test.claim.serving.serving_benchmark_run_receipt_witness { fx_cell_complete, fx_telemetry }
+import extdeps.linux.proc_cpuinfo { parse_proc_cpuinfo, ProcCpuinfoParsed, ProcCpuinfoUnreadable, CpuArmMidr, CpuModelNamed }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -110,5 +111,31 @@ test fn serving_benchmark_v1_refuses_the_smoke_run_as_another_workload() -> Bool
     ServingBenchmarkRunRefused { gaps: g } =>
       any(g, x => match x { GapMaxTokens { round: _, observed: t } => true, _ => false })
         && any(g, x => match x { GapPrimeContextOutsideBand { session: _, prompt: _ } => true, _ => false })
+  }
+}
+
+// ── THE CELL'S CPU READING, FROM THE HOST'S OWN /proc/cpuinfo ───────────────────────────────────
+//
+// The first 40 lines of srv3's /proc/cpuinfo, captured raw (gunbc-private tools/gpu-bench/captures/
+// srv3-2026-10-25, raw.txt section 4): arm64 prints the MIDR fields and no model name. Part 0xd0c is
+// read as 3340 and kept as the number; the logical CPU count is the processor entries present, five in
+// this head (the full file lists 128).
+data srv3_cpuinfo_head_path: String = "fixtures/serving_benchmark/srv3_captures_2026_10_25/proc_cpuinfo_head.txt"
+
+test fn srv3_cpuinfo_reads_as_arm_midr() -> Bool {
+  match parse_proc_cpuinfo(text: filesystem_read(path: srv3_cpuinfo_head_path).content) {
+    ProcCpuinfoUnreadable { cause: _ } => false
+    ProcCpuinfoParsed { model: m, logical_cpus: n } =>
+      hardware_thread_count_value(t: n) == 5 && match m {
+        CpuArmMidr { implementer: i, variant: v, part: p, revision: r } => i == 65 && v == 3 && p == 3340 && r == 1
+        CpuModelNamed { name: _ } => false
+      }
+  }
+}
+
+test fn cpuinfo_with_neither_name_nor_midr_refuses() -> Bool {
+  match parse_proc_cpuinfo(text: "processor\t: 0\nBogoMIPS\t: 50.00\n") {
+    ProcCpuinfoUnreadable { cause: _ } => true
+    ProcCpuinfoParsed { model: _, logical_cpus: _ } => false
   }
 }

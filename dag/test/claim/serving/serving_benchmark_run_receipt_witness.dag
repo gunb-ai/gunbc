@@ -11,6 +11,7 @@ import std.measure {
   positive_slot_count, positive_measure_count,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import extdeps.linux.proc_cpuinfo { CpuArmMidr }
 import extdeps.uri { Uri, Https }
 import extdeps.storage.types { PcieLink, Gen4 }
 import extdeps.nvidia.management_library { nvml_clocks_event_mask, NvmlClocksEventSwThermalSlowdown, NvmlClocksEventSwPowerCap }
@@ -25,7 +26,7 @@ import gunbc.serving.serving_benchmark {
 }
 import gunbc.serving.serving_benchmark_run_receipt {
   admit_serving_benchmark_run, ServingBenchmarkRunAdmitted, ServingBenchmarkRunRefused, ServingBenchmarkRunObservation, ServingBenchmarkGap,
-  ServingCellIdentity, ObservedCpu, CpuArmMidr, ObservedGpu, ServingTopology, StrataEngineCell, ServingEngineBuild, ServingArtifact,
+  ServingCellIdentity, ObservedCpu, ObservedGpu, ServingTopology, StrataEngineCell, ServingEngineBuild, ServingArtifact,
   LevelTelemetry, GpuLevelTelemetry, WallPowerUnmetered, ServingLevelResult,
   GapNoGpu, GapTopologyDoesNotCoverGpus, GapPoolWorkersUnpinned, GapSessionTextsNotDistinct, GapRequestFailed, GapFirstTokenUnread,
   GapLevelRounds, GapTelemetryMissing, GapToolDelta, GapMaxTokens, GapSubmissionSpread, GapPrimeContextOutsideBand,
