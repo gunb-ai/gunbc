@@ -137,6 +137,40 @@ test fn the_split_gate_step_carries_the_refusal_and_no_act_entry() -> Bool {
   }
 }
 
+// THE GATE SCRIPT IS WELL-FORMED SHELL, AND THE GATE'S `if:` GROUPS THE DISJUNCTION (reviews 38602
+// and 386096). Both defects the reviews found were shape defects in emitted text: the script was
+// hand-joined strings whose second test read `[ -z "$X"] || [ -z "$Y"] ]` (no space before `]`, a
+// stray `]`, and an echo whose quote never closed -- bash died on a PARSE ERROR, printing neither the
+// declared marker nor anything else), and the `if:` glued two serialized strings so GitHub read
+// `A || B || C && D` as A || B || (C && D): unconditional for converge/withdraw, skipped for a restore
+// with an empty subject -- the exact case the step exists to refuse. These controls pin the shapes the
+// typed builders must produce: a balanced script (every test bracket closes with a space before `]`,
+// both refusal markers present, both refusals exit 1) and an `if:` that groups the disjunction before
+// conjoining the host == subject comparison. A mutation that returns to string-built shell or glued
+// conditions goes red here.
+test fn the_split_gate_script_is_well_formed_and_the_if_condition_groups_the_disjunction() -> Bool {
+  match fleet_converge_executor_subject_split_gate_step() {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: Present { value: cond }, continue_on_error: _, timeout_minutes: _ } =>
+      // Script shape, in the fold's OWN spelling (bash_emit single-quotes each literal word, so the
+      // test bracket is its own token '"]' -- and the BROKEN hand-joined script welded the bracket to
+      // the variable instead: `"$X"]`, no space, plus an echo whose quote never closed and a stray ]
+      // (reviews 38602 / 386096). The negatives below are exactly those broken signatures; the fold
+      // cannot produce them because the bracket is a word of its own and every literal is closed.
+      string_contains(s: r, pattern: "set -e")
+        && string_contains(s: r, pattern: "']'")
+        && string_contains(s: r, pattern: fleet_converge_split_refusal_marker)
+        && string_contains(s: r, pattern: fleet_converge_split_missing_subject_marker)
+        && string_contains(s: r, pattern: "exit 1")
+        && !string_contains(s: r, pattern: "\"]")
+        && !string_contains(s: r, pattern: "named; exit 1; fi")
+        // `if:` shape: the disjunction is GROUPED before the equality is conjoined with it, so GitHub
+        // reads (A || B || C) && D rather than A || B || (C && D).
+        && string_contains(s: cond, pattern: ") && ")
+        && string_contains(s: cond, pattern: "github.event.inputs.host == github.event.inputs.subject_host")
+    _ => false
+  }
+}
+
 // The env pair carries exactly this rendered value. The value is a YamlValue, so the read is a match,
 // not a string field: an env bound to anything but the named dispatch input (a hardcoded host, say)
 // fails here.
