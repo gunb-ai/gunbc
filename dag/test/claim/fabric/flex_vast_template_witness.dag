@@ -10,6 +10,8 @@ import product.fabric.flex_vast_template {
   flex_template_env_forbidden_name, flex_template_retired_hash,
 }
 import product.fabric.flex_vast_loop { mint_flex_pool_password }
+import product.fabric.flex_serving_image { flex_lil_serving_image, flex_serving_image_reference, flex_serving_onstart }
+import product.fabric.flex_vast_shadow { flex_serving_recipe, flex_host_image }
 import product.fabric.flex_vast_template_control {
   FlexTemplateListed, FlexTemplateEnsured, FlexTemplateNotEnsured, flex_template_outcome,
 }
@@ -84,4 +86,19 @@ test fn the_outcome_is_ensured_only_with_a_clean_readback_and_one_retired_row() 
   match flex_template_outcome(spec: flex_vast_template_spec, after: good, retired: one) { FlexTemplateEnsured { hash: h } => h == "abc"  _ => false }
     && match flex_template_outcome(spec: flex_vast_template_spec, after: good, retired: empty) { FlexTemplateNotEnsured { reason: _ } => true  _ => false }
     && match flex_template_outcome(spec: flex_vast_template_spec, after: dirty, retired: one) { FlexTemplateNotEnsured { reason: _ } => true  _ => false }
+}
+
+// ONE IMAGE FACT, TWO VAST READINGS. The Vast template and the Vast host-image row both derive from
+// product.fabric.flex_serving_image, and each still equals what the operator-account read of the Vast
+// template returned on 2026-10-18 (the image field "repository@sha256", the digest in tag, port 18000,
+// shm 80g). The literals are that read, not a copy of the carrier, so editing the carrier reds this.
+test fn the_vast_realization_reads_the_one_serving_image() -> Bool {
+  ((flex_vast_template_spec.image as String) == "ghcr.io/local-inference-lab/vllm@sha256")
+    && ((flex_vast_template_spec.tag as String) == "751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7")
+    && (flex_vast_template_spec.onstart == flex_serving_onstart)
+    && ((flex_serving_image_reference(image: flex_lil_serving_image) as String) == "ghcr.io/local-inference-lab/vllm@sha256:751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7")
+    && (match flex_host_image(recipe: flex_serving_recipe) {
+          Present { value: i } => (i as String) == (flex_serving_image_reference(image: flex_lil_serving_image) as String)
+          Absent => false
+        })
 }
