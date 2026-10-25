@@ -26,7 +26,25 @@ type HostText
 // (std.primitive_projection primitive_chars, a HostRealizedSeam row), so the body is a self-call no
 // realization ever reaches -- a target without a
 // realization refuses at realization, it does not fall back to a name. The inverse crossing is its own
-// declared operation, not this one.
+// declared operation, text_of_chars below, not this one.
 fn chars(text: HostText) -> List<Char> {
   chars(text: text)
+}
+
+// THE STRUCTURAL-TO-HOST CROSSING: THE DECLARED INVERSE OF chars (operator ruling H4; DESIGN section 4,
+// ruling text_crossings_go_through_the_unfold). The host text whose Unicode scalar values, in order, are
+// `scalars`, so text_of_chars(scalars: chars(text: t)) is t for every host text t, and chars of
+// text_of_chars(scalars: xs) is xs for every list of scalars. Total: every Char is a Unicode scalar
+// value (std.types Char), so every list has exactly one host text; a value outside that range is a
+// broken representation invariant, which the realization refuses rather than dropping or substituting.
+//
+// NOT A SEAM, BY DECISION (tidy-ant-251, 2026-10-25): the body is the kernel's linear slice writer over
+// the WHOLE list. Its window [0, count) is always inside [0, count), so the writer's clamp of an
+// out-of-range window never fires here, and this declaration does not rely on it. A .dag fold over
+// from_code_point and concat would copy its accumulator, quadratic in the text length (DESIGN section
+// 6, bare minimum cost), so the kernel writer stays the realization. It keeps its ambient name for the
+// namespace wave to home; this declaration and nothing else calls it for a text crossing (std.coercion
+// unicode_scalar_fold, the conversion plan's route, calls this).
+fn text_of_chars(scalars: List<Char>) -> HostText {
+  chars_to_string(chars: scalars, start: 0, end: scalars |> count)
 }

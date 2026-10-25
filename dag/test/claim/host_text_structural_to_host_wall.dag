@@ -1,0 +1,50 @@
+module test.claim.host_text_structural_to_host_wall
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A STRUCTURAL TEXT VALUE REACHES std.host_text HostText ONLY THROUGH text_of_chars, chars' DECLARED
+// INVERSE, OR THE CROSSING REFUSES (DESIGN section 4, ruling text_crossings_go_through_the_unfold). r_
+// rows hand a code-point sequence to a HostText position with no crossing named -- a declared return, a
+// call argument, the qualified structural String -- and each must be a blocking refusal on the real
+// compile path. The p_ row is the same return through the declared inverse and must compile clean, so a
+// wall that refused every HostText position, or every import of std.host_text, reds the control.
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => {
+      let rs: List<CompileDiagnosticCensusRow> = rows
+      rs |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+    }
+  }
+}
+
+fn refuses(source: String) -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(source)) > 0
+}
+
+fn admitted(source: String) -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(source)) == 0
+}
+
+test fn r_code_point_list_at_host_text_return_refuses() -> Bool {
+  refuses(source: "module probe_htw_return\nimport std.host_text { HostText, chars, text_of_chars }\nimport std.types { Char, List }\nfn back(xs: List<Char>) -> HostText { xs }\n")
+}
+
+test fn r_code_point_list_at_host_text_argument_refuses() -> Bool {
+  refuses(source: "module probe_htw_argument\nimport std.host_text { HostText, chars, text_of_chars }\nimport std.types { Char, List }\nfn again(xs: List<Char>) -> List<Char> { chars(text: xs) }\n")
+}
+
+test fn r_qualified_structural_string_at_host_text_argument_refuses() -> Bool {
+  refuses(source: "module probe_htw_qualified\nimport std.host_text { HostText, chars, text_of_chars }\nimport std.types { Char, List }\nimport v2.std.text { string_is_empty }\nfn again(t: v2.std.text.String) -> List<Char> { chars(text: t) }\n")
+}
+
+test fn p_code_point_list_through_text_of_chars_is_admitted() -> Bool {
+  admitted(source: "module probe_htw_declared\nimport std.host_text { HostText, chars, text_of_chars }\nimport std.types { Char, List }\nfn back(xs: List<Char>) -> HostText { text_of_chars(scalars: xs) }\n")
+}
