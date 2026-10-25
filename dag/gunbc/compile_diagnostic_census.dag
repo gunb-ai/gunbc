@@ -84,7 +84,9 @@ data compile_diagnostic_census_hand_rust_scaffold: Disposition = Scaffold {
 // compile_clean_diagnostic_is_hard the fold already consults -- so a variant gains a pair only by
 // its arm being written, and the fold reads one extractor, never a per-consumer guess.
 // Uniform is the group's single rendered pair; Varied counts the distinct pairs the group folded
-// (count > 1, refused at the extractor rather than clamped). The pair text is produced by the
+// (count > 1; a count below two never reaches this arm -- the fold opens Varied only once a
+// second distinct pair exists, so it is unreachable by construction rather than refused). The
+// pair text is produced by the
 // type-shape renderer node_type_shape (gunbc.v1.infer_types, authority src/v1/04_types.dag);
 // a witness names that producer, it never transcribes its output.
 type RenderedPair

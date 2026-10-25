@@ -3954,11 +3954,6 @@ pub(crate) fn resolve_virtual_source_with_imports(
     Ok(sources)
 }
 
-/// One aggregated row of the synthetic-source diagnostic census: a `(class, name, severity)`
-/// key and how many times the compile produced it. `diagnostic_class` and `subject_name` are
-/// exactly the two halves of [`compile_clean_diagnostic_histogram_key`], whose total match over
-/// `CompilerDiagnostic` is the single authority for naming a variant (§3 — this is a projection,
-/// never a second diagnostic vocabulary).
 /// The rendered `(expected, got)` pair of a census group, projected from the host fold.
 /// The pair-bearing population is closed by construction:
 /// `compile_clean_diagnostic_rendered_pair` is a TOTAL match over `CompilerDiagnostic` (the
@@ -3966,16 +3961,22 @@ pub(crate) fn resolve_virtual_source_with_imports(
 /// so a class outside its pair arms yields `None` (the model's `Absent`) — never a pair-shaped
 /// stand-in for "the pair was equal": an equal pair is `Uniform` with `expected == got`
 /// (DESIGN §5, fail-open). `Uniform` is the group's single rendered pair; `Varied` counts the
-/// distinct pairs the group folded (`distinct_pair_count > 1`; a count below two is refused at
-/// the fold rather than clamped). The pair TEXT is the producer node_type_shape's output
-/// (authority src/v1/04_types.dag) as already carried by the diagnostic — a witness names the
-/// producer, it never transcribes its output (§6).
+/// distinct pairs the group folded (`distinct_pair_count > 1`; a count below two never reaches
+/// this arm — the fold only opens `Varied` once a second distinct pair exists, so it is
+/// unreachable by construction rather than refused). The pair TEXT is the producer
+/// node_type_shape's output (authority src/v1/04_types.dag) as already carried by the diagnostic
+/// — a witness names the producer, it never transcribes its output (§6).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenderedPair {
     Uniform { expected: String, got: String },
     Varied { distinct_pair_count: i64 },
 }
 
+/// One aggregated row of the synthetic-source diagnostic census: a `(class, name, severity)`
+/// key and how many times the compile produced it. `diagnostic_class` and `subject_name` are
+/// exactly the two halves of [`compile_clean_diagnostic_histogram_key`], whose total match over
+/// `CompilerDiagnostic` is the single authority for naming a variant (§3 — this is a projection,
+/// never a second diagnostic vocabulary).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompileDiagnosticCensusRow {
     pub diagnostic_class: String,
