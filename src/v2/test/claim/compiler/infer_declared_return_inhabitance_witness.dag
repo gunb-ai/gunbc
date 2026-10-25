@@ -49,10 +49,10 @@ import v2.std.node {
 //
 // WHY TREES AND NOT SOURCE TEXT. The fixtures are the Arrow body lowering produces
 // (v2.compiler.body_lowering_fold body_lower_fn_decl_arrow: domain, return, return, declared order,
-// body), handed to `infer`. A source-text v2 acceptance harness that admits the fixture's peer
-// roots does not exist yet (test.claim.named_argument_binding_two_route_witness records that
-// v2's standalone driver refuses its own positive control); that harness is this file's next-rung
-// trigger, at which point these arms gain source-text twins.
+// body), handed to `infer`, so each arm judges the relation at one interface. The source-text twins
+// -- the same judgment reached from authored source through the production assembly route, with
+// records, coproducts, aliases and FreeMonoid applications -- are
+// v2.test.claim.compiler.infer_declared_return_source_witness.
 //
 // WHY THE GENERIC DISCRIMINATOR AT INFER IS A LIST LITERAL. The only Instantiation-typed value v2
 // infer derives is the FreeMonoid introduction (v2.compiler.infer infer_freemonoid_type_of); an
