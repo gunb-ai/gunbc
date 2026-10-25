@@ -198,7 +198,7 @@ fn router_dev_directives(site: RouterDevSite) -> List<NginxDirective> {
 // The srv1 site (operator decision 2026-10-25): HTTPS on the host's 1G address, state mounted at
 // /etc/router in the container from /home/briansrls/router on the host, and the pool alias flash-next.
 fn router_dev_srv1_site() -> RouterDevSite {
-  RouterDevSite { listen_address: "192.168.1.203", listen_port: 18443 as Port, state_dir: "/etc/router", alias: "flash-next" }
+  RouterDevSite { listen_address: "192.168.1.203", listen_port: 18443, state_dir: "/etc/router", alias: "flash-next" }
 }
 
 fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
