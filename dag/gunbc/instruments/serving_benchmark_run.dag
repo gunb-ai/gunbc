@@ -59,22 +59,22 @@ import gunbc.serving.strata_ada_pair_cell { srv3_strata_ada_pair_plan }
 // committed evidence by test.claim.serving.serving_benchmark_srv3_receipt, never transcribed.
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
 
-data plan: ServingBenchmarkCellPlan = srv3_strata_ada_pair_plan
+data serving_benchmark_run_plan: ServingBenchmarkCellPlan = srv3_strata_ada_pair_plan
 // The operator's short run (2026-10-25): one concurrency point, 4 sessions, a warm-up round and two
 // measured rounds. Its receipt is a serving-benchmark/short-n4/1 receipt and is never read as the full curve.
-data version: ServingBenchmarkVersion = serving_benchmark_short_n4
+data serving_benchmark_run_version: ServingBenchmarkVersion = serving_benchmark_short_n4
 
-fn docker() -> NonEmptyStr { "docker" as NonEmptyStr }
-fn host_network() -> NonEmptyStr { "host" as NonEmptyStr }
-fn engine_name() -> NonEmptyStr { "gunbc-sb-engine" as NonEmptyStr }
-fn probe_name() -> NonEmptyStr { "gunbc-sb-probe" as NonEmptyStr }
-fn gpu_sampler_name() -> NonEmptyStr { "gunbc-sb-gpu" as NonEmptyStr }
-fn pcie_sampler_name() -> NonEmptyStr { "gunbc-sb-pcie" as NonEmptyStr }
-fn kit_name() -> NonEmptyStr { "gunbc-sb-kit" as NonEmptyStr }
-fn engine_cgroup_mount() -> String { "/engine-cgroup" }
-fn run_id() -> String { "serving-benchmark-1-srv3" }
+fn sb_docker() -> NonEmptyStr { "docker" as NonEmptyStr }
+fn sb_host_network() -> NonEmptyStr { "host" as NonEmptyStr }
+fn sb_engine_name() -> NonEmptyStr { "gunbc-sb-engine" as NonEmptyStr }
+fn sb_probe_name() -> NonEmptyStr { "gunbc-sb-probe" as NonEmptyStr }
+fn sb_gpu_sampler_name() -> NonEmptyStr { "gunbc-sb-gpu" as NonEmptyStr }
+fn sb_pcie_sampler_name() -> NonEmptyStr { "gunbc-sb-pcie" as NonEmptyStr }
+fn sb_kit_name() -> NonEmptyStr { "gunbc-sb-kit" as NonEmptyStr }
+fn sb_engine_cgroup_mount() -> String { "/engine-cgroup" }
+fn sb_run_id() -> String { "serving-benchmark-short-n4-srv3" }
 
-fn engine_url() -> String { concat("http://127.0.0.1:", to_string(plan.engine_port)) }
+fn sb_engine_url() -> String { concat("http://127.0.0.1:", to_string(serving_benchmark_run_plan.engine_port)) }
 
 fn spec(name: NonEmptyStr, image: NonEmptyStr, gpus: Bool, mounts: List<DockerMount>, env: List<DockerEnvAssignment>, command: List<String>) -> DockerCreateSpec {
   DockerCreateSpec {
@@ -88,7 +88,7 @@ fn env(name: String, value: String) -> DockerEnvAssignment {
 }
 
 fn create(s: DockerCreateSpec) -> Int {
-  DockerCli.CreateWithFlags(docker: docker(), name: s.name, network: host_network(), flags: docker_container_resource_flags(spec: s), image: s.image, command: s.command).exit_code
+  DockerCli.CreateWithFlags(docker: sb_docker(), name: s.name, network: sb_host_network(), flags: docker_container_resource_flags(spec: s), image: s.image, command: s.command).exit_code
 }
 
 type Ran {
@@ -100,17 +100,17 @@ type Ran {
 // One container run to completion, attached, then removed.
 fn run_once(name: NonEmptyStr, s: DockerCreateSpec) -> Ran {
   let created = create(s: s)
-  let ran = DockerCli.StartAttached(docker: docker(), name: name)
-  let removed = DockerCli.RemoveForce(docker: docker(), name: name)
+  let ran = DockerCli.StartAttached(docker: sb_docker(), name: name)
+  let removed = DockerCli.RemoveForce(docker: sb_docker(), name: name)
   Ran { exit_code: if created == 0 { ran.exit_code } else { created }, stdout: ran.stdout, stderr: ran.stderr }
 }
 
 fn nvidia_smi(name: NonEmptyStr, arguments: List<String>) -> Ran {
-  run_once(name: name, s: spec(name: name, image: plan.sampler_image, gpus: true, mounts: [], env: [env(name: "TZ", value: "UTC")], command: concat(["nvidia-smi"], arguments)))
+  run_once(name: name, s: spec(name: name, image: serving_benchmark_run_plan.sampler_image, gpus: true, mounts: [], env: [env(name: "TZ", value: "UTC")], command: concat(["nvidia-smi"], arguments)))
 }
 
-fn remove_all() -> Int {
-  fold([probe_name(), gpu_sampler_name(), pcie_sampler_name(), kit_name(), engine_name()], init: 0, f: (acc, n) => acc + DockerCli.RemoveForce(docker: docker(), name: n).exit_code)
+fn sb_remove_all() -> Int {
+  fold([sb_probe_name(), sb_gpu_sampler_name(), sb_pcie_sampler_name(), sb_kit_name(), sb_engine_name()], init: 0, f: (acc, n) => acc + DockerCli.RemoveForce(docker: sb_docker(), name: n).exit_code)
 }
 
 fn read(path: String) -> String? {
@@ -119,12 +119,12 @@ fn read(path: String) -> String? {
 }
 
 fn copy_out(name: NonEmptyStr, inner: String, host_path: String) -> String? {
-  let c = DockerCli.CopyInto(docker: docker(), source: concat(concat(name as String, ":"), inner), destination: host_path)
+  let c = DockerCli.CopyInto(docker: sb_docker(), source: concat(concat(name as String, ":"), inner), destination: host_path)
   if c.exit_code == 0 { read(path: host_path) } else { none }
 }
 
 fn no_observation(reason: String) -> NativeClaimReport {
-  let cleaned = remove_all()
+  let cleaned = sb_remove_all()
   NativeClaimReport { stdout: "", terminal: NativeClaimNoObservation { reason: reason } }
 }
 
@@ -181,8 +181,8 @@ fn level_line(l: ServingLevelResult) -> String {
 }
 
 // The engine's own cgroup directory on the host: /proc/<pid>/cgroup's unified line, under the v2 mount.
-fn engine_cgroup_dir() -> String? {
-  let pid = DockerCli.InspectFormat(docker: docker(), name: engine_name(), format: "{{.State.Pid}}" as NonEmptyStr)
+fn sb_engine_cgroup_dir() -> String? {
+  let pid = DockerCli.InspectFormat(docker: sb_docker(), name: sb_engine_name(), format: "{{.State.Pid}}" as NonEmptyStr)
   if pid.exit_code != 0 { none } else {
     match read(path: join(["/proc/", trim(s: pid.stdout), "/cgroup"], "")) {
       Absent => none
@@ -204,31 +204,31 @@ type RunEvidence
   | RunEvidenceFailed { step: String }
 
 fn run_world(cgroup_dir: String, inputs: PinnedInputs) -> RunEvidence {
-  let rounds = count(version.workload.active_levels) * (version.workload.warmup_rounds_per_level + version.workload.rounds_per_level)
-  let levels = join(map(version.workload.active_levels, n => to_string(n)), ",")
-  let gpu_sampler = create(s: spec(name: gpu_sampler_name(), image: plan.sampler_image, gpus: true, mounts: [], env: [env(name: "TZ", value: "UTC")],
+  let rounds = count(serving_benchmark_run_version.workload.active_levels) * (serving_benchmark_run_version.workload.warmup_rounds_per_level + serving_benchmark_run_version.workload.rounds_per_level)
+  let levels = join(map(serving_benchmark_run_version.workload.active_levels, n => to_string(n)), ",")
+  let gpu_sampler = create(s: spec(name: sb_gpu_sampler_name(), image: serving_benchmark_run_plan.sampler_image, gpus: true, mounts: [], env: [env(name: "TZ", value: "UTC")],
     command: ["nvidia-smi", concat("--query-gpu=", nvidia_smi_gpu_sample_fields), "--format=csv,noheader,nounits", "-lms", "500", "-f", "/tmp/gpu.csv"]))
-  let pcie_sampler = create(s: spec(name: pcie_sampler_name(), image: plan.sampler_image, gpus: true, mounts: [], env: [env(name: "TZ", value: "UTC")],
+  let pcie_sampler = create(s: spec(name: sb_pcie_sampler_name(), image: serving_benchmark_run_plan.sampler_image, gpus: true, mounts: [], env: [env(name: "TZ", value: "UTC")],
     command: ["nvidia-smi", "dmon", "-s", "t", "-o", "DT", "-d", "1", "-f", "/tmp/pcie.txt"]))
-  let kit = create(s: spec(name: kit_name(), image: inputs.kit_reference, gpus: false,
-    mounts: [BindMount { host_path: cgroup_dir, container_path: engine_cgroup_mount(), readonly: true }],
+  let kit = create(s: spec(name: sb_kit_name(), image: inputs.kit_reference, gpus: false,
+    mounts: [BindMount { host_path: cgroup_dir, container_path: sb_engine_cgroup_mount(), readonly: true }],
     env: [
-      env(name: "ENGINE_CGROUP", value: engine_cgroup_mount()),
-      env(name: "DELTA_TOKENS", value: to_string(token_count_value(t: version.workload.tool_delta))),
-      env(name: "MAX_TOKENS", value: to_string(token_count_value(t: version.workload.max_output))),
+      env(name: "ENGINE_CGROUP", value: sb_engine_cgroup_mount()),
+      env(name: "DELTA_TOKENS", value: to_string(token_count_value(t: serving_benchmark_run_version.workload.tool_delta))),
+      env(name: "MAX_TOKENS", value: to_string(token_count_value(t: serving_benchmark_run_version.workload.max_output))),
       env(name: "ROUNDS", value: to_string(rounds)),
-      env(name: "RUN_ID", value: run_id()),
+      env(name: "RUN_ID", value: sb_run_id()),
     ],
-    command: concat(inputs.kit_command, [engine_url(), "x", plan.kit_model_name as String, "/tmp/run.jsonl", to_string(plan.kit_ctx), to_string(plan.kit_minutes), levels])))
+    command: concat(inputs.kit_command, [sb_engine_url(), "x", serving_benchmark_run_plan.kit_model_name as String, "/tmp/run.jsonl", to_string(serving_benchmark_run_plan.kit_ctx), to_string(serving_benchmark_run_plan.kit_minutes), levels])))
   if gpu_sampler != 0 || pcie_sampler != 0 || kit != 0 { RunEvidenceFailed { step: "create samplers and kit" } } else {
-    let s1 = DockerCli.Start(docker: docker(), name: gpu_sampler_name())
-    let s2 = DockerCli.Start(docker: docker(), name: pcie_sampler_name())
-    let ran = DockerCli.StartAttached(docker: docker(), name: kit_name())
-    let t1 = DockerCli.Stop(docker: docker(), name: gpu_sampler_name(), grace_seconds: "10" as NonEmptyStr)
-    let t2 = DockerCli.Stop(docker: docker(), name: pcie_sampler_name(), grace_seconds: "10" as NonEmptyStr)
-    let requests = copy_out(name: kit_name(), inner: "/tmp/run.jsonl", host_path: "/tmp/gunbc-sb-run.jsonl")
-    let samples = copy_out(name: gpu_sampler_name(), inner: "/tmp/gpu.csv", host_path: "/tmp/gunbc-sb-gpu.csv")
-    let pcie = copy_out(name: pcie_sampler_name(), inner: "/tmp/pcie.txt", host_path: "/tmp/gunbc-sb-pcie.txt")
+    let s1 = DockerCli.Start(docker: sb_docker(), name: sb_gpu_sampler_name())
+    let s2 = DockerCli.Start(docker: sb_docker(), name: sb_pcie_sampler_name())
+    let ran = DockerCli.StartAttached(docker: sb_docker(), name: sb_kit_name())
+    let t1 = DockerCli.Stop(docker: sb_docker(), name: sb_gpu_sampler_name(), grace_seconds: "10" as NonEmptyStr)
+    let t2 = DockerCli.Stop(docker: sb_docker(), name: sb_pcie_sampler_name(), grace_seconds: "10" as NonEmptyStr)
+    let requests = copy_out(name: sb_kit_name(), inner: "/tmp/run.jsonl", host_path: "/tmp/gunbc-sb-run.jsonl")
+    let samples = copy_out(name: sb_gpu_sampler_name(), inner: "/tmp/gpu.csv", host_path: "/tmp/gunbc-sb-gpu.csv")
+    let pcie = copy_out(name: sb_pcie_sampler_name(), inner: "/tmp/pcie.txt", host_path: "/tmp/gunbc-sb-pcie.txt")
     if s1.exit_code != 0 || s2.exit_code != 0 { RunEvidenceFailed { step: "start samplers" } }
     else if ran.exit_code != 0 { RunEvidenceFailed { step: concat("kit exited nonzero: ", ran.stderr) } }
     else {
@@ -242,7 +242,7 @@ fn run_world(cgroup_dir: String, inputs: PinnedInputs) -> RunEvidence {
 }
 
 fn engine_spec(inputs: PinnedInputs) -> DockerCreateSpec {
-  spec(name: engine_name(), image: inputs.engine_reference, gpus: true, mounts: plan.engine_mounts, env: [], command: concat(inputs.engine_command, strata_serve_flag_words(flags: plan.engine_flags)))
+  spec(name: sb_engine_name(), image: inputs.engine_reference, gpus: true, mounts: serving_benchmark_run_plan.engine_mounts, env: [], command: concat(inputs.engine_command, strata_serve_flag_words(flags: serving_benchmark_run_plan.engine_flags)))
 }
 
 // THE PLAN'S IMAGES, once both are pinned. A pending one is no observation, with what it awaits.
@@ -258,10 +258,10 @@ type PinnedRead
   = PinnedReady { inputs: PinnedInputs }
   | PinnedPending { reason: String }
 
-fn pinned_inputs() -> PinnedRead {
-  match plan.engine {
+fn sb_pinned_inputs() -> PinnedRead {
+  match serving_benchmark_run_plan.engine {
     EngineImagePending { awaiting: a } => PinnedPending { reason: concat("engine image pending: ", a as String) }
-    EngineImagePinned { reference: er, command: ec, build: b } => match plan.kit {
+    EngineImagePinned { reference: er, command: ec, build: b } => match serving_benchmark_run_plan.kit {
       KitImagePending { awaiting: a } => PinnedPending { reason: concat("kit image pending: ", a as String) }
       KitImagePinned { reference: kr, command: kc } => PinnedReady { inputs: PinnedInputs { engine_reference: er, engine_command: ec, engine_build: b, kit_reference: kr, kit_command: kc } }
     }
@@ -274,7 +274,7 @@ type PrincipalRead
   = PrincipalAdmitted { facts: String }
   | PrincipalRefused { reason: String }
 
-fn principal() -> PrincipalRead {
+fn sb_principal() -> PrincipalRead {
   match read(path: "/proc/self/status") {
     Absent => PrincipalRefused { reason: "/proc/self/status unreadable" }
     Present { value: status } => match read(path: "/etc/group") {
@@ -295,23 +295,23 @@ type GpuSnapshot
   | GpuSnapshotHeld { text: String }
   | GpuSnapshotUnread { reason: String }
 
-fn gpu_snapshot() -> GpuSnapshot {
-  let q = nvidia_smi(name: probe_name(), arguments: [concat("--query-gpu=", nvidia_smi_gpu_memory_used_fields), "--format=csv,noheader,nounits"])
+fn sb_gpu_snapshot() -> GpuSnapshot {
+  let q = nvidia_smi(name: sb_probe_name(), arguments: [concat("--query-gpu=", nvidia_smi_gpu_memory_used_fields), "--format=csv,noheader,nounits"])
   if q.exit_code != 0 { GpuSnapshotUnread { reason: q.stderr } } else {
     match nvidia_smi_memory_used_rows(text: q.stdout) {
       NvidiaSmiRowUnparsed { line: l } => GpuSnapshotUnread { reason: concat("memory.used unreadable: ", l) }
       NvidiaSmiRowsParsed { rows: rs } =>
         if count(rs) == 0 { GpuSnapshotUnread { reason: "no GPU in the memory snapshot" } }
-        else if any(rs, r => mebibyte_count(m: r.used) > mebibyte_count(m: plan.idle_gpu_memory_bound)) { GpuSnapshotHeld { text: q.stdout } }
+        else if any(rs, r => mebibyte_count(m: r.used) > mebibyte_count(m: serving_benchmark_run_plan.idle_gpu_memory_bound)) { GpuSnapshotHeld { text: q.stdout } }
         else { GpuSnapshotIdle { text: q.stdout } }
     }
   }
 }
 
 // The engine answers /v1/models once its weights are loaded: curl retries until it does, bounded.
-fn engine_ready() -> Bool {
-  let r = DockerCli.RunRemoved(docker: docker(), network: host_network(), image: curlimages_curl_8_11_1_image,
-    arguments: ["-sS", "-o", "/dev/null", "-w", "%\{http_code\}", "--retry", "900", "--retry-delay", "2", "--retry-all-errors", "--max-time", "10", concat(engine_url(), "/v1/models")])
+fn sb_engine_ready() -> Bool {
+  let r = DockerCli.RunRemoved(docker: sb_docker(), network: sb_host_network(), image: curlimages_curl_8_11_1_image,
+    arguments: ["-sS", "-o", "/dev/null", "-w", "%\{http_code\}", "--retry", "900", "--retry-delay", "2", "--retry-all-errors", "--max-time", "10", concat(sb_engine_url(), "/v1/models")])
   r.exit_code == 0 && string_contains(s: r.stdout, pattern: "200")
 }
 
@@ -351,21 +351,21 @@ fn admitted_report(inputs: PinnedInputs, principal_facts: String, before: String
                         MeminfoFieldAbsent { field: f } => not_held(stdout: evidence_out, reason: concat("meminfo lacks ", f as String))
                         MeminfoParsed { meminfo: mi } => {
                           let cell = ServingCellIdentity {
-                            host: plan.host,
+                            host: serving_benchmark_run_plan.host,
                             cpu: ObservedCpu { model: m, logical_cpus: n },
                             memory: byte_size(count: kibibyte_count(k: mi.mem_total) * 1024),
                             gpus: flat_map(gpus, g => match observed_gpu(row: g) { Absent => [] as List<ObservedGpu>, Present { value: o } => [o] }),
-                            engine: StrataEngineCell { build: inputs.engine_build, flags: plan.engine_flags },
-                            artifact: plan.artifact,
-                            topology: plan.topology,
+                            engine: StrataEngineCell { build: inputs.engine_build, flags: serving_benchmark_run_plan.engine_flags },
+                            artifact: serving_benchmark_run_plan.artifact,
+                            topology: serving_benchmark_run_plan.topology,
                           }
-                          let telemetry = serving_benchmark_level_telemetry(version: version, requests: rows, gpus: gpus, samples: samples, pcie: pcie, wall_power: WallPowerUnmetered)
-                          match admit_serving_benchmark_run(version: version, observation: ServingBenchmarkRunObservation { cell: cell, requests: rows, telemetry: telemetry }) {
+                          let telemetry = serving_benchmark_level_telemetry(version: serving_benchmark_run_version, requests: rows, gpus: gpus, samples: samples, pcie: pcie, wall_power: WallPowerUnmetered)
+                          match admit_serving_benchmark_run(version: serving_benchmark_run_version, observation: ServingBenchmarkRunObservation { cell: cell, requests: rows, telemetry: telemetry }) {
                             ServingBenchmarkRunRefused { gaps: g } =>
                               not_held(stdout: concat(section(title: "refused", body: join(map(g, x => concat(gap_text(g: x), "\n")), "")), evidence_out), reason: concat("receipt refused: ", join(map(g, x => gap_text(g: x)), "; ")))
                             ServingBenchmarkRunAdmitted { receipt: _, levels: ls } =>
                               NativeClaimReport {
-                                stdout: concat(section(title: concat("admitted ", version.name as String), body: join(map(ls, l => level_line(l: l)), "")), evidence_out),
+                                stdout: concat(section(title: concat("admitted ", serving_benchmark_run_version.name as String), body: join(map(ls, l => level_line(l: l)), "")), evidence_out),
                                 terminal: NativeClaimHeld,
                               }
                           }
@@ -381,45 +381,45 @@ fn admitted_report(inputs: PinnedInputs, principal_facts: String, before: String
 }
 
 fn native_claim_report() -> NativeClaimReport {
-  let probe = DockerCli.Version(docker: docker())
+  let probe = DockerCli.Version(docker: sb_docker())
   if probe.exit_code != 0 { NativeClaimReport { stdout: "", terminal: NativeClaimNoObservation { reason: concat("docker daemon unavailable: ", probe.stderr) } } } else {
-    match pinned_inputs() {
+    match sb_pinned_inputs() {
       PinnedPending { reason: r } => no_observation(reason: r)
       PinnedReady { inputs: inputs } =>
     match read(path: "/etc/hostname") {
       Absent => no_observation(reason: "/etc/hostname unreadable")
       Present { value: h } =>
-        if trim(s: h) != (plan.host as String) { no_observation(reason: join(["this runner is ", trim(s: h), ", the cell is on ", plan.host as String], "")) } else {
-    match principal() {
+        if trim(s: h) != (serving_benchmark_run_plan.host as String) { no_observation(reason: join(["this runner is ", trim(s: h), ", the cell is on ", serving_benchmark_run_plan.host as String], "")) } else {
+    match sb_principal() {
       PrincipalRefused { reason: r } => no_observation(reason: r)
       PrincipalAdmitted { facts: principal_facts } => {
-          let cleared = remove_all()
-          let ident = nvidia_smi(name: probe_name(), arguments: [concat("--query-gpu=", nvidia_smi_gpu_identity_fields), "--format=csv,noheader,nounits"])
+          let cleared = sb_remove_all()
+          let ident = nvidia_smi(name: sb_probe_name(), arguments: [concat("--query-gpu=", nvidia_smi_gpu_identity_fields), "--format=csv,noheader,nounits"])
           if ident.exit_code != 0 { no_observation(reason: concat("no GPU container (docker --gpus, CDI): ", ident.stderr)) } else {
             match nvidia_smi_identity_rows(text: ident.stdout) {
               NvidiaSmiRowUnparsed { line: l } => no_observation(reason: concat("GPU identity unreadable: ", l))
               NvidiaSmiRowsParsed { rows: gpus } =>
                 if count(gpus) == 0 { no_observation(reason: "no GPU visible in the GPU container") } else {
-                  match gpu_snapshot() {
+                  match sb_gpu_snapshot() {
                     GpuSnapshotUnread { reason: r } => no_observation(reason: concat("GPU memory unreadable: ", r))
                     GpuSnapshotHeld { text: t } => no_observation(reason: concat("the GPUs are not free (memory in use above the idle bound): ", t))
                     GpuSnapshotIdle { text: before } =>
                         match read(path: "/proc/cpuinfo") { Absent => no_observation(reason: "/proc/cpuinfo unreadable"), Present { value: cpuinfo } =>
                         match read(path: "/proc/meminfo") { Absent => no_observation(reason: "/proc/meminfo unreadable"), Present { value: meminfo } => {
                           let started = create(s: engine_spec(inputs: inputs))
-                          let running = DockerCli.Start(docker: docker(), name: engine_name())
+                          let running = DockerCli.Start(docker: sb_docker(), name: sb_engine_name())
                           if started != 0 || running.exit_code != 0 { no_observation(reason: concat("engine container did not start: ", running.stderr)) }
-                          else if !engine_ready() {
-                            let cleaned = remove_all()
+                          else if !sb_engine_ready() {
+                            let cleaned = sb_remove_all()
                             not_held(stdout: "", reason: "the engine never answered /v1/models")
                           }
                           else {
-                            match engine_cgroup_dir() {
+                            match sb_engine_cgroup_dir() {
                               Absent => no_observation(reason: "the engine's cgroup cannot be read")
                               Present { value: cg } => {
                                 let evidence = run_world(cgroup_dir: cg, inputs: inputs)
-                                let cleaned = remove_all()
-                                admitted_report(inputs: inputs, principal_facts: principal_facts, before: before, after: gpu_snapshot(), identity_text: ident.stdout, cpuinfo_text: cpuinfo, meminfo_text: meminfo, cgroup_dir: cg, gpus: gpus, evidence: evidence)
+                                let cleaned = sb_remove_all()
+                                admitted_report(inputs: inputs, principal_facts: principal_facts, before: before, after: sb_gpu_snapshot(), identity_text: ident.stdout, cpuinfo_text: cpuinfo, meminfo_text: meminfo, cgroup_dir: cg, gpus: gpus, evidence: evidence)
                               }
                             }
                           }
