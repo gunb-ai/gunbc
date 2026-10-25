@@ -17,7 +17,7 @@ import extdeps.nvidia.management_library { nvml_clocks_event_mask, NvmlClocksEve
 import extdeps.strata.serve_flags {
   StrataServeFlags, StrataKvQ4_0, StrataKvResidentWindow, StrataSplitStages, StrataLayerSplitAt, StrataExpertsMapped, StrataBatchGroupsAuto,
 }
-import extdeps.gpu_bench.request_v2 { gpu_bench_parse_jsonl, GpuBenchRequestV2Parsed, GpuBenchRequestV2StreamUnreadable, GpuBenchRequestV2 }
+import extdeps.gpu_bench.request_v3 { gpu_bench_parse_v3_jsonl, GpuBenchRequestV3Parsed, GpuBenchRequestV3StreamUnreadable, GpuBenchRequestV3 }
 import gunbc.serving.serving_benchmark {
   ServingBenchmarkVersion, ServingBenchmarkWorkload, serving_benchmark_v1,
   AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour,
@@ -35,9 +35,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE ADMISSION BOUNDARY, DRIVEN WITH SUPPLIED VALUES (DESIGN section 3, a witness discriminates at
 // one interface). The version is a two-session cut of serving-benchmark/1's contract (same retained
-// context, tool delta and output length, levels 1 and 2, one round each) so a run is five request/v2
+// context, tool delta and output length, levels 1 and 2, one round each) so a run is five request/v3
 // lines; admission is parametric in the version, and the pinned serving_benchmark_v1 is exercised by
-// test.claim.serving.serving_benchmark_v2_inhabitance against the kit's real committed run.
+// test.claim.serving.serving_benchmark_v3_inhabitance against the kit's real committed run.
 
 data fx_version: ServingBenchmarkVersion = ServingBenchmarkVersion {
   name: "serving-benchmark/fixture" as NonEmptyStr,
@@ -60,29 +60,31 @@ data fx_version: ServingBenchmarkVersion = ServingBenchmarkVersion {
 // prompt is the previous prompt + previous reply + 2,000 tool tokens + 20 template tokens.
 //   level 1, round 1: session 0, 230.00 -> first 231.00 -> end 251.46: window 21.46 s, 1,024 tokens
 //   level 2, round 2: sessions 0 and 1 submitted at 260.0 and 260.1, last completion 301.0: window 41 s
-data fx_prime: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1,\"t_start\":100.0,\"t_first\":160.0,\"t_end\":160.1,\"prompt_tokens\":199466,\"completion_tokens\":1,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1,\"t_start\":160.2,\"t_first\":220.0,\"t_end\":220.1,\"prompt_tokens\":199500,\"completion_tokens\":1,\"status\":\"ok\",\"error\":null}\n"
+data fx_prime: String = "{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"t_start\":100.0,\"t_first\":160.0,\"t_end\":160.1,\"prompt_tokens\":199466,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"t_start\":160.2,\"t_first\":220.0,\"t_end\":220.1,\"prompt_tokens\":199500,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n"
 
-data fx_level_1: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":1,\"n_active\":1,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"t_start\":230.0,\"t_first\":231.0,\"t_end\":251.46,\"prompt_tokens\":201487,\"completion_tokens\":1024,\"status\":\"ok\",\"error\":null}\n"
+data fx_level_1: String = "{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":1,\"n_active\":1,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"t_start\":230.0,\"t_first\":231.0,\"t_end\":251.46,\"prompt_tokens\":201487,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n"
 
-data fx_level_2: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"t_start\":260.1,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"status\":\"ok\",\"error\":null}\n"
+data fx_level_2: String = "{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":260.1,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n"
 
 // RED VARIANTS OF ONE LINE EACH, every other line as in the admitted run.
-data fx_level_2_no_first_token: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"t_start\":260.0,\"t_first\":null,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"t_start\":260.1,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"status\":\"ok\",\"error\":null}\n"
+data fx_level_2_no_first_token: String = "{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":null,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":260.1,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n"
 
-data fx_level_2_failed: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"t_start\":260.1,\"t_first\":null,\"t_end\":290.0,\"prompt_tokens\":null,\"completion_tokens\":null,\"status\":\"error\",\"error\":\"TimeoutError\"}\n"
+data fx_level_2_failed: String = "{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":260.1,\"t_first\":null,\"t_end\":290.0,\"prompt_tokens\":null,\"completion_tokens\":null,\"cached_tokens\":null,\"status\":\"error\",\"error\":\"TimeoutError\"}\n"
 
-data fx_level_2_short_delta: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":203031,\"completion_tokens\":1024,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"t_start\":260.1,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"status\":\"ok\",\"error\":null}\n"
+data fx_level_2_short_delta: String = "{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":203031,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":260.1,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n"
 
-data fx_level_2_serialized: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"t_start\":262.5,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"status\":\"ok\",\"error\":null}\n"
+data fx_level_2_serialized: String = "{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"t_start\":260.0,\"t_first\":262.0,\"t_end\":300.0,\"prompt_tokens\":204531,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":2,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1024,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"messages_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"t_start\":262.5,\"t_first\":263.0,\"t_end\":301.0,\"prompt_tokens\":201521,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n"
 
-data fx_level_1_short_output: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":1,\"n_active\":1,\"retained\":2,\"session\":0,\"max_tokens\":512,\"t_start\":230.0,\"t_first\":231.0,\"t_end\":251.46,\"prompt_tokens\":201487,\"completion_tokens\":1024,\"status\":\"ok\",\"error\":null}\n"
+data fx_level_1_short_output: String = "{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"warm\",\"round\":1,\"n_active\":1,\"retained\":2,\"session\":0,\"max_tokens\":512,\"delta_tokens\":2000,\"delta_words\":1812,\"tokens_per_word_milli\":1104,\"delta_sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"messages_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"t_start\":230.0,\"t_first\":231.0,\"t_end\":251.46,\"prompt_tokens\":201487,\"completion_tokens\":1024,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n"
 
-data fx_prime_short_context: String = "{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1,\"t_start\":100.0,\"t_first\":160.0,\"t_end\":160.1,\"prompt_tokens\":180000,\"completion_tokens\":1,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v2\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1,\"t_start\":160.2,\"t_first\":220.0,\"t_end\":220.1,\"prompt_tokens\":199500,\"completion_tokens\":1,\"status\":\"ok\",\"error\":null}\n"
+data fx_prime_short_context: String = "{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"t_start\":100.0,\"t_first\":160.0,\"t_end\":160.1,\"prompt_tokens\":180000,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"t_start\":160.2,\"t_first\":220.0,\"t_end\":220.1,\"prompt_tokens\":199500,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n"
 
-fn rows(text: String) -> List<GpuBenchRequestV2> {
-  match gpu_bench_parse_jsonl(text: text) {
-    GpuBenchRequestV2Parsed { records: rs } => rs
-    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => []
+data fx_prime_same_text: String = "{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":0,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"t_start\":100.0,\"t_first\":160.0,\"t_end\":160.1,\"prompt_tokens\":199466,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n{\"schema\":\"gpu-bench/request/v3\",\"run\":\"fx\",\"phase\":\"prime\",\"round\":0,\"n_active\":2,\"retained\":2,\"session\":1,\"max_tokens\":1,\"delta_tokens\":0,\"delta_words\":0,\"tokens_per_word_milli\":null,\"delta_sha256\":null,\"messages_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"t_start\":160.2,\"t_first\":220.0,\"t_end\":220.1,\"prompt_tokens\":199500,\"completion_tokens\":1,\"cached_tokens\":null,\"status\":\"ok\",\"error\":null}\n"
+
+fn rows(text: String) -> List<GpuBenchRequestV3> {
+  match gpu_bench_parse_v3_jsonl(text: text) {
+    GpuBenchRequestV3Parsed { records: rs } => rs
+    GpuBenchRequestV3StreamUnreadable { line: _, cause: _ } => []
   }
 }
 
@@ -167,8 +169,8 @@ fn fx_level_telemetry(active: Nat) -> LevelTelemetry {
 
 data fx_telemetry: List<LevelTelemetry> = [fx_level_telemetry(active: 1), fx_level_telemetry(active: 2)]
 
-fn observe(cell: ServingCellIdentity, digests: List<Sha256Digest>, text: String, telemetry: List<LevelTelemetry>) -> ServingBenchmarkRunObservation {
-  ServingBenchmarkRunObservation { cell: cell, session_text_digests: digests, requests: rows(text: text), telemetry: telemetry }
+fn observe(cell: ServingCellIdentity, text: String, telemetry: List<LevelTelemetry>) -> ServingBenchmarkRunObservation {
+  ServingBenchmarkRunObservation { cell: cell, requests: rows(text: text), telemetry: telemetry }
 }
 
 data fx_cell_complete: ServingCellIdentity = fx_cell(gpus: fx_two_gpus, engines: 1, gpus_per_engine: 2, pool_workers: Present { value: 6 })
@@ -188,7 +190,7 @@ fn level(levels: List<ServingLevelResult>, active: Nat) -> ServingLevelResult? {
 // ── POSITIVE CONTROL: the complete run is admitted, and each quantity is its own exact fold ─────
 
 test fn complete_run_is_admitted_with_three_separate_quantities() -> Bool {
-  match admit_serving_benchmark_run(version: fx_version, observation: observe(cell: fx_cell_complete, digests: [fx_digest_a, fx_digest_b], text: fx_run_text, telemetry: fx_telemetry)) {
+  match admit_serving_benchmark_run(version: fx_version, observation: observe(cell: fx_cell_complete, text: fx_run_text, telemetry: fx_telemetry)) {
     ServingBenchmarkRunRefused { gaps: _ } => false
     ServingBenchmarkRunAdmitted { receipt: r, levels: ls } =>
       (r.version.name as String) == "serving-benchmark/fixture"
@@ -218,66 +220,66 @@ test fn complete_run_is_admitted_with_three_separate_quantities() -> Bool {
 // ── IDENTITY INCOMPLETE ─────────────────────────────────────────────────────────────────────────
 
 test fn unpinned_pool_workers_refuse() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell(gpus: fx_two_gpus, engines: 1, gpus_per_engine: 2, pool_workers: none), digests: [fx_digest_a, fx_digest_b], text: fx_run_text, telemetry: fx_telemetry))
+  let g = gaps_of(observation: observe(cell: fx_cell(gpus: fx_two_gpus, engines: 1, gpus_per_engine: 2, pool_workers: none), text: fx_run_text, telemetry: fx_telemetry))
   count(g) == 1 && any(g, x => match x { GapPoolWorkersUnpinned => true, _ => false })
 }
 
 test fn no_gpu_refuses() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell(gpus: [], engines: 1, gpus_per_engine: 2, pool_workers: Present { value: 6 }), digests: [fx_digest_a, fx_digest_b], text: fx_run_text, telemetry: fx_telemetry))
+  let g = gaps_of(observation: observe(cell: fx_cell(gpus: [], engines: 1, gpus_per_engine: 2, pool_workers: Present { value: 6 }), text: fx_run_text, telemetry: fx_telemetry))
   any(g, x => match x { GapNoGpu => true, _ => false })
 }
 
 test fn topology_that_does_not_cover_the_gpus_refuses() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell(gpus: fx_two_gpus, engines: 2, gpus_per_engine: 2, pool_workers: Present { value: 6 }), digests: [fx_digest_a, fx_digest_b], text: fx_run_text, telemetry: fx_telemetry))
+  let g = gaps_of(observation: observe(cell: fx_cell(gpus: fx_two_gpus, engines: 2, gpus_per_engine: 2, pool_workers: Present { value: 6 }), text: fx_run_text, telemetry: fx_telemetry))
   any(g, x => match x { GapTopologyDoesNotCoverGpus { engines: e, gpus_per_engine: p, gpus: n } => e == 2 && p == 2 && n == 2, _ => false })
 }
 
 test fn repeated_session_text_refuses() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell_complete, digests: [fx_digest_a, fx_digest_a], text: fx_run_text, telemetry: fx_telemetry))
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime_same_text, fx_level_1, fx_level_2], ""), telemetry: fx_telemetry))
   count(g) == 1 && any(g, x => match x { GapSessionTextsNotDistinct => true, _ => false })
 }
 
 // ── METRIC INCOMPLETE ───────────────────────────────────────────────────────────────────────────
 
 test fn missing_first_token_refuses_the_decode_metric() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell_complete, digests: [fx_digest_a, fx_digest_b], text: join([fx_prime, fx_level_1, fx_level_2_no_first_token], ""), telemetry: fx_telemetry))
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1, fx_level_2_no_first_token], ""), telemetry: fx_telemetry))
   any(g, x => match x { GapFirstTokenUnread { round: r, session: s } => r == 2 && s == 0, _ => false })
 }
 
 test fn failed_request_refuses() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell_complete, digests: [fx_digest_a, fx_digest_b], text: join([fx_prime, fx_level_1, fx_level_2_failed], ""), telemetry: fx_telemetry))
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1, fx_level_2_failed], ""), telemetry: fx_telemetry))
   any(g, x => match x { GapRequestFailed { round: r, session: s } => r == 2 && s == 1, _ => false })
 }
 
 test fn a_level_the_version_names_but_the_run_lacks_refuses() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell_complete, digests: [fx_digest_a, fx_digest_b], text: join([fx_prime, fx_level_1], ""), telemetry: fx_telemetry))
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1], ""), telemetry: fx_telemetry))
   any(g, x => match x { GapLevelRounds { active: a, observed: n } => a == 2 && n == 0, _ => false })
 }
 
 test fn serialized_submissions_have_no_common_submission() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell_complete, digests: [fx_digest_a, fx_digest_b], text: join([fx_prime, fx_level_1, fx_level_2_serialized], ""), telemetry: fx_telemetry))
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1, fx_level_2_serialized], ""), telemetry: fx_telemetry))
   any(g, x => match x { GapSubmissionSpread { round: r, spread: s } => r == 2 && microsecond_count(m: s) == 2500000, _ => false })
 }
 
 test fn missing_level_telemetry_refuses() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell_complete, digests: [fx_digest_a, fx_digest_b], text: fx_run_text, telemetry: [fx_level_telemetry(active: 1)]))
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: fx_run_text, telemetry: [fx_level_telemetry(active: 1)]))
   count(g) == 1 && any(g, x => match x { GapTelemetryMissing { active: a } => a == 2, _ => false })
 }
 
 // ── WORKLOAD NOT THIS VERSION ───────────────────────────────────────────────────────────────────
 
 test fn a_follow_up_without_the_tool_delta_refuses() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell_complete, digests: [fx_digest_a, fx_digest_b], text: join([fx_prime, fx_level_1, fx_level_2_short_delta], ""), telemetry: fx_telemetry))
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1, fx_level_2_short_delta], ""), telemetry: fx_telemetry))
   count(g) == 1 && any(g, x => match x { GapToolDelta { round: r, session: s } => r == 2 && s == 0, _ => false })
 }
 
 test fn a_shorter_output_cap_refuses() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell_complete, digests: [fx_digest_a, fx_digest_b], text: join([fx_prime, fx_level_1_short_output, fx_level_2], ""), telemetry: fx_telemetry))
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime, fx_level_1_short_output, fx_level_2], ""), telemetry: fx_telemetry))
   count(g) == 1 && any(g, x => match x { GapMaxTokens { round: r, observed: t } => r == 1 && token_count_value(t: t) == 512, _ => false })
 }
 
 test fn a_prime_outside_the_retained_band_refuses() -> Bool {
-  let g = gaps_of(observation: observe(cell: fx_cell_complete, digests: [fx_digest_a, fx_digest_b], text: join([fx_prime_short_context, fx_level_1, fx_level_2], ""), telemetry: fx_telemetry))
+  let g = gaps_of(observation: observe(cell: fx_cell_complete, text: join([fx_prime_short_context, fx_level_1, fx_level_2], ""), telemetry: fx_telemetry))
   any(g, x => match x { GapPrimeContextOutsideBand { session: s, prompt: p } => s == 0 && token_count_value(t: p) == 180000, _ => false })
 }
 
