@@ -48,6 +48,10 @@ data coproduct_alias_wrong_arm_source: String = "module probe_c1_coproduct_alias
 
 data coproduct_alias_right_arm_source: String = "module probe_c1_coproduct_alias_right_arm\nimport std.types { String }\ntype Light = Red | Green\ntype Signal = Light\nfn label(s: Signal) -> String {\n  match s {\n    Red => \"red\"\n    Green => \"green\"\n  }\n}\n"
 
+data list_through_parameterized_alias_source: String = "module probe_c1_list_parameterized_alias\nimport std.types { Int, List }\nfn first_or_zero(xs: List<Int>) -> Int {\n  match xs {\n    Empty => 0\n    Cons { head: h, tail: _ } => h\n  }\n}\n"
+
+data list_wrong_arm_source: String = "module probe_c1_list_wrong_arm\nimport std.types { Int, List }\nfn first_or_zero(xs: List<Int>) -> Int {\n  match xs {\n    Empty => 0\n    Snoc { head: h, tail: _ } => h\n  }\n}\n"
+
 test fn c0_an_unresolved_annotation_refuses_once_with_no_cascade() -> Bool {
   blocking_count(source: unresolved_annotation_used_at_int_source) == 1
 }
@@ -70,4 +74,14 @@ test fn c1_a_wrong_arm_over_an_alias_to_a_coproduct_is_refused() -> Bool {
 
 test fn c1_control_the_coproducts_arms_over_its_alias_are_accepted() -> Bool {
   blocking_count(source: coproduct_alias_right_arm_source) == 0
+}
+
+// The parameterized half of the partition (v1.compiler.infer_patterns expand_parameterized_alias_scrut):
+// `List<element> = FreeMonoid<element>` still expands, so its arms resolve and a wrong one refuses.
+test fn c1_control_a_list_match_through_its_parameterized_alias_is_accepted() -> Bool {
+  blocking_count(source: list_through_parameterized_alias_source) == 0
+}
+
+test fn c1_a_wrong_arm_over_a_list_is_refused() -> Bool {
+  blocking_count(source: list_wrong_arm_source) >= 1
 }
