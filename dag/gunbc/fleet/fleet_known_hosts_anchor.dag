@@ -849,6 +849,20 @@ fn posix_quoted_remote_words(raws: List<String>, shell: PosixLoginShellProof) ->
 // The quoted route above is its dissolution; a leg that keeps using the bare-only entry for such words still refuses.
 data remote_word_quoting_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "read_fleet_login_shell"),
+    reason: "no fleet route reads a target principal's login shell yet; its producer shape (getent passwd output) is inhabited locally by test.claim.fleet.posix_quoted_remote_word_real_execution_witness, and its first consumer is the srv4 placement step of the x86 network install (gunbc.fleet.site_pxe_edge_converge place_site_pxe_edge_ubuntu_chain, phase 3, on merry-fox-82's go)",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a site_pxe_edge_converge apply dispatch on srv4 reads the ubuntu principal's login shell through read_fleet_login_shell and the run receipt records the LoginShellStanding it minted; a witness over a supplied passwd line does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "typed_argv_exec_over_fleet_ssh_posix"),
+    reason: "no fleet leg runs a quoted word yet; its first consumer is the srv4 placement step, which names the 24.04.3 ISO's pool .debs (versions carrying '+')",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a site_pxe_edge_converge apply dispatch on srv4 runs a leg with a quoted word through typed_argv_exec_over_fleet_ssh_posix under a proof read in that run, and the placed member's sha256 readback agrees with its pin; a hermetic rendering check does not fire this"
+    )
+  ),
+  frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "portable_remote_words"),
     reason: "the bare-only constructor refuses any word outside its alphabet, so a leg needing a regex, an operator character or a version string with '+' was unrunnable; three legs met it",
     dissolution: unbound_dissolution(

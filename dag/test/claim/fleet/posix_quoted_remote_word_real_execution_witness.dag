@@ -1,6 +1,7 @@
 module test.claim.fleet.posix_quoted_remote_word_real_execution_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import gunbc.output_policy { OutcomeIsData }
@@ -79,4 +80,21 @@ test fn hostile_words_reach_sh_as_one_literal_word_each() -> Bool {
         }
     }
   }
+}
+
+// INHABITANCE OF THE PRODUCER (review 85942): the real `getent passwd <user>` this runner answers, for the user the
+// witness runs as, read through the production parser. The route is the producer's actual output -- its trailing
+// newline and NSS formatting included -- not a typed-in line; the fleet leg itself (read_fleet_login_shell over the
+// SSH edge) is a frontier row whose consumer is the srv4 placement step.
+test fn the_real_getent_output_mints_the_proof_for_its_own_principal() -> Bool {
+  let who = shell.Exec.Run(script: retained_runtime(body: "id -un", reason: "posix quoted word real-execution witness: the running principal" as NonEmptyStr), expect: OutcomeIsData)
+  let name = trim(s: who.stdout)
+  let entry = shell.Exec.Run(script: retained_runtime(body: concat("getent passwd ", name), reason: "posix quoted word real-execution witness: the principal's own passwd entry" as NonEmptyStr), expect: OutcomeIsData)
+  let shell_path = trim(s: shell.Exec.Run(script: retained_runtime(body: concat(concat("getent passwd ", name), " | cut -d: -f7"), reason: "posix quoted word real-execution witness: the entry's shell field, read independently" as NonEmptyStr), expect: OutcomeIsData).stdout)
+  who.success && name != "" && entry.success
+    && (match login_shell_standing(principal: name as NonEmptyStr, success: entry.success, output: entry.stdout) {
+      LoginShellPosix { proof: p } => (p.principal as String) == name && (p.shell as String) == shell_path
+      LoginShellNotPosix { principal: pr, shell: sh } => (pr as String) == name && sh == shell_path
+      LoginShellUnreadable { principal: _, reason: _ } => false
+    })
 }
