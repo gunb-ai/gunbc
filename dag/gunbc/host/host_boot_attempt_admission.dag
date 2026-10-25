@@ -706,7 +706,7 @@ fn boot_attempt_store(tree: HostStateTree) -> BootAttemptStoreReading {
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => BootAttemptStoreUnready { detail: join(["the boot attempt store's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => BootAttemptStoreUnready { detail: join(["the boot attempt store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => BootAttemptStoreReady { store: BootAttemptSlotStore { slots: file_slot_store(root: root) } }
+    FilesystemDirectoryListed(_) => BootAttemptStoreUnready { detail: join(["BROKEN-REALIZATION: ", root as String], "") }
   }
 }
 

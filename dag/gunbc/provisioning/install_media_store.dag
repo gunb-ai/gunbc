@@ -65,7 +65,7 @@ fn install_media_store(tree: HostStateTree) -> InstallMediaStoreReading {
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => InstallMediaStoreUnready { detail: join(["the install media store's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => InstallMediaStoreUnready { detail: join(["the install media store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => InstallMediaStoreReady { store: InstallMediaStore { root: root } }
+    FilesystemDirectoryListed(_) => InstallMediaStoreUnready { detail: join(["BROKEN-REALIZATION: ", root as String], "") }
   }
 }
 

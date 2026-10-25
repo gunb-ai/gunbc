@@ -128,7 +128,7 @@ fn unit_hold_store(tree: HostStateTree) -> UnitHoldStoreReading {
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => UnitHoldStoreUnready { detail: join(["the unit hold store's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => UnitHoldStoreUnready { detail: join(["the unit hold store's directory could not be listed: ", e], "") }
-    FilesystemDirectoryListed(_) => UnitHoldStoreReady { store: UnitHoldStore { root: root } }
+    FilesystemDirectoryListed(_) => UnitHoldStoreUnready { detail: join(["BROKEN-REALIZATION: ", root as String], "") }
   }
 }
 
