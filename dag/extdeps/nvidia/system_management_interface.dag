@@ -315,18 +315,30 @@ fn nvidia_smi_gpu_sample_row(line: String) -> NvidiaSmiGpuSample? {
   }
 }
 
-// ONE READER FOR EVERY CSV QUERY: blank lines skip, any other line that is not a row refuses the whole
-// read with that line, so a sample the parser cannot read is never a missing sample.
+// EVERY CSV QUERY IS READ THE SAME WAY: blank lines skip, and any other line that is not a row refuses the
+// whole read with that line, so a sample the parser cannot read is never a missing sample. Each query has
+// its own entry below over the shared line split, so the row type is stated, not inferred.
 type NvidiaSmiRowsRead<T>
   = NvidiaSmiRowsParsed { rows: List<T> }
   | NvidiaSmiRowUnparsed { line: String }
 
-fn nvidia_smi_rows<T>(text: String, row: fn(String) -> T?) -> NvidiaSmiRowsRead<T> {
-  let lines = flat_map(split(s: text, delimiter: "\n"), l => if trim(s: l) == "" { [] as List<String> } else { [l] })
-  let bad = flat_map(lines, l => match row(l) { Absent => [l], Present { value: _ } => [] as List<String> })
-  match first(bad) {
+fn nvidia_smi_data_lines(text: String) -> List<String> {
+  flat_map(split(s: text, delimiter: "\n"), l => if trim(s: l) == "" { [] as List<String> } else { [l] })
+}
+
+fn nvidia_smi_identity_rows(text: String) -> NvidiaSmiRowsRead<NvidiaSmiGpuIdentity> {
+  let lines = nvidia_smi_data_lines(text: text)
+  match first(lines |> filter(l => match nvidia_smi_gpu_identity_row(line: l) { Absent => true, Present { value: _ } => false })) {
     Present { value: b } => NvidiaSmiRowUnparsed { line: b }
-    Absent => NvidiaSmiRowsParsed { rows: flat_map(lines, l => match row(l) { Absent => [] as List<T>, Present { value: r } => [r] }) }
+    Absent => NvidiaSmiRowsParsed { rows: flat_map(lines, l => match nvidia_smi_gpu_identity_row(line: l) { Absent => [] as List<NvidiaSmiGpuIdentity>, Present { value: r } => [r] }) }
+  }
+}
+
+fn nvidia_smi_sample_rows(text: String) -> NvidiaSmiRowsRead<NvidiaSmiGpuSample> {
+  let lines = nvidia_smi_data_lines(text: text)
+  match first(lines |> filter(l => match nvidia_smi_gpu_sample_row(line: l) { Absent => true, Present { value: _ } => false })) {
+    Present { value: b } => NvidiaSmiRowUnparsed { line: b }
+    Absent => NvidiaSmiRowsParsed { rows: flat_map(lines, l => match nvidia_smi_gpu_sample_row(line: l) { Absent => [] as List<NvidiaSmiGpuSample>, Present { value: r } => [r] }) }
   }
 }
 
@@ -367,9 +379,13 @@ fn nvidia_smi_dmon_pcie_row(line: String) -> NvidiaSmiPcieSample? {
   }
 }
 
-// dmon's header lines are part of its output, not rows, so they are dropped before the shared reader.
+// dmon's header lines are part of its output, not rows, so they are dropped before the rows are read.
 fn nvidia_smi_dmon_pcie_rows(text: String) -> NvidiaSmiRowsRead<NvidiaSmiPcieSample> {
-  nvidia_smi_rows(text: join(flat_map(split(s: text, delimiter: "\n"), l => if starts_with(s: trim(s: l), prefix: "#") { [] as List<String> } else { [l] }), "\n"), row: l => nvidia_smi_dmon_pcie_row(line: l))
+  let lines = nvidia_smi_data_lines(text: text) |> filter(l => !starts_with(s: trim(s: l), prefix: "#"))
+  match first(lines |> filter(l => match nvidia_smi_dmon_pcie_row(line: l) { Absent => true, Present { value: _ } => false })) {
+    Present { value: b } => NvidiaSmiRowUnparsed { line: b }
+    Absent => NvidiaSmiRowsParsed { rows: flat_map(lines, l => match nvidia_smi_dmon_pcie_row(line: l) { Absent => [] as List<NvidiaSmiPcieSample>, Present { value: r } => [r] }) }
+  }
 }
 
 // ── DEVICE MEMORY IN USE, per GPU: `--query-gpu=uuid,memory.used` ─────────────────────────────
@@ -390,5 +406,13 @@ fn nvidia_smi_gpu_memory_used_row(line: String) -> NvidiaSmiGpuMemoryUsed? {
     match nat_cell(cells: c, i: 1) { Absent => none, Present { value: m } =>
       Present { value: NvidiaSmiGpuMemoryUsed { uuid: uuid, used: mebibyte(count: m) } }
     } }
+  }
+}
+
+fn nvidia_smi_memory_used_rows(text: String) -> NvidiaSmiRowsRead<NvidiaSmiGpuMemoryUsed> {
+  let lines = nvidia_smi_data_lines(text: text)
+  match first(lines |> filter(l => match nvidia_smi_gpu_memory_used_row(line: l) { Absent => true, Present { value: _ } => false })) {
+    Present { value: b } => NvidiaSmiRowUnparsed { line: b }
+    Absent => NvidiaSmiRowsParsed { rows: flat_map(lines, l => match nvidia_smi_gpu_memory_used_row(line: l) { Absent => [] as List<NvidiaSmiGpuMemoryUsed>, Present { value: r } => [r] }) }
   }
 }

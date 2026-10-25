@@ -16,9 +16,9 @@ import extdeps.linux.proc_meminfo { parse_proc_meminfo, MeminfoParsed, MeminfoFi
 import extdeps.linux.proc_self_cgroup { proc_self_cgroup_unified_hierarchy_paths }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
 import extdeps.nvidia.system_management_interface {
-  NvidiaSmiGpuIdentity, NvidiaSmiRowsParsed, NvidiaSmiRowUnparsed, nvidia_smi_rows, nvidia_smi_gpu_identity_row, nvidia_smi_gpu_sample_row,
+  NvidiaSmiGpuIdentity, NvidiaSmiRowsParsed, NvidiaSmiRowUnparsed, nvidia_smi_identity_rows, nvidia_smi_sample_rows, nvidia_smi_memory_used_rows,
   nvidia_smi_dmon_pcie_rows, nvidia_smi_gpu_identity_fields, nvidia_smi_gpu_sample_fields,
-  NvidiaSmiGpuMemoryUsed, nvidia_smi_gpu_memory_used_fields, nvidia_smi_gpu_memory_used_row,
+  NvidiaSmiGpuMemoryUsed, nvidia_smi_gpu_memory_used_fields,
 }
 import extdeps.strata.serve_flags { strata_serve_flag_words }
 import extdeps.gpu_bench.request_v4 { gpu_bench_parse_v4_jsonl, GpuBenchRequestV4Parsed, GpuBenchRequestV4StreamUnreadable, GpuBenchRequestV4 }
@@ -298,7 +298,7 @@ type GpuSnapshot
 fn gpu_snapshot() -> GpuSnapshot {
   let q = nvidia_smi(name: probe_name(), arguments: [concat("--query-gpu=", nvidia_smi_gpu_memory_used_fields), "--format=csv,noheader,nounits"])
   if q.exit_code != 0 { GpuSnapshotUnread { reason: q.stderr } } else {
-    match nvidia_smi_rows(text: q.stdout, row: l => nvidia_smi_gpu_memory_used_row(line: l)) {
+    match nvidia_smi_memory_used_rows(text: q.stdout) {
       NvidiaSmiRowUnparsed { line: l } => GpuSnapshotUnread { reason: concat("memory.used unreadable: ", l) }
       NvidiaSmiRowsParsed { rows: rs } =>
         if count(rs) == 0 { GpuSnapshotUnread { reason: "no GPU in the memory snapshot" } }
@@ -338,7 +338,7 @@ fn admitted_report(inputs: PinnedInputs, principal_facts: String, before: String
       match gpu_bench_parse_v4_jsonl(text: rq) {
         GpuBenchRequestV4StreamUnreadable { line: n, cause: c } => not_held(stdout: evidence_out, reason: join(["kit rows unreadable at line ", to_string(n), ": ", c as String], ""))
         GpuBenchRequestV4Parsed { records: rows } =>
-          match nvidia_smi_rows(text: sm, row: l => nvidia_smi_gpu_sample_row(line: l)) {
+          match nvidia_smi_sample_rows(text: sm) {
             NvidiaSmiRowUnparsed { line: l } => not_held(stdout: evidence_out, reason: concat("GPU sample unreadable: ", l))
             NvidiaSmiRowsParsed { rows: samples } =>
               match nvidia_smi_dmon_pcie_rows(text: pc) {
@@ -396,7 +396,7 @@ fn native_claim_report() -> NativeClaimReport {
           let cleared = remove_all()
           let ident = nvidia_smi(name: probe_name(), arguments: [concat("--query-gpu=", nvidia_smi_gpu_identity_fields), "--format=csv,noheader,nounits"])
           if ident.exit_code != 0 { no_observation(reason: concat("no GPU container (docker --gpus, CDI): ", ident.stderr)) } else {
-            match nvidia_smi_rows(text: ident.stdout, row: l => nvidia_smi_gpu_identity_row(line: l)) {
+            match nvidia_smi_identity_rows(text: ident.stdout) {
               NvidiaSmiRowUnparsed { line: l } => no_observation(reason: concat("GPU identity unreadable: ", l))
               NvidiaSmiRowsParsed { rows: gpus } =>
                 if count(gpus) == 0 { no_observation(reason: "no GPU visible in the GPU container") } else {

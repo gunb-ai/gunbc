@@ -12,7 +12,7 @@ import extdeps.storage.types { Gen4 }
 import extdeps.nvidia.management_library { NvmlClocksEventGpuIdle, NvmlClocksEventSwPowerCap, NvmlClocksEventSwThermalSlowdown }
 import extdeps.nvidia.system_management_interface {
   NvidiaSmiGpuIdentity, NvidiaSmiGpuSample, NvidiaSmiPcieSample, NvidiaSmiRowsParsed, NvidiaSmiRowUnparsed,
-  nvidia_smi_rows, nvidia_smi_gpu_identity_row, nvidia_smi_gpu_sample_row, nvidia_smi_dmon_pcie_rows, nvidia_smi_gpu_memory_used_row,
+  nvidia_smi_identity_rows, nvidia_smi_sample_rows, nvidia_smi_dmon_pcie_rows, nvidia_smi_memory_used_rows,
 }
 import gunbc.serving.serving_benchmark_run_receipt { WallPowerUnmetered, LevelTelemetry, GpuLevelTelemetry }
 import gunbc.serving.serving_benchmark_telemetry { serving_benchmark_level_telemetry, observed_gpu }
@@ -34,7 +34,7 @@ fn capture(name: String) -> String {
 }
 
 test fn srv3_identity_reads_both_ada_cards() -> Bool {
-  match nvidia_smi_rows(text: capture(name: "query_gpu_identity.csv"), row: l => nvidia_smi_gpu_identity_row(line: l)) {
+  match nvidia_smi_identity_rows(text: capture(name: "query_gpu_identity.csv")) {
     NvidiaSmiRowUnparsed { line: _ } => false
     NvidiaSmiRowsParsed { rows: gs } =>
       count(gs) == 2 && match first(gs) {
@@ -55,7 +55,7 @@ test fn srv3_identity_reads_both_ada_cards() -> Bool {
 }
 
 test fn srv3_samples_read_with_utc_timestamps_and_the_idle_mask() -> Bool {
-  match nvidia_smi_rows(text: capture(name: "query_gpu_samples_lms500.csv"), row: l => nvidia_smi_gpu_sample_row(line: l)) {
+  match nvidia_smi_sample_rows(text: capture(name: "query_gpu_samples_lms500.csv")) {
     NvidiaSmiRowUnparsed { line: _ } => false
     NvidiaSmiRowsParsed { rows: ss } =>
       count(ss) == 12 && match first(ss) {
@@ -73,7 +73,7 @@ test fn srv3_samples_read_with_utc_timestamps_and_the_idle_mask() -> Bool {
 }
 
 test fn the_count_option_error_refuses_the_read() -> Bool {
-  match nvidia_smi_rows(text: "ERROR: Option --query-gpu=timestamp,uuid is not recognized. Please run 'nvidia-smi -h' for help.\n", row: l => nvidia_smi_gpu_sample_row(line: l)) {
+  match nvidia_smi_sample_rows(text: "ERROR: Option --query-gpu=timestamp,uuid is not recognized. Please run 'nvidia-smi -h' for help.\n") {
     NvidiaSmiRowUnparsed { line: _ } => true
     NvidiaSmiRowsParsed { rows: _ } => false
   }
@@ -193,7 +193,7 @@ test fn a_group_the_file_cannot_name_is_refused() -> Bool {
 }
 
 test fn gpu_memory_used_rows_read_per_gpu() -> Bool {
-  match nvidia_smi_rows(text: "GPU-a, 512\nGPU-b, 2048\n", row: l => nvidia_smi_gpu_memory_used_row(line: l)) {
+  match nvidia_smi_memory_used_rows(text: "GPU-a, 512\nGPU-b, 2048\n") {
     NvidiaSmiRowUnparsed { line: _ } => false
     NvidiaSmiRowsParsed { rows: rs } => count(rs) == 2 && any(rs, r => (r.uuid as String) == "GPU-b" && mebibyte_count(m: r.used) == 2048)
   }
