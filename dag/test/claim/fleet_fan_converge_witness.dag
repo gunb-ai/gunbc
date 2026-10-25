@@ -36,7 +36,8 @@ import gunbc.fleet.fleet_fan_converge {
   fleet_fan_wire_read_ref,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.host.managed_host { ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
+import gunbc.host.managed_host { ManagedHostFound, managed_host_binding_for, managed_host_fixture, managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.machine_intake.fan_observe { FanObserveAdmitted, FanObserveHost, fan_observe_admission }
 
 // SUPPLIED: the adapter's normalized reading and receipt. EXECUTED: the real binding of mtcollins1
@@ -87,7 +88,8 @@ fn variant_subject(host: HostIdentity, openbmc: Bool) -> FanObserveHost?
     Present { value: h } => match h.access {
       BmcAccessObserved { observation: o } => {
         let access = if openbmc { BmcAccessObserved { observation: as_openbmc(o: o) } } else { h.access }
-        match fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: managed_host_fixture(host: host, access: access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)) }) {
+        let fixture = managed_host_fixture(host: host, access: access, secure: h.secure, smpro: h.smpro)
+        match fan_observe_admission(lookup: ManagedHostFound { host: fixture, control: bmc_control_binding(observed: fixture.access, secured: fixture.secure) }) {
           FanObserveAdmitted { host: v } => Present { value: v }
           _ => Absent
         }

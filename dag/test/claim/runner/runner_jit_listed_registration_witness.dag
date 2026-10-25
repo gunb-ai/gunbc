@@ -13,7 +13,8 @@ import product.host_identity { HostIdentity }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
 import gunbc.ci.ci_fleet { fleet_compute_offer_for }
-import gunbc.host.managed_host { ManagedHost, managed_hosts, managed_host_binding }
+import gunbc.host.managed_host { ManagedHost, managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
 import gunbc.host.host_control_route { HostControlStanding, HostControlRefused, NoOutOfBandRoute, bmc_controlled_host }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
 import gunbc.runner.runner_slot_allocation { RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, WidthComputeOfferAbsent, gunbc_runner_committed_width }
@@ -38,18 +39,16 @@ fn has_offer(m: ManagedHost) -> Bool {
   match fleet_compute_offer_for(host: m.host) { Present { value: _ } => true Absent => false }
 }
 
-// THE ONE MANAGED HOST. Its fleet compute offer is not in the catalog today, so its own registration
-// labels refuse; the success path is witnessed by SUPPLYING a resolved label set and a supplied width.
-// PAIRING FRONTIER (DESIGN section 3): the supplied success shapes (RegistrationLabelsResolved, and
-// RunnerWidthDerived { slots: 5 }) are NOT claimed as inhabited by a real producer here -- the real
-// producer for this host refuses or leaves the width unresolved, and these tests assert exactly that
-// refusal. Trigger: the mtcollins1 offer entering fleet_owned_compute_offer_catalog (cut 1, #14062).
-// The enrolling PR owes assertions through the REAL producers that runner_registration_labels(mtcollins1)
-// equals the labels of a bound service slot, that gunbc_runner_committed_width(mtcollins1) == 5, and
-// that service_slot_population over the real host has exactly 5 bound slots.
+// THE ONE MANAGED HOST. The supplied success shapes (RegistrationLabelsResolved, and
+// RunnerWidthDerived { slots: 5 }) stay SUPPLIED values here (DESIGN section 3, a witness discriminates at
+// one interface). Its offer now IS in fleet_owned_compute_offer_catalog, and the production width
+// gunbc_runner_committed_width(mtcollins1) == RunnerWidthDerived { slots: 5 } is asserted through the real
+// producers in test.claim.runner.mtcollins1_runner_offer_witness. STILL OWED, by the first change that
+// reads them through the real producers: runner_registration_labels(mtcollins1) equals the labels of a
+// bound service slot, and service_slot_population over the real host has exactly 5 bound slots.
 fn the_host() -> ManagedHost? { first(managed_hosts()) }
 
-fn controlled(m: ManagedHost) -> HostControlStanding { bmc_controlled_host(standing: managed_host_binding(host: m)) }
+fn controlled(m: ManagedHost) -> HostControlStanding { bmc_controlled_host(host: m.host, standing: bmc_control_binding(observed: m.access, secured: m.secure)) }
 
 data supplied_labels: RunnerRegistrationLabelsResolution = RegistrationLabelsResolved { labels: ["self-hosted", "linux", "ARM64", "gunbc-heavy", "gunbc-host-x"] }
 

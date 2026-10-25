@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.one_disposition_defined_jointly_by_independent_matches
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
 
 data one_disposition_defined_jointly_by_independent_matches: RecurringFailureMode = RecurringFailureMode {
   identity: "one_disposition_defined_jointly_by_independent_matches" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
 
   receipts: [
     "**several independent total matches over ONE coproduct jointly define a single disposition, each defaulting through a wildcard, so no one of them is the authority and agreement rests on an author remembering to edit all of them** (INVALID STATE: a subject's classification is answered by N separate predicates, each an allowlist under its own catch-all, where the answer a consumer wants is a JOIN across them. HARM: a member added to one list and omitted from the others lands in every catch-all at once and is classified by default in each -- silently, since every match is total and every one compiles.",

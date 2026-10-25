@@ -10,7 +10,7 @@ import std.algebra { Cons, Empty, FreeMonoid, fold_list, empty_map, map_insert }
 import v2.std.namespace_alias { CapturedImportTarget }
 import v2.std.diagnostic { Accepted, ByteRange, None, Outcome, Rejected, bind_outcome, outcome_accepted, Textual, diagnostics_eq, non_empty_diagnostics_eq }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node, NotADeclaration }
 import v2.std.resolution_policy { ImportScoped }
 
 test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
@@ -58,7 +58,8 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
           },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -140,7 +141,8 @@ fn fc_malformed_subject_root() -> Node {
           kind: TypeNode { connective: Atom { identity: ^fc_malformed_child_sym } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -279,7 +281,8 @@ fn fc_dual_import_subject_root(seg: Symbol, use_sym: Symbol, imported_decl: Symb
           kind: TypeNode { connective: Atom { identity: imported_decl } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic

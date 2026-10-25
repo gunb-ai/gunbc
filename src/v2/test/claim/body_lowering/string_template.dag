@@ -20,7 +20,7 @@ import std.occurrence_identity { OccurrenceSynthetic, NodeOccurrenceIdentity, Oc
 import std.algebra { Cons, Empty, FreeSemigroup, length, list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { node_subtree_nodes, Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, node_with_occurrence_id, symbol_lexeme }
+import v2.std.node { node_subtree_nodes, Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, node_with_occurrence_id, symbol_lexeme, NotADeclaration }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
 import v2.std.grammar { GrammarEmitTerminal, GrammarEmitClassTerminal, GrammarEmitLexemeTerminal, grammar_named_edge }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -182,9 +182,9 @@ fn st_shell() -> Node {
     captured: node_synthetic(
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"x\{", occurrence: st_minted(n: 1)) },
-        Edge { label: Positional, target: st_hole() },
-        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}y\"", occurrence: st_minted(n: 4)) }
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"x\{", occurrence: st_minted(n: 1)), declaration: NotADeclaration },
+        Edge { label: Positional, target: st_hole(), declaration: NotADeclaration },
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}y\"", occurrence: st_minted(n: 4)), declaration: NotADeclaration }
       ]
     ),
     occurrence: st_minted(n: 0)
@@ -282,8 +282,8 @@ fn st_holeless_shell() -> Node {
     captured: node_synthetic(
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"x\{", occurrence: st_minted(n: 1)) },
-        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}y\"", occurrence: st_minted(n: 4)) }
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_head, lexeme: "\"x\{", occurrence: st_minted(n: 1)), declaration: NotADeclaration },
+        Edge { label: Positional, target: st_part(token_class: ^dag_token_string_template_tail, lexeme: "\}y\"", occurrence: st_minted(n: 4)), declaration: NotADeclaration }
       ]
     ),
     occurrence: st_minted(n: 0)

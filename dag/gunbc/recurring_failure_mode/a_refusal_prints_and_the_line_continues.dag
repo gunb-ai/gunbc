@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.a_refusal_prints_and_the_line_continues
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+
+data a_refusal_prints_and_the_line_continues: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_refusal_prints_and_the_line_continues" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: MechanicallyPreventable, ceiling_reason: "mechanically preventable: the partition is computed after the claims have already run, so the Refused verdict joins the batch exit (precedence 1>2>0) rather than preventing the state; claim_batch is the only caller of exclusive_cost_partition outside tests." as NonEmptyStr } },
+
+  receipts: [
+    "**a refusal that fires while the line keeps running is an escape hatch with a typed label on it.** DESIGN section 5 (stop visibly): a refusal that fires stops the line, and a toggle that proceeds as if it had not fired is an escape hatch. The class is a verdict rendered as REFUSED on a diagnostic stream that no exit status, claim verdict or gate reads, so every consumer that looks at the exit code sees a green run beside a printed Refused.",
+
+    "INVALID STATE: a process that prints a Refused verdict for its own measurement and exits 0 with every claim PASS.",
+
+    "HARM: the refusal exists to say a figure cannot be quoted, and its only reader is a human scanning stderr. A script, a ledger or a reviewer reading the exit status takes the run as clean, so the figure is quoted or the batch is cited as evidence while the instrument that qualifies it said no. The cost is paid at the next consumer of the number, at interest (DESIGN section 1, safety).",
+
+    "DISTINGUISHING FACT: the word Refused appears on the receipt line and the exit status is 0. In claim_batch the exit is composed ONLY from the two flags any_failed and any_unobserved (batch_exit_code); the [cost-partition] line is emitted by exclusive_cost_partition and render_exclusive_cost_partition_json to stderr and sets neither flag. A refusal whose verdict feeds no flag cannot change the exit by construction.",
+
+    "RECEIPT (relayed 2026-10-23 by warm-wolf-570 from bright-swift-151's /tmp/oa_pair_par.log, which is not in this checkout and was not re-read by this author; ruled by stern-bat-401): at daeda4c6a92 the batch prints [cost-partition] verdict Refused OverAttributed with all claims PASS and exit 0. The code path was read at origin/main: the partition print in claim_batch.rs has no connection to batch_exit_code.",
+
+    "WHAT THIS IS NOT. It is not attribution_row_around_the_wrong_span, which is a wrong causal sentence beside a correct measurement; here the partition correctly refuses and the refusal is ignored. It is not a measurement error: OverAttributed is the instrument working.",
+
+    "RULE: a refusal that a run's own instrument raises about its measurement either joins the exit composition or is not rendered as Refused. A non-gating shape must not print the word Refused.",
+
+    "RUNG FOUND AT: below the ladder for the exit status (the refusal is visible on stderr only; nothing gates on it). The printed line is mitigation for a human reader only.",
+
+    "CEILING: mechanically preventable now (the partition verdict joins batch_exit_code at precedence 1 over 2 over 0, with a planted over-attribution exiting nonzero and a clean partition exiting 0); it cannot be structurally impossible while the partition is computed after the claims have already run.",
+
+    "RETIRED (gunbc#14893): the partition's rows and parent are drawn from one universe (#14872) and a Refused partition joins the batch exit (#14893): NoSpans exits 2, any other refusal exits 1, a Reconciled partition changes nothing. Executed evidence at the PR head: RED a planted over-attribution exits nonzero on a PASSing claim, control the same claim on the fixed tree exits 0."
+  ],
+
+  evidence: [],
+}

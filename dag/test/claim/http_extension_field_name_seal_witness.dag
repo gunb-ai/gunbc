@@ -1,0 +1,51 @@
+module test.claim.http_extension_field_name_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, total_blocking_census, census_delta_verdict, census_verdict, census_exit }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// A FRAMING HEADER HAS NO EXPRESSION IN THE EXTENSION ARM. extdeps.http.server HttpExtensionFieldName
+// and ServeWireHeader are sole_constructor, so a module outside extdeps.http.server that wants a
+// header name no admission produced has to spell the record -- as a literal or a cast, or hand the
+// arm a raw String -- and each is a located compile refusal. Each RED asserts EXACTLY ONE refusal
+// on the sealed subject (or, for the raw String at the arm, at least one blocking diagnostic); the
+// GREEN carries a name through http_extension_field_name into the arm and into the wire projection
+// and must add NO blocking diagnostic beyond a baseline importing the same closure (the census
+// counts the whole compile, imported closure included).
+
+data forged_name_literal_source: String = "module probe_field_name_literal\nimport extdeps.http.server { HttpExtensionFieldName }\nfn forged() -> HttpExtensionFieldName {\n  HttpExtensionFieldName { label: \"Content-Length\" }\n}\n"
+
+data forged_name_cast_source: String = "module probe_field_name_cast\nimport std.types { String }\nimport extdeps.http.server { HttpExtensionFieldName }\nfn forged(s: String) -> HttpExtensionFieldName {\n  s as HttpExtensionFieldName\n}\n"
+
+data raw_string_arm_source: String = "module probe_field_arm_raw_string\nimport extdeps.http.server { ServeResponseHeader, ServeResponseHeaderField }\nfn forged() -> ServeResponseHeader {\n  ServeResponseHeaderField { name: \"Content-Length\", value: \"0\" }\n}\n"
+
+data forged_wire_header_source: String = "module probe_wire_header_literal\nimport extdeps.http.server { ServeWireHeader }\nfn forged() -> ServeWireHeader {\n  ServeWireHeader { name: \"Content-Length\", value: \"0\" }\n}\n"
+
+data lawful_field_source: String = "module probe_field_lawful\nimport std.types { String }\nimport std.optional { Present }\nimport extdeps.http.server { ServeWireHeader, ServeResponseHeaderField, HttpExtensionFieldNameAdmitted, HttpExtensionFieldNameRefused, http_extension_field_name, serve_response_header_wire }\nfn lawful(label: String) -> ServeWireHeader? {\n  match http_extension_field_name(label: label) {\n    HttpExtensionFieldNameAdmitted { name: n } => Present { value: serve_response_header_wire(header: ServeResponseHeaderField { name: n, value: \"v\" }) }\n    HttpExtensionFieldNameRefused { cause: _ } => none\n  }\n}\n"
+
+data field_baseline_source: String = "module probe_field_baseline\nimport extdeps.http.server { ServeWireHeader }\nfn baseline(h: ServeWireHeader) -> ServeWireHeader {\n  h\n}\n"
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+test fn a_forged_field_name_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_name_literal_source, subject: "HttpExtensionFieldName"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_field_name_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_name_cast_source, subject: "HttpExtensionFieldName"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_raw_string_at_the_extension_arm_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: raw_string_arm_source), holds: fn(n) { n >= 1 }))
+}
+
+test fn a_forged_wire_header_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_wire_header_source, subject: "ServeWireHeader"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_name_carried_through_the_admission_is_not_refused() -> ProcessExit {
+  census_exit(census_delta_verdict(red: total_blocking_census(source: lawful_field_source), control: total_blocking_census(source: field_baseline_source), holds: fn(n) { n == 0 }))
+}

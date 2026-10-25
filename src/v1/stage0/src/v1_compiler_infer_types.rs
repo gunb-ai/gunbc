@@ -150,7 +150,24 @@ pub fn node_is_keyed_collection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (((n.children.clone().len() as i64) == 2)
-        && node_is_collection(n.clone(), source_indices.clone()))
+        && (node_is_collection(n.clone(), source_indices.clone())
+            || node_is_keyed_algebra_spelling(n.clone(), source_indices.clone())))
+}
+
+pub fn node_is_keyed_algebra_spelling(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((n.connective.clone() == Connective::NoConnective)
+        && match crate::std_types::container_template_algebra(
+            crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                n.clone(),
+            )),
+        ) {
+            Some(algebra) => (algebra.clone() == "FinitelySupportedFunction".to_string()),
+            std::option::Option::None => false,
+        })
 }
 
 pub fn collection_carrier_node(n: Rc<Node>) -> Rc<Node> {

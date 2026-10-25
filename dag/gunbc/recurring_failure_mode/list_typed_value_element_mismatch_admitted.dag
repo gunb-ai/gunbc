@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.list_typed_value_element_mismatch_admitted
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data list_typed_value_element_mismatch_admitted: RecurringFailureMode = RecurringFailureMode {
   identity: "list_typed_value_element_mismatch_admitted" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "INVALID STATE: a value whose type is List<T> reaches a position declared List<U> with T and U established and distinct, and the program is Accepted. HARM: silent wrongness at the compiler floor. DESIGN section 4b names `values inhabit declared types` as ordinary floor, so this sits below it until the pair is refused before execution. The value fails later inside a String primitive or a persisted record that expected assignment text.",

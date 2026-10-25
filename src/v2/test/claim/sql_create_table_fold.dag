@@ -1,6 +1,7 @@
 module v2.test.claim.sql_create_table_fold
 
 
+
 import v2.extdeps.formats.sql {
   SqlColumnConstraints,
   SqlColumnDefaultAbsent,

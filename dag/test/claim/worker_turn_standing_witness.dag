@@ -1,5 +1,6 @@
 module test.claim.worker_turn_standing_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, CursorDispatchProvider }
 import std.types { Bool, List, NonEmptyStr, String, FilePath }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
@@ -57,13 +58,7 @@ import gunbc.worker_turn_standing {
   cursor_sandbox_unavailable_reason_prefix,
 }
 import gunbc.dispatch_credential_acquisition { cursor_attempt_runtime_root }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_actuator_worker_turn_selection_observed,
-  DispatchAttemptPrepared,
-  DispatchAttemptSelectionRefused,
-  CodexDispatchProvider,
-  CursorDispatchProvider,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_actuator_worker_turn_selection_observed, DispatchAttemptPrepared, DispatchAttemptSelectionRefused }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import extdeps.exec.command { argv_words }

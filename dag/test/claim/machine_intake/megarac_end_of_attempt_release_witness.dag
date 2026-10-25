@@ -1,0 +1,268 @@
+module test.claim.machine_intake.megarac_end_of_attempt_release_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, string_contains }
+import std.optional { Present }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.bmc.megarac { megarac_firmware_0_32, megarac_firmware_0_45_3 }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
+import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image_stem }
+import gunbc.runner.runner_host_medium { runner_host_medium_image_stem }
+import gunbc.machine_intake.megarac_media_attach {
+  CdErrorRead,
+  CdErrorNone,
+  MegaRacAttachResult,
+  MegaRacDetachAdmission,
+  MegaRacDetachAdmitted,
+  MegaRacDetachNotAdmitted,
+  MegaRacDetachEvidence,
+  MegaRacRawRead,
+  MegaRacOwnSessionEnded,
+  MegaRacSessionRefused,
+  OwnReleaseStep,
+  OwnReleaseStop,
+  OwnReleaseEnd,
+  OwnSessionEnd,
+  OwnSessionNothingPresented,
+  OwnSessionStopped,
+  OwnSessionStopUnconfirmed,
+  OwnSessionNotStopped,
+  SessionReleased,
+  SessionReleaseRefused,
+  SessionReleaseNotAttempted,
+  megarac_write_answer,
+  own_session_release_step,
+  own_session_end_of_detach,
+  presented_convergence,
+  presented_media,
+}
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  MegaRacEndMedia,
+  MegaRacEndMediaObserved,
+  MegaRacEndMediaNotTaken,
+  EndMediaRelease,
+  EndReleaseKeptHostOn,
+  EndReleaseWithheld,
+  EndReleaseRan,
+  EndReleaseGate,
+  EndReleaseGateKeep,
+  EndReleaseGateWithhold,
+  EndReleaseGateAdmit,
+  end_release_gate,
+  end_release_residue,
+  outcome_with_end_release,
+}
+import gunbc.host.boot_attempt {
+  PoweredOffAfterTerminal,
+  PoweredOffWithoutTerminal,
+  PoweredOnAfterAttempt,
+  PowerAfterUnobserved,
+  PowerAfterNotTaken,
+}
+
+// THE END OF AN ATTEMPT RELEASES ITS OWN SESSION. Boot run 39868779331 ended with its census row Started
+// (its end look read status 1, cd_error_code 0) and the host powered off at the fan gate, and the next two
+// attempts (40038339650, 40070230626) met that row at redirection_status 19 and refused. Every input is a
+// supplied configurations body or detach evidence at the release's own pure folds
+// (gunbc.machine_intake.megarac_media_attach own_session_release_step, own_session_end_of_detach) and the
+// bundle's gate and residue (gunbc.machine_intake.megarac_boot_diagnostic_bundle end_release_gate,
+// end_release_residue, outcome_with_end_release). The real producer is
+// gunbc.machine_intake.megarac_boot_media_attach megarac_release_boot_session from
+// gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_actuate, whose route the acceptance matrix
+// (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix) executes.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data runner_desired: NonEmptyStr = ubuntu_seeded_install_media_image_name(image_stem: runner_host_medium_image_stem, output_digest: "31aef93912ab34cd56")
+data census_left: NonEmptyStr = "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso"
+data both_stems: FreeSemigroup<NonEmptyStr> = FreeSemigroup { head: runner_host_medium_image_stem, tail: [mtcollins1_census_image_stem] }
+
+fn row(name: String, status: String) -> String {
+  concat("{\"id\":1,\"media_type\":1,\"media_index\":0,\"session_index\":0,\"image_name\":\"", concat(name, concat("\",\"redirection_status\":", concat(status, "}"))))
+}
+
+fn rows1(a: String) -> String { concat("[", concat(a, "]")) }
+
+fn step_on(configurations: String, firmware: BmcFirmwareReleaseIdentity, detach: MegaRacDetachAdmission) -> OwnReleaseStep {
+  own_session_release_step(
+    convergence: presented_convergence(
+      presented: presented_media(body: configurations, image_name: runner_desired, firmware: firmware, replaceable: none),
+      image_name: runner_desired,
+      replaceable_seeded_stems: both_stems,
+    ),
+    detach: detach,
+    configurations: configurations,
+  )
+}
+
+fn stops(s: OwnReleaseStep) -> Bool {
+  match s {
+    OwnReleaseStop { row: r } => r.image_name == (runner_desired as String)
+    OwnReleaseEnd { end: _ } => false
+  }
+}
+
+// A REFUSAL IS ASSERTED BY ITS REASON, so a step that refuses for an unrelated cause does not pass.
+fn left_because(s: OwnReleaseStep, pattern: String) -> Bool {
+  match s {
+    OwnReleaseEnd { end: OwnSessionNotStopped { reason: why, configurations: _ } } => string_contains(s: why as String, pattern: pattern)
+    _ => false
+  }
+}
+
+fn evidence(readback_read: Bool, readback: String) -> MegaRacDetachEvidence {
+  MegaRacDetachEvidence {
+    stale_image: runner_desired as String,
+    media_index: "0",
+    command: megarac_write_answer(exit_code: 0, body: "{}", stderr: ""),
+    readback_read: readback_read,
+    readback: readback,
+    cd_after_stop: CdErrorRead { code: CdErrorNone },
+    general_after_stop: MegaRacRawRead { answered: true, body: "{}", observed_at: Present { value: 1 } },
+  }
+}
+
+// ─── THE STEP: only this attempt's own row, on a catalogued status, under admission ─────────────
+
+// The positive control: our own row Started, admitted, is the one row stopped.
+test fn our_own_started_session_is_stopped_when_admitted() -> Bool {
+  stops(s: step_on(configurations: rows1(a: row(name: runner_desired as String, status: "1")), firmware: megarac_firmware_0_32, detach: MegaRacDetachAdmitted))
+    && stops(s: step_on(configurations: rows1(a: row(name: runner_desired as String, status: "1")), firmware: megarac_firmware_0_45_3, detach: MegaRacDetachAdmitted))
+}
+
+// UNKNOWN WIRE STILL REFUSES. Our own row at 19 -- the code boot runs 40038339650 and 40070230626 read --
+// is not stopped on either release: the release reads with no stop exception, so an uncatalogued code is
+// never a license to write. RED if 19 were catalogued as presenting, or the read passed a stop exception.
+test fn our_own_session_at_an_uncatalogued_code_is_not_stopped() -> Bool {
+  left_because(s: step_on(configurations: rows1(a: row(name: runner_desired as String, status: "19")), firmware: megarac_firmware_0_45_3, detach: MegaRacDetachAdmitted), pattern: "redirection_status 19 on firmware 0.45.3")
+    && left_because(s: step_on(configurations: rows1(a: row(name: runner_desired as String, status: "19")), firmware: megarac_firmware_0_32, detach: MegaRacDetachAdmitted), pattern: "redirection_status 19 on firmware 0.32")
+}
+
+// FOREIGN IMAGE NEVER STOPPED, catalogued status and admission notwithstanding.
+test fn a_foreign_image_is_never_stopped_at_the_end() -> Bool {
+  left_because(s: step_on(configurations: rows1(a: row(name: "someone-elses-installer.iso", status: "1")), firmware: megarac_firmware_0_32, detach: MegaRacDetachAdmitted), pattern: "not an image this lane publishes")
+}
+
+// ONLY THIS ATTEMPT'S OWN. Another image of this lane -- the census session a runner attempt did not
+// attach -- is left for the next attempt's convergence, which owns replacement.
+test fn another_image_of_this_lane_is_not_this_attempts_to_end() -> Bool {
+  left_because(s: step_on(configurations: rows1(a: row(name: census_left as String, status: "1")), firmware: megarac_firmware_0_32, detach: MegaRacDetachAdmitted), pattern: "stops only its own")
+}
+
+// A stop not admitted (the caller's power was not off) is not taken, and says so.
+test fn our_own_session_is_not_stopped_without_admission() -> Bool {
+  left_because(s: step_on(configurations: rows1(a: row(name: runner_desired as String, status: "1")), firmware: megarac_firmware_0_32, detach: MegaRacDetachNotAdmitted { reason: "the host is powered on" }), pattern: "the stop was not admitted: the host is powered on")
+}
+
+// Nothing presented is nothing left, and an unreadable document licenses no write.
+test fn nothing_presented_ends_clean_and_an_unreadable_document_writes_nothing() -> Bool {
+  (match step_on(configurations: rows1(a: row(name: "", status: "0")), firmware: megarac_firmware_0_32, detach: MegaRacDetachAdmitted) {
+    OwnReleaseEnd { end: OwnSessionNothingPresented { configurations: _ } } => true
+    _ => false
+  }) && left_because(s: step_on(configurations: "curl: (28)", firmware: megarac_firmware_0_32, detach: MegaRacDetachAdmitted), pattern: "could not be read")
+}
+
+// ─── THE READ-BACK: the stop is established by it alone ─────────────────────────────────────────
+
+// STOP WITHOUT READBACK REFUSES: stop-media answered success, the read-back failed.
+test fn a_stop_without_a_read_back_is_not_established() -> Bool {
+  match own_session_end_of_detach(evidence: evidence(readback_read: false, readback: "curl: (28)"), image_name: runner_desired, firmware: megarac_firmware_0_32, replaceable_seeded_stems: both_stems) {
+    OwnSessionStopUnconfirmed { detach: _, reason: why } => string_contains(s: why as String, pattern: "read-back after stop-media failed")
+    _ => false
+  }
+}
+
+// A read-back still presenting our row does not establish the stop; nor does an unread status on 0.45.3,
+// where no committed reading shows what a stopped row reads.
+test fn a_read_back_still_presenting_or_unread_is_not_established() -> Bool {
+  (match own_session_end_of_detach(evidence: evidence(readback_read: true, readback: rows1(a: row(name: runner_desired as String, status: "1"))), image_name: runner_desired, firmware: megarac_firmware_0_32, replaceable_seeded_stems: both_stems) {
+    OwnSessionStopUnconfirmed { detach: _, reason: _ } => true
+    _ => false
+  }) && (match own_session_end_of_detach(evidence: evidence(readback_read: true, readback: rows1(a: row(name: "", status: "0"))), image_name: runner_desired, firmware: megarac_firmware_0_45_3, replaceable_seeded_stems: both_stems) {
+    OwnSessionStopUnconfirmed { detach: _, reason: why } => string_contains(s: why as String, pattern: "redirection_status 0 on firmware 0.45.3")
+    _ => false
+  })
+}
+
+// The positive control: the cleared row on 0.32 (image '' status 0, the observed stopped shape) establishes.
+test fn a_cleared_read_back_on_0_32_establishes_the_stop() -> Bool {
+  match own_session_end_of_detach(evidence: evidence(readback_read: true, readback: rows1(a: row(name: "", status: "0"))), image_name: runner_desired, firmware: megarac_firmware_0_32, replaceable_seeded_stems: both_stems) {
+    OwnSessionStopped { detach: _ } => true
+    _ => false
+  }
+}
+
+// ─── THE GATE: a host left ON keeps its session ─────────────────────────────────────────────────
+
+test fn a_host_left_on_keeps_its_session() -> Bool {
+  match end_release_gate(power_after: PoweredOnAfterAttempt) {
+    EndReleaseGateKeep => true
+    _ => false
+  }
+}
+
+test fn a_host_observed_off_admits_the_release_and_an_unobserved_one_withholds_it() -> Bool {
+  (match end_release_gate(power_after: PoweredOffAfterTerminal) { EndReleaseGateAdmit { power: ChassisPowerRead { power_on: false } } => true  _ => false })
+    && (match end_release_gate(power_after: PoweredOffWithoutTerminal) { EndReleaseGateAdmit { power: ChassisPowerRead { power_on: false } } => true  _ => false })
+    && (match end_release_gate(power_after: PowerAfterUnobserved { reason: "the chassis read did not answer" }) { EndReleaseGateWithhold { reason: _ } => true  _ => false })
+    && (match end_release_gate(power_after: PowerAfterNotTaken { reason: "fixture" }) { EndReleaseGateWithhold { reason: _ } => true  _ => false })
+}
+
+// ─── THE RESIDUE IS PART OF THE VERDICT ─────────────────────────────────────────────────────────
+
+fn ran(end: OwnSessionEnd, session: String) -> EndMediaRelease {
+  EndReleaseRan { result: MegaRacAttachResult {
+    outcome: MegaRacOwnSessionEnded { end: end },
+    session_release: if session == "released" { SessionReleased } else { SessionReleaseRefused { detail: session } },
+    baseline: none,
+  } }
+}
+
+fn residue_present(r: EndMediaRelease, pattern: String) -> Bool {
+  match end_release_residue(end_release: r) {
+    Present { value: why } => string_contains(s: why as String, pattern: pattern)
+    Absent => false
+  }
+}
+
+fn residue_absent(r: EndMediaRelease) -> Bool {
+  match end_release_residue(end_release: r) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn only_a_kept_host_or_a_clean_release_leaves_no_residue() -> Bool {
+  residue_absent(r: EndReleaseKeptHostOn)
+    && residue_absent(r: ran(end: OwnSessionStopped { detach: evidence(readback_read: true, readback: "[]") }, session: "released"))
+    && residue_absent(r: ran(end: OwnSessionNothingPresented { configurations: "[]" }, session: "released"))
+}
+
+test fn every_other_release_is_residue_naming_its_cause() -> Bool {
+  residue_present(r: ran(end: OwnSessionStopUnconfirmed { detach: evidence(readback_read: false, readback: ""), reason: "the read-back failed" }, session: "released"), pattern: "NOT established as stopped: the read-back failed")
+    && residue_present(r: ran(end: OwnSessionNotStopped { reason: "an unread status", configurations: "[]" }, session: "released"), pattern: "NOT stopped: an unread status")
+    && residue_present(r: ran(end: OwnSessionStopped { detach: evidence(readback_read: true, readback: "[]") }, session: "probe still succeeded"), pattern: "login session was NOT released")
+    && residue_present(r: EndReleaseWithheld { reason: "power unread" }, pattern: "may remain on the controller: power unread")
+    && residue_present(r: EndReleaseRan { result: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "401" }, session_release: SessionReleaseNotAttempted, baseline: none } }, pattern: "did not run: session refused: 401")
+}
+
+fn observed(end_release: EndMediaRelease) -> MegaRacEndMedia {
+  MegaRacEndMediaObserved { look: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "look fixture" }, session_release: SessionReleaseNotAttempted, baseline: none }, end_release: end_release }
+}
+
+// A success that left its session behind is a failure naming it; a failure keeps its own cause first.
+test fn residue_turns_a_success_into_a_failure_and_rides_beside_a_failure() -> Bool {
+  let residue = ran(end: OwnSessionStopUnconfirmed { detach: evidence(readback_read: false, readback: ""), reason: "the read-back failed" }, session: "released")
+  (match outcome_with_end_release(outcome: ExitSuccess, end: observed(end_release: residue)) {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "end-of-attempt release:")
+    ExitSuccess => false
+  }) && (match outcome_with_end_release(outcome: exit_failure(reason: "fan stop"), end: observed(end_release: residue)) {
+    ExitFailure { code: _, reason: r } => starts_with(s: r, prefix: "fan stop") && string_contains(s: r, pattern: "at the end of the attempt:")
+    ExitSuccess => false
+  }) && (match outcome_with_end_release(outcome: ExitSuccess, end: observed(end_release: EndReleaseKeptHostOn)) {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  })
+}
