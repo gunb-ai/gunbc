@@ -8617,7 +8617,7 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, arg_formal_correspon
       CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
     }
     let has_formal = match formal_selection { CallArgumentFormalSelected { formal_index: _, formal: _ } => true  CallArgumentFormalUnavailable => false }
-    let formal_param_type = substitute_generics(n: formal_declared_context, subst: st.subst, source_indices: scope.type_env.source_indices)
+    let formal_param_type = substitute_generics(n: stamp_type_from_generic_names(n: formal_declared_context, generic_names: generic_names, source_indices: scope.type_env.source_indices), subst: st.subst, source_indices: scope.type_env.source_indices)
     let formal_conformance_type = match formal_selection {
       CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
         Present { value: carried } => substitute_generics(n: carried.declaration_bound_conformance, subst: st.subst, source_indices: scope.type_env.source_indices)
@@ -16592,6 +16592,14 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
 // expression holds it: as a bare field type, under type arguments (children), and inside a callable
 // (params, and the return carried in a Resolved inferred). Substitution keys on that stamp alone, so a
 // position the stamp misses is a position substitution cannot reach.
+fn stamp_type_from_generic_names(n: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Node {
+  if (generic_names |> count) == 0 {
+    n
+  } else {
+    stamp_type_param_occurrences(n: n, param_names: generic_names |> fold(init: empty_map(), f: (acc, g) => map_insert(acc, g, true)), source_indices: source_indices)
+  }
+}
+
 fn stamp_field_type_from_decl_params(field_type: Node, serving_decl: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   if (serving_decl.params |> count) == 0 {
     field_type
@@ -17707,7 +17715,7 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
         name: sig.name,
         params: sig.params,
         resolved_formals: DeclarationBoundFormals { formals: sig.params |> filter(p => !param_is_generic_decl(p: p, source_indices: env.source_indices)) |> map(p => {
-          let declared_type = param_node_type_expr(n: p)
+          let declared_type = stamp_type_from_generic_names(n: param_node_type_expr(n: p), generic_names: generic_names, source_indices: env.source_indices)
           ResolvedFormal {
             parameter_identity: param_node_name_at(n: p, source_indices: env.source_indices),
             declared_type: declared_type,
@@ -17717,7 +17725,7 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
             substitution_basis: declaration_substitution_basis(n: declared_type, env: env, generic_names: generic_names)
           }
         }) },
-        inferred: sig.inferred,
+        inferred: stamp_type_from_generic_names(n: sig.inferred, generic_names: generic_names, source_indices: env.source_indices),
         output_provenance: sig.output_provenance,
         variant_provenance: sig.variant_provenance
       })
