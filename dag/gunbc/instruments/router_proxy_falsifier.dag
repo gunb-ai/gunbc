@@ -219,7 +219,7 @@ fn start_with(name: NonEmptyStr, network: NonEmptyStr, conf_path: String) -> Int
 fn start_with_command(name: NonEmptyStr, network: NonEmptyStr, conf_path: String, command: List<String>, extras: List<CopyPair>) -> Int {
   let created = DockerCli.Create(docker: docker(), name: name, network: network, image: openresty_1_27_1_1_image, command: command)
   let copied = DockerCli.CopyInto(docker: docker(), source: conf_path, destination: destination(name: name))
-  let extras_copied = copy_all(name: name, extras: extras)
+  let extras_copied = copy_all(name: name, extras: extras, acc: 0)
   let started = DockerCli.Start(docker: docker(), name: name)
   created.exit_code + copied.exit_code + extras_copied + started.exit_code
 }
@@ -231,12 +231,15 @@ type CopyPair {
 
 fn no_copies() -> List<CopyPair> { [] }
 
-// Each copy in order, summing the exit codes; recursion rather than a fold, because each step performs an
-// effect and its result must be awaited before the next.
-fn copy_all(name: NonEmptyStr, extras: List<CopyPair>) -> Int {
+// Each copy in order, summing the exit codes into acc; tail recursion (the realization lowers it to a
+// loop) rather than a fold, because each step performs an effect that must finish before the next.
+fn copy_all(name: NonEmptyStr, extras: List<CopyPair>, acc: Int) -> Int {
   match first(extras) {
-    Absent => 0
-    Present { value: c } => DockerCli.CopyInto(docker: docker(), source: c.source, destination: concat(concat(name as String, ":"), c.target)).exit_code + copy_all(name: name, extras: skip(extras, 1))
+    Absent => acc
+    Present { value: c } => {
+      let r = DockerCli.CopyInto(docker: docker(), source: c.source, destination: concat(concat(name as String, ":"), c.target))
+      copy_all(name: name, extras: skip(extras, 1), acc: acc + r.exit_code)
+    }
   }
 }
 
