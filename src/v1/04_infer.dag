@@ -15449,32 +15449,44 @@ fn unify_callable_param_pairs(formals: List<Node>, actuals: List<Node>, generic_
 // return is computed under a substitution that may not yet bind its own parameters, so it can be
 // an unresolved type variable (callable_param), and binding a parameter to that would fix it first
 // and keep it against the informative argument that follows. Such an entry is dropped, so a later
-// argument or round 2 decides it. An entry fills an Absent binding; a closed binding is never overridden, and an open one joins only with the return (lambda_return_solves).
+// argument or round 2 decides it. An Absent binding fills from the whole callable's solve, or, when
+// that is uninformative (the lambda's parameter echoes the still-unsolved generic, as `acc` does in
+// fold_list(xs, empty: none, cons: fn(acc, x) { .. }) once `none` binds nothing), from the return alone
+// (lambda_return_solves); a closed binding is never overridden, and an open one joins only with the return.
 fn unify_lambda_solves(solved: Map<String, Node>, returned: Map<String, Node>, generic_names: List<String>, acc: Map<String, Node>, scope: InferScope) -> Map<String, Node> {
   fold(generic_names, init: acc, f: (st, g) =>
     match map_get(st, g) {
       Absent =>
-        match map_get(solved, g) {
-          Present { value: candidate } => if unify_binding_is_uninformative(n: candidate) { st } else { map_insert(st, g, candidate) }
-          Absent => st
+        match informative_solve(solves: solved, g: g) {
+          Present { value: candidate } => map_insert(st, g, candidate)
+          Absent =>
+            match informative_solve(solves: returned, g: g) {
+              Present { value: sighting } => map_insert(st, g, sighting)
+              Absent => st
+            }
         }
       Present { value: bound } =>
         if !fold_carrier_is_open(carrier: bound, scope: scope) { st }
         else {
-          match map_get(returned, g) {
+          match informative_solve(solves: returned, g: g) {
             Present { value: sighting } =>
-              if unify_binding_is_uninformative(n: sighting) { st }
-              else {
-                match branch_join_type(types: [bound, sighting], scope: scope) {
-                  Present { value: joined } => if fold_carrier_is_open(carrier: joined, scope: scope) { st } else { map_insert(st, g, joined) }
-                  Absent => st
-                }
+              match branch_join_type(types: [bound, sighting], scope: scope) {
+                Present { value: joined } => if fold_carrier_is_open(carrier: joined, scope: scope) { st } else { map_insert(st, g, joined) }
+                Absent => st
               }
             Absent => st
           }
         }
     }
   )
+}
+
+// A solve's binding for one generic, only when it carries information (unify_binding_is_uninformative).
+fn informative_solve(solves: Map<String, Node>, g: String) -> Node? {
+  match map_get(solves, g) {
+    Present { value: candidate } => if unify_binding_is_uninformative(n: candidate) { none } else { Present { value: candidate } }
+    Absent => none
+  }
 }
 
 // THE LAMBDA'S RETURN, solved alone. A lambda's parameter types are read OUT of the substitution it is
