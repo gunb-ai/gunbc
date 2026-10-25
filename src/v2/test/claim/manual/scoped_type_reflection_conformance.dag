@@ -3,6 +3,7 @@ module v2.test.claim.manual.scoped_type_reflection_conformance
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { for_all, length }
 import v2.std.decl_index { decl_facts_at }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Symbol }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -205,7 +206,7 @@ test fn unique_but_non_coproduct_spelling_refuses_rather_than_diverging() -> Boo
 // THE SAME SPECIMEN ON THE CITATION ROUTE, which review 65571 found uncovered. The shape arm was
 // added to the spelling route and the citation route kept its own accept, so a cited RECORD still
 // reached the bare seam and answered with an untyped host error. Both routes now accept only
-// through v2.std.node_reflection accept_sole_declaration, and this claim is what would go red if
+// through v2.std.node_reflection accept_sole_type_row, and this claim is what would go red if
 // either grew a second accept again -- which is the divergence that produced the finding, not just
 // the missing check.
 test fn cited_unique_but_non_coproduct_spelling_refuses_rather_than_diverging() -> Bool {
@@ -228,8 +229,9 @@ test fn cited_unique_but_non_coproduct_spelling_refuses_rather_than_diverging() 
 // stopped stripping `v2.`; this one-row-each read is the positive that reds on a return to the
 // stripped key. The multiplicity ARM keeps its own RED below, through overlapping pool roots.
 test fn cited_pair_across_the_two_trees_reads_one_declaration_each() -> Bool {
-  length(xs: decl_facts_at(pool_roots: scoped_reflection_pool_roots, qualified_name: "v2.std.integer.Int")) == 1
-    && length(xs: decl_facts_at(pool_roots: scoped_reflection_pool_roots, qualified_name: "std.integer.Int")) == 1
+  let facts = decl_facts_at(pool_roots: scoped_reflection_pool_roots, qualified_names: ["v2.std.integer.Int", "std.integer.Int"], type_names: [])
+  length(xs: decl_facts_matching_qualified_name(qn: "v2.std.integer.Int", facts: facts)) == 1
+    && length(xs: decl_facts_matching_qualified_name(qn: "std.integer.Int", facts: facts)) == 1
 }
 
 // THE MULTIPLICITY ARM STAYS ENROLLED. With the `v2.` strip gone the cross-tree pair no longer reaches
@@ -237,8 +239,8 @@ test fn cited_pair_across_the_two_trees_reads_one_declaration_each() -> Bool {
 // still exists, and one module read through two overlapping pool roots reaches it. The refusal is the
 // subject here, and it must be refused FOR THAT REASON: v2.std.integer.Int is an alias, which the
 // coproduct resolver refuses for its own reason, so it cannot witness this arm. v2.std.node.Connective
-// is a coproduct read three times through the repeated root; delete both multiplicity guards (the
-// `> 1` in resolve_type_node_at and in accept_sole_declaration) and this reds.
+// is a coproduct read three times through the repeated root; delete the multiplicity guard (the
+// `> 1` in resolve_type_node_at; acceptance is handed the sole counted row and has none) and this reds.
 test fn cited_name_reached_through_overlapping_roots_refuses_as_ambiguous() -> Bool {
   outcome_is_rejected_for(
     o: resolve_type_node_at(
