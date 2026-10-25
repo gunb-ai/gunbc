@@ -16,7 +16,13 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
   portable_remote_words,
-  shape_ssh_shell_exec, ssh_target_wire }
+  shape_ssh_shell_exec, ssh_target_wire,
+  posix_quoted_remote_words,
+  PosixLoginShellProof,
+  LoginShellStanding,
+  LoginShellUnreadable,
+  login_shell_standing,
+}
 import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal,
   BootstrapCredentialInRunEnvironment,
@@ -201,5 +207,41 @@ fn typed_argv_exec_over_fleet_ssh(
         FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
         FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
       }
+  }
+}
+
+// THE LOGIN SHELL OF THE TARGET PRINCIPAL, READ, NOT ASSUMED: `getent passwd <principal>` over the bare-word edge (every
+// word is in the alphabet), parsed by the one mint of PosixLoginShellProof.
+fn read_fleet_login_shell(target: SshTarget, context: FleetSshExecutionContext) -> LoginShellStanding {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["getent", "passwd", target.principal as String]) {
+    TypedArgvExecRefused { reason: why } => LoginShellUnreadable { principal: target.principal, reason: why }
+    TypedArgvExecConverged { result: r } => login_shell_standing(principal: target.principal, success: r.success, output: r.stdout)
+  }
+}
+
+// THE QUOTED ROUTE: the same leg as typed_argv_exec_over_fleet_ssh, for words the alphabet refuses, admitted only under a
+// proof that the target principal's login shell is a POSIX sh. A proof for another principal refuses the leg.
+fn typed_argv_exec_over_fleet_ssh_posix(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  argv: List<String>,
+  shell: PosixLoginShellProof,
+) -> TypedArgvExecOutcome {
+  if (shell.principal as String) != (target.principal as String) {
+    TypedArgvExecRefused { reason: "the login shell proof is for another principal than the leg's" }
+  } else {
+    match posix_quoted_remote_words(raws: argv, shell: shell) {
+      Absent => TypedArgvExecRefused {
+        reason: concat("a remote word carries NUL, newline or carriage return, which no quoting carries, so the leg was NOT attempted for ", ssh_target_wire(target: target) as String),
+      }
+      Present { value: words } =>
+        match exec_as_fleet_principal(
+          context: context, target: target, words: words,
+          credential: BootstrapCredentialInRunEnvironment,
+        ) {
+          FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
+          FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
+        }
+    }
   }
 }

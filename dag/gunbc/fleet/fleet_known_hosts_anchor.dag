@@ -20,6 +20,10 @@ import std.content_hash {
   ContentHashCrossFamilyIncomparable,
 }
 import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Int }
 import extdeps.ssh.client_options {
@@ -728,6 +732,130 @@ fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
     }
   }
 }
+
+// THE SECOND CONSTRUCTOR OF THE SAME WORD: a POSIX single-quoted word, for a word the alphabet above refuses. It is
+// one PortableRemoteWord type with two ways to mint it (merry-fox-82, msg_2c9dcc3c), never a second word type beside
+// it: a bare word still renders bare, so every leg whose words are all in the alphabet sends identical bytes.
+//
+// WHY QUOTING IS EXACT HERE, when the comment on portable_remote_word refuses it: that refusal rests on the far-side
+// shell being UNKNOWN. A quoted word requires a PosixLoginShellProof, minted only from the target principal's own
+// passwd entry read in the same run, so the shell is known to be a POSIX sh. Inside single quotes POSIX sh gives no
+// character a meaning except the closing quote (POSIX.1-2017 XCU 2.2.2): globs, `$`, backticks, `;`, `|`, `&`,
+// redirections, `\` and whitespace are all literal. The one character that cannot appear inside is `'`, so each
+// becomes `'\''` (close, escaped quote, reopen), which re-joins into one word. NUL cannot be carried by a C argv at
+// all, and a newline or carriage return breaks the transported line, so those three refuse at construction.
+data posix_quoting_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_02_02"
+  }
+}
+
+// The login shells this route treats as POSIX sh, by path as passwd records them. A shell outside the list (zsh,
+// fish, a nologin) refuses the quoted route; it is not guessed compatible.
+data posix_login_shell_paths: List<String> = ["/bin/sh", "/usr/bin/sh", "/bin/bash", "/usr/bin/bash", "/bin/dash", "/usr/bin/dash"]
+
+type PosixLoginShellProof sole_constructor {
+  principal: NonEmptyStr
+  shell: NonEmptyStr
+}
+
+type LoginShellStanding
+  = LoginShellPosix { proof: PosixLoginShellProof }
+  | LoginShellNotPosix { principal: NonEmptyStr, shell: String }
+  | LoginShellUnreadable { principal: NonEmptyStr, reason: String }
+
+// THE ONE MINT OF THE PROOF: stdout of `getent passwd <principal>` (name:passwd:uid:gid:gecos:home:shell). The entry
+// must be the principal's own and carry exactly seven fields; its seventh is the login shell.
+fn login_shell_standing(principal: NonEmptyStr, success: Bool, output: String) -> LoginShellStanding {
+  if success == false {
+    LoginShellUnreadable { principal: principal, reason: "getent passwd did not answer for this principal" }
+  } else {
+    let fields = split(s: trim(s: output), delimiter: ":")
+    if length(fields) != 7 {
+      LoginShellUnreadable { principal: principal, reason: "the passwd entry does not have seven fields" }
+    } else {
+      match list_head(xs: fields) {
+        Absent => LoginShellUnreadable { principal: principal, reason: "the passwd entry is empty" }
+        Present { value: name } =>
+          if name != (principal as String) {
+            LoginShellUnreadable { principal: principal, reason: "the passwd entry names another principal" }
+          } else {
+            match list_head(xs: skip(xs: fields, n: 6)) {
+              Absent => LoginShellUnreadable { principal: principal, reason: "the passwd entry has no shell field" }
+              Present { value: shell } =>
+                if any(posix_login_shell_paths, p => p == shell) && shell != "" {
+                  LoginShellPosix { proof: PosixLoginShellProof { principal: principal, shell: shell as NonEmptyStr } }
+                } else {
+                  LoginShellNotPosix { principal: principal, shell: shell }
+                }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn remote_word_char_refused_under_quotes(cp: Int) -> Bool {
+  cp == 0 || cp == 10 || cp == 13
+}
+
+fn remote_word_quotable(text: String, i: Int, len: Int) -> Bool {
+  if i >= len { true } else {
+    if remote_word_char_refused_under_quotes(cp: code_point(ch: char_at(text, i))) { false } else { remote_word_quotable(text: text, i: i + 1, len: len) }
+  }
+}
+
+fn posix_single_quote(raw: String) -> String {
+  join(["'", join(split(s: raw, delimiter: "'"), "'\\''"), "'"], "")
+}
+
+// A word the alphabet admits stays bare; any other word is single-quoted under the proof, or refused when it carries
+// NUL, newline or carriage return. The proof is a parameter, so a quoted word cannot be minted for an unread shell.
+fn posix_quoted_remote_word(raw: String, shell: PosixLoginShellProof) -> PortableRemoteWord? {
+  match portable_remote_word(raw: raw) {
+    Present { value: bare } => Present { value: bare }
+    Absent =>
+      if raw != "" && remote_word_quotable(text: raw, i: 0, len: length(raw)) {
+        Present { value: PortableRemoteWord { value: posix_single_quote(raw: raw) as NonEmptyStr } }
+      } else {
+        none
+      }
+  }
+}
+
+fn posix_quoted_remote_words(raws: List<String>, shell: PosixLoginShellProof) -> PortableRemoteWords? {
+  let admitted = fold(raws, init: Present { value: [] }, f: fn(acc, r) {
+    match acc {
+      Absent => none
+      Present { value: ws } => match posix_quoted_remote_word(raw: r, shell: shell) {
+        Present { value: w } => Present { value: concat(ws, [w]) }
+        Absent => none
+      }
+    }
+  })
+  match admitted {
+    Absent => none
+    Present { value: ws } => match list_head(xs: ws) {
+      Absent => none
+      Present { value: h } => Present { value: PortableRemoteWords { first: h, more: skip(xs: ws, n: 1) } }
+    }
+  }
+}
+
+// THE FRONTIER THE WORD ALPHABET FILED THREE TIMES (merry-fox-82): a fleet leg whose words fall outside the alphabet is
+// refused at the transport, which bit the srv4 iPXE revision read (since deleted as redundant), the srv4 HTTP listen
+// readback (rewritten as a plain `ss -ltnH`) and the placement of the 24.04.3 ISO's pool .debs (names carrying `+`).
+// The quoted route above is its dissolution; a leg that keeps using the bare-only entry for such words still refuses.
+data remote_word_quoting_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "portable_remote_words"),
+    reason: "the bare-only constructor refuses any word outside its alphabet, so a leg needing a regex, an operator character or a version string with '+' was unrunnable; three legs met it",
+    dissolution: unbound_dissolution(
+      description: "dissolves when every fleet leg whose words fall outside the alphabet reaches the remote shell through gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_posix with a PosixLoginShellProof read from the target principal's passwd entry in the same run, and the real-execution witness test.claim.fleet.posix_quoted_remote_word_real_execution_witness passes hostile words through an actual sh -c as one literal argument each; a leg that widens the alphabet instead does not fire this"
+    )
+  ),
+]
 
 fn portable_remote_words_strings(words: PortableRemoteWords) -> List<String> {
   concat([words.first.value as String], map(words.more, w => w.value as String))

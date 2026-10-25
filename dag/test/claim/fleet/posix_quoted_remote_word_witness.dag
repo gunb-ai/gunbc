@@ -1,0 +1,109 @@
+module test.claim.fleet.posix_quoted_remote_word_witness
+
+import std.types { Bool, List, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  PosixLoginShellProof,
+  LoginShellStanding,
+  LoginShellPosix,
+  LoginShellNotPosix,
+  LoginShellUnreadable,
+  login_shell_standing,
+  portable_remote_words,
+  posix_quoted_remote_word,
+  posix_quoted_remote_words,
+  portable_remote_words_strings,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn proof_or_fail(standing: LoginShellStanding, claim: fn(PosixLoginShellProof) -> Bool) -> Bool {
+  match standing {
+    LoginShellPosix { proof: p } => claim(p)
+    LoginShellNotPosix { principal: _, shell: _ } => false
+    LoginShellUnreadable { principal: _, reason: _ } => false
+  }
+}
+
+fn bash_proof(claim: fn(PosixLoginShellProof) -> Bool) -> Bool {
+  proof_or_fail(standing: login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash\n"), claim: claim)
+}
+
+fn rendered(raw: String, p: PosixLoginShellProof) -> String {
+  match posix_quoted_remote_word(raw: raw, shell: p) {
+    Present { value: w } => w.value as String
+    Absent => "<refused>"
+  }
+}
+
+// CONTROL: a leg whose words are all in the alphabet renders byte-identically under either constructor, so every
+// existing bare leg sends the same command as before the quoted route existed.
+test fn bare_words_render_identically_under_both_constructors() -> Bool {
+  let argv = ["sha256sum", "/srv/gunbc-site-pxe-edge/tftp/snponly.efi"]
+  bash_proof(claim: p => match portable_remote_words(raws: argv) {
+    Absent => false
+    Present { value: bare } => match posix_quoted_remote_words(raws: argv, shell: p) {
+      Absent => false
+      Present { value: quoted } => portable_remote_words_strings(words: bare) == portable_remote_words_strings(words: quoted)
+    }
+  })
+}
+
+// THE BARE ROUTE STILL REFUSES what it always refused; only the proof-bearing route quotes.
+test fn the_bare_route_still_refuses_a_plus() -> Bool {
+  match portable_remote_words(raws: ["dpkg-deb", "-x", "grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb", "/tmp/x"]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE QUOTED RENDERING, word by word: whitespace, a version '+', a glob, a dollar expansion, a backtick, a separator
+// and a backslash each become one single-quoted word; an embedded quote closes, escapes and reopens.
+test fn hostile_words_render_as_single_quoted_words() -> Bool {
+  bash_proof(claim: p =>
+    rendered(raw: "grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb", p: p) == "'grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb'"
+      && rendered(raw: "a b", p: p) == "'a b'"
+      && rendered(raw: "*", p: p) == "'*'"
+      && rendered(raw: "$(id)", p: p) == "'$(id)'"
+      && rendered(raw: "`id`", p: p) == "'`id`'"
+      && rendered(raw: "x;rm -rf /", p: p) == "'x;rm -rf /'"
+      && rendered(raw: "a\\b", p: p) == "'a\\b'"
+      && rendered(raw: "it's", p: p) == "'it'\\''s'"
+  )
+}
+
+// RED: NUL, newline and carriage return have no carrier and refuse at construction, so the whole leg refuses.
+test fn nul_newline_and_carriage_return_refuse() -> Bool {
+  bash_proof(claim: p =>
+    rendered(raw: "a\nb", p: p) == "<refused>"
+      && rendered(raw: "a\rb", p: p) == "<refused>"
+      && (match posix_quoted_remote_words(raws: ["printf", "a\nb"], shell: p) { Absent => true Present { value: _ } => false })
+  )
+}
+
+// THE PROOF IS READ, NOT ASSUMED: a POSIX shell mints it; a non-POSIX shell, another principal's entry, a truncated
+// entry and a failed read do not.
+test fn only_the_principals_own_posix_passwd_entry_mints_the_proof() -> Bool {
+  bash_proof(claim: p => (p.shell as String) == "/bin/bash" && (p.principal as String) == "ubuntu")
+    && proof_or_fail(standing: login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/bin/sh"), claim: p => (p.shell as String) == "/bin/sh")
+    && (match login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000::/home/ubuntu:/usr/bin/zsh\n") {
+      LoginShellNotPosix { principal: _, shell: s } => s == "/usr/bin/zsh"
+      LoginShellPosix { proof: _ } => false
+      LoginShellUnreadable { principal: _, reason: _ } => false
+    })
+    && (match login_shell_standing(principal: "ubuntu", success: true, output: "root:x:0:0:root:/root:/bin/bash\n") {
+      LoginShellUnreadable { principal: _, reason: _ } => true
+      LoginShellPosix { proof: _ } => false
+      LoginShellNotPosix { principal: _, shell: _ } => false
+    })
+    && (match login_shell_standing(principal: "ubuntu", success: true, output: "ubuntu:x:1000:1000:/bin/bash\n") {
+      LoginShellUnreadable { principal: _, reason: _ } => true
+      LoginShellPosix { proof: _ } => false
+      LoginShellNotPosix { principal: _, shell: _ } => false
+    })
+    && (match login_shell_standing(principal: "ubuntu", success: false, output: "") {
+      LoginShellUnreadable { principal: _, reason: _ } => true
+      LoginShellPosix { proof: _ } => false
+      LoginShellNotPosix { principal: _, shell: _ } => false
+    })
+}
