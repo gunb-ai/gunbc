@@ -303,6 +303,13 @@ fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
   [
     RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144 },
     RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376 },
+    // h11-a16 (x86): one engine per GPU, GPUs 0-3 on the A16 board and 4 an RTX 2000 Ada. A single 16 GB engine serves
+    // ~10-13 warm tok/s at 200k, so cap 2. h11-a16-4 is the Ada.
+    RouterDevUpstream { name: "h11-a16-0", scheme: UpstreamHttp, host: "192.168.1.202", port: 18081, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
+    RouterDevUpstream { name: "h11-a16-1", scheme: UpstreamHttp, host: "192.168.1.202", port: 18082, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
+    RouterDevUpstream { name: "h11-a16-2", scheme: UpstreamHttp, host: "192.168.1.202", port: 18083, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
+    RouterDevUpstream { name: "h11-a16-3", scheme: UpstreamHttp, host: "192.168.1.202", port: 18084, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
+    RouterDevUpstream { name: "h11-a16-4", scheme: UpstreamHttp, host: "192.168.1.202", port: 18085, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
   ]
 }
 
