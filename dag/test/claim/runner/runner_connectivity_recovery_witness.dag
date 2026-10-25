@@ -687,13 +687,13 @@ test fn postcondition_refuses_successor_registered_under_another_hosts_label() -
 }
 
 test fn postcondition_accepts_the_srv4_registration_for_an_srv4_slot() -> Bool {
-  replace_postcondition_with_labels(host: operator_host_srv4, labels: ["self-hosted", "linux", "arm64", "gunbc-heavy", "gunbc-user-session", "srv4"])
+  replace_postcondition_with_labels(host: operator_host_srv4, labels: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv4"])
 }
 
 // GITHUB LABEL EQUIVALENCE: a mixed-case, shuffled spelling of srv4's own set is the SAME set and
 // must verify -- a case-only difference proposes no repair.
 test fn postcondition_accepts_a_case_and_order_variant_of_the_slots_labels() -> Bool {
-  replace_postcondition_with_labels(host: operator_host_srv4, labels: ["SRV4", "gunbc-heavy", "GUNBC-USER-SESSION", "ARM64", "Self-Hosted", "Linux"])
+  replace_postcondition_with_labels(host: operator_host_srv4, labels: ["SRV4", "gunbc-heavy", "ARM64", "Self-Hosted", "Linux"])
 }
 
 // ...and case folding does not launder a wrong host: SRV3 is still not srv4.

@@ -10,13 +10,11 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner.runner_slot_job_role { RunnerSlotJobRole, CiJobSlot, DeployJobSlot, runner_slot_job_role }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
-import gunbc.runner.runner_host_deploy { runner_job_user_session_on }
 
 // ONE COMPOSITION, EVERY PRODUCER. A registration's labels are made of three facts, each read from
 // the one place that owns it:
 //   platform  self-hosted / os / arch   gunbc.runner.runner_spec_from_offer, from the host's ComputeOffer
 //   class     gunbc-heavy                gunbc.runner.runner_slot_desired gunbc_runner_slot_desired
-//   capability gunbc-user-session       gunbc.runner.runner_host_deploy runner_job_user_session_hosts (CI slots)
 //   host      the host it executes on    gunbc.runner.runner_slot_allocation runner_host_label
 // Unit-file registration, JIT mint, the replace postcondition and the org-roster readback all read
 // their labels here. The host-pinned selector (gunbc.ci.ci_deploy_target_host host_pinned_runner_spec)
@@ -31,40 +29,7 @@ type RunnerRegistrationLabelsResolution
   | RegistrationLabelsRefused { host: HostIdentity, cause: NonEmptyStr }
 
 fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
-  runner_registration_labels_of_class(
-    host: host,
-    class_labels: runner_label_set_union(a: gunbc_runner_slot_desired().labels.github_labels, b: runner_host_capability_labels(host: host)),
-  )
-}
-
-// A CAPABILITY LABEL NAMES WHAT A HOST'S CI JOB ACCOUNT CAN DO, never which host it is. gunbc-user-session
-// means the job account holds a user systemd manager (loginctl linger), so `systemd-run --user` can start
-// transient units; it is derived from the one row that also drives the converge which establishes it
-// (gunbc.runner.runner_host_deploy runner_job_user_session_hosts, converged by gunbc.runner.runner_user_session),
-// so a job selecting it and the host that converges it cannot name different hosts. The deploy slot does not
-// carry it: its job account is the deploy principal, not the CI job user the row lingers. Its first selector is
-// a declared frontier (DESIGN 3c): gunbc#14972's instrument-dispatch label credential-acquisition-systemd-rows,
-// whose runs-on names this label; trigger: this change lands and the srv4 converge readback holds.
-//
-// DERIVED FROM THE ROW, NOT GRANTED BY THE CONVERGE'S READBACK -- a stated divergence from
-// gunbc_browser_ready_label, which its converge writes as a drop-in when its readback holds and removes when it
-// does not. Three reasons:
-//   * That route is not available on the fleet today. The drop-in write needs argv plus stdin over FleetSsh,
-//     which the shared host-effect runner still refuses before any leg
-//     (gunbc.guarantee_stall browser_ready_labels_fleet_route_stall). A readback-granted label would therefore
-//     never be granted anywhere.
-//   * The operator decision relayed on gunbc#14972 (2026-10-25) was to derive the label from the row.
-//   * The cost of the gap is a refusal, never a silent wrong answer. A job selecting this label on a host whose
-//     converge has not held reaches no user bus: the client says "Failed to connect to bus", and the first
-//     consumer's wire answers no observation (exit 2) before running any row.
-// The ordering that keeps the gap closed in practice: the converge readback holds on the host before any job
-// selects the label.
-// THE CLIMB: when the FleetSsh stdin route is admitted (that stall's trigger), this label moves to the
-// browser-ready model: granted by runner_user_session's readback and removed when the readback fails.
-data gunbc_user_session_label: String = "gunbc-user-session"
-
-fn runner_host_capability_labels(host: HostIdentity) -> List<String> {
-  if runner_job_user_session_on(host: host) { [gunbc_user_session_label] } else { [] }
+  runner_registration_labels_of_class(host: host, class_labels: gunbc_runner_slot_desired().labels.github_labels)
 }
 
 // THE CLASS HALF OF THE COMPOSITION IS THE ONLY PART A ROLE CHANGES. A CI slot carries the class

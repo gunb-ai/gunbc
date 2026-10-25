@@ -18,7 +18,8 @@ import extdeps.systemd.systemd_run { SystemdSetenvBinding }
 // Lifted from gunbc.instruments.compute_run_unit_cold. Read by its two instruments (compute_run_unit_cold,
 // compute_wrong_capture) and the user-session converge (gunbc.runner.runner_user_session).
 // Also consumed by a named later change (a declared frontier, DESIGN 3c): gunbc#14972's
-// test.claim.dispatch_credential_acquisition_witness systemd rows bind the client env; trigger: this change lands.
+// test.claim.dispatch_credential_acquisition_witness systemd rows bind the client env; trigger: the user-session
+// converge's readback holds on srv4 from main and its capability label lands.
 type UserSessionRuntime
   = UserSessionRuntimeBound { runtime_dir: FilePath }
   | UserSessionRuntimeAbsent

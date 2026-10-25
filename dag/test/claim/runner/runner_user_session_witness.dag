@@ -6,47 +6,24 @@ import extdeps.exec.command { argv_words }
 import extdeps.systemd.loginctl { loginctl_enable_linger_argv }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner.runner_host_deploy { runner_job_user_session_on, runner_job_user_session_hosts, srv1_runner_host_spec, srv4_runner_host_spec }
-import gunbc.runner.runner_registration_labels {
-  runner_registration_labels, runner_registration_labels_of_class, RegistrationLabelsResolved, RegistrationLabelsRefused, gunbc_user_session_label,
-}
+import extdeps.systemd.loginctl { loginctl_show_user_linger_command, loginctl_linger_reading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
 import gunbc.runner.runner_user_session {
   UserSessionAnswer, UserSessionAnswered, UserSessionNotAnswered, user_session_answer_of,
   UserSessionHostAdmission, UserSessionHostAdmitted, UserSessionHostRefused, user_session_host_admission,
   user_session_enable_linger_command, user_session_readback_command,
+  user_session_receipt_then, runner_user_session_converge_receipt_path,
 }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
-// THE ROW, THE LABEL AND THE CONVERGE'S ADMISSION READ ONE FACT (gunbc.runner.runner_host_deploy
+// THE ROW AND THE CONVERGE'S ADMISSION READ ONE FACT (gunbc.runner.runner_host_deploy
 // runner_job_user_session_hosts). Each control below is paired: the host the row names, and a host it does not.
-
-fn labels_have(labels: List<String>, want: String) -> Bool {
-  any(labels, l => l == want)
-}
 
 test fn the_user_session_row_names_srv4_and_not_srv1() -> Bool {
   runner_job_user_session_on(host: operator_host_srv4)
     && !runner_job_user_session_on(host: operator_host_srv1)
     && !runner_job_user_session_on(host: operator_host_srv3)
     && runner_job_user_session_hosts.length() == 1
-}
-
-test fn the_capability_label_is_derived_for_exactly_the_rows_hosts() -> Bool {
-  let on_srv4 = match runner_registration_labels(host: operator_host_srv4) {
-    RegistrationLabelsResolved { labels } => labels_have(labels: labels, want: gunbc_user_session_label)
-    RegistrationLabelsRefused { host: _, cause: _ } => false
-  }
-  let off_srv1 = match runner_registration_labels(host: operator_host_srv1) {
-    RegistrationLabelsResolved { labels } => !labels_have(labels: labels, want: gunbc_user_session_label)
-    RegistrationLabelsRefused { host: _, cause: _ } => false
-  }
-  on_srv4 && off_srv1
-}
-
-// The deploy slot's class is its runner group's label alone; the capability belongs to the CI job account.
-test fn the_deploy_slot_class_does_not_carry_the_capability_label() -> Bool {
-  match runner_registration_labels_of_class(host: operator_host_srv4, class_labels: ["gunbc-deploy"]) {
-    RegistrationLabelsResolved { labels } => !labels_have(labels: labels, want: gunbc_user_session_label)
-    RegistrationLabelsRefused { host: _, cause: _ } => false
-  }
 }
 
 test fn the_converge_admits_a_row_host_and_refuses_any_other() -> Bool {
@@ -92,4 +69,46 @@ test fn a_client_that_reaches_no_bus_is_not_converged() -> Bool {
     UserSessionAnswered => false
     UserSessionNotAnswered { cause: c } => string_contains(s: c, pattern: "No medium found")
   }
+}
+
+// LINGER IS READ FROM LOGIND'S RECORD, not inferred from a manager the converge itself just started.
+test fn the_linger_readback_is_loginctl_show_user_for_the_job_user() -> Bool {
+  join(argv_words(command: loginctl_show_user_linger_command(subject: "ghrunner" as NonEmptyStr)), " ") == "loginctl show-user ghrunner --property=Linger"
+}
+
+test fn linger_yes_reads_enabled_and_linger_no_reads_disabled() -> Bool {
+  let yes = match loginctl_linger_reading(exit_code: 0, stdout: "Linger=yes\n", stderr: "") {
+    LoginctlLingerEnabled => true
+    LoginctlLingerDisabled => false
+    LoginctlLingerUnread { cause: _ } => false
+  }
+  let no = match loginctl_linger_reading(exit_code: 0, stdout: "Linger=no\n", stderr: "") {
+    LoginctlLingerEnabled => false
+    LoginctlLingerDisabled => true
+    LoginctlLingerUnread { cause: _ } => false
+  }
+  yes && no
+}
+
+// An account logind holds no record of is not lingering; an answer that says neither is unread, never "enabled".
+test fn an_unknown_account_reads_disabled_and_anything_else_unread() -> Bool {
+  let unknown = match loginctl_linger_reading(exit_code: 1, stdout: "", stderr: "Failed to get user: User ID 1001 is not logged in or lingering") {
+    LoginctlLingerEnabled => false
+    LoginctlLingerDisabled => true
+    LoginctlLingerUnread { cause: _ } => false
+  }
+  let garbled = match loginctl_linger_reading(exit_code: 0, stdout: "Linger=maybe", stderr: "") {
+    LoginctlLingerEnabled => false
+    LoginctlLingerDisabled => false
+    LoginctlLingerUnread { cause: c } => string_contains(s: c, pattern: "Linger=maybe")
+  }
+  unknown && garbled
+}
+
+// A REFUSAL PAST ADMISSION STILL WRITES THE RECEIPT the upload step requires, and still refuses.
+test fn a_refused_path_writes_its_receipt_and_refuses() -> Bool {
+  let exit = user_session_receipt_then(host: "srv4" as NonEmptyStr, job_user: "ghrunner" as NonEmptyStr, lines: ["refused: the fleet SSH context: witness"], holds: false)
+  let written = Filesystem.Read(path: runner_user_session_converge_receipt_path)
+  let refused = match exit { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true }
+  refused && written.success && string_contains(s: written.content, pattern: "refused: the fleet SSH context: witness")
 }
