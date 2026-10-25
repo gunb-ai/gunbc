@@ -90,7 +90,7 @@ import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, Sli
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import gunbc.host_command_binding { admitted_scratch_path }
 import gunbc.managed_directory { managed_directory_admit, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
-import gunbc.auth.approval_broker_state_directories { approval_broker_state_directories }
+import gunbc.auth.approval_broker_state_directories { approval_broker_state_directories, broker_state_directory_install_argv }
 import gunbc.fleet.fleet_posix_accounts { GroundedPosixPrincipal, grounded_posix_principal_name, fleet_rm_binary_path, fleet_posix_nologin_shell_path }
 import gunbc.live_deploy.spec {
   deployment_owns_the_host_approval_broker,
