@@ -17,6 +17,7 @@ import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.fleet.fleet_posix_accounts { fleet_usermod_binary_path }
 
 import std.types { NonEmptyStr, String, List, Int }
+import std.algebra { trim }
 import std.optional { Absent, Present }
 
 // Which of the two files. They are separate files with separate contents and shadow maintains them
@@ -358,7 +359,7 @@ fn plan_subordinate_file(
                   // success. Only ranges that outlive the plan count — computed, not guessed, by
                   // subtracting everything this plan deletes.
                   overlaps_survivors(rs: rs, account: account, want_first: want_first, want_count: want_count,
-                                     movable: movable, first: displacee_regrant_first, count: o.count))) {
+                                     movable: movable, first: displacee_regrant_first, count: o.count))) > 0 {
         SubordinatePlanRefused {
           reason: join(["the declared re-grant first ", to_string(displacee_regrant_first), " for ", displaceable as String,
                         " on ", p, " overlaps a range the plan does not remove; refusing to trade one collision for another"], ""),
