@@ -124,12 +124,14 @@ test fn approval_broker_table_carries_no_other_route() -> Bool {
 // Every claim above supplies a (method, path) at the ROUTE TABLE boundary and inspects what the
 // table answers. DESIGN section 3's pairing obligation is that some claim still runs the real path,
 // and it is discharged here: this enters approval_broker_respond -- the fold the serve entry calls --
-// with the bytes a request carries, and lets it build the table, select, and run the device enrol
-// handler, whose unreadable body refuses before any store effect. DELETE THE INTEGRATION AND THIS
-// GOES RED: remove the enrol row from the specs and the same call answers the adapter's own 404.
-test fn approval_broker_device_route_answers_through_the_real_entry() -> Bool {
-  let r = device_enrol_refusal_through_the_real_entry()
-  r.status != 404 && r.content_type == application_json_utf8
+// with the bytes a request carries, and lets it build the table, select, consult the writer gate and
+// run the submission fold, whose unreadable body refuses before any store effect -- the one handler
+// that reaches its fold with no host read, so this runs hermetically (the device routes read the
+// clock first). DELETE THE INTEGRATION AND THIS GOES RED: remove the submit row from the specs and the
+// same call answers the adapter's own 404.
+test fn approval_broker_filing_route_answers_through_the_real_entry() -> Bool {
+  let r = broker_respond_as(process: live_writer(), method_label: "POST", path: approval_broker_submit_path as String, body: "{}")
+  r.status == 400 && string_contains(s: r.body, pattern: "approval submission:")
 }
 
 // THE ADAPTER'S 404 IS ITS OWN, not the table's absence: a path this process does not serve answers
@@ -188,16 +190,16 @@ test fn the_brokers_own_not_found_is_marked_as_having_reached_the_broker() -> Bo
 // about marking.
 test fn the_two_processes_do_not_produce_the_same_marker_on_one_route() -> Bool {
   let by_broker = approval_broker_respond_as(
-    method_label: "POST",
-    path: "/approve/device/pending",
-    body: "not json",
+    method_label: "GET",
+    path: "/approvals",
+    body: "",
     tailscale_identity: "",
     process: BrokerProcess,
   )
   let by_roadmap = approval_broker_respond_as(
-    method_label: "POST",
-    path: "/approve/device/pending",
-    body: "not json",
+    method_label: "GET",
+    path: "/approvals",
+    body: "",
     tailscale_identity: "",
     process: RoadmapProcess,
   )
@@ -342,7 +344,9 @@ test fn the_writer_reaches_the_submission_fold_rather_than_the_gate() -> Bool {
 // THE SAME FOR THE ONE ROUTE THAT COMMITS A DECISION -- the device redeem route -- and here the
 // BODY is the whole assertion: a status-only claim could pass on a 503 from some other refusal, so
 // what discriminates is WHICH refusal came back. THE RED: make the gate admit every asker and the
-// non-writer half fails; make it refuse every asker and the writer half fails.
+// non-writer half fails; make it refuse every asker and the writer half fails. The device routes read
+// the clock before the gate, so this and the pending-read claim below observe only under --wet, like
+// the JSON-marker claims after them; the hermetic gate coverage is the submission pair above.
 test fn a_non_writer_decision_is_refused_before_the_store() -> Bool {
   let refused = broker_respond_as(
     process: live_non_writer(),
