@@ -79,3 +79,42 @@ block-nests` exited 0 on the same dispatch, proving the producer route itself is
 sibling `native-materialization-store-closure` is red on main at the SAME emitted line (pre-existing,
 "run by name, not a merge gate"), which is what discriminates the collision: its closure carries
 both Word64 declarers, VBP's carries only std.bit.
+
+
+## Executed results, follow-up dispatch (2026-10-25 evening, session/crisp-bee-97-emitter)
+
+The E0204 above is CLOSED by the declaration-keyed derive roster (PR companion to #15138:
+`shared_type_declaration_is_marked_shared` + `declared_shared` in trait_derive_emit). Measured
+on the same runner image, same dispatch, by checking out BOTH mirror sets into one clone
+(base = bcfe6cef365e, head = this branch):
+
+| instrument | base mirrors | head mirrors |
+|---|---|---|
+| native-materialization-store-closure | exit 2, unit-0 2 errors: E0204 `std_bit.rs:40` + E0282 `std_list.rs:44` | exit 2, unit-0 **1** error: E0282 `std_list.rs:44` |
+| roster-import-sweep-native | exit 2, unit-0 1 error: E0204 `std_bit.rs:40` | exit 2, unit-2 3 errors: E0425 `start_detached` + E0425 `reap` (`extdeps_posix_process.rs:151`) + E0282 (`std_list.rs:44` fold acc) |
+| value-position-block-nests | exit 0 | exit 0 (green, process_invocation_total 247 s) |
+
+E0204 is GONE from both closures — the discriminating proof is the fixture pair, same binary,
+same runner: `cargo test -p v1-compiler --release --lib shared_roster_follows_the_declaration`
+→ `1 passed` at head mirrors, `FAILED ... must NOT derive Copy -- pre-repair it inherited Copy
+from the same-leaf constant declaration` at base mirrors (`compiler_tests.rs:3931`).
+
+What still refuses, EXACTLY (both pre-existing, masked at base by unit-0 failing first; each is
+a separate emission gap outside this PR's single route):
+
+1. `error[E0282]: type annotations needed @ .../std_list.rs:44:37` — the fold arm
+   `|acc: _, x: _|` in `first_duplicate_by_key`'s emitted fold: the emitter leaves `acc`
+   unannotated where the closure's inference cannot recover it (closure-dependent emission).
+2. `error[E0425]: cannot find function `start_detached`/`reap` in this scope @
+   .../extdeps_posix_process.rs:151:4` (and :174) — the emitted `extdeps.posix.process` module
+   body calls free functions its own emitted file never defines; the spawn realization the
+   interpreter carries (`dispatch_start_detached_native`, v1_interpreter.rs:18426) has no
+   emitted-closure counterpart, and the module's `StartDetached` service entry (`dag/extdeps/
+   posix/process.dag:127`) is realized against those missing free names. It reaches the roster
+   closure through a live module chain (roster instrument -> `extdeps.filesystem.filesystem_io`
+   -> `extdeps.external_authority` (anchor literal) -> cloudflare probe -> `extdeps.exec.command`
+   -> `gunbc.remote_shell_command` -> `extdeps.posix.process`).
+
+`child_wall_ms` rows print only after BOTH close; until then the native cost instrument remains
+the REFUSAL line, and the before/after stays one-sided: interpreted 1197 s (node.dag, measured,
+above) vs native = refusal. Neither gap is papered over: the instrument exits 2 verbatim on both.
