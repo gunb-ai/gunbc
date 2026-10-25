@@ -14778,6 +14778,8 @@ pub fn parse_expr_loop(
                                                                         std::option::Option::None,
                                                                     operand:
                                                                         std::option::Option::None,
+                                                                    equality:
+                                                                        std::option::Option::None,
                                                                 }),
                                                                 Rc::new(vec![
                                                                     lhs.clone(),
@@ -17084,6 +17086,8 @@ pub fn parse_expr_loop_no_brace(
                                                                     algebra_field:
                                                                         std::option::Option::None,
                                                                     operand:
+                                                                        std::option::Option::None,
+                                                                    equality:
                                                                         std::option::Option::None,
                                                                 }),
                                                                 Rc::new(vec![

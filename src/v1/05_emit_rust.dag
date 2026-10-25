@@ -16751,7 +16751,7 @@ fn emit_rust_equality_plan_refusal(d: DeclarationEqualityPlan, emit_info: EmitGr
 }
 
 fn emit_rust_equality_fn_name(r: DeclarationRef) -> String {
-  concat("__eq_", module_to_filename(name: r.module_path as String), "__", r.decl_name as String)
+  concat("__eq_", module_to_filename(name: r.module_path as String), "__", to_snake(name: r.decl_name as String))
 }
 
 fn emit_rust_equality_plan_fn(plan: EqualityPlan, d: DeclarationEqualityPlan) -> String {

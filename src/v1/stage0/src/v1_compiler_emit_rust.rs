@@ -33,7 +33,7 @@ pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_ownership, kernel_mint_declaration_for, LiteralSourceKind, KernelGroundingLookup, KernelMintOwnership, KernelMintDeclarationLookup};
 pub use crate::std_measure::{millisecond_count};
 pub use crate::std_occurrence_identity::{authored_occurrence_of, NodeOccurrenceIdentity};
-pub use crate::std_operator_realization::{OperatorRealization, OperandRealization, OperandShapeFacts, OperandDeclaration, StructuralOrderingBinding, OrderingTest, OperandDemand, operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label, HostRealizationReason};
+pub use crate::std_operator_realization::{OperatorRealization, OperandRealization, OperandShapeFacts, OperandDeclaration, EqualityPlan, EqualityStep, EqualityPlanField, EqualityPlanArm, DeclarationEqualityPlan, StructuralOrderingBinding, OrderingTest, OperandDemand, operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label, HostRealizationReason};
 pub use crate::std_primitive_projection::{primitive_identity_runtime_name, primitive_projection_row_for_declaration, never_type_declaration, never_eliminator_declaration, never_projection_declarations};
 pub use crate::std_repair_input_origin::{repair_input_origin_candidates, repair_input_origin_compatibility_names, qualified_item_emit_surface_compatibility_names};
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
@@ -82,6 +82,7 @@ use crate::std_literal_elaboration::KernelMintDeclarationLookup::{KernelMintDecl
 use crate::std_literal_elaboration::KernelMintOwnership::{DeclarationOwnsTheMint, DeclarationDoesNotOwnTheMint, KernelMintOwnershipAmbiguous};
 use crate::std_literal_elaboration::LiteralSourceKind::{KernelIntLiteral};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{OccurrenceSynthetic};
+use crate::std_operator_realization::EqualityStep::{EqualityByTarget, EqualityRouted, EqualityThroughPlan, EqualityPresence, EqualityContainer};
 use crate::std_operator_realization::HostRealizationReason::{KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType, HostTextCarrier};
 use crate::std_operator_realization::OperandDemand::{DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent};
 use crate::std_operator_realization::OperandRealization::{HostNumericOperand, StructuralOperand, OperandIdentityUnavailable, HostRealizedOperand};
@@ -26810,11 +26811,13 @@ pub fn emit_rust_expr_bin_op(
             op,
             algebra_field: algebra,
             operand: od,
+            equality: eqp,
             ..
         } => emit_typed_bin_op(
             op.clone(),
             algebra.clone(),
             od.clone(),
+            eqp.clone(),
             crate::v1_std_core::binop_left(expr.clone()),
             crate::v1_std_core::binop_right(expr.clone()),
             registry,
@@ -36569,6 +36572,7 @@ pub fn emit_typed_bin_op(
     op: BinOp,
     algebra_field: Option<AlgebraFieldKind>,
     operand: Option<Rc<OperandDeclaration>>,
+    equality: Option<Rc<EqualityPlan>>,
     left: Rc<Node>,
     right: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -36603,28 +36607,54 @@ pub fn emit_typed_bin_op(
                 RenderTarget::Rust,
             )
         } else {
-            match (*binop_operator_realization(op.clone(), operand, left.clone(), scope.clone()))
-                .clone()
+            if ((equality.clone() != std::option::Option::None)
+                && ((op.clone() == BinOp::Eq) || (op.clone() == BinOp::Ne)))
             {
-                OperatorRealization::OperatorRealizationRefused { cause: c, .. } => {
-                    emit_rust_compile_error_expr(
-                        crate::std_operator_realization::operator_realization_refusal_message(
-                            c.clone(),
-                        ),
-                    )
-                }
-                OperatorRealization::StructuralComparison {
-                    binding: b,
-                    test: t,
-                    ..
-                } => emit_rust_structural_comparison(
+                emit_rust_planned_equality(
+                    (op.clone() == BinOp::Ne),
+                    equality.clone().unwrap(),
                     l_str.clone(),
                     r_str.clone(),
-                    b.clone(),
-                    t.clone(),
-                ),
-                OperatorRealization::StructuralEquality { declaration: _, .. } => {
-                    emit_rust_host_bin_op(
+                    emit_info.clone(),
+                )
+            } else {
+                match (*binop_operator_realization(
+                    op.clone(),
+                    operand,
+                    left.clone(),
+                    scope.clone(),
+                ))
+                .clone()
+                {
+                    OperatorRealization::OperatorRealizationRefused { cause: c, .. } => {
+                        emit_rust_compile_error_expr(
+                            crate::std_operator_realization::operator_realization_refusal_message(
+                                c.clone(),
+                            ),
+                        )
+                    }
+                    OperatorRealization::StructuralComparison {
+                        binding: b,
+                        test: t,
+                        ..
+                    } => emit_rust_structural_comparison(
+                        l_str.clone(),
+                        r_str.clone(),
+                        b.clone(),
+                        t.clone(),
+                    ),
+                    OperatorRealization::StructuralEquality { declaration: _, .. } => {
+                        emit_rust_host_bin_op(
+                            op.clone(),
+                            algebra_field.clone(),
+                            left.clone(),
+                            right.clone(),
+                            l_str.clone(),
+                            r_str.clone(),
+                            scope.clone(),
+                        )
+                    }
+                    OperatorRealization::HostOperator => emit_rust_demanded_host_bin_op(
                         op.clone(),
                         algebra_field.clone(),
                         left.clone(),
@@ -36632,17 +36662,8 @@ pub fn emit_typed_bin_op(
                         l_str.clone(),
                         r_str.clone(),
                         scope.clone(),
-                    )
+                    ),
                 }
-                OperatorRealization::HostOperator => emit_rust_demanded_host_bin_op(
-                    op.clone(),
-                    algebra_field.clone(),
-                    left.clone(),
-                    right.clone(),
-                    l_str.clone(),
-                    r_str.clone(),
-                    scope.clone(),
-                ),
             }
         }
     }
@@ -36923,6 +36944,527 @@ pub fn binop_operator_realization(
             structural_ordering_rows(),
         )
     }
+}
+
+pub fn emit_rust_planned_equality(
+    negate: bool,
+    plan: Rc<EqualityPlan>,
+    l_str: String,
+    r_str: String,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for r in Rc::new({
+            let mut __result = Vec::new();
+            for d in plan.declarations.clone().iter().cloned() {
+                __result.push(emit_rust_equality_plan_refusal(
+                    d.clone(),
+                    emit_info.clone(),
+                ));
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            if (r.clone() != "".to_string()) {
+                __result.push(r);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(message) => emit_rust_compile_error_expr(message.clone()),
+        std::option::Option::None => {
+            let items = Rc::new({
+                let mut __result = Vec::new();
+                for d in plan.declarations.clone().iter().cloned() {
+                    __result.push(emit_rust_equality_plan_fn(plan.clone(), d.clone()));
+                }
+                __result
+            })
+            .join(&" ".to_string());
+            let root = emit_rust_equality_step(
+                plan.clone(),
+                plan.root.clone(),
+                "__eq_l".to_string(),
+                "__eq_r".to_string(),
+            );
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat("{ ".to_string(), items.clone()),
+                                                " let __eq_l = &(".to_string(),
+                                            ),
+                                            l_str.clone(),
+                                        ),
+                                        "); let __eq_r = &(".to_string(),
+                                    ),
+                                    r_str.clone(),
+                                ),
+                                "); ".to_string(),
+                            ),
+                            if negate.clone() {
+                                "!".to_string()
+                            } else {
+                                "".to_string()
+                            },
+                        ),
+                        "(".to_string(),
+                    ),
+                    root.clone(),
+                ),
+                ") }".to_string(),
+            )
+        }
+    }
+}
+
+pub fn emit_rust_equality_plan_refusal(
+    d: Rc<DeclarationEqualityPlan>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    match d.reference.clone() {
+    std::option::Option::None => v1_rt::concat(v1_rt::concat("equality plan: declaration ".to_string(), d.declaration.clone()), " reaches a routed member but the checker could not read it as a DeclarationRef, so its eq fn cannot be named".to_string()),
+    Some(r) => match crate::v1_compiler_infer_emit_info::type_summary_decided(emit_info.type_summaries.clone(), crate::v1_compiler_infer_emit_info::type_decl_identity(r.module_path.clone(), r.decl_name.clone())) {
+    Some(ts) => if ((ts.generic_param_names.clone().len() as i64) > 0) {
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality plan: generic declaration ".to_string(), r.module_path.clone()), ".".to_string()), r.decl_name.clone()), " reaches a routed member; its eq fn would need the instantiation, which the plan does not carry".to_string())
+    } else {
+        "".to_string()
+    },
+    std::option::Option::None => "".to_string(),
+},
+}
+}
+
+pub fn emit_rust_equality_fn_name(r: Rc<DeclarationRef>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                "__eq_".to_string(),
+                crate::gunbc_rust_emitted_edge::module_to_filename(r.module_path.clone()),
+            ),
+            "__".to_string(),
+        ),
+        r.decl_name.clone(),
+    )
+}
+
+pub fn emit_rust_equality_plan_fn(
+    plan: Rc<EqualityPlan>,
+    d: Rc<DeclarationEqualityPlan>,
+) -> String {
+    match d.reference.clone() {
+        std::option::Option::None => "".to_string(),
+        Some(r) => {
+            let t = v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "crate::".to_string(),
+                        crate::gunbc_rust_emitted_edge::module_to_filename(r.module_path.clone()),
+                    ),
+                    "::".to_string(),
+                ),
+                r.decl_name.clone(),
+            );
+            let body = match Rc::new({
+                let mut __result = Vec::new();
+                for arm in d.arms.clone().iter().cloned() {
+                    if (arm.arm.clone() == "".to_string()) {
+                        __result.push(arm);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned()
+            {
+                Some(product) => emit_rust_equality_fields(
+                    plan.clone(),
+                    product.fields.clone(),
+                    "&a.".to_string(),
+                    "&b.".to_string(),
+                ),
+                std::option::Option::None => {
+                    let arms = Rc::new({
+                        let mut __result = Vec::new();
+                        for arm in d.arms.clone().iter().cloned() {
+                            __result.push(emit_rust_equality_arm(
+                                plan.clone(),
+                                t.clone(),
+                                arm.clone(),
+                            ));
+                        }
+                        __result
+                    })
+                    .join(&", ".to_string());
+                    v1_rt::concat(
+                        v1_rt::concat("match (a, b) { ".to_string(), arms.clone()),
+                        ", _ => false }".to_string(),
+                    )
+                }
+            };
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "#[allow(unreachable_patterns, clippy::all)] fn "
+                                                .to_string(),
+                                            emit_rust_equality_fn_name(r.clone()),
+                                        ),
+                                        "(a: &".to_string(),
+                                    ),
+                                    t.clone(),
+                                ),
+                                ", b: &".to_string(),
+                            ),
+                            t.clone(),
+                        ),
+                        ") -> bool { ".to_string(),
+                    ),
+                    body.clone(),
+                ),
+                " }".to_string(),
+            )
+        }
+    }
+}
+
+pub fn emit_rust_equality_fields(
+    plan: Rc<EqualityPlan>,
+    fields: Rc<Vec<Rc<EqualityPlanField>>>,
+    a_prefix: String,
+    b_prefix: String,
+) -> String {
+    if ((fields.clone().len() as i64) == 0) {
+        "true".to_string()
+    } else {
+        Rc::new({
+            let mut __result = Vec::new();
+            for f in fields.iter().cloned() {
+                __result.push(emit_rust_equality_step(
+                    plan.clone(),
+                    f.step.clone(),
+                    v1_rt::concat(
+                        a_prefix.clone(),
+                        crate::v1_compiler_emit::emit_ident(f.field.clone(), RenderTarget::Rust),
+                    ),
+                    v1_rt::concat(
+                        b_prefix.clone(),
+                        crate::v1_compiler_emit::emit_ident(f.field.clone(), RenderTarget::Rust),
+                    ),
+                ));
+            }
+            __result
+        })
+        .join(&" && ".to_string())
+    }
+}
+
+pub fn emit_rust_equality_arm(
+    plan: Rc<EqualityPlan>,
+    t: String,
+    arm: Rc<EqualityPlanArm>,
+) -> String {
+    {
+        let a_binds = Rc::new({
+            let mut __result = Vec::new();
+            for f in arm.fields.clone().iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(
+                        crate::v1_compiler_emit::emit_ident(f.field.clone(), RenderTarget::Rust),
+                        ": __ea_".to_string(),
+                    ),
+                    crate::v1_compiler_emit::emit_ident(f.field.clone(), RenderTarget::Rust),
+                ));
+            }
+            __result
+        })
+        .join(&", ".to_string());
+        let b_binds = Rc::new({
+            let mut __result = Vec::new();
+            for f in arm.fields.clone().iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(
+                        crate::v1_compiler_emit::emit_ident(f.field.clone(), RenderTarget::Rust),
+                        ": __eb_".to_string(),
+                    ),
+                    crate::v1_compiler_emit::emit_ident(f.field.clone(), RenderTarget::Rust),
+                ));
+            }
+            __result
+        })
+        .join(&", ".to_string());
+        let a_pat = if ((arm.fields.clone().len() as i64) == 0) {
+            "{ .. }".to_string()
+        } else {
+            v1_rt::concat(
+                v1_rt::concat("{ ".to_string(), a_binds.clone()),
+                ", .. }".to_string(),
+            )
+        };
+        let b_pat = if ((arm.fields.clone().len() as i64) == 0) {
+            "{ .. }".to_string()
+        } else {
+            v1_rt::concat(
+                v1_rt::concat("{ ".to_string(), b_binds.clone()),
+                ", .. }".to_string(),
+            )
+        };
+        let variant = v1_rt::concat(v1_rt::concat(t.clone(), "::".to_string()), arm.arm.clone());
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat("(".to_string(), variant.clone()),
+                                        " ".to_string(),
+                                    ),
+                                    a_pat.clone(),
+                                ),
+                                ", ".to_string(),
+                            ),
+                            variant.clone(),
+                        ),
+                        " ".to_string(),
+                    ),
+                    b_pat.clone(),
+                ),
+                ") => ".to_string(),
+            ),
+            emit_rust_equality_fields(
+                plan,
+                arm.fields.clone(),
+                "__ea_".to_string(),
+                "__eb_".to_string(),
+            ),
+        )
+    }
+}
+
+pub fn emit_rust_equality_step(
+    plan: Rc<EqualityPlan>,
+    step: Rc<EqualityStep>,
+    a: String,
+    b: String,
+) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*step.clone()).clone() {
+            EqualityStep::EqualityByTarget => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("(".to_string(), a.clone()),
+                        " == ".to_string(),
+                    ),
+                    b.clone(),
+                ),
+                ")".to_string(),
+            ),
+            EqualityStep::EqualityRouted { function: f, .. } => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                rust_declaration_path(f.module_path.clone(), f.decl_name.clone()),
+                                "(::core::convert::From::from((*".to_string(),
+                            ),
+                            a.clone(),
+                        ),
+                        ").clone()), ::core::convert::From::from((*".to_string(),
+                    ),
+                    b.clone(),
+                ),
+                ").clone()))".to_string(),
+            ),
+            EqualityStep::EqualityThroughPlan {
+                declaration: key, ..
+            } => match Rc::new({
+                let mut __result = Vec::new();
+                for d in plan.declarations.clone().iter().cloned() {
+                    if (d.declaration.clone() == key.clone()) {
+                        __result.push(d);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned()
+            {
+                Some(d) => match d.reference.clone() {
+                    Some(r) => v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        emit_rust_equality_fn_name(r.clone()),
+                                        "(".to_string(),
+                                    ),
+                                    a.clone(),
+                                ),
+                                ", ".to_string(),
+                            ),
+                            b.clone(),
+                        ),
+                        ")".to_string(),
+                    ),
+                    std::option::Option::None => emit_rust_compile_error_expr(v1_rt::concat(
+                        v1_rt::concat("equality plan: declaration ".to_string(), key.clone()),
+                        " has no DeclarationRef".to_string(),
+                    )),
+                },
+                std::option::Option::None => v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("(".to_string(), a.clone()),
+                            " == ".to_string(),
+                        ),
+                        b.clone(),
+                    ),
+                    ")".to_string(),
+                ),
+            },
+            EqualityStep::EqualityPresence { inner: i, .. } => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat("(match (".to_string(), a.clone()),
+                                ".as_ref(), ".to_string(),
+                            ),
+                            b.clone(),
+                        ),
+                        ".as_ref()) { (Some(__px), Some(__py)) => ".to_string(),
+                    ),
+                    emit_rust_equality_step(
+                        plan.clone(),
+                        i.clone(),
+                        "__px".to_string(),
+                        "__py".to_string(),
+                    ),
+                ),
+                ", (None, None) => true, _ => false })".to_string(),
+            ),
+            EqualityStep::EqualityContainer {
+                arguments: args, ..
+            } => {
+                if ((args.clone().len() as i64) == 2) {
+                    match args.clone().last().cloned() {
+                        Some(v) => v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                "(".to_string(),
+                                                                a.clone(),
+                                                            ),
+                                                            ".len() == ".to_string(),
+                                                        ),
+                                                        b.clone(),
+                                                    ),
+                                                    ".len() && ".to_string(),
+                                                ),
+                                                a.clone(),
+                                            ),
+                                            ".iter().all(|(__ck, __cv)| ".to_string(),
+                                        ),
+                                        b.clone(),
+                                    ),
+                                    ".get(__ck).map_or(false, |__cw| ".to_string(),
+                                ),
+                                emit_rust_equality_step(
+                                    plan.clone(),
+                                    v.clone(),
+                                    "__cv".to_string(),
+                                    "__cw".to_string(),
+                                ),
+                            ),
+                            ")))".to_string(),
+                        ),
+                        std::option::Option::None => v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("(".to_string(), a.clone()),
+                                    " == ".to_string(),
+                                ),
+                                b.clone(),
+                            ),
+                            ")".to_string(),
+                        ),
+                    }
+                } else {
+                    match args.clone().first().cloned() {
+                        Some(e) => v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                "(".to_string(),
+                                                                a.clone(),
+                                                            ),
+                                                            ".len() == ".to_string(),
+                                                        ),
+                                                        b.clone(),
+                                                    ),
+                                                    ".len() && ".to_string(),
+                                                ),
+                                                a.clone(),
+                                            ),
+                                            ".iter().zip(".to_string(),
+                                        ),
+                                        b.clone(),
+                                    ),
+                                    ".iter()).all(|(__cx, __cy)| ".to_string(),
+                                ),
+                                emit_rust_equality_step(
+                                    plan.clone(),
+                                    e.clone(),
+                                    "__cx".to_string(),
+                                    "__cy".to_string(),
+                                ),
+                            ),
+                            "))".to_string(),
+                        ),
+                        std::option::Option::None => v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("(".to_string(), a.clone()),
+                                    " == ".to_string(),
+                                ),
+                                b.clone(),
+                            ),
+                            ")".to_string(),
+                        ),
+                    }
+                }
+            }
+        }
+    })
 }
 
 pub fn rust_declaration_path(module_path: String, decl_name: String) -> String {
