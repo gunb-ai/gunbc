@@ -22,9 +22,9 @@ pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, symbol_index_lookup, type_ref_measure_binding_authority,
-    width_resolution_declaration, TypeBinding, TypeEnv, UnitVariantContribution,
-    UnitVariantPhantomLookup,
+    lookup_unit_variant_phantom_type, substitute_type_slots, substitute_type_slots_scoped,
+    symbol_index_lookup, type_ref_measure_binding_authority, width_resolution_declaration,
+    TypeBinding, TypeEnv, UnitVariantContribution, UnitVariantPhantomLookup,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
@@ -631,7 +631,7 @@ pub fn generic_declaration_application(
         let substituted_children = Rc::new({
             let mut __result = Vec::new();
             for child in decl.children.clone().iter().cloned() {
-                __result.push(substitute_type_slots(
+                __result.push(crate::v1_compiler_infer_env::substitute_type_slots(
                     child.clone(),
                     slot_bindings.clone(),
                     type_name.clone(),
@@ -821,162 +821,6 @@ pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
             }
         }
     }
-}
-
-pub fn substitute_type_slots(
-    n: Rc<Node>,
-    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
-    decl_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    substitute_type_slots_scoped(n, slot_bindings, decl_name, source_indices, false)
-}
-
-pub fn substitute_type_slots_scoped(
-    n: Rc<Node>,
-    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
-    decl_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    bind_type_variables: bool,
-) -> Rc<Node> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let tv_slot = if bind_type_variables.clone() {
-            match n.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
-                    v1_rt::map_get(&slot_bindings, tv_id.clone())
-                }
-                _ => std::option::Option::None,
-            }
-        } else {
-            std::option::Option::None
-        };
-        if (tv_slot.clone() != std::option::Option::None) {
-            return crate::v1_std_core::preserve_outer_optional_cardinality(
-                n.clone(),
-                tv_slot.clone().unwrap(),
-            );
-        }
-        let is_slot = (((((n.children.clone().len() as i64) == 0)
-            && (n.connective.clone() == Connective::NoConnective))
-            && (n.body.clone() == std::option::Option::None))
-            && (n.inferred.clone() == std::option::Option::None));
-        if is_slot.clone() {
-            match v1_rt::map_get(
-                &slot_bindings,
-                crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
-            ) {
-                Some(concrete) => crate::v1_std_core::preserve_outer_optional_cardinality(
-                    n.clone(),
-                    concrete.clone(),
-                ),
-                std::option::Option::None => n.clone(),
-            }
-        } else {
-            {
-                let new_children = Rc::new({
-                    let mut __result = Vec::new();
-                    for child in n.children.clone().iter().cloned() {
-                        __result.push(
-                            if (crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                child.clone(),
-                            ) == decl_name.clone())
-                            {
-                                {
-                                    let substituted_args = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for arg in child.children.clone().iter().cloned() {
-                                            __result.push(substitute_type_slots_scoped(
-                                                arg.clone(),
-                                                slot_bindings.clone(),
-                                                decl_name.clone(),
-                                                source_indices.clone(),
-                                                bind_type_variables.clone(),
-                                            ));
-                                        }
-                                        __result
-                                    });
-                                    Rc::new(Node {
-                                        occurrence_identity: child.occurrence_identity.clone(),
-                                        name: child.name.clone(),
-                                        span: child.span.clone(),
-                                        ident_span: child.ident_span.clone(),
-                                        children: substituted_args.clone(),
-                                        connective: child.connective.clone(),
-                                        params: child.params.clone(),
-                                        inferred: child.inferred.clone(),
-                                        return_cardinality: child.return_cardinality.clone(),
-                                        uses: child.uses.clone(),
-                                        body: child.body.clone(),
-                                        transport: child.transport.clone(),
-                                        properties: child.properties.clone(),
-                                        type_annotation: child.type_annotation.clone(),
-                                        is_self_recursive: child.is_self_recursive.clone(),
-                                        has_non_tail_self_call: child
-                                            .has_non_tail_self_call
-                                            .clone(),
-                                        match_pattern: child.match_pattern.clone(),
-                                        module_item_kind: child.module_item_kind.clone(),
-                                        declaration_marker: child.declaration_marker.clone(),
-                                        declaration: child.declaration.clone(),
-                                        expr_data: child.expr_data.clone(),
-                                        ident: None,
-                                    })
-                                }
-                            } else {
-                                substitute_type_slots_scoped(
-                                    child.clone(),
-                                    slot_bindings.clone(),
-                                    decl_name.clone(),
-                                    source_indices.clone(),
-                                    bind_type_variables.clone(),
-                                )
-                            },
-                        );
-                    }
-                    __result
-                });
-                let new_inferred = match n.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: rt, .. }) => {
-                        Some(Rc::new(InferredNode::Resolved {
-                            node: substitute_type_slots_scoped(
-                                rt.clone(),
-                                slot_bindings.clone(),
-                                decl_name.clone(),
-                                source_indices.clone(),
-                                bind_type_variables.clone(),
-                            ),
-                        }))
-                    }
-                    _ => n.inferred.clone(),
-                };
-                Rc::new(Node {
-                    occurrence_identity: n.occurrence_identity.clone(),
-                    name: n.name.clone(),
-                    span: n.span.clone(),
-                    ident_span: n.ident_span.clone(),
-                    children: new_children.clone(),
-                    connective: n.connective.clone(),
-                    params: n.params.clone(),
-                    inferred: new_inferred.clone(),
-                    return_cardinality: n.return_cardinality.clone(),
-                    uses: n.uses.clone(),
-                    body: n.body.clone(),
-                    transport: n.transport.clone(),
-                    properties: n.properties.clone(),
-                    type_annotation: n.type_annotation.clone(),
-                    is_self_recursive: n.is_self_recursive.clone(),
-                    has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                    match_pattern: n.match_pattern.clone(),
-                    module_item_kind: n.module_item_kind.clone(),
-                    declaration_marker: n.declaration_marker.clone(),
-                    declaration: n.declaration.clone(),
-                    expr_data: n.expr_data.clone(),
-                    ident: None,
-                })
-            }
-        }
-    })
 }
 
 #[derive(
@@ -1717,7 +1561,7 @@ Rc::new(NodeResolveResult {
                             {
                                 let alias_target = match decl.inferred.clone().as_deref().cloned() {
                                     Some(InferredNode::Resolved { node: target, .. }) => {
-                                        substitute_type_slots(
+                                        crate::v1_compiler_infer_env::substitute_type_slots(
                                             target.clone(),
                                             slot_bindings.clone(),
                                             type_name.clone(),
