@@ -10,7 +10,8 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.netplan.netplan {
   netplan_config_dir, NetplanRenderer, SystemdNetworkd, NetworkManager,
-  netplan_try_argv, netplan_try_ready_stamp_path, netplan_try_confirmation_line, netplan_empty_document_text,
+  netplan_try_argv, netplan_try_ready_stamp_path, netplan_try_confirmation_line, netplan_empty_document_rendering,
+  NetplanDocumentRendered, NetplanDocumentRefused, netplan_document_rendering_wire,
   NetplanTryOutcome, NetplanTryAccepted, NetplanTryReverted, NetplanTryRefusedNotRevertable, NetplanTryOutcomePending, netplan_try_outcome,
 }
 import extdeps.systemd { StandardInputProperty, StandardOutputProperty }
@@ -40,8 +41,8 @@ import gunbc.ci.ci_spec { host_primary_network_receipt_path }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host.host_effect { LocalShell }
 import gunbc.host.host_primary_network {
-  HostPrimaryNetworkDesired, PrimaryRowDeclared, PrimaryRowAwaitingRead, PrimaryRowUnmodeled,
-  primary_network_row_for, primary_network_netplan_file, primary_network_netplan_file_name, primary_network_netplan_text,
+  HostPrimaryNetworkDesired, PrimaryNetworkRow, PrimaryRowDeclared, PrimaryRowRenderRefused, PrimaryRowAwaitingRead, PrimaryRowUnmodeled,
+  primary_network_row_for, primary_network_netplan_file, primary_network_netplan_file_name,
   primary_network_cloud_init_guard,
   PrimaryNetworkIpReads, PrimaryEffectiveVerdict, PrimaryEffectiveHolds, PrimaryEffectiveUnjudged, primary_effective_verdict, primary_effective_refusal,
   NetplanDirectoryListing, NetplanDirectoryListed, NetplanDirectoryUnread, netplan_yaml_names,
@@ -56,7 +57,7 @@ import gunbc.host.host_primary_network {
 // whole safety argument:
 //
 //  1. STAGE IN /run/netplan, NOT /etc/netplan. netplan reads /run/netplan beside /etc/netplan and a
-//     /run file shadows a same-named /etc file (extdeps.netplan.netplan netplan_empty_document_text),
+//     /run file shadows a same-named /etc file (extdeps.netplan.netplan netplan_empty_document_rendering),
 //     so the owned file plus an empty shadow for every foreign file make the merged configuration the
 //     row's while /etc/netplan is untouched. /run is wiped at boot, so a reboot or power loss inside
 //     the try window boots the configuration the host had before.
@@ -117,12 +118,21 @@ type StagedNetplanFile {
   content: String
 }
 
-// The owned file under its own name, and an empty document under each foreign name it shadows.
-fn primary_network_staged_population(d: HostPrimaryNetworkDesired, foreign: List<String>) -> List<StagedNetplanFile> {
-  concat(
-    [StagedNetplanFile { name: primary_network_netplan_file_name, content: primary_network_netplan_text(d: d) }],
-    map(foreign, f => StagedNetplanFile { name: f as NonEmptyStr, content: netplan_empty_document_text }),
-  )
+// The owned file under its own name, and an empty document under each foreign name it shadows; the
+// empty document is the emitter's too, so a refusal there refuses the staging.
+type StagedNetplanPopulation
+  = StagedNetplanReady { files: List<StagedNetplanFile> }
+  | StagedNetplanRefused { cause: NonEmptyStr }
+
+fn primary_network_staged_population(r: PrimaryNetworkRow, foreign: List<String>) -> StagedNetplanPopulation {
+  match netplan_empty_document_rendering() {
+    NetplanDocumentRefused { path: _, reason: _ } => StagedNetplanRefused { cause: netplan_document_rendering_wire(r: netplan_empty_document_rendering()) as NonEmptyStr }
+    NetplanDocumentRendered { text: empty } =>
+      StagedNetplanReady { files: concat(
+        [StagedNetplanFile { name: primary_network_netplan_file_name, content: r.netplan_text }],
+        map(foreign, f => StagedNetplanFile { name: f as NonEmptyStr, content: empty }),
+      ) }
+  }
 }
 
 // ── The two transient units ──────────────────────────────────────────────────────────────────────
@@ -273,12 +283,12 @@ fn observe_netplan_directory(subject: FleetHostFileSubject, context: FleetSshExe
   }
 }
 
-fn observe_primary_network(subject: FleetHostFileSubject, context: FleetSshExecutionContext, d: HostPrimaryNetworkDesired) -> PrimaryNetworkObservation
+fn observe_primary_network(subject: FleetHostFileSubject, context: FleetSshExecutionContext, r: PrimaryNetworkRow) -> PrimaryNetworkObservation
 {
   PrimaryNetworkObservation {
-    effective: observe_primary_effective(subject: subject, context: context, d: d),
+    effective: observe_primary_effective(subject: subject, context: context, d: r.desired),
     directory: observe_netplan_directory(subject: subject, context: context),
-    owned: observe_fleet_host_file_content(subject: subject, context: context, file: primary_network_netplan_file(d: d)),
+    owned: observe_fleet_host_file_content(subject: subject, context: context, file: primary_network_netplan_file(r: r)),
   }
 }
 
@@ -504,9 +514,9 @@ fn remove_foreign_netplan_files(subject: FleetHostFileSubject, context: FleetSsh
   }
 }
 
-fn persist_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecutionContext, d: HostPrimaryNetworkDesired, staged: List<StagedNetplanFile>, foreign: List<String>) -> PrimaryNetworkApplyOutcome
+fn persist_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecutionContext, r: PrimaryNetworkRow, staged: List<StagedNetplanFile>, foreign: List<String>) -> PrimaryNetworkApplyOutcome
 {
-  match write_through_host_file_core(subject: subject, context: context, files: [primary_network_netplan_file(d: d)]) {
+  match write_through_host_file_core(subject: subject, context: context, files: [primary_network_netplan_file(r: r)]) {
     Present { value: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "persist-owned", cause: why)
     Absent =>
       match remove_foreign_netplan_files(subject: subject, context: context, foreign: foreign) {
@@ -527,7 +537,7 @@ fn persist_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecution
                   match settle_try(subject: subject, context: context, staged: staged) {
                     TryEndUndecided => PrimaryApplyStopped { step: "verdict" as NonEmptyStr, cause: "the confirmation was written but netplan's outcome was never read" as NonEmptyStr, rollback: RollbackUndecided }
                     TryEndSettled { outcome: o, cleanup: c } =>
-                      PrimaryApplyConfirmed { outcome: o, cleanup: c, after: plan_primary_network(d: d, observation: observe_primary_network(subject: subject, context: context, d: d)) }
+                      PrimaryApplyConfirmed { outcome: o, cleanup: c, after: plan_primary_network(d: r.desired, observation: observe_primary_network(subject: subject, context: context, r: r)) }
                   }
               }
           }
@@ -535,9 +545,17 @@ fn persist_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecution
   }
 }
 
-fn try_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecutionContext, d: HostPrimaryNetworkDesired, foreign: List<String>) -> PrimaryNetworkApplyOutcome
+fn try_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecutionContext, r: PrimaryNetworkRow, foreign: List<String>) -> PrimaryNetworkApplyOutcome
 {
-  let staged = primary_network_staged_population(d: d, foreign: foreign)
+  match primary_network_staged_population(r: r, foreign: foreign) {
+    StagedNetplanRefused { cause: c } => stopped_before_launch(step: "render", cause: c as String)
+    StagedNetplanReady { files: staged } => try_staged_and_confirm(subject: subject, context: context, r: r, staged: staged, foreign: foreign)
+  }
+}
+
+fn try_staged_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecutionContext, r: PrimaryNetworkRow, staged: List<StagedNetplanFile>, foreign: List<String>) -> PrimaryNetworkApplyOutcome
+{
+  let d = r.desired
   match primary_network_stdin_holder_launch() {
     PrimaryTryLaunchRefused { cause: c } => stopped_before_launch(step: "stdin-holder-argv", cause: c as String)
     PrimaryTryLaunchArgv { argv: holder } =>
@@ -572,7 +590,7 @@ fn try_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecutionCont
                             Absent =>
                               match primary_effective_refusal(v: observe_primary_effective(subject: subject, context: context, d: d)) {
                                 Present { value: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "readback", cause: why as String)
-                                Absent => persist_and_confirm(subject: subject, context: context, d: d, staged: staged, foreign: foreign)
+                                Absent => persist_and_confirm(subject: subject, context: context, r: r, staged: staged, foreign: foreign)
                               }
                           }
                       }
@@ -583,9 +601,9 @@ fn try_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecutionCont
   }
 }
 
-fn apply_primary_network(subject: FleetHostFileSubject, context: FleetSshExecutionContext, d: HostPrimaryNetworkDesired, mode: FleetHostFileConvergeMode) -> PrimaryNetworkApplyOutcome
+fn apply_primary_network(subject: FleetHostFileSubject, context: FleetSshExecutionContext, r: PrimaryNetworkRow, mode: FleetHostFileConvergeMode) -> PrimaryNetworkApplyOutcome
 {
-  let plan = plan_primary_network(d: d, observation: observe_primary_network(subject: subject, context: context, d: d))
+  let plan = plan_primary_network(d: r.desired, observation: observe_primary_network(subject: subject, context: context, r: r))
   match mode {
     FleetHostFilesObserveOnly => PrimaryApplyObservedOnly { plan: plan }
     FleetHostFilesApply =>
@@ -599,7 +617,7 @@ fn apply_primary_network(subject: FleetHostFileSubject, context: FleetSshExecuti
         Apply { plan: swap } =>
           match write_through_host_file_core(subject: subject, context: context, files: [primary_network_cloud_init_guard()]) {
             Present { value: why } => stopped_before_launch(step: "cloud-init-guard", cause: why)
-            Absent => try_and_confirm(subject: subject, context: context, d: d, foreign: swap.foreign)
+            Absent => try_and_confirm(subject: subject, context: context, r: r, foreign: swap.foreign)
           }
       }
   }
@@ -620,7 +638,9 @@ fn host_primary_network_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
       match primary_network_row_for(host: raw_host as HostIdentity) {
         PrimaryRowUnmodeled { host: h } => exit_failure(reason: join(["host_primary_network: ", h as String, " has no primary network row"], ""))
         PrimaryRowAwaitingRead { change: _, read_obligation: o } => exit_failure(reason: join(["host_primary_network: ", raw_host, " was moved by hand and not read; owed: ", o as String], ""))
-        PrimaryRowDeclared { desired: d } =>
+        PrimaryRowRenderRefused { host: h, cause: c } => exit_failure(reason: join(["host_primary_network: ", h as String, ": ", c as String], ""))
+        PrimaryRowDeclared { row: r } => {
+          let d = r.desired
           match hostname_short_read(transport: LocalShell) {
             HostnameShortCaptureRefused { reason: why } => exit_failure(reason: join(["host_primary_network: the executor's own name is unread, so whether the readback crosses the uplink is undecided: ", why], ""))
             HostnameShortCaptured { value: executor } =>
@@ -636,7 +656,7 @@ fn host_primary_network_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
                           let subject = FleetHostFileSubject { host: d.host, target: target }
                           let outcome = match observe_fleet_host_administrator_privilege(subject: subject, context: context) {
                             AdministratorPrivilegeRefused { reason: why } => stopped_before_launch(step: "privilege", cause: why)
-                            AdministratorPrivilegeAvailable => apply_primary_network(subject: subject, context: context, d: d, mode: mode)
+                            AdministratorPrivilegeAvailable => apply_primary_network(subject: subject, context: context, r: r, mode: mode)
                           }
                           let body = join([
                             "host_primary_network probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, " host=", d.host as String, "\n",
@@ -652,6 +672,7 @@ fn host_primary_network_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
                   }
               }
           }
+        }
       }
   }
 }

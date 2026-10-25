@@ -2,9 +2,13 @@ module test.claim.host.host_primary_network_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.upsert_decision { Noop, Apply, Refuse }
+import std.measure { bandwidth_count, byte_size_count }
+import extdeps.languages.yaml.types { YamlValue, kv, yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence }
+import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv11, operator_host_srv12 }
 import extdeps.network.mac { mac_addresses_are_equal }
 import extdeps.netplan.netplan {
+  render_netplan_value, NetplanDocumentRendered, NetplanDocumentRefused,
   SystemdNetworkd, NetworkManager, MatchByMacAddress, MatchByName,
   netplan_try_outcome, NetplanTryAccepted, NetplanTryReverted, NetplanTryRefusedNotRevertable, NetplanTryOutcomePending,
 }
@@ -19,8 +23,8 @@ import gunbc.host.host_primary_network_observed {
   aer_visibility, AerWithheldSince, AerReportedOnEveryReadBoot, srv1_x550_bets,
 }
 import gunbc.host.host_primary_network {
-  HostPrimaryNetworkDesired, srv1_primary_network_desired, primary_network_netplan_text,
-  primary_network_row_for, PrimaryRowDeclared, PrimaryRowAwaitingRead, PrimaryRowUnmodeled,
+  HostPrimaryNetworkDesired, PrimaryNetworkRow, srv1_primary_network_desired,
+  primary_network_row_for, PrimaryRowDeclared, PrimaryRowRenderRefused, PrimaryRowAwaitingRead, PrimaryRowUnmodeled,
   primary_nic_admission, PrimaryNicAdmitted, PrimaryNicRefusedOpenBets,
   PrimaryNetworkIpReads, primary_effective_verdict,
   PrimaryEffectiveHolds, PrimaryNicNotPresent, PrimaryNicNoCarrier, PrimaryUplinkOnAnotherDevice, PrimaryNoDefaultRoute,
@@ -31,7 +35,7 @@ import gunbc.host.host_primary_network {
 }
 import gunbc.host.host_primary_network_apply {
   primary_network_try_launch, primary_network_stdin_holder_launch, PrimaryTryLaunchArgv, PrimaryTryLaunchRefused,
-  primary_network_staged_population, primary_network_cleanup_steps,
+  primary_network_staged_population, StagedNetplanReady, StagedNetplanRefused, StagedNetplanFile, primary_network_cleanup_steps,
   primary_confirm_write, ConfirmWritten, ConfirmWriteFailed,
   primary_try_settlement, TrySettled, TryUnsettled, primary_network_cleanup_plan,
   primary_readback_vantage, ReadbackFromPeer, ReadbackFromTargetItself,
@@ -55,13 +59,53 @@ fn reads_with(links: String, addrs: String, route: String) -> PrimaryNetworkIpRe
 test fn srv1_row_is_its_2026_10_25_read() -> Bool {
   mac_addresses_are_equal(left: srv1_primary_network_desired.nic, right: srv1_i210_mac)
     && mac_addresses_are_equal(left: srv1_primary_network_desired.nic, right: srv1_primary_network_receipt_2026_10_25.lease.holder)
-    && srv1_primary_network_desired.mtu == 1500
+    && byte_size_count(b: srv1_primary_network_desired.mtu) == 1500
     && (match srv1_primary_network_desired.renderer { SystemdNetworkd => true  NetworkManager => false })
 }
 
-// THE ONE FILE, WHOLE: matched by MAC, never by name, DHCP with the metric the host already runs.
+fn srv1_row() -> PrimaryNetworkRow? {
+  match primary_network_row_for(host: operator_host_srv1) {
+    PrimaryRowDeclared { row: r } => Present { value: r }
+    PrimaryRowRenderRefused { host: _, cause: _ } => none
+    PrimaryRowAwaitingRead { change: _, read_obligation: _ } => none
+    PrimaryRowUnmodeled { host: _ } => none
+  }
+}
+
+fn emitted(v: YamlValue) -> String? {
+  match render_netplan_value(v: v) {
+    NetplanDocumentRendered { text: t } => Present { value: t }
+    NetplanDocumentRefused { path: _, reason: _ } => none
+  }
+}
+
+fn reads_back(text: String) -> Bool {
+  match ingest_yaml_source(src: text) { IngestedYaml { value: _ } => true  YamlIngestRejected { line: _, reason: _ } => false }
+}
+
+// THE EXPECTED DOCUMENT, written out as a value: matched by MAC, never by name, DHCP with the metric
+// and MTU the host already runs.
+data srv1_expected_netplan: YamlValue = yaml_mapping(entries: [kv(key: "network", value: yaml_mapping(entries: [
+  kv(key: "version", value: yaml_int(n: 2)),
+  kv(key: "renderer", value: yaml_string(s: "networkd")),
+  kv(key: "ethernets", value: yaml_mapping(entries: [kv(key: "gunbc-primary", value: yaml_mapping(entries: [
+    kv(key: "match", value: yaml_mapping(entries: [kv(key: "macaddress", value: yaml_string(s: "48:21:0b:81:c6:eb"))])),
+    kv(key: "mtu", value: yaml_int(n: 1500)),
+    kv(key: "dhcp4", value: yaml_bool(b: true)),
+    kv(key: "dhcp4-overrides", value: yaml_mapping(entries: [kv(key: "route-metric", value: yaml_int(n: 200))])),
+  ]))])),
+]))])
+
+// THE ONE FILE IS THE EMITTER'S RENDERING OF THAT VALUE, and it reads back.
 test fn the_owned_netplan_document_matches_the_nic_by_mac() -> Bool {
-  primary_network_netplan_text(d: srv1_primary_network_desired) == "network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    gunbc-primary:\n      match:\n        macaddress: \"48:21:0b:81:c6:eb\"\n      mtu: 1500\n      dhcp4: true\n      dhcp4-overrides:\n        route-metric: 200\n"
+  match srv1_row() {
+    Absent => false
+    Present { value: r } =>
+      (match emitted(v: srv1_expected_netplan) { Present { value: t } => t == r.netplan_text  Absent => false })
+        && reads_back(text: r.netplan_text)
+        && string_contains(s: r.netplan_text, pattern: "48:21:0b:81:c6:eb")
+        && !string_contains(s: r.netplan_text, pattern: "enP3p6s0")
+  }
 }
 
 // THE SELECTOR THAT SURVIVES srv1's ENUMERATION. The MAC selects the I210 on every read boot; the hand
@@ -76,7 +120,7 @@ test fn the_mac_selector_holds_where_the_hand_files_name_selector_misses() -> Bo
 // the BMC's event log.
 test fn the_link_speeds_and_aer_visibility_bear_on_the_bets() -> Bool {
   (match x550_link_speed_bearing(boots: srv1_nic_boot_readings) {
-    BelowNameplateOnEveryReadBoot { read_boots: n, fastest_mbps: f } => n == 10 && f == 1000
+    BelowNameplateOnEveryReadBoot { read_boots: n, fastest: f } => n == 10 && bandwidth_count(b: f) == 1000000000
     NameplateReachedOnSomeBoot => false
     NoLinkRead => false
   })
@@ -104,9 +148,9 @@ test fn a_nic_blamed_by_an_open_bet_is_not_admitted_as_primary() -> Bool {
 
 // srv2 WAS MOVED BY HAND AND NOT READ: its row waits on the read; a host with no record has none.
 test fn srv2_awaits_its_read_and_an_unrecorded_host_is_unmodeled() -> Bool {
-  (match primary_network_row_for(host: operator_host_srv1) { PrimaryRowDeclared { desired: _ } => true  PrimaryRowAwaitingRead { change: _, read_obligation: _ } => false  PrimaryRowUnmodeled { host: _ } => false })
-    && (match primary_network_row_for(host: operator_host_srv2) { PrimaryRowAwaitingRead { change: _, read_obligation: o } => string_contains(s: o as String, pattern: "sudo journal")  PrimaryRowDeclared { desired: _ } => false  PrimaryRowUnmodeled { host: _ } => false })
-    && (match primary_network_row_for(host: operator_host_srv3) { PrimaryRowUnmodeled { host: _ } => true  PrimaryRowDeclared { desired: _ } => false  PrimaryRowAwaitingRead { change: _, read_obligation: _ } => false })
+  (match primary_network_row_for(host: operator_host_srv1) { PrimaryRowDeclared { row: _ } => true  PrimaryRowRenderRefused { host: _, cause: _ } => false  PrimaryRowAwaitingRead { change: _, read_obligation: _ } => false  PrimaryRowUnmodeled { host: _ } => false })
+    && (match primary_network_row_for(host: operator_host_srv2) { PrimaryRowAwaitingRead { change: _, read_obligation: o } => string_contains(s: o as String, pattern: "sudo journal")  PrimaryRowDeclared { row: _ } => false  PrimaryRowRenderRefused { host: _, cause: _ } => false  PrimaryRowUnmodeled { host: _ } => false })
+    && (match primary_network_row_for(host: operator_host_srv3) { PrimaryRowUnmodeled { host: _ } => true  PrimaryRowDeclared { row: _ } => false  PrimaryRowRenderRefused { host: _, cause: _ } => false  PrimaryRowAwaitingRead { change: _, read_obligation: _ } => false })
 }
 
 // THE RUNNING NETWORK ON srv1's REAL READ HOLDS, AND STILL HOLDS UNDER THE OTHER ENUMERATION (the NIC
@@ -123,7 +167,7 @@ test fn srv1s_running_network_is_the_rows_and_each_divergence_is_named() -> Bool
     && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: srv1_ip_links, addrs: srv1_ip_addrs, route: "")) { PrimaryNoDefaultRoute => true  _ => false })
     && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: srv1_ip_links, addrs: replace(s: srv1_ip_addrs, from: "192.168.1.203/24", to: "192.168.1.185/24"), route: srv1_ip_default_route)) { PrimaryAddressDiverges { device: _, held: _, expected: e } => e == "192.168.1.203"  _ => false })
     && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: srv1_ip_links, addrs: srv1_ip_addrs, route: replace(s: srv1_ip_default_route, from: "metric 200", to: "metric 100"))) { PrimaryRouteMetricDiverges { held: _ } => true  _ => false })
-    && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: replace(s: srv1_ip_links, from: "UP,LOWER_UP> mtu 1500 qdisc mq", to: "UP,LOWER_UP> mtu 9000 qdisc mq"), addrs: srv1_ip_addrs, route: srv1_ip_default_route)) { PrimaryMtuDiverges { device: _, held: m } => m == 9000  _ => false })
+    && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: replace(s: srv1_ip_links, from: "UP,LOWER_UP> mtu 1500 qdisc mq", to: "UP,LOWER_UP> mtu 9000 qdisc mq"), addrs: srv1_ip_addrs, route: srv1_ip_default_route)) { PrimaryMtuDiverges { device: _, held: m } => byte_size_count(b: m) == 9000  _ => false })
 }
 
 // THE PLAN ON srv1 TODAY OWES AN APPLY THAT CHANGES FILES ONLY: both live files are foreign and the
@@ -163,14 +207,21 @@ test fn the_try_is_two_typed_transient_units_over_one_fifo() -> Bool {
     })
 }
 
+fn srv1_staged(foreign: List<String>) -> List<StagedNetplanFile> {
+  match srv1_row() {
+    Absent => []
+    Present { value: r } => match primary_network_staged_population(r: r, foreign: foreign) { StagedNetplanReady { files: fs } => fs  StagedNetplanRefused { cause: _ } => [] }
+  }
+}
+
 // THE TRIED POPULATION LIVES IN /run/netplan: the owned file, and an empty document shadowing each
 // foreign file, so /etc/netplan is untouched until the readback holds; the cleanup removes exactly
 // what was staged.
 test fn the_tried_population_shadows_the_foreign_files_from_run() -> Bool {
-  let staged = primary_network_staged_population(d: srv1_primary_network_desired, foreign: ["50-cloud-init.yaml", "60-enP3p6s0.yaml"])
+  let staged = srv1_staged(foreign: ["50-cloud-init.yaml", "60-enP3p6s0.yaml"])
   length(staged) == 3
-    && (match first(staged) { Present { value: f } => (f.name as String) == "50-gunbc-primary-network.yaml" && f.content == primary_network_netplan_text(d: srv1_primary_network_desired)  Absent => false })
-    && all(skip(xs: staged, n: 1), f => f.content == "network:\n  version: 2\n")
+    && (match first(staged) { Present { value: f } => (f.name as String) == "50-gunbc-primary-network.yaml" && f.content == (match srv1_row() { Present { value: r } => r.netplan_text  Absent => "" })  Absent => false })
+    && all(skip(xs: staged, n: 1), f => (match emitted(v: yaml_mapping(entries: [kv(key: "network", value: yaml_mapping(entries: [kv(key: "version", value: yaml_int(n: 2))]))])) { Present { value: t } => f.content == t  Absent => false }))
     && (match first(primary_network_cleanup_steps(staged: staged)) {
       Present { value: st } => st.argv == ["rm", "-f", "--", "/run/netplan/50-gunbc-primary-network.yaml", "/run/netplan/50-cloud-init.yaml", "/run/netplan/60-enP3p6s0.yaml"]
       Absent => false
@@ -198,12 +249,40 @@ test fn the_cloud_init_guard_turns_off_only_the_network_writer() -> Bool {
     && starts_with(s: g.path as String, prefix: "/etc/cloud/cloud.cfg.d/")
 }
 
-// THE FABRIC RAIL RENDERS THROUGH THE SAME DOCUMENT MODEL, BYTE FOR BYTE what its own renderer wrote.
-test fn the_fabric_rail_document_is_unchanged_by_the_shared_renderer() -> Bool {
+// THE FABRIC RAIL IS THE SAME DOCUMENT MODEL AND THE SAME EMITTER: its document for srv11 is the
+// rendering of the value its own renderer wrote by hand before, key for key, and it reads back.
+data srv11_expected_rail: YamlValue = yaml_mapping(entries: [kv(key: "network", value: yaml_mapping(entries: [
+  kv(key: "version", value: yaml_int(n: 2)),
+  kv(key: "renderer", value: yaml_string(s: "NetworkManager")),
+  kv(key: "ethernets", value: yaml_mapping(entries: [
+    kv(key: "gunbc-fabric", value: yaml_mapping(entries: [
+      kv(key: "match", value: yaml_mapping(entries: [kv(key: "name", value: yaml_string(s: "enp1s0f1np1"))])),
+      kv(key: "addresses", value: yaml_sequence(elements: [yaml_string(s: "192.168.110.18/24")])),
+      kv(key: "mtu", value: yaml_int(n: 9000)),
+      kv(key: "dhcp4", value: yaml_bool(b: false)),
+      kv(key: "dhcp6", value: yaml_bool(b: false)),
+      kv(key: "link-local", value: yaml_sequence(elements: [])),
+      kv(key: "optional", value: yaml_bool(b: true)),
+    ])),
+    kv(key: "gunbc-fabric-twin", value: yaml_mapping(entries: [
+      kv(key: "match", value: yaml_mapping(entries: [kv(key: "name", value: yaml_string(s: "enP2p1s0f1np1"))])),
+      kv(key: "dhcp4", value: yaml_bool(b: false)),
+      kv(key: "dhcp6", value: yaml_bool(b: false)),
+      kv(key: "link-local", value: yaml_sequence(elements: [])),
+      kv(key: "optional", value: yaml_bool(b: true)),
+    ])),
+  ])),
+]))])
+
+test fn the_fabric_rail_document_is_the_same_model_and_emitter() -> Bool {
   match fabric_rail_desired_for(host: operator_host_srv11) {
     Absent => false
     Present { value: d } =>
-      d.netplan_text == "network:\n  version: 2\n  renderer: NetworkManager\n  ethernets:\n    gunbc-fabric:\n      match:\n        name: \"enp1s0f1np1\"\n      addresses:\n      - \"192.168.110.18/24\"\n      mtu: 9000\n      dhcp4: false\n      dhcp6: false\n      link-local: []\n      optional: true\n    gunbc-fabric-twin:\n      match:\n        name: \"enP2p1s0f1np1\"\n      dhcp4: false\n      dhcp6: false\n      link-local: []\n      optional: true\n"
+      match d.netplan {
+        NetplanDocumentRefused { path: _, reason: _ } => false
+        NetplanDocumentRendered { text: t } =>
+          (match emitted(v: srv11_expected_rail) { Present { value: e } => e == t  Absent => false }) && reads_back(text: t)
+      }
   }
 }
 
@@ -226,7 +305,7 @@ test fn a_confirmation_write_that_failed_is_not_a_confirmation() -> Bool {
 // empty, so neither the /run shadows nor the FIFO holder are touched under its timeout and revert;
 // each terminal outcome admits the full cleanup.
 test fn an_unsettled_try_admits_no_cleanup_and_a_terminal_one_admits_it_all() -> Bool {
-  let staged = primary_network_staged_population(d: srv1_primary_network_desired, foreign: ["50-cloud-init.yaml"])
+  let staged = srv1_staged(foreign: ["50-cloud-init.yaml"])
   let full = primary_network_cleanup_steps(staged: staged)
   length(full) == 2
     && (match primary_try_settlement(o: NetplanTryOutcomePending) { TryUnsettled => true  TrySettled { outcome: _ } => false })
@@ -239,5 +318,5 @@ test fn an_unsettled_try_admits_no_cleanup_and_a_terminal_one_admits_it_all() ->
 // NetworkManager's Wi-Fi profiles, has no row and cannot be the target of an apply.
 test fn a_spark_host_is_outside_the_owned_population() -> Bool {
   all([operator_host_srv11, operator_host_srv12], h =>
-    match primary_network_row_for(host: h) { PrimaryRowUnmodeled { host: _ } => true  PrimaryRowDeclared { desired: _ } => false  PrimaryRowAwaitingRead { change: _, read_obligation: _ } => false })
+    match primary_network_row_for(host: h) { PrimaryRowUnmodeled { host: _ } => true  PrimaryRowDeclared { row: _ } => false  PrimaryRowRenderRefused { host: _, cause: _ } => false  PrimaryRowAwaitingRead { change: _, read_obligation: _ } => false })
 }
