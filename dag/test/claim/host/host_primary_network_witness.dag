@@ -4,7 +4,10 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.upsert_decision { Noop, Apply, Refuse }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv11 }
 import extdeps.network.mac { mac_addresses_are_equal }
-import extdeps.netplan.netplan { SystemdNetworkd, NetworkManager, MatchByMacAddress, MatchByName, TryStdinAtEof, TryStdinBlockingFifo, netplan_try_stdin_admits_confirmation }
+import extdeps.netplan.netplan {
+  SystemdNetworkd, NetworkManager, MatchByMacAddress, MatchByName,
+  netplan_try_outcome, NetplanTryAccepted, NetplanTryReverted, NetplanTryRefusedNotRevertable, NetplanTryOutcomePending,
+}
 import extdeps.cloud_init.cloud_init { cloud_init_network_config_disabled_text }
 import extdeps.ssh.client_options { serialize_ssh_client_options }
 import gunbc.fleet.fleet_known_hosts_anchor { fleet_ssh_password_client_options }
@@ -27,7 +30,8 @@ import gunbc.host.host_primary_network {
   primary_network_cloud_init_guard,
 }
 import gunbc.host.host_primary_network_apply {
-  primary_network_try_script, primary_network_await_script, primary_network_confirm_script, primary_network_launch_argv,
+  primary_network_try_launch, primary_network_stdin_holder_launch, PrimaryTryLaunchArgv, PrimaryTryLaunchRefused,
+  primary_network_staged_population, primary_network_cleanup_steps,
   primary_readback_vantage, ReadbackFromPeer, ReadbackFromTargetItself,
 }
 
@@ -144,20 +148,39 @@ test fn srv1s_plan_owes_a_file_only_apply_and_the_swapped_directory_settles() ->
     && (match unread { Refuse { reason: _ } => true  Noop => false  Apply { plan: _ } => false })
 }
 
-// THE TRY IS REVERTABLE ON DISK AND CONFIRMABLE AT ALL: the wrapper keeps and restores the prior
-// directory unless netplan reports acceptance, its stdin is a FIFO opened read-write, the launch
-// detaches, and an end-of-file stdin could not carry a confirmation.
-test fn the_try_wrapper_restores_the_directory_and_can_be_confirmed() -> Bool {
-  let t = primary_network_try_script(d: srv1_primary_network_desired)
-  string_contains(s: t, pattern: "cp -a /etc/netplan/. \"$S/prior/\"")
-    && string_contains(s: t, pattern: "netplan try --timeout 300 <> \"/etc/gunbc/primary-network/try.fifo\"")
-    && string_contains(s: t, pattern: "if grep -q 'Configuration accepted'")
-    && string_contains(s: t, pattern: "cp -a \"$S/prior/.\" /etc/netplan/\nnetplan generate\n")
-    && string_contains(s: primary_network_confirm_script(), pattern: "exec 3<>\"/etc/gunbc/primary-network/try.fifo\"\nprintf '\\n' >&3\n")
-    && string_contains(s: primary_network_await_script(d: srv1_primary_network_desired), pattern: "/usr/lib/systemd/systemd-networkd-wait-online --any --timeout=60")
-    && primary_network_launch_argv() == ["systemd-run", "--unit", "gunbc-primary-network-try", "--collect", "--quiet", "/bin/sh", "/etc/gunbc/primary-network/try.sh"]
-    && netplan_try_stdin_admits_confirmation(s: TryStdinBlockingFifo { path: "/etc/gunbc/primary-network/try.fifo" as NonEmptyStr })
-    && !netplan_try_stdin_admits_confirmation(s: TryStdinAtEof)
+// THE TRY IS TWO TYPED TRANSIENT UNITS, NO SHELL: netplan try reads a FIFO and writes its outcome to
+// a file, and a second unit holds the FIFO's write end for a minute longer than the try can run.
+test fn the_try_is_two_typed_transient_units_over_one_fifo() -> Bool {
+  (match primary_network_try_launch() {
+    PrimaryTryLaunchArgv { argv: a } => a == ["systemd-run", "--unit=gunbc-primary-network-try", "--collect", "--property=StandardInput=file:/run/gunbc-primary-network/try.fifo", "--property=StandardOutput=file:/run/gunbc-primary-network/try.out", "--", "netplan", "try", "--timeout", "300"]
+    PrimaryTryLaunchRefused { cause: _ } => false
+  })
+    && (match primary_network_stdin_holder_launch() {
+      PrimaryTryLaunchArgv { argv: a } => a == ["systemd-run", "--unit=gunbc-primary-network-try-stdin", "--collect", "--property=StandardOutput=file:/run/gunbc-primary-network/try.fifo", "--", "sleep", "360"]
+      PrimaryTryLaunchRefused { cause: _ } => false
+    })
+}
+
+// THE TRIED POPULATION LIVES IN /run/netplan: the owned file, and an empty document shadowing each
+// foreign file, so /etc/netplan is untouched until the readback holds; the cleanup removes exactly
+// what was staged.
+test fn the_tried_population_shadows_the_foreign_files_from_run() -> Bool {
+  let staged = primary_network_staged_population(d: srv1_primary_network_desired, foreign: ["50-cloud-init.yaml", "60-enP3p6s0.yaml"])
+  length(staged) == 3
+    && (match first(staged) { Present { value: f } => (f.name as String) == "50-gunbc-primary-network.yaml" && f.content == primary_network_netplan_text(d: srv1_primary_network_desired)  Absent => false })
+    && all(skip(xs: staged, n: 1), f => f.content == "network:\n  version: 2\n")
+    && (match first(primary_network_cleanup_steps(staged: staged)) {
+      Present { value: st } => st.argv == ["rm", "-f", "--", "/run/netplan/50-gunbc-primary-network.yaml", "/run/netplan/50-cloud-init.yaml", "/run/netplan/60-enP3p6s0.yaml"]
+      Absent => false
+    })
+}
+
+// THE VERDICT IS netplan's OWN LINE, and a revert is never read as acceptance (both arrive with exit 0).
+test fn the_try_outcome_is_read_from_netplans_own_output() -> Bool {
+  (match netplan_try_outcome(stdout: "Do you want to keep these settings?\n\n\nPress ENTER before the timeout to accept the new configuration\n\n\nChanges will revert in 297 seconds\r\nConfiguration accepted.\n") { NetplanTryAccepted => true  _ => false })
+    && (match netplan_try_outcome(stdout: "Changes will revert in   1 seconds\r\nReverting.\n") { NetplanTryReverted => true  _ => false })
+    && (match netplan_try_outcome(stdout: "Changes will revert in 120 seconds\r") { NetplanTryOutcomePending => true  _ => false })
+    && (match netplan_try_outcome(stdout: "br0: reverting custom parameters for bridges and bonds is not supported\n\nPlease carefully review the configuration and use 'netplan apply' directly.\n") { NetplanTryRefusedNotRevertable => true  _ => false })
 }
 
 // EVERY ADMINISTRATOR LEG IS A FRESH CONNECTION: the password session shares no master.

@@ -7,6 +7,7 @@ import std.algebra { trim }
 import std.optional { Present, Absent }
 import extdeps.networkmanager.nmcli { nm_keyfile_profile_dir }
 import std.nat { Nat }
+import std.measure { Second, second, second_count }
 import extdeps.network.mac { Eui48Address, render_mac_address }
 import extdeps.network.ipv4 { Ipv4Address, PrefixLength, render_ipv4_cidr }
 
@@ -293,40 +294,52 @@ fn render_netplan_document(d: NetplanDocument) -> String {
 //
 // WHAT A REVERT RESTORES. ConfigManager.revert copies back only the RENDERED backend directories,
 // /run/systemd/network and /run/NetworkManager/system-connections, and unlinks a --config-file copy.
-// It never restores /etc/netplan, even though backup() copies it. So a try that times out over an
-// /etc/netplan edited in place restores the running network and leaves the rejected YAML on disk,
-// and the next `netplan apply` or boot renders it again. A caller that edits /etc/netplan must
-// restore it itself.
+// It never restores the YAML it read, even though backup() copies /etc/netplan, so a try that times
+// out leaves whatever YAML it applied in place for the next generate or boot. A caller must keep
+// the tried YAML somewhere a revert does not depend on (a /run/netplan shadow, wiped at boot) and
+// remove it itself.
 data netplan_try_revert_restores: List<NonEmptyStr> = ["/run/systemd/network" as NonEmptyStr, "/run/NetworkManager/system-connections" as NonEmptyStr]
 
-data netplan_try_default_timeout_seconds: Nat = 120
+data netplan_try_default_timeout: Second = second(count: 120)
 
-// CONFIRMATION. SIGUSR1 accepts and SIGINT rejects (_signal_handler); a line read on stdin equal to
-// "\n" accepts (Terminal.get_confirmation_input). The ready stamp is touched after the apply and
-// before the wait, as the signal that a confirmation will be heard.
+// The ready stamp is touched after the apply and before the wait, as the signal that a confirmation
+// will be heard (try_command.py touch_ready_stamp, for netplan-dbus).
 data netplan_try_ready_stamp_path: NonEmptyStr = "/run/netplan/netplan-try.ready" as NonEmptyStr
 
-type NetplanTryConfirmation = TryConfirmByNewlineOnStdin | TryConfirmBySigusr1
+// CONFIRMATION IS A LINE ON STDIN, AND STDIN MUST BLOCK. Terminal.get_confirmation_input loops on
+// select([stdin], 1s) and a non-blocking read, counting one second per pass, and accepts when the
+// read returns exactly "\n". A stdin at end-of-file (/dev/null, a unit's default, a non-terminal ssh
+// leg) is always readable and reads "", so every pass returns at once: the timeout passes in
+// milliseconds and the try reverts before anyone can confirm. A FIFO with a writer held open blocks
+// select until a line arrives.
+data netplan_try_confirmation_line: String = "\n"
 
-// THE STDIN TRAP. The wait loop calls select([stdin], 1s) then a non-blocking read, and counts one
-// second down per iteration. A stdin at end-of-file (/dev/null, which is what a systemd unit or a
-// non-terminal ssh leg hands it) is always readable and reads "", so every iteration returns at
-// once: the 120 "seconds" pass in milliseconds and the try reverts before anyone can confirm. The
-// stdin must block without data: a FIFO the process opens read-write holds its own writer, so it
-// never reaches end-of-file, and a newline written into it later is the confirmation.
-type NetplanTryStdin = TryStdinBlockingFifo { path: NonEmptyStr } | TryStdinAtEof
+// THE OUTCOME IS ON STDOUT ONLY: command_try prints "\nConfiguration accepted." on InputAccepted and
+// "\nReverting." on rejection, timeout or an error during apply, and exits 0 either way. A
+// configuration it cannot revert (a non-trivial bridge or bond) is refused before any apply with
+// "Please carefully review the configuration and use 'netplan apply' directly." and exit EX_CONFIG.
+data netplan_try_accepted_text: String = "Configuration accepted."
+data netplan_try_reverting_text: String = "Reverting."
+data netplan_try_not_revertable_text: String = "use 'netplan apply' directly"
 
-fn netplan_try_stdin_admits_confirmation(s: NetplanTryStdin) -> Bool {
-  match s {
-    TryStdinBlockingFifo { path: _ } => true
-    TryStdinAtEof => false
-  }
+type NetplanTryOutcome
+  = NetplanTryAccepted
+  | NetplanTryReverted
+  | NetplanTryRefusedNotRevertable
+  | NetplanTryOutcomePending
+
+fn netplan_try_outcome(stdout: String) -> NetplanTryOutcome {
+  if string_contains(s: stdout, pattern: netplan_try_reverting_text) { NetplanTryReverted }
+  else if string_contains(s: stdout, pattern: netplan_try_accepted_text) { NetplanTryAccepted }
+  else if string_contains(s: stdout, pattern: netplan_try_not_revertable_text) { NetplanTryRefusedNotRevertable }
+  else { NetplanTryOutcomePending }
 }
 
-// NOT REVERTABLE IS A REFUSAL BEFORE ANY APPLY: is_revertable() rejects a configuration holding a
-// non-trivial bridge or bond and exits os.EX_CONFIG without applying.
-data netplan_try_not_revertable_exit_code: Int = 78
-
-fn netplan_try_argv(timeout_seconds: Nat) -> List<String> {
-  ["netplan", "try", "--timeout", to_string(timeout_seconds)]
+fn netplan_try_argv(timeout: Second) -> List<String> {
+  ["netplan", "try", "--timeout", to_string(second_count(s: timeout))]
 }
+
+// A /run/netplan file shadows a same-named /etc/netplan file (netplan-yaml "General structure"), so
+// a file holding only the version key removes another file's definitions from the merge without
+// touching it.
+data netplan_empty_document_text: String = "network:\n  version: 2\n"
