@@ -943,60 +943,38 @@ fn child_lookup_step(acc: NamedChildLookup, hit: Bool, target: Node) -> NamedChi
   }
 }
 
-// The Conj child carrying this AUTHORED name. A structural label is never found by its spelling:
-// a core marker is looked up by core_child_lookup, which matches the arm.
+// THE CHILD CARRYING THIS AUTHORED NAME, on a node of ANY kind. Whether a node bears a named child is a
+// fact of its children, not of its connective: Node holds children for every kind, and producers do
+// hang authored edges on non-Conj nodes (v2.std.compilers.target_model
+// target_value_expression_resolved_primitive_call appends one to an Atom-kind callable-apply wire).
+// A connective gate here was a second authority on which nodes can carry the edge, and it answered
+// NamedChildMissing for an edge that existed (its reader had to hand-roll this fold). So the lookup
+// reads the children of every kind, and NamedChildMissing always means the edge is absent. A caller
+// that must not read a particular kind -- a coproduct whose variant tags are authored edges -- checks
+// the kind on its own side; asking a coproduct for a field is the caller's question, not this one's.
+// A structural label is never found by its spelling: a core marker is looked up by core_child_lookup.
 fn named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
-        match e.label {
-          Positional => acc
-          StructuralLabel { label: _ } => acc
-          Authored { name: edge_name } => child_lookup_step(acc: acc, hit: edge_name == name, target: e.target)
-        }
-      })
-    TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
-    TypeNode { connective: Disj } => NamedChildMissing
-    TypeNode { connective: Arrow } => NamedChildMissing
-    TypeNode { connective: Instantiation } => NamedChildMissing
-    ComputationNode { behavior: _ } =>
-      fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
-        match e.label {
-          Positional => acc
-          StructuralLabel { label: _ } => acc
-          Authored { name: edge_name } => child_lookup_step(acc: acc, hit: edge_name == name, target: e.target)
-        }
-      })
-  }
+  fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      StructuralLabel { label: _ } => acc
+      Authored { name: edge_name } => child_lookup_step(acc: acc, hit: edge_name == name, target: e.target)
+    }
+  })
 }
 
+// The child carrying this core marker, on a node of any kind (the same reason as named_child_lookup).
 fn core_child_lookup(root: Node, marker: CoreEdgeLabel) -> NamedChildLookup {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
-        child_lookup_step(acc: acc, hit: edge_is_core(e: e, marker: marker), target: e.target)
-      })
-    TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
-    TypeNode { connective: Disj } => NamedChildMissing
-    TypeNode { connective: Arrow } => NamedChildMissing
-    TypeNode { connective: Instantiation } => NamedChildMissing
-    ComputationNode { behavior: _ } => NamedChildMissing
-  }
+  fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
+    child_lookup_step(acc: acc, hit: edge_is_core(e: e, marker: marker), target: e.target)
+  })
 }
 
-// The Conj child carrying exactly this label, compared whole (arm and payload).
+// The child carrying exactly this label, compared whole (arm and payload), on a node of any kind.
 fn labeled_child_lookup(root: Node, label: EdgeLabel) -> NamedChildLookup {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
-        child_lookup_step(acc: acc, hit: (e.label == label) && !is_positional(e: e), target: e.target)
-      })
-    TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
-    TypeNode { connective: Disj } => NamedChildMissing
-    TypeNode { connective: Arrow } => NamedChildMissing
-    TypeNode { connective: Instantiation } => NamedChildMissing
-    ComputationNode { behavior: _ } => NamedChildMissing
-  }
+  fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
+    child_lookup_step(acc: acc, hit: (e.label == label) && !is_positional(e: e), target: e.target)
+  })
 }
 
 fn find_labeled_child(root: Node, label: EdgeLabel) -> Outcome<Node> {
