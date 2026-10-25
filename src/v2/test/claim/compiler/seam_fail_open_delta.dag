@@ -1,0 +1,143 @@
+module v2.test.claim.compiler.seam_fail_open_delta
+
+// THE MEASURED FLIP, RUN IN BOTH DIRECTIONS (the pairing obligation's other side). These claims
+// assert the OLD arms -- the fail-open the seam-opacity change closes: the projected host seam is
+// WALKED THROUGH ITS SELF-CALL BODY (a FunctionFact forms for it) and a transparent caller of it
+// settles DemandDerived{EMPTY} -- a host observation read as pure, which is fail-open.
+// At origin/main they are GREEN (the hole exists, named). At this branch's head they are RED --
+// and RED IS THE RECEIPT: the seam arm replaces the body walk, so the caller now settles at the
+// declaration row's RequiresResources{Filesystem}, claimed positively in
+// v2.test.claim.compiler.operation_declaration_seam. A caller flipping is correct; a claim edited
+// to stay green would not be. Both files run under claim_batch at either head unchanged: every
+// API used here exists on main.
+import std.algebra { Cons, Empty, fold_list, list_snoc_item }
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { Bool, List }
+import v2.compiler.dependency_demand { DependencyDemandRow, DemandDerived, DemandUndecided, dependency_demand_of }
+import v2.compiler.dependency_demand_census { DemandCensusModuleFacts, demand_census_module_facts }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol, symbol_intern_lexeme }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_dotted_string,
+  qualified_name_to_dotted_string
+}
+import v2.std.text { String }
+
+data sfd_closure: List<String> = [
+  "dag/std/algebra.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/float.dag",
+  "dag/std/optional.dag",
+  "dag/std/types.dag",
+  "dag/std/unicode/types.dag",
+  "src/v2/std/data_index.dag",
+  "src/v2/std/text.dag"
+]
+
+data sfd_v2_files: List<String> = ["src/v2/std/data_index.dag", "src/v2/std/text.dag"]
+
+fn sfd_is_v2(path: String) -> Bool {
+  fold_list(
+    xs: sfd_v2_files,
+    empty: false,
+    cons: fn(acc, p) { acc || (p == path) }
+  )
+}
+
+fn sfd_witness(path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: if sfd_is_v2(path: path) { V2Tree } else { DagTree }
+  }
+}
+
+fn sfd_assemble(extra: List<DagSourceReadWitness>, subject: Symbol) -> Optional<ResolvedTree> {
+  match assemble_program_from_ingest(
+    ingest: fold_list(
+      xs: sfd_closure,
+      empty: extra,
+      cons: fn(acc, path) { list_snoc_item(xs: acc, item: sfd_witness(path: path)) }
+    ),
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: subject, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } => optional_present(value: resolved)
+  }
+}
+
+fn sfd_seam_facts() -> Optional<DemandCensusModuleFacts> {
+  match sfd_assemble(extra: Empty, subject: ^v2) {
+    Absent => optional_absent()
+    Present { value: resolved } =>
+      optional_present(value: demand_census_module_facts(resolved: resolved, module_qn: qualified_name_from_dotted_string(dotted: "v2.std.data_index")))
+  }
+}
+
+data sfd_caller_source: String = "module ods.caller\n\nfn reads_the_corpus() -> Int {\n  let xs = v2.std.data_index.data_init_decl_facts_live()\n  1\n}\n"
+
+fn sfd_caller_witness() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: sfd_caller_source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^sfd_caller_artifact, file_path: "src/v2/test/fixture/seam_fail_open_delta_caller.dag" },
+    compilation_unit: ^sfd_caller_cu,
+    source_root: V2Tree
+  }
+}
+
+fn sfd_caller_demand() -> Optional<DependencyDemandRow> {
+  match sfd_seam_facts() {
+    Absent => optional_absent()
+    Present { value: seam_facts } =>
+      match sfd_assemble(extra: [sfd_caller_witness()], subject: ^ods) {
+        Absent => optional_absent()
+        Present { value: resolved } =>
+          let caller_facts = demand_census_module_facts(resolved: resolved, module_qn: qualified_name_from_dotted_string(dotted: "ods.caller"))
+          fold_list(
+            xs: dependency_demand_of(functions: caller_facts.functions, operations: seam_facts.operations),
+            empty: optional_absent(),
+            cons: fn(acc, r) {
+              if qualified_name_to_dotted_string(qn: r.function) == "ods.caller.reads_the_corpus" { optional_present(value: r) } else { acc }
+            }
+          )
+      }
+  }
+}
+
+// OLD ARM 1: the seam body IS walked (a FunctionFact forms for it). RED at the change head.
+test fn the_seam_body_is_walked_into_a_function_fact_old_arm() -> Bool {
+  match sfd_seam_facts() {
+    Absent => false
+    Present { value: facts } =>
+      fold_list(
+        xs: facts.functions,
+        empty: false,
+        cons: fn(any, f) { any || (qualified_name_to_dotted_string(qn: f.path) == "v2.std.data_index.data_init_decl_facts_live") }
+      )
+  }
+}
+
+// OLD ARM 2: a transparent caller reaches the self-call-only FunctionFact and settles
+// DemandDerived{EMPTY} -- the host observation read as pure. RED at the change head.
+test fn the_seam_caller_settles_derived_empty_old_arm() -> Bool {
+  match sfd_caller_demand() {
+    Absent => false
+    Present { value: r } =>
+      match r.demand {
+        DemandDerived { resources: set } => set.size == 0
+        DemandUndecided { cause: _ } => false
+      }
+  }
+}
