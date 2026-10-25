@@ -122,14 +122,16 @@ type PipePair {
 fn split_pipe_pair(line: String) -> Optional<PipePair> {
   let head = split(s: line, delimiter: "|")
   match head {
-    Cons { head: first, tail: tail_one } =>
+    Cons { head: first, tail: tail_one } => {
       if string_length(s: first) == 0 {
         Absent
-      } else
+      } else {
         match tail_one {
           Cons { head: second, tail: Empty } => Present { value: PipePair { first: first, second: second } }
           _ => Absent
         }
+      }
+    }
     Empty => Absent
   }
 }
