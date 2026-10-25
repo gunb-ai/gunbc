@@ -62,13 +62,6 @@ fn user_session_answer_of(exit_code: Int, stderr: String) -> UserSessionAnswer {
   }
 }
 
-fn user_session_answer_holds(a: UserSessionAnswer) -> Bool {
-  match a {
-    UserSessionAnswered => true
-    UserSessionNotAnswered { cause: _ } => false
-  }
-}
-
 fn user_session_answer_text(a: UserSessionAnswer) -> String {
   match a {
     UserSessionAnswered => "user_manager=answered"
@@ -179,10 +172,13 @@ fn runner_user_session_converge_ci_wet() -> ProcessExit {
                   let w = Filesystem.Write(path: runner_user_session_converge_receipt_path, content: body)
                   if w.success == false {
                     exit_failure(reason: join(["runner_user_session_converge: receipt write failed: ", w.error, "\n", body], ""))
-                  } else if linger_ok && user_session_answer_holds(a: answer) {
-                    ExitSuccess
-                  } else {
+                  } else if !linger_ok {
                     exit_failure(reason: body)
+                  } else {
+                    match answer {
+                      UserSessionAnswered => ExitSuccess
+                      UserSessionNotAnswered { cause: _ } => exit_failure(reason: body)
+                    }
                   }
                 }
               }

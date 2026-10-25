@@ -10,7 +10,7 @@ import gunbc.runner.runner_registration_labels {
   runner_registration_labels, runner_registration_labels_of_class, RegistrationLabelsResolved, RegistrationLabelsRefused, gunbc_user_session_label,
 }
 import gunbc.runner.runner_user_session {
-  UserSessionAnswer, UserSessionAnswered, UserSessionNotAnswered, user_session_answer_of, user_session_answer_holds,
+  UserSessionAnswer, UserSessionAnswered, UserSessionNotAnswered, user_session_answer_of,
   UserSessionHostAdmission, UserSessionHostAdmitted, UserSessionHostRefused, user_session_host_admission,
   user_session_enable_linger_command, user_session_readback_command,
 }
@@ -80,7 +80,10 @@ test fn the_readback_runs_as_the_job_user_over_its_runtime_bus() -> Bool {
 }
 
 test fn a_manager_reached_over_the_bus_holds() -> Bool {
-  user_session_answer_holds(a: user_session_answer_of(exit_code: 0, stderr: ""))
+  match user_session_answer_of(exit_code: 0, stderr: "") {
+    UserSessionAnswered => true
+    UserSessionNotAnswered { cause: _ } => false
+  }
 }
 
 // The refusal the fleet runner gave before this converge (instrument-dispatch run 40176427408) is not an answer.

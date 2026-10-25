@@ -42,7 +42,9 @@ fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsRes
 // transient units; it is derived from the one row that also drives the converge which establishes it
 // (gunbc.runner.runner_host_deploy runner_job_user_session_hosts, converged by gunbc.runner.runner_user_session),
 // so a job selecting it and the host that converges it cannot name different hosts. The deploy slot does not
-// carry it: its job account is the deploy principal, not the CI job user the row lingers.
+// carry it: its job account is the deploy principal, not the CI job user the row lingers. Its first selector is
+// a declared frontier (DESIGN 3c): gunbc#14972's instrument-dispatch label credential-acquisition-systemd-rows,
+// whose runs-on names this label; trigger: this change lands and the srv4 converge readback holds.
 data gunbc_user_session_label: String = "gunbc-user-session"
 
 fn runner_host_capability_labels(host: HostIdentity) -> List<String> {

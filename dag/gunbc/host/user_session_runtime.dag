@@ -15,8 +15,10 @@ import extdeps.systemd.systemd_run { SystemdSetenvBinding }
 // 40176427408). Two carriers of the same two bindings exist because two different processes need them:
 // the CLIENT (systemd-run or systemctl itself, an EnvBinding prefix) and the transient UNIT it starts
 // (--setenv). Both read user_session_bus_address, so the socket path is spelled once.
-// Lifted from gunbc.instruments.compute_run_unit_cold, whose two instruments and the user-session
-// converge (gunbc.runner.runner_user_session) and test.claim.dispatch_credential_acquisition_witness read it.
+// Lifted from gunbc.instruments.compute_run_unit_cold. Read by its two instruments (compute_run_unit_cold,
+// compute_wrong_capture) and the user-session converge (gunbc.runner.runner_user_session).
+// Also consumed by a named later change (a declared frontier, DESIGN 3c): gunbc#14972's
+// test.claim.dispatch_credential_acquisition_witness systemd rows bind the client env; trigger: this change lands.
 type UserSessionRuntime
   = UserSessionRuntimeBound { runtime_dir: FilePath }
   | UserSessionRuntimeAbsent
