@@ -390,8 +390,8 @@ test fn w_the_0_45_row_names_no_release_it_did_not_read() -> Bool {
 // bytes -- not in the module the comment above points at.
 test fn w_the_current_build_identity_is_the_one_the_committed_reading_mints() -> Bool {
   let rows = filter(megarac_release_capability_catalog, e => match e.standing {
-    MegaRacVersionFromFirmwareRead { artifact_path: _, component: _, stdout: _ } =>
-      (stdout as String) == (ipmitool_hpm_check_bmc0_45 as String)
+    MegaRacVersionFromFirmwareRead { artifact_path: _, component: _, stdout: bytes } =>
+      (bytes as String) == (ipmitool_hpm_check_bmc0_45 as String)
     MegaRacVersionFromOperatorAttestation { attested_on: _, page_reported: _, detail: _, upgrade_read: _ } => false
   })
   let one_row = rows |> first()
