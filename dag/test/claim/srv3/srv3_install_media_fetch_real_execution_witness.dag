@@ -135,7 +135,7 @@ test fn the_mint_refuses_when_the_artifacts_path_is_not_a_directory() -> Bool {
   let dir = shell.Mktemp.Dir()
   let tree = isolated_host_state_tree(dir: dir.path)
   let artifacts = join([dir.path as String, "/", "artifacts"], "") as NonEmptyStr
-  let wrote = Filesystem.Write.CreateNew(path: artifacts as FilePath, content: "not a directory" as NonEmptyStr)
+  let wrote = Filesystem.WriteCreateNew(path: artifacts as String, content: "not a directory" as NonEmptyStr)
   let reading = install_media_store(tree: tree)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   let refused = match reading {
