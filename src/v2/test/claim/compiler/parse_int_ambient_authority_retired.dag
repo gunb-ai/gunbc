@@ -1,0 +1,72 @@
+module v2.test.claim.compiler.parse_int_ambient_authority_retired
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source, bla_q_artifact }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import extdeps.filesystem.filesystem_io
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE parse_int AMBIENT AUTHORITY IS RETIRED (NAMESPACE-XL, chars and list_push precedent; the home is a
+// root-coordinator decision approved by sleek-owl-397). The one authority for the name `parse_int` is the declared
+// import of its home (std.integer `fn parse_int(s: String) -> Int?`); the std.primitives `parse_int_contract` row
+// that let the last resolve tier admit the name with no import is DELETED, not aliased. THIS CLAIM READS THE REAL
+// std.primitives CLOSURE FROM DISK, so it is RED against a tree where the ambient row still exists: a module using
+// `parse_int` WITHOUT the declared import refuses AT RESOLVE with resolve_reason_unbound_symbol. The control keeps
+// the ambient tier honest (a name whose contract row stands, `to_string`, still binds). The positive restates the
+// home minimally, as the chars claim does; the real declaration's route is executed by
+// test.claim.integer_parse_int_decimal, which imports it.
+
+fn pir_peer(path: String) -> DagSourceReadWitness {
+  bla_source(src: filesystem_read(path: path).content, artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)
+}
+
+fn pir_primitives_closure() -> List<DagSourceReadWitness> {
+  [
+    pir_peer(path: "dag/std/primitives.dag"),
+    pir_peer(path: "dag/std/types.dag"),
+    pir_peer(path: "dag/std/algebra.dag"),
+    pir_peer(path: "dag/std/optional.dag"),
+    pir_peer(path: "dag/std/error_primitives.dag"),
+    pir_peer(path: "dag/std/unicode/types.dag")
+  ]
+}
+
+fn pir_resolve_reason(p_src: String) -> Symbol {
+  match bla_assemble_with_peers(p_src: p_src, peers: pir_primitives_closure()) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: tree, diagnostics: _ } => ^accepted
+  }
+}
+
+// THE RED: no import of std.integer, so no tier declares the name.
+test fn parse_int_without_the_declared_import_refuses_at_resolve() -> Bool {
+  pir_resolve_reason(p_src: "module p\n\nimport std.types { Int, String }\n\nfn f(t: String) -> Int? {\n  parse_int(s: t)\n}\n")
+    == ^resolve_reason_unbound_symbol
+}
+
+// THE CONTROL: the ambient tier is intact for a surviving contract row.
+test fn surviving_contract_row_still_binds_at_resolve() -> Bool {
+  pir_resolve_reason(p_src: "module p\n\nfn f(x: Int) -> String {\n  to_string(x)\n}\n")
+    == ^accepted
+}
+
+// THE POSITIVE: the subject's own import line binds the home where the ambient tier refuses.
+test fn declared_import_of_the_home_binds_where_ambient_refuses() -> Bool {
+  match bla_assemble_with_peers(
+    p_src: "module p\n\nimport std.integer { parse_int }\n\nfn f(t: String) -> Int? {\n  parse_int(s: t)\n}\n",
+    peers: [
+      bla_source(
+        src: "module std.integer\n\nfn parse_int(s: String) -> Int? {\n  parse_int(s: s)\n}\n",
+        artifact: bla_q_artifact,
+        cu: ^body_let_annotation_q_cu
+      )
+    ]
+  ) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: tree, diagnostics: _ } => ^accepted
+  } == ^accepted
+}
