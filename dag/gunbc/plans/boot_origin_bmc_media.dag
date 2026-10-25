@@ -1,0 +1,63 @@
+module gunbc.plans.boot_origin_bmc_media
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, p, li, ul }
+
+// THE DESIGN FOR THE R2 BOOT ORIGIN AND THE BMC MEDIA RELAY (session bright-swift-248, 2026-10-25):
+// boot images published to R2 behind a gunb.ai custom domain, reaching NFS-only BMCs through the
+// segment holder of gunbc.plans.site_segment_anchor_bmc_reach. Split from
+// gunbc.plans.fleet_naming_reach_access so each retires on its own condition. Design only.
+
+fn opening() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. Target"),
+    ul(items: [
+      li(text: "Boot images are in R2, content-addressed and public, behind a gunb.ai custom domain."),
+      li(text: "Controllers with Redfish HTTPS virtual media read R2 directly. NFS-only controllers read through the segment's selected holder, which fetches by digest, checks the hash and exports over NFS. srv2 fills that role in the lab."),
+      li(text: "mtcollins1 is the first test subject, since it network-boots."),
+    ]),
+    p(text: "**Operator precondition:** the operator moves the gunb.ai nameservers to Cloudflare (2026-10-25). gunbc.plans.fleet_naming_reach_access needs the same move for its fleet zone."),
+  ]
+}
+
+fn survey() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Survey"),
+    ul(items: [
+      li(text: "**mtcollins1 serves no Redfish** (gunbc.machine_intake.mtcollins1_access_observation). Its only media route is the OEM REST remote media, which takes NFS or CIFS shares, so R2 cannot feed it directly. extdeps.bmc.redfish_virtual_media models HTTPS transfer for controllers that do serve Redfish."),
+      li(text: "**The boot origin is modeled but unaddressed.** gunbc.cloudflare.boot_origin models a public, content-addressed bucket behind a custom domain, and its fold refuses secrets. boot_origin_hostname_standing is Unallocated."),
+      li(text: "**gunb.ai is at Namecheap** (gunbc.namecheap.account). An R2 custom domain is understood to need an active Cloudflare zone in the account; that reading is to be verified upstream. Either way the nameserver move is a precondition."),
+      li(text: "**The relay address is a literal today.** gunbc.machine_intake.mtcollins1_boot_run mtcollins1_media_share uses gunbc.fleet.fleet_reach srv2_lan_ipv4."),
+    ]),
+  ]
+}
+
+fn phases() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. Phases"),
+    ul(items: [
+      li(text: "**B1. The custom domain**, after the nameserver move: the BootOriginHostnameAllocated arm, with every existing gunb.ai record, which gunbc.namecheap observes today, copied before the move."),
+      li(text: "**B2. Publication and readback** of the runner ISO by digest."),
+      li(text: "**B3. The NFS relay** on the segment's selected holder, with the share address resolved through the endpoint authority instead of srv2_lan_ipv4."),
+      li(text: "**B4. A boot of mtcollins1** through the relay, with the digest checked."),
+    ]),
+    h2(text: "4. Open items"),
+    ul(items: [
+      li(text: "**To observe:** whether the MegaRAC NFS server_address accepts a hostname. If not, the holder's LAN address comes from endpoint resolution."),
+      li(text: "**To verify upstream:** the R2 custom-domain zone requirement."),
+    ]),
+  ]
+}
+
+data boot_origin_bmc_media_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "boot-origin-bmc-media",
+  title: "Boot origin and BMC media: content-addressed R2 images behind gunb.ai, relayed to NFS-only controllers by the segment holder",
+  body: concat(concat(opening(), survey()), phases()),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Retire when the boot origin's gunb.ai hostname is allocated and read back, the runner ISO is published by digest and read back, and mtcollins1 has booted that ISO through the segment holder's NFS relay with the digest checked."),
+  },
+}
