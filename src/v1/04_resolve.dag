@@ -1465,7 +1465,7 @@ fn binder_marked_type(n: Node, owner: DeclarationRef, binders: List<String>, sou
   // scopes: `binders` is only this declaration's own header parameters, so the fallback never matches a
   // binder of another declaration. Follow-up: produce the Resolved copy from the marked child (PR body).
   let authored = authored_name_at(source_indices: source_indices, node: n)
-  let name = if binders |> any(b => b == authored) { authored } else { n.name }
+  let name = authored
   let is_binder_reference = n.declaration == none
     && n.children |> count == 0
     && n.params |> count == 0
