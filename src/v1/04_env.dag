@@ -2098,10 +2098,92 @@ fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv
   match reading {
     TypeReferenceNamesDeclaration { declaration: d } =>
       match alias_rhs_of_declaration(item_ref: d, env: env) {
-        Absent => Present { value: SettledType { head: d, args: n.children } }
+        Absent =>
+          match parameterized_alias_of_declaration(item_ref: d, source_indices: source_indices, env: env) {
+            Absent => Present { value: SettledType { head: d, args: n.children } }
+            Present { value: pa } => settled_parameterized_alias(alias: pa, use_args: n.children, source_indices: source_indices, env: env, fuel: fuel)
+          }
         Present { value: rhs } => settled_alias_rhs(rhs: rhs, source_indices: source_indices, env: env, fuel: fuel)
       }
     _ => none
+  }
+}
+
+// A PARAMETERIZED ALIAS SETTLES TO ITS TARGET'S DECLARATION, ITS ARGUMENTS SUBSTITUTED EXACTLY. resolve retains alias_rhs only for a
+// non-parameterized alias (transparent_alias_rhs), so `type Map<key, value> = FinitelySupportedFunction<key, value>` never settled
+// and a `Map<K, V>` beside a `FinitelySupportedFunction<K, V>` fell to the name comparison (the v2.std.compilers.lexing joins). The
+// item is read from the symbol index by its exact module path, as alias_rhs_of_declaration reads one; its right-hand side's head is
+// the declaration its spelling names in the alias's own module, never the asking module's. Substitution is exact: the use-site arity
+// must equal the alias's parameter count, otherwise the type does not settle (fail closed; the arity refusal itself is
+// v1.compiler.infer alias_chain_arity_diagnostics), and no parameter is defaulted or partially bound.
+type ParameterizedAlias {
+  params: List<String>
+  rhs: Node
+}
+
+fn parameterized_alias_rhs(pre: Node, source_indices: Map<String, NewlineIndex>) -> ParameterizedAlias? {
+  if pre.connective != NoConnective || (pre.params |> count) > 0 || pre.type_annotation != none
+    || (pre.children |> count) == 0 || pre.return_cardinality != Required {
+    none
+  } else {
+    match pre.inferred {
+      Present { value: Resolved { node: rhs } } =>
+        if rhs.connective != NoConnective || rhs.return_cardinality != Required || rhs.type_annotation != none { none }
+        else { Present { value: ParameterizedAlias { params: pre.children |> map(c => authored_name_at(source_indices: source_indices, node: c)), rhs: rhs } } }
+      _ => none
+    }
+  }
+}
+
+fn parameterized_alias_of_declaration(item_ref: DeclarationRef, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> ParameterizedAlias? {
+  match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(item_ref.module_path as String, ".", item_ref.decl_name as String)) {
+    Absent => none
+    Present { value: item } =>
+      match parameterized_alias_rhs(pre: item, source_indices: source_indices) {
+        Absent => none
+        Present { value: pa } =>
+          match pa.rhs.declaration {
+            Present { value: _ } => Present { value: pa }
+            Absent =>
+              match alias_rhs_with_index_identity(rhs: pa.rhs, owner_module: item_ref.module_path as String, env: env) {
+                Present { value: headed } => Present { value: ParameterizedAlias { params: pa.params, rhs: headed } }
+                Absent => none
+              }
+          }
+      }
+  }
+}
+
+fn settled_parameterized_alias(alias: ParameterizedAlias, use_args: List<Node>, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
+  if (alias.params |> count) != (use_args |> count) || fuel <= 0 { none }
+  else {
+    let substituted = substitute_alias_params(n: alias.rhs, params: alias.params, args: use_args, source_indices: source_indices, fuel: fuel)
+    match substituted.declaration {
+      Present { value: head } => settled_rhs(rhs: substituted, head: head, source_indices: source_indices, env: env, fuel: fuel - 1)
+      Absent => none
+    }
+  }
+}
+
+// Every leaf of the right-hand side that spells one of the alias's parameters is replaced by the use-site argument at that
+// parameter's position; every other node keeps its own identity and has its children substituted.
+fn substitute_alias_params(n: Node, params: List<String>, args: List<Node>, source_indices: Map<String, NewlineIndex>, fuel: Int) -> Node {
+  if fuel <= 0 { n }
+  else {
+    let leaf = n.connective == NoConnective && (n.children |> count) == 0
+    let position = if leaf {
+      let name = authored_name_at(source_indices: source_indices, node: n)
+      params |> enumerate |> filter(p => p.second == name) |> map(p => p.first) |> first
+    } else { none }
+    match position {
+      Present { value: i } =>
+        match args |> skip(i) |> first {
+          Present { value: arg } => arg
+          Absent => n
+        }
+      Absent =>
+        node_with_children(n: n, children: n.children |> map(c => substitute_alias_params(n: c, params: params, args: args, source_indices: source_indices, fuel: fuel - 1)))
+    }
   }
 }
 
