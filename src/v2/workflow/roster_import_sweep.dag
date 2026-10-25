@@ -2528,7 +2528,7 @@ fn roster_sweep_rows(sides: List<RosterHomeSide>, gates: List<RosterSiteGate>, m
     Present { value: reason } => RosterRefused { reason: reason }
     Absent => if is_empty(xs: needed) {
       RosterClean
-    } else
+    } else {
       // ONE RULE FOR ONE HAZARD (DESIGN 6b): a row the write needs whose target NAME the file already binds from
       // another declaration would gain a second target for one local name. The per-home check names it precisely
       // (expected-home, bound-home) and subsumes the old name-only gate exactly: a NEEDED row's own-home binding is
@@ -2539,6 +2539,7 @@ fn roster_sweep_rows(sides: List<RosterHomeSide>, gates: List<RosterSiteGate>, m
         Present { value: reason } => RosterRefused { reason: reason }
         Absent => roster_import_row(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, needed: needed, candidates: candidates, closures: closures, gates: gates, multi_home: multi_home)
       }
+    }
   }
 }
 
