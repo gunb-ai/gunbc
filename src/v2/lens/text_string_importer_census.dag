@@ -21,8 +21,8 @@ import std.algebra { empty_map, map_insert, map_lookup, Cons, Empty, FreeMonoid,
 import v2.std.source_position { source_newline_byte_offsets }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.primitives { primitive_contract_roster, PrimitiveContract, char_at_contract, string_length_contract, substring_contract, string_contains_contract, starts_with_contract, ends_with_contract, trim_contract, split_contract, repeat_contract, to_string_contract, parse_int_contract, str_eq_contract, replace_section_contract, code_point_contract, scan_while_contract, skip_horizontal_ws_contract, scan_to_eol_contract, scan_string_end_contract }
-import std.primitive_projection { primitive_chars, primitive_identity_runtime_name }
+import std.primitives { primitive_contract_roster, PrimitiveContract, char_at_contract, string_length_contract, substring_contract, string_contains_contract, starts_with_contract, ends_with_contract, trim_contract, split_contract, repeat_contract, to_string_contract, str_eq_contract, replace_section_contract, code_point_contract, scan_while_contract, skip_horizontal_ws_contract, scan_to_eol_contract, scan_string_end_contract }
+import std.primitive_projection { primitive_chars, primitive_parse_int, primitive_identity_runtime_name }
 import std.roster_frontier { FrontierRow, PathSubject }
 
 // THE CENSUS OF `import v2.std.text { String }` IMPORTERS, AT SITE GRAIN (gunbc#12760, decision A;
@@ -96,8 +96,9 @@ data text_string_importer_census_batch_scaffold: Disposition = Scaffold {
 data text_string_importer_census_dissolution: DissolutionCondition = unbound_dissolution(description: "gunbc#12760 has landed AND v2.lens.text_string_importer_census text_string_importer_population returns an empty population for both v2.std.text and std.string_type" as NonEmptyStr)
 
 // The host text primitives. Each is a `std.primitives` row; the row supplies the name, except
-// `chars`, whose name comes from its declared-home projection identity (std.primitive_projection
-// primitive_chars, the std.host_text seam row) since its ambient contract row was retired (T1.1).
+// `chars` and `parse_int`, whose names come from their declared-home projection identities
+// (std.primitive_projection primitive_chars, the std.host_text seam row, and primitive_parse_int, the
+// std.integer seam row) since their ambient contract rows were retired (T1.1; the parse_int home wave).
 data host_text_primitive_contracts: List<PrimitiveContract> = [
   char_at_contract,
   string_length_contract,
@@ -109,7 +110,6 @@ data host_text_primitive_contracts: List<PrimitiveContract> = [
   split_contract,
   repeat_contract,
   to_string_contract,
-  parse_int_contract,
   str_eq_contract,
   replace_section_contract,
   code_point_contract,
@@ -1070,7 +1070,7 @@ fn rosters_of_walk(w: Walk, population_module: String) -> RostersStanding {
   let text_result = fold_list(xs: w.return_heads, empty: empty_strings, cons: fn(acc, rh) {
     if member(xs: text_carrier_heads, x: rh.head) { Cons { head: rh.decl, tail: acc } } else { acc }
   })
-  let host = Cons { head: primitive_identity_runtime_name(identity: primitive_chars), tail: fold_list(xs: host_text_primitive_contracts, empty: empty_strings, cons: fn(acc, c) { Cons { head: c.name, tail: acc } }) }
+  let host = Cons { head: primitive_identity_runtime_name(identity: primitive_chars), tail: Cons { head: primitive_identity_runtime_name(identity: primitive_parse_int), tail: fold_list(xs: host_text_primitive_contracts, empty: empty_strings, cons: fn(acc, c) { Cons { head: c.name, tail: acc } }) } }
   let overlap = fold_list(xs: host, empty: empty_strings, cons: fn(acc, h) {
     if member(xs: structural, x: h) { Cons { head: h, tail: acc } } else { acc }
   })

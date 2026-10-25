@@ -109,6 +109,7 @@ fn never_type_qualified_path() -> String {
   concat(never_type_declaration.module_path as String, ".", never_type_declaration.decl_name as String)
 }
 data primitive_list_push: PrimitiveIdentity = primitive_identity_slug(name: "list_push")
+data primitive_parse_int: PrimitiveIdentity = primitive_identity_slug(name: "parse_int")
 data primitive_string_contains: PrimitiveIdentity = primitive_identity_slug(name: "string_contains")
 data primitive_chars: PrimitiveIdentity = primitive_identity_slug(name: "chars")
 data primitive_sha256_hex_of_text: PrimitiveIdentity = primitive_identity_slug(name: "sha256_hex_of_text")
@@ -154,6 +155,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_octets_bytes, module_path: "std.bytes", decl_name: "octets_bytes", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_pure_dag_seam_unreachable, module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_list_push, module_path: "std.algebra", decl_name: "list_push", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_parse_int, module_path: "std.integer", decl_name: "parse_int", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_string_contains, module_path: "std.algebra", decl_name: "string_contains", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_chars, module_path: "std.host_text", decl_name: "chars", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_sha256_hex_of_text, module_path: "std.content_hash", decl_name: "sha256_hex_of_text", fidelity: HostRealizedSeam),

@@ -179,3 +179,26 @@ test fn w_homonym_list_push_keeps_authored_body() -> Bool {
     ["v1_rt::rc_list_push("]
   )
 }
+
+// std.integer parse_int (the parse_int home wave) reaches its Rust realization BY DECLARATION: the imported
+// HostRealizedSeam is emitted as the v1_rt::parse_int bridge, selected by its projection row, and is NOT
+// emitted as a self-recursive call to itself.
+test fn w_integer_parse_int_reaches_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.integer_parse_int_probe\nimport std.types { Int, String }\nimport std.integer { parse_int }\nfn probe(t: String) -> Int? { parse_int(s: t) }\n",
+    "src/test_claim_integer_parse_int_probe.rs",
+    ["v1_rt::parse_int("],
+    []
+  )
+}
+
+// A same-named ordinary fn keeps its authored body: the bridge is keyed by std.integer's declaration through
+// its projection row, never by the spelling `parse_int`.
+test fn w_homonym_parse_int_keeps_authored_body() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.homonym_parse_int_probe\nimport std.integer { Int }\nfn parse_int(s: Int) -> Int { 424247 }\nfn probe() -> Int { parse_int(s: 1) }\n",
+    "src/test_claim_homonym_parse_int_probe.rs",
+    ["424247"],
+    ["v1_rt::parse_int("]
+  )
+}
