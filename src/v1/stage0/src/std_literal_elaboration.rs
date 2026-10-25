@@ -65,7 +65,7 @@ pub fn literal_source_kind_label(kind: LiteralSourceKind) -> String {
 }
 
 pub fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> bool {
-    (literal_source_kind_label(a.clone()) == literal_source_kind_label(b.clone()))
+    (literal_source_kind_label(a) == literal_source_kind_label(b))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -240,13 +240,8 @@ pub fn elaborate_literal_at(
     if destination_realizes_natively.clone() {
         Rc::new(LiteralElaborationOutcome::DirectLiteral)
     } else {
-        match (*literal_homomorphism_for(
-            rows.clone(),
-            source_kind.clone(),
-            destination.clone(),
-            element.clone(),
-        ))
-        .clone()
+        match (*literal_homomorphism_for(rows, source_kind.clone(), destination.clone(), element))
+            .clone()
         {
             LiteralHomomorphismLookup::LiteralHomomorphismFound { row: row, .. } => {
                 Rc::new(LiteralElaborationOutcome::ViaHomomorphism {
@@ -519,7 +514,7 @@ pub fn signed_view_reading(
         GroundedDeclaredForm::DeclaredCoproduct {
             constructors: constructors,
             ..
-        } => signed_coproduct_reading(nonnegative.clone(), negative.clone(), constructors.clone()),
+        } => signed_coproduct_reading(nonnegative, negative, constructors.clone()),
     }
 }
 
@@ -582,7 +577,7 @@ pub fn signed_view_disagreement_message(reason: Rc<SignedViewDisagreement>) -> S
 }
 
 pub fn kernel_grounding_admits(row: Rc<KernelGrounding>, value: i64) -> bool {
-    crate::std_types::range(value.clone(), row.min.clone(), row.max.clone())
+    crate::std_types::range(value, row.min.clone(), row.max.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -717,11 +712,11 @@ pub fn kernel_mint_ownership(
     minted_name: String,
     declaration: Rc<DeclarationRef>,
 ) -> Rc<KernelMintOwnership> {
-    match (*kernel_mint_declaration_for(rows.clone(), minted_name.clone())).clone() {
+    match (*kernel_mint_declaration_for(rows, minted_name)).clone() {
         KernelMintDeclarationLookup::KernelMintDeclarationFound {
             declaration: bound, ..
         } => {
-            if crate::std_decl_ref::declaration_ref_eq(bound.clone(), declaration.clone()) {
+            if crate::std_decl_ref::declaration_ref_eq(bound.clone(), declaration) {
                 Rc::new(KernelMintOwnership::DeclarationOwnsTheMint)
             } else {
                 Rc::new(KernelMintOwnership::DeclarationDoesNotOwnTheMint)
@@ -755,11 +750,11 @@ pub fn kernel_named_import_standing(
     if (module_declares_type.clone() == false) {
         Rc::new(KernelNamedImportStanding::KernelNamedImportAdmitted)
     } else {
-        match (*kernel_mint_declaration_for(rows.clone(), imported_name.clone())).clone() {
+        match (*kernel_mint_declaration_for(rows, imported_name.clone())).clone() {
             KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
                 if crate::std_decl_ref::declaration_ref_eq(
                     d.clone(),
-                    crate::std_decl_ref::decl_ref(import_path.clone(), imported_name.clone()),
+                    crate::std_decl_ref::decl_ref(import_path, imported_name.clone()),
                 ) {
                     Rc::new(KernelNamedImportStanding::KernelNamedImportAdmitted)
                 } else {
