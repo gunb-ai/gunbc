@@ -3,6 +3,7 @@
 
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
+pub use crate::std_types::bool_text;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_emit_core_support::escape_json_string;
 use crate::v1_rt;
@@ -209,9 +210,10 @@ pub fn literal_value_fingerprint(value: Rc<LiteralValue>) -> String {
         LiteralValue::LitFloat { value: v, .. } => {
             v1_rt::concat("LitFloat:".to_string(), v.clone())
         }
-        LiteralValue::LitBool { value: v, .. } => {
-            v1_rt::concat("LitBool:".to_string(), (v.clone()).to_string())
-        }
+        LiteralValue::LitBool { value: v, .. } => v1_rt::concat(
+            "LitBool:".to_string(),
+            crate::std_types::bool_text(v.clone()),
+        ),
         LiteralValue::LitNull => "LitNull".to_string(),
         LiteralValue::LitSymbol { value: v, .. } => {
             v1_rt::concat("LitSymbol:".to_string(), v.clone())

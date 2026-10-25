@@ -310,7 +310,7 @@ import gunbc.membership_reconcile {
 }
 import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv, shell_command_text_of_stmts }
 import gunbc.live_deploy.operations {
-  deploy_stage_dir_var, deploy_cap_stage_dir_var, deploy_stage_dirs_exit_trap_command, install_directory_owned_command,
+  install_directory_owned_command,
 }
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
