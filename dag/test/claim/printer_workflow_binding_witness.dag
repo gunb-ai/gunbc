@@ -12,29 +12,28 @@ import gunbc.fleet.fleet_converge_workflow {
 }
 import gunbc.ci.ci_spec { gunbc_run_step_targets }
 import gunbc.fleet.printer_federation { printer_service_account, printer_provider_resource }
-import gunbc.auth.branch_dispatch_federation { printer_run_scoped_service_account, branch_dispatch_provider_resource }
 
 import gunbc.fleet.printer_federation_provision { printer_dedicated_federation }
 import gunbc.fleet.fleet_printer_access {printer_access_code_loci}
 
 fn auth_step_matches(st: Step) -> Bool {
   match st {
-    UsesStep { name: _, id, uses: _, with: args, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      match id { Present { value: value } => value == "wif_auth" && match args {
-        Present { value: fields } => any(fields, f => f.key == "service_account" && match f.value { YamlString { value: v } => string_contains(s: v, pattern: join(["github.ref == 'refs/heads/main' && '", printer_service_account as String, "'"], "")) && string_contains(s: v, pattern: join(["|| '", printer_run_scoped_service_account as String, "'"], "")) _ => false })
-          && any(fields, f => f.key == "workload_identity_provider" && match f.value { YamlString { value: v } => string_contains(s: v, pattern: join(["github.ref == 'refs/heads/main' && '", printer_provider_resource(), "'"], "")) && string_contains(s: v, pattern: join(["|| '", branch_dispatch_provider_resource(), "'"], "")) _ => false })
+    UsesStep { name: _, id, uses: _, with: args, env: _, if_condition: cond, continue_on_error: _, timeout_minutes: _ } =>
+      match id { Present { value: value } => value == "wif_auth" && (match cond { Present { value: c } => c == "github.ref == 'refs/heads/main'" Absent => false }) && match args {
+        Present { value: fields } => any(fields, f => f.key == "service_account" && match f.value { YamlString { value: v } => v == (printer_service_account as String) _ => false })
+          && any(fields, f => f.key == "workload_identity_provider" && match f.value { YamlString { value: v } => v == printer_provider_resource() _ => false })
         Absent => false
       } Absent => false }
     _ => false
   }
 }
-// The printer job signs in as the main-pinned printer-lan reader at main and, on any other ref, as the
-// run-scoped printer account through the branch pool after this run's grant.
+// The printer credential is signed in only on reviewed main (design A, 2026-10-25): the one auth step
+// carries the exact main-ref condition, so a branch run of this job holds no printer token.
 test fn separate_job_uses_dedicated_identity() -> Bool {
   let job = fleet_converge_printer_job()
   job.id == "printer" && match job.environment { Present { value } => value == "printer-lan" Absent => false }
     && count(filter(job.steps, s => auth_step_matches(st: s))) == 1
-    && any(job.needs, n => n == "build") && any(job.needs, n => n == "branch-run-grant-await")
+    && any(job.needs, n => n == "build")
 }
 test fn observer_has_no_fleet_ssh_demand() -> Bool {
   match fleet_converge_mode_fleet_ssh_key_demand(mode: PrinterWorkflow) { FleetSshKeyNotConsumed => true _ => false }

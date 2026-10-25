@@ -18,7 +18,6 @@ import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
 import gunbc.gcp.gcp_estate_observation { fleet_cloud_convergence_sa_email }
 import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user }
 import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
-import gunbc.fleet.printer_federation_provision { printer_dedicated_federation }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.managed_host_boot_federation {
   ManagedHostBootFederation, provisioned_federation_of, boot_federation_for, boot_federation_service_account_member,
@@ -145,10 +144,7 @@ data branch_run_key_variable: NonEmptyStr = "BRANCH_RUN_KEY"
 // the main-only route, so coverage can only widen by a row here. main_route says what the same mode
 // does when dispatched at main: MainUsesFleetIdentity signs in through the main-only fleet pool,
 // MainUsesGrantedAccount keeps the grant at every ref, MainUsesSelectedSource leaves the choice to the
-// mode's own job (the boot job's select_boot_credential_source), MainUsesDedicatedFederation signs in
-// through the mode's own main-pinned federation in its own job (the printer's printer-lan pool) and
-// needs the grant only off main. It is not MainUsesFleetIdentity, which routes the mode through the
-// shared fleet-converge job's fleet sign-in; the printer has its own job and never holds that identity.
+// mode's own job (the boot job's select_boot_credential_source).
 //
 // dashboard_deploy IS DELIBERATELY NOT A ROW. Its job holds no cloud credential, so there is nothing for
 // IAM to refuse and an approval would be enforced only by the branch's own workflow text, which the
@@ -156,7 +152,7 @@ data branch_run_key_variable: NonEmptyStr = "BRANCH_RUN_KEY"
 // without it. Trigger to add it: an enforcement point outside the branch's workflow text (a main-side
 // gate, or a verified environment protection on srv1-production).
 //
-type RunScopedMainRoute = MainUsesGrantedAccount | MainUsesFleetIdentity | MainUsesSelectedSource | MainUsesDedicatedFederation
+type RunScopedMainRoute = MainUsesGrantedAccount | MainUsesFleetIdentity | MainUsesSelectedSource
 
 type RunScopedMode {
   mode: NonEmptyStr
@@ -176,7 +172,6 @@ fn run_scoped_modes() -> List<RunScopedMode> {
     RunScopedMode { mode: mtcollins1_boot_mode_name, account_id: mtcollins1_boot_run_scoped_service_account_id, main_route: MainUsesSelectedSource },
     RunScopedMode { mode: "plan", account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
     RunScopedMode { mode: "apply", account_id: fleet_apply_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
-    RunScopedMode { mode: "printer", account_id: printer_run_scoped_service_account_id, main_route: MainUsesDedicatedFederation },
   ]
 }
 
@@ -200,7 +195,6 @@ fn run_scoped_mode_eligible_on(mode: String, on_reviewed_main: Bool) -> RunScope
     Present { value: m } => match m.main_route {
       MainUsesGrantedAccount => Present { value: m }
       MainUsesFleetIdentity => if on_reviewed_main { none } else { Present { value: m } }
-      MainUsesDedicatedFederation => if on_reviewed_main { none } else { Present { value: m } }
       MainUsesSelectedSource =>
         match select_boot_credential_source(on_reviewed_main: on_reviewed_main) {
           BootCredentialSourceSelected { source: RunScopedApprovedGrant } => Present { value: m }
@@ -383,22 +377,9 @@ fn fleet_apply_run_scoped_federation() -> DedicatedFederation {
   fleet_run_scoped_federation(label: "fleet apply (approved branch runs)", account_id: fleet_apply_run_scoped_service_account_id, email: fleet_apply_run_scoped_service_account, display: "Fleet apply (run-scoped, WIF-only, no keys)", grants: [secret_accessor_grant(target: fleet_automation_ssh_privkey_secret)])
 }
 
-// THE PRINTER FROM A BRANCH (operator, 2026-10-25: printing must not be limited to code merged on main).
-// Its own account, holding exactly the printer-lan reader's secret grants -- read from that federation,
-// not restated -- so a mistaken run approval costs one run's read of the printer access codes and
-// nothing else. The physical start is still gated by the signed bed-clear approval bound to the attempt
-// (gunbc.fleet.printer_operator_approval), so a branch print needs both approvals.
-data printer_run_scoped_service_account_id: NonEmptyStr = "printer-run"
-
-data printer_run_scoped_service_account: ServiceAccountEmail = "printer-run@gunbai-secrets.iam.gserviceaccount.com"
-
-fn printer_run_scoped_federation() -> DedicatedFederation {
-  fleet_run_scoped_federation(label: "printer (approved branch runs)", account_id: printer_run_scoped_service_account_id, email: printer_run_scoped_service_account, display: "Printer (run-scoped, WIF-only, no keys)", grants: printer_dedicated_federation().secret_grants)
-}
-
 // The accounts this table's rows need provisioned; the plan row reuses an account that is already a target.
 fn fleet_run_scoped_new_federations() -> List<DedicatedFederation> {
-  [fleet_apply_run_scoped_federation(), printer_run_scoped_federation()]
+  [fleet_apply_run_scoped_federation()]
 }
 
 fn run_scoped_federations() -> List<DedicatedFederation> {
