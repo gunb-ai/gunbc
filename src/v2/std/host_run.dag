@@ -1,6 +1,7 @@
 module v2.std.host_run
 
-import std.types { List }
+import std.types { Bytes, List }
+import std.process_termination { ProcessTermination }
 import v2.std.diagnostic {
   Outcome,
   Accepted,
@@ -34,6 +35,40 @@ type HostRunStdout {
 
 type HostLogicalRun {
   stdout: HostRunStdout
+}
+
+// WHAT THE EMIT-HOST BUILD TRANSPORT OBSERVED, as the host returns it from emit_host_run_transport and
+// emit_host_run_transport_cached. The seed's interpreter arms build exactly this record, so there is
+// one shape, not one per transport. Its one consumer is v2.compiler.emit_host
+// run_host_process_admitted, which reads it into EmitHostRunReceipt. Before this was declared, both
+// roster rows returned a bare type variable, so field accesses on the result were checked against
+// nothing and a misspelt field was admitted.
+//
+// phase is a closed set the host chooses from, so it is a coproduct and not a String. compile_skipped
+// is DERIVED from it rather than carried beside it, because a Bool next to the phase could contradict
+// it. termination belongs to the last invocation the transport ran, which under StoppedAtBuild is
+// the failing build step. stdout and stderr are std.types Bytes, the kernel's host byte carrier: the
+// host observes octets, and the corpus reads them through std.bytes bytes_octets, the existing seam
+// for a host byte sequence.
+type EmitHostTransportPhase
+  = StoppedAtBuild
+  | RanAfterBuild
+  | RanWithoutBuild
+
+type EmitHostTransportResult {
+  phase: EmitHostTransportPhase
+  termination: ProcessTermination
+  stdout: Bytes
+  stderr: Bytes
+  build_log: BuildLog
+}
+
+fn emit_host_transport_compile_skipped(phase: EmitHostTransportPhase) -> Bool {
+  match phase {
+    StoppedAtBuild => false
+    RanAfterBuild => false
+    RanWithoutBuild => true
+  }
 }
 
 type EmitHostRunReceipt {

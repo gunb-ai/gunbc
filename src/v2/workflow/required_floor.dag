@@ -2097,11 +2097,8 @@ fn opaque_host_call_grandfather_population() -> List<String> {
       tail: Cons {
         head: "compile_dag_multi_module_fixture",
         tail: Cons {
-          head: "observe_declared_import_closure_symbol_binding",
-            tail: Cons {
-              head: "witness_layer_roots_compile_clean_check",
-              tail: Empty {}
-            }
+          head: "witness_layer_roots_compile_clean_check",
+          tail: Empty {}
         }
       }
     }
