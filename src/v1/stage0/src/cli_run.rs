@@ -176,6 +176,9 @@ pub use emit_host::{
     compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
     compile_dag_rust_emit_check_memo_counts, reset_compile_dag_diagnostic_census_cost_counts,
 };
+pub use emit_host::{
+    emit_resolved_for_target_counting, every_module_render_calls, non_empty_selected_render_calls,
+};
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
 pub use witness_gates::witness_layer_roots;
