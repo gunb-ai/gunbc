@@ -4,8 +4,9 @@ import std.primitive_identity {
   PrimitiveRuntimeBodiesObserved,
   PrimitiveRuntimeBodiesComplete, PrimitiveRuntimeBodiesMissing, PrimitiveRuntimeBodiesUnreadable,
   primitive_runtime_body_check_in,
-  primitive_identity_eq, primitive_map_keys, primitive_map_values,
+  primitive_identity_eq, primitive_map_values,
 }
+import std.primitive_projection { primitive_map_keys }
 import extdeps.languages.rust.emit { RuntimeFunction }
 import std.types { Bool, String }
 import gunbc.primitive_runtime_body {

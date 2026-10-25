@@ -1,0 +1,42 @@
+module test.claim.map_keys_home_witness
+
+import std.types { Bool, Int, List, Map, String }
+import std.algebra { contains, empty_map, is_empty, length, map_insert, map_keys }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DECLARED HOME ANSWERS THE KEY SET, executed through std.algebra map_keys (its HostRealizedSeam
+// realization), not through the retired ambient contract. Order is host-unspecified
+// (std.primitive_identity primitive_map_keys_traversal), so every assertion is membership and size,
+// never position.
+
+fn mk_text_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn mk_two_entry_map() -> Map<String, Int> {
+  map_insert(m: map_insert(m: empty_map(), key: "alpha", value: 1), key: "beta", value: 2)
+}
+
+// Every inserted key is a member, and nothing else is: a key that was never inserted is absent and the
+// support has exactly the two entries (a duplicate or a value leaking into the key set reds here).
+test fn map_keys_holds_exactly_the_inserted_keys() -> Bool {
+  let keys = map_keys(m: mk_two_entry_map())
+  contains(xs: keys, item: "alpha", eq: mk_text_eq)
+    && contains(xs: keys, item: "beta", eq: mk_text_eq)
+    && !contains(xs: keys, item: "gamma", eq: mk_text_eq)
+    && length(xs: keys) == 2
+}
+
+// Re-inserting a key replaces its value and leaves the support unchanged: one key, not two.
+test fn map_keys_of_a_reinserted_key_is_one_key() -> Bool {
+  let keys = map_keys(m: map_insert(m: map_insert(m: empty_map(), key: "alpha", value: 1), key: "alpha", value: 9))
+  contains(xs: keys, item: "alpha", eq: mk_text_eq) && length(xs: keys) == 1
+}
+
+// The empty map's support is empty.
+test fn map_keys_of_the_empty_map_is_empty() -> Bool {
+  let m: Map<String, Int> = empty_map()
+  is_empty(xs: map_keys(m: m))
+}

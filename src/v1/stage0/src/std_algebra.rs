@@ -2765,6 +2765,12 @@ pub fn map_insert<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     v1_rt::rc_map_insert(m, key, value)
 }
 
+pub fn map_keys<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: Rc<HashMap<K, V>>,
+) -> Rc<FreeMonoid<K>> {
+    Rc::new(v1_rt::map_keys(&m))
+}
+
 pub fn map_lookup_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     m: Rc<HashMap<K, V>>,
     key: K,
