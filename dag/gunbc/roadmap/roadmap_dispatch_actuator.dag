@@ -244,7 +244,7 @@ import gunbc.worker_turn_standing { codex_observed_standing_for_instance, cursor
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
 import gunbc.dispatch_attempt { DispatchAttempt }
-import gunbc.dispatch_replay_recording { recording_id_decode, RecordingIdDecoded, RecordingIdMalformed, recording_id_text }
+import gunbc.dispatch_replay_recording { RecordingId, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed, recording_id_text }
 import gunbc.dispatch_attempt_launch {
   SnapshotFreeExecutor,
   CodexWithoutSnapshot,
@@ -584,7 +584,7 @@ fn dispatch_actuator_selection_for_provider_on(
 type DispatchExecutorRequest
   = ExecutorDefault
   | ExecutorVendor { provider: DispatchCliProvider }
-  | ExecutorReplay { recording_id: NonEmptyStr }
+  | ExecutorReplay { recording_id: RecordingId }
 
 type DispatchExecutorRequestDecode
   = DispatchExecutorRequestDecoded { request: DispatchExecutorRequest }
@@ -602,7 +602,7 @@ fn decode_dispatch_executor_request(word: String) -> DispatchExecutorRequestDeco
   if starts_with(s: word, prefix: dispatch_replay_request_prefix) {
     match recording_id_decode(text: substring(s: word, start: string_length(s: dispatch_replay_request_prefix), end: string_length(s: word))) {
       RecordingIdDecoded { id } =>
-        DispatchExecutorRequestDecoded { request: ExecutorReplay { recording_id: recording_id_text(id: id) as NonEmptyStr } }
+        DispatchExecutorRequestDecoded { request: ExecutorReplay { recording_id: id } }
       RecordingIdMalformed { reason } =>
         DispatchExecutorRequestUnknown { word: word, known: [join(["replay:<recording id>; ", reason], "")] }
     }
@@ -975,7 +975,7 @@ fn dispatch_replay_instance_admission(instance: HostDashboardInstance) -> Dispat
   }
 }
 
-fn dispatch_replay_attempt_selection(attempt: DispatchAttempt, recording_id: NonEmptyStr) -> DispatchAttemptSelection {
+fn dispatch_replay_attempt_selection(attempt: DispatchAttempt, recording_id: RecordingId) -> DispatchAttemptSelection {
   match dispatch_replay_instance_admission(instance: attempt.instance) {
     ReplayAdmittedOnInstance =>
       attempt_selection_launching(
@@ -2762,7 +2762,7 @@ fn dispatch_provider_inner_argv_for_launch(
               gunbc_program: instance.serve_binary as String,
               repo_root: instance.repo_root as String,
               worktree_path: worktree_path,
-              recording_id: recording_id as String,
+              recording_id: recording_id,
             ),
           }
       }
@@ -2773,7 +2773,7 @@ fn gunbc_replay_spawn_argv(
   gunbc_program: String,
   repo_root: String,
   worktree_path: String,
-  recording_id: String,
+  recording_id: RecordingId,
 ) -> List<String> {
   [
     gunbc_program,
@@ -2784,7 +2784,7 @@ fn gunbc_replay_spawn_argv(
     "--function", gunbc_replay_worker_function,
     "--arg", join(["worktree=", worktree_path], ""),
     "--arg", join(["repo_root=", repo_root], ""),
-    "--arg", join(["recording_id=", recording_id], ""),
+    "--arg", join(["recording_id=", recording_id_text(id: recording_id)], ""),
   ]
 }
 

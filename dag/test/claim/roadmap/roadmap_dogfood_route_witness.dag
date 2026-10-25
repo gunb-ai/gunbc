@@ -45,6 +45,8 @@ import gunbc.roadmap.roadmap_publish {
   publication_receipt_json, ReceiptSourcePresent, ReceiptSourceAbsent,
 }
 import gunbc.dispatch_attempt_launch { RealExecutorOrigin, ReplayExecutorOrigin }
+import gunbc.dispatch_replay_recording { RecordingId }
+import extdeps.systemd.service_exec { ServiceResultSuccess }
 import gunbc.roadmap.roadmap_dispatch_destination { DispatchExecutorOriginRead, DispatchExecutorOriginObserved, DispatchExecutorOriginUnreadable }
 import gunbc.roadmap.roadmap_dogfood_route {
   DogfoodStage, dogfood_stage_wire,
@@ -325,7 +327,7 @@ fn real_executor() -> DispatchExecutorOriginRead {
 // SAME record, each a refused stage. Mutation: let the replay arm of dogfood_metering_reading call
 // dogfood_real_metering_reading (or drop the origin match) and the first assertion goes red.
 test fn a_replayed_or_unattributable_attempt_establishes_no_metering() -> Bool {
-  (match dogfood_metering_reading(m: MeteringObserved { record: metering_record() }, executor: DispatchExecutorOriginObserved { origin: ReplayExecutorOrigin { recording_id: "r1" as NonEmptyStr } }) { MeteringGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  MeteringEstablished { evidence: _ } => false })
+  (match dogfood_metering_reading(m: MeteringObserved { record: metering_record() }, executor: DispatchExecutorOriginObserved { origin: ReplayExecutorOrigin { recording_id: RecordingId { base_sha: "1111111111111111111111111111111111111111" as NonEmptyStr, result_tree: "2222222222222222222222222222222222222222" as NonEmptyStr, exit_status: 0, manager_result: ServiceResultSuccess } } }) { MeteringGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  MeteringEstablished { evidence: _ } => false })
     && (match dogfood_metering_reading(m: MeteringObserved { record: metering_record() }, executor: DispatchExecutorOriginUnreadable { reason: "no origin" }) { MeteringGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  MeteringEstablished { evidence: _ } => false })
 }
 

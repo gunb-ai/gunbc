@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.algebra { trim }
 import extdeps.github.github { Repository }
 import gunbc.dispatch_attempt_launch { DispatchExecutorOrigin, RealExecutorOrigin, ReplayExecutorOrigin }
+import gunbc.dispatch_replay_recording { recording_id_text, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed }
 import extdeps.languages.json.parse { json_field_string, FieldRead, FieldAbsent, FieldMalformed }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -253,7 +254,7 @@ fn dispatch_executor_origin_json_members(origin: DispatchExecutorOrigin) -> List
     ReplayExecutorOrigin { recording_id } =>
       [
         json_kv(key: dispatch_executor_origin_key, value: json_string(s: dispatch_executor_origin_replay_word)),
-        json_kv(key: dispatch_executor_origin_recording_key, value: json_string(s: recording_id as String)),
+        json_kv(key: dispatch_executor_origin_recording_key, value: json_string(s: recording_id_text(id: recording_id))),
       ]
   }
 }
@@ -276,11 +277,11 @@ fn dispatch_executor_origin_of_document(doc: JsonValue) -> DispatchExecutorOrigi
         DispatchExecutorOriginObserved { origin: RealExecutorOrigin }
       } else if word == dispatch_executor_origin_replay_word {
         match json_field_string(obj: doc, key: dispatch_executor_origin_recording_key) {
-          FieldRead { value: id } =>
-            if id == "" {
-              DispatchExecutorOriginUnreadable { reason: "the spawn origin names a replay with an empty recording id" }
-            } else {
-              DispatchExecutorOriginObserved { origin: ReplayExecutorOrigin { recording_id: id as NonEmptyStr } }
+          FieldRead { value: text } =>
+            match recording_id_decode(text: text) {
+              RecordingIdDecoded { id } => DispatchExecutorOriginObserved { origin: ReplayExecutorOrigin { recording_id: id } }
+              RecordingIdMalformed { text: _, reason } =>
+                DispatchExecutorOriginUnreadable { reason: join(["the spawn origin names a replay whose recording id does not decode: ", reason], "") }
             }
           FieldAbsent =>
             DispatchExecutorOriginUnreadable { reason: "the spawn origin names a replay without its recording id" }
