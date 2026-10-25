@@ -1,6 +1,7 @@
 module test.claim.serving_fleet_program_witness
 
 import std.types { Bool, Int, List, String }
+import v2.std.decl_index { DeclFact }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { string_contains }
 import std.markdown { MarkdownDocument }
@@ -25,7 +26,8 @@ import test.claim.plan_citation_census {
   plan_citation_has_positional_citation,
   plan_citation_citation_roster,
   plan_citation_occurrences,
-  plan_citation_census_rows
+  plan_citation_census_facts,
+  plan_citation_census_rows_in
 }
 
 // Guards on the serving-fleet umbrella CARRIER (DESIGN section 1: a plan's authority is its
@@ -45,8 +47,9 @@ fn carrier_is_registered() -> Bool {
   fold(all_plans, init: false, f: (acc, p) => acc || p.slug == "serving-fleet-program")
 }
 
-fn citation_resolves(cite: String) -> Bool {
-  plan_citation_census_rows(cite: cite).length() >= 1
+// Each claim that resolves citations reads the census once and joins every citation against it.
+fn citation_resolves(facts: List<DeclFact>, cite: String) -> Bool {
+  plan_citation_census_rows_in(facts: facts, cite: cite).length() >= 1
 }
 
 test fn the_carrier_is_registered_and_is_the_only_authority() -> Bool {
@@ -79,10 +82,11 @@ test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bo
   let t = carrier_text()
   let roster = plan_citation_citation_roster(t: t)
   let covered = fold(roster, init: 0, f: (n, cite) => n + plan_citation_occurrences(t: t, cite: cite))
+  let facts = plan_citation_census_facts()
   roster.length() >= 1
     && covered == t.split(delimiter: "::").length() - 1
-    && !citation_resolves(cite: "gunbc.serving.no_such_module::NoSuchSymbol")
-    && all(roster, cite => citation_resolves(cite: cite))
+    && !citation_resolves(facts: facts, cite: "gunbc.serving.no_such_module::NoSuchSymbol")
+    && all(roster, cite => citation_resolves(facts: facts, cite: cite))
 }
 
 // ── Row identity. The id is a closed sum, so a misspelled label has no constructor; what
@@ -108,9 +112,9 @@ test fn every_row_id_is_carried_once_and_every_edge_names_a_row() -> Bool {
 
 // ── Owner. An owned row's symbol must resolve in the declaration census; an unowned row
 // states its obligation. A symbol no module declares fails.
-fn owner_is_declared(o: ServingFleetOwner) -> Bool {
+fn owner_is_declared(facts: List<DeclFact>, o: ServingFleetOwner) -> Bool {
   match o {
-    SfpOwnedBy { symbol } => citation_resolves(cite: symbol)
+    SfpOwnedBy { symbol } => citation_resolves(facts: facts, cite: symbol)
     SfpUnowned { obligation } => obligation != ""
   }
 }
@@ -124,10 +128,11 @@ fn is_owned(o: ServingFleetOwner) -> Bool {
 
 test fn every_row_names_a_resolvable_owner_or_its_obligation() -> Bool {
   let rows = serving_fleet_rows
+  let facts = plan_citation_census_facts()
   any(rows, r => is_owned(o: r.owner))
-    && all(rows, r => owner_is_declared(o: r.owner))
-    && !owner_is_declared(o: SfpOwnedBy { symbol: "gunbc.serving.no_such_module::NoSuchSymbol" })
-    && !owner_is_declared(o: SfpUnowned { obligation: "" })
+    && all(rows, r => owner_is_declared(facts: facts, o: r.owner))
+    && !owner_is_declared(facts: facts, o: SfpOwnedBy { symbol: "gunbc.serving.no_such_module::NoSuchSymbol" })
+    && !owner_is_declared(facts: facts, o: SfpUnowned { obligation: "" })
 }
 
 // ── Relations are typed. A row's prose names no row, so every relation between rows is a
