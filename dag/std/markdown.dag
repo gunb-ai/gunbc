@@ -23,11 +23,16 @@ type MarkdownInline
   | ImageInline { alt: String, url: String }
   | SymbolRefInline { symbol: CitedSymbol }
 
-// THE ONE CANONICAL SPELLING of a cited symbol: the module path, then the declaration after a space,
-// then a field after a dot or a type parameter in angle brackets (the two are distinct components of
-// the declaration, so they never share a spelling). One spelling, the spaced form: never a per-site choice
-// between ::, . and space, which would be a second name for one citation. A module's name is structural
-// text, so it reaches host text through the declared crossing (std.coercion unicode_scalar_fold).
+// The rendered spelling of a cited symbol in documentation: the module path, then the declaration after a
+// space, then a field after a dot or a type parameter in angle brackets (the two are distinct components of
+// the declaration, so they never share a spelling). Every documentation citation renders here, never by a
+// per-site choice between ::, . and space. This is NOT yet the only spelling of a DeclarationRef:
+// std.decl_ref declaration_ref_display_key still writes the :: form, and about 350 call sites in about 80
+// modules read it, many of them comparing its strings where declaration_ref_eq is the identity. The two
+// spellings are one concept, so the stated divergence is temporary. It ends when the display key renders
+// through this spelling and its string comparisons become declaration_ref_eq; that one cut is named on
+// gunb-ai/gunbc#14803. A module's name is structural text, so it reaches host text through the declared
+// crossing (std.coercion unicode_scalar_fold).
 fn cited_symbol_spelling(symbol: CitedSymbol) -> String {
   match symbol {
     ModuleSymbol { module: m } => unicode_scalar_fold(xs: m.name)
