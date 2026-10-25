@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_dispatch_actuator
 
 import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance, dispatch_attempt_unit_stem, dispatch_attempt_worker_log_path_for_instance, dispatch_model_driven_privilege_confinement_properties, dispatch_pane_working_directory, dispatch_worker_git_pointer_readonly_list, dispatch_worker_unit_stream_properties, dispatch_worker_writable_path_list, dispatch_worktree_entry_name, dispatch_worktree_path_for_instance, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, GunbcHarnessProvider }
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments, install_directory_owned_argv_command }
-import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly, DirectoryOwnerGroupWritableSetgid }
+import gunbc.managed_directory { declared_directory_mode, DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid, DirectoryOwnerGroupWritableSetgid }
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
 import std.optional { Present }
@@ -151,6 +151,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemCreateKindUnrecognized, filesystem_create_new,
 }
 import std.filesystem { path_parent_directory }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
 import extdeps.shell
 import gunbc.command_runner { run_shell_command_observe }
 import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, PosixShKeepFile }
@@ -2769,58 +2770,125 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
 // existence together, and publication_receipt_directory_is_named_once_note's requirement that a
 // reader be able to LIST the directory holds from attempt birth instead of from first publish.
 // The worker/ child (path_parent_directory of dispatch_attempt_worker_log_path_for_instance) is
-// in this same list: the belt runs attempt_state_prepare_argv_for_instance as step
+// in this same list: the belt runs attempt_state_prepare_argvs_for_instance as step
 // attempt-state-prepare, then belt_attempt_state_initialize_for_instance writes
 // launch-identity.json, then the unit starts. ReadWritePaths has no '-' prefix, so a missing
 // worker/ is NAMESPACE 226 rather than a silent drop of the write grant (Manager B).
-fn attempt_state_prepare_argv_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> HostExecArgv {
+//
+// THE MODES FOLLOW WHO ENTERS EACH DIRECTORY, keyed on the instance's worker identity. Under
+// WorkerIsServiceUser the worker IS the owner, so every directory is owner-only and the command is the
+// one install -d it always was. Under WorkerDedicatedAccount the worker is a foreign uid in the shared
+// attempt group, and its handed set (dispatch_worker_handed_set) enters exactly three of these: it
+// traverses the attempt directory, writes worker/ (its scratch directory and stdout parent), and writes
+// the wire log directory inside worker/, where the harness persists each round's request and response
+// bytes (dispatch_attempt_wire_dir_for_instance). An owner-only attempt directory was refused at the
+// worker-traversal step on the srv1 lab, 2026-10-24 (1000:1003 0700, no execute bit for the worker);
+// the wire directory was first filed with the stages below as owner-only, which the same lab refused
+// at the worker's first round. So the attempt directory is group-traversable and setgid, which keeps
+// the group the attempt-state root hands down for the children made inside it; worker/ and the wire
+// directory are group-writable setgid; the publication, verification, review and audit stages, which
+// the worker never enters, stay owner-only. The attempt directory is never group-writable: the worker
+// must not replace launch-identity.json or a stage directory beside it. One install -d per mode,
+// attempt directory first, so each child is made inside a parent that already carries its group.
+fn attempt_state_install_argv(instance: HostDashboardInstance, mode: DeclaredDirectoryMode, paths: List<String>) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
       environment: instance.execution_environment,
       cap: AttemptStateDirectoryCapability,
     ),
-    args: coreutils_install_directories_arguments(mode: declared_directory_mode(m: DirectoryOwnerOnly), paths: [
-      dispatch_attempt_state_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-      path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      )),
-      dispatch_attempt_publication_dir_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-      dispatch_attempt_verification_dir_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-      dispatch_attempt_review_dir_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-      dispatch_attempt_audit_dir_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-      dispatch_attempt_wire_dir_for_instance(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: attempt_key,
-      ),
-    ]),
+    args: coreutils_install_directories_arguments(mode: declared_directory_mode(m: mode), paths: paths),
   )
+}
+
+fn attempt_state_prepare_argvs_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> List<HostExecArgv> {
+  let attempt_directory = dispatch_attempt_state_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  )
+  let worker_scratch = path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  ))
+  let stages = [
+    dispatch_attempt_publication_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    dispatch_attempt_verification_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    dispatch_attempt_review_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    dispatch_attempt_audit_dir_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+  ]
+  let wire = dispatch_attempt_wire_dir_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+  )
+  match instance.worker {
+    WorkerIsServiceUser => [
+      attempt_state_install_argv(instance: instance, mode: DirectoryOwnerOnly, paths: concat(concat([attempt_directory, worker_scratch], stages), [wire])),
+    ]
+    WorkerDedicatedAccount => [
+      attempt_state_install_argv(instance: instance, mode: DirectoryOwnerAllGroupTraverseSetgid, paths: [attempt_directory]),
+      attempt_state_install_argv(instance: instance, mode: DirectoryOwnerGroupWritableSetgid, paths: [worker_scratch, wire]),
+      attempt_state_install_argv(instance: instance, mode: DirectoryOwnerOnly, paths: stages),
+    ]
+  }
+}
+
+// THE EMPTY EVENT STREAM IS CREATED FOR ITS WRITER. The belt creates provider-events.jsonl empty before
+// launch (belt_attempt_state_initialize_for_instance), so a readable empty file proves event capture was
+// initialized; the harness worker then appends every round's events to it. Under WorkerIsServiceUser the
+// writer is the file's owner and the create is the plain write it always was. Under WorkerDedicatedAccount
+// the writer is a foreign uid in the attempt group, and the plain write left the file owner-writable only
+// (the srv1 lab refused the worker's first append, 2026-10-24, Permission denied), so the file is created
+// group-writable AT CREATION -- the mode set on the new inode, never widened afterwards -- and create-only,
+// because a fresh attempt has no event stream yet.
+data dispatch_attempt_events_group_writable_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: false },
+  group: PermissionBits { read: true, write: true, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false, setgid: false, sticky: false,
+}
+
+type DispatchAttemptEventsInitialization
+  = DispatchAttemptEventsInitialized
+  | DispatchAttemptEventsInitializationFailed { detail: String }
+
+fn dispatch_attempt_events_initialize_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> DispatchAttemptEventsInitialization {
+  let path = dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match instance.worker {
+    WorkerIsServiceUser => {
+      let written = Filesystem.Write(path: path, content: "")
+      if written.success { DispatchAttemptEventsInitialized } else { DispatchAttemptEventsInitializationFailed { detail: written.error } }
+    }
+    WorkerDedicatedAccount => {
+      let created = Filesystem.WriteCreateNewWithMode(path: path, content: "", mode: file_mode_bits(mode: dispatch_attempt_events_group_writable_mode))
+      if created.success { DispatchAttemptEventsInitialized } else { DispatchAttemptEventsInitializationFailed { detail: created.error } }
+    }
+  }
 }
 
 fn attempt_current_pointer_argv_for_instance(
@@ -3522,7 +3590,7 @@ type DispatchSpawnCommands {
   // is deliberately absent here.
   worker_git_entry_grant: List<HostExecArgv>
   worker_git_entry_readback: HostExecArgv
-  attempt_state_prepare: HostExecArgv
+  attempt_state_prepare: List<HostExecArgv>
   attempt_current_pointer: HostExecArgv
   session_container: DispatchSessionContainer
 }
@@ -3624,7 +3692,7 @@ fn dispatch_spawn_commands_for_launch(
     branch_name: branch_name,
     remote_ref: attempt_origin_base_ref(origin: origin, instance_base_ref: instance.dispatch_base_ref as String),
   )
-  let state_prepare = attempt_state_prepare_argv_for_instance(
+  let state_prepare = attempt_state_prepare_argvs_for_instance(
     instance: instance,
     node_id: node.node,
     attempt_key: attempt_key,

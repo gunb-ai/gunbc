@@ -1,6 +1,6 @@
 module test.claim.bmc.bmc_health_reader_witness
 
-import std.types { Bool, String }
+import std.types { Bool, Secret, String }
 import gunbc.bmc.bmc_health_reader {
   CreateReaderAccount,
   ReaderAccountAbsent,
@@ -20,13 +20,12 @@ import gunbc.bmc.bmc_health_reader {
 import gunbc.tools.bmc_health_reader_converge {
   BmcLoginNotAttempted,
   BmcLoginRejected,
-  bmc_health_reader_body_path,
   reader_login_exit,
 }
 import gunbc.bmc.bmc_custody_read { CustodyCredentialAbsent, CustodyCredentialUnreadable, custody_read_refusal_cause }
 import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeUnreached }
 import gunbc.bmc.bmc_onboarding { srv3_onboarding_plan, srv4_onboarding_plan }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import std.process { ExitFailure }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -76,12 +75,11 @@ test fn a_wrong_role_or_a_disabled_reader_is_refused_not_corrected() -> Bool {
 // The body is read back through the same decoder the observation uses, rather than matched as
 // text: the body the flow sends must be one the flow itself would judge converged.
 test fn the_create_body_asks_for_read_only_and_the_secret_is_per_host() -> Bool {
-  let body = reader_account_create_body(password: "p")
+  let body = reader_account_create_body(password: "p" as Secret) as String
   let judged = match plan_reader_account(observation: reader_account_from_json(body: body)) { ReaderAccountConverged => true _ => false }
   judged
     && string_contains(s: body, pattern: "gunbc_health")
     && bmc_health_reader_secret_id(host: operator_host_srv3) == "bmc-srv3-health-reader"
-    && bmc_health_reader_body_path(host: operator_host_srv3) != bmc_health_reader_body_path(host: operator_host_srv4)
 }
 
 // Only a 404 says the secret is absent; a refused status or an unreached call is a read failure

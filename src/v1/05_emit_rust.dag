@@ -12489,6 +12489,12 @@ fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types:
   match expr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: expr, source_indices: source_indices)
+      if cursor_name_in(names: emit_info.tco_cursor_params, name: n) {
+        // A cursor param read as a value is its remainder (cursor_escapes_only says when the analysis
+        // admits one); every other read of it is the scrutinee or its own self-call slot, which never
+        // reach this emitter.
+        concat("Rc::new(", tco_base_name(param: n), ".skip(", tco_cursor_name(param: n), "))")
+      } else {
       // THIS occurrence was proved to be its binding's only use, at a by-value argument
       // (v1.compiler.ownership build_moved_argument_occurrences says why the key is the occurrence).
       // The move is granted for this one emission and for no other occurrence of the spelling.
@@ -12500,6 +12506,7 @@ fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types:
         with(emit_info, { movable: set_insert(emit_info.movable, n) })
       } else { emit_info }
       emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: occurrence_info, source_indices: source_indices, module_name: module_name)
+      }
     _ => emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: Rust)
   }
 }
@@ -17143,8 +17150,10 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registr
       "\n}"
     )
   } else {
-    // Each cursor param's slot keeps its base list for the whole loop, so each iteration reads a
-    // fresh handle on it rather than moving it out of the slot.
+    // Each cursor param's slot keeps its base list for the whole loop, and the param's NAME is bound
+    // nowhere in the loop: its list match reads the base (`__tco_base_<p>`), and a read of it as a value
+    // renders its remainder (emit_rust_expr_var). So any route that printed the bare name instead would
+    // be a rustc refusal (an unbound name), never a read of the whole base where the remainder was meant.
     //
     // TWO LOOPS, BECAUSE A FOCUS BORROWS ITS BASE. The inner loop is the walk: an advance only moves
     // an index and continues it, so every focus keeps its cached chunk across iterations. The outer
@@ -17157,8 +17166,6 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registr
     let focus_lets = cursor_params |> map(cp =>
       concat(make_indent(level: depth + 1), "let ", tco_base_name(param: cp), " = ", emit_ident(name: tco_loop_slot_name(param_name: cp), target: Rust), ".clone();\n",
         make_indent(level: depth + 1), "#[allow(unused_mut, unused_variables)]\n", make_indent(level: depth + 1), "let mut ", tco_focus_name(param: cp), " = ", tco_base_name(param: cp), ".focus();\n")) |> join(separator: "")
-    let cursor_lets = cursor_params |> map(cp =>
-      concat(make_indent(level: depth + 1), "#[allow(unused_mut)]\n", make_indent(level: depth + 1), "let mut ", emit_ident(name: cp, target: Rust), " = ", emit_ident(name: tco_loop_slot_name(param_name: cp), target: Rust), ".clone();\n")) |> join(separator: "")
     concat(
       "{ ", cursor_decls, "\n",
       make_indent(level: depth + 1), "#[allow(unused_labels)]\n",
@@ -17166,7 +17173,6 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registr
       focus_lets,
       make_indent(level: depth + 1), "break loop {\n",
       tco_loop_iteration_lets(params: params |> filter(p => !cursor_name_in(names: cursor_params, name: param_node_name_at(n: p, source_indices: si))), source_indices: si, depth: depth + 1),
-      cursor_lets,
       make_indent(level: depth + 1),
       inner,
       "\n};\n};\n__tco_result\n}"
@@ -17303,6 +17309,36 @@ fn cursor_walk_join(a: CursorWalk, b: CursorWalk) -> CursorWalk {
   if a.ok && b.ok { cursor_walk_ok(tails: concat(a.tails, b.tails)) } else { cursor_walk_fail() }
 }
 
+// AN ESCAPING READ OF A CURSOR PARAM IS ITS REMAINDER, MATERIALIZED WHERE IT ESCAPES. A use of `p`
+// that is neither the scrutinee of its own list match nor `p` handed back at its own self-call
+// position needs the VALUE of `p`: the unchanged base minus the consumed prefix, `base.skip(cursor)`
+// (emit_rust_expr_var renders it). That costs one skip at the use instead of one per step, which is
+// what admits a walk whose exit appends the rest of a list (std.algebra sort_merge_into,
+// `Empty => list_append(left: acc, right: left)`) or hands a list back unchanged at its own position,
+// an advance of 0. Admitted only when no tail binder is mentioned (a tail is an index, never a value)
+// and every mention of `p` is a plain occurrence that runs once per iteration and means the param:
+// not inside a lambda or a for-each body, and not under a binder that rebinds the spelling.
+fn cursor_escapes_only(node: Node, p: String, in_tails: List<String>, si: Map<String, NewlineIndex>) -> Bool {
+  !cursor_mentions(node: node, names: in_tails, si: si) && cursor_reads_are_plain(node: node, p: p, si: si)
+}
+
+fn cursor_reads_are_plain(node: Node, p: String, si: Map<String, NewlineIndex>) -> Bool {
+  if !expr_references_var(node: node, var_name: p, source_indices: si) {
+    true
+  } else {
+    match node.expr_data {
+      ExprLambda => false
+      ExprForEach => false
+      ExprLet =>
+        let_binding_name_at(texpr: node, source_indices: si) != p && node.children |> all(c => cursor_reads_are_plain(node: c, p: p, si: si))
+      ExprMatch =>
+        let rebinds = match_arm_nodes(texpr: node) |> any(arm => pattern_binder_names(pattern: arm_pattern(n: arm), si: si) |> any(b => b == p))
+        !rebinds && node.children |> all(c => cursor_reads_are_plain(node: c, p: p, si: si))
+      _ => node.children |> all(c => cursor_reads_are_plain(node: c, p: p, si: si))
+    }
+  }
+}
+
 fn cursor_name_in(names: List<String>, name: String) -> Bool {
   names |> any(x => x == name)
 }
@@ -17383,13 +17419,13 @@ fn cursor_walk(n: Node, p: String, in_tails: List<String>, fn_name: String, para
                   cursor_walk_join(a: acc, b: cursor_walk_arm(plan: plan, p: p, in_tails: in_tails, fn_name: fn_name, param_names: param_names, emit_info: emit_info, si: si)))
             }
           }
-        } else if cursor_mentions(node: s, names: names, si: si) {
+        } else if !cursor_escapes_only(node: s, p: p, in_tails: in_tails, si: si) {
           cursor_walk_fail()
         } else {
           arm_list |> fold(init: cursor_walk_ok(tails: []), f: (acc, arm) =>
             let binders = pattern_binder_names(pattern: arm_pattern(n: arm), si: si)
             let guard_mentions = match arm_guard(n: arm) {
-              Present { value: g } => cursor_mentions(node: g, names: names, si: si)
+              Present { value: g } => !cursor_escapes_only(node: g, p: p, in_tails: in_tails, si: si)
               Absent => false
             }
             if guard_mentions || binders |> any(b => cursor_name_in(names: names, name: b)) {
@@ -17401,7 +17437,7 @@ fn cursor_walk(n: Node, p: String, in_tails: List<String>, fn_name: String, para
       ExprIf =>
         let c = if_condition(texpr: n)
         let t = if_then_branch(texpr: n)
-        if cursor_mentions(node: c, names: names, si: si) {
+        if !cursor_escapes_only(node: c, p: p, in_tails: in_tails, si: si) {
           cursor_walk_fail()
         } else {
           let then_walk = cursor_walk(n: t, p: p, in_tails: in_tails, fn_name: fn_name, param_names: param_names, emit_info: emit_info, si: si)
@@ -17412,7 +17448,7 @@ fn cursor_walk(n: Node, p: String, in_tails: List<String>, fn_name: String, para
         }
       ExprLet =>
         let bound = let_binding_name_at(texpr: n, source_indices: si)
-        if cursor_name_in(names: names, name: bound) || cursor_name_in(names: param_names, name: bound) || cursor_mentions(node: let_value(texpr: n), names: names, si: si) {
+        if cursor_name_in(names: names, name: bound) || cursor_name_in(names: param_names, name: bound) || !cursor_escapes_only(node: let_value(texpr: n), p: p, in_tails: in_tails, si: si) {
           cursor_walk_fail()
         } else {
           match let_body(texpr: n) {
@@ -17423,7 +17459,7 @@ fn cursor_walk(n: Node, p: String, in_tails: List<String>, fn_name: String, para
       ExprBlock =>
         let ss = n.children
         let ss_count = ss |> count
-        let init_mentions = ss |> enumerate |> any(pair => pair.first < ss_count - 1 && cursor_mentions(node: pair.second, names: names, si: si))
+        let init_mentions = ss |> enumerate |> any(pair => pair.first < ss_count - 1 && !cursor_escapes_only(node: pair.second, p: p, in_tails: in_tails, si: si))
         if init_mentions {
           cursor_walk_fail()
         } else {
@@ -17447,19 +17483,22 @@ fn cursor_walk(n: Node, p: String, in_tails: List<String>, fn_name: String, para
                   if pair.second == p {
                     match av.expr_data {
                       ExprVar { binding_kind: _ } =>
-                        cursor_name_in(names: in_tails, name: expr_var_name_at(texpr: av, source_indices: si)) || !cursor_mentions(node: av, names: names, si: si)
-                      _ => !cursor_mentions(node: av, names: names, si: si)
+                        let passed = expr_var_name_at(texpr: av, source_indices: si)
+                        passed == p || cursor_name_in(names: in_tails, name: passed) || cursor_escapes_only(node: av, p: p, in_tails: in_tails, si: si)
+                      _ => cursor_escapes_only(node: av, p: p, in_tails: in_tails, si: si)
                     }
                   } else {
-                    !cursor_mentions(node: av, names: names, si: si)
+                    cursor_escapes_only(node: av, p: p, in_tails: in_tails, si: si)
                   }
               })
             if ok { cursor_walk_ok(tails: []) } else { cursor_walk_fail() }
           }
+        } else if cursor_escapes_only(node: n, p: p, in_tails: in_tails, si: si) {
+          cursor_walk_ok(tails: [])
         } else {
           cursor_walk_fail()
         }
-      _ => cursor_walk_fail()
+      _ => if cursor_escapes_only(node: n, p: p, in_tails: in_tails, si: si) { cursor_walk_ok(tails: []) } else { cursor_walk_fail() }
     }
   }
 }
@@ -17523,7 +17562,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
       let cursor_of_scrutinee = cursor_scrutinee_param(scrutinee: s, params: emit_info.tco_cursor_params, si: tco_si)
       let on_cursor = cursor_of_scrutinee != ""
       let scrut_str = if on_cursor {
-        concat(emit_ident(name: cursor_of_scrutinee, target: Rust), ".clone()")
+        concat(tco_base_name(param: cursor_of_scrutinee), ".clone()")
       } else {
         emit_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }
@@ -17694,13 +17733,21 @@ fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<S
     let arg_str = match ordered_args |> skip(pair.first) |> first { Present { value: given_str } => given_str  Absent => "" }
     if cursor_name_in(names: cursor_params, name: assigned_name) {
       let assigned_av = match arg_values |> skip(pair.first) |> first { Present { value: given_av } => given_av  Absent => pair.second }
+      let passed_itself = match assigned_av.expr_data {
+        ExprVar { binding_kind: _ } => expr_var_name_at(texpr: assigned_av, source_indices: si) == assigned_name
+        _ => false
+      }
       let advance = match assigned_av.expr_data {
         ExprVar { binding_kind: _ } => map_get(emit_info.tco_cursor_tails, cursor_tail_key(param: assigned_name, tail: expr_var_name_at(texpr: assigned_av, source_indices: si)))
         _ => none
       }
+      // The param handed back at its own position is an advance of 0: its base and its index stand,
+      // so nothing is assigned (rendering it as a value would rebase onto its remainder for nothing).
+      if passed_itself { [] } else {
       match advance {
         Present { value: depth_of_tail } => [TcoAssign { target: tco_cursor_name(param: assigned_name), value: concat(tco_cursor_name(param: assigned_name), " + ", to_string(value: depth_of_tail)), rebases: false }]
         Absent => [TcoAssign { target: slot, value: arg_str, rebases: true }, TcoAssign { target: tco_cursor_name(param: assigned_name), value: "0", rebases: true }]
+      }
       }
     } else {
       [TcoAssign { target: slot, value: arg_str, rebases: false }]
