@@ -1,0 +1,168 @@
+module gunbc.serving.flash_next_topology
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count, BasisPoint, basis_point_count, PositiveMeasureCount, positive_measure_count, positive_measure_count_nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.serving.flash_next_quant_matrix { CellOutcome, CellMeasured }
+import gunbc.serving.flash_next_experiment_identity { host_ngram_table_copies }
+
+// TOPOLOGY IS A PARAMETER, not a hard-coded 8x1: tensor-parallel width x data-parallel replicas, with expert
+// parallelism a declared flag. DP replicates the weights per replica; TP shards them across the replica's cards.
+// Both widths are std.measure PositiveMeasureCount (review 5641830716): a width of zero is not a narrower
+// topology but no topology, and topology_capacity divides by the TP width, so zero has no constructor rather
+// than a check at the division.
+type ServingTopology {
+  tensor_parallel: PositiveMeasureCount
+  data_parallel: PositiveMeasureCount
+  expert_parallel: Bool
+}
+
+// WIDTHS READ AS NATURALS (an engine's --tensor-parallel-size / --data-parallel-size) enter only through this
+// checked constructor, which names the width that was zero; TP is read first, so a 0x0 shape names TP.
+type TopologyWidth = TensorParallelWidth | DataParallelWidth
+
+type ServingTopologyBuild
+  = ServingTopologyBuilt { topology: ServingTopology }
+  | ServingTopologyWidthZero { width: TopologyWidth }
+
+fn serving_topology_from_widths(tensor_parallel: Nat, data_parallel: Nat, expert_parallel: Bool) -> ServingTopologyBuild {
+  if tensor_parallel == 0 {
+    ServingTopologyWidthZero { width: TensorParallelWidth }
+  } else if data_parallel == 0 {
+    ServingTopologyWidthZero { width: DataParallelWidth }
+  } else {
+    ServingTopologyBuilt { topology: ServingTopology { tensor_parallel: positive_measure_count(predecessor: tensor_parallel - 1), data_parallel: positive_measure_count(predecessor: data_parallel - 1), expert_parallel: expert_parallel } }
+  }
+}
+
+// The widths the measured layouts and the modeled shapes name, spelled once as positive counts.
+data width_one: PositiveMeasureCount = positive_measure_count(predecessor: 0)
+data width_two: PositiveMeasureCount = positive_measure_count(predecessor: 1)
+data width_four: PositiveMeasureCount = positive_measure_count(predecessor: 3)
+data width_eight: PositiveMeasureCount = positive_measure_count(predecessor: 7)
+
+fn topology_tp(t: ServingTopology) -> Nat {
+  positive_measure_count_nat(count: t.tensor_parallel)
+}
+
+fn topology_dp(t: ServingTopology) -> Nat {
+  positive_measure_count_nat(count: t.data_parallel)
+}
+
+fn topology_cards(t: ServingTopology) -> Nat {
+  topology_tp(t: t) * topology_dp(t: t)
+}
+
+// What one card contributes, taken from a MEASURED matrix cell so overhead is derived, not assumed:
+//   overhead = utilization x memory - weights - kv   (everything the measured cell spent that is neither).
+// Review 84774 (flat-scalar unit fields): every byte figure is std.measure ByteSize; the per-token
+// terms name their denominator in the field, exactly as gunbc.econ.scm_serving_model carries
+// `stored_bytes_per_user_after_dedup: ByteSize`. Review 84973 put the utilization on std.measure's
+// BasisPoint, the carrier for a ratio with a print scale.
+type CardBudget {
+  memory_bytes: ByteSize
+  utilization: BasisPoint
+  weights_bytes: ByteSize
+  overhead_bytes: ByteSize
+  full_attention_bytes_per_token: ByteSize
+  indexer_bytes_per_token: ByteSize
+  gdn_amortized_bytes_per_token: ByteSize
+}
+
+// WHY A CELL YIELDS NO BUDGET, one cause per refusal (review 5641830716: a zero-token measured cell divided
+// before it refused). The KV-token check runs before the per-token division, so a zero is a refusal, never
+// an arithmetic fault.
+type CardBudgetRefusal
+  = CellNotMeasured
+  | CellMeasurementIncomplete
+  | MeasuredKvTokensZero
+  | MeasuredUsageExceedsUsableMemory
+  | MeasuredPerTokenBelowDerivedTerms
+
+type CardBudgetBuild
+  = CardBudgetDerived { budget: CardBudget }
+  | CardBudgetRefused { cause: CardBudgetRefusal }
+
+fn card_budget_from_measured_cell(memory_bytes: ByteSize, cell: CellOutcome, full_attention_bytes_per_token: ByteSize, indexer_bytes_per_token: ByteSize) -> CardBudgetBuild {
+  match cell {
+    CellMeasured { weights_bytes: Present { value: wb }, kv_bytes: Present { value: kb }, kv_tokens: Present { value: t }, gpu_memory_utilization: u, throughput: _ } => if t == 0 {
+      CardBudgetRefused { cause: MeasuredKvTokensZero }
+    } else {
+      let memory = byte_size_count(b: memory_bytes)
+      let full_attention = byte_size_count(b: full_attention_bytes_per_token)
+      let indexer = byte_size_count(b: indexer_bytes_per_token)
+      let usable = memory * basis_point_count(bp: u) / 10000
+      let weights = byte_size_count(b: wb)
+      let kv = byte_size_count(b: kb)
+      let per_token = kv / t
+      if usable < weights + kv {
+        CardBudgetRefused { cause: MeasuredUsageExceedsUsableMemory }
+      } else if per_token < full_attention + indexer {
+        CardBudgetRefused { cause: MeasuredPerTokenBelowDerivedTerms }
+      } else {
+        CardBudgetDerived { budget: CardBudget { memory_bytes: memory_bytes, utilization: u, weights_bytes: wb, overhead_bytes: byte_size(count: usable - weights - kv), full_attention_bytes_per_token: full_attention_bytes_per_token, indexer_bytes_per_token: indexer_bytes_per_token, gdn_amortized_bytes_per_token: byte_size(count: per_token - full_attention - indexer) } }
+      }
+    }
+    CellMeasured { weights_bytes: _, kv_bytes: _, kv_tokens: _, gpu_memory_utilization: _, throughput: _ } => CardBudgetRefused { cause: CellMeasurementIncomplete }
+    _ => CardBudgetRefused { cause: CellNotMeasured }
+  }
+}
+
+// PER-RANK KV BYTES PER TOKEN (ModelOutput until an 8-GPU run measures it). With 2 KV heads, full-attention KV per rank
+// stops shrinking at TP2 (each rank keeps >= 1 head: half the full KV per token) while the per-rank POOL keeps growing with TP
+// because weights shard 1/TP, so token capacity still rises past TP2 with the replication waste stated. The indexer cache
+// (1 kv head) replicates at every TP>1; the GDN state shards 1/TP. Full-attention and indexer bytes are derived from
+// config.json; the GDN state is per SEQUENCE, so the remainder after subtracting them is that state amortized over the
+// measured mix at the measured max-model-len, a context-length-dependent figure, not a per-token constant.
+// (review 84955 sweep: the shardable quantity is bytes, so it rides ByteSize; `tp` is a dimensionless
+// shard count, not a unit, and positive by construction, review 5641830716.)
+fn full_attention_rank_bytes(full: ByteSize, tp: PositiveMeasureCount) -> ByteSize {
+  if positive_measure_count_nat(count: tp) > 1 { byte_size(count: byte_size_count(b: full) / 2) } else { full }
+}
+
+fn rank_bytes_per_token(b: CardBudget, tp: PositiveMeasureCount) -> ByteSize {
+  byte_size(count: byte_size_count(b: full_attention_rank_bytes(full: b.full_attention_bytes_per_token, tp: tp)) + byte_size_count(b: b.indexer_bytes_per_token) + byte_size_count(b: b.gdn_amortized_bytes_per_token) / positive_measure_count_nat(count: tp))
+}
+
+// Sensitivity control: the derived indexer bytes scaled (the per-block scale bytes are unknown), taken out of the GDN term.
+fn budget_with_indexer_scaled(b: CardBudget, permille: Nat) -> CardBudget {
+  let scaled = byte_size_count(b: b.indexer_bytes_per_token) * permille / 1000
+  CardBudget { memory_bytes: b.memory_bytes, utilization: b.utilization, weights_bytes: b.weights_bytes, overhead_bytes: b.overhead_bytes, full_attention_bytes_per_token: b.full_attention_bytes_per_token, indexer_bytes_per_token: byte_size(count: scaled), gdn_amortized_bytes_per_token: byte_size(count: byte_size_count(b: b.gdn_amortized_bytes_per_token) + byte_size_count(b: b.indexer_bytes_per_token) - scaled) }
+}
+
+// WHY A TOPOLOGY HOLDS NO TOKENS. A zero rank bytes per token (a budget whose three per-token terms are all
+// zero, which budget_with_indexer_scaled or a hand-built CardBudget can produce) refuses before the division.
+type TopologyRefusal
+  = WeightsDoNotFit
+  | RankBytesPerTokenZero
+
+type TopologyCapacity
+  = TopologyFits { retained_tokens: Nat, per_replica_tokens: Nat, weight_copies_bytes: ByteSize }
+  | TopologyRefused { cause: TopologyRefusal }
+
+// Per-rank pool = utilization x memory - weights/TP - overhead; a replica's tokens = pool / per-rank bytes per token (every
+// rank holds the same tokens); aggregate = replicas x that.
+fn topology_capacity(t: ServingTopology, b: CardBudget) -> TopologyCapacity {
+  let usable = byte_size_count(b: b.memory_bytes) * basis_point_count(bp: b.utilization) / 10000
+  let shard = byte_size_count(b: b.weights_bytes) / topology_tp(t: t)
+  let rank_bytes = byte_size_count(b: rank_bytes_per_token(b: b, tp: t.tensor_parallel))
+  if usable < shard + byte_size_count(b: b.overhead_bytes) {
+    TopologyRefused { cause: WeightsDoNotFit }
+  } else if rank_bytes == 0 {
+    TopologyRefused { cause: RankBytesPerTokenZero }
+  } else {
+    let pool = usable - shard - byte_size_count(b: b.overhead_bytes)
+    let per_replica = pool / rank_bytes
+    TopologyFits { retained_tokens: per_replica * topology_dp(t: t), per_replica_tokens: per_replica, weight_copies_bytes: byte_size(count: byte_size_count(b: b.weights_bytes) * topology_dp(t: t)) }
+  }
+}
+
+// Host RAM for the n-gram table: one shared copy upstream for co-located DP replicas.
+fn topology_host_ngram_copies(t: ServingTopology, shared_copy: Bool) -> Nat {
+  host_ngram_table_copies(replicas: topology_dp(t: t), shared_copy: shared_copy)
+}
+
+data flash_next_topology_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: the indexer/GDN split of the KV remainder, the per-rank formula (ModelOutput) and TP/EP collective-communication cost and the replica-to-card routing, CPU, NIC, thermal and NVSwitch effects are unmodeled until a multi-card run reports; the capacity here is KV arithmetic only, a first-order prediction and not a system result. EP weight placement (experts sharded separately from dense weights) is treated as TP sharding until measured." as NonEmptyStr
+)
