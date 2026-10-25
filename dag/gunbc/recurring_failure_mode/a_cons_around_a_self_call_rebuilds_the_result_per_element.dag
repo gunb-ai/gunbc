@@ -1,0 +1,39 @@
+module gunbc.recurring_failure_mode.a_cons_around_a_self_call_rebuilds_the_result_per_element
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_cons_around_a_self_call_rebuilds_the_result_per_element: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_cons_around_a_self_call_rebuilds_the_result_per_element" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a REQUIRED control that times an emitted tail-position Cons self-call across doublings of n and goes red outside a linear band, SUFFICIENT FOR a revert of v1.compiler.emit_rust is_trmc_eligible to turn v2-bootstrap red; //gunbc/instruments:cons-tail-recursion case take_n.linear is that control everywhere except that it is not on the required path."
+    }
+  },
+
+  receipts: [
+    "INVALID STATE: a self-recursive function returning a list whose recursive call is the tail of a Cons in tail position, `Cons { head: h, tail: f(args) }`, is emitted as plain recursion: each level evaluates f's whole result, clones that vector and inserts h at index 0, under a stacker frame per element. The value is right; the cost is a materialized, copied vector per element where the result is only the heads in order followed by the base.",
+    "HARM: every list built this way pays an allocation, a clone and a front insertion per element, at every recursion depth. std.algebra take_prefix sits inside list_sort_by_key's split at every level of the merge sort, so the sort pays it n log n times; the same shape is live in zip_map and list_init, and was re-authored by hand three times before the rule existed (list_map, list_flat_map, the sort merge, in #15044).",
+    "ATTRIBUTION, MEASURED BEFORE THE REPAIR WAS CHOSEN: the emitted list_sort_by_key path (#15077 head 4328288) transcribed into one crate, remote amd64, 2026-10-25, im 15.1.0, a descending input, best of 5, every arm equal to host sort at every n; the transcription reproduces the member-home-cost label (45.3 ms against the label's 44.5 ms at n = 16000). Removing one suspect at a time at n = 16000: take_prefix replaced by one structural take saves 29.5 ms (65%), and a timer around take_prefix reads 78.5% of the run; the SortKeyed wrap and the Rc'd comparator together save 5.1 ms (11%); the rest is the merge's pushes and splits. A one-off reading, not an instrument.",
+    "CAUSE, THE EARLIEST UNJUSTIFIED BOUNDARY: the emitter lowers a Cons around a self-call as a value built from the recursive result, when the only thing the Cons asks is that its head precede that result. The authored functions are the natural structural recursions and are not the defect; re-authoring each as an accumulator fold moved the cost leaf by leaf and left the rule in place for the next one.",
+    "THE REPAIR: tail recursion modulo cons in v1.compiler.emit_rust (is_trmc_eligible, trmc_tail_ok, emit_rust_tco_default_return). A function returning a list whose self-calls are all either in tail position or exactly the tail field of a tail-position Cons with a non-recursive head is lowered as the TCO loop with `__trmc_out`: a Cons step pushes its head and continues with the call's arguments, and every other exit returns `__trmc_out` followed by its value. The admission is fail-closed: any self-call the walk does not admit, a Cons self-call outside tail position, or a head that reads the recursive result keeps the ordinary lowering. The cursor analysis judges a Cons step's arguments as a self-call's, so a list walked this way is a #15014 cursor and pays no per-step skip.",
+    "FOLLOW-UP, NAMED NOT DONE HERE: the hand re-authorings this rule obsoletes, std.algebra list_map, list_flat_map and the sort merge (#15044), are scaffolding to retire in tidy-ant-251's lane once this lands.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_trmc_eligible"),
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "trmc_tail_ok"),
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_rust_tco_default_return"),
+    decl_ref(module_path: "std.algebra", decl_name: "take_prefix"),
+    decl_ref(module_path: "std.algebra", decl_name: "zip_map"),
+    decl_ref(module_path: "std.algebra", decl_name: "list_init"),
+  ],
+}
