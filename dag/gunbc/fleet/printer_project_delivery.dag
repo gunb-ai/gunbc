@@ -25,9 +25,13 @@ import gunbc.auth.materialized_secret {
   ensure_gunbc_private_materialization_dir,
 }
 import gunbc.auth.netrc_binding {
-  NetrcBinding, NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused,
-  NetrcBindingRefusedResidueRemains,
-  place_netrc_binding_privately, shred_netrc_binding, netrc_binding_path,
+  NetrcBinding, with_private_netrc_binding, netrc_binding_path,
+}
+import gunbc.auth.private_secret_file {
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
 }
 import extdeps.exec.command { CommandTransport }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -749,44 +753,61 @@ fn transfer_with_credential(printer:PhysicalAssetIdentity,payload:IdentifiedProj
   ]
 {
           endpoint = bambu_lan_endpoint(host: lan_address)
-          match place_netrc_binding_privately(
+          match with_private_netrc_binding(
             machine: endpoint.host,
             login: bambu_lan_ftps_user,
-            password: credential
+            password: credential,
+            use: fn(binding) {
+              run_shell_command_capture(
+                command: project_upload_command(
+                  endpoint: endpoint,
+                  payload: payload,
+                  binding: binding
+                ),
+                transport: LocalExec
+              )
+            },
           ) {
-            NetrcBindingRefused { cause: cause } =>
+            PrivateSecretFileNotEntered { cause: cause } =>
               refuse_and_drop(printer: printer, payload: payload, cause: cause)
-            NetrcBindingRefusedResidueRemains { cause: cause } =>
+            PrivateSecretFileNotEnteredResidueRemains { cause: cause } =>
               refuse_and_drop_carrying(
                 printer: printer, payload: payload, cause: cause, residue_already: true)
-            NetrcBindingPlaced { binding: binding } => {
-            outcome = run_shell_command_capture(
-              command: project_upload_command(
-                endpoint: endpoint,
-                payload: payload,
-                binding: binding
-              ),
-              transport: LocalExec
-            )
-            let credential_shredded = shred_netrc_binding(binding: binding)
-            let realization_removed = shell.Remove.FileForce(path: payload.realization.path).success
-            let cleaned = credential_shredded && realization_removed
-            match outcome {
-              ProcessRefused { exit_code: _, stderr: stderr } =>
-                refused_delivery(printer: printer, stderr: stderr, cleaned: cleaned)
-              ProcessOutputAbsent =>
-                delivered_receipt(
-                  printer: printer, payload: payload, endpoint: endpoint,
-                  credential_version: credential_version, cleaned: cleaned
-                )
-              ProcessOutputPresent { text: _ } =>
-                delivered_receipt(
-                  printer: printer, payload: payload, endpoint: endpoint,
-                  credential_version: credential_version, cleaned: cleaned
-                )
-            }
+            PrivateSecretFileCompleted { value: outcome } =>
+              settle_transfer(printer: printer, payload: payload, endpoint: endpoint, credential_version: credential_version, outcome: outcome, credential_removed: true)
+            PrivateSecretFileCompletedResidueRemains { value: outcome } =>
+              settle_transfer(printer: printer, payload: payload, endpoint: endpoint, credential_version: credential_version, outcome: outcome, credential_removed: false)
           }
 }
+
+// THE TRANSFER'S OUTCOME, AFTER THE CREDENTIAL'S BRACKET HAS CLOSED. The netrc's removal is a fact the
+// bracket reports (credential_removed); the payload realization is removed here, and `cleaned` is
+// both, so a delivery that left either on disk is not reported clean.
+fn settle_transfer(
+  printer: PhysicalAssetIdentity,
+  payload: IdentifiedProjectPayload,
+  endpoint: FtpsEndpoint<PrinterUnverifiablePeerClass>,
+  credential_version: SmResolvedVersionIdentity,
+  outcome: ProcessOutcome,
+  credential_removed: Bool,
+) -> ProjectDelivery
+{
+  let realization_removed = shell.Remove.FileForce(path: payload.realization.path).success
+  let cleaned = credential_removed && realization_removed
+  match outcome {
+    ProcessRefused { exit_code: _, stderr: stderr } =>
+      refused_delivery(printer: printer, stderr: stderr, cleaned: cleaned)
+    ProcessOutputAbsent =>
+      delivered_receipt(
+        printer: printer, payload: payload, endpoint: endpoint,
+        credential_version: credential_version, cleaned: cleaned
+      )
+    ProcessOutputPresent { text: _ } =>
+      delivered_receipt(
+        printer: printer, payload: payload, endpoint: endpoint,
+        credential_version: credential_version, cleaned: cleaned
+      )
+  }
 }
 
 fn project_payload_digest(payload:IdentifiedProjectPayload) -> Digest {payload.content}
