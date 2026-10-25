@@ -2,7 +2,7 @@ module test.claim.artifact_store_fs_witness
 
 import std.logic { Bool }
 import std.types { String }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, serialize_content_hash }
 import std.content_hash { content_hash_atom }
 import std.types { Int }
 import std.measure { byte_size }
@@ -69,7 +69,7 @@ test fn artifact_fs_delete_then_misses_holds() -> Bool {
     ArtifactFsPutFailed { path: p } => false
   }
   let listed = match artifact_fs_list(store_root: fs_store_root) {
-    ArtifactFsListOk { entries: es } => es |> any(e => string_contains(e, key))
+    ArtifactFsListOk { entries: es } => es |> any(e => string_contains(e, serialize_content_hash(hash: key)))
     ArtifactFsListRefused { verb: v, target: t, frame: f } => false
     ArtifactFsListFailed { path: p } => false
   }
@@ -84,7 +84,7 @@ test fn artifact_fs_delete_then_misses_holds() -> Bool {
     ArtifactFsRefused { verb: v, target: t, frame: f } => false
   }
   let unlisted = match artifact_fs_list(store_root: fs_store_root) {
-    ArtifactFsListOk { entries: es } => (es |> any(e => string_contains(e, key))) == false
+    ArtifactFsListOk { entries: es } => (es |> any(e => string_contains(e, serialize_content_hash(hash: key)))) == false
     ArtifactFsListRefused { verb: v, target: t, frame: f } => false
     ArtifactFsListFailed { path: p } => false
   }
@@ -126,7 +126,7 @@ fn eviction_probe_store() -> ArtifactStore {
 }
 
 fn fs_list_contains(entries: List<String>, key: ContentHash) -> Bool {
-  entries |> any(e => string_contains(e, key))
+  entries |> any(e => string_contains(e, serialize_content_hash(hash: key)))
 }
 
 test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {

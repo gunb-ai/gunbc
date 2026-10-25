@@ -1,0 +1,125 @@
+module v2.compiler.primitive_execution_semantics
+
+import std.decl_ref { DeclarationRef }
+import std.types { List }
+import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+// SPLIT OUT OF v2.compiler.effect_demand so the compiler closure does not reach floor_discovery. This
+// is the classification FACT (what an operation does, what XL-1 will do about it, and the rows), a
+// layer below the evidence and receipt half of effect_demand, which needs v2.workflow.floor_discovery
+// and through it git, exec and posix process modules. A consumer that needs only the classification
+// (v2.compiler.effect_pair_census, which source_root_eval imports and the required build emits) must
+// not pay for the host-workflow modules. The declarations below are moved verbatim.
+
+// WHAT THE OPERATION DOES, kept strictly apart from what XL-1 intends to do about it. A boolean
+// effectful flag would have been the obvious carrier and is the wrong one: it conflates an operation
+// that must observe external state with one that merely happens to reach the host through its CURRENT
+// realization, and those two have opposite remedies -- the first earns a transport, the second earns
+// having its input bound or its consumer deleted. Pure and ReadsBoundInput are the arms that need no
+// host boundary at all; ObservesHost and ActuatesHost are separated because reading external state and
+// changing it carry different grants and different receipts, and a single arm would let an actuation
+// ride an observation's admission. ExecutionSemanticsUnknown is not a default -- it is the arm that
+// BLOCKS, and an operation sitting in it may not be implemented as a transport.
+type PrimitiveExecutionSemantics
+  = Pure
+  | ReadsBoundInput { input_identity: Symbol }
+  | ObservesHost { operation_identity: Symbol }
+  | ActuatesHost { operation_identity: Symbol }
+  | ExecutionSemanticsUnknown
+
+type PrimitiveExecutionSemanticsFact {
+  primitive: PrimitiveIdentity
+  semantics: PrimitiveExecutionSemantics
+}
+
+// WHAT XL-1 WILL DO, which is a different subject from what the operation does and therefore a
+// different carrier. An operation whose semantics is ObservesHost today may still be dispositioned
+// BoundCompilerInput, because the semantics describes the realization that exists and the disposition
+// describes the one that will. Collapsing them would make the classification unable to say the most
+// useful thing it has to say: that six of the seven operations reach the host because of how they are
+// realized and not because their answer requires external state. OperationDispositionUnclassified
+// BLOCKS -- an operation in this arm is not implemented as a transport, which is the point of
+// classifying before building.
+type EffectOperationDisposition
+  = BoundCompilerInput { input_identity: Symbol }
+  | NativeDerivedComputation { derived_from: Symbol }
+  | NativeHostObservation { operation_identity: Symbol }
+  | NativeHostActuation { operation_identity: Symbol }
+  | OperationRetired { consumer: DeclarationRef }
+  | OperationDispositionUnclassified { blocking_question: Symbol }
+
+type EffectOperationClassification {
+  operation: PrimitiveIdentity
+  semantics: PrimitiveExecutionSemantics
+  disposition: EffectOperationDisposition
+}
+
+fn effect_demand_operation_classification(
+  operation: String,
+  semantics: PrimitiveExecutionSemantics,
+  disposition: EffectOperationDisposition
+) -> EffectOperationClassification {
+  EffectOperationClassification {
+    operation: primitive_identity_slug(name: operation),
+    semantics: semantics,
+    disposition: disposition
+  }
+}
+
+// THE SEVEN OPERATIONS THE OCCUPANCY CENSUS FOUND, CLASSIFIED BEFORE ANY OF THEM IS BUILT. Every one
+// has ObservesHost semantics, which is a statement about the realization that exists today and is not
+// in doubt: each reaches the host through a v1_rt bridge, measured in the emitted tree. THE
+// DISPOSITIONS DIVERGE, and that divergence is the finding. filesystem_read reads a named file and its
+// answer cannot come from anywhere but the filesystem, so it is NativeHostObservation and is the one
+// operation of the seven that earns a transport. THE SIX FACT PRODUCERS ARE UNCLASSIFIED, NOT
+// DISPOSITIONED, and the arm is chosen deliberately over the more flattering ones. Classifying them
+// BoundCompilerInput would assert that a bound input exists whose contents answer them, and none has
+// been shown: their live consumers are corpus-scanning lenses that pass repository scan roots, and
+// whether a corpus lens can be fed from a bound snapshot depends on a lens execution model that does
+// not exist yet. Classifying them NativeHostObservation would commit XL-1 to building six live-tree
+// transports for operations this instrument observed no compile-path demand for -- an observation that
+// is a lower bound and not a zero, so it is not a reason to decline a transport either. The honest state is
+// that the question is open, so the arm that BLOCKS is the correct one -- an unclassified operation is
+// implementable by nobody, which is exactly the outcome, and effect_demand_blocked_operations counts
+// them so the block is visible rather than tacit. WHAT WOULD CLASSIFY THEM: an answer to whether lens
+// execution binds a corpus snapshot. If it does, the six become BoundCompilerInput and no transport is
+// built for any of them; if it cannot, they become NativeHostObservation and are built once, shared.
+data effect_demand_operation_classifications: List<EffectOperationClassification> = [
+  effect_demand_operation_classification(
+    operation: "filesystem_read",
+    semantics: ObservesHost { operation_identity: ^read_named_file },
+    disposition: NativeHostObservation { operation_identity: ^read_named_file }
+  ),
+  effect_demand_operation_classification(
+    operation: "decl_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_declarations },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  ),
+  effect_demand_operation_classification(
+    operation: "module_declaration_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_module_declarations },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  ),
+  effect_demand_operation_classification(
+    operation: "layer_import_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_layer_imports },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  ),
+  effect_demand_operation_classification(
+    operation: "import_resolution_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_import_resolution },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  ),
+  effect_demand_operation_classification(
+    operation: "reference_resolution_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_reference_resolution },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  ),
+  effect_demand_operation_classification(
+    operation: "dependency_resolution_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_dependency_resolution },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  )
+]
