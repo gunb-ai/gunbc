@@ -326,7 +326,8 @@ test fn decl_facts_list_string_initializer_carries_authored_lexemes() -> Bool {
 test fn decl_facts_concat_string_initializer_carries_authored_lexemes() -> Bool {
   match list_head(xs: decl_facts_at(
     pool_roots: authored_string_channel_pool_roots,
-    qualified_name: planted_concat_string_qn
+    qualified_names: [planted_concat_string_qn],
+    type_names: []
   )) {
     Present { value: fact } =>
       skeleton_contains_all_authored_string_literals(
@@ -340,7 +341,8 @@ test fn decl_facts_concat_string_initializer_carries_authored_lexemes() -> Bool 
 test fn decl_facts_authored_string_does_not_fork_constructor_spelling_channel() -> Bool {
   match list_head(xs: decl_facts_at(
     pool_roots: authored_string_channel_pool_roots,
-    qualified_name: authored_string_channel_qn
+    qualified_names: [authored_string_channel_qn],
+    type_names: []
   )) {
     Present { value: fact } =>
       skeleton_authored_string_absent_from_marshal_atom_channel(
