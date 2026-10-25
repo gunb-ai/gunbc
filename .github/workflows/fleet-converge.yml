@@ -2348,7 +2348,7 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           FLEET_CONVERGE_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
-        if: (github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore') && github.event.inputs.host == github.event.inputs.subject_host
+        if: github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore'
       - name: "Runner host files: write what differs as the administrator, reload if the drop-in changed, read the loaded teardown back"
         id: runner_host_file_converge
         run: |-
