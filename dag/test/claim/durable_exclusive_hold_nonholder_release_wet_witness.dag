@@ -16,7 +16,7 @@ import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldObservation, HoldSlotFree, HoldSlotHeld,
   DurableHoldSubject, DurableHoldCompletionReport, SectionObservedComplete, SectionObservedIncomplete,
   SectionCompletionUnobservable, DurableHoldNonHolderRelease, ReleasedOnEvidence, ReleasedByOperator,
-  DurableHoldNonHolderReleaseRefusal, NonHolderReleaseForAnotherHolder, NonHolderReleaseSlotMoved,
+  DurableHoldNonHolderReleaseRefusal, NonHolderReleaseForAnotherHold, NonHolderReleaseForAnotherHolder, NonHolderReleaseSlotMoved,
   NonHolderReleaseSectionIncomplete, NonHolderReleaseCompletionUnobservable, NonHolderReleaseNotAuthorized,
   NonHolderReleasedOnEvidence, NonHolderReleasedByOperator,
 }
@@ -26,7 +26,7 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldReleasePlan, FileHoldReleaseOutcome, FileHoldReleased, FileHoldReleaseLost, file_hold_release_commit,
   file_hold_release_assess, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
   FileHoldNonHolderReleaseAssessment, FileHoldNonHolderReleasePlanned, FileHoldNonHolderReleaseNotEligible,
-  file_hold_nonholder_release_assess,
+  file_hold_nonholder_release_assess, file_hold_ref,
 }
 
 // WET CONTROLS FOR THE NON-HOLDER RELEASE OVER THE REAL FILE STORE. Each row acquires a real hold in a
@@ -82,14 +82,18 @@ fn nr_acquired_at(o: FileHoldAcquireOutcome, generation: Int) -> Bool {
   }
 }
 
-fn nr_subject(holder: String, generation: CasGeneration) -> DurableHoldSubject {
-  DurableHoldSubject { holder: nr_owner(text: holder), generation: generation }
+fn nr_subject_at(root: NonEmptyStr, slot_key: NonEmptyStr, holder: String, generation: CasGeneration) -> DurableHoldSubject {
+  DurableHoldSubject { hold: file_hold_ref(root: root, slot_key: slot_key), holder: nr_owner(text: holder), generation: generation }
 }
 
-fn nr_on_evidence(holder: String, generation: CasGeneration, verdict: Int) -> DurableHoldNonHolderRelease<NrRepositoryObservation> {
+fn nr_subject(root: NonEmptyStr, holder: String, generation: CasGeneration) -> DurableHoldSubject {
+  nr_subject_at(root: root, slot_key: "cell", holder: holder, generation: generation)
+}
+
+fn nr_on_evidence_for(subject: DurableHoldSubject, verdict: Int) -> DurableHoldNonHolderRelease<NrRepositoryObservation> {
   ReleasedOnEvidence {
     evidence: DurableHoldCompletionReport {
-      hold: nr_subject(holder: holder, generation: generation),
+      hold: subject,
       completion: if verdict == 0 { SectionObservedComplete { observation: nr_observed } }
         else if verdict == 1 { SectionObservedIncomplete { observation: nr_observed } }
         else { SectionCompletionUnobservable { cause: "git rev-parse HEAD exited 128" as NonEmptyStr } },
@@ -147,8 +151,16 @@ fn nr_by_operator(granted_for: DurableHoldSubject, releasing: DurableHoldSubject
   }
 }
 
+fn nr_on_evidence(root: NonEmptyStr, holder: String, generation: CasGeneration, verdict: Int) -> DurableHoldNonHolderRelease<NrRepositoryObservation> {
+  nr_on_evidence_for(subject: nr_subject(root: root, holder: holder, generation: generation), verdict: verdict)
+}
+
+fn nr_assess_at(root: NonEmptyStr, slot_key: NonEmptyStr, request: DurableHoldNonHolderRelease<NrRepositoryObservation>, reason: String) -> FileHoldNonHolderReleaseAssessment<NrRepositoryObservation> {
+  file_hold_nonholder_release_assess(root: root, slot_key: slot_key, request: request, released_by: nr_release(text: reason))
+}
+
 fn nr_assess(root: NonEmptyStr, request: DurableHoldNonHolderRelease<NrRepositoryObservation>, reason: String) -> FileHoldNonHolderReleaseAssessment<NrRepositoryObservation> {
-  file_hold_nonholder_release_assess(root: root, slot_key: "cell", request: request, released_by: nr_release(text: reason))
+  nr_assess_at(root: root, slot_key: "cell", request: request, reason: reason)
 }
 
 fn nr_plan(a: FileHoldNonHolderReleaseAssessment<NrRepositoryObservation>) -> FileHoldReleasePlan? {
@@ -187,6 +199,7 @@ fn nr_refusal_label(a: FileHoldNonHolderReleaseAssessment<NrRepositoryObservatio
     FileHoldNonHolderReleaseNotEligible { slot_key: k, refusal: r } =>
       if (k as String) != "cell" { "unlocated" } else {
         match r {
+          NonHolderReleaseForAnotherHold { hold: _, subject: _ } => "another-hold"
           NonHolderReleaseForAnotherHolder { holder: _, subject: _ } => "another-holder"
           NonHolderReleaseSlotMoved { subject: _, observed: _ } => "slot-moved"
           NonHolderReleaseSectionIncomplete { generation: _, holder: _, observation: o } =>
@@ -225,8 +238,8 @@ test fn a_nonholder_release_without_completion_evidence_refuses_and_leaves_the_h
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
   let g = nr_acquired_generation(o: first)
-  let unobserved = nr_assess(root: root, request: nr_on_evidence(holder: nr_holder, generation: g, verdict: 2), reason: "cleared on evidence")
-  let incomplete = nr_assess(root: root, request: nr_on_evidence(holder: nr_holder, generation: g, verdict: 1), reason: "cleared on evidence")
+  let unobserved = nr_assess(root: root, request: nr_on_evidence(root: root, holder: nr_holder, generation: g, verdict: 2), reason: "cleared on evidence")
+  let incomplete = nr_assess(root: root, request: nr_on_evidence(root: root, holder: nr_holder, generation: g, verdict: 1), reason: "cleared on evidence")
   let untouched = nr_slot_generation_absent(root: root, generation: 2) && nr_slot_bytes(root: root, generation: 1) == "held|converge:4242"
   let removed = shell.Remove.RecursiveForce(path: root_path)
   nr_acquired_at(o: first, generation: 1)
@@ -250,8 +263,8 @@ test fn evidence_for_another_holder_or_a_moved_generation_refuses_by_real_execut
   }
   let again = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
   let current = nr_acquired_generation(o: again)
-  let stale = nr_assess(root: root, request: nr_on_evidence(holder: nr_holder, generation: stale_generation, verdict: 0), reason: "cleared on evidence")
-  let foreign = nr_assess(root: root, request: nr_on_evidence(holder: "converge:9999", generation: current, verdict: 0), reason: "cleared on evidence")
+  let stale = nr_assess(root: root, request: nr_on_evidence(root: root, holder: nr_holder, generation: stale_generation, verdict: 0), reason: "cleared on evidence")
+  let foreign = nr_assess(root: root, request: nr_on_evidence(root: root, holder: "converge:9999", generation: current, verdict: 0), reason: "cleared on evidence")
   let untouched = nr_slot_generation_absent(root: root, generation: 4) && nr_slot_bytes(root: root, generation: 3) == "held|converge:4242"
   let removed = shell.Remove.RecursiveForce(path: root_path)
   nr_acquired_at(o: first, generation: 1)
@@ -271,8 +284,8 @@ test fn an_operator_release_without_a_permitting_grant_for_this_hold_refuses_by_
   let root_path = nr_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
-  let this_hold = nr_subject(holder: nr_holder, generation: nr_acquired_generation(o: first))
-  let other_hold = nr_subject(holder: nr_holder, generation: 2)
+  let this_hold = nr_subject(root: root, holder: nr_holder, generation: nr_acquired_generation(o: first))
+  let other_hold = nr_subject(root: root, holder: nr_holder, generation: 2)
   let expired = nr_assess(root: root, request: nr_by_operator(granted_for: this_hold, releasing: this_hold, expired: true), reason: "operator abandoned")
   let elsewhere = nr_assess(root: root, request: nr_by_operator(granted_for: other_hold, releasing: other_hold, expired: false), reason: "operator abandoned")
   let untouched = nr_slot_generation_absent(root: root, generation: 2) && nr_slot_bytes(root: root, generation: 1) == "held|converge:4242"
@@ -292,7 +305,7 @@ test fn a_release_on_matching_completion_evidence_frees_the_hold_and_reads_back_
   let root_path = nr_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
-  let assessed = nr_assess(root: root, request: nr_on_evidence(holder: nr_holder, generation: nr_acquired_generation(o: first), verdict: 0), reason: "section observed complete")
+  let assessed = nr_assess(root: root, request: nr_on_evidence(root: root, holder: nr_holder, generation: nr_acquired_generation(o: first), verdict: 0), reason: "section observed complete")
   let basis_ok = match assessed {
     FileHoldNonHolderReleasePlanned { plan: p, released_holder: h, basis: NonHolderReleasedOnEvidence { observation: o } } =>
       cas_generation_count(g: p.generation) == 1 && (h as String) == nr_holder && (o.observed_head as String) == "c0ffee1"
@@ -318,7 +331,7 @@ test fn a_release_by_a_permitted_operator_grant_frees_the_hold_and_reads_back_by
   let root_path = nr_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
-  let this_hold = nr_subject(holder: nr_holder, generation: nr_acquired_generation(o: first))
+  let this_hold = nr_subject(root: root, holder: nr_holder, generation: nr_acquired_generation(o: first))
   let assessed = nr_assess(root: root, request: nr_by_operator(granted_for: this_hold, releasing: this_hold, expired: false), reason: "operator abandoned")
   let basis_ok = match assessed {
     FileHoldNonHolderReleasePlanned { plan: p, released_holder: h, basis: NonHolderReleasedByOperator { grant: grant } } =>
@@ -343,7 +356,7 @@ test fn a_nonholder_release_committed_after_the_slot_moved_is_lost_by_real_execu
   let root_path = nr_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
-  let plan = nr_plan(a: nr_assess(root: root, request: nr_on_evidence(holder: nr_holder, generation: nr_acquired_generation(o: first), verdict: 0), reason: "section observed complete"))
+  let plan = nr_plan(a: nr_assess(root: root, request: nr_on_evidence(root: root, holder: nr_holder, generation: nr_acquired_generation(o: first), verdict: 0), reason: "section observed complete"))
   let committed = nr_commit(p: plan)
   let again = nr_commit(p: plan)
   let no_third = nr_slot_generation_absent(root: root, generation: 3)
@@ -352,5 +365,47 @@ test fn a_nonholder_release_committed_after_the_slot_moved_is_lost_by_real_execu
     && nr_released_at(o: committed, generation: 2)
     && nr_release_lost(o: again)
     && no_third
+    && removed.success
+}
+
+// Refused at "cell-b" as another hold, naming the slot read and the slot the release was taken of.
+fn nr_refused_as_another_hold(a: FileHoldNonHolderReleaseAssessment<NrRepositoryObservation>, root_path: String) -> Bool {
+  match a {
+    FileHoldNonHolderReleaseNotEligible { slot_key: k, refusal: NonHolderReleaseForAnotherHold { hold: h, subject: sj } } =>
+      (k as String) == "cell-b" && (h as String) == concat(root_path, "/cell-b") && (sj as String) == concat(root_path, "/cell")
+    _ => false
+  }
+}
+
+// RED: A RELEASE FOR ONE SLOT DOES NOT FREE ANOTHER SLOT AT THE SAME HOLDER AND GENERATION. Two slots in
+// one store, "cell" and "cell-b", are both held by the same holder at generation 1, so holder and
+// generation alone cannot tell them apart. Complete-section evidence and a permitted operator grant
+// taken of "cell" both refuse against "cell-b" as another hold, located at "cell-b", and "cell-b" is
+// still held at 1 with no generation 2. The same evidence against "cell" then frees "cell" and only it.
+test fn a_release_for_one_slot_refuses_against_another_slot_at_the_same_holder_and_generation_by_real_execution() -> Bool {
+  let root_path = nr_fresh_root()
+  let root = root_path as NonEmptyStr
+  let a = file_hold_acquire(root: root, slot_key: "cell", requested_owner: nr_owner(text: nr_holder))
+  let b = file_hold_acquire(root: root, slot_key: "cell-b", requested_owner: nr_owner(text: nr_holder))
+  let for_a = nr_subject_at(root: root, slot_key: "cell", holder: nr_holder, generation: nr_acquired_generation(o: a))
+  let evidence_against_b = nr_assess_at(root: root, slot_key: "cell-b", request: nr_on_evidence_for(subject: for_a, verdict: 0), reason: "cleared on evidence")
+  let grant_against_b = nr_assess_at(root: root, slot_key: "cell-b", request: nr_by_operator(granted_for: for_a, releasing: for_a, expired: false), reason: "operator abandoned")
+  let b_untouched = !Filesystem.Read(path: cas_file_slot_path(root: root, key: "cell-b", generation: 2)).success
+    && Filesystem.Read(path: cas_file_slot_path(root: root, key: "cell-b", generation: 1)).content == "held|converge:4242"
+  let released_a = nr_commit(p: nr_plan(a: nr_assess_at(root: root, slot_key: "cell", request: nr_on_evidence_for(subject: for_a, verdict: 0), reason: "section observed complete")))
+  let a_free = nr_reads_back_free(root: root, generation: 2, reason: "section observed complete")
+  let b_still_held = match observe_file_hold(root: root, key: "cell-b") {
+    HoldSlotHeld { generation: g, owner: o } => cas_generation_count(g: g) == 1 && (o as String) == nr_holder
+    _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  nr_acquired_at(o: a, generation: 1)
+    && nr_acquired_at(o: b, generation: 1)
+    && nr_refused_as_another_hold(a: evidence_against_b, root_path: root_path)
+    && nr_refused_as_another_hold(a: grant_against_b, root_path: root_path)
+    && b_untouched
+    && nr_released_at(o: released_a, generation: 2)
+    && a_free
+    && b_still_held
     && removed.success
 }

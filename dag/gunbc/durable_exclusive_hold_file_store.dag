@@ -45,7 +45,7 @@ import std.durable_exclusive_hold {
   DurableHoldHolderReport, DurableHoldRecoveryRefusal, DurableHoldRecoveryAssessment, HoldRecoveryEligible, HoldRecoveryRefused,
   durable_hold_recovery_assess,
   DurableHoldNonHolderRelease, DurableHoldNonHolderReleaseRefusal, DurableHoldNonHolderReleaseBasis,
-  NonHolderReleaseEligible, NonHolderReleaseRefused, durable_hold_nonholder_release_assess,
+  NonHolderReleaseEligible, NonHolderReleaseRefused, durable_hold_nonholder_release_assess, DurableHoldRef,
 }
 import gunbc.durable_cas_file_store { KeepAllGenerations, KeepGenerationWindow, CasSlotRetention,
   CasGenerationWindow, DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
@@ -604,6 +604,17 @@ fn file_hold_recovery_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, 
 // SectionObservedComplete would be the forged-release path the plan's sole_constructor exists to close.
 // Keep-all only: no windowed consumer exists, and the consumer this is for is a lease whose generations
 // are its audit trail.
+// A FILE HOLD'S IDENTITY IS ITS STORE AND ITS SLOT, joined the way this store joins them on disk. The key
+// is slot-addressable only without a "/" (gunbc.durable_cas_file_store cas_key_is_slot_addressable), so
+// the join splits uniquely at its last separator and two distinct (root, key) pairs never mint one ref.
+// It is the only mint of a DurableHoldRef for a file hold, used both by a caller naming the hold it
+// wants released and by the assessment naming the slot it read, so the two agree exactly when they
+// name the same store and slot. Spelling the same store two ways (a trailing separator, a relative
+// root) mints two refs and refuses as another hold: fail-closed, never a cross-slot release.
+fn file_hold_ref(root: NonEmptyStr, slot_key: NonEmptyStr) -> DurableHoldRef {
+  concat(concat(root as String, "/"), slot_key as String) as DurableHoldRef
+}
+
 type FileHoldNonHolderReleaseAssessment<Observation>
   = FileHoldNonHolderReleasePlanned { plan: FileHoldReleasePlan, released_holder: DurableHoldOwnerRef, basis: DurableHoldNonHolderReleaseBasis<Observation> }
   | FileHoldNonHolderReleaseNotEligible { slot_key: NonEmptyStr, refusal: DurableHoldNonHolderReleaseRefusal<Observation> }
@@ -615,10 +626,10 @@ fn file_hold_nonholder_release_assess<Observation>(
   released_by: DurableHoldReleaseRef,
 ) -> FileHoldNonHolderReleaseAssessment<Observation>
   admit_callers: [
-    decl_ref(module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", decl_name: "nr_assess"),
+    decl_ref(module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", decl_name: "nr_assess_at"),
   ]
 {
-  match durable_hold_nonholder_release_assess(observed: observe_file_hold(root: root, key: slot_key), request: request) {
+  match durable_hold_nonholder_release_assess(hold: file_hold_ref(root: root, slot_key: slot_key), observed: observe_file_hold(root: root, key: slot_key), request: request) {
     NonHolderReleaseRefused { refusal: r } => FileHoldNonHolderReleaseNotEligible { slot_key: slot_key, refusal: r }
     NonHolderReleaseEligible { generation: g, released_holder: h, basis: b } =>
       FileHoldNonHolderReleasePlanned {

@@ -256,10 +256,26 @@ fn durable_hold_recovery_assess(observed: DurableHoldObservation, report: Durabl
 // nothing observes the holder at all). gunbc.deploy_transition clears its transition lease on exactly
 // these two bases, and without a home here its lease forks this protocol.
 //
-// The subject of either is ONE HOLD: the holder and the generation it holds at. A release taken of a
-// hold at N cannot free a hold at any other generation, nor another holder's hold at N, for the same
-// reason recovery's report is bound to both.
+// The subject of either is ONE HOLD: WHICH hold (its identity in the store that realizes it), the
+// holder, and the generation it holds at. A release taken of a hold at N cannot free a hold at any other
+// generation, nor another holder's hold at N, for the same reason recovery's report is bound to both --
+// and it cannot free ANOTHER SLOT that happens to stand at the same holder and generation. Holder and
+// generation alone do not identify a hold: one converge identity can hold two slots at generation 1,
+// and a release for one would free both (side-chat merge review of gunbc#15061 at 868875d).
+//
+// THE IDENTITY IS OPAQUE HERE AND MINTED BY THE REALIZATION. This protocol has no store and no key, so it
+// cannot say what a hold's identity is made of; the realization that owns the slot derives it from the
+// exact store and slot (gunbc.durable_exclusive_hold_file_store file_hold_ref) and hands the SAME
+// derivation to the assessment, so a subject names a hold only by the address the realization reads.
+// One equality, exact, for the reason durable_hold_owner_equal is the only owner equality.
+type DurableHoldRef = NonEmptyStr where brand("DurableHoldRef")
+
+fn durable_hold_ref_equal(left: DurableHoldRef, right: DurableHoldRef) -> Bool {
+  (left as String) == (right as String)
+}
+
 type DurableHoldSubject {
+  hold: DurableHoldRef
   holder: DurableHoldOwnerRef
   generation: CasGeneration
 }
@@ -295,6 +311,7 @@ type DurableHoldNonHolderRelease<Observation>
 // caller to whatever prevented the look; an unauthorized operator release sends it to the grant.
 type DurableHoldNonHolderReleaseRefusal<Observation>
   = NonHolderReleaseNothingHeld
+  | NonHolderReleaseForAnotherHold { hold: DurableHoldRef, subject: DurableHoldRef }
   | NonHolderReleaseForAnotherHolder { holder: DurableHoldOwnerRef, subject: DurableHoldOwnerRef }
   | NonHolderReleaseSlotMoved { subject: CasGeneration, observed: CasGeneration }
   | NonHolderReleaseSectionIncomplete { generation: CasGeneration, holder: DurableHoldOwnerRef, observation: Observation }
@@ -319,11 +336,14 @@ type DurableHoldNonHolderReleaseAssessment<Observation>
 // THE SUBJECT CHECK DOMINATES THE BASIS CHECK: a sound basis taken of another hold describes a hold
 // that is not the one on the slot, so the binding is decided first and the basis only after it.
 fn durable_hold_nonholder_subject_refusal<Observation>(
+  hold: DurableHoldRef,
   generation: CasGeneration,
   holder: DurableHoldOwnerRef,
   subject: DurableHoldSubject,
 ) -> DurableHoldNonHolderReleaseRefusal<Observation>? {
-  if !durable_hold_owner_equal(left: holder, right: subject.holder) {
+  if !durable_hold_ref_equal(left: hold, right: subject.hold) {
+    Present { value: NonHolderReleaseForAnotherHold { hold: hold, subject: subject.hold } }
+  } else if !durable_hold_owner_equal(left: holder, right: subject.holder) {
     Present { value: NonHolderReleaseForAnotherHolder { holder: holder, subject: subject.holder } }
   } else if cas_generation_count(g: generation) != cas_generation_count(g: subject.generation) {
     Present { value: NonHolderReleaseSlotMoved { subject: subject.generation, observed: generation } }
@@ -333,11 +353,12 @@ fn durable_hold_nonholder_subject_refusal<Observation>(
 }
 
 fn durable_hold_release_on_evidence_assess<Observation>(
+  hold: DurableHoldRef,
   generation: CasGeneration,
   holder: DurableHoldOwnerRef,
   report: DurableHoldCompletionReport<Observation>,
 ) -> DurableHoldNonHolderReleaseAssessment<Observation> {
-  match durable_hold_nonholder_subject_refusal(generation: generation, holder: holder, subject: report.hold) {
+  match durable_hold_nonholder_subject_refusal(hold: hold, generation: generation, holder: holder, subject: report.hold) {
     Present { value: r } => NonHolderReleaseRefused { refusal: r }
     Absent =>
       match report.completion {
@@ -352,6 +373,7 @@ fn durable_hold_release_on_evidence_assess<Observation>(
 }
 
 fn durable_hold_release_by_operator_assess<Observation>(
+  hold: DurableHoldRef,
   generation: CasGeneration,
   holder: DurableHoldOwnerRef,
   authorization: AuthorizationDecision<DurableHoldSubject>,
@@ -360,7 +382,7 @@ fn durable_hold_release_by_operator_assess<Observation>(
     AuthorizationRefused { cause: c } =>
       NonHolderReleaseRefused { refusal: NonHolderReleaseNotAuthorized { generation: generation, holder: holder, cause: c } }
     AuthorizationPermitted { grant: grant } =>
-      match durable_hold_nonholder_subject_refusal(generation: generation, holder: holder, subject: grant.subject) {
+      match durable_hold_nonholder_subject_refusal(hold: hold, generation: generation, holder: holder, subject: grant.subject) {
         Present { value: r } => NonHolderReleaseRefused { refusal: r }
         Absent =>
           NonHolderReleaseEligible { generation: generation, released_holder: holder, basis: NonHolderReleasedByOperator { grant: grant } }
@@ -368,7 +390,9 @@ fn durable_hold_release_by_operator_assess<Observation>(
   }
 }
 
+// `hold` is the identity of the slot `observed` was read from, supplied by the realization that read it.
 fn durable_hold_nonholder_release_assess<Observation>(
+  hold: DurableHoldRef,
   observed: DurableHoldObservation,
   request: DurableHoldNonHolderRelease<Observation>,
 ) -> DurableHoldNonHolderReleaseAssessment<Observation> {
@@ -382,9 +406,9 @@ fn durable_hold_nonholder_release_assess<Observation>(
     HoldSlotHeld { generation: g, owner: holder } =>
       match request {
         ReleasedOnEvidence { evidence: e } =>
-          durable_hold_release_on_evidence_assess(generation: g, holder: holder, report: e)
+          durable_hold_release_on_evidence_assess(hold: hold, generation: g, holder: holder, report: e)
         ReleasedByOperator { authorization: a } =>
-          durable_hold_release_by_operator_assess(generation: g, holder: holder, authorization: a)
+          durable_hold_release_by_operator_assess(hold: hold, generation: g, holder: holder, authorization: a)
       }
   }
 }

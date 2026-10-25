@@ -2349,7 +2349,8 @@ fn floor_route_gap_expectation_chunk_46() -> List<FloorRouteGapExpectation> {
 // over the real file store -- no completion evidence and an incomplete section refuse, evidence for
 // another holder or a moved generation refuses, an operator release without a permitting grant for
 // this hold refuses, matching evidence and a permitted grant free the hold and read back, and a
-// non-holder plan committed after the slot moved is lost. Each row's first effect is
+// non-holder plan committed after the slot moved is lost, and a release for one slot refuses against
+// another slot at the same holder and generation. Each row's first effect is
 // shell.Mktemp.DirWithTemplate with no mock_response, as chunk_15's sibling hold rows. Triple
 // enrollment as for chunk_15: these expectations, the WetScheduledClaim rows in
 // v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, and the gunbc.ci.ci_layer_roots
@@ -2367,7 +2368,9 @@ fn floor_route_gap_expectation_chunk_47() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness.a_release_by_a_permitted_operator_grant_frees_the_hold_and_reads_back_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness.a_nonholder_release_committed_after_the_slot_moved_is_lost_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } 
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness.a_release_for_one_slot_refuses_against_another_slot_at_the_same_holder_and_generation_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
