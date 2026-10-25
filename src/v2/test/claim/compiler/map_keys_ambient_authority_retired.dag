@@ -58,3 +58,18 @@ test fn declared_import_of_the_home_binds_where_ambient_refuses() -> Bool {
   mkr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List, Map, String }\nimport std.algebra { map_keys }\n\nfn f(m: Map<String, Int>) -> List<String> {\n  map_keys(m: m)\n}\n")
     == ^accepted
 }
+
+// THE CONSUMER'S CALL SHAPES: the gate tip's instruments (gunbc.instruments.namespace_wave_binding_diff and its
+// siblings) call map_keys positionally and through a pipe, never by label. Both shapes bind through the declared
+// import and both refuse without it, so the RED above is not an artifact of the labelled spelling.
+test fn consumer_call_shapes_bind_through_the_declared_import() -> Bool {
+  mkr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List, Map, String }\nimport std.algebra { map_keys }\n\nfn f(m: Map<String, Int>) -> List<String> {\n  map_keys(m)\n}\n\nfn g(m: Map<String, Int>) -> List<String> {\n  m |> map_keys\n}\n")
+    == ^accepted
+}
+
+test fn consumer_call_shapes_refuse_without_the_declared_import() -> Bool {
+  mkr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List, Map, String }\n\nfn f(m: Map<String, Int>) -> List<String> {\n  map_keys(m)\n}\n")
+    == ^resolve_reason_unbound_symbol
+    && mkr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List, Map, String }\n\nfn g(m: Map<String, Int>) -> List<String> {\n  m |> map_keys\n}\n")
+      == ^resolve_reason_unbound_symbol
+}
