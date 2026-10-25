@@ -2173,7 +2173,7 @@ fn settled_parameterized_alias(alias: ParameterizedAlias, use_args: List<Node>, 
         Present { value: arg } => map_insert(acc, pair.second, arg)
         Absent => acc
       })
-    let substituted = substitute_type_slots(n: alias.rhs, slot_bindings: slot_bindings, decl_name: "", source_indices: source_indices)
+    let substituted = substitute_type_slots_mode(n: alias.rhs, slot_bindings: slot_bindings, decl_name: "", source_indices: source_indices, bind_type_variables: false, resolved_slots: true)
     match substituted.declaration {
       Present { value: head } => settled_rhs(rhs: substituted, head: head, source_indices: source_indices, env: env, fuel: fuel - 1)
       Absent => none
@@ -2190,6 +2190,10 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
 }
 
 fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>, bind_type_variables: Bool) -> Node {
+  substitute_type_slots_mode(n: n, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables, resolved_slots: false)
+}
+
+fn substitute_type_slots_mode(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>, bind_type_variables: Bool, resolved_slots: Bool) -> Node {
   let tv_slot = if bind_type_variables {
     match n.inferred {
       Present { value: TypeVariable { id: tv_id } } => map_get(slot_bindings, tv_id)
@@ -2197,12 +2201,13 @@ fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_
     }
   } else { none }
   if tv_slot != none { return preserve_outer_optional_cardinality(outer: n, inner: tv_slot.value) }
-  // A leaf is a slot when it spells one of the declaration's own type parameters (the slot map's keys), whether or not resolve has
-  // already bound it: a parameter shadows every other declaration of its name inside that declaration's body. Requiring
-  // `inferred == none` missed a parameterized alias read from the symbol index, whose right-hand side leaves `key` / `value` are
-  // resolved, so std.types Map<String, Int> settled to FinitelySupportedFunction<key, value> (probe at 79836904e10).
+  // With resolved_slots, a leaf spelling one of the declaration's own type parameters (the slot map's keys) is its slot even when
+  // resolve has already bound it: a parameterized alias read from the symbol index has resolved right-hand-side leaves, so
+  // std.types Map<String, Int> settled to FinitelySupportedFunction<key, value> without it (probe at 79836904e10). Only the alias
+  // settle asks for it: applied to every caller it broke the seed build (E0369 `==` on `K` in v1-stage0-std-surface at
+  // 748913a392e), so the resolver alias arm and infer_patterns keep inferred == none.
   let leaf = n.children |> count == 0 && n.connective == NoConnective && n.body == none
-  let is_slot = leaf && (n.inferred == none || map_has(m: slot_bindings, key: authored_name_at(source_indices: source_indices, node: n)))
+  let is_slot = leaf && (n.inferred == none || (resolved_slots && map_has(m: slot_bindings, key: authored_name_at(source_indices: source_indices, node: n))))
   if is_slot {
     match map_get(slot_bindings, authored_name_at(source_indices: source_indices, node: n)) {
       Present { value: concrete } => preserve_outer_optional_cardinality(outer: n, inner: concrete)
@@ -2212,7 +2217,7 @@ fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_
     let new_children = n.children |> map(child =>
       if authored_name_at(source_indices: source_indices, node: child) == decl_name {
         let substituted_args = child.children |> map(arg =>
-          substitute_type_slots_scoped(n: arg, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables)
+          substitute_type_slots_mode(n: arg, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables, resolved_slots: resolved_slots)
         )
         Node {
           occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: substituted_args,
@@ -2224,12 +2229,12 @@ fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_
           has_non_tail_self_call: child.has_non_tail_self_call, match_pattern: child.match_pattern, module_item_kind: child.module_item_kind, declaration_marker: child.declaration_marker, declaration: child.declaration, expr_data: child.expr_data
         }
       } else {
-        substitute_type_slots_scoped(n: child, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables)
+        substitute_type_slots_mode(n: child, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables, resolved_slots: resolved_slots)
       }
     )
     let new_inferred = match n.inferred {
       Present { value: Resolved { node: rt } } =>
-        Present { value: Resolved { node: substitute_type_slots_scoped(n: rt, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables) } }
+        Present { value: Resolved { node: substitute_type_slots_mode(n: rt, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables, resolved_slots: resolved_slots) } }
       _ => n.inferred
     }
     Node {
