@@ -24,7 +24,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv }
 import gunbc.roadmap.roadmap_belt_actuate { belt_exec, ExecOk, ExecFailed, ExecRefused }
 import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptExitRecord, AttemptProcessExitedWith }
 import gunbc.dispatch_replay_recording {
-  recording_capture, RecordingCaptured, RecordingCaptureRefused, RecordingCaptureExitCollidesWithReplayRefusal, RecordingCaptureObjectUnusable,
+  recording_capture, RecordingCaptured, RecordingCaptureRefused, RecordingCaptureExitUnreplayable, RecordedEndCollidesWithReplayRefusal, RecordingCaptureObjectUnusable,
   recording_ref_of, recording_peel_to_tree_suffix, replay_refusal_exit_code,
 }
 import gunbc.dispatch_replay_worker { replay_worker_cli }
@@ -150,7 +150,11 @@ fn replay_over(repo: String, work: String) -> Bool {
       let collision = match recording_capture(repo_root: repo, base_sha: base, result_commit: result, exit: exit_record(status: replay_refusal_exit_code)) {
         RecordingCaptureRefused { cause } =>
           match cause {
-            RecordingCaptureExitCollidesWithReplayRefusal { status } => status == replay_refusal_exit_code
+            RecordingCaptureExitUnreplayable { cause: end_cause } =>
+              match end_cause {
+                RecordedEndCollidesWithReplayRefusal { status } => status == replay_refusal_exit_code
+                _ => false
+              }
             _ => false
           }
         RecordingCaptured { id: _, ref_name: _ } => false
