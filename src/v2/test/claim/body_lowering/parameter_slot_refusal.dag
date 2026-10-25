@@ -12,7 +12,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { ParseSubtreeAbsent, ParseSubtreeFound, dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, NotADeclaration }
+import v2.std.node { node_same_occurrence, Atom, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, NotADeclaration }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.algebra { list_snoc_item }
 
@@ -79,7 +79,7 @@ fn psr_first_slot(shell: Node) -> Optional<Node> {
 
 // `root` with the node equal to `target` replaced by `with`.
 fn psr_replace(root: Node, target: Node, with: Node) -> Node {
-  if root == target {
+  if node_same_occurrence(a: root, b: target) {
     with
   } else {
     Node {

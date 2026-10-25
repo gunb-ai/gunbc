@@ -11,7 +11,7 @@ import v2.std.data_index {
   literal_fingerprint_num_lexeme
 }
 import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
-import v2.std.node { positional_child_target_nodes,
+import v2.std.node { node_same_occurrence, positional_child_target_nodes,
   Atom,
   ComputationNode,
   Conj,
@@ -293,7 +293,7 @@ fn body_alpha_equivalent_to_single_arg_call(
       param: param,
       arg_name: arg
     )
-    rhs == inlined
+    node_same_occurrence(a: rhs, b: inlined)
   }
 }
 

@@ -18,6 +18,23 @@ pub fn optional_present<T: Clone>(value: T) -> Option<T> {
     Some(value.clone())
 }
 
+pub fn optional_eq<T: Clone>(
+    a: Option<T>,
+    b: Option<T>,
+    eq: impl Fn(T, T) -> bool + Clone,
+) -> bool {
+    match a.clone() {
+        std::option::Option::None => match b.clone() {
+            std::option::Option::None => true,
+            Some(_) => false,
+        },
+        Some(x) => match b.clone() {
+            std::option::Option::None => false,
+            Some(y) => eq(x.clone(), y.clone()),
+        },
+    }
+}
+
 pub fn optional_prefer_first_present<T: Clone>(left: Option<T>, right: Option<T>) -> Option<T> {
     match left.clone() {
         Some(_) => left.clone(),
