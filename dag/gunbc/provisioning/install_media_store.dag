@@ -6,6 +6,7 @@ import gunbc.host_state_root { HostStateTree, host_state_tree_path, host_state_t
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse }
 import extdeps.posix.identity { PosixOwnerNames }
+import extdeps.shell
 import extdeps.filesystem.filesystem_io { filesystem_listing_observation, Filesystem, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 
 // THE INSTALL MEDIA ARTIFACT STORE, sealed on the gunbc side (cohort C-host). The store's records are
@@ -56,16 +57,36 @@ type InstallMediaStoreReading
   | InstallMediaStoreUnready { detail: String }
 
 // THE ONE MINT, AND IT TAKES NO PATH: the sealed tree value plus nothing else. It observes the derived
-// directory (lists it, the reference mint's route) and refuses when it cannot be listed -- a media store
-// that cannot be read must not be mistaken for an empty one, because a wrong-root media store sends
-// serve traffic (gunbc.srv3.srv3_serve nbdkit) at a file another principal placed.
+// directory by the pattern's two routes, LIST first and ENSURE as the fallback: an admissible listing is
+// observation; if listing is refused, the mint ensures its OWN derived directory (mkdir -p, the same
+// verb gunbc.url_file_acquisition ensure_url_file_parent runs before the staged download) and admits on
+// its success. The ensure fallback exists because the handler contract this module records is
+// self-provisioning: on a fresh host artifacts/ DOES NOT EXIST until the fetch path creates it -- a
+// list-only mint would refuse the very fetch that provisions the store (review 86279: the fetch could
+// never run). mkdir -p on an existing NON-directory fails, so a file at the derived path is still a
+// typed refusal, never an empty store; and where the listing already succeeds nothing is created, so
+// the mint observes without side effects in the common case. A wrong-root or unreadable media store
+// must not be mistaken for an empty one, because it would send serve traffic
+// (gunbc.srv3.srv3_serve nbdkit) at a file another principal placed.
 fn install_media_store(tree: HostStateTree) -> InstallMediaStoreReading {
   let root = install_media_store_path(tree: tree)
   let listing = Filesystem.List(path: root as String)
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => InstallMediaStoreUnready { detail: join(["the install media store's directory is not admissible: ", c], "") }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => InstallMediaStoreUnready { detail: join(["the install media store's directory could not be listed: ", e], "") }
     FilesystemDirectoryListed(_) => InstallMediaStoreReady { store: InstallMediaStore { root: root } }
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => install_media_store_after_ensure(root: root, list_detail: join(["the install media store's directory is not admissible: ", c], ""))
+    FilesystemDirectoryListingRefused { directory: _, error: e } => install_media_store_after_ensure(root: root, list_detail: join(["the install media store's directory could not be listed: ", e], ""))
+  }
+}
+
+// The ensure fallback of the one mint, factored out so the mint stays one expression of the routes.
+// Reaching here means the listing was refused; mkdir -p succeeds exactly when the derived path is a
+// directory the acquisition handler itself created (or creates now), and fails on a file.
+fn install_media_store_after_ensure(root: NonEmptyStr, list_detail: String) -> InstallMediaStoreReading {
+  let made = shell.Mkdir.Parents(path: root as FilePath)
+  if made.success == false {
+    InstallMediaStoreUnready { detail: join([list_detail, "; and the fetch path's own mkdir -p of the derived directory failed: ", root as String], "") }
+  } else {
+    InstallMediaStoreReady { store: InstallMediaStore { root: root } }
   }
 }
 
