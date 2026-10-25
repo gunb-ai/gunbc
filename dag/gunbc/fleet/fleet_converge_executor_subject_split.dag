@@ -1,5 +1,10 @@
 module gunbc.fleet.fleet_converge_executor_subject_split
-import std.types { String }
+import std.types { String, List, Bool }
+import std.algebra { string_contains }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build { bash_build_word_lit, bash_build_word_var, bash_build_command_with_words, bash_build_test_bracket, bash_build_or_else, bash_build_with_redir, bash_build_exit, bash_build_if_from_stmts }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_subject_host_env_name }
 import gunbc.ci.ci_deploy_target_host { runner_name_proves_host_identity }
 import product.host_identity { HostIdentity }
@@ -15,9 +20,9 @@ import product.host_identity { HostIdentity }
 // drain or mask actuation.
 //
 // Three walls, each independently checked:
-//   1. the WORKFLOW PRECONDITION STEP (fleet_converge_split_gate_step) is the first mode step and
-//      runs only when the two inputs are equal, where it prints the refusal and exits 1 -- no drain,
-//      no mask leg can have run when it fires;
+//   1. the WORKFLOW PRECONDITION STEP (fleet_converge_executor_subject_split_gate_step) is the first
+//      mode step and runs on every dispatch of an act mode; its script refuses (exit 1) when either
+//      name is empty or the two are equal -- no drain, no mask leg can have run when it fires;
 //   2. the PRODUCTION ENTRIES re-check the runner identity (the SAME proving relation the deploy gate
 //      uses, runner_name_proves_host_identity from gunbc.ci.ci_deploy_target_host) before any subject
 //      resolution or edge call, so a hand-run of the entry refuses with the same typed value;
@@ -89,10 +94,90 @@ fn fleet_converge_split_refusal_line(reason: SplitRefusalReason) -> String {
   }
 }
 
-// THE WORKFLOW PRECONDITION STEP's script. It reads ONLY its two bound env names and refuses; it
-// contains no entry invocation, so the step whose text ran performed zero actuation. In a well-formed
-// dispatch the `if:` never lets it execute -- its ORDERING before every actuation step is what the
-// control asserts, together with its refusal text and the absence of any entry invoke in it.
+// THE WORKFLOW PRECONDITION STEP's script, TYPED. It is built from bash_build statement nodes and
+// rendered by v2.workflow.bash_emit -- never assembled as a string. (A join([...]) of hand-written
+// shell here shipped three syntax errors past the controls: a missing space before `]`, a stray `]`,
+// and an echo whose quote never closed, so bash died on a parse error before the refusal marker ever
+// printed -- review 38602 and review 386096 both caught it. String-built shell has no type to get
+// wrong; a syntax error is neither success nor a typed diagnostic, so DESIGN.md §5 forbids it; the
+// fold admits only statements its grammar parses, and the generation gate refuses emission when the
+// fold refuses (fleet_converge_split_gate_script_admitted).)
+//
+// It reads ONLY its two bound env names and decides both refusals; it contains no entry invocation,
+// so a refusing run performed zero actuation. The step's `if:` is only the act-mode disjunction, so
+// every act dispatch executes it and the decision is never made by an expression that can skip it
+// (review 86194). The control asserts its ORDERING before every actuation step, its refusal text, the
+// absence of any entry invoke in it, and the evaluated `if:` across the input cases.
+fn fleet_converge_split_gate_statements(executor_env_name: String, subject_env_name: String) -> List<Node> {
+  [
+    // Either name empty: an unnamed process cannot prove it is not the subject, and an unnamed
+    // subject is actuation on an inferred host. Fail closed, both arms in ONE test. Tested FIRST, as
+    // fleet_converge_split_precheck does, so two empty names report absence, not self-subject.
+    bash_build_if_from_stmts(
+      cond: bash_build_or_else(
+        left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: subject_env_name)]),
+        right: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: executor_env_name)])
+      ),
+      then_stmts: [
+        bash_build_with_redir(
+          inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "echo"),
+            bash_build_word_lit(text: join([fleet_converge_split_missing_subject_marker, ": both executor and subject must be named"], "")),
+          ]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr,
+        ),
+        bash_build_exit(code: "1"),
+      ]
+    ),
+    // Equal names = the executor is a slot on its own subject: the drain would wait for this very
+    // job's executor forever (refused run 40085967610, actions-runner@srv3-13).
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(words: [
+        bash_build_word_var(name: executor_env_name),
+        bash_build_word_lit(text: "="),
+        bash_build_word_var(name: subject_env_name),
+      ]),
+      then_stmts: [
+        bash_build_with_redir(
+          inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "echo"),
+            bash_build_word_lit(text: fleet_converge_split_refusal_marker),
+          ]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr,
+        ),
+        bash_build_exit(code: "1"),
+      ]
+    ),
+    // The holding line: reached only when both names are present and distinct.
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "echo"),
+      bash_build_word_lit(text: "split precondition holds: executor differs from subject"),
+    ]),
+  ]
+}
+
+fn fleet_converge_split_gate_script(executor_env_name: String, subject_env_name: String) -> Outcome<String> {
+  bash_emit_stmts(statements: fleet_converge_split_gate_statements(executor_env_name: executor_env_name, subject_env_name: subject_env_name), set_e: true)
+}
+
+// THE WORKFLOW PRECONDITION STEP's script text. bash_emit refusing means NO workflow is emitted --
+// the generation gate (fleet_converge_split_gate_script_admitted) fails closed rather than shipping
+// a step with a broken script.
 fn fleet_converge_split_gate_step_run(executor_env_name: String, subject_env_name: String) -> String {
-  join(["set -eu\nif [ \"$", executor_env_name, "\" = \"$", subject_env_name, "\" ]; then echo \"", fleet_converge_split_refusal_marker, "\"; exit 1; fi\nif [ -z \"$", subject_env_name, "\"] || [ -z \"$", executor_env_name, "\"] ]; then echo \"", fleet_converge_split_missing_subject_marker, ": both executor and subject must be named; exit 1; fi\necho \"split precondition holds: executor differs from subject\"\n"], "")
+  match fleet_converge_split_gate_script(executor_env_name: executor_env_name, subject_env_name: subject_env_name) {
+    Accepted { value: script, diagnostics: _ } => script
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+// GENERATION GATE: the gate step's script must be a program bash_emit accepts. A refusal here stops
+// fleet-converge.yml from being emitted at all, instead of shipping the review-found syntax error.
+fn fleet_converge_split_gate_script_admitted() -> Bool {
+  match fleet_converge_split_gate_script(executor_env_name: "FLEET_CONVERGE_EXPECTED_HOST", subject_env_name: "FLEET_CONVERGE_SUBJECT_HOST") {
+    Accepted { value: script, diagnostics: _ } =>
+      string_contains(s: script, pattern: fleet_converge_split_refusal_marker)
+        && string_contains(s: script, pattern: fleet_converge_split_missing_subject_marker)
+        && string_contains(s: script, pattern: "exit 1")
+    Rejected { diagnostics: _ } => false
+  }
 }

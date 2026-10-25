@@ -2341,14 +2341,14 @@ jobs:
       - name: "Split precondition: refuse a run whose executor host is its own subject (self-drain deadlock, run 40085967610)"
         id: fleet_converge_executor_subject_split_gate
         run: |
-          set -eu
-          if [ "$FLEET_CONVERGE_EXPECTED_HOST" = "$FLEET_CONVERGE_SUBJECT_HOST" ]; then echo "REFUSED: fleet-converge self-subject"; exit 1; fi
-          if [ -z "$FLEET_CONVERGE_SUBJECT_HOST"] || [ -z "$FLEET_CONVERGE_EXPECTED_HOST"] ]; then echo "REFUSED: fleet-converge subject absent: both executor and subject must be named; exit 1; fi
-          echo "split precondition holds: executor differs from subject"
+          set -e
+          if '[' '-z' "$FLEET_CONVERGE_SUBJECT_HOST" ']' || '[' '-z' "$FLEET_CONVERGE_EXPECTED_HOST" ']'; then 'echo' 'REFUSED: fleet-converge subject absent: both executor and subject must be named' >&2; exit 1; fi
+          if '[' "$FLEET_CONVERGE_EXPECTED_HOST" '=' "$FLEET_CONVERGE_SUBJECT_HOST" ']'; then 'echo' 'REFUSED: fleet-converge self-subject' >&2; exit 1; fi
+          'echo' 'split precondition holds: executor differs from subject'
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           FLEET_CONVERGE_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
-        if: github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore' && github.event.inputs.host == github.event.inputs.subject_host
+        if: github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore'
       - name: "Runner host files: write what differs as the administrator, reload if the drop-in changed, read the loaded teardown back"
         id: runner_host_file_converge
         run: |-
