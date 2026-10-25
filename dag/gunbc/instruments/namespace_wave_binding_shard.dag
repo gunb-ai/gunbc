@@ -4,6 +4,7 @@ import std.types { String, Bool, List, Int, Map }
 import gunbc.instruments.namespace_wave_occurrence_join { rows_multiset_equal, join_field, rows_by_module }
 import std.algebra { Cons, Empty, list_at_optional, empty_map, map_insert, list_snoc_item }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import std.content_hash { sha256_hex_of_text }
 
 // THE PARTITION DOMAIN is the set of modules the wave REWRITES (a git fact, known before any census and identical in
 // every shard), not the evidence set (which exists only after both censuses). A shard scopes its HEAD census to the
