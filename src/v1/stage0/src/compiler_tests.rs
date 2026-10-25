@@ -5828,11 +5828,10 @@ mod compiler_tests {
     // v2.compiler.resolve rendered `|acc: _, ..|` for the non-generic ChildWalk, because the closure
     // walk descended into ChildWalk's fields, reached a leaf the fn's environment does not bind, and
     // read the miss as an unbound generic. THE REDS: a declaration item and a coproduct body whose
-    // member is such a leaf answer `not generic` from both walks that read leaves. THE CONTROLS: a leaf whose
-    // declaration is a TypeParameter the fn does not bind answers unbound and one it binds answers
-    // bound; a leaf stamped as a declared type answers concrete though the environment misses it; an
-    // item spelled by itself still answers through its formals; and the real route annotates a
-    // declared record accumulator.
+    // member is such a leaf answer `not generic` from both walks that read leaves, and so does a
+    // reference whose `inferred` is that body. THE CONTROLS: a leaf neither the environment nor the fn
+    // binds still reads unbound and one the fn binds reads bound; an item spelled by itself still
+    // answers through its formals; and the real route annotates a declared record accumulator.
     #[test]
     fn fold_declared_accumulator_is_not_read_as_an_unbound_generic() {
         use crate::v1_std_core::{Connective, Node, ParsedModuleItemKind};
@@ -5858,7 +5857,11 @@ mod compiler_tests {
         let unbindable = named_type_node("Shared");
         assert!(
             closure(unbindable.clone(), none_bound.clone()),
-            "the residual: an unstamped leaf the environment misses still reads unbound"
+            "a leaf the environment does not bind and the fn does not bind reads unbound"
+        );
+        assert!(
+            !closure(named_type_node("T"), t_bound.clone()),
+            "a generic the fn binds is bound"
         );
         let mut free_member = (*named_type_node("pending")).clone();
         free_member.inferred = Some(std::rc::Rc::new(
@@ -5888,44 +5891,13 @@ mod compiler_tests {
             !closure(body.clone(), none_bound.clone()),
             "a coproduct body's arms are not type arguments"
         );
-        let stamped = |field: crate::std_decl_ref::DeclField| {
-            let mut n = (*named_type_node("T")).clone();
-            n.declaration = Some(std::rc::Rc::new(crate::std_decl_ref::DeclarationRef {
-                module_path: "hom.walker".to_string(),
-                decl_name: "bound".to_string(),
-                field: std::rc::Rc::new(field),
-            }));
-            std::rc::Rc::new(n)
-        };
-        let mut reference = (*shaped_type_node(
-            "Optional",
-            vec![stamped(crate::std_decl_ref::DeclField::WholeDeclaration)],
-        ))
-        .clone();
+        let mut reference = (*shaped_type_node("Optional", vec![named_type_node("T")])).clone();
         reference.inferred = Some(std::rc::Rc::new(
             crate::v1_std_core::InferredNode::Resolved { node: body.clone() },
         ));
         assert!(
-            !closure(std::rc::Rc::new(reference), none_bound.clone()),
+            !closure(std::rc::Rc::new(reference), t_bound.clone()),
             "a reference is spelled by its own arguments, not its declaration's arms"
-        );
-        let parameter = stamped(crate::std_decl_ref::DeclField::TypeParameter {
-            name: "T".to_string(),
-        });
-        assert!(
-            closure(parameter.clone(), none_bound.clone()),
-            "a TypeParameter the fn does not bind is unbound"
-        );
-        assert!(
-            !closure(parameter.clone(), t_bound.clone()),
-            "a TypeParameter the fn binds is bound"
-        );
-        assert!(
-            !closure(
-                stamped(crate::std_decl_ref::DeclField::WholeDeclaration),
-                none_bound.clone()
-            ),
-            "a stamped declared type is concrete though the environment misses its spelling"
         );
         let mut formal_item = (*named_type_node("Holder")).clone();
         formal_item.module_item_kind = ParsedModuleItemKind::ModuleItemTypeDeclaration;

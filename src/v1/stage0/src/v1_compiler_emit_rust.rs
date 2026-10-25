@@ -75,7 +75,7 @@ use crate::gunbc_namespace_cut_reference_derived_candidate::ReferenceDerivedCand
 use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{RuntimePrelude, ReexportFacade};
 use crate::std_coercion::TypeDeclarationProvenance::{CorpusDeclared, KernelMinted, DeclarationIdentityAbsent};
 use crate::std_coercion::TypeRealizationDecision::*;
-use crate::std_decl_ref::DeclField::{WholeDeclaration, NamedField, TypeParameter};
+use crate::std_decl_ref::DeclField::{WholeDeclaration};
 use crate::std_induction::SubValueRelation::{SubValueUnknown};
 use crate::std_literal_elaboration::KernelGroundingLookup::{KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous};
 use crate::std_literal_elaboration::KernelMintDeclarationLookup::{KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous};
@@ -3946,36 +3946,24 @@ pub fn rust_fold_rendered_type_has_any_spurious_generic(
 }
 
 pub fn type_leaf_is_unbound_in_closure_scope(
-    n: Rc<Node>,
     name: String,
     generic_param_names: Rc<Vec<String>>,
     env: Rc<TypeEnv>,
 ) -> bool {
-    match n.declaration.clone() {
-        Some(d) => match (*d.field.clone()).clone() {
-            DeclField::TypeParameter { name: p, .. } => {
-                !type_var_in_fn_generic_scope(p.clone(), generic_param_names.clone())
-            }
-            DeclField::WholeDeclaration => false,
-            DeclField::NamedField { field_name: _, .. } => false,
-        },
-        std::option::Option::None => {
-            if type_var_in_fn_generic_scope(name.clone(), generic_param_names.clone()) {
-                false
-            } else {
-                match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
-                    Some(resolved_node) => {
-                        if ((resolved_node.inferred.clone() != std::option::Option::None)
-                            && is_type_variable(resolved_node.inferred.clone().clone().unwrap()))
-                        {
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                    std::option::Option::None => true,
+    if type_var_in_fn_generic_scope(name.clone(), generic_param_names.clone()) {
+        false
+    } else {
+        match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
+            Some(resolved_node) => {
+                if ((resolved_node.inferred.clone() != std::option::Option::None)
+                    && is_type_variable(resolved_node.inferred.clone().clone().unwrap()))
+                {
+                    true
+                } else {
+                    false
                 }
             }
+            std::option::Option::None => true,
         }
     }
 }
@@ -4063,7 +4051,6 @@ pub fn type_node_has_closure_unbound_generic_atom(
         let leaf_name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         if (((n.children.clone().len() as i64) == 0) && (leaf_name.clone() != "".to_string())) {
             if type_leaf_is_unbound_in_closure_scope(
-                n.clone(),
                 leaf_name.clone(),
                 generic_param_names.clone(),
                 env.clone(),
