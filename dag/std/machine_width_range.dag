@@ -1,9 +1,12 @@
 module std.machine_width_range
 
-import std.types { Int, Bool }
+import std.types { Int, Bool, List, String }
 import std.integer { Signedness, Signed, Unsigned }
 import std.power_of_two { bitwise_pow2 }
 import std.measure { BitWidth, bit_width_count }
+import std.optional { Absent, Optional, Present }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.algebra { Cons, Empty }
 
 // HOME: a module of its own beside std.machine_constraints, not a declaration inside it, because
 // std.machine_constraints is in the stage0 seed closure and this reads std.measure and std.power_of_two,
@@ -38,5 +41,81 @@ fn machine_width_admits(signedness: Signedness, bits: BitWidth, value: Int) -> B
     value >= 0 - half && value < half
   } else {
     value >= 0 && value < bitwise_pow2(n: n)
+  }
+}
+
+// WHAT A TYPE SAYS ABOUT ITS MACHINE WIDTH, IN THREE ANSWERS, DECIDED ONCE (fail closed, DESIGN section 5). A
+// type is NotWidthConstrained when it names no MachineWidth, so the grounding and homomorphism path decides;
+// WidthReadable when it is Compose<A, MachineWidth<N>> with a literal N and a carrier A whose signedness is
+// declared (the kernel Int signed, std.nat Nat unsigned); and WidthUnreadable when it IS width-constrained but
+// the width cannot be read -- a malformed Compose, a named width such as MachineWidth<PointerWidth>
+// (std.integer IntPlatform, UIntPlatform), a carrier whose signedness is not declared. An unreadable width
+// refuses, typed: it is neither admitted by guessing a width nor handed to ordinary grounding, which would
+// accept any value the carrier accepts.
+// ONE DERIVATION FOR EVERY COMPILER THAT READS A WIDTH. Each compiler walks its own Node tree, so what it hands
+// here is the parts it extracted (MachineWidthTypeArgument), never a judgment: whether those parts make a
+// width, and which, is this function's answer. A reader that re-derives it from its own tree is a second
+// authority for one fact (DESIGN section 3).
+type MachineWidthReading
+  = NotWidthConstrained
+  | WidthReadable { signedness: Signedness, bits: BitWidth }
+  | WidthUnreadable { cause: MachineWidthUnreadable }
+
+type MachineWidthUnreadable
+  = WidthComposeMalformed
+  | WidthNotStatic
+  | WidthCarrierSignednessUndeclared
+
+// ONE TYPE ARGUMENT, AS ITS COMPILER EXTRACTED IT: the declaration it names (absent for a kernel type or an
+// unnamed one), whether it is the kernel Int, and its own sole argument when that argument is an integer
+// literal (MachineWidth<8> -> 8; MachineWidth<PointerWidth> and MachineWidth<> -> absent).
+type MachineWidthTypeArgument {
+  head: Optional<DeclarationRef>
+  is_kernel_int: Bool
+  sole_literal_argument: Optional<BitWidth>
+}
+
+fn machine_width_reading(head: Optional<DeclarationRef>, arguments: List<MachineWidthTypeArgument>) -> MachineWidthReading {
+  if machine_width_head_is(head: head, decl_name: "Compose") {
+    match arguments {
+      Cons { head: carrier, tail: Cons { head: width, tail: Empty } } =>
+        if machine_width_head_is(head: width.head, decl_name: "MachineWidth") {
+          match width.sole_literal_argument {
+            Absent => WidthUnreadable { cause: WidthNotStatic }
+            Present { value: bits } =>
+              match machine_width_carrier_signedness(carrier: carrier) {
+                Absent => WidthUnreadable { cause: WidthCarrierSignednessUndeclared }
+                Present { value: signedness } => WidthReadable { signedness: signedness, bits: bits }
+              }
+          }
+        } else {
+          NotWidthConstrained
+        }
+      Cons { head: _, tail: _ } => WidthUnreadable { cause: WidthComposeMalformed }
+      Empty => WidthUnreadable { cause: WidthComposeMalformed }
+    }
+  } else {
+    NotWidthConstrained
+  }
+}
+
+// THE CARRIER'S SIGNEDNESS IS DECLARED BY WHICH CARRIER IT IS: the kernel Int is signed and std.nat Nat is
+// unsigned. std.integer UInt = Nat unfolds to Nat before a compiler extracts it, so it needs no case here.
+fn machine_width_carrier_signedness(carrier: MachineWidthTypeArgument) -> Optional<Signedness> {
+  if carrier.is_kernel_int {
+    Present { value: Signed }
+  } else {
+    match carrier.head {
+      Present { value: d } =>
+        if d == decl_ref(module_path: "std.nat", decl_name: "Nat") { Present { value: Unsigned } } else { Absent }
+      Absent => Absent
+    }
+  }
+}
+
+fn machine_width_head_is(head: Optional<DeclarationRef>, decl_name: String) -> Bool {
+  match head {
+    Present { value: d } => d == decl_ref(module_path: "std.machine_constraints", decl_name: decl_name)
+    Absent => false
   }
 }
