@@ -1293,29 +1293,31 @@ pub fn gi_result_expression_type(
     mut __tco_loop_e: Rc<Node>,
     mut __tco_loop_depth: i64,
 ) -> Option<Rc<Node>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut e = __tco_loop_e;
-        #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth;
-        match e.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => {
-                break Some(rt.clone());
-            }
-            _ => {
-                if (depth.clone() >= 3) {
-                    break std::option::Option::None;
-                } else {
-                    match e.children.clone().last().cloned() {
-                        Some(c) => {
-                            let __tco_0 = c.clone();
-                            let __tco_1 = v1_rt::int_add(depth, 1);
-                            __tco_loop_e = __tco_0;
-                            __tco_loop_depth = __tco_1;
-                            continue;
-                        }
-                        std::option::Option::None => {
-                            break std::option::Option::None;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut e = __tco_loop_e;
+            #[allow(unused_mut)]
+            let mut depth = __tco_loop_depth;
+            match e.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rt, .. }) => {
+                    break Some(rt.clone());
+                }
+                _ => {
+                    if (depth.clone() >= 3) {
+                        break std::option::Option::None;
+                    } else {
+                        match e.children.clone().last().cloned() {
+                            Some(c) => {
+                                let __tco_0 = c.clone();
+                                let __tco_1 = v1_rt::int_add(depth, 1);
+                                __tco_loop_e = __tco_0;
+                                __tco_loop_depth = __tco_1;
+                                continue;
+                            }
+                            std::option::Option::None => {
+                                break std::option::Option::None;
+                            }
                         }
                     }
                 }
