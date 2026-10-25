@@ -204,6 +204,19 @@ data noble_numbat_2404_3_live_server_amd64: UbuntuInstallMediaArtifactRow = Ubun
   sha256sums_authority: ubuntu_noble_2404_3_releases_sha256sums_authority,
 }
 
+// THE MEDIA ROWS THIS MODULE CITES, each a line of the SHA256SUMS its authority names. A consumer that pins
+// artefacts read out of an ISO admits only one of these, so a row assembled elsewhere (one ISO's digest under
+// another architecture's label, say) has no origin built over it.
+data ubuntu_install_media_published_rows: List<UbuntuInstallMediaArtifactRow> = [
+  noble_numbat_2404_3_live_server_arm64,
+  noble_numbat_2404_5_live_server_arm64,
+  noble_numbat_2404_3_live_server_amd64,
+]
+
+fn ubuntu_install_media_row_is_published(row: UbuntuInstallMediaArtifactRow) -> Bool {
+  any(ubuntu_install_media_published_rows, r => r == row)
+}
+
 // ── The amd64 UEFI network-boot chain Canonical documents ────────────────────────────────────────
 // Canonical's how-to serves, from one TFTP root: the signed shim as bootx64.efi, the signed network
 // GRUB as grubx64.efi (shim loads that name from beside itself), grub/grub.cfg under GRUB's network

@@ -15,6 +15,7 @@ import extdeps.provisioning.ubuntu_install_media {
   Amd64,
   CdimageUbuntuCom,
   noble_numbat_2404_5_live_server_arm64,
+  noble_numbat_2404_3_live_server_amd64,
   ubuntu_install_media_mirror_url,
 }
 import gunbc.provisioning.ubuntu_network_origin_observation {
@@ -28,6 +29,7 @@ import gunbc.provisioning.ubuntu_network_origin_observation {
   OriginInstallerFilesystem,
   verify_ubuntu_network_origin,
   ubuntu_noble_arm64_network_origin,
+  ubuntu_noble_amd64_network_origin,
   ubuntu_network_origin,
   pinned_artefact,
 }
@@ -167,6 +169,8 @@ test fn the_installer_url_derives_from_the_media_row() -> Bool {
   ) as String) == "https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04.5-live-server-arm64.iso"
 }
 
+// RED (kept from the aarch64-only constructor, now on the general rule): a media row no SHA256SUMS line names --
+// the arm64 ISO's digest under an amd64 label -- gets no origin, whatever pins are offered with it.
 test fn an_origin_refuses_another_architectures_media() -> Bool {
   let amd64_row = UbuntuInstallMediaArtifactRow {
     distribution: NobleNumbat2404Lts,
@@ -187,6 +191,15 @@ test fn an_origin_refuses_another_architectures_media() -> Bool {
       Present { value: _ } => false
       Absent => true
     }
+    Absent => false
+  }
+}
+
+// THE amd64 ORIGIN IS A ROW THROUGH THE SAME CONSTRUCTOR: its media is the published amd64 row, so its architecture
+// is read off that row rather than authored beside it.
+test fn the_amd64_origin_is_built_over_the_published_amd64_row() -> Bool {
+  match ubuntu_noble_amd64_network_origin() {
+    Present { value: o } => o.installer_media == noble_numbat_2404_3_live_server_amd64
     Absent => false
   }
 }

@@ -21,6 +21,7 @@ import extdeps.provisioning.ubuntu_install_media {
   noble_numbat_2404_5_live_server_arm64,
   noble_numbat_2404_3_live_server_amd64,
   ubuntu_install_media_publishing_mirror,
+  ubuntu_install_media_row_is_published,
   ubuntu_cd_image_signing_key_fingerprint,
   ubuntu_casper_kernel_member_path,
   ubuntu_casper_initrd_member_path,
@@ -68,7 +69,11 @@ type UbuntuNetworkOrigin sole_constructor {
   installer_filesystem: PinnedArtefact
 }
 
+// AN ORIGIN IS BUILT ONLY OVER A PUBLISHED MEDIA ROW: one assembled elsewhere is absence, never an origin.
 fn ubuntu_network_origin(media: UbuntuInstallMediaArtifactRow, installer_size: FiniteByteSize, kernel: PinnedArtefact, initrd: PinnedArtefact) -> UbuntuNetworkOrigin? {
+  if ubuntu_install_media_row_is_published(row: media) == false {
+    Absent
+  } else {
   match pinned_artefact(
     sha256_hex: media.content_sha256 as NonEmptyStr,
     digest_standing: CitedToAuthority { authority: media.sha256sums_authority },
@@ -79,6 +84,7 @@ fn ubuntu_network_origin(media: UbuntuInstallMediaArtifactRow, installer_size: F
     Present { value: f } => Present {
       value: UbuntuNetworkOrigin { installer_media: media, kernel: kernel, initrd: initrd, installer_filesystem: f }
     }
+  }
   }
 }
 
