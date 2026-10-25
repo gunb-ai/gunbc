@@ -406,6 +406,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let alias2 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
   let alias3 = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "flash-next"), path: "/v1/chat/completions")
   let alias_other = dev_request(key: "ck-falsifier", session: "z", body: model_body(model: "m-b"), path: "/v1/chat/completions")
+  let dev_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
+  let dev_stats_no_key = dev_get(key: "wrong", path: "/router/stats")
   let large = curl(arguments: ["-sS", "--max-time", "30", "-H", "x-case: large", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "http://127.0.0.1:18443/v1/x"])
   let after_large = sink(n: "5")
   let removed = remove_all()
@@ -443,6 +445,8 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_red_bound_session_on_another_model_answers_409", held: contains(s: alias_other, p: "\n409 exit=0") && !contains(s: alias_other, p: "upstream="), observed: alias_other),
     case_of(identity: "a_body_over_1_mib_reaches_authz_and_the_upstream_byte_identically", held: contains(s: large, p: "same_body=true len=4139216") && contains(s: large, p: "\n200 exit=0"), observed: large),
     case_of(identity: "stream_end_fires_for_the_large_body", held: contains(s: after_large, p: "ends=5 last=p-large-nobody-4139216-") && contains(s: after_large, p: "hits=5"), observed: after_large),
+    case_of(identity: "dev_stats_tally_each_status_and_upstream", held: contains(s: dev_stats, p: "\"status:401\":1") && contains(s: dev_stats, p: "\"status:429\":1") && contains(s: dev_stats, p: "\"status:502\":1") && contains(s: dev_stats, p: "\"upstream:a:200\":4") && contains(s: dev_stats, p: "\"active:a\":0"), observed: dev_stats),
+    case_of(identity: "dev_red_stats_need_a_client_key", held: contains(s: dev_stats_no_key, p: "\n401 exit=0"), observed: dev_stats_no_key),
     case_of(identity: "world_is_removed", held: removed == 0, observed: to_string(removed)),
   ]
 }
@@ -486,6 +490,8 @@ fn falsifier_expected_identities() -> List<String> {
     "dev_red_bound_session_on_another_model_answers_409",
     "a_body_over_1_mib_reaches_authz_and_the_upstream_byte_identically",
     "stream_end_fires_for_the_large_body",
+    "dev_stats_tally_each_status_and_upstream",
+    "dev_red_stats_need_a_client_key",
     "world_is_removed",
   ]
 }

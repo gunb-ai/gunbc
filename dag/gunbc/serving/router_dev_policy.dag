@@ -125,8 +125,28 @@ fn router_dev_access_lines() -> List<String> {
   ]
 }
 
+// The log phase releases the turn and tallies the outcome: every answered request by status, and each
+// admitted one by upstream and status, so the cut-over has a 4xx/5xx rate to watch (the access log is off).
 fn router_dev_log_lines() -> List<String> {
-  ["if ngx.ctx.counted then ngx.shared.router_state:incr('active:' .. ngx.ctx.counted, -1, 0) end"]
+  [
+    "local state = ngx.shared.router_state",
+    "state:incr('status:' .. tostring(ngx.status), 1, 0)",
+    "if ngx.ctx.counted then state:incr('active:' .. ngx.ctx.counted, -1, 0) state:incr('upstream:' .. ngx.ctx.counted .. ':' .. tostring(ngx.status), 1, 0) end",
+  ]
+}
+
+// GET /router/stats with a client key: the tallies and the active turns per upstream, as JSON.
+fn router_dev_stats_lines() -> List<String> {
+  [
+    "local cjson = require('cjson.safe')",
+    "local h = ngx.var.http_authorization or ''",
+    "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\",\"type\":\"authentication_error\"}}') return end",
+    "local state = ngx.shared.router_state",
+    "local out = \{}",
+    "for _, k in ipairs(state:get_keys(0)) do if k:find('^status:') or k:find('^upstream:') or k:find('^active:') then out[k] = state:get(k) end end",
+    "ngx.header['Content-Type'] = 'application/json'",
+    "ngx.say(cjson.encode(out))",
+  ]
 }
 
 type RouterDevSite {
@@ -173,6 +193,7 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
   match tok(text: site.state_dir + "/upstream_ca.pem") { Absent => RouterDevConfigRefused { token: "ca" } Present { value: ca } =>
   match tok(text: "router_state") { Absent => RouterDevConfigRefused { token: "dict" } Present { value: dict } =>
   match tok(text: "10m") { Absent => RouterDevConfigRefused { token: "dict_size" } Present { value: dict_size } =>
+  match tok(text: "/router/stats") { Absent => RouterDevConfigRefused { token: "stats" } Present { value: stats } =>
   match tok(text: "/v1/models") { Absent => RouterDevConfigRefused { token: "models" } Present { value: models } =>
   match tok(text: "/v1/") { Absent => RouterDevConfigRefused { token: "v1" } Present { value: v1 } =>
   match tok(text: "Authorization") { Absent => RouterDevConfigRefused { token: "auth" } Present { value: auth } =>
@@ -196,12 +217,13 @@ fn router_dev_config(site: RouterDevSite) -> RouterDevConfig {
           ListenTlsOn { address: addr, port: site.listen_port },
           SslCertificate { path: cert },
           SslCertificateKey { path: certkey },
-          LocationBlock { matching: ExactMatch { path: models }, body: [LuaPhaseBlock { phase: ContentPhase, lines: router_dev_models_lines() }] },
+          LocationBlock { matching: ExactMatch { path: models }, body: [LuaPhaseBlock { phase: ContentPhase, lines: router_dev_models_lines() }, LuaPhaseBlock { phase: LogPhase, lines: router_dev_log_lines() }] },
+          LocationBlock { matching: ExactMatch { path: stats }, body: [LuaPhaseBlock { phase: ContentPhase, lines: router_dev_stats_lines() }] },
           router_dev_location(up: up, scheme: scheme, key: key, sni: sni, auth: auth, host: host, bearer: bearer, http: http, ca: ca, v1: v1),
         ] },
       ] },
     ]) }
-  } } } } } } } } } } } } } } } } } }
+  } } } } } } } } } } } } } } } } } } }
 }
 
 // The srv1 site (operator decision 2026-10-25): HTTPS on the host's 1G address, state mounted at
