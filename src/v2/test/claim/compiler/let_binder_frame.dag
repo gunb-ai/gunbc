@@ -47,7 +47,6 @@ fn lbf_reason(body: String) -> Symbol {
   }
 }
 
-// Accepted with no advisory at all: no node of the program -- binder key, reference, Bind -- stands on the frontier.
 // ACCEPTED AND DECIDED: no advisory other than the counted infer_grounding_not_derived frontier. That
 // frontier is charged on every function signature's Arrow and Conj, a let or not (measured: `fn g(a: Int)
 // -> Int { a }` carries it), so "no advisory at all" is no longer a property any program has. The test
