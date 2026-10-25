@@ -82,7 +82,7 @@ data a_closed_release: ModelRelease = ClosedWeightRelease {
   declared_context: DeclaredContext { max_positions: token_count(count: 200000), scaling: NoScaling },
 }
 
-data probed_at: Timestamp = 1788240000 as Timestamp
+data probed_at: Timestamp = "1788240000"
 
 data publisher_source: ReleaseDiscoverySource = ReleaseDiscoverySource {
   authority: "huggingface publisher catalog" as NonEmptyStr,

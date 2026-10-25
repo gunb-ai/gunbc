@@ -1,5 +1,6 @@
 module gunbc.fabric.fabric_control_plane
 
+import std.integer { int_to_decimal_string }
 import gunbc.workspace_slot_mutation {
   workspace_slot_mutation_acquire, workspace_slot_mutation_release,
   WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationRefused,
@@ -1067,7 +1068,7 @@ fn cas_unreadable_wire(cause: CasUnreadableSlot) -> NonEmptyStr {
       join(["cas-content-missing|hash=", serialize_content_hash(hash: hash) as String], "") as NonEmptyStr
     CasUnreadableReadRefused { detail: _ } => "cas-read-refused"
     CasUnreadableObservationBoundExceeded { bound: b } =>
-      join(["cas-observation-bound-exceeded|bound=", b as String], "") as NonEmptyStr
+      join(["cas-observation-bound-exceeded|bound=", int_to_decimal_string(value: b)], "") as NonEmptyStr
   }
 }
 

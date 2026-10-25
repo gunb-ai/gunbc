@@ -1,5 +1,6 @@
 module test.claim.durable_cas_file_store_wet_witness
 
+import std.integer { int_to_decimal_string }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, NonEmptyStr, String }
@@ -234,7 +235,7 @@ fn slot_file_count(root_path: String, key: String) -> Int {
 // Commit n successive generations through the slot's own observation of its head.
 fn commit_successively(root: NonEmptyStr, window: CasGenerationWindow?, key: NonEmptyStr, n: Int) -> Bool {
   [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] |> filter(i => i <= n) |> all(i => {
-    let payload = concat("v", i as String) as NonEmptyStr
+    let payload = concat("v", int_to_decimal_string(value: i)) as NonEmptyStr
     let expected = if i == 1 { ExpectSlotAbsent } else { ExpectSlotGeneration { generation: i - 1 } }
     is_committed(o: run_cas_in(root: root, window: window, attempt: honest(key: key, payload: payload, expected: expected)), payload: payload, generation: i)
   })

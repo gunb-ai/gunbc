@@ -81,6 +81,7 @@ import std.state_durability {
   StatePreserved,
 }
 import std.types { Bool, List, String }
+import std.integer { int_to_decimal_string }
 
 data srv4_bmc_fan_publication_protocol: LinuxFilePublicationProtocol = linux_synchronized_rename_replace_publication
 
@@ -394,7 +395,7 @@ fn bmc_fan_durability_evidence_construction_refusal_reason(
     DurabilityReceiptNonPositiveInterval { cause: cause } =>
       concat(
         "reboot persistence receipt has a non-positive timing interval: ",
-        cause.observed as String,
+        int_to_decimal_string(value: cause.observed),
       )
   }
 }

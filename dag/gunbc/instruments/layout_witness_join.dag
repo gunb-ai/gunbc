@@ -16,6 +16,7 @@ import v2.compiler.source_authority { ModuleFileRef, module_file_key }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow, FloorMarkedSource }
 import v2.workflow.floor_discovery_producer { discover_floor_corpus_rows_from_host_facts }
 import v2.workflow.floor_discovery_source_authority { FloorDiscoveryAccepted, FloorDiscoveryRefused, floor_discovery_path_excluded }
+import std.integer { int_to_decimal_string }
 
 
 // THE WITNESS-SET IDENTITY JOIN (gunbc.plans.source_layout_authority, C4 admission). A layout sweep
@@ -664,11 +665,11 @@ fn red_findings(findings: List<JoinFinding>) -> List<JoinFinding> {
 
 fn join_summary_lines(old: Observation, new: Observation, findings: List<JoinFinding>) -> List<String> {
   [
-    concat("old rows: ", count(old.rows) as String),
-    concat("new rows: ", count(new.rows) as String),
-    concat("unread files: ", count(new.unread) as String),
-    concat("preserved dispositions (old and new side, rows and files): ", count(findings |> filter(f => match f { RowPreserved => true _ => false })) as String),
-    concat("red findings: ", count(red_findings(findings: findings)) as String)
+    concat("old rows: ", int_to_decimal_string(value: count(old.rows))),
+    concat("new rows: ", int_to_decimal_string(value: count(new.rows))),
+    concat("unread files: ", int_to_decimal_string(value: count(new.unread))),
+    concat("preserved dispositions (old and new side, rows and files): ", int_to_decimal_string(value: count(findings |> filter(f => match f { RowPreserved => true _ => false })))),
+    concat("red findings: ", int_to_decimal_string(value: count(red_findings(findings: findings))))
   ]
 }
 
@@ -690,7 +691,7 @@ fn disposition_kinds() -> List<String> {
 }
 
 fn disposition_table_lines(findings: List<JoinFinding>) -> List<String> {
-  disposition_kinds() |> map(k => join(["DISPOSITION", k, count(findings |> filter(f => finding_kind(finding: f) == k)) as String], "\t"))
+  disposition_kinds() |> map(k => join(["DISPOSITION", k, int_to_decimal_string(value: count(findings |> filter(f => finding_kind(finding: f) == k)))], "\t"))
 }
 
 fn join_result_line(findings: List<JoinFinding>) -> String {
@@ -978,5 +979,5 @@ fn joined_report(old: Observation, new: Observation, plan: PlanEdges, declaratio
     )
   )
   if count(red_findings(findings: findings)) == 0 { written }
-  else { exit_failure(reason: concat("layout witness join: ", count(red_findings(findings: findings)) as String, " red findings; see ", report)) }
+  else { exit_failure(reason: concat("layout witness join: ", int_to_decimal_string(value: count(red_findings(findings: findings))), " red findings; see ", report)) }
 }

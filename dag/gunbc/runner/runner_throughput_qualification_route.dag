@@ -1,7 +1,8 @@
 module gunbc.runner.runner_throughput_qualification_route
 
+import std.integer { int_to_decimal_string }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_to_decimal_string }
 import std.measure { byte_size_count, hardware_thread_count_value }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity }
@@ -100,7 +101,7 @@ fn cpu_quota_properties(quota: RunnerSlotCpuQuota) -> List<SystemdRunProperty> {
     SlotCpuQuotaUnbounded => []
     CpuQuotaResolved { threads: t } => {
       let percent = hardware_thread_count_value(t: t) * 100
-      [NamedUnitSetting { property: CPUQuota, value: concat(percent as String, "%") as NonEmptyStr }]
+      [NamedUnitSetting { property: CPUQuota, value: concat(nat_to_decimal_string(value: percent), "%") as NonEmptyStr }]
     }
   }
 }
@@ -108,11 +109,11 @@ fn cpu_quota_properties(quota: RunnerSlotCpuQuota) -> List<SystemdRunProperty> {
 fn ephemeral_slot_properties(desired: RunnerSlotDesired) -> List<SystemdRunProperty> {
   concat(
     [
-      NamedUnitSetting { property: MemoryMax, value: byte_size_count(b: desired.memory_max) as String as NonEmptyStr },
-      NamedUnitSetting { property: MemoryHigh, value: byte_size_count(b: desired.memory_high) as String as NonEmptyStr },
-      NamedUnitSetting { property: MemorySwapMax, value: byte_size_count(b: desired.memory_swap_max) as String as NonEmptyStr },
-      NamedUnitSetting { property: TasksMax, value: desired.tasks_max as String as NonEmptyStr },
-      NamedUnitSetting { property: CPUWeight, value: desired.cpu_weight as String as NonEmptyStr },
+      NamedUnitSetting { property: MemoryMax, value: nat_to_decimal_string(value: byte_size_count(b: desired.memory_max)) as NonEmptyStr },
+      NamedUnitSetting { property: MemoryHigh, value: nat_to_decimal_string(value: byte_size_count(b: desired.memory_high)) as NonEmptyStr },
+      NamedUnitSetting { property: MemorySwapMax, value: nat_to_decimal_string(value: byte_size_count(b: desired.memory_swap_max)) as NonEmptyStr },
+      NamedUnitSetting { property: TasksMax, value: int_to_decimal_string(value: desired.tasks_max) as NonEmptyStr },
+      NamedUnitSetting { property: CPUWeight, value: int_to_decimal_string(value: desired.cpu_weight) as NonEmptyStr },
     ],
     cpu_quota_properties(quota: desired.cpu_quota),
   )

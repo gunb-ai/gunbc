@@ -238,6 +238,7 @@ import gunbc.runner.runner_service_activation {
   runner_activation_safety_report,
 }
 import extdeps.access.posix { file_mode_octal }
+import std.integer { int_to_decimal_string }
 
 type TimerRetirementMemberAt = NonEmptyStr
 
@@ -829,9 +830,9 @@ fn plan_section_framing_fault(plan_body: String, section: String) -> PlanFraming
   } else if ends == 0 {
     PlanFramingFaulted { cause: concat("plan.txt carries no ", fleet_converge_plan_section_end_marker(section: section), " marker (minted before the rows were delimited)") }
   } else if starts != 1 {
-    PlanFramingFaulted { cause: concat("plan.txt carries ", starts as String, " ", section, ": boundaries (framing must be exact; embedded or duplicated boundary)") }
+    PlanFramingFaulted { cause: concat("plan.txt carries ", int_to_decimal_string(value: starts), " ", section, ": boundaries (framing must be exact; embedded or duplicated boundary)") }
   } else if ends != 1 {
-    PlanFramingFaulted { cause: concat("plan.txt carries ", ends as String, " ", fleet_converge_plan_section_end_marker(section: section), " boundaries (framing must be exact; embedded or duplicated boundary)") }
+    PlanFramingFaulted { cause: concat("plan.txt carries ", int_to_decimal_string(value: ends), " ", fleet_converge_plan_section_end_marker(section: section), " boundaries (framing must be exact; embedded or duplicated boundary)") }
   } else {
     match list_head(xs: reverse(split(s: plan_body, delimiter: start))) {
       Absent => PlanFramingFaulted { cause: concat("plan.txt ", section, " section is empty") }

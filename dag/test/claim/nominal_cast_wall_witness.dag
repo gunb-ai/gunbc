@@ -18,7 +18,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // v1.compiler.infer validate_cast refused a nominal source with no declared route, the checker
 // ABSTAINED and v1_interpreter eval_cast rendered the host's debug text. The RED is the specimen's
 // shape (a record carrier cast to String, #14732) and its coproduct sibling; the controls keep the
-// wall from being a wrecking ball: a kernel Int still casts, a String refinement still casts, an
+// wall from being a wrecking ball: a String refinement still casts, an
 // identity cast of the nominal still compiles, and the DECLARED conversion route (a function the
 // author names) compiles. PATH SCOPE: compile acceptance only; the concat/join route is a different
 // chain (ii) and is not measured here.
@@ -48,7 +48,7 @@ data refinement_as_string_source: String = "module probe_nominal_cast_refinement
 
 data identity_cast_source: String = "module probe_nominal_cast_identity\nimport std.types { Int }\ntype P { value: Int }\nfn same(p: P) -> P { p as P }\n"
 
-data declared_conversion_source: String = "module probe_nominal_cast_declared\nimport std.types { String, Int }\ntype P { value: Int }\nfn p_wire_text(p: P) -> String { p.value as String }\nfn text(p: P) -> String { p_wire_text(p: p) }\n"
+data declared_conversion_source: String = "module probe_nominal_cast_declared\nimport std.types { String, Int }\nimport std.integer { int_to_decimal_string }\ntype P { value: Int }\nfn p_wire_text(p: P) -> String { int_to_decimal_string(value: p.value) }\nfn text(p: P) -> String { p_wire_text(p: p) }\n"
 
 data nat_as_int_source: String = "module probe_nominal_cast_nat\nimport std.types { Int }\nimport std.nat { Nat }\nfn widen(n: Nat) -> Int { n as Int }\n"
 
@@ -79,8 +79,13 @@ test fn a_coproduct_cast_to_string_with_no_declared_route_is_refused() -> Bool {
   ) == 1
 }
 
-test fn control_int_as_string_is_accepted() -> Bool {
-  blocking_total(source: int_as_string_source) == 0
+// WAS A GREEN CONTROL (control_int_as_string_is_accepted), kept accepted by instruction while the
+// Int fork was open. Operator ruling via stern-bat-401, 2026-10-24: `n as String` over a kernel Int
+// has no declared route either (DESIGN section 4), so it refuses at check, under the non-text wall's
+// message (test.claim.non_text_cast_into_text_wall_witness), and stays enrolled here as a regression
+// control. The declared route below names std.integer int_to_decimal_string.
+test fn int_as_string_with_no_declared_route_is_refused() -> Bool {
+  blocking_total(source: int_as_string_source) >= 1
 }
 
 test fn control_refinement_as_string_is_accepted() -> Bool {

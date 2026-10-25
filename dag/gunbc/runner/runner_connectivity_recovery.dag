@@ -1,5 +1,6 @@
 module gunbc.runner.runner_connectivity_recovery
 
+import std.nat { nat_to_decimal_string }
 import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration, list_length }
 import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -548,7 +549,7 @@ fn action_is_noop(action: RunnerConnectivityAction) -> Bool {
 }
 
 fn slot_key(slot: RunnerSlotIdentity) -> String {
-  concat(concat(slot.host as String, "-"), slot.slot_index as String)
+  concat(concat(slot.host as String, "-"), nat_to_decimal_string(value: slot.slot_index))
 }
 
 fn plan_allows_replace_for_slot(
