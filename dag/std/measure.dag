@@ -416,6 +416,20 @@ type PhysicalCoreCount = Measure<Count, One, Nat>
 
 type CharacterCount = Measure<Count, One, Nat>
 
+// A count of display pixels: the unit a spreadsheet column's width is set and read in (Google
+// Sheets DimensionProperties.pixelSize, extdeps.google.sheets SetColumnWidth). It is a NOMINAL
+// record, not a Measure alias, because an alias of Measure<Count, One, Nat> is the same type as
+// CharacterCount and every other count, and a distinct phantom quantity argument is not judged at
+// a generic application today (gunbc.recurring_failure_mode
+// direct_generic_application_admits_a_distinct_phantom_argument). A distinct record and an unaliased
+// Measure are refused at a DisplayPixelCount formal; an alias-typed count (CharacterCount) is still
+// admitted, which is gunbc.recurring_failure_mode
+// an_aliased_generic_application_is_admitted_at_a_distinct_record_formal, enrolled as an
+// expecting-red tripwire in test.claim.display_pixel_count_refusal_witness.
+type DisplayPixelCount {
+  pixels: Nat
+}
+
 type TokenCount = Measure<Count, One, Nat>
 
 // A count of KV allocator blocks (vLLM `num_gpu_blocks`). Same Count axis as TokenCount, different

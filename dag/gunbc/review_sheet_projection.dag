@@ -1717,8 +1717,9 @@ fn ci_prospect_sheet_schema() -> ReviewSheetSchema {
 // hardcoded Listing/operator pair was a DESIGN section 3 fork and is gone. The remaining gap is a
 // production inhabitance of the TYPED public seam: review_sheet_ensure_assess then
 // review_sheet_ensure_decide, not the prose-flattening compatibility wrapper. A public FrontierRow
-// cannot cite a private declaration; the bind is review_sheet_ensure_assess. live_sheets_transport_frontier
-// is the transport scaffold on review_sheet_ensure, not this consumption obligation.
+// cannot cite a private declaration; the bind is review_sheet_ensure_assess. The public review-sheet
+// converge (gunbc.review_sheet_converge_cli converge_review_tab_rows) takes that seam for its own
+// kinds, which does not discharge this row: the obligation is the buyer roster's caller.
 data buyer_review_ensure_projection_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.review_sheet_sheets", decl_name: "review_sheet_ensure_assess"),

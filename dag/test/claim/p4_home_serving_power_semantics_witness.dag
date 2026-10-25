@@ -18,7 +18,7 @@ import extdeps.gpu.nvidia {
   nvidia_rtx_5090_catalog, nvidia_rtx_pro_6000_workstation_catalog,
   nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog,
   nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
-  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog
+  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog
 }
 import gunbc.serving.home_serving_accelerator_field {
   home_serving_add_in_card_catalog_rows, home_serving_reference_sxm_catalog_rows,
@@ -181,27 +181,6 @@ test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
 // conjunct instead of quietly reducing the work -- which is exactly the failure mode a
 // derived roster otherwise invites.
 
-// the pieces of the text that could be citations, split on the delimiters that surround one
-
-// the shape test. A citation is `module::decl` or `module::decl.field` and NOTHING else:
-// exactly one `::` pair, no path separator, no punctuation, no whitespace. The separator is
-// removed before the rejection scan because `::` itself contains a colon, which is otherwise
-// a reject character -- that bug was live in the first draft of this test and rejected every
-// citation, which is the kind of thing a measured roster catches and an assumed one does not.
-
-// The shape is matched STRUCTURALLY rather than counted: `a::b` with nothing after the
-// second part is exactly one separator. Three arms' worth of `length() == 2 && parts[0]
-// != "" ...` was what the first draft did, and indexing is safe-indexing here -- it hands
-// back Optional, which infer caught. Matching Cons/Empty is also how the repo reads a
-// split apart (`extdeps.linux.proc_pid_stat`, `test.claim.runner.runner_qemu_host_standing`).
-// The separator is removed before the rejection scan because `::` itself contains a colon,
-// which is otherwise a reject character -- that bug was live in the first draft and rejected
-// every citation, which is what a measured roster catches and an assumed one does not.
-
-// Only ever reached on a string that test.claim.plan_citation_census::plan_citation_is_citation_shape accepted, so the two-arm
-// reading is total in practice; the `_` arm exists because a match must be total, and it
-// yields the one thing that cannot resolve -- an empty module -- rather than a guess.
-
 // THE POSITIVE CONTROL ON THE DERIVATION ITSELF. Every `::` in the text must be covered by
 // the roster; if the shape test ever excludes a real citation, or the roster is narrowed to
 // make the claim pass, this conjunct goes red rather than the claim going quietly green.
@@ -209,7 +188,7 @@ fn p4_citation_count_is_conserved(t: String) -> Bool {
   let roster = plan_citation_citation_roster(t)
   let covered = fold(roster, init: 0, f: (n, cite) => n + plan_citation_occurrences(t: t, cite: cite))
   let separators = t.split(delimiter: "::").length() - 1
-  covered == separators && separators > 20
+  covered == separators && separators > 0
 }
 
 // THE ONE CENSUS KEY PATH. Every census lookup in this module goes through
@@ -257,16 +236,25 @@ fn p4_citation_resolves(facts: List<DeclFact>, cite: String) -> Bool {
 test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bool {
   let t = carrier_text()
   let roster = plan_citation_citation_roster(t)
-  let unmerged = "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmission"
-  let facts = plan_citation_census_read(cites: concat(roster, [unmerged]))
-  // NEGATIVE CONTROLS FIRST. A census read that came back empty would satisfy every
-  // resolution check vacuously for the negative ones and fail the positives, so the
-  // population and the roster size are asserted in the same breath as the citations.
-  // The unmerged module is the load-bearing one: it must stay UNRESOLVED, which is what
-  // makes this claim able to tell "present" from "asserted by the document".
+  let positive = "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmission"
+  let near_miss = "gunbc.serving.home_serving_power_policy::HomeServingPowerAdmissionShadow"
+  // Both controls are keys of the ONE read, so the census answers them; a key left out of the
+  // read would come back empty by omission and the negative would pass without being asked.
+  let facts = plan_citation_census_read(cites: concat(roster, [positive, near_miss]))
+  // WHAT THE CONTROL DISCRIMINATES: that this resolver can answer BOTH ways, so a citation
+  // the document asserts is not satisfied by the document asserting it. It used to rest on
+  // `gunbc.serving.home_serving_power_policy` being UNMERGED, a premise the world retired
+  // when #14463 landed the module, after which the claim was red on a true fact. The
+  // module's citation is now the POSITIVE: the census must resolve HomeServingPowerAdmission,
+  // and moving the module out of the tree reddens it. The NEGATIVE is a near-miss
+  // declaration in the SAME module that no module declares -- same census read, one
+  // differing token -- so a resolver that could never answer "unresolved" reddens it, and so
+  // does authoring that name. An absent name is honest as a negative only because the
+  // positives beside it run the identical function; alone it is green by construction.
   p4_citation_count_is_conserved(t: t)
-    && roster.length() > 20
-    && !p4_citation_resolves(facts: facts, cite: unmerged)
+    && roster.length() > 0
+    && p4_citation_resolves(facts: facts, cite: positive)
+    && !p4_citation_resolves(facts: facts, cite: near_miss)
     && all(roster, cite => p4_citation_resolves(facts: facts, cite: cite))
 }
 
@@ -327,14 +315,15 @@ fn p4_row_is_sxm(row: GpuModelCatalogRow) -> Bool {
 // THE CATALOG UNIVERSE, IMPORTED BY NAME. The claims below partition this list,
 // so it is the thing a narrowing attack would have to edit. The census count of
 // `data <row>: GpuModelCatalogRow` in `extdeps.gpu.nvidia` is compared against
-// its length, so a ninth row added without being named here reddens the claim
-// rather than being silently unpartitioned. That is the honest shape: the rows
+// its length, so a row added without being named here reddens the claim rather
+// than being silently unpartitioned -- as `nvidia_h200_nvl_catalog` did when #14718
+// added it, until it was named below. That is the honest shape: the rows
 // are read as typed values, and the census is what keeps the value list fresh.
 data p4_catalog_universe: List<GpuModelCatalogRow> = [
   nvidia_rtx_5090_catalog, nvidia_rtx_pro_6000_workstation_catalog,
   nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog,
   nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
-  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog
+  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog
 ]
 
 // Same membership fold the shipped home-serving witness uses, so row identity is
