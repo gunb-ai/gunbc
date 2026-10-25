@@ -19,6 +19,10 @@ data scratch_sbw_infer_supply: String = "src/v2/compiler/infer.dag\tsort_by(inde
 
 data scratch_sbw_infer_path: String = "src/v2/compiler/infer.dag"
 
+data scratch_sbw_node_supply: String = "src/v2/std/node.dag\tsort_by(a, fn(x) { x })\tv2.std.node.symbol_total_order\t-\tsymbol_total_order()\nsrc/v2/std/node.dag\tsort_by(b, fn(x) { x })\tv2.std.node.symbol_total_order\t-\tsymbol_total_order()\nsrc/v2/std/node.dag\tsort_by(classes.structural, fn(x) { label_sort_key(label: label_of(x)) })\tv2.std.node.symbol_total_order\t-\tsymbol_total_order()\nsrc/v2/std/node.dag\tsort_by(classes.other, fn(x) { label_sort_key(label: label_of(x)) })\tv2.std.node.symbol_total_order\t-\tsymbol_total_order()\nsrc/v2/std/node.dag\tsort_by(xs, fn(h) { h.digest })\tstd.content_hash.fnv1a64_structural_digest_hex_total_order;std.content_hash.Fnv1a64StructuralDigestHex\tkey hash_digest_key fn(Hash) -> Fnv1a64StructuralDigestHex\tfnv1a64_structural_digest_hex_total_order()\n"
+
+data scratch_sbw_node_path: String = "src/v2/std/node.dag"
+
 type ScratchPass {
   text: String
   log: String
@@ -26,31 +30,35 @@ type ScratchPass {
 }
 
 fn scratch_sbw_infer_supplied_wire() -> CliWireResponse {
-  CliWirePrintable { bytes: scratch_report(), exit: ExitSuccess }
+  CliWirePrintable { bytes: scratch_report(path: scratch_sbw_infer_path, supply: scratch_sbw_infer_supply), exit: ExitSuccess }
 }
 
-fn scratch_report() -> String {
+fn scratch_sbw_node_supplied_wire() -> CliWireResponse {
+  CliWirePrintable { bytes: scratch_report(path: scratch_sbw_node_path, supply: scratch_sbw_node_supply), exit: ExitSuccess }
+}
+
+fn scratch_report(path: String, supply: String) -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "SCRATCH grammar-unprepared\n"
-    Accepted { value: prepared, diagnostics: _ } => scratch_with_supplies(prepared: prepared, lex: dag_prepared_lex())
+    Accepted { value: prepared, diagnostics: _ } => scratch_with_supplies(prepared: prepared, lex: dag_prepared_lex(), path: path, supply: supply)
   }
 }
 
-fn scratch_with_supplies(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  match roster_read_supplies(content: scratch_sbw_infer_supply) {
+fn scratch_with_supplies(prepared: PreparedGrammar, lex: PreparedLexRules, path: String, supply: String) -> String {
+  match roster_read_supplies(content: supply) {
     RosterSuppliesUnparsed { reason: r } => "SCRATCH supply " + roster_refusal_text(reason: r) + "\n"
-    RosterSuppliesParsed { supplies: supplies } => scratch_converge(prepared: prepared, lex: lex, supplies: supplies)
+    RosterSuppliesParsed { supplies: supplies } => scratch_converge(prepared: prepared, lex: lex, supplies: supplies, path: path)
   }
 }
 
-fn scratch_converge(prepared: PreparedGrammar, lex: PreparedLexRules, supplies: List<RosterSiteSupply>) -> String {
+fn scratch_converge(prepared: PreparedGrammar, lex: PreparedLexRules, supplies: List<RosterSiteSupply>, path: String) -> String {
   let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyCall { call: "sort_by" } }
   let rows = roster_rows_for_scope_in(table: roster_table_with_sites(table: roster_head_rows(), call: "sort_by", sites: supplies), scope: scope)
   let closures = roster_home_closures(root: "", scope: scope)
-  let read = Filesystem.Read(path: scratch_sbw_infer_path)
+  let read = Filesystem.Read(path: path)
   if read.success {
     let last = fold_list(xs: [1, 2, 3, 4, 5], empty: ScratchPass { text: read.content, log: "", done: false }, cons: fn(acc, i) {
-      scratch_pass(acc: acc, i: i, rows: rows, closures: closures, prepared: prepared, lex: lex)
+      scratch_pass(acc: acc, i: i, rows: rows, closures: closures, prepared: prepared, lex: lex, path: path)
     })
     last.log + "FINAL-BEGIN\n" + last.text + "\nFINAL-END\n"
   } else {
@@ -58,20 +66,20 @@ fn scratch_converge(prepared: PreparedGrammar, lex: PreparedLexRules, supplies: 
   }
 }
 
-fn scratch_pass(acc: ScratchPass, i: Int, rows: List<RosterHeadRow>, closures: List<RosterHomeClosure>, prepared: PreparedGrammar, lex: PreparedLexRules) -> ScratchPass {
+fn scratch_pass(acc: ScratchPass, i: Int, rows: List<RosterHeadRow>, closures: List<RosterHomeClosure>, prepared: PreparedGrammar, lex: PreparedLexRules, path: String) -> ScratchPass {
   if acc.done {
     acc
   } else {
-    scratch_step(acc: acc, i: i, outcome: roster_sweep_text_rows(sides: roster_home_sides(rows: rows), companions: [], path: scratch_sbw_infer_path, text: acc.text, prepared: prepared, lex: lex, candidates: rows, closures: closures))
+    scratch_step(acc: acc, i: i, outcome: roster_sweep_text_rows(sides: roster_home_sides(rows: rows), companions: [], path: path, text: acc.text, prepared: prepared, lex: lex, candidates: rows, closures: closures), path: path)
   }
 }
 
-fn scratch_step(acc: ScratchPass, i: Int, outcome: RosterOutcome) -> ScratchPass {
+fn scratch_step(acc: ScratchPass, i: Int, outcome: RosterOutcome, path: String) -> ScratchPass {
   let head = "PASS " + int_to_decimal_string(value: i) + " "
   match outcome {
     RosterClean => ScratchPass { text: acc.text, log: acc.log + head + "CLEAN\n", done: true }
     RosterRefused { reason: r } => ScratchPass { text: acc.text, log: acc.log + head + "REFUSED " + roster_refusal_text(reason: r) + "\n", done: true }
-    other => scratch_applied(acc: acc, head: head, row: roster_render_outcome(path: scratch_sbw_infer_path, outcome: other), outcome: other)
+    other => scratch_applied(acc: acc, head: head, row: roster_render_outcome(path: path, outcome: other), outcome: other)
   }
 }
 

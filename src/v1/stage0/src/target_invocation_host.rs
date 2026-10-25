@@ -671,6 +671,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("scratch-sbw-node-supplied"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/scratch_sbw_infer_supplied.dag",
+                function: "scratch_sbw_node_supplied_wire",
+            },
+        ),
+        (
             instrument_label("scratch-sbw-infer-supplied"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/scratch_sbw_infer_supplied.dag",
