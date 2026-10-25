@@ -65,22 +65,24 @@ pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
 }
 
 pub fn dag_node_collection_anchor(mut __tco_loop_node: Rc<Node>) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut node = __tco_loop_node;
-        if dag_node_is_resolved_identity_shell(node.clone()) {
-            match node.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => {
-                    let __tco_0 = target.clone();
-                    __tco_loop_node = __tco_0;
-                    continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut node = __tco_loop_node;
+            if dag_node_is_resolved_identity_shell(node.clone()) {
+                match node.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => {
+                        let __tco_0 = target.clone();
+                        __tco_loop_node = __tco_0;
+                        continue;
+                    }
+                    _ => {
+                        break node.clone();
+                    }
                 }
-                _ => {
-                    break node.clone();
-                }
+            } else {
+                break node.clone();
             }
-        } else {
-            break node.clone();
         }
     }
 }

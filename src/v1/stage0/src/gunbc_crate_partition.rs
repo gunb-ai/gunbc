@@ -913,28 +913,30 @@ pub fn unit_dep_closure(
     mut __tco_loop_acc: Rc<Vec<NonEmptyStr>>,
     mut __tco_loop_fuel: i64,
 ) -> Rc<Vec<NonEmptyStr>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut edges = __tco_loop_edges;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if (fuel.clone() <= 0) {
-            break acc.clone();
-        } else {
-            let grown = unit_dep_closure_step(edges.clone(), acc.clone());
-            if ((grown.clone().len() as i64) == (acc.clone().len() as i64)) {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut edges = __tco_loop_edges;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() <= 0) {
                 break acc.clone();
             } else {
-                {
-                    let __tco_0 = edges;
-                    let __tco_1 = grown.clone();
-                    let __tco_2 = v1_rt::int_sub(fuel, 1);
-                    __tco_loop_edges = __tco_0;
-                    __tco_loop_acc = __tco_1;
-                    __tco_loop_fuel = __tco_2;
-                    continue;
+                let grown = unit_dep_closure_step(edges.clone(), acc.clone());
+                if ((grown.clone().len() as i64) == (acc.clone().len() as i64)) {
+                    break acc.clone();
+                } else {
+                    {
+                        let __tco_0 = edges;
+                        let __tco_1 = grown.clone();
+                        let __tco_2 = v1_rt::int_sub(fuel, 1);
+                        __tco_loop_edges = __tco_0;
+                        __tco_loop_acc = __tco_1;
+                        __tco_loop_fuel = __tco_2;
+                        continue;
+                    }
                 }
             }
         }

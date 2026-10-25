@@ -106,18 +106,18 @@ fn p4_home_serving_power_semantics_body() -> List<MarkdownBlock> {
           cell(text: "`both_read_unequal(left: …, right: …)` inside `accelerator_known_parts_differ` — the one place the **value** is compared"),
         ]),
         row(cells: [
-          cell(text: "`test.claim.spark.serving_performance_subject_witness_test::fx_cited`"),
+          cell(text: "`test.claim.spark.serving_performance_subject_witness::fx_cited`"),
           cell(text: "fixtures"),
         ]),
         row(cells: [
-          cell(text: "`test.claim.spark.serving_performance_subject_witness_test::w_applied_power_limit_is_an_accelerator_axis`"),
+          cell(text: "`test.claim.spark.serving_performance_subject_witness::w_applied_power_limit_is_an_accelerator_axis`"),
           cell(text: "`w_applied_power_limit_is_an_accelerator_axis`"),
         ]),
       ]
     },
     p(text: "There is no non-test caller of `serving_accelerator_realization` on main: no benchmark path, no readback, no fold. The field is exercised only by its own witness."),
     p(text: "And that witness is where the ambiguity becomes concrete rather than theoretical:"),
-    CodeBlock { code: "fn fx_cited(sku: GpuModelCatalogRow, watts: Nat, lanes: Int) -> … {\n    applied_power_limit: Present { value: watt(count: watts) },   // gunbc.spark.serving_performance_subject::ServingAcceleratorRealization.applied_power_limit\n}\n… fx_cited(sku: nvidia_rtx_pro_6000_workstation_catalog, watts: 600, lanes: 16)   // test.claim.spark.serving_performance_subject_witness_test::w_workstation_and_server_pro6000_are_different_accelerator_subjects" },
+    CodeBlock { code: "fn fx_cited(sku: GpuModelCatalogRow, watts: Nat, lanes: Int) -> … {\n    applied_power_limit: Present { value: watt(count: watts) },   // gunbc.spark.serving_performance_subject::ServingAcceleratorRealization.applied_power_limit\n}\n… fx_cited(sku: nvidia_rtx_pro_6000_workstation_catalog, watts: 600, lanes: 16)   // test.claim.spark.serving_performance_subject_witness::w_workstation_and_server_pro6000_are_different_accelerator_subjects" },
     p(text: "The row passed in has `tdp_watts: watt(count: 600)`; the applied limit supplied beside it is `watt(count: 600)`. They agree **by coincidence of typing, not by any rule** — and if that coincidence were load-bearing, `w_applied_power_limit_is_an_accelerator_axis` (which compares 600 against 400 on the same SKU) could not tell them apart from a TDP change. That is how a coincidence gets written into a test as though it were a relation."),
     h3(text: "(3) The home question cannot currently be answered at all"),
     p(text: "`extdeps/nvidia/management_library.dag` — the NVML module: the witness reads it in full and is red if a power reading appears in it in any case. It carries `DeviceMemoryObservation` and memory observations; that no power channel exists is what that claim costs, and it is read there rather than asserted here. There is no way to *read* what limit a card is running under, which is the question \"home serving\" actually asks: not \"what may this card draw\" but \"what is it drawing, in a room, on a desk\"."),
