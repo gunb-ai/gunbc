@@ -1129,7 +1129,7 @@ fn v1_record_derive_traits_copy_for_construction(deserialize_forbidden: Bool) ->
 fn v1_emit_struct_derives(
   name: String,
   children: List<Node>,
-  shared_types: Set<String>,
+  declared_shared: Bool,
   has_fn_fields: Bool,
   map_key_required: Bool,
   deserialize_forbidden: Bool,
@@ -1150,7 +1150,7 @@ fn v1_emit_struct_derives(
       v1_trait_derive_refuse("trait_derive_emit: symbol-wrapped ord carrier refused")
     }
   } else {
-    if set_contains(shared_types, name) {
+    if declared_shared {
       rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden), map_key_required: map_key_required))
     } else {
       rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden), map_key_required: map_key_required))
@@ -2695,7 +2695,7 @@ fn v1_emit_struct_from_capability_table(
   module_path: String,
   name: String,
   children: List<Node>,
-  shared_types: Set<String>,
+  declared_shared: Bool,
   has_fn_fields: Bool,
   map_key_required: Bool,
   generic_param_names: List<String>,
@@ -2713,7 +2713,7 @@ fn v1_emit_struct_from_capability_table(
     v1_freemonoid_element_params(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, source_indices: source_indices)
   }
   if (fm_params |> count) > 0 {
-    let base = if set_contains(shared_types, name) { v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden) } else { v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden) }
+    let base = if declared_shared { v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden) } else { v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden) }
     let derive_attr = concat(
       v1_freemonoid_unroutable_row_refusal(),
       rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(traits: base)),
@@ -2736,7 +2736,7 @@ fn v1_emit_struct_from_capability_table(
       v1_item_ord_propagated_param_names(generic_param_names: generic_param_names, field_type_exprs: field_type_exprs, type_decl_items: type_decl_items, source_indices: source_indices)
     }
     if (ord_propagated_params |> count) > 0 {
-      let base = if set_contains(shared_types, name) { v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden) } else { v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden) }
+      let base = if declared_shared { v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden) } else { v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden) }
       let set_row_refusal = v1_set_unroutable_row_refusal()
       let derived_traits = v1_set_filter_hand_written(traits: base)
       let derive_attr = concat(
@@ -2755,7 +2755,7 @@ fn v1_emit_struct_from_capability_table(
       let derive_attr = v1_emit_struct_derives(
         name: name,
         children: children,
-        shared_types: shared_types,
+        declared_shared: declared_shared,
         has_fn_fields: has_fn_fields,
         map_key_required: map_key_required,
         deserialize_forbidden: deserialize_forbidden,
