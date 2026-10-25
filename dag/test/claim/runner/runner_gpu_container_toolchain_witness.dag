@@ -202,9 +202,10 @@ test fn disjoint_ranges_do_not_collide() -> Bool {
 }
 
 // THE PLAN REFUSES TO MOVE THE JOB USER ONTO A RANGE HELD BY AN ACCOUNT THE MODEL DID NOT NAME AS
-// DISPLACEABLE. srv1's file has the job user and an admin account both at 100000+65536; if the model
-// only permits moving "briansrls" but the account in the way is "gunbc-fleet", the plan must refuse
-// rather than evict an account whose container store nobody has checked.
+// DISPLACEABLE. The job user is asked for 100000+65536, which the undeclared admin account "gunbc-fleet"
+// already holds; the model only permits moving "briansrls". The plan must refuse rather than evict an
+// account whose container store nobody has checked — moving it is the exact silent downgrade the manager's
+// constraint forbids.
 test fn a_plan_refuses_to_displace_an_undeclared_account() -> Bool {
   let reading = SubordinateFileRead {
     path: "/etc/subuid",
@@ -217,7 +218,7 @@ test fn a_plan_refuses_to_displace_an_undeclared_account() -> Bool {
     path: "/etc/subuid",
     reading: reading,
     account: "ghrunner" as NonEmptyStr,
-    want_first: 200000,
+    want_first: 100000,
     want_count: 65536,
     displaceable: "briansrls" as NonEmptyStr,
     displaceable_store_free: true,

@@ -358,7 +358,7 @@ fn plan_subordinate_file(
                   // success. Only ranges that outlive the plan count — computed, not guessed, by
                   // subtracting everything this plan deletes.
                   overlaps_survivors(rs: rs, account: account, want_first: want_first, want_count: want_count,
-                                     movable: movable, first: displacee_regrant_first, count: o.count)) {
+                                     movable: movable, first: displacee_regrant_first, count: o.count))) {
         SubordinatePlanRefused {
           reason: join(["the declared re-grant first ", to_string(displacee_regrant_first), " for ", displaceable as String,
                         " on ", p, " overlaps a range the plan does not remove; refusing to trade one collision for another"], ""),
@@ -426,6 +426,15 @@ fn subordinate_step_argv(f: SubordinateIdFile, step: SubordinateStep) -> List<St
 
 // WHAT THE RECEIPT SHOULD SAY ABOUT THE PLAN, as text: a no-op needs to be distinguishable from an
 // untried converge, and a refusal needs to name the account that blocked it rather than the range.
+fn subordinate_step_text(step: SubordinateStep) -> String {
+  match step {
+    SubordinateStepRemove { account: a, first: x, count: c } =>
+      join(["-", a as String, " ", to_string(x), "+", to_string(c)], "")
+    SubordinateStepAdd { account: a, first: x, count: c } =>
+      join(["+", a as String, " ", to_string(x), "+", to_string(c)], "")
+  }
+}
+
 fn subordinate_plan_text(plan: SubordinatePlan) -> String {
   match plan {
     SubordinatePlanRefused { reason: r } => join(["refused: ", r], "")
@@ -433,10 +442,7 @@ fn subordinate_plan_text(plan: SubordinatePlan) -> String {
       if length(ss) == 0 {
         "already declared; nothing to write"
       } else {
-        join([to_string(length(ss)), " step(s): ", join(map(ss, s => match s {
-          SubordinateStepRemove { account: a, first: x, count: c } => join(["-", a as String, " ", to_string(x), "+", to_string(c)], "")
-          SubordinateStepAdd { account: a, first: x, count: c } => join(["+", a as String, " ", to_string(x), "+", to_string(c)], "")
-        }), ", "))], "")
+        join([to_string(length(ss)), " step(s): ", join(map(ss, s => subordinate_step_text(step: s)), ", ")], "")
       }
   }
 }
