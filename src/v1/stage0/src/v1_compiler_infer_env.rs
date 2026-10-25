@@ -3605,10 +3605,23 @@ pub fn settled_type(
                 declaration: d,
                 ..
             } => match alias_rhs_of_declaration(d.clone(), env.clone()) {
-                std::option::Option::None => Some(Rc::new(SettledType {
-                    head: d.clone(),
-                    args: n.children.clone(),
-                })),
+                std::option::Option::None => match parameterized_alias_of_declaration(
+                    d.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                ) {
+                    std::option::Option::None => Some(Rc::new(SettledType {
+                        head: d.clone(),
+                        args: n.children.clone(),
+                    })),
+                    Some(pa) => settled_parameterized_alias(
+                        pa.clone(),
+                        n.children.clone(),
+                        source_indices.clone(),
+                        env.clone(),
+                        fuel.clone(),
+                    ),
+                },
                 Some(rhs) => settled_alias_rhs(
                     rhs.clone(),
                     source_indices.clone(),
@@ -3619,6 +3632,199 @@ pub fn settled_type(
             _ => std::option::Option::None,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParameterizedAlias {
+    pub params: Rc<Vec<String>>,
+    pub rhs: Rc<Node>,
+}
+
+pub fn parameterized_alias_rhs(
+    pre: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<ParameterizedAlias>> {
+    if (((((pre.connective.clone() != Connective::NoConnective)
+        || ((pre.params.clone().len() as i64) > 0))
+        || (pre.type_annotation.clone() != std::option::Option::None))
+        || ((pre.children.clone().len() as i64) == 0))
+        || (pre.return_cardinality.clone() != Cardinality::Required))
+    {
+        std::option::Option::None
+    } else {
+        match pre.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rhs, .. }) => {
+                if (((rhs.connective.clone() != Connective::NoConnective)
+                    || (rhs.return_cardinality.clone() != Cardinality::Required))
+                    || (rhs.type_annotation.clone() != std::option::Option::None))
+                {
+                    std::option::Option::None
+                } else {
+                    Some(Rc::new(ParameterizedAlias {
+                        params: Rc::new({
+                            let mut __result = Vec::new();
+                            for c in pre.children.clone().iter().cloned() {
+                                __result.push(crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    c.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                        rhs: rhs.clone(),
+                    }))
+                }
+            }
+            _ => std::option::Option::None,
+        }
+    }
+}
+
+pub fn parameterized_alias_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<ParameterizedAlias>> {
+    match symbol_index_lookup(
+        env.symbol_index.clone(),
+        v1_rt::concat(
+            v1_rt::concat(item_ref.module_path.clone(), ".".to_string()),
+            item_ref.decl_name.clone(),
+        ),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(item) => match parameterized_alias_rhs(item.clone(), source_indices.clone()) {
+            std::option::Option::None => std::option::Option::None,
+            Some(pa) => match pa.rhs.declaration.clone() {
+                Some(_) => Some(pa.clone()),
+                std::option::Option::None => match alias_rhs_with_index_identity(
+                    pa.rhs.clone(),
+                    item_ref.module_path.clone(),
+                    env.clone(),
+                ) {
+                    Some(headed) => Some(Rc::new(ParameterizedAlias {
+                        params: pa.params.clone(),
+                        rhs: headed.clone(),
+                    })),
+                    std::option::Option::None => std::option::Option::None,
+                },
+            },
+        },
+    }
+}
+
+pub fn settled_parameterized_alias(
+    alias: Rc<ParameterizedAlias>,
+    use_args: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+    fuel: i64,
+) -> Option<Rc<SettledType>> {
+    if (((alias.params.clone().len() as i64) != (use_args.clone().len() as i64))
+        || (fuel.clone() <= 0))
+    {
+        std::option::Option::None
+    } else {
+        {
+            let substituted = substitute_alias_params(
+                alias.rhs.clone(),
+                alias.params.clone(),
+                use_args.clone(),
+                source_indices.clone(),
+                fuel.clone(),
+            );
+            match substituted.declaration.clone() {
+                Some(head) => settled_rhs(
+                    substituted.clone(),
+                    head.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                    v1_rt::int_sub(fuel.clone(), 1),
+                ),
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
+    }
+}
+
+pub fn substitute_alias_params(
+    n: Rc<Node>,
+    params: Rc<Vec<String>>,
+    args: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    fuel: i64,
+) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (fuel.clone() <= 0) {
+            n.clone()
+        } else {
+            {
+                let leaf = ((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) == 0));
+                let position = if leaf.clone() {
+                    {
+                        let name =
+                            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for p in Rc::new({
+                                let mut __result = Vec::new();
+                                for p in Rc::new(
+                                    params
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .enumerate()
+                                        .map(|(i, v)| (i as i64, v))
+                                        .collect::<Vec<_>>(),
+                                )
+                                .iter()
+                                .cloned()
+                                {
+                                    if (p.1.clone() == name.clone()) {
+                                        __result.push(p);
+                                    }
+                                }
+                                __result
+                            })
+                            .iter()
+                            .cloned()
+                            {
+                                __result.push(p.0.clone());
+                            }
+                            __result
+                        })
+                        .first()
+                        .cloned()
+                    }
+                } else {
+                    std::option::Option::None
+                };
+                match position.clone() {
+                    Some(i) => match args.clone().get((i.clone()) as usize).cloned() {
+                        Some(arg) => arg.clone(),
+                        std::option::Option::None => n.clone(),
+                    },
+                    std::option::Option::None => node_with_children(
+                        n.clone(),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for c in n.children.clone().iter().cloned() {
+                                __result.push(substitute_alias_params(
+                                    c.clone(),
+                                    params.clone(),
+                                    args.clone(),
+                                    source_indices.clone(),
+                                    v1_rt::int_sub(fuel.clone(), 1),
+                                ));
+                            }
+                            __result
+                        }),
+                    ),
+                }
+            }
+        }
+    })
 }
 
 pub fn settled_alias_rhs(
