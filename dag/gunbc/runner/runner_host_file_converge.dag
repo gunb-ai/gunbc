@@ -34,8 +34,8 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
-import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire }
+import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, HolderIdentified, HolderUnidentified, }
+import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
 import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
@@ -2191,7 +2191,14 @@ fn runner_host_cap_phase_settled(phase: RunnerHostCapPhase) -> Bool {
     CapPhaseRan { files: fs, reload: rl, slots: ss, certified: _ } =>
       all(fs, r => fleet_host_file_outcome_settled(outcome: r.outcome))
         && runner_host_manager_reload_settled(r: rl)
-        && all(ss, o => slot_cap_outcome_settled(o: o))
+        // THE RUN-LEVEL FOLD (slot_cap_outcome_host_settled), not the per-unit one: a bracket that excluded
+        // its own holder, wrote every cap file, reloaded the manager once and read back every drained slot
+        // has done all a pass CAN do on this host; its holder is DEFERRED-SELF, owed and named on the wire
+        // (row and caps-slots-on-old-shape both list it), to be bracketed by the next pass from another
+        // slot. Failing the run for the holder would red every srv3/srv4 converge forever -- the wall the
+        // CI gate needs down is not this. What the run must NEVER do is claim the holder converged: that
+        // claim belongs only to SlotCapsSelfAtDesired, judged per-unit by slot_cap_outcome_settled.
+        && all(ss, o => slot_cap_outcome_host_settled(o: o))
   }
 }
 
@@ -2235,7 +2242,7 @@ fn runner_host_cap_phase_text(phase: RunnerHostCapPhase) -> String {
         // registration was admitted while it still holds the answer.
         "caps-certified=", if length(cs) == 0 { "none (no listener needed a roster join)" } else { join(map(cs, c => certified_listener_line(c: c)), " ") }, "\n",
         join(map(ss, o => concat(slot_cap_outcome_wire(o: o), "\n")), ""),
-        "caps-slots-on-old-shape=", join(map(filter(ss, o => !slot_cap_outcome_settled(o: o)), o => match o { SlotCapsLeftInPlace { unit: u } => u as String SlotCapsRestartedAndRead { unit: u } => u as String SlotCapsRefused { unit: u, step: _, reason: _ } => u as String }), " "), "\n",
+        "caps-slots-on-old-shape=", join(map(filter(ss, o => !slot_cap_outcome_settled(o: o)), o => match o { SlotCapsLeftInPlace { unit: u } => u as String SlotCapsRestartedAndRead { unit: u } => u as String SlotCapsSelfAtDesired { unit: u } => u as String SlotCapsSelfDeferred { unit: u, detail: _ } => u as String SlotCapsRefused { unit: u, step: _, reason: _ } => u as String }), " "), "\n",
       ], "")
   }
 }
@@ -2426,14 +2433,32 @@ fn run_runner_host_cap_bracket(
   started: EpochMs,
 ) -> RunnerHostCapPhase
 {
-  match acquire_bracket_over(target: subject.target, context: context, host: subject.host as String, units: subject.desired_units) {
-    BracketNotAcquired { refusal: rf } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: ", bracket_refusal_wire(r: rf)], "") }
-    BracketAcquired { owned: owned } =>
-      match drain_until_quiescent_over(target: subject.target, context: context, observed: subject.desired_units, owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
-        BracketDrained { certified: certified } => cap_phase_after_drain_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, certified: certified)
-        BracketAdmissionNotClosed { listeners: ls, causes: cs } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls, causes: cs }))
-        BracketBoundExceeded { busy: bz, unproven: up } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedBoundExceeded { busy: bz, unproven: up, waited: runner_host_cap_drain_policy.wait_bound }))
-        BracketWaiting { ticks_left: _ } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: "the drain wait ended mid-wait, so nothing was written")
+  match bracket_holder_identify(target: subject.target, context: context, units: subject.desired_units) {
+    // FAIL CLOSED BEFORE ANY WET EFFECT. The bracket runs on a slot of the host it converges, and it can
+    // only exclude the slot it runs on if it can PROVE which one that is (its own cgroup leaf, joined to
+    // that unit's current registration and the RUNNER_NAME the Actions job carries). An unverifiable
+    // holder means an unverifiable exclusion, and a wrong exclusion is exactly the accident this whole
+    // module exists to prevent -- so nothing is masked, nothing is written, and the cause is named.
+    HolderUnidentified { cause: c } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: the bracket could not identify the slot it runs on: ", c], "") }
+    HolderIdentified { unit: holder } =>
+      // THE HOLDER IS EXCLUDED FROM THE BRACKET, NOT SILENTLY SKIPPED: it never enters the mask set, the
+      // drain wait, the stop/start list, or the obligation ledger, because a slot cannot drain the job
+      // that runs on it -- its own Runner.Worker is permanently live, and stopping it would kill this
+      // very run (the exact shape of the srv3/srv4 withhold this fix closes: run 40085967610 drained its
+      // own slot srv3-13 forever and withheld caps host-wide). The cap files and the ONE manager reload
+      // still cover the holder -- drop-ins are host-wide -- and the holder's verdict is its LIVE CGROUP
+      // READ-BACK below, judged on all three values the drop-in sets (fleet ruling: daemon-reload
+      // applying the caps to a running unit is not assumed). At desired it is converged; anything else
+      // is DEFERRED-SELF by name, owed, and the next pass from another slot brackets it normally.
+      match acquire_bracket_over(target: subject.target, context: context, host: subject.host as String, units: filter(subject.desired_units, u => u != holder)) {
+        BracketNotAcquired { refusal: rf } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: ", bracket_refusal_wire(r: rf)], "") }
+        BracketAcquired { owned: owned } =>
+          match drain_until_quiescent_over(target: subject.target, context: context, observed: filter(subject.desired_units, u => u != holder), owned: owned, policy: runner_host_cap_drain_policy, ticks_left: host_cap_drain_ticks(policy: runner_host_cap_drain_policy), started: started) {
+            BracketDrained { certified: certified } => cap_phase_after_drain_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, certified: certified, holder: holder)
+            BracketAdmissionNotClosed { listeners: ls, causes: cs } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedAdmissionNotClosed { listeners: ls, causes: cs }))
+            BracketBoundExceeded { busy: bz, unproven: up } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: bracket_refusal_wire(r: BracketRefusedBoundExceeded { busy: bz, unproven: up, waited: runner_host_cap_drain_policy.wait_bound }))
+            BracketWaiting { ticks_left: _ } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: "the drain wait ended mid-wait, so nothing was written")
+          }
       }
   }
 }
@@ -2448,14 +2473,20 @@ fn cap_phase_after_drain_over(
   desired: RunnerSlotDesired,
   owned: List<NonEmptyStr>,
   certified: List<CertifiedListener>,
+  holder: NonEmptyStr,
 ) -> RunnerHostCapPhase
 {
   // THE FRESH ADMISSION READING GATES THE FIRST CAP-APPLYING EFFECT, FOR EVERY AFFECTED LIVE LISTENER. The
   // write and the reload that follows it are what apply a cap to a running unit, so the three readings
   // are taken again for every observed unit, owned or foreign, before the write and not only before the stop.
-  match cap_write_gate_of(closure: runner_host_cap_admission_closure, observed: subject.desired_units, owned: owned, readings: read_slot_drain_pass_over(target: subject.target, context: context, units: subject.desired_units)) {
+  // THE HOLDER IS NOT OBSERVED HERE: it carries a live Runner.Worker BY DESIGN (it is the job running this
+  // bracket), so gating on it would either trip the fresh-drain re-check or count it as a foreign live
+  // listener and refuse the very write that converges the host -- the exclusion the driver chose is
+  // honoured here too, and the holder answers for itself through the live cgroup read-back below.
+  let gated = filter(subject.desired_units, u => u != holder)
+  match cap_write_gate_of(closure: runner_host_cap_admission_closure, observed: gated, owned: owned, readings: read_slot_drain_pass_over(target: subject.target, context: context, units: gated)) {
     CapWriteRefused { causes: cs } => withheld_after_readmit(subject: subject, context: context, owned: owned, head: concat("no cap was written, reloaded, stopped or started: the admission was read again immediately before the first cap-applying effect and no longer holds: ", join(cs, "; ")))
-    CapWriteAdmitted => write_reload_and_restart_admitted_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, certified: certified)
+    CapWriteAdmitted => write_reload_and_restart_admitted_over(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, owned: owned, certified: certified, holder: holder)
   }
 }
 
@@ -2467,6 +2498,7 @@ fn write_reload_and_restart_admitted_over(
   desired: RunnerSlotDesired,
   owned: List<NonEmptyStr>,
   certified: List<CertifiedListener>,
+  holder: NonEmptyStr,
 ) -> RunnerHostCapPhase
 {
   // WHICH units to stop-and-restart is DERIVED from what the bracket certified, not carried alongside it as
@@ -2495,14 +2527,33 @@ fn write_reload_and_restart_admitted_over(
   } else {
     SlotCapsRefused { unit: u, step: "write", reason: join(["the cap drop-ins did not converge or the manager reload did not settle; ", host_left_wire(l: host_left_of_readmit(units: owned, outcomes: readmitted)), " re-admission: ", join(map(readmitted, o => slot_actuation_outcome_wire(o: o)), " ")], "") }
   })
-  let foreign_slots = map(filter(subject.desired_units, u => length(filter(owned, o => o == u)) == 0), u =>
+  let foreign_slots = map(filter(subject.desired_units, u => u != holder && length(filter(owned, o => o == u)) == 0), u =>
     SlotCapsRefused { unit: u, step: "foreign-mask", reason: "masked by someone else before this run: not unmasked and not activated, so its caps are applied when its owner re-admits it and are not proven here" })
-  let slots = concat(owned_slots, foreign_slots)
+  // THE HOLDER IS JUDGED ONLY BY ITS LIVE CGROUP (the parent ruling): the drop-ins were written and the
+  // manager was reloaded once, host-wide, so the holder's caps CAN have landed through the reload -- but
+  // whether a daemon-reload applies MemoryMax/MemoryHigh to a RUNNING unit's cgroup is not assumed. srv1
+  // and srv2 prove nothing here (their caps settled through the stop/start bracket before the gate), so
+  // the holder counts as converged ONLY when memory.max, memory.swap.max and memory.high all read back
+  // from its live cgroup at the desired bytes. Anything else -- stale, unread, disagreement -- is typed
+  // SlotCapsSelfDeferred: owed, named on the wire, NEVER reported as converged. The next converge pass,
+  // dispatched from a different slot, brackets this unit normally.
+  let holder_slot = if written {
+    slot_cap_holder_standing_over(target: subject.target, context: context, unit: holder, desired: desired)
+  } else {
+    // The write itself failed, so nothing can have applied the holder's caps either; say so by name
+    // rather than pretending the read-back would prove anything.
+    SlotCapsSelfDeferred { unit: holder, detail: "the cap drop-ins or the manager reload did not settle, so nothing was applied to the holder's live cgroup this pass" }
+  }
+  let slots = concat(concat(owned_slots, foreign_slots), [holder_slot])
   // DISCHARGED ONLY AFTER A READ-BACK THAT THE HOST ADMITS AGAIN; otherwise the obligation stays held.
-  let admitting = if written { all(owned_slots, o => slot_cap_outcome_settled(o: o)) } else { match host_left_of_readmit(units: owned, outcomes: readmitted) { HostAdmitting => true _ => false } }
+  // The host-settled fold is used, not the unit-settled one: a DEFERRED SELF is the bracket physically
+  // completing everything it CAN do on this host (see slot_cap_outcome_host_settled), so it must not strand
+  // the obligation and deny service to every drained slot. It never claims the unit converged -- the wire
+  // row for a deferred self says so loudly, and slot_cap_outcome_settled stays false for it.
+  let admitting = if written { all(owned_slots, o => slot_cap_outcome_host_settled(o: o)) } else { match host_left_of_readmit(units: owned, outcomes: readmitted) { HostAdmitting => true _ => false } }
   let discharged = if admitting { write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) } else { Present { value: "host not read back as admitting" } }
   // A discharge that did not land is reported, not hidden: release would then find the units unmasked and issue no argv.
-  let discharge_note = match discharged { Present { value: w } => if admitting { map(subject.desired_units, u => SlotCapsRefused { unit: u, step: "discharge", reason: w }) } else { [] } Absent => [] }
+  let discharge_note = match discharged { Present { value: w } => if admitting { map(filter(subject.desired_units, u => u != holder), u => SlotCapsRefused { unit: u, step: "discharge", reason: w }) } else { [] } Absent => [] }
   CapPhaseRan { files: files, reload: reload, slots: concat(slots, discharge_note), certified: certified }
 }
 

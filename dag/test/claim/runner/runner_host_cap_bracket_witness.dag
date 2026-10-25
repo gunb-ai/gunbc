@@ -1204,7 +1204,14 @@ fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -
       context: context, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
       // What the drain certified: one typed record per admitted idle listener, the shape the bracket's own
       // verdict carries. The flow controls below assert this reaches the receipt.
-      owned: owned, certified: [CertifiedListener { unit: u(n: "01"), registration: minted(n: "01", tag: slot_current_mint_tag) as NonEmptyStr }])
+      owned: owned, certified: [CertifiedListener { unit: u(n: "01"), registration: minted(n: "01", tag: slot_current_mint_tag) as NonEmptyStr }],
+      // THE HOLDER IS THE SLOT THE BRACKET PHYSICALLY RUNS ON -- here slot 02, distinct from the unit under
+      // test. The holder is never observed for admission and never bracketed (that exclusion is srv3's fix);
+      // its own verdict is its live cgroup read-back, and the holder's unit never appears in the drained,
+      // gated or foreign sets these controls read. The holder claims themselves run against the judgment
+      // layer (slot_cap_holder_standing) in runner_slot_cap_converge_witness, where every read-back shape
+      // is a control rather than a leg sequence.
+      holder: u(n: "02"))
   })
 }
 
@@ -1273,4 +1280,38 @@ test fn a_withheld_cap_phase_renders_no_certification() -> Bool {
       BracketRunReturned { value: v, legs: _, calls: _ } => !string_contains(s: runner_host_cap_phase_text(phase: v), pattern: "caps-certified=")
       BracketRunEnded { cause: _ } => false
     }
+}
+
+// ─── THE HOLDER, PARSED FROM ITS OWN CGROUP PATH (the pure legs of bracket_holder_identify) ───────
+// THE BRACKET REFUSES UNLESS IT CAN SAY WHICH SLOT IT RUNS ON, and the step from the job's own cgroup
+// leaf to a unit name is decided here, by the fleet's ONE runner-unit parser. These are the fail-closed
+// legs: a converge job dispatched somewhere that is not an actions-runner@ unit gets a refusal that
+// names the leaf, never a bracket around a stranger. (The join to the environment and the host's
+// registration -- Filesystem.Read of /proc/self/cgroup, RUNNER_NAME, the .runner file -- runs in
+// production over the same legs the bracket's other ssh claims script; the pure fold below is what
+// decides, given a leaf, who the holder is.)
+test fn a_runner_cgroup_leaf_identifies_the_holder_unit() -> Bool {
+  match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "system.slice/system-actions\\x2drunner.slice/actions-runner@srv3-02.service")) {
+    HolderIdentified { unit: u } => (u as String) == "actions-runner@srv3-02.service"
+    HolderUnidentified { cause: c } => string_contains(s: c, pattern: "zzz-never")
+  }
+}
+
+test fn a_non_runner_leaf_refuses_naming_the_leaf() -> Bool {
+  match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "system.slice/nginx.service")) {
+    HolderUnidentified { cause: c } => string_contains(s: c, pattern: "not an actions-runner@ unit") && string_contains(s: c, pattern: "nginx.service")
+    HolderIdentified { unit: _ } => false
+  }
+}
+
+test fn a_malformed_instance_leaf_refuses_naming_the_leaf() -> Bool {
+  match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "system.slice/actions-runner@.service")) {
+    HolderUnidentified { cause: c } => string_contains(s: c, pattern: "cannot be parsed")
+    HolderIdentified { unit: _ } => false
+  }
+}
+
+test fn the_leaf_is_the_last_path_component_ignoring_slashes() -> Bool {
+  bracket_holder_leaf(relative_path: "system.slice/actions-runner@srv3-02.service/") == "actions-runner@srv3-02.service"
+    && bracket_holder_leaf(relative_path: "/system.slice//actions-runner@01.service///") == "actions-runner@01.service"
 }

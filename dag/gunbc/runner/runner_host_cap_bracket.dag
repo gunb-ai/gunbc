@@ -2,7 +2,7 @@ module gunbc.runner.runner_host_cap_bracket
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
-import std.algebra { list_flat_map }
+import std.algebra { list_flat_map, trim }
 import std.measure { Second, second, second_count }
 import extdeps.github.actions { cancelled_job_always_step_timeout }
 import std.types { EpochMs }
@@ -46,6 +46,15 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation,
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import gunbc.fleet.fleet_workflow_steps { gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+// THE HOLDER IDENTIFICATION'S LOCAL READ: the job's own cgroup membership (/proc/self/cgroup), read with
+// the sanctioned effect (the same production idiom as the dispatch belt's producer identity,
+// gunbc.dispatch_credential_acquisition) -- not an exec over ssh, because the holder is THIS process's
+// host and the read is of this process itself.
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.procfs { ProcSelfCgroup, procfs_path_literal }
+import extdeps.linux.proc_self_cgroup { read_unified_cgroup_membership, CurrentCgroupObserved, MembershipMissing, MembershipAmbiguous, MembershipMalformed, ProcSelfCgroupLineMissingColon, ProcSelfCgroupLineMissingSecondColon, ProcSelfCgroupLineEmptyHierarchy, ProcSelfCgroupLineEmptyPath }
+import gunbc.runner.runner_unit { NotARunnerUnit, RunnerUnitInstanceMalformed, RunnerUnitInstance, read_runner_unit_name, runner_unit_name_of_registration }
+import extdeps.github.actions_environment { github_runner_name_variable_name }
 import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound }
 
 // THE DRAIN BRACKET OVER ONE HOST, AS A PURE STEP MACHINE PLUS THE THREE EFFECTS IT SEQUENCES.
@@ -1015,6 +1024,98 @@ fn read_bracket_obligation(host: String) -> ObligationReading
 type BracketAcquisition
   = BracketAcquired { owned: List<NonEmptyStr> }
   | BracketNotAcquired { refusal: HostCapBracketRefusal }
+
+// WHICH SLOT DOES THE BRACKET ITSELF RUN ON? The fleet converge job is host-pinned: it executes inside a
+// slot OF THE HOST IT CONVERGES (fleet_ssh_locus: the subject host's slot attests to its own state). The
+// bracket therefore cannot drain, stop or restart one of its own units -- a slot is permanently busy with
+// its own Runner.Worker, and stopping it would kill this very run. Before #holder-exclusion the bracket
+// tried anyway: run 40085967610 drained its own slot srv3-13 until the 5415s bound, withheld caps for the
+// WHOLE host, and every srv3/srv4 PR that landed there reds at the memory envelope as a result. Excluding
+// the holder is safe only if the exclusion names the RIGHT unit, so identification joins three
+// independent facts and fails closed, LOUDLY, if any is missing, unread or disagreeing:
+//   1. the cgroup leaf this process lives in (Filesystem.Read of /proc/self/cgroup -- the sanctioned
+//      production idiom, gunbc.dispatch_credential_acquisition's producer identity), parsed by the ONE
+//      runner-unit parser so a non-runner cgroup can never name a runner unit;
+//   2. the runner name this Actions job carries in its own environment (RUNNER_NAME); and
+//   3. what that unit's CURRENT registration file says on the host (the same reading the drain certifies
+//      listeners with), so a stale environment cannot point the exclusion at somebody else's slot.
+// A slot added after the last converge, or one whose registration moved under the job, fails leg 3 and
+// withholds: an unverifiable holder is an unverifiable exclusion, and a wrong exclusion lets the bracket
+// unmask or restart a slot it never drained -- the accident class this whole module is built to refuse.
+type BracketHolder
+  = HolderIdentified { unit: NonEmptyStr }
+  | HolderUnidentified { cause: String }
+
+// THE LEAF-TO-UNIT STEP, PURE. The cgroup leaf of a runner job is the unit name itself
+// (systemd.slice/actions-runner@<instance>.service); the ONE parser in gunbc.runner.runner_unit decides
+// whether the leaf is a runner unit at all, and the unit string is rebuilt from the parser's own
+// instance, so what comes out is exactly the name the bracket speaks in its argv and refusals.
+fn bracket_holder_leaf(relative_path: String) -> String {
+  fold(split(s: relative_path, delimiter: "/"), init: "", f: (acc, part) => if trim(s: part) == "" { acc } else { trim(s: part) })
+}
+
+fn bracket_holder_unit_of_leaf(leaf: String) -> BracketHolder
+{
+  match read_runner_unit_name(observed: leaf as NonEmptyStr) {
+    NotARunnerUnit { observed: o } => HolderUnidentified { cause: join(["the cgroup leaf '", o as String, "' is not an actions-runner@ unit: this job is not running inside a runner slot on the subject host"], "") }
+    RunnerUnitInstanceMalformed { observed: o, cause: c } => HolderUnidentified { cause: join(["the cgroup leaf '", o as String, "' names an actions-runner@ instance that cannot be parsed: ", c as String], "") }
+    RunnerUnitInstance { registration_name: i } => HolderIdentified { unit: runner_unit_name_of_registration(registration_name: i) }
+  }
+}
+
+// THE FULL IDENTIFICATION. Each refusal names the leg that failed, because an operator reading a withheld
+// converge has to be able to tell "this job was not dispatched from a slot" apart from "the slot's
+// registration moved underneath the job" -- the first is a dispatch-shape bug and the second is a race.
+// EVERY failure leg answers HolderUnidentified, and the driver withholds on it: identification is what
+// makes the holder's exclusion safe, so a job that cannot say who it is converges nobody.
+fn bracket_holder_cause_of_membership(m: ProcPidCgroupMembershipRecord) -> String {
+  match m {
+    MembershipMissing => "the job's own cgroup has no unified (v2) membership line: this is not a cgroupv2 host, and caps have no meaning here"
+    MembershipAmbiguous { first: f, second: s } => join(["the job's own cgroup reports two unified memberships ('", f as String, "' and '", s as String, "'): the holder could be either"], "")
+    MembershipMalformed { cause: ProcSelfCgroupLineMissingColon } => "the job's own /proc/self/cgroup carries a line with no hierarchy separator"
+    MembershipMalformed { cause: ProcSelfCgroupLineMissingSecondColon } => "the job's own /proc/self/cgroup carries a line with no path separator"
+    MembershipMalformed { cause: ProcSelfCgroupLineEmptyHierarchy } => "the job's own /proc/self/cgroup carries a line with an empty hierarchy field"
+    MembershipMalformed { cause: ProcSelfCgroupLineEmptyPath } => "the job's own /proc/self/cgroup carries a line with an empty path field"
+    CurrentCgroupObserved { relative_path: _ } => "unreachable: an observed membership has no cause"
+  }
+}
+
+fn bracket_holder_identify(target: SshTarget, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> BracketHolder
+{
+  let self_read = Filesystem.Read(path: procfs_path_literal(p: ProcSelfCgroup) as String)
+  if self_read.success {
+    match read_unified_cgroup_membership(content: self_read.content) {
+      CurrentCgroupObserved { relative_path: rel } =>
+        match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: rel as String)) {
+          HolderUnidentified { cause: c } => HolderUnidentified { cause: c }
+          HolderIdentified { unit: unit } =>
+            // THE UNIT MUST BE ONE THIS PASS MANAGES. If the job runs on a slot the desired shape does not
+            // list (a slot mid-decommission, or a dispatch landed on a leftover runner), excluding it from
+            // the bracket is meaningless -- withhold instead of converging a host around a slot nobody owns.
+            if length(filter(units, u => u == unit)) == 0 {
+              HolderUnidentified { cause: join(["the job's own unit '", unit as String, "' is not a desired slot of this host: the converge job is running somewhere this pass does not manage"], "") }
+            } else {
+              match actions_variable_read(name: github_runner_name_variable_name) {
+                ActionsVariableAbsent { variable: v, detail: d } => HolderUnidentified { cause: join(["the job carries no ", v, " (", d, "): a converge job dispatched outside a runner job has no verifiable holder"], "") }
+                ActionsVariablePresent { value: env_name } =>
+                  match slot_current_registration_over_unit(target: target, context: context, unit: unit) {
+                    UnitRegistrationUnreadable { unit: u, cause: c } => HolderUnidentified { cause: join(["the current registration of the job's own unit '", u as String, "' is unreadable (", c, "): the environment cannot be joined to the host"], "") }
+                    UnitRegistrationRead { unit: u, instance: _, name: n } =>
+                      if (n as String) != env_name {
+                        HolderUnidentified { cause: join(["the job's ", github_runner_name_variable_name, " is '", env_name, "' but the current registration of its own unit '", u as String, "' is '", n as String, "': the environment and the host disagree about who this job is"], "") }
+                      } else {
+                        HolderIdentified { unit: u }
+                      }
+                  }
+              }
+            }
+        }
+      other => HolderUnidentified { cause: bracket_holder_cause_of_membership(m: other) }
+    }
+  } else {
+    HolderUnidentified { cause: join(["Filesystem.Read of ", procfs_path_literal(p: ProcSelfCgroup) as String, " failed: ", self_read.error, ": the job cannot say which unit it runs on"], "") }
+  }
+}
 
 fn acquire_bracket_over(target: SshTarget, context: FleetSshExecutionContext, host: String, units: List<NonEmptyStr>) -> BracketAcquisition
 {

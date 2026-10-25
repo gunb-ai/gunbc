@@ -59,6 +59,10 @@ type SlotCapLive {
   control_group: String
   cgroup_memory_max: String?
   cgroup_swap_max: String?
+  // THE THIRD LIVE READING, read only by the bracket holder's fold (slot_cap_holder_standing): the
+  // shared standing still judges max+swap, the pair the memory-envelope check reads. The holder counts
+  // as converged only when this too reads at desired (fleet slot ruling, parent 2026-10-24).
+  cgroup_memory_high: String?
 }
 
 type SlotCapStanding
@@ -278,16 +282,46 @@ fn host_cap_plan_settled_files(standings: List<SlotCapUnitStanding>, files_diffe
   }
 }
 
+// THE BRACKET HOLDER IS NEVER SILENT. The converge job runs FROM a slot of the host it converges, so the
+// bracket can neither drain, stop nor restart the unit it runs on: a slot is permanently busy with its own
+// Runner.Worker, and stopping it would kill this very run. The holder is therefore EXCLUDED from the drain
+// (bracket holder exclusion, gunbc.runner.runner_host_cap_bracket) and its caps land only if the manager
+// reload alone applied them, which is NOT assumed: the holder is read back from its LIVE cgroup like every
+// other slot, and only a read-back at desired says converged. Anything else says DEFERRED-SELF by name --
+// owed, loud, never a convergence claim -- and the next converge pass, running from a different slot,
+// brackets it normally. A deferred self settles the RUN (the bracket did all it could here) but never the
+// unit: only SlotCapsSelfAtDesired claims the holder's envelope.
 type SlotCapOutcome
   = SlotCapsLeftInPlace { unit: NonEmptyStr }
   | SlotCapsRestartedAndRead { unit: NonEmptyStr }
+  | SlotCapsSelfAtDesired { unit: NonEmptyStr }
+  | SlotCapsSelfDeferred { unit: NonEmptyStr, detail: String }
   | SlotCapsRefused { unit: NonEmptyStr, step: String, reason: String }
 
 fn slot_cap_outcome_settled(o: SlotCapOutcome) -> Bool {
   match o {
     SlotCapsLeftInPlace { unit: _ } => true
     SlotCapsRestartedAndRead { unit: _ } => true
+    SlotCapsSelfAtDesired { unit: _ } => true
+    // The per-unit answer is NO: a deferred self never claims its memory envelope.
+    SlotCapsSelfDeferred { unit: _, detail: _ } => false
     SlotCapsRefused { unit: _, step: _, reason: _ } => false
+  }
+}
+
+// WHETHER THE BRACKET'S RUN MAY CALL ITSELF DONE. A deferred self settles the RUN -- the bracket
+// physically cannot bracket the slot it runs on, and a pass that excluded it, wrote every cap file and
+// reloaded the manager once has done all it can for that slot; the next pass, running from a different
+// slot, brackets it normally. It NEVER settles the UNIT: that answer lives only in
+// slot_cap_outcome_settled, and the wire shouts DEFERRED-SELF beside the unit's name, so the receipt
+// reports the holder as owed, never as converged. This coproduct is the run-level fold only, and a
+// deferred self is produced only for the unit the bracket identified as its own holder -- nothing else
+// can mint one. Any other unsettled outcome -- a refusal, an unread, a foreign mask -- still fails the
+// run, exactly as before.
+fn slot_cap_outcome_host_settled(o: SlotCapOutcome) -> Bool {
+  match o {
+    SlotCapsSelfDeferred { unit: _, detail: _ } => true
+    _ => slot_cap_outcome_settled(o: o)
   }
 }
 
@@ -295,6 +329,8 @@ fn slot_cap_outcome_wire(o: SlotCapOutcome) -> String {
   match o {
     SlotCapsLeftInPlace { unit: u } => join(["caps ", u as String, " at-desired-left-in-place"], "")
     SlotCapsRestartedAndRead { unit: u } => join(["caps ", u as String, " restarted-and-live-cgroup-read-back"], "")
+    SlotCapsSelfAtDesired { unit: u } => join(["caps ", u as String, " holder-live-read-back-at-desired"], "")
+    SlotCapsSelfDeferred { unit: u, detail: d } => join(["caps ", u as String, " DEFERRED-SELF ", d, " (this pass ran on it; the next pass from another slot brackets it)"], "")
     SlotCapsRefused { unit: u, step: st, reason: r } => join(["caps ", u as String, " REFUSED step=", st, " ", r], "")
   }
 }
@@ -318,6 +354,13 @@ fn slot_cap_standing_wire(unit: NonEmptyStr, s: SlotCapStanding) -> String {
 
 data slot_cap_show_properties: List<SystemdUnitProperty> = [MemoryMax, MemorySwapMax, MemoryHigh, TasksMax, ControlGroup]
 
+// THE SHARED LIVE READ STAYS THE PAIR THE ENVELOPE CHECK READS. memory.high is NOT added here: the fleet's
+// cap witnesses script this exact argv (two file names), and the shared standing judges max+swap -- the pair
+// the memory-envelope check reads (gunbc.host.memory_envelope). A caller that must read MORE of a unit's
+// cgroup passes its own file list to read_slot_cap_live_files_over; the bracket holder is such a caller
+// (slot_cap_holder_cgroup_files below), because its verdict is taken from its live cgroup alone -- the
+// holder is never stop/start bracketed (gunbc.runner.runner_host_cap_bracket), and the fleet ruling
+// (parent 2026-10-24) counts it converged only when all three values the drop-in set read back at desired.
 data slot_cap_cgroup_files: List<NonEmptyStr> = ["memory.max" as NonEmptyStr, "memory.swap.max" as NonEmptyStr]
 
 fn slot_cap_show_value(lines: List<String>, property: SystemdUnitProperty) -> String? {
@@ -368,6 +411,7 @@ fn slot_cap_live_of_show(show_stdout: String, cgroup_stdout: String) -> SlotCapL
                           control_group: cg,
                           cgroup_memory_max: slot_cap_cgroup_file_value(stdout: cgroup_stdout, control_group: cg, file_name: "memory.max"),
                           cgroup_swap_max: slot_cap_cgroup_file_value(stdout: cgroup_stdout, control_group: cg, file_name: "memory.swap.max"),
+                          cgroup_memory_high: slot_cap_cgroup_file_value(stdout: cgroup_stdout, control_group: cg, file_name: "memory.high"),
                         },
                       }
                   }
@@ -443,6 +487,15 @@ fn slot_cap_read_of_answers(show: SlotCapExecAnswer, cgroup: SlotCapExecAnswer?)
 // as before. The judgement is the shared core below.
 fn read_slot_cap_live_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotCapRead
 {
+  read_slot_cap_live_files_over(target: target, context: context, unit: unit, file_names: slot_cap_cgroup_files)
+}
+
+// THE SAME READ, OVER THE FILE LIST THE CALLER NEEDS. The shared list is two files because the standing
+// below judges max+swap -- the pair the memory-envelope check reads -- and the fleet's cap witnesses script
+// that exact argv; a caller that must read MORE of the unit's cgroup (the bracket holder, which is judged
+// on all three values the drop-in sets) passes its own list rather than widening every reader's argv.
+fn read_slot_cap_live_files_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, file_names: List<NonEmptyStr>) -> SlotCapRead
+{
   let show = slot_cap_exec_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: slot_cap_show_properties)))
   // An inactive unit has an empty ControlGroup and no cgroup directory: nothing to read, and its
   // cgroup readings stay absent, which is NeedsRestart rather than a fabricated value.
@@ -457,7 +510,7 @@ fn read_slot_cap_live_over(target: SshTarget, context: FleetSshExecutionContext,
             Present { value: slot_cap_exec_answer_of(outcome: typed_argv_exec_over_fleet_ssh(
               target: target,
               context: context,
-              argv: grep_nonempty_lines_in_tree_argv(file_names: slot_cap_cgroup_files, root: retirement_cgroup_unescaped_root(control_group: cg) as NonEmptyStr),
+              argv: grep_nonempty_lines_in_tree_argv(file_names: file_names, root: retirement_cgroup_unescaped_root(control_group: cg) as NonEmptyStr),
             )) }
           }
       }
@@ -476,6 +529,72 @@ fn slot_cap_standing_over_from_read(read: SlotCapRead, desired: RunnerSlotDesire
 fn slot_cap_standing_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, desired: RunnerSlotDesired) -> SlotCapStanding
 {
   slot_cap_standing_over_from_read(read: read_slot_cap_live_over(target: target, context: context, unit: unit), desired: desired)
+}
+
+// THE BRACKET HOLDER'S VERDICT, AS A PURE FOLD OVER ONE LIVE READING. The holder is never stopped or
+// restarted (a slot cannot bracket the job that runs on it), so the manager reload is all that can have
+// applied its drop-in -- and whether a reload applies memory limits to a LIVE cgroup is not assumed
+// (fleet ruling, parent 2026-10-24: srv1/srv2 prove nothing here, they got their caps through the
+// stop/start bracket). So the holder counts as converged ONLY on what its live cgroup says now: all
+// three values the drop-in sets -- memory.max, memory.swap.max and memory.high -- reading at the desired
+// bytes. Anything else -- a stale reading, an unread cgroup, a stopped unit -- is a deferral by name:
+// owed, loud, and never a convergence claim. The next converge pass, running from a different slot,
+// brackets this one normally.
+//
+// Why all three where the shared standing judges max+swap: the envelope check reads max+swap
+// (gunbc.host.memory_envelope), but the holder is claiming CONVERGENCE against the desired slot shape,
+// and a half-applied drop-in (high stale after a reload that loaded the file but left the live cgroup on
+// the old throttle line) must not pass as converged. A stopped or inactive unit is deferred too: the
+// holder is the running slot, and a stopped "holder" means the identification was wrong or the state
+// moved underneath -- say so instead of claiming.
+fn slot_cap_holder_standing(unit: NonEmptyStr, live: SlotCapLive, desired: RunnerSlotDesired) -> SlotCapOutcome {
+  if slot_cap_live_cgroup_at_desired(live: live, desired: desired) {
+    SlotCapsSelfAtDesired { unit: unit }
+  } else {
+    SlotCapsSelfDeferred { unit: unit, detail: slot_cap_holder_standing_detail(live: live, desired: desired) }
+  }
+}
+
+// THE FULL LIVE AGREEMENT FOR THE HOLDER: both envelope values, the throttle line, and the loaded unit
+// view agreeing with them. Unit-level fields are compared the same way the bracketed slots compare
+// theirs -- one parser, one comparison, no holder-local arithmetic.
+fn slot_cap_live_cgroup_at_desired(live: SlotCapLive, desired: RunnerSlotDesired) -> Bool {
+  slot_cap_cgroup_value_is(reading: live.cgroup_memory_max, bytes: desired.memory_max)
+    && slot_cap_cgroup_value_is(reading: live.cgroup_swap_max, bytes: desired.memory_swap_max)
+    && slot_cap_cgroup_value_is(reading: live.cgroup_memory_high, bytes: desired.memory_high)
+    && slot_cap_unit_view_at_desired(live: live, desired: desired)
+}
+
+// THE HOLDER'S DEFERRAL, WITH THE READING THAT DEFEATED IT NAMED IN THE DETAIL. A deferral that cannot
+// say which value disagreed is a §5 diagnostic with nothing to act on: the wire already shouts
+// DEFERRED-SELF, and this string is what tells the operator whether to wait for the next pass or to look
+// at the manager.
+fn slot_cap_holder_standing_detail(live: SlotCapLive, desired: RunnerSlotDesired) -> String {
+  let max_want = to_string(byte_size_count(b: desired.memory_max))
+  let swap_want = to_string(byte_size_count(b: desired.memory_swap_max))
+  let high_want = to_string(byte_size_count(b: desired.memory_high))
+  let max_got = match live.cgroup_memory_max { Absent => "unread" Present { value: v } => v }
+  let swap_got = match live.cgroup_swap_max { Absent => "unread" Present { value: v } => v }
+  let high_got = match live.cgroup_memory_high { Absent => "unread" Present { value: v } => v }
+  join([
+    "live cgroup reads memory.max=", max_got, " want ", max_want,
+    ", memory.swap.max=", swap_got, " want ", swap_want,
+    ", memory.high=", high_got, " want ", high_want,
+    if slot_cap_unit_view_at_desired(live: live, desired: desired) { "" } else { ", unit view disagrees with the drop-in" },
+  ], "")
+}
+
+// THE HOLDER'S VERDICT, READ FROM ITS LIVE CGROUP OVER SSH (the same read every bracketed slot gets --
+// one argv builder, one parser; the holder gets no special reader, only a wider file list and a stricter
+// judge: all three values the drop-in sets, not the two the envelope check reads).
+data slot_cap_holder_cgroup_files: List<NonEmptyStr> = ["memory.max" as NonEmptyStr, "memory.swap.max" as NonEmptyStr, "memory.high" as NonEmptyStr]
+
+fn slot_cap_holder_standing_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, desired: RunnerSlotDesired) -> SlotCapOutcome
+{
+  match read_slot_cap_live_files_over(target: target, context: context, unit: unit, file_names: slot_cap_holder_cgroup_files) {
+    SlotCapReadRefused { reason: why } => SlotCapsSelfDeferred { unit: unit, detail: concat("live cgroup unread: ", why) }
+    SlotCapReadOk { live: live } => slot_cap_holder_standing(unit: unit, live: live, desired: desired)
+  }
 }
 
 // ── The effects ─────────────────────────────────────────────────────────────────────────────────
