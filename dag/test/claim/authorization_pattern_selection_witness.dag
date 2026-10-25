@@ -10,7 +10,7 @@ import gunbc.auth.authorization_pattern_selection {
   MintsNoCredential, MintsResourceScopedCredential, MintsAccountWideCredential, MintsHostRootReach,
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence, BillingConsequence,
-  NoWitnessDischarge, StandingRulingUnderInterlock, WitnessDischarge, EntailedByApprovedConvergence,
+  NoWitnessDischarge, StandingRulingUnderInterlock, WitnessDischarge, EntailedByApprovedConvergence, ConvergenceRoot,
   FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession, AdministratorEdge, ApprovedConvergenceGrant,
   PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
@@ -601,11 +601,27 @@ test fn the_srv1_host_root_deploy_effects_inherit_the_root_mutation_approval() -
 // a_recurring_host_root_write_selects_the_administrator_edge); with one it selects the inherited
 // approval, at every frequency a human could otherwise be asked at, except break-glass, which is
 // witnessed per instance by declaration.
-fn inheriting(e: PrivilegedEffect) -> PrivilegedEffect {
+fn root_at(decl: String, e: PrivilegedEffect) -> ConvergenceRoot {
+  ConvergenceRoot { site: decl_ref(module_path: "fixture.convergence", decl_name: decl), effect: e }
+}
+
+fn inheriting_under(e: PrivilegedEffect, root: ConvergenceRoot) -> PrivilegedEffect {
   PrivilegedEffect {
     subject: e.subject, frequency: e.frequency, reversibility: e.reversibility, surface: e.surface,
     workload_identity: e.workload_identity, minted_reach: e.minted_reach, billing: e.billing,
-    witness_discharge: EntailedByApprovedConvergence { root: decl_ref(module_path: "fixture.convergence", decl_name: "approved_root") },
+    witness_discharge: EntailedByApprovedConvergence { root: root },
+  }
+}
+
+// The approved root is an effect the selection sends to the approval capability on its own.
+fn inheriting(e: PrivilegedEffect) -> PrivilegedEffect {
+  inheriting_under(e: e, root: root_at(decl: "approved_root", e: one_off_grant_unbindable()))
+}
+
+fn refused_naming(s: AuthorizationPatternSelection, fragment: String) -> Bool {
+  match s {
+    PatternSelectionRefused { defects: ds } => (ds |> count) == 1 && any(ds, d => string_contains(s: d as String, pattern: fragment))
+    _ => false
   }
 }
 
@@ -619,8 +635,9 @@ test fn an_attendable_effect_with_a_lineage_root_is_not_asked_again() -> Bool {
     selected_approved_convergence_grant(s: select_authorization_pattern(e: inheriting(e: host_root_effect_at(f: f)))))
 }
 
-test fn a_break_glass_effect_is_asked_again_even_with_a_lineage_root() -> Bool {
-  selected_approved_capability(s: select_authorization_pattern(e: inheriting(e: host_root_effect_at(f: BreakGlassOnly))))
+test fn a_break_glass_effect_may_not_inherit_and_says_so() -> Bool {
+  selected_approved_capability(s: select_authorization_pattern(e: host_root_effect_at(f: BreakGlassOnly)))
+    && refused_naming(s: select_authorization_pattern(e: inheriting(e: host_root_effect_at(f: BreakGlassOnly))), fragment: "break-glass")
 }
 
 // AN IRREVERSIBLE RECURRING EFFECT, which has no admissible pattern on its own, is admitted once the
@@ -630,38 +647,36 @@ test fn an_irreversible_recurring_effect_is_admitted_only_under_a_lineage_root()
     && selected_approved_convergence_grant(s: select_authorization_pattern(e: inheriting(e: recurring_but_witnessed())))
 }
 
-// THE LINEAGE ROOT MUST BE SOMETHING THE OPERATOR APPROVES. The real census has no defect, and its srv1
-// root is a row that selects the approval capability; the REDs are fixture rosters whose inheriting row
-// names a root that is absent, a root the selection federates, and a root that itself inherits.
+// THE LINEAGE ROOT MUST BE SOMETHING THE OPERATOR APPROVES, decided by the selection itself (review
+// 85926): a root the selection federates, or a root that inherits in turn, refuses the inheriting effect
+// with a located defect instead of falling back to another pattern, and the same effect under an approved
+// root is the green control. The census adds only the roster join: the real census has no defect and its
+// srv1 root is a row that selects the approval capability; the red is a fixture roster whose root names
+// no rostered site.
+test fn a_root_the_selection_does_not_send_to_approval_refuses_the_inheriting_effect() -> Bool {
+  let approved = root_at(decl: "approved_root", e: one_off_grant_unbindable())
+  let federated = root_at(decl: "federated_root", e: recurring_read())
+  let chained = root_at(decl: "middle", e: inheriting_under(e: one_off_grant_unbindable(), root: approved))
+  selected_approved_convergence_grant(s: select_authorization_pattern(e: inheriting_under(e: recurring_host_root_write(), root: approved)))
+    && refused_naming(s: select_authorization_pattern(e: inheriting_under(e: recurring_host_root_write(), root: federated)), fragment: "does not select OperatorApprovedCapability")
+    && refused_naming(s: select_authorization_pattern(e: inheriting_under(e: recurring_host_root_write(), root: chained)), fragment: "declares a lineage of its own")
+}
+
 fn fixture_row(decl: String, e: PrivilegedEffect) -> PrivilegedEffectSite {
   PrivilegedEffectSite { site: decl_ref(module_path: "fixture.convergence", decl_name: decl), effect: e, realized: RealizedUnauthorized, divergence_reason: none }
 }
 
-fn inheriting_from(decl: String) -> PrivilegedEffect {
-  PrivilegedEffect {
-    subject: "an inheriting fixture write" as NonEmptyStr, frequency: EveryProvision, reversibility: ReversibleByReapply,
-    surface: ApiSurface, workload_identity: WorkloadIdentityUnbindable { cause: "fixture" as NonEmptyStr },
-    minted_reach: MintsHostRootReach, billing: NoBillingConsequence,
-    witness_discharge: EntailedByApprovedConvergence { root: decl_ref(module_path: "fixture.convergence", decl_name: decl) },
-  }
-}
-
-test fn every_lineage_root_in_the_census_selects_the_approval_capability() -> Bool {
+test fn every_lineage_root_in_the_census_is_a_rostered_approval_row() -> Bool {
   (convergence_lineage_defects(census: privileged_effect_census) |> count) == 0
-    && any(census_verdicts(), v => declaration_ref_eq(a: v.site, b: srv1_root_mutation_approval_root) && selected_approved(s: v.selection))
+    && any(census_verdicts(), v => declaration_ref_eq(a: v.site, b: srv1_root_mutation_approval_root.site) && selected_approved(s: v.selection))
 }
 
-test fn a_lineage_root_that_is_absent_federated_or_itself_inherited_is_a_defect() -> Bool {
-  let approved_root = fixture_row(decl: "approved_root", e: one_off_grant_unbindable())
-  let control = [approved_root, fixture_row(decl: "child", e: inheriting_from(decl: "approved_root"))]
-  let absent = [approved_root, fixture_row(decl: "child", e: inheriting_from(decl: "no_such_root"))]
-  let federated = [fixture_row(decl: "federated_root", e: recurring_read()), fixture_row(decl: "child", e: inheriting_from(decl: "federated_root"))]
-  let chained = [approved_root, fixture_row(decl: "middle", e: inheriting_from(decl: "approved_root")), fixture_row(decl: "child", e: inheriting_from(decl: "middle"))]
-  (convergence_lineage_defects(census: control) |> count) == 0
-    && (convergence_lineage_defects(census: absent) |> count) == 1
-    && (convergence_lineage_defects(census: federated) |> count) == 1
-    && any(convergence_lineage_defects(census: chained), d => (d.decl_name as String) == "child")
-    && (convergence_lineage_defects(census: chained) |> count) == 1
+test fn a_lineage_root_outside_the_roster_is_a_census_defect() -> Bool {
+  let approved = fixture_row(decl: "approved_root", e: one_off_grant_unbindable())
+  let child = fixture_row(decl: "child", e: inheriting(e: recurring_host_root_write()))
+  (convergence_lineage_defects(census: [approved, child]) |> count) == 0
+    && any(convergence_lineage_defects(census: [child]), d => (d.decl_name as String) == "child")
+    && (convergence_lineage_defects(census: [child]) |> count) == 1
 }
 
 test fn the_srv1_per_unit_systemctl_effect_selects_the_federated_grant_and_diverges_with_reason() -> Bool {
