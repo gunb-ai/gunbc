@@ -43,7 +43,7 @@ import extdeps.systemd.systemctl { systemctl_mask_argv, systemctl_stop_argv }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import extdeps.github.actions_runner { actions_runner_base_dir }
-import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused, FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import gunbc.fleet.fleet_workflow_steps { gunbc_ci_gunbc_run_resolve_step_timeout_minutes }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
