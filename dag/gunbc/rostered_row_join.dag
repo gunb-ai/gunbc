@@ -89,7 +89,7 @@ data rostered_row_joins: List<RosteredRowJoin> = [
     row_type: GuaranteeStallRows,
     declared_type_name: "GuaranteeStall",
     roster_module: "gunbc.guarantee_stall.roster",
-    roster_declaration: "all_guarantee_stalls",
+    roster_declaration: "guarantee_stall_roster",
   },
   RosteredRowJoin {
     row_type: RecurringFailureModeRows,

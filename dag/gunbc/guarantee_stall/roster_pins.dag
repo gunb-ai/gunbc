@@ -1,7 +1,7 @@
 module gunbc.guarantee_stall.roster_pins
 
 // THE FOLDS THAT USED TO SIT BESIDE THE HAND LIST, HELD APART FROM THE ROSTER BECAUSE THE ROSTER
-// NO LONGER HAS AN AUTHOR. `gunbc.guarantee_stall.roster` `all_guarantee_stalls` is derived in
+// NO LONGER HAS AN AUTHOR. `gunbc.guarantee_stall.roster` `guarantee_stall_roster` is derived in
 // memory from the sibling files of this directory that declare a `GuaranteeStall` under their own
 // stem (`v1_compiler.cli_run.derived_row_roster` `GUARANTEE_STALL`), so an append is a new row file
 // and never an edit to a shared list. This module declares no `GuaranteeStall` row, so it is not a
@@ -9,7 +9,7 @@ module gunbc.guarantee_stall.roster_pins
 //
 // ORDER IS NO LONGER SOURCE ORDER. The hand list called its order load-bearing for projections;
 // the derived list is ordered by row stem. Measured when the roster was derived: no consumer of
-// `all_guarantee_stalls` depends on order (every one is a universally quantified fold, a size, or
+// `guarantee_stall_roster` depends on order (every one is a universally quantified fold, a size, or
 // a count), and no projection renders the rows.
 //
 // EVERY ROW IS A FILE IN THIS DIRECTORY, AND A ROW DECLARED ELSEWHERE IS NOT WATCHED. The hand list
@@ -58,7 +58,7 @@ import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_
 
 // THE RESTORED SUBJECTS, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
 //
-// These stalls were DECLARED in the stall carrier and absent from all_guarantee_stalls, so the
+// These stalls were DECLARED in the stall carrier and absent from guarantee_stall_roster, so the
 // walls written over that roster ranged over 21 of the 25 rows the carrier then declared. The walls
 // were green because their input was short, which is exactly the shape
 // gunbc.recurring_failure_mode check_subject_narrower_than_its_declared_claim names.

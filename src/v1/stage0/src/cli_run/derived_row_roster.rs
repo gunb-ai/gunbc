@@ -94,7 +94,7 @@ pub const GUARANTEE_STALL: DerivedRowRoster = DerivedRowRoster {
     row_dir_rel: "gunbc/guarantee_stall",
     row_type: "GuaranteeStall",
     roster_module: "gunbc.guarantee_stall.roster",
-    roster_declaration: "all_guarantee_stalls",
+    roster_declaration: "guarantee_stall_roster",
 };
 
 pub const DERIVED_ROW_ROSTERS: [&DerivedRowRoster; 3] =
