@@ -89,6 +89,7 @@ pub enum Quantity {
     VolumeFlow,
     Density,
     SpecificHeatCapacity,
+    Velocity,
     Acceleration,
     ResistancePerLength,
     Dimensionless,
@@ -2382,6 +2383,19 @@ pub fn joule_per_kilogram_kelvin_count(c: JoulePerKilogramKelvin) -> Nat {
     measure_count(c.clone())
 }
 
+pub type MicrometrePerSecond = Rc<Measure<Velocity, Micro, Nat>>;
+
+pub fn micrometre_per_second(count: Nat) -> MicrometrePerSecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn micrometre_per_second_count(v: MicrometrePerSecond) -> Nat {
+    measure_count(v.clone())
+}
+
 pub type MicrometrePerSecondSquared = Rc<Measure<Acceleration, Micro, Nat>>;
 
 pub fn micrometre_per_second_squared(count: Nat) -> MicrometrePerSecondSquared {
@@ -2511,6 +2525,8 @@ pub struct VolumeFlow;
 pub struct Density;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SpecificHeatCapacity;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Velocity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Acceleration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

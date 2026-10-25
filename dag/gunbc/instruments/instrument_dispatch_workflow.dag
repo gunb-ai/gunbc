@@ -9,6 +9,12 @@ import extdeps.bazel.label { Label, render_label }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.expressions {
+  ExpressionTemplate, LiteralText, Interpolation, ContextAccess, Github, Inputs,
+  serialize_template, interpolate, runner_temp, StringLiteral, LogicalOr, LogicalAnd, Equals,
+  FunctionCall, Format,
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, Bash, max_job_timeout_minutes, WorkflowTrigger,
   WorkflowDispatch, DispatchInput, InputChoice,
@@ -74,16 +80,29 @@ import v2.extdeps.languages.bash_build {
 
 data instrument_dispatch_workflow_name: String = "instrument-dispatch"
 
-// ONE RUN AT A TIME ON THE SHARED POOL, AND NO DISPATCH DROPPED. The group used to be the bare
-// scalar form. Under it GitHub keeps ONE pending run per group and cancels the one already waiting
-// when another arrives, with no signal to the lane that dispatched it: on 2026-10-03 a queued
-// behavioral-equivalence run (37114501769) was cancelled before it started because another lane
-// dispatched a different instrument ninety minutes later, and its owner learned of it only by
-// reading the run list. A dispatched run is a receipt someone is waiting on, so losing one silently
-// is a fail-open. The queue-max form keeps every pending run and still serializes them, which is
-// the operator's condition held without the loss. One group for every label, not one per label:
-// per-label groups would let two instruments run on the pool at once, which is the stacking the
-// condition forbids.
+// ONE RUN AT A TIME PER MEASUREMENT, AND NO DISPATCH DROPPED. Two superseded conditions live in this
+// paragraph and neither is deleted, because both are load-bearing history for the shape chosen here.
+// (1) The group used to be the BARE SCALAR form. Under it GitHub keeps ONE pending run per group and
+// cancels the one already waiting when another arrives, with no signal to the lane that dispatched it:
+// on 2026-10-03 a queued behavioral-equivalence run (37114501769) was cancelled before it started
+// because another lane dispatched a different instrument ninety minutes later, and its owner learned of
+// it only by reading the run list. A dispatched run is a receipt someone is waiting on, so losing one
+// silently is a fail-open. queue: max with cancel-in-progress: false keeps every pending run and still
+// serializes -- that part of the operator's condition is held unchanged.
+// (2) The group then became ONE NAME FOR EVERY LABEL ('instrument-dispatch-queued'), on the reading
+// that any instrument running on the pool at the same time as another is the stacking the condition
+// forbids. The operator superseded that reading on 2026-10-20 for the Charter 4 measurement queues:
+// instruments are independent measurements, and putting every one of them behind one global slot made
+// a lane wait behind an unrelated instrument's 4-hour timeout. The group is now keyed PER DISPATCH --
+// ref plus label -- so one label on one ref still cannot run twice while unrelated measurements
+// proceed. The bound that replaces the global one is per-(ref,label), which is what the witness holds.
+// THE MIGRATION OVERLAP, DECLARED RATHER THAN HIDDEN. Concurrency is read from the workflow AT THE
+// DISPATCHING REF (the finding recorded below, from the 2026-10-03 triple cancellation), so an old ref
+// still dispatching the pre-fix global group can neither be cancelled by nor cancel a per-dispatch
+// group, and during the transition one run of each form can overlap. The bound is the same one the
+// cancellation fix carried: main carries the new form, and refs cut before this commit keep the old
+// group until they are rebased. That overlap is bounded in TIME (stale refs age out) and is strictly
+// narrower than what it replaces, which was permanent global serialization.
 //
 // THE GROUP IS NOT THE WORKFLOW'S NAME, AND THAT IS THE SECOND HALF OF THE REPAIR. Concurrency is read
 // from the workflow at the DISPATCHING ref, and one scalar-form dispatch cancels every pending run in
@@ -94,47 +113,59 @@ data instrument_dispatch_workflow_name: String = "instrument-dispatch"
 // every branch cut before this change still names the old group. Naming a group no pre-fix ref names
 // puts those dispatches out of reach of this queue.
 //
-// WHAT THAT COSTS, BOUNDED: a pre-fix ref's dispatch runs in the OLD group, so while such refs still
-// dispatch, one old-form run may execute alongside one run from this queue -- a relaxation of the
-// queue-do-not-stack condition by at most one extra concurrent run. It dissolves when no pre-fix ref
-// dispatches, which follows from the default branch carrying this form.
-//
-// THE SAME REMEDY, APPLIED AGAIN ON 2026-10-20 (M1 ruling): the group name 'instrument-dispatch-queued'
-// is itself wedged in GitHub's state, repo-wide. Its head (39358338305, type-declaration-use-census)
-// was CANCELLED by the fleet owner and the group did NOT unwedge -- runs created into it afterwards
-// stayed pending with 0 jobs (39379535788 at main head 5f1bdd77a77 pending 6 min with 0 jobs;
-// 39380660663 pending from 06:29Z, never promoted, cancelled; both measured 2026-10-20). Meanwhile
-// FRESH key names promote correctly on the very same workflow: two back-to-back dispatches on the
-// wave key instrument-dispatch-wave-base ran head-then-queued (39380951246 in_progress with a job at
-// 06:32, 39380958633 pending 0 jobs), and the queued sibling PROMOTED to in_progress within a minute
-// when the head completed at 07:00:08. A group name that GitHub holds wedged cannot be revived by
-// cancelling its members -- so the serialized queue moves to a name NO earlier ref uses:
-// 'instrument-dispatch-pool-serial' (checked: no commit of .github/workflows/instrument-dispatch.yml
-// in this repository's history ever emitted that string). The old name appears nowhere in the emitted
-// yml; the witness asserts the new one and the absence of the old.
-data instrument_dispatch_concurrency_group: String = "instrument-dispatch-pool-serial"
+// WHAT THAT COSTS, BOUNDED. A pre-fix ref's dispatch runs in the OLD global group, so it cannot be
+// cancelled by this queue and cannot cancel it. Under the single global group that overlap was at most
+// ONE extra concurrent run; keying per dispatch widens the bound to one old-form run per (ref, label)
+// still dispatching from a pre-fix ref, because the old group no longer contains those runs together.
+// It dissolves when no pre-fix ref dispatches, which follows from the default branch carrying this form
+// and from stale refs ageing out. The relaxation is therefore bounded in TIME and in the number of
+// stale refs, not permanent. WHAT THE OLD GROUP NEVER DID, AND SO LOSING IT COSTS NOTHING: it did not
+// isolate one run from another. Isolation on the shared self-hosted pool is the SLOT's job --
+// gunbc.runner.runner_slot_desired declares the per-slot shape and gunbc.host.memory_envelope enforces
+// it (memory.high throttles early, memory.max refuses late, MemorySwapMax 0 refuses an overrun instead
+// of paging it) -- which is the operator's ruling on this change, recorded verbatim in the provenance
+// of gunbc.design_ruling instrument_measurement_queues_run_in_parallel. No row here claims to bound how
+// many instrument runs occupy the pool at once, and none is owed: the guarantee that protects the
+// required lane is the cgroup, and the guard step above reads exactly that.
 
-// OPERATOR RULING 2026-10-20, SUPERSEDING THE ONE-AT-A-TIME CONDITION ABOVE. What it replaces, quoted
-// from the paragraph it supersedes: "One group for every label, not one per label: per-label groups
-// would let two instruments run on the pool at once, which is the stacking the condition forbids."
-// The ruling admits CONCURRENCY under a declared cap: instrument dispatches may run at once up to a
-// FIXED, BOUNDED set of concurrency-group keys, and max concurrency IS the number of keys. GitHub has
-// no N-slot form, so the cap is spelled as a closed set of key LITERALS chosen by a comparison over
-// the closed wave_shard choice -- never by interpolating a run id, a run number, or any free-text
-// input into the key (a key that varies per run is no cap at all; a key interpolated from an input is
-// bounded only by what a dispatcher can type). Every non-wave label keeps the one serialized group
-// (instrument_dispatch_concurrency_group, fresh-named 2026-10-20) and stays serialized among itself
-// and every other non-wave run; the
-// wave gate's wave_shard choice maps to one key per CHOICE -- base, 0/4..K-1/K, merge/K -- derived
-// from the same data row as K, so the wave contributes K + 2 keys and the total cap is K + 3.
-// THE CAP, DECLARED: 7 (K = 4 from instrument_dispatch_wave_shard_count, plus the one serialized
-// queue). The roster: srv3 and srv4 each have 19 runners with ~11 busy, ~16 idle arm64 overall, so 7
-// concurrent instrument runs leave v2-bootstrap's lanes unstarved (operator's reason, 2026-10-20).
-// queue: max stays -- no dispatch is ever dropped; that half of the old condition is NOT superseded.
-// EXTERNAL FACT (GitHub product policy, DESIGN 3): the EVALUATED concurrency group value is capped at
-// 100 characters; every key this row can emit is far under it. The comparison values come only from
-// the closed choice; a workflow_dispatch input description over 160 characters invalidates the whole
-// file (recorded beside the row that emits one).
+// THE DISPATCH KEY. The label input name is defined here, ABOVE the group expression that reads it,
+// so this file keeps its existing property of containing no forward reference.
+data instrument_dispatch_label_input: String = "label"
+
+// The group's fixed head. Kept separate from the key parts so the witness can assert the head, the
+// ref part and the label part independently, and so no consumer has to re-derive the prefix.
+data instrument_dispatch_group_prefix: String = "instrument-dispatch"
+
+// ONE GROUP PER (REF, LABEL), TYPED THROUGH THE GITHUB-EXPRESSION MODEL. Both dynamic parts are
+// ContextAccess interpolations over the contexts GitHub allows at workflow level (github, inputs,
+// vars -- extdeps.github.actions documents the restriction), and the separator is a LiteralText
+// hyphen. The ${{ }} medium is produced only by extdeps.github.expressions serialize_template, so
+// no expression syntax exists as string fragments in this model (the typed-template rule). The
+// sibling string-fragment sites this replaced -- the label display/if values, the runner.temp
+// upload path, and the heal_workflow group/env reads -- are converted through the same carrier in
+// this PR (review 85263, DESIGN section 6b: the same rule at sibling sites). Fragment sites in
+// other models (fleet_*, runner_*, witness_floor, compiler_gate, heal_publisher) are pre-existing
+// main-side debt of the same kind, untouched here and named for routing, not permission to repeat.
+data instrument_dispatch_concurrency_group_template: ExpressionTemplate = {
+  segments: [
+    LiteralText { text: instrument_dispatch_group_prefix },
+    LiteralText { text: "-" },
+    Interpolation { expression: ContextAccess { context: Github, path: ["ref"] } },
+    LiteralText { text: "-" },
+    Interpolation { expression: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] } }
+  ]
+}
+
+data instrument_dispatch_concurrency_group: String =
+  serialize_template(template: instrument_dispatch_concurrency_group_template)
+
+// THE WAVE GROUP KEYS (T0.2 transport; operator ruling 2026-10-20, adapted at the main merge to this
+// spine). A wave run takes one of the CLOSED key literals chosen by the closed wave_shard input;
+// every other dispatch falls through to the per-(ref, label) spine above -- the same VALUE the spine
+// emits, spelled as format() over the same parts so it is one operand of the chain. Provenance kept:
+// the name 'instrument-dispatch-queued' is wedged in GitHub's state (head 39358338305 cancelled, the
+// group never unwedged; runs created into it stayed pending with 0 jobs, 39379535788 / 39380660663,
+// measured 2026-10-20), so no emitted group value may ever carry it again.
 data instrument_dispatch_concurrency_wave_group_prefix: String = "instrument-dispatch-wave-"
 
 // Group NAMES carry only alphanumerics, '-' and '_' (GitHub product policy, DESIGN 3 external fact):
@@ -142,8 +173,8 @@ data instrument_dispatch_concurrency_wave_group_prefix: String = "instrument-dis
 // '<prefix>merge-of-K'. The key is derived from the CHOICE, never from the run.
 
 // THE CLOSED KEY SET, GENERATED FROM THE SAME ROW AS K: one key per wave_shard choice except 'none'
-// (a wave run dispatched with 'none' refuses at the reader with 2 before its group matters; it falls
-// into the serialized queue). Every key is a literal built here; nothing about a run flows into it.
+// (a wave run dispatched with 'none' refuses at the reader with 2 before its group matters). Every
+// key is a literal built here; nothing about a run flows into it.
 fn instrument_dispatch_wave_concurrency_group_keys() -> List<String> {
   [join([instrument_dispatch_concurrency_wave_group_prefix, "base"], "")]
     + list_map(xs: indices_below(n: instrument_dispatch_wave_shard_count), f: fn(i) {
@@ -152,12 +183,20 @@ fn instrument_dispatch_wave_concurrency_group_keys() -> List<String> {
     + [join([instrument_dispatch_concurrency_wave_group_prefix, "merge-of-", to_string(instrument_dispatch_wave_shard_count)], "")]
 }
 
-data instrument_dispatch_concurrency_cap: Int = length(instrument_dispatch_wave_concurrency_group_keys()) + 1
+// THE CAP, DECLARED: the number of wave keys (K + 2 with K = 4). The bounded-set half of the operator
+// ruling survives the per-(ref, label) spine: the WAVE contributes a closed key set, so concurrent
+// wave runs cannot exceed it; non-wave dispatches queue per (ref, label), main's authorized form
+// (gunbc.design_ruling instrument_measurement_queues_run_in_parallel -- isolation on the shared pool
+// is the slot cgroup's job, and the guard step reads exactly that). queue: max stays; no dispatch is
+// ever dropped. EXTERNAL FACT (DESIGN 3): the EVALUATED group value is capped at 100 characters;
+// every key this row can emit is far under it. A workflow_dispatch input description over 160
+// characters invalidates the whole file (recorded beside the row that emits one).
+data instrument_dispatch_concurrency_cap: Int = length(instrument_dispatch_wave_concurrency_group_keys())
 
 // THE BOUNDEDNESS PREDICATE, ASSERTED BY THE WITNESS OVER THE EMITTED KEYS: a closed key is a literal
-// -- no expression braces, no context access, no input interpolation, not empty, and inside the group
-// charset. A key that fails this is unbounded by construction (per-run-unique, free-text, or
-// unrepresentable) and must not reach the yml. The witness REDs feed it the shapes the ruling forbids.
+// -- no expression braces, no context access, no input interpolation, not empty, no slash, no space.
+// A key that fails this is unbounded by construction (per-run-unique, free-text, or unrepresentable)
+// and must not reach the yml. The witness REDs feed it the shapes the ruling forbids.
 fn instrument_dispatch_concurrency_key_is_closed(key: String) -> Bool {
   length(key) > 0
     && !string_contains(s: key, pattern: "${{")
@@ -167,33 +206,44 @@ fn instrument_dispatch_concurrency_key_is_closed(key: String) -> Bool {
     && !string_contains(s: key, pattern: " ")
 }
 
-// THE GROUP EXPRESSION: a chain of ternaries choosing among the closed literals, defaulting to the
-// serialized queue. The only dynamic values read are the CLOSED label and wave_shard choices, each
-// compared against a generated literal -- never interpolated into a key. The label guard keeps a
-// non-wave run dispatched with a wave_shard value out of the wave keys. '&&' binds tighter than the
-// ternary in the GitHub expression grammar, so 'A && B ? k : rest' groups as '(A && B) ? k : rest'.
-// THE GROUP EXPRESSION: a chain of '(guard && choice-match && KEY_LITERAL)' terms joined by '||',
-// ending in the serialized-queue literal. GitHub's expression language has NO ternary (a '?' ':'
-// makes the whole file invalid: observed at this repo, the push run dies jobless; DESIGN 3 external
-// fact). '||' returns the first truthy operand and every key literal is a non-empty string, so the
-// chain selects the first matching key and otherwise falls through to the queue -- and an empty key
-// could never be selected, which is why the closedness predicate above also refuses the empty key.
+// THE GROUP EXPRESSION, TYPED THROUGH THE CARRIER: a chain of (label-guard && shard-guard && KEY)
+// conjunctions joined by '||', ending in the spine's format() over the same (ref, label) parts as
+// instrument_dispatch_concurrency_group_template. '||' returns the first truthy operand and every
+// operand is a non-empty string, so the chain selects the first matching key and otherwise falls
+// through to the spine queue -- and an empty key could never be selected, which is why the closedness
+// predicate above also refuses the empty key. GitHub's expression language has NO ternary (a '?' ':'
+// makes the whole file invalid: observed at this repo; DESIGN 3 external fact). '&&' binds tighter
+// than '||' (extdeps.github.expressions precedence), so each conjunction needs no extra grouping.
 // The only dynamic values read are the CLOSED label and wave_shard choices, each compared against a
-// generated literal; nothing about a run, and no free text, ever enters a key.
+// generated literal; nothing about a run, and no free text, ever enters a key. Only
+// extdeps.github.expressions spells the ${{ }} medium (the typed-template rule; review 85263).
 fn instrument_dispatch_wave_concurrency_group_expression() -> String {
-  let term = fn(choice, key) {
-    join(["(inputs.", instrument_dispatch_label_input, " == '", render_label(l: instrument_dispatch_wave_label()), "' && inputs.", instrument_dispatch_wave_shard_input, " == '", choice, "' && '", key, "')"], "")
+  let wave_term = fn(choice, key) {
+    LogicalAnd {
+      left: LogicalAnd {
+        left: Equals { left: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] }, right: StringLiteral { value: render_label(l: instrument_dispatch_wave_label()) } },
+        right: Equals { left: ContextAccess { context: Inputs, path: [instrument_dispatch_wave_shard_input] }, right: StringLiteral { value: choice } }
+      },
+      right: StringLiteral { value: key }
+    }
   }
   let shard_terms = list_map(xs: indices_below(n: instrument_dispatch_wave_shard_count), f: fn(i) {
-    term(join([to_string(i), "/", to_string(instrument_dispatch_wave_shard_count)], ""), join([instrument_dispatch_concurrency_wave_group_prefix, to_string(i), "-of-", to_string(instrument_dispatch_wave_shard_count)], ""))
+    wave_term(join([to_string(i), "/", to_string(instrument_dispatch_wave_shard_count)], ""), join([instrument_dispatch_concurrency_wave_group_prefix, to_string(i), "-of-", to_string(instrument_dispatch_wave_shard_count)], ""))
   })
-  let all_terms = [term("base", join([instrument_dispatch_concurrency_wave_group_prefix, "base"], ""))]
+  let wave_terms = [wave_term("base", join([instrument_dispatch_concurrency_wave_group_prefix, "base"], ""))]
     + shard_terms
-    + [term(join(["merge/", to_string(instrument_dispatch_wave_shard_count)], ""), join([instrument_dispatch_concurrency_wave_group_prefix, "merge-of-", to_string(instrument_dispatch_wave_shard_count)], "")),
-       join(["'", instrument_dispatch_concurrency_group, "'"], "")]
-  join(["${{ ", fold(all_terms, init: "", f: fn(acc, t) {
-    if length(acc) == 0 { t } else { join([acc, " || ", t], "") }
-  }), " }}"], "")
+    + [wave_term(join(["merge/", to_string(instrument_dispatch_wave_shard_count)], ""), join([instrument_dispatch_concurrency_wave_group_prefix, "merge-of-", to_string(instrument_dispatch_wave_shard_count)], ""))]
+  let spine_fallback = FunctionCall {
+    function: Format,
+    args: [
+      StringLiteral { value: instrument_dispatch_group_prefix },
+      StringLiteral { value: "-" },
+      ContextAccess { context: Github, path: ["ref"] },
+      StringLiteral { value: "-" },
+      ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] }
+    ]
+  }
+  interpolate(expression: fold(wave_terms, init: spine_fallback, f: fn(acc, t) { LogicalOr { left: t, right: acc } }))
 }
 
 data instrument_dispatch_concurrency: ConcurrencySpec = ConcurrencyMappingQueueMax {
@@ -203,7 +253,6 @@ data instrument_dispatch_concurrency: ConcurrencySpec = ConcurrencyMappingQueueM
 
 data instrument_dispatch_job_id: String = "instrument"
 
-data instrument_dispatch_label_input: String = "label"
 
 data instrument_dispatch_directory: String = "instrument-dispatch"
 
@@ -239,18 +288,22 @@ fn instrument_dispatch_wave_artifact_name(role: String) -> String {
 // each wave role uploads its own artifact; every other label keeps the plain name untouched.
 fn instrument_dispatch_wave_upload_name_expression() -> String {
   let term = fn(choice, role) {
-    join(["(inputs.", instrument_dispatch_label_input, " == '", render_label(l: instrument_dispatch_wave_label()), "' && inputs.", instrument_dispatch_wave_shard_input, " == '", choice, "' && '", instrument_dispatch_wave_artifact_name(role), "')"], "")
+    LogicalAnd {
+      left: LogicalAnd {
+        left: Equals { left: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] }, right: StringLiteral { value: render_label(l: instrument_dispatch_wave_label()) } },
+        right: Equals { left: ContextAccess { context: Inputs, path: [instrument_dispatch_wave_shard_input] }, right: StringLiteral { value: choice } }
+      },
+      right: StringLiteral { value: instrument_dispatch_wave_artifact_name(role) }
+    }
   }
   let base_term = term("base", "base")
   let shard_terms = list_map(xs: indices_below(n: instrument_dispatch_wave_shard_count), f: fn(i) {
     term(join([to_string(i), "/", to_string(instrument_dispatch_wave_shard_count)], ""), join([to_string(i), "-of-", to_string(instrument_dispatch_wave_shard_count)], ""))
   })
   let merge_term = term(join(["merge/", to_string(instrument_dispatch_wave_shard_count)], ""), join(["merge-of-", to_string(instrument_dispatch_wave_shard_count)], ""))
-  let default_term = join(["'", instrument_dispatch_artifact_name, "'"], "")
-  let all_terms = [base_term] + shard_terms + [merge_term, default_term]
-  join(["${{ ", fold(all_terms, init: "", f: fn(acc, t) {
-    if length(acc) == 0 { t } else { join([acc, " || ", t], "") }
-  }), " }}"], "")
+  let wave_terms = [base_term] + shard_terms + [merge_term]
+  let default_term = StringLiteral { value: instrument_dispatch_artifact_name }
+  interpolate(expression: fold(wave_terms, init: default_term, f: fn(acc, t) { LogicalOr { left: t, right: acc } }))
 }
 
 
@@ -259,7 +312,11 @@ data instrument_dispatch_retention_days: Int = 30
 // A bound, not a budget: the census emits and builds the compiler closure (about 35 minutes measured on
 // emit-build) and then reads the whole corpus; a timeout that cut an honest run would turn its verdict
 // into silence.
-data instrument_dispatch_timeout_minutes: Int = 240
+// The bound is the platform ceiling while the census walk cost is unexplained: raising it past that
+// is not available, and the interim's terms are the typed row below, not this note.
+data instrument_dispatch_timeout_minutes: Int = max_job_timeout_minutes
+
+data instrument_dispatch_timeout_interim_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the whole-pool //gunbc/instruments:dependency-demand-census completes on the fleet inside the prior 240-minute dispatch bound once work item adhoc-c80c93d2-2b4 removes its walk cost; instrument_dispatch_timeout_minutes then returns to that bound. Raised to the extdeps.github.actions max_job_timeout_minutes ceiling under operator escalation msg_283bef99 (approved 2026-10-23) because the census was cut at the bound with no output (instrument-dispatch runs 39876983534, 39922406221, 39924275418, 39924278017) while completing on faster runners (39525096386, 39769560992, 39876986306). Binds to a DeclarationRef when that fix names the declaration it adds or retires.")
 
 // THE WAVE DISPATCH, AS A CLOSED CHOICE (T0.2, the transport half of the namespace-wave admission
 // vertical; the identity model is gunbc.instruments.namespace_wave_binding_diff's, sunny-bee-153's
@@ -293,7 +350,21 @@ fn instrument_dispatch_wave_is_wave_expression() -> String {
 }
 
 fn instrument_dispatch_wave_shard_expression() -> String {
-  join(["${{ inputs.", instrument_dispatch_wave_shard_input, " }}"], "")
+  interpolate(expression: ContextAccess { context: Inputs, path: [instrument_dispatch_wave_shard_input] })
+}
+
+// THE STAGING ROOT, TYPED THROUGH THE CARRIER: the runner.temp read is a ContextAccess (the same
+// carrier idiom as instrument_dispatch_upload_path_template), the fixed dir a LiteralText; only
+// serialize_template spells the ${{ }} medium.
+data instrument_dispatch_wave_staging_dir_template: ExpressionTemplate = {
+  segments: [
+    Interpolation { expression: runner_temp() },
+    LiteralText { text: join(["/", instrument_dispatch_directory, "/wave-staging"], "") }
+  ]
+}
+
+fn instrument_dispatch_wave_staging_dir() -> String {
+  serialize_template(template: instrument_dispatch_wave_staging_dir_template)
 }
 
 // THE DISPATCHABLE LABELS: instruments whose subject is too large for any per-change lane and is run
@@ -410,9 +481,16 @@ fn instrument_dispatch_memory_demands_are_dispatchable() -> Bool {
 // THE GUARD IS ONE SCRIPT, EMITTED THROUGH v2.workflow.bash_emit LIKE ITS SIBLINGS; each declared row
 // binds it to a label and hands it the row's byte count through the step environment, so the number has
 // one home (the row) and the script one emission. It refuses when the machine's memory (free -b) or a
-// numeric memory.high / memory.max on the job's own cgroup is below the requirement. A bound set only on
-// an ANCESTOR cgroup of the step is not read: bash_emit carries no loop to walk the path, and the
-// runner's bound sits on the runner unit's own cgroup, which its steps inherit.
+// numeric memory.high / memory.max on the job's own cgroup is below the requirement, and it PRINTS the
+// job's memory.swap.max next to the bounds it already prints. The swap bound is printed before the
+// refusal leg that will use it is armed, because the leg changes what every dispatch does and must be
+// written against the live slot, not against the declared one: with the fleet's declared shape
+// memory_swap_max = 0 (gunbc.runner.runner_slot_desired, realized as MemorySwapMax=0 by
+// gunbc.runner.runner_revision_job_launch) an overrun is an OOM refusal, while a drifted drop-in that
+// permits swap turns the same overrun into silent memory.high throttling inside a green run -- the
+// failure class the envelope exists to make loud. A bound set only on an ANCESTOR cgroup of the step
+// is not read: bash_emit carries no loop to walk the path, and the runner's bound sits on the runner
+// unit's own cgroup, which its steps inherit.
 fn instrument_dispatch_memory_refusal(source: String) -> List<Node> {
   [
     bash_build_with_redir(
@@ -477,6 +555,7 @@ fn instrument_dispatch_memory_guard_statements() -> List<Node> {
     ))),
     bash_build_assign(name: "memory_high", value: instrument_dispatch_cgroup_read(file: "memory.high")),
     bash_build_assign(name: "memory_max", value: instrument_dispatch_cgroup_read(file: "memory.max")),
+    bash_build_assign(name: "memory_swap_max", value: instrument_dispatch_cgroup_read(file: "memory.swap.max")),
     bash_build_command_with_words(words: [
       bash_build_word_lit(text: "echo"),
       bash_build_word_concat_from_nodes(parts: [
@@ -488,6 +567,8 @@ fn instrument_dispatch_memory_guard_statements() -> List<Node> {
         bash_build_word_var(name: "memory_high"),
         bash_build_word_lit(text: " memory.max="),
         bash_build_word_var(name: "memory_max"),
+        bash_build_word_lit(text: " memory.swap.max="),
+        bash_build_word_var(name: "memory_swap_max"),
         bash_build_word_lit(text: " required="),
         bash_build_word_var(name: "REQUIRED_MEMORY_BYTES"),
       ]),
@@ -521,8 +602,12 @@ fn instrument_dispatch_memory_guard_step(d: InstrumentDispatchMemoryDemand, guar
   }
 }
 
+// THE LABEL READ AS AN EXPRESSION, NOT AS MEDIUM TEXT. Where the emitted step carries this value it
+// is a read of the dispatch's own label input; the ${{ }} spelling exists only in the carrier that
+// types it (extdeps.github.expressions interpolate). The witness asserts the input NAME, never the
+// fixed text of the medium.
 fn instrument_dispatch_label_expression() -> String {
-  join(["${{ inputs.", instrument_dispatch_label_input, " }}"], "")
+  interpolate(expression: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] })
 }
 
 // THE RECEIPT LIVES UNDER RUNNER_TEMP, NOT THE CHECKOUT, so it exists before the checkout does: the
@@ -536,8 +621,18 @@ fn instrument_dispatch_path_word(file: String) -> Node {
   bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: join(["/", instrument_dispatch_directory, "/", file], ""))])
 }
 
+// THE UPLOAD PATH IS A TYPED TEMPLATE: the runner.temp read is a ContextAccess over the runner
+// context, the receipt directory a LiteralText, and only serialize_template spells the ${{ }}
+// medium (the same carrier as the dispatch group above; review 85263).
+data instrument_dispatch_upload_path_template: ExpressionTemplate = {
+  segments: [
+    Interpolation { expression: runner_temp() },
+    LiteralText { text: join(["/", instrument_dispatch_directory], "") }
+  ]
+}
+
 fn instrument_dispatch_upload_path() -> String {
-  join(["${{ runner.temp }}/", instrument_dispatch_directory], "")
+  serialize_template(template: instrument_dispatch_upload_path_template)
 }
 
 fn instrument_dispatch_echo_to(words: List<Node>, file: String) -> Node {
@@ -649,7 +744,7 @@ fn instrument_dispatch_run_step(script: String) -> Step {
         // which it refuses as malformed with exit 2 -- a forgotten input fails closed and never
         // silently becomes a whole-wave run. Other labels' hosts do not read this name; for them the
         // variable is inert.
-        kv(key: "GUNBC_WAVE_SHARD", value: yaml_string(s: join(["${{ inputs.", instrument_dispatch_wave_shard_input, " }}"], ""))),
+        kv(key: "GUNBC_WAVE_SHARD", value: yaml_string(s: instrument_dispatch_wave_shard_expression())),
       ]
     },
     working_directory: none,
@@ -900,9 +995,9 @@ fn instrument_dispatch_wave_lookup_step() -> Step {
     shell: Present { value: Bash },
     env: Present {
       value: [
-        kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
+        kv(key: "GITHUB_TOKEN", value: yaml_string(s: interpolate(expression: ContextAccess { context: Github, path: ["token"] }))),
         kv(key: "GUNBC_WAVE_SHARD", value: yaml_string(s: instrument_dispatch_wave_shard_expression())),
-        kv(key: "WAVE_RECEIPT_STAGING", value: yaml_string(s: join(["${{ runner.temp }}/", instrument_dispatch_directory, "/wave-staging"], ""))),
+        kv(key: "WAVE_RECEIPT_STAGING", value: yaml_string(s: instrument_dispatch_wave_staging_dir())),
       ]
     },
     working_directory: none,
@@ -992,7 +1087,7 @@ fn instrument_dispatch_wave_import_step() -> Step {
       run: script,
       shell: Present { value: Bash },
       env: Present {
-        value: [kv(key: "WAVE_RECEIPT_STAGING", value: yaml_string(s: join(["${{ runner.temp }}/", instrument_dispatch_directory, "/wave-staging"], "")))],
+        value: [kv(key: "WAVE_RECEIPT_STAGING", value: yaml_string(s: instrument_dispatch_wave_staging_dir()))],
       },
       if_condition: Present { value: instrument_dispatch_wave_is_wave_expression() },
       continue_on_error: none,

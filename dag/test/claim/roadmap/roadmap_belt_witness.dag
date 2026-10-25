@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_belt_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
   RoadmapNode,
@@ -21,11 +22,7 @@ import gunbc.roadmap.roadmap_belt {
   belt_member_ids,
   belt_reconcile_status_json,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  DispatchLiveSession,
-  CodexDispatchProvider,
-  dispatch_provider_instance_for_kind,
-}
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchLiveSession, dispatch_provider_instance_for_kind }
 import gunbc.worker_lifecycle { worker_observation_without_provider_probe }
 import std.upsert_decision {
   ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused
