@@ -81,14 +81,14 @@ fn fixture_location(path: String, exact: Bool, lines: List<String>) -> List<Ngin
       matching: if exact { ExactMatch { path: p } } else { PrefixMatch { path: p } },
       body: [LuaPhaseBlock { phase: ContentPhase, lines: lines }],
     }]
-    Absent => []
+    Absent => no_directives()
   }
 }
 
 fn fixture_server(port: Port, locations: List<NginxDirective>) -> List<NginxDirective> {
   match tok(text: "127.0.0.1") {
     Present { value: host } => [ServerBlock { body: concat([ListenOn { address: host, port: port }], locations) }]
-    Absent => []
+    Absent => no_directives()
   }
 }
 
@@ -129,8 +129,8 @@ fn fixture_directives() -> List<NginxDirective> {
     "ngx.say('data: two') ngx.say('')",
   ])
   let dict = match tok(text: "seen") {
-    Present { value: n } => match tok(text: "1m") { Present { value: z } => [LuaSharedDict { name: n, size: z }] Absent => [] }
-    Absent => []
+    Present { value: n } => match tok(text: "1m") { Present { value: z } => [LuaSharedDict { name: n, size: z }] Absent => no_directives() }
+    Absent => no_directives()
   }
   [
     WorkerProcesses { count: 1 },
@@ -195,20 +195,23 @@ fn contains(s: String, p: String) -> Bool { string_contains(s: s, pattern: p) }
 
 // THE ROW CASES: what the emitted configuration's rows say, read from router_proxy_directives before any
 // container runs. The process cases below establish what the proxy does with them.
+// An empty row list, typed by this signature (an untyped [] has no element type to emit).
+fn no_directives() -> List<NginxDirective> { [] }
+
 fn rows() -> List<NginxDirective> {
   match router_proxy_vocabulary() {
     Present { value: v } => router_proxy_directives(v: v, listen_port: 18443 as Port, authz_port: 19001 as Port, stream_end_port: 19002 as Port)
-    Absent => [] as List<NginxDirective>
+    Absent => no_directives()
   }
 }
 
 // The body of the router location (the /v1/ prefix), reached by walking http -> server -> location.
 fn v1_body(ds: List<NginxDirective>) -> List<NginxDirective> {
-  fold(ds, init: [] as List<NginxDirective>, f: (acc, d) => concat(acc, match d {
+  fold(ds, init: no_directives(), f: (acc, d) => concat(acc, match d {
     HttpBlock { body: b } => v1_body(ds: b)
     ServerBlock { body: b } => v1_body(ds: b)
-    LocationBlock { matching: m, body: b } => match m { PrefixMatch { path: _ } => b _ => [] as List<NginxDirective> }
-    _ => [] as List<NginxDirective>
+    LocationBlock { matching: m, body: b } => match m { PrefixMatch { path: _ } => b _ => no_directives() }
+    _ => no_directives()
   }))
 }
 
