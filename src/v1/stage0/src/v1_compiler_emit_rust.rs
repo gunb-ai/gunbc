@@ -32,7 +32,7 @@ pub use crate::std_decl_ref::{decl_ref, DeclarationRef, declaration_ref_in_list,
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_ownership, kernel_mint_declaration_for, LiteralSourceKind, KernelGroundingLookup, KernelMintOwnership, KernelMintDeclarationLookup};
 pub use crate::std_measure::{millisecond_count};
-pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity};
+pub use crate::std_occurrence_identity::{authored_occurrence_of, NodeOccurrenceIdentity};
 pub use crate::std_operator_realization::{OperatorRealization, OperandRealization, OperandShapeFacts, OperandDeclaration, StructuralOrderingBinding, OrderingTest, OperandDemand, operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label, HostRealizationReason};
 pub use crate::std_primitive_projection::{primitive_identity_runtime_name, primitive_projection_row_for_declaration, never_type_declaration, never_eliminator_declaration, never_projection_declarations};
 pub use crate::std_repair_input_origin::{repair_input_origin_candidates, repair_input_origin_compatibility_names, qualified_item_emit_surface_compatibility_names};
@@ -61,7 +61,7 @@ pub use crate::v1_compiler_infer_service::{is_typed_service_call_receiver, extra
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v1_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection, is_product_type, is_coproduct_type, is_unit_like};
 pub use crate::v1_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like, wrap_shared_type, sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, sharing_wrap_ctor_close_for_target, sharing_type_is_wrapped_for_target, VisibilitySpec};
-pub use crate::v1_compiler_ownership::{OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_moved_argument_occurrences, moved_argument_occurrence_key, build_read_only_params, collect_callable_refs, analyze_dying_base_sites};
+pub use crate::v1_compiler_ownership::{OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_moved_argument_occurrences, build_read_only_params, collect_callable_refs, analyze_dying_base_sites};
 pub use crate::v1_compiler_resolve::{get_exported_names};
 pub use crate::v1_compiler_runtime_rust::{rust_runtime_source, rust_runtime_cargo_features};
 pub use crate::v1_compiler_trait_bound_witness::{v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names, v1_call_forwarding_bound_wrapper_param_names, v1_equality_bound_param_name};
@@ -6356,7 +6356,7 @@ pub struct OwnershipProofEntry {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipBuildResult {
     pub ownership_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    pub moved_argument_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    pub moved_argument_index: Rc<HashMap<String, Rc<BTreeSet<i64>>>>,
     pub read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
 }
 
@@ -6455,7 +6455,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
         proofs.iter().cloned().fold(
             Rc::new(OwnershipBuildResult {
                 ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
-                moved_argument_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                moved_argument_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<i64>>>(),
                 read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             }),
             |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
@@ -6689,7 +6689,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             ownership_index: ownership.ownership_index.clone(),
             moved_argument_index: ownership.moved_argument_index.clone(),
             movable: v1_rt::rc_empty_set::<String>(),
-            moved_argument_occurrences: v1_rt::rc_empty_set::<String>(),
+            moved_argument_occurrences: v1_rt::rc_empty_set::<i64>(),
             variant_to_enum: base_info.variant_to_enum.clone(),
             owned_bindings: v1_rt::rc_empty_set::<String>(),
             read_only_params_index: ownership.read_only_params_index.clone(),
@@ -16332,7 +16332,7 @@ pub fn emit_typed_item(
                         qualified_name.clone(),
                     ) {
                         Some(m) => m.clone(),
-                        std::option::Option::None => v1_rt::rc_empty_set::<String>(),
+                        std::option::Option::None => v1_rt::rc_empty_set::<i64>(),
                     };
                     let item_is_tco = crate::v1_compiler_emit::is_tco_eligible(
                         Rc::new(DeclaredCallableIdentity {
@@ -26132,13 +26132,16 @@ pub fn emit_rust_expr_var(
             ..
         } => {
             let n = crate::v1_std_core::expr_var_name_at(expr.clone(), source_indices.clone());
-            let occurrence_info = if v1_rt::set_contains(
-                &emit_info.moved_argument_occurrences.clone(),
-                crate::v1_compiler_ownership::moved_argument_occurrence_key(
-                    n.clone(),
-                    expr.span.start.clone(),
-                ),
+            let moved_here = match crate::std_occurrence_identity::authored_occurrence_of(
+                expr.occurrence_identity.clone(),
             ) {
+                Some(id) => v1_rt::set_contains(
+                    &emit_info.moved_argument_occurrences.clone(),
+                    id.value.clone(),
+                ),
+                std::option::Option::None => false,
+            };
+            let occurrence_info = if moved_here.clone() {
                 Rc::new(EmitGraphInfo {
                     movable: v1_rt::rc_set_insert(emit_info.movable.clone(), n.clone()),
                     ..(*emit_info.clone()).clone()

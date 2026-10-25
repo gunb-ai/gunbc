@@ -3,6 +3,7 @@
 
 use self::EdgeKind::*;
 use self::OwnershipDecision::*;
+pub use crate::std_occurrence_identity::{authored_occurrence_of, OccurrenceId};
 pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -44,6 +45,7 @@ pub struct EdgeClassification {
     pub kind: EdgeKind,
     pub site: String,
     pub span_start: i64,
+    pub occurrence: Option<OccurrenceId>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -162,11 +164,32 @@ pub fn record_use(
     binding_kind: Option<Rc<VarBindingKind>>,
     span_start: i64,
 ) -> Rc<UsageAccum> {
+    record_use_at(
+        accum,
+        name,
+        kind,
+        site,
+        binding_kind,
+        span_start,
+        std::option::Option::None,
+    )
+}
+
+pub fn record_use_at(
+    accum: Rc<UsageAccum>,
+    name: String,
+    kind: EdgeKind,
+    site: String,
+    binding_kind: Option<Rc<VarBindingKind>>,
+    span_start: i64,
+    occurrence: Option<OccurrenceId>,
+) -> Rc<UsageAccum> {
     {
         let edge = Rc::new(EdgeClassification {
             kind: kind.clone(),
             site: site.clone(),
             span_start: span_start.clone(),
+            occurrence: occurrence.clone(),
         });
         let existing = match v1_rt::map_get(&accum.bindings.clone(), name.clone()) {
             Some(usage) => usage.clone(),
@@ -806,13 +829,14 @@ pub fn walk_call_argument(
     match (*arg.expr_data.clone()).clone() {
         ExprData::ExprVar {
             binding_kind: bk, ..
-        } => record_use(
+        } => record_use_at(
             accum.clone(),
             crate::v1_std_core::expr_var_name_at(arg.clone(), si.clone()),
             EdgeKind::PassedByValue,
             "argument".to_string(),
             bk.clone(),
             arg.span.start.clone(),
+            crate::std_occurrence_identity::authored_occurrence_of(arg.occurrence_identity.clone()),
         ),
         _ => walk_expr(accum.clone(), arg.clone(), false, si.clone()),
     }
@@ -955,18 +979,11 @@ pub fn build_movable_set(
     )
 }
 
-pub fn moved_argument_occurrence_key(name: String, span_start: i64) -> String {
-    v1_rt::concat(
-        v1_rt::concat(name.clone(), "@".to_string()),
-        crate::v1_compiler_emit_core_support::to_string(span_start),
-    )
-}
-
 pub fn build_moved_argument_occurrences(
     proof: Rc<OwnershipProof>,
     param_names: Rc<BTreeSet<String>>,
     locals_admitted: bool,
-) -> Rc<BTreeSet<String>> {
+) -> Rc<BTreeSet<i64>> {
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v1_rt::map_values(&proof.bindings.clone()))
@@ -985,15 +1002,16 @@ pub fn build_moved_argument_occurrences(
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<BTreeSet<String>>, usage: Rc<BindingUsage>| {
+        v1_rt::rc_empty_set::<i64>(),
+        |acc: Rc<BTreeSet<i64>>, usage: Rc<BindingUsage>| {
             usage.consumers.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<BTreeSet<String>>, edge: Rc<EdgeClassification>| {
-                    v1_rt::rc_set_insert(
-                        inner,
-                        moved_argument_occurrence_key(usage.name.clone(), edge.span_start.clone()),
-                    )
+                |inner: Rc<BTreeSet<i64>>, edge: Rc<EdgeClassification>| match edge
+                    .occurrence
+                    .clone()
+                {
+                    Some(id) => v1_rt::rc_set_insert(inner.clone(), id.value.clone()),
+                    std::option::Option::None => inner.clone(),
                 },
             )
         },
