@@ -19,6 +19,7 @@ import gunbc.bare_reference_scanner_admission { bare_reference_scanner_seed_grow
 import gunbc.ambiguity_ban_admission { ambiguity_ban_seed_growth_justification }
 import gunbc.decl_facts_shared_memo_seed_growth { decl_facts_shared_memo_seed_growth_justification }
 import gunbc.decl_facts_field_binder_seed_growth { decl_facts_field_binder_seed_growth_justification }
+import gunbc.decl_facts_alias_refinement_seed_growth { decl_facts_alias_refinement_seed_growth_justification }
 import gunbc.decl_facts_authored_string_attach_seed_growth {
   collect_authored_string_literals_seed_growth_justification,
   authored_string_literal_edge_seed_growth_justification,
@@ -377,6 +378,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     regen_rustfmt_batch_seed_growth_justification,
     decl_facts_shared_memo_seed_growth_justification,
     decl_facts_field_binder_seed_growth_justification,
+    decl_facts_alias_refinement_seed_growth_justification,
     collect_authored_string_literals_seed_growth_justification,
     authored_string_literal_edge_seed_growth_justification,
     with_authored_string_literals_seed_growth_justification,
