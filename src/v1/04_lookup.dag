@@ -53,7 +53,7 @@ import v1.compiler.infer_types {
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name, census_declaration_type_env, declaration_substitution_basis,
   is_recursive_type, lookup_type, lookup_type_for,
-  GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, stamp_type_from_generic_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+  GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
   listed_import_required_bare_call_blocked
 }
 
@@ -650,13 +650,13 @@ fn constructor_declaration_for_admission(
 fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate: GlobalBareCandidate) -> CallableCandidate {
   let node = candidate.binding.resolved
   let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
-  let raw_return = stamp_type_from_generic_names(n: match node.inferred {
+  let raw_return = match node.inferred {
     Present { value: Resolved { node: inferred } } => inferred
     _ => match node.type_annotation {
       Present { value: ann } => ann
       Absent => error_type
     }
-  }, generic_names: concat(fn_type_param_names(item: node, source_indices: type_env.source_indices), map_keys(excluded)), source_indices: type_env.source_indices)
+  }
   let return_type = qualify_borrowed_type_names(
     n: raw_return,
     owner_module_path: candidate.module_path,
@@ -697,7 +697,7 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
   node.params
     |> filter(p => !(tp_names |> any(tp => tp == param_node_name_at(n: p, source_indices: type_env.source_indices))))
     |> map(p => {
-      let declared_type = stamp_type_from_generic_names(n: param_node_type_expr(n: p), generic_names: concat(tp_names, map_keys(declaration_generic_names)), source_indices: type_env.source_indices)
+      let declared_type = param_node_type_expr(n: p)
       ResolvedFormal {
         parameter_identity: param_node_name_at(n: p, source_indices: type_env.source_indices),
         declared_type: declared_type,
@@ -758,13 +758,13 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
         false => FuncSigUnresolved
         true =>
         let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
-        let raw_return = stamp_type_from_generic_names(n: match node.inferred {
+        let raw_return = match node.inferred {
           Present { value: Resolved { node: inferred } } => inferred
           _ => match node.type_annotation {
             Present { value: ann } => ann
             Absent => error_type
           }
-        }, generic_names: concat(fn_type_param_names(item: node, source_indices: type_env.source_indices), map_keys(excluded)), source_indices: type_env.source_indices)
+        }
         if bd.owner_module_path == type_env.module_path {
           FuncSigResolved { sig: ResolvedFuncSig {
             name: name,

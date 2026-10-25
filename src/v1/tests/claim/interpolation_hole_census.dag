@@ -2,7 +2,7 @@ module v1.tests.claim.interpolation_hole_census
 
 import v1.compiler.compile { SourceFile, compile_to_resolved }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
-import v1.compiler.infer_env { type_node_label }
+import v1.compiler.infer { type_node_label }
 import v1.compiler.tokenize { tokenize }
 import extdeps.languages.dag.syntax { dag_parse_environment }
 import v1.std.core {
