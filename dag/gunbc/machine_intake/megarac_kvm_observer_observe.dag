@@ -14,6 +14,7 @@ import gunbc.host.managed_host_unit_hold {
   UnitHeld, UnitHoldRefused, kvm_observer_acquire_unit_hold, unit_hold_release,
   kvm_observer_release_unit_hold, probe_hold_release_outcome_text, probe_hold_release_step_exit,
 }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.machine_intake.megarac_kvm_still {
   KvmObserverRecord, KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted,
   KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission,
@@ -184,7 +185,7 @@ fn megarac_kvm_observer_observe(host: AdmittedMegaRacHost, password_file: NonEmp
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_observe_wet"),
   ]
 {
-  match kvm_observer_acquire_unit_hold(host: admitted_megarac_host_identity(host: host), run_id: run_id) {
+  match kvm_observer_acquire_unit_hold(host: admitted_megarac_host_identity(host: host), run_id: run_id, tree: host_state_tree()) {
     UnitHoldRefused { reason: r } => exit_failure(reason: concat("megarac kvm observer: ", r as String))
     UnitHeld { proof: proof } => {
       let run = megarac_kvm_observer_observe_held(host: host, password_file: password_file, run_id: run_id, paths: paths)
@@ -267,7 +268,7 @@ fn megarac_kvm_observer_release(host: HostIdentity, run_id: NonEmptyStr, paths: 
     Present { value: gap } => return exit_failure(reason: join(["megarac kvm observer release: process ", owned_release_text(r: process), "; unit hold KEPT, because ", gap as String], ""))
     Absent => {}
   }
-  let hold = kvm_observer_release_unit_hold(host: host, run_id: run_id)
+  let hold = kvm_observer_release_unit_hold(host: host, run_id: run_id, tree: host_state_tree())
   let line = join(["megarac kvm observer release: process ", owned_release_text(r: process), "; unit hold ", probe_hold_release_outcome_text(o: hold)], "")
   probe_hold_release_step_exit(o: hold, context_line: line)
 }

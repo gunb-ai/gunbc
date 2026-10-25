@@ -20,7 +20,8 @@ import gunbc.machine_intake.arrival_subject {
 import gunbc.machine_intake.arrival_interlock {
   arrival_archive_slot_acquire, arrival_archive_slot_release, arrival_after_acquire,
 }
-import gunbc.host.managed_host_unit_hold { unit_hold_store_root }
+import gunbc.host.managed_host_unit_hold { unit_hold_store_path }
+import gunbc.host_state_root { host_state_tree }
 
 // THE ARRIVAL JOB'S WET DOOR (review 77263, review 77435, review 77746). Re-runs credential-free
 // admit so WIF cannot outrun a refused subject, then requires WorkloadIdentityToken (the minted
@@ -76,14 +77,17 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
     ActionsVariablePresent { value: run_id } =>
       arrival_after_acquire(
         outcome: arrival_archive_slot_acquire(
-          root: unit_hold_store_root,
+          // THE ARRIVAL INTERLOCK RIDES THE UNIT HOLD STORE'S DIRECTORY (its own store, sealed by its
+          // cohort): the path derives from gunbc.host.managed_host_unit_hold's declaration under
+          // gunbc.host_state_root's ONE tree -- no literal is repeated here.
+          root: unit_hold_store_path(tree: host_state_tree()),
           subject: subject,
           owner: join(["arrival-converge:", run_id], "") as DurableHoldOwnerRef,
         ),
         body: fn() {
           arrival_wet_prefix_from_unobserved_world()
         },
-        release_fn: fn(h) { arrival_archive_slot_release(root: unit_hold_store_root, held: h) },
+        release_fn: fn(h) { arrival_archive_slot_release(root: unit_hold_store_path(tree: host_state_tree()), held: h) },
       )
   }
 }
