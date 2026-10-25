@@ -12,7 +12,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
 import extdeps.docker.create_spec {
-  DockerCreateSpec, DockerDeviceMapping, DockerEnvAssignment, DockerNamespaceMode, DockerRestartPolicy, NamespaceHost, NamespacePrivate, RestartAlways, RestartNo, RestartOnFailure, RestartUnlessStopped, docker_cap_add_words, docker_container_identity_flags, docker_container_image_and_command, docker_container_resource_flags, docker_create_arguments, docker_device_words, docker_memlock_unlimited_words, docker_mount_flag, docker_namespace_mode_wire, docker_restart_policy_wire,
+  DockerCreateSpec, DockerDeviceMapping, DockerEnvAssignment, DockerNamespaceMode, DockerRestartPolicy, NamespaceHost, NamespacePrivate, RestartAlways, RestartNo, RestartOnFailure, RestartUnlessStopped, docker_cap_add_words, docker_cdi_device_words, docker_container_identity_flags, docker_container_image_and_command, docker_container_resource_flags, docker_create_arguments, docker_device_words, docker_memlock_unlimited_words, docker_mount_flag, docker_namespace_mode_wire, docker_restart_policy_wire,
 }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
@@ -639,3 +639,26 @@ fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List
 fn docker_image_pull_command(image: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_program(), arguments: ["image", "pull", image as String])
 }
+
+// THE GPU CONTAINER ACCEPTANCE RUN, AS ONE RENDERED COMMAND. This is the shape the fleet's GPU gates
+// ask on a host: a container, run by the job user through the job user's OWN rootless daemon, that
+// sees a device. It is spelled here rather than at the call site because the two things that make it
+// an acceptance run and not a smoke test are each load-bearing and each easy to lose when retyped:
+//   * --rm, so a probe that dies cannot leave a container that later reads as capacity;
+//   * the BARE CDI device name (docker_cdi_device_words), not the path triple — see the measurement
+//     recorded there, where the triple is refused with exit 125 while the bare name lists the GPU.
+// The rendered words are the command measured to work, not an approximation of it: on srv1 2026-10-25,
+// as the job user over its own socket, `docker run --rm --device nvidia.com/gpu=all ubuntu:24.04
+// nvidia-smi -L` printed the GPU and exited 0. The probe is nvidia-smi -L because it lists devices
+// through the driver nodes the CDI spec made present, which is the question "did the device reach the
+// container", as distinct from whether the host's driver stack is healthy.
+fn docker_gpu_cdi_probe_run_command(image: NonEmptyStr, device: NonEmptyStr, probe_argv: List<String>) -> ArgvCommand {
+  argv_command(
+    program: docker_program(),
+    arguments: concat(
+      concat(["run", "--rm"], docker_cdi_device_words(device: device)),
+      concat([image as String], probe_argv),
+    ),
+  )
+}
+

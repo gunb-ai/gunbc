@@ -90,6 +90,18 @@ fn docker_device_words(d: DockerDeviceMapping) -> List<String> {
   ["--device", join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "")]
 }
 
+// A CDI DEVICE IS NOT A DEVICE NODE, AND THE DIFFERENCE IS THE WORD SHAPE. docker_device_words above
+// renders the `host:container:perms` triple, which is correct for a path like /dev/nvidia0 and
+// REJECTED for a CDI name: measured on srv1 2026-10-25 as the job user over its own rootless daemon,
+// `docker run --rm --device nvidia.com/gpu=all:nvidia.com/gpu=all:rwm ubuntu:24.04 nvidia-smi -L`
+// exits 125 with `docker: nvidia.com/gpu=all is not an absolute path`, while the same run with the
+// bare name `--device nvidia.com/gpu=all` lists the GPU and exits 0. Docker resolves a CDI name
+// through the generated spec and applies the spec's own permissions, so a caller that passed a triple
+// would be quoting the acceptance path with a syntax that cannot work — and would then be tempted to
+// conclude the host lacks the capability. Kept separate from docker_device_words rather than widened
+// into it, because a DockerDeviceMapping's fields are FilePath-typed and a CDI name is not a path.
+fn docker_cdi_device_words(device: NonEmptyStr) -> List<String> { ["--device", device as String] }
+
 fn docker_cap_add_words(c: NonEmptyStr) -> List<String> { ["--cap-add", c as String] }
 
 // ── ONE CONTAINER PLAN, TWO VERB PROJECTIONS ─────────────────────────────────────────────────
