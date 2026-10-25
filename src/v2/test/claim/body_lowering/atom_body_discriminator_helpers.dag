@@ -1,6 +1,6 @@
 module v2.test.claim.body_lowering.atom_body_discriminator_helpers
 
-import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text  }
 import std.algebra { list_snoc_item, list_at_optional }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.node { positional_child_target_nodes,
@@ -246,7 +246,7 @@ fn atom_body_discriminator_observed_rows(scope: Node) -> Optional<AtomBodyDiscri
 }
 
 fn atom_body_discriminator_observe() -> AtomBodyDiscriminatorObservation {
-  match conserved_normalize_of_text(path: "atom_body_discriminator_file", text: atom_body_discriminator_module_source, explained: no_explained_drops()) {
+  match conserved_normalize_of_text(path: "atom_body_discriminator_file", text: atom_body_discriminator_module_source) {
     Rejected { diagnostics: d } => RouteRejected { diagnostics: d }
     Accepted { value: normalized, diagnostics: _ } =>
       let root = normalized.root

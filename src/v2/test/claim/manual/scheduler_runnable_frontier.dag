@@ -1,5 +1,8 @@
 module v2.test.claim.manual.scheduler_runnable_frontier
 
+import std.algebra { zip_eq }
+import v2.std.node { node_same_occurrence, NotADeclaration }
+
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -31,9 +34,9 @@ data scheduler_missing_source_node: Node = Node {
 data scheduler_fixture_graph: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Authored { name: ^scheduler_build_symbol }, target: scheduler_build_node },
-    Edge { label: Authored { name: ^scheduler_test_symbol }, target: scheduler_test_node },
-    Edge { label: Authored { name: ^scheduler_emit_symbol }, target: scheduler_emit_node }
+    Edge { label: Authored { name: ^scheduler_build_symbol }, target: scheduler_build_node, declaration: NotADeclaration },
+    Edge { label: Authored { name: ^scheduler_test_symbol }, target: scheduler_test_node, declaration: NotADeclaration },
+    Edge { label: Authored { name: ^scheduler_emit_symbol }, target: scheduler_emit_node, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -150,23 +153,23 @@ fn scheduler_layers_reuse_dependency_fold() -> Bool {
 }
 
 fn scheduler_graph_frontier_projects_first_layer() -> Bool {
-  runnable_frontier(graph_node: scheduler_fixture_graph).ready == [scheduler_fixture_graph]
+  zip_eq(a: runnable_frontier(graph_node: scheduler_fixture_graph).ready, b: [scheduler_fixture_graph], eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
 }
 
 fn scheduler_dependency_frontier_carries_runnable_work() -> Bool {
-  scheduler_initial_frontier().ready == [scheduler_build_node, scheduler_test_node]
+  zip_eq(a: scheduler_initial_frontier().ready, b: [scheduler_build_node, scheduler_test_node], eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
 }
 
 fn scheduler_next_frontier_after_independent_work() -> Bool {
-  scheduler_after_independent_frontier().ready == [scheduler_emit_node]
+  zip_eq(a: scheduler_after_independent_frontier().ready, b: [scheduler_emit_node], eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
 }
 
 fn scheduler_reversed_dependencies_change_frontier() -> Bool {
-  scheduler_reversed_initial_frontier().ready != scheduler_initial_frontier().ready
+  !zip_eq(a: scheduler_reversed_initial_frontier().ready, b: scheduler_initial_frontier().ready, eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
 }
 
 fn scheduler_contains_edges_do_not_block_execution() -> Bool {
-  scheduler_contains_noise_frontier().ready == [scheduler_build_node, scheduler_test_node]
+  zip_eq(a: scheduler_contains_noise_frontier().ready, b: [scheduler_build_node, scheduler_test_node], eq: fn(p, q) { node_same_occurrence(a: p, b: q) })
 }
 
 fn scheduler_missing_prerequisite_blocks_with_evidence() -> Bool {
@@ -177,7 +180,7 @@ fn scheduler_missing_prerequisite_blocks_with_evidence() -> Bool {
   ) {
     SchedulerPlanComplete { layers: _, scheduled: _ } => false
     SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [] && remaining == [scheduler_build_node] && layers == []
+    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [] && zip_eq(a: remaining, b: [scheduler_build_node], eq: fn(p, q) { node_same_occurrence(a: p, b: q) }) && layers == []
   }
 }
 
@@ -188,7 +191,7 @@ fn scheduler_step_plan_exposes_runnable_state() -> Bool {
     scheduled: []
   ) {
     SchedulerPlanComplete { layers: _, scheduled: _ } => false
-    SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled, remaining: remaining, layers: layers } => frontier.ready == [scheduler_build_node, scheduler_test_node] && scheduled == [scheduler_build_node, scheduler_test_node] && remaining == [scheduler_emit_node] && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }]
+    SchedulerPlanRunnable { frontier: frontier, scheduled: scheduled, remaining: remaining, layers: layers } => zip_eq(a: frontier.ready, b: [scheduler_build_node, scheduler_test_node], eq: fn(p, q) { node_same_occurrence(a: p, b: q) }) && zip_eq(a: scheduled, b: [scheduler_build_node, scheduler_test_node], eq: fn(p, q) { node_same_occurrence(a: p, b: q) }) && zip_eq(a: remaining, b: [scheduler_emit_node], eq: fn(p, q) { node_same_occurrence(a: p, b: q) }) && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }]
     SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
 }
@@ -199,7 +202,7 @@ fn scheduler_full_plan_completes_all_work() -> Bool {
     dependencies: scheduler_fixture_dependencies,
     scheduled: []
   ) {
-    SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == [scheduler_build_node, scheduler_test_node, scheduler_emit_node] && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }, ReadinessLayer { ready: [scheduler_emit_node] }]
+    SchedulerPlanComplete { layers: layers, scheduled: scheduled } => zip_eq(a: scheduled, b: [scheduler_build_node, scheduler_test_node, scheduler_emit_node], eq: fn(p, q) { node_same_occurrence(a: p, b: q) }) && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] }, ReadinessLayer { ready: [scheduler_emit_node] }]
     SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
     SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
@@ -211,7 +214,7 @@ fn scheduler_all_scheduled_completes_without_blocking() -> Bool {
     dependencies: scheduler_fixture_dependencies,
     scheduled: scheduler_fixture_nodes
   ) {
-    SchedulerPlanComplete { layers: layers, scheduled: scheduled } => scheduled == scheduler_fixture_nodes && layers == []
+    SchedulerPlanComplete { layers: layers, scheduled: scheduled } => zip_eq(a: scheduled, b: scheduler_fixture_nodes, eq: fn(p, q) { node_same_occurrence(a: p, b: q) }) && layers == []
     SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
     SchedulerPlanBlocked { evidence: _, scheduled: _, remaining: _, layers: _ } => false
   }
@@ -225,7 +228,7 @@ fn scheduler_mixed_runnable_then_blocked_reports_remaining() -> Bool {
   ) {
     SchedulerPlanComplete { layers: _, scheduled: _ } => false
     SchedulerPlanRunnable { frontier: _, scheduled: _, remaining: _, layers: _ } => false
-    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => scheduled == [scheduler_build_node, scheduler_emit_node] && remaining == [scheduler_test_node] && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_emit_node] }]
+    SchedulerPlanBlocked { evidence: SchedulerNoRunnableFrontier {}, scheduled: scheduled, remaining: remaining, layers: layers } => zip_eq(a: scheduled, b: [scheduler_build_node, scheduler_emit_node], eq: fn(p, q) { node_same_occurrence(a: p, b: q) }) && zip_eq(a: remaining, b: [scheduler_test_node], eq: fn(p, q) { node_same_occurrence(a: p, b: q) }) && layers == [ReadinessLayer { ready: [scheduler_build_node, scheduler_emit_node] }]
   }
 }
 

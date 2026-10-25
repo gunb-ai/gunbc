@@ -410,7 +410,7 @@ pub fn trailing_space_start(mut __tco_loop_source: String, mut __tco_loop_at: i6
 
 pub fn apply_edits(source: String, edits: Rc<Vec<Rc<CharEdit>>>) -> String {
     Rc::new({
-        let mut __sorted: Vec<_> = Rc::new(
+        let mut __keyed: Vec<_> = Rc::new(
             edits
                 .clone()
                 .iter()
@@ -421,29 +421,21 @@ pub fn apply_edits(source: String, edits: Rc<Vec<Rc<CharEdit>>>) -> String {
         )
         .iter()
         .cloned()
+        .map(|__e| {
+            let __k = (|pair: (i64, Rc<CharEdit>)| {
+                v1_rt::int_sub(
+                    0,
+                    v1_rt::int_add(
+                        v1_rt::int_mul(pair.1.clone().start.clone(), 100000),
+                        pair.0.clone(),
+                    ),
+                )
+            })(__e.clone());
+            (__k, __e)
+        })
         .collect();
-        __sorted.sort_by(|a, b| {
-            let __ka = (|pair: (i64, Rc<CharEdit>)| {
-                v1_rt::int_sub(
-                    0,
-                    v1_rt::int_add(
-                        v1_rt::int_mul(pair.1.clone().start.clone(), 100000),
-                        pair.0.clone(),
-                    ),
-                )
-            })(a.clone());
-            let __kb = (|pair: (i64, Rc<CharEdit>)| {
-                v1_rt::int_sub(
-                    0,
-                    v1_rt::int_add(
-                        v1_rt::int_mul(pair.1.clone().start.clone(), 100000),
-                        pair.0.clone(),
-                    ),
-                )
-            })(b.clone());
-            v1_rt::canonical_key_cmp(&__ka, &__kb)
-        });
-        __sorted
+        __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+        __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
     })
     .iter()
     .cloned()

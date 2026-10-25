@@ -27,16 +27,20 @@ fn placement(v:JsonValue) -> PlatePlacement? {
  let p=PlatePlacement {id:id,rx:rx,ry:ry,rz:rz,x_um:micrometer(count: xn),y_um:micrometer(count: yn)}
  if placement_admitted(p:p) {Present {value:p}} else {none}
 }
-fn plate(v:JsonValue) -> PlateSpec? {
- let attempt=match json_field_string(obj:v,key:"attempt") {FieldRead {value:x}=>x FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+fn plate_preparation(v:JsonValue) -> PlatePreparation? {
  let values=match json_field(obj:v,key:"placements") {FieldRead {value:JsonArray {elements:x}}=>x FieldRead {value:JsonNull}=>return none FieldRead {value:JsonBool {value:_}}=>return none FieldRead {value:JsonNumber {lexeme:_}}=>return none FieldRead {value:JsonString {value:_}}=>return none FieldRead {value:JsonObject {members:_}}=>return none FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
  let support_free=match json_field_string_list(obj:v,key:"support_free") {FieldRead {value:x}=>x FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
  let parsed=map(values,v=>placement(v:v))
- if attempt=="" || count(parsed)==0 || any(parsed,p=>match p {Absent=>true Present {value:_}=>false}) {return none}
+ if count(parsed)==0 || any(parsed,p=>match p {Absent=>true Present {value:_}=>false}) {return none}
  let placements=flat_map(parsed,p=>match p {Present {value:x}=>[x] Absent=>[]})
  let membership=fold(placements,init:empty_map(),f:(acc,p)=>map_insert(acc,p.id,true))
  if (match first_duplicate_by_key(xs:placements,key:p=>p.id) {Absent=>false Present {value:_}=>true}) || any(support_free,id=>match map_get(membership,id) {Absent=>true Present {value:_}=>false}) {return none}
- Present {value:PlateSpec {attempt:attempt,plan:PlatePreparation {placements:placements,support_free:support_free}}}
+ Present {value:PlatePreparation {placements:placements,support_free:support_free}}
+}
+fn plate(v:JsonValue) -> PlateSpec? {
+ let attempt=match json_field_string(obj:v,key:"attempt") {FieldRead {value:x}=>x FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
+ if attempt=="" {return none}
+ match plate_preparation(v:v) {Present {value:plan}=>Present {value:PlateSpec {attempt:attempt,plan:plan}} Absent=>none}
 }
 fn printer(v:JsonValue) -> PrinterSpec? {
  let name=match json_field_string(obj:v,key:"printer") {FieldRead {value:x}=>x FieldAbsent=>return none FieldMalformed {cause:_}=>return none}
@@ -48,6 +52,16 @@ fn printer(v:JsonValue) -> PrinterSpec? {
  let plates=flat_map(parsed,p=>match p {Present {value:x}=>[x] Absent=>[]})
  if (match first_duplicate_by_key(xs:plates,key:p=>p.attempt) {Absent=>false Present {value:_}=>true}) {return none}
  Present {value:PrinterSpec {printer:identity,version:version as NonEmptyStr,plates:plates}}
+}
+// A plate plan on its own: one plate's objects, placements and support policy, with no printer row,
+// no credential version and no attempt. The physical attempt is gunbc.fleet.print_request
+// print_attempt_id (request, artifact digest, printer), so an authored "attempt" here would be a second
+// identity under the same name, and the plan refuses rather than ignoring it.
+fn parse_plate_plan(text:String) -> PlatePreparation? {
+ match parse_json_document(s:text) {
+  JsonDocumentParsed {value:v}=>match json_field(obj:v,key:"attempt") {FieldAbsent=>plate_preparation(v:v) FieldRead {value:_}=>none FieldMalformed {cause:_}=>none}
+  JsonDocumentUnreadable {gap:_}=>none
+ }
 }
 fn parse_plan(text:String) -> List<PrinterSpec>? {
  let values=match parse_json_document(s:text) {JsonDocumentParsed {value:JsonArray {elements:x}}=>x JsonDocumentParsed {value:JsonNull}=>return none JsonDocumentParsed {value:JsonBool {value:_}}=>return none JsonDocumentParsed {value:JsonNumber {lexeme:_}}=>return none JsonDocumentParsed {value:JsonString {value:_}}=>return none JsonDocumentParsed {value:JsonObject {members:_}}=>return none JsonDocumentUnreadable {gap:_}=>return none}

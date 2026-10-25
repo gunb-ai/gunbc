@@ -341,6 +341,47 @@ mod compiler_tests {
         result.expect("self-parse test panicked");
     }
 
+    fn is_shape(n: &std::rc::Rc<crate::v1_std_core::Node>) -> String {
+        let mut s = format!("{:?}|{:?}", n.expr_data, n.match_pattern);
+        if let Some(b) = n.body.as_ref() {
+            s.push_str(&format!("[body:{}]", is_shape(b)));
+        }
+        for c in n.children.iter() {
+            s.push_str(&format!("[{}]", is_shape(c)));
+        }
+        s
+    }
+
+    fn is_body_shape(src: &str) -> Option<String> {
+        let tokens = tokenize(
+            src.to_string(),
+            "test.dag".to_string(),
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        );
+        let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+        if result.error.is_some() {
+            return None;
+        }
+        let module = result.module.as_ref()?;
+        let items = crate::v1_std_core::module_items(module.clone());
+        let f = items.iter().find(|it| it.name == "f")?;
+        Some(is_shape(f.body.as_ref()?))
+    }
+
+    #[test]
+    fn is_arm_seed_lowering_agrees_with_explicit_match() {
+        let is_src = "module t\nfn f(c: Color) -> Bool {\n  c is Red\n}\n";
+        let explicit = "module t\nfn f(c: Color) -> Bool {\n  match c {\n    Red => true\n    _ => false\n  }\n}\n";
+        let swapped = "module t\nfn f(c: Color) -> Bool {\n  match c {\n    Red => false\n    _ => true\n  }\n}\n";
+        let a = is_body_shape(is_src).expect("is parses");
+        assert_eq!(a, is_body_shape(explicit).expect("explicit parses"));
+        assert_ne!(a, is_body_shape(swapped).expect("swapped parses"));
+        assert!(
+            is_body_shape("module t\nfn f(c: Color) -> Bool {\n  c is red\n}\n").is_none(),
+            "lowercase V must refuse"
+        );
+    }
+
     fn parse_item_kinds(
         src: &'static str,
     ) -> Result<
@@ -2049,6 +2090,129 @@ mod compiler_tests {
     }
 
     #[test]
+    fn call_shape_formal_identity_wall_witness() {
+        // DISCRIMINATING RED for formal_identity_duplicate_diags in v1/04_infer.dag —
+        // the INJECTIVITY side of the call bijection: two caller labels selecting the
+        // SAME declared formal. Its sibling wall duplicate_label_diags owns the
+        // runtime-binding-key side and the two stay separate by operator ruling (see
+        // the wall's own comment in the seed). Fixture: a formal DECLARED `_p00` called
+        // with both admissible caller spellings, `p00:` and `_p00:` —
+        // call_param_caller_labels admits both for a formal declared `_p00`, so the two
+        // arguments select one formal. This is the one shape where the walls do NOT
+        // coincide: the runtime keys bindings by caller label, so `p00` and `_p00` stay
+        // distinct and the interpreter computes SILENTLY (measured in the runtime-
+        // authority arm below) while the formal receives two arguments — the silent
+        // drop the wall exists to refuse. Measured base-vs-head on the seed refactor:
+        // byte-identical messages, spans, and order (the wall was rewired from a
+        // re-run rule to the claimants_by_formal table without changing behaviour).
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let compile_one = |path: &str, content: &str| {
+                    crate::v1_compiler_compile::compile_sources(
+                        std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                            crate::v1_compiler_compile::SourceFile {
+                                path: path.to_string(),
+                                content: content.to_string(),
+                            }
+                        )]),
+                        crate::v1_compiler_artifact::RenderTarget::Rust,
+                    )
+                };
+                let fid = compile_one(
+                    "fid_dup.dag",
+                    "module fid_dup\nfn decl_p00(_p00: Int, p01: Int) -> Int { _p00 }\nfn wide2(p00: Int, p01: Int) -> Int { p00 }\nfn formal_identity_duplicate() -> Int { decl_p00(p00: 1, _p00: 2, p01: 3) }\nfn literal_duplicate_control() -> Int { wide2(p00: 1, p00: 2, p01: 3) }\n",
+                );
+                assert_eq!(
+                    fid.diagnostics.len(),
+                    2,
+                    "each duplicate cause must refuse exactly once — the guarded wall must not double-report the key wall's case, got: {:?}",
+                    fid.diagnostics
+                );
+                let dup: Vec<_> = fid.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::CallArgumentDuplicate { .. }))
+                    .collect();
+                assert_eq!(dup.len(), 2, "both refusals must be CallArgumentDuplicate, got: {:?}", fid.diagnostics);
+                assert!(
+                    dup.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
+                        && crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())),
+                    "CallArgumentDuplicate must BLOCK — an advisory would still emit the dropped argument"
+                );
+                // The two causes are told apart by NAME: the formal-identity wall
+                // reports the declared formal (authored_name_at of the selected
+                // formal), the key wall reports the repeated caller label.
+                let fid_message = crate::v1_std_core::diagnostic_to_message(dup[0].diagnostic.clone());
+                assert_eq!(
+                    fid_message,
+                    "call shape mismatch calling 'decl_p00': argument '_p00' supplied more than once",
+                    "the formal-identity wall must refuse by the declared formal name, got: {}",
+                    fid_message
+                );
+                let fid_span = crate::v1_std_core::diagnostic_to_span(dup[0].diagnostic.clone());
+                assert_eq!(
+                    fid_span.start, 165,
+                    "the formal-identity refusal must be located at the later argument's `_p00: 2`"
+                );
+                let key_message = crate::v1_std_core::diagnostic_to_message(dup[1].diagnostic.clone());
+                assert_eq!(
+                    key_message,
+                    "call shape mismatch calling 'wide2': argument 'p00' supplied more than once",
+                    "the repeated-same-label control must still refuse through duplicate_label_diags, got: {}",
+                    key_message
+                );
+                let key_span = crate::v1_std_core::diagnostic_to_span(dup[1].diagnostic.clone());
+                assert_eq!(
+                    key_span.start, 238,
+                    "the literal-key refusal must be located at the repeated `p00: 2` argument"
+                );
+                // RUNTIME AUTHORITY, measured: the caller labels are runtime binding
+                // keys, so `p00` and `_p00` are distinct inserts and the interpreter
+                // does NOT refuse this shape — it computes with the `_p00`-spelled
+                // value and drops `p00: 1` without a word. That silence is precisely
+                // what the compile seam exists to refuse (DESIGN §5). If the runtime
+                // ever starts refusing it, re-audit the wall partition with it — this
+                // arm goes red to say so.
+                let resolved_rt = crate::v1_compiler_compile::compile_to_resolved(
+                    std::rc::Rc::new(im::vector![std::rc::Rc::new(
+                        crate::v1_compiler_compile::SourceFile {
+                            path: "fid_dup_rt.dag".to_string(),
+                            content: "module fid_dup_rt\nfn decl_p00(_p00: Int, p01: Int) -> Int { _p00 }\nfn call_it() -> Int { decl_p00(p00: 1, _p00: 2, p01: 3) }\n".to_string(),
+                        }
+                    )]),
+                );
+                let graph_rt = resolved_rt.graph.clone().expect("the formal-identity runtime probe must resolve — its refusal lives at the inference seam, not in resolution");
+                let run_rt = crate::v1_interpreter::run(&graph_rt, resolved_rt.source_indices.clone(), "call_it");
+                match &run_rt {
+                    Ok(crate::v1_interpreter::Value::Int(value)) => assert!(
+                        *value == 2,
+                        "the runtime must keep computing this shape silently (the body reads only the `_p00` key; `p00: 1` is unreachable) — the compile wall is the only refusal, got: {:?}",
+                        run_rt
+                    ),
+                    other => panic!(
+                        "the runtime no longer computes the formal-identity shape silently — if it now refuses, re-audit duplicate_label_diags and formal_identity_duplicate_diags together before touching this arm, got: {:?}",
+                        other
+                    ),
+                }
+                // GREEN CONTROLS at ZERO diagnostics: each admissible SINGLE spelling
+                // of the declared `_p00` formal — its own `_p00` and its alias `p00` —
+                // is a well-formed call; the wall fires only when both spellings
+                // appear in one call.
+                let green = compile_one(
+                    "fid_green.dag",
+                    "module fid_green\nfn decl_p00(_p00: Int, p01: Int) -> Int { _p00 }\nfn green_underscore_spelling() -> Int { decl_p00(_p00: 1, p01: 2) }\nfn green_alias_spelling() -> Int { decl_p00(p00: 1, p01: 2) }\n",
+                );
+                assert!(
+                    green.diagnostics.is_empty(),
+                    "a single caller spelling per formal (declared or alias) must compile with no diagnostic of any severity, got: {:?}",
+                    green.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("call_shape_formal_identity_wall_witness panicked");
+    }
+
+    #[test]
     fn function_value_named_application_controls_witness() {
         // Operator-required controls for higher-order named application (P0).
         // Direct declaration calls keep named args; function-value calls are positional-only.
@@ -3659,6 +3823,63 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("contracts_sidecar_wired_into_emit_scope panicked");
+    }
+
+    #[test]
+    fn record_literal_phantom_field_follows_the_constructed_declaration() {
+        // DISCRIMINATING RED for the class-2 emitter defect (stern-bat-401's emitter-debt list):
+        // gunbc.roadmap.roadmap_model's `Group { group: .. }` is an arm of SectionElement, but the
+        // phantom-field decision looked the constructor SPELLING up and found std.algebra's record
+        // `Group<T>`, whose T is unused, so the variant literal was emitted with `_phantom` (E0559).
+        // probe.algebra declares the record `Group<T>`; probe.sections constructs the variant arm
+        // `Group`. The control is the record literal itself, which must keep its phantom field.
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let source = |path: &str, content: &str| {
+                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.to_string(),
+                        content: content.to_string(),
+                    })
+                };
+                let sources = im::vector![
+                    source("probe_algebra.dag", "module probe.algebra\ntype Group<T> { carrier: Int }\nfn trivial_group() -> Group<Int> { Group { carrier: 1 } }\n"),
+                    source("probe_sections.dag", "module probe.sections\ntype SectionElement = Prose { text: Int } | Group { size: Int }\nfn group_of(n: Int) -> SectionElement { Group { size: n } }\n")
+                ];
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(sources),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                for d in result.diagnostics.iter() {
+                    eprintln!("DIAG {} {}", d.module_name, crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()));
+                }
+                let emitted = |suffix: &str| -> String {
+                    result.files.iter()
+                        .find(|f| f.path.ends_with(suffix))
+                        .map(|f| f.content.clone())
+                        .unwrap_or_else(|| panic!("no emitted file ending {}; files: {:?}", suffix, result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()))
+                };
+                let sections = emitted("probe_sections.rs");
+                let algebra = emitted("probe_algebra.rs");
+                assert!(
+                    !sections.contains("_phantom"),
+                    "the variant literal Group(size) constructs an arm of SectionElement, which declares no phantom field; probe.sections:\n{}",
+                    sections
+                );
+                assert!(
+                    !sections.contains("compile_error!"),
+                    "the variant literal's type resolves to one declaration; probe.sections:\n{}",
+                    sections
+                );
+                assert!(
+                    algebra.contains("_phantom: std::marker::PhantomData,"),
+                    "the record literal Group(carrier) constructs Group<T>, whose unused T owes the phantom field; probe.algebra:\n{}",
+                    algebra
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("record_literal_phantom_field_follows_the_constructed_declaration panicked");
     }
 
     #[test]
@@ -6241,7 +6462,9 @@ mod compiler_tests {
                     graph,
                     std::rc::Rc::new(source_indices),
                     intern_table_p.clone(),
-                );
+                )
+                .graph
+                .clone();
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed
                     .diagnostics
@@ -6441,7 +6664,9 @@ mod compiler_tests {
                     norm.graph.clone(),
                     source_indices.clone(),
                     intern_table_fp.clone(),
-                );
+                )
+                .graph
+                .clone();
                 let reconcile_elapsed = t.elapsed();
                 let type_errors: usize = typed
                     .diagnostics

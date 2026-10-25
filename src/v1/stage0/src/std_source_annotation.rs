@@ -5,8 +5,8 @@ use self::AnnotationLineShape::*;
 use self::AnnotationPlacement::*;
 use self::AnnotationScope::*;
 pub use crate::std_algebra::{
-    collection_concat_shape, empty_map, int_total_order, length, list_at_optional, list_snoc_item,
-    list_sort_by_key, map_insert, map_lookup, map_support_keys,
+    collection_concat_shape, empty_map, int_total_order, length, list_at_optional, list_push,
+    list_snoc_item, list_sort_by_key, map_insert, map_lookup, map_support_keys,
 };
 pub use crate::std_coercion::unicode_scalar_unfold;
 pub use crate::std_occurrence_identity::OccurrenceId;
@@ -241,7 +241,10 @@ pub fn annotation_region_index(
                 .fold(
                     children_seed.clone(),
                     |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
-                     key: _| match v1_rt::lookup(&grouped, key.clone()) {
+                     key: Rc<AnnotationScope>| match v1_rt::lookup(
+                        &grouped,
+                        key.clone(),
+                    ) {
                         Some(siblings) => v1_rt::rc_map_insert(
                             acc.clone(),
                             key.clone(),

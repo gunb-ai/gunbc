@@ -2,10 +2,12 @@ module gunbc.recurring_failure_mode.none_literal_is_a_second_spelling_of_absent
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data none_literal_is_a_second_spelling_of_absent: RecurringFailureMode = RecurringFailureMode {
   identity: "none_literal_is_a_second_spelling_of_absent" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**the `none` literal is a second spelling of Absent** (INVALID STATE: a `.dag` expression writes `none` where a `T?` value is expected -- `fn nat_ceil_div(..) -> Nat? { if b == 0 { none } .. }`, `Absent => none`, a record field `cost_shape: none` beside `cost_shape: Present { value: .. }`. The seed's dag grammar lists `none` as a reserved literal keyword lowering to the untyped host null (extdeps.languages.dag.syntax `dag_keyword_literals` maps \"none\" to `LitNull`), and v1.compiler.infer `equality_operand_is_presence_literal` reads it as a presence literal equal to Absent. So one concept, v2.std.optional `Absent`, carries two names: a §3 nickname.",

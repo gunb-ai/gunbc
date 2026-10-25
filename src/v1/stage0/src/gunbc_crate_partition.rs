@@ -18,7 +18,7 @@ use crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::{
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance, EmittedEdgeTarget};
 pub use crate::std_algebra::{
-    collection_concat_shape, collection_count_shape, collection_map_shape,
+    collection_concat_shape, collection_count_shape, collection_map_shape, list_push,
 };
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
@@ -116,13 +116,16 @@ impl PartitionR4ValidityVerdict {
 
 pub fn list_unique_sorted_ids(items: Rc<Vec<NonEmptyStr>>) -> Rc<Vec<NonEmptyStr>> {
     Rc::new({
-        let mut __sorted: Vec<_> = items.iter().cloned().collect();
-        __sorted.sort_by(|a: &NonEmptyStr, b: &NonEmptyStr| {
-            let __ka = (|id: NonEmptyStr| id.clone())(a.clone());
-            let __kb = (|id: NonEmptyStr| id.clone())(b.clone());
-            v1_rt::canonical_key_cmp(&__ka, &__kb)
-        });
-        __sorted
+        let mut __keyed: Vec<_> = items
+            .iter()
+            .cloned()
+            .map(|__e: NonEmptyStr| {
+                let __k = (|id: NonEmptyStr| id.clone())(__e.clone());
+                (__k, __e)
+            })
+            .collect();
+        __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+        __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
     })
     .iter()
     .cloned()

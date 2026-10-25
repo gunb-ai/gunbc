@@ -1,0 +1,90 @@
+module test.claim.workflow_run_id_axis_witness
+
+import std.types { String, Bool, Int }
+import extdeps.filesystem.filesystem_io
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_count_at_key,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE WORKFLOW RUN ID IS ONE CARRIER, AND IT IS A DISTINCT AXIS (extdeps.github.workflow_runs
+// GitHubWorkflowRunId). Each claim reads its own compiled source, keyed (class + subject + blocking)
+// the way test.claim.deployment_gate_evidence_forged_probe_witness keys its cross-axis claims, against
+// a control that imports the same names, builds the same rows correctly and reads zero at the key.
+// CensusNotRunnable reads negative from refusals(), so an unrunnable census fails the claim.
+//
+// The subjects are MEASURED on the real compile path (claim_batch over each probe prints the located
+// diagnostic whose class and subject are keyed below).
+
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_source(name: String) -> String {
+  filesystem_read(path: probe_dir + name + ".dag").content
+}
+
+fn census_of(name: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(probe_source(name: name))
+}
+
+fn control_census() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(control_source)
+}
+
+fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: class, subject_name: subject, blocking: true)
+  }
+}
+
+// THE CONTROL: imports every carrier and record the probes attack, builds each row with the CORRECT
+// axis, calls the path builder with a run carrier. If this reads a refusal at a probe key, the key
+// is about importing, not forging.
+data control_source: String = "module probe_workflow_run_id_axis_control\nimport std.types { Int }\nimport extdeps.github.app { GitHubAppId, GitHubAppInstallationId }\nimport extdeps.github.workflow_runs { GitHubWorkflowRunId }\nimport extdeps.github.actions_runs { WorkflowRunRecord }\nimport extdeps.github.deployment_protection_rule { GitHubDeploymentProtectionRuleId, EnabledDeploymentProtectionRule, RuleOwningApp, review_endpoint_path_built_for, BuiltRoutePath }\ndata c_run: GitHubWorkflowRunId = GitHubWorkflowRunId { value: 35447067113 }\ndata c_rule: GitHubDeploymentProtectionRuleId = GitHubDeploymentProtectionRuleId { value: 1 }\ndata c_inst: GitHubAppInstallationId = GitHubAppInstallationId { value: 2 }\ndata c_row: EnabledDeploymentProtectionRule = EnabledDeploymentProtectionRule { id: c_rule, node_id: \"DPPR_c\", enabled: true, app: RuleOwningApp { id: GitHubAppId { value: 3 }, slug: \"s\" } }\ndata c_rec: WorkflowRunRecord = WorkflowRunRecord { run_id: c_run, event: \"e\", head_branch: \"b\", status: \"completed\", conclusion: \"success\", created_at_epoch_s: 1, run_started_at_epoch_s: 1, updated_at_epoch_s: 1 }\ndata c_path: BuiltRoutePath = review_endpoint_path_built_for(owner: \"o\", repo: \"r\", run_id: c_run)\n"
+
+// (1) A RUN ID WHERE A RULE ID BELONGS, by reference at the field.
+test fn a_run_id_carrier_where_a_rule_id_belongs_is_refused_at_the_field() -> Bool {
+  refusals(
+    c: census_of(name: "workflow_run_id_axis_rule_field"),
+    class: "DeclaredTypeNotInhabited",
+    subject: "record literal field 'id'",
+  ) >= 1
+    && refusals(c: control_census(), class: "DeclaredTypeNotInhabited", subject: "record literal field 'id'") == 0
+}
+
+// (2) A RUN ID WHERE AN INSTALLATION ID BELONGS, at an annotation.
+test fn a_run_id_carrier_where_an_installation_id_belongs_is_refused_at_the_annotation() -> Bool {
+  refusals(
+    c: census_of(name: "workflow_run_id_axis_installation_direct"),
+    class: "TypeMismatch",
+    subject: "Product(GitHubWorkflowRunId)",
+  ) >= 1
+    && refusals(c: control_census(), class: "TypeMismatch", subject: "Product(GitHubWorkflowRunId)") == 0
+}
+
+// (3) A RULE ID WHERE A RUN ID BELONGS, by reference at the field (the case a field declared Int
+// accepts today).
+test fn a_rule_id_carrier_where_a_run_id_belongs_is_refused_at_the_field() -> Bool {
+  refusals(
+    c: census_of(name: "workflow_run_id_axis_run_field"),
+    class: "DeclaredTypeNotInhabited",
+    subject: "record literal field 'run_id'",
+  ) >= 1
+    && refusals(c: control_census(), class: "DeclaredTypeNotInhabited", subject: "record literal field 'run_id'") == 0
+}
+
+// (4) A RULE ID WHERE A RUN ID BELONGS, at a call argument.
+test fn a_rule_id_carrier_where_a_run_id_belongs_is_refused_at_the_call() -> Bool {
+  refusals(
+    c: census_of(name: "workflow_run_id_axis_call_arg"),
+    class: "DeclaredTypeNotInhabited",
+    subject: "direct call argument for parameter 'run_id'",
+  ) >= 1
+    && refusals(c: control_census(), class: "DeclaredTypeNotInhabited", subject: "direct call argument for parameter 'run_id'") == 0
+}
+
+// The wire Int fields are unguarded because a carrier by reference at an Int formal is accepted:
+// gunbc.recurring_failure_mode.product_value_at_a_scalar_formal_is_accepted owns that defect.

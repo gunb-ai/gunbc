@@ -11,7 +11,7 @@ import v2.lens.synthesis {
   synthesis_lens
 }
 import std.algebra { non_empty }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Instantiation,
   ComputationNode,
@@ -20,6 +20,7 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.report { SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
 
@@ -32,7 +33,7 @@ data synthesis_gap_it_leaf: Node = Node {
 data synthesis_gap_it_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: synthesis_gap_it_leaf }
+    Edge { label: Positional, target: synthesis_gap_it_leaf, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -40,7 +41,7 @@ data synthesis_gap_it_body: Node = Node {
 data synthesis_gap_it_inner: Node = Node {
   kind: TypeNode { connective: Instantiation },
   children: [
-    Edge { label: Positional, target: synthesis_gap_it_body }
+    Edge { label: Positional, target: synthesis_gap_it_body, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -48,7 +49,7 @@ data synthesis_gap_it_inner: Node = Node {
 data synthesis_gap_it_input: Node = Node {
   kind: TypeNode { connective: Instantiation },
   children: [
-    Edge { label: Positional, target: synthesis_gap_it_inner }
+    Edge { label: Positional, target: synthesis_gap_it_inner, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -85,5 +86,5 @@ fn synthesis_gap_it_first_reason_node() -> Node {
 }
 
 test fn synthesis_gap_it_reason_claim_holds() -> Bool {
-  synthesis_gap_it_first_reason_node() == synthesis_gap_it_input
+  node_same_occurrence(a: synthesis_gap_it_first_reason_node(), b: synthesis_gap_it_input)
 }

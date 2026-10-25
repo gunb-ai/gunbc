@@ -1,7 +1,8 @@
 module gunbc.rung_drop.transitional_admission_exception
 
 import std.types { NonEmptyStr, List, String }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 
 // DECLARED 2026-09-08 (dashboard node adhoc-cf84ab88-8dc). The five falsifier-family cadences whose
@@ -15,33 +16,14 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // and the RungDrop population — the data below is the ONLY list; the RungDrop consumes it
 // through a function (DESIGN §3 single authority, §4b(3) bounded population).
 
-data transitional_admission_exception_identities: List<String> = [
-  "dag/test/claim/method_arg_declared_contract_witness.dag::w_method_arg_infers_against_declared_contract_not_element_type_test",
-  "dag/test/claim/legacy_test_behavior_disposition_acceptance.dag::legacy_test_behavior_unclassified_frontier_is_zero",
-  "dag/test/claim/observation_raw_print_retirement_acceptance.dag::observation_emit_frontier_is_zero",
-  "dag/test/claim/long/g2_data_reference_under_selection_witness.dag::specimen_classifies_as_runtime_read",
-  "dag/test/claim/long/g2_data_reference_under_selection_witness.dag::specimen_does_not_classify_as_local_read",
-  "dag/test/claim/source_integration_proof_kernel_acceptance.dag::witness_p1_proof_kernel_acceptance_contract_holds",
-  "dag/test/claim/namespace_reference_derived_closure_acceptance.dag::witness_namespace_reference_derived_closure_closing_contract_holds",
-  "src/v2/test/claim/long/direct_rust_door_production_group.dag::direct_rust_door_production_group_closing_expectation_holds",
-  "dag/test/claim/self_host_use_site_verdict_behavioral_witness.dag::self_host_use_site_verdict_behavioral_receipt_holds",
-  "dag/test/claim/self_host_body_producer_behavioral_witness.dag::self_host_body_producer_behavioral_receipt_holds",
-  "dag/test/claim/self_host_discovery_enumeration_behavioral_witness.dag::self_host_discovery_enumeration_behavioral_receipt_holds",
-  "dag/test/claim/self_host_target_carriers_behavioral_witness.dag::self_host_target_carriers_behavioral_receipt_holds",
-  "dag/test/claim/self_host_03_normalize_behavioral_witness.dag::self_host_03_normalize_behavioral_receipt_holds",
-  "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag::witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds",
-  "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag::witness_live_structural_fixture_mint_site_discovered_reds",
-  "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag::witness_ingest_mint_surface_requires_call_occurrence_frontier_reds",
-  "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag::witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds",
-  "src/v2/test/claim/long/infer_transform_binary_infix_witness.dag::infer_transform_add_vertical_witness_holds",
-  // ENROLLED 2026-10-16 (owner: stern-bat-401, session gentle-owl-393). Eighteen QuarantineProbeExpectRed
+data transitional_admission_exception_identities: FreeSemigroup<String> = FreeSemigroup { head: "dag/test/claim/method_arg_declared_contract_witness.dag::w_method_arg_infers_against_declared_contract_not_element_type_test", tail: ["dag/test/claim/legacy_test_behavior_disposition_acceptance.dag::legacy_test_behavior_unclassified_frontier_is_zero", "dag/test/claim/observation_raw_print_retirement_acceptance.dag::observation_emit_frontier_is_zero", "dag/test/claim/long/g2_data_reference_under_selection_witness.dag::specimen_classifies_as_runtime_read", "dag/test/claim/long/g2_data_reference_under_selection_witness.dag::specimen_does_not_classify_as_local_read", "dag/test/claim/source_integration_proof_kernel_acceptance.dag::witness_p1_proof_kernel_acceptance_contract_holds", "dag/test/claim/namespace_reference_derived_closure_acceptance.dag::witness_namespace_reference_derived_closure_closing_contract_holds", "src/v2/test/claim/long/direct_rust_door_production_group.dag::direct_rust_door_production_group_closing_expectation_holds", "dag/test/claim/self_host_use_site_verdict_behavioral_witness.dag::self_host_use_site_verdict_behavioral_receipt_holds", "dag/test/claim/self_host_body_producer_behavioral_witness.dag::self_host_body_producer_behavioral_receipt_holds", "dag/test/claim/self_host_discovery_enumeration_behavioral_witness.dag::self_host_discovery_enumeration_behavioral_receipt_holds", "dag/test/claim/self_host_target_carriers_behavioral_witness.dag::self_host_target_carriers_behavioral_receipt_holds", "dag/test/claim/self_host_03_normalize_behavioral_witness.dag::self_host_03_normalize_behavioral_receipt_holds", "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag::witness_live_scope_fixture_origin_discoverable_in_entry_closure_reds", "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag::witness_live_structural_fixture_mint_site_discovered_reds", "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag::witness_ingest_mint_surface_requires_call_occurrence_frontier_reds", "src/v2/test/claim/long/production_qualification_origin_probe_witness.dag::witness_direct_door_smoke_requires_closure_or_call_occurrence_frontier_reds", "src/v2/test/claim/long/infer_transform_binary_infix_witness.dag::infer_transform_add_vertical_witness_holds", // ENROLLED 2026-10-16 (owner: stern-bat-401, session gentle-owl-393). Eighteen QuarantineProbeExpectRed
   // admission rows added to the ledger AFTER this list was authored (after 34444d05b9), so the wall at
   // explicit_witness_admission_well_formed refused them: cadence_executes delegates to
   // witness_cadence_has_scheduled_route, which returns false for QuarantineProbeExpectRed, and none of
   // these identities was exempted. Their cadence is UNCHANGED — they are not re-routed onto a cadence
   // that would pretend to run them, because nothing does: the falsifier.yml executor was deleted at
   // 611fd02770 (#8283) and dag/gunbc/ci/ci_layer_roots.dag records that no live executor runs this
-  // probe batch. Until the exit condition below fires, these eighteen rows produce ZERO OBSERVATIONS:
+  // probe batch. Until the exit condition below fires, these rows produce ZERO OBSERVATIONS:
   // they are admitted as data, never executed. EXIT CONDITION (§4b obligation 3, stated as a
   // CAPABILITY): a scheduled executor runs the QuarantineProbeExpectRed batch. That capability is
   // already registered and already owns this wait — gunbc.rung_drop.shared_capability
@@ -57,8 +39,6 @@ data transitional_admission_exception_identities: List<String> = [
   // deleted can never match anything and is inert. Drop those two in the same merge that takes #14152.
   "dag/test/claim/constructor_tag_route_probe_red.dag::same_arm_one_t_two_coproducts_must_refuse",
   "src/v2/test/claim/manual/constructor_tag_route_probe_red.dag::same_arm_one_t_two_coproducts_must_refuse",
-  "src/v2/test/claim/body_lowering/map_literal.dag::ml_an_elaborated_map_infers_holds",
-  "src/v2/test/claim/body_lowering/map_literal.dag::ml_a_same_module_generic_entry_construct_infers_holds",
   "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag::w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses",
   "dag/test/claim/algebra_receiver_callable_witness.dag::shorthand_match_binder_is_callable",
   "dag/test/claim/algebra_receiver_callable_witness.dag::explicit_match_binder_pool_free_name_is_callable",
@@ -73,7 +53,7 @@ data transitional_admission_exception_identities: List<String> = [
   "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::named_step_fold_refuses_accumulator_unread",
   "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::report_counters_state_the_domain",
   "src/v2/test/claim/long/accumulator_copy_fold_analysis.dag::declared_named_step_fold_copy_is_caught",
-]
+] }
 
 // CONSTRUCTOR — derives the RungDrop from the single identity list authority.
 // DESIGN §3 single authority: the population field reads from the data above,
@@ -82,12 +62,11 @@ data transitional_admission_exception: RungDrop = RungDrop {
   identity: "transitional_admission_exception" as NonEmptyStr,
   subject: "admission rows on falsifier-family cadences with no scheduled route, awaiting transition to a cadence that executes",
   declared: "2026-09-08",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: Mitigatable,
     temporary: OutsideTheLadder,
     reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml, deleted at 611fd02770 (#8283)" },
-    population: transitional_admission_exception_identities,
+    population: Enumerated { members: transitional_admission_exception_identities },
     restoration_trigger: "each named identity carries a cadence with a live scheduled route, at which point each row above is removed from transitional_admission_exception_identities and the identity's exception in explicit_witness_admission.dag is deleted (the gate consumes the list, so removing from the list retires the exception). The cadence category those routes need is gunbc.rung_drop.shared_capability missing_cadence_category; the remainder is the per-identity migration onto a live route. Waiters whose remaining unsatisfied condition is only that capability retire together. When the category fires and any named identity still lacks a live scheduled route, this identity is removed from missing_cadence_category.waiter_identities in the SAME change as those retirements (delist, not SplitRetirement) and this row stays Standing until every named identity has that route. If every named identity already has a live scheduled route when the category fires, retire with the enrolled set.",
-  }
+  } }
 }

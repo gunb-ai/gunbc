@@ -9,9 +9,11 @@ module v2.compiler.value_use_dependency
 //
 // BESIDE Contains, never instead of it. v2.std.dependency dependency_lens emits only parent->child
 // Contains edges; the DataDependsOn rows here are derived BESIDE those edges (plan section 2.4), and
-// nothing here re-orients, edits or consumes Contains. The production consumer is the named later
-// change A4 (v2.program's run reads these rows and the hand-written program_run_dependencies row is
-// deleted) — a declared frontier, not a gap in this module.
+// nothing here re-orients, edits or consumes Contains. The production consumer is a declared
+// frontier, not a gap in this module: the check that the body evaluator's (v2.compiler.eval) order on a
+// RESOLVED program respects these relations, consuming the full dispositions (gunbc.plans.demand_engine_program
+// M2). v2.program's run is not it: v2.program builds its tree by hand with no resolve, so it has no records
+// for this module to read, and its run takes its order from v2.compiler.activation_dependency instead.
 //
 // BOTH ENDPOINTS ARE NODES OF THE RESOLVED TREE. resolve's LexicalValued record carries the value as it
 // was BEFORE its own subtree was resolved (v2.compiler.resolve bind_frame_binders captures the input
@@ -40,15 +42,15 @@ module v2.compiler.value_use_dependency
 // COST IS FIXED IN SHAPE (DESIGN section 6). The tree is walked ONCE (value_use_index) into two
 // Map<OccurrenceId, OccurrenceInTree>, and each record is disposed with at most three map lookups:
 // O((N + K) log N) for N nodes and K records, where the naive form — a subtree walk per key — is
-// O(K x N) and quadratic once resolve records an entry per reference, which it does. A4's consumer is a whole-program run, so
-// whole-corpus scale is the intended input, not a hypothetical.
+// O(K x N) and quadratic once resolve records an entry per reference, which it does. The consumer checks whole resolved programs,
+// so whole-corpus scale is the intended input, not a hypothetical.
 
 import std.algebra { empty_map, fold_list, int_total_order, list_snoc_item, list_sort_by_key, map_insert, map_lookup, map_support_keys }
 import std.occurrence_identity { OccurrenceId }
 import std.optional { Absent, Optional, Present }
 import std.types { List, Map }
 import v2.std.dependency { DataDependsOn, DependencyView }
-import v2.std.node { Node, NodeOccurrenceIdentity, node_subtree_nodes }
+import v2.std.node { Node, node_same_occurrence, NodeOccurrenceIdentity, node_subtree_nodes }
 import v2.std.provenance { node_occurrence_id_optional, occurrence_identity_id_optional }
 import v2.compiler.lexical_scope { bind_binder, bind_value }
 import v2.compiler.resolve {
@@ -176,7 +178,7 @@ fn value_use_index_slot(prior: Optional<OccurrenceInTree>, node: Node) -> Occurr
   match prior {
     Absent => OccurrenceAt { node: node }
     Present { value: OccurrenceAt { node: seen } } =>
-      if seen == node {
+      if node_same_occurrence(a: seen, b: node) {
         OccurrenceAt { node: seen }
       } else {
         OccurrenceUnlocatable { why: OccurrenceConflicting }
@@ -256,7 +258,8 @@ fn value_use_dispose_record(
     BoundToParameter { path: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
     BoundToTypeParameter { canonical: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
     BoundToDeclaration { identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
-    BoundAmbient { table: _, identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
+// Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
+    BoundAmbient { table: _table, identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
     BoundByExpectedType { identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
     BoundByGeneratedReference { identity: _ } => value_use_as_input(acc: acc, key: key, binding: record.binding)
   }
@@ -304,7 +307,7 @@ fn value_use_relation(value: Node, use: Node) -> DependencyView {
   }
 }
 
-// THE RELATIONS AS v2.std.dependency Rows, so a consumer (A4's v2.program run) reads the same rows its
+// THE RELATIONS AS v2.std.dependency Rows, so a consumer reads the same rows its
 // claims check and never a parallel shape.
 fn value_use_views(d: ValueUseDependencies) -> List<DependencyView> {
   fold_list(

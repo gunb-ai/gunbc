@@ -1,0 +1,500 @@
+// Witness for the TYPED SHARED DEPLOY PREAMBLE in gunbc.host.host_effect_realize — the ordered
+// realization that replaces gunbc.live_deploy.emit deploy_apply_preamble_steps, the last bash body the
+// apply path shipped through retained_srvn.
+//
+// WHAT IS CHECKABLE WITHOUT A HOST, AND WHY. The old carrier was one concatenated bash string, so the
+// only observable behaviour was the exit status of the whole script. The typed route splits into two
+// pure functions and one impure runner:
+//
+//   live_deploy_preamble_legs      the ORDER and the SHAPE of every command the script ran
+//   live_deploy_preamble_fold      the SHORT-CIRCUIT, the blamed STEP, and the CALL COUNT, with the
+//                                  host's answers supplied through LiveDeployPreambleInjected
+//   live_deploy_preamble_run_legs  the only code that touches a transport
+//
+// So the refusal semantics that `set -e` plus one `|| exit 1` used to own are pinned here, against the
+// boundary values, and the real route is inhabited separately (last claim): a transport this module
+// refuses must be refused BEFORE any command runs.
+//
+// PER DESIGN §3, BOUNDARY VALUES ARE SUPPLIED, NOT DISCOVERED: injections are chosen by the witness,
+// and each arm of LiveDeployPreambleInjected is one real way the bash preamble could die.
+//
+// THE REDS ARE FALSIFIATIONS, NOT WEAKENINGS. Each RED claim asserts that a specific failure produces a
+// refusal naming the step; deleting the corresponding refusal from live_deploy_preamble_next_state (or
+// letting it converge) turns that claim red. The call-count conjuncts are what make the SHORT-CIRCUIT
+// itself falsifiable: a fold that kept running legs after a refusal would report the same final state.
+module test.claim.live_deploy.live_deploy_apply_preamble_witness
+
+import std.types { String, Bool, List, NonEmptyStr, Int, list_length }
+import std.algebra { list_map }
+import std.optional { Optional, Absent, Present }
+import extdeps.exec.command { argv_words }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
+import gunbc.ci.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
+import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_dropin_body }
+import gunbc.host.host_effect_realize {
+  // Sums AND every arm they are matched or constructed with: an arm is a name in its own right here,
+  // and a claim that cannot resolve one fails to compile rather than failing red.
+  LiveDeployPreambleStep, ScratchAcquire, SudoersStage, SudoersVisudoCheck, SudoersInstall,
+  SudoersPolicyFinal, GrantAdmission, PrincipalCheck, PrincipalEnsure, ScratchCleanup,
+  LiveDeployPreambleLeg, PreambleArgv, PreambleStdin, PreambleEffect, PreambleEither,
+  LiveDeployPreambleLegState, PreambleLegOk, PreambleLegFailed,
+  LegTransportRefused, LegExited, LegEffectRefusedArm,
+  LiveDeployPreambleInjected, AllLegsSucceed, PrincipalAbsent,
+  LiveDeployPreambleRun,
+  LiveDeployPreambleVerdict, PreambleConverged, PreambleRefused,
+  live_deploy_preamble_step_name, live_deploy_preamble_leg_step, live_deploy_preamble_legs,
+  live_deploy_preamble_fold, live_deploy_preamble_verdict,
+  live_deploy_apply_preamble_on_host,
+}
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+
+// The publication principal the apply spec carries (gunbc.live_deploy.spec names.publication_principal
+// is the caller's real argument; this is the same login the CI runner deploy script expects).
+data preamble_principal: NonEmptyStr = "gunbc-publish" as NonEmptyStr
+
+// How many grant legs the fixture's roster produces. EVERY count below is derived from this, so the
+// claims do not hard-code a roster length that a sibling can change.
+data preamble_grant_count: Int = list_length(items: ci_deploy_srv1_access.privileged_commands)
+
+// stage + visudo-check + install + policy-final, then one leg per grant, then ONE principal leg
+// (the script's `id || useradd` is a single leg — see the Either arm).
+data preamble_leg_count: Int = 4 + preamble_grant_count + 1
+
+// The calls those legs make when every command succeeds: one each, and the principal leg's check
+// succeeds so its `useradd` is never reached.
+data preamble_call_count_when_principal_exists: Int = preamble_leg_count
+
+// The missing-principal run makes the Either leg cost two calls.
+data preamble_call_count_when_principal_absent: Int = preamble_leg_count + 1
+
+fn w_legs() -> List<LiveDeployPreambleLeg> {
+  live_deploy_preamble_legs(
+    access: ci_deploy_srv1_access,
+    scratch: "/tmp/gunbc-deploy-preamble.AAAAAA",
+    principal: preamble_principal,
+  )
+}
+
+fn w_fold(injected: LiveDeployPreambleInjected) -> LiveDeployPreambleRun {
+  live_deploy_preamble_fold(legs: w_legs(), injected: injected)
+}
+
+fn w_state(run: LiveDeployPreambleRun) -> LiveDeployPreambleLegState {
+  match run { LiveDeployPreambleRun { state: st, observations: _ } => st }
+}
+
+fn w_calls(run: LiveDeployPreambleRun) -> Int {
+  match run { LiveDeployPreambleRun { state: _, observations: o } => o }
+}
+
+fn w_verdict(state: LiveDeployPreambleLegState, cleanup_failure: Optional<String>) -> LiveDeployPreambleVerdict {
+  live_deploy_preamble_verdict(state: state, cleanup_failure: cleanup_failure, scratch: "/tmp/gunbc-deploy-preamble.AAAAAA", principal: "gunbc-publish")
+}
+
+// The words of the nth-ish leg found by its step name — legs are looked up rather than indexed because
+// this language gives no safe index, and a claim that assumed a position would pass even if the order
+// changed.
+fn w_leg_at(step: LiveDeployPreambleStep) -> Optional<LiveDeployPreambleLeg> {
+  let want = live_deploy_preamble_step_name(step: step)
+  fold(
+    w_legs(),
+    init: Absent,
+    f: (acc, leg) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if live_deploy_preamble_step_name(step: live_deploy_preamble_leg_step(leg: leg)) == want {
+            Present { value: leg }
+          } else {
+            Absent
+          }
+      },
+  )
+}
+
+fn w_words(leg: LiveDeployPreambleLeg) -> String {
+  match leg {
+    PreambleArgv { step: _, command: c } => join(argv_words(command: c), "\n")
+    PreambleStdin { step: _, command: c, payload: _ } => join(argv_words(command: c), "\n")
+    PreambleEffect { step: _, effect: _ } => ""
+    PreambleEither { check_step: _, check: c, act_step: _, act: a } =>
+      join([join(argv_words(command: c), "\n"), "\u{1f431}", join(argv_words(command: a), "\n")], "")
+  }
+}
+
+fn w_payload(leg: LiveDeployPreambleLeg) -> String {
+  match leg {
+    PreambleStdin { step: _, command: _, payload: p } => p
+    _ => ""
+  }
+}
+
+// ══ THE ORDER AND THE SHAPE: what the script ran, in the order it ran it ═══════════════════════════
+
+// The nine steps the script's nine commands became. A step deleted from the sum would let a whole
+// command of the preamble go unrealized with nothing to name.
+test fn every_script_command_has_its_own_named_step() -> Bool {
+  string_contains(s: live_deploy_preamble_step_name(step: ScratchAcquire), pattern: "scratch-acquire")
+    && string_contains(s: live_deploy_preamble_step_name(step: SudoersStage), pattern: "sudoers-stage")
+    && string_contains(s: live_deploy_preamble_step_name(step: SudoersVisudoCheck), pattern: "sudoers-visudo-check")
+    && string_contains(s: live_deploy_preamble_step_name(step: SudoersInstall), pattern: "sudoers-install")
+    && string_contains(s: live_deploy_preamble_step_name(step: SudoersPolicyFinal), pattern: "sudoers-policy-final")
+    && string_contains(s: live_deploy_preamble_step_name(step: GrantAdmission), pattern: "grant-admission")
+    && string_contains(s: live_deploy_preamble_step_name(step: PrincipalCheck), pattern: "principal-check")
+    && string_contains(s: live_deploy_preamble_step_name(step: PrincipalEnsure), pattern: "principal-ensure")
+    && string_contains(s: live_deploy_preamble_step_name(step: ScratchCleanup), pattern: "scratch-cleanup")
+}
+
+// The legs are the script's order. If install were reordered before the staged syntax check, a broken
+// sudoers file would reach /etc/sudoers.d before anything noticed — the exact fail-open the script's
+// ordering existed to prevent.
+// One step TEXT per leg, the way the script writes it. An Either leg is one leg that runs two commands
+// with `||`, so its text names both halves in that order — pinning the pair, not just the check.
+// All four arms are enumerated on purpose: a fifth arm must be handled here rather than swallowed by a
+// wildcard, or the claim would keep passing while a leg's steps went unasserted.
+fn w_leg_step_text(leg: LiveDeployPreambleLeg) -> String {
+  match leg {
+    PreambleArgv { step: s, command: _ } => live_deploy_preamble_step_name(step: s)
+    PreambleStdin { step: s, command: _, payload: _ } => live_deploy_preamble_step_name(step: s)
+    PreambleEffect { step: s, effect: _ } => live_deploy_preamble_step_name(step: s)
+    PreambleEither { check_step: cs, check: _, act_step: as_, act: _ } =>
+      join([live_deploy_preamble_step_name(step: cs), live_deploy_preamble_step_name(step: as_)], " || ")
+  }
+}
+
+test fn the_legs_are_written_in_the_scripts_order() -> Bool {
+  let names = list_map(xs: w_legs(), f: leg => w_leg_step_text(leg: leg))
+  let joined = join(names, ",")
+    // the four sudoers commands, in order, before anything else
+  string_contains(s: joined, pattern: "sudoers-stage,sudoers-visudo-check,sudoers-install,sudoers-policy-final,")
+    // one grant leg per roster row, and the principal leg LAST
+    && list_length(items: names) == preamble_leg_count
+    && list_length(items: names) == 4 + preamble_grant_count + 1
+    && string_contains(s: joined, pattern: "principal-check || principal-ensure")
+}
+
+// The drop-in's bytes are DATA: they cross as stdin payload, never as an argv element, so no byte of
+// sudoers text can change what the stage command means. (Under the bash carrier the body was inside the
+// script text, which is how a heredoc terminator in a principal name used to be a live concern.)
+test fn the_drop_in_body_crosses_as_payload_not_as_argv() -> Bool {
+  match w_leg_at(step: SudoersStage) {
+    Absent => false
+    Present { value: leg } =>
+      let body = deploy_sudoers_dropin_body(access: ci_deploy_srv1_access)
+      // the heredoc's exact product: the roster's drop-in text plus its terminating newline
+      w_payload(leg: leg) == concat(body, "\n")
+        // the payload is the GENERATED drop-in, not an empty string (an empty stage would install an
+        // empty drop-in, and visudo would happily accept it)
+        && string_contains(s: w_payload(leg: leg), pattern: "GENERATED by dag/gunbc/ci/ci_deploy_sudoers.dag")
+        // and none of that text reached the command line, where it could change what the command means
+        && (!string_contains(s: w_words(leg: leg), pattern: "GENERATED by"))
+  }
+}
+
+// THE POLICY LIVES IN ITS OWNER. install is spelled by gunbc.ci.ci_deploy_sudoers, so the mode and the
+// program are the ones the sudoers drop-in itself grants — not a copy that can drift. If the mode ever
+// became caller-controlled, or the program fell back to a PATH lookup, this claim goes red.
+test fn the_install_argv_is_its_policy_owners_0440_from_the_granted_path() -> Bool {
+  match w_leg_at(step: SudoersInstall) {
+    Absent => false
+    Present { value: leg } =>
+      let words = w_words(leg: leg)
+      string_contains(s: words, pattern: "sudo")
+        && string_contains(s: words, pattern: "-n")
+        && string_contains(s: words, pattern: "/usr/bin/install")
+        && string_contains(s: words, pattern: "-m")
+        && string_contains(s: words, pattern: "0440")
+        // staged file in, drop-in path out
+        && string_contains(s: words, pattern: "/tmp/gunbc-deploy-preamble.AAAAAA/gunbc-deploy.sudoers")
+        && string_contains(s: words, pattern: "/etc/sudoers.d/gunbc-deploy")
+  }
+}
+
+// No leg is a shell: no command line contains a newline, a `;`, or a `&&`. Under retained_srvn the whole
+// body was ONE string with `set -e` and `|| exit 1`; a leg that could carry either would put the old
+// control flow back where a caller could edit it.
+test fn no_leg_carries_a_shell_metacharacter_or_a_second_command() -> Bool {
+  // Bound on its own line: the && continuation below is part of THIS let's right-hand side, so a name
+  // introduced here is not yet in scope inside it.
+  let joined_leg_words = join(list_map(xs: w_legs(), f: leg => w_words(leg: leg)), "\u{1f41f}")
+  (!string_contains(s: joined_leg_words, pattern: "&&"))
+    && (!string_contains(s: joined_leg_words, pattern: ";"))
+    && (!string_contains(s: joined_leg_words, pattern: "set -e"))
+    && (!string_contains(s: joined_leg_words, pattern: "|| exit"))
+    && (!string_contains(s: joined_leg_words, pattern: "trap "))
+}
+
+// The `A || B` leg really is ONE leg with a check and an act, not two legs. Two legs would mean "check,
+// then create anyway" — a different program, and one that runs `useradd` on a host where the account
+// exists.
+test fn the_principal_is_one_either_leg_not_a_check_plus_an_unconditional_create() -> Bool {
+  match w_leg_at(step: PrincipalCheck) {
+    Absent => false
+    Present { value: leg } =>
+      match leg {
+        PreambleEither { check_step: _, check: _, act_step: _, act: _ } =>
+          let words = w_words(leg: leg)
+          string_contains(s: words, pattern: "id")
+            && string_contains(s: words, pattern: "\u{1f431}")
+            && string_contains(s: words, pattern: "useradd")
+            && string_contains(s: words, pattern: "/usr/sbin/nologin")
+        _ => false
+      }
+  }
+}
+
+// ══ THE SHORT-CIRCUIT: nothing after a refusal runs, and the call count proves it ══════════════════
+
+// The all-green run: every leg consumed, and exactly one privileged call per leg. This is the
+// baseline the REDs are read against — the principal leg costs ONE call because the account exists.
+test fn the_happy_fold_consumes_every_leg_and_spends_one_call_per_leg() -> Bool {
+  let run = w_fold(injected: AllLegsSucceed)
+  match w_state(run: run) {
+    PreambleLegOk { consumed: n } =>
+      n == preamble_leg_count
+        && w_calls(run: run) == preamble_call_count_when_principal_exists
+    PreambleLegFailed { step: _, reason: _, consumed: _ } => false
+  }
+}
+
+// The missing-principal run costs ONE MORE call: the check failed, so the act ran. A fold that ran the
+// act unconditionally would report this same count even when the account existed — which the claim
+// above rules out, because there the count is one lower.
+test fn a_missing_principal_costs_exactly_one_extra_call() -> Bool {
+  let run = w_fold(injected: PrincipalAbsent)
+  match w_state(run: run) {
+    PreambleLegOk { consumed: n } =>
+      n == preamble_leg_count
+        && w_calls(run: run) == preamble_call_count_when_principal_absent
+    PreambleLegFailed { step: _, reason: _, consumed: _ } => false
+  }
+}
+
+// RED 1 -- the staged file could not be written. The script's `cat > $stage` was the first command and
+// had no `|| exit` of its own only because `set -e` covered it; the typed fold must refuse at
+// sudoers-stage, consume NOTHING, and make exactly one call. The zero-consumed / one-call pair is the
+// discriminating part: a fold that ignored the failure would report ten legs consumed.
+test fn a_stage_that_could_not_be_written_stops_the_whole_preamble() -> Bool {
+  let run = w_fold(injected: LegTransportRefused { step: SudoersStage, reason: "ssh channel refused" })
+  match w_state(run: run) {
+    PreambleLegFailed { step: s, reason: r, consumed: c } =>
+      live_deploy_preamble_step_name(step: s) == "sudoers-stage"
+        && c == 0
+        && w_calls(run: run) == 1
+        && string_contains(s: r, pattern: "live_deploy_preamble: sudoers-stage refused")
+        && string_contains(s: r, pattern: "ssh channel refused")
+        && string_contains(s: r, pattern: "arm=PreambleLeg, step=sudoers-stage")
+    PreambleLegOk { consumed: _ } => false
+  }
+}
+
+// RED 2 -- visudo rejects the staged file. This is the script's `sudo -n visudo -cf "$stage" || exit 1`:
+// the exit code and stderr become the refusal detail, never a silent skip to the install. If the exit
+// status were dropped, a syntactically broken sudoers file would still be installed at 0440.
+test fn a_broken_staged_sudoers_refuses_with_the_scripts_exit_code_and_never_installs() -> Bool {
+  let run = w_fold(injected: LegExited { step: SudoersVisudoCheck, exit_code: 1, stderr: ">>> syntax error at line 3" })
+  match w_state(run: run) {
+    PreambleLegFailed { step: s, reason: r, consumed: c } =>
+      live_deploy_preamble_step_name(step: s) == "sudoers-visudo-check"
+        && c == 1
+        && w_calls(run: run) == 2
+        && string_contains(s: r, pattern: "exited 1")
+        && string_contains(s: r, pattern: "syntax error at line 3")
+    PreambleLegOk { consumed: _ } => false
+  }
+}
+
+// RED 3 -- the drop-in's own syntax check fails AFTER install. The script ran a second visudo on the
+// installed path precisely because install can change what is there (mode, ownership, SELinux relabel);
+// a fold that treated this as a warning would leave a broken /etc/sudoers.d file on the host.
+test fn the_post_install_policy_check_refuses_naming_its_own_step() -> Bool {
+  let run = w_fold(injected: LegExited { step: SudoersPolicyFinal, exit_code: 1, stderr: "bad permissions" })
+  match w_state(run: run) {
+    PreambleLegFailed { step: s, reason: r, consumed: c } =>
+      live_deploy_preamble_step_name(step: s) == "sudoers-policy-final"
+        && c == 3
+        && w_calls(run: run) == 4
+        && string_contains(s: r, pattern: "sudoers-policy-final refused")
+        && string_contains(s: r, pattern: "bad permissions")
+    PreambleLegOk { consumed: _ } => false
+  }
+}
+
+// RED 4 -- a grant in the roster is not actually sudoable. The script probed each privileged command and
+// died on the first miss; the typed route reaches the same verdict through the module's OWN probe
+// leaves, so the refusal is a non-converging typed effect, not a swallowed exit code.
+test fn an_unadmitted_grant_refuses_at_the_grant_step() -> Bool {
+  let run = w_fold(injected: LegEffectRefusedArm { step: GrantAdmission, reason: "sudo -n -l does not list /usr/sbin/visudo" })
+  match w_state(run: run) {
+    PreambleLegFailed { step: s, reason: r, consumed: c } =>
+      live_deploy_preamble_step_name(step: s) == "grant-admission"
+        && c == 4
+        && w_calls(run: run) == 5
+        && string_contains(s: r, pattern: "grant-admission refused")
+        && string_contains(s: r, pattern: "does not list /usr/sbin/visudo")
+    PreambleLegOk { consumed: _ } => false
+  }
+}
+
+// RED 5 -- THE PRINCIPAL CHECK IS NOT ALLOWED TO LIE. If `id -u` cannot run, that is NOT evidence the
+// account is missing, and treating it as such would run `useradd` on a host whose account state nobody
+// read. The refusal lands on the CHECK's step and costs exactly one call — the act is never reached.
+test fn a_principal_check_that_could_not_run_never_falls_through_to_useradd() -> Bool {
+  let run = w_fold(injected: LegTransportRefused { step: PrincipalCheck, reason: "transport down" })
+  match w_state(run: run) {
+    PreambleLegFailed { step: s, reason: r, consumed: c } =>
+      live_deploy_preamble_step_name(step: s) == "principal-check"
+        && c == preamble_leg_count - 1
+        && w_calls(run: run) == preamble_leg_count
+        && string_contains(s: r, pattern: "principal-check refused")
+        && string_contains(s: r, pattern: "precondition check could not run")
+    PreambleLegOk { consumed: _ } => false
+  }
+}
+
+// RED 6 -- the account is missing AND the create fails. The blame must name principal-ensure (not the
+// check, which succeeded) and the leg must have cost BOTH its calls.
+test fn a_failed_create_blames_the_act_and_costs_two_calls() -> Bool {
+  let run = w_fold(injected: LegExited { step: PrincipalEnsure, exit_code: 1, stderr: "useradd: cannot open /etc/passwd" })
+  match w_state(run: run) {
+    PreambleLegFailed { step: s, reason: r, consumed: c } =>
+      live_deploy_preamble_step_name(step: s) == "principal-ensure"
+        && c == preamble_leg_count - 1
+        && w_calls(run: run) == preamble_leg_count + 1
+        && string_contains(s: r, pattern: "principal-ensure refused")
+        && string_contains(s: r, pattern: "cannot open /etc/passwd")
+    PreambleLegOk { consumed: _ } => false
+  }
+}
+
+// RED 6b — the same act half, refused by the TRANSPORT instead of exiting non-zero. The two act halves
+// of an Either leg are separate branches in the fold, and covering only the exit branch let a mutation
+// of the transport branch pass the whole witness. A refused create must still blame principal-ensure
+// (NOT the check, which succeeded) and still cost BOTH calls — matching what the impure runner does when
+// the check runs and the act dies.
+test fn a_create_the_transport_refuses_blames_the_act_and_costs_two_calls() -> Bool {
+  let run = w_fold(injected: LegTransportRefused { step: PrincipalEnsure, reason: "ssh channel closed" })
+  match w_state(run: run) {
+    PreambleLegFailed { step: s, reason: r, consumed: c } =>
+      live_deploy_preamble_step_name(step: s) == "principal-ensure"
+        && c == preamble_leg_count - 1
+        && w_calls(run: run) == preamble_leg_count + 1
+        && string_contains(s: r, pattern: "principal-ensure refused")
+        && string_contains(s: r, pattern: "ssh channel closed")
+        // the create was attempted and refused; it was never a precondition check that could not run
+        && (!string_contains(s: r, pattern: "precondition check could not run"))
+        && (!string_contains(s: r, pattern: "principal-check"))
+    PreambleLegOk { consumed: _ } => false
+  }
+}
+
+// ══ THE TRAP: cleanup runs, and can neither hide a refusal nor be hidden by a success ══════════════
+
+// The scratch dir held root-readable sudoers text. A deploy that refused AND failed to clean up still
+// reports the STEP THAT REFUSED IT — the cleanup detail is appended, never substituted. Losing
+// "visudo refused" to "rm failed" would send an operator chasing a leftover directory.
+test fn a_cleanup_failure_never_replaces_the_refusal_that_stopped_the_deploy() -> Bool {
+  let refused = w_state(run: w_fold(injected: LegExited { step: SudoersInstall, exit_code: 1, stderr: "No space left on device" }))
+  match w_verdict(state: refused, cleanup_failure: Present { value: "rm: Device or resource busy" }) {
+    PreambleRefused { step: s, reason: r, legs_consumed: c } =>
+      live_deploy_preamble_step_name(step: s) == "sudoers-install"
+        && c == 2
+        && string_contains(s: r, pattern: "No space left on device")
+        && string_contains(s: r, pattern: "scratch cleanup of /tmp/gunbc-deploy-preamble.AAAAAA also failed")
+        && string_contains(s: r, pattern: "Device or resource busy")
+    PreambleConverged { principal: _, dropin: _, legs_consumed: _ } => false
+  }
+}
+
+// And the converse: a fold where every leg succeeded is NOT allowed to converge if the scratch
+// directory is still sitting there. The trap was part of the script; a leftover is a finding.
+test fn a_left_behind_scratch_directory_is_a_refusal_not_a_success() -> Bool {
+  let ok = w_state(run: w_fold(injected: AllLegsSucceed))
+  match w_verdict(state: ok, cleanup_failure: Present { value: "permission denied" }) {
+    PreambleRefused { step: s, reason: r, legs_consumed: c } =>
+      live_deploy_preamble_step_name(step: s) == "scratch-cleanup"
+        && c == preamble_leg_count
+        && string_contains(s: r, pattern: "scratch-cleanup refused")
+        && string_contains(s: r, pattern: "permission denied")
+    PreambleConverged { principal: _, dropin: _, legs_consumed: _ } => false
+  }
+}
+
+// The clean run converges, carrying the receipt the apply needs: the principal it landed and the
+// drop-in it wrote, plus the count of legs that actually ran.
+test fn the_clean_preamble_converges_with_its_principal_and_drop_in() -> Bool {
+  let ok = w_state(run: w_fold(injected: AllLegsSucceed))
+  match w_verdict(state: ok, cleanup_failure: Absent) {
+    PreambleConverged { principal: p, dropin: d, legs_consumed: c } =>
+      p == "gunbc-publish"
+        && c == preamble_leg_count
+        && string_contains(s: d as String, pattern: "/etc/sudoers.d/gunbc-deploy")
+    PreambleRefused { step: _, reason: _, legs_consumed: _ } => false
+  }
+}
+
+// ══ REAL ROUTE (DESIGN §3 inhabitance): the typed entry point, on a transport this module must refuse ═══
+
+// The entry function's own first call goes through the typed transport, and a FleetSsh transport is
+// refused by this module's argv leaves. So the real route is inhabited by a real DeployAccess, and the
+// refusal is the FIRST word it says — before any command of the preamble is executed. An implementation
+// that concatenated the script and sent it to a shell would happily "work" on FleetSsh and this claim
+// would go red.
+test fn the_typed_preamble_refuses_a_fleet_ssh_transport_before_running_any_command() -> Bool {
+  let ctx: FleetSshExecutionContext? = fleet_ssh_execution_context_hermetic_witness_fixture()
+  match ctx {
+    // If the fixture is unavailable the claim must not silently pass: false is the honest answer.
+    Absent => false
+    Present { value: ssh_ctx } =>
+      let access = DeployAccess {
+        principal: ci_deploy_srv1_access.principal,
+        host: srv1_host,
+        transport: FleetSsh {
+          target: SshTarget {
+            address: socket_address(
+              host: host_by_ipv4(addr: ipv4_address(octet1: 203, octet2: 0, octet3: 113, octet4: 7)),
+              port: 22,
+            ),
+            principal: "gunbc" as NonEmptyStr,
+          },
+          context: ssh_ctx,
+        },
+        privileged_commands: ci_deploy_srv1_access.privileged_commands,
+      }
+      match live_deploy_apply_preamble_on_host(access: access, principal: preamble_principal) {
+        PreambleRefused { step: s, reason: r, legs_consumed: c } =>
+          live_deploy_preamble_step_name(step: s) == "scratch-acquire"
+            && c == 0
+            && string_contains(s: r, pattern: "scratch-acquire refused")
+        PreambleConverged { principal: _, dropin: _, legs_consumed: _ } => false
+      }
+  }
+}
+
+// THE PRINCIPAL IS CREATED AS A SYSTEM ACCOUNT WITH NO HOME (restored from the deleted
+// test.claim.live_deploy.emit the_preamble_ensures_the_publication_principal_as_a_nologin_system_account,
+// c11aa2317029). The Either claim above says WHEN useradd runs and that the shell is nologin; this says WHAT
+// the act creates. The publication helper only answers its spool, so an account with a home directory or a
+// regular uid range is a different principal than the one the grant was reasoned for. At main head
+// d2b027b5f41 dropping --no-create-home from the shared EnsureSystemAccount argv left every surviving claim
+// green.
+test fn the_principal_act_creates_a_homeless_system_account() -> Bool {
+  match w_leg_at(step: PrincipalCheck) {
+    Absent => false
+    Present { value: leg } =>
+      match leg {
+        PreambleEither { check_step: _, check: _, act_step: _, act: a } =>
+          let words = argv_words(command: a)
+          any(words, w => w == "--system")
+            && any(words, w => w == "--no-create-home")
+            && any(words, w => w == (preamble_principal as String))
+        PreambleArgv { step: _, command: _ } => false
+        PreambleStdin { step: _, command: _, payload: _ } => false
+        PreambleEffect { step: _, effect: _ } => false
+      }
+  }
+}

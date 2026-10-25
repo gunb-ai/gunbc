@@ -4,7 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { ConstantCost, LinearCost, SumCost, cost_lens }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Succ, Zero }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
   Edge,
@@ -17,6 +17,7 @@ import v2.std.node {
   LoopBoundEdge,
   LoopDomainEdge,
   core_edge_label,
+  NotADeclaration
 }
 import v2.std.witness { Holds }
 
@@ -41,16 +42,16 @@ data loop_domain_measure: Node = Node {
 
 data loop_domain_unit_work: Node = Node {
   kind: ComputationNode { behavior: Transform },
-  children: [Edge { label: Positional, target: loop_domain_leaf }],
+  children: [Edge { label: Positional, target: loop_domain_leaf, declaration: NotADeclaration }],
   occurrence_id: OccurrenceSynthetic
 }
 
 data loop_domain_last: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: loop_domain_unit_work },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure },
-    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work }
+    Edge { label: Positional, target: loop_domain_unit_work, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -58,9 +59,9 @@ data loop_domain_last: Node = Node {
 data loop_domain_first: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work },
-    Edge { label: Positional, target: loop_domain_unit_work },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure }
+    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work, declaration: NotADeclaration },
+    Edge { label: Positional, target: loop_domain_unit_work, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -68,7 +69,7 @@ data loop_domain_first: Node = Node {
 fn loop_domain_is_linear_plus_one(n: Node) -> Bool {
   match cost_lens(n: n) {
     Holds { value: SumCost { lhs: LinearCost { variable: sv }, rhs: ConstantCost { value: Succ { prev: Zero } } } } =>
-      sv.source == loop_domain_measure
+      node_same_occurrence(a: sv.source, b: loop_domain_measure)
     _ => false
   }
 }

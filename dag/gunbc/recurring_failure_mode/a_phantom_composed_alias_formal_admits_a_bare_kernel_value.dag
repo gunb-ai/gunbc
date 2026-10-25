@@ -1,10 +1,12 @@
 module gunbc.recurring_failure_mode.a_phantom_composed_alias_formal_admits_a_bare_kernel_value
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
 
 data a_phantom_composed_alias_formal_admits_a_bare_kernel_value: RecurringFailureMode = RecurringFailureMode {
   identity: "a_phantom_composed_alias_formal_admits_a_bare_kernel_value" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
 
   receipts: [
     "**a type alias whose right-hand side is a PHANTOM composition carries no inhabitant, so it is transparent to its underlying kernel type at a formal and admits a bare kernel value unchecked -- and the harm is not the admission, it is that the alias READS as a proof and is cited as one.** `std.integer` declares `type UInt8 = Compose<UInt, MachineWidth<8>>`, and `Compose` is `Phantom`: it HAS NO INHABITANT. So a bare `Int` reaches a `UInt8` parameter with nothing checked, and `List<UInt8>` establishes nothing whatever about the range of its members.",

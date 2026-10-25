@@ -181,7 +181,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // src/v2/test/claim/execution/native_selected_witness_bundle.dag [partial],
 // src/v2/test/claim/manual/emit_source_store.dag [partial]), 19 identities, MIGRATED not
 // exempted: run 32721781133 executed each through the required floor and observed an
-// interpreter-typed HermeticHostEffectRefused route gap; typed enrollment now makes that executing
+// interpreter-typed HostEffectRefused route gap; typed enrollment now makes that executing
 // outcome a checked debt contract, so LegacyFrozenPathDeferral no longer describes their standing.
 // The exact route-gap/freeze join was recomputed after retirement at head d4f3aab194c and is empty;
 // non-colliding siblings remain frozen. No construction wall currently refuses the route-gap/freeze
@@ -944,7 +944,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/long/decl_index_enumeration.dag",
     functions: [
       "decl_facts_nonempty_over_witness_roots", "decl_facts_fn_items_nonempty_over_witness_roots",
-      "decl_facts_rows_carry_locked_shape_fields", "logical_qualified_name_strips_v2_prefix"
+      "decl_facts_rows_carry_locked_shape_fields", "qualified_name_keeps_the_v2_prefix"
     ]
   },
   FrozenPathDeferral {
@@ -1166,15 +1166,14 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "emit_source_store_provider_gate_holds"
     ]
   },
-  FrozenPathDeferral { entry: "src/v2/test/manual/long/grounding_lens_whole_tree.dag", functions: ["grounding_lens_whole_tree_witnesses"] },
-  FrozenPathDeferral {
-    entry: "src/v2/test/manual/ownership_movable.dag",
-    functions: [
-      "witness_read_then_consume_param_is_movable", "witness_double_consume_is_not_movable",
-      "witness_zero_consume_is_not_movable", "witness_whole_read_then_consume_is_not_movable",
-      "witness_threaded_then_consume_is_not_movable"
-    ]
-  }
+  // REMOVED 2026-10-23 (manager ruling msg_adddb844 item 3, witness_deferral_freeze_population
+  // drop PR): the src/v2/test/manual/ownership_movable.dag schedule row's five entries left the
+  // frozen list with it. The file stays in the tree -- it is a typed subject of
+  // gunbc.emit_stage_blocking_population_census -- but its coverage does NOT sit in rust_tests:
+  // the required job runs no v1 unit tests (DESIGN, Building & checks). Its coverage of the
+  // read-then-consume movability rule stands under gunbc.rung_drop
+  // v1_required_lanes_withdrawn, which is where the withdrawal of that lane is declared.
+  FrozenPathDeferral { entry: "src/v2/test/manual/long/grounding_lens_whole_tree.dag", functions: ["grounding_lens_whole_tree_witnesses"] }
 ]
 
 fn frozen_path_deferral_function_listed(functions: List<String>, function: String) -> Bool {

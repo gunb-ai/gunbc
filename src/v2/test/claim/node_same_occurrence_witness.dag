@@ -1,0 +1,47 @@
+module v2.test.claim.node_same_occurrence_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrencePending }
+import std.types { Bool, Int, List }
+import v2.std.node { Atom, DeclaresAt, Edge, Node, NotADeclaration, Positional, TypeNode, node_equal_ignoring_provenance, node_same_occurrence }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn nso_id(n: Int) -> NodeOccurrenceIdentity {
+  OccurrencePending { caused_by: OccurrenceId { value: n } }
+}
+
+fn nso_leaf(id: Int) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^nso_atom } }, children: [], occurrence_id: nso_id(n: id) }
+}
+
+fn nso_parent(root: Int, child: Int, declared: Bool) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^nso_atom } },
+    children: [Edge {
+      label: Positional,
+      target: nso_leaf(id: child),
+      declaration: if declared { DeclaresAt { occurrence: nso_id(n: 99) } } else { NotADeclaration }
+    }],
+    occurrence_id: nso_id(n: root)
+  }
+}
+
+// The identity route compares the occurrence id at EVERY node, as derived == did: a node rebuilt under the
+// same root id with a rewritten descendant is not the same occurrence, though it is the same structure.
+test fn same_trees_are_the_same_occurrence() -> Bool {
+  node_same_occurrence(a: nso_parent(root: 1, child: 2, declared: false), b: nso_parent(root: 1, child: 2, declared: false))
+}
+
+test fn a_rewritten_descendant_is_not_the_same_occurrence() -> Bool {
+  !node_same_occurrence(a: nso_parent(root: 1, child: 2, declared: false), b: nso_parent(root: 1, child: 3, declared: false))
+    && node_equal_ignoring_provenance(a: nso_parent(root: 1, child: 2, declared: false), b: nso_parent(root: 1, child: 3, declared: false))
+}
+
+test fn a_different_root_is_not_the_same_occurrence() -> Bool {
+  !node_same_occurrence(a: nso_parent(root: 1, child: 2, declared: false), b: nso_parent(root: 4, child: 2, declared: false))
+}
+
+test fn edge_declaration_is_provenance_and_is_ignored() -> Bool {
+  node_same_occurrence(a: nso_parent(root: 1, child: 2, declared: true), b: nso_parent(root: 1, child: 2, declared: false))
+}
