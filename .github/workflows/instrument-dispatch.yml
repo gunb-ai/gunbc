@@ -360,6 +360,15 @@ jobs:
           SHARD_ROLES = ['0-of-4', '1-of-4', '2-of-4', '3-of-4']
           def role_artifact_name(role):
               return ARTIFACT_PREFIX + '-' + role
+          _workflow_cache = {}
+          def run_produced_by_this_workflow(rid):
+              if rid not in _workflow_cache:
+                  try:
+                      w = api('/repos/' + REPO + '/actions/runs/' + str(rid))
+                      _workflow_cache[rid] = (w.get('workflow') or {}).get('path') == 'workflows/' + WORKFLOW_FILE
+                  except urllib.error.HTTPError:
+                      _workflow_cache[rid] = False
+              return _workflow_cache[rid]
           def artifact_candidates(role, head_ok):
               target = role_artifact_name(role)
               out = []
@@ -370,6 +379,8 @@ jobs:
                       if rid is None or rid == RUN:
                           continue
                       if head_ok and (wr.get('head_sha') or '') != HEAD:
+                          continue
+                      if not run_produced_by_this_workflow(rid):
                           continue
                       out.append((str(a.get('created_at') or ''), rid))
                   out.sort(reverse=True)
@@ -440,7 +451,7 @@ jobs:
                       for created, wid in artifact_candidates(role, True):
                           if fetch(wid, STAGING, role_artifact_name(role), 'shard-*-' + role + '.txt'):
                               break
-              for created, wid in artifact_candidates('base', False)[:8]:
+              for created, wid in artifact_candidates('base', False)[:16]:
                   clear(PROBE)
                   if fetch(wid, PROBE, role_artifact_name('base'), 'base-' + MB + '-*' + '.txt'):
                       for hit in glob.glob(os.path.join(PROBE, '**', 'base-' + MB + '-*' + '.txt'), recursive=True):
