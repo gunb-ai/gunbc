@@ -5,6 +5,10 @@ import std.optional { Present, Absent }
 import std.env_binding { EnvSet, EnvBinding }
 import extdeps.linux.procfs { procfs_status_effective_uid }
 import extdeps.systemd.systemd_run { SystemdSetenvBinding }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_listing_observation, filesystem_entry_presence,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+}
 
 // THE USER SYSTEMD MANAGER'S RUNTIME, ONE DERIVATION FOR EVERY CONSUMER. A process that runs `systemd-run
 // --user` or `systemctl --user` reaches its user manager through the session bus under that account's
@@ -43,10 +47,14 @@ fn observe_user_session_runtime() -> UserSessionRuntime {
       Present { value: uid } => {
         let runtime_dir = user_session_runtime_dir(uid: uid)
         let listed = Filesystem.List(path: runtime_dir)
-        if listed.success && any(split(s: listed.entries, delimiter: "\n"), n => n == "bus") {
-          UserSessionRuntimeBound { runtime_dir: runtime_dir }
-        } else {
-          UserSessionRuntimeAbsent
+        match filesystem_entry_presence(
+          listing: filesystem_listing_observation(directory: runtime_dir as String, success: listed.success, entries: listed.entries, error: listed.error),
+          name: "bus",
+        ) {
+          FilesystemEntryListed { directory: _, name: _ } => UserSessionRuntimeBound { runtime_dir: runtime_dir }
+          FilesystemEntryAbsent(_) => UserSessionRuntimeAbsent
+          FilesystemEntryPresenceIndeterminate { cause: _ } => UserSessionRuntimeAbsent
+          FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => UserSessionRuntimeAbsent
         }
       }
     }
