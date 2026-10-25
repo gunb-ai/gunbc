@@ -331,11 +331,15 @@ type RosterOutcome
 // AN ARGUMENT-LABEL RENAME, its own edit kind (tidy-ant-251's wave-1 ruling): a call to a row's home declaration
 // whose authored label is the old parameter name gets the home's parameter name. One edit replaces exactly one label
 // token; the apply re-checks that the bytes at the extent are still `from`.
+// THE ONE TYPED FACT OF A PIPE SITE'S HEAD (agreed with wise-moth-707 and tidy-ant-251 for #15083 RelocateHeadStep): the edit
+// carrying it removes exactly the base head (`from`, at head_at), and the splice writes `inserted` at insert_at -- the only
+// write at that offset -- whose first len(to) bytes are the head occurrence `to` and the rest a plain insertion.
 type RosterHeadRelocation {
   head_at: Int
   from: String
   insert_at: Int
   to: String
+  inserted: String
 }
 
 type RosterLabelEdit {
@@ -343,8 +347,7 @@ type RosterLabelEdit {
   end: Int
   from: String
   to: String
-  // A PIPE SITE'S HEAD RELOCATION, typed on the pipe's OPENING INSERT (whose text begins with `to`): the base head atom at
-  // head_at (spelled `from`, removed by the connector replace) is the head occurrence that insert writes at insert_at. The occurrence
+  // A PIPE SITE'S HEAD RELOCATION, on the edit that removes exactly the base head: see RosterHeadRelocation. The occurrence
   // join (#15083 RelocateHeadStep) maps the one by the other instead of refusing a covered head. Absent on every other edit.
   // DISSOLVES WITH A3 (gunbc.recurring_failure_mode pipe_into_a_declared_function_resolves_as_a_method): once a pipe into a
   // declared function resolves natively, a pipe site keeps its pipe, the head is renamed in place, and nothing relocates.
@@ -846,10 +849,26 @@ fn roster_labels_below(labels: List<RosterLabelEdit>, at: Int) -> Bool {
   fold_list(xs: labels, empty: true, cons: fn(ok, e) { ok && e.start >= at })
 }
 
+// A RELOCATION EDIT AS ITS TWO WRITES: the removal of exactly the base head, and the insertion of `inserted` at insert_at.
+// The disjointness check and the splice both read the plan through this, so the relocated name is an insertion point like
+// any other (a second insert there refuses as coincident) and is written exactly once.
+fn roster_expand_relocations(edits: List<RosterLabelEdit>) -> List<RosterLabelEdit> {
+  let expanded = fold_list(xs: edits, empty: [], cons: fn(acc, e) { roster_expand_relocation_step(acc: acc, e: e) })
+  list_sort_by_key(xs: expanded, key: roster_label_edit_order_key, order: int_total_order())
+}
+
+fn roster_expand_relocation_step(acc: List<RosterLabelEdit>, e: RosterLabelEdit) -> List<RosterLabelEdit> {
+  match e.relocation {
+    Absent => list_snoc_item(xs: acc, item: e)
+    Present { value: r } =>
+      list_snoc_item(xs: list_snoc_item(xs: acc, item: RosterLabelEdit { start: e.start, end: e.end, from: e.from, to: e.to, relocation: Absent }), item: RosterLabelEdit { start: r.insert_at, end: r.insert_at, from: "", to: r.inserted, relocation: Absent })
+  }
+}
+
 fn roster_label_splices(before: String, edits: List<RosterLabelEdit>) -> RosterApplied {
   let octets = bytes_octets(b: utf8_encode_bytes(s: before))
   fold_list(
-    xs: list_reverse(xs: edits),
+    xs: list_reverse(xs: roster_expand_relocations(edits: edits)),
     empty: RosterApplyWritten { content: before },
     cons: fn(acc, e) {
       match acc {
@@ -1353,7 +1372,12 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
   // The sorted plan must then be pairwise disjoint (roster_label_edits_disjoint), or it refuses: the order alone does not
   // make two edits of the same bytes safe.
   match planned {
-    LabelsSelected { edits: es } => roster_label_edits_disjoint(edits: list_sort_by_key(xs: es, key: roster_label_edit_order_key, order: int_total_order()))
+    LabelsSelected { edits: es } =>
+      let sorted = list_sort_by_key(xs: es, key: roster_label_edit_order_key, order: int_total_order())
+      match roster_label_edits_disjoint(edits: roster_expand_relocations(edits: sorted)) {
+        LabelsSelected { edits: _ } => LabelsSelected { edits: sorted }
+        other => other
+      }
     other => other
   }
 }
@@ -1503,66 +1527,48 @@ fn roster_pipe_label_refusal(acc: Optional<RosterRefusalReason>, pair: RosterSlo
 fn roster_rename_pipe_edit(text: String, head: Node, spans: SpanIndex, row: RosterHeadRow, to: String, positional: List<String>, left: RosterByteRange, call: RosterByteRange) -> RosterLabelPlan {
   let slots = dag_call_direct_arg_slots(node: head)
   let label0 = roster_field_or_empty(xs: positional, index: 0)
-  let opening = LabelsSelected { edits: [roster_pipe_opening(head: head, spans: spans, row: row, to: to, label0: label0, at: left.start)] }
-  match list_head(xs: slots) {
-    // `lhs |> call()`: the span from the operand's end to the call's close paren goes, the close paren stays.
-    Absent =>
-      match roster_text_between(text: text, start: left.end, end: call.end - 1) {
-        Absent => LabelsAmbiguous
-        Present { value: between } =>
-          match opening {
-            LabelsSelected { edits: es } => LabelsSelected { edits: list_snoc_item(xs: es, item: RosterLabelEdit { start: left.end, end: call.end - 1, from: between, to: "", relocation: Absent }) }
-            other => other
-          }
-      }
-    Present { value: first_slot } =>
-      match first_slot {
-        Absent => LabelsAmbiguous
-        Present { value: first_arg } =>
-          match roster_node_byte_range(node: first_arg, spans: spans) {
-            Absent => LabelsAmbiguous
-            Present { value: fr } =>
-              match roster_text_between(text: text, start: left.end, end: fr.start) {
-                Absent => LabelsAmbiguous
-                Present { value: between } =>
-                  let label1 = roster_field_or_empty(xs: positional, index: 1)
-                  // An argument the author already labelled with the row's label keeps its label: the span becomes `, `.
-                  let joiner = if roster_arg_is_named(arg: first_arg) { ", " } else { ", " + label1 + ": " }
-                  let head_steps = [roster_pipe_opening(head: head, spans: spans, row: row, to: to, label0: label0, at: left.start), RosterLabelEdit { start: left.end, end: fr.start, from: between, to: joiner, relocation: Absent }]
-                  fold_list(
-                    xs: roster_drop_first_slot_labels(pairs: roster_zip_slots(slots: slots, labels: roster_drop_first(xs: positional))),
-                    empty: LabelsSelected { edits: head_steps },
-                    cons: fn(acc, pair) {
-                      match acc {
-                        LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call)
-                        other => other
-                      }
-                    }
-                  )
-              }
-          }
-      }
-  }
-}
-
-// THE OPENING INSERT CARRIES THE HEAD (tidy-ant-251's resolution of the coincident-insert collision): ONE zero-width edit at
-// the operand's start inserts the whole `to(label0: `, and its relocation says the head occupies the first len(to) bytes
-// of that text. No second insert at that offset exists, so the disjointness check stays strict; the connector replace that
-// removes the base head carries no relocation.
-fn roster_pipe_opening(head: Node, spans: SpanIndex, row: RosterHeadRow, to: String, label0: String, at: Int) -> RosterLabelEdit {
-  RosterLabelEdit { start: at, end: at, from: "", to: to + "(" + label0 + ": ", relocation: roster_pipe_head_relocation(head: head, spans: spans, row: row, to: to, insert_at: at) }
-}
-
-// The base head atom's own byte (the call head the connector replace covers), read off the call's head projection, the
-// same node a direct rename replaces. Absent only when the parse records no extent for it, and then the join refuses the
-// covered head as it would without a relocation.
-fn roster_pipe_head_relocation(head: Node, spans: SpanIndex, row: RosterHeadRow, to: String, insert_at: Int) -> Optional<RosterHeadRelocation> {
   match find_named_child(root: head, name: ^grammar_sequence_left_node_projection) {
-    Rejected { diagnostics: _ } => Absent
+    Rejected { diagnostics: _ } => LabelsAmbiguous
     Accepted { value: atom, diagnostics: _ } =>
       match roster_node_byte_range(node: atom, spans: spans) {
-        Absent => Absent
-        Present { value: r } => Present { value: RosterHeadRelocation { head_at: r.start, from: row.call, insert_at: insert_at, to: to } }
+        Absent => LabelsAmbiguous
+        Present { value: hr } =>
+          match roster_text_between(text: text, start: left.end, end: hr.start) {
+            Absent => LabelsAmbiguous
+            Present { value: connector } =>
+              match roster_text_between(text: text, start: hr.end, end: hr.end + 1) {
+                Absent => LabelsAmbiguous
+                Present { value: paren } =>
+                  if paren != "(" {
+                    LabelsAmbiguous
+                  } else {
+                    let relocation = RosterLabelEdit { start: hr.start, end: hr.end, from: row.call, to: "", relocation: Present { value: RosterHeadRelocation { head_at: hr.start, from: row.call, insert_at: left.start, to: to, inserted: to + "(" + label0 + ": " } } }
+                    let drop_connector = RosterLabelEdit { start: left.end, end: hr.start, from: connector, to: "", relocation: Absent }
+                    match list_head(xs: slots) {
+                      // `lhs |> call()`: the head's `(` goes, its `)` closes the rewritten call.
+                      Absent => LabelsSelected { edits: [relocation, drop_connector, RosterLabelEdit { start: hr.end, end: hr.end + 1, from: "(", to: "", relocation: Absent }] }
+                      Present { value: first_slot } =>
+                        match first_slot {
+                          Absent => LabelsAmbiguous
+                          Present { value: first_arg } =>
+                            let label1 = roster_field_or_empty(xs: positional, index: 1)
+                            // An argument the author already labelled with the row's label keeps its label.
+                            let joiner = if roster_arg_is_named(arg: first_arg) { ", " } else { ", " + label1 + ": " }
+                            fold_list(
+                              xs: roster_drop_first_slot_labels(pairs: roster_zip_slots(slots: slots, labels: roster_drop_first(xs: positional))),
+                              empty: LabelsSelected { edits: [relocation, drop_connector, RosterLabelEdit { start: hr.end, end: hr.end + 1, from: "(", to: joiner, relocation: Absent }] },
+                              cons: fn(acc, pair) {
+                                match acc {
+                                  LabelsSelected { edits: es } => roster_positional_label_edit(edits: es, pair: pair, spans: spans, call: row.call)
+                                  other => other
+                                }
+                              }
+                            )
+                        }
+                    }
+                  }
+              }
+          }
       }
   }
 }
