@@ -74,6 +74,7 @@ import gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall { 
 import gunbc.guarantee_stall.argument_shape_undecided_at_a_declared_position_stall { argument_shape_undecided_at_a_declared_position_stall }
 import gunbc.guarantee_stall.v2_lens_witnesses_unreachable_stall { v2_lens_witnesses_unreachable_stall }
 import gunbc.guarantee_stall.infer_checking_mode_expected_red_pair_stall { infer_checking_mode_expected_red_pair_stall }
+import gunbc.guarantee_stall.per_file_emission_owner_unmodeled_stall { per_file_emission_owner_unmodeled_stall }
 import gunbc.guarantee_stall.information_retrieval_transport_cannot_report_status_stall { information_retrieval_transport_cannot_report_status_stall }
 import gunbc.guarantee_stall.module_cited_only_in_annotation_prose_stall { module_cited_only_in_annotation_prose_stall }
 import gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall { joint_claim_join_private_corpus_unindexed_stall }
@@ -278,6 +279,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   approve_ios_swift_join_live_off_the_merge_path_stall,
   infer_checking_mode_expected_red_pair_stall,
   rust_primitive_rows_hand_spelled_from_the_seed_stall,
+  per_file_emission_owner_unmodeled_stall,
   local_repo_wet_lane_per_row_wall_budget_unarmed_stall,
 ]
 

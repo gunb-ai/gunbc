@@ -25,25 +25,27 @@ pub fn nat_cata<A: Clone>(
     mut __tco_loop_zero: A,
     mut __tco_loop_succ: impl Fn(A) -> A + Clone,
 ) -> A {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut zero = __tco_loop_zero;
-        #[allow(unused_mut)]
-        let mut succ = __tco_loop_succ;
-        if (n.clone() == 0) {
-            break zero.clone();
-        } else {
-            let p = v1_rt::int_sub(n.clone(), 1);
-            {
-                let __tco_0 = p.clone();
-                let __tco_1 = succ(zero);
-                let __tco_2 = succ;
-                __tco_loop_n = __tco_0;
-                __tco_loop_zero = __tco_1;
-                __tco_loop_succ = __tco_2;
-                continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut zero = __tco_loop_zero;
+            #[allow(unused_mut)]
+            let mut succ = __tco_loop_succ;
+            if (n.clone() == 0) {
+                break zero.clone();
+            } else {
+                let p = v1_rt::int_sub(n.clone(), 1);
+                {
+                    let __tco_0 = p.clone();
+                    let __tco_1 = succ(zero);
+                    let __tco_2 = succ;
+                    __tco_loop_n = __tco_0;
+                    __tco_loop_zero = __tco_1;
+                    __tco_loop_succ = __tco_2;
+                    continue;
+                }
             }
         }
     }
@@ -223,24 +225,26 @@ pub fn nat_range_accumulate(
     mut __tco_loop_hi: Nat,
     mut __tco_loop_acc: Rc<Vec<i64>>,
 ) -> Rc<Vec<i64>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut lo = __tco_loop_lo;
-        #[allow(unused_mut)]
-        let mut hi = __tco_loop_hi;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        if (lo.clone() > hi.clone()) {
-            break acc.clone();
-        } else {
-            {
-                let __tco_0 = v1_rt::int_add(lo.clone(), 1);
-                let __tco_1 = hi;
-                let __tco_2 = v1_rt::concat(acc, Rc::new(vec![lo.clone()]));
-                __tco_loop_lo = __tco_0;
-                __tco_loop_hi = __tco_1;
-                __tco_loop_acc = __tco_2;
-                continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut lo = __tco_loop_lo;
+            #[allow(unused_mut)]
+            let mut hi = __tco_loop_hi;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            if (lo.clone() > hi.clone()) {
+                break acc.clone();
+            } else {
+                {
+                    let __tco_0 = v1_rt::int_add(lo.clone(), 1);
+                    let __tco_1 = hi;
+                    let __tco_2 = v1_rt::concat(acc, Rc::new(vec![lo.clone()]));
+                    __tco_loop_lo = __tco_0;
+                    __tco_loop_hi = __tco_1;
+                    __tco_loop_acc = __tco_2;
+                    continue;
+                }
             }
         }
     }
