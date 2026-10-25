@@ -413,7 +413,9 @@ fn a_second_ensure_over_a_discharged_seat_releases_nothing_cell(root: String) ->
     && committed(subject: subject) == 0
 }
 
-// AN ABSENT SLOT IS NOT A RELEASE: the ensure refuses a reference no record names.
+// AN ABSENT SLOT IS NOT A RELEASE: the ensure refuses a reference no record names. The seat's directory exists
+// and lists empty, so the store is minted and the refusal is the production one; with no directory the fixture
+// mints no store, which answers false (this control was green on that fixture refusal until the pass kept it).
 test fn a_reference_no_record_names_is_refused_and_nothing_is_released() -> Bool {
   let root = fresh_root()
   let ok = a_reference_no_record_names_is_refused_and_nothing_is_released_cell(root: root)
@@ -423,7 +425,8 @@ test fn a_reference_no_record_names_is_refused_and_nothing_is_released() -> Bool
 
 fn a_reference_no_record_names_is_refused_and_nothing_is_released_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
-  reserved(subject: subject, reference: "r-orphan")
+  made(path: attempts_at(root: root) as String)
+    && reserved(subject: subject, reference: "r-orphan")
     && ensured(o: ensure(root: root, reference: "r-orphan", source: ended()), check: is_refused)
     && committed(subject: subject) == granted_kib
 }
