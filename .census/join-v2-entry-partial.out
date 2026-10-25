@@ -1,0 +1,90 @@
+ENTRY-RUN join census instrument
+regen1 exit=1
+installed 1
+ENTRY src/v2/test/claim/module_acquisition.dag rc=1 census_in_file=5
+SITE error[src/v2/test/claim/module_acquisition.dag:215:23]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/module_acquisition.dag:215:57]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=match-binder
+SITE error[src/v2/test/claim/module_acquisition.dag:615:11]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/module_acquisition.dag:741:78]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/module_acquisition.dag:855:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=var
+ENTRY src/v2/test/claim/parse/d1_declaration_grammar_parse.dag rc=1 census_in_file=9
+SITE error[src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:91:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:105:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:107:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:203:28]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:208:21]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:214:25]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:220:29]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:229:33]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/d1_declaration_grammar_parse.dag:239:37]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/parse/where_refinement_clause_parse.dag rc=1 census_in_file=5
+SITE error[src/v2/test/claim/parse/where_refinement_clause_parse.dag:99:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/where_refinement_clause_parse.dag:113:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/where_refinement_clause_parse.dag:123:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/where_refinement_clause_parse.dag:171:28]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/parse/where_refinement_clause_parse.dag:176:21]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/source_layout_lookup.dag rc=1 census_in_file=2
+SITE error[src/v2/test/claim/source_layout_lookup.dag:493:27]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/claim/source_layout_lookup.dag:517:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/stage0_partition_roster_layout_join_witness.dag rc=1 census_in_file=1
+SITE error[src/v2/test/claim/stage0_partition_roster_layout_join_witness.dag:69:30]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/claim/witness_exclusion_reconciliation.dag rc=1 census_in_file=1
+SITE error[src/v2/test/claim/witness_exclusion_reconciliation.dag:220:13]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/test/floor_cost_debt_edit.dag rc=1 census_in_file=2
+SITE error[src/v2/test/floor_cost_debt_edit.dag:105:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/test/floor_cost_debt_edit.dag:109:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+ENTRY src/v2/workflow/cause_assertion_census.dag rc=1 census_in_file=56
+SITE error[src/v2/workflow/cause_assertion_census.dag:75:29]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:75:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:81:54]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:82:60]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:83:50]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:84:60]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:85:46]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:86:60]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:90:9]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:91:60]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:91:9]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:92:32]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:92:9]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:89:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:199:49]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:236:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:381:29]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:386:59]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:403:45]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:525:5]: JOINCENSUS bare elem=kernel:String:named/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:526:5]: JOINCENSUS bare elem=kernel:String:named/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:520:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:532:67]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:535:7]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:533:93]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:537:60]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:543:54]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:544:60]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:545:50]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:546:60]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:547:46]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:548:60]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:573:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:574:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:575:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:576:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:577:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:578:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:570:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:657:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:658:35]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=var
+SITE error[src/v2/workflow/cause_assertion_census.dag:658:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:659:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:660:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:661:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:662:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:667:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:668:31]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:668:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:669:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:670:5]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:651:3]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census.dag:690:17]: JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=expr
+SITE error[src/v2/workflow/cause_assertion_census

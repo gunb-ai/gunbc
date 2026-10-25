@@ -1,0 +1,30 @@
+start 00:56:33
+at f66074a88b27c6b2b220eb5eb12973fbd93d00f9 (instrument over 594064185d02a65a4f2ab03ab981fdca6e7907a4) dirty=0
+build0 exit=0     Finished `release` profile [optimized] target(s) in 7m 24s
+regen1 exit=1 01:14:36
+required-regen: FAIL generated surface drift: v1_compiler_infer.rs
+  installed v1_compiler_infer.rs
+installed 1; census text in mirror: 1
+build1 exit=0     Finished `release` profile [optimized] target(s) in 6m 27s
+control str expect='elem=kernel:String:mint' got='JOINCENSUS bare elem=kernel:String:mint/req sep=kernel:String:mint/req binder=var;' ok
+control nes expect='elem=decl:std.types.NonEmptyStr' got='JOINCENSUS bare elem=decl:std.types.NonEmptyStr/req sep=decl:std.types.NonEmptyStr/req binder=var;' ok
+control pipe expect='JOINCENSUS method' got='JOINCENSUS method elem=kernel:String:mint/req sep=kernel:String:mint/req binder=var;' ok
+compile start 01:21:08
+compile exit=1 01:58:20 14086 blocking error(s), 48122 advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)
+corpus census lines: 13781; non-census blocking lines: 305
+=== corpus by route, element, separator
+  13495 bare elem=kernel:String:mint/req sep=kernel:String:mint/req
+    152 method elem=kernel:String:mint/req sep=kernel:String:mint/req
+     55 bare elem=decl:std.types.FilePath/req sep=kernel:String:mint/req
+     28 bare elem=decl:std.types.NonEmptyStr/req sep=kernel:String:mint/req
+     17 bare elem=kernel:String:named/req sep=kernel:String:mint/req
+     14 bare elem=unidentified/req sep=kernel:String:mint/req
+     10 bare elem=tyvar:empty_list_element/req sep=kernel:String:mint/req
+      3 method elem=kernel:String:named/req sep=kernel:String:mint/req
+      2 method elem=decl:std.types.NonEmptyStr/req sep=kernel:String:mint/req
+      1 method elem=tyvar:empty_list_element/req sep=kernel:String:mint/req
+      1 method elem=decl:std.types.PathSegment/req sep=kernel:String:mint/req
+      1 bare elem=kernel:String:mint/req sep=no-separator
+      1 bare elem=kernel:String:mint/opt sep=kernel:String:mint/req
+      1 bare elem=decl:v2.std.node.String/req sep=kernel:String:mint/req
+done
