@@ -116,29 +116,31 @@ test fn media_bytes_written_before_the_cutover_read_back_through_the_sealed_stor
 // must ADMIT that state by ensuring its own derived directory and listing it, because the fetch that
 // creates it is the very fetch gated on the mint. Before the ensure-before-list fix this claim was the
 // red: the list-only mint refused and the fetch could never run.
-test the_mint_admits_a_fresh_host_where_the_artifacts_directory_does_not_exist_yet() {
+test fn the_mint_admits_a_fresh_host_where_the_artifacts_directory_does_not_exist_yet() -> Bool {
   let dir = shell.Mktemp.Dir()
   let tree = isolated_host_state_tree(dir: dir.path)
   let reading = install_media_store(tree: tree)
   let listed = Filesystem.List(path: join([dir.path as String, "/", "artifacts"], ""))
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && listed.success && match reading {
+  let ok = match reading {
     InstallMediaStoreReady { store: s } => install_media_store_path(tree: tree) as String == join([dir.path as String, "/", "artifacts"], "")
     InstallMediaStoreUnready { detail: _ } => false
-  } && cleaned.success
+  }
+  dir.success && listed.success && ok && cleaned.success
 }
 
 // CONTROL (review 86279), non-directory at the derived path: the mint refuses with a typed reason --
 // never an empty store -- when the artifacts path exists as a regular file (mkdir -p fails on it).
-test the_mint_refuses_when_the_artifacts_path_is_not_a_directory() {
+test fn the_mint_refuses_when_the_artifacts_path_is_not_a_directory() -> Bool {
   let dir = shell.Mktemp.Dir()
   let tree = isolated_host_state_tree(dir: dir.path)
   let artifacts = join([dir.path as String, "/", "artifacts"], "") as NonEmptyStr
   let wrote = Filesystem.Write.CreateNew(path: artifacts as FilePath, content: "not a directory" as NonEmptyStr)
   let reading = install_media_store(tree: tree)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && wrote.success && cleaned.success && match reading {
+  let refused = match reading {
     InstallMediaStoreReady { store: _ } => false
     InstallMediaStoreUnready { detail: _ } => true
   }
+  dir.success && wrote.success && cleaned.success && refused
 }

@@ -57,36 +57,56 @@ type InstallMediaStoreReading
   | InstallMediaStoreUnready { detail: String }
 
 // THE ONE MINT, AND IT TAKES NO PATH: the sealed tree value plus nothing else. It observes the derived
-// directory by the pattern's two routes, LIST first and ENSURE as the fallback: an admissible listing is
-// observation; if listing is refused, the mint ensures its OWN derived directory (mkdir -p, the same
-// verb gunbc.url_file_acquisition ensure_url_file_parent runs before the staged download) and admits on
-// its success. The ensure fallback exists because the handler contract this module records is
-// self-provisioning: on a fresh host artifacts/ DOES NOT EXIST until the fetch path creates it -- a
-// list-only mint would refuse the very fetch that provisions the store (review 86279: the fetch could
-// never run). mkdir -p on an existing NON-directory fails, so a file at the derived path is still a
-// typed refusal, never an empty store; and where the listing already succeeds nothing is created, so
-// the mint observes without side effects in the common case. A wrong-root or unreadable media store
-// must not be mistaken for an empty one, because it would send serve traffic
-// (gunbc.srv3.srv3_serve nbdkit) at a file another principal placed.
+// directory by the pattern's two routes, LIST first and ENSURE ONLY ON AN ESTABLISHED ABSENCE.
+//
+// Why an ensure route exists at all: the handler contract this module records is self-provisioning --
+// gunbc.url_file_acquisition ensure_url_file_parent runs shell.Mkdir.Parents before the staged
+// download -- so on a fresh host artifacts/ DOES NOT EXIST until the fetch path creates it; a list-only
+// mint would refuse the very fetch that provisions the store (review 86279: the fetch could never run).
+//
+// Why the ensure is gated (review 86297): mkdir -p succeeds on any existing directory, READABLE OR
+// NOT, so an ungated fallback would admit an unreadable store as Ready -- the exact confusion this
+// mint's refusal exists to prevent (a wrong-root or unreadable media store would send srv3 serve
+// traffic at a file another principal placed), and a silent widen under DESIGN.md §5. The fallback
+// therefore runs ONLY when the host answered NotFound for the listing itself -- the typed
+// error_kind channel, which the wet realization fills from io::ErrorKind and the witness frame fills
+// from filesystem_failure_kind_name, so it is the same classification in every mode. Permission
+// denials, malformed subjects and every other refusal refuse with a typed detail and create nothing.
+// After an ensured mkdir the mint RE-LISTS and admits only if that listing lists: mkdir -p succeeding
+// is not observation, a listing is.
 fn install_media_store(tree: HostStateTree) -> InstallMediaStoreReading {
   let root = install_media_store_path(tree: tree)
   let listing = Filesystem.List(path: root as String)
   match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
     FilesystemDirectoryListed(_) => InstallMediaStoreReady { store: InstallMediaStore { root: root } }
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => install_media_store_after_ensure(root: root, list_detail: join(["the install media store's directory is not admissible: ", c], ""))
-    FilesystemDirectoryListingRefused { directory: _, error: e } => install_media_store_after_ensure(root: root, list_detail: join(["the install media store's directory could not be listed: ", e], ""))
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+      InstallMediaStoreUnready { detail: join(["the install media store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } =>
+      if listing.error_kind == "not_found" {
+        install_media_store_after_ensure(root: root, absent_detail: join(["the install media store's directory was reported absent: ", e], ""))
+      } else {
+        InstallMediaStoreUnready { detail: join(["the install media store's directory could not be listed and its absence is not established (only an established NotFound is self-provisioned): ", e], "") }
+      }
   }
 }
 
-// The ensure fallback of the one mint, factored out so the mint stays one expression of the routes.
-// Reaching here means the listing was refused; mkdir -p succeeds exactly when the derived path is a
-// directory the acquisition handler itself created (or creates now), and fails on a file.
-fn install_media_store_after_ensure(root: NonEmptyStr, list_detail: String) -> InstallMediaStoreReading {
+// The ensure fallback of the one mint, reached ONLY on an established NotFound listing. mkdir -p --
+// the acquisition handler's own verb -- then RE-LIST: admission requires a listing, never a side
+// effect. mkdir failing (a file at the derived path, a parent the process may not create) and a
+// re-listing that cannot list or cannot be admitted are all typed refusals.
+fn install_media_store_after_ensure(root: NonEmptyStr, absent_detail: String) -> InstallMediaStoreReading {
   let made = shell.Mkdir.Parents(path: root as FilePath)
   if made.success == false {
-    InstallMediaStoreUnready { detail: join([list_detail, "; and the fetch path's own mkdir -p of the derived directory failed: ", root as String], "") }
+    InstallMediaStoreUnready { detail: join([absent_detail, "; and the fetch path's own mkdir -p of the derived directory failed: ", root as String], "") }
   } else {
-    InstallMediaStoreReady { store: InstallMediaStore { root: root } }
+    let relisted = Filesystem.List(path: root as String)
+    match filesystem_listing_observation(directory: root as String, success: relisted.success, entries: relisted.entries, error: relisted.error) {
+      FilesystemDirectoryListed(_) => InstallMediaStoreReady { store: InstallMediaStore { root: root } }
+      FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+        InstallMediaStoreUnready { detail: join(["the derived directory was created but is not admissible on re-listing: ", c], "") }
+      FilesystemDirectoryListingRefused { directory: _, error: e } =>
+        InstallMediaStoreUnready { detail: join(["the derived directory was created but could not be listed on re-listing: ", e], "") }
+    }
   }
 }
 

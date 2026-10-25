@@ -1,0 +1,196 @@
+module test.claim.srv3.srv3_install_media_store_mint_witness
+
+// THE MINT'S TWO OBSERVATION ROUTES, EXECUTED ON A MODELLED MACHINE (review 86297). The mint lists
+// first; it ensures (mkdir -p, the acquisition handler's own verb) ONLY after the host answered
+// NotFound for the listing, and admits after an ensure ONLY on a re-listing that lists. These claims
+// run install_media_store over a modeled filesystem whose List answers per path, so the two states a
+// real host passes -- a fresh machine with no artifacts/ yet, and a machine whose artifacts/ exists
+// but is unreadable -- are answered by the model rather than trusted from a comment.
+//
+// THE CLAIM THAT WOULD HAVE BEEN RED BEFORE THE FIX: with the ungated fallback (review 86279's first
+// cut), an existing-but-unreadable directory fell to mkdir -p -- which succeeds on any existing
+// directory, readable or not -- and the mint admitted Ready without ever reading the store. The
+// unreadable-directory claim asserts the ROUTE (List once, Mkdir zero) so a widen that admits on a
+// side effect cannot green it.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { second }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant {
+  Read, Write, ServiceOpTree, NamespacePosition,
+  ModeledRealization, LifecycleByConstruction, Grant, Envelope,
+}
+import std.operation_argv { OperationRef }
+import v2.std.operation_realization {
+  OperationRealization, OperationBinding, OperationCall, OperationStep, OperationHarnessFault, DispatchRecord,
+  FileObserved, operation_input_text,
+  virtual_clock_origin,
+}
+import v2.std.witness_evaluation {
+  WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
+  evaluate_in_witness_frame,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.filesystem.filesystem_io { FilesystemNotFound, FilesystemPermissionDenied }
+import gunbc.filesystem_model {
+  ModeledFilesystem, filesystem_bindings, failed_with, fs_list, fs_resolved, file_step, filesystem_operation,
+}
+import gunbc.host_state_root { host_state_tree, host_state_tree_path }
+import gunbc.provisioning.install_media_store {
+  InstallMediaStore, InstallMediaStoreReading, InstallMediaStoreReady, InstallMediaStoreUnready,
+  install_media_store, install_media_store_path, install_media_parent_directory,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data realization_identity: NonEmptyStr = "install-media-store-mint-witness" as NonEmptyStr
+
+// The services the mint dispatches to: the listing, and the ensure verb the fallback runs.
+data modeled_services: List<String> = ["Filesystem", "shell.Mkdir"]
+
+fn modeled_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
+  Grant {
+    verb: verb
+    root: NamespacePosition { tree: ServiceOpTree { service: service }, path: [] }
+    binding: ModeledRealization { realization: realization_identity as String }
+    lifecycle: LifecycleByConstruction
+  }
+}
+
+// A modeled machine whose List answers PermissionDenied for `denied` and consults the model
+// everywhere else. Permission denial is NOT a modeled channel of the ordinary listing
+// (filesystem_model models refused reads, not refused listings), so this realization is the machine
+// on which the unreadable store exists -- the state the mint must refuse. Everywhere else the model
+// answers for itself: a directory in `directories` lists, a missing path answers NotFound (the
+// model's own words, projected onto error_kind the same way the host's io::Error is), so after the
+// mint's mkdir the re-listing lists through the model.
+fn mint_frame(fs: ModeledFilesystem, denied: String) -> WitnessEvaluationFrame<ModeledFilesystem> {
+  let listing = fn(state, call) {
+    match operation_input_text(invocation: call.invocation, name: "path") {
+      Absent => OperationHarnessFault { reason: "a filesystem list was dispatched without a path" as NonEmptyStr }
+      Present { value: path } => {
+        let resolved = fs_resolved(cwd: "/", path: path)
+        if resolved == denied {
+          file_step(state: state, observation: failed_with(kind: FilesystemPermissionDenied, message: concat("Permission denied: ", resolved)))
+        } else {
+          file_step(state: state, observation: fs_list(fs: state, path: resolved))
+        }
+      }
+    }
+  }
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "install-media-store-mint-witness", kind: SharedStateFrame }
+      grants: concat(map(modeled_services, s => modeled_grant(service: s, verb: Read)), map(modeled_services, s => modeled_grant(service: s, verb: Write)))
+    }
+    rest_fixtures: []
+    realization: Present { value: OperationRealization {
+      identity: realization_identity,
+      initial: fs,
+      epoch: virtual_clock_origin(),
+      bindings: concat(
+        filesystem_bindings(get: fn(w) { w }, put: fn(_w, v) { v }, cwd: fn(_w) { "/" }),
+        [OperationBinding { at: filesystem_operation(operation: "List"), handler: listing }],
+      ),
+      advance: fn(w, now) { w },
+    } }
+  }
+}
+
+fn tree_root() -> String {
+  host_state_tree_path(tree: host_state_tree()) as String
+}
+
+// The modeled machine below /var/lib/gunbc, with the parent chain the mint's derived path sits under.
+fn base_fs(extra_directories: List<String>) -> ModeledFilesystem {
+  ModeledFilesystem {
+    directories: concat(["/", "/var", "/var/lib", tree_root()], extra_directories)
+    files: []
+    refused_reads: []
+    stats: []
+  }
+}
+
+fn services_of(route: List<DispatchRecord>) -> List<String> {
+  map(route, r => r.invocation.at.service)
+}
+
+fn dispatched(route: List<DispatchRecord>, service: String, operation: String) -> Int {
+  count(filter(route, r => r.invocation.at.service == service && r.invocation.at.operation == operation))
+}
+
+fn failure_text(e: InstallMediaStoreReading) -> String {
+  match e {
+    InstallMediaStoreReady { store: _ } => ""
+    InstallMediaStoreUnready { detail: d } => d
+  }
+}
+
+// A FRESH HOST: no artifacts/ yet. The first listing answers NotFound (the host's own words), the mint
+// runs its mkdir -p -- the verb gunbc.url_file_acquisition ensure_url_file_parent already runs before
+// the staged download -- and the RE-LISTING lists the directory the model just created. Ready, with
+// the route proving the order: List, Mkdir, List. Before review 86279's fix the first listing refused
+// and this claim could never green: the fetch that provisions the store was gated on the mint.
+test fn a_fresh_host_without_artifacts_ensures_through_the_handlers_own_verb_and_lists() -> Bool {
+  let artifacts = install_media_store_path(tree: host_state_tree()) as String
+  match evaluate_in_witness_frame(
+    frame: mint_frame(fs: base_fs([]), denied: "/never/denied"),
+    subject: fn(_scope) { install_media_store(tree: host_state_tree()) },
+  ) {
+    WitnessReturned { value, route, state: _ } =>
+      match value {
+        InstallMediaStoreReady { store: s } => install_media_parent_directory(store: s) as String == artifacts
+        InstallMediaStoreUnready { detail: _ } => false
+      }
+        && dispatched(route: route, service: "Filesystem", operation: "List") == 2
+        && dispatched(route: route, service: "shell.Mkdir", operation: "Parents") == 1
+    WitnessRefused { diagnostic: _, route: _, state: _ } => false
+    WitnessInterrupted { at: _, route: _, state: _, now: _ } => false
+  }
+}
+
+// AN EXISTING, UNREADABLE STORE: the directory is in the model's directories (so it exists and
+// mkdir -p WOULD succeed), but the machine's List answers PermissionDenied for it. The mint refuses
+// with the typed detail -- no mkdir at all, one dispatch. This is the claim that goes RED against
+// the ungated fallback of review 86279's first cut: there, mkdir -p succeeded on the existing
+// directory and the mint admitted Ready having never read the store, which is the silent widen
+// DESIGN.md §5 calls a hard reject (and contradicts srv3_seeded_install_media_publish's promise that
+// a store which cannot be listed publishes nothing).
+test fn an_existing_but_unreadable_store_refuses_without_any_ensure() -> Bool {
+  let artifacts = install_media_store_path(tree: host_state_tree()) as String
+  match evaluate_in_witness_frame(
+    frame: mint_frame(fs: base_fs([artifacts]), denied: artifacts),
+    subject: fn(_scope) { install_media_store(tree: host_state_tree()) },
+  ) {
+    WitnessReturned { value, route, state: _ } =>
+      match value {
+        InstallMediaStoreReady { store: _ } => false
+        InstallMediaStoreUnready { detail: _ } =>
+          string_contains(s: failure_text(e: value), pattern: "could not be listed and its absence is not established")
+      }
+        && dispatched(route: route, service: "Filesystem", operation: "List") == 1
+        && dispatched(route: route, service: "shell.Mkdir", operation: "Parents") == 0
+    WitnessRefused { diagnostic: _, route: _, state: _ } => false
+    WitnessInterrupted { at: _, route: _, state: _, now: _ } => false
+  }
+}
+
+// A READABLE STORE MINTS WITH NO SIDE EFFECT AT ALL: one listing, no mkdir -- the ensure route runs
+// only on an established absence, never on a successful observation.
+test fn a_readable_store_mints_on_the_listing_alone_with_no_ensure() -> Bool {
+  let artifacts = install_media_store_path(tree: host_state_tree()) as String
+  match evaluate_in_witness_frame(
+    frame: mint_frame(fs: base_fs([artifacts]), denied: "/never/denied"),
+    subject: fn(_scope) { install_media_store(tree: host_state_tree()) },
+  ) {
+    WitnessReturned { value, route, state: _ } =>
+      match value {
+        InstallMediaStoreReady { store: s } => install_media_parent_directory(store: s) as String == artifacts
+        InstallMediaStoreUnready { detail: _ } => false
+      }
+        && dispatched(route: route, service: "Filesystem", operation: "List") == 1
+        && dispatched(route: route, service: "shell.Mkdir", operation: "Parents") == 0
+    WitnessRefused { diagnostic: _, route: _, state: _ } => false
+    WitnessInterrupted { at: _, route: _, state: _, now: _ } => false
+  }
+}
