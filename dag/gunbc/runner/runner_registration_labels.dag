@@ -10,11 +10,13 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner.runner_slot_job_role { RunnerSlotJobRole, CiJobSlot, DeployJobSlot, runner_slot_job_role }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
+import gunbc.runner.runner_host_deploy { runner_job_user_session_on }
 
 // ONE COMPOSITION, EVERY PRODUCER. A registration's labels are made of three facts, each read from
 // the one place that owns it:
 //   platform  self-hosted / os / arch   gunbc.runner.runner_spec_from_offer, from the host's ComputeOffer
 //   class     gunbc-heavy                gunbc.runner.runner_slot_desired gunbc_runner_slot_desired
+//   capability gunbc-user-session       gunbc.runner.runner_host_deploy runner_job_user_session_hosts (CI slots)
 //   host      the host it executes on    gunbc.runner.runner_slot_allocation runner_host_label
 // Unit-file registration, JIT mint, the replace postcondition and the org-roster readback all read
 // their labels here. The host-pinned selector (gunbc.ci.ci_deploy_target_host host_pinned_runner_spec)
@@ -29,7 +31,22 @@ type RunnerRegistrationLabelsResolution
   | RegistrationLabelsRefused { host: HostIdentity, cause: NonEmptyStr }
 
 fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
-  runner_registration_labels_of_class(host: host, class_labels: gunbc_runner_slot_desired().labels.github_labels)
+  runner_registration_labels_of_class(
+    host: host,
+    class_labels: runner_label_set_union(a: gunbc_runner_slot_desired().labels.github_labels, b: runner_host_capability_labels(host: host)),
+  )
+}
+
+// A CAPABILITY LABEL NAMES WHAT A HOST'S CI JOB ACCOUNT CAN DO, never which host it is. gunbc-user-session
+// means the job account holds a user systemd manager (loginctl linger), so `systemd-run --user` can start
+// transient units; it is derived from the one row that also drives the converge which establishes it
+// (gunbc.runner.runner_host_deploy runner_job_user_session_hosts, converged by gunbc.runner.runner_user_session),
+// so a job selecting it and the host that converges it cannot name different hosts. The deploy slot does not
+// carry it: its job account is the deploy principal, not the CI job user the row lingers.
+data gunbc_user_session_label: String = "gunbc-user-session"
+
+fn runner_host_capability_labels(host: HostIdentity) -> List<String> {
+  if runner_job_user_session_on(host: host) { [gunbc_user_session_label] } else { [] }
 }
 
 // THE CLASS HALF OF THE COMPOSITION IS THE ONLY PART A ROLE CHANGES. A CI slot carries the class
