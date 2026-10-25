@@ -96,7 +96,6 @@ import gunbc.review_sheet_sheets {
   review_sheet_live_access_from,
   ReviewSheetLiveOpen,
   ReviewSheetLiveNotAdmitted,
-  live_sheets_transport_frontier,
 }
 import extdeps.google.sheets {
   a1_range_encoding_text,
@@ -1635,15 +1634,7 @@ test fn omitted_derived_column_on_populated_sheet_is_not_a_conflict() -> Bool {
 }
 
 test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
-  match live_sheets_transport_frontier {
-    Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
-      (b.module_path as String) == "gunbc.review_sheet_sheets"
-        && (b.decl_name as String) == "review_sheet_ensure"
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => false
-    Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
-    Terminal { reason: _ } => false
-  }
-    && match buyer_review_judgement_read_frontier {
+  match buyer_review_judgement_read_frontier {
       Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
         (b.module_path as String) == "gunbc.review_sheet_projection"
           && (b.decl_name as String) == "judgement_for_listing"
@@ -1733,7 +1724,7 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
     }
 }
 
-test fn sheets_published_mock_corpus_covers_get_and_batch_update() -> Bool {
+test fn sheets_published_mock_corpus_covers_get_batch_update_and_metadata() -> Bool {
   match sheets_published_mock_corpus |> first {
     Present { value: get } =>
       get.operation_key == "sheets.Spreadsheets.GetValues"
@@ -1741,6 +1732,8 @@ test fn sheets_published_mock_corpus_covers_get_and_batch_update() -> Bool {
           Present { value: upd } =>
             upd.operation_key == "sheets.Spreadsheets.BatchUpdateValues"
               && match sheets_published_mock_corpus.skip(n: 2).first() {
+                Present { value: meta } => meta.operation_key == "sheets.Spreadsheets.GetSpreadsheetMetadata"
+                  && match sheets_published_mock_corpus.skip(n: 3).first() {
                 Absent =>
                   match BatchUpdateValuesResponse {
                     spreadsheetId: "s",
@@ -1754,6 +1747,8 @@ test fn sheets_published_mock_corpus_covers_get_and_batch_update() -> Bool {
                     Present { value: _ } => false
                   }
                 Present { value: _ } => false
+              }
+                Absent => false
               }
           Absent => false
         }

@@ -4261,7 +4261,7 @@ jobs:
         env:
           RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
-      - name: WIF auth (dedicated printer credential reader)
+      - name: WIF auth (dedicated printer credential reader; reviewed main only)
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
@@ -4269,6 +4269,7 @@ jobs:
           service_account: printer-lan@gunbai-secrets.iam.gserviceaccount.com
           token_format: access_token
           create_credentials_file: false
+        if: github.ref == 'refs/heads/main'
         timeout-minutes: 5
       - name: "Printer: observe the credential or converge one print request"
         id: printer

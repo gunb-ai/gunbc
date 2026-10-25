@@ -1,0 +1,39 @@
+module gunbc.serving.gpu_observed_memory_receipt
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { ByteSize, Mebibyte, mebibyte, mebibyte_to_byte_size }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+data observed_memory_read_obligation: NonEmptyStr = "Commit the nvidia-smi -q output (memory.total, driver version, compute capability) from each rented or owned card this row names. Figures are the operator's relayed readings of 2026-10-22, not read by this repository." as NonEmptyStr
+
+// WHAT THE DRIVER REPORTED, which differs from the vendor's marketing capacity (141 GB decimal vs 143,771 MiB).
+// The capacity math consumes this, not the catalog figure; the catalog keeps the vendor claim.
+type ObservedGpuMemory {
+  // Review 84774 (flat-scalar unit fields): the driver reports memory.total in MiB; it travels as
+  // std.measure Mebibyte so the unit lives in the type, not only in the field name.
+  total_mebibytes: Mebibyte
+  driver_version: NonEmptyStr
+  compute_capability_major: Nat
+  compute_capability_minor: Nat
+  standing: CitedFigureStanding
+}
+
+fn observed_gpu_memory(total_mebibytes: Mebibyte, driver_version: NonEmptyStr, major: Nat, minor: Nat) -> ObservedGpuMemory {
+  ObservedGpuMemory { total_mebibytes: total_mebibytes, driver_version: driver_version, compute_capability_major: major, compute_capability_minor: minor, standing: TranscribedUncited { read_obligation: observed_memory_read_obligation } }
+}
+
+fn observed_memory_bytes(o: ObservedGpuMemory) -> ByteSize {
+  mebibyte_to_byte_size(m: o.total_mebibytes)
+}
+
+data h200_nvl_observed_memory: ObservedGpuMemory = observed_gpu_memory(total_mebibytes: mebibyte(count: 143771), driver_version: "615.71.09" as NonEmptyStr, major: 9, minor: 0)
+
+data b200_observed_memory: ObservedGpuMemory = observed_gpu_memory(total_mebibytes: mebibyte(count: 183359), driver_version: "580.126.09" as NonEmptyStr, major: 10, minor: 0)
+
+data max_q_observed_memory: ObservedGpuMemory = observed_gpu_memory(total_mebibytes: mebibyte(count: 97887), driver_version: "unrecorded" as NonEmptyStr, major: 12, minor: 0)
+
+data observed_memory_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: consumed by gunbc.serving.flash_next_predictions flash_next_card (RooflineCard.memory_bytes) and the P1 witness. The Max-Q driver version and compute capability minor were not relayed; 'unrecorded' and 12.0 are placeholders to replace from the committed nvidia-smi output, trigger: that output is committed." as NonEmptyStr
+)
