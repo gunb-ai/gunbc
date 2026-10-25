@@ -339,13 +339,14 @@ fn ambient_census_probe_modules(tree_stdout: String, rewritten: String) -> List<
 // A DECLARER IS CARRIED WHEN IT IS OBSERVED REFUSED AT THE BASE AND AT THE HEAD WITH THE SAME CAUSE CLASS, rewritten or not.
 // Observed means the host probed it at the base and the base printed a binding_unreached line for it; a declarer the base was
 // not asked about, did not hold, or resolved is unobserved or newly refused, never carried. The cause class is the located
-// fatal reason (binding_refusal_cause field 3), compared head against base, one hop: the declarer's own declarer is not chased.
+// fatal reason (binding_refusal_cause field 3) AND the declarer that cause names (field 5), compared head against base,
+// one hop: the declarer's own declarer is compared as a name and never probed.
 fn declarer_refused_at_head_and_base(declarer: String, head_cause_rows: List<String>, base_stdout: String, base_probed: String) -> Bool {
   let probed = split(s: base_probed, delimiter: "\n") |> filter(l => l == declarer)
   let base_refused = unreached_lines(stdout: base_stdout) |> filter(l => field_at(line: l, index: 1) == declarer)
-  let head_reasons = head_cause_rows |> filter(l => field_at(line: l, index: 1) == declarer) |> map(l => field_at(line: l, index: 3))
+  let head_reasons = head_cause_rows |> filter(l => field_at(line: l, index: 1) == declarer) |> map(l => field_at(line: l, index: 3) + "|" + field_at(line: l, index: 5))
   let base_reasons = distinct_lines(lines: split(s: base_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_refusal_cause\t")))
-    |> filter(l => field_at(line: l, index: 1) == declarer) |> map(l => field_at(line: l, index: 3))
+    |> filter(l => field_at(line: l, index: 1) == declarer) |> map(l => field_at(line: l, index: 3) + "|" + field_at(line: l, index: 5))
   count(probed) != 0 && count(base_refused) != 0 && count(head_reasons) != 0
     && count(head_reasons |> filter(r => count(base_reasons |> filter(b => b == r)) == 0)) == 0
 }

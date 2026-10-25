@@ -299,3 +299,13 @@ test fn the_probe_list_adds_the_named_declarers_one_hop_and_not_their_declarers(
   ambient_census_probe_modules(tree_stdout: healthy_head() + outside_declarer_cause(), rewritten: both_rewritten())
     == ["broken_by_wave", "already_refused", "ext.declarer"]
 }
+
+test fn a_declarer_refused_at_base_for_the_same_reason_but_naming_a_different_declarer_does_not_carry() -> Bool {
+  match standing_with_declarer(
+    base_stdout: "binding_module\tbroken_by_wave\t1\t0\t0\t0\nbinding_unreached\talready_refused\tresolve\nbinding_unreached\text.declarer\tresolve\nbinding_refusal_cause\text.declarer\town\tresolve_reason_declarer_refused\t9:1\tsome.other_root\n",
+    base_probed: "broken_by_wave\nalready_refused\next.declarer\n"
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: _ } } => code == 1
+    _ => false
+  }
+}
