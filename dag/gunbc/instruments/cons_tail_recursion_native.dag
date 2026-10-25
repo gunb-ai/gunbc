@@ -26,7 +26,7 @@ import gunbc.instruments.append_chain_ladder {
 //   cons_not_in_tail  a Cons self-call that is NOT in tail position (it is pushed onto afterwards): the
 //                     rule must refuse it and keep the ordinary lowering
 //   head_reads_result a Cons whose head reads the recursive result: refused the same way
-//   user_list_not_lowered  a module's own List with its own Cons, in exactly the lowered shape
+//   user_list_not_lowered  a module's own Chain with its own Cons, in exactly the lowered shape
 //                     (gunbc.instruments.cons_tail_recursion_user_list): the rule keys on the resolved
 //                     carrier, so it must keep the ordinary lowering; admitted by spelling it would be
 //                     lowered onto Rc<Vec> pushes and refused by rustc. This is the discriminating red.
