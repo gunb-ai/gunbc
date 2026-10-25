@@ -107,14 +107,14 @@ pub use native_lane_runner::{
     emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
     run_census_controls_and_subjects, run_census_infer_root_sets, run_native_claim_program,
     run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
-    run_self_host, run_type_declaration_use_census_runs, run_v2_census_verb, run_v2_native_census,
-    run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit, run_v2_native_frontier,
-    run_v2_select_spelled_modules, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
-    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
-    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
-    NativeServePhases, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
-    TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
-    MEASURED_SPAWN_RECEIPT_ENV,
+    run_self_host, run_self_host_frontier, run_type_declaration_use_census_runs,
+    run_v2_census_verb, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
+    run_v2_native_cli_emit, run_v2_native_frontier, run_v2_select_spelled_modules, CensusInferRun,
+    MeasuredSpawnRoute, NativeCensusRun, NativeCensusScopeWord, NativeChildMeasured,
+    NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
+    NativeProcessMemoryRuns, NativeRouteOutcome, NativeServePhases, NativeServeProgramRun,
+    PreparationCause, PreparationRefusal, SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
+    MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
 };
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
@@ -175,6 +175,9 @@ pub use emit_host::{
 pub use emit_host::{
     compile_dag_diagnostic_census, compile_dag_diagnostic_census_cost_counts,
     compile_dag_rust_emit_check_memo_counts, reset_compile_dag_diagnostic_census_cost_counts,
+};
+pub use emit_host::{
+    emit_resolved_for_target_counting, every_module_render_calls, non_empty_selected_render_calls,
 };
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
@@ -32159,7 +32162,6 @@ mod peel_alias_fixpoint_termination {
                 type_head_exposures: empty_index.type_head_exposures.clone(),
                 file_modules: empty_index.file_modules.clone(),
                 module_named_imports: empty_index.module_named_imports.clone(),
-                alias_cycles: empty_index.alias_cycles.clone(),
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),
