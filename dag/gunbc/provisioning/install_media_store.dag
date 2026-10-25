@@ -49,6 +49,17 @@ fn install_media_path_under(root: NonEmptyStr, artifact: UbuntuInstallMediaArtif
   ubuntu_install_media_install_path(dir: root, artifact: artifact)
 }
 
+// THE OLD FORMULATION, kept verbatim as the byte-for-byte reference for the readback witness: this is
+// what the deleted gunbc-side trio computed (dir from the deleted artifacts_dir(), the filename joined
+// by extdeps). The witness writes bytes with THIS expression and reads them back through the sealed
+// store's paths -- the on-disk names are the same because both routes join identically.
+fn install_media_pre_cutover_install_path(root: NonEmptyStr, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+  concat(
+    concat(root as String, "/"),
+    ubuntu_install_media_filename(artifact: artifact) as String,
+  ) as NonEmptyStr
+}
+
 // THE SEALED STORE (the operator's sealed-store shape): data only, sole_constructor, non-generic, never
 // a variant arm (the seal does not reach those: test.claim.sole_constructor_completeness_audit_probe
 // f13/f19). Construction is sealed to install_media_store below; the rung claimed here is construction
@@ -85,7 +96,7 @@ fn install_media_store_on_production_host() -> InstallMediaStoreReading {
 // `.part` sibling is the staging path of the same file. The record-based pair is what the fetch and the
 // seeded publication use -- a holder of the sealed record cannot be pointed at another directory.
 fn install_media_install_path(store: InstallMediaStore, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
-  install_media_path_under(root: store.root, filename: ubuntu_install_media_filename(artifact: artifact))
+  install_media_path_under(root: store.root, artifact: artifact)
 }
 
 fn install_media_part_path(store: InstallMediaStore, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
@@ -95,7 +106,7 @@ fn install_media_part_path(store: InstallMediaStore, artifact: UbuntuInstallMedi
 // THE TREE-BASED PAIR, for pure path shapes (module data rows, the seeded write boundary): the same
 // formulation over the derived root.
 fn install_media_install_path_on_tree(tree: HostStateTree, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
-  install_media_path_under(root: install_media_store_path(tree: tree), filename: ubuntu_install_media_filename(artifact: artifact))
+  install_media_path_under(root: install_media_store_path(tree: tree), artifact: artifact)
 }
 
 fn install_media_part_path_on_tree(tree: HostStateTree, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {

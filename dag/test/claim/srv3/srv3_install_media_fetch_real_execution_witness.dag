@@ -9,6 +9,9 @@ import gunbc.artifact_acquisition {
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.host_state_root { isolated_host_state_tree }
+import gunbc.provisioning.install_media_store { install_media_store, install_media_store_path, InstallMediaStoreReading, InstallMediaStoreReady, InstallMediaStoreUnready, install_media_install_path, install_media_part_path, install_media_pre_cutover_install_path }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -79,4 +82,25 @@ test fn a_non_regular_entry_refuses_and_a_missing_parent_is_absent_by_real_execu
   let absent_ok = observe_url_file(path: nested, expected_hash: install_media_fetch_fixture_sha256) == AcquisitionAbsent
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && made.success && refused && absent_ok
+}
+
+// THE BYTE-FOR-BYTE PROOF for the install-media cutover (sealed stores, cohort C-host): the store's
+// format did not change -- only who derives its root. An existing record is written with the PRE-cutover
+// formulation (the deleted gunbc-side trio's own join, kept verbatim as install_media_pre_cutover_install_path
+// over the old literal dir), then read back through the SEALED store's routes, which derive from the ONE
+// declaration via the isolated tree (a real directory, so the mint lists it for real). Same bytes, same
+// names, same .part siblings.
+test fn media_bytes_written_before_the_cutover_read_back_through_the_sealed_store() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let tree = isolated_host_state_tree(dir: dir.path)
+  let made = shell.Mkdir.Parents(path: install_media_store_path(tree: tree) as FilePath)
+  let wrote = Filesystem.Write(path: install_media_pre_cutover_install_path(root: dir.path, artifact: noble_numbat_2404_3_live_server_arm64) as String, content: install_media_fetch_fixture_content)
+  let ok = match install_media_store(tree: tree) {
+    InstallMediaStoreReady { store: s } =>
+      Filesystem.Read(path: install_media_install_path(store: s, artifact: noble_numbat_2404_3_live_server_arm64) as String).content == install_media_fetch_fixture_content
+        && install_media_part_path(store: s, artifact: noble_numbat_2404_3_live_server_arm64) as String == concat(install_media_pre_cutover_install_path(root: dir.path, artifact: noble_numbat_2404_3_live_server_arm64) as String, ".part")
+    InstallMediaStoreUnready { detail: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && made.success && wrote.success && ok && cleaned.success
 }

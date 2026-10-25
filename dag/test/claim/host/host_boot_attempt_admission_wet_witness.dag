@@ -10,7 +10,8 @@ import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
 }
 import gunbc.fleet.fleet_intent_network { operator_host_mtcollins1 }
-import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
+import gunbc.host_state_root { HostStateTree, host_state_tree, host_state_tree_path, isolated_host_state_tree }
+import gunbc.provisioning.install_media_store { install_media_store_path }
 import gunbc.host.host_boot_attempt_admission {
   BootAttemptSlotStore, BootAttemptStoreReading, BootAttemptStoreReady, BootAttemptStoreUnready,
   boot_attempt_store, boot_attempt_slot_path,
@@ -177,4 +178,22 @@ test fn one_changed_byte_changes_the_receipt_digest_by_real_execution() -> Bool 
           }
       }
   }
+}
+
+// THE PAIRING OBLIGATION (DESIGN §3): the REAL production derivation is executed, not a fixture
+// standing in for it. host_state_tree() runs the one declaration's derivation, every store route is
+// derived from that same tree value, and each route is asserted to sit under the tree root as pure
+// string computation -- nothing here creates, lists or writes anything at /var/lib/gunbc.
+fn under(root: NonEmptyStr, route: NonEmptyStr) -> Bool {
+  let r = root as String
+  let s = route as String
+  s.length() > r.length() && s.substring(start: 0, end: r.length()) == r && s.substring(start: r.length(), end: r.length() + 1) == "/"
+}
+
+test fn the_production_host_state_tree_derivation_carries_every_c_host_store_route() -> Bool {
+  let tree = host_state_tree()
+  let root = host_state_tree_path(tree: tree)
+  under(root: root, route: boot_attempt_slot_path(tree: tree))
+    && under(root: root, route: unit_hold_store_path(tree: tree))
+    && under(root: root, route: install_media_store_path(tree: tree))
 }
