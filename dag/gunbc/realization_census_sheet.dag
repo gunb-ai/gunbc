@@ -104,14 +104,15 @@ import gunbc.realization_census_rows {
 
 // THE CENSUS INHABITS gunbc.repository_census_observation, one observation per tab's population.
 // The population is the modules the census lane enumerated at the pin (its method.md, kept in the
-// receipt), so the inclusion rule is the rows declaration itself rather than a re-derivation this
+// receipt) over three roots: dag, src/v1 (the seed's Rust files, which its rows name by path) and
+// src/v2. The inclusion rule is the rows declaration itself rather than a re-derivation this
 // module could not perform. The revision is the pin. The method run is the census data commit,
 // which carries the lane's scripts, read through gunbc.realization_census_rows_gen. A row's fact is
 // the content of its rendered cells, so two observations agree exactly when every cell agrees.
 data realization_census_population: RepositoryPopulation = RepositoryPopulation {
   repository: "gunbc" as RepositoryIdentity,
   first_source_root: "dag" as SourceRootIdentity,
-  additional_source_roots: ["src/v2" as SourceRootIdentity],
+  additional_source_roots: ["src/v1" as SourceRootIdentity, "src/v2" as SourceRootIdentity],
   inclusion_rule: decl_ref(module_path: "gunbc.realization_census_rows", decl_name: "realization_census_module_rows"),
   exclusion_rule: Absent,
 }

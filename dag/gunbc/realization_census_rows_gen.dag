@@ -113,6 +113,7 @@ type CensusRefusalCause
   | CauseUnknownModule
   | CauseUnknownClass
   | CauseCountDisagrees { projected: Int }
+  | CausePointerDisagrees { expected: String }
   | CauseReceiptUnreadable { error: String }
   | CauseRowsModuleUnwritable
 
@@ -202,6 +203,7 @@ fn census_refusal_cause_text(c: CensusRefusalCause) -> String {
     CauseUnknownModule => "a finding names a module the modules tab does not have"
     CauseUnknownClass => "a finding names a class the classes tab does not have"
     CauseCountDisagrees { projected: n } => concat("the findings naming this class project ", to_string(n))
+    CausePointerDisagrees { expected: e } => concat("the pointer the class_id determines is ", e)
     CauseReceiptUnreadable { error: e } => concat("the receipt file could not be read: ", e)
     CauseRowsModuleUnwritable => "the rows module could not be written"
   }
@@ -702,6 +704,17 @@ fn class_count_refusals(table: CensusTable, findings: List<FindingCensusReading>
   })
 }
 
+// THE module_list POINTER IS CHECKED, THEN DROPPED, like the counts: every cell is the sentence
+// naming the findings whose class_id is this row's, so it is determined by class_id and a cell
+// saying anything else refuses rather than being accepted unread.
+fn module_list_pointer(class_id: String) -> String { concat("findings.tsv where class_id = ", class_id) }
+
+fn module_list_refusals(table: CensusTable) -> List<CensusCellRefusal> {
+  table.rows
+    |> filter(r => census_cell(table: table, row: r, column: "module_list") != module_list_pointer(class_id: census_cell(table: table, row: r, column: "class_id")))
+    |> map(r => census_refusal(table: table.name, line: r.line, column: "module_list", value: census_cell(table: table, row: r, column: "module_list"), cause: CausePointerDisagrees { expected: module_list_pointer(class_id: census_cell(table: table, row: r, column: "class_id")) }))
+}
+
 // ── the whole census ───────────────────────────────────────────────────────────────────────────
 
 fn admit_realization_census_tables(
@@ -729,7 +742,7 @@ fn admit_realization_census_tables(
       append(duplicate_identity_refusals(table: modules_table, column: "module"), duplicate_identity_refusals(table: findings_table, column: "finding_id"))),
       duplicate_identity_refusals(table: classes_table, column: "class_id")),
       finding_reference_refusals(table: findings_table, modules_table: modules_table, classes_table: classes_table)),
-      class_count_refusals(table: classes_table, findings: findings))
+      append(class_count_refusals(table: classes_table, findings: findings), module_list_refusals(table: classes_table)))
     if count(refusals) > 0 {
       RealizationCensusRefused { refusals: refusals }
     } else {
