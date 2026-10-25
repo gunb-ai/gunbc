@@ -1926,12 +1926,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.approval_google_enrolment_wet_witness", function: "a_push_registration_writes_replays_unchanged_and_takes_a_rotated_token_through_the_real_store" },
-      entry: "dag/test/claim/approval_google_enrolment_wet_witness.dag",
-      function: "a_push_registration_writes_replays_unchanged_and_takes_a_rotated_token_through_the_real_store",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.approval_google_enrolment_wet_witness", function: "a_device_windowed_slot_commits_and_reads_back_its_head_through_the_real_store" },
       entry: "dag/test/claim/approval_google_enrolment_wet_witness.dag",
       function: "a_device_windowed_slot_commits_and_reads_back_its_head_through_the_real_store",

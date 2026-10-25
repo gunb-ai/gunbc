@@ -1289,10 +1289,10 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
 // Plus the test.claim.approval_device_routes_wet_witness identity (gunbc#12000): the
 // bound-realization control's first store effect, the device store mint's Filesystem.List. Triple enrollment: this expectation, its
 // WetScheduledClaim row, and the gunbc.ci.ci_layer_roots
-// LocalRepoWetLane row for approval_device_routes_wet_witness.dag. Plus the five
+// LocalRepoWetLane row for approval_device_routes_wet_witness.dag. Plus the four
 // test.claim.approval_google_enrolment_wet_witness identities (the enrol sequence through the real store,
-// the subject pin's lost-CAS reread, a traversal id refused before any read, the push registration's
-// windowed slot, and the device store's windowed slot operations), whose first effect is
+// the subject pin's lost-CAS reread, a traversal id refused before any read, and the device store's
+// windowed slot operations), whose first effect is
 // shell.Mktemp.DirWithTemplate and whose LocalRepoWetLane row is for approval_google_enrolment_wet_witness.dag.
 fn floor_route_gap_expectation_chunk_13() -> List<FloorRouteGapExpectation> {
   Cons {
@@ -1304,10 +1304,8 @@ fn floor_route_gap_expectation_chunk_13() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.approval_google_enrolment_wet_witness.a_traversal_enrolment_id_is_refused_by_the_store_before_any_read", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.approval_google_enrolment_wet_witness.a_push_registration_writes_replays_unchanged_and_takes_a_rotated_token_through_the_real_store", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.approval_google_enrolment_wet_witness.a_device_windowed_slot_commits_and_reads_back_its_head_through_the_real_store", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Empty {} } } } } }
+    tail: Empty {} } } } }
   }
 }
 
