@@ -1,0 +1,285 @@
+module test.claim.compute.compute_principal_admission_witness
+
+// THE LAB'S SERVICE USER GETS THE STORE; THE DEDICATED WORKER GETS A TYPED REFUSAL AT ADMISSION.
+//
+// WHY THIS FILE EXISTS (measured on srv1 2026-10-25). The first end-to-end lab attempt under the
+// dedicated worker account (node v1-rust-source-observation, attempt 71ac07ca21af8e29, lab-dev
+// 746afdad) handed in and the belt committed the candidate; acceptance then came back `unavailable`,
+// because the compute route refused with MaterializationStoreUndeclared -- the lab instance declared
+// NO materialization store, and the verification obligation runs compute as the instance's SERVICE
+// USER (DESIGN 6b). A store-less lab can therefore never accept anything.
+//
+// The exclusion this closure replaces was an ABSENCE: the dedicated worker was kept out of compute
+// only because the instance declared no store, which refused before any shared state was touched.
+// Declaring the store naively moves that refusal later, to an EACCES somewhere in the instance's
+// SHARED compute root (gunbc.compute.host_capacity compute_root) or the HOST capacity ledger
+// (/opt/gunbc/compute/capacity) -- shared state an untrusted account that reached either could forge
+// or exhaust, and a worker-writable durable store is a cache-poisoning surface. So the worker must
+// be refused at compute admission, BY PRINCIPAL, with a typed cause, BEFORE the store, the ledger or
+// the compute root are touched (the standing operator decision: the dedicated worker gets NO compute).
+//
+// WHAT EACH CLAIM PINS, and why it would go red:
+// (a) the lab's store root hangs under the lab root -- which the deploy declares -- and the lab root
+//     has ONE authority (the Srv1Lab scope root); a second literal drifting from the scope root, or
+//     a store path outside the instance root, goes red.
+// (b) the store and staging directories are demanded owner-only (0700) by the SERVICE USER, with no
+//     group bits and no shared-attempt group in the ownership -- a widened mode, a group-readable
+//     store, or the attempt group as owner goes red.
+// (c) the dedicated worker's own account is refused at admission with ComputePrincipalNotServiceUser
+//     on BOTH arms of the RED control: the lab WITH its store, and a still-store-less instance where
+//     the pre-change route would have answered MaterializationStoreUndeclared. Delete the gate arm
+//     from gunbc.compute.work_provider_local compute_provide_admitted_as and the first cause flips to
+//     a post-gate cause (toolchain/subject/store) and the second to MaterializationStoreUndeclared --
+//     both claims go red together. This is the claim the standing decision is carried by: it is NOT
+//     carried by the absence of a store any more.
+// (d) positive control: the service user's own principal passes the gate and the store resolves
+//     Present at the declared path -- tighten the gate past the principal (e.g. compare against a
+//     host uid literal, or invert it) and the belt's own route goes red here.
+//
+// NOTHING HERE TOUCHES THE HOST. Every path claimed fires inside the principal gate's refusal arm or
+// reads declared data; the first effect (gunbc.compute.work_provider_local compute_exec ->
+// gunbc.WitnessBin.Run) lives below the gate and is never reached on any of these calls.
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import std.algebra { join, string_contains }
+import std.materialization_store_grant {
+  PersistentInstanceWorkspace, materialization_store_root_path, materialization_store_staging_root_path,
+  materialization_store_workspace_leaf,
+}
+import gunbc.persistent_instance_roots { persistent_instance_scope_root, Srv1Lab }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, srv1_dashboard_lab_root, srv1_lab_dashboard_instance, srv1_live_dashboard_instance,
+  srv2_lab_dashboard_instance, prod_role_realization, dashboard_instance_worker_user,
+}
+import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget, OwnedDirectoryModeResolved,
+  owned_directory_path, owned_directory_member, owned_directory_mode, owned_directory_owner,
+}
+import gunbc.compute.work_provider_local {
+  ComputeStore, ProvideResult, compute_store, compute_store_directories, compute_principal_refusal,
+  compute_provide_admitted_as, compute_unobservable_principal,
+}
+import gunbc.compute.attempt_lifecycle { AttemptOwner, DirectInvocation }
+import gunbc.compute.work_request {
+  WorkOperation, WorkOutcome, WorkRefusedByInfrastructure, WorkInfrastructureRefusal,
+  ComputePrincipalNotServiceUser, MaterializationStoreUndeclared, ToolchainUnobserved,
+  SubjectUnresolved, work_default_build, work_refusal_detail,
+}
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name }
+import extdeps.access.posix { file_mode_octal }
+
+// THE ONE REFUSAL THE GATE MAY PRODUCE, read off a ProvideResult. Anything else -- a granted,
+// attached or post-gate refusal -- is NOT the principal gate speaking, and a caller of this helper
+// asks the question the standing decision asks: WHO was refused, and was it refused at admission.
+fn provide_result_principal_refusal(r: ProvideResult) -> WorkInfrastructureRefusal? {
+  match r {
+    ProvideFresh { outcome: WorkRefusedByInfrastructure { identity: _, cause: c }, document: _, host_record: _ } =>
+      match c {
+        ComputePrincipalNotServiceUser { instance_id: _, principal: _ } => Present { value: c }
+        _ => Absent
+      }
+    ProvideFresh { outcome: _, document: _, host_record: _ } => Absent
+    ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => Absent
+  }
+}
+
+// THE CAUSE ANY PROVIDE RESULT CARRIES, principal or not -- the discriminator the RED control reads.
+fn provide_result_cause(r: ProvideResult) -> WorkInfrastructureRefusal? {
+  match r {
+    ProvideFresh { outcome: WorkRefusedByInfrastructure { identity: _, cause: c }, document: _, host_record: _ } => Present { value: c }
+    ProvideFresh { outcome: _, document: _, host_record: _ } => Absent
+    ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => Absent
+  }
+}
+
+fn worker_account() -> String { fleet_posix_worker_user.name as String }
+
+fn service_account(instance: HostDashboardInstance) -> String { instance.directory_owner.user as String }
+
+fn witness_owner() -> AttemptOwner { DirectInvocation { why: "test.claim.compute.compute_principal_admission_witness" } }
+
+fn witness_commit() -> String { "0000000000000000000000000000000000000000" }
+
+fn demands_include(demands: List<OwnedDirectoryTarget>, path: String, member: String) -> Bool {
+  any(demands, t =>
+    (owned_directory_path(t: t) as String) == path
+      && (owned_directory_member(t: t) as String) == member)
+}
+
+// (a) THE STORE HANGS UNDER THE LAB ROOT, AND THE LAB ROOT HAS ONE AUTHORITY.
+// The lab's store is the Srv1Lab persistent workspace, so its root IS the scope root plus the
+// workspace leaf -- and srv1_dashboard_lab_root reads that same scope root, so the deploy that owns
+// the lab root owns the store's parent. A second literal for the lab root (the state before this
+// change) or a store path outside it goes red here; so does the lab silently losing its store (the
+// condition that made acceptance permanently unavailable on 2026-10-25).
+test fn the_lab_store_hangs_under_the_single_lab_root_the_deploy_declares() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let scope_root = persistent_instance_scope_root(scope: Srv1Lab)
+  let expected_root = join([scope_root, "/", materialization_store_workspace_leaf], "")
+  let expected_staging = join([expected_root, "-staging"], "")
+  // ONE AUTHORITY: the lab root is the scope root, not a literal beside it.
+  && (srv1_dashboard_lab_root as String) == scope_root
+  // THE LAB DECLARES ITS STORE AS THE Srv1Lab PERSISTENT WORKSPACE.
+  && match lab.materialization_store_root {
+    Present { value: PersistentInstanceWorkspace { scope: Srv1Lab } } => true
+    _ => false
+  }
+  // THE DECLARED PATH IS UNDER THAT ROOT, and it is the path compute_store opens.
+  && match lab.materialization_store_root {
+    Present { value: store } =>
+      (materialization_store_root_path(root: store) as String) == expected_root
+        && (materialization_store_staging_root_path(root: store) as String) == expected_staging
+        && match compute_store(instance: lab) {
+          Absent => false
+          Present { value: s } => materialization_store_root_path(root: s.root) == expected_root
+        }
+    Absent => false
+  }
+  // THE DEPLOY DECLARES BOTH DIRECTORIES, under the member names the compute store's own module picks.
+  && demands_include(
+    demands: dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab),
+    path: expected_root, member: "compute-materialization-store",
+  )
+  && demands_include(
+    demands: dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab),
+    path: expected_staging, member: "compute-materialization-store-staging",
+  )
+}
+
+// (b) OWNER-ONLY, DOWN TO THE BITS. The store's mode must exclude the attempt group in both ways
+// the kernel asks: the OWNERSHIP names the service user alone (not the shared attempt group), and
+// the GROUP BITS are zero, so no membership in gunbc-attempt grants read, write -- or ENTER (the
+// execute bit, which is what cache poisoning would need first). A DirectoryOwnerOnly that someone
+// widens to group-readable, a demand whose group is the attempt group, or a store left group-owned
+// goes red.
+test fn the_lab_store_is_demanded_owner_only_and_the_attempt_group_gets_nothing() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let rows = compute_store_directories(instance: lab)
+  && count(rows) == 2
+  && all(rows, t =>
+    // owner = the instance's directory owner, which IS the service user the verification obligation runs as.
+    (owned_directory_owner(t: t).user as String) == service_account(instance: lab)
+      && (owned_directory_owner(t: t).group as String) == service_account(instance: lab)
+      // THE SHARED ATTEMPT GROUP IS NOT IN THE OWNERSHIP AT ALL.
+      && (owned_directory_owner(t: t).group as String) != (fleet_posix_worker_shared_group_name as String)
+      // 0700 spelled through the one octal authority, and the group/other bits checked as BITS,
+      // not only as the string, so a re-spelled digit layout cannot pass on the string alone.
+      && match owned_directory_mode(t: t) {
+        OwnedDirectoryModeResolved { mode: m } =>
+          file_mode_octal(mode: m) == "0700"
+            && !m.group.read && !m.group.write && !m.group.execute
+            && !m.other.read && !m.other.write && !m.other.execute
+            && m.owner.read && m.owner.write && m.owner.execute
+        OwnedDirectoryModeRefused { reason: _ } => false
+      }
+  )
+  // And the two rows ARE the instance's demands, member for member -- not a second list.
+  && all(rows, t => any(dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab), d =>
+    (owned_directory_path(t: d) as String) == (owned_directory_path(t: t) as String)
+      && (owned_directory_member(t: d) as String) == (owned_directory_member(t: t) as String)))
+}
+
+// (c, THE STANDING DECISION) THE DEDICATED WORKER IS REFUSED AT ADMISSION, WITH ITS ACCOUNT NAMED.
+// The call runs compute_provide_admitted_as with the worker's own account name as the running
+// principal -- the account the worker unit runs as (fleet_posix_worker_user). The refusal must be
+// the PRINCIPAL cause, carrying the instance and the account, and it must fire BEFORE anything
+// below the gate could answer: the claim lane never launches a program on these paths, so a green
+// here means the refusal was built from declared data alone. The readable detail must name all
+// three shared things it refuses ahead of -- the materialization store, the capacity ledger and the
+// compute root -- because that sentence is what a worker on srv1 will read instead of an EACCES.
+test fn the_dedicated_worker_is_refused_by_principal_before_shared_state() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let refused = compute_provide_admitted_as(
+    instance: lab, principal: worker_account(), owner: witness_owner(),
+    commit: witness_commit(), op: work_default_build(),
+  )
+  && match provide_result_principal_refusal(r: refused) {
+    Absent => false
+    Present { value: ComputePrincipalNotServiceUser { instance_id: instance_id, principal: principal } } =>
+      instance_id == (lab.instance_id as String)
+        && principal == worker_account()
+        && any([
+          "materialization store", "capacity ledger", "compute root", "service user",
+        ], phrase => string_contains(s: work_refusal_detail(r: ComputePrincipalNotServiceUser { instance_id: instance_id, principal: principal }), pattern: phrase))
+    Present { value: _ } => false
+  }
+  // THE UNOBSERVABLE ACCOUNT REFUSES TOO -- fail-closed: a process whose account cannot be read is
+  // not the service user either, so it never reaches the store. Making the stand-in pass, or making
+  // it fall through to the toolchain arm, goes red here.
+  && match compute_principal_refusal(instance: lab, principal: compute_unobservable_principal) {
+    Present { value: ComputePrincipalNotServiceUser { instance_id: _, principal: _ } } => true
+    _ => false
+  }
+  // AND A THIRD ACCOUNT -- neither the worker nor the service user -- is refused: the gate is the
+  // instance's owner, not "not the worker".
+  && match compute_principal_refusal(instance: lab, principal: "some-other-account") {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// (c, THE RED CONTROL) THE PRINCIPAL CAUSE, NOT THE STORE'S ABSENCE, IS WHAT KEEPS THE WORKER OUT.
+// The pre-change state excluded the worker ONLY by the instance declaring no store -- the single
+// purpose absence the brief calls out as the whole exclusion, and the failure mode this change must
+// not fall back on. So the SAME admission call is made against an instance that STILL declares no
+// store (srv2's lab, whose consumer requests no compute): the worker's refusal there must STILL be
+// the principal cause. Remove the gate arm from compute_provide_admitted_as and this call answers
+// with MaterializationStoreUndeclared exactly as it did before the change -- the control goes red,
+// which is the point: the worker's exclusion is no longer allowed to depend on an absent store.
+test fn an_absent_store_is_not_the_workers_exclusion_anymore() -> Bool {
+  let store_less = srv2_lab_dashboard_instance()
+  // The premise: this instance declares no store, so the OLD exclusion would name the store.
+  && match store_less.materialization_store_root {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // Yet the worker is refused by WHO IT IS, not by the missing store.
+  && match provide_result_cause(r: compute_provide_admitted_as(
+    instance: store_less, principal: worker_account(), owner: witness_owner(),
+    commit: witness_commit(), op: work_default_build(),
+  )) {
+    Absent => false
+    Present { value: ComputePrincipalNotServiceUser { instance_id: _, principal: _ } } => true
+    Present { value: _ } => false
+  }
+}
+
+// (d, POSITIVE CONTROL) THE SERVICE USER'S PATH STILL REACHES THE STORE. The belt's verification
+// obligation runs as the instance's service user; the gate must let exactly that account through to
+// the store. Tighten the gate -- an inverted comparison, a host uid literal substituted for the
+// derived name (the ban DESIGN 4d keeps on literals is why the comparison is by the DERIVED name),
+// or a gate that refuses every principal -- and this claim goes red while (c) stays green: the pair
+// is what pins "the worker out, the service user in" rather than "nothing runs compute".
+test fn the_service_users_path_reaches_the_store() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  // The gate answers nothing for the instance's own service user -- no refusal of any kind.
+  && match compute_principal_refusal(instance: lab, principal: service_account(instance: lab)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // The store resolves Present at the declared path, so past the gate the verification route has
+  // somewhere to commit and read.
+  && match compute_store(instance: lab) {
+    Absent => false
+    Present { value: s } =>
+      materialization_store_root_path(root: s.root) == join([persistent_instance_scope_root(scope: Srv1Lab), "/", materialization_store_workspace_leaf], "")
+  }
+  // PROD IS UNDISTURBED: srv1's live worker IS the service user (the staged arm), so its own
+  // account -- derived from the same two-arm sum the worker unit's User= reads -- passes the gate.
+  // A gate that refused prod's own dispatches goes red here.
+  && match compute_principal_refusal(
+    instance: srv1_live_dashboard_instance(),
+    principal: dashboard_instance_worker_user(instance: srv1_live_dashboard_instance()) as String,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  // THE TWO ACCOUNTS THE GATE CONTRASTS ARE REALLY DIFFERENT ON THE LAB: the dedicated worker's
+  // derived name is not the service user's. If the lab flipped to WorkerIsServiceUser (the cutover)
+  // both derivations coincide and (c) would no longer describe it -- which is exactly the state the
+  // cutover note in gunbc.roadmap.roadmap_dashboard_instance says an operator decides.
+  && (dashboard_instance_worker_user(instance: lab) as String) == worker_account()
+  && (dashboard_instance_worker_user(instance: lab) as String) != service_account(instance: lab)
+}

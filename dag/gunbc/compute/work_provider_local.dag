@@ -2865,9 +2865,12 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 //
 // THE COMPARISON IS DERIVED, NEVER LITERAL. `instance.directory_owner.user` is the account the
 // instance's directories are owned by -- which IS its service user: it is derived from the instance's
-// service principal (gunbc.roadmap.roadmap_dashboard_instance linux_service_directory_owner), and the
-// worker unit and the belt's verification unit both run as that account
-// (gunbc.roadmap.roadmap_belt_actuate). The running account comes from the existing observation,
+// service principal (gunbc.roadmap.roadmap_dashboard_instance linux_service_directory_owner), it is the
+// account the belt's verification obligation runs as, and an instance whose worker IS the service user
+// passes the gate by construction (dashboard_instance_worker_user's WorkerIsServiceUser arm returns
+// exactly this account). A dedicated worker's unit runs as the account that same fn derives from
+// fleet_posix_worker_user -- a DIFFERENT name, which is precisely what this gate refuses. The running
+// account comes from the existing observation,
 // shell.Id.UserName (extdeps.shell -- the same one gunbc.fabric.fabric_source_snapshot
 // observe_provider_principal reads); this module adds no uid constant and no host-specific literal.
 // A refusal whose principal is not the service user is refused for EVERY instance, including
@@ -2925,9 +2928,10 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
 // is the FIRST arm: a principal that is not the instance's service user is refused here, with the
 // typed cause, and nothing below it -- no toolchain observation, no subject resolution, no store open,
 // no ledger grant, no compute root -- is reached. That order is the claim
-// compute_admission_refuses_a_non_service_principal_before_any_shared_state, whose RED control removes
-// the gate arm and expects the refusal's cause to change: a refusal that is only about the missing
-// store would survive that removal, and this one does not.
+// test.claim.compute.compute_principal_admission_witness an_absent_store_is_not_the_workers_exclusion_anymore,
+// whose RED control removes the gate arm and expects the refusal's cause to change on a STILL
+// store-less instance: a refusal that is only about the missing store would survive that removal,
+// and this one does not.
 fn compute_provide_admitted_as(instance: HostDashboardInstance, principal: String, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
   match compute_principal_refusal(instance: instance, principal: principal) {
     Present { value: refusal } =>

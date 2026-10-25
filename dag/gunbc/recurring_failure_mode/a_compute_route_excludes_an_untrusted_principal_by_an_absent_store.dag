@@ -1,0 +1,49 @@
+module gunbc.recurring_failure_mode.a_compute_route_excludes_an_untrusted_principal_by_an_absent_store
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { GuaranteeRung, MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbBlocker, AwaitsOneGrounding }
+
+// A COMPUTE ROUTE WHOSE ONLY EXCLUSION OF AN UNTRUSTED PRINCIPAL IS THE ABSENCE OF A DECLARED STORE.
+// The exclusion an ABSENCE performs disappears the moment the absence is repaired for the OTHER
+// reason -- and the two reasons are usually one line apart in one module.
+data a_compute_route_excludes_an_untrusted_principal_by_an_absent_store: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_compute_route_excludes_an_untrusted_principal_by_an_absent_store" as NonEmptyStr,
+
+  // FOUND AT RUNG 1: a live srv1 acceptance stopped, in its own words, with a located refusal
+  // (nothing ran wrong; the belt had committed a candidate it could never accept). NOW RUNG 2: the
+  // worker's exclusion is a typed arm evaluated BEFORE any shared state, pinned by a RED control
+  // (test.claim.compute.compute_principal_admission_witness an_absent_store_is_not_the_workers_exclusion_anymore
+  // -- delete the gate arm and it flips to the pre-change cause). The ceiling is 3, and the one
+  // grounding it waits on is the same one the whole claim-evaluating class waits on: the required
+  // job evaluates no witness today (gunbc.rung_drop v1_required_lanes_withdrawn), so a route-local
+  // check is enforced today only by the module's own order of arms plus a witness run.
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: MechanicallyPreventable },
+      ceiling: StructurallyGuaranteed,
+      blocker: AwaitsOneGrounding { grounding: "the required path evaluates a claim at all (gunbc.rung_drop v1_required_lanes_withdrawn's restoration trigger); until then the gate is carried by this route's own first arm plus a witness run" },
+      trigger_capability: "the required-lane claim harness, restored, evaluating the witness module's RED-control row",
+    },
+  },
+
+  receipts: [
+    "**a compute route keeps an untrusted principal out ONLY because the instance declares no materialization store, so declaring the store -- which the instance's SERVICE USER needs in order to accept anything -- silently moves the refusal from admission to a filesystem error in shared state.**",
+
+    "INVALID STATE: a compute admission route refuses MaterializationStoreUndeclared before touching the store, the capacity ledger or the compute root, and NO ARM OF IT LOOKS AT WHO IS RUNNING; the untrusted account is excluded as a side effect of the store being undeclared. The route and the declaration live one file apart, and the declaration is exactly what a fix for the OTHER consumer changes.",
+
+    "HARM, ONE INSTANCE, MEASURED. 2026-10-25 on srv1: the first end-to-end lab attempt under the dedicated worker account (node v1-rust-source-observation, attempt 71ac07ca21af8e29, lab-dev 746afdad) handed in and the belt COMMITTED THE CANDIDATE; acceptance then came back `unavailable`, 'verification could not run: validation refused (command-refused): ... instance srv1-lab-codex-feedback-v0 declares no materialization store' (gunbc.compute.work_request MaterializationStoreUndeclared). The verification obligation runs compute as the instance's service user (DESIGN 6b), so the absence that was keeping the worker out was simultaneously making the lab unable to ever accept anything: the exclusion and the outage were the same fact.",
+
+    "WHY THE NAIVE REPAIR IS WORSE THAN THE OUTAGE. Declaring the store removes the ONLY arm that refused the worker, and the worker's next attempt reaches, as an untrusted account, the instance's SHARED compute root (gunbc.compute.host_capacity compute_root) and the HOST capacity ledger (/opt/gunbc/compute/capacity) -- shared state it could forge entries in or exhaust for every other instance -- before an EACCES lands somewhere in one of them; a worker-writable durable store is a cache-poisoning surface even when the write itself is denied late. The refusal the worker needs is TYPED AND UP FRONT, at admission, by principal: gunbc.compute.work_provider_local compute_provide_admitted_as refuses ComputePrincipalNotServiceUser as its FIRST arm, comparing the running account (the shell.Id.UserName observation) against the instance's derived service user (instance.directory_owner), before the toolchain observation, the subject resolution, the store open, the ledger grant or the compute root.",
+
+    "DISTINGUISHING FACTS: the first refusal is located and says what to do, so the harm is an unavailable acceptance, not wrong results -- which is also why it survived to a live attempt: every witness was green, because the worker's exclusion was not a witness, it was a side effect. The tell that a route is in this class: search the admission arms for the principal, and the only answer names a STORE. Two exclusions that LOOK similar and are not this class: an ownership/mode boundary that denies late (that is this class's naive-repair harm, not its trigger), and a route whose principal arm exists but runs after shared state -- same class, worse position, same RED control shape.",
+
+    "CEILING 3, NEXT TRIGGER the restored required-lane claim harness evaluating this row's RED control; the gate arm's refusal precedes every effect in the lane, which is what makes 'reads/writes nothing' provable dry.",
+
+    "RECOGNITION RULE: any route that admits work for a named instance and touches instance-shared or host-shared state names its principal at admission, in a typed arm ABOVE every store/ledger/root access, and the pair of witnesses -- untrusted principal refused with the principal cause, service principal reaching the resource -- exists in the same change that makes the resource exist. A change that DECLARES a resource an untrusted account must not reach is itself the trigger to ask who was relying on its absence.",
+  ],
+
+  evidence: [],
+}
