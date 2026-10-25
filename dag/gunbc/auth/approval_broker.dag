@@ -3,6 +3,7 @@ module gunbc.auth.approval_broker
 import std.types { NonEmptyStr, String, Timestamp }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }
+import gunbc.auth.approval_capability { ApprovalCapabilityClaims, CapabilityRefusal }
 
 // ── What this module owns, and what it deliberately does not ─────────────────────────────────
 // THE LIFECYCLE IS SHARED; THE MEANING OF SUCCESS IS NOT.
@@ -29,7 +30,25 @@ data broker_owns_lifecycle_not_meaning_note: NonEmptyStr = "One broker lifecycle
 // gunbc.auth.approval_device_redemption redeem_device_over_store: the same capability, verified by the
 // same verify_capability, admitted only under a verified device signature from an active enrolment,
 // so every admitted redemption names the enrolled Google login and a disclosed capability admits
-// nothing without the device. This module keeps what that redemption commits INTO.
+// nothing without the device. This module keeps what that redemption commits INTO, and the carrier
+// an authority adapter consumes.
+
+// THE REDEEMED-CONSENT CARRIER AN AUTHORITY ADAPTER CONSUMES (gunbc.machine_intake bmc_rotation_route,
+// bmc_secure, arrival_converge take one as their approval input): the authenticated claims and the
+// principal the consent record names. It outlived the bearer route because it is the adapter's
+// interface, not that route's: an admitted redemption names the enrolled device's Google login, and
+// the only refusal it carries is the capability's own. The bearer route's method and tailnet-header
+// refusals left with it. Adapters are supplied one today; their live realizations carry their own
+// dissolution conditions.
+type RedemptionRefusal
+  = RedemptionCapabilityRefused { cause: CapabilityRefusal }
+
+type Redemption
+  = RedemptionAdmitted {
+      claims: ApprovalCapabilityClaims
+      decided_by: NonEmptyStr
+    }
+  | RedemptionRefused { cause: RedemptionRefusal }
 
 // ── One decision slot, and what commits into it ──────────────────────────────────────────────
 // APPROVE AND DENY CONTEND ON THE SAME SLOT. Two slots -- one per verb -- would exclude nothing:
