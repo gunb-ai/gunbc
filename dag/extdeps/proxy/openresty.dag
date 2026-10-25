@@ -75,8 +75,7 @@ type NginxToken = NonEmptyStr where brand("NginxToken")
 type NginxVariable = NonEmptyStr where brand("NginxVariable")
 
 type HeaderSource
-  = HeaderFromVariable { variable: NginxVariable }
-  | HeaderLiteral { text: NginxToken }
+  = | HeaderFromVariable { variable: NginxVariable }
 
 // OpenResty's interface is the phase block (access_by_lua_block, log_by_lua_block); the Lua inside it is the
 // consumer's code, passed in as lines.
@@ -107,7 +106,6 @@ type NginxDirective
   | ProxyPassToHost { host: NginxToken, port: Port, path: NginxToken }
   | InternalLocationOnly
   | ProxyMethodPost
-  | ProxyPassRequestBodyOff
   | LuaPhaseBlock { phase: LuaPhase, lines: List<String> }
   | LuaSharedDict { name: NginxToken, size: NginxToken }
 
@@ -166,12 +164,11 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
     ProxyBufferingDirective { value: v } => match v { ProxyBufferingOff => nginx_line(text: "proxy_buffering off", indent: indent) }
     ProxyRequestBufferingDirective { value: v } => match v { ProxyRequestBufferingOff => nginx_line(text: "proxy_request_buffering off", indent: indent) }
     ProxyNextUpstreamDirective { value: v } => match v { ProxyNextUpstreamOff => nginx_line(text: "proxy_next_upstream off", indent: indent) }
-    ProxySetHeader { header: h, source: src } => nginx_line(text: "proxy_set_header " + (h as String) + " " + match src { HeaderFromVariable { variable: v } => "$" + (v as String) HeaderLiteral { text: t } => t as String }, indent: indent)
+    ProxySetHeader { header: h, source: src } => nginx_line(text: "proxy_set_header " + (h as String) + " " + match src { HeaderFromVariable { variable: v } => "$" + (v as String) }, indent: indent)
     ProxyPassDirective { target: t, variable: v } => match t { ProxyTargetFromUpstreamVariable => nginx_line(text: "proxy_pass http://$" + (v as String), indent: indent) }
     ProxyPassToHost { host: hs, port: p, path: pa } => nginx_line(text: "proxy_pass http://" + (hs as String) + ":" + ((p as Int) as String) + (pa as String), indent: indent)
     InternalLocationOnly => nginx_line(text: "internal", indent: indent)
     ProxyMethodPost => nginx_line(text: "proxy_method POST", indent: indent)
-    ProxyPassRequestBodyOff => nginx_line(text: "proxy_pass_request_body off", indent: indent)
     LuaPhaseBlock { phase: ph, lines: ls } =>
       indent + lua_phase_name(ph: ph) + " \{\n" + indent + "  " + join_with(ls, "\n" + indent + "  ") + "\n" + indent + "}\n"
     LuaSharedDict { name: n, size: z } => nginx_line(text: "lua_shared_dict " + (n as String) + " " + (z as String), indent: indent)

@@ -85,6 +85,9 @@ test fn the_rendered_text_holds_the_expected_fragments() -> Bool {
     && string_contains(t, "proxy_pass http://127.0.0.1:9001")
     && string_contains(t, "ngx.exit(503)")
     && string_contains(t, "s:connect('127.0.0.1', 9002)")
+    && string_contains(t, "always_forward_body = true")
+    && string_contains(t, "string.match(v, '^[%w%.%-]+:%d+$')")
+    && !string_contains(t, "proxy_pass_request_body off")
 }
 
 // An unsafe token has no constructor result: the checked constructors return Absent, so it cannot reach a row.

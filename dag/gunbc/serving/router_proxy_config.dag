@@ -5,8 +5,8 @@ import std.types { String, Int, Bool, List, Milliseconds, Port, HttpStatus }
 import extdeps.proxy.openresty {
   OpenRestyVersion, openresty_1_27_1_1, NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff,
   ServerBlock, ListenOn, LocationBlock, PrefixMatch, ExactMatch, SetEmptyVariable, ProxyHttpVersion11, ProxyBufferingDirective,
-  ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxySetHeader, HeaderFromVariable, HeaderLiteral, ProxyPassDirective,
-  ProxyTargetFromUpstreamVariable, ProxyPassToHost, InternalLocationOnly, ProxyMethodPost, ProxyPassRequestBodyOff,
+  ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxySetHeader, HeaderFromVariable, ProxyPassDirective,
+  ProxyTargetFromUpstreamVariable, ProxyPassToHost, InternalLocationOnly, ProxyMethodPost,
   LuaPhaseBlock, LuaPhase, AccessPhase, LogPhase,
   ProxyBufferingOff, ProxyRequestBufferingOff, ProxyNextUpstreamOff, nginx_token, nginx_variable, render_nginx_directives,
 }
@@ -37,8 +37,6 @@ type RouterProxyVocabulary {
   authz_upstream_path: NginxToken
   stream_end_path: NginxToken
   v1_prefix: NginxToken
-  content_length_header: NginxToken
-  zero_literal: NginxToken
   loopback_host: NginxToken
   upstream_variable: NginxVariable
   permit_variable: NginxVariable
@@ -61,19 +59,13 @@ fn router_proxy_vocabulary() -> Optional<RouterProxyVocabulary> {
     Present { value: stream_end_path } =>
   match nginx_token(text: "/v1/") {
     Present { value: v1_prefix } =>
-  match nginx_token(text: "Content-Length") {
-    Present { value: content_length_header } =>
-  match nginx_token(text: "0") {
-    Present { value: zero_literal } =>
   match nginx_token(text: "127.0.0.1") {
     Present { value: loopback_host } =>
   match nginx_variable(text: "up") {
     Present { value: upstream_variable } =>
   match nginx_variable(text: "permit") {
     Present { value: permit_variable } =>
-  Present { value: RouterProxyVocabulary { seat_permit_header: seat_permit_header, upstream_answer_header: upstream_answer_header, authz_internal_path: authz_internal_path, authz_upstream_path: authz_upstream_path, stream_end_path: stream_end_path, v1_prefix: v1_prefix, content_length_header: content_length_header, zero_literal: zero_literal, loopback_host: loopback_host, upstream_variable: upstream_variable, permit_variable: permit_variable } }
-  Absent => Absent }
-  Absent => Absent }
+  Present { value: RouterProxyVocabulary { seat_permit_header: seat_permit_header, upstream_answer_header: upstream_answer_header, authz_internal_path: authz_internal_path, authz_upstream_path: authz_upstream_path, stream_end_path: stream_end_path, v1_prefix: v1_prefix, loopback_host: loopback_host, upstream_variable: upstream_variable, permit_variable: permit_variable } }
   Absent => Absent }
   Absent => Absent }
   Absent => Absent }
@@ -85,14 +77,39 @@ fn router_proxy_vocabulary() -> Optional<RouterProxyVocabulary> {
   Absent => Absent }
 }
 
-// The router's two callouts, in its own terms: the authz subrequest (a non-200 answer refuses with
-// failure_status before any forwarding, and the answer's headers are copied into variables) and the
+// The router's two callouts, in its own terms: the authz subrequest and the stream-end notice. The
+// authz subrequest carries the client's original body (read once, forwarded to the subrequest, and still
+// sent upstream unchanged), so the callout can normalize the request to demand from its model, size and
+// stream fields; a non-200 answer refuses with failure_status before any forwarding, and so does a 200
+// answer whose copied header is absent or not of its declared shape, because a missing upstream or permit
+// would otherwise fail later or lose the only handle release needs. The
 // stream-end notice (fire-and-forget from the log phase, only when a permit was issued). The loopback host,
 // the HTTP framing and the reading of 200 as admitted are router decisions, so they live here and reach
 // OpenResty only as the lines of a phase block.
+// What a copied answer header must hold: any non-empty text, or a host:port upstream address.
+type HeaderShape
+  = NonEmptyHeader
+  | HostPortHeader
+
 type HeaderCopy {
   header: NginxToken
   variable: NginxVariable
+  shape: HeaderShape
+}
+
+fn header_shape_check(shape: HeaderShape) -> String {
+  match shape {
+    NonEmptyHeader => "v ~= ''"
+    HostPortHeader => "string.match(v, '^[%w%.%-]+:%d+$') ~= nil"
+  }
+}
+
+fn header_copy_lines(c: HeaderCopy, failure: String) -> List<String> {
+  [
+    "do local v = res.header['" + (c.header as String) + "']",
+    "if type(v) ~= 'string' or not (" + header_shape_check(shape: c.shape) + ") then return ngx.exit(" + failure + ") end",
+    "ngx.var." + (c.variable as String) + " = v end",
+  ]
 }
 
 type RouterCallout
@@ -107,9 +124,10 @@ type RouterCalloutHook {
 fn router_callout_lines(c: RouterCallout) -> List<String> {
   match c {
     AuthzCapture { location: l, failure_status: r, copies: cs } => concat([
-      "local res = ngx.location.capture('" + (l as String) + "', \{method = ngx.HTTP_POST\})",
+      "ngx.req.read_body()",
+      "local res = ngx.location.capture('" + (l as String) + "', \{method = ngx.HTTP_POST, always_forward_body = true\})",
       "if res.status ~= 200 then return ngx.exit(" + ((r as Int) as String) + ") end",
-    ], map(cs, c => "ngx.var." + (c.variable as String) + " = res.header['" + (c.header as String) + "']"))
+    ], flat_map(cs, c => header_copy_lines(c: c, failure: (r as Int) as String)))
     StreamEndPost { host: hs, port: pt, path: pa, timeout_ms: t, only_when_set: o, header: hd, header_value: hv } => [
       "if ngx.var." + (o as String) + " == '' then return end",
       "local value = ngx.var." + (hv as String),
@@ -134,8 +152,8 @@ fn router_authz_hook(v: RouterProxyVocabulary) -> RouterCalloutHook {
     location: v.authz_internal_path,
     failure_status: 503 as HttpStatus,
     copies: [
-      HeaderCopy { header: v.upstream_answer_header, variable: v.upstream_variable },
-      HeaderCopy { header: v.seat_permit_header, variable: v.permit_variable },
+      HeaderCopy { header: v.upstream_answer_header, variable: v.upstream_variable, shape: HostPortHeader },
+      HeaderCopy { header: v.seat_permit_header, variable: v.permit_variable, shape: NonEmptyHeader },
     ],
   } }
 }
@@ -176,8 +194,6 @@ fn router_proxy_directives(v: RouterProxyVocabulary, listen_port: Port, authz_po
           InternalLocationOnly,
           ProxyPassToHost { host: v.loopback_host, port: authz_port, path: v.authz_upstream_path },
           ProxyMethodPost,
-          ProxyPassRequestBodyOff,
-          ProxySetHeader { header: v.content_length_header, source: HeaderLiteral { text: v.zero_literal } },
         ] },
       ] },
     ] },
