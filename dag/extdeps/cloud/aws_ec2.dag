@@ -2,11 +2,10 @@ module extdeps.cloud.aws_ec2
 
 import std.types { Int, Bool, NonEmptyStr, String, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.decimal { ExactDecimal }
 import extdeps.currency.currency { CurrencyCode, Usd }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import std.measure { Gigabyte, Gibibyte, Mebibyte, Bandwidth, HardwareThreadCount, gigabyte, gibibyte, bandwidth, hardware_thread_count }
+import std.measure { Gigabyte, Gibibyte, Mebibyte, Bandwidth, HardwareThreadCount, MoneyPerHour, gigabyte, gibibyte, bandwidth, hardware_thread_count }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // AMAZON EC2, THE CONTROL-PLANE CALLS THE FLEX LOOP USES, at EC2 API version 2016-11-15 (the Query API
@@ -25,9 +24,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // below the Spot price may be interrupted (User Guide, using-spot-instances). So there is no bid level
 // here, only an observed price (DescribeSpotPriceHistory) and an optional cap (SpotMarketOptions).
 //
-// MONEY ON THE WIRE IS A DECIMAL STRING ("spotPrice", "maxPrice"), modeled as ExactDecimal in US dollars
-// per instance-hour (aws_ec2_quote_currency). The parse from the wire string is the ingest step and is
-// not in this module. Timestamps on the wire are ISO 8601 dateTime strings and stay String here for the
+// MONEY ON THE WIRE IS A DECIMAL STRING ("spotPrice", "maxPrice") in US dollars per instance-hour. Here it
+// is std.measure MoneyPerHour, the SAME carrier extdeps.pricing.aws_ec2 AwsEc2OnDemandPriceRow uses for
+// the on-demand hourly price, so a spot and an on-demand quote are one type and compare directly. The
+// parse from the wire string is the ingest step and is not in this module; it refuses a string with more
+// fractional digits than the micro carrier holds rather than rounding a price. Timestamps on the wire are ISO 8601 dateTime strings and stay String here for the
 // same reason.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.aws.amazon.com/AWSEC2/latest/APIReference/Welcome.html" }
@@ -238,7 +239,7 @@ type AwsEc2SpotRequestBehavior
 
 // SpotMarketOptions. max_price absent means the on-demand price is the cap (RunInstances reference).
 type AwsEc2SpotMarketOptions {
-  max_price: ExactDecimal?
+  max_price: MoneyPerHour?
   request_behavior: AwsEc2SpotRequestBehavior
 }
 
@@ -380,7 +381,7 @@ type AwsEc2SpotPrice {
   availability_zone: NonEmptyStr
   instance_type: NonEmptyStr
   product_description: NonEmptyStr
-  spot_price: ExactDecimal
+  spot_price: MoneyPerHour
   timestamp: String
 }
 

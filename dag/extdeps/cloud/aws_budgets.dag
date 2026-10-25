@@ -2,6 +2,8 @@ module extdeps.cloud.aws_budgets
 
 import std.types { Int, NonEmptyStr, String, List }
 import std.decimal { ExactDecimal }
+import std.measure { MoneyAmountMicro }
+import extdeps.currency.currency { CurrencyCode }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -55,10 +57,12 @@ type AwsBudgetTimeUnit
   | AwsBudgetQuarterly
   | AwsBudgetAnnually
 
-// Spend: amount as a decimal string on the wire, with its unit (a currency code such as USD).
+// Spend {Amount, Unit}: a decimal string and a currency code on the wire. Here the amount is std.measure
+// MoneyAmountMicro and the unit is the extdeps.currency CurrencyCode, the carriers the rest of the
+// corpus prices money in; the projection renders them back to the wire strings.
 type AwsBudgetSpend {
-  amount: ExactDecimal
-  unit: NonEmptyStr
+  amount: MoneyAmountMicro
+  unit: CurrencyCode
 }
 
 // Cost filters narrow the budget, e.g. to a cost-allocation tag (`user:<key>$<value>`) so the budget
