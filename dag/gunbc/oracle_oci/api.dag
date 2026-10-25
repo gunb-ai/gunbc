@@ -23,6 +23,7 @@ import extdeps.cloud.oracle_oci_request_signing {
 import gunbc.jws_signer_realize { jws_sign }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import product.supplier.oracle_oci { oci_tenancy_home_region }
+import std.content_hash { sha256_hex_of_text }
 
 // THE OPERATOR'S OCI TENANCY AS AN API: credential, identity, one signed exchange, and the two reads
 // every converge over it is built from, a complete list and an admitted row.
