@@ -15677,7 +15677,7 @@ Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: call_semantics.clone(),
     descent_evidence: std::option::Option::None,
-}), typed_arg_nodes.clone(), call_inferred.clone(), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+}), typed_arg_nodes.clone(), call_inferred, span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
     emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(result_declaration_diags.clone(), v1_rt::concat(tier2b.kernel_diags.clone(), builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone()))))),
 })
 }
