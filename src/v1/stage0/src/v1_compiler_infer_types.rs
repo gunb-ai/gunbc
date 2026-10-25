@@ -2170,25 +2170,27 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn normalize_access_type_node(mut __tco_loop_n: Rc<Node>) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        let has_structure = (n.connective.clone() != Connective::NoConnective);
-        let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
-            && has_structure.clone())
-        {
-            n.children.clone().first().cloned()
-        } else {
-            std::option::Option::None
-        };
-        match unwrapped.clone() {
-            Some(base) => {
-                let __tco_0 = base.clone();
-                __tco_loop_n = __tco_0;
-                continue;
-            }
-            std::option::Option::None => {
-                break n;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            let has_structure = (n.connective.clone() != Connective::NoConnective);
+            let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
+                && has_structure.clone())
+            {
+                n.children.clone().first().cloned()
+            } else {
+                std::option::Option::None
+            };
+            match unwrapped.clone() {
+                Some(base) => {
+                    let __tco_0 = base.clone();
+                    __tco_loop_n = __tco_0;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break n;
+                }
             }
         }
     }
@@ -2476,29 +2478,31 @@ pub fn declaration_carried_through_resolution(
     mut __tco_loop_n: Rc<Node>,
     mut __tco_loop_hops: i64,
 ) -> Option<Rc<DeclarationRef>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut hops = __tco_loop_hops;
-        match whole_declaration_carried(n.clone()) {
-            Some(d) => {
-                break Some(d.clone());
-            }
-            std::option::Option::None => {
-                if (hops.clone() <= 0) {
-                    break std::option::Option::None;
-                } else {
-                    match n.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: r, .. }) => {
-                            let __tco_0 = r.clone();
-                            let __tco_1 = v1_rt::int_sub(hops, 1);
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_hops = __tco_1;
-                            continue;
-                        }
-                        _ => {
-                            break std::option::Option::None;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut hops = __tco_loop_hops;
+            match whole_declaration_carried(n.clone()) {
+                Some(d) => {
+                    break Some(d.clone());
+                }
+                std::option::Option::None => {
+                    if (hops.clone() <= 0) {
+                        break std::option::Option::None;
+                    } else {
+                        match n.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: r, .. }) => {
+                                let __tco_0 = r.clone();
+                                let __tco_1 = v1_rt::int_sub(hops, 1);
+                                __tco_loop_n = __tco_0;
+                                __tco_loop_hops = __tco_1;
+                                continue;
+                            }
+                            _ => {
+                                break std::option::Option::None;
+                            }
                         }
                     }
                 }
@@ -3703,37 +3707,39 @@ pub fn first_matching_algebra_field(
     mut __tco_loop_candidates: Rc<Vec<AlgebraFieldKind>>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<AlgebraFieldMatch>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut candidates = __tco_loop_candidates;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        match candidates.clone().first().cloned() {
-            std::option::Option::None => {
-                break std::option::Option::None;
-            }
-            Some(kind) => {
-                match crate::v1_std_core::find_child_named(
-                    n.clone(),
-                    algebra_field_kind_name(kind.clone()),
-                    source_indices.clone(),
-                ) {
-                    Some(f) => {
-                        break Some(Rc::new(AlgebraFieldMatch {
-                            field_kind: kind.clone(),
-                            field_node: f.clone(),
-                        }));
-                    }
-                    std::option::Option::None => {
-                        let __tco_0 = n;
-                        let __tco_1 = Rc::new(v1_rt::list_skip(&candidates, 1));
-                        let __tco_2 = source_indices;
-                        __tco_loop_n = __tco_0;
-                        __tco_loop_candidates = __tco_1;
-                        __tco_loop_source_indices = __tco_2;
-                        continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut candidates = __tco_loop_candidates;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            match candidates.clone().first().cloned() {
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+                Some(kind) => {
+                    match crate::v1_std_core::find_child_named(
+                        n.clone(),
+                        algebra_field_kind_name(kind.clone()),
+                        source_indices.clone(),
+                    ) {
+                        Some(f) => {
+                            break Some(Rc::new(AlgebraFieldMatch {
+                                field_kind: kind.clone(),
+                                field_node: f.clone(),
+                            }));
+                        }
+                        std::option::Option::None => {
+                            let __tco_0 = n;
+                            let __tco_1 = Rc::new(v1_rt::list_skip(&candidates, 1));
+                            let __tco_2 = source_indices;
+                            __tco_loop_n = __tco_0;
+                            __tco_loop_candidates = __tco_1;
+                            __tco_loop_source_indices = __tco_2;
+                            continue;
+                        }
                     }
                 }
             }

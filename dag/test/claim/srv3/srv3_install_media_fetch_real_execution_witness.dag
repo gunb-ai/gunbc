@@ -10,7 +10,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host_state_root { isolated_host_state_tree }
-import gunbc.provisioning.install_media_store { install_media_store, install_media_store_path, InstallMediaStoreReading, InstallMediaStoreReady, InstallMediaStoreUnready, install_media_install_path, install_media_part_path }
+import gunbc.provisioning.install_media_store { install_media_store, install_media_store_path, InstallMediaStoreReading, InstallMediaStoreReady, InstallMediaStoreUnready, install_media_install_path, install_media_part_path, install_media_parent_directory }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_filename }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -109,4 +109,54 @@ test fn media_bytes_written_before_the_cutover_read_back_through_the_sealed_stor
   }
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && made.success && wrote.success && ok && cleaned.success
+}
+
+// CONTROL (reviews 86279 / 86297 / 86365), unconverged host on the REAL filesystem: with the
+// artifacts directory absent the mint REFUSES -- it is a pure observer, and the directory is a
+// DEMANDED provisioning directory (gunbc.runner.runner_host_grants install_media_store_operations
+// creates it at convergence). A converged tree (directory present, as the demanded row leaves it)
+// mints Ready; the refusal here is what an unconverged host gets, and NOTHING was created by the
+// mint: the listing of the artifacts path still fails after the mint ran.
+test fn the_mint_refuses_an_unconverged_host_and_creates_nothing_itself() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let tree = isolated_host_state_tree(dir: dir.path)
+  let reading = install_media_store(tree: tree)
+  let listed_after = Filesystem.List(path: join([dir.path as String, "/", "artifacts"], ""))
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  let refused = match reading {
+    InstallMediaStoreReady { store: _ } => false
+    InstallMediaStoreUnready { detail: _ } => true
+  }
+  dir.success && refused && !listed_after.success && cleaned.success
+}
+
+// CONTROL, converged host on the REAL filesystem: the directory the demanded provisioning row creates
+// (mode 0755, the declared member), present before the mint runs, mints Ready.
+test fn the_mint_admits_a_converged_host_where_provisioning_created_artifacts() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let tree = isolated_host_state_tree(dir: dir.path)
+  let made = shell.Mkdir.Parents(path: join([dir.path as String, "/", "artifacts"], "") as FilePath)
+  let reading = install_media_store(tree: tree)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  let ok = match reading {
+    InstallMediaStoreReady { store: s } => install_media_parent_directory(store: s) as String == join([dir.path as String, "/", "artifacts"], "")
+    InstallMediaStoreUnready { detail: _ } => false
+  }
+  dir.success && made.success && ok && cleaned.success
+}
+
+// CONTROL, non-directory at the derived path: the mint refuses with a typed reason -- never an empty
+// store -- when the artifacts path exists as a regular file.
+test fn the_mint_refuses_when_the_artifacts_path_is_not_a_directory() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let tree = isolated_host_state_tree(dir: dir.path)
+  let artifacts = join([dir.path as String, "/", "artifacts"], "") as NonEmptyStr
+  let wrote = Filesystem.WriteCreateNew(path: artifacts as String, content: "not a directory" as NonEmptyStr)
+  let reading = install_media_store(tree: tree)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  let refused = match reading {
+    InstallMediaStoreReady { store: _ } => false
+    InstallMediaStoreUnready { detail: _ } => true
+  }
+  dir.success && wrote.success && cleaned.success && refused
 }
