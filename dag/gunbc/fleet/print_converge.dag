@@ -18,7 +18,12 @@ import gunbc.auth.secret_ref_credential {
 }
 import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
 import gunbc.fleet.printer_federation { printer_lan_host_identity }
-import gunbc.fleet.printer_workflow_artifact { printer_start_claim_directory }
+import gunbc.fleet.printer_workflow_artifact { printer_start_claim_directory, printer_request_directory, print_run_directory, printer_state_directories, printer_state_group }
+import gunbc.runner.runner_host_deploy { srv1_runner_host_spec }
+import gunbc.owned_directory { owned_directory_outcome_converged, owned_directory_outcome_detail }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.host.host_effect_realize { live_deploy_apply_ensure_directory_on_host, run_argv_over_host_effect_transport, run_argv_transport_succeeded }
+import gunbc.executor_privileged_operation { EnsureSupplementaryGroupMembership, executor_privileged_operation_elevated_command }
 import gunbc.fleet.fleet_printer_access {
   read_existing_printer_session, PrinterSessionReady, PrinterSessionRefused,
   printer_access_code_locus, PrinterAccessCodeDesiredLocusFound, PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
@@ -30,7 +35,7 @@ import gunbc.fleet.printer_actuation { attempt_claim_key, start_claim_path, star
 import gunbc.fleet.printer_operator_approval { approve_and_print }
 import gunbc.fleet.printer_receipt { write_receipt }
 import gunbc.auth.access_token_source { AccessTokenSource }
-import gunbc.fleet.print_request {
+import gunbc.fleet.print_request { field, field_is, completion_text, completion_matches,
   PrintRequest, PrintRequestRecord, print_attempt_id, request_record_name, record_matches,
   PrintEvidence, NoRequestRecord, RecordedNotClaimed, ClaimedObserved, CompletionRecorded, CompletionRecordMismatched,
   print_standing, print_standing_name, print_action, Prepare, RequestBedClearThenStart, RecordCompletion, ObserveOnly, Stop,
@@ -44,8 +49,23 @@ import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDige
 // ambiguous start stops and is left to a person. Request records share the start claims' directory
 // and failure domain: if that host state is lost, a request refuses (its record or claim cannot be
 // read), and absence is never reconstructed as permission to start.
-fn request_directory() -> String { concat(printer_start_claim_directory as String, "/requests") }
-data print_run_directory: String = "/var/lib/gunbc/print-runs"
+fn request_directory() -> String { printer_request_directory() as String }
+
+// THE STATE ROOTS ARE CONVERGED BEFORE ANY STANDING IS READ, through the one owned-directory provider
+// (observe, decide, install elevated, independent re-stat). A refusal stops the pass: a missing or
+// foreign directory never reads as an absent record.
+// The job principal holds the fleet account's group (idempotent; a membership added here first takes
+// effect for the next job's process, so a pass that just added it refuses below on the unreadable root).
+fn ensure_printer_state_directories() -> String? {
+  if !run_argv_transport_succeeded(outcome: run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: EnsureSupplementaryGroupMembership { login: srv1_runner_host_spec.job_user, group: printer_state_group() }), transport: LocalShell)) { return Present { value: concat("the job user could not be ensured in group ", printer_state_group() as String) } }
+  fold(printer_state_directories(), init: none, f: (refused, d) => match refused {
+    Present { value: r } => Present { value: r }
+    Absent => {
+      let outcome = live_deploy_apply_ensure_directory_on_host(target: d, transport: LocalShell)
+      if owned_directory_outcome_converged(o: outcome) { none } else { Present { value: owned_directory_outcome_detail(o: outcome) } }
+    }
+  })
+}
 
 fn record_path(request: PrintRequest) -> String { join([request_directory(), "/", request_record_name(request_id: request.request_id)], "") }
 fn completion_name(claim_file: String) -> String { concat(claim_file, ".completed.json") }
@@ -64,13 +84,6 @@ fn record_json(r: PrintRequestRecord) -> String {
   ]))
 }
 
-// A field that is absent, malformed or empty is a refusal of the whole record, never a default.
-fn field(v: JsonValue, key: String) -> NonEmptyStr? {
-  match json_field_string(obj: v, key: key) { FieldRead { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } } FieldAbsent => none FieldMalformed { cause: _ } => none }
-}
-fn field_is(v: JsonValue, key: String, expected: String) -> Bool {
-  match field(v: v, key: key) { Present { value: s } => (s as String) == expected Absent => false }
-}
 fn digest_field(v: JsonValue, key: String) -> Sha256Digest? {
   match field(v: v, key: key) { Present { value: s } => sha256_hex_digest(hex: s as String) Absent => none }
 }
@@ -90,6 +103,7 @@ fn read_record(request: PrintRequest) -> RecordRead {
       match parse_json_document(s: read.content) {
         JsonDocumentUnreadable { gap: _ } => RecordRefused { cause: "Request record is not JSON" }
         JsonDocumentParsed { value: v } => {
+          if !field_is(v: v, key: "schema", expected: "gunbc.print-request-record.v2") { return RecordRefused { cause: "Request record does not declare schema gunbc.print-request-record.v2" } }
           let request_id = match field(v: v, key: "request_id") { Present { value: x } => x Absent => return missing(name: "request_id") }
           let root = match field(v: v, key: "root") { Present { value: x } => x Absent => return missing(name: "root") }
           let recipe = match field(v: v, key: "recipe") { Present { value: x } => x Absent => return missing(name: "recipe") }
@@ -115,12 +129,12 @@ fn read_record(request: PrintRequest) -> RecordRead {
 // placement; the recipe is the machine and process; the request is the physical printer. It needs no
 // credential and never contacts the printer.
 fn prepare_and_record(request: PrintRequest, source_revision: NonEmptyStr, run_id: String) -> RecordRead {
-  let output = join([print_run_directory, "/", request_record_name(request_id: request.request_id), "-", run_id], "")
+  let output = join([print_run_directory as String, "/", request_record_name(request_id: request.request_id), "-", run_id], "")
   match prepare_request_plate(plate_file: join(["artifacts/printing/", request.root as String, "/plate.json"], ""), output: output, recipe: request.recipe as String, source_revision: source_revision as String, root: request.root as String) {
     RequestPlateRefused { cause: c } => RecordRefused { cause: concat("Preparation refused: ", c) }
     RequestPlatePrepared { artifact: a, path: located } => {
       let record = PrintRequestRecord { request: request, source_revision: source_revision, artifact_sha256: a, artifact_location: located as NonEmptyStr, attempt_id: print_attempt_id(request: request, artifact_sha256: a) }
-      if !shell.Mkdir.Parents(path: request_directory() as FilePath).success || !Filesystem.WriteCreateNew(path: record_path(request: request), content: record_json(r: record)).success {
+      if !Filesystem.WriteCreateNew(path: record_path(request: request), content: record_json(r: record)).success {
         RecordRefused { cause: "Cannot write the request record, or another pass wrote it first; re-run" }
       } else { RecordPresent { record: record } }
     }
@@ -162,34 +176,6 @@ fn claimed_version(claim_path: String) -> NonEmptyStr? {
   match parse_json_document(s: read.content) { JsonDocumentParsed { value: v } => field(v: v, key: "credential_version") JsonDocumentUnreadable { gap: _ } => none }
 }
 
-fn completion_text(record: PrintRequestRecord, remote: NonEmptyStr, run_id: String, report: String) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "gunbc.print-completion.v2")),
-    json_kv(key: "request_id", value: json_string(s: record.request.request_id as String)),
-    json_kv(key: "printer", value: json_string(s: record.request.printer as String)),
-    json_kv(key: "attempt_id", value: json_string(s: record.attempt_id as String)),
-    json_kv(key: "artifact_sha256", value: json_string(s: record.artifact_sha256.hex as String)),
-    json_kv(key: "remote_name", value: json_string(s: remote as String)),
-    json_kv(key: "run_id", value: json_string(s: run_id)),
-    json_kv(key: "printer_report", value: json_string(s: report)),
-    json_kv(key: "meaning", value: json_string(s: "the printer finished this attempt; fit and visual acceptance are separate observations")),
-  ]))
-}
-
-// Completion counts only when the record restates this request, printer, attempt, artifact and job.
-fn completion_matches(text: String, record: PrintRequestRecord, remote: NonEmptyStr) -> Bool {
-  match parse_json_document(s: text) {
-    JsonDocumentUnreadable { gap: _ } => false
-    JsonDocumentParsed { value: v } =>
-      field_is(v: v, key: "schema", expected: "gunbc.print-completion.v2") &&
-      field_is(v: v, key: "request_id", expected: record.request.request_id as String) &&
-      field_is(v: v, key: "printer", expected: record.request.printer as String) &&
-      field_is(v: v, key: "attempt_id", expected: record.attempt_id as String) &&
-      field_is(v: v, key: "artifact_sha256", expected: record.artifact_sha256.hex as String) &&
-      field_is(v: v, key: "remote_name", expected: remote as String)
-  }
-}
-
 // The recorded file is copied to this pass's working path and re-hashed there; only bytes that hash
 // to the recorded digest reach the printer.
 fn copy_verified(record: PrintRequestRecord, path: String) -> Bool {
@@ -210,6 +196,7 @@ fn session_report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_so
 fn converge_print(request: PrintRequest, source_revision: NonEmptyStr, run_id: String, token_source: AccessTokenSource) -> ProcessExit {
   let host = os.Hostname.ReadShort()
   if !host.success || trim(s: host.value) != (printer_lan_host_identity() as String) { return exit_failure(reason: "Print convergence runs on the modeled printer LAN host") }
+  match ensure_printer_state_directories() { Present { value: r } => return exit_failure(reason: concat("Printer state directory not converged: ", r)) Absent => {} }
   let record = match read_record(request: request) {
     RecordRefused { cause: c } => return exit_failure(reason: c)
     RecordPresent { record: r } => r
@@ -233,12 +220,17 @@ fn converge_print(request: PrintRequest, source_revision: NonEmptyStr, run_id: S
   } else {
     match resolve_credential_version(printer: record.request.printer, token_source: token_source) { Present { value: v } => v Absent => return exit_failure(reason: "Printer credential version could not be resolved from the registry") }
   }
-  let evidence = if completed {
-    let read = Filesystem.Read(path: concat(printer_start_claim_directory as String, concat("/", completion_name(claim_file: claim_file))))
-    if read.success && completion_matches(text: read.content, record: record, remote: remote) { CompletionRecorded } else { CompletionRecordMismatched }
-  } else {
-    let report = match session_report(printer: record.request.printer, version: version, token_source: token_source) { Present { value: t } => t Absent => return exit_failure(reason: "Printer observation unavailable; standing cannot be derived and nothing was sent") }
-    if claimed { ClaimedObserved { job: observe_job(text: report, remote: remote as String) } } else { RecordedNotClaimed { printer_ready: report_allows_start(text: report) } }
+  // The report that derives this pass's standing is the one any completion record retains; the
+  // record never carries a second, later observation that nothing checked.
+  let observed = if completed { none } else {
+    match session_report(printer: record.request.printer, version: version, token_source: token_source) { Present { value: t } => Present { value: t } Absent => return exit_failure(reason: "Printer observation unavailable; standing cannot be derived and nothing was sent") }
+  }
+  let evidence = match observed {
+    Absent => {
+      let read = Filesystem.Read(path: concat(printer_start_claim_directory as String, concat("/", completion_name(claim_file: claim_file))))
+      if read.success && completion_matches(text: read.content, record: record, remote: remote) { CompletionRecorded } else { CompletionRecordMismatched }
+    }
+    Present { value: report } => if claimed { ClaimedObserved { job: observe_job(text: report, remote: remote as String) } } else { RecordedNotClaimed { printer_ready: report_allows_start(text: report) } }
   }
   let standing = print_standing(evidence: evidence)
   let name = print_standing_name(s: standing)
@@ -249,13 +241,13 @@ fn converge_print(request: PrintRequest, source_revision: NonEmptyStr, run_id: S
       _ => exit_failure(reason: concat(name, ": a person must inspect the printer and the attempt's records; this request will not start again"))
     }
     RecordCompletion => {
-      let report = match session_report(printer: record.request.printer, version: version, token_source: token_source) { Present { value: t } => t Absent => return exit_failure(reason: "Printer observation unavailable at completion") }
+      let report = match observed { Present { value: t } => t Absent => return exit_failure(reason: "Completion standing without the observation that derived it") }
       if !Filesystem.WriteCreateNew(path: concat(printer_start_claim_directory as String, concat("/", completion_name(claim_file: claim_file))), content: completion_text(record: record, remote: remote, run_id: run_id, report: report)).success { return exit_failure(reason: "Completion observed but its record cannot be written") }
       write_receipt(printer: record.request.printer, standing: "completed", version: version as String, remote: remote as String, digest: record.artifact_sha256.hex as String, token_source: token_source)
     }
     RequestBedClearThenStart => {
-      let path = join([print_run_directory, "/", record.attempt_id as String, "-", run_id, ".3mf"], "")
-      if !shell.Mkdir.Parents(path: print_run_directory as FilePath).success || !copy_verified(record: record, path: path) { return exit_failure(reason: "The recorded artifact is missing or no longer hashes to its recorded digest; prepare under a new request id") }
+      let path = join([print_run_directory as String, "/", record.attempt_id as String, "-", run_id, ".3mf"], "")
+      if !copy_verified(record: record, path: path) { return exit_failure(reason: "The recorded artifact is missing or no longer hashes to its recorded digest; prepare under a new request id") }
       approve_and_print(printer: record.request.printer as String, path: path, digest: record.artifact_sha256.hex as String, version: version as String, attempt: record.attempt_id as String, token_source: token_source)
     }
   }

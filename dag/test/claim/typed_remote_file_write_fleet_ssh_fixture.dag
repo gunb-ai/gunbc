@@ -96,7 +96,7 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     decl_ref(module_path: "test.claim.fleet.fleet_bootstrap_principal_session_witness", decl_name: "a_missing_password_session_binary_refuses_before_the_transport"),
     decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_key_argv"),
     decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_password_argv"),
-    decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_renders_now"),
+    decl_ref(module_path: "test.claim.fleet.fleet_ssh_target_address_witness", decl_name: "w_renders_over"),
     decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "fleet_ssh_transport"),
     decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "over_fleet_ssh_an_npm_pin_is_unverifiable_and_installs_nothing"),
     decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "over_fleet_ssh_a_sha256_transport_mock_is_unverifiable_not_a_mismatch"),
@@ -109,11 +109,15 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_preamble_witness", decl_name: "the_typed_preamble_refuses_a_fleet_ssh_transport_before_running_any_command"),
     decl_ref(module_path: "test.claim.live_deploy.ensure_dependency_witness", decl_name: "both_subject_arms_reach_the_transport_as_argv_not_as_a_script_body"),
     decl_ref(module_path: "test.claim.runner.runner_host_cap_bracket_witness", decl_name: "bracket_context"),
+    // The withdraw/restore witness seals the same sealed context for its runs rather than resealing it.
+    decl_ref(module_path: "test.claim.runner.runner_host_withdraw_witness", decl_name: "withdraw_run"),
     // P4: the cap-route witness reads the sealed fleet context through this one fixture rather than
     // resealing it -- one way to seal a fleet context, one home (DESIGN section 6).
     decl_ref(module_path: "test.claim.runner.runner_slot_cap_observe_route_witness", decl_name: "cap_context"),
     // The host-bound transport witness builds its FleetSsh transports to srv2 and mtcollins1 over this context.
     decl_ref(module_path: "test.claim.host.host_bound_transport_witness", decl_name: "fleet_transport_to"),
+    // The anchored host transport witness builds its mtcollins1 and srv2 FleetSsh transports the same way.
+    decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "fleet_transport_to"),
     decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "mtcollins1_bound_transport"),
     decl_ref(module_path: "test.claim.host.host_bound_transport_witness", decl_name: "an_address_no_managed_host_answers_at_or_a_non_host_transport_binds_nothing"),
   ]

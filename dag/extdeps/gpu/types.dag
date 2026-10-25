@@ -11,7 +11,8 @@ import extdeps.vendor.nvidia { nvidia }
 import extdeps.vendor.amd { amd }
 import extdeps.storage.types { PcieLink }
 
-import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, CitedToAuthority }
+import std.decl_ref { NamedField, decl_field_eq }
 import std.measure { Measure }
 import extdeps.uri { Uri, Https }
 
@@ -179,6 +180,31 @@ fn gpu_catalog_row_eq(a: GpuModelCatalogRow, b: GpuModelCatalogRow) -> Bool {
 fn gpu_catalog_bandwidth_count(row: GpuModelCatalogRow) -> Nat? {
   match row.memory_bandwidth {
     Present { value: b } => Present { value: bandwidth_count(b: b) }
+    Absent => none
+  }
+}
+
+// A MEMORY BANDWIDTH WITH THE STANDING OF ITS FIGURE, the bandwidth sibling of DenseTensorThroughput:
+// a consumer that divides by a bandwidth must be able to say what grounds the figure it divided by.
+// A catalog row's bandwidth is CitedToAuthority through the row's own figure_citations entry naming
+// memory_bandwidth; a figure supplied from outside the catalog states its own standing.
+type GpuBandwidthFigure {
+  rate: Bandwidth
+  standing: CitedFigureStanding
+}
+
+// Absent when the row carries no bandwidth AND when it carries one that no figure_citations entry, or
+// more than one, grounds: an uncited catalog figure is not read as cited.
+fn gpu_catalog_bandwidth(row: GpuModelCatalogRow) -> GpuBandwidthFigure? {
+  match row.memory_bandwidth {
+    Present { value: b } => {
+      let hits = row.figure_citations |> filter(c => decl_field_eq(a: c.fact.field, b: NamedField { field_name: "memory_bandwidth" as NonEmptyStr }))
+      if count(hits) == 1 {
+        fold(hits, init: none, f: (_acc, c) => Present { value: GpuBandwidthFigure { rate: b, standing: CitedToAuthority { authority: c.authority } } })
+      } else {
+        none
+      }
+    }
     Absent => none
   }
 }

@@ -115,10 +115,7 @@ pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>
 }
 
 pub fn advance_line_prefix_indent_only_text(previous: bool, lexeme: String) -> bool {
-    advance_line_prefix_indent_only(
-        previous.clone(),
-        crate::std_coercion::unicode_scalar_unfold(lexeme.clone()),
-    )
+    advance_line_prefix_indent_only(previous, crate::std_coercion::unicode_scalar_unfold(lexeme))
 }
 
 pub fn placement_from_line_prefix(indent_only: bool) -> AnnotationPlacement {
@@ -265,7 +262,7 @@ pub fn annotation_children(
     index: Rc<AnnotationRegionIndex>,
     scope: Rc<AnnotationScope>,
 ) -> Rc<Vec<Rc<AnnotationRegion>>> {
-    match v1_rt::lookup(&index.children.clone(), scope.clone()) {
+    match v1_rt::lookup(&index.children.clone(), scope) {
         Some(siblings) => siblings.clone(),
         std::option::Option::None => Rc::new(vec![]),
     }
@@ -375,7 +372,7 @@ pub fn annotation_gap_in(
             Some(c) => (region_contains(c.extent.clone(), origin.clone()) && (depth.clone() > 0)),
             std::option::Option::None => false,
         };
-        let containing = region_when(inside.clone(), candidate.clone());
+        let containing = region_when(inside, candidate.clone());
         match containing.clone() {
             Some(inner) => {
                 let __tco_0 = index;
@@ -404,12 +401,7 @@ pub fn annotation_gap_of(
     origin: Rc<SourceSpan>,
     depth: i64,
 ) -> Rc<AnnotationGap> {
-    annotation_gap_in(
-        index.clone(),
-        Rc::new(AnnotationScope::FileScope),
-        origin.clone(),
-        depth.clone(),
-    )
+    annotation_gap_in(index, Rc::new(AnnotationScope::FileScope), origin, depth)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -433,7 +425,7 @@ pub fn annotation_attach_step(
     depth: i64,
 ) -> Rc<AnnotationAttachAcc> {
     {
-        let gap = annotation_gap_of(index.clone(), capture.origin.clone(), depth.clone());
+        let gap = annotation_gap_of(index, capture.origin.clone(), depth);
         let continues = ((capture.preceded_by_annotation_line.clone()
             && !capture.preceded_by_blank_line.clone())
             && acc.pending_adjacent.clone());
