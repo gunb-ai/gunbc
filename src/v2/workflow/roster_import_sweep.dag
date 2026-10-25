@@ -696,9 +696,10 @@ fn roster_wave_probe_report(prepared: PreparedGrammar, lex: PreparedLexRules) ->
   "]\ncase imported:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "imported"), ik: ["control/wave.dag:6:43"], nk: ["control/wave.dag:6:58"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]\ncase int-imported:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "int-imported"), ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]\ncase named:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "named"), ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:65"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
-  "]\ncase named-wrong:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "named-wrong"), ik: ["control/wave.dag:3:34"], nk: ["control/wave.dag:3:54"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
+  "]\ncase named-wrong:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "named-wrong"), ik: ["control/wave.dag:3:34"], nk: ["control/wave.dag:3:56"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]\ncase empty-claim:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "plain"), ik: [], nk: [], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]\ncase unkeyed-second-file:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "plain"), ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
+  "]\ncase pass2:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "applied"), ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]"
 }
 
