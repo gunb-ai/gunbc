@@ -53,11 +53,11 @@ import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent
 // host and the read is of this process itself.
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.procfs { ProcSelfCgroup, procfs_path_literal }
-import extdeps.linux.proc_self_cgroup { read_unified_cgroup_membership, CurrentCgroupObserved, MembershipMissing, MembershipAmbiguous, MembershipMalformed, ProcSelfCgroupLineMissingColon, ProcSelfCgroupLineMissingSecondColon, ProcSelfCgroupLineEmptyHierarchy, ProcSelfCgroupLineEmptyPath }
+import extdeps.linux.proc_self_cgroup { read_unified_cgroup_membership, ProcPidCgroupMembershipRecord, CurrentCgroupObserved, MembershipMissing, MembershipAmbiguous, MembershipMalformed, ProcSelfCgroupLineMissingColon, ProcSelfCgroupLineMissingSecondColon, ProcSelfCgroupLineEmptyHierarchy, ProcSelfCgroupLineEmptyPath }
 import gunbc.runner.runner_unit { NotARunnerUnit, RunnerUnitInstanceMalformed, RunnerUnitInstance, read_runner_unit_name, runner_unit_name_of_registration }
 import extdeps.github.actions_environment { github_runner_name_variable_name }
 import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound }
-import gunbc.runner.runner_slot_cap_converge { HolderDeferralLedger, LedgerFresh, LedgerCount, LedgerUnwritable }, SlotCapOutcome, SlotCapsSelfAtDesired, SlotCapsSelfDeferred
+import gunbc.runner.runner_slot_cap_converge { HolderDeferralLedger, LedgerFresh, LedgerCount, LedgerUnwritable, SlotCapOutcome, SlotCapsSelfAtDesired, SlotCapsSelfDeferred }
 
 // THE DRAIN BRACKET OVER ONE HOST, AS A PURE STEP MACHINE PLUS THE THREE EFFECTS IT SEQUENCES.
 //
@@ -1136,9 +1136,10 @@ fn acquire_bracket_over(target: SshTarget, context: FleetSshExecutionContext, ho
 // THE COUNT THAT BOUNDS THE HOLDER'S DEFERRAL (review 86146, finding 2; DESIGN §4b meta-obligation 2: a
 // class below ceiling names its next-rung trigger; §5: a degradation is countable, never quietly success).
 // A DEFERRED-SELF holder is owed a bracket from a pass dispatched on ANOTHER slot; if placement keeps
-// landing every pass on this same slot, the deferral must not be a permanent green. The count lives on the
-// HOST, next to the obligation file and under the same RUNNER_TEMP key -- a per-run file could not carry
-// state across passes, and that is exactly the state this ledger exists to carry. It is keyed to the
+// landing every pass on this same slot, the deferral must not be a permanent green. The count lives on
+// the HOST, in the holder's own slot directory (see holder_deferral_ledger_path: a per-run file could
+// not carry state across passes, and that is exactly the state this ledger exists to carry). It is
+// keyed to the
 // HOST AND THE UNIT: slot 02's debt is not slot 03's. A pass that finds the holder at desired DELETES the
 // file (convergence clears the debt); a pass that finds it owed increments the count; past the fleet bound
 // the cap module turns the same reading into a REFUSAL. A ledger this pass cannot read or write -- no
@@ -1244,7 +1245,7 @@ fn holder_deferral_ledger_read(host: String, unit: NonEmptyStr) -> HolderDeferra
 fn holder_deferral_ledger_record(host: String, unit: NonEmptyStr, passes: Int) -> String?
 {
   match holder_deferral_ledger_path(unit: unit) {
-    Absent => Present { value: "RUNNER_TEMP is unset" }
+    Absent => Present { value: "the holder unit names no parseable slot instance, so the ledger has nowhere to live" }
     Present { value: path } => {
       let w = Filesystem.Write(path: path, content: holder_deferral_ledger_text(o: HolderDeferralLedgerFile { key: holder_deferral_ledger_key(host: host, unit: unit as String), deferred_passes: passes }))
       if w.success { none } else { Present { value: w.error } }
