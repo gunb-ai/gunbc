@@ -31709,22 +31709,13 @@ pub fn build_module_context(
                             }
                             __result
                         });
-                        let root = namespace_root_from_properties(
-                            sitem.properties.clone(),
-                            sname.clone(),
-                            env.source_indices.clone(),
-                        );
                         Rc::new(InferScopeComponents {
                             svc_registry: v1_rt::rc_map_insert(
                                 acc.svc_registry.clone(),
                                 sname.clone(),
                                 entries.clone(),
                             ),
-                            svc_locals: v1_rt::rc_map_insert(
-                                acc.svc_locals.clone(),
-                                root.clone(),
-                                nominal_type_binding(root.clone()),
-                            ),
+                            svc_locals: acc.svc_locals.clone(),
                         })
                     }
                     std::option::Option::None => acc.clone(),
@@ -31738,7 +31729,7 @@ pub fn build_module_context(
                 census_scope.svc_registry.clone(),
                 local.svc_registry.clone(),
             ),
-            v1_rt::rc_map_merge(census_scope.svc_locals.clone(), local.svc_locals.clone()),
+            local.svc_locals.clone(),
         );
         let parent_envs = merge_func_env_views_by_owner(Rc::new({
             let mut __result = Vec::new();
