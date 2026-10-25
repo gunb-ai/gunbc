@@ -13,8 +13,7 @@ import product.printed_chassis.gpu_duct {
   GpuDuctAdmitted, GpuDuctInsertReadingsDisagree, GpuDuctFinsAtTheWindowFace, GpuDuctFanMountRefused,
   GpuDuctWindowDeeperThanFan, GpuDuctPlugPassageClosed, DuctCardMount, DuctExtent, PlugAndFlange, SleeveOverCardEnd,
   FullDuct, CardFitRing, a16_end_face, a16_duct_design, admit_gpu_duct, duct_presentation_members, duct_readme,
-  BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard, BlowerOutletPastWindow, BlowerChamberReachesKeepout,
-  BlowerCardCountUnsupported, a16_blower_duct_design, admit_blower_duct, blower_presentation_members, blower_readme,
+  BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard, BlowerPassageClosedByKeepout, BlowerCardCountUnsupported, a16_blower_duct_design, admit_blower_duct, blower_presentation_members, blower_readme,
 }
 
 // THE ONE PLACE A ROOT BECOMES PARTS. Every consumer on the print path -- the CAD check, preparation
@@ -58,8 +57,7 @@ fn a16_blower_selection(root: PrintedAssemblyRoot) -> PrintableAssemblySelection
     }
     BlowerDuctCardInterfaceRefused { refusal: _ } => PrintableAssemblyRefused { reason: "A16 blower duct card interface refused" }
     BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => PrintableAssemblyRefused { reason: "A16 blower socket is thicker than the card" }
-    BlowerOutletPastWindow { outlet_low: _, outlet_high: _, window_low: _, window_high: _ } => PrintableAssemblyRefused { reason: "A16 blower outlet runs past the fin window" }
-    BlowerChamberReachesKeepout { chamber_high: _, keepout_low: _ } => PrintableAssemblyRefused { reason: "A16 blower chamber reaches the 8-pin keep-out" }
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => PrintableAssemblyRefused { reason: "A16 blower passage closed by the 8-pin keep-out" }
     BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => PrintableAssemblyRefused { reason: "A16 blower duct admits one card; stacked intakes are unsolved" }
   }
 }

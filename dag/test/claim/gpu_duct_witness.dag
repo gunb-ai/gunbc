@@ -8,8 +8,8 @@ import product.printed_chassis.gpu_duct {
   GpuDuctAdmission, GpuDuctAdmitted, GpuDuctInsertReadingsDisagree, GpuDuctFinsAtTheWindowFace, GpuDuctFanMountRefused,
   GpuDuctWindowDeeperThanFan, GpuDuctPlugPassageClosed, EndFaceMeasurement, DuctCardMount, DuctExtent,
   PlugAndFlange, SleeveOverCardEnd, FullDuct, CardFitRing, admit_gpu_duct, a16_end_face, a16_duct_design,
-  BlowerDuctAdmission, BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard, BlowerOutletPastWindow,
-  BlowerChamberReachesKeepout, BlowerCardCountUnsupported, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,
+  BlowerDuctAdmission, BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard,
+  BlowerPassageClosedByKeepout, BlowerCardCountUnsupported, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,
 }
 import extdeps.fans.types { RadialBlowerEnvelope }
 
@@ -216,19 +216,18 @@ fn blower_parts_of(a: BlowerDuctAdmission) -> List<AssemblyPart>? {
     BlowerDuctAdmitted { parts: parts, interfaces: _ } => Present { value: parts }
     BlowerDuctCardInterfaceRefused { refusal: _ } => none
     BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => none
-    BlowerOutletPastWindow { outlet_low: _, outlet_high: _, window_low: _, window_high: _ } => none
-    BlowerChamberReachesKeepout { chamber_high: _, keepout_low: _ } => none
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => none
     BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => none
   }
 }
 
-fn blower_with(thickness: Int, outlet_offset: Int, outlet_width: Int, count: Int) -> BlowerDuctDesign {
+fn blower_with(thickness: Int, count: Int) -> BlowerDuctDesign {
   let e = a16_blower_duct_design.blower
   BlowerDuctDesign {
     blower: RadialBlowerEnvelope {
       vendor: e.vendor, model: e.model, housing_length: e.housing_length, housing_depth: e.housing_depth,
-      thickness: micrometer(count: thickness), outlet_offset: micrometer(count: outlet_offset),
-      outlet_width: micrometer(count: outlet_width), outlet_height: e.outlet_height, mounting_hole_diameter: e.mounting_hole_diameter,
+      thickness: micrometer(count: thickness), thickness_tolerance: e.thickness_tolerance,
+      mounting_hole_count: e.mounting_hole_count, mounting_hole_diameter: e.mounting_hole_diameter,
     },
     socket_clearance: a16_blower_duct_design.socket_clearance,
     socket_depth: a16_blower_duct_design.socket_depth,
@@ -256,15 +255,15 @@ fn fan_within_card(parts: List<AssemblyPart>) -> Bool {
   }
 }
 
-// POSITIVE CONTROL: the blower duct admits from the measured face, carries the duct, the blower,
-// the card and the keep-out, passes the source-model review checks, and leaves the keep-out clear.
+// POSITIVE CONTROL: the blower duct admits from the measured face and the cited housing, carries the
+// duct, the blower, the card and the keep-out, passes the source-model review checks, and leaves the
+// keep-out clear although its passage runs up to the keep-out boundary.
 test fn w_the_blower_duct_admits_passes_review_checks_and_clears_the_keepout() -> Bool {
   match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design) {
     BlowerDuctAdmitted { parts: parts, interfaces: joints } => length(list: parts) == 4 && review_model_checks(parts: parts, interfaces: joints) && keepout_clear(parts: parts)
     BlowerDuctCardInterfaceRefused { refusal: _ } => false
     BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => false
-    BlowerOutletPastWindow { outlet_low: _, outlet_high: _, window_low: _, window_high: _ } => false
-    BlowerChamberReachesKeepout { chamber_high: _, keepout_low: _ } => false
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => false
     BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => false
   }
 }
@@ -278,38 +277,25 @@ test fn w_the_blower_housing_lies_within_the_card_thickness() -> Bool {
   }
 }
 
-// RED: a housing as thick as two double-width slots' gap allows cannot keep its socket inside the card.
+// RED: a 40 mm housing cannot keep its socket inside the card's 38.6 mm thickness.
 test fn w_a_blower_thicker_than_the_card_refuses() -> Bool {
-  match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: blower_with(thickness: 40000, outlet_offset: 4500, outlet_width: 45000, count: 1)) {
+  match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: blower_with(thickness: 40000, count: 1)) {
     BlowerThickerThanCard { socket_thickness: s, face_thickness: t } => um_of(m: s) > um_of(m: t)
     BlowerDuctAdmitted { parts: _, interfaces: _ } => false
     BlowerDuctCardInterfaceRefused { refusal: _ } => false
-    BlowerOutletPastWindow { outlet_low: _, outlet_high: _, window_low: _, window_high: _ } => false
-    BlowerChamberReachesKeepout { chamber_high: _, keepout_low: _ } => false
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => false
     BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => false
   }
 }
 
-// RED: an outlet that starts at the housing's very end runs past the fin window's bottom edge.
-test fn w_an_outlet_past_the_window_refuses() -> Bool {
-  match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: blower_with(thickness: 33000, outlet_offset: 0, outlet_width: 45000, count: 1)) {
-    BlowerOutletPastWindow { outlet_low: _, outlet_high: _, window_low: _, window_high: _ } => true
+// RED: a connector measured far enough down the face that its keep-out covers the housing's whole end
+// leaves no open passage, and the duct refuses rather than sealing the blower.
+test fn w_a_keepout_over_the_whole_housing_end_refuses() -> Bool {
+  match admit_blower_duct(f: face_with_connector(lower_edge: a16_end_face.lower_insert_near_edge_from_bottom, setback: a16_end_face.fin_setback, depth: a16_end_face.window_depth, connector: micrometer(count: 74000)), d: a16_duct_design, b: a16_blower_duct_design) {
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => true
     BlowerDuctAdmitted { parts: _, interfaces: _ } => false
     BlowerDuctCardInterfaceRefused { refusal: _ } => false
     BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => false
-    BlowerChamberReachesKeepout { chamber_high: _, keepout_low: _ } => false
-    BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => false
-  }
-}
-
-// RED: an outlet wide enough to rise over the connector's span would put the chamber in the keep-out.
-test fn w_an_outlet_reaching_the_keepout_refuses() -> Bool {
-  match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: blower_with(thickness: 33000, outlet_offset: 4500, outlet_width: 70000, count: 1)) {
-    BlowerChamberReachesKeepout { chamber_high: _, keepout_low: _ } => true
-    BlowerDuctAdmitted { parts: _, interfaces: _ } => false
-    BlowerDuctCardInterfaceRefused { refusal: _ } => false
-    BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => false
-    BlowerOutletPastWindow { outlet_low: _, outlet_high: _, window_low: _, window_high: _ } => false
     BlowerCardCountUnsupported { card_count: _, intake_gap: _ } => false
   }
 }
@@ -317,12 +303,11 @@ test fn w_an_outlet_reaching_the_keepout_refuses() -> Bool {
 // RED: two stacked cards refuse with the intake gap their facing housings would leave (pitch minus
 // thickness), the stated limitation rather than a silently starved middle blower.
 test fn w_two_stacked_blowers_refuse_with_the_intake_gap() -> Bool {
-  match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: blower_with(thickness: 33000, outlet_offset: 4500, outlet_width: 45000, count: 2)) {
+  match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: blower_with(thickness: 33000, count: 2)) {
     BlowerCardCountUnsupported { card_count: n, intake_gap: g } => n == 2 && um_of(m: g) == 7640
     BlowerDuctAdmitted { parts: _, interfaces: _ } => false
     BlowerDuctCardInterfaceRefused { refusal: _ } => false
     BlowerThickerThanCard { socket_thickness: _, face_thickness: _ } => false
-    BlowerOutletPastWindow { outlet_low: _, outlet_high: _, window_low: _, window_high: _ } => false
-    BlowerChamberReachesKeepout { chamber_high: _, keepout_low: _ } => false
+    BlowerPassageClosedByKeepout { passage_length: _, keepout_low: _ } => false
   }
 }
