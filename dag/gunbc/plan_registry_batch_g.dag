@@ -26,6 +26,8 @@ import gunbc.plans.p4_home_serving_power_semantics { p4_home_serving_power_seman
 import gunbc.plans.ntfy_deployment_gate_approval { ntfy_deployment_gate_approval_plan }
 import gunbc.plans.network_install_architecture_rows { network_install_architecture_rows_plan }
 import gunbc.plans.fleet_naming_reach_access { fleet_naming_reach_access_plan }
+import gunbc.plans.site_segment_anchor_bmc_reach { site_segment_anchor_bmc_reach_plan }
+import gunbc.plans.boot_origin_bmc_media { boot_origin_bmc_media_plan }
 
 data batch_g_plans: List<Plan> = [
   resolver_type_name_collision_wall_plan,
@@ -52,5 +54,7 @@ data batch_g_plans: List<Plan> = [
   p4_home_serving_power_semantics_plan,
   ntfy_deployment_gate_approval_plan,
   network_install_architecture_rows_plan,
-  fleet_naming_reach_access_plan
+  fleet_naming_reach_access_plan,
+  site_segment_anchor_bmc_reach_plan,
+  boot_origin_bmc_media_plan
 ]
