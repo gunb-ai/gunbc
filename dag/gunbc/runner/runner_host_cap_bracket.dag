@@ -108,19 +108,25 @@ type ReregistrationTrigger
   | LongLivedSlotReregistrationRoute
 
 // the readings after the last of which the window opens; the wire renders them, so the residual's population is data
+// CurrentRegistrationReading is the fourth decay: #14877 joined the roster on the slot's CURRENT JIT identity
+// (read from the host's .runner file), and that reading decays like the other three -- between its read and the
+// stop the slot's registration identity can change (a re-registration replaces .runner), which makes the roster
+// evidence pertain to an identity the host no longer carries. It is taken inside the same pass and re-read with
+// it immediately before the stop, so it narrows, never closes -- exactly the residual's shape.
 type ResidualReading
   = MaskReading
   | RosterBusyFalseReading
   | NoRunnerWorkerReading
+  | CurrentRegistrationReading
 
 type ListenerRestartResidual {
   window_opens_after: List<ResidualReading>
 }
 
-data listener_restart_residual: ListenerRestartResidual = ListenerRestartResidual { window_opens_after: [MaskReading, RosterBusyFalseReading, NoRunnerWorkerReading] }
+data listener_restart_residual: ListenerRestartResidual = ListenerRestartResidual { window_opens_after: [MaskReading, RosterBusyFalseReading, NoRunnerWorkerReading, CurrentRegistrationReading] }
 
 fn residual_reading_wire(r: ResidualReading) -> String {
-  match r { MaskReading => "mask" RosterBusyFalseReading => "roster busy=false" NoRunnerWorkerReading => "no Runner.Worker" }
+  match r { MaskReading => "mask" RosterBusyFalseReading => "roster busy=false" NoRunnerWorkerReading => "no Runner.Worker" CurrentRegistrationReading => "current registration" }
 }
 
 type ListenerReregistrationFrontier {
