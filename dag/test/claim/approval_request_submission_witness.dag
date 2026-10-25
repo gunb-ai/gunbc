@@ -1,22 +1,20 @@
 module test.claim.approval_request_submission_witness
 
-import gunbc.auth.approval_broker_endpoint { ApprovalBrokerAddressResolved }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String, Secret }
 import std.algebra { length }
 import std.optional { Present }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, MacKeyMaterialNotHex, MacVerified, mac_verify }
-import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_decision_store {
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, StoredApprovalRequest, stored_request_json, claims_for,
-  approval_mac_key_id, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, EscalationUnreadable, EscalationPending, EscalationDecided, EscalationNotFiled,
+  approval_mac_key_id, EscalationUnreadable, EscalationPending, EscalationDecided, EscalationNotFiled,
 }
-import gunbc.auth.approval_ntfy_publish { hermetic_ntfy_publish_message_id }
 import gunbc.auth.approval_broker { BrokerDenied }
 import gunbc.auth.approval_apns_publish {
   DevicePushTargets, DevicePushTargetsListed, DevicePushTarget, ApnsSender, ApnsSenderReady, ApnsSenderUnavailable,
-  DeviceNotification, DeviceNotificationAttempted, DeviceNotificationNotAttempted, DevicePushSent, DevicePushNotSent, hermetic_apns_id,
+  DeviceNotification, DeviceNotificationAttempted, DeviceNotificationNoRecipient, DeviceNotificationNotAttempted, DevicePushSent, DevicePushNotSent, hermetic_apns_id,
+  device_notification_sentence,
 }
 import gunbc.auth.approval_device_wire { ApnsRegistration }
 import gunbc.auth.approval_device_redemption { PushProviderAccepted, ProviderApns }
@@ -26,9 +24,9 @@ import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_id,
   sign_submission, submission_envelope_json, parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
   admit_parsed_submission, SubmissionVerdict, SubmissionVerified, SubmissionNotAdmitted, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled,
-  issue_links, LinksIssued, LinksNotIssued, approval_message, escalation_status, escalation_status_of,
-  notify_filed, occupied_slot_standing, OccupiedRenotifiable, OccupiedConflict, OccupiedUnreadable, PublisherTokenLoaded, SubmissionFiledCapabilityKeyUnavailable, SubmissionFiledAndNotified, SubmissionFiledPublisherTokenUnavailable, PublisherTokenUnavailable,
-  SubmissionFiledLinksNotIssued, SubmissionStoreRefused, submission_outcome_admits_poll,
+  escalation_status, escalation_status_of,
+  SubmissionOutcome, notify_filed, occupied_slot_standing, OccupiedRenotifiable, OccupiedConflict, OccupiedUnreadable, SubmissionFiledCapabilityKeyUnavailable, SubmissionFiledAndNotified, SubmissionFiledNotNotified,
+  SubmissionStoreRefused, submission_outcome_admits_poll,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -125,11 +123,9 @@ test fn a_correctly_signed_submission_is_admitted_and_a_wrong_key_is_not_enrolle
 }
 
 test fn a_slot_with_no_minted_capability_does_not_admit_poll() -> Bool {
-  let no_links = SubmissionFiledLinksNotIssued { escalation_id: "esc-mtc1-boot-1" as NonEmptyStr, key_id: approval_mac_key_id }
   let no_key = SubmissionFiledCapabilityKeyUnavailable { escalation_id: "esc-mtc1-boot-1" as NonEmptyStr, cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-mac-key" } }
-  !submission_outcome_admits_poll(o: no_links)
-    && !submission_outcome_admits_poll(o: no_key)
-    && submission_outcome_admits_poll(o: SubmissionFiledAndNotified { escalation_id: "esc-mtc1-boot-1" as NonEmptyStr, message_id: "m1" as NonEmptyStr, devices: DeviceNotificationNotAttempted { detail: "witness" } })
+  !submission_outcome_admits_poll(o: no_key)
+    && submission_outcome_admits_poll(o: SubmissionFiledAndNotified { escalation_id: "esc-mtc1-boot-1" as NonEmptyStr, devices: DeviceNotificationNotAttempted { detail: "witness" } })
     && !submission_outcome_admits_poll(o: SubmissionStoreRefused { detail: "disk" as NonEmptyStr })
 }
 
@@ -148,54 +144,8 @@ test fn the_capability_key_cannot_file_a_request() -> Bool {
 
 // ── the links: issued with mac_sign, redeemable by the store's verifier ────────────────────────
 
-test fn issued_links_carry_tags_that_verify_over_the_stored_claims_for_their_own_decision_only() -> Bool {
-  match issue_links(capability_key: capability_key(), base: "https://srv1.tailecbe08.ts.net", request: request()) {
-    LinksNotIssued { key_id: _ } => false
-    LinksIssued { approve: a, deny: d } => {
-      let approve_seg = (a as String).split(sep: "/approve/")
-      let deny_seg = (d as String).split(sep: "/approve/")
-      match approve_seg.skip(n: 1).first() {
-        Absent => false
-        Present { value: seg } => match parse_capability_segment(segment: seg) {
-          CapabilitySegmentParsed { escalation_id: e, decision: ProposeApprove, tag_hex: t } =>
-            e == "esc-mtc1-boot-1"
-              && match mac_verify(key: capability_key(), message: approval_capability_signing_input(c: claims_for(request: request(), decision: ProposeApprove)), tag_hex: t) { MacVerified { verified: _ } => true  _ => false }
-              && match mac_verify(key: capability_key(), message: approval_capability_signing_input(c: claims_for(request: request(), decision: ProposeDeny)), tag_hex: t) { MacVerified { verified: _ } => false  _ => true }
-          _ => false
-        }
-      }
-        && match deny_seg.skip(n: 1).first() {
-          Absent => false
-          Present { value: seg } => match parse_capability_segment(segment: seg) {
-            CapabilitySegmentParsed { escalation_id: _, decision: ProposeDeny, tag_hex: t } =>
-              match mac_verify(key: capability_key(), message: approval_capability_signing_input(c: claims_for(request: request(), decision: ProposeDeny)), tag_hex: t) { MacVerified { verified: _ } => true  _ => false }
-            _ => false
-          }
-        }
-    }
-  }
-}
 
-test fn the_message_carries_purpose_both_links_and_the_destructive_mark() -> Bool {
-  let links = issue_links(capability_key: capability_key(), base: "https://srv1.tailecbe08.ts.net", request: request())
-  match approval_message(request: request(), links: links) {
-    Absent => false
-    Present { value: m } =>
-      contains(m.body as String, "Boot Mt. Collins unit 1")
-        && contains(m.body as String, "DESTRUCTIVE")
-        && contains(m.body as String, "/approve/esc-mtc1-boot-1.deny.")
-        && contains(m.click as String, "/approve/esc-mtc1-boot-1.approve.")
-        && contains(m.title as String, "esc-mtc1-boot-1")
-  }
-}
 
-test fn a_non_hex_capability_key_issues_no_link() -> Bool {
-  let bad = MacKey { id: approval_mac_key_id, suite: HmacSha256, material: "not hex at all" as Secret }
-  match issue_links(capability_key: bad, base: "https://srv1.tailecbe08.ts.net", request: request()) {
-    LinksNotIssued { key_id: _ } => true
-    LinksIssued { approve: _, deny: _ } => false
-  }
-}
 
 // THE STATUS TEXT A POLLING RUN READS, over a store root under the checkout that holds no slot:
 // the not-filed standing is the filesystem's absence, read through the CAS probe, never inferred
@@ -208,24 +158,11 @@ test fn status_text_reports_not_filed_for_an_absent_slot_and_unreadable_off_the_
     && unreadable.status == 503 && contains(unreadable.body, "standing=unreadable")
 }
 
-// THE PUBLISH RUNS. notify_filed reaches ntfy.Publish.PublishMessage, whose hermetic arm answers
-// the fixture message id; deleting the publish call, or the token arm, fails this control. The
-// token-unavailable arm is the same fold one input earlier, so both are read from one route.
-test fn a_filed_request_with_a_publisher_token_is_published_and_without_one_is_reported() -> Bool {
-  match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, devices: no_registered_device(), sender: ready_sender(), request: request(), broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
-    SubmissionFiledAndNotified { escalation_id: e, message_id: m, devices: _ } => e == "esc-mtc1-boot-1" && (m as String) == hermetic_ntfy_publish_message_id
-    _ => false
-  }
-    && match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }, devices: no_registered_device(), sender: ready_sender(), request: request(), broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
-      SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: d, devices: _ } => d == "absent"
-      _ => false
-    }
-}
 
-// THE PHONE IS PUSHED. With one registered approver device and a ready sender, the filing reaches
-// apns.Http2.Send and reads back Apple's acceptance under the hermetic apns-id, keyed by the
-// enrolment it went to; deleting the device fan-out, or the send, fails this control. The push goes
-// out even when the ntfy publisher token is unavailable, because the two routes are independent.
+// THE PHONE IS PUSHED, AND IT IS THE ONLY NOTIFICATION. With one registered approver device and a
+// ready sender, the filing reaches apns.Http2.Send and reads back Apple's acceptance under the
+// hermetic apns-id, keyed by the enrolment it went to; deleting the device fan-out, or the send,
+// fails this control.
 fn accepted_by_the_one_device(n: DeviceNotification) -> Bool {
   match n {
     DeviceNotificationAttempted { outcomes: os, unregistered: _, unreadable: _ } =>
@@ -233,39 +170,30 @@ fn accepted_by_the_one_device(n: DeviceNotification) -> Bool {
         Present { value: DevicePushSent { enrollment_id: e, outcome: PushProviderAccepted { provider: ProviderApns, receipt: r } } } => e == "genr-witness" && (r as String) == hermetic_apns_id
         _ => false
       }
+    DeviceNotificationNoRecipient { unregistered: _, unreadable: _ } => false
     DeviceNotificationNotAttempted { detail: _ } => false
   }
 }
 
 test fn a_filed_request_pushes_every_registered_approver_device_through_apns() -> Bool {
-  match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, devices: one_registered_device(), sender: ready_sender(), request: request(), broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
-    SubmissionFiledAndNotified { escalation_id: _, message_id: _, devices: n } => accepted_by_the_one_device(n: n)
+  match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, devices: one_registered_device(), sender: ready_sender(), request: request()) {
+    SubmissionFiledAndNotified { escalation_id: e, devices: n } => e == "esc-mtc1-boot-1" && accepted_by_the_one_device(n: n)
     _ => false
-  }
-    && match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }, devices: one_registered_device(), sender: ready_sender(), request: request(), broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
-      SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _, devices: n } => accepted_by_the_one_device(n: n)
-      _ => false
-    }
-}
-
-// NOBODY PUSHED IS SAID, NOT SILENT: an unavailable sender, or no registered device, is a
-// not-attempted answer naming why -- never an empty success.
-fn not_attempted_naming(n: DeviceNotification, fragment: String) -> Bool {
-  match n {
-    DeviceNotificationNotAttempted { detail: d } => contains(d, fragment)
-    DeviceNotificationAttempted { outcomes: _, unregistered: _, unreadable: _ } => false
   }
 }
 
-test fn an_unavailable_sender_or_no_registered_device_is_named_not_attempted() -> Bool {
-  match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, devices: one_registered_device(), sender: ApnsSenderUnavailable { detail: "no key file" }, request: request(), broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
-    SubmissionFiledAndNotified { escalation_id: _, message_id: _, devices: n } => not_attempted_naming(n: n, fragment: "no key file")
+// NOBODY WOKEN IS NOT NOTIFIED, AND SAYS WHY: an unavailable sender, or no registered device, files
+// the request and answers not-notified naming the cause -- never a notified answer with nothing behind it.
+fn not_notified_naming(o: SubmissionOutcome, fragment: String) -> Bool {
+  match o {
+    SubmissionFiledNotNotified { escalation_id: _, devices: n } => contains(device_notification_sentence(n: n), fragment)
     _ => false
   }
-    && match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, devices: no_registered_device(), sender: ready_sender(), request: request(), broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
-      SubmissionFiledAndNotified { escalation_id: _, message_id: _, devices: n } => not_attempted_naming(n: n, fragment: "1 unregistered")
-      _ => false
-    }
+}
+
+test fn an_unavailable_sender_or_no_registered_device_is_filed_but_not_notified() -> Bool {
+  not_notified_naming(o: notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, devices: one_registered_device(), sender: ApnsSenderUnavailable { detail: "no key file" }, request: request()), fragment: "no key file")
+    && not_notified_naming(o: notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, devices: no_registered_device(), sender: ready_sender(), request: request()), fragment: "1 unregistered")
 }
 
 // A FAILED NOTIFY IS RETRIED BY RESUBMITTING: an occupied slot re-notifies only while pending with
@@ -295,7 +223,7 @@ test fn an_occupied_slot_is_renotifiable_only_while_pending_with_the_same_bytes(
 // A CAPABILITY-KEY REFUSAL AFTER THE WRITE STILL SAYS WHICH ESCALATION WAS FILED, like every other
 // post-write arm, so the filer retries the same bytes instead of minting a new id (review 67295).
 test fn a_capability_key_refusal_after_filing_names_the_filed_escalation() -> Bool {
-  match notify_filed(capability_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-mac-key" } }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, devices: one_registered_device(), sender: ready_sender(), request: request(), broker: ApprovalBrokerAddressResolved { value: "https://srv1.example.ts.net" as NonEmptyStr }) {
+  match notify_filed(capability_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-mac-key" } }, devices: one_registered_device(), sender: ready_sender(), request: request()) {
     SubmissionFiledCapabilityKeyUnavailable { escalation_id: e, cause: _ } => e == "esc-mtc1-boot-1"
     _ => false
   }
