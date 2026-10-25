@@ -2770,24 +2770,25 @@ fn mtcollins1_boot_fru_print_path(run_attempt: NonEmptyStr) -> NonEmptyStr {
 }
 
 type MtCollins1PrePowerRetention
-  = PrePowerRetained { path: NonEmptyStr, bytes: Int }
+  = PrePowerRetained { path: NonEmptyStr, bytes: ByteSize }
   | PrePowerNotRetained { reason: NonEmptyStr }
 
 // THE FOLD BOTH WAYS OF ASKING PASS THROUGH. The pre-power phase writes the bytes the tool answered; the
 // conclusion reads the file back by the run's own identity. Either way the SAME fold decides what counts
 // as retained: the answer must have come, the bytes must be more than nothing, and what is kept carries
-// the byte count of the VERBATIM content -- a count derived from the bytes themselves, so a retention
-// whose number does not match its content cannot be written here. The failure arms carry the cause WITH
-// THE STAGE VERB THE CALLER NAMES (review 86381 finding 1: "could not be written: <write error>" and
-// "could not be read back: <file error>" are DIFFERENT failures and must not share a message); an empty
-// answer is not a retention (a zero-byte file would be kept and say nothing).
+// the size of the VERBATIM content -- a ByteSize derived from the bytes themselves through this file's
+// ONE size authority (std.measure, the same ByteSize the console bounds use; review 86396), so a
+// retention whose number does not match its content cannot be written here. The failure arms carry the
+// cause WITH THE STAGE VERB THE CALLER NAMES (review 86381 finding 1: "could not be written: <write
+// error>" and "could not be read back: <file error>" are DIFFERENT failures and must not share a
+// message); an empty answer is not a retention (a zero-byte file would be kept and say nothing).
 fn mtcollins1_pre_power_retention_of(path: NonEmptyStr, read_ok: Bool, content: String, stage: NonEmptyStr, error: String) -> MtCollins1PrePowerRetention {
   if !read_ok {
     PrePowerNotRetained { reason: concat("could not be ", stage as String, ": ", error) as NonEmptyStr }
   } else if content == "" {
     PrePowerNotRetained { reason: concat(stage as String, " answered with no bytes at all, and an empty file is not a retention") as NonEmptyStr }
   } else {
-    PrePowerRetained { path: path, bytes: count(bytes_octets(b: utf8_encode_bytes(s: content))) }
+    PrePowerRetained { path: path, bytes: byte_size(count: count(bytes_octets(b: utf8_encode_bytes(s: content)))) }
   }
 }
 
@@ -2864,7 +2865,7 @@ fn pre_power_retention_receipt_line(prefix: NonEmptyStr, executed: MtCollins1Pre
     Present { value: r } => match r {
       PrePowerNotRetained { reason: why } => concat("not retained: ", why as String)
       PrePowerRetained { path: p, bytes: n } => match mtcollins1_boot_pre_power_retained(attempt: run, path_of: path_of) {
-        PrePowerRetained { path: _, bytes: m } => join(["retained verbatim ", to_string(n), " bytes at ", p as String, ", read back at conclusion with ", to_string(m), " bytes"], "")
+        PrePowerRetained { path: _, bytes: m } => join(["retained verbatim ", to_string(byte_size_count(b: n)), " bytes at ", p as String, ", read back at conclusion with ", to_string(byte_size_count(b: m)), " bytes"], "")
         PrePowerNotRetained { reason: why } => join(["written at ", p as String, " but not on disk at conclusion: ", why as String], "")
       }
     }

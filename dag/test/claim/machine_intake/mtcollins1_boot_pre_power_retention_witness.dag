@@ -36,9 +36,10 @@ import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   AttemptRunId,
   AttemptIdentityUnavailable
 }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.optional { Present }
 import std.upsert_decision { Absent }
-import std.prelude { True, False, abs }
+import std.prelude { True, False }
 import std.string { string_contains }
 import std.debug { claim_that }
 import std.equal { eq }
@@ -71,13 +72,14 @@ test fn the_retention_states_the_byte_count_of_its_own_verbatim_content() {
   // side ("written") and the read-back side ("read back") pass through the SAME fold, so the two sides
   // cannot disagree about how many bytes a given content is.
   let kept = mtcollins1_pre_power_retention_of(path: "p", read_ok: True, content: "abc", stage: "written", error: "")
-  let _ = claim_that(holds: match kept { PrePowerRetained { path: _, bytes: n } => eq(a: n, b: 3)  _ => False }, because: "3 chars of verbatim content retain 3 bytes")
+  let _ = claim_that(holds: match kept { PrePowerRetained { path: _, bytes: n } => eq(a: n, b: byte_size(count: 3))  _ => False }, because: "3 chars of verbatim content retain a ByteSize of 3, through the file's one size authority")
   let two = mtcollins1_pre_power_retention_of(path: "p", read_ok: True, content: "hello there", stage: "read back", error: "")
-  let _ = claim_that(holds: match two { PrePowerRetained { path: p2, bytes: n } => eq(a: p2, b: "p") && eq(a: n, b: 11)  _ => False }, because: "the read-back fold keeps the same verbatim bytes and counts them the same way")
-  // The count is NOT a constant of the fn: a different content yields a different number.
-  let kc = abs(n: match kept { PrePowerRetained { path: _, bytes: n } => n  _ => -1 })
-  let tc = abs(n: match two { PrePowerRetained { path: _, bytes: n } => n  _ => -1 })
-  let _ = claim_that(holds: !eq(a: kc, b: tc), because: "the count tracks the content, so it cannot be a typed constant")
+  let _ = claim_that(holds: match two { PrePowerRetained { path: p2, bytes: n } => eq(a: p2, b: "p") && eq(a: n, b: byte_size(count: 11))  _ => False }, because: "the read-back fold keeps the same verbatim bytes and sizes them the same way")
+  // The size is NOT a constant of the fn: a different content yields a different ByteSize.
+  let ks = match kept { PrePowerRetained { path: _, bytes: n } => n  _ => byte_size(count: 0) }
+  let ts = match two { PrePowerRetained { path: _, bytes: n } => n  _ => byte_size(count: 0) }
+  let _ = claim_that(holds: !eq(a: ks, b: ts), because: "the size tracks the content, so it cannot be a typed constant")
+  let _ = claim_that(holds: eq(a: byte_size_count(b: ks), b: 3), because: "the count is readable back through the same authority the size was minted from")
   0
 }
 
