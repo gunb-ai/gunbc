@@ -1,6 +1,6 @@
 module v2.test.claim.manual.typescript_eager_materialize_dedup_cutover
 
-import v2.std.node { NotADeclaration }
+import v2.std.node { node_same_occurrence, NotADeclaration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -72,7 +72,7 @@ test fn ts_arc1_scaffold_row_present_holds() -> Bool {
     name: ^grammar_relation_field_emitted
   ) {
     Accepted { value: emitted, diagnostics: _ } =>
-      emitted == ts_emitted_add_fn_node()
+      node_same_occurrence(a: emitted, b: ts_emitted_add_fn_node())
     Rejected { diagnostics: _ } => false
   }
 }
