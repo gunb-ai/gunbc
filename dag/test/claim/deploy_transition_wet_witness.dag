@@ -2,7 +2,8 @@ module test.claim.deploy_transition_wet_witness
 
 import extdeps.shell
 import std.types { Bool, String, List, NonEmptyStr, FilePath }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
@@ -50,13 +51,41 @@ import gunbc.deploy_transition {
 // a raw read at the path the code before the seal wrote to (<instance_root>/transition-inhibition.json): the
 // format is unchanged exactly when those bytes are the literal the old code produced. Every test removes its
 // directory and the removal joins the verdict. On the local-repo wet lane (temp-directory writes).
+//
+// EVERY REFUSAL FAILS THE CLAIM WITH ITS OWN REASON (ruling 2026-10-25). No arm below maps a refusal -- a mint
+// that answered Unready, a lease that was not acquired, a write the store refused, a standing that could not be
+// read, a read or a listing the host refused -- to false, empty or absent for a later assertion to accept. Each
+// such arm is an exit_failure naming what refused. The one claim whose subject IS a refusal (the unlisted root)
+// matches the Unready arm itself. Absence is established by a successful listing that does not name the file,
+// never by a read that failed.
 
 fn fresh_dir(tag: String) -> String {
   shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_transition_", tag, ".XXXXXX"], "")).path
 }
 
-fn cleaned(dir: String, verdict: Bool) -> Bool {
-  shell.Remove.RecursiveForce(path: dir).success && verdict
+fn failed(test: String, reason: String) -> ProcessExit {
+  exit_failure(reason: join(["test.claim.deploy_transition_wet_witness ", test, ": ", reason], ""))
+}
+
+// THE FIRST FAILURE, IN ORDER. Each step was already evaluated by a `let` in sequence, so the effects ran in the
+// order written; this only picks the verdict.
+fn first_failure(steps: List<ProcessExit>) -> ProcessExit {
+  fold(steps, init: ExitSuccess, f: (acc, step) =>
+    match acc {
+      ExitFailure { code: _, reason: _ } => acc
+      ExitSuccess => step
+    }
+  )
+}
+
+// The directory is removed whatever the verdict; a removal that fails is its own failure.
+fn cleaned(test: String, dir: String, verdict: ProcessExit) -> ProcessExit {
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  if removed.success {
+    verdict
+  } else {
+    first_failure(steps: [verdict, failed(test: test, reason: join(["could not remove ", dir], ""))])
+  }
 }
 
 fn instance_at(dir: String) -> HostDashboardInstance {
@@ -73,10 +102,12 @@ fn instance_at(dir: String) -> HostDashboardInstance {
   )
 }
 
-// The pre-seal path, spelled here independently of the store's declaration: it is the oracle the store's
+// The pre-seal file name, spelled here independently of the store's declaration: it is the oracle the store's
 // derivation is checked against, not a second authority the code reads.
+data old_inhibition_name: String = "transition-inhibition.json"
+
 fn old_inhibition_path(dir: String) -> String {
-  join([dir, "/transition-inhibition.json"], "")
+  join([dir, "/", old_inhibition_name], "")
 }
 
 fn subject_at(dir: String) -> TransitionSubject {
@@ -94,7 +125,7 @@ fn holder() -> TransitionActor {
 
 // THE BYTES THE CODE BEFORE THE SEAL WROTE for this subject, as a literal: gunbc.deploy_transition
 // transition_record_json over extdeps.languages.json.emit serialize_json (": " and ", " separators, members in
-// declaration order). The readback receipt in the PR checks the same bytes against a file the old tree wrote.
+// declaration order). The readback receipt in the PR checks the same bytes against a file main's code wrote.
 fn old_record_bytes(dir: String, phase: String) -> String {
   join([
     "{\"schema\": \"gunbc.deploy_transition/1\", \"actor\": \"deployer\", \"invocation\": \"run-1\", \"repo_root\": \"",
@@ -105,162 +136,235 @@ fn old_record_bytes(dir: String, phase: String) -> String {
   ], "")
 }
 
-fn guard_at(dir: String) -> TransitionGuard? {
-  match acquire_transition_lease(subject: subject_at(dir: dir), holder: holder()) {
-    LeaseAcquired(g) => Present { value: g }
-    LeaseHeldBy { record: _ } => none
-    LeaseHeldUndecodable { cause: _ } => none
-    LeaseUnobtainable { cause: _ } => none
-  }
-}
-
-fn completed(a: TransitionActuation) -> Bool {
-  match a {
-    TransitionActuationCompleted { detail: _ } => true
-    TransitionActuationRefused { cause: _ } => false
-  }
-}
-
-fn refusal_cause(a: TransitionActuation) -> String {
-  match a {
-    TransitionActuationCompleted { detail: _ } => ""
-    TransitionActuationRefused { cause: c } => c
-  }
-}
-
 fn standing_at(dir: String) -> ActuationStanding {
   transition_actuation_standing(inhibition: transition_inhibition_store(instance: instance_at(dir: dir)))
 }
 
-fn permitted(s: ActuationStanding) -> Bool {
-  match s {
-    ActuationPermitted => true
-    ActuationInhibited { record: _ } => false
-    ActuationStandingUnreadable { cause: _ } => false
+fn expect_completed(test: String, step: String, a: TransitionActuation) -> ProcessExit {
+  match a {
+    TransitionActuationCompleted { detail: _ } => ExitSuccess
+    TransitionActuationRefused { cause: c } => failed(test: test, reason: join([step, " refused: ", c], ""))
   }
 }
 
-fn inhibited_in_phase(s: ActuationStanding, phase: TransitionPhase) -> Bool {
+// A CLAIM WHOSE SUBJECT IS THE REFUSAL matches the refusal arm itself and checks what it names.
+fn expect_refused_naming(test: String, step: String, a: TransitionActuation, names: String) -> ProcessExit {
+  match a {
+    TransitionActuationRefused { cause: c } =>
+      if string_contains(s: c, pattern: names) {
+        ExitSuccess
+      } else {
+        failed(test: test, reason: join([step, " refused for another reason: ", c], ""))
+      }
+    TransitionActuationCompleted { detail: d } =>
+      failed(test: test, reason: join([step, " completed where it must refuse: ", d], ""))
+  }
+}
+
+fn expect_permitted(test: String, step: String, s: ActuationStanding) -> ProcessExit {
+  match s {
+    ActuationPermitted => ExitSuccess
+    ActuationInhibited { record: r } =>
+      failed(test: test, reason: join([step, ": inhibited by ", r.actor, "/", r.invocation], ""))
+    ActuationStandingUnreadable { cause: c } => failed(test: test, reason: join([step, ": standing unreadable: ", c], ""))
+  }
+}
+
+fn expect_inhibited(test: String, step: String, s: ActuationStanding, phase: TransitionPhase) -> ProcessExit {
   match s {
     ActuationInhibited { record: r } =>
-      r.actor == "deployer" && r.invocation == "run-1"
+      if r.actor == "deployer" && r.invocation == "run-1"
         && r.candidate == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        && transition_phase_wire(phase: r.phase) == transition_phase_wire(phase: phase)
-    ActuationPermitted => false
-    ActuationStandingUnreadable { cause: _ } => false
+        && transition_phase_wire(phase: r.phase) == transition_phase_wire(phase: phase) {
+        ExitSuccess
+      } else {
+        failed(test: test, reason: join([step, ": inhibited by another record: ", r.actor, "/", r.invocation, " ", transition_phase_wire(phase: r.phase)], ""))
+      }
+    ActuationPermitted => failed(test: test, reason: join([step, ": permitted where the marker must inhibit"], ""))
+    ActuationStandingUnreadable { cause: c } => failed(test: test, reason: join([step, ": standing unreadable: ", c], ""))
   }
 }
 
-fn unreadable(s: ActuationStanding) -> Bool {
+fn expect_unreadable(test: String, step: String, s: ActuationStanding, names: String) -> ProcessExit {
   match s {
-    ActuationStandingUnreadable { cause: _ } => true
-    ActuationPermitted => false
-    ActuationInhibited { record: _ } => false
+    ActuationStandingUnreadable { cause: c } =>
+      if string_contains(s: c, pattern: names) {
+        ExitSuccess
+      } else {
+        failed(test: test, reason: join([step, ": unreadable for another reason: ", c], ""))
+      }
+    ActuationPermitted => failed(test: test, reason: join([step, ": permitted where nothing could be looked at"], ""))
+    ActuationInhibited { record: r } => failed(test: test, reason: join([step, ": inhibited by ", r.actor, " where nothing could be looked at"], ""))
   }
 }
 
-fn admits(a: ActuationAdmission) -> Bool {
+fn expect_admission_refused(test: String, step: String, a: ActuationAdmission) -> ProcessExit {
   match a {
-    ActuationAdmitted => true
-    ActuationRefused { reason: _ } => false
+    ActuationRefused { reason: _ } => ExitSuccess
+    ActuationAdmitted => failed(test: test, reason: join([step, ": actuation admitted where it must refuse"], ""))
   }
 }
 
-fn raw_bytes_are(path: String, expected: String) -> Bool {
+fn expect_bytes(test: String, step: String, path: String, expected: String) -> ProcessExit {
   let read = Filesystem.Read(path: path)
-  read.success && read.content == expected
+  if !read.success {
+    failed(test: test, reason: join([step, ": the read of ", path, " was refused: ", read.error], ""))
+  } else {
+    if read.content == expected {
+      ExitSuccess
+    } else {
+      failed(test: test, reason: join([step, ": bytes differ at ", path, ": ", read.content], ""))
+    }
+  }
 }
 
-fn raw_absent(path: String) -> Bool {
-  !Filesystem.Read(path: path).success
+// ABSENT MEANS A SUCCESSFUL LISTING THAT DOES NOT NAME THE FILE. A refused listing is its own failure.
+fn expect_absent(test: String, step: String, dir: String, name: String) -> ProcessExit {
+  let listing = Filesystem.List(path: dir)
+  if !listing.success {
+    failed(test: test, reason: join([step, ": the listing of ", dir, " was refused: ", listing.error], ""))
+  } else {
+    if filesystem_listing_names_entry(listing: listing.entries, name: name) {
+      failed(test: test, reason: join([step, ": ", name, " is still listed in ", dir], ""))
+    } else {
+      ExitSuccess
+    }
+  }
+}
+
+fn lease_refusal(test: String, a: LeaseAcquisition) -> ProcessExit {
+  match a {
+    LeaseAcquired(_) => ExitSuccess
+    LeaseHeldBy { record: r } => failed(test: test, reason: join(["the lease is held by ", r.actor, "/", r.invocation], ""))
+    LeaseHeldUndecodable { cause: c } => failed(test: test, reason: join(["the lease is held and undecodable: ", c], ""))
+    LeaseUnobtainable { cause: c } => failed(test: test, reason: join(["the lease could not be obtained: ", c], ""))
+  }
 }
 
 // SET, READ, CLEAR THROUGH THE SEALED STORE, and the bytes between are the old format at the old path. The empty
 // root is permitted; the set writes exactly the pre-seal bytes and inhibits; the holder's clearance after a
 // converged readback removes the marker (and the lease) and the standing is permitted again.
-test fn the_sealed_inhibition_sets_and_clears_in_the_unchanged_format() -> Bool {
+test fn the_sealed_inhibition_sets_and_clears_in_the_unchanged_format() -> ProcessExit {
+  let t = "the_sealed_inhibition_sets_and_clears_in_the_unchanged_format"
   let dir = fresh_dir(tag: "set")
-  let before = permitted(s: standing_at(dir: dir))
-  let verdict = match guard_at(dir: dir) {
-    Absent => false
-    Present { value: g } =>
+  let before = expect_permitted(test: t, step: "before the set", s: standing_at(dir: dir))
+  let acquired = acquire_transition_lease(subject: subject_at(dir: dir), holder: holder())
+  let verdict = match acquired {
+    LeaseHeldBy { record: _ } => lease_refusal(test: t, a: acquired)
+    LeaseHeldUndecodable { cause: _ } => lease_refusal(test: t, a: acquired)
+    LeaseUnobtainable { cause: _ } => lease_refusal(test: t, a: acquired)
+    LeaseAcquired(g) =>
       match transition_inhibition_store(instance: instance_at(dir: dir)) {
-        TransitionInhibitionStoreUnready { detail: _ } => false
+        TransitionInhibitionStoreUnready { detail: d } => failed(test: t, reason: join(["the mint refused: ", d], ""))
         TransitionInhibitionStoreReady { store: s } => {
-          let set = completed(a: set_transition_inhibition(inhibition: s, guard: g))
-          let bytes = raw_bytes_are(path: old_inhibition_path(dir: dir), expected: old_record_bytes(dir: dir, phase: "in-force"))
-          let inhibited = inhibited_in_phase(s: standing_at(dir: dir), phase: TransitionInForce)
-          let refused = !admits(a: actuation_admission(standing: standing_at(dir: dir)))
-          let cleared = completed(a: clear_transition_records(instance_root: dir, inhibition: s, basis: ClearedByHolder(g), readback_converged: true))
-          let gone = raw_absent(path: old_inhibition_path(dir: dir)) && raw_absent(path: join([dir, "/transition-lease.json"], ""))
-          set && bytes && inhibited && refused && cleared && gone && permitted(s: standing_at(dir: dir))
+          let set = expect_completed(test: t, step: "set", a: set_transition_inhibition(inhibition: s, guard: g))
+          let bytes = expect_bytes(test: t, step: "after the set", path: old_inhibition_path(dir: dir), expected: old_record_bytes(dir: dir, phase: "in-force"))
+          let inhibited = expect_inhibited(test: t, step: "after the set", s: standing_at(dir: dir), phase: TransitionInForce)
+          let refused = expect_admission_refused(test: t, step: "after the set", a: actuation_admission(standing: standing_at(dir: dir)))
+          let cleared = expect_completed(test: t, step: "clear", a: clear_transition_records(instance_root: dir, inhibition: s, basis: ClearedByHolder(g), readback_converged: true))
+          let marker_gone = expect_absent(test: t, step: "after the clear", dir: dir, name: old_inhibition_name)
+          let lease_gone = expect_absent(test: t, step: "after the clear", dir: dir, name: "transition-lease.json")
+          let after = expect_permitted(test: t, step: "after the clear", s: standing_at(dir: dir))
+          first_failure(steps: [set, bytes, inhibited, refused, cleared, marker_gone, lease_gone, after])
         }
       }
   }
-  cleaned(dir: dir, verdict: before && verdict)
+  cleaned(test: t, dir: dir, verdict: first_failure(steps: [before, verdict]))
 }
 
 // A MARKER THE OLD CODE LEFT IS READ BY THE SEALED STORE. The pre-seal bytes are planted with a raw write at the
 // pre-seal path -- no sealed operation involved -- and the standing minted through the store reads them as the
 // inhibition they are and refuses actuation.
-test fn a_marker_in_the_pre_seal_format_inhibits_through_the_sealed_store() -> Bool {
+test fn a_marker_in_the_pre_seal_format_inhibits_through_the_sealed_store() -> ProcessExit {
+  let t = "a_marker_in_the_pre_seal_format_inhibits_through_the_sealed_store"
   let dir = fresh_dir(tag: "old")
-  let planted = Filesystem.Write(path: old_inhibition_path(dir: dir), content: old_record_bytes(dir: dir, phase: "in-force")).success
-  let standing = standing_at(dir: dir)
-  cleaned(dir: dir, verdict: planted && inhibited_in_phase(s: standing, phase: TransitionInForce) && !admits(a: actuation_admission(standing: standing)))
+  let planted = Filesystem.Write(path: old_inhibition_path(dir: dir), content: old_record_bytes(dir: dir, phase: "in-force"))
+  let verdict = if !planted.success {
+    failed(test: t, reason: join(["the pre-seal marker could not be planted: ", planted.error], ""))
+  } else {
+    let standing = standing_at(dir: dir)
+    first_failure(steps: [
+      expect_inhibited(test: t, step: "the planted marker", s: standing, phase: TransitionInForce),
+      expect_admission_refused(test: t, step: "the planted marker", a: actuation_admission(standing: standing)),
+    ])
+  }
+  cleaned(test: t, dir: dir, verdict: verdict)
 }
 
 // THE CREATE IS EXCLUSIVE THROUGH THE STORE. A second set over a standing marker refuses, names the transition
 // that holds it, and leaves the first record's bytes untouched.
-test fn a_second_set_refuses_and_leaves_the_standing_marker() -> Bool {
+test fn a_second_set_refuses_and_leaves_the_standing_marker() -> ProcessExit {
+  let t = "a_second_set_refuses_and_leaves_the_standing_marker"
   let dir = fresh_dir(tag: "excl")
-  let verdict = match guard_at(dir: dir) {
-    Absent => false
-    Present { value: g } =>
+  let acquired = acquire_transition_lease(subject: subject_at(dir: dir), holder: holder())
+  let verdict = match acquired {
+    LeaseHeldBy { record: _ } => lease_refusal(test: t, a: acquired)
+    LeaseHeldUndecodable { cause: _ } => lease_refusal(test: t, a: acquired)
+    LeaseUnobtainable { cause: _ } => lease_refusal(test: t, a: acquired)
+    LeaseAcquired(g) =>
       match transition_inhibition_store(instance: instance_at(dir: dir)) {
-        TransitionInhibitionStoreUnready { detail: _ } => false
+        TransitionInhibitionStoreUnready { detail: d } => failed(test: t, reason: join(["the mint refused: ", d], ""))
         TransitionInhibitionStoreReady { store: s } => {
-          let first = completed(a: set_transition_inhibition(inhibition: s, guard: g))
-          let second = set_transition_inhibition(inhibition: s, guard: g)
-          first && !completed(a: second)
-            && string_contains(s: refusal_cause(a: second), pattern: "already stands for deployer/run-1")
-            && raw_bytes_are(path: old_inhibition_path(dir: dir), expected: old_record_bytes(dir: dir, phase: "in-force"))
+          let first = expect_completed(test: t, step: "first set", a: set_transition_inhibition(inhibition: s, guard: g))
+          let second = expect_refused_naming(test: t, step: "second set", a: set_transition_inhibition(inhibition: s, guard: g), names: "already stands for deployer/run-1")
+          let bytes = expect_bytes(test: t, step: "after the second set", path: old_inhibition_path(dir: dir), expected: old_record_bytes(dir: dir, phase: "in-force"))
+          first_failure(steps: [first, second, bytes])
         }
       }
   }
-  cleaned(dir: dir, verdict: verdict)
+  cleaned(test: t, dir: dir, verdict: verdict)
 }
 
 // A PARTIAL TRANSITION REWRITES THE PHASE IN PLACE: after the mark the marker is still there, in the pre-seal
 // format with the partial phase, and the belt still refuses.
-test fn a_partial_transition_rewrites_the_phase_in_place() -> Bool {
+test fn a_partial_transition_rewrites_the_phase_in_place() -> ProcessExit {
+  let t = "a_partial_transition_rewrites_the_phase_in_place"
   let dir = fresh_dir(tag: "part")
-  let verdict = match guard_at(dir: dir) {
-    Absent => false
-    Present { value: g } =>
+  let acquired = acquire_transition_lease(subject: subject_at(dir: dir), holder: holder())
+  let verdict = match acquired {
+    LeaseHeldBy { record: _ } => lease_refusal(test: t, a: acquired)
+    LeaseHeldUndecodable { cause: _ } => lease_refusal(test: t, a: acquired)
+    LeaseUnobtainable { cause: _ } => lease_refusal(test: t, a: acquired)
+    LeaseAcquired(g) =>
       match transition_inhibition_store(instance: instance_at(dir: dir)) {
-        TransitionInhibitionStoreUnready { detail: _ } => false
+        TransitionInhibitionStoreUnready { detail: d } => failed(test: t, reason: join(["the mint refused: ", d], ""))
         TransitionInhibitionStoreReady { store: s } => {
-          let set = completed(a: set_transition_inhibition(inhibition: s, guard: g))
-          let marked = completed(a: mark_transition_partial(inhibition: s, guard: g, detail: "worktree transition failed"))
-          set && marked
-            && raw_bytes_are(path: old_inhibition_path(dir: dir), expected: old_record_bytes(dir: dir, phase: "partial-transition-left"))
-            && inhibited_in_phase(s: standing_at(dir: dir), phase: TransitionPartialLeft)
+          let set = expect_completed(test: t, step: "set", a: set_transition_inhibition(inhibition: s, guard: g))
+          let marked = expect_completed(test: t, step: "mark partial", a: mark_transition_partial(inhibition: s, guard: g, detail: "worktree transition failed"))
+          let bytes = expect_bytes(test: t, step: "after the mark", path: old_inhibition_path(dir: dir), expected: old_record_bytes(dir: dir, phase: "partial-transition-left"))
+          let inhibited = expect_inhibited(test: t, step: "after the mark", s: standing_at(dir: dir), phase: TransitionPartialLeft)
+          first_failure(steps: [set, marked, bytes, inhibited])
         }
       }
   }
-  cleaned(dir: dir, verdict: verdict)
+  cleaned(test: t, dir: dir, verdict: verdict)
 }
 
-// THE REALIZATION REMOVED: an instance root that does not list. The mint refuses (no store exists for it), the
-// standing is unreadable, and actuation refuses -- never permitted because nothing could be looked at.
-test fn an_unlisted_instance_root_mints_no_store_and_refuses_actuation() -> Bool {
+// THE REALIZATION REMOVED: an instance root that does not list. The subject of this claim IS the refusal, so it
+// matches the Unready arm itself (a Ready store fails it), then checks that the standing over the same instance is
+// the unreadable arm naming the store, and that actuation refuses -- never permitted because nothing could be
+// looked at.
+test fn an_unlisted_instance_root_mints_no_store_and_refuses_actuation() -> ProcessExit {
+  let t = "an_unlisted_instance_root_mints_no_store_and_refuses_actuation"
   let dir = fresh_dir(tag: "gone")
-  let removed = shell.Remove.RecursiveForce(path: dir).success
-  let unready = match transition_inhibition_store(instance: instance_at(dir: dir)) {
-    TransitionInhibitionStoreUnready { detail: d } => string_contains(s: d, pattern: "transition-inhibition.json")
-    TransitionInhibitionStoreReady { store: _ } => false
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  if !removed.success {
+    failed(test: t, reason: join(["could not remove ", dir, " to make it unlisted"], ""))
+  } else {
+    let unready = match transition_inhibition_store(instance: instance_at(dir: dir)) {
+      TransitionInhibitionStoreUnready { detail: d } =>
+        if string_contains(s: d, pattern: old_inhibition_name) {
+          ExitSuccess
+        } else {
+          failed(test: t, reason: join(["the mint refused without naming the store: ", d], ""))
+        }
+      TransitionInhibitionStoreReady { store: _ } => failed(test: t, reason: "the mint handed out a store over a root that does not list")
+    }
+    let standing = standing_at(dir: dir)
+    first_failure(steps: [
+      unready,
+      expect_unreadable(test: t, step: "the standing", s: standing, names: old_inhibition_name),
+      expect_admission_refused(test: t, step: "the standing", a: actuation_admission(standing: standing)),
+    ])
   }
-  let standing = standing_at(dir: dir)
-  removed && unready && unreadable(s: standing) && !admits(a: actuation_admission(standing: standing))
 }

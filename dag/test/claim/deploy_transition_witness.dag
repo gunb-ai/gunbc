@@ -372,7 +372,7 @@ fn observation_arm(o: TransitionFileObservation) -> String {
 
 // THROUGH THE PRODUCER, NOT AROUND IT. These used to be hand-built `FilesystemReadSucceeded` /
 // `FilesystemReadRefused` literals, which meant the witnesses started one step DOWNSTREAM of where
-// production starts: `transition_marker_observe` feeds the raw (content, success, error) channels to
+// production starts: `transition_inhibition_observe` feeds the raw (content, success, error) channels to
 // `filesystem_read_outcome` and consumes what that returns. A literal skips the arm assignment
 // entirely, so the mapping production depends on was exercised by nothing here. Same
 // asserted-not-produced defect this PR found twice already; found the third time by checking every

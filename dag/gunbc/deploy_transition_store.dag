@@ -31,8 +31,10 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 //
 // THE LEASE IS NOT HERE. transition-lease.json is a hand lock, and stern-ram-763 ruled (2026-10-24) that it moves
 // onto the hold library once std.durable_exclusive_hold models a non-holder release typed by its evidence; until
-// then it stays where it is in gunbc.deploy_transition (Blocked: hold-release-model). It shares this module's
-// listing-joined observation (transition_marker_observe) so the fold exists once.
+// then it stays where it is in gunbc.deploy_transition (Blocked: hold-release-model), with its own listing-joined
+// observation. That fold and transition_inhibition_observe below are the same few lines, kept apart on purpose:
+// a shared helper here would be an observer over a caller-chosen directory (ruling 2026-10-25), and the lease's
+// copy is deleted when the lease moves onto the hold library.
 
 // THE ONE DECLARATION OF THE STORE: the member it is under the instance root. The store is a single file
 // directly in the instance root, which the instance itself provisions; the store owns no directory, so there is
@@ -61,26 +63,6 @@ fn transition_marker_write(success: Bool, path: String, error: String) -> Transi
   } else {
     TransitionMarkerWriteRefused { detail: join([path, " -- ", error], "") }
   }
-}
-
-// ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ (the reasoning is
-// gunbc.deploy_transition's, beside TransitionFileObservation): the listing and the read are joined by the
-// substrate's own fold, so this module cannot write an absence either.
-fn transition_marker_observe(directory: String, name: String) -> FilesystemFileObservation {
-  let path = join([directory, "/", name], "")
-  let listing = Filesystem.List(path: directory)
-  let read = Filesystem.Read(path: path)
-  filesystem_file_observation(
-    listing: filesystem_listing_observation(
-      directory: directory,
-      success: listing.success,
-      entries: listing.entries,
-      error: listing.error,
-    ),
-    name: name,
-    path: path,
-    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  )
 }
 
 // THE INHIBITION STORE: DATA ONLY (stern-ram-763, 2026-10-24: no closure fields, which the native emitter cannot
@@ -144,8 +126,26 @@ fn transition_inhibition_replace(store: TransitionInhibitionStore, content: Stri
   transition_marker_write(success: written.success, path: path, error: written.error)
 }
 
+// ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ (the reasoning is
+// gunbc.deploy_transition's, beside TransitionFileObservation): the listing and the read are joined by the
+// substrate's own fold, so this module cannot write an absence either.
 fn transition_inhibition_observe(store: TransitionInhibitionStore) -> FilesystemFileObservation {
-  transition_marker_observe(directory: store.root as String, name: transition_inhibition_slots.member as String)
+  let directory = store.root as String
+  let name = transition_inhibition_slots.member as String
+  let path = transition_inhibition_store_path(store: store)
+  let listing = Filesystem.List(path: directory)
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: directory,
+      success: listing.success,
+      entries: listing.entries,
+      error: listing.error,
+    ),
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
 }
 
 fn transition_inhibition_delete(store: TransitionInhibitionStore) -> TransitionMarkerWrite {
