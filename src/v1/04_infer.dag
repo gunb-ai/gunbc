@@ -176,7 +176,7 @@ import std.termination {
   proportional_divisor_from_int_at_least_two,
   OneStep
 }
-import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral, NamedTemplate, ReceiverSelf }
+import std.algebra { FreeSemigroup, CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral, NamedTemplate, ReceiverSelf }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, expand_nominal_alias_rhs, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl, generic_declaration_application,
@@ -3549,23 +3549,102 @@ data equality_extensional_container_rows: Map<String, Bool> = carrier_container_
 // IDENTITY, read before any member walk. v2.std.node Edge carries Edge.declaration, a provenance
 // field outside content_hash and the erasure routes, which derived == nevertheless reads; a derived
 // == reaching an Edge therefore compares provenance and answers differently from the erasure routes.
-// Node reaches Edge through its children and joins this set when its existing == sites are moved.
+// Node reaches Edge through its children, so it is declared inadmissible too: a Node comparison names
+// its question through v2.std.node node_equal_ignoring_provenance (structural) or node_same_occurrence
+// (identity).
 // SEED PATH ONLY: the native v2 infer has no == operand judgment; the capability that retires that
 // gap is a native v2 == operand judgment (gunbc.rung_drop native_equality_operand_judgment).
-data equality_inadmissible_declaration_identities: List<String> = [
-  type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Edge")
+type EqualityInadmissibleDeclaration {
+  decl_file: String
+  declared_name: String
+}
+
+data equality_inadmissible_declarations: List<EqualityInadmissibleDeclaration> = [
+  EqualityInadmissibleDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "Edge" },
+  EqualityInadmissibleDeclaration { decl_file: "src/v2/std/node.dag", declared_name: "Node" }
 ]
 
-// THE WALK STOPS AT THESE: Node's children reach Edge, but Node == is not yet inadmissible (ruling A:
-// Edge now, Node when its existing == sites are moved to the erasure route). Each row is a site-debt
-// boundary that leaves with the Node row above, not a second admission.
-data equality_walk_boundary_declaration_identities: List<String> = [
-  type_declaration_identity_key(decl_file: "src/v2/std/node.dag", declared_name: "Node")
-]
+data equality_inadmissible_declaration_identities: List<String> = equality_inadmissible_declarations |> map(d => type_declaration_identity_key(decl_file: d.decl_file, declared_name: d.declared_name))
+
+// A NARROWED, DECLARED DROP (gunbc.rung_drop.node_reaching_composite_equality, which reads its population
+// from here): each row names one declaration ("<module> <declaration>") whose `==` compares a COMPOSITE that reaches Node (a record or
+// coproduct with a Node somewhere inside), where no erasure route exists yet because a composite's
+// equality would have to be written by hand per type. Such a site is admitted; a bare Node or Edge operand
+// still refuses everywhere, and a composite reaching Node anywhere else still refuses. The capability that
+// retires the list is derived structural equality with a Node-leaf occurrence route.
+data equality_node_reaching_composite_drop_population: FreeSemigroup<String> = FreeSemigroup { head: "v2.lens.cost symbolic_max_rhs", tail: [
+  "v2.lens.idempotency idempotency_classified_eq",
+  "v2.lens.parallelism parallelism_classified_eq",
+  "v2.test.claim.callexec.kinded_type_param_instances kti_non_generic_call_carries_no_instances",
+  "v2.test.claim.manual.v4_evaluator_runtime_anchor v4_anchor_model_core_same",
+  "v2.test.claim.name_resolve.admission_fail_closed validated_subject_index_matches_general_lookup",
+  "v2.test.lens_complexity.map_id map_id_complexity_projection_holds",
+  "v2.test.lens_complexity.map_id map_id_cost_projection_holds",
+  "v2.test.lens_complexity.nested nested_complexity_projection_holds",
+  "v2.test.lens_complexity.nested nested_cost_projection_holds",
+  "v2.test.lens_cost.arrow_body_cost_domain_excluded arrow_body_cost_domain_excluded_holds",
+  "v2.test.lens_cost.atom_zero atom_zero_claim_holds",
+  "v2.test.lens_cost.bounded_summation existing_cost_lens_kernel_unchanged",
+  "v2.test.lens_cost.disj_max disj_max_claim_holds",
+  "v2.test.lens_cost.helper_properties control_harness_distinguishes_helpers",
+  "v2.test.lens_cost.helper_properties max_dominance_orders_linear_over_log",
+  "v2.test.lens_cost.helper_properties max_equal_operands_return_themselves",
+  "v2.test.lens_cost.helper_properties max_zero_delegates_to_right",
+  "v2.test.lens_cost.helper_properties product_one_is_identity",
+  "v2.test.lens_cost.helper_properties product_unknown_propagates",
+  "v2.test.lens_cost.helper_properties product_zero_absorbs_from_left",
+  "v2.test.lens_cost.helper_properties product_zero_absorbs_from_right",
+  "v2.test.lens_cost.helper_properties sequential_general_case_sums",
+  "v2.test.lens_cost.helper_properties sequential_unknown_left_wins",
+  "v2.test.lens_cost.helper_properties sequential_zero_is_left_identity",
+  "v2.test.lens_cost.helper_properties sequential_zero_is_right_identity",
+  "v2.test.lens_cost.map_linear map_linear_claim_holds",
+  "v2.test.lens_cost.nested_product nested_product_claim_holds",
+  "v2.workflow.bootstrap bootstrap_projection_inputs_well_formed",
+  "v2.workflow.executor executor_batches_preserve_frontiers",
+  "v2.workflow.realization_runner runner_schedule_contains_batch"
+] }
+
+// The refusal names the type it fired on; an operand whose own type IS that type is the inadmissible
+// declaration itself (Node, Edge), not a composite that reaches it.
+fn equality_operand_is_the_refused_type(n: Node, r: EqualityAdmissionRefusal, scope: InferScope) -> Bool {
+  let peeled = normalize_access_type_node(n: n)
+  let source_indices = scope.type_env.source_indices
+  let identity = type_reference_identity(n: peeled, source_indices: source_indices)
+  authored_name_at(source_indices: source_indices, node: peeled) == r.type_name
+    || (equality_inadmissible_declaration_identities |> any(i => i == identity))
+    || (equality_inadmissible_declaration_leaf_names |> any(l => l == qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: peeled))))
+}
+
+// WHY THE DECLARED NAME IS READ AS WELL AS THE IDENTITY (measured on the bare-Node fixture, 2026-10-24):
+// a top-level operand's type node carries no Resolved declaration, so type_reference_identity keys it by
+// the USE-SITE file ("test.dag::Node", never "src/v2/std/node.dag::Node"); the guard catches a bare Node
+// == only through Node's own fields (Edge.target: Node), whose types do resolve. So the identity test
+// alone misses a bare inadmissible operand, and its declared name is read from the SAME rows. This fails
+// closed: a user type merely named Node or Edge is refused at a listed declaration, never admitted.
+// Trigger to drop the name read: an operand type reference carries its resolved declaration, so its
+// identity is the declaring file's.
+data equality_inadmissible_declaration_leaf_names: List<String> = equality_inadmissible_declarations |> map(d => d.declared_name)
+
+fn equality_node_reaching_composite_dropped(r: EqualityAdmissionRefusal, left: Node, right: Node, scope: InferScope) -> Bool {
+  r.member == equality_inadmissible_member
+    && !equality_operand_is_the_refused_type(n: left, r: r, scope: scope)
+    && !equality_operand_is_the_refused_type(n: right, r: r, scope: scope)
+    && equality_node_reaching_composite_drop_listed(key: concat(scope.module_name, " ", scope.caller_decl_name))
+}
+
+fn equality_node_reaching_composite_drop_listed(key: String) -> Bool {
+  equality_node_reaching_composite_drop_population.head == key
+    || (equality_node_reaching_composite_drop_population.tail |> any(k => k == key))
+}
+
+// The member text an inadmissible-declaration refusal carries; the refusal's producer, its diagnostic and
+// the node-reaching-composite drop all read this one declaration.
+data equality_inadmissible_member: String = "declared equality-inadmissible"
 
 fn equality_inadmissible_type_refusal(identity: String, name: String) -> EqualityAdmissionRefusal? {
   if equality_inadmissible_declaration_identities |> any(i => i == identity) {
-    equality_refused(carrier: name, member: "declared equality-inadmissible", member_judged: true)
+    equality_refused(carrier: name, member: equality_inadmissible_member, member_judged: true)
   } else {
     none
   }
@@ -3610,8 +3689,6 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
         let visited2 = if identity == "::" { visited } else { map_insert(visited, identity, true) }
         if equality_inadmissible_type_refusal(identity: identity, name: name) != none {
           equality_inadmissible_type_refusal(identity: identity, name: name)
-        } else if equality_walk_boundary_declaration_identities |> any(i => i == identity) {
-          none
         } else if (peeled.connective == Arrow) {
           equality_refused(carrier: name, member: "function value", member_judged: true)
         } else if (peeled.connective == Conj) {
@@ -3759,7 +3836,7 @@ fn equality_operand_is_optional(n: Node, source_indices: Map<String, NewlineInde
 }
 
 fn equality_admission_refusal_diag(r: EqualityAdmissionRefusal, span: SourceSpan) -> CompilerDiagnostic {
-  if r.member == "declared equality-inadmissible" {
+  if r.member == equality_inadmissible_member {
     EqualityOnInadmissibleType { type_name: r.type_name, span: span }
   } else if r.member_judged {
     EqualityOnFunctionMember { type_name: r.type_name, member: r.member, span: span }
@@ -3830,10 +3907,14 @@ fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scop
       )]
     } else {
       match equality_operand_admission(n: lt, scope: scope, visited: empty_map(), depth: 0) {
-        Present { value: r } => [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)]
+        Present { value: r } =>
+          if equality_node_reaching_composite_dropped(r: r, left: lt, right: rt, scope: scope) { [] }
+          else { [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)] }
         Absent =>
           match equality_operand_admission(n: rt, scope: scope, visited: empty_map(), depth: 0) {
-            Present { value: r } => [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)]
+            Present { value: r } =>
+              if equality_node_reaching_composite_dropped(r: r, left: lt, right: rt, scope: scope) { [] }
+              else { [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)] }
             Absent => []
           }
       }
@@ -17679,20 +17760,29 @@ fn build_module_context(contributions: List<ItemContribution>,
             rest: service_operation_is_rest(op: c, service: sitem, source_indices: env.source_indices)
           }
         )
-        let root = namespace_root_from_properties(properties: sitem.properties, name: sname, source_indices: env.source_indices)
         InferScopeComponents {
           svc_registry: map_insert(acc.svc_registry, sname, entries),
-          svc_locals: map_insert(acc.svc_locals, root, nominal_type_binding(name: root))
+          svc_locals: acc.svc_locals
         }
       Absent => acc
     }
   )
+  // A SERVICE ROOT IS BOUND ONLY WHERE ITS SERVICE IS DECLARED OR IMPORTED. The closure census
+  // supplies operation entries for a qualified service path; it binds no bare root. It used to: every
+  // service in the closure put its root into every module's locals, and the locals fold below writes
+  // those over the module's own variant locals. So once any module imported the bare-named
+  // extdeps.filesystem.filesystem_io Filesystem, a module that never imported it and declared its own
+  // `| Filesystem` arm read that arm as a service root, and the interpreter raised NoSuchVariable at
+  // run time for a program the checker accepted (v1_compiler compiler_tests
+  // service_root_binds_only_where_its_service_is_imported). The roots
+  // that remain come from local.svc_locals (the module's own services) and from
+  // merge_scope_from_imports (each imported module's services).
   let merged_scope = merge_scope_from_imports(
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
     svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
-    svc_locals: map_merge(census_scope.svc_locals, local.svc_locals)
+    svc_locals: local.svc_locals
   )
   let parent_envs = merge_func_env_views_by_owner(flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
@@ -19160,7 +19250,9 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     positional_payload_variants: variant_shapes.positional_payload,
     shared_types: empty_set(),
     ownership_index: empty_map(),
+    moved_argument_index: empty_map(),
     movable: empty_set(),
+    moved_argument_occurrences: empty_set(),
     variant_to_enum: vtoe,
     owned_bindings: empty_set(),
     read_only_params_index: empty_map(),
@@ -19175,6 +19267,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     expected_type: none,
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
+    trmc_out: false,
     dying_base_sites: empty_map()
   }
 }

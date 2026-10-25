@@ -1,0 +1,98 @@
+module gunbc.fleet.fleet_converge_executor_subject_split
+import std.types { String }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_subject_host_env_name }
+import gunbc.ci.ci_deploy_target_host { runner_name_proves_host_identity }
+import product.host_identity { HostIdentity }
+
+// THE EXECUTOR/SUBJECT SPLIT (operator ruling 2026-10-24, after refused run 40085967610).
+//
+// The host-file modes (converge, withdraw, restore) pin their job to a fleet host -- the EXECUTOR --
+// and act on a DIFFERENT host, the SUBJECT, over the FleetSsh edge. The reason is the drain: the cap
+// bracket drains every slot of its subject, and when the executor slot lives on the subject, that
+// drain waits for the job's own executor slot to finish, which never happens -- srv3's converge died
+// waiting on actions-runner@srv3-13, the slot running the converge itself. So the split is not a
+// convention: a mode whose executor equals its subject is REFUSED, as a typed refusal, before any
+// drain or mask actuation.
+//
+// Three walls, each independently checked:
+//   1. the WORKFLOW PRECONDITION STEP (fleet_converge_split_gate_step) is the first mode step and
+//      runs only when the two inputs are equal, where it prints the refusal and exits 1 -- no drain,
+//      no mask leg can have run when it fires;
+//   2. the PRODUCTION ENTRIES re-check the runner identity (the SAME proving relation the deploy gate
+//      uses, runner_name_proves_host_identity from gunbc.ci.ci_deploy_target_host) before any subject
+//      resolution or edge call, so a hand-run of the entry refuses with the same typed value;
+//   3. READBACK STAYS AN EDGE READ: every observation of the subject's state goes through the FleetSsh
+//      transport, so a subject that lies about itself cannot certify its own withdrawal.
+
+// The executor's own identity, as GitHub reports it to the runner process. Absent means the entry is
+// not running on a registered self-hosted runner at all, which is its own refusal -- an unregistered
+// process cannot prove it is NOT the subject.
+data fleet_converge_executor_runner_name_env_name: String = "RUNNER_NAME"
+
+data fleet_converge_split_refusal_marker: String = "REFUSED: fleet-converge self-subject"
+
+data fleet_converge_split_missing_subject_marker: String = "REFUSED: fleet-converge subject absent"
+
+data fleet_converge_split_missing_executor_marker: String = "REFUSED: fleet-converge executor identity absent"
+
+type SplitPrecheck = SplitOk { executor_runner_name: String, subject_host: String } | SplitRefused { reason: SplitRefusalReason }
+
+type SplitRefusalReason = SelfSubject { executor_runner_name: String, subject_host: String } | SubjectAbsent | ExecutorIdentityAbsent
+
+// THE PREDICATE, as one function both walls call. The executor side uses the SAME proving relation
+// the deploy gate uses (a slot named actions-runner@srv3-13 proves it lives on srv3), so "executor
+// equals subject" covers the exact-host case and the slot-name case. Anything the prover can prove
+// about the executor's belonging is acted on; an identity that names nothing is refused outright,
+// because fail-open there is exactly the srv3 deadlock.
+fn fleet_converge_split_precheck(executor_runner_name: String?, subject_host: String?) -> SplitPrecheck {
+  match subject_host {
+    Absent => SplitRefused { reason: SubjectAbsent }
+    Present { value: subject } =>
+      if subject == "" {
+        SplitRefused { reason: SubjectAbsent }
+      } else {
+        match executor_runner_name {
+          Absent => SplitRefused { reason: ExecutorIdentityAbsent }
+          Present { value: name } =>
+            if name == "" || runner_name_proves_host_identity(runner_name: name, host: subject as HostIdentity) {
+              SplitRefused { reason: SelfSubject { executor_runner_name: name, subject_host: subject } }
+            } else {
+              SplitOk { executor_runner_name: name, subject_host: subject }
+            }
+        }
+      }
+  }
+}
+
+// Read the two halves from the process environment. The subject arrives as its OWN name -- it is not
+// the expected host, and conflating the two is exactly the confusion that deadlocked the bracket.
+fn fleet_converge_split_read() -> SplitPrecheck {
+  let subject = match actions_variable_read(name: fleet_converge_subject_host_env_name) {
+    ActionsVariablePresent { value: v } => Present { value: v }
+    ActionsVariableAbsent => none
+  }
+  let executor = match actions_variable_read(name: fleet_converge_executor_runner_name_env_name) {
+    ActionsVariablePresent { value: v } => Present { value: v }
+    ActionsVariableAbsent => none
+  }
+  fleet_converge_split_precheck(executor_runner_name: executor, subject_host: subject)
+}
+
+fn fleet_converge_split_refusal_line(reason: SplitRefusalReason) -> String {
+  match reason {
+    SelfSubject { executor_runner_name: name, subject_host: subject } =>
+      join([fleet_converge_split_refusal_marker, ": the executor runner (", name, ") is a slot on the subject ", subject, ": the bracket drains every slot of its subject and would wait for this job's own executor forever (refused run 40085967610, actions-runner@srv3-13). Dispatch with host (executor) != subject_host."], "")
+    SubjectAbsent =>
+      join([fleet_converge_split_missing_subject_marker, ": FLEET_CONVERGE_SUBJECT_HOST is unset; a host-file mode acts on a named subject, never on an inferred one."], "")
+    ExecutorIdentityAbsent =>
+      join([fleet_converge_split_missing_executor_marker, ": RUNNER_NAME is unset; an unregistered process cannot prove it is not the subject, and fail-open here is the srv3 deadlock."], "")
+  }
+}
+
+// THE WORKFLOW PRECONDITION STEP's script. It reads ONLY its two bound env names and refuses; it
+// contains no entry invocation, so the step whose text ran performed zero actuation. In a well-formed
+// dispatch the `if:` never lets it execute -- its ORDERING before every actuation step is what the
+// control asserts, together with its refusal text and the absence of any entry invoke in it.
+fn fleet_converge_split_gate_step_run(executor_env_name: String, subject_env_name: String) -> String {
+  join(["set -eu\nif [ \"$", executor_env_name, "\" = \"$", subject_env_name, "\" ]; then echo \"", fleet_converge_split_refusal_marker, "\"; exit 1; fi\nif [ -z \"$", subject_env_name, "\"] || [ -z \"$", executor_env_name, "\"] ]; then echo \"", fleet_converge_split_missing_subject_marker, ": both executor and subject must be named; exit 1; fi\necho \"split precondition holds: executor differs from subject\"\n"], "")
+}

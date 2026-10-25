@@ -16,7 +16,7 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim, fold_list, i
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, bind_outcome, diagnostics_singleton, outcome_accepted, outcome_rejected, invariant_port_locus, textual_whole_file_diagnostic }
 import v2.std.grammar { ParseTree }
-import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance, symbol_intern_lexeme }
+import v2.std.node { node_equal_ignoring_provenance, Node, Symbol, symbol_intern_lexeme }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.cross_tree.import_model { CrossTreeAdmissionVerdict, CrossTreeAdmitted, CrossTreeDenialReason, CrossTreeDenied, CrossTreeImport, DagTree, SourceRootRef, SourceRootSet, V2Tree, cross_tree_import_admitted }
@@ -1098,7 +1098,7 @@ fn source_root_set_from_ingest(ingest: SourceRootIngest) -> SourceRootSet {
 }
 
 fn source_authority_node_equal(left: Node, right: Node) -> Bool {
-  canonicalize_node_strip_provenance(n: left) == canonicalize_node_strip_provenance(n: right)
+  node_equal_ignoring_provenance(a: left, b: right)
 }
 
 fn source_ast_equal_witness(
@@ -1394,6 +1394,16 @@ type StorageNamespaceRoot {
 type SourceStorageLayout {
   namespace_roots: List<StorageNamespaceRoot>
   default_tree: SourceRootRef
+  derived_rosters: List<StorageDerivedRoster>
+}
+
+// A LEDGER NAMESPACE WHOSE ROSTER MODULE HAS NO FILE (gunbc.source_layout LayoutDerivedRoster is the
+// repository's policy; the rule is below). The rows live one per module directly under
+// `row_namespace`, and `<row_namespace>.roster` is the list of them, derived by acquisition from the
+// sibling modules that declare a `row_type` row under their own stem.
+type StorageDerivedRoster {
+  row_namespace: String
+  row_type: String
 }
 
 type ModuleFileRef {
@@ -1502,6 +1512,186 @@ fn module_name_for_file(layout: SourceStorageLayout, file: ModuleFileRef) -> Mod
       Absent => ModuleNameDerived { name: dotted }
     }
   }
+}
+
+// ---- derived roster modules -------------------------------------------------------------
+//
+// ONE RULE FOR EVERY ONE-ROW-PER-FILE LEDGER. The rows are the authority for the ledger's membership;
+// a hand-appended list of them is a second authoring of the same fact, and a list written to disk
+// is a second authority beside the rows (DESIGN section 3). So the roster is a module with no file,
+// and its text is a function of the sibling modules alone:
+//
+//   module    <row_namespace>.roster
+//   members   every module directly under <row_namespace> that declares `data <stem>: <row_type> =`
+//             under its own file stem; a helper module beside the rows declares none and is not one
+//   order     the sorted stems, which are the declaration names
+//   value     `data <last segment of row_namespace>_roster: List<row_type> = [ <members> ]`
+//
+// Names and order are DERIVED from the namespace and the listing, never declared per ledger: the
+// policy row carries only what cannot be derived (which namespaces are ledgers, which type selects a
+// row). The v1 seed realizes the same contract in v1_compiler.cli_run.derived_row_roster
+// (DERIVED_ROW_ROSTERS) and is the regression oracle for this rule, not its specification.
+//
+// TWO REFUSALS, BOTH CORRECTIONS OF A SILENT SEED ARM. A sibling that declares a `row_type` row under
+// a name other than its stem is refused here, located (DerivedRosterRowMisplaced): the seed drops such
+// a row from the list and leaves its discovery to an off-path parse join, so natively it would simply
+// vanish. And the reading of a declaration line tolerates the spacing the formatter may write around
+// `:` and `=`, where the seed matched one exact spelling of the line.
+//
+// THE SELECTION READS DECLARATION LINES, NOT THE PARSE, and that is named rather than hidden: it is
+// discovery over the source text, exact for the formatter's one-line `data` head, and a head split
+// across lines is not seen. Its next rung is declaration introspection that BINDS a discovered data
+// declaration as a typed value (gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall), at
+// which point no roster module is needed at all and this section deletes.
+fn derived_roster_stem() -> String {
+  "roster"
+}
+
+fn derived_roster_module(roster: StorageDerivedRoster) -> String {
+  concat(roster.row_namespace, ".", derived_roster_stem())
+}
+
+fn derived_roster_namespace_leaf(roster: StorageDerivedRoster) -> String {
+  match list_head(xs: list_reverse(xs: split(s: roster.row_namespace, delimiter: "."))) {
+    Present { value: leaf } => leaf
+    Absent => roster.row_namespace
+  }
+}
+
+fn derived_roster_declaration(roster: StorageDerivedRoster) -> String {
+  concat(derived_roster_namespace_leaf(roster: roster), "_", derived_roster_stem())
+}
+
+// The ledger whose roster `module` is, if it is one.
+fn derived_roster_named(layout: SourceStorageLayout, module: String) -> Optional<StorageDerivedRoster> {
+  list_find_first(xs: layout.derived_rosters, predicate: fn(r) { derived_roster_module(roster: r) == module })
+}
+
+fn derived_roster_row_module(roster: StorageDerivedRoster, stem: String) -> String {
+  concat(roster.row_namespace, ".", stem)
+}
+
+// The ledger `module` is a sibling of, if it is one: a module directly under a roster's row namespace,
+// other than the roster itself. Its bytes are an input of that roster's derivation.
+fn derived_roster_sibling_of(layout: SourceStorageLayout, module: String) -> Optional<StorageDerivedRoster> {
+  list_find_first(xs: layout.derived_rosters, predicate: fn(r) {
+    let prefix = concat(r.row_namespace, ".")
+    module.starts_with(prefix: prefix)
+      && module != derived_roster_module(roster: r)
+      && length(xs: split(s: substring(s: module, start: string_length(s: prefix), end: string_length(s: module)), delimiter: ".")) == 1
+  })
+}
+
+// One sibling of a roster: a module directly under the row namespace, by its file stem, with the bytes
+// acquisition read for it.
+type DerivedRosterSibling {
+  stem: String
+  content: String
+}
+
+type DerivedRosterSelection
+  = DerivedRosterSelected { members: List<String> }
+  | DerivedRosterRowMisplaced { stem: String, declared: String }
+
+// The declaration a line heads, when the line is a `data` head declaring a value of `row_type`.
+fn derived_roster_line_row(line: String, row_type: String) -> Optional<String> {
+  if !line.starts_with(prefix: "data ") {
+    optional_absent()
+  } else {
+    let rest = substring(s: line, start: 5, end: string_length(s: line))
+    let at_colon = split(s: rest, delimiter: ":")
+    match list_head(xs: at_colon) {
+      Absent => optional_absent()
+      Present { value: name } =>
+        match list_head(xs: split(s: join(skip(xs: at_colon, n: 1), ":"), delimiter: "=")) {
+          Absent => optional_absent()
+          Present { value: declared_type } =>
+            if trim(s: declared_type) == row_type && string_length(s: trim(s: name)) > 0 {
+              optional_present(value: trim(s: name))
+            } else {
+              optional_absent()
+            }
+        }
+    }
+  }
+}
+
+// Every `row_type` row a sibling declares, by declaration name, in source order.
+fn derived_roster_sibling_rows(content: String, row_type: String) -> List<String> {
+  fold_list(xs: split(s: content, delimiter: "\n"), empty: [], cons: fn(acc, line) {
+    match derived_roster_line_row(line: line, row_type: row_type) {
+      Present { value: name } => list_snoc_item(xs: acc, item: name)
+      Absent => acc
+    }
+  })
+}
+
+type DerivedRosterSelectAcc {
+  members: List<String>
+  misplaced: Optional<DerivedRosterSelection>
+}
+
+fn derived_roster_select_sibling(acc: DerivedRosterSelectAcc, sibling: DerivedRosterSibling, row_type: String) -> DerivedRosterSelectAcc {
+  match acc.misplaced {
+    Present { value: _ } => acc
+    Absent =>
+      fold_list(xs: derived_roster_sibling_rows(content: sibling.content, row_type: row_type), empty: acc, cons: fn(inner, declared) {
+        match inner.misplaced {
+          Present { value: _ } => inner
+          Absent =>
+            if declared == sibling.stem {
+              DerivedRosterSelectAcc { members: list_snoc_item(xs: inner.members, item: declared), misplaced: inner.misplaced }
+            } else {
+              DerivedRosterSelectAcc {
+                members: inner.members,
+                misplaced: optional_present(value: DerivedRosterRowMisplaced { stem: sibling.stem, declared: declared })
+              }
+            }
+        }
+      })
+  }
+}
+
+// THE MEMBERSHIP: the siblings that declare a row under their own stem, sorted by stem. The siblings
+// arrive in any order; the roster's order is the rule's, never the listing's.
+fn derived_roster_select(roster: StorageDerivedRoster, siblings: List<DerivedRosterSibling>) -> DerivedRosterSelection {
+  let selected = fold_list(
+    xs: siblings,
+    empty: DerivedRosterSelectAcc { members: [], misplaced: optional_absent() },
+    cons: fn(acc, sibling) { derived_roster_select_sibling(acc: acc, sibling: sibling, row_type: roster.row_type) }
+  )
+  match selected.misplaced {
+    Present { value: refusal } => refusal
+    Absent => DerivedRosterSelected { members: sort_by(selected.members, m => m) }
+  }
+}
+
+// THE ROSTER MODULE'S TEXT over its sorted members. The bytes are the seed's render_roster's, so a
+// consumer that reads the derived module natively and one that reads it through the seed compile one
+// module, and the positive control (v2.test.claim.derived_roster_seed_agreement) compares the two.
+fn derived_roster_text(roster: StorageDerivedRoster, members: List<String>) -> String {
+  let header = join([
+    concat("module ", derived_roster_module(roster: roster)),
+    "",
+    concat("// DERIVED from sibling files declaring a ", roster.row_type, " row under their own stem. Do not"),
+    "// hand-edit. Membership is the directory filtered by declared type; order is the sorted",
+    "// filename stem, which is the declaration name. An append is a new file in this",
+    "// directory, never an edit here.",
+    "",
+    "import std.types { List }",
+    concat("import ", roster.row_namespace, " { ", roster.row_type, " }"),
+    ""
+  ], "\n")
+  let imports = join(list_map(xs: members, f: fn(m) { concat("import ", derived_roster_row_module(roster: roster, stem: m), " { ", m, " }\n") }), "")
+  let entries = join(list_map(xs: members, f: fn(m) { concat("  ", m, ",\n") }), "")
+  concat(
+    header,
+    imports,
+    "\n",
+    concat("data ", derived_roster_declaration(roster: roster), ": List<", roster.row_type, "> = [\n"),
+    entries,
+    "]\n"
+  )
 }
 
 // The ASCII case fold of a name or path, the key two names collide under on a case-insensitive

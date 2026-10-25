@@ -367,3 +367,19 @@ fn cost_trailing_digit_characters() -> List<NonEmptyStr> {
 fn sha512_crypt_figure_read_obligation() -> Optional<NonEmptyStr> {
   cited_figure_read_obligation(standing: sha512_crypt_format.figure_standing)
 }
+
+// EVERY HASHING METHOD'S PREFIX, as crypt.5 at v4.4.36 lists them under AVAILABLE HASHING METHODS (the module
+// anchor): yescrypt "$y$", gost-yescrypt "$gy$", scrypt "$7$", bcrypt "$2b$" (its format admits 2a, 2b, 2x and 2y),
+// sha512crypt "$6$", sha256crypt "$5$", sha1crypt "$sha1", SunMD5 "$md5", md5crypt "$1$" and NT "$3$"; bsdicrypt is
+// "_" followed by 19 characters of [./0-9A-Za-z]. bigcrypt and descrypt have NO prefix -- their hashes are bare runs
+// of [./0-9A-Za-z] -- so a string's shape cannot tell them from ordinary text, and they are not classified here; a
+// consumer that must refuse every hash has to refuse the FIELD that would carry one, not rely on the shape.
+data crypt_hashing_method_prefixes: List<NonEmptyStr> = ["$y$", "$gy$", "$7$", "$2a$", "$2b$", "$2x$", "$2y$", "$6$", "$5$", "$sha1", "$md5", "$1$", "$3$"]
+
+fn crypt_bsdicrypt_shaped(text: String) -> Bool {
+  length(text) == 20 && starts_with(s: text, prefix: "_") && digest_characters_are_admitted(digest: substring(s: text, start: 1, end: 20))
+}
+
+fn crypt_hash_shaped(text: String) -> Bool {
+  any(crypt_hashing_method_prefixes, p => starts_with(s: text, prefix: p as String)) || crypt_bsdicrypt_shaped(text: text)
+}

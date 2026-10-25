@@ -10,7 +10,7 @@ import std.algebra { Cons, Empty, fold_list }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.node { positional_child_target_nodes, Edge, Instantiation, Node, TypeNode, node_subtree_nodes }
+import v2.std.node { node_same_occurrence, positional_child_target_nodes, Edge, Instantiation, Node, TypeNode, node_subtree_nodes }
 import v2.std.qualified_name { declaration_denotation_of_type, optional_declaration_identity }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { Bool, List }
@@ -94,7 +94,7 @@ test fn osd_identity_resolved_optional_application_is_the_optional_instance() ->
 }
 
 test fn osd_nested_optional_application_is_two_layers() -> Bool {
-  osd_holds(o: osd_with_std(body: "type U = Optional<Optional<Int>>\n"), name: "p.U", pred: fn(n) { osd_is_optional_instance(n: n) && osd_any(n: n, pred: fn(c) { osd_is_optional_instance(n: c) && !(c == n) }) })
+  osd_holds(o: osd_with_std(body: "type U = Optional<Optional<Int>>\n"), name: "p.U", pred: fn(n) { osd_is_optional_instance(n: n) && osd_any(n: n, pred: fn(c) { osd_is_optional_instance(n: c) && !(node_same_occurrence(a: c, b: n)) }) })
 }
 
 test fn osd_local_homonym_is_not_the_optional_instance() -> Bool {

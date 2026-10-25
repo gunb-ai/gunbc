@@ -1,10 +1,11 @@
 module extdeps.os.ubuntu_autoinstall
 
-import std.types { Int, NonEmptyStr, Bool, List }
+import std.types { Int, NonEmptyStr, Bool, List, String }
 import std.os.types { UbuntuDistribution }
-import std.optional { Optional }
+import std.optional { Optional, Present, Absent }
 import extdeps.ssh.keys { SshPublicKey }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Https, uri_wire }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelKeyValue }
 import extdeps.external_authority { ExternalAuthority }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -65,6 +66,22 @@ data nocloud_datasource_authority: ExternalAuthority = ExternalAuthority {
 // The ';' in this token forced grub_cmdline_arg_render's quoting rule: unquoted, grub treats ';' as
 // a command separator and silently truncates the seedfrom, degrading autoinstall to interactive
 // (root-caused live on srv3/srv4).
+//
+// THE TOKEN, ONCE: `ds=<datasource>;s=<seedfrom>` as one kernel argument. Quoting it for a grub.cfg is
+// extdeps.bootloader.grub grub_cmdline_arg_render's job, not this builder's, so every consumer that renders it through
+// the GRUB model gets the one quoting rule.
+fn nocloud_seedfrom_kernel_arg(datasource: NonEmptyStr, seedfrom: String) -> KernelCmdlineArg {
+  KernelKeyValue { key: "ds", value: join([datasource as String, ";s=", seedfrom], "") }
+}
+
+// The network delivery's argument, from its carrier: NoCloudNet names the seed URL; NoCloudLocal names none, so it has
+// no network argument.
+fn nocloud_net_ds_kernel_arg(delivery: AutoinstallDeliveryMethod) -> KernelCmdlineArg? {
+  match delivery {
+    NoCloudNet { seed_url: u } => Present { value: nocloud_seedfrom_kernel_arg(datasource: "nocloud-net", seedfrom: uri_wire(uri: u) as String) }
+    NoCloudLocal => Absent
+  }
+}
 // The autoinstall `ssh` section: present means the installer installs openssh-server and these two settings
 // apply to it; absent means no server is installed, so there are no keys or password policy to carry.
 type AutoinstallSshServer {

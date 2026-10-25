@@ -1,6 +1,6 @@
 module v2.test.claim.std.named_child_lookup
 
-import v2.std.node { NotADeclaration }
+import v2.std.node { node_same_occurrence, NotADeclaration }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -32,7 +32,7 @@ fn ncl_conj() -> Node {
 
 fn ncl_found_is(lookup: NamedChildLookup, expected: Node) -> Bool {
   match lookup {
-    NamedChildFound { target: t } => t == expected
+    NamedChildFound { target: t } => node_same_occurrence(a: t, b: expected)
     NamedChildMissing => false
     NamedChildAmbiguous => false
   }
@@ -63,7 +63,7 @@ fn ncl_rejected_with(o: Outcome<Node>, reason: Symbol) -> Bool {
 
 fn ncl_accepted_is(o: Outcome<Node>, expected: Node) -> Bool {
   match o {
-    Accepted { value: v, diagnostics: _ } => v == expected
+    Accepted { value: v, diagnostics: _ } => node_same_occurrence(a: v, b: expected)
     Rejected { diagnostics: _ } => false
   }
 }

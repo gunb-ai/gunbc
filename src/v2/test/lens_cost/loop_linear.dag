@@ -2,7 +2,7 @@ module v2.test.lens_cost.loop_linear
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { LinearCost, cost_lens }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
   Edge,
@@ -51,7 +51,7 @@ test fn loop_linear_claim_holds() -> Bool {
   match cost_lens(n: loop_linear_input) {
     Holds { value: actual } =>
       match actual {
-        LinearCost { variable: sv } => sv.source == loop_linear_measure_leaf
+        LinearCost { variable: sv } => node_same_occurrence(a: sv.source, b: loop_linear_measure_leaf)
         _ => false
       }
     _ => false

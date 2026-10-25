@@ -184,6 +184,8 @@ fn layout_namespaces() -> List<String> {
     "extdeps.project_schedule",
     "extdeps.prometheus",
     "extdeps.provisioning",
+    "extdeps.python",
+    "extdeps.qwen",
     "extdeps.rack",
     "extdeps.radixark",
     "extdeps.ray",

@@ -25,7 +25,7 @@ import v2.std.artifact { Artifact, SourceFile }
 
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   OrderLabels,
   arrow_signature_order_read,
   Arrow,
@@ -336,7 +336,7 @@ fn ddl_resolved_type(tree: Node, n: Node) -> Optional<Node> {
 fn ddl_type_is(t: Optional<Node>, want: Node) -> Bool {
   match t {
     Absent => false
-    Present { value: got } => got == want
+    Present { value: got } => node_same_occurrence(a: got, b: want)
   }
 }
 
@@ -402,7 +402,7 @@ fn ddl_domain_typed_as_empty_product(member: Node, arrow: Node) -> Bool {
       match ddl_resolved_type(tree: member, n: domain) {
         Absent => false
         Present { value: t } =>
-          (length(xs: t.children) == 0) && (t != domain) && (t != arrow)
+          (length(xs: t.children) == 0) && (!node_same_occurrence(a: t, b: domain)) && (!node_same_occurrence(a: t, b: arrow))
             && (match t.kind { TypeNode { connective: Conj } => true  _ => false })
       }
   }

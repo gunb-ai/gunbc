@@ -88,7 +88,7 @@ pub fn algebra_param_templates_in(
 ) -> Rc<Vec<Rc<AlgebraTypeTemplate>>> {
     match Rc::new({
         let mut __result = Vec::new();
-        for t in crate::std_algebra::algebra_templates_for_profile(profile.clone())
+        for t in crate::std_algebra::algebra_templates_for_profile(profile)
             .iter()
             .cloned()
         {
@@ -180,11 +180,7 @@ pub fn derived_signature_and_return(
     names: Rc<Vec<String>>,
     method: String,
 ) -> Rc<BuiltinSignature> {
-    derived_signature(
-        names.clone(),
-        method.clone(),
-        algebra_named_return(method.clone()),
-    )
+    derived_signature(names, method.clone(), algebra_named_return(method.clone()))
 }
 
 pub fn derived_signature(
@@ -193,7 +189,7 @@ pub fn derived_signature(
     returns: Rc<Node>,
 ) -> Rc<BuiltinSignature> {
     Rc::new(BuiltinSignature {
-        params: pair_declared_names(names.clone(), algebra_param_templates(method.clone())),
+        params: pair_declared_names(names, algebra_param_templates(method)),
         returns: returns.clone(),
     })
 }
@@ -205,10 +201,7 @@ pub fn derived_signature_in(
     returns: Rc<Node>,
 ) -> Rc<BuiltinSignature> {
     Rc::new(BuiltinSignature {
-        params: pair_declared_names(
-            names.clone(),
-            algebra_param_templates_in(profile.clone(), method.clone()),
-        ),
+        params: pair_declared_names(names, algebra_param_templates_in(profile, method)),
         returns: returns.clone(),
     })
 }
@@ -262,16 +255,13 @@ pub fn map_of_type_variables() -> Rc<Node> {
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    crate::v1_compiler_infer_types::make_container_type(
-        "List".to_string(),
-        type_variable_node(id.clone()),
-    )
-    .ty
-    .clone()
+    crate::v1_compiler_infer_types::make_container_type("List".to_string(), type_variable_node(id))
+        .ty
+        .clone()
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    crate::v1_compiler_infer_types::make_container_type("List".to_string(), element.clone())
+    crate::v1_compiler_infer_types::make_container_type("List".to_string(), element)
         .ty
         .clone()
 }
@@ -2139,7 +2129,7 @@ pub fn builtin_signature(name: String) -> Option<Rc<BuiltinSignature>> {
 }
 
 pub fn builtin_param_names(name: String) -> Rc<Vec<String>> {
-    match builtin_signature(name.clone()) {
+    match builtin_signature(name) {
         Some(sig) => Rc::new({
             let mut __result = Vec::new();
             for p in sig.params.clone().iter().cloned() {
@@ -2264,14 +2254,14 @@ pub fn builtin_host_display_deferred_param_names(name: String) -> Rc<Vec<String>
 }
 
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
-    match builtin_signature(name.clone()) {
+    match builtin_signature(name) {
         Some(sig) => Some(sig.returns.clone()),
         std::option::Option::None => std::option::Option::None,
     }
 }
 
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
-    match infer_builtin_call_type(name.clone()) {
+    match infer_builtin_call_type(name) {
         Some(v) => v.clone(),
         std::option::Option::None => unit_type(),
     }

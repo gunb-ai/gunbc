@@ -1,16 +1,25 @@
 module test.claim.fleet.fleet_converge_host_cap_linkage_witness
 
 import std.types { Bool, String, List }
+import std.algebra { string_contains }
+import std.optional { Optional }
 import std.optional { Present, Absent }
 import std.measure { second_count }
 import extdeps.github.actions { Job, Step, RunStep, UsesStep }
+import extdeps.languages.yaml.types { YamlKeyValue, YamlValue, YamlString }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_job,
   fleet_converge_job_timeout_minutes,
   fleet_converge_host_cap_job_floor_minutes,
   fleet_converge_runner_host_file_converge_step,
   fleet_converge_runner_host_cap_release_step,
+  fleet_converge_executor_subject_split_gate_step,
+  fleet_converge_runner_host_withdraw_step,
+  fleet_converge_runner_host_restore_step,
 }
+import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_refusal_marker, fleet_converge_split_missing_subject_marker }
+import gunbc.actions_run_binding { fleet_converge_subject_host_env_name, fleet_converge_expected_host_env_name }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_withdraw_invoke, gunbc_ci_runner_host_restore_invoke }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_step_budget_env_name, host_cap_bracket_budget, runner_host_cap_drain_policy }
 
@@ -53,4 +62,111 @@ test fn the_release_does_not_write_the_converge_receipt() -> Bool {
 
 test fn the_job_carries_the_release_receipt_upload() -> Bool {
   any(job_step_ids(j: fleet_converge_job()), i => i == "runner_host_cap_release_receipt_upload")
+}
+
+// ─── THE SPLIT CONTROLS OF THE EMITTED JOB (operator ruling 2026-10-24, run 40085967610) ──────────
+//
+// The ruling: executor != subject must be a TYPED refusal that fires BEFORE any drain or mask
+// actuation, and the control must assert no actuation step ran. Structurally, that is three facts about
+// the emitted job, checked against the job model itself -- not against a transcription of it.
+
+fn run_text_of(st: Step) -> String {
+  match st {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
+    _ => ""
+  }
+}
+
+fn env_pairs_of(st: Step) -> List<YamlKeyValue> {
+  match st {
+    RunStep { name: _, id: _, run: _, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => kvs
+    _ => []
+  }
+}
+
+// THE GATE STANDS BEFORE EVERY ACT STEP. The three drain-and-mask steps (converge, withdraw, restore)
+// all sit after fleet_converge_executor_subject_split_gate in the emitted job, so nothing can actuate
+// before the precondition has run. Positions are computed, not remembered.
+test fn the_split_gate_precedes_every_drain_and_mask_step() -> Bool {
+  let ids = job_step_ids(j: fleet_converge_job())
+  match index_of(ids: ids, wanted: "fleet_converge_executor_subject_split_gate") {
+    Absent => false
+    Present { value: gate } =>
+      all(["runner_host_file_converge", "runner_host_withdraw", "runner_host_restore"], a => match index_of(ids: ids, wanted: a) {
+        Absent => false
+        Present { value: i } => gate < i
+      })
+  }
+}
+
+fn index_of(ids: List<String>, wanted: String) -> Optional<Int> {
+  index_of_from(ids: ids, wanted: wanted, i: 0)
+}
+
+fn index_of_from(ids: List<String>, wanted: String, i: Int) -> Optional<Int> {
+  if i >= length(xs: ids) {
+    Absent
+  } else {
+    // Indexing an out-of-range-safe accessor returns an optional element: match it, do not compare it.
+    match ids[i] {
+      Present { value: x } => if x == wanted { Present { value: i } } else { index_of_from(ids: ids, wanted: wanted, i: i + 1) }
+      Absent => Absent
+    }
+  }
+}
+
+// THE GATE CARRIES THE REFUSAL AND NO ACTUATION. Its script prints the typed refusal marker and exits
+// 1; it contains NEITHER act entry's invoke -- so a job that failed the precondition dispatched nothing
+// beyond the gate's own echo. (The invoke strings are the entries' identities: the gate not containing
+// them is the gate not invoking them.)
+test fn the_split_gate_step_carries_the_refusal_and_no_act_entry() -> Bool {
+  match fleet_converge_executor_subject_split_gate_step() {
+    RunStep { name: _, id: Present { value: i }, run: r, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: Present { value: cond }, continue_on_error: _, timeout_minutes: _ } =>
+      i == "fleet_converge_executor_subject_split_gate"
+        && string_contains(s: r, pattern: fleet_converge_split_refusal_marker)
+        && string_contains(s: r, pattern: "exit 1")
+        && !string_contains(s: r, pattern: gunbc_ci_runner_host_withdraw_invoke())
+        && !string_contains(s: r, pattern: gunbc_ci_runner_host_restore_invoke())
+        && !string_contains(s: r, pattern: "--entry")
+        && any(kvs, e => e.key == fleet_converge_expected_host_env_name && env_value_is(e, "${{ github.event.inputs.host }}"))
+        && any(kvs, e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}"))
+        && string_contains(s: cond, pattern: "github.event.inputs.host")
+        && string_contains(s: cond, pattern: "github.event.inputs.subject_host")
+        && string_contains(s: cond, pattern: "==")
+    _ => false
+  }
+}
+
+// The env pair carries exactly this rendered value. The value is a YamlValue, so the read is a match,
+// not a string field: an env bound to anything but the named dispatch input (a hardcoded host, say)
+// fails here.
+fn env_value_is(e: YamlKeyValue, wanted: String) -> Bool {
+  match e.value {
+    YamlString { value: v } => v == wanted
+    _ => false
+  }
+}
+
+// An env value is a YamlValue VARIANT: handing one to string_contains is a type error at RUNTIME, not
+// parse time. Unwrap first.
+fn env_value_of(e: YamlKeyValue) -> String {
+  match e.value {
+    YamlString { value: v } => v
+    _ => ""
+  }
+}
+
+// THE SUBJECT TRAVELS AS ITS OWN NAME. Every step that touches the subject -- the three acts AND the
+// always-run finalizer -- is delivered FLEET_CONVERGE_SUBJECT_HOST beside its executor attestation: the
+// finalizer included, because a converge that died mid-bracket must have its masks lifted on the
+// SUBJECT, not re-admitted on the executor.
+test fn the_subject_named_steps_carry_their_subject_env() -> Bool {
+  let steps = map([
+    fleet_converge_runner_host_file_converge_step(),
+    fleet_converge_runner_host_withdraw_step(),
+    fleet_converge_runner_host_restore_step(),
+    fleet_converge_runner_host_cap_release_step(),
+  ], st => any(env_pairs_of(st: st), e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}")))
+  all(steps, ok => ok)
+    && any(env_pairs_of(st: fleet_converge_runner_host_file_converge_step()), e => e.key == fleet_converge_expected_host_env_name && string_contains(s: env_value_of(e: e), pattern: "github.event.inputs.host"))
 }

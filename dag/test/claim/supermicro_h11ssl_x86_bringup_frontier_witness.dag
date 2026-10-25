@@ -14,6 +14,7 @@ import gunbc.machine_intake.h11ssl_x86_bringup_frontier {
   h11ssl_x86_bringup_dimm_reader_gap_subject,
   h11ssl_x86_bringup_storage_reader_gap_subject,
   h11ssl_x86_bringup_adoption_gap_subject,
+  h11ssl_x86_bringup_primary_network_gap_subject,
   h11ssl_x86_bringup_seed_gap_subject,
   h11ssl_x86_bringup_pxe_edge_gap_subject,
   h11ssl_x86_bringup_install_route_gap_subject,
@@ -21,16 +22,19 @@ import gunbc.machine_intake.h11ssl_x86_bringup_frontier {
 
 // THE x86 BRING-UP GAP ROSTER'S CLAIMS (gunbc.machine_intake.h11ssl_x86_bringup_frontier). The
 // census fold consumes these rows; this witness holds the roster to the shape the census requires
-// and to the six gaps the 2026-10-24 hand-install ruling asked to be recorded -- each with a trigger
+// and to the gaps the 2026-10-24 hand-install ruling asked to be recorded -- each with a trigger
 // that can actually retire it, each subject enrolled once (the live census witness
 // test.claim.long.dissolution_census_witness fails the fold on a duplicate subject), and the fill
 // order consistent with the roster so the proposal cannot rot into prose.
 
-// THE ROSTER IS THE SIX GAPS AS EIGHT ROWS (G4 splits into family + virtual media; G5 into DIMM +
-// storage). The count is pinned because a row quietly dropped from the fold -- or a ninth gap filed
-// without updating this witness -- must fail somewhere, and here is the honest place.
-test fn w_the_roster_carries_the_six_gaps_as_eight_rows() -> Bool {
-  count(h11ssl_x86_bringup_frontier_rows) == 8
+// THE ROSTER IS SEVEN GAPS AS NINE ROWS (G4 splits into family + virtual media; G5 into DIMM +
+// storage). Six gaps (eight rows) came from the 2026-10-24 hand-install ruling; the seventh (G7,
+// primary network) was filed 2026-10-25 on quiet-fox-556's handoff for gunbc#15100, whose authority
+// is still draft -- provenance split in the module header, not rewritten. The count is pinned
+// because a row quietly dropped from the fold -- or a tenth gap filed without updating this witness
+// -- must fail somewhere, and here is the honest place.
+test fn w_the_roster_carries_the_seven_gaps_as_nine_rows() -> Bool {
+  count(h11ssl_x86_bringup_frontier_rows) == 9
 }
 
 // EVERY ROW IS WELL-FORMED BY THE CENSUS'S OWN PREDICATE: non-empty reason, non-empty subject, and
@@ -59,7 +63,7 @@ test fn w_no_gap_subject_is_enrolled_twice() -> Bool {
   !any(rows, row => count(filter(rows, other => frontier_subject_eq(a: other.subject, b: row.subject))) != 1)
 }
 
-// THE EIGHT SUBJECTS ARE THE EIGHT GAP BOUNDARIES THE HEADER CITES -- pinned by identity, so a row
+// THE NINE SUBJECTS ARE THE NINE GAP BOUNDARIES THE HEADER CITES -- pinned by identity, so a row
 // cannot be silently retargeted at an easier-to-dissolve symbol (which is the pressure that rots a
 // gap list: the boundary the fill must cross is the boundary the row must name). Comparison goes
 // through frontier_subject_eq, the std predicate -- no empty-string sentinel is ever built.
@@ -70,6 +74,7 @@ test fn w_the_subjects_are_the_cited_boundaries() -> Bool {
     DeclSubject { ref: h11ssl_x86_bringup_dimm_reader_gap_subject },
     DeclSubject { ref: h11ssl_x86_bringup_storage_reader_gap_subject },
     DeclSubject { ref: h11ssl_x86_bringup_adoption_gap_subject },
+    DeclSubject { ref: h11ssl_x86_bringup_primary_network_gap_subject },
     DeclSubject { ref: h11ssl_x86_bringup_seed_gap_subject },
     DeclSubject { ref: h11ssl_x86_bringup_pxe_edge_gap_subject },
     DeclSubject { ref: h11ssl_x86_bringup_install_route_gap_subject },
@@ -87,7 +92,8 @@ test fn w_the_fill_order_covers_the_roster_exactly() -> Bool {
 
 // THE FILL ORDER IS THE PROPOSED DEPENDENCY ORDER, PINNED POSITION BY POSITION: BMC family first
 // (the gate every BMC-side route reads), then the two read-only census readers, then adoption (needs
-// neither image nor boot), then the seed, the boot path, the media attach -- and the capstone
+// neither image nor boot), then the primary-network intake (its LAN record keys on the HostIdentity
+// adoption mints), then the seed, the boot path, the media attach -- and the capstone
 // (install-to-disk, which composes seed + boot path + media attach) LAST. A reorder that puts the
 // capstone before its parts is a plan that cannot execute; zip_eq makes the ORDER a checked claim,
 // not a membership check.
@@ -97,6 +103,7 @@ test fn w_the_fill_order_is_dependency_first() -> Bool {
     h11ssl_x86_bringup_dimm_reader_gap_subject,
     h11ssl_x86_bringup_storage_reader_gap_subject,
     h11ssl_x86_bringup_adoption_gap_subject,
+    h11ssl_x86_bringup_primary_network_gap_subject,
     h11ssl_x86_bringup_seed_gap_subject,
     h11ssl_x86_bringup_pxe_edge_gap_subject,
     h11ssl_x86_bringup_virtual_media_gap_subject,

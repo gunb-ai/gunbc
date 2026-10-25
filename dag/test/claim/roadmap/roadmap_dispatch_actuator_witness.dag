@@ -16,7 +16,10 @@ import extdeps.systemd {
 import extdeps.exec.command { argv_words }
 
 import std.algebra { fold_list }
-import std.types { GitRef, List }
+import std.types { GitRef, List, list_length }
+import std.filesystem { path_parent_directory }
+import extdeps.tools.gnu_coreutils { coreutils_directory_mode_operand }
+import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverseSetgid, DirectoryOwnerGroupWritableSetgid }
 import std.types { NonEmptyStr, GitRef, FilePath, path_segment_is_safe }
 import std.measure { byte_size_count }
 import std.disposition { Scaffold, Terminal }
@@ -72,7 +75,7 @@ import extdeps.llm.cli {
   ProviderModelSelection,
   reasoning_effort_label,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_audit_unit_command, dispatch_supervisor_unit_command, dispatch_attempt_audit_events_path_for_instance, dispatch_attempt_supervisor_events_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_unit_name, attempt_state_prepare_argv_for_instance, dispatch_reviewer_attempt_identity, dispatch_attempt_publication_dir_for_instance, dispatch_actuator_selection, dispatch_actuator_vendor_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, dispatch_brief_for_origin, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_continuation_alignment_preamble, dispatch_review_unit_command, dispatch_supervisor_unit_command, dispatch_unit_exec_argv, dispatch_supervisor_unit_name, dispatch_supervisor_attempt_identity, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_audit_unit_command, dispatch_supervisor_unit_command, dispatch_attempt_audit_events_path_for_instance, dispatch_attempt_supervisor_events_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_unit_name, dispatch_reviewer_attempt_identity, dispatch_attempt_publication_dir_for_instance, dispatch_actuator_selection, dispatch_actuator_vendor_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, dispatch_brief_for_origin, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_continuation_alignment_preamble, dispatch_review_unit_command, dispatch_supervisor_unit_command, dispatch_unit_exec_argv, dispatch_supervisor_unit_name, dispatch_supervisor_attempt_identity, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv, dispatch_attempt_wire_dir_for_instance, attempt_state_prepare_argvs_for_instance }
 import gunbc.dispatch_selection {
   dispatch_selection_standing_ineligible_reason,
   default_provider_selection_request,
@@ -963,12 +966,12 @@ test fn the_prepare_step_creates_the_publication_directory_with_the_attempt_dire
   let instance = srv1_live_dashboard_instance()
   let node_id = "belt-cause-probe" as RoadmapNodeId
   let key = "a0123456789abcdef"
-  let argv = attempt_state_prepare_argv_for_instance(
+  let argvs = attempt_state_prepare_argvs_for_instance(
     instance: instance,
     node_id: node_id,
     attempt_key: key,
   )
-  let wire = join(argv.args, separator: "\0")
+  let wire = join(fold(argvs, init: [], f: (acc, a) => concat(acc, a.args)), separator: "\0")
   let attempt_dir = dispatch_attempt_state_path_for_instance(
     instance: instance,
     node_id: node_id,
@@ -979,10 +982,60 @@ test fn the_prepare_step_creates_the_publication_directory_with_the_attempt_dire
     node_id: node_id,
     attempt_key: key,
   )
-  argv.program == "/usr/bin/install"
+  fold(argvs, init: true, f: (ok, a) => ok && a.program == "/usr/bin/install")
     && string_contains(s: wire, pattern: attempt_dir)
     && string_contains(s: wire, pattern: publication_dir)
     && string_contains(s: wire, pattern: "-d")
+}
+
+// A DEDICATED WORKER ACCOUNT ENTERS ITS ATTEMPT DIRECTORY AND WRITES ITS SCRATCH CHILD, and nothing else
+// the prepare step makes. Refused live on the srv1 lab, 2026-10-24: the attempt directory was 1000:1003
+// 0700, so the worker-traversal step stopped the spawn (no execute bit for gunbc-worker). The lab's
+// prepare is three installs: the attempt directory alone at the setgid group-traverse arm (setgid, so
+// worker/ made inside it keeps the shared group), worker/ and the wire log directory inside it at the
+// group-writable setgid arm, and the stage directories the worker never enters at owner-only. The wire
+// conjuncts are RED on the head that filed the wire directory with the owner-only stages: the lab's
+// worker then could not write its rounds. The last conjunct is the integrity half: no install gives the
+// attempt directory group write, so the worker cannot replace what sits beside it.
+test fn the_dedicated_worker_attempt_directory_is_group_traversable_and_its_scratch_group_writable() -> Bool {
+  let instance = srv1_lab_dashboard_instance()
+  let node_id = "belt-cause-probe" as RoadmapNodeId
+  let key = "a0123456789abcdef"
+  let argvs = attempt_state_prepare_argvs_for_instance(instance: instance, node_id: node_id, attempt_key: key)
+  let attempt_dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: key)
+  let scratch = path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: key))
+  let publication_dir = dispatch_attempt_publication_dir_for_instance(instance: instance, node_id: node_id, attempt_key: key)
+  let wire_dir = dispatch_attempt_wire_dir_for_instance(instance: instance, node_id: node_id, attempt_key: key)
+  let traverse = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerAllGroupTraverseSetgid))
+  let writable = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid))
+  let owner_only = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerOnly))
+  let setgid_traverse = declared_directory_mode(m: DirectoryOwnerAllGroupTraverseSetgid)
+  list_length(items: argvs) == 3
+    && any(argvs, a => any(a.args, w => w == attempt_dir) && any(a.args, w => w == traverse) && !any(a.args, w => w == scratch))
+    && any(argvs, a => any(a.args, w => w == scratch) && any(a.args, w => w == writable) && !any(a.args, w => w == attempt_dir))
+    && any(argvs, a => any(a.args, w => w == wire_dir) && any(a.args, w => w == writable))
+    && !any(argvs, a => any(a.args, w => w == wire_dir) && any(a.args, w => w == owner_only))
+    && any(argvs, a => any(a.args, w => w == publication_dir) && any(a.args, w => w == owner_only) && !any(a.args, w => w == attempt_dir))
+    && setgid_traverse.setgid && setgid_traverse.group.execute && !setgid_traverse.group.write
+    && !any(argvs, a => any(a.args, w => w == attempt_dir) && (any(a.args, w => w == writable) || any(a.args, w => w == owner_only)))
+}
+
+// THE SERVICE-USER WORKER KEEPS THE ONE OWNER-ONLY INSTALL IT ALWAYS HAD: the worker is the owner, so the
+// dedicated-account split must not loosen production (srv1 live is WorkerIsServiceUser).
+test fn the_service_user_worker_prepare_stays_one_owner_only_install() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let node_id = "belt-cause-probe" as RoadmapNodeId
+  let key = "a0123456789abcdef"
+  let argvs = attempt_state_prepare_argvs_for_instance(instance: instance, node_id: node_id, attempt_key: key)
+  let attempt_dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: key)
+  let scratch = path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: key))
+  let owner_only = coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerOnly))
+  list_length(items: argvs) == 1
+    && all_owner_only_with(argvs: argvs, owner_only: owner_only, attempt_dir: attempt_dir, scratch: scratch)
+}
+
+fn all_owner_only_with(argvs: List<HostExecArgv>, owner_only: String, attempt_dir: String, scratch: String) -> Bool {
+  any(argvs, a => any(a.args, w => w == owner_only) && any(a.args, w => w == attempt_dir) && any(a.args, w => w == scratch))
 }
 
 // The publication directory must be UNDER the attempt directory, not beside it. install -d takes a

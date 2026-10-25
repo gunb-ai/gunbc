@@ -1,0 +1,30 @@
+module test.fixture.coproduct_at_declared_scalar_return_fixture
+
+// FIXTURE RED for gunbc.recurring_failure_mode a_record_accepted_where_a_declared_scalar_slot_is_declared, at
+// the declared-return position and for a coproduct. coproduct_returned_as_string is declared to return
+// String, and its body returns a value of the user coproduct Pick<Tally>. Measured at main 476be2f5 with
+// `gunbc compile --target rust`: compile rc=0 and no diagnostic at the return. The class's wall, a
+// declared-type judgment at the return regardless of the value side's kind, must refuse it.
+import std.types { Int, String }
+
+type Tally {
+  hits: Int
+  misses: Int
+}
+
+type Pick<T>
+  = NoPick
+  | OnePick { candidate: T }
+  | ManyPicks
+
+fn pick_step(acc: Pick<Tally>, row: Tally) -> Pick<Tally> {
+  match acc {
+    NoPick => OnePick { candidate: row }
+    OnePick { candidate: _ } => ManyPicks
+    ManyPicks => ManyPicks
+  }
+}
+
+fn coproduct_returned_as_string(r: Tally) -> String {
+  pick_step(acc: NoPick, row: r)
+}

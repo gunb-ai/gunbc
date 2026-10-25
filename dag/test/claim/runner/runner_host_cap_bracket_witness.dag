@@ -1125,8 +1125,8 @@ test fn an_unread_roster_at_the_reread_prevents_the_stop() -> Bool {
 // The residual is declared in the refusal text itself: the window between the last reading and the stop.
 test fn the_declared_residual_and_frontier_are_typed_and_the_wire_renders_them() -> Bool {
   let w = listener_restart_residual_wire()
-  length(listener_reregistration_frontier.triggers) == 2 && length(listener_restart_residual.window_opens_after) == 3
-    && string_contains(s: w, pattern: "(mask, roster busy=false, no Runner.Worker)")
+  length(listener_reregistration_frontier.triggers) == 2 && length(listener_restart_residual.window_opens_after) == 4
+    && string_contains(s: w, pattern: "(mask, roster busy=false, no Runner.Worker, current registration)")
     && any(listener_reregistration_frontier.triggers, t => match t { UpstreamAtomicBusyRefusingAdmissionClose => true LongLivedSlotReregistrationRoute => false })
     && string_contains(s: w, pattern: "residual: ") && string_contains(s: w, pattern: "frontier: ")
     && string_contains(s: w, pattern: "an upstream-documented atomic busy-refusing admission close AND a re-registration route for long-lived slots")

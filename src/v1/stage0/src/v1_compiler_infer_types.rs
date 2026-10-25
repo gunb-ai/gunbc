@@ -140,7 +140,7 @@ pub fn node_is_collection(
     ((((n.children.clone().len() as i64) > 0)
         && (n.connective.clone() == Connective::NoConnective))
         && is_declared_container_alias_spelling(crate::v1_std_core::authored_name_at(
-            source_indices.clone(),
+            source_indices,
             n.clone(),
         )))
 }
@@ -161,7 +161,7 @@ pub fn node_is_keyed_algebra_spelling(
     ((n.connective.clone() == Connective::NoConnective)
         && match crate::std_types::container_template_algebra(
             crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
+                source_indices,
                 n.clone(),
             )),
         ) {
@@ -186,9 +186,8 @@ pub fn node_is_element_collection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let c = collection_carrier_node(n.clone());
-        (((c.children.clone().len() as i64) == 1)
-            && node_is_collection(c.clone(), source_indices.clone()))
+        let c = collection_carrier_node(n);
+        (((c.children.clone().len() as i64) == 1) && node_is_collection(c.clone(), source_indices))
     }
 }
 
@@ -208,7 +207,7 @@ pub fn canonical_template_name(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        let nm = crate::v1_std_core::authored_name_at(source_indices, n);
         match crate::std_types::container_template_algebra(
             crate::v1_std_core::qualified_last_segment(nm.clone()),
         ) {
@@ -220,7 +219,7 @@ pub fn canonical_template_name(
 
 pub fn is_declared_container_alias_spelling(name: String) -> bool {
     match crate::std_types::container_template_alias_algebra(
-        crate::v1_std_core::qualified_last_segment(name.clone()),
+        crate::v1_std_core::qualified_last_segment(name),
     ) {
         Some(_) => true,
         std::option::Option::None => false,
@@ -252,7 +251,7 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
 
 pub fn container_kind_canonical(name: String) -> String {
     {
-        let last = crate::v1_std_core::qualified_last_segment(name.clone());
+        let last = crate::v1_std_core::qualified_last_segment(name);
         match v1_rt::map_get(&kernel_algebra_profile(), last.clone()) {
             Some(_) => last.clone(),
             std::option::Option::None => {
@@ -269,10 +268,7 @@ pub fn container_kind_canonical(name: String) -> String {
 }
 
 pub fn kernel_profile_lookup(name: String) -> Option<AlgebraProfile> {
-    v1_rt::map_get(
-        &kernel_algebra_profile(),
-        container_kind_canonical(name.clone()),
-    )
+    v1_rt::map_get(&kernel_algebra_profile(), container_kind_canonical(name))
 }
 
 pub fn reground_alias_carrier_identity(
@@ -280,8 +276,7 @@ pub fn reground_alias_carrier_identity(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     if (((n.name.clone() != "".to_string())
-        && (n.name.clone()
-            != crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())))
+        && (n.name.clone() != crate::v1_std_core::authored_name_at(source_indices, n.clone())))
         && is_declared_container_alias_spelling(n.name.clone()))
     {
         Rc::new(Node {
@@ -518,7 +513,7 @@ pub fn is_fully_resolved(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match (*type_resolution_verdict(n.clone(), source_indices.clone())).clone() {
+    match (*type_resolution_verdict(n, source_indices)).clone() {
         TypeResolutionVerdict::FullyResolved => true,
         TypeResolutionVerdict::UnderResolved => false,
         TypeResolutionVerdict::ContainerSpellingUnresolvable { name: _, .. } => false,
@@ -1114,7 +1109,7 @@ pub fn algebra_method_field(
             }
             __result
         });
-        let callable = make_callable_type(params.clone(), return_type.clone());
+        let callable = make_callable_type(params, return_type);
         Rc::new(Node {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
@@ -1238,7 +1233,7 @@ pub fn algebra_child_or_placeholder(
                 diagnostics: evidence_diags.clone(),
             }),
             std::option::Option::None => Rc::new(KernelTypeBuild {
-                ty: type_variable_node(placeholder.clone()),
+                ty: type_variable_node(placeholder),
                 diagnostics: evidence_diags.clone(),
             }),
         }
@@ -1288,7 +1283,7 @@ pub fn instantiate_algebra_type(
                 };
                 let inner_b =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
-                let built = make_container_type(kind_name.clone(), inner_b.ty.clone());
+                let built = make_container_type(kind_name, inner_b.ty.clone());
                 Rc::new(KernelTypeBuild {
                     ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(
@@ -1470,7 +1465,7 @@ pub fn enrich_kernel_type(
                     __result
                 });
                 Rc::new(KernelTypeBuild {
-                    ty: enrich_base_with_fields(name.clone(), base.clone(), fields.clone()),
+                    ty: enrich_base_with_fields(name.clone(), base.clone(), fields),
                     diagnostics: field_diags.clone(),
                 })
             }
@@ -1567,7 +1562,7 @@ pub fn unify_template(
                 };
                 unify_template(
                     ret_template.clone(),
-                    produced.clone(),
+                    produced,
                     receiver.clone(),
                     subst.clone(),
                     source_indices.clone(),
@@ -1639,7 +1634,7 @@ pub fn unify_template(
                         st.clone(),
                         child_type_node(c.clone()),
                         receiver.clone(),
-                        s2.clone(),
+                        s2,
                         source_indices.clone(),
                     ),
                     std::option::Option::None => s2.clone(),
@@ -1963,7 +1958,7 @@ pub fn apply_type_substitution(
                     receiver.clone(),
                     source_indices.clone(),
                 );
-                let built = make_container_type(kind_name.clone(), inner_applied.ty.clone());
+                let built = make_container_type(kind_name, inner_applied.ty.clone());
                 Rc::new(KernelTypeBuild {
                     ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(
@@ -2115,14 +2110,14 @@ pub fn resolve_type_variables_from_template(
     {
         let subst = build_type_substitution(
             template.param_types.clone(),
-            arg_types.clone(),
+            arg_types,
             receiver_type.clone(),
-            overrides.clone(),
+            overrides,
             source_indices.clone(),
         );
         apply_type_substitution(
             template.return_type.clone(),
-            subst.clone(),
+            subst,
             receiver_type.clone(),
             source_indices.clone(),
         )
@@ -2175,25 +2170,27 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn normalize_access_type_node(mut __tco_loop_n: Rc<Node>) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        let has_structure = (n.connective.clone() != Connective::NoConnective);
-        let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
-            && has_structure.clone())
-        {
-            n.children.clone().first().cloned()
-        } else {
-            std::option::Option::None
-        };
-        match unwrapped.clone() {
-            Some(base) => {
-                let __tco_0 = base.clone();
-                __tco_loop_n = __tco_0;
-                continue;
-            }
-            std::option::Option::None => {
-                break n;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            let has_structure = (n.connective.clone() != Connective::NoConnective);
+            let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
+                && has_structure.clone())
+            {
+                n.children.clone().first().cloned()
+            } else {
+                std::option::Option::None
+            };
+            match unwrapped.clone() {
+                Some(base) => {
+                    let __tco_0 = base.clone();
+                    __tco_loop_n = __tco_0;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break n;
+                }
             }
         }
     }
@@ -2428,11 +2425,7 @@ pub enum TextNotAskedReason {
 pub fn text_crossing_in_judgment(left: Rc<Node>, right: Rc<Node>, text: Rc<TextJudgment>) -> bool {
     match (*text.clone()).clone() {
         TextJudgment::TextJudgedIn { env: e, .. } => {
-            crate::v1_compiler_infer_env::text_crossing_by_identity(
-                left.clone(),
-                right.clone(),
-                e.clone(),
-            )
+            crate::v1_compiler_infer_env::text_crossing_by_identity(left, right, e.clone())
         }
         TextJudgment::TextNotAsked { reason: _, .. } => false,
     }
@@ -2466,7 +2459,7 @@ pub fn node_declaration_identity(
 ) -> String {
     crate::v1_compiler_type_head_exposure::type_declaration_identity_key(
         node_declaration_file(n.clone()),
-        crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+        crate::v1_std_core::authored_name_at(source_indices, n.clone()),
     )
 }
 
@@ -2485,29 +2478,31 @@ pub fn declaration_carried_through_resolution(
     mut __tco_loop_n: Rc<Node>,
     mut __tco_loop_hops: i64,
 ) -> Option<Rc<DeclarationRef>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut hops = __tco_loop_hops;
-        match whole_declaration_carried(n.clone()) {
-            Some(d) => {
-                break Some(d.clone());
-            }
-            std::option::Option::None => {
-                if (hops.clone() <= 0) {
-                    break std::option::Option::None;
-                } else {
-                    match n.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: r, .. }) => {
-                            let __tco_0 = r.clone();
-                            let __tco_1 = v1_rt::int_sub(hops, 1);
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_hops = __tco_1;
-                            continue;
-                        }
-                        _ => {
-                            break std::option::Option::None;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut hops = __tco_loop_hops;
+            match whole_declaration_carried(n.clone()) {
+                Some(d) => {
+                    break Some(d.clone());
+                }
+                std::option::Option::None => {
+                    if (hops.clone() <= 0) {
+                        break std::option::Option::None;
+                    } else {
+                        match n.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: r, .. }) => {
+                                let __tco_0 = r.clone();
+                                let __tco_1 = v1_rt::int_sub(hops, 1);
+                                __tco_loop_n = __tco_0;
+                                __tco_loop_hops = __tco_1;
+                                continue;
+                            }
+                            _ => {
+                                break std::option::Option::None;
+                            }
                         }
                     }
                 }
@@ -2529,8 +2524,8 @@ pub fn applied_arguments_identical(
     right_args: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    arguments_agree_in_lockstep(left_args.clone(), right_args.clone(), |l, r| {
-        applied_argument_types_identical(l.clone(), r.clone(), source_indices.clone())
+    arguments_agree_in_lockstep(left_args, right_args, |l, r| {
+        applied_argument_types_identical(l, r, source_indices.clone())
     })
 }
 
@@ -2580,7 +2575,7 @@ pub fn applied_argument_heads_identical(
     if (type_node_is_callable(left.clone()) || type_node_is_callable(right.clone())) {
         ((type_node_is_callable(left.clone()) && type_node_is_callable(right.clone()))
             && callable_signatures_agree(left.clone(), right.clone(), |a, b| {
-                applied_argument_types_identical(a.clone(), b.clone(), source_indices.clone())
+                applied_argument_types_identical(a, b, source_indices.clone())
             }))
     } else {
         match left.inferred.clone().as_deref().cloned() {
@@ -2682,9 +2677,9 @@ pub fn optional_instance_at_payload_of(
                     && ((instance.children.clone().len() as i64) == 1))
                     && match instance.children.clone().first().cloned() {
                         Some(ch) => applied_argument_types_identical(
-                            crate::v1_std_core::with_required_cardinality(leaf.clone()),
+                            crate::v1_std_core::with_required_cardinality(leaf),
                             child_type_node(ch.clone()),
-                            source_indices.clone(),
+                            source_indices,
                         ),
                         std::option::Option::None => false,
                     })
@@ -2744,12 +2739,7 @@ pub fn node_type_compatible(
                                 && (right.connective.clone() == Connective::Arrow))
                             {
                                 callable_signatures_agree(left.clone(), right.clone(), |a, b| {
-                                    node_type_compatible(
-                                        a.clone(),
-                                        b.clone(),
-                                        source_indices.clone(),
-                                        text.clone(),
-                                    )
+                                    node_type_compatible(a, b, source_indices.clone(), text.clone())
                                 })
                             } else {
                                 {
@@ -2935,14 +2925,14 @@ pub fn alias_identity_in_judgment(
     match (*text.clone()).clone() {
         TextJudgment::TextJudgedIn { env: e, .. } => {
             crate::v1_compiler_infer_env::alias_settled_agree(
-                left.clone(),
-                right.clone(),
+                left,
+                right,
                 source_indices.clone(),
                 e.clone(),
                 |a, b| {
                     applied_argument_agrees(
-                        child_type_node(a.clone()),
-                        child_type_node(b.clone()),
+                        child_type_node(a),
+                        child_type_node(b),
                         source_indices.clone(),
                         text.clone(),
                     )
@@ -2962,14 +2952,14 @@ pub fn alias_names_identity_in_judgment(
     match (*text.clone()).clone() {
         TextJudgment::TextJudgedIn { env: e, .. } => {
             crate::v1_compiler_infer_env::alias_names_settled_agree(
-                left.clone(),
-                right.clone(),
+                left,
+                right,
                 source_indices.clone(),
                 e.clone(),
                 |a, b| {
                     applied_argument_agrees(
-                        child_type_node(a.clone()),
-                        child_type_node(b.clone()),
+                        child_type_node(a),
+                        child_type_node(b),
                         source_indices.clone(),
                         text.clone(),
                     )
@@ -3026,12 +3016,9 @@ pub fn applied_argument_agrees(
 ) -> bool {
     match applied_argument_opaque_identity(left.clone(), right.clone()) {
         Some(verdict) => verdict.clone(),
-        std::option::Option::None => applied_argument_declared_agrees(
-            left.clone(),
-            right.clone(),
-            source_indices.clone(),
-            text.clone(),
-        ),
+        std::option::Option::None => {
+            applied_argument_declared_agrees(left.clone(), right.clone(), source_indices, text)
+        }
     }
 }
 
@@ -3074,8 +3061,8 @@ pub fn applied_argument_declared_agrees(
                         e.clone(),
                         |a, b| {
                             applied_argument_agrees(
-                                child_type_node(a.clone()),
-                                child_type_node(b.clone()),
+                                child_type_node(a),
+                                child_type_node(b),
                                 source_indices.clone(),
                                 text.clone(),
                             )
@@ -3108,7 +3095,7 @@ pub fn prefer_specific_type(
             match left_first_child.clone() {
                 Some(ch) => {
                     let el = child_type_node(ch.clone());
-                    let el_is_unit = is_unit_like(el.clone());
+                    let el_is_unit = is_unit_like(el);
                     el_is_unit.clone()
                 }
                 std::option::Option::None => false,
@@ -3303,7 +3290,7 @@ pub fn node_type_equals_core(
         {
             ((left.connective.clone() == right.connective.clone())
                 && callable_signatures_agree(left.clone(), right.clone(), |a, b| {
-                    node_type_equals(a.clone(), b.clone(), source_indices.clone(), text.clone())
+                    node_type_equals(a, b, source_indices.clone(), text.clone())
                 }))
         } else {
             {
@@ -3472,8 +3459,8 @@ pub fn node_type_equals_core(
                                                             right.clone(),
                                                             |a, b| {
                                                                 node_type_equals(
-                                                                    a.clone(),
-                                                                    b.clone(),
+                                                                    a,
+                                                                    b,
                                                                     source_indices.clone(),
                                                                     text.clone(),
                                                                 )
@@ -3630,7 +3617,7 @@ pub fn method_receiver_element_node(
 ) -> Rc<Node> {
     {
         let normed = normalize_access_type_node(receiver_type.clone());
-        let maybe_element = if node_is_keyed_collection(normed.clone(), source_indices.clone()) {
+        let maybe_element = if node_is_keyed_collection(normed.clone(), source_indices) {
             match normed.children.clone().get((1) as usize).cloned() {
                 Some(ch) => Some(child_type_node(ch.clone())),
                 std::option::Option::None => std::option::Option::None,
@@ -3720,37 +3707,39 @@ pub fn first_matching_algebra_field(
     mut __tco_loop_candidates: Rc<Vec<AlgebraFieldKind>>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<AlgebraFieldMatch>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut candidates = __tco_loop_candidates;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        match candidates.clone().first().cloned() {
-            std::option::Option::None => {
-                break std::option::Option::None;
-            }
-            Some(kind) => {
-                match crate::v1_std_core::find_child_named(
-                    n.clone(),
-                    algebra_field_kind_name(kind.clone()),
-                    source_indices.clone(),
-                ) {
-                    Some(f) => {
-                        break Some(Rc::new(AlgebraFieldMatch {
-                            field_kind: kind.clone(),
-                            field_node: f.clone(),
-                        }));
-                    }
-                    std::option::Option::None => {
-                        let __tco_0 = n;
-                        let __tco_1 = Rc::new(v1_rt::list_skip(&candidates, 1));
-                        let __tco_2 = source_indices;
-                        __tco_loop_n = __tco_0;
-                        __tco_loop_candidates = __tco_1;
-                        __tco_loop_source_indices = __tco_2;
-                        continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut candidates = __tco_loop_candidates;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            match candidates.clone().first().cloned() {
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+                Some(kind) => {
+                    match crate::v1_std_core::find_child_named(
+                        n.clone(),
+                        algebra_field_kind_name(kind.clone()),
+                        source_indices.clone(),
+                    ) {
+                        Some(f) => {
+                            break Some(Rc::new(AlgebraFieldMatch {
+                                field_kind: kind.clone(),
+                                field_node: f.clone(),
+                            }));
+                        }
+                        std::option::Option::None => {
+                            let __tco_0 = n;
+                            let __tco_1 = Rc::new(v1_rt::list_skip(&candidates, 1));
+                            let __tco_2 = source_indices;
+                            __tco_loop_n = __tco_0;
+                            __tco_loop_candidates = __tco_1;
+                            __tco_loop_source_indices = __tco_2;
+                            continue;
+                        }
                     }
                 }
             }
@@ -3770,9 +3759,9 @@ pub fn subtraction_refinement_of(
     env: Rc<TypeEnv>,
 ) -> Rc<SubtractionRefinement> {
     match crate::v1_compiler_infer_env::type_reference_declaration_ref(
-        left_type.clone(),
-        source_indices.clone(),
-        env.clone(),
+        left_type,
+        source_indices,
+        env,
     ) {
         Some(operand) => crate::std_coercion::dag_subtraction_refinement(operand.clone()),
         std::option::Option::None => {
@@ -3788,34 +3777,32 @@ pub fn infer_binop_type_node(
     env: Rc<TypeEnv>,
 ) -> Rc<BinOpInferred> {
     match op.clone() {
-        BinOp::Sub => match (*subtraction_refinement_of(
-            left_type.clone(),
-            source_indices.clone(),
-            env.clone(),
-        ))
-        .clone()
-        {
-            SubtractionRefinement::SubtractionEscapesTo {
-                from_type: from_type,
-                ..
-            } => Rc::new(BinOpInferred {
-                result_type: nominal_type_ref(from_type.clone()),
-                algebra_field: std::option::Option::None,
-            }),
-            SubtractionRefinement::SubtractionRefinementAmbiguous { from_types: _, .. } => {
-                Rc::new(BinOpInferred {
-                    result_type: error_type(),
+        BinOp::Sub => {
+            match (*subtraction_refinement_of(left_type.clone(), source_indices.clone(), env))
+                .clone()
+            {
+                SubtractionRefinement::SubtractionEscapesTo {
+                    from_type: from_type,
+                    ..
+                } => Rc::new(BinOpInferred {
+                    result_type: nominal_type_ref(from_type.clone()),
                     algebra_field: std::option::Option::None,
-                })
+                }),
+                SubtractionRefinement::SubtractionRefinementAmbiguous { from_types: _, .. } => {
+                    Rc::new(BinOpInferred {
+                        result_type: error_type(),
+                        algebra_field: std::option::Option::None,
+                    })
+                }
+                SubtractionRefinement::SubtractionStaysInOperandAlgebra => {
+                    infer_arithmetic_binop_type_node(
+                        op.clone(),
+                        left_type.clone(),
+                        source_indices.clone(),
+                    )
+                }
             }
-            SubtractionRefinement::SubtractionStaysInOperandAlgebra => {
-                infer_arithmetic_binop_type_node(
-                    op.clone(),
-                    left_type.clone(),
-                    source_indices.clone(),
-                )
-            }
-        },
+        }
         _ => {
             infer_arithmetic_binop_type_node(op.clone(), left_type.clone(), source_indices.clone())
         }
@@ -3868,11 +3855,7 @@ pub fn infer_arithmetic_binop_type_node(
             let candidates = binop_algebra_fields(op.clone());
             let is_product = (left_type.connective.clone() == Connective::Conj);
             if is_product.clone() {
-                match first_matching_algebra_field(
-                    left_type.clone(),
-                    candidates.clone(),
-                    source_indices.clone(),
-                ) {
+                match first_matching_algebra_field(left_type.clone(), candidates, source_indices) {
                     Some(m) => match m.field_node.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => {
                             match applied_field_type(rt.clone()) {
@@ -3911,7 +3894,7 @@ pub fn for_each_element_type_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
-        let normed = normalize_access_type_node(n.clone());
+        let normed = normalize_access_type_node(n);
         let is_single_child = ((normed.connective.clone() == Connective::NoConnective)
             && ((normed.children.clone().len() as i64) == 1));
         let extracted = if is_single_child.clone() {
@@ -3928,10 +3911,8 @@ pub fn for_each_element_type_node(
                 if ((((normed.connective.clone() == Connective::NoConnective)
                     && ((normed.children.clone().len() as i64) == 0))
                     && ((normed.properties.clone().len() as i64) == 0))
-                    && (crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        normed.clone(),
-                    ) == "String".to_string()))
+                    && (crate::v1_std_core::authored_name_at(source_indices, normed.clone())
+                        == "String".to_string()))
                 {
                     string_type()
                 } else {

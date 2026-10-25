@@ -93,10 +93,8 @@ pub fn free_monoid_last(
             break loop {
                 #[allow(unused_mut)]
                 let mut last = __tco_loop_last;
-                #[allow(unused_mut)]
-                let mut xs = __tco_loop_xs.clone();
                 {
-                    let __fm = xs.clone();
+                    let __fm = __tco_base_xs.clone();
                     if (__fm.len() - __tco_cursor_xs) == 0 {
                         break last;
                     } else {
@@ -137,7 +135,7 @@ pub fn extent_texts(parsed: Rc<ParseWithTableResult>, source: String) -> Rc<Vec<
 pub fn has_extent_text(parsed: Rc<ParseWithTableResult>, source: String, text: String) -> bool {
     {
         let mut __found = false;
-        for t in extent_texts(parsed.clone(), source.clone()).iter().cloned() {
+        for t in extent_texts(parsed, source).iter().cloned() {
             if (t.clone() == text.clone()) {
                 __found = true;
                 break;
@@ -175,7 +173,7 @@ pub fn entry_covered(parsed: Rc<ParseWithTableResult>, entry: Rc<OccurrenceIndex
 
 pub fn uncovered_occurrences(source: String) -> Rc<Vec<String>> {
     {
-        let parsed = parse_fixture(source.clone());
+        let parsed = parse_fixture(source);
         Rc::new({
             let mut __result = Vec::new();
             for e in Rc::new({
@@ -427,7 +425,7 @@ pub fn nested_parentheses_keep_both_erased_scopes_holds() -> bool {
 pub fn singleton_block_keeps_its_erased_scope_holds() -> bool {
     {
         let parsed = parse_fixture(extent_fixture_source());
-        let blocks = erased_scope_texts(parsed.clone(), extent_fixture_source(), false);
+        let blocks = erased_scope_texts(parsed, extent_fixture_source(), false);
         (({
             let mut __found = false;
             for t in blocks.iter().cloned() {
@@ -493,7 +491,7 @@ pub fn brace_expression_singleton_keeps_its_erased_scope_holds() -> bool {
         let parsed = parse_fixture(extent_fixture_source());
         {
             let mut __found = false;
-            for t in erased_scope_texts(parsed.clone(), extent_fixture_source(), false)
+            for t in erased_scope_texts(parsed, extent_fixture_source(), false)
                 .iter()
                 .cloned()
             {
@@ -508,7 +506,7 @@ pub fn brace_expression_singleton_keeps_its_erased_scope_holds() -> bool {
 }
 
 pub fn extent_of(parsed: Rc<ParseWithTableResult>, id: OccurrenceId) -> Option<Rc<SourceSpan>> {
-    match extent_rows_for(parsed.clone(), id.clone()).first().cloned() {
+    match extent_rows_for(parsed, id).first().cloned() {
         Some(row) => Some(row.extent.clone()),
         std::option::Option::None => std::option::Option::None,
     }

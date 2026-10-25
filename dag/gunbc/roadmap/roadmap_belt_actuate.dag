@@ -160,7 +160,7 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_attempt_key_path_for_instance, dispatch_attempt_admission_path_for_instance, dispatch_attempt_launch_path_for_instance, dispatch_attempt_spawn_origin_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_spawn_failure_path_for_instance, dispatch_attempt_oracle_identity_path_for_instance, dispatch_attempt_oracle_revision_path_for_instance, dispatch_attempt_oracle_pin_refusal_path_for_instance, dispatch_attempt_validation_receipt_path_for_instance, dispatch_attempt_verification_receipt_path_for_instance, dispatch_attempt_verification_dir_for_instance, dispatch_attempt_diff_window_path_for_instance, dispatch_attempt_verification_current_selection_path_for_instance, dispatch_attempt_publication_receipt_path_for_instance, dispatch_attempt_publication_dir_for_instance, publication_receipt_directory_segment, dispatch_current_attempt_oracle_identity_path_for_instance, dispatch_current_attempt_oracle_revision_path_for_instance, dispatch_current_attempt_oracle_pin_refusal_path_for_instance, dispatch_current_attempt_validation_receipt_path_for_instance, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_key_path_for_instance, dispatch_current_attempt_admission_path_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_current_attempt_spawn_failure_path_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane }
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_attempt_key_path_for_instance, dispatch_attempt_admission_path_for_instance, dispatch_attempt_launch_path_for_instance, dispatch_attempt_spawn_origin_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_spawn_failure_path_for_instance, dispatch_attempt_oracle_identity_path_for_instance, dispatch_attempt_oracle_revision_path_for_instance, dispatch_attempt_oracle_pin_refusal_path_for_instance, dispatch_attempt_validation_receipt_path_for_instance, dispatch_attempt_verification_receipt_path_for_instance, dispatch_attempt_verification_dir_for_instance, dispatch_attempt_diff_window_path_for_instance, dispatch_attempt_verification_current_selection_path_for_instance, dispatch_attempt_publication_receipt_path_for_instance, dispatch_attempt_publication_dir_for_instance, publication_receipt_directory_segment, dispatch_current_attempt_oracle_identity_path_for_instance, dispatch_current_attempt_oracle_revision_path_for_instance, dispatch_current_attempt_oracle_pin_refusal_path_for_instance, dispatch_current_attempt_validation_receipt_path_for_instance, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_key_path_for_instance, dispatch_current_attempt_admission_path_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_current_attempt_spawn_failure_path_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane, dispatch_attempt_events_initialize_for_instance, DispatchAttemptEventsInitialized, DispatchAttemptEventsInitializationFailed }
 import extdeps.tmux {
   classify_tmux_session_list,
   TmuxSessionsListed,
@@ -610,7 +610,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 }
 import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire }
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
-import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
+import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_store, WorktreeClaimStoreReady, WorktreeClaimStoreUnready }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimWritten, WorktreeClaimRecorded, WorktreeClaimNotRecorded, worktree_claim_new, worktree_claim_record_before_add,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved,
@@ -944,15 +944,17 @@ fn belt_attempt_state_initialize_for_instance(
         detail: launch_write.error,
       }
     } else {
-      let events_write = Filesystem.Write(
-        path: dispatch_attempt_events_path_for_instance(
-          instance: instance,
-          node_id: node.node,
-          attempt_key: attempt_key,
-        ),
-        content: "",
-      )
-      if events_write.success {
+      match dispatch_attempt_events_initialize_for_instance(
+        instance: instance,
+        node_id: node.node,
+        attempt_key: attempt_key,
+      ) {
+      DispatchAttemptEventsInitializationFailed { detail: events_detail } =>
+        AttemptStateInitializationFailed {
+          step: "attempt-events-initialize",
+          detail: events_detail,
+        }
+      DispatchAttemptEventsInitialized => {
         let receipt_initialized = Filesystem.Write(
           path: dispatch_attempt_validation_receipt_path_for_instance(
             instance: instance,
@@ -1014,11 +1016,7 @@ fn belt_attempt_state_initialize_for_instance(
               }
           }
         }
-      } else {
-        AttemptStateInitializationFailed {
-          step: "attempt-events-initialize",
-          detail: events_write.error,
-        }
+      }
       }
     }
   }
@@ -1609,20 +1607,21 @@ fn belt_session_placement_for_container(instance: HostDashboardInstance, node_id
   }
 }
 
-// THE SLOT STORE IS CREATED BY THE SAME CAPABILITY THAT CREATES ATTEMPT STATE, before the settlement
+// THE SLOT STORE IS CREATED BY THE SAME CAPABILITY THAT CREATES ATTEMPT STATE, at the root read off
+// the very SlotStore every lifecycle write in stores.slots goes to (one root, not a path beside it), before the settlement
 // pass reads it and before any slot is opened in it, so "the store is missing" never has to be told
 // apart from "the store could not be listed" by reading an error string. Present carries the refusal.
 fn belt_session_slots_ensure(instance: HostDashboardInstance, stores: SessionPlacementStores) -> String? {
   match belt_exec(
     cmd: host_exec_argv(
       program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
-      args: ["-d", "-m", "0700", stores.slots_root as String],
+      args: ["-d", "-m", "0700", stores.slots.root as String],
     ),
     workdir: belt_observe_workdir as String,
   ) {
     ExecOk { stdout: _ } => none
-    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
-    ExecRefused { program, reason } => Present { value: join(["the session slot store ", stores.slots_root as String, " could not be created (", program, "): ", reason], "") }
+    ExecFailed { program, exit_code, stderr } => Present { value: join(["the session slot store ", stores.slots.root as String, " could not be created (", program, " exit ", to_string(exit_code), "): ", stderr], "") }
+    ExecRefused { program, reason } => Present { value: join(["the session slot store ", stores.slots.root as String, " could not be created (", program, "): ", reason], "") }
   }
 }
 
@@ -1649,12 +1648,16 @@ fn belt_worktree_claim_before_add(instance: HostDashboardInstance, node_id: Stri
   match now_epoch_seconds() {
     Absent => WorktreeClaimNotRecorded { detail: "the host clock could not be read, so the worktree claim has no launch deadline" }
     Present { value: now } =>
-      worktree_claim_record_before_add(
-        root: worktree_claim_slots_root_of(instance: instance),
-        claim: worktree_claim_new(
-          node_id: node_id, attempt_key: attempt_key,
-          worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
-          opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds))
+      match worktree_claim_store(instance: instance) {
+        WorktreeClaimStoreUnready { detail } => WorktreeClaimNotRecorded { detail: detail }
+        WorktreeClaimStoreReady { store: claims } =>
+          worktree_claim_record_before_add(
+            claims: claims,
+            claim: worktree_claim_new(
+              node_id: node_id, attempt_key: attempt_key,
+              worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
+              opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds))
+      }
   }
 }
 
@@ -1737,9 +1740,12 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
       match now_epoch_seconds() {
         Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the worktree claim ensure compares against the launch deadline" }
         Present { value: now } =>
+          match worktree_claim_store(instance: instance) {
+          WorktreeClaimStoreUnready { detail } => SessionSettlePassRefused { detail: detail }
+          WorktreeClaimStoreReady { store: claims } =>
           match worktree_claim_ensure_pass_at(
             stores: stores,
-            claims_root: worktree_claim_slots_root_of(instance: instance),
+            claims: claims,
             host: instance.host_identity as String,
             path_of: (n, k) => dispatch_worktree_path_for_instance(instance: instance, node_id: n as RoadmapNodeId, attempt_key: k),
             loaded_of: u => attempt_unit_observation(unit: u),
@@ -1757,6 +1763,7 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
                 SessionSettlePassRan { settlements: settlements }
               }
             WorktreeClaimPassRefused { detail } => SessionSettlePassRefused { detail: detail }
+          }
           }
       }
   }
@@ -3444,10 +3451,7 @@ fn belt_spawn_admitted(
           cmds.worker_git_entry_grant,
           command => BeltExecStep { step: "worker-git-entry-grant", command: command },
         ),
-        [BeltExecStep {
-          step: "attempt-state-prepare",
-          command: cmds.attempt_state_prepare,
-        }],
+        map(cmds.attempt_state_prepare, command => BeltExecStep { step: "attempt-state-prepare", command: command }),
       ),
     ),
     workdir: workdir,
@@ -11368,20 +11372,26 @@ fn belt_dispatch_node_for_instance(
   belt_dispatch_node_staged(instance: instance, standing: belt_launch_host_standing(instance: instance), node_id: node_id)
 }
 
-// The dispatch route reaches the SAME staged fold with a caller-supplied plan. belt_dispatch_node_staged_over
-// already took the graph as a parameter, so this adds no second decision path -- it only supplies
-// launch_graph_of_projection over the given plan instead of over the public one.
+// The dispatch route reaches the SAME staged fold with a caller-supplied plan thunk.
+// Host standing is resolved first: observe-only (and any other host refusal) is
+// LaunchInstanceActuationRefused through launch_admission_staged, and the plan is forced
+// only when launch_host_refusal is absent — never a second observe-only arm at HTTP.
 fn belt_dispatch_node_for_instance_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   node_id: String,
   request: AttemptLaunchRequest,
   executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
+  let standing = belt_launch_host_standing(instance: instance)
   belt_dispatch_node_staged_over(
     instance: instance,
-    standing: belt_launch_host_standing(instance: instance),
-    graph: launch_graph_of_projection(proj: plan),
+    standing: standing,
+    graph: match launch_host_refusal(standing: standing) {
+      Present { value: _ } =>
+        LaunchGraphUnobserved { detail: "host standing refuses before a plan read" }
+      Absent => launch_graph_of_projection(proj: plan())
+    },
     merged: authored_merged_prs(),
     node_id: node_id,
     request: request,

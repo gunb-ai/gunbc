@@ -413,7 +413,7 @@ fn wet_spawn_bundle(readback: HostExecArgv) -> DispatchSpawnCommands {
     worktree_add: HostExecArgv { program: "", args: [] },
     worker_git_entry_grant: [],
     worker_git_entry_readback: readback,
-    attempt_state_prepare: HostExecArgv { program: "", args: [] },
+    attempt_state_prepare: [],
     attempt_current_pointer: HostExecArgv { program: "", args: [] },
     session_container: SystemdUnitContainer {
       plan: DispatchWorkerUnitPlan {

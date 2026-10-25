@@ -1,0 +1,206 @@
+module gunbc.provisioning.public_nocloud_seed
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.algebra { FreeSemigroup, list_head, skip }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
+import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
+import extdeps.ssh.keys { Ed25519, Rsa, EcdsaP256, ssh_key_algorithm_token }
+import extdeps.libxcrypt.crypt_scheme { crypt_hash_shaped }
+import extdeps.standards.rfc_7468 { pem_text_carries_private_key_block }
+import gunbc.os_install_emit { cloud_config_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
+
+// A NOCLOUD SEED IS PUBLIC (merry-fox-82, hold at 24edcaa3, option (a)). The site PXE edge serves seeds from
+// CPython's http.server, which authenticates no client (extdeps.python.http_server), and any host on the onboarding
+// segment that names a seed's URL receives it. The MAC in that URL routes a booting client to the seed its grub
+// configuration names; it grants and withholds nothing. So this module claims NO confidentiality for a seed, and the
+// type says so in its name: what makes publication safe is that a PublicNoCloudSeed cannot hold a credential.
+//
+// HOW IT CANNOT. The only mint is admit_public_nocloud_seed, and it admits the DOCUMENT TREES the seed will be
+// rendered from (the YAML the seed renderer builds, gunbc.os_install_emit autoinstall_user_data_document), never
+// their text. The served bytes are this module's own rendering of the admitted trees, through the one #cloud-config
+// renderer, so what is audited is exactly what is published. The audit is:
+//   * every mapping key, at every depth, is one this module admits (seed_admitted_keys) -- an ALLOW-list, so a key
+//     nobody classified (a token field, a schema addition) refuses instead of passing;
+//   * the credential fields of the two schemas that read a seed are refused by name, with their own cause
+//     (seed_credential_keys: subiquity identity's password, cloud-init's passwd / hashed_passwd /
+//     plain_text_passwd / chpasswd, and ssh_keys, which carries HOST PRIVATE keys);
+//   * password SSH is refused: allow-pw must be false (key-only SSH);
+//   * every authorized key is a public key line of an algorithm extdeps.ssh.keys names;
+//   * every string anywhere is refused if it is crypt(3)-hash shaped (extdeps.libxcrypt.crypt_scheme
+//     crypt_hash_shaped) or carries a PEM private-key block (extdeps.standards.rfc_7468).
+// The residue is named, not hidden: a free-text value under an admitted key (a late command) that happens to embed
+// a token of no recognisable shape is not classifiable by shape. The allow-list keeps credential FIELDS out; the
+// shape scan is the backstop for the values, not a proof about them.
+type PublicNoCloudSeed sole_constructor {
+  user_data: NonEmptyStr
+  meta_data: NonEmptyStr
+}
+
+fn public_nocloud_seed_user_data(seed: PublicNoCloudSeed) -> String { seed.user_data as String }
+fn public_nocloud_seed_meta_data(seed: PublicNoCloudSeed) -> String { seed.meta_data as String }
+
+type SeedDocument
+  = SeedUserData
+  | SeedMetaData
+
+type PublicSeedFinding
+  = SeedCredentialField { document: SeedDocument, path: String }
+  | SeedKeyNotAdmitted { document: SeedDocument, path: String }
+  | SeedPasswordSshEnabled { document: SeedDocument, path: String }
+  | SeedAuthorizedKeyNotPublic { document: SeedDocument, path: String }
+  | SeedCredentialShapedValue { document: SeedDocument, path: String }
+  | SeedRenderRefused { document: SeedDocument, reason: String }
+
+type PublicSeedAdmission
+  = PublicSeedAdmitted { seed: PublicNoCloudSeed }
+  | PublicSeedRefused { findings: FreeSemigroup<PublicSeedFinding> }
+
+// THE CREDENTIAL FIELDS, refused by name (the allow-list would refuse them too; naming them gives the refusal its
+// cause). subiquity autoinstall reference: identity.password is "the encrypted password"; cloud-init cc_users_groups:
+// passwd and hashed_passwd are password hashes, plain_text_passwd is a cleartext password; cc_set_passwords: chpasswd
+// sets passwords; cc_ssh: ssh_keys supplies host PRIVATE keys.
+data seed_credential_keys: List<String> = ["password", "passwd", "hashed_passwd", "plain_text_passwd", "chpasswd", "ssh_keys"]
+
+// THE KEYS A PUBLIC SEED MAY CARRY, at any depth: the autoinstall sections the seed renderer emits (version, locale,
+// keyboard, identity's non-secret fields, ssh, storage, network, apt, packages, commands, user-data) and the cloud-init
+// user fields a key-only account needs. A key outside this list refuses until someone classifies it here.
+data seed_admitted_keys: List<String> = [
+  "autoinstall", "version", "locale", "keyboard", "layout", "variant", "toggle",
+  "identity", "hostname", "username", "realname",
+  "ssh", "install-server", "authorized-keys", "allow-pw",
+  "interactive-sections", "storage", "name", "match", "size", "ssd", "serial", "path", "ptable",
+  "network", "ethernets", "dhcp4", "dhcp6", "macaddress", "set-name", "renderer",
+  "apt", "primary", "arches", "uri", "geoip", "preserve_sources_list",
+  "packages", "early-commands", "late-commands", "error-commands", "timezone", "refresh-installer", "update",
+  "kernel", "package", "source", "id", "search_drivers", "drivers", "install", "updates", "shutdown",
+  "user-data", "users", "lock_passwd", "ssh_authorized_keys", "shell", "sudo", "groups", "gecos",
+  "instance-id", "local-hostname",
+]
+
+data seed_authorized_key_lists: List<String> = ["authorized-keys", "ssh_authorized_keys"]
+
+fn seed_key_path(path: String, key: String) -> String {
+  if path == "" { key } else { join([path, ".", key], "") }
+}
+
+fn seed_public_key_line(line: String) -> Bool {
+  any([Ed25519, Rsa, EcdsaP256], a => starts_with(s: line, prefix: concat(ssh_key_algorithm_token(a: a) as String, " ")))
+}
+
+fn seed_string_findings(document: SeedDocument, path: String, text: String) -> List<PublicSeedFinding> {
+  if crypt_hash_shaped(text: text) || pem_text_carries_private_key_block(text: text) {
+    [SeedCredentialShapedValue { document: document, path: path }]
+  } else { [] }
+}
+
+fn seed_entry_findings(document: SeedDocument, path: String, entry: YamlKeyValue) -> List<PublicSeedFinding> {
+  let here = seed_key_path(path: path, key: entry.key)
+  if any(seed_credential_keys, k => k == entry.key) {
+    [SeedCredentialField { document: document, path: here }]
+  } else {
+    if any(seed_admitted_keys, k => k == entry.key) == false {
+      [SeedKeyNotAdmitted { document: document, path: here }]
+    } else {
+      let own = if entry.key == "allow-pw" {
+        match entry.value {
+          YamlBool { value: b } => if b { [SeedPasswordSshEnabled { document: document, path: here }] } else { [] }
+          YamlNull => [SeedPasswordSshEnabled { document: document, path: here }]
+          YamlInt { lexeme: _ } => [SeedPasswordSshEnabled { document: document, path: here }]
+          YamlFloat { lexeme: _ } => [SeedPasswordSshEnabled { document: document, path: here }]
+          YamlString { value: _ } => [SeedPasswordSshEnabled { document: document, path: here }]
+          YamlSequence { elements: _ } => [SeedPasswordSshEnabled { document: document, path: here }]
+          YamlMapping { entries: _ } => [SeedPasswordSshEnabled { document: document, path: here }]
+        }
+      } else {
+        if any(seed_authorized_key_lists, k => k == entry.key) {
+          match entry.value {
+            YamlSequence { elements: es } => flat_map(es, e => match e {
+              YamlString { value: line } => if seed_public_key_line(line: line) { [] } else { [SeedAuthorizedKeyNotPublic { document: document, path: here }] }
+              YamlNull => [SeedAuthorizedKeyNotPublic { document: document, path: here }]
+              YamlBool { value: _ } => [SeedAuthorizedKeyNotPublic { document: document, path: here }]
+              YamlInt { lexeme: _ } => [SeedAuthorizedKeyNotPublic { document: document, path: here }]
+              YamlFloat { lexeme: _ } => [SeedAuthorizedKeyNotPublic { document: document, path: here }]
+              YamlSequence { elements: _ } => [SeedAuthorizedKeyNotPublic { document: document, path: here }]
+              YamlMapping { entries: _ } => [SeedAuthorizedKeyNotPublic { document: document, path: here }]
+            })
+            YamlNull => []
+            YamlBool { value: _ } => [SeedAuthorizedKeyNotPublic { document: document, path: here }]
+            YamlInt { lexeme: _ } => [SeedAuthorizedKeyNotPublic { document: document, path: here }]
+            YamlFloat { lexeme: _ } => [SeedAuthorizedKeyNotPublic { document: document, path: here }]
+            YamlString { value: _ } => [SeedAuthorizedKeyNotPublic { document: document, path: here }]
+            YamlMapping { entries: _ } => [SeedAuthorizedKeyNotPublic { document: document, path: here }]
+          }
+        } else { [] }
+      }
+      concat(own, seed_value_findings(document: document, path: here, value: entry.value))
+    }
+  }
+}
+
+fn seed_value_findings(document: SeedDocument, path: String, value: YamlValue) -> List<PublicSeedFinding> {
+  match value {
+    YamlNull => []
+    YamlBool { value: _ } => []
+    YamlInt { lexeme: _ } => []
+    YamlFloat { lexeme: _ } => []
+    YamlString { value: t } => seed_string_findings(document: document, path: path, text: t)
+    YamlSequence { elements: es } => flat_map(es, e => seed_value_findings(document: document, path: path, value: e))
+    YamlMapping { entries: kvs } => flat_map(kvs, kv => seed_entry_findings(document: document, path: path, entry: kv))
+  }
+}
+
+fn seed_meta_data_text(meta_data: YamlValue) -> String? {
+  match emit_yaml(v: meta_data) {
+    EmittedYaml { text: t } => if t == "" { Absent } else { Present { value: t } }
+    YamlEmitRefused { path: _, reason: _ } => Absent
+  }
+}
+
+// THE ONE MINT. Both documents are audited; any finding refuses the whole seed, with every finding listed.
+fn admit_public_nocloud_seed(user_data: YamlValue, meta_data: YamlValue) -> PublicSeedAdmission {
+  let audit = concat(
+    seed_value_findings(document: SeedUserData, path: "", value: user_data),
+    seed_value_findings(document: SeedMetaData, path: "", value: meta_data),
+  )
+  let rendered_user = cloud_config_user_data(document: user_data)
+  let rendered_meta = seed_meta_data_text(meta_data: meta_data)
+  let render_findings = concat(
+    match rendered_user {
+      AutoinstallUserDataRendered { content: _ } => []
+      AutoinstallUserDataRefused { reason: r } => [SeedRenderRefused { document: SeedUserData, reason: r }]
+    },
+    match rendered_meta {
+      Present { value: _ } => []
+      Absent => [SeedRenderRefused { document: SeedMetaData, reason: "the meta-data document did not render to a non-empty YAML text" }]
+    },
+  )
+  let findings = concat(audit, render_findings)
+  match list_head(xs: findings) {
+    Present { value: first } => PublicSeedRefused { findings: FreeSemigroup { head: first, tail: skip(xs: findings, n: 1) } }
+    Absent =>
+      match rendered_user {
+        AutoinstallUserDataRefused { reason: r } => PublicSeedRefused { findings: FreeSemigroup { head: SeedRenderRefused { document: SeedUserData, reason: r }, tail: [] } }
+        AutoinstallUserDataRendered { content: u } =>
+          match rendered_meta {
+            Absent => PublicSeedRefused { findings: FreeSemigroup { head: SeedRenderRefused { document: SeedMetaData, reason: "the meta-data document did not render" }, tail: [] } }
+            Present { value: m } => PublicSeedAdmitted { seed: PublicNoCloudSeed { user_data: u as NonEmptyStr, meta_data: m as NonEmptyStr } }
+          }
+      }
+  }
+}
+
+// THE FIRST PRODUCTION MINT IS THE x86 SEED RENDERER. Today the admission's only callers are witnesses, and the
+// edge ships with no install binding (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_install_bindings is empty).
+data public_nocloud_seed_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.provisioning.public_nocloud_seed", decl_name: "admit_public_nocloud_seed"),
+    reason: "no production seed is admitted yet: the per-board amd64 seed renderer (the generalized autoinstall seed, gunbc.provisioning) is not landed, and the site PXE edge's install bindings are empty until it is",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a site_pxe_edge_converge install binding for a roster MAC carries a PublicNoCloudSeed admitted from the amd64 seed renderer's documents (autoinstall_user_data_document), and the edge's readback of the served user-data agrees with that seed's bytes; a witness over a hand-built tree does not fire this"
+    )
+  ),
+]

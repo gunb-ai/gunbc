@@ -3499,7 +3499,7 @@ test fn the_belt_addresses_the_attempt_its_spawn_commands_were_built_for() -> Bo
               pattern: join(["\0", dispatch_worktree_path_for_instance(instance: addressing.instance, node_id: addressing.node.node, attempt_key: addressing.attempt_key)], ""),
             )
             && string_contains(
-              s: join(commands.attempt_state_prepare.args, separator: "\0"),
+              s: join(fold(commands.attempt_state_prepare, init: [], f: (acc, a) => concat(acc, a.args)), separator: "\0"),
               pattern: join(["\0", dispatch_attempt_state_path_for_instance(instance: addressing.instance, node_id: addressing.node.node, attempt_key: addressing.attempt_key)], ""),
             )
       }

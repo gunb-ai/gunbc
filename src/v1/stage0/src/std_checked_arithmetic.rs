@@ -331,7 +331,7 @@ pub fn nat_from_last_space_token(line: String) -> Option<Nat> {
         .iter()
         .cloned()
         .fold("".to_string(), |_acc: String, p: String| p.clone());
-        match v1_rt::parse_int(last.clone()) {
+        match v1_rt::parse_int(last) {
             std::option::Option::None => std::option::Option::None,
             Some(n) => checked_int_to_nat(n.clone()),
         }

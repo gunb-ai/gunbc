@@ -5,7 +5,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 import std.types { NonEmptyStr, String, Int, List, Port }
 import std.algebra { list_append }
 import extdeps.uri { Uri, Http, Https, uri_wire }
-import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload }
+import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload, nocloud_seedfrom_kernel_arg }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.firmware.uefi_http_boot { UefiHttpBootEntry }
@@ -64,8 +64,9 @@ fn bmc_netboot_uri(plan: BmcNetbootServePlan, path: NonEmptyStr) -> Uri {
   }
 }
 
-fn bmc_netboot_seed_datasource(plan: BmcNetbootServePlan) -> String {
-  join(["nocloud-net;s=", uri_wire(uri: bmc_netboot_uri(plan: plan, path: "/nocloud/"))], "")
+// The seed's ds= argument through the one NoCloud token builder (extdeps.os.ubuntu_autoinstall).
+fn bmc_netboot_seed_kernel_arg(plan: BmcNetbootServePlan) -> KernelCmdlineArg {
+  nocloud_seedfrom_kernel_arg(datasource: "nocloud-net", seedfrom: uri_wire(uri: bmc_netboot_uri(plan: plan, path: "/nocloud/")) as String)
 }
 
 fn bmc_netboot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<KernelCmdlineArg> {
@@ -73,7 +74,7 @@ fn bmc_netboot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<KernelCmdlineAr
     KernelKeyValue { key: "ip", value: "dhcp" },
     KernelKeyValue { key: "url", value: uri_wire(uri: plan.bulk_iso_url) },
     KernelFlag { name: "autoinstall" },
-    KernelKeyValue { key: "ds", value: bmc_netboot_seed_datasource(plan: plan) },
+    bmc_netboot_seed_kernel_arg(plan: plan),
     KernelFlag { name: "---" },
   ]
 }

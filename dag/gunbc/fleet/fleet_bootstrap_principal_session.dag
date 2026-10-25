@@ -17,6 +17,8 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   SshTarget,
   PortableRemoteWords,
   shape_fleet_ssh_exec,
+  shape_fleet_ssh_exec_over,
+  FleetSshFreshConnection,
   shape_fleet_ssh_password_exec,
   shape_fleet_ssh_password_exec_trusting,
 }
@@ -339,6 +341,29 @@ fn exec_as_fleet_principal(
       exec_as_fleet_principal_with_stdin(
         context: context, target: target, words: words, stdin_payload: "", credential: credential,
       )
+  }
+}
+
+// THE FRESH-CONNECTION KEY LEG: the same key session, on a connection of its own rather than the run's
+// multiplexed master (gunbc.fleet.fleet_known_hosts_anchor FleetSshFreshConnection), for a readback whose
+// question is whether a new login authenticates. A password session has no master to avoid, so a target
+// that resolves to one refuses rather than answering for a different route.
+fn exec_as_fleet_principal_on_fresh_connection(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  words: PortableRemoteWords,
+) -> FleetPrincipalLegOutcome {
+  let session = fleet_ssh_session_for_principal(principal: target.principal, trust: context.trust)
+  match session {
+    FleetSshKeySession =>
+      FleetPrincipalLegRan {
+        session: session,
+        result: ssh_session_exec_portable_words(
+          client_args: shape_fleet_ssh_exec_over(context: context, target: target, words: words, connection: FleetSshFreshConnection),
+        ),
+      }
+    FleetSshPasswordSession =>
+      FleetPrincipalLegRefused { cause: "a fresh-connection leg is a key-session readback; this target resolves to a password session" as NonEmptyStr }
   }
 }
 

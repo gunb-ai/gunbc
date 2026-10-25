@@ -1,0 +1,201 @@
+module gunbc.serving.flash_next_experiment_identity
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Milliwatt, BasisPoint, basis_point }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.decl_ref { DeclarationRef, decl_field_ref }
+
+// EXPERIMENT IDENTITY (operator review of #14718): every materially different serving path is its own variant and a
+// result is keyed by the variant, so a current-stack and a native-stack figure cannot collapse into one result.
+type ServingVariant
+  = Pro6000MaxQNative
+  | H200ObservedCurrentStack
+  | B200ObservedCurrentStack
+  | H200UpstreamV032
+  | B200UpstreamV032
+  | B200PredictedNativeStack
+
+type VariantGpu = GpuMaxQ | GpuH200Nvl | GpuB200
+
+fn variant_gpu(v: ServingVariant) -> VariantGpu {
+  match v {
+    Pro6000MaxQNative => GpuMaxQ
+    H200ObservedCurrentStack => GpuH200Nvl
+    B200ObservedCurrentStack => GpuB200
+    H200UpstreamV032 => GpuH200Nvl
+    B200UpstreamV032 => GpuB200
+    B200PredictedNativeStack => GpuB200
+  }
+}
+
+fn serving_variant_eq(a: ServingVariant, b: ServingVariant) -> Bool {
+  match a {
+    Pro6000MaxQNative => match b { Pro6000MaxQNative => true, _ => false }
+    H200ObservedCurrentStack => match b { H200ObservedCurrentStack => true, _ => false }
+    B200ObservedCurrentStack => match b { B200ObservedCurrentStack => true, _ => false }
+    H200UpstreamV032 => match b { H200UpstreamV032 => true, _ => false }
+    B200UpstreamV032 => match b { B200UpstreamV032 => true, _ => false }
+    B200PredictedNativeStack => match b { B200PredictedNativeStack => true, _ => false }
+  }
+}
+
+// WHAT A VARIANT'S STATUS IS. An unsupported path is Refused or Unobserved, never zero performance: a refusal is a
+// software-readiness observation about the stack, not a hardware verdict on the card.
+// VariantPartiallyObserved (review 5641830716): the variant ran and this repository holds readings of the run
+// (matrix cells, a run observation), but not the complete ServingRunReceipt VariantObserved requires; it names
+// where the readings live and which receipt fields no reading supplies, so Planned cannot stand beside
+// readings and Observed cannot be claimed past the missing fields.
+type VariantStatus
+  = VariantObserved { run_receipt_ref: NonEmptyStr }
+  | VariantPartiallyObserved { observations_ref: NonEmptyStr, receipt_fields_unrecorded: List<DeclarationRef> }
+  | VariantRefused { cause: NonEmptyStr }
+  | VariantUnobserved { trigger: NonEmptyStr }
+  | VariantPlanned { recorded_when: NonEmptyStr }
+  | VariantHypothesis { basis: NonEmptyStr }
+
+type VariantRow {
+  variant: ServingVariant
+  status: VariantStatus
+}
+
+// The stock vLLM 0.32.0 runs (own venv, production QAD NVFP4 weights; recipe overrides hopper = --moe-backend
+// triton at gpu-mem-util 0.85, blackwell at 0.90, fp8 KV + fp8 indexer KV on both). Their readings are the
+// CellMeasured rows of the quant matrix and the UpstreamRunObservation rows (gpu uuid, vbios, power limit,
+// driver, MoE/MTP/linear backends). The fields below are the ServingRunReceipt fields none of those readings
+// carries; kernel_backends is listed because the attention classes are recorded only as a note, not a backend.
+data upstream_v032_observations_ref: NonEmptyStr = "gunbc.serving.flash_next_quant_matrix flash_next_quant_matrix (CellMeasured rows) and upstream_v032_run_observations" as NonEmptyStr
+
+data upstream_v032_receipt_fields_unrecorded: List<DeclarationRef> = [
+  decl_field_ref(module_path: "gunbc.serving.flash_next_experiment_identity", decl_name: "ServingRunReceipt", field_name: "gpu_name"),
+  decl_field_ref(module_path: "gunbc.serving.flash_next_experiment_identity", decl_name: "ServingRunReceipt", field_name: "image_digest"),
+  decl_field_ref(module_path: "gunbc.serving.flash_next_experiment_identity", decl_name: "ServingRunReceipt", field_name: "model_config_sha256"),
+  decl_field_ref(module_path: "gunbc.serving.flash_next_experiment_identity", decl_name: "ServingRunReceipt", field_name: "model_index_sha256"),
+  decl_field_ref(module_path: "gunbc.serving.flash_next_experiment_identity", decl_name: "ServingRunReceipt", field_name: "launcher"),
+  decl_field_ref(module_path: "gunbc.serving.flash_next_experiment_identity", decl_name: "ServingRunReceipt", field_name: "kernel_backends"),
+  decl_field_ref(module_path: "gunbc.serving.flash_next_experiment_identity", decl_name: "ServingRunReceipt", field_name: "activation_dtype"),
+  decl_field_ref(module_path: "gunbc.serving.flash_next_experiment_identity", decl_name: "ServingRunReceipt", field_name: "topology"),
+  decl_field_ref(module_path: "gunbc.serving.flash_next_experiment_identity", decl_name: "ServingRunReceipt", field_name: "max_model_len"),
+  decl_field_ref(module_path: "gunbc.serving.flash_next_experiment_identity", decl_name: "ServingRunReceipt", field_name: "max_num_seqs"),
+  decl_field_ref(module_path: "gunbc.serving.flash_next_experiment_identity", decl_name: "ServingRunReceipt", field_name: "cache_tiers"),
+]
+
+data flash_next_variant_rows: List<VariantRow> = [
+  VariantRow { variant: Pro6000MaxQNative, status: VariantObserved { run_receipt_ref: "gunbc.serving.flash_next_maxq_run_receipt flash_next_maxq_run_2026_10_21" as NonEmptyStr } },
+  VariantRow { variant: H200ObservedCurrentStack, status: VariantRefused { cause: "operator-reported: image 751ee72b carries no MoE kernels for sm90 (_moe_C: 2444 sm_120a, 0 sm_90, 1 sm_80); a software-readiness observation of the image, not an H200 hardware verdict" as NonEmptyStr } },
+  VariantRow { variant: B200ObservedCurrentStack, status: VariantUnobserved { trigger: "a committed run receipt of the same image on the B200, either serving or refused with its error" as NonEmptyStr } },
+  VariantRow { variant: H200UpstreamV032, status: VariantPartiallyObserved { observations_ref: upstream_v032_observations_ref, receipt_fields_unrecorded: upstream_v032_receipt_fields_unrecorded } },
+  VariantRow { variant: B200UpstreamV032, status: VariantPartiallyObserved { observations_ref: upstream_v032_observations_ref, receipt_fields_unrecorded: upstream_v032_receipt_fields_unrecorded } },
+  VariantRow { variant: B200PredictedNativeStack, status: VariantHypothesis { basis: "NVFP4 tensor-core experts and FP8 KV on a real sm100 build; no observation" as NonEmptyStr } },
+]
+
+fn variant_status(rows: List<VariantRow>, v: ServingVariant) -> VariantStatus? {
+  let hits = rows |> filter(r => serving_variant_eq(a: r.variant, b: v))
+  if count(hits) == 1 {
+    fold(hits, init: none, f: (_acc, r) => Present { value: r.status })
+  } else {
+    none
+  }
+}
+
+// A figure is scoped to the variant it was computed for AND the gpu-memory-utilization it was taken at (production 0.96,
+// upstream recipe 0.85 hopper / 0.90 blackwell), because capacity rows at different utilization are different quantities; and says whether it is a registered prediction or model output.
+type FigureKind = RegisteredPrediction | ModelOutput | MeasuredResult
+
+type VariantFigure {
+  variant: ServingVariant
+  kind: FigureKind
+  quantity: NonEmptyStr
+  value: Nat
+  gpu_memory_utilization: BasisPoint
+}
+
+// The BF16-KV capacity figures the roofline computes for the CurrentStack variants are model output, not revised
+// predictions: P1 and P2 stay frozen as registered, for the stack they were registered for.
+fn current_stack_kv_figure(variant: ServingVariant, tokens: Nat, utilization: BasisPoint) -> VariantFigure {
+  VariantFigure { variant: variant, kind: ModelOutput, quantity: "kv_capacity_tokens_bf16_kv" as NonEmptyStr, value: tokens, gpu_memory_utilization: utilization }
+}
+
+// CAPACITY IS SIX QUANTITIES, never one. Each is a distinct field; none derives from another without a stated model.
+type CapacityQuantities {
+  concurrent_active_requests: Nat?
+  gpu_resident_warm_sessions_at_slo: Nat?
+  ram_resident_sessions: Nat?
+  disk_resident_sessions: Nat?
+  max_single_request_context_tokens: Nat?
+  aggregate_retained_tokens: Nat?
+}
+
+// A model-output capacity row carries only what the KV arithmetic yields: retained tokens and context. The SLO-bound
+// warm-seat count, RAM and disk tiers and active concurrency need measurement and stay absent, not zero.
+fn kv_arithmetic_capacity(retained_tokens: Nat, max_context_tokens: Nat) -> CapacityQuantities {
+  CapacityQuantities {
+    concurrent_active_requests: none,
+    gpu_resident_warm_sessions_at_slo: none,
+    ram_resident_sessions: none,
+    disk_resident_sessions: none,
+    max_single_request_context_tokens: Present { value: max_context_tokens },
+    aggregate_retained_tokens: Present { value: retained_tokens },
+  }
+}
+
+// RUN RECEIPT FIELDS owed by every run (operator-held snapshots of both rentals supply them; none is committed yet,
+// and no credential, endpoint or key may enter a receipt).
+type KernelBackendByLayerClass {
+  routed_experts: NonEmptyStr
+  attention_and_shared_projections: NonEmptyStr
+  linear_attention: NonEmptyStr
+  sparse_attention: NonEmptyStr
+  mtp_experts: NonEmptyStr
+}
+
+type ServingRunReceipt {
+  variant: ServingVariant
+  gpu_name: NonEmptyStr
+  gpu_uuid: NonEmptyStr
+  vbios: NonEmptyStr
+  // The operator's snapshot records the cap at deci-watt print precision ("500.0 W"); it travels as
+  // the existing std.measure Milliwatt, whose finer resolution holds that figure exactly, instead of
+  // a bare count beside the unit its name asserts (review 84774).
+  power_limit_milliwatts: Milliwatt
+  driver_version: NonEmptyStr
+  image_digest: NonEmptyStr
+  model_config_sha256: NonEmptyStr
+  model_index_sha256: NonEmptyStr
+  launcher: NonEmptyStr
+  kernel_backends: KernelBackendByLayerClass
+  weight_dtype: NonEmptyStr
+  activation_dtype: NonEmptyStr
+  kv_dtype: NonEmptyStr
+  topology: NonEmptyStr
+  max_model_len: Nat
+  max_num_seqs: Nat
+  cache_tiers: List<NonEmptyStr>
+}
+
+data flash_next_experiment_identity_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: the operator's snapshots of both rentals (2026-10-22T00:2xZ) are committed as ServingRunReceipt rows, and scored results are keyed by ServingVariant in flash_next_measured_readings; until then no variant but Pro6000MaxQNative has a receipt, and the two upstream 0.32.0 variants stay VariantPartiallyObserved, promoted to VariantObserved by the receipt that supplies the fields they list." as NonEmptyStr
+)
+
+// UPSTREAM FACTS (vllm-project/recipes models/Qwen/Qwen3.8-Flash-Next.yaml and the 0.32.0 release, relayed by the operator,
+// not read by this repository) that feed topology and identity rows.
+type UpstreamStackFact
+  = TepDefaultFasterThanPlainTp
+  | PlainTp8IncompatibleWithFp8CheckpointBlocksOnH200 { block_width: Nat }
+  | EngramSharedHostCopyAcrossColocatedDp
+  | DifferentWeightsDifferentQualityIdentity { artifact: NonEmptyStr }
+
+data upstream_v032_facts: List<UpstreamStackFact> = [
+  TepDefaultFasterThanPlainTp,
+  PlainTp8IncompatibleWithFp8CheckpointBlocksOnH200 { block_width: 128 },
+  EngramSharedHostCopyAcrossColocatedDp,
+  DifferentWeightsDifferentQualityIdentity { artifact: "Inferact/Qwen3.8-Flash-Next-NVFP4 (not the local-inference-lab QAD checkpoint)" as NonEmptyStr },
+  DifferentWeightsDifferentQualityIdentity { artifact: "Qwen/Qwen3.8-Flash-Next-FP8" as NonEmptyStr },
+]
+
+data shared_host_copy_count: Nat = 1
+
+// Host RAM for the 26.8 GiB n-gram table across co-located DP replicas: one shared copy upstream, one per replica otherwise.
+fn host_ngram_table_copies(replicas: Nat, shared_copy: Bool) -> Nat {
+  if shared_copy { shared_host_copy_count } else { replicas }
+}
