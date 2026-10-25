@@ -997,6 +997,19 @@ data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepT
   function: "runner_host_cap_release_ci_wet",
 }
 
+// THE WITHDRAW AND RESTORE WET ENTRYPOINTS (gunbc.runner.runner_host_withdraw) are separate dag files
+// from the converge, but they are DISPATCHES OF THE SAME fleet-converge job -- the modes live in the
+// workflow's roster, not in a new job (the roster is closed to growth).
+data gunbc_ci_runner_host_withdraw_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_withdraw.dag",
+  function: "runner_host_withdraw_ci_wet",
+}
+
+data gunbc_ci_runner_host_restore_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_withdraw.dag",
+  function: "runner_host_restore_ci_wet",
+}
+
 // Where gunbc.fleet.site_pxe_edge_converge writes its run receipt: declared here, beside the step that cats it,
 // and imported by the writer and the upload step (the import graph runs converge -> ci_spec, not back).
 data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
@@ -1021,6 +1034,11 @@ data gunbc_ci_runner_browser_toolchain_converge_target: GunbcRunStepTarget = Gun
   function: "runner_browser_toolchain_converge_ci_wet",
 }
 
+data gunbc_ci_runner_user_session_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_user_session.dag",
+  function: "runner_user_session_converge_ci_wet",
+}
+
 data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/printer_workflow_run.dag",
   function: "run",
@@ -1029,6 +1047,13 @@ data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
 data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/namecheap/observe.dag",
   function: "namecheap_observe_ci_wet",
+}
+
+// The review sheets' argv-free converge entry (gunbc.review_sheet_converge_cli). It writes no receipt
+// file: its verdict is the exit and the per-kind report on stderr, which names no token.
+data gunbc_ci_review_sheet_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/review_sheet_converge_cli.dag",
+  function: "converge_drive_half_cli",
 }
 
 data gunbc_ci_arrival_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1450,8 +1475,10 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
     gunbc_ci_runner_browser_toolchain_converge_target,
+    gunbc_ci_runner_user_session_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
+    gunbc_ci_review_sheet_converge_target,
     gunbc_ci_printer_workflow_target,
     gunbc_ci_spark_grants_observe_target,
 
@@ -3133,6 +3160,8 @@ fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
 // path would replace the converge receipt, the record of a failed or withheld bracket.
 data gunbc_ci_runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
 data gunbc_ci_runner_host_cap_release_receipt_path: String = "target/runner-host-cap-release-receipt.txt"
+data gunbc_ci_runner_host_withdraw_receipt_path: String = "target/runner-host-withdraw-receipt.txt"
+data gunbc_ci_runner_host_restore_receipt_path: String = "target/runner-host-restore-receipt.txt"
 
 // THE BRACKET'S ADMISSION READS THE ORG ROSTER (organization_runner_roster_live_read), so this step needs the same
 // org-scoped installation token as the roster observe step, minted in-run and held only in this step's environment.
@@ -3154,6 +3183,29 @@ fn gunbc_ci_runner_host_cap_release_invoke() -> String {
     function: gunbc_ci_runner_host_cap_release_target.function,
     claim_run: false,
     receipt_rel: gunbc_ci_runner_host_cap_release_receipt_path
+  )
+}
+
+// THE WITHDRAW AND RESTORE INVOKE SCRIPTS. No org-roster prelude: the bracket's drain reads the roster
+// only for units it must PROVE admitted, and the withdraw's drain walks the same reading -- it is
+// carried by the step's own gunbc run, exactly as the cap release runs without the roster token.
+fn gunbc_ci_runner_host_withdraw_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_withdraw_target.entry,
+    function: gunbc_ci_runner_host_withdraw_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_withdraw_receipt_path
+  )
+}
+
+fn gunbc_ci_runner_host_restore_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_restore_target.entry,
+    function: gunbc_ci_runner_host_restore_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_restore_receipt_path
   )
 }
 
@@ -3184,6 +3236,16 @@ fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> String {
     function: gunbc_ci_runner_browser_toolchain_converge_target.function,
     claim_run: false,
     receipt_rel: "target/runner-browser-toolchain-converge-receipt.txt"
+  )
+}
+
+fn gunbc_ci_runner_user_session_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_user_session_converge_target.entry,
+    function: gunbc_ci_runner_user_session_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-user-session-converge-receipt.txt"
   )
 }
 
@@ -4238,6 +4300,16 @@ fn gunbc_ci_namecheap_observe_invoke() -> String {
     function: gunbc_ci_namecheap_observe_target.function,
     claim_run: false,
     receipt_rel: namecheap_observation_receipt_path
+  )
+}
+
+fn gunbc_ci_review_sheet_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_review_sheet_converge_target.entry,
+    function: gunbc_ci_review_sheet_converge_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 
