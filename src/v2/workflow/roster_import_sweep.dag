@@ -135,26 +135,6 @@ type RosterRowSelection
   | OnlyCall { call: String }
   | OnlyOccurrences { call: String, occurrences: List<String> }
 
-// The occurrence keys a selection carries: empty for the every-row and whole-call grains, which select WHOLE ROWS and so
-// must keep the census join complete; nonempty for the per-site grain, whose keys gate which sites become edits.
-fn roster_selection_occurrence_keys(selection: RosterRowSelection) -> List<String> {
-  match selection {
-    EveryRowOfHome => []
-    OnlyCall { call: _ } => []
-    OnlyOccurrences { call: _, occurrences: os } => os
-  }
-}
-
-// The call a selection names, for the per-site gate: the gate only ever fires for sites of this spelling, so a row of
-// another call in the same home is never gated (the scope already admits one home; keys belong to one row).
-fn roster_selection_call_optional(selection: RosterRowSelection) -> Optional<String> {
-  match selection {
-    EveryRowOfHome => Absent
-    OnlyCall { call: c } => Present { value: c }
-    OnlyOccurrences { call: c, occurrences: _ } => Present { value: c }
-  }
-}
-
 fn roster_scope_admits(scope: RosterHomeScope, row: RosterHeadRow) -> Bool {
   match scope {
     AllHomes => true
@@ -385,6 +365,28 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
       head: RenameHead { to: "map_lookup", positional: ["m", "key"] }
+    },
+    // NAMESPACE-XL to_string wave (stern-bat-401's ruling via tidy-raven-397): `to_string` is NOT Int's declared route --
+    // it is a DESIGN 3 host-text nickname. Int sites migrate to std.integer int_to_decimal_string, Nat sites to std.nat
+    // nat_to_decimal_string, each by declaration identity. ONE SPELLING splits by ARGUMENT TYPE, which no row field can
+    // read (the sweep matches no type), so these rows are selectable ONLY through OnlyOccurrences: the census's typed
+    // class/reading (kernel:Int:mint, decl:std.nat.Nat, ...) decides which key belongs to which row. An EveryRowOfHome
+    // scope over these homes would sweep Bool/Float/List/record to_string sites too -- their classes are NOT this wave's
+    // (dispositions for tidy-raven-397) -- and every such site refuses at the live inhabitance wall (measured: expected
+    // 'Coproduct(Int)', got 'Coproduct(Bool)'), so an unconverged whole-home sweep fails loudly, never quietly.
+    RosterHeadRow {
+      call: "to_string",
+      import_name: "int_to_decimal_string",
+      home: qualified_name_from_dotted_string(dotted: "std.integer"),
+      labels: [],
+      head: RenameHead { to: "int_to_decimal_string", positional: ["value"] }
+    },
+    RosterHeadRow {
+      call: "to_string",
+      import_name: "nat_to_decimal_string",
+      home: qualified_name_from_dotted_string(dotted: "std.nat"),
+      labels: [],
+      head: RenameHead { to: "nat_to_decimal_string", positional: ["value"] }
     }
   ]
 }
@@ -469,6 +471,81 @@ fn roster_import_sweep_apply_row_exit(root_dir: String, paths_csv: String, home:
   if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
 }
 
+// THE PER-SITE WAVE ENTRY (NAMESPACE-XL to_string wave, manager ruling): one row, and the SITES it acts on arrive as a
+// one-shot input FILE of census location keys (`<file>:<line>:<byte column>`, one per line) -- never a landed artifact,
+// never a fallback to sweeping the spelling. The to_string wave needs this because ONE SPELLING splits by ARGUMENT TYPE
+// (kernel Int vs kernel Nat vs Bool vs Float vs List vs record) and the sweep matches no type: the typed census, not the
+// row, decides which half is this wave's. A key that meets no site refuses the run (RefusalOccurrenceKeyUnmatched); an
+// empty key file refuses before any read (RefusalScopeSelectsNoRow).
+fn roster_import_sweep_occurrences_exit(paths_csv: String, home: String, call: String, keys_file: String) -> ProcessExit {
+  let selection = roster_occurrence_selection(keys_file: keys_file)
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: home), rows: OnlyOccurrences { call: call, occurrences: roster_selection_keys(selection: selection) } }
+  let rows = match selection {
+    RosterKeysRead { keys: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: _ } => roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared)
+        Accepted { value: prepared, diagnostics: _ } => roster_sweep_all(paths_csv: paths_csv, prepared: prepared, lex: dag_prepared_lex(), scope: scope)
+      }
+    RosterKeysRefused { detail: _ } => roster_refuse_row(path: keys_file, reason: RefusalUnreadable)
+  }
+  if (rows == "") { ExitSuccess } else { exit_failure(reason: rows) }
+}
+
+fn roster_import_sweep_apply_occurrences_exit(root_dir: String, paths_csv: String, home: String, call: String, keys_file: String) -> ProcessExit {
+  let selection = roster_occurrence_selection(keys_file: keys_file)
+  let report = match selection {
+    RosterKeysRead { keys: ks } =>
+      roster_apply_occurrences(root_dir: root_dir, paths_csv: paths_csv, home: qualified_name_from_dotted_string(dotted: home), call: call, keys: ks)
+    RosterKeysRefused { detail: _ } => roster_refuse_row(path: keys_file, reason: RefusalUnreadable)
+  }
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+type RosterKeySelection
+  = RosterKeysRead { keys: List<String> }
+  | RosterKeysRefused { detail: String }
+
+fn roster_selection_keys(selection: RosterKeySelection) -> List<String> {
+  match selection {
+    RosterKeysRead { keys: ks } => ks
+    RosterKeysRefused { detail: _ } => []
+  }
+}
+
+// Keys are read from a file the wave harness generated ONE-SHOT from the typed census (the census TSV itself is never
+// landed). Blank lines are dropped; a key that is not exactly file:line:column is refused at the SITE join, where the
+// refusal names the key, so the read stays simple and the verdict stays located.
+fn roster_occurrence_selection(keys_file: String) -> RosterKeySelection {
+  let read = Filesystem.Read(path: keys_file)
+  if !read.success {
+    RosterKeysRefused { detail: "cannot read " + keys_file }
+  } else {
+    RosterKeysRead { keys: roster_dedupe(base: [], more: roster_key_lines(text: read.content)) }
+  }
+}
+
+fn roster_key_lines(text: String) -> List<String> {
+  fold_list(xs: split(s: text, delimiter: "\n"), empty: [], cons: fn(acc, k) {
+    let t = roster_trim(text: k)
+    if t == "" { acc } else { list_snoc_item(xs: acc, item: t) }
+  })
+}
+
+fn roster_trim(text: String) -> String {
+  match split(s: text, delimiter: "\r") {
+    Empty => text
+    Cons { head: t, tail: _ } => t
+  }
+}
+
+// The apply restricted to occurrence keys: the SAME apply the row grain uses (base-census provenance, stale-read check,
+// apply lock), with OnlyOccurrences as the selection. The gate is derived from the scope at read time, so what the
+// admission instrument recomputes from the same scope byte-equals what this applied -- the gate is a property of the
+// scope, and the instrument recomputes from the scope.
+fn roster_apply_occurrences(root_dir: String, paths_csv: String, home: QualifiedName, call: String, keys: List<String>) -> String {
+  roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv, home: home, rows: OnlyOccurrences { call: call, occurrences: keys })
+}
+
 // ONE HomeKindSide PER ROW, READ ONCE WHEN A RUN STARTS (v2.workflow.roster_home_kind roster_home_side_read) and carried
 // to every site fold; the site folds never ask the census themselves.
 fn roster_home_sides(rows: List<RosterHeadRow>) -> List<RosterHomeSide> {
@@ -497,6 +574,19 @@ fn roster_scope_selection_refusal_in(table: List<RosterHeadRow>, scope: RosterHo
           if is_empty(xs: selected) { Present { value: RefusalScopeSelectsNoRow { home: roster_qn_text(qn: h), selection: "every-row" } } } else { Absent }
         OnlyCall { call: c } =>
           if is_empty(xs: selected) {
+            Present { value: RefusalScopeSelectsNoRow { home: roster_qn_text(qn: h), selection: "call=" + c } }
+          } else if length(xs: selected) > 1 {
+            Present { value: RefusalScopeSelectsSeveralRows { home: roster_qn_text(qn: h), call: c, count: length(xs: selected) } }
+          } else {
+            Absent
+          }
+        // The per-site grain checks the same row-selection facts as OnlyCall, PLUS that the selection carries keys at
+        // all: an OnlyOccurrences with an empty key list would gate EVERY site of the call off, sweeping nothing while
+        // reporting Clean -- an empty claim is a broken claim, refused before any read.
+        OnlyOccurrences { call: c, occurrences: os } =>
+          if is_empty(xs: os) {
+            Present { value: RefusalScopeSelectsNoRow { home: roster_qn_text(qn: h), selection: "call=" + c + " occurrences=empty" } }
+          } else if is_empty(xs: selected) {
             Present { value: RefusalScopeSelectsNoRow { home: roster_qn_text(qn: h), selection: "call=" + c } }
           } else if length(xs: selected) > 1 {
             Present { value: RefusalScopeSelectsSeveralRows { home: roster_qn_text(qn: h), call: c, count: length(xs: selected) } }
