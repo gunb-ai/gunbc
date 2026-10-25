@@ -42,6 +42,7 @@ import extdeps.ssh.client_options {
   ServerAliveCountMax,
   ControlMaster,
   ControlMasterAuto,
+  ControlMasterNo,
   ControlPath,
   ControlPathSocket,
   ControlPathNone,
@@ -1256,17 +1257,42 @@ fn shape_fleet_ssh_password_exec(
   shape_fleet_ssh_password_exec_trusting(trust: context.trust, target: target, words: words)
 }
 
+// WHETHER A KEY LEG RIDES THE RUN'S MULTIPLEXED MASTER CONNECTION OR OPENS ITS OWN. A leg whose question is
+// "can a NEW login still authenticate" -- after the host's sshd configuration changed -- must not ride a
+// master connection authenticated before the change: ssh_config(5) ControlPath "none" disables connection
+// sharing, and ControlMaster "no" stops the leg from offering itself as one.
+type FleetSshConnection
+  = FleetSshMultiplexedConnection
+  | FleetSshFreshConnection
+
+fn fleet_ssh_connection_options(context: FleetSshExecutionContext, target: SshTarget, connection: FleetSshConnection) -> List<SshClientOption> {
+  match connection {
+    FleetSshMultiplexedConnection => fleet_ssh_multiplex_options(context: context, target: target, multiplexing: fleet_ssh_multiplexing)
+    FleetSshFreshConnection => [ControlMaster { value: ControlMasterNo }, ControlPath { value: ControlPathNone }]
+  }
+}
+
 fn shape_fleet_ssh_exec(
   context: FleetSshExecutionContext,
   target: SshTarget,
   words: PortableRemoteWords,
 ) -> List<String> {
-  shape_fleet_ssh_leg(context: context, leg: FleetBareWordLeg { target: target, words: words })
+  shape_fleet_ssh_exec_over(context: context, target: target, words: words, connection: FleetSshMultiplexedConnection)
+}
+
+fn shape_fleet_ssh_exec_over(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  words: PortableRemoteWords,
+  connection: FleetSshConnection,
+) -> List<String> {
+  shape_fleet_ssh_leg(context: context, leg: FleetBareWordLeg { target: target, words: words }, connection: connection)
 }
 
 fn shape_fleet_ssh_leg(
   context: FleetSshExecutionContext,
   leg: FleetRemoteLeg,
+  connection: FleetSshConnection,
 ) -> List<String> {
   let target = fleet_remote_leg_target(leg: leg)
   let config_suppression = openssh_suppress_ambient_configuration_options()
@@ -1281,7 +1307,7 @@ fn shape_fleet_ssh_leg(
         ],
         concat(
           fleet_ssh_leg_deadline_options(deadline: fleet_ssh_leg_deadline),
-          fleet_ssh_multiplex_options(context: context, target: target, multiplexing: fleet_ssh_multiplexing),
+          fleet_ssh_connection_options(context: context, target: target, connection: connection),
         ),
       ),
     ),
