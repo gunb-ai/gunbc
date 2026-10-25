@@ -18,20 +18,23 @@ import extdeps.bmc.megarac {
   RedirectionPresenting,
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq }
+import extdeps.board_authority { BoardFruObservation, BoardFruRead, BoardFruNotRead }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_45 }
+import extdeps.bmc.ipmitool_hpm_check { hpm_version_absent_rendering }
 import gunbc.host.bmc_release_capability_catalog {
   megarac_release_capability_catalog, MegaRacReleaseCapabilityEntry,
   megarac_version_establishment,
   megarac_release_capabilities_of, megarac_run_attempt_identity,
+  megarac_read_identity_of_committed_row,
   MegaRacVersionFromFirmwareRead, MegaRacVersionFromOperatorAttestation,
   MegaRacReleaseEstablishedByRead, MegaRacReleaseEstablishedByAttestation,
   MegaRacReleaseEstablishmentRefused,
   MegaRacCapabilitiesFromExecutedRun, MegaRacCapabilitiesFromCommittedReadback,
 }
 import gunbc.machine_intake.mtcollins1_access_observation {
-  mtcollins1_current_build_firmware, mtcollins1_current_build_identity,
+  mtcollins1_current_build_firmware, mtcollins1_current_build_identity, mtcollins1_identity,
 }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image_stem }
 import gunbc.runner.runner_host_medium { runner_host_medium_image_stem }
@@ -380,33 +383,96 @@ test fn w_the_0_45_row_names_no_release_it_did_not_read() -> Bool {
   } && nothing_attested
 }
 
-// THE CURRENT BUILD IDENTITY IS THE ONE THE COMMITTED READING MINTS (prod cite:
-// gunbc/machine_intake/mtcollins1_access_observation.dag). The access-observation module DECLARES
-// mtcollins1_current_build_firmware; it must not DECIDE it. The two sides of this claim come from
-// different places: the declared identity (access observation) and the identity re-derived from the
-// catalogue row's own bytes (catalogue + parser). Retype either the declared wire ("0.45" -> "0.45.3") or
-// the committed table, and the two sides part and this goes red -- which is the only reason either side
-// can be trusted. The shape the parser owes (raw "0.45", semantic none) is pinned once, here, from the
-// bytes -- not in the module the comment above points at.
+// THE CURRENT BUILD IDENTITY IS THE ONE THE COMMITTED READING MINTS -- via the ROW, and only the row
+// (review 38602 rework). The identity is no longer a typed wire this test can compare a literal against:
+// gunbc.machine_intake.mtcollins1_access_observation ASKS the catalogue for it
+// (megarac_read_identity_of_committed_row). Three discriminations, each failing independently:
+// 1. THE DERIVED IDENTITY IS WHAT THE ROW'S OWN BYTES SAY -- re-deriving the row's identity through the
+//    establishment here and comparing to the consumed value means a consumer that STARTED typing its own
+//    identity (or a row whose bytes changed under it) is caught from the outside;
+// 2. THE PATH IS THE ROW'S PATH: asking for the identity under the artifact path pinned by the operation
+//    ledger's committed evidence digest returns exactly this identity -- retarget the row's artifact_path
+//    away from the committed bytes and the row filter finds nothing under the ledger's path, the refusal
+//    sentinel answers, and this arm goes red;
+// 3. THE REFUSAL SENTINEL IS LOUD, NEVER PLAUSIBLE: asking under a path NO row carries yields the
+//    parser's own "no version stored" rendering -- not "0.45", not "0.45.3", nothing a row keys on. A
+//    sentinel rebuilt to return the last good release (so a lost artifact silently keeps booting) dies
+//    here. The sentinel is constructed from the parser's rendering constant, so this checks the SHAPE the
+//    derivation owes, without restating what the row's bytes mint.
 test fn w_the_current_build_identity_is_the_one_the_committed_reading_mints() -> Bool {
-  let rows = filter(megarac_release_capability_catalog, e => match e.standing {
-    MegaRacVersionFromFirmwareRead { artifact_path: _, component: _, stdout: bytes } =>
-      (bytes as String) == (ipmitool_hpm_check_bmc0_45 as String)
+  let committed_rows = filter(megarac_release_capability_catalog, e => match e.standing {
+    MegaRacVersionFromFirmwareRead { artifact_path: path, component: _, stdout: bytes } =>
+      (path as String) == "artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt"
+      && (bytes as String) == (ipmitool_hpm_check_bmc0_45 as String)
     MegaRacVersionFromOperatorAttestation { attested_on: _, page_reported: _, detail: _, upgrade_read: _ } => false
   })
-  let one_row = rows |> first()
-  count(rows) == 1 && (match one_row {
-    Absent => false
+  let committed_head = committed_rows |> first()
+  let derived_by_the_row = match committed_head {
     Present { value: e } => match megarac_version_establishment(standing: e.standing) {
-      MegaRacReleaseEstablishedByRead { firmware: derived } =>
-        bmc_firmware_release_identity_eq(a: derived, b: mtcollins1_current_build_firmware)
-        && bmc_firmware_release_identity_eq(a: mtcollins1_current_build_identity.firmware, b: derived)
-        && (derived.raw_version as String) == "0.45"
-        && match derived.semantic_version { Absent => true  Present { value: _ } => false }
-      MegaRacReleaseEstablishedByAttestation { firmware: _ } => false
-      MegaRacReleaseEstablishmentRefused { standing: _, cause: _ } => false
+      MegaRacReleaseEstablishedByRead { firmware: established } => Present { value: established }
+      _ => Absent
     }
-  })
+    Absent => Absent
+  }
+  // 1+2. THE CONSUMED IDENTITY EQUALS THE ROW-DERIVED ONE, and equals what the row answers under the
+  // ledger's own committed path.
+  let consumed_is_derived = match derived_by_the_row {
+    Present { value: established } =>
+      bmc_firmware_release_identity_eq(a: mtcollins1_current_build_firmware, b: established)
+      && bmc_firmware_release_identity_eq(a: mtcollins1_current_build_identity.firmware, b: established)
+      && bmc_firmware_release_identity_eq(
+        a: megarac_read_identity_of_committed_row(
+          artifact_path: "artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt",
+        ), b: established)
+    Absent => false
+  }
+  // 3. THE SENTINEL: a path with no row above it answers with the absent-version rendering, and it is NOT
+  // any release anybody boots.
+  let sentinel = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: hpm_version_absent_rendering)
+  let asks_answer_the_sentinel = bmc_firmware_release_identity_eq(
+    a: megarac_read_identity_of_committed_row(artifact_path: "artifacts/bmc/no-such-run/hpm-check.txt"),
+    b: sentinel,
+  ) && !bmc_firmware_release_identity_eq(a: sentinel, b: mtcollins1_current_build_firmware)
+    && !bmc_firmware_release_identity_eq(a: sentinel, b: megarac_firmware_0_45_3)
+  // AND THE FRU SIDE OF THE IDENTITY IS READ, NOT COPIED: the board and chassis of the current-build
+  // identity are mtcollins1_identity's own fields (review 38602 finding 2) -- a build change moves the
+  // firmware and nothing else, and there is no second spelling to drift.
+  // Field-by-field, never == on whole structures: optional_equality_answers_by_representation
+  // (gunbc.recurring_failure_mode) records == answering false on optionals that mean the same thing.
+  let fru_side_is_shared = board_fru_fields_eq(a: mtcollins1_current_build_identity.board, b: mtcollins1_identity.board)
+    && both_or_neither(a: mtcollins1_current_build_identity.chassis_part_number, b: mtcollins1_identity.chassis_part_number)
+  consumed_is_derived && asks_answer_the_sentinel && fru_side_is_shared
+}
+
+// Both boards READ, to the same fields (review 38602 finding 2: the current-build identity's board is
+// mtcollins1_identity's board, taken not copied). Both-unread is NOT allowed to pass: the intake capture
+// is what the boot's identity owes, and a build identity that dropped the board would be an unbound boot.
+fn board_fru_fields_eq(a: BoardFruObservation, b: BoardFruObservation) -> Bool {
+  match a {
+    BoardFruRead { fru: x } => match b {
+      BoardFruRead { fru: y } =>
+        x.manufacturer == y.manufacturer
+        && x.product == y.product
+        && both_or_neither(a: x.part_number, b: y.part_number)
+      BoardFruNotRead { cause: _ } => false
+    }
+    BoardFruNotRead { cause: _ } => false
+  }
+}
+
+// Two optionals read the SAFE way (see the recurrence above): both absent, or both present with equal
+// content -- decided by matching, never by == on the variants.
+fn both_or_neither(a: NonEmptyStr?, b: NonEmptyStr?) -> Bool {
+  match a {
+    Present { value: x } => match b {
+      Present { value: y } => x == y
+      Absent => false
+    }
+    Absent => match b {
+      Absent => true
+      Present { value: _ } => false
+    }
+  }
 }
 
 // THE STATUS-19 CENSUS ROW REFUSES AT THE MACHINE-READ IDENTITY (spec PR1 item (c)). Boot run 40082618814

@@ -48,6 +48,7 @@ import extdeps.bmc.ipmitool_hpm_check {
   hpm_check_table_of, hpm_component_named,
   HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice,
   HpmVersionCell, HpmVersionHeld, HpmVersionAbsent,
+  hpm_version_absent_rendering,
 }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32, ipmitool_hpm_check_bmc0_45 }
 
@@ -142,6 +143,40 @@ type MegaRacVersionRefusal
   | StandingNamesNoComponentInTable { component: NonEmptyStr, listed: List<NonEmptyStr> }
   | StandingNamesAComponentListedTwice { component: NonEmptyStr, ids: List<Int> }
   | StandingComponentCarriesNoVersion { component: NonEmptyStr }
+
+// THE COMMITTED READ'S IDENTITY, DERIVED NOT TYPED (review 38602; DESIGN.md §3 "each fact lives in
+// exactly one place", §5 "making it unwritable, not validating it"). A module that needs the release
+// identity a committed hpm check reports ASKS the row for it; the row is the one home of those bytes, and
+// megarac_version_establishment is the one mint that turns them into an identity. There is no wire literal
+// on the consumer side to drift. TOTAL, like the establishment it calls: a row that cannot name a release
+// (unreadable bytes, an upgrade listing, no such component, the component listed twice, no active version,
+// a standing on the attestation arm) or no row / two rows under the artifact path yields the parser's OWN
+// "no version stored" rendering as the identity -- loud, never plausible: no capability row keys on it, no
+// reading can ground it at a real release, and it can only be reached by bytes that genuinely cannot be
+// read, which is exactly when the boot must refuse rather than boot on an assumed build.
+fn megarac_read_identity_of_committed_row(artifact_path: NonEmptyStr) -> BmcFirmwareReleaseIdentity {
+  let hit = filter(megarac_release_capability_catalog, e => match e.standing {
+    MegaRacVersionFromFirmwareRead { artifact_path: path, component: _, stdout: _ } =>
+      (path as String) == (artifact_path as String)
+    MegaRacVersionFromOperatorAttestation { attested_on: _, page_reported: _, detail: _, upgrade_read: _ } => false
+  })
+  let no_version_stored = bmc_firmware_release_identity_of_wire(
+    family: AmiMegaRac, wire: hpm_version_absent_rendering,
+  )
+  let hit_head = hit |> first()
+  match hit_head {
+    Present { value: e } => match count(hit) {
+      1 => match megarac_version_establishment(standing: e.standing) {
+        MegaRacReleaseEstablishedByRead { firmware: established } => established
+        // A STANDING THAT CANNOT ESTABLISH, ESTABLISHES NOTHING -- see the fn's header.
+        MegaRacReleaseEstablishedByAttestation { firmware: _ } => no_version_stored
+        MegaRacReleaseEstablishmentRefused { standing: _, cause: _ } => no_version_stored
+      }
+      _ => no_version_stored
+    }
+    Absent => no_version_stored
+  }
+}
 
 // THE REFUSAL AS A RECEIPT READS IT, beside the type so every arm is rendered here and nowhere else.
 fn megarac_version_refusal_text(cause: MegaRacVersionRefusal) -> String {

@@ -5,7 +5,8 @@ import std.types { EpochMs, Int, NonEmptyStr, String }
 import std.measure { Second, second }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
-import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import gunbc.host.bmc_release_capability_catalog { megarac_read_identity_of_committed_row }
 import extdeps.bmc.access_profile {
   BmcAccessObservation,
   BmcAccessObservationStanding,
@@ -283,31 +284,27 @@ data mtcollins1_boot_ipmi_read_deadline: Second = second(count: 20)
 
 data mtcollins1_boot_ipmi_kill_after: Second = second(count: 5)
 
-// THE CURRENT BUILD, AS THE MACHINE READ IT. The unit shipped and was catalogued at 0.32; it has run
-// 0.45 since the 2026-10-02 reflash, and boot run 40082618814 read that off the controller. This is the
-// identity the ATTACHED boot's catalogue join resolves against -- distinct from the intake-era rows above
-// (mtcollins1_firmware, mtcollins1_identity), which retain what the FIRST contact read. Minted
-// through the corpus's one identity mint, from the wire the committed APP Active cell yields; the wire
-// "0.45" does not parse in bmc_firmware_version_from_wire, so semantic_version is Absent and the 0.45.x
-// capability row resolves through the exact-release carrier. That the wire is "0.45" is pinned against
-// the committed bytes by test.claim.machine_intake.megarac_media_0_45_3_witness
-// w_the_current_build_identity_is_the_one_the_committed_reading_mints -- never asserted here.
-data mtcollins1_current_build_firmware: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
-  family: AmiMegaRac,
-  wire: "0.45",
+// THE CURRENT BUILD, AS THE MACHINE READ IT -- DERIVED, NOT TYPED (review 38602; DESIGN.md §3, §5). The
+// unit shipped and was catalogued at 0.32; it has run 0.45 since the 2026-10-02 reflash, and boot run
+// 40082618814 read that off the controller. This is the identity the ATTACHED boot's catalogue join
+// resolves against -- distinct from the intake-era rows above (mtcollins1_firmware, mtcollins1_identity),
+// which retain what the FIRST contact read. It is asked of the catalogue ROW that holds those committed
+// bytes, whose establishment is the single mint; there is no wire literal here to drift from them. (A
+// hand-typed `wire: "0.45"` here once made this module a second home of a fact the bytes already own; the
+// media witness that used to check the two agree -- w_the_current_build_identity_is_the_one_the_committed_reading_mints
+// -- is now a tautology's shadow and pins the DERIVATION PATH instead.)
+data mtcollins1_current_build_firmware: BmcFirmwareReleaseIdentity = megarac_read_identity_of_committed_row(
+  artifact_path: "artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt",
 )
 
 // THE SAME READING, AS A BmcObservedIdentity, because the build-reading mint of the operation ledger
 // takes an identity of THAT shape (gunbc.host.megarac_operation_standing megarac_build_reading). Board
-// and chassis are spelled exactly as in mtcollins1_identity above -- the controller's own `fru print 0`
-// answer from the committed intake capture, which a build change does not move. Only `firmware` differs,
-// and it carries the DERIVED wire rather than the page label.
+// and chassis are TAKEN FROM mtcollins1_identity -- the controller's own `fru print 0` answer from the
+// committed intake capture, which a build change does not move -- not copied out of it: a copy can drift,
+// a field read cannot. Only `firmware` differs, and it carries the derived identity rather than the page
+// label.
 data mtcollins1_current_build_identity: BmcObservedIdentity = BmcObservedIdentity {
-  board: BoardFruRead { fru: BoardFruIdentity {
-    manufacturer: "FOXCONN",
-    product: "Mt. Collins",
-    part_number: Present { value: "02030A800-600-G" },
-  } },
-  chassis_part_number: Present { value: "1A624RA00-600-G" },
+  board: mtcollins1_identity.board,
+  chassis_part_number: mtcollins1_identity.chassis_part_number,
   firmware: mtcollins1_current_build_firmware,
 }
