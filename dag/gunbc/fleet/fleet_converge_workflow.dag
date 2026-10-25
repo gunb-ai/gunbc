@@ -8,7 +8,7 @@ import product.fabric.flex_vast_template_control { flex_vast_template_receipt_pa
 import gunbc.auth.branch_dispatch_federation {
   branch_dispatch_provider_resource, hetzner_cloud_control_service_account, hetzner_cloud_control_service_account_id,
   RunScopedMode, RunScopedMainRoute, MainUsesGrantedAccount, MainUsesFleetIdentity, run_scoped_mode_eligible_on, run_scoped_account_id, run_scoped_modes_with_route, run_scoped_federation_named, run_scoped_modes,
-  branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
+  branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source, printer_run_scoped_service_account,
   BootCredentialSource, BootCredentialStanding, BootCredentialSourceSelected, ReviewedMainDedicatedFederation,
   RunScopedApprovedGrant, BootCredentialSourceRefused, boot_credential_source_emit_refused_poison,
 }
@@ -4996,7 +4996,7 @@ data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: ApprovalBrokerDarkInstall), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt), needs: [fleet_converge_release_bins_job_id as String] },
-  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: PrinterWorkflow), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: PrinterWorkflow), needs: [fleet_converge_release_bins_job_id as String, fleet_converge_branch_run_grant_await_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: NamecheapObserve), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_gcp_iam_bootstrap_request_job_id, needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_gcp_iam_bootstrap_job_id, needs: [fleet_converge_release_bins_job_id as String, fleet_converge_gcp_iam_bootstrap_request_job_id as String] },
@@ -6245,6 +6245,24 @@ fn fleet_converge_namecheap_observe_job() -> Job {
 // Preparation (CAD and slicing) plus the 15-minute bed-clear approval window must fit one pass.
 data printer_converge_step_timeout_minutes: Duration = 45
 
+// THE PRINTER JOB'S ONE CREDENTIAL SEAM, TWO SOURCES by ref (gunbc.auth.branch_dispatch_federation
+// MainUsesDedicatedFederation): reviewed main keeps the printer-lan pool, pinned to main; any other ref
+// waits for this run's grant and federates through the branch-dispatch pool as printer-run. github.ref
+// here is not the wall: IAM refuses the printer-lan pool off main and printer-run without this run's cell.
+fn fleet_converge_printer_wif_provider_resource() -> String {
+  interpolate(expression: LogicalOr {
+    left: LogicalAnd { left: fleet_converge_github_ref_is_reviewed_main(), right: StringLiteral { value: printer_provider_resource() } },
+    right: StringLiteral { value: branch_dispatch_provider_resource() },
+  })
+}
+
+fn fleet_converge_printer_wif_service_account() -> String {
+  interpolate(expression: LogicalOr {
+    left: LogicalAnd { left: fleet_converge_github_ref_is_reviewed_main(), right: StringLiteral { value: printer_service_account as String } },
+    right: StringLiteral { value: printer_run_scoped_service_account as String },
+  })
+}
+
 fn fleet_converge_printer_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
@@ -6252,8 +6270,8 @@ fn fleet_converge_printer_job() -> Job {
     environment: Present { value: printer_environment as String },
     steps: [
       fleet_converge_event_sha_checkout_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(),
-      ci_wif_auth_step_for(name: "WIF auth (dedicated printer credential reader)",
-        provider_resource: printer_provider_resource(), service_account: printer_service_account as String),
+      ci_wif_auth_step_for(name: "WIF auth (printer-lan reader on reviewed main; run-scoped printer account after this run's grant otherwise)",
+        provider_resource: fleet_converge_printer_wif_provider_resource(), service_account: fleet_converge_printer_wif_service_account()),
       RunStep {
         name: Present { value: "Printer: observe the credential or converge one print request" },
         id: Present { value: "printer" }, run: gunbc_ci_printer_workflow_invoke(), shell: none,
@@ -6276,7 +6294,7 @@ fn fleet_converge_printer_job() -> Job {
     ],
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
     env: none, outputs: none,
-    if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
+    if_condition: Present { value: fleet_converge_after_grant_wait_if(after_build: true, mode_if: fleet_converge_mode_step_if(mode: PrinterWorkflow)) },
     timeout_minutes: Present { value: printer_converge_step_timeout_minutes + 20 },
     continue_on_error: none,
     concurrency: fleet_converge_exclusive_job_concurrency(group: "printer-${{ inputs.printer }}"),
