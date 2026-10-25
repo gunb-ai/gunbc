@@ -89,7 +89,7 @@ fn authored_constructor_orders_emit_clones() {
         ),
     ] {
         let source = format!(
-            "module move_probe\nimport std.optional {{ Optional, Present }}\ntype Item {{ child: Item? text: String other: String }}\n\
+            "module move_probe\ntype Item {{ child: Item? text: String other: String }}\n\
              fn build(item: Item, early: Bool) -> Item {{ {early} if early {{\
              Item {{ {fields}, other: \"\" }} }} else {{\
              Item {{ child: item.child, text: item.text, other: item.other }} }} }}"
