@@ -50,7 +50,7 @@ pub fn generated_provider_demand(
 ) -> Rc<GeneratedProviderDemand> {
     Rc::new(GeneratedProviderDemand {
         declaration: declaration.clone(),
-        sites: crate::std_algebra::non_empty_singleton(site.clone()),
+        sites: crate::std_algebra::non_empty_singleton(site),
     })
 }
 
@@ -228,7 +228,7 @@ pub fn observed_unavailable(
     o: Rc<ObservedProviderDemand>,
     closure_modules: Rc<Vec<String>>,
 ) -> Rc<Vec<Rc<UnavailableProviderDemand>>> {
-    match (*provider_observation_verdict(o.clone(), closure_modules.clone())).clone() {
+    match (*provider_observation_verdict(o.clone(), closure_modules)).clone() {
         ProviderObservationVerdict::VerdictUnavailable { cause: c, .. } => {
             Rc::new(vec![Rc::new(UnavailableProviderDemand {
                 demand: o.demand.clone(),
@@ -244,7 +244,7 @@ pub fn observed_acquire(
     o: Rc<ObservedProviderDemand>,
     closure_modules: Rc<Vec<String>>,
 ) -> Rc<Vec<String>> {
-    match (*provider_observation_verdict(o.clone(), closure_modules.clone())).clone() {
+    match (*provider_observation_verdict(o, closure_modules)).clone() {
         ProviderObservationVerdict::VerdictAcquire { module: m, .. } => Rc::new(vec![m.clone()]),
         ProviderObservationVerdict::VerdictSatisfied => Rc::new(vec![]),
         ProviderObservationVerdict::VerdictUnavailable { cause: _, .. } => Rc::new(vec![]),
@@ -460,7 +460,7 @@ pub fn generated_provider_unavailable_message(
     declaration: Rc<DeclarationRef>,
     cause: GeneratedProviderUnavailableCause,
 ) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("generated provider unavailable: ".to_string(), declaration.module_path.clone()), ".".to_string()), declaration.decl_name.clone()), " -- ".to_string()), generated_provider_unavailable_cause_label(cause.clone())), "; a compiler-generated reference demands this declaration, and no authored import, fallback or inline copy stands in for it".to_string())
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("generated provider unavailable: ".to_string(), declaration.module_path.clone()), ".".to_string()), declaration.decl_name.clone()), " -- ".to_string()), generated_provider_unavailable_cause_label(cause)), "; a compiler-generated reference demands this declaration, and no authored import, fallback or inline copy stands in for it".to_string())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
