@@ -38,8 +38,9 @@ test fn separate_job_uses_dedicated_identity() -> Bool {
 test fn observer_has_no_fleet_ssh_demand() -> Bool {
   match fleet_converge_mode_fleet_ssh_key_demand(mode: PrinterWorkflow) { FleetSshKeyNotConsumed => true _ => false }
 }
+// Re-contracted post-#14359: fleet_converge_checkout_ref widened to LogicalOr{needs.build.outputs.revision, github.sha}; the left arm is the gated plan-revision job's OUTPUT, never the raw dispatch input. The security conjuncts below (event-sha checkout + no expected_revision) are the wall; the old == github.sha literal here was #14359's stale contract, red on main (control run 7a9928584d).
 test fn trusted_code_cannot_be_replaced_by_dispatch_revision() -> Bool {
-  fleet_converge_checkout_ref_expr == "${{ github.sha }}"
+  fleet_converge_checkout_ref_expr == "${{ needs.build.outputs.revision || github.sha }}"
     && fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
     && !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "expected_revision")
     && string_contains(s: fleet_converge_shared_job_if, pattern: "github.event.inputs.mode != 'printer'")
