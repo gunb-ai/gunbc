@@ -13,6 +13,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemDirectorySubjectRefused,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_root_spelling_refusal }
+import gunbc.deploy_transition_lease_store { TransitionLeaseStore, TransitionLeaseStoreReading, TransitionLeaseStoreReady, TransitionLeaseStoreUnready, transition_lease_store }
 
 // THE TRANSITION INHIBITION STORE, SEALED IN PLACE. gunbc.deploy_transition decides what the inhibition MEANS;
 // this leaf module is the only place that knows where it lives. It mints a sealed value from the instance alone
@@ -32,7 +33,8 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboa
 //
 // THE LEASE IS NOT HERE. It is a hold on gunbc.durable_exclusive_hold_file_store, sealed in its own store,
 // gunbc.deploy_transition_lease_store, with its own declaration in the same instance root; the hand lock it
-// replaced (transition-lease.json and its listing-joined observation) is deleted.
+// replaced (transition-lease.json and its listing-joined observation) is deleted. This module carries the lease
+// store only as a member of TransitionContext, below.
 
 // THE ONE DECLARATION OF THE STORE: the member it is under the instance root. The store is a single file
 // directly in the instance root, which the instance itself provisions; the store owns no directory, so there is
@@ -68,9 +70,9 @@ fn transition_marker_write(success: Bool, path: String, error: String) -> Transi
 // construction: test.claim.sole_constructor_completeness_audit_probe f13), so only transition_inhibition_store
 // below builds one, and only from a listed directory derived from transition_inhibition_slots. What is sealed is
 // CONSTRUCTION. Field READS are not sealed today, so a holder can read `root` and spell a path from it; that is the
-// same declared residual #14944 records for its claim store, and no rung is claimed for it. NOT established: a
-// store minted for instance A refused where B's is required -- both are this one type, and the decision functions
-// take no instance to compare it with.
+// same declared residual #14944 records for its claim store, and no rung is claimed for it. A store for instance
+// B cannot meet a guard for instance A: no transition operation takes a store beside its guard or basis; each
+// reads the one TransitionContext (below) that guard or basis was minted with.
 type TransitionInhibitionStore sole_constructor {
   instance: NonEmptyStr
   root: NonEmptyStr
@@ -85,8 +87,7 @@ type TransitionInhibitionStoreReading
 // over it could only ever answer indeterminate; it is refused here instead, and the decision module reads the
 // refusal as an unreadable standing. A root that is not absolute or not spelled one way refuses before the
 // listing, by the instance's own rule (gunbc.roadmap.roadmap_dashboard_instance
-// dashboard_instance_root_spelling_refusal), the same rule the transition lease store applies, so the two halves
-// of one transition agree on whether the instance can be addressed at all.
+// dashboard_instance_root_spelling_refusal), so every location of one transition is addressed one way.
 fn transition_inhibition_store(instance: HostDashboardInstance) -> TransitionInhibitionStoreReading {
   let root = instance.instance_root as String
   let name = transition_inhibition_slots.member as String
@@ -112,6 +113,38 @@ fn transition_inhibition_store(instance: HostDashboardInstance) -> TransitionInh
           }
       }
     }
+  }
+}
+
+// ONE TRANSITION, ONE INSTANCE: the context a transition runs in, minted from the instance alone, carrying the
+// inhibition store and the sealed lease store together. A transition's every location derives from one of these
+// (the guard is bound to it, and every clearance basis carries it), so a guard acquired at instance A has no field
+// through which to acquire, release, write, mark or clear the records of instance B. Both stores are minted here
+// from the one instance, each by its own sole mint, so they are over one root by construction. Sole constructor,
+// non-generic and never a variant arm, for the reason TransitionInhibitionStore gives; its field reads are the same
+// declared residual.
+type TransitionContext sole_constructor {
+  inhibition: TransitionInhibitionStore
+  lease: TransitionLeaseStore
+}
+
+type TransitionContextReading
+  = TransitionContextReady { context: TransitionContext }
+  | TransitionContextUnready { detail: String }
+
+// The lease store's mint lists the same root again: its sole mint takes the instance, and minting it from the
+// inhibition store's root would be a second, root-taking route into the lease store.
+fn transition_context(instance: HostDashboardInstance) -> TransitionContextReading {
+  match transition_inhibition_store(instance: instance) {
+    TransitionInhibitionStoreUnready { detail: d } => TransitionContextUnready { detail: d }
+    TransitionInhibitionStoreReady { store: s } =>
+      match transition_lease_store(instance: instance) {
+        TransitionLeaseStoreUnready { detail: d } => TransitionContextUnready { detail: d }
+        TransitionLeaseStoreReady { store: l } =>
+          TransitionContextReady {
+            context: TransitionContext { inhibition: s, lease: l },
+          }
+      }
   }
 }
 

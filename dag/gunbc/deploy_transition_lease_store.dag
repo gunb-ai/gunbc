@@ -143,10 +143,14 @@ type TransitionLeaseHeld sole_constructor {
 // undecodable means an operator reads the slot; lost means another acquirer won between this call's read
 // and its write, so re-observe; unavailable says nothing about who holds the lease (the store could not
 // be read or written, or the key is not slot-addressable), so fix the host. Lost and unavailable are not
-// folded together (store_refusal_reported_as_contention).
+// folded together (store_refusal_reported_as_contention). The refusals are their own type so a consumer can
+// fold them without the held proof's arm, which only this module constructs.
 type TransitionLeaseAcquire
   = TransitionLeaseAcquired { held: TransitionLeaseHeld }
-  | TransitionLeaseOccupied { holder: String, generation: Int }
+  | TransitionLeaseRefused { refusal: TransitionLeaseRefusal }
+
+type TransitionLeaseRefusal
+  = TransitionLeaseOccupied { holder: String, generation: Int }
   | TransitionLeaseUndecodable { detail: String }
   | TransitionLeaseLost { detail: String }
   | TransitionLeaseUnavailable { detail: String }
@@ -172,17 +176,19 @@ fn transition_lease_acquire_of(store: TransitionLeaseStore, outcome: FileHoldAcq
     FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
       TransitionLeaseAcquired { held: TransitionLeaseHeld { store: store, owner: o, generation: g } }
     FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
-      TransitionLeaseOccupied { holder: h as String, generation: cas_generation_count(g: g) }
+      TransitionLeaseRefused { refusal: TransitionLeaseOccupied { holder: h as String, generation: cas_generation_count(g: g) } }
     FileHoldSlotUndecodable { slot_key: _, generation: g, detail: d } =>
-      TransitionLeaseUndecodable {
-        detail: join([location, " is undecodable at generation ", to_string(cas_generation_count(g: g)), ": ", d as String], ""),
+      TransitionLeaseRefused {
+        refusal: TransitionLeaseUndecodable {
+          detail: join([location, " is undecodable at generation ", to_string(cas_generation_count(g: g)), ": ", d as String], ""),
+        },
       }
     FileHoldAcquireLost { slot_key: _ } =>
-      TransitionLeaseLost { detail: join([location, " was taken by another acquirer between this acquire's read and its write"], "") }
+      TransitionLeaseRefused { refusal: TransitionLeaseLost { detail: join([location, " was taken by another acquirer between this acquire's read and its write"], "") } }
     FileHoldAcquireStoreUnavailable { slot_key: _, cause: c } =>
-      TransitionLeaseUnavailable { detail: join([location, " could not be read or written: ", transition_lease_store_failure_text(cause: c)], "") }
+      TransitionLeaseRefused { refusal: TransitionLeaseUnavailable { detail: join([location, " could not be read or written: ", transition_lease_store_failure_text(cause: c)], "") } }
     FileHoldKeyNotSlotAddressable { slot_key: k } =>
-      TransitionLeaseUnavailable { detail: join([location, ": the slot key ", k as String, " is not slot-addressable"], "") }
+      TransitionLeaseRefused { refusal: TransitionLeaseUnavailable { detail: join([location, ": the slot key ", k as String, " is not slot-addressable"], "") } }
   }
 }
 
@@ -245,10 +251,4 @@ fn transition_lease_release(held: TransitionLeaseHeld, released_by: NonEmptyStr)
     FileHoldReleasePlanned { plan: p } =>
       transition_lease_release_committed(location: location, outcome: file_hold_release_commit(plan: p))
   }
-}
-
-// Which instance a held lease belongs to, so a decision that also holds that instance's inhibition
-// store can refuse a guard taken for another instance.
-fn transition_lease_held_instance(held: TransitionLeaseHeld) -> NonEmptyStr {
-  held.store.instance
 }

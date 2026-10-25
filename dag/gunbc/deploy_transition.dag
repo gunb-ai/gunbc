@@ -13,10 +13,11 @@ import extdeps.filesystem.filesystem_io {
   filesystem_established_absence_detail,
 }
 import gunbc.deploy_transition_lease_store {
-  TransitionLeaseStore,
   TransitionLeaseHeld,
   TransitionLeaseAcquire,
   TransitionLeaseAcquired,
+  TransitionLeaseRefused,
+  TransitionLeaseRefusal,
   TransitionLeaseOccupied,
   TransitionLeaseUndecodable,
   TransitionLeaseLost,
@@ -26,9 +27,9 @@ import gunbc.deploy_transition_lease_store {
   TransitionLeaseReleaseRefused,
   transition_lease_acquire,
   transition_lease_release,
-  transition_lease_held_instance,
 }
 import gunbc.deploy_transition_store {
+  TransitionContext,
   TransitionInhibitionStore,
   TransitionInhibitionStoreReading,
   TransitionInhibitionStoreReady,
@@ -128,22 +129,27 @@ data deploy_transition_schema: String = "gunbc.deploy_transition/1"
 // A file written under `repo_root` would be untracked residue in the tree the convergence reads
 // back, so the convergence's own residue check would refuse on the artifact protecting it.
 //
-// BOTH RECORDS ARE SEALED STORES. The inhibition's location is declared once, in
-// gunbc.deploy_transition_store transition_inhibition_slots, and the lease's in
-// gunbc.deploy_transition_lease_store transition_lease_slots; every function below takes the store
-// minted from its declaration, never a root, and this module calls no filesystem operation itself.
+// ONE TRANSITION CONTEXT, BOTH RECORDS SEALED STORES IN IT. Every location a transition touches comes
+// from one gunbc.deploy_transition_store TransitionContext, minted from the instance alone: the
+// inhibition's store (declared once, transition_inhibition_slots) and the lease's store (declared once,
+// gunbc.deploy_transition_lease_store transition_lease_slots, a hold on
+// gunbc.durable_exclusive_hold_file_store). The guard is bound to its context and carries the hold it
+// stands for, and no function below takes a root, a store beside a guard, or an instance; this module
+// calls no filesystem operation itself.
 //
 // THE LEASE HAS NO NON-HOLDER RELEASE. ClearedByEvidence and ClearedByAbandonment below clear the
 // inhibition and leave the lease held: the hold library's non-holder release is generic in the
 // observation it trusts and its roster is frozen (stern-ram-763, 2026-10-25), so the lease does not
 // consume it, and the residual is gunbc.recurring_failure_mode
-// a_generic_release_assess_accepts_evidence_its_caller_authored. No production ingress acquires the
-// lease today (gunbc.fleet.fleet_workflow_steps records the binding as a separate change), so a lease
-// left held by a converge that died blocks only that future ingress. LINE-STOP: an ingress that binds
+// a_generic_release_assess_accepts_evidence_its_caller_authored. A TransitionResidue is read from the
+// context's own inhibition store, but its observed head is the caller's string, so it is no release
+// basis for the lease either. No production ingress acquires the lease today
+// (gunbc.fleet.fleet_workflow_steps records the binding as a separate change), so a lease left held by
+// a converge that died blocks only that future ingress. LINE-STOP: an ingress that binds
 // acquire_transition_lease before the residual's trigger lands.
 
-// The subject of one transition: which repository, moving which ref, to which candidate. Where the
-// lease lives is not part of it: the lease store, minted from the instance, says that.
+// The subject of one transition: which repository, moving which ref, to which candidate. WHERE its records
+// live is not part of it: that is the TransitionContext the guard is bound to.
 type TransitionSubject {
   repo_root: String
   base_ref: String
@@ -213,12 +219,19 @@ fn transition_phase_of_wire(text: String) -> TransitionPhase? {
 // struct with public fields and is forgeable. Next-rung trigger: the emitted mirror carrying the
 // construction confinement, which is that section's open item and not this module's to close.
 //
-// THE GUARD CARRIES THE HOLD IT STANDS FOR. `lease` is the lease store's own sealed proof, minted only
-// from a committed acquire, so a guard exists only where a lease was actually taken. The acquisition
-// fold used to take a caller-supplied create outcome, and `LeaseCreateSucceeded` minted a guard for
-// any caller that wrote it, with no lease anywhere; that outcome type is deleted, and the fold below
-// takes the store's outcome, whose acquired arm cannot be written outside the store.
+// AND THE GUARD IS BOUND TO ITS CONTEXT. The lease it proves was acquired in `context.lease`, and every
+// record the guard writes, marks, clears or releases is derived from that same context or from the hold
+// below, never from a store handed in beside it: a guard acquired at instance A has no parameter through
+// which to reach B.
+//
+// THE GUARD CARRIES THE HOLD IT STANDS FOR. `lease` is the lease store's own sealed proof, minted only from
+// a committed acquire, so a guard exists only where a lease was actually taken; the holder's release
+// presents it. It names its own store, which is `context.lease` by construction: the guard's one mint
+// (lease_acquisition_of, reached only from acquire_transition_lease) acquires in that store. The hand
+// lock's create outcome, whose `LeaseCreateSucceeded` minted a guard for any caller that wrote it with no
+// lease anywhere, is deleted.
 type TransitionGuard sole_constructor {
+  context: TransitionContext
   subject: TransitionSubject
   holder: TransitionActor
   lease: TransitionLeaseHeld
@@ -490,13 +503,22 @@ type LeaseAcquisition
 // AND THE GUARD MINT STAYS IN ONE FOLD, over the store's outcome. Its acquired arm carries the store's
 // sealed proof of the hold, so the only way to reach `LeaseAcquired` is a committed acquire.
 fn lease_acquisition_of(
+  context: TransitionContext,
   subject: TransitionSubject,
   holder: TransitionActor,
   outcome: TransitionLeaseAcquire,
 ) -> LeaseAcquisition {
   match outcome {
     TransitionLeaseAcquired { held: h } =>
-      LeaseAcquired(TransitionGuard { subject: subject, holder: holder, lease: h })
+      LeaseAcquired(TransitionGuard { context: context, subject: subject, holder: holder, lease: h })
+    TransitionLeaseRefused { refusal: r } => lease_acquisition_refused(refusal: r)
+  }
+}
+
+// THE FOUR REFUSED ARMS, which need no context: a refusal carries no held proof, so this fold cannot mint a
+// guard and is decided by the store's refusal alone.
+fn lease_acquisition_refused(refusal: TransitionLeaseRefusal) -> LeaseAcquisition {
+  match refusal {
     TransitionLeaseOccupied { holder: who, generation: _ } => LeaseHeldBy { holder: who }
     TransitionLeaseUndecodable { detail: why } =>
       LeaseHeldUndecodable { cause: join(["gunbc.deploy_transition: ", why], "") }
@@ -514,37 +536,19 @@ fn transition_lease_owner(holder: TransitionActor) -> NonEmptyStr {
   serialize_json(v: JsonArray { elements: [json_string(s: holder.actor), json_string(s: holder.invocation)] }) as NonEmptyStr
 }
 
+// THE LEASE IS THE CONTEXT'S. Acquire takes the context and no store: the lease acquired is
+// `context.lease`, so the guard it mints names one instance in both its context and its hold.
 fn acquire_transition_lease(
-  lease: TransitionLeaseStore,
+  context: TransitionContext,
   subject: TransitionSubject,
   holder: TransitionActor,
 ) -> LeaseAcquisition {
   lease_acquisition_of(
+    context: context,
     subject: subject,
     holder: holder,
-    outcome: transition_lease_acquire(store: lease, owner: transition_lease_owner(holder: holder)),
+    outcome: transition_lease_acquire(store: context.lease, owner: transition_lease_owner(holder: holder)),
   )
-}
-
-// A GUARD TAKEN FOR ONE INSTANCE DOES NOT ACT ON ANOTHER'S INHIBITION. The guard's hold names the
-// instance its lease store was minted for, and the inhibition store names its own, so every operation
-// that takes both refuses when they differ rather than letting instance A's lease license a write to
-// instance B's marker.
-fn guard_inhibition_mismatch(guard: TransitionGuard, inhibition: TransitionInhibitionStore) -> String? {
-  let leased = transition_lease_held_instance(held: guard.lease) as String
-  if leased == (inhibition.instance as String) {
-    none
-  } else {
-    Present {
-      value: join([
-        "gunbc.deploy_transition: the guard holds the lease of instance ",
-        leased,
-        " and the inhibition store is instance ",
-        inhibition.instance as String,
-        "; a lease licenses only its own instance's inhibition",
-      ], ""),
-    }
-  }
 }
 
 type TransitionActuation
@@ -570,20 +574,8 @@ type TransitionActuation
 // AND THE WRITE IS READ BACK. A successful write means the host accepted the bytes, never that the
 // marker now reads as the record intended -- the same distinction the convergence this protects
 // makes about its own steps.
-fn set_transition_inhibition(
-  inhibition: TransitionInhibitionStore,
-  guard: TransitionGuard,
-) -> TransitionActuation {
-  match guard_inhibition_mismatch(guard: guard, inhibition: inhibition) {
-    Present { value: why } => TransitionActuationRefused { cause: why }
-    Absent => set_transition_inhibition_matched(inhibition: inhibition, guard: guard)
-  }
-}
-
-fn set_transition_inhibition_matched(
-  inhibition: TransitionInhibitionStore,
-  guard: TransitionGuard,
-) -> TransitionActuation {
+fn set_transition_inhibition(guard: TransitionGuard) -> TransitionActuation {
+  let inhibition = guard.context.inhibition
   let location = inhibition_location(inhibition: inhibition)
   match transition_inhibition_create(store: inhibition, content: transition_record_json(
     record: transition_guard_record(guard: guard, phase: TransitionInForce),
@@ -699,27 +691,20 @@ fn set_inhibition_refusal_cause(
 // lease. The lease is NOT released afterwards either: a partial transition is not a finished
 // critical section, and handing the next converge a free lease over an advanced ref and an
 // untransitioned tree is the interleaving this module exists to prevent.
-fn mark_transition_partial(
-  inhibition: TransitionInhibitionStore,
-  guard: TransitionGuard,
-  detail: String,
-) -> TransitionActuation {
-  match guard_inhibition_mismatch(guard: guard, inhibition: inhibition) {
-    Present { value: why } => TransitionActuationRefused { cause: why }
-    Absent =>
-      match transition_inhibition_replace(store: inhibition, content: transition_record_json(
-        record: transition_guard_record(guard: guard, phase: TransitionPartialLeft),
-      )) {
-        TransitionMarkerWritten => TransitionActuationCompleted { detail: detail }
-        TransitionMarkerWriteRefused { detail: why } =>
-          TransitionActuationRefused {
-            cause: join([
-              "gunbc.deploy_transition: partial-transition record could not be written to ",
-              inhibition_location(inhibition: inhibition),
-              " at ",
-              why,
-            ], ""),
-          }
+fn mark_transition_partial(guard: TransitionGuard, detail: String) -> TransitionActuation {
+  let inhibition = guard.context.inhibition
+  match transition_inhibition_replace(store: inhibition, content: transition_record_json(
+    record: transition_guard_record(guard: guard, phase: TransitionPartialLeft),
+  )) {
+    TransitionMarkerWritten => TransitionActuationCompleted { detail: detail }
+    TransitionMarkerWriteRefused { detail: why } =>
+      TransitionActuationRefused {
+        cause: join([
+          "gunbc.deploy_transition: partial-transition record could not be written to ",
+          inhibition_location(inhibition: inhibition),
+          " at ",
+          why,
+        ], ""),
       }
   }
 }
@@ -815,6 +800,58 @@ type ResidueEvidence {
   observation_detail: String
 }
 
+// THE RESIDUE A CLEARANCE ACTS ON IS READ FROM ITS OWN CONTEXT. The record is never supplied: it is
+// the inhibition this context's store holds, read here, so a residue for instance B cannot carry a
+// record observed at instance A, and the clearance or abandonment it grounds acts on that one
+// context. Sole constructor, non-generic, never a variant arm; `transition_residue` is its only mint.
+// The head observation is still supplied by the caller (a typed repository observation is the hold
+// library's follow-up, named in gunbc.durable_exclusive_hold_file_store).
+type TransitionResidue sole_constructor {
+  context: TransitionContext
+  evidence: ResidueEvidence
+}
+
+type TransitionResidueReading
+  = TransitionResidueObserved(TransitionResidue)
+  | TransitionResidueUnobserved { cause: String }
+
+fn transition_residue(
+  context: TransitionContext,
+  head_observed: Bool,
+  observed_head: String,
+  observation_detail: String,
+) -> TransitionResidueReading {
+  match observe_transition_inhibition(inhibition: context.inhibition) {
+    TransitionFilePresent { record: r } =>
+      TransitionResidueObserved(TransitionResidue {
+        context: context,
+        evidence: ResidueEvidence {
+          record: r,
+          head_observed: head_observed,
+          observed_head: observed_head,
+          observation_detail: observation_detail,
+        },
+      })
+    TransitionFileAbsent(absence) =>
+      TransitionResidueUnobserved {
+        cause: join([
+          "gunbc.deploy_transition: no residue stands at ",
+          inhibition_location(inhibition: context.inhibition),
+          " -- ",
+          filesystem_established_absence_detail(absence: absence),
+        ], ""),
+      }
+    TransitionFileIndeterminate { cause: why } =>
+      TransitionResidueUnobserved {
+        cause: join(["gunbc.deploy_transition: the residue at ", inhibition_location(inhibition: context.inhibition), " could not be read -- ", why], ""),
+      }
+    TransitionFileObservationsDisagree { cause: why } =>
+      TransitionResidueUnobserved {
+        cause: join(["gunbc.deploy_transition: the residue at ", inhibition_location(inhibition: context.inhibition), " is moving while it is read -- ", why], ""),
+      }
+  }
+}
+
 type ResidueDisposition
   = ResidueResolvable { candidate: String }
   | ResidueTransitionIncomplete { candidate: String, observed_head: String }
@@ -891,6 +928,7 @@ fn residue_disposition_detail(disposition: ResidueDisposition) -> String {
 // record and re-observed at clearance -- at which point a live holder makes abandonment refuse by
 // construction rather than by the operator being right.
 type TransitionAbandonment sole_constructor {
+  context: TransitionContext
   operator: String
   record: TransitionRecord
   observed_head: String
@@ -904,8 +942,9 @@ type AbandonmentMint
 fn mint_transition_abandonment(
   operator: String,
   operator_admitted: Bool,
-  evidence: ResidueEvidence,
+  residue: TransitionResidue,
 ) -> AbandonmentMint {
+  let evidence = residue.evidence
   if !operator_admitted {
     AbandonmentRefusedNotOperator { actor: operator }
   } else {
@@ -918,6 +957,7 @@ fn mint_transition_abandonment(
       }
     } else {
       AbandonmentMinted(TransitionAbandonment {
+        context: residue.context,
         operator: operator,
         record: evidence.record,
         observed_head: evidence.observed_head,
@@ -928,11 +968,17 @@ fn mint_transition_abandonment(
 
 // The three lawful bases for removing the durable records, as one closed vocabulary. A caller that
 // has none of these cannot express a clearance at all: `ClearedByHolder` needs the guard, which has
-// one mint; `ClearedByEvidence` needs a disposition, which is computed from an observation;
+// one mint; `ClearedByEvidence` needs a residue, which is read from the context's own store;
 // `ClearedByAbandonment` needs the abandonment, which has one mint of its own.
+//
+// EVERY BASIS CARRIES THE ONE CONTEXT ITS CLEARANCE ACTS ON, inside a sealed value minted from that
+// context: the guard's, the residue's (whose record was read from that context's store), the
+// abandonment's (minted from a residue). The clearance derives both locations from it and takes no
+// location of its own, so a basis computed for instance A cannot remove instance B's inhibition and
+// then A's lease.
 type ClearanceBasis
   = ClearedByHolder(TransitionGuard)
-  | ClearedByEvidence { expected: TransitionRecord, disposition: ResidueDisposition }
+  | ClearedByEvidence(TransitionResidue)
   | ClearedByAbandonment(TransitionAbandonment)
 
 type ClearanceAdmission
@@ -962,7 +1008,7 @@ fn transition_record_same_subject(a: TransitionRecord, b: TransitionRecord) -> B
 fn clearance_expected_record(basis: ClearanceBasis) -> TransitionRecord {
   match basis {
     ClearedByHolder(guard) => transition_guard_record(guard: guard, phase: TransitionInForce)
-    ClearedByEvidence { expected: r, disposition: _ } => r
+    ClearedByEvidence(residue) => residue.evidence.record
     ClearedByAbandonment(abandonment) => abandonment.record
   }
 }
@@ -1042,7 +1088,8 @@ fn clearance_basis_admission(basis: ClearanceBasis, readback_converged: Bool) ->
           ], ""),
         }
       }
-    ClearedByEvidence { expected: _, disposition: d } =>
+    ClearedByEvidence(residue) => {
+      let d = residue_disposition(evidence: residue.evidence)
       match d {
         ResidueResolvable { candidate: c } =>
           ClearanceAdmitted {
@@ -1058,6 +1105,7 @@ fn clearance_basis_admission(basis: ClearanceBasis, readback_converged: Bool) ->
         ResidueStateUnobservable { cause: _ } =>
           ClearanceRefused { reason: residue_disposition_detail(disposition: d) }
       }
+    }
     ClearedByAbandonment(abandonment) =>
       ClearanceAdmitted {
         basis: join([
@@ -1098,54 +1146,48 @@ fn clearance_admission(
 // THE MARKER IS RE-READ HERE rather than at the caller, so the compare and the delete sit in one
 // fold with nothing between them that a caller could reorder or skip.
 //
-// ONLY THE HOLDER RELEASES THE LEASE. ClearedByHolder releases it through the guard's own proof of
-// the hold, after checking that the guard's lease and the inhibition name one instance.
-// ClearedByEvidence and ClearedByAbandonment clear the inhibition on their basis and then REFUSE to
-// release the lease, which stays held by the holder that is not the caller: a non-holder release is
-// not modeled for this lease (gunbc.recurring_failure_mode
-// a_generic_release_assess_accepts_evidence_its_caller_authored), and abandonment is not a lease-release
-// basis until it binds a std.scoped_authorization AuthorizationDecision. The refusal says the
-// inhibition was cleared, so the caller knows the one mutation that happened.
-fn clear_transition_records(
-  inhibition: TransitionInhibitionStore,
-  basis: ClearanceBasis,
-  readback_converged: Bool,
-) -> TransitionActuation {
-  match clearance_basis_inhibition_mismatch(basis: basis, inhibition: inhibition) {
-    Present { value: why } => TransitionActuationRefused { cause: why }
-    Absent =>
-      match clearance_admission(
-        basis: basis,
-        readback_converged: readback_converged,
-        observed: observe_transition_inhibition(inhibition: inhibition),
-      ) {
-        ClearanceRefused { reason: why } => TransitionActuationRefused { cause: why }
-        ClearanceAdmitted { basis: b } =>
-          match transition_inhibition_delete(store: inhibition) {
-            TransitionMarkerWriteRefused { detail: why } =>
-              TransitionActuationRefused {
-                cause: join([
-                  "gunbc.deploy_transition: ",
-                  inhibition_location(inhibition: inhibition),
-                  " could not be removed at ",
-                  why,
-                  "; the lease is deliberately left held so nothing is admitted while the inhibition stands",
-                ], ""),
-              }
-            TransitionMarkerWritten => release_transition_lease_after_clearance(basis: basis, cleared: b)
+// ONE CONTEXT, BOTH LOCATIONS: the inhibition and the lease are both derived from the basis's own
+// context, so the two deletes act on one instance by construction.
+fn clearance_context(basis: ClearanceBasis) -> TransitionContext {
+  match basis {
+    ClearedByHolder(guard) => guard.context
+    ClearedByEvidence(residue) => residue.context
+    ClearedByAbandonment(abandonment) => abandonment.context
+  }
+}
+
+fn clear_transition_records(basis: ClearanceBasis, readback_converged: Bool) -> TransitionActuation {
+  let context = clearance_context(basis: basis)
+  let inhibition = context.inhibition
+  match clearance_admission(
+    basis: basis,
+    readback_converged: readback_converged,
+    observed: observe_transition_inhibition(inhibition: inhibition),
+  ) {
+    ClearanceRefused { reason: why } => TransitionActuationRefused { cause: why }
+    ClearanceAdmitted { basis: b } =>
+      match transition_inhibition_delete(store: inhibition) {
+        TransitionMarkerWriteRefused { detail: why } =>
+          TransitionActuationRefused {
+            cause: join([
+              "gunbc.deploy_transition: ",
+              inhibition_location(inhibition: inhibition),
+              " could not be removed at ",
+              why,
+              "; the lease is deliberately left held so nothing is admitted while the inhibition stands",
+            ], ""),
           }
+        TransitionMarkerWritten => release_transition_lease_after_clearance(basis: basis, cleared: b)
       }
   }
 }
 
-fn clearance_basis_inhibition_mismatch(basis: ClearanceBasis, inhibition: TransitionInhibitionStore) -> String? {
-  match basis {
-    ClearedByHolder(guard) => guard_inhibition_mismatch(guard: guard, inhibition: inhibition)
-    ClearedByEvidence { expected: _, disposition: _ } => none
-    ClearedByAbandonment(_) => none
-  }
-}
-
+// ONLY THE HOLDER RELEASES THE LEASE. ClearedByHolder releases it through the guard's own proof of the hold.
+// ClearedByEvidence and ClearedByAbandonment clear the inhibition on their basis and then REFUSE to release the
+// lease, which stays held by the holder that is not the caller: a non-holder release is not modeled for this
+// lease, a residue's observed head is the caller's string, and abandonment is not a lease-release basis until it
+// binds a std.scoped_authorization AuthorizationDecision. The refusal says the inhibition was cleared, so the
+// caller knows the one mutation that happened.
 data transition_lease_nonholder_release_residual: String = "gunbc.recurring_failure_mode a_generic_release_assess_accepts_evidence_its_caller_authored"
 
 fn release_transition_lease_after_clearance(basis: ClearanceBasis, cleared: String) -> TransitionActuation {
@@ -1161,7 +1203,7 @@ fn release_transition_lease_after_clearance(basis: ClearanceBasis, cleared: Stri
             cause: join(["gunbc.deploy_transition: inhibition cleared (", cleared, ") but the lease was not released -- ", why], ""),
           }
       }
-    ClearedByEvidence { expected: _, disposition: _ } =>
+    ClearedByEvidence(_) =>
       TransitionActuationRefused {
         cause: join([
           "gunbc.deploy_transition: inhibition cleared (", cleared,

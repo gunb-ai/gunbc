@@ -10,14 +10,16 @@ import std.process { ProcessExit }
 // gunbc.deploy_transition TransitionGuard carries a TransitionLeaseHeld, so a guard exists only where the hold
 // library committed an acquire. Each RED hands the compiler a module outside the defining files and asserts the
 // refusal on the real acceptance path:
-//   - a forged store literal, a forged store cast, a store over a LITERAL PATH, a forged held lease, and a forged
-//     guard: each EXACTLY ONE SoleConstructorViolation on its subject;
+//   - a forged store literal, a forged store cast, a store over a LITERAL PATH, a forged held lease, a forged
+//     guard, and a guard pairing one instance's context with another's hold: each EXACTLY ONE
+//     SoleConstructorViolation on its subject;
 //   - the deleted guard mint over an authored create outcome (lease_acquisition_from_create with
 //     LeaseCreateSucceeded, which minted a guard with no lease anywhere) and the deleted root-taking acquire
-//     (acquire_transition_lease over TransitionSubject.instance_root): each at least one blocking diagnostic
+//     (acquire_transition_lease over TransitionSubject.instance_root), and the store-taking acquire (a lease store
+//     beside the context): each at least one blocking diagnostic
 //     beyond a baseline importing the same closure (gunbc.compile_diagnostic_census).
 // A root read out of a store is ACCEPTED today and is recorded as an expecting-red probe, below. The GREEN is the
-// lawful route, transition_lease_store into acquire_transition_lease, which adds no blocking diagnostic and draws
+// lawful route, transition_context into acquire_transition_lease, which adds no blocking diagnostic and draws
 // no seal violation. NOT closed here: Filesystem.* is ambient, so any module can write a hold slot's next
 // generation itself over a path it spells; that is not holding a TransitionLeaseStore.
 
@@ -29,6 +31,7 @@ fn probe_importing(name: String, extra: String, body: String) -> String {
     "import std.types { NonEmptyStr, String }\n",
     "import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\n",
     "import gunbc.deploy_transition_lease_store { TransitionLeaseStore, TransitionLeaseStoreReading, TransitionLeaseStoreReady, TransitionLeaseStoreUnready, TransitionLeaseHeld, transition_lease_store }\n",
+    "import gunbc.deploy_transition_store { TransitionContext, TransitionContextReading, TransitionContextReady, TransitionContextUnready, transition_context }\n",
     "import gunbc.deploy_transition { TransitionSubject, TransitionActor, TransitionGuard, LeaseAcquisition, LeaseUnobtainable, acquire_transition_lease", extra, " }\n",
     body,
   ], "")
@@ -48,7 +51,11 @@ data literal_path_store_source: String = probe(name: "probe_transition_lease_lit
 
 data forged_held_source: String = probe(name: "probe_transition_lease_forged_held", body: "fn f(s: TransitionLeaseStore, h: TransitionLeaseHeld) -> TransitionLeaseHeld {\n  TransitionLeaseHeld { store: s, owner: h.owner, generation: h.generation }\n}\n")
 
-data forged_guard_source: String = probe(name: "probe_transition_lease_forged_guard", body: "fn f(s: TransitionSubject, a: TransitionActor, h: TransitionLeaseHeld) -> TransitionGuard {\n  TransitionGuard { subject: s, holder: a, lease: h }\n}\n")
+data forged_guard_source: String = probe(name: "probe_transition_lease_forged_guard", body: "fn f(c: TransitionContext, s: TransitionSubject, a: TransitionActor, h: TransitionLeaseHeld) -> TransitionGuard {\n  TransitionGuard { context: c, subject: s, holder: a, lease: h }\n}\n")
+
+data crossed_hold_guard_source: String = probe(name: "probe_transition_lease_crossed_hold_guard", body: "fn f(ga: TransitionGuard, gb: TransitionGuard) -> TransitionGuard {\n  TransitionGuard { context: ga.context, subject: ga.subject, holder: ga.holder, lease: gb.lease }\n}\n")
+
+data store_beside_context_acquire_source: String = probe(name: "probe_transition_lease_store_beside_context_acquire", body: "fn f(l: TransitionLeaseStore, s: TransitionSubject, a: TransitionActor) -> LeaseAcquisition {\n  acquire_transition_lease(lease: l, subject: s, holder: a)\n}\n")
 
 data authored_create_outcome_source: String = probe_importing(name: "probe_transition_lease_authored_create_outcome", extra: ", LeaseCreateSucceeded, lease_acquisition_from_create", body: "fn f(s: TransitionSubject, a: TransitionActor) -> LeaseAcquisition {\n  lease_acquisition_from_create(subject: s, holder: a, outcome: LeaseCreateSucceeded)\n}\n")
 
@@ -56,7 +63,7 @@ data root_taking_acquire_source: String = probe(name: "probe_transition_lease_ro
 
 data root_out_of_store_source: String = probe(name: "probe_transition_lease_root_out_of_store", body: "fn f(s: TransitionLeaseStore) -> NonEmptyStr {\n  s.root\n}\n")
 
-data lawful_mint_route_source: String = probe(name: "probe_transition_lease_lawful_mint_route", body: "fn f(i: HostDashboardInstance, s: TransitionSubject, a: TransitionActor) -> LeaseAcquisition {\n  match transition_lease_store(instance: i) {\n    TransitionLeaseStoreReady { store } => acquire_transition_lease(lease: store, subject: s, holder: a)\n    TransitionLeaseStoreUnready { detail } => LeaseUnobtainable { cause: detail }\n  }\n}\n")
+data lawful_mint_route_source: String = probe(name: "probe_transition_lease_lawful_mint_route", body: "fn f(i: HostDashboardInstance, s: TransitionSubject, a: TransitionActor) -> LeaseAcquisition {\n  match transition_context(instance: i) {\n    TransitionContextReady { context } => acquire_transition_lease(context: context, subject: s, holder: a)\n    TransitionContextUnready { detail } => LeaseUnobtainable { cause: detail }\n  }\n}\nfn g(i: HostDashboardInstance) -> String {\n  match transition_lease_store(instance: i) {\n    TransitionLeaseStoreReady { store: _ } => \"ready\"\n    TransitionLeaseStoreUnready { detail } => detail\n  }\n}\n")
 
 fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
   blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
@@ -86,6 +93,19 @@ test fn a_guard_without_a_held_lease_is_refused_at_compile() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: forged_guard_source, subject: "TransitionGuard"), holds: fn(n) { n == 1 }))
 }
 
+// THE TWO-ROOT RED FOR THE LEASE, STRUCTURAL HALF. A guard is one transition at one instance: it cannot carry
+// instance A's context with instance B's hold, so a guard at A has no route to release B's lease. And no acquire
+// takes a lease store beside its context (the store-taking acquire this change had before the context existed),
+// so the lease acquired is always the context's own. The behavioral half is
+// test.claim.deploy_transition_wet_witness two_roots_one_guard_reaches_only_its_own_instance.
+test fn a_guard_carrying_another_instances_hold_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: crossed_hold_guard_source, subject: "TransitionGuard"), holds: fn(n) { n == 1 }))
+}
+
+test fn no_acquire_takes_a_lease_store_beside_its_context() -> ProcessExit {
+  census_exit(blocking_delta(hostile: store_beside_context_acquire_source, holds: fn(n) { n >= 1 }))
+}
+
 test fn no_guard_is_minted_from_an_authored_create_outcome() -> ProcessExit {
   census_exit(blocking_delta(hostile: authored_create_outcome_source, holds: fn(n) { n >= 1 }))
 }
@@ -108,5 +128,6 @@ test fn the_lawful_lease_mint_route_is_admitted() -> ProcessExit {
     blocking_delta(hostile: lawful_mint_route_source, holds: fn(n) { n <= 0 }),
     census_verdict(census: seal_violations(source: lawful_mint_route_source, subject: "TransitionLeaseStore"), holds: fn(n) { n == 0 }),
     census_verdict(census: seal_violations(source: lawful_mint_route_source, subject: "TransitionGuard"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: lawful_mint_route_source, subject: "TransitionContext"), holds: fn(n) { n == 0 }),
   ])
 }
