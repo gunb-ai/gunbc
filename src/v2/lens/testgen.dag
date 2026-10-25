@@ -23,6 +23,7 @@ import v2.std.diagnostic {
   UserInputBoundary,
   AmbiguousIntent,
   ExternalContractUnknown,
+  DeclarerRefused,
   Textual,
   WholeFile,
   ByteRange,
@@ -44,7 +45,7 @@ import v2.std.diagnostic {
 import v2.std.witness { StructuralPropertyWitness }
 import v2.std.find_witness { PreservationPredicate, verify_witness }
 import v2.std.nat { NatAlgebraLawObligation, nat_declared_algebra_law_obligations }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Edge,
   Node,
@@ -784,7 +785,7 @@ fn testgen_emit_algebra_law_claim(
   rhs: Node,
   classification: TestClassification
 ) -> Outcome<TestClaim> {
-  if lhs == rhs {
+  if node_same_occurrence(a: lhs, b: rhs) {
     Rejected {
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
@@ -1168,6 +1169,14 @@ fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_external)
     CorrectionNotModeled =>
       witness_validity_symbol_atom_node(s: ^witness_validity_no_correction_tag_not_modeled)
+    DeclarerRefused { declarer: d } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: list_map(xs: d, f: fn(s) {
+          Edge { label: Authored { name: ^witness_validity_no_correction_tag_declarer_refused }, target: witness_validity_symbol_atom_node(s: s) }
+        }),
+        occurrence_id: OccurrenceSynthetic
+      }
   }
 }
 

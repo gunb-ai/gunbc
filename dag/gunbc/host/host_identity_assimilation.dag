@@ -1,6 +1,45 @@
 module gunbc.host.host_identity_assimilation
 
+import std.types { Bool, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.disposition { Disposition }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
+import std.change { KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
+import extdeps.dns.domain_name { DnsLabel }
+import product.host_identity { HostIdentity }
+import gunbc.ci.ci_deploy_access { DeployAccess }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, srv2_host }
+import gunbc.deployed_intent_v0 {
+  DeployedIntentV0,
+  deployed_intent_observed_differs_from_fleet_slot,
+  deployed_intent_observed_short_hostname,
+  gunbc_srv1_deployed_intent_v0_persisted,
+  gunbc_srv2_deployed_intent_v0_persisted,
+}
+import gunbc.deployed_intent_v1 { DeployedIntentV1, gunbc_srv1_deployed_intent_v1, gunbc_srv2_deployed_intent_v1 }
+import gunbc.host.host_effect { HostEffectTransport, NodeControlPlane, HostOs }
+import gunbc.host.host_identity_access { host_identity_srv1_access, host_identity_srv2_access }
+import gunbc.host.host_identity_knob { HostIdentityKnobKey, HostIdentityLeafVerdict, host_identity_knob_key }
+import gunbc.host.host_identity_observation { HostIdentityObservation }
+import gunbc.host.host_identity_converge {
+  host_identity_apply_converged,
+  host_identity_apply_gated,
+  host_identity_observation_live,
+  host_identity_plan_from_verdict,
+  host_identity_precondition_is_conflict,
+  host_identity_precondition_is_noop,
+  host_identity_precondition_verdict,
+  host_identity_read_back_matches,
+}
+import gunbc.host.host_identity_adopt {
+  host_identity_observed_probed_at,
+  host_identity_receipt_emit,
+  host_identity_transport_label,
+  srv1_host_identity_ssh_transport,
+  srv2_host_identity_ssh_transport,
+}
 
 
 type HostIdentityAssimilationTarget {

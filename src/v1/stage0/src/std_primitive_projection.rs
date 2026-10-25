@@ -308,6 +308,15 @@ pub fn never_type_qualified_path() -> String {
     )
 }
 
+pub fn primitive_list_push() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("list_push".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_string_contains() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -352,7 +361,7 @@ pub fn primitive_projection_row(
 ) -> Rc<PrimitiveProjection> {
     Rc::new(PrimitiveProjection {
         primitive: primitive.clone(),
-        declaration: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+        declaration: crate::std_decl_ref::decl_ref(module_path, decl_name),
         fidelity: fidelity.clone(),
     })
 }
@@ -465,6 +474,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_pure_dag_seam_unreachable(),
             "std.error_primitives".to_string(),
             "pure_dag_seam_unreachable".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_list_push(),
+            "std.algebra".to_string(),
+            "list_push".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(

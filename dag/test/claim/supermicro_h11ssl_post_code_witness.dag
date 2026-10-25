@@ -1,0 +1,91 @@
+module test.claim.supermicro_h11ssl_post_code_witness
+
+import std.types { Bool }
+import extdeps.firmware.ami_aptio_status_codes {
+  ami_aptio_decode, Decoded, Refused, Described, OemDefined, ReservedForAmi,
+  NotAByte, NoCheckpointRange, NoRowInRange, StatusCodeTable,
+  PeiUpToMemoryDetection, PeiAfterMemoryDetection, DxeUpToBds, ErrorCode, ProgressCode,
+}
+import extdeps.firmware.supermicro_ami_aptio_v_post_codes_guide { supermicro_ami_aptio_v_post_codes_guide_table }
+import extdeps.external_authority { CitedToAuthority }
+import gunbc.machine_intake.supermicro_h11ssl_post_code_receipt { supermicro_h11ssl_decoded_observations }
+
+// A listed code returns its cited row: 0x15 is PEI pre-memory-detection, p.8, CitedToAuthority.
+test fn w_listed_code_returns_its_cited_row() -> Bool {
+  match ami_aptio_decode(table: supermicro_ami_aptio_v_post_codes_guide_table, code: 21) {
+    Decoded { code: _, range: r, row: row, standing: s } =>
+      row.page == 8
+        && r.phase == PeiUpToMemoryDetection
+        && r.kind == ProgressCode
+        && (match row.meaning { Described { description: d } => d == "Pre-memory North Bridge initialization is started"  _ => false })
+        && (match s { CitedToAuthority { authority: _ } => true  _ => false })
+    Refused { code: _, cause: _ } => false
+  }
+}
+
+test fn w_dxe_error_0xd0_is_cpu_initialization_error() -> Bool {
+  match ami_aptio_decode(table: supermicro_ami_aptio_v_post_codes_guide_table, code: 208) {
+    Decoded { code: _, range: r, row: row, standing: _ } =>
+      row.page == 11
+        && r.phase == DxeUpToBds
+        && r.kind == ErrorCode
+        && (match row.meaning { Described { description: d } => d == "CPU initialization error"  _ => false })
+    Refused { code: _, cause: _ } => false
+  }
+}
+
+// An OEM-range code decodes to a typed 'meaning not given', never to a guessed description.
+test fn w_oem_range_codes_are_typed_unknown_not_described() -> Bool {
+  let a = match ami_aptio_decode(table: supermicro_ami_aptio_v_post_codes_guide_table, code: 34) {
+    Decoded { code: _, range: r, row: row, standing: _ } =>
+      r.phase == PeiUpToMemoryDetection && (match row.meaning { OemDefined { label: _ } => true  _ => false })
+    Refused { code: _, cause: _ } => false
+  }
+  let b = match ami_aptio_decode(table: supermicro_ami_aptio_v_post_codes_guide_table, code: 63) {
+    Decoded { code: _, range: r, row: row, standing: _ } =>
+      r.phase == PeiAfterMemoryDetection && (match row.meaning { OemDefined { label: _ } => true  _ => false })
+    Refused { code: _, cause: _ } => false
+  }
+  a && b
+}
+
+test fn w_0xff_is_reserved_not_a_meaning() -> Bool {
+  match ami_aptio_decode(table: supermicro_ami_aptio_v_post_codes_guide_table, code: 255) {
+    Decoded { code: _, range: _, row: row, standing: _ } => (match row.meaning { ReservedForAmi => true  _ => false })
+    Refused { code: _, cause: _ } => false
+  }
+}
+
+// RED: unlisted codes refuse, each with its own typed cause. 0x12 is in a range but has no row,
+// 0x00 is in no range, 300 is not a byte.
+test fn w_unlisted_codes_refuse_with_typed_cause() -> Bool {
+  let in_range = match ami_aptio_decode(table: supermicro_ami_aptio_v_post_codes_guide_table, code: 18) {
+    Refused { code: _, cause: NoRowInRange { range: _ } } => true
+    _ => false
+  }
+  let no_range = match ami_aptio_decode(table: supermicro_ami_aptio_v_post_codes_guide_table, code: 0) {
+    Refused { code: _, cause: NoCheckpointRange } => true
+    _ => false
+  }
+  let not_byte = match ami_aptio_decode(table: supermicro_ami_aptio_v_post_codes_guide_table, code: 300) {
+    Refused { code: _, cause: NotAByte } => true
+    _ => false
+  }
+  in_range && no_range && not_byte
+}
+
+// RED that discriminates the table, not the fn: the same decode over the table with its rows removed
+// refuses where the real table answers, so a decode that ignored its rows could not pass both.
+test fn w_decode_depends_on_the_supplied_rows() -> Bool {
+  let real = supermicro_ami_aptio_v_post_codes_guide_table
+  let empty = StatusCodeTable { document: real.document, ranges: real.ranges, rows: [], standing: real.standing }
+  let answered = match ami_aptio_decode(table: real, code: 208) { Decoded { code: _, range: _, row: _, standing: _ } => true  _ => false }
+  let refused = match ami_aptio_decode(table: empty, code: 208) { Refused { code: _, cause: NoRowInRange { range: _ } } => true  _ => false }
+  answered && refused
+}
+
+// The consumer route: the receipt's five readings decode in order (0x15, 0x22, 0x3F, 0xD0, 0xFF).
+test fn w_receipt_consumer_decodes_all_five_observations() -> Bool {
+  let ds = supermicro_h11ssl_decoded_observations()
+  (ds |> count) == 5 && all(ds, d => match d { Decoded { code: _, range: _, row: _, standing: _ } => true  Refused { code: _, cause: _ } => false })
+}

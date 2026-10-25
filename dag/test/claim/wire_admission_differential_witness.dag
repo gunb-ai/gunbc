@@ -4,7 +4,7 @@ import std.types { String, List, Bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
 import extdeps.languages.json.emit { JsonValue, JsonNull }
 import gunbc.auth.approval_device_wire {
-  WireDecoded, WireRefused, decode_verifying_key, decode_signature_bytes, decode_signing_input, decode_enrolment_request,
+  WireDecoded, WireRefused, decode_verifying_key, decode_signature_bytes, decode_signing_input, decode_google_enrolment_request,
   wire_admission_platform, wire_admission_decision, wire_admission_signature_suite, wire_admission_public_key_encoding,
   wire_admission_signature_encoding, wire_admission_apns_environment,
 }
@@ -14,7 +14,7 @@ import gunbc.auth.wire_strict_reader {
 }
 
 // THE FOUR ADMISSION ROWS READ BY THE FOLD, against the server chains that still spell the same
-// admission as if-chains: platform (decode_enrolment_request), decision (decode_signing_input),
+// admission as if-chains: platform (decode_google_enrolment_request), decision (decode_signing_input),
 // signature suite and the two encodings (decode_verifying_key, decode_signature_bytes). The shapes
 // take their admitted sets from the rows in approval_device_wire and author nothing of their own.
 fn adm(row: WireAdmission, cause: String) -> WireField {
@@ -77,11 +77,11 @@ fn evidence_shape() -> WireShape {
 
 fn enrolment_shape() -> WireShape {
   WireRecord { fields: [
-    WireField { name: "code", rule: WireFreeString },
     WireField { name: "platform", rule: WireAdmittedString { row: wire_admission_platform, cause: "not an admitted platform" } },
     WireField { name: "decision_key", rule: WireNested { shape: key_shape() } },
-    WireField { name: "evidence", rule: WireNested { shape: evidence_shape() } },
-    WireField { name: "push", rule: WireNested { shape: push_shape() } },
+    WireField { name: "attest_key_id", rule: WireFreeString },
+    WireField { name: "attestation_b64", rule: WireFreeString },
+    WireField { name: "id_token", rule: WireFreeString },
   ] }
 }
 
@@ -116,7 +116,7 @@ fn signing_chain(text: String) -> String {
 }
 
 fn enrol_chain(text: String) -> String {
-  match decode_enrolment_request(text: text) { WireDecoded { value: _ } => "ok"  WireRefused { at: a, cause: c } => join([a as String, "|", c as String], "") }
+  match decode_google_enrolment_request(text: text) { WireDecoded { value: _ } => "ok"  WireRefused { at: a, cause: c } => join([a as String, "|", c as String], "") }
 }
 
 fn key_body(suite: String, enc: String) -> String {
@@ -132,7 +132,7 @@ fn signing_body(decision: String) -> String {
 }
 
 fn enrol_body(platform: String) -> String {
-  join(["{\"code\":\"c\",\"platform\":\"", platform, "\",\"decision_key\":", key_body(suite: "ECDSA-P256-SHA256", enc: "SEC1-uncompressed"), ",\"evidence\":{\"kind\":\"ios_app_attest\",\"attest_key_id\":\"k\",\"attestation_b64\":\"a\"},\"push\":{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"k\"}}"], "")
+  join(["{\"platform\":\"", platform, "\",\"decision_key\":", key_body(suite: "ECDSA-P256-SHA256", enc: "SEC1-uncompressed"), ",\"attest_key_id\":\"k\",\"attestation_b64\":\"a\",\"id_token\":\"t\"}"], "")
 }
 
 test fn key_suite_and_encoding_rows_match_the_chain() -> Bool {

@@ -4,6 +4,20 @@ import std.os.types { NobleNumbat2404Lts }
 import std.types { List, NonEmptyStr, Sha256, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https, uri_wire }
+import std.algebra { FreeSemigroup }
+import extdeps.provisioning.network_boot {
+  NetworkBootLoaderChain,
+  NetworkBootLoaderMember,
+  FirstStageLoader,
+  SecondStageLoader,
+  LoaderConfiguration,
+  KernelImage,
+  InitrdImage,
+  FirmwareSignatureDatabase,
+  ShimVendorCertificate,
+  ShimLockProtocol,
+  NotAuthenticated,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -109,6 +123,16 @@ data ubuntu_install_media_mirror_rows: List<UbuntuInstallMediaMirrorRow> = [
   },
 ]
 
+// WHERE CANONICAL PUBLISHES EACH ARCHITECTURE'S RELEASE: the amd64 live-server ISO on
+// releases.ubuntu.com (cdimage.ubuntu.com/releases/24.04/release answers 404 for it), the arm64 one on
+// cdimage.ubuntu.com, each beside the SHA256SUMS that lists it.
+fn ubuntu_install_media_publishing_mirror(arch: UbuntuInstallMediaArchitecture) -> UbuntuInstallMediaMirrorRow {
+  match arch {
+    Amd64 => UbuntuInstallMediaMirrorRow { host: ReleasesUbuntuCom, locator: "releases.ubuntu.com" }
+    Aarch64 => UbuntuInstallMediaMirrorRow { host: CdimageUbuntuCom, locator: "cdimage.ubuntu.com" }
+  }
+}
+
 fn ubuntu_install_media_mirror_urls(artifact: UbuntuInstallMediaArtifactRow) -> List<NonEmptyStr> {
   map(
     ubuntu_install_media_mirror_rows,
@@ -158,9 +182,126 @@ data noble_numbat_2404_5_live_server_arm64: UbuntuInstallMediaArtifactRow = Ubun
   sha256sums_authority: ubuntu_noble_2404_sha256sums_authority,
 }
 
+// THE amd64 RELEASE IS PUBLISHED ON releases.ubuntu.com, NOT cdimage: its SHA256SUMS lists the amd64
+// live-server ISO, and SHA256SUMS.gpg is signed by the Ubuntu CD Image Automatic Signing Key (2012),
+// fingerprint 8439 38DF 228D 22F7 B374 2BC0 D94A A3F0 EFE2 1092 (the key the arm64 cdimage list is
+// signed with). The authority is per point release because that directory is the one the line lives in.
+data ubuntu_noble_2404_3_releases_sha256sums_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "releases.ubuntu.com/24.04.3/SHA256SUMS"
+  }
+}
+
+data ubuntu_cd_image_signing_key_fingerprint: NonEmptyStr = "843938DF228D22F7B3742BC0D94AA3F0EFE21092"
+
+data noble_numbat_2404_3_live_server_amd64: UbuntuInstallMediaArtifactRow = UbuntuInstallMediaArtifactRow {
+  distribution: NobleNumbat2404Lts,
+  point_release: "24.04.3",
+  architecture: Amd64,
+  flavor: UbuntuLiveServer,
+  content_sha256: "c3514bf0056180d09376462a7a1b4f213c1d6e8ea67fae5c25099c6fd3d8274b",
+  sha256sums_authority: ubuntu_noble_2404_3_releases_sha256sums_authority,
+}
+
+// THE MEDIA ROWS THIS MODULE CITES, each a line of the SHA256SUMS its authority names. A consumer that pins
+// artefacts read out of an ISO admits only one of these, so a row assembled elsewhere (one ISO's digest under
+// another architecture's label, say) has no origin built over it.
+data ubuntu_install_media_published_rows: List<UbuntuInstallMediaArtifactRow> = [
+  noble_numbat_2404_3_live_server_arm64,
+  noble_numbat_2404_5_live_server_arm64,
+  noble_numbat_2404_3_live_server_amd64,
+]
+
+fn ubuntu_install_media_row_is_published(row: UbuntuInstallMediaArtifactRow) -> Bool {
+  any(ubuntu_install_media_published_rows, r => r == row)
+}
+
+// ── The amd64 UEFI network-boot chain Canonical documents ────────────────────────────────────────
+// Canonical's how-to serves, from one TFTP root: the signed shim as bootx64.efi, the signed network
+// GRUB as grubx64.efi (shim loads that name from beside itself), grub/grub.cfg under GRUB's network
+// prefix, and the live-server ISO's casper kernel and initrd as vmlinuz and initrd. Each member's
+// verifier is the boot chain's own: the firmware db checks shim (Microsoft UEFI CA), shim checks GRUB
+// against Canonical's certificate built into it, and GRUB checks the kernel through shim-lock; nobody
+// checks grub.cfg or the initrd. The netboot TARBALL is not a source: it is unhashed and moves to later
+// point releases (24.04.3/netboot/amd64 serves a 7.0 kernel and boots the 24.04.5 ISO).
+data ubuntu_amd64_netboot_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "documentation.ubuntu.com/server/how-to/installation/how-to-netboot-the-server-installer-on-amd64/"
+  }
+}
+
+// WHERE A SERVED MEMBER'S BYTES COME FROM, inside the pinned ISO. A pool member is checked twice by
+// Canonical's own signatures: the ISO's dists/<suite>/Release (signed by the CD key) names Packages.gz
+// by sha256, which names the .deb by sha256. The digests of the files INSIDE the .deb, and of the casper
+// members, are not published by Canonical; their pins live with the observer in gunbc.
+type UbuntuNetworkBootMemberSource
+  = IsoMember { iso_path: NonEmptyStr }
+  | PoolPackageMember { package: NonEmptyStr, version: NonEmptyStr, pool_path: NonEmptyStr, deb_sha256: NonEmptyStr, member_path: NonEmptyStr }
+  | RenderedByConsumer
+
+type UbuntuNetworkBootMember {
+  member: NetworkBootLoaderMember
+  source: UbuntuNetworkBootMemberSource
+}
+
+type UbuntuNetworkBootChain {
+  media: UbuntuInstallMediaArtifactRow
+  members: FreeSemigroup<UbuntuNetworkBootMember>
+}
+
+fn ubuntu_network_boot_loader_chain(chain: UbuntuNetworkBootChain) -> NetworkBootLoaderChain {
+  NetworkBootLoaderChain {
+    members: FreeSemigroup { head: chain.members.head.member, tail: map(chain.members.tail, m => m.member) },
+  }
+}
+
+// Package versions and .deb digests as the 24.04.3 amd64 ISO's pool and its signed Release ->
+// main/binary-amd64/Packages.gz (sha256 6f7f931d0e4231140c9bae627a107149ba29d2c51473a296a8206d9c15fc02c9) list them.
+data noble_numbat_2404_3_amd64_uefi_network_boot_chain: UbuntuNetworkBootChain = UbuntuNetworkBootChain {
+  media: noble_numbat_2404_3_live_server_amd64,
+  members: FreeSemigroup {
+    head: UbuntuNetworkBootMember {
+      member: NetworkBootLoaderMember { role: FirstStageLoader, served_path: "bootx64.efi", verifier: FirmwareSignatureDatabase },
+      source: PoolPackageMember {
+        package: "shim-signed",
+        version: "1.58+15.8-0ubuntu1",
+        pool_path: "pool/main/s/shim-signed/shim-signed_1.58+15.8-0ubuntu1_amd64.deb",
+        deb_sha256: "ba9b5d80e5d886c30664f2bebfb5c2fcce3b9b40f16fc46cba49c19a91c8059c",
+        member_path: "usr/lib/shim/shimx64.efi.signed.latest",
+      },
+    },
+    tail: [
+      UbuntuNetworkBootMember {
+        member: NetworkBootLoaderMember { role: SecondStageLoader, served_path: "grubx64.efi", verifier: ShimVendorCertificate },
+        source: PoolPackageMember {
+          package: "grub-efi-amd64-signed",
+          version: "1.202.5+2.12-1ubuntu7.3",
+          pool_path: "pool/main/g/grub2-signed/grub-efi-amd64-signed_1.202.5+2.12-1ubuntu7.3_amd64.deb",
+          deb_sha256: "8bd5cd99c3af82aab23af0f15f54c91799f343416412e122df661ef36a44a511",
+          member_path: "usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed",
+        },
+      },
+      UbuntuNetworkBootMember {
+        member: NetworkBootLoaderMember { role: LoaderConfiguration, served_path: "grub/grub.cfg", verifier: NotAuthenticated },
+        source: RenderedByConsumer,
+      },
+      UbuntuNetworkBootMember {
+        member: NetworkBootLoaderMember { role: KernelImage, served_path: "vmlinuz", verifier: ShimLockProtocol },
+        source: IsoMember { iso_path: "casper/vmlinuz" },
+      },
+      UbuntuNetworkBootMember {
+        member: NetworkBootLoaderMember { role: InitrdImage, served_path: "initrd", verifier: NotAuthenticated },
+        source: IsoMember { iso_path: "casper/initrd" },
+      },
+    ],
+  },
+}
+
 // The live-server ISO's casper directory is a layout Canonical authors: the kernel and initrd a
 // network boot serves are these members. Their digests are not Canonical's (no upstream file lists
-// them), so the pins live with the observer, gunbc.provisioning.ubuntu_arm64_network_origin_observation.
+// them), so the pins live with the observer, gunbc.provisioning.ubuntu_network_origin_observation.
 fn ubuntu_casper_kernel_member_path() -> NonEmptyStr {
   "casper/vmlinuz"
 }
