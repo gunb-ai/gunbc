@@ -1,0 +1,552 @@
+module gunbc.serving.home_serving_candidate_field
+
+// WHICH CITED ADD-IN CARD, AT WHICH APPLIED POWER LIMIT, FOR A HOME SERVING BOX
+// (DESIGN.md §3d; dag/gunbc/plans/p4_home_serving_power_semantics.dag, option C).
+//
+// THE ONE FOLD. This module owns the question, the funded axis, the constraint and the policy. It
+// owns no catalog fact and no watt semantics:
+//   - the candidate field comes from gunbc.serving.home_serving_accelerator_field, whose frontier
+//     names this fold as its consumer ("the add-in list is the P4 purchase-candidate field; the SXM
+//     list is reference-only"). Consuming BOTH lists is what retires that frontier: delete either
+//     and this module stops resolving, so the lists are load-bearing rather than inert. §3c is
+//     explicit that "a list of things" is not a contribution and a witness asserting the lists
+//     exist does not close it; the fold that consumes them does.
+//   - every candidate figure is read off an extdeps.gpu.nvidia row. This module cites nothing.
+//   - the meaning of a recorded watt comes from gunbc.serving.home_serving_power_policy. The
+//     candidate is the option-C PAIR — cited catalog TDP and planned applied limit, kept distinct
+//     and related by that module's rule — and a pair becomes a candidate only by passing that
+//     module's public entry. So "a 300 W card asked to run at 600 W" is not filtered out late, it
+//     is not writable at all.
+//
+// WHY THE CEILINGS SIT WHERE THEY SIT (§3d: "a ceiling must exclude before Pareto, and the same
+// Watt cannot be both without saying which"). Two ceilings, placed differently on purpose:
+//  - THE BUYER'S PSU CEILING is a std.decision HardConstraint on the funded axis. It is genuinely
+//    universal — it applies to every candidate alike — which is the precondition for expressing it
+//    as a kernel constraint: scan_feasibility tests EVERY constraint against EVERY entry
+//    (constraint_definite_infeasibilities), so a constraint may only carry a bound that is meant
+//    for all of the field. A violating entry is EXCLUDED, never ranked.
+//  - EACH CARD'S CITED TDP is NOT a kernel constraint, and this is the trap this module had to
+//    avoid. Putting four per-card TDP bounds on one shared axis would let the 600 W card's bound
+//    condemn the 300 W cards' entries — and, because the scan is universal, would condemn the 600 W
+//    card's own 400 W and 600 W entries too, with causes that name the wrong constraint. A per-card
+//    ceiling is therefore enforced where it is a fact about one pair: at minting, by
+//    gunbc.serving.home_serving_power_policy. Exclusion by typed refusal at construction, and
+//    exclusion by the kernel for the one bound that is universal. No second decision algebra is
+//    added either way (§3), and every decision-shaped refusal this fold can produce is an arm of
+//    std.decision::select_realization.
+//
+// WHAT THE FOLD DELIBERATELY DOES NOT RANK ON.
+//  - Throughput, TTFT, tokens/second. The warm-capacity ledger row
+//    (gunbc.recurring_failure_mode.benchmark_warm_capacity_violation_read_as_engine_performance)
+//    caps this fold at "consumes ONLY WarmValid as a funded axis, never a raw gpu-bench rate", and no
+//    WarmValid is obtainable on this head: gunbc.serving.gpu_bench_warm_standing reaches it only
+//    through a CITED replay counter, extdeps.ninfer.replayed_tokens_total is TranscribedUncited, and
+//    this host has no GPU to observe a receipt for. Funding a rate axis would commit the harm that row
+//    names — "a card is ranked on a workload it did not actually hold".
+//  - Whether the model FITS. The honest verdict is unread, and it is NOT funded as an unread axis on
+//    purpose: scan_feasibility answers an unread funded axis with SelectionNeedsEvidence BEFORE the
+//    policy is consulted, which would mask the one refusal this fold most needs to show. Reading it
+//    would need a bytes-per-token figure for a named engine at a named quantization, and no such
+//    figure is cited anywhere in this repo — converting a caller's token count into cache bytes by
+//    guesswork is exactly the invented figure §4d refuses. The route is named (a cited
+//    bytes-per-token authority, then an AxisGap per unread candidate until it exists) and is left
+//    unbuilt rather than stubbed.
+//
+// THE LIVE ANSWER TODAY is the kernel's own and it is a refusal. The cited figures do not separate
+// the field — every card is offered at the same cited rungs — so UniqueSurvivorRequired answers
+// SelectionNeedsPolicy naming every survivor. Refusing to choose is the contribution (§3d), and
+// §5's "a wrong answer is a loud error, not a warning" rules out picking.
+//
+// NO FLEET IS ASSERTED. This fold never observes a device and never claims a card was bought,
+// installed, or measured. Presence and measurement stay refused in their own lanes.
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat, nat_to_decimal_string }
+import std.measure { Watt, watt, watt_count }
+import std.decl_ref { DeclarationRef, decl_ref, NamedField }
+import std.interval { degenerate_interval }
+import std.pareto { AxisGap, AxisReading, LowerIsBetter, ParetoEntry, SelectionAxis }
+import std.decision {
+  CausalModelEstablished,
+  ChoiceDomain,
+  ConstraintSatisfied,
+  DecisionAssessment,
+  DecisionConstraint,
+  DecisionRegion,
+  DecisionSubject,
+  DecisionVariable,
+  ContextParameter,
+  HardConstraint,
+  NonMoneyConstraint,
+  ObjectiveMeasure,
+  ObjectiveTerm,
+  ParameterBound,
+  PhysicalModelEstablished,
+  RealizationSelectionResult,
+  RelationOtherwiseEstablished,
+  SelectionPolicy,
+  UniqueSurvivorRequired,
+  VariesAlong,
+  VendorDocumentedCoupling,
+  select_realization,
+}
+import extdeps.external_authority {
+  CitedFigureStanding,
+  CitedToAuthority,
+  ExternalAuthority,
+  FactCitation,
+  TranscribedUncited,
+}
+import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
+import extdeps.gpu.nvidia {
+  nvidia_rtx_pro_5000_48gb_catalog,
+  nvidia_rtx_pro_5000_72gb_catalog,
+  nvidia_rtx_pro_6000_workstation_catalog,
+  nvidia_rtx_pro_6000_max_q_catalog,
+  rtx_pro_6000_workstation_datasheet_authority,
+}
+import gunbc.serving.home_serving_accelerator_field {
+  home_serving_add_in_card_catalog_rows,
+  home_serving_reference_sxm_catalog_rows,
+}
+import gunbc.serving.home_serving_power_policy {
+  HomeServingPowerCause,
+  HomeServingPowerReading,
+  PowerPolicyAdmitted,
+  PowerPolicyRefused,
+  PowerPolicyUnread,
+  home_serving_power_policy,
+  home_serving_power_admission_applied,
+}
+
+data hscf_module: String = "gunbc.serving.home_serving_candidate_field"
+
+// ── IDENTITIES (§3: symbol references, never positions, never re-spelled strings) ────────────
+data hscf_field_identity: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_candidate_field")
+data home_serving_selection_subject: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_selection_subject")
+data home_serving_choice_domain: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_choice_domain")
+data home_serving_rung_variable: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_rung_variable")
+data home_serving_applied_watt_term: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_applied_watt_term")
+data home_serving_objective: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_objective")
+data home_serving_region: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_region")
+data home_serving_buyer_ceiling_parameter: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_buyer_ceiling_parameter")
+data home_serving_unique_survivor_policy: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_unique_survivor_policy")
+data home_serving_power_ceiling_authority: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_power_ceiling_authority")
+data home_serving_evidence_snapshot: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_evidence_snapshot")
+data home_serving_buyer_psu_ceiling: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_buyer_psu_ceiling")
+
+// THE ONE FUNDED AXIS: the applied draw of the pair, in watts, LowerIsBetter. It is a fact about the
+// pair, not a preference: a lower applied limit under the same cited ceiling is the cheaper, cooler
+// home box, so among a card's own admissible rungs the lower draw dominates. Admissibility gets no
+// separate axis because the ceiling binds this same axis directly — which is what §3d asks for when
+// it says the same Watt cannot be both bound and axis "without saying which". Saying which: bound
+// for the buyer's ceiling, axis for the draw that bound measures.
+data ax_applied_draw_watts: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "ax_applied_draw_watts")
+
+data home_serving_candidate_axes: List<SelectionAxis> = [
+  SelectionAxis { identity: ax_applied_draw_watts, goal: LowerIsBetter },
+]
+
+// THE RUNGS. "Cards × power limits" is the assigned question, so a sweep list is a P4 input and not
+// an invention (the plan: "Power rungs: a sweep list of Watt values, safe to type"). These are the
+// APPLIED arm of the option-C pair and are never read as a catalog TDP. The list is of WATT VALUES,
+// as the plan words it — not bare counts: a List<Nat> here would put the unit in the list's NAME while
+// every consumer had to remember it, which is the unit defect §3 refuses; the carrier is Measure itself
+// (std/measure.dag, Watt = Measure<Power, One, Nat>). So a rung cannot be handed to a TDP, a bandwidth,
+// or a token count by accident. Counts are WATTS, not milliwatts, so 600 here is the cited TDP of the
+// Workstation Edition read off its own row, not a round number chosen to make a case.
+data home_serving_applied_rung_watts: List<Watt> = [watt(count: 200), watt(count: 300), watt(count: 400), watt(count: 600)]
+
+// WHAT THE BUYER STATES, not what the catalog knows. A home tower has one PSU; that ceiling is the
+// buyer's own constraint, so it enters as an input carrying its reason rather than as a constant
+// hidden in this module. max_applied_watts is a plain Nat because it is a stated intent, not a
+// measured figure — the moment it comes from a read, it must arrive as a Watt with a standing.
+type HomeServingBuyerTerms {
+  max_applied_watts: Nat
+}
+
+// THE APPLIED ARM'S WARRANT. An applied limit is a PLANNED setting: standing it CitedToAuthority
+// would assert a datasheet states a sweep value that datasheet never mentions (§4d: "do not assert as
+// deduced what is only inferred"), which is the exact defect review 79389 filed on this lane for the
+// Workstation core count. TranscribedUncited is the arm meaning "written down, no source backs it",
+// and its read_obligation names what would ground it — the receipt the plan requires ("no constructor
+// anywhere that accepts a watt without its CitedFigureStanding").
+fn hscf_applied_ground(rung: Nat) -> CitedFigureStanding = TranscribedUncited {
+  read_obligation: ("applied rung " + nat_to_decimal_string(value: rung) + " W is a planned setting for a home tower; grounded only by an operator-applied power-limit receipt on the actual card, which no lane has read on this head") as NonEmptyStr,
+}
+
+// WHY A RENDERER AND NOT A PREDICATE. The policy module deliberately has no
+// `..._is_unread(cause) -> Bool`: which arm the result landed in already answers go-read-it versus
+// do-not-retry, and a Bool beside the arms is a second answer that can drift (the module's own
+// comment says so, and the serving subject module follows the same rule for its axis readings). This
+// is not that. It does not re-decide anything — by the time it is called the arm has been decided —
+// it renders the closed cause into the `cause` field of a kernel AxisGap so the refusal is
+// ATTRIBUTABLE at the instrument surface, which is what the policy carries the cause for ("carried
+// for attribution and never interrogated for the split"). Total over the coproduct, no `_` arm, so a
+// new cause cannot be swallowed here. Lives in this module, not the policy: the gap vocabulary is
+// the consumer's, and the policy knows nothing about Pareto.
+fn hscf_unread_gap_cause(cause: HomeServingPowerCause) -> NonEmptyStr =
+  match cause {
+    TdpUnread => ("card carries no TDP figure at all; the ceiling is unstated, so nothing can be refused against it" as NonEmptyStr)
+    TdpStandingUnstated => ("card's TDP is transcribed without a source; cite it to the datasheet or the product page before the ceiling can be trusted" as NonEmptyStr)
+    AppliedLimitUnread => ("no applied power limit was offered for this card" as NonEmptyStr)
+    AppliedStandingUnstated => ("applied rung is a planned sweep value with no power-limit receipt behind it; go read an operator-applied power-limit receipt on the actual card" as NonEmptyStr)
+    AppliedLimitExceedsTdp { applied_watts: applied, tdp_watts: ceiling } =>
+      ("applied " + nat_to_decimal_string(value: watt_count(w: applied)) + " W exceeds the card's cited TDP " + nat_to_decimal_string(value: watt_count(w: ceiling)) + " W" as NonEmptyStr)
+  }
+
+// ── CANDIDATE IDENTITIES ──────────────────────────────────────────────────────────────────────
+// Declared, not assembled at runtime. §3 forbids minting an identity by string stitching where a
+// declaration exists to point at, and a citation-census claim (the control built in this lane's
+// #14781) would catch a ref that resolves to nothing. Sixteen cells: four cited add-in rows × four
+// rungs. The card-rung mapping is the field's roster, which is the same shape the flagship fold uses
+// (product.node_platform_selection declares candidate_* refs and maps routes onto them).
+data cand_rtx_pro_5000_48gb_at_200w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_5000_48gb_at_200w")
+data cand_rtx_pro_5000_48gb_at_300w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_5000_48gb_at_300w")
+data cand_rtx_pro_5000_48gb_at_400w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_5000_48gb_at_400w")
+data cand_rtx_pro_5000_48gb_at_600w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_5000_48gb_at_600w")
+data cand_rtx_pro_5000_72gb_at_200w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_5000_72gb_at_200w")
+data cand_rtx_pro_5000_72gb_at_300w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_5000_72gb_at_300w")
+data cand_rtx_pro_5000_72gb_at_400w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_5000_72gb_at_400w")
+data cand_rtx_pro_5000_72gb_at_600w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_5000_72gb_at_600w")
+data cand_rtx_pro_6000_workstation_at_200w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_6000_workstation_at_200w")
+data cand_rtx_pro_6000_workstation_at_300w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_6000_workstation_at_300w")
+data cand_rtx_pro_6000_workstation_at_400w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_6000_workstation_at_400w")
+data cand_rtx_pro_6000_workstation_at_600w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_6000_workstation_at_600w")
+data cand_rtx_pro_6000_max_q_at_200w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_6000_max_q_at_200w")
+data cand_rtx_pro_6000_max_q_at_300w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_6000_max_q_at_300w")
+data cand_rtx_pro_6000_max_q_at_400w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_6000_max_q_at_400w")
+data cand_rtx_pro_6000_max_q_at_600w: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "cand_rtx_pro_6000_max_q_at_600w")
+
+// Which cited row is this, by ITS OWN declaration name — read by comparing rows to the rows
+// themselves, never by re-spelling a model string that a datasheet rename would silently break.
+fn hscf_row_decl_name(row: GpuModelCatalogRow) -> String? {
+  if gpu_catalog_row_eq(a: row, b: nvidia_rtx_pro_5000_48gb_catalog) {
+    Present { value: "nvidia_rtx_pro_5000_48gb_catalog" }
+  } else if gpu_catalog_row_eq(a: row, b: nvidia_rtx_pro_5000_72gb_catalog) {
+    Present { value: "nvidia_rtx_pro_5000_72gb_catalog" }
+  } else if gpu_catalog_row_eq(a: row, b: nvidia_rtx_pro_6000_workstation_catalog) {
+    Present { value: "nvidia_rtx_pro_6000_workstation_catalog" }
+  } else if gpu_catalog_row_eq(a: row, b: nvidia_rtx_pro_6000_max_q_catalog) {
+    Present { value: "nvidia_rtx_pro_6000_max_q_catalog" }
+  } else {
+    Absent
+  }
+}
+
+// The roster lookup. Absent for a row this fold was never given, which is the loud answer to an
+// unknown card rather than a minted-on-the-spot identity.
+fn home_serving_candidate_identity(row: GpuModelCatalogRow, limit: Watt) -> DeclarationRef? {
+  let watts = watt_count(w: limit)
+  match hscf_row_decl_name(row: row) {
+    Absent => Absent
+    Present { value: name } =>
+      if name == ("nvidia_rtx_pro_5000_48gb_catalog" as String) {
+        hscf_rung_for(watts: watts, at_200: cand_rtx_pro_5000_48gb_at_200w, at_300: cand_rtx_pro_5000_48gb_at_300w, at_400: cand_rtx_pro_5000_48gb_at_400w, at_600: cand_rtx_pro_5000_48gb_at_600w)
+      } else if name == ("nvidia_rtx_pro_5000_72gb_catalog" as String) {
+        hscf_rung_for(watts: watts, at_200: cand_rtx_pro_5000_72gb_at_200w, at_300: cand_rtx_pro_5000_72gb_at_300w, at_400: cand_rtx_pro_5000_72gb_at_400w, at_600: cand_rtx_pro_5000_72gb_at_600w)
+      } else if name == ("nvidia_rtx_pro_6000_workstation_catalog" as String) {
+        hscf_rung_for(watts: watts, at_200: cand_rtx_pro_6000_workstation_at_200w, at_300: cand_rtx_pro_6000_workstation_at_300w, at_400: cand_rtx_pro_6000_workstation_at_400w, at_600: cand_rtx_pro_6000_workstation_at_600w)
+      } else if name == ("nvidia_rtx_pro_6000_max_q_catalog" as String) {
+        hscf_rung_for(watts: watts, at_200: cand_rtx_pro_6000_max_q_at_200w, at_300: cand_rtx_pro_6000_max_q_at_300w, at_400: cand_rtx_pro_6000_max_q_at_400w, at_600: cand_rtx_pro_6000_max_q_at_600w)
+      } else {
+        Absent
+      }
+  }
+}
+
+fn hscf_rung_for(watts: Nat, at_200: DeclarationRef, at_300: DeclarationRef, at_400: DeclarationRef, at_600: DeclarationRef) -> DeclarationRef? {
+  if watts == 200 {
+    Present { value: at_200 }
+  } else if watts == 300 {
+    Present { value: at_300 }
+  } else if watts == 400 {
+    Present { value: at_400 }
+  } else if watts == 600 {
+    Present { value: at_600 }
+  } else {
+    Absent
+  }
+}
+
+// THE CEILING'S WARRANT, READ FROM THE ROW THAT CARRIES IT — not chosen here. The row's own
+// figure_citations entry for `tdp_watts` is the single place the tree records where that figure came
+// from, so projecting from it cannot mint a second, friendlier warrant for the same number (§3 single
+// authority). A row whose TDP carries no citation yields Absent and contributes NO candidate: the same
+// shape P1 chose for an unstated lane count (extdeps.gpu.machine_shape CatalogExecutionLanesUnstated),
+// and the shape the plan demands. The witness proves this leg can actually go red by hiding a row's
+// citations, rather than asserting the guard is sound.
+// THE ROW'S CITED TDP AS ONE READING OF THE POLICY'S OWN TYPE. The figure and the authority that
+// states it travel together, so no caller can take the number and stand it by something friendlier
+// (§4d). It is gunbc.serving.home_serving_power_policy's HomeServingPowerReading rather than a local
+// pair type: a second carrier beside the modeled one is parallel authority (§6), and this value is
+// handed straight to that module's entry anyway.
+fn home_serving_row_tdp_citation(row: GpuModelCatalogRow) -> HomeServingPowerReading? {
+  match hscf_row_decl_name(row: row) {
+    Absent => Absent
+    Present { value: name } =>
+      match row.tdp_watts {
+        Absent => Absent
+        Present { value: tdp } =>
+          match hscf_find_tdp_citation(citations: row.figure_citations, decl_name: name) {
+            Absent => Absent
+            Present { value: authority } =>
+              Present { value: HomeServingPowerReading { limit: tdp, standing: CitedToAuthority { authority: authority } } }
+          }
+      }
+  }
+}
+
+fn hscf_find_tdp_citation(citations: List<FactCitation>, decl_name: String) -> ExternalAuthority? {
+  fold(
+    citations,
+    init: Absent,
+    f: (found, c) =>
+      match found {
+        Present { value: a } => Present { value: a }
+        Absent =>
+          match c.fact.field {
+            NamedField { field_name: f } =>
+              if f == ("tdp_watts" as NonEmptyStr) && c.fact.decl_name == (decl_name as NonEmptyStr) {
+                Present { value: c.authority }
+              } else {
+                Absent
+              }
+            _ => Absent
+          }
+      },
+  )
+}
+
+// THE LABEL carries the watt figure it stands for (§13620: "a bare candidate label cannot carry the
+// fact" — the failure where a later reader takes a label for a measurement). The figure lives in the
+// label AND in the declared identity's name, so neither can be read as the whole fact.
+fn home_serving_candidate_label(row: GpuModelCatalogRow, limit: Watt) -> NonEmptyStr? {
+  match hscf_row_decl_name(row: row) {
+    Absent => Absent
+    Present { value: _ } =>
+      Present { value: (row.model + " @ " + nat_to_decimal_string(value: watt_count(w: limit)) + " W applied") as NonEmptyStr }
+  }
+}
+
+// THE ONE ENTRY MINTER, and the order is the whole design:
+//  1. the row must carry a TDP WITH its own citation, else no candidate exists (no invented ceiling);
+//  2. gunbc.serving.home_serving_power_policy must refuse the pair if the applied watt is above that
+//     card's cited TDP — a claimed operating point that breaks the card's own ceiling is not a
+//     candidate at all (front-door refusal, before Pareto, never a ranked entry);
+//  3. a pair whose watt is UNREAD is offered WITH its gap (see below), not dropped;
+//  4. only an ADMITTED pair becomes a ParetoEntry with a reading on the funded axis.
+// WHAT THE SIXTEEN CELLS DO TODAY, stated exactly because the count is the thing a reader will check:
+// three of the four cards cite 300 W and the ladder runs 200/300/400/600, so SIX cells are over their
+// card's own ceiling (each 300 W card at 400 W and at 600 W) and ten are not. That split is what the
+// comparison step would produce once a watt is readable. TODAY IT IS NOT REACHED: the applied rung is a
+// planned sweep value with no power-limit receipt, so the policy's standing gate returns Unread before
+// it ever compares, and all sixteen cells come back as gaps. Claim
+// home_serving_field_offers_all_sixteen_cells pins sixteen offered, and
+// home_serving_every_cell_declares_its_watt_gap pins that none of them is pretending to be measured.
+fn home_serving_candidate_entry(row: GpuModelCatalogRow, limit: Watt) -> ParetoEntry? {
+  match home_serving_row_tdp_citation(row: row) {
+    Absent => Absent
+    Present { value: cited_tdp } =>
+      match home_serving_power_policy(
+        tdp: Present { value: cited_tdp },
+        applied: Present {
+          value: HomeServingPowerReading { limit: limit, standing: hscf_applied_ground(rung: watt_count(w: limit)) },
+        },
+      ) {
+        PowerPolicyAdmitted { admission: admitted } =>
+          match home_serving_candidate_identity(row: row, limit: home_serving_power_admission_applied(admission: admitted)) {
+            Absent => Absent
+            Present { value: identity } =>
+              match home_serving_candidate_label(row: row, limit: home_serving_power_admission_applied(admission: admitted)) {
+                Absent => Absent
+                Present { value: label } =>
+                  Present {
+                    value: ParetoEntry {
+                      identity: identity,
+                      display_label: label,
+                      readings: [
+                        AxisReading {
+                          axis: ax_applied_draw_watts,
+                          interval_micro: degenerate_interval(point: watt_count(w: home_serving_power_admission_applied(admission: admitted)) as Int),
+                        },
+                      ],
+                      missing_inputs: [],
+                    },
+                  }
+              }
+          }
+        // REFUSED means the pair can never be a candidate: the applied watt is a claimed operating
+        // point that breaks the card's own cited ceiling, and §3d excludes it before Pareto, never
+        // ranks it. So it contributes no entry.
+        PowerPolicyRefused { cause: _ } => Absent
+        // UNREAD IS NOT REFUSED, and dropping the cell here was the defect this comment now forbids.
+        // The rung is a planned sweep value with no power-limit receipt behind it yet; the card and the
+        // rung are both known, so the candidate EXISTS and its watt is UNREAD — two different facts.
+        // Returning Absent handed the kernel an empty field, and the kernel then said
+        // "candidate field is empty" (std.decision establish_candidate_field), which is the arm for
+        // nobody having offered a candidate at all. Silencing ten known candidates into that arm is
+        // the substitution §5 rejects: std.pareto's own rule for a ParetoEntry is that a nonempty
+        // missing_inputs "states what is absent instead of substituting a zero or an average", and
+        // scan_feasibility answers a declared gap with SelectionNeedsEvidence carrying the cause. The
+        // candidate is therefore offered WITH its gap, and the instrument's own refusal — go read the
+        // receipt — is what a caller sees.
+        PowerPolicyUnread { cause: c } =>
+          match home_serving_candidate_identity(row: row, limit: limit) {
+            Absent => Absent
+            Present { value: identity } =>
+              match home_serving_candidate_label(row: row, limit: limit) {
+                Absent => Absent
+                Present { value: label } =>
+                  Present {
+                    value: ParetoEntry {
+                      identity: identity,
+                      display_label: label,
+                      readings: [],
+                      missing_inputs: [AxisGap { axis: ax_applied_draw_watts, cause: hscf_unread_gap_cause(cause: c) }],
+                    },
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn home_serving_candidate_field() -> List<ParetoEntry> {
+  flat_map(home_serving_add_in_card_catalog_rows, row =>
+    flat_map(home_serving_applied_rung_watts, watts =>
+      // The rung is ALREADY a Watt (the list is List<Watt>); wrapping it again would build
+      // Measure { count: Record } — a measure whose count is a record. The generic carrier
+      // Measure<Q, S, M> is generic in M, so the typechecker lets that through and it only surfaces at
+      // runtime as "cannot apply Div to Record and Int". Pinned by the rung claim in
+      // test.claim.home_serving_candidate_field_witness, which reads these rungs as Watts.
+      match home_serving_candidate_entry(row: row, limit: watts) {
+        Absent => []
+        Present { value: entry } => [entry]
+      }
+    )
+  )
+}
+
+// THE UNIVERSAL CEILING, AS THE KERNEL'S OWN CONSTRAINT. This bound is honest as a HardConstraint
+// precisely because it applies to every candidate alike. Expressing it here rather than as an
+// if-statement in the field builder keeps exclusion in ONE authority (std.decision
+// scan_feasibility): a buyer ceiling below every rung comes back as NoFeasibleRealization carrying the
+// kernel's causes, not as a silently empty list.
+fn home_serving_buyer_ceiling_constraint(terms: HomeServingBuyerTerms) -> HardConstraint = HardConstraint {
+  identity: home_serving_buyer_psu_ceiling,
+  axis: ax_applied_draw_watts,
+  bound_micro: terms.max_applied_watts as Int,
+  denomination: NonMoneyConstraint,
+}
+
+fn home_serving_constraints(terms: HomeServingBuyerTerms) -> List<HardConstraint> {
+  [home_serving_buyer_ceiling_constraint(terms: terms)]
+}
+
+// THE ASSESSMENT: one subject, one context parameter (the buyer's ceiling), one variable (the rung),
+// one objective term (applied draw), one constraint record. Physical and causal models are
+// ESTABLISHED, not deferred: the cost relation is the vendor's own datasheet statement, the term
+// varies along the rung, and the constraint disposition is Satisfied because no entry reaches the
+// field without passing the power policy's applied ≤ cited TDP rule — the completeness argument that
+// policy's own witness makes, referenced rather than re-derived (§2).
+//
+// Deferring here would not be caution, it would be a bug: std.decision merge_deferred_into_pick
+// rewrites a genuine SelectionNeedsPolicy into SelectionNeedsEvidence under a Deferred closure, so a
+// fake hedge would erase the near-miss refusal this fold exists to produce.
+fn home_serving_power_assessment(terms: HomeServingBuyerTerms) -> DecisionAssessment {
+  DecisionAssessment {
+    subject: DecisionSubject {
+      identity: home_serving_selection_subject,
+      question: "which cited add-in card, at which applied power limit, is the home serving candidate" as NonEmptyStr,
+      parameters: [ContextParameter { identity: home_serving_buyer_ceiling_parameter }],
+      constraints: [DecisionConstraint { identity: home_serving_power_ceiling_authority }],
+      objective: ObjectiveMeasure {
+        identity: home_serving_objective,
+        goal: LowerIsBetter,
+        terms: [ObjectiveTerm { identity: home_serving_applied_watt_term, ground: CitedToAuthority { authority: rtx_pro_6000_workstation_datasheet_authority } }],
+      },
+      choice_domain: ChoiceDomain {
+        identity: home_serving_choice_domain,
+        variables: [DecisionVariable { identity: home_serving_rung_variable }],
+      },
+    },
+    sensitivities: [
+      VariesAlong {
+        term: home_serving_applied_watt_term,
+        variable: home_serving_rung_variable,
+        region: DecisionRegion { identity: home_serving_region },
+        relation: RelationOtherwiseEstablished { note: "the applied rung sets what a card is asked to hold and is bounded by that card's cited TDP; it is not evidence of throughput, which this fold may not fund until a WarmValid exists" as NonEmptyStr },
+        coupling: CitedToAuthority { authority: rtx_pro_6000_workstation_datasheet_authority },
+      },
+    ],
+    constraints: [
+      ConstraintSatisfied {
+        constraint: home_serving_power_ceiling_authority,
+        evidence: "every entry in the field was admitted by gunbc.serving.home_serving_power_policy, which refuses applied > cited TDP at minting; a row whose TDP carries no citation contributes no entry at all" as NonEmptyStr,
+      },
+    ],
+    parameters: [
+      ParameterBound {
+        parameter: home_serving_buyer_ceiling_parameter,
+        evidence: "the buyer's PSU ceiling is a stated input, expressed as a std.decision HardConstraint on the funded axis rather than a filter beside it" as NonEmptyStr,
+      },
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [home_serving_applied_watt_term] },
+    causal_model: CausalModelEstablished {
+      couplings: [
+        VendorDocumentedCoupling {
+          authority: rtx_pro_6000_workstation_datasheet_authority,
+          term: home_serving_applied_watt_term,
+          variable: home_serving_rung_variable,
+          subject: home_serving_selection_subject,
+        },
+      ],
+    },
+  }
+}
+
+// THE FOLD. Everything after this call is std.decision's: establishment, the feasibility scan and its
+// exclusion of definite violations, domination, the policy, and the receipt. This module re-implements
+// none of it (§2: "net concepts must not grow by re-invention"; §3d: "select_realization is the ONLY
+// decision fold"). The field is a parameter for the same reason the flagship fold takes its routes as
+// evidence: a caller who has read a power-limit receipt, or who can state a working set, hands in the
+// better field rather than this module hard-coding what the field may contain.
+fn select_home_serving_candidate(
+  field: List<ParetoEntry>,
+  terms: HomeServingBuyerTerms,
+  policy: SelectionPolicy,
+) -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    assessment: home_serving_power_assessment(terms: terms),
+    candidate_field_identity: hscf_field_identity,
+    field: field,
+    axes: home_serving_candidate_axes,
+    constraints: home_serving_constraints(terms: terms),
+    constraint_authority: home_serving_power_ceiling_authority,
+    policy: policy,
+    evidence_snapshot: home_serving_evidence_snapshot,
+  )
+}
+
+// THE LIVE ANSWER TODAY, kept as the fold's own entry point so a reader sees what the current field
+// actually returns rather than a hand-picked case. UniqueSurvivorRequired is the policy an operator
+// ruling cannot replace with a pick: when cards survive with no stated preference the kernel answers
+// SelectionNeedsPolicy and names every survivor.
+fn home_serving_selection_for(terms: HomeServingBuyerTerms) -> RealizationSelectionResult<ParetoEntry> {
+  select_home_serving_candidate(
+    field: home_serving_candidate_field(),
+    terms: terms,
+    policy: UniqueSurvivorRequired { identity: home_serving_unique_survivor_policy },
+  )
+}
+
+// THE FRONTIER THIS MODULE FIRES. SXM rows are references, so they reach this module to be asserted
+// NON-candidate rather than to be ignored: if they were simply unused, "reference only" would be a
+// comment. Their absence from the field is also claimed in the witness, where it can go red.
+fn home_serving_sxm_rows_are_not_candidates() -> Bool {
+  all(home_serving_reference_sxm_catalog_rows, row =>
+    !any(home_serving_add_in_card_catalog_rows, add_in => gpu_catalog_row_eq(a: row, b: add_in))
+  )
+}
