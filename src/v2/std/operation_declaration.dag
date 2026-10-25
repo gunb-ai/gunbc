@@ -350,14 +350,6 @@ data operation_declaration_roster: List<OperationDeclaration> = [
     shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
   ),
   operation_declaration_row(
-    module_path: "v2.std.decl_index",
-    decl_name: "type_declarer_qualified_names",
-    requirement: RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] },
-    semantics: ObservesHost { operation_identity: symbol_intern_lexeme(lexeme: "scan_corpus_declarations") },
-    disposition: OperationDispositionUnclassified { blocking_question: symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") },
-    shape: AccessShapeNotYetDeclared { reason: symbol_intern_lexeme(lexeme: "manifest_read_has_no_effect_shape_arm_d16_part_3") }
-  ),
-  operation_declaration_row(
     module_path: "v2.std.node",
     decl_name: "symbol_lexeme",
     requirement: RequiresNone,
