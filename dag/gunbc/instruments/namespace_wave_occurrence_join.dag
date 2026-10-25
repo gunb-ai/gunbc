@@ -138,9 +138,10 @@ fn join_locus_from_ints(text: String, line: Optional<Int>, column: Optional<Int>
 //                `from`'s own length, so a span that disagrees with the replaced text has no constructor;
 //   InsertStep   `text` inserted at `at`, removing nothing -- a positional label;
 //   RelocateHeadStep  a call head that changes position as well as spelling (a pipe `xs |> f(a)` rewritten to a direct
-//                call `g(xs, a)`): exactly the bytes of `from` at `head_at` removed, and `to` inserted at `insert_at`
-//                (before the head, at the operand's start), placed before any other insertion at that offset. The head
-//                occurrence is carried from head_at to the inserted `to`; the operand's bytes are untouched and only shift
+//                call `g(xs, a)`): ONE edit that removes exactly the bytes of `from` at `head_at` and inserts `text` at
+//                `insert_at` (the operand's start), where `text` begins with the new name `to` (e.g. `g(label0: `), so no
+//                second insertion shares that offset (tidy-ant-251, 2026-10-25). The head occurrence is carried from
+//                head_at to insert_at, the first len(to) bytes of the insertion; the operand's bytes are untouched and only shift
 //                (tidy-ant-251's ruling A2, 2026-10-25). DISSOLVES ON: a pipe into a declared function resolving natively
 //                (gunbc.recurring_failure_mode pipe_into_a_declared_function_resolves_as_a_method), when pipe sites keep
 //                their pipe and no head relocates.
@@ -148,14 +149,14 @@ type EditStep
   = SpliceStep { start: Int, end: Int, text: String }
   | ReplaceStep { start: Int, from: NonEmptyStr, to: String }
   | InsertStep { at: Int, text: String }
-  | RelocateHeadStep { head_at: Int, from: NonEmptyStr, insert_at: Int, to: String }
+  | RelocateHeadStep { head_at: Int, from: NonEmptyStr, insert_at: Int, text: String, to: NonEmptyStr }
 
 fn step_start(step: EditStep) -> Int {
   match step {
     SpliceStep { start: s, end: _, text: _ } => s
     ReplaceStep { start: s, from: _, to: _ } => s
     InsertStep { at: a, text: _ } => a
-    RelocateHeadStep { head_at: _, from: _, insert_at: i, to: _ } => i
+    RelocateHeadStep { head_at: _, from: _, insert_at: i, text: _, to: _ } => i
   }
 }
 
@@ -164,7 +165,7 @@ fn step_end(step: EditStep) -> Int {
     SpliceStep { start: _, end: e, text: _ } => e
     ReplaceStep { start: s, from: f, to: _ } => s + text_byte_length(text: f as String)
     InsertStep { at: a, text: _ } => a
-    RelocateHeadStep { head_at: h, from: f, insert_at: _, to: _ } => h + text_byte_length(text: f as String)
+    RelocateHeadStep { head_at: h, from: f, insert_at: _, text: _, to: _ } => h + text_byte_length(text: f as String)
   }
 }
 
@@ -173,7 +174,7 @@ fn step_new_len(step: EditStep) -> Int {
     SpliceStep { start: _, end: _, text: t } => text_byte_length(text: t)
     ReplaceStep { start: _, from: _, to: t } => text_byte_length(text: t)
     InsertStep { at: _, text: t } => text_byte_length(text: t)
-    RelocateHeadStep { head_at: _, from: _, insert_at: _, to: t } => text_byte_length(text: t)
+    RelocateHeadStep { head_at: _, from: _, insert_at: _, text: t, to: _ } => text_byte_length(text: t)
   }
 }
 
@@ -344,7 +345,7 @@ type MappedOffset
 // between its insertion and its head is untouched.
 fn step_covers(step: EditStep, offset: Int) -> Bool {
   match step {
-    RelocateHeadStep { head_at: h, from: f, insert_at: _, to: _ } => (h <= offset) && (offset < h + text_byte_length(text: f as String))
+    RelocateHeadStep { head_at: h, from: f, insert_at: _, text: _, to: _ } => (h <= offset) && (offset < h + text_byte_length(text: f as String))
     _ => (step_start(step: step) <= offset) && (offset < step_end(step: step))
   }
 }
@@ -353,18 +354,19 @@ fn step_covers(step: EditStep, offset: Int) -> Bool {
 // RelocateHeadStep adds its insertion to what lies at or after insert_at and removes its head from what lies after it.
 fn step_delta(step: EditStep, offset: Int) -> Int {
   match step {
-    RelocateHeadStep { head_at: h, from: f, insert_at: i, to: t } =>
+    RelocateHeadStep { head_at: h, from: f, insert_at: i, text: t, to: _ } =>
       (if i <= offset { text_byte_length(text: t) } else { 0 }) - (if h + text_byte_length(text: f as String) <= offset { text_byte_length(text: f as String) } else { 0 })
     _ => if step_end(step: step) <= offset { step_new_len(step: step) - (step_end(step: step) - step_start(step: step)) } else { 0 }
   }
 }
 
-// Where a relocated head lands: its insertion offset, moved by every OTHER step that lies before it. Another zero-width
-// insertion at the same offset lands after the relocated head, so it does not move it.
+// Where a relocated head lands: its insertion offset, moved by every OTHER step that lies before it. No other zero-width
+// insertion may share that offset (the generator's disjointness check refuses coincident edits), so any that did would
+// already have refused upstream; here one at the same offset is not counted.
 fn relocated_head_offset(steps: List<EditStep>, head_at: Int, insert_at: Int) -> Int {
   insert_at + fold(steps, init: 0, f: fn(a, s) {
     match s {
-      RelocateHeadStep { head_at: h, from: _, insert_at: _, to: _ } => if h == head_at { a } else { a + step_delta(step: s, offset: insert_at) }
+      RelocateHeadStep { head_at: h, from: _, insert_at: _, text: _, to: _ } => if h == head_at { a } else { a + step_delta(step: s, offset: insert_at) }
       InsertStep { at: at, text: _ } => if at < insert_at { a + step_delta(step: s, offset: insert_at) } else { a }
       _ => a + step_delta(step: s, offset: insert_at)
     }
@@ -383,7 +385,7 @@ fn map_through_round(steps: List<EditStep>, offset: Int) -> MappedOffset {
           ReplaceStep { start: st, from: f, to: t } => if st == offset { OffsetRenamed { offset: shifted, from: f as String, to: t } } else { OffsetCovered }
           SpliceStep { start: _, end: _, text: _ } => OffsetCovered
           InsertStep { at: _, text: _ } => OffsetCovered
-          RelocateHeadStep { head_at: h, from: f, insert_at: i, to: t } => if h == offset { OffsetRenamed { offset: relocated_head_offset(steps: steps, head_at: h, insert_at: i), from: f as String, to: t } } else { OffsetCovered }
+          RelocateHeadStep { head_at: h, from: f, insert_at: i, text: x, to: t } => if (h == offset) && starts_with(s: x, prefix: t as String) { OffsetRenamed { offset: relocated_head_offset(steps: steps, head_at: h, insert_at: i), from: f as String, to: t as String } } else { OffsetCovered }
         }
       Absent => OffsetCovered
     }
@@ -947,7 +949,7 @@ fn rename_step_text(step: EditStep) -> String {
     SpliceStep { start: _, end: _, text: t } => t
     ReplaceStep { start: _, from: _, to: t } => t
     InsertStep { at: _, text: t } => t
-    RelocateHeadStep { head_at: _, from: _, insert_at: _, to: t } => t
+    RelocateHeadStep { head_at: _, from: _, insert_at: _, text: t, to: _ } => t
   }
 }
 
@@ -955,8 +957,8 @@ fn rename_step_text(step: EditStep) -> String {
 fn rename_apply(text: String, steps: List<EditStep>) -> String {
   fold(list_reverse(xs: steps), init: text, f: fn(t, st) {
     match st {
-      RelocateHeadStep { head_at: h, from: f, insert_at: i, to: to } =>
-        substring(s: t, start: 0, end: i) + to + substring(s: t, start: i, end: h) + substring(s: t, start: h + string_length(s: f as String), end: string_length(s: t))
+      RelocateHeadStep { head_at: h, from: f, insert_at: i, text: x, to: _ } =>
+        substring(s: t, start: 0, end: i) + x + substring(s: t, start: i, end: h) + substring(s: t, start: h + string_length(s: f as String), end: string_length(s: t))
       _ => substring(s: t, start: 0, end: step_start(step: st)) + rename_step_text(step: st) + substring(s: t, start: step_end(step: st), end: string_length(s: t))
     }
   })
@@ -1024,17 +1026,16 @@ fn rename_controls() -> String {
 }
 
 // THE HEAD-RELOCATION CONTROLS (tidy-ant-251's ruling A2): a pipe `xs |> map_get(k)` rewritten to `map_lookup(xs, k)`
-// with the head relocated to the operand's start and the operand's bytes untouched. Steps: the relocation (`map_get` at
-// the head removed, `map_lookup` inserted at the operand start), a `(` inserted after it, the connector ` |> ` removed and
-// the head's own `(` replaced by `, ` -- every operand byte is carried by shift.
+// with the head relocated to the operand's start and the operand's bytes untouched. Steps, all disjoint: the relocation
+// (`map_get` at the head removed, `map_lookup(` inserted at the operand start), the connector ` |> ` removed, and the
+// head's own `(` replaced by `, ` -- every operand byte is carried by shift.
 fn relocate_controls() -> String {
   let lead = "module m\n\nfn f(xs: Map<String, String>, k: String) -> Optional<String> {\n  "
   let base = lead + "xs |> map_get(k)\n}\n"
   let o_xs = string_length(s: lead)
   let o_head = o_xs + string_length(s: "xs |> ")
   let steps = [
-    RelocateHeadStep { head_at: o_head, from: "map_get", insert_at: o_xs, to: "map_lookup" },
-    InsertStep { at: o_xs, text: "(" },
+    RelocateHeadStep { head_at: o_head, from: "map_get", insert_at: o_xs, text: "map_lookup(", to: "map_lookup" },
     ReplaceStep { start: o_xs + string_length(s: "xs"), from: " |> ", to: "" },
     ReplaceStep { start: o_head + string_length(s: "map_get"), from: "(", to: ", " }
   ]
@@ -1046,10 +1047,12 @@ fn relocate_controls() -> String {
   let o_xs_new = o_xs + string_length(s: "map_lookup(")
   let base_rows = [rename_ambient(starts: bs, o: o_head), rename_row(spelling: "xs", source: "declared", target: "m.f.xs", starts: bs, offset: o_xs)]
   let head_rows = [rename_declared(starts: hs, o: o_head_new, target: "std.algebra.map_lookup"), rename_row(spelling: "xs", source: "declared", target: "m.f.xs", starts: hs, offset: o_xs_new)]
-  let covered = [RelocateHeadStep { head_at: o_head, from: "map_get", insert_at: o_xs, to: "map_lookup" }, SpliceStep { start: o_xs, end: o_xs + string_length(s: "xs"), text: "(ys" }]
-  let wrong_from = [RelocateHeadStep { head_at: o_head, from: "map_got", insert_at: o_xs, to: "map_lookup" }]
+  let covered = [RelocateHeadStep { head_at: o_head, from: "map_get", insert_at: o_xs, text: "map_lookup(", to: "map_lookup" }, SpliceStep { start: o_xs, end: o_xs + string_length(s: "xs"), text: "(ys" }]
+  let wrong_from = [RelocateHeadStep { head_at: o_head, from: "map_got", insert_at: o_xs, text: "map_lookup(", to: "map_lookup" }]
+  let wrong_prefix = [RelocateHeadStep { head_at: o_head, from: "map_get", insert_at: o_xs, text: "(map_lookup", to: "map_lookup" }]
   rename_case(name: "relocated head admitted, operand carried by shift", renames: rename_control_rows(), base_text: base, base_rows: base_rows, head_text: head, head_rows: head_rows, steps: steps, want_admitted: 1, want_refused: [])
     + rename_case(name: "RED relocated head to another home", renames: rename_control_rows(), base_text: base, base_rows: base_rows, head_text: head, head_rows: [rename_declared(starts: hs, o: o_head_new, target: "examples.elsewhere.map_lookup"), rename_row(spelling: "xs", source: "declared", target: "m.f.xs", starts: hs, offset: o_xs_new)], steps: steps, want_admitted: 0, want_refused: ["RenameTargetChanged"])
     + rename_case(name: "RED an operand occurrence covered by an edit", renames: rename_control_rows(), base_text: base, base_rows: base_rows, head_text: head, head_rows: head_rows, steps: covered, want_admitted: 1, want_refused: ["EditCoversOccurrence", "Appeared"])
     + rename_case(name: "RED a relocation whose from is not the occurrence's spelling", renames: rename_control_rows(), base_text: base, base_rows: [rename_ambient(starts: bs, o: o_head)], head_text: head, head_rows: [rename_declared(starts: hs, o: o_head_new, target: "std.algebra.map_lookup")], steps: wrong_from, want_admitted: 0, want_refused: ["EditCoversOccurrence", "Appeared"])
+    + rename_case(name: "RED a relocation whose inserted text does not begin with its name", renames: rename_control_rows(), base_text: base, base_rows: [rename_ambient(starts: bs, o: o_head)], head_text: head, head_rows: [rename_declared(starts: hs, o: o_head_new, target: "std.algebra.map_lookup")], steps: wrong_prefix, want_admitted: 0, want_refused: ["EditCoversOccurrence", "Appeared"])
 }
