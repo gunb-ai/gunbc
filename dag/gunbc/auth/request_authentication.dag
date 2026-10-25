@@ -317,11 +317,11 @@ fn tailnet_route_readback_observed(acl_revision: ContentHash, serve_route: Tails
 
 // ── The consequential-route action vocabulary ──────────────────────────────────────────────────
 
-// EVERY CONSEQUENTIAL ROUTE projects into std.access under one of these actions. The belt
-// actuation routes (dispatch/stop/publish/cleanup) are workflow operations governed by the
-// launch-admission authority today; they join this vocabulary when their lane cuts them over,
-// and until then the write law below governs exactly the routes the ruling names: assign,
-// comment, approve.
+// EVERY CONSEQUENTIAL ROUTE projects into std.access under one of these actions. Belt
+// actuation (dispatch/stop/publish/cleanup) is the same human-write law as assign/comment:
+// Google OIDC session + action authorization + CSRF token + deployment path. Tailnet identity
+// headers are the access path, never a principal. A Sec-Fetch-Site/Origin check would be a
+// second CSRF mechanism beside csrf_write_decision; the token is the inhabited proof.
 type ServeRouteAction
   = ServeActionAssignIssue
   | ServeActionCreateIssue
@@ -330,6 +330,9 @@ type ServeRouteAction
   | ServeActionApproveDecision
   | ServeActionCreateAllocation
   | ServeActionReleaseAllocation
+  | ServeActionDispatchNode
+  | ServeActionStopNode
+  | ServeActionPublishNode
 
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
@@ -340,6 +343,9 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
     ServeActionApproveDecision => "approve-decision" as NonEmptyStr
     ServeActionCreateAllocation => "create-allocation" as NonEmptyStr
     ServeActionReleaseAllocation => "release-own-allocation" as NonEmptyStr
+    ServeActionDispatchNode => "dispatch-node" as NonEmptyStr
+    ServeActionStopNode => "stop-node" as NonEmptyStr
+    ServeActionPublishNode => "publish-node" as NonEmptyStr
   }
 }
 
@@ -360,9 +366,11 @@ data tracker_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWr
 
 // ── The human-write law, projected into std.access ─────────────────────────────────────────────
 
-// THE ONE ENTRY POINT a human-write handler consults. The answer is the std.access conjunction
-// of four independent decisions; each is computed over the projected AccessRequest so every
-// refusal carries structured coordinates (profile, subject, action, object).
+// THE ONE ENTRY POINT a human-write handler consults. observed_at is a thunk forced only by
+// the GoogleOidcSession expiry arm. CSRF-before-clock applies only on a live session: a missing
+// token must not Get the clock, but AuthAbsent / service evidence / invalid standing still
+// refuse at the authentication axis (google-oidc-session / fabric-service-evidence). Always
+// judging CSRF first stole those coordinates (csrf-token: no authenticated session).
 fn human_write_admission(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
@@ -370,7 +378,67 @@ fn human_write_admission(
   authorization_policy: ServeWriteAuthorizationPolicy,
   deployment_policy: DeploymentAccessPolicy,
   csrf_presented: String,
-  observed_at: Timestamp,
+  observed_at: fn() -> Timestamp,
+) -> AccessDecision {
+  match security.authentication {
+    GoogleOidcSession { session: _ } =>
+      match csrf_write_decision(
+        route_path: route_path,
+        action: action,
+        security: security,
+        csrf_presented: csrf_presented,
+      ) {
+        Deny { refusal } => Deny { refusal: refusal }
+        Permit =>
+          decision_meet(
+            human_authentication_decision(route_path: route_path, action: action, security: security, observed_at: observed_at),
+            decision_meet(
+              human_action_authorization_decision(route_path: route_path, action: action, security: security, policy: authorization_policy),
+              deployment_path_decision(route_path: route_path, action: action, security: security, policy: deployment_policy),
+            ),
+          )
+      }
+    AuthAbsent =>
+      human_write_admission_non_session(
+        route_path: route_path,
+        action: action,
+        security: security,
+        authorization_policy: authorization_policy,
+        deployment_policy: deployment_policy,
+        csrf_presented: csrf_presented,
+        observed_at: observed_at,
+      )
+    FabricServiceEvidence { kind: _, authenticated_at: _ } =>
+      human_write_admission_non_session(
+        route_path: route_path,
+        action: action,
+        security: security,
+        authorization_policy: authorization_policy,
+        deployment_policy: deployment_policy,
+        csrf_presented: csrf_presented,
+        observed_at: observed_at,
+      )
+    SessionStandingInvalid { standing: _ } =>
+      human_write_admission_non_session(
+        route_path: route_path,
+        action: action,
+        security: security,
+        authorization_policy: authorization_policy,
+        deployment_policy: deployment_policy,
+        csrf_presented: csrf_presented,
+        observed_at: observed_at,
+      )
+  }
+}
+
+fn human_write_admission_non_session(
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
+  authorization_policy: ServeWriteAuthorizationPolicy,
+  deployment_policy: DeploymentAccessPolicy,
+  csrf_presented: String,
+  observed_at: fn() -> Timestamp,
 ) -> AccessDecision {
   decision_meet(
     human_authentication_decision(route_path: route_path, action: action, security: security, observed_at: observed_at),
@@ -392,7 +460,7 @@ fn human_authentication_decision(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
   security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
-  observed_at: Timestamp,
+  observed_at: fn() -> Timestamp,
 ) -> AccessDecision {
   match security.authentication {
     AuthAbsent =>
@@ -417,7 +485,7 @@ fn human_authentication_decision(
         cause: AccessEvidenceRejected { evidence: "fabric-service-evidence", reason: "service evidence authorizes service writes, never human writes" },
       )
     GoogleOidcSession { session } =>
-      if session_not_expired(session: session, observed_at: observed_at) {
+      if session_not_expired(session: session, observed_at: observed_at()) {
         Permit
       } else {
         write_refused(
@@ -446,6 +514,9 @@ fn human_action_authorization_decision(
         ServeActionCreateIssue => Permit
         ServeActionCommentIssue => Permit
         ServeActionSaveOwnView => Permit
+        ServeActionDispatchNode => Permit
+        ServeActionStopNode => Permit
+        ServeActionPublishNode => Permit
         ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionApproveDecision =>
