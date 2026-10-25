@@ -4055,8 +4055,10 @@ type EqualityDerivedTarget
   = EqualityCallsDeclared { function: DeclarationRef }
   | EqualityRootRefused { member: String }
 
+// The declaration's name is joined without a separator so the emitter's identifier rule (camel to snake)
+// renders it `equality_derived_<snake decl>` with a single separator.
 fn equality_derived_name(decl_name: String) -> String {
-  concat("equality_derived_", decl_name)
+  concat("equality_derived", decl_name)
 }
 
 fn equality_plan_synthesizable(plan: EqualityPlan) -> Bool {

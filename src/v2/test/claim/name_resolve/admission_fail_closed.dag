@@ -567,7 +567,7 @@ test fn validated_subject_index_matches_general_lookup() -> Bool {
     match validate_module_roots(roots: roots) {
       Rejected { diagnostics: _ } => false
       Accepted { value: validated, diagnostics: _ } =>
-        validated.roots == roots && fc_roots_same_occurrence(a: validated.roots, b: roots) && fold_list(
+        zip_eq(a: validated.roots, b: roots, eq: fn(x, y) { x == y }) && fc_roots_same_occurrence(a: validated.roots, b: roots) && fold_list(
           xs: [^fc_subject_a_seg, ^fc_subject_b_seg, ^fc_missing_seg],
           empty: true,
           cons: fn(ok, segment) {
