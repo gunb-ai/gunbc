@@ -1534,50 +1534,14 @@ pub fn global_bare_chain_candidates(
     }
 }
 
-pub fn global_bare_unique_chain_candidate(
-    env_module_path: String,
-    candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
-) -> Option<Rc<GlobalBareCandidate>> {
-    {
-        let chain = global_bare_chain_candidates(env_module_path, candidates);
-        match (*crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide(
-            Rc::new({
-                let mut __result = Vec::new();
-                for c in chain.iter().cloned() {
-                    __result.push(c.module_path.clone());
-                }
-                __result
-            }),
-        ))
-        .clone()
-        {
-            ModulePathBindingProjection::ModulePathBindingHit { owner: owner, .. } => Rc::new({
-                let mut __result = Vec::new();
-                for c in chain.iter().cloned() {
-                    if (c.module_path.clone() == owner.clone()) {
-                        __result.push(c);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned(),
-            ModulePathBindingProjection::ModulePathBindingMiss => std::option::Option::None,
-            ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => {
-                std::option::Option::None
-            }
-        }
-    }
-}
-
 pub fn global_bare_policy_candidate(
     env_module_path: String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<GlobalBareCandidate>> {
     if v1_rt::name_resolution_policy_is_namespace_only() {
-        global_bare_unique_chain_candidate(env_module_path.clone(), candidates.clone())
+        std::option::Option::None
     } else {
-        global_bare_nearest_ancestor_candidate(env_module_path.clone(), candidates.clone())
+        global_bare_nearest_ancestor_candidate(env_module_path, candidates)
     }
 }
 
@@ -1610,13 +1574,39 @@ pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -
     }
 }
 
+pub fn global_bare_every_candidate_label(env: Rc<TypeEnv>, name: String) -> Rc<Vec<String>> {
+    {
+        if (v1_rt::name_resolution_policy_is_namespace_only() == false) {
+            return Rc::new(vec![]);
+        }
+        match v1_rt::map_get(&env.symbol_index.global_bare.clone(), name.clone())
+            .as_deref()
+            .cloned()
+        {
+            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                candidates: cands, ..
+            }) => crate::v1_compiler_infer_occurrence_binding::ambiguity_labels_from_decide(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in cands.iter().cloned() {
+                        __result.push(c.module_path.clone());
+                    }
+                    __result
+                }),
+                name.clone(),
+            ),
+            _ => Rc::new(vec![]),
+        }
+    }
+}
+
 pub fn bare_name_miss_diagnostic(
     env: Rc<TypeEnv>,
     name: String,
     span: Rc<SourceSpan>,
 ) -> Rc<CompilerDiagnostic> {
     {
-        let cands = global_bare_strict_ambiguity_candidates(env, name.clone());
+        let cands = global_bare_every_candidate_label(env, name.clone());
         if ((cands.clone().len() as i64) > 0) {
             Rc::new(CompilerDiagnostic::AmbiguousReference {
                 name: name.clone(),
@@ -1954,7 +1944,7 @@ pub fn global_bare_lookup_candidates(env: Rc<TypeEnv>, name: String) -> Option<R
             candidates: cands, ..
         }) => {
             if v1_rt::name_resolution_policy_is_namespace_only() {
-                match global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) {
+                match global_bare_policy_candidate(env.module_path.clone(), cands.clone()) {
                     Some(cand) => Some(cand.binding.clone()),
                     std::option::Option::None => std::option::Option::None,
                 }
