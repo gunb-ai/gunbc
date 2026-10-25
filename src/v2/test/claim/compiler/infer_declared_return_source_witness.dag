@@ -6,7 +6,15 @@ import v2.test.claim.body_let_annotation { bla_assemble_with_peers }
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_list_peers }
 import v2.std.diagnostic { Accepted, Diagnostics, Outcome, Rejected, Some, diagnostics_has_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String }
+import std.types { Bool, List, String }
+import v2.std.inhabitance {
+  InhabitanceUndecidableReason,
+  UndecidableArgumentTypeNotDerived,
+  UndecidableFormalUnresolved,
+  UndecidableGenericFormal,
+  UndecidableWherePredicateSubjectUnmodelled,
+  inhabitance_undecidable_reason_symbol
+}
 import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -52,11 +60,29 @@ fn drs_refused_at_return(src: String) -> Bool {
   }
 }
 
+// EVERY UNDECIDABLE REASON, read through the relation's own symbol map
+// (v2.std.inhabitance inhabitance_undecidable_reason_symbol) rather than respelled here. The list
+// is held to the coproduct by drs_undecidable_reason_enrolled: a fifth InhabitanceUndecidableReason
+// arm makes that match non-exhaustive, so the claim refuses to compile instead of silently reading
+// a new kind of undecided return as decided.
+fn drs_undecidable_reasons() -> List<InhabitanceUndecidableReason> {
+  [UndecidableGenericFormal, UndecidableFormalUnresolved, UndecidableArgumentTypeNotDerived, UndecidableWherePredicateSubjectUnmodelled]
+}
+
+fn drs_undecidable_reason_enrolled(r: InhabitanceUndecidableReason) -> Bool {
+  match r {
+    UndecidableGenericFormal => true
+    UndecidableFormalUnresolved => true
+    UndecidableArgumentTypeNotDerived => true
+    UndecidableWherePredicateSubjectUnmodelled => true
+  }
+}
+
 fn drs_counted_undecidable(d: Diagnostics) -> Bool {
-  diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
-    || diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
-    || diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_argument_type_not_derived)
-    || diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_where_predicate_subject_unmodelled)
+  fold(drs_undecidable_reasons(), init: false, f: fn(acc, r) {
+    acc || (drs_undecidable_reason_enrolled(r: r)
+      && diagnostics_has_reason(d: d, reason: inhabitance_undecidable_reason_symbol(reason: r)))
+  })
 }
 
 fn drs_admitted_by_judgment(src: String) -> Bool {
