@@ -2,6 +2,7 @@ module gunbc.host.host_primary_network_observed
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
+import std.measure { Bandwidth, bandwidth, bandwidth_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import extdeps.network.mac { Eui48Address, mac_address, mac_addresses_are_equal }
@@ -44,7 +45,7 @@ type ObservedNic {
   driver: ObservedNicDriver
   admin: InterfaceAdminState
   carrier: InterfaceCarrier
-  negotiated_mbps: Nat?
+  negotiated: Bandwidth?
 }
 
 type ObservedNetplanFile {
@@ -90,10 +91,10 @@ data srv1_primary_network_receipt_2026_10_25: HostPrimaryNetworkReceipt = HostPr
   host: operator_host_srv1,
   observed_at: "2026-10-25T04:54:24Z" as NonEmptyStr,
   nics: [
-    ObservedNic { mac: srv1_i210_mac, kernel_name: "enP3p6s0" as NonEmptyStr, pci_address: "0003:06:00.0" as NonEmptyStr, driver: DriverIgb, admin: AdminUpConfigured, carrier: CarrierPresent, negotiated_mbps: Present { value: 1000 } },
-    ObservedNic { mac: srv1_x550_port0_mac, kernel_name: "enP3p3s0f0" as NonEmptyStr, pci_address: "0003:03:00.0" as NonEmptyStr, driver: DriverIxgbe, admin: AdminDownUnconfigured, carrier: CarrierUnobserved, negotiated_mbps: none },
-    ObservedNic { mac: srv1_x550_port1_mac, kernel_name: "enP3p3s0f1" as NonEmptyStr, pci_address: "0003:03:00.1" as NonEmptyStr, driver: DriverIxgbe, admin: AdminUpConfigured, carrier: CarrierAbsent, negotiated_mbps: none },
-    ObservedNic { mac: srv1_bmc_usb_nic_mac, kernel_name: "enxaa7a13da73d3" as NonEmptyStr, pci_address: "0003:05:00.0" as NonEmptyStr, driver: DriverCdcEther, admin: AdminDownUnconfigured, carrier: CarrierUnobserved, negotiated_mbps: none },
+    ObservedNic { mac: srv1_i210_mac, kernel_name: "enP3p6s0" as NonEmptyStr, pci_address: "0003:06:00.0" as NonEmptyStr, driver: DriverIgb, admin: AdminUpConfigured, carrier: CarrierPresent, negotiated: Present { value: link_speed_mbps(megabits: 1000) } },
+    ObservedNic { mac: srv1_x550_port0_mac, kernel_name: "enP3p3s0f0" as NonEmptyStr, pci_address: "0003:03:00.0" as NonEmptyStr, driver: DriverIxgbe, admin: AdminDownUnconfigured, carrier: CarrierUnobserved, negotiated: none },
+    ObservedNic { mac: srv1_x550_port1_mac, kernel_name: "enP3p3s0f1" as NonEmptyStr, pci_address: "0003:03:00.1" as NonEmptyStr, driver: DriverIxgbe, admin: AdminUpConfigured, carrier: CarrierAbsent, negotiated: none },
+    ObservedNic { mac: srv1_bmc_usb_nic_mac, kernel_name: "enxaa7a13da73d3" as NonEmptyStr, pci_address: "0003:05:00.0" as NonEmptyStr, driver: DriverCdcEther, admin: AdminDownUnconfigured, carrier: CarrierUnobserved, negotiated: none },
   ],
   netplan_files: [
     ObservedNetplanFile { path: "/etc/netplan/50-cloud-init.yaml" as NonEmptyStr, writer: WrittenByCloudInit, modified_at: "2026-05-20T03:36:40Z" as NonEmptyStr, text: srv1_netplan_cloud_init_text },
@@ -181,18 +182,18 @@ type NicBootReading {
   boot_first_entry: NonEmptyStr
   i210_kernel_name: NonEmptyStr?
   i210_pci_address: NonEmptyStr?
-  x550_port1_linked_mbps: List<Nat>
+  x550_port1_linked: List<Bandwidth>
   x550_aer_correctable: Nat
   aer_reported_to_os: Bool
   x550_tx_hang_resets: Nat
 }
 
 fn srv1_boot(first: NonEmptyStr, name: NonEmptyStr, pci: NonEmptyStr, mbps: List<Nat>, aer: Nat, reported: Bool, hangs: Nat) -> NicBootReading {
-  NicBootReading { boot_first_entry: first, i210_kernel_name: Present { value: name }, i210_pci_address: Present { value: pci }, x550_port1_linked_mbps: mbps, x550_aer_correctable: aer, aer_reported_to_os: reported, x550_tx_hang_resets: hangs }
+  NicBootReading { boot_first_entry: first, i210_kernel_name: Present { value: name }, i210_pci_address: Present { value: pci }, x550_port1_linked: map(mbps, m => link_speed_mbps(megabits: m)), x550_aer_correctable: aer, aer_reported_to_os: reported, x550_tx_hang_resets: hangs }
 }
 
 data srv1_nic_boot_readings: List<NicBootReading> = [
-  NicBootReading { boot_first_entry: "2026-10-22T21:27:47Z" as NonEmptyStr, i210_kernel_name: none, i210_pci_address: none, x550_port1_linked_mbps: [], x550_aer_correctable: 160, aer_reported_to_os: true, x550_tx_hang_resets: 0 },
+  NicBootReading { boot_first_entry: "2026-10-22T21:27:47Z" as NonEmptyStr, i210_kernel_name: none, i210_pci_address: none, x550_port1_linked: [], x550_aer_correctable: 160, aer_reported_to_os: true, x550_tx_hang_resets: 0 },
   srv1_boot(first: "2026-10-23T22:03:07Z" as NonEmptyStr, name: "enP3p5s0" as NonEmptyStr, pci: "0003:05:00.0" as NonEmptyStr, mbps: [100], aer: 0, reported: true, hangs: 0),
   srv1_boot(first: "2026-10-23T22:14:31Z" as NonEmptyStr, name: "enP3p5s0" as NonEmptyStr, pci: "0003:05:00.0" as NonEmptyStr, mbps: [100], aer: 0, reported: true, hangs: 0),
   srv1_boot(first: "2026-10-23T22:22:34Z" as NonEmptyStr, name: "enP3p5s0" as NonEmptyStr, pci: "0003:05:00.0" as NonEmptyStr, mbps: [100], aer: 0, reported: true, hangs: 0),
@@ -238,11 +239,18 @@ fn selector_missed_boots(selector: NetplanMatch, nic_mac: Eui48Address, boots: L
 
 // ── The two bets about the 10G port ──────────────────────────────────────────────────────────────
 
+// LINK SPEED IS std.measure's Bandwidth, bits per second. The kernel ("NIC Link is Up 100 Mbps") and
+// ethtool ("Speed: 1000Mb/s") print megabits per second, so a reading enters through this one
+// constructor and the scale lives here, not in field names.
+fn link_speed_mbps(megabits: Nat) -> Bandwidth {
+  bandwidth(count: megabits * 1000000)
+}
+
 // The X550's nameplate is read, not assumed: ethtool lists 10000baseT/Full among its supported and
 // advertised modes on srv1 (2026-10-25).
-data x550_nameplate_mbps: Nat = 10000
+data x550_nameplate: Bandwidth = link_speed_mbps(megabits: 10000)
 
-data no_link_mbps: Nat = 0
+data no_link: Bandwidth = bandwidth(count: 0)
 
 // WHAT THE LINK SPEEDS SAY. Port 1 linked at 100 Mb/s on every boot whose link was read from 2026-10-23
 // to 2026-10-24, and at 1000 Mb/s twice late on 2026-10-24; it never linked at its nameplate. A
@@ -250,19 +258,19 @@ data no_link_mbps: Nat = 0
 // connector, or a far end that offers no more), which no PCIe load explains; a drop under load would
 // show a link that came up at speed and then went down.
 type LinkSpeedBearing
-  = BelowNameplateOnEveryReadBoot { read_boots: Int, fastest_mbps: Nat }
+  = BelowNameplateOnEveryReadBoot { read_boots: Int, fastest: Bandwidth }
   | NameplateReachedOnSomeBoot
   | NoLinkRead
 
 fn x550_link_speed_bearing(boots: List<NicBootReading>) -> LinkSpeedBearing {
-  let read = filter(boots, b => length(b.x550_port1_linked_mbps) > 0)
-  let speeds = flat_map(read, b => b.x550_port1_linked_mbps)
+  let read = filter(boots, b => length(b.x550_port1_linked) > 0)
+  let speeds = flat_map(read, b => b.x550_port1_linked)
   if length(read) == 0 {
     NoLinkRead
-  } else if any(speeds, s => s >= x550_nameplate_mbps) {
+  } else if any(speeds, s => bandwidth_count(b: s) >= bandwidth_count(b: x550_nameplate)) {
     NameplateReachedOnSomeBoot
   } else {
-    BelowNameplateOnEveryReadBoot { read_boots: length(read), fastest_mbps: fold(speeds, init: no_link_mbps, f: (acc, s) => if s > acc { s } else { acc }) }
+    BelowNameplateOnEveryReadBoot { read_boots: length(read), fastest: fold(speeds, init: no_link, f: (acc, s) => if bandwidth_count(b: s) > bandwidth_count(b: acc) { s } else { acc }) }
   }
 }
 
