@@ -305,7 +305,8 @@ fn megarac_stale_power_off(
     task: MegaRacObserve { share: share },
   )
   return match megarac_stale_power_off_need(look: look, image_name: image_name, firmware: host.firmware, replaceable_seeded_stems: replaceable_seeded_stems) {
-    PowerOffNotNeeded { reason: r } => StalePowerOffNotNeeded { reason: r }    PowerOffForStale { stale_image: stale } => {
+    PowerOffNotNeeded { reason: r } => MegaRacStalePowerOffNotNeeded { reason: r }
+    PowerOffForStale { stale_image: stale } => {
       let control = diagnostic.ipmi.Tool.ChassisPowerControl(
         bmc_host: bmc_control_route_endpoint(route: host.route).host,
         username: account,
@@ -359,10 +360,11 @@ fn megarac_power_after_stale_power_off(
   ]
 {
   match off {
-    StalePowerOffObserved { stale_image: _, before: _ } => megarac_boot_media_chassis_power(host: host, account: account, password_file: password_file, bound: bound)
-    StalePowerOffNotNeeded { reason: _ } => before
-    StalePowerOffCommandRefused { stale_image: _, before: _ } => before
-    StalePowerOffNotObserved { stale_image: _, before: _, last: _ } => before  }
+    MegaRacStalePowerOffObserved { stale_image: _, before: _ } => megarac_boot_media_chassis_power(host: host, account: account, password_file: password_file, bound: bound)
+    MegaRacStalePowerOffNotNeeded { reason: _ } => before
+    MegaRacStalePowerOffCommandRefused { stale_image: _, before: _ } => before
+    MegaRacStalePowerOffNotObserved { stale_image: _, before: _, last: _ } => before
+  }
 }
 
 // PURE. A power-off that was attempted and not observed never admits the detach, whatever `power`

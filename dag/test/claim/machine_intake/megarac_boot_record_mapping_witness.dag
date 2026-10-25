@@ -425,7 +425,7 @@ test fn an_observed_end_look_is_a_presentation() -> Bool {
   // an ATTACH outcome, and the look classifier answers an attach arm as "this observation reached an
   // attach decision", i.e. Unread -- which is why this claim failed. a_still_served_look() is the
   // healthy look the classifier's own comment names, and it classifies as Presented.
-  match megarac_end_media_record(e: MegaRacEndMediaObserved { look: a_still_served_look() }) {
+  match megarac_end_media_record(e: MegaRacEndMediaObserved { look: a_still_served_look(), end_release: EndReleaseKeptHostOn }) {
     EndMediaObserved { look: l } => l == Presented
     _ => false
   }
@@ -703,7 +703,7 @@ fn no_param5() -> BootParam5Reading = BootParam5NotTaken { reason: "fixture: par
 fn a_full_run() -> MegaRacRunRecord {
   MegaRacRunRecord {
     census_ended: true,
-    end_media: MegaRacEndMediaObserved { look: a_still_served_look() },
+    end_media: MegaRacEndMediaObserved { look: a_still_served_look(), end_release: EndReleaseKeptHostOn },
     handoff_media: MegaRacHandoffAttempted {
       before: presented_result(), handoff: MegaRacHandoffConfirmed, after: a_still_served_look()
     },

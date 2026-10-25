@@ -581,7 +581,7 @@ fn megarac_handoff_media_record(h: MegaRacHandoff) -> HandoffMedia {
 fn megarac_end_media_record(e: MegaRacEndMedia) -> EndMedia {
   match e {
     MegaRacEndMediaNotTaken { reason: reason } => EndMediaNotTaken { reason: reason }
-    MegaRacEndMediaObserved { look: l } => EndMediaObserved { look: megarac_look_presentation(r: l) }
+    MegaRacEndMediaObserved { look: l, end_release: _ } => EndMediaObserved { look: megarac_look_presentation(r: l) }
   }
 }
 
