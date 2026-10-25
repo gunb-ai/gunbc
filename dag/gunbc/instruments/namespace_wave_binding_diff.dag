@@ -17,6 +17,7 @@ import gunbc.instruments.namespace_wave_occurrence_join { JoinDelta, ModuleEvide
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.workflow.roster_import_sweep { OneHome, OnlyCall, RosterHomeClosure, RosterHomeScope }
 import gunbc.instruments.namespace_wave_binding_shard { ShardFull, ShardBase, ShardOf, ShardMerge, ShardMalformed, ModuleResult, ShardRun, BaseKey, Merged, MergeRefused, HeadMerged, HeadMergeRefused, parse_shard_mode, shard_modules, evidence_identity, evidence_at_ranks, shard_receipt_text, shard_receipt_file, verdict_file, verdict_text, verdict_admission, base_receipt_file, base_receipt_id, base_selection_refusal, uncovered_by_base, base_census_contract, indices_below, base_receipt_text, base_receipt_refusal, base_receipt_rows, base_receipt_status, merge_head_rows, merge_results, rewritten_names, shard_owned_rewritten, wave_runs_base_worktree, wave_runs_base_census, wave_runs_head_census }
+import std.content_hash { sha256_hex_of_text }
 
 // THE NAMESPACE-WAVE BINDING DIFF: `gunbc test //gunbc/instruments:namespace-wave-binding-diff`, run by
 // a wave's author on the wave's own PR (no bystander is billed; the namespace-wave admission wall that
