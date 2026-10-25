@@ -473,16 +473,8 @@ fn probe_bundle() -> Optional<ProbeBundle> {
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
             }
-            Present { value: tree } =>
-              closure_resolve_member(
-                lm: lm,
-                roots: shared.roots,
-                member_module: probe_qn(dotted: "v2.test.probe_b"),
-                symbol_index: emit_idx,
-                index: idx,
-                active_roots: source_root_set_from_ingest(ingest: ingest),
-                type_declaration_modifiers: shared.type_declaration_modifiers
-              )
+            Present { value: _ } =>
+              closure_resolve_member(context: closure.context, member_module: probe_qn(dotted: "v2.test.probe_b"))
           }
           let emit_located = emit_closure_from_ingest_located(
             ingest: ingest,
