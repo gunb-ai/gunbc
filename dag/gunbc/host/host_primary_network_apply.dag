@@ -373,6 +373,44 @@ fn netplan_try_outcome_wire(o: NetplanTryOutcome) -> String {
   }
 }
 
+// A TRY IS SETTLED ONLY ON netplan's OWN TERMINAL LINE. Until the unit's stdout carries accepted,
+// reverted or refused, netplan may still be waiting on its stdin or running its revert, and removing
+// the /run shadows or stopping the FIFO holder under it would change what that revert does: a holder
+// stopped early hands the try an end-of-file stdin, which reverts at once rather than at its timeout.
+// So nothing is cleaned up on an unsettled try; the run reports the try undecided instead.
+type PrimaryTrySettlement
+  = TrySettled { outcome: NetplanTryOutcome }
+  | TryUnsettled
+
+fn primary_try_settlement(o: NetplanTryOutcome) -> PrimaryTrySettlement {
+  match o {
+    NetplanTryAccepted => TrySettled { outcome: o }
+    NetplanTryReverted => TrySettled { outcome: o }
+    NetplanTryRefusedNotRevertable => TrySettled { outcome: o }
+    NetplanTryOutcomePending => TryUnsettled
+  }
+}
+
+// The cleanup a settlement admits: the shadows and the holder after a terminal outcome, nothing before.
+fn primary_network_cleanup_plan(settlement: PrimaryTrySettlement, staged: List<StagedNetplanFile>) -> List<PrimaryStepArgv> {
+  match settlement {
+    TryUnsettled => []
+    TrySettled { outcome: _ } => primary_network_cleanup_steps(staged: staged)
+  }
+}
+
+// THE CONFIRMATION IS WRITTEN ONLY WHEN THE WRITE SAYS SO. A leg that ran is not a newline delivered:
+// timeout's 124, dd's own failure or sudo's refusal each mean the try never heard it.
+type PrimaryConfirmWrite
+  = ConfirmWritten
+  | ConfirmWriteFailed { cause: NonEmptyStr }
+
+fn primary_confirm_write(exit_code: Int, stderr: String) -> PrimaryConfirmWrite {
+  if exit_code == 0 { ConfirmWritten } else {
+    ConfirmWriteFailed { cause: join(["the confirmation write exited ", to_string(exit_code), " ", trim(s: stderr)], "") as NonEmptyStr }
+  }
+}
+
 fn primary_network_cleanup_steps(staged: List<StagedNetplanFile>) -> List<PrimaryStepArgv> {
   [
     PrimaryStepArgv { what: "remove /run/netplan shadows", argv: concat(["rm", "-f", "--"], map(staged, f => netplan_run_path(name: f.name as String))) },
@@ -384,7 +422,8 @@ fn primary_network_cleanup_steps(staged: List<StagedNetplanFile>) -> List<Primar
 
 type PrimaryApplyRollback
   = RollbackNothingLaunched
-  | RollbackByTryTimeout { outcome: NetplanTryOutcome, cleanup: String? }
+  | RollbackSettled { outcome: NetplanTryOutcome, cleanup: String? }
+  | RollbackUndecided
 
 type PrimaryNetworkApplyOutcome
   = PrimaryApplyObservedOnly { plan: UpsertDecision<PrimaryNetplanSwap> }
@@ -418,7 +457,8 @@ fn primary_apply_outcome_wire(o: PrimaryNetworkApplyOutcome) -> String {
     PrimaryApplyStopped { step: s, cause: c, rollback: r } =>
       join(["STOPPED step=", s as String, " ", c as String, " rollback=", match r {
         RollbackNothingLaunched => "nothing-launched"
-        RollbackByTryTimeout { outcome: t, cleanup: cl } => join(["try-", netplan_try_outcome_wire(o: t), " cleanup=", cleanup_wire(c: cl)], "")
+        RollbackSettled { outcome: t, cleanup: cl } => join(["try-", netplan_try_outcome_wire(o: t), " cleanup=", cleanup_wire(c: cl)], "")
+        RollbackUndecided => "UNDECIDED: netplan's own outcome was never read; the /run shadows and the stdin holder are left in place so its timeout and revert run untouched, and the target must be read before another apply"
       }], "")
     PrimaryApplyConfirmed { outcome: t, cleanup: cl, after: a } =>
       join(["confirmed try=", netplan_try_outcome_wire(o: t), " cleanup=", cleanup_wire(c: cl), " after=", primary_network_plan_wire(p: a)], "")
@@ -430,15 +470,30 @@ fn stopped_before_launch(step: String, cause: String) -> PrimaryNetworkApplyOutc
 }
 
 // A try that will not be confirmed is left to its own timeout; the verdict is read once the old
-// network carries the legs again, and the shadows are removed.
+// network carries the legs again, and the shadows are removed only once that verdict is terminal.
+type PrimaryTryEnd
+  = TryEndSettled { outcome: NetplanTryOutcome, cleanup: String? }
+  | TryEndUndecided
+
+fn settle_try(subject: FleetHostFileSubject, context: FleetSshExecutionContext, staged: List<StagedNetplanFile>) -> PrimaryTryEnd
+{
+  let settlement = primary_try_settlement(o: read_try_outcome(subject: subject, context: context))
+  match settlement {
+    TryUnsettled => TryEndUndecided
+    TrySettled { outcome: o } => TryEndSettled { outcome: o, cleanup: primary_steps(subject: subject, context: context, steps: primary_network_cleanup_plan(settlement: settlement, staged: staged)) }
+  }
+}
+
+fn rollback_of_try_end(e: PrimaryTryEnd) -> PrimaryApplyRollback {
+  match e {
+    TryEndUndecided => RollbackUndecided
+    TryEndSettled { outcome: o, cleanup: c } => RollbackSettled { outcome: o, cleanup: c }
+  }
+}
+
 fn stopped_in_try(subject: FleetHostFileSubject, context: FleetSshExecutionContext, staged: List<StagedNetplanFile>, step: String, cause: String) -> PrimaryNetworkApplyOutcome
 {
-  let outcome = read_try_outcome(subject: subject, context: context)
-  PrimaryApplyStopped {
-    step: step as NonEmptyStr,
-    cause: cause as NonEmptyStr,
-    rollback: RollbackByTryTimeout { outcome: outcome, cleanup: primary_steps(subject: subject, context: context, steps: primary_network_cleanup_steps(staged: staged)) },
-  }
+  PrimaryApplyStopped { step: step as NonEmptyStr, cause: cause as NonEmptyStr, rollback: rollback_of_try_end(e: settle_try(subject: subject, context: context, staged: staged)) }
 }
 
 // The owned file is written first, so a removal that fails leaves extra files beside it, never none.
@@ -465,11 +520,16 @@ fn persist_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecution
           ) {
             TypedRemoteFileStepArgvRefused => stopped_in_try(subject: subject, context: context, staged: staged, step: "confirm", cause: "the confirmation argv is not portable")
             TypedRemoteFileStepLegRefused { cause: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "confirm", cause: why as String)
-            TypedRemoteFileStepRan { result: _ } => {
-              let outcome = read_try_outcome(subject: subject, context: context)
-              let cleanup = primary_steps(subject: subject, context: context, steps: primary_network_cleanup_steps(staged: staged))
-              PrimaryApplyConfirmed { outcome: outcome, cleanup: cleanup, after: plan_primary_network(d: d, observation: observe_primary_network(subject: subject, context: context, d: d)) }
-            }
+            TypedRemoteFileStepRan { result: written } =>
+              match primary_confirm_write(exit_code: written.exit_code, stderr: written.stderr) {
+                ConfirmWriteFailed { cause: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "confirm", cause: why as String)
+                ConfirmWritten =>
+                  match settle_try(subject: subject, context: context, staged: staged) {
+                    TryEndUndecided => PrimaryApplyStopped { step: "verdict" as NonEmptyStr, cause: "the confirmation was written but netplan's outcome was never read" as NonEmptyStr, rollback: RollbackUndecided }
+                    TryEndSettled { outcome: o, cleanup: c } =>
+                      PrimaryApplyConfirmed { outcome: o, cleanup: c, after: plan_primary_network(d: d, observation: observe_primary_network(subject: subject, context: context, d: d)) }
+                  }
+              }
           }
       }
   }

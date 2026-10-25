@@ -34,8 +34,15 @@ import gunbc.host.host_primary_network_observed {
 // srv1_nic_boot_readings), and netplan's match has no PCI-path key, so the MAC is the only selector
 // that names the same port on every boot. The type admits no other.
 //
-// THE AUTHORITY OWNS EVERY *.yaml UNDER /etc/netplan. netplan merges every file there (extdeps.netplan.netplan
-// netplan_file_is_applied), so a file the authority does not declare still decides the network:
+// ON A HOST WITH A ROW, THE AUTHORITY OWNS EVERY *.yaml AT THE TOP OF /etc/netplan, AND ON NO OTHER HOST.
+// The owned population is exactly: the hosts in host_primary_network_rows (today srv1 alone), the
+// *.yaml names `ls -1 -A /etc/netplan` lists there (not /lib/netplan, not /run/netplan outside the
+// apply's own staged shadows, no subdirectory), and cloud-init's network switch below. A host without
+// a row is outside it, so the Spark hosts' /etc/netplan -- the fabric rail's 90-gunbc-fabric.yaml and
+// NetworkManager's 90-NM-<uuid>.yaml Wi-Fi profiles -- is not owned, and an apply cannot be pointed at
+// one (primary_network_row_for answers PrimaryRowUnmodeled). On a host it owns, netplan merges every
+// file there (extdeps.netplan.netplan netplan_file_is_applied), so a file the row does not declare
+// still decides the network:
 // srv1's install-time 50-cloud-init.yaml still configures the dead X550 port, which is why
 // systemd-networkd-wait-online failed at its last boot. A file outside the population is drift and the
 // apply removes it. cloud-init would regenerate that file if its marker were removed, so the authority
