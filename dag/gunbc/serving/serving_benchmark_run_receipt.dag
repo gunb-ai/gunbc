@@ -67,8 +67,16 @@ type ServingArtifact {
   digest: Sha256Digest
 }
 
+// WHAT THE HOST SAYS ITS CPU IS, as it says it. x86 Linux prints a model name; arm64 Linux prints
+// only the MIDR_EL1 fields (implementer, variant, part, revision; arch/arm64/kernel/cpuinfo.c), and a
+// name such as Neoverse-N1 is a table lookup over the part number that no authority here owns yet.
+// So the reading keeps the fields rather than a name this repository would have to coin.
+type CpuModelReading
+  = CpuModelNamed { name: NonEmptyStr }
+  | CpuArmMidr { implementer: Nat, variant: Nat, part: Nat, revision: Nat }
+
 type ObservedCpu {
-  model: NonEmptyStr
+  model: CpuModelReading
   sockets: Nat
   cores: CpuCoreCount
   threads: HardwareThreadCount
