@@ -1,6 +1,19 @@
 module v2.test.claim.std.named_child_lookup
 
-import v2.std.node { core_edge, node_same_occurrence, NotADeclaration }
+import v2.std.node { Atom, Authored, ComputationNode, Conj, Disj, Edge, MatchArmBodyEdge, MatchArmPatternEdge, Node, NotADeclaration, Positional, Symbol, Transform, TypeNode, core_edge, node_same_occurrence }
+import v2.std.node_query {
+  NamedChildAmbiguous,
+  NamedChildFound,
+  NamedChildLookup,
+  NamedChildMissing,
+  core_child_lookup,
+  find_named_child,
+  labeled_child_lookup,
+  named_child_lookup
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
