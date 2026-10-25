@@ -334,8 +334,14 @@ fn falsifier_expected_identities() -> List<String> {
   ]
 }
 
+// One row is one line: the reader joins rows by line, so an observed value that spans lines (nginx -t's
+// two lines, a 503 page) is written with its line breaks as the two characters \n.
+fn one_line(s: String) -> String {
+  join(split(s: s, delimiter: "\n"), "\\n")
+}
+
 fn case_row(c: FalsifierCase) -> String {
-  join(["case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", c.observed, "\n"], "")
+  join(["case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", one_line(s: c.observed), "\n"], "")
 }
 
 fn native_claim_report() -> NativeClaimReport {
