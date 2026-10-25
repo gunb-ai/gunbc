@@ -854,8 +854,8 @@ fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
 // (possibly zero-width) is checked with every label and head edit by the one predicate, so a zero-width label at the
 // import's offset refuses as coincident instead of slipping past a separate check.
 fn roster_import_and_labels_disjoint(start: Int, end: Int, text: String, labels: List<RosterLabelEdit>) -> Optional<RosterRefusalReason> {
-  let import_edit = RosterLabelEdit { start: start, end: end, from: "", to: text }
-  match roster_label_edits_disjoint(edits: list_sort_by_key(xs: list_snoc_item(xs: labels, item: import_edit), key: roster_label_edit_order_key, order: int_total_order())) {
+  let import_edit = RosterLabelEdit { start: start, end: end, from: "", to: text, relocation: Absent }
+  match roster_label_edits_disjoint(edits: list_sort_by_key(xs: list_snoc_item(xs: roster_expand_relocations(edits: labels), item: import_edit), key: roster_label_edit_order_key, order: int_total_order())) {
     LabelsRenameRefused { reason: r } => Present { value: r }
     LabelsSelected { edits: _ } => Absent
     LabelsAmbiguous => Present { value: RefusalLabelSitesAmbiguous }
