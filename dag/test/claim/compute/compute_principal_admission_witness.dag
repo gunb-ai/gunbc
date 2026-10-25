@@ -57,14 +57,14 @@ import gunbc.owned_directory {
   owned_directory_path, owned_directory_member, owned_directory_mode, owned_directory_owner,
 }
 import gunbc.compute.work_provider_local {
-  ProvideResult, compute_store, compute_principal_refusal,
-  compute_provide_admitted_as, compute_unobservable_principal,
+  ProvideResult, ComputeRunningPrincipal, ObservedPrincipal, UnobservablePrincipal,
+  compute_store, compute_principal_refusal, compute_provide_admitted_as,
 }
 import gunbc.compute.compute_store_owned_directories { compute_store_owned_directories }
 import gunbc.compute.attempt_lifecycle { AttemptOwner, DirectInvocation }
 import gunbc.compute.work_request {
   WorkRefusedByInfrastructure, WorkInfrastructureRefusal,
-  ComputePrincipalNotServiceUser, work_default_build, work_refusal_detail,
+  ComputePrincipalNotServiceUser, ComputePrincipalUnobserved, work_default_build, work_refusal_detail,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name }
 import extdeps.access.posix { file_mode_octal }
@@ -202,7 +202,7 @@ test fn the_lab_store_is_demanded_owner_only_and_the_attempt_group_gets_nothing(
 test fn the_dedicated_worker_is_refused_by_principal_before_shared_state() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let refused = compute_provide_admitted_as(
-    instance: lab, principal: worker_account(), owner: witness_owner(),
+    instance: lab, principal: ObservedPrincipal { name: worker_account() }, owner: witness_owner(),
     commit: witness_commit(), op: work_default_build(),
   )
   (
@@ -216,16 +216,22 @@ test fn the_dedicated_worker_is_refused_by_principal_before_shared_state() -> Bo
           ].all(phrase => string_contains(s: work_refusal_detail(r: ComputePrincipalNotServiceUser { instance_id: instance_id, principal: principal }), pattern: phrase))
       Present { value: _ } => false
     }
-    // THE UNOBSERVABLE ACCOUNT REFUSES TOO -- fail-closed: a process whose account cannot be read is
-    // not the service user either, so it never reaches the store. Making the stand-in pass, or making
-    // it fall through to the toolchain arm, goes red here.
-    && match compute_principal_refusal(instance: lab, principal: compute_unobservable_principal) {
-      Present { value: ComputePrincipalNotServiceUser { instance_id: _, principal: _ } } => true
+    // AN UNREADABLE ACCOUNT REFUSES TOO, AND FOR ITS OWN REASON -- fail-closed: a process whose
+    // account the host will not name is not provably the service user, so it never reaches the store.
+    // It must NOT come back as ComputePrincipalNotServiceUser naming a stand-in account, because no
+    // such account is running: the cause has to be that the principal could not be observed, carrying
+    // the observation detail. Collapsing the two arms (a sentinel username, or an unobservable
+    // principal falling through to the toolchain arm) goes red here.
+    && match compute_principal_refusal(instance: lab, principal: UnobservablePrincipal { detail: "id -un exited nonzero" }) {
+      Present { value: ComputePrincipalUnobserved { instance_id: instance_id, detail: detail } } =>
+        instance_id == (lab.instance_id as String)
+          && string_contains(s: detail, pattern: "id -un")
+          && string_contains(s: work_refusal_detail(r: ComputePrincipalUnobserved { instance_id: instance_id, detail: detail }), pattern: "could not be observed")
       _ => false
     }
     // AND A THIRD ACCOUNT -- neither the worker nor the service user -- is refused: the gate is the
     // instance's owner, not "not the worker".
-    && match compute_principal_refusal(instance: lab, principal: "some-other-account") {
+    && match compute_principal_refusal(instance: lab, principal: ObservedPrincipal { name: "some-other-account" }) {
       Present { value: _ } => true
       Absent => false
     }
@@ -250,7 +256,7 @@ test fn an_absent_store_is_not_the_workers_exclusion_anymore() -> Bool {
     }
     // Yet the worker is refused by WHO IT IS, not by the missing store.
     && match provide_result_cause(r: compute_provide_admitted_as(
-      instance: store_less, principal: worker_account(), owner: witness_owner(),
+      instance: store_less, principal: ObservedPrincipal { name: worker_account() }, owner: witness_owner(),
       commit: witness_commit(), op: work_default_build(),
     )) {
       Absent => false
@@ -270,7 +276,7 @@ test fn the_service_users_path_reaches_the_store() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   (
     // The gate answers nothing for the instance's own service user -- no refusal of any kind.
-    match compute_principal_refusal(instance: lab, principal: service_account(instance: lab)) {
+    match compute_principal_refusal(instance: lab, principal: ObservedPrincipal { name: service_account(instance: lab) }) {
       Absent => true
       Present { value: _ } => false
     }
@@ -286,7 +292,7 @@ test fn the_service_users_path_reaches_the_store() -> Bool {
     // A gate that refused prod's own dispatches goes red here.
     && match compute_principal_refusal(
       instance: srv1_live_dashboard_instance(),
-      principal: dashboard_instance_worker_user(instance: srv1_live_dashboard_instance()) as String,
+      principal: ObservedPrincipal { name: dashboard_instance_worker_user(instance: srv1_live_dashboard_instance()) as String },
     ) {
       Absent => true
       Present { value: _ } => false

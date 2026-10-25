@@ -2828,36 +2828,44 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 // A refusal whose principal is not the service user is refused for EVERY instance, including
 // macbook-local and srv2-deploy: the rule is about the principal, not about the lab.
 //
-// AN UNOBSERVABLE ACCOUNT REFUSES. If `id -un` cannot name the running account the request is refused
-// with the unobservable stand-in: DESIGN 5 fails closed, and admitting on an unread principal is the
-// shape this gate exists to remove.
-fn compute_principal_refusal(instance: HostDashboardInstance, principal: String) -> WorkInfrastructureRefusal? {
-  if principal == (instance.directory_owner.user as String) {
-    none
-  } else {
-    Present {
-      value: ComputePrincipalNotServiceUser {
-        instance_id: instance.instance_id as String,
-        principal: principal,
-      }
-    }
+// THE RUNNING ACCOUNT AS THE ADMISSION GATE SEES IT: either the host named it, or it could not. One
+// string cannot carry both, because the refusal that follows is a different statement about the world.
+type ComputeRunningPrincipal =
+  | ObservedPrincipal { name: String }
+  | UnobservablePrincipal { detail: String }
+
+// A PRINCIPAL THAT CANNOT BE OBSERVED IS NOT A SERVICE USER, AND IS REFUSED FOR THAT REASON. The
+// running account arrives as a sum, so the two possible answers stay two possible causes: an account
+// that is READABLE and is not the instance's service user gets ComputePrincipalNotServiceUser naming
+// it; an account that CANNOT be read gets ComputePrincipalUnobserved carrying why, and NOT a stand-in
+// username in the first arm (naming an account that nobody is would assert something false about who
+// is running, and would leave the gate failing closed only because no instance happens to be owned by
+// the sentinel -- DESIGN 5 wants the degradation typed and located, 3 wants a different contract to
+// carry a different name). Both arms refuse before the toolchain observation, the store, the ledger
+// or the compute root: an unprovable identity never reaches shared state.
+fn compute_principal_refusal(instance: HostDashboardInstance, principal: ComputeRunningPrincipal) -> WorkInfrastructureRefusal? {
+  let service_user = instance.directory_owner.user as String
+  match principal {
+    UnobservablePrincipal { detail } => Present { value: ComputePrincipalUnobserved { instance_id: instance.instance_id as String, detail: detail } }
+    ObservedPrincipal { name } => if name == service_user { none } else { Present { value: ComputePrincipalNotServiceUser { instance_id: instance.instance_id as String, principal: name } } }
   }
 }
 
-// THE RUNNING ACCOUNT, read through the observation the corpus already has. Empty output is unreadable,
-// in the same shape as the fabric readback that first used this observation.
-data compute_unobservable_principal: String = "unobserved"
-
-fn compute_running_principal() -> String {
+// THE RUNNING ACCOUNT, read through the observation the corpus already has -- and typed with the
+// distinction that observation can fail: shell.Id.UserName is the same one
+// gunbc.fabric.fabric_source_snapshot observe_provider_principal reads, and an empty stdout is
+// unreadable in the same shape that readback treats it. Nothing here is a uid literal; the account
+// name, when there is one, is what the host reports about THIS process.
+fn compute_running_principal() -> ComputeRunningPrincipal {
   let named = shell.Id.UserName()
   if !named.success {
-    compute_unobservable_principal
+    UnobservablePrincipal { detail: join(["`id -un` exited nonzero; its stderr: ", named.stderr], "") }
   } else {
     let trimmed = trim(s: named.stdout)
     if trimmed == "" {
-      compute_unobservable_principal
+      UnobservablePrincipal { detail: "`id -un` exited 0 and named no effective user name" }
     } else {
-      trimmed
+      ObservedPrincipal { name: trimmed }
     }
   }
 }
@@ -2883,8 +2891,10 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
 // test.claim.compute.compute_principal_admission_witness an_absent_store_is_not_the_workers_exclusion_anymore,
 // whose RED control removes the gate arm and expects the refusal's cause to change on a STILL
 // store-less instance: a refusal that is only about the missing store would survive that removal,
-// and this one does not.
-fn compute_provide_admitted_as(instance: HostDashboardInstance, principal: String, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
+// and this one does not. An account the observation cannot name is refused too, with its OWN cause
+// (ComputePrincipalUnobserved, carrying the observation detail) -- never as a stand-in username in
+// ComputePrincipalNotServiceUser, which would state something false about who is running.
+fn compute_provide_admitted_as(instance: HostDashboardInstance, principal: ComputeRunningPrincipal, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
   match compute_principal_refusal(instance: instance, principal: principal) {
     Present { value: refusal } =>
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: refusal }, subject: ExactTree { tree: compute_null_tree() }, op: op)

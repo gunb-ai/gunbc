@@ -266,6 +266,16 @@ type WorkInfrastructureRefusal
 // The refusal's readable text is its own sentence in work_refusal_detail below, in the same shape
 // as every other cause here: what was refused, of which instance, and the remedy.
   | ComputePrincipalNotServiceUser { instance_id: String, principal: String }
+  // The OTHER half of the admission decision, and deliberately a different arm rather than a
+  // sentinel username in the arm above. When the running account CANNOT be observed, there is no
+  // principal to name, and naming one anyway ("unobserved" as if it were an account) would state
+  // something false about who is running: the gate is then failing for a reason its own text
+  // misreports, and it closes only because no instance is owned by an account nobody is named.
+  // DESIGN §5 wants every degradation typed and located: THIS refusal's cause is that the account
+  // could not be read, carried with the observation detail, and it refuses too -- an unprovable
+  // identity never gets near the materialization store, the host capacity ledger or the compute
+  // root. §3: a materially different contract gets a materially different name.
+  | ComputePrincipalUnobserved { instance_id: String, detail: String }
   | ToolchainUnobserved { detail: String }
   | DependencyNotSucceeded { dependency_identity: String, ending: String, dependency_outcome: String }
   | SubjectUnresolved { detail: String }
