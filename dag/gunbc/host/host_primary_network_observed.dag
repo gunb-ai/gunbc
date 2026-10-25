@@ -2,7 +2,7 @@ module gunbc.host.host_primary_network_observed
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
-import std.measure { Bandwidth, bandwidth, bandwidth_count }
+import std.measure { Bandwidth, bandwidth, bandwidth_count, ByteSize, byte_size }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import extdeps.network.mac { Eui48Address, mac_address, mac_addresses_are_equal }
@@ -71,7 +71,7 @@ type HostPrimaryNetworkReceipt {
   netplan_files: List<ObservedNetplanFile>
   renderer: NetplanRenderer
   lease: ObservedDhcpLease
-  mtu: Nat
+  mtu: ByteSize
   cloud_init: CloudInitDisposition
   wait_online_failed_this_boot: Bool
 }
@@ -109,7 +109,7 @@ data srv1_primary_network_receipt_2026_10_25: HostPrimaryNetworkReceipt = HostPr
     route_metric: 200,
     dns: [ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)],
   },
-  mtu: 1500,
+  mtu: byte_size(count: 1500),
   cloud_init: CloudInitDisabledByMarkerFile { path: cloud_init_disabled_marker_path, reason: ubuntu_live_installer_disable_marker_text },
   wait_online_failed_this_boot: true,
 }

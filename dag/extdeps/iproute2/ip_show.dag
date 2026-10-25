@@ -1,6 +1,8 @@
 module extdeps.iproute2.ip_show
 
 import std.types { String, NonEmptyStr, List, Int, Bool }
+import std.measure { ByteSize, byte_size }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -95,7 +97,7 @@ fn ip_record_device_name(words: List<String>) -> String? {
 type IpLinkRecord {
   name: NonEmptyStr
   carrier: Bool
-  mtu: Int
+  mtu: ByteSize
   ether: String?
 }
 
@@ -111,8 +113,12 @@ fn ip_link_record(words: List<String>) -> IpLinkRecord? {
             Present { value: m } =>
               match parse_int(s: m) {
                 Absent => none
-                Present { value: mtu } =>
-                  Present { value: IpLinkRecord { name: n as NonEmptyStr, carrier: string_contains(s: flags, pattern: "LOWER_UP"), mtu: mtu, ether: ip_word_after(words: words, keyword: "link/ether") } }
+                Present { value: i } =>
+                  match checked_int_to_nat(n: i) {
+                    Absent => none
+                    Present { value: mtu } =>
+                      Present { value: IpLinkRecord { name: n as NonEmptyStr, carrier: string_contains(s: flags, pattern: "LOWER_UP"), mtu: byte_size(count: mtu), ether: ip_word_after(words: words, keyword: "link/ether") } }
+                  }
               }
           }
       }

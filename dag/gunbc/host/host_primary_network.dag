@@ -4,11 +4,13 @@ import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import std.algebra { trim }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, upsert_decision_label }
 import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_intent_network { host_lan_address }
 import extdeps.network.mac { Eui48Address, render_mac_address, parse_mac_address, MacParsed, MacParseFailed, mac_addresses_are_equal }
 import extdeps.netplan.netplan {
   netplan_config_dir, NetplanRenderer, NetplanDocument, NetplanEthernet, MatchByMacAddress, render_netplan_document,
+  NetplanDocumentRendering, NetplanDocumentRendered, NetplanDocumentRefused, netplan_document_rendering_wire,
 }
 import extdeps.cloud_init.cloud_init { cloud_init_network_config_disabled_text }
 import extdeps.iproute2.ip_show {
@@ -66,7 +68,7 @@ type HostPrimaryNetworkDesired {
   nic: Eui48Address
   renderer: NetplanRenderer
   addressing: PrimaryAddressing
-  mtu: Nat
+  mtu: ByteSize
   adopted: OperatorHandNetworkChange
 }
 
@@ -84,16 +86,32 @@ data srv1_primary_network_desired: HostPrimaryNetworkDesired = HostPrimaryNetwor
 
 data host_primary_network_rows: List<HostPrimaryNetworkDesired> = [srv1_primary_network_desired]
 
+// A DECLARED ROW CARRIES ITS EMITTED DOCUMENT, so every consumer writes and compares the same bytes
+// and none of them can reach a row whose document the YAML emitter refused.
+type PrimaryNetworkRow {
+  desired: HostPrimaryNetworkDesired
+  netplan_text: String
+}
+
 // A HOST WITHOUT A ROW SAYS WHY. srv2 was moved by hand like srv1 but not read, so its row waits on
 // that read instead of being authored from srv1's shape.
 type PrimaryNetworkRowStanding
-  = PrimaryRowDeclared { desired: HostPrimaryNetworkDesired }
+  = PrimaryRowDeclared { row: PrimaryNetworkRow }
+  | PrimaryRowRenderRefused { host: HostIdentity, cause: NonEmptyStr }
   | PrimaryRowAwaitingRead { change: OperatorHandNetworkChange, read_obligation: NonEmptyStr }
   | PrimaryRowUnmodeled { host: HostIdentity }
 
+fn primary_network_row_of(d: HostPrimaryNetworkDesired) -> PrimaryNetworkRowStanding {
+  match primary_network_netplan_rendering(d: d) {
+    NetplanDocumentRendered { text: t } => PrimaryRowDeclared { row: PrimaryNetworkRow { desired: d, netplan_text: t } }
+    NetplanDocumentRefused { path: p, reason: why } =>
+      PrimaryRowRenderRefused { host: d.host, cause: join(["the row's netplan document was refused at ", p, ": ", why], "") as NonEmptyStr }
+  }
+}
+
 fn primary_network_row_for(host: HostIdentity) -> PrimaryNetworkRowStanding {
   match first(filter(host_primary_network_rows, r => host_identity_eq(a: r.host, b: host))) {
-    Present { value: d } => PrimaryRowDeclared { desired: d }
+    Present { value: d } => primary_network_row_of(d: d)
     Absent =>
       match hand_network_change_for(host: host) {
         Absent => PrimaryRowUnmodeled { host: host }
@@ -145,7 +163,7 @@ fn primary_network_netplan_document(d: HostPrimaryNetworkDesired) -> NetplanDocu
   }
 }
 
-fn primary_network_netplan_text(d: HostPrimaryNetworkDesired) -> String {
+fn primary_network_netplan_rendering(d: HostPrimaryNetworkDesired) -> NetplanDocumentRendering {
   render_netplan_document(d: primary_network_netplan_document(d: d))
 }
 
@@ -161,11 +179,11 @@ fn primary_network_netplan_population(d: HostPrimaryNetworkDesired) -> List<NonE
 
 // The owned file as the host-file core compares it: root-only, never world-readable (netplan warns
 // on a readable file because one may carry Wi-Fi keys).
-fn primary_network_netplan_file(d: HostPrimaryNetworkDesired) -> FleetHostFileDesired {
+fn primary_network_netplan_file(r: PrimaryNetworkRow) -> FleetHostFileDesired {
   FleetHostFileDesired {
     subject: "primary-network-netplan" as NonEmptyStr,
     path: primary_network_netplan_path(),
-    content: primary_network_netplan_text(d: d),
+    content: r.netplan_text,
     mode: RemoteFileModeOwnerReadWrite,
     validation: NoValidation,
   }
@@ -205,7 +223,7 @@ type PrimaryEffectiveVerdict
   | PrimaryUplinkOnAnotherDevice { device: NonEmptyStr, default_device: NonEmptyStr }
   | PrimaryNoDefaultRoute
   | PrimaryAddressDiverges { device: NonEmptyStr, held: List<String>, expected: String }
-  | PrimaryMtuDiverges { device: NonEmptyStr, held: Int }
+  | PrimaryMtuDiverges { device: NonEmptyStr, held: ByteSize }
   | PrimaryRouteMetricDiverges { held: Int? }
   | PrimaryEffectiveUnjudged { cause: NonEmptyStr }
 
@@ -242,7 +260,7 @@ fn primary_effective_verdict(d: HostPrimaryNetworkDesired, reads: PrimaryNetwork
         Absent => PrimaryNicNotPresent
         Present { value: link } =>
           if !link.carrier { PrimaryNicNoCarrier { device: link.name } }
-          else if link.mtu != d.mtu { PrimaryMtuDiverges { device: link.name, held: link.mtu } }
+          else if byte_size_count(b: link.mtu) != byte_size_count(b: d.mtu) { PrimaryMtuDiverges { device: link.name, held: link.mtu } }
           else {
             let held = map(filter(addrs, a => (a.name as String) == (link.name as String)), a => a.cidr)
             let expected = lan as String
@@ -295,7 +313,7 @@ fn primary_effective_refusal(v: PrimaryEffectiveVerdict) -> NonEmptyStr? {
     PrimaryUplinkOnAnotherDevice { device: dv, default_device: o } => Present { value: join(["the default route leaves by ", o as String, ", not the row's NIC ", dv as String, "; moving the uplink is not this row's change"], "") as NonEmptyStr }
     PrimaryNoDefaultRoute => Present { value: "the host has no IPv4 default route" as NonEmptyStr }
     PrimaryAddressDiverges { device: dv, held: h, expected: e } => Present { value: join([dv as String, " holds [", join(h, ","), "], not the fleet's recorded ", e], "") as NonEmptyStr }
-    PrimaryMtuDiverges { device: dv, held: m } => Present { value: join([dv as String, " runs mtu ", to_string(m)], "") as NonEmptyStr }
+    PrimaryMtuDiverges { device: dv, held: m } => Present { value: join([dv as String, " runs mtu ", to_string(byte_size_count(b: m))], "") as NonEmptyStr }
     PrimaryRouteMetricDiverges { held: m } => Present { value: join(["the default route's metric is ", match m { Absent => "unset"  Present { value: v } => to_string(v) }], "") as NonEmptyStr }
     PrimaryEffectiveUnjudged { cause: c } => Present { value: c }
   }
