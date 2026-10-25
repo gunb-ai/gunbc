@@ -54,9 +54,11 @@ type ProfileStoreReading
   = ProfileStoreReady { store: ProfileStore }
   | ProfileStoreUnready { detail: String }
 
-fn profile_store_listing_at(root: String) -> FilesystemListingObservation {
-  let listed = Filesystem.List(path: root)
-  filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error)
+// The store's own listing, over the root it was minted with. It takes the sealed record, never a root: the
+// mint lists its derived directory itself, so no caller-chosen directory reaches a listing of this store.
+fn profile_store_listing(store: ProfileStore) -> FilesystemListingObservation {
+  let listed = Filesystem.List(path: store.root as String)
+  filesystem_listing_observation(directory: store.root as String, success: listed.success, entries: listed.entries, error: listed.error)
 }
 
 // ── The store's outcomes and operations ──────────────────────────────────────────────────────
@@ -81,7 +83,7 @@ type ProfileListedEntryReading
   | ProfileListedEntryUnreadable { error: String }
 
 fn profile_store_list(store: ProfileStore) -> ProfileStoreEntries {
-  match profile_store_listing_at(root: store.root as String) {
+  match profile_store_listing(store: store) {
     FilesystemDirectoryListed(listing) => ProfileStoreEntriesListed { entries: filesystem_listing_entry_names(listing: listing) }
     FilesystemDirectoryListingRefused { directory: _, error: e } => ProfileStoreEntriesRefused { reason: e }
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => ProfileStoreEntriesRefused { reason: c }
@@ -96,7 +98,7 @@ fn profile_store_read_record(store: ProfileStore, digest_hex: String) -> Profile
       let path = join([store.root as String, "/", name], "")
       let read = Filesystem.Read(path: path)
       match filesystem_file_observation(
-        listing: profile_store_listing_at(root: store.root as String),
+        listing: profile_store_listing(store: store),
         name: name,
         path: path,
         read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
@@ -143,7 +145,8 @@ fn profile_store_read_listed(store: ProfileStore, entry: String) -> ProfileListe
 // directory is listed, and only a listed directory yields a store.
 fn profile_store(instance: HostDashboardInstance) -> ProfileStoreReading {
   let root = profile_store_slots_path(instance: instance)
-  match profile_store_listing_at(root: root as String) {
+  let listed = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => ProfileStoreUnready { detail: join(["the profile store's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => ProfileStoreUnready { detail: join(["the profile store's directory could not be listed: ", e], "") }
     FilesystemDirectoryListed(_) => ProfileStoreReady { store: ProfileStore { instance: instance.instance_id, root: root as String as NonEmptyStr } }

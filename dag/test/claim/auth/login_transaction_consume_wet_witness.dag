@@ -7,6 +7,7 @@ import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
 import gunbc.auth.auth_store_key { auth_store_key_of }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.auth.login_transaction_store_root {
   LoginTransactionStore, LoginTransactionStoreReady, LoginTransactionStoreUnready, login_transaction_store, login_transaction_store_slots_path, login_transaction_store_consume,
   LoginTransactionConsumeWon, LoginTransactionConsumeAlreadyWon, LoginTransactionConsumeRefused,
@@ -28,35 +29,39 @@ fn consume_instance(directory: String) -> HostDashboardInstance {
     serve_function: "unused", listen_port: 18745, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
 }
 
-fn transactions_at(directory: String) -> LoginTransactionStore? {
+// The store the claims run against, minted the production way. A mint that refuses is the claim's own failure,
+// with its detail, never an empty store the business assertions below could read (stern-ram-763, 2026-10-25).
+type ConsumeStoreAt = ConsumeStoreMinted { store: LoginTransactionStore } | ConsumeStoreRefused { reason: String }
+
+fn transactions_at(directory: String) -> ConsumeStoreAt {
   let instance = consume_instance(directory: directory)
   let made = shell.Mkdir.Parents(path: login_transaction_store_slots_path(instance: instance))
-  if !made.success { none } else {
+  if !made.success { ConsumeStoreRefused { reason: "the login transaction directory could not be created" } } else {
     match login_transaction_store(instance: instance) {
-      LoginTransactionStoreReady { store: s } => Present { value: s }
-      LoginTransactionStoreUnready { detail: _ } => none
+      LoginTransactionStoreReady { store: s } => ConsumeStoreMinted { store: s }
+      LoginTransactionStoreUnready { detail: d } => ConsumeStoreRefused { reason: join(["the login transaction store mint refused over the fixture tree: ", d], "") }
     }
   }
 }
 
-test fn transaction_consume_has_one_winner_over_real_files() -> Bool {
+test fn transaction_consume_has_one_winner_over_real_files() -> ProcessExit {
   let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
-  if directory == "" { false } else {
+  if directory == "" { exit_failure(reason: "the fixture directory could not be created") } else {
     match transactions_at(directory: directory) {
-      Absent => false
-      Present { value: store } => {
+      ConsumeStoreRefused { reason: r } => exit_failure(reason: r)
+      ConsumeStoreMinted { store: store } => {
         let transaction = browser_transaction()
         match login_transaction_store_save(store: store, transaction: transaction) {
           LoginTransactionSaved { state: _ } => match login_transaction_store_delete(store: store, state: transaction.state) {
             LoginTransactionDeleted { state: _ } => match login_transaction_store_delete(store: store, state: transaction.state) {
-              LoginTransactionDeleted { state: _ } => false
-              LoginTransactionNothingToDelete { state: _ } => true
-              LoginTransactionDeleteRefused { state: _, detail: _ } => false
+              LoginTransactionDeleted { state: _ } => exit_failure(reason: "a second consume of one transaction also deleted it")
+              LoginTransactionNothingToDelete { state: _ } => ExitSuccess
+              LoginTransactionDeleteRefused { state: _, detail: d } => exit_failure(reason: join(["the second consume refused instead of answering nothing to delete: ", d], ""))
             }
-            LoginTransactionNothingToDelete { state: _ } => false
-            LoginTransactionDeleteRefused { state: _, detail: _ } => false
+            LoginTransactionNothingToDelete { state: _ } => exit_failure(reason: "the first consume found nothing to delete")
+            LoginTransactionDeleteRefused { state: _, detail: d } => exit_failure(reason: join(["the first consume refused: ", d], ""))
           }
-          LoginTransactionSaveRefused { step: _, reason: _ } => false
+          LoginTransactionSaveRefused { step: s, reason: r } => exit_failure(reason: join(["the transaction could not be saved at ", s, ": ", r], ""))
         }
       }
     }
@@ -67,34 +72,41 @@ test fn transaction_consume_has_one_winner_over_real_files() -> Bool {
 // winner's consume hold already taken. The hold is won here through the store's own consume, rather than
 // raced, so the arm is reached deterministically; the same consume then answers AlreadyWon to anyone else.
 // RED if the consume stops being exclusive (the loser would then delete and report Deleted); the transaction
-// file must survive the loser.
-test fn a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing() -> Bool {
+// file must survive the loser. A consume that REFUSES is not a lost race: it fails the claim with its detail.
+test fn a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing() -> ProcessExit {
   let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
-  if directory == "" { false } else {
+  if directory == "" { exit_failure(reason: "the fixture directory could not be created") } else {
     match transactions_at(directory: directory) {
-      Absent => false
-      Present { value: store } => {
+      ConsumeStoreRefused { reason: r } => exit_failure(reason: r)
+      ConsumeStoreMinted { store: store } => {
         let transaction = browser_transaction()
         match login_transaction_store_save(store: store, transaction: transaction) {
-          LoginTransactionSaveRefused { step: _, reason: _ } => false
+          LoginTransactionSaveRefused { step: s, reason: r } => exit_failure(reason: join(["the transaction could not be saved at ", s, ": ", r], ""))
           LoginTransactionSaved { state: _ } =>
             match auth_store_key_of(raw: transaction.state as String) {
-              Absent => false
-              Present { value: key } => {
-                let won = match login_transaction_store_consume(store: store, key: key) { LoginTransactionConsumeWon => true  LoginTransactionConsumeAlreadyWon => false  LoginTransactionConsumeRefused { detail: _ } => false }
-                let again = match login_transaction_store_consume(store: store, key: key) { LoginTransactionConsumeAlreadyWon => true  LoginTransactionConsumeWon => false  LoginTransactionConsumeRefused { detail: _ } => false }
-                won && again && match login_transaction_store_delete(store: store, state: transaction.state) {
-                  LoginTransactionDeleteRefused { state: _, detail: _ } =>
-                    match login_transaction_store_lookup(store: store, state: transaction.state) {
-                      LoginTransactionStoreFound { transaction: _ } => true
-                      LoginTransactionStoreUnknown { state: _ } => false
-                      LoginTransactionStoreUnread { state: _, detail: _ } => false
-                      LoginTransactionStoreEntryMalformed { state: _, detail: _ } => false
+              Absent => exit_failure(reason: "the fixture state is not a store key")
+              Present { value: key } =>
+                match login_transaction_store_consume(store: store, key: key) {
+                  LoginTransactionConsumeAlreadyWon => exit_failure(reason: "the first consume found the hold already taken")
+                  LoginTransactionConsumeRefused { detail: d } => exit_failure(reason: join(["the first consume refused: ", d], ""))
+                  LoginTransactionConsumeWon =>
+                    match login_transaction_store_consume(store: store, key: key) {
+                      LoginTransactionConsumeWon => exit_failure(reason: "a second consume also won the hold")
+                      LoginTransactionConsumeRefused { detail: d } => exit_failure(reason: join(["the second consume refused instead of answering AlreadyWon: ", d], ""))
+                      LoginTransactionConsumeAlreadyWon =>
+                        match login_transaction_store_delete(store: store, state: transaction.state) {
+                          LoginTransactionDeleteRefused { state: _, detail: _ } =>
+                            match login_transaction_store_lookup(store: store, state: transaction.state) {
+                              LoginTransactionStoreFound { transaction: _ } => ExitSuccess
+                              LoginTransactionStoreUnknown { state: _ } => exit_failure(reason: "the losing consumer's refusal still removed the transaction")
+                              LoginTransactionStoreUnread { state: _, detail: d } => exit_failure(reason: join(["the transaction could not be re-read after the loser: ", d], ""))
+                              LoginTransactionStoreEntryMalformed { state: _, detail: d } => exit_failure(reason: join(["the transaction read back malformed after the loser: ", d], ""))
+                            }
+                          LoginTransactionDeleted { state: _ } => exit_failure(reason: "the losing consumer deleted the transaction")
+                          LoginTransactionNothingToDelete { state: _ } => exit_failure(reason: "the losing consumer found nothing to delete")
+                        }
                     }
-                  LoginTransactionDeleted { state: _ } => false
-                  LoginTransactionNothingToDelete { state: _ } => false
                 }
-              }
             }
         }
       }

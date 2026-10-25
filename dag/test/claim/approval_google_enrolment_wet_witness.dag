@@ -14,6 +14,7 @@ import gunbc.auth.approval_device_redemption {
   DeviceStoreWritten, DeviceStoreSlotOccupied,
 }
 import gunbc.host_state_root { isolated_host_state_tree }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import test.claim.approval_google_enrolment_witness { first_write, again, key_a, fx_subject, fx_email }
 
 // THE ENROL INHABITANCE CLAIM: the real model fold (first_write / again run google_enrolment_admission
@@ -30,29 +31,45 @@ fn fresh_enrolment_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_google_enrolment.XXXXXX").path
 }
 
-// The device store over the test's tree, its directory created the way the broker install creates it.
-fn devices_at(dir: String) -> ApprovalDeviceStore? {
+// The device store over the test's tree, its directory created the way the broker install creates it. The mint
+// refusing is its own arm: it fails the claim with its detail and never reaches an assertion that expects a
+// refusal, such as the revoked key or the traversal id (stern-ram-763, 2026-10-25).
+type DevicesAt = DevicesMinted { store: ApprovalDeviceStore } | DevicesMintRefused { detail: String }
+
+fn devices_at(dir: String) -> DevicesAt {
   let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
   let made = shell.Mkdir.Parents(path: approval_broker_store_path(tree: tree, member: approval_device_store_slots.member))
   match approval_device_store(tree: tree) {
-    ApprovalDeviceStoreReady { store: d } => Present { value: d }
-    ApprovalDeviceStoreUnready { detail: _ } => none
+    ApprovalDeviceStoreReady { store: d } => DevicesMinted { store: d }
+    ApprovalDeviceStoreUnready { detail: d } => DevicesMintRefused { detail: join(["the approval device store mint refused over the test tree: ", d], "") }
   }
+}
+
+// The verdict after the tree is removed: the claim's own failure first, then the removal.
+fn enrolment_verdict(observed: ProcessExit, removed: Bool) -> ProcessExit {
+  match observed {
+    ExitFailure { code: _, reason: _ } => observed
+    ExitSuccess => if removed { ExitSuccess } else { exit_failure(reason: "the test tree could not be removed") }
+  }
+}
+
+fn holds(ok: Bool, failing: String) -> ProcessExit {
+  if ok { ExitSuccess } else { exit_failure(reason: failing) }
 }
 
 fn is_absent(s: GoogleEnrolmentSlot) -> Bool {
   match s { GoogleEnrolmentAbsent => true  _ => false }
 }
 
-test fn a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_through_the_real_store() -> Bool {
+test fn a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_through_the_real_store() -> ProcessExit {
   let path = fresh_enrolment_root()
-  let ok = match devices_at(dir: path) {
-    Absent => false
-    Present { value: root } => {
+  let observed = match devices_at(dir: path) {
+    DevicesMintRefused { detail: d } => exit_failure(reason: d)
+    DevicesMinted { store: root } => {
         let id = google_enrollment_id(subject: fx_subject, decision_key: key_a)
         let before = observe_google_enrolment(devices: root, enrollment_id: id)
         match first_write() {
-          GoogleEnrolmentWrites { enrollment: e } =>
+          GoogleEnrolmentWrites { enrollment: e } => holds(failing: "the enrol sequence did not run absent, written, occupied, active, replayed, revoked, refused", ok:
             is_absent(s: before)
               && (match commit_google_enrolment(devices: root, enrollment: e) { DeviceStoreWritten => true  _ => false })
               && (match commit_google_enrolment(devices: root, enrollment: e) { DeviceStoreSlotOccupied => true  _ => false })
@@ -72,46 +89,47 @@ test fn a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_throu
                       _ => false
                     })
                 _ => false
-              })
-          _ => false
+              }))
+          _ => exit_failure(reason: "the first enrolment did not answer Writes")
         }
     }
   }
   let removed = shell.Remove.RecursiveForce(path: path)
-  ok && removed.success
+  enrolment_verdict(observed: observed, removed: removed.success)
 }
 
 // THE SUBJECT PIN THROUGH THE REAL STORE: the first sign-in creates the pin for its subject; another
 // account's create under the same address loses the CAS and rereads the FIRST subject.
-test fn the_subject_pin_create_or_read_rereads_the_first_subject_after_a_lost_cas() -> Bool {
+test fn the_subject_pin_create_or_read_rereads_the_first_subject_after_a_lost_cas() -> ProcessExit {
   let path = fresh_enrolment_root()
-  let ok = match devices_at(dir: path) {
-    Absent => false
-    Present { value: root } => {
+  let observed = match devices_at(dir: path) {
+    DevicesMintRefused { detail: d } => exit_failure(reason: d)
+    DevicesMinted { store: root } => {
       let first = create_or_read_subject_pin(devices: root, email: fx_email, subject: fx_subject)
       let second = create_or_read_subject_pin(devices: root, email: fx_email, subject: "google-sub-other" as NonEmptyStr)
-      (match first { SubjectPinCreatedForPresented => true  _ => false })
-        && (match second { SubjectPinReread { subject: s } => (s as String) == (fx_subject as String)  _ => false })
+      holds(ok: (match first { SubjectPinCreatedForPresented => true  _ => false })
+        && (match second { SubjectPinReread { subject: s } => (s as String) == (fx_subject as String)  _ => false }),
+        failing: "the first sign-in did not create the pin, or the second did not reread the first subject")
     }
   }
   let removed = shell.Remove.RecursiveForce(path: path)
-  ok && removed.success
+  enrolment_verdict(observed: observed, removed: removed.success)
 }
 
 // A REQUEST-SUPPLIED ENROLMENT ID NEVER BECOMES NAVIGATION (review 69793 of gunbc#12000): over the real store,
 // a separator-carrying id answers Unreadable with the store's fixed slot-addressability detail, because the
 // store refuses before any read. The control is a lawful id over the same store, which reads Absent.
-test fn a_traversal_enrolment_id_is_refused_by_the_store_before_any_read() -> Bool {
+test fn a_traversal_enrolment_id_is_refused_by_the_store_before_any_read() -> ProcessExit {
   let path = fresh_enrolment_root()
-  let ok = match devices_at(dir: path) {
-    Absent => false
-    Present { value: devices } =>
+  let observed = match devices_at(dir: path) {
+    DevicesMintRefused { detail: d } => exit_failure(reason: d)
+    DevicesMinted { store: devices } => holds(failing: "the traversal id was not refused as not slot-addressable, or the lawful control did not read Absent", ok:
       (match observe_google_enrolment(devices: devices, enrollment_id: "enr-../../../etc/shadow") {
         GoogleEnrolmentUnreadable { detail: d } => string_contains(s: d as String, pattern: "not slot-addressable")
         _ => false
       })
-        && is_absent(s: observe_google_enrolment(devices: devices, enrollment_id: google_enrollment_id(subject: fx_subject, decision_key: key_a)))
+        && is_absent(s: observe_google_enrolment(devices: devices, enrollment_id: google_enrollment_id(subject: fx_subject, decision_key: key_a))))
   }
   let removed = shell.Remove.RecursiveForce(path: path)
-  ok && removed.success
+  enrolment_verdict(observed: observed, removed: removed.success)
 }

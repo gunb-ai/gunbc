@@ -427,11 +427,6 @@ fn approval_broker_store_path(tree: HostStateTree, member: NonEmptyStr) -> NonEm
   join([host_state_tree_path(tree: tree) as String, "/", member as String], "") as NonEmptyStr
 }
 
-fn approval_broker_store_listing(root: NonEmptyStr) -> FilesystemListingObservation {
-  let listed = Filesystem.List(path: root as String)
-  filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error)
-}
-
 // ── The device store ───────────────────────────────────────────────────────────────────────────
 // THE ONE DECLARATION OF THE DEVICE STORE (enrolments and subject pins share its slot namespace, told apart
 // by key prefix: they are two record kinds of one store, not two stores).
@@ -455,7 +450,8 @@ type ApprovalDeviceStoreReading
 
 fn approval_device_store(tree: HostStateTree) -> ApprovalDeviceStoreReading {
   let root = approval_broker_store_path(tree: tree, member: approval_device_store_slots.member)
-  match approval_broker_store_listing(root: root) {
+  let listed = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => ApprovalDeviceStoreUnready { detail: join(["the approval device store's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => ApprovalDeviceStoreUnready { detail: join(["the approval device store's directory could not be listed: ", e], "") }
     FilesystemDirectoryListed(_) => ApprovalDeviceStoreReady { store: ApprovalDeviceStore { slots: file_slot_store(root: root) } }
@@ -502,7 +498,8 @@ type BrokerJwksCacheReading
 
 fn broker_jwks_cache(tree: HostStateTree) -> BrokerJwksCacheReading {
   let root = approval_broker_store_path(tree: tree, member: broker_jwks_cache_slots.member)
-  match approval_broker_store_listing(root: root) {
+  let listed = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => BrokerJwksCacheUnready { detail: join(["the broker JWKS cache's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => BrokerJwksCacheUnready { detail: join(["the broker JWKS cache's directory could not be listed: ", e], "") }
     FilesystemDirectoryListed(_) => BrokerJwksCacheReady { cache: BrokerJwksCache { cache: JwksCacheRoot { root: root } } }

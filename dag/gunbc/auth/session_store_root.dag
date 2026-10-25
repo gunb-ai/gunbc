@@ -61,9 +61,11 @@ type SessionStoreReading
   = SessionStoreReady { store: SessionStore }
   | SessionStoreUnready { detail: String }
 
-fn session_store_listing_at(root: String) -> FilesystemListingObservation {
-  let listed = Filesystem.List(path: root)
-  filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error)
+// The store's own listing, over the root it was minted with. It takes the sealed record, never a root: the
+// mint lists its derived directory itself, so no caller-chosen directory reaches a listing of this store.
+fn session_store_listing(store: SessionStore) -> FilesystemListingObservation {
+  let listed = Filesystem.List(path: store.root as String)
+  filesystem_listing_observation(directory: store.root as String, success: listed.success, entries: listed.entries, error: listed.error)
 }
 
 fn session_store_record_path(store: SessionStore, key: AuthStoreKey) -> String {
@@ -106,7 +108,7 @@ type SessionListedEntryReading
 // root. A listed record the delete then finds gone is a refusal: the listing said it was there, so something
 // else moved it.
 fn session_store_list(store: SessionStore) -> SessionStoreEntries {
-  match session_store_listing_at(root: store.root as String) {
+  match session_store_listing(store: store) {
     FilesystemDirectoryListed(listed) => SessionStoreEntriesListed { entries: split(s: listed.entries, delimiter: "\n") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => SessionStoreEntriesRefused { step: "list", reason: e }
     FilesystemDirectorySubjectRefused { directory: d, cause: c } =>
@@ -118,7 +120,7 @@ fn session_store_read_record(store: SessionStore, key: AuthStoreKey) -> SessionR
   let path = session_store_record_path(store: store, key: key)
   let read = Filesystem.Read(path: path)
   match filesystem_file_observation(
-    listing: session_store_listing_at(root: store.root as String),
+    listing: session_store_listing(store: store),
     name: session_store_file_name(key: key),
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
@@ -132,7 +134,7 @@ fn session_store_read_record(store: SessionStore, key: AuthStoreKey) -> SessionR
 }
 
 fn session_store_record_presence(store: SessionStore, key: AuthStoreKey) -> SessionRecordPresence {
-  match filesystem_entry_presence(listing: session_store_listing_at(root: store.root as String), name: session_store_file_name(key: key)) {
+  match filesystem_entry_presence(listing: session_store_listing(store: store), name: session_store_file_name(key: key)) {
     FilesystemEntryAbsent(absence) => SessionRecordNotListed { name: absence.name }
     FilesystemEntryListed { directory: _, name: _ } => SessionRecordListed
     FilesystemEntryPresenceIndeterminate { cause: c } => SessionRecordPresenceUnreadable { detail: c }
@@ -177,7 +179,8 @@ fn session_store_read_listed(store: SessionStore, entry: String) -> SessionListe
 // the directory is listed, and only a listed directory yields a store.
 fn session_store(instance: HostDashboardInstance) -> SessionStoreReading {
   let root = session_store_slots_path(instance: instance)
-  match session_store_listing_at(root: root as String) {
+  let listed = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => SessionStoreUnready { detail: join(["the session store's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => SessionStoreUnready { detail: join(["the session store's directory could not be listed: ", e], "") }
     FilesystemDirectoryListed(_) => SessionStoreReady { store: SessionStore { instance: instance.instance_id, root: root as String as NonEmptyStr } }

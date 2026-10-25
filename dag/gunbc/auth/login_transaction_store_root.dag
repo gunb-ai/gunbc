@@ -96,9 +96,11 @@ type LoginTransactionStoreReading
   = LoginTransactionStoreReady { store: LoginTransactionStore }
   | LoginTransactionStoreUnready { detail: String }
 
-fn login_transaction_store_listing_at(root: String) -> FilesystemListingObservation {
-  let listed = Filesystem.List(path: root)
-  filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error)
+// The store's own listing, over the root it was minted with. It takes the sealed record, never a root: the
+// mint lists its derived directory itself, so no caller-chosen directory reaches a listing of this store.
+fn login_transaction_store_listing(store: LoginTransactionStore) -> FilesystemListingObservation {
+  let listed = Filesystem.List(path: store.root as String)
+  filesystem_listing_observation(directory: store.root as String, success: listed.success, entries: listed.entries, error: listed.error)
 }
 
 fn login_transaction_entry_at(store: LoginTransactionStore, name: String) -> String {
@@ -164,7 +166,7 @@ fn login_transaction_store_read_record(store: LoginTransactionStore, key: AuthSt
   let path = login_transaction_entry_at(store: store, name: name)
   let read = Filesystem.Read(path: path)
   match filesystem_file_observation(
-    listing: login_transaction_store_listing_at(root: store.root as String),
+    listing: login_transaction_store_listing(store: store),
     name: name,
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
@@ -178,7 +180,7 @@ fn login_transaction_store_read_record(store: LoginTransactionStore, key: AuthSt
 }
 
 fn login_transaction_store_record_presence(store: LoginTransactionStore, key: AuthStoreKey) -> LoginTransactionRecordPresence {
-  match filesystem_entry_presence(listing: login_transaction_store_listing_at(root: store.root as String), name: login_transaction_file_name(key: key)) {
+  match filesystem_entry_presence(listing: login_transaction_store_listing(store: store), name: login_transaction_file_name(key: key)) {
     FilesystemEntryAbsent(absence) => LoginTransactionRecordNotListed { name: absence.name }
     FilesystemEntryListed { directory: _, name: _ } => LoginTransactionRecordListed
     FilesystemEntryPresenceIndeterminate { cause: c } => LoginTransactionRecordPresenceUnreadable { detail: c }
@@ -233,7 +235,8 @@ fn login_transaction_store_remove_token_form(store: LoginTransactionStore, key: 
 // login_transaction_store_slots, the directory is listed, and only a listed directory yields a store.
 fn login_transaction_store(instance: HostDashboardInstance) -> LoginTransactionStoreReading {
   let root = login_transaction_store_slots_path(instance: instance)
-  match login_transaction_store_listing_at(root: root as String) {
+  let listed = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => LoginTransactionStoreUnready { detail: join(["the login transaction store's directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } => LoginTransactionStoreUnready { detail: join(["the login transaction store's directory could not be listed: ", e], "") }
     FilesystemDirectoryListed(_) => LoginTransactionStoreReady { store: LoginTransactionStore { instance: instance.instance_id, root: root as String as NonEmptyStr } }
