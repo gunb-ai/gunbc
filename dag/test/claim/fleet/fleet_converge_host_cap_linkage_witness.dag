@@ -14,6 +14,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_runner_host_file_converge_step,
   fleet_converge_runner_host_cap_release_step,
   fleet_converge_executor_subject_split_gate_step,
+  fleet_converge_executor_subject_split_gate_if,
   fleet_converge_runner_host_withdraw_step,
   fleet_converge_runner_host_restore_step,
 }
@@ -21,7 +22,7 @@ import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_
 import gunbc.actions_run_binding { fleet_converge_subject_host_env_name, fleet_converge_expected_host_env_name }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_withdraw_invoke, gunbc_ci_runner_host_restore_invoke }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
-import extdeps.github.expressions { parse_expression_with, default_expression_spellings, evaluate_expression, gha_value_is_truthy, github_path_key, GithubPathValue, GithubPathUnmodeled, GithubPathResolution, ExpressionValue, ExpressionEvaluationRefused }
+import extdeps.github.expressions { serialize_expression, evaluate_expression, gha_value_is_truthy, github_path_key, GithubPathValue, GithubPathUnmodeled, GithubPathResolution, ExpressionValue, ExpressionEvaluationRefused }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_step_budget_env_name, host_cap_bracket_budget, runner_host_cap_drain_policy }
 
 // THE LINKAGE CONTROLS OF THE CAP BRACKET'S WORKFLOW: the emitted job carries the release step and the budget
@@ -159,10 +160,11 @@ test fn the_split_gate_script_is_well_formed_and_decides_both_refusals() -> Bool
   }
 }
 
-// THE GATE'S `if:`, EVALUATED. The step's emitted `if:` TEXT is parsed back (the same grammar the
-// serializer writes) and evaluated by extdeps.github.expressions evaluate_expression against a
-// dispatch's inputs, so these controls read what GitHub would decide for the bytes the workflow carries,
-// not a tree beside them. A text the parser refuses, or an input the evaluator refuses, is red.
+// THE GATE'S `if:`, EVALUATED. The gate's expression tree is evaluated by extdeps.github.expressions
+// evaluate_expression against a dispatch's inputs, and the step's `if:` TEXT must be exactly that
+// tree's serialization, so the evaluated tree is the one the workflow carries (a step whose text
+// drifted from the tree is unreadable, hence red). An input the evaluator refuses is red too. The text
+// is not parsed back: that module's reader reads `||` over atoms and has no `==` or `&&` arm.
 fn gate_if_text() -> String {
   match fleet_converge_executor_subject_split_gate_step() {
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: Present { value: cond }, continue_on_error: _, timeout_minutes: _ } => cond
@@ -181,13 +183,14 @@ fn dispatch_path(mode: String, host: String, subject_host: String, path: List<St
 type GateRuns = GateExecutes | GateSkipped | GateUnreadable
 
 fn gate_runs_for(mode: String, host: String, subject_host: String) -> GateRuns {
-  match parse_expression_with(s: gate_if_text(), sp: default_expression_spellings) {
-    Absent => GateUnreadable
-    Present { value: e } =>
-      match evaluate_expression(expression: e, github_path: fn(path) { dispatch_path(mode: mode, host: host, subject_host: subject_host, path: path) }) {
-        ExpressionEvaluationRefused { cause: _ } => GateUnreadable
-        ExpressionValue { value: v } => if gha_value_is_truthy(s: v) { GateExecutes } else { GateSkipped }
-      }
+  let e = fleet_converge_executor_subject_split_gate_if()
+  if gate_if_text() != serialize_expression(expression: e) {
+    GateUnreadable
+  } else {
+    match evaluate_expression(expression: e, github_path: fn(path) { dispatch_path(mode: mode, host: host, subject_host: subject_host, path: path) }) {
+      ExpressionEvaluationRefused { cause: _ } => GateUnreadable
+      ExpressionValue { value: v } => if gha_value_is_truthy(s: v) { GateExecutes } else { GateSkipped }
+    }
   }
 }
 
