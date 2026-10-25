@@ -7674,7 +7674,9 @@ fn join_census_diags(route: String, semantics: MethodSemantics?, receiver: Node,
         }
       Absent => "no-separator"
     }
-    [inference_error(message: concat("JOINCENSUS ", route, " elem=", elem, " sep=", sep, " binder=", census_binder(value: receiver, scope: scope)), span: span, module_name: scope.module_name)]
+    if starts_with(s: scope.module_name, prefix: "v1.") {
+      [inference_error(message: concat("JOINCENSUS ", route, " elem=", elem, " sep=", sep, " binder=", census_binder(value: receiver, scope: scope)), span: span, module_name: scope.module_name)]
+    } else { [] }
   }
 }
 
