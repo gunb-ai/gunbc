@@ -15491,11 +15491,13 @@ fn generic_substitution_key_of_inferred(n: Node) -> String? {
   }
 }
 
+// A parameter substituted by its own free variable stays a VARIABLE: a marked header reference carries no
+// TypeVariable until a substitution says so, and a downstream check reads the variable, not the mark.
 fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
   match generic_substitution_key(n: n) {
     Present { value: tv_id } =>
       match map_get(subst, tv_id) {
-        Present { value: c } => if type_node_label(n: c, source_indices: source_indices) == tv_id { n } else { preserve_outer_optional_cardinality(outer: n, inner: c) }
+        Present { value: c } => if type_node_label(n: c, source_indices: source_indices) == tv_id { if generic_substitution_key_of_inferred(n: n) == none { node_with_inferred(n: n, inferred: Present { value: TypeVariable { id: tv_id } }) } else { n } } else { preserve_outer_optional_cardinality(outer: n, inner: c) }
         Absent => n
       }
     _ =>
