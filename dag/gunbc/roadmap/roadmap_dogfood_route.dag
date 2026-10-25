@@ -64,6 +64,7 @@ import gunbc.roadmap.roadmap_attempt_metering {
   MeteringTokensObserved, MeteringTokensIncomplete, MeteringSeatTimeObserved, MeteringSeatTimeIncomplete,
 }
 import gunbc.dispatch_attempt_launch { DispatchExecutorOrigin, RealExecutorOrigin, ReplayExecutorOrigin }
+import gunbc.dispatch_replay_recording { recording_id_text }
 import gunbc.roadmap.roadmap_dispatch_destination { DispatchExecutorOriginRead, DispatchExecutorOriginObserved, DispatchExecutorOriginUnreadable }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_executor_origin_observe,
@@ -598,7 +599,7 @@ fn dogfood_metering_reading(m: AttemptMeteringObservation, executor: DispatchExe
     DispatchExecutorOriginObserved { origin } =>
       match origin {
         ReplayExecutorOrigin { recording_id } =>
-          MeteringGap { gap: StageRefused { reason: join(["the attempt replayed recording ", recording_id as String, " and ran no model, so it is not a real attempt and its metering does not count"], "") } }
+          MeteringGap { gap: StageRefused { reason: join(["the attempt replayed recording ", recording_id_text(id: recording_id), " and ran no model, so it is not a real attempt and its metering does not count"], "") } }
         RealExecutorOrigin => dogfood_real_metering_reading(m: m)
       }
   }

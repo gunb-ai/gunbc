@@ -1,6 +1,7 @@
 module gunbc.dispatch_attempt_launch
 
 import std.types { String, NonEmptyStr }
+import gunbc.dispatch_replay_recording { RecordingId }
 import std.decl_ref { decl_ref }
 import extdeps.llm.cli { ReasoningEffort, ProviderModelSelection }
 import gunbc.dispatch_attempt { DispatchAttempt, dispatch_attempts_agree, dispatch_attempt_label }
@@ -15,7 +16,7 @@ import gunbc.dispatch_credential_snapshot { TakenCredentialSnapshot, taken_crede
 type SnapshotFreeExecutor
   = CodexWithoutSnapshot
   | HarnessWithoutSnapshot
-  | ReplayWithoutSnapshot { recording_id: NonEmptyStr }
+  | ReplayWithoutSnapshot { recording_id: RecordingId }
 
 type AttemptLaunch
   = SnapshotFreeLaunch { attempt: DispatchAttempt, executor: SnapshotFreeExecutor }
@@ -105,11 +106,11 @@ fn prepared_attempt_process_fingerprint(prepared: PreparedAttemptLaunch) -> NonE
 // value the launch is built from and is a REQUIRED field of the spawn origin the belt writes once per attempt
 // (gunbc.roadmap.roadmap_dispatch_destination DispatchSpawnOrigin), so no attempt record can exist without
 // answering it and a replayed attempt cannot be recorded as a real one: the value that selected the replay
-// executor is the value written. The recording is named by its id text, the preimage that fixes one recording to
-// one fact.
+// executor is the value written. The recording is carried as its typed id (gunbc.dispatch_replay_recording RecordingId),
+// its named parts intact; it becomes text only on the wire, the spawn argv and the spawn-origin document.
 type DispatchExecutorOrigin
   = RealExecutorOrigin
-  | ReplayExecutorOrigin { recording_id: NonEmptyStr }
+  | ReplayExecutorOrigin { recording_id: RecordingId }
 
 fn snapshot_free_executor_origin(executor: SnapshotFreeExecutor) -> DispatchExecutorOrigin {
   match executor {
