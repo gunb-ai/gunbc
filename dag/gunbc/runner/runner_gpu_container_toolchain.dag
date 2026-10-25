@@ -961,7 +961,7 @@ fn gpu_container_provision_repo_script_write(
     privilege: RemoteFileViaNonInteractiveSudo,
     validation: NoValidation,
   ) {
-    TypedRemoteFileConvergenceRefused { step: s, reason: r } => join([name as String, " stage ", s, ": ", r], "")
+    TypedRemoteFileConvergenceRefused { step: s, reason: r } => Present { value: concat(name as String, " stage ", s, ": ", r) }
     TypedRemoteFileConverged { converged: _ } => Absent
   }
 }
@@ -1743,14 +1743,7 @@ fn gpu_container_provision_plan(
     Present { value: identity } => {
       let uid_value = identity.uid
       let home_dir = identity.home
-    let displacee_home = match run_argv_over_host_effect_transport(command: getent_passwd_command(key: ids.displaceable), transport: transport) {
-      RunArgvTransportRefused { reason: _ } => Absent
-      RunArgvTransportObserved { observed: o } =>
-        if o.exit_code == 0 {
-          let h = job_user_home_from_passwd(passwd_line: o.stdout)
-          if h == "" { Absent } else { Present { value: h } }
-        } else { Absent }
-    }
+    let displacee_home = gpu_container_displacee_home_lookup(account: ids.displaceable, transport: transport)
     append(
       append(
         append(
@@ -1936,6 +1929,29 @@ fn gpu_container_provision_principal(user: NonEmptyStr, transport: HostEffectTra
             Present { value: GpuContainerPrincipalIdentity { uid: u, home: h } }
           }
         }
+      }
+  }
+}
+
+// WHERE THE ACCOUNT WE MAY DISPLACE LIVES, read from the same passwd database the plan reads. This is
+// a lookup of a fact, not a policy decision: nothing here says the account may be moved, only where its
+// files are should the plan (which does decide) come back with steps. A refused transport, a non-zero
+// getent, or an entry whose home field is empty all answer Absent, and the caller must then refuse the
+// plan — the store-free readback cannot run against an unknown directory, and a silent assumption of
+// some home would read the wrong account's storage and report its emptiness as this one's.
+fn gpu_container_displacee_home_lookup(account: NonEmptyStr, transport: HostEffectTransport) -> String? {
+  match run_argv_over_host_effect_transport(command: getent_passwd_command(key: account), transport: transport) {
+    RunArgvTransportRefused { reason: _ } => Absent
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code == 0 {
+        let h = job_user_home_from_passwd(passwd_line: o.stdout)
+        if h == "" {
+          Absent
+        } else {
+          Present { value: h }
+        }
+      } else {
+        Absent
       }
   }
 }
