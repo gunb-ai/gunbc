@@ -1,7 +1,7 @@
 module gunbc.fabric.fabric_allocation_store
 
 import std.types { NonEmptyStr, String }
-import std.durable_compare_and_set { CasSlotObservation, CasGeneration, CasOutcome }
+import std.durable_compare_and_set { CasSlotObservation, CasGeneration, CasOutcome, CasGenerationPublicationRefused }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldObservation }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly }
 import gunbc.host_state_root { HostStateTree, host_state_tree_path }
@@ -9,6 +9,7 @@ import gunbc.durable_cas_file_store { file_slot_store, slot_observe, slot_commit
 import gunbc.durable_exclusive_hold_file_store {
   observe_file_hold, file_hold_acquire, file_hold_acquire_prepare, file_hold_acquire_commit, file_hold_release_assess, file_hold_release_commit,
   FileHoldAcquireOutcome, FileHoldAcquirePreparation, FileHoldAcquirePlan, FileHoldReleaseAssessment, FileHoldReleasePlan, FileHoldReleaseOutcome,
+  FileHoldAcquireStoreUnavailable, FileHoldReleaseStoreUnavailable,
 }
 import gunbc.runner.runner_microvm_cell_readiness_store { read_store_ownership, StoreOwnershipReading }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
@@ -93,9 +94,19 @@ fn fabric_allocation_prepare_acquire(store: FabricAllocationStore, key: NonEmpty
 }
 
 // A plan carries the root it was prepared over (gunbc.durable_exclusive_hold_file_store FileHoldAcquirePlan, sole
-// constructor); the store is taken so a business module commits through this module rather than the hold library.
+// constructor). The commit goes through this store only when the plan was prepared against it: a plan from another
+// store refuses before any write, through the hold library's own typed store-refusal arm (its outcome types are
+// shared by every hold consumer, so no arm is added there), rather than committing at the root the plan names.
 fn fabric_allocation_commit_acquire(store: FabricAllocationStore, plan: FileHoldAcquirePlan) -> FileHoldAcquireOutcome {
-  file_hold_acquire_commit(plan: plan)
+  if plan.root != store.root {
+    FileHoldAcquireStoreUnavailable { slot_key: plan.slot_key, cause: CasGenerationPublicationRefused { detail: fabric_allocation_foreign_plan(plan_root: plan.root) } }
+  } else {
+    file_hold_acquire_commit(plan: plan)
+  }
+}
+
+fn fabric_allocation_foreign_plan(plan_root: NonEmptyStr) -> NonEmptyStr {
+  join(["the hold plan was prepared against another allocation store: ", plan_root as String], "") as NonEmptyStr
 }
 
 fn fabric_allocation_assess_release(store: FabricAllocationStore, key: NonEmptyStr, owner: DurableHoldOwnerRef, generation: CasGeneration, released_by: DurableHoldReleaseRef) -> FileHoldReleaseAssessment {
@@ -103,7 +114,11 @@ fn fabric_allocation_assess_release(store: FabricAllocationStore, key: NonEmptyS
 }
 
 fn fabric_allocation_commit_release(store: FabricAllocationStore, plan: FileHoldReleasePlan) -> FileHoldReleaseOutcome {
-  file_hold_release_commit(plan: plan)
+  if plan.root != store.root {
+    FileHoldReleaseStoreUnavailable { slot_key: plan.slot_key, cause: CasGenerationPublicationRefused { detail: fabric_allocation_foreign_plan(plan_root: plan.root) } }
+  } else {
+    file_hold_release_commit(plan: plan)
+  }
 }
 
 fn fabric_allocation_observe_slot(store: FabricAllocationStore, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
