@@ -7,7 +7,7 @@ import std.content_hash { Sha256Digest }
 import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import std.measure {
   TokenCount, token_count, token_count_value, ByteSize, Mebibyte, Milliwatt, Watt, Hertz, Celsius, Bandwidth, Millicore,
-  CpuCoreCount, HardwareThreadCount, Microsecond, microsecond, millisecond_count, basis_point_count,
+  CpuCoreCount, HardwareThreadCount, Microsecond, microsecond, microsecond_count, millisecond_count, milli_per_unit, basis_point_count,
   MilliTokensPerSecond, milli_tokens_per_second, EventsPerHour, events_per_hour,
 }
 import product.host_identity { HostIdentity }
@@ -194,24 +194,24 @@ type ServingBenchmarkRunAdmission
 // ── TIME: ONE ORIGIN PER RUN ────────────────────────────────────────────────────────────────────
 //
 // request/v2 timestamps are wall-clock epoch seconds from one client process, so they are differenced
-// against the run's earliest t_start and carried as whole microseconds (floor). Only those differences
+// against the run's earliest t_start and carried as std.measure Microsecond (floor). Only those differences
 // are read.
 
 fn micro_scale(fraction_digits: Nat) -> Nat {
   if fraction_digits == 0 { 1 } else { 10 * micro_scale(fraction_digits: fraction_digits - 1) }
 }
 
-fn micros_of_seconds(d: ExactDecimal) -> Nat? {
+fn micros_of_seconds(d: ExactDecimal) -> Microsecond? {
   if d.units < 0 {
     none
   } else if d.fraction_digits <= 6 {
-    Present { value: d.units * micro_scale(fraction_digits: 6 - d.fraction_digits) }
+    Present { value: microsecond(count: d.units * micro_scale(fraction_digits: 6 - d.fraction_digits)) }
   } else {
-    Present { value: d.units / micro_scale(fraction_digits: d.fraction_digits - 6) }
+    Present { value: microsecond(count: d.units / micro_scale(fraction_digits: d.fraction_digits - 6)) }
   }
 }
 
-fn micros_since(origin: ExactDecimal, t: ExactDecimal) -> Nat? {
+fn micros_since(origin: ExactDecimal, t: ExactDecimal) -> Microsecond? {
   match exact_decimal_sub(a: t, b: origin) {
     ExactDifference { value: d } => micros_of_seconds(d: d)
     ExactDifferenceUnrepresentable { cause: _ } => none
@@ -240,9 +240,9 @@ type TimedRequest {
   max_tokens: TokenCount
   prompt: Nat
   completion: Nat
-  start_us: Nat
-  first_us: Nat
-  end_us: Nat
+  started: Microsecond
+  first_token: Microsecond
+  completed: Microsecond
 }
 
 type TimedRead
@@ -283,9 +283,9 @@ fn timed_request(origin: ExactDecimal, r: GpuBenchRequestV3) -> TimedRead {
                         max_tokens: r.max_tokens,
                         prompt: token_count_value(t: p),
                         completion: token_count_value(t: c),
-                        start_us: s,
-                        first_us: s + to_first,
-                        end_us: s + to_first + to_end,
+                        started: s,
+                        first_token: microsecond(count: microsecond_count(m: s) + microsecond_count(m: to_first)),
+                        completed: microsecond(count: microsecond_count(m: s) + microsecond_count(m: to_first) + microsecond_count(m: to_end)),
                       }
                     }
                   }
@@ -324,28 +324,35 @@ fn round_requests(requests: List<TimedRequest>, round: Nat) -> List<TimedRequest
   requests |> filter(r => !r.prime && r.round == round)
 }
 
-fn round_first_start_us(rs: List<TimedRequest>) -> Nat {
-  fold(rs, init: 0, f: (acc, r) => nat_max(a: acc, b: r.start_us))
+fn us(t: Microsecond) -> Nat {
+  microsecond_count(m: t)
 }
 
-fn round_last_completion_us(rs: List<TimedRequest>) -> Nat {
-  fold(rs, init: 0, f: (acc, r) => nat_max(a: acc, b: r.end_us))
+fn round_last_start(rs: List<TimedRequest>) -> Microsecond {
+  microsecond(count: fold(rs, init: 0, f: (acc, r) => nat_max(a: acc, b: us(t: r.started))))
+}
+
+fn round_last_completion(rs: List<TimedRequest>) -> Microsecond {
+  microsecond(count: fold(rs, init: 0, f: (acc, r) => nat_max(a: acc, b: us(t: r.completed))))
+}
+
+// The round's common submission: the earliest t_start of its requests.
+fn round_submission(rs: List<TimedRequest>) -> Microsecond {
+  microsecond(count: fold(rs, init: us(t: round_last_start(rs: rs)), f: (acc, r) => nat_min(a: acc, b: us(t: r.started))))
 }
 
 // The window of one round, from its common submission (the earliest t_start of the round) to its last
 // completion.
-fn round_window_us(rs: List<TimedRequest>) -> Nat {
-  let submission = fold(rs, init: round_first_start_us(rs: rs), f: (acc, r) => nat_min(a: acc, b: r.start_us))
-  round_last_completion_us(rs: rs) - submission
+fn round_window(rs: List<TimedRequest>) -> Microsecond {
+  microsecond(count: us(t: round_last_completion(rs: rs)) - us(t: round_submission(rs: rs)))
 }
 
-fn round_spread_us(rs: List<TimedRequest>) -> Nat {
-  let submission = fold(rs, init: round_first_start_us(rs: rs), f: (acc, r) => nat_min(a: acc, b: r.start_us))
-  round_first_start_us(rs: rs) - submission
+fn round_spread(rs: List<TimedRequest>) -> Microsecond {
+  microsecond(count: us(t: round_last_start(rs: rs)) - us(t: round_submission(rs: rs)))
 }
 
 fn request_decode_milli_tps(r: TimedRequest) -> Nat? {
-  let span = r.end_us - r.first_us
+  let span = us(t: r.completed) - us(t: r.first_token)
   if r.completion < 2 || span == 0 {
     none
   } else {
@@ -382,7 +389,7 @@ fn serving_level_result(requests: List<TimedRequest>, active: Nat) -> LevelRead 
   let size_gaps = fold(rounds, init: [], f: (acc, n) =>
     if count(round_requests(requests: requests, round: n)) == active { acc } else { concat(acc, [GapRoundSize { round: n, active: active, observed: count(round_requests(requests: requests, round: n)) }]) })
   let window_gaps = fold(rounds, init: [], f: (acc, n) =>
-    if round_window_us(rs: round_requests(requests: requests, round: n)) == 0 { concat(acc, [GapEmptyWindow { round: n }]) } else { acc })
+    if us(t: round_window(rs: round_requests(requests: requests, round: n))) == 0 { concat(acc, [GapEmptyWindow { round: n }]) } else { acc })
   let gaps = concat(size_gaps, window_gaps)
   if count(rounds) == 0 {
     LevelRefused { gaps: [GapLevelRounds { active: active, observed: 0 }] }
@@ -391,7 +398,7 @@ fn serving_level_result(requests: List<TimedRequest>, active: Nat) -> LevelRead 
   } else {
     let warm = requests |> filter(r => !r.prime && r.n_active == active)
     let generated = fold(warm, init: 0, f: (acc, r) => acc + r.completion)
-    let window = fold(rounds, init: 0, f: (acc, n) => acc + round_window_us(rs: round_requests(requests: requests, round: n)))
+    let window = fold(rounds, init: 0, f: (acc, n) => acc + us(t: round_window(rs: round_requests(requests: requests, round: n))))
     let decodes = fold(warm, init: [], f: (acc, r) => match request_decode_milli_tps(r: r) {
       Present { value: v } => concat(acc, [v])
       Absent => acc
@@ -477,9 +484,9 @@ fn workload_gaps(version: ServingBenchmarkVersion, requests: List<GpuBenchReques
     if any(w.active_levels, l => l == n) { acc } else { concat(acc, [GapLevelNotInVersion { active: n }]) })
   let rounds = fold(w.active_levels, init: [], f: (acc, n) =>
     if count(round_numbers(requests: timed, active: n)) == w.rounds_per_level { acc } else { concat(acc, [GapLevelRounds { active: n, observed: count(round_numbers(requests: timed, active: n)) }]) })
-  let spread_bound_us = millisecond_count(m: w.submission_spread_bound) * 1000
+  let spread_bound = millisecond_count(m: w.submission_spread_bound) * milli_per_unit()
   let spread = fold(w.active_levels, init: [], f: (acc, n) => concat(acc, fold(round_numbers(requests: timed, active: n), init: [], f: (inner, k) =>
-    if round_spread_us(rs: round_requests(requests: timed, round: k)) <= spread_bound_us { inner } else { concat(inner, [GapSubmissionSpread { round: k, spread: microsecond(count: round_spread_us(rs: round_requests(requests: timed, round: k))) }]) })))
+    if us(t: round_spread(rs: round_requests(requests: timed, round: k))) <= spread_bound { inner } else { concat(inner, [GapSubmissionSpread { round: k, spread: round_spread(rs: round_requests(requests: timed, round: k)) }]) })))
   concat(concat(concat(concat(concat(concat(concat(retained, prime_count), band), max_tokens), levels), rounds), spread), tool_delta_gaps(version: version, timed: timed))
 }
 
