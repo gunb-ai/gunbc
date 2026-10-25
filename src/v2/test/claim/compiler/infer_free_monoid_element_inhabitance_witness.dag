@@ -8,7 +8,16 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_has_reason }
+import v2.std.diagnostic { Accepted, Diagnostics, Outcome, Rejected, diagnostics_has_reason }
+import v2.std.inhabitance {
+  UndecidableArgumentTypeNotDerived,
+  UndecidableFormalUnresolved,
+  UndecidableGenericFormal,
+  UndecidableWherePredicateSubjectUnmodelled,
+  inhabitance_undecidable_reason_symbol
+}
+import std.optional { Absent, Present }
+import v2.test.claim.compiler.callback_argument_formal { caf_correction_type }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }
@@ -18,7 +27,7 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
   RcfInferAccepted,
   RcfInferRefused,
   RcfResolveRefused,
-  rcf_refuses_with,
+  rcf_refusal,
   rcf_verdict,
   rcf_read_in
 }
@@ -43,9 +52,14 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
 // refuses because no declared route admits a refinement under an application: the relation's
 // subsumption (declared_type_inhabitance_declared_carrier) widens a produced refinement to its stated
 // carrier ONE step at the TOP of the produced type, and `List<NonEmptyStr>` is not itself a refinement.
-// TRIGGER that retires these two pins: a declared covariance route for refinements under
-// List/FreeMonoid (a conversion, DESIGN section 4 coercion), at which point they turn red on purpose
-// and are rewritten as accepted controls. Bool, Int and the Bool literal are the seed corrections.
+// THE TWO PINS HAVE DIFFERENT TRIGGERS, because the refinement-carrier chains differ in length and the
+// relation widens ONE step. `NonEmptyStr -> String` is one step: its pin retires on a declared covariance
+// route for refinements under List/FreeMonoid (a conversion, DESIGN section 4 coercion). `PathSegment ->
+// NonEmptyStr -> String` is two: a covariance route that widens one step would admit `List<NonEmptyStr>`
+// and still refuse `List<PathSegment>`, so its pin retires only when covariance widens along the FULL
+// refinement-carrier chain (transitive refinement widening, which declared_type_inhabitance_declared_carrier
+// does not do even at the top level today). Each pin turns red on purpose when its own trigger lands and is
+// rewritten as an accepted control then. Bool, Int and the Bool literal are the seed corrections.
 //
 // THE ROUTE IS REAL: every claim reaches infer from inline source text through the production fold
 // (module_roots_from_source_root_ingest, resolve_in_context), and infer is handed resolve's own tree.
@@ -104,17 +118,31 @@ fn fmj_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   }
 }
 
+// Refused at THIS argument: an application_argument_does_not_inhabit refusal whose correction names the
+// `fields` parameter (v2.std.inhabitance application_argument_does_not_inhabit_diagnostic). A refusal at
+// `separator`, or any other infer refusal, does not satisfy it.
 fn fmj_refused_at_the_argument(subject: String) -> Bool {
-  rcf_refuses_with(resolved: fmj_resolve_subject(subject: subject), reason: ^application_argument_does_not_inhabit)
+  match rcf_refusal(resolved: fmj_resolve_subject(subject: subject), reason: ^application_argument_does_not_inhabit) {
+    Absent => false
+    Present { value: d } =>
+      match caf_correction_type(d: d, name: ^fields) {
+        Absent => false
+        Present { value: _ } => true
+      }
+  }
+}
+
+// Every undecided-inhabitance reason, each read through the relation's own symbol function, so a
+// control cannot pass by leaving its obligation counted rather than decided.
+fn fmj_undecided(ds: Diagnostics) -> Bool {
+  [UndecidableGenericFormal, UndecidableFormalUnresolved, UndecidableArgumentTypeNotDerived, UndecidableWherePredicateSubjectUnmodelled]
+    |> any(fn(r) { diagnostics_has_reason(d: ds, reason: inhabitance_undecidable_reason_symbol(reason: r)) })
 }
 
 // Accepted AND decided: an accepted module carrying a counted undecided obligation is not the control.
 fn fmj_accepted_and_decided(subject: String) -> Bool {
   match rcf_verdict(resolved: fmj_resolve_subject(subject: subject)) {
-    RcfInferAccepted { diagnostics: ds } =>
-      !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_formal_unresolved)
-        && !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_argument_type_not_derived)
-        && !diagnostics_has_reason(d: ds, reason: ^inhabitance_undecidable_generic_formal)
+    RcfInferAccepted { diagnostics: ds } => !fmj_undecided(ds: ds)
     RcfInferRefused { diagnostics: _ } => false
     RcfResolveRefused => false
   }
@@ -138,11 +166,7 @@ test fn fmj_a_list_of_a_two_step_refinement_at_a_free_monoid_of_string_refuses_h
 }
 
 test fn fmj_a_bool_list_literal_at_a_free_monoid_of_string_refuses_holds() -> Bool {
-  match rcf_verdict(resolved: fmj_resolve_subject(subject: "gunbc.fmj_bool_literal")) {
-    RcfInferRefused { diagnostics: _ } => true
-    RcfInferAccepted { diagnostics: _ } => false
-    RcfResolveRefused => false
-  }
+  fmj_refused_at_the_argument(subject: "gunbc.fmj_bool_literal")
 }
 
 // THE CONTROLS, one term away.
@@ -154,10 +178,6 @@ test fn fmj_a_list_of_a_transparent_string_alias_is_accepted_and_decided_holds()
   fmj_accepted_and_decided(subject: "gunbc.fmj_email")
 }
 
-test fn fmj_a_string_list_literal_at_a_free_monoid_of_string_is_accepted_holds() -> Bool {
-  match rcf_verdict(resolved: fmj_resolve_subject(subject: "gunbc.fmj_string_literal")) {
-    RcfInferAccepted { diagnostics: _ } => true
-    RcfInferRefused { diagnostics: _ } => false
-    RcfResolveRefused => false
-  }
+test fn fmj_a_string_list_literal_at_a_free_monoid_of_string_is_accepted_and_decided_holds() -> Bool {
+  fmj_accepted_and_decided(subject: "gunbc.fmj_string_literal")
 }
