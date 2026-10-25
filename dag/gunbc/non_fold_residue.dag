@@ -380,7 +380,12 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       dissolution: nfr_dissolve_owning_fold,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/serving/flash_next_topology.dag::card_budget_from_measured_cell" },
+      subject: PathSubject { path: "src/v2/compiler/module_acquisition.dag::acquisition_holding" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/module_acquisition.dag::acquisition_decided_held" },
       reason: nfr_reason_wildcard_found_by_native_census,
       dissolution: nfr_dissolve_owning_fold,
     },
