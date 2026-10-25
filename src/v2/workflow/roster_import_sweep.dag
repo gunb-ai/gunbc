@@ -702,7 +702,7 @@ fn roster_wave_probe_report(prepared: PreparedGrammar, lex: PreparedLexRules) ->
   "]\ncase pass2:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "applied"), ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]\ncase pass2-partial:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "applied"), ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:3:58"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]\ncase anchors:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "anchors"), ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
-  "]\ncase single-leg:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "plain"), ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"], prepared: prepared, lex: lex, closures: closures, sides: sides, int_only: true) +
+  "]\ncase single-leg:\n[" + roster_wave_probe_case_scoped(fixture: roster_wave_fixture(which: "plain"), ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"], prepared: prepared, lex: lex, closures: closures, sides: sides, int_only: true) +
   "]"
 }
 
