@@ -943,9 +943,10 @@ fn site_pxe_edge_install_files(admitted: List<SitePxeEdgeInstallBinding>, image:
   }
 }
 
-// THE LISTENING SOCKET, READ BACK: stdout of `ss -ltnH sport = :<port>`. The local address must be exactly the
-// bound onboarding address; a wildcard (0.0.0.0 or [::]) or any other address is refused, and no listener is
-// its own finding.
+// THE LISTENING SOCKET, READ BACK: stdout of `ss -ltnH`, every TCP listener (the fleet SSH edge admits no word
+// carrying a space, so the port filter is applied here, not passed to ss). Of the listeners on the HTTP port,
+// the local address must be exactly the bound onboarding address; a wildcard (0.0.0.0, * or [::]) or any other
+// address is refused, and no listener on the port is its own finding.
 type SitePxeEdgeHttpListenStanding
   = HttpListenBoundTo { address: String }
   | HttpListenWildcard { local: String }
@@ -954,10 +955,11 @@ type SitePxeEdgeHttpListenStanding
 
 fn site_pxe_edge_http_listen_standing(output: String, bind: Ipv4Address) -> SitePxeEdgeHttpListenStanding {
   let expected = concat(concat(render_ipv4_address(addr: bind) as String, ":"), to_string(site_pxe_edge_http_port))
-  let locals = flat_map(filter(split(s: output, delimiter: "\n"), l => trim(s: l) != ""), l => match get(xs: filter(split(s: trim(s: l), delimiter: " "), w => w != ""), index: 3) {
+  let port_suffix = concat(":", to_string(site_pxe_edge_http_port))
+  let locals = filter(flat_map(filter(split(s: output, delimiter: "\n"), l => trim(s: l) != ""), l => match get(xs: filter(split(s: trim(s: l), delimiter: " "), w => w != ""), index: 3) {
     Present { value: w } => [w]
     Absent => []
-  })
+  }), w => ends_with(s: w, suffix: port_suffix))
   match first_where(xs: locals, keep: w => w != expected) {
     Present { value: w } =>
       if starts_with(s: w, prefix: "0.0.0.0:") || starts_with(s: w, prefix: "*:") || starts_with(s: w, prefix: "[::]:") { HttpListenWildcard { local: w } } else { HttpListenOtherAddress { local: w } }
@@ -1701,7 +1703,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
             Ipv4Parsed { address: bind } =>
               HttpLegActivation {
                 activation: http_activation,
-                listen: match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["ss", "-ltnH", concat("sport = :", to_string(site_pxe_edge_http_port))]) {
+                listen: match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["ss", "-ltnH"]) {
                   TypedArgvExecRefused { reason: _ } => HttpListenAbsent
                   TypedArgvExecConverged { result: r } => site_pxe_edge_http_listen_standing(output: r.stdout, bind: bind)
                 },

@@ -893,6 +893,8 @@ test fn the_listening_socket_must_be_the_onboarding_address() -> Bool {
     && site_pxe_edge_http_listen_standing(output: "LISTEN 0      5            0.0.0.0:8080      0.0.0.0:*\n", bind: edge_server) == HttpListenWildcard { local: "0.0.0.0:8080" }
     && site_pxe_edge_http_listen_standing(output: "LISTEN 0      5         10.0.0.5:8080      0.0.0.0:*\n", bind: edge_server) == HttpListenOtherAddress { local: "10.0.0.5:8080" }
     && site_pxe_edge_http_listen_standing(output: "", bind: edge_server) == HttpListenAbsent
+    && site_pxe_edge_http_listen_standing(output: "LISTEN 0      4096   0.0.0.0:22      0.0.0.0:*\nLISTEN 0      5      192.168.1.196:8080      0.0.0.0:*\n", bind: edge_server) == HttpListenBoundTo { address: "192.168.1.196:8080" }
+    && site_pxe_edge_http_listen_standing(output: "LISTEN 0      4096   0.0.0.0:22      0.0.0.0:*\n", bind: edge_server) == HttpListenAbsent
 }
 
 // AN APPLY WHOSE HTTP LISTENER IS A WILDCARD IS NOT CONVERGED.
