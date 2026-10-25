@@ -1,0 +1,11 @@
+module examples.r_control_probe
+
+// Scratch census probe (never merged): the same arms over a singleton remainder, exempt under Rule R.
+type RCtlT = RCtlA { x: Int } | RCtlB
+
+fn r_probe_control(t: RCtlT) -> RCtlT {
+  match t {
+    RCtlA { x: x } => t
+    RCtlBx => RCtlBx
+  }
+}

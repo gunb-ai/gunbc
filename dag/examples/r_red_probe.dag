@@ -1,0 +1,12 @@
+module examples.r_red_probe
+
+// Scratch census probe (never merged): a misspelled nullary over a two-alternative remainder.
+// Under Rule R it must be refused at infer.
+type RProbeT = RProbeA { x: Int } | RProbeB | RProbeC
+
+fn r_probe_red(t: RProbeT) -> RProbeT {
+  match t {
+    RProbeA { x: x } => t
+    RProbeBx => RProbeBx
+  }
+}
