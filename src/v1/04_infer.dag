@@ -19215,17 +19215,21 @@ fn equality_synth_fields(m: String, fields: List<EqualityPlanField>, a_of: fn(St
 }
 
 fn equality_synth_compare(m: String, step: EqualityStep, x: Node, y: Node, depth: Int) -> Node {
-  let p = concat("eqp", to_string(value: depth))
-  let q = concat("eqq", to_string(value: depth))
-  let inner = fn(s) { equality_synth_lambda(m: m, p: p, q: q, body: equality_synth_compare(m: m, step: s, x: equality_synth_var(m: m, name: p), y: equality_synth_var(m: m, name: q), depth: depth + 1)) }
   match step {
     EqualityByTarget => equality_synth_binop(m: m, op: Eq, l: x, r: y)
     EqualityThroughPlan { declaration: _ } => equality_synth_binop(m: m, op: Eq, l: x, r: y)
     EqualityRouted { function: f } => equality_synth_qcall(m: m, module_path: f.module_path as String, fn_name: f.decl_name as String, args: [x, y])
-    EqualityPresence { inner: i } => equality_synth_qcall(m: m, module_path: "std.optional", fn_name: "optional_eq", args: [x, y, inner(i)])
-    EqualityElements { element: e } => equality_synth_qcall(m: m, module_path: "std.algebra", fn_name: "zip_eq", args: [x, y, inner(e)])
-    EqualityMapValues { value: v } => equality_synth_qcall(m: m, module_path: "std.algebra", fn_name: "map_values_eq", args: [x, y, inner(v)])
+    EqualityPresence { inner: i } => equality_synth_qcall(m: m, module_path: "std.optional", fn_name: "optional_eq", args: [x, y, equality_synth_inner(m: m, step: i, depth: depth)])
+    EqualityElements { element: e } => equality_synth_qcall(m: m, module_path: "std.algebra", fn_name: "zip_eq", args: [x, y, equality_synth_inner(m: m, step: e, depth: depth)])
+    EqualityMapValues { value: v } => equality_synth_qcall(m: m, module_path: "std.algebra", fn_name: "map_values_eq", args: [x, y, equality_synth_inner(m: m, step: v, depth: depth)])
   }
+}
+
+// The element/value question a lift receives: a two-parameter lambda comparing its arguments by the step.
+fn equality_synth_inner(m: String, step: EqualityStep, depth: Int) -> Node {
+  let p = concat("eqp", to_string(value: depth))
+  let q = concat("eqq", to_string(value: depth))
+  equality_synth_lambda(m: m, p: p, q: q, body: equality_synth_compare(m: m, step: step, x: equality_synth_var(m: m, name: p), y: equality_synth_var(m: m, name: q), depth: depth + 1))
 }
 
 fn equality_synth_var(m: String, name: String) -> Node {
