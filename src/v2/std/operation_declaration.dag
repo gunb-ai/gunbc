@@ -3,11 +3,12 @@ module v2.std.operation_declaration
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.types { Bool, List, Map }
 import std.optional { Absent, Optional, Present }
-import std.algebra { fold_list, empty_map, map_insert, map_lookup }
+import std.algebra { fold_list, list_snoc_item, empty_map, map_insert, map_lookup }
 import std.effects { EffectShape, KeySource, ReadEffect, ExecuteEffect }
 import v2.std.text { String }
-import v2.std.node { Symbol, symbol_intern_lexeme }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_string_segments }
+import v2.std.integer { Int }
+import v2.std.node { Symbol, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_string_segments, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string }
 import v2.compiler.dependency_demand { RequirementClass, RequiresResources, RequiresOpaque, RequiresUndeclared }
 
 // ONE DECLARATION PER HOST-BOUNDARY OPERATION, keyed by its declaration path.
@@ -395,6 +396,32 @@ fn operation_declaration_resolves(
   }
 }
 
+// A key declared by more than one row is AMBIGUOUS: the B0 census promoted ambiguous keys to nothing
+// (the operation stayed Unknown and was counted) rather than pick; the same discipline holds here,
+// and the count is what the census reports. Ambiguity here can only be an authoring error -- keys
+// are declared paths, and one declaration is one operation.
+fn operation_declaration_row_count_for(
+  declaration: DeclarationRef
+) -> Int {
+  fold_list(
+    xs: operation_declaration_roster,
+    empty: 0,
+    cons: fn(k, other) {
+      if declaration_ref_eq(a: other.declaration, b: declaration) { k + 1 } else { k }
+    }
+  )
+}
+
+fn operation_declaration_ambiguous_row_count() -> Int {
+  fold_list(
+    xs: operation_declaration_roster,
+    empty: 0,
+    cons: fn(n, row) {
+      if operation_declaration_row_count_for(declaration: row.declaration) > 1 { n + 1 } else { n }
+    }
+  )
+}
+
 // THE KEY THE WHOLE CHANGE TURNS ON: the declaration path as the join key D13 and the B0 census
 // already use. Kept here so a consumer never re-derives a QualifiedName from a string and the slug
 // join cannot come back.
@@ -402,4 +429,96 @@ fn operation_declaration_path(
   declaration: DeclarationRef
 ) -> QualifiedName {
   qualified_name_from_string_segments(segments: [declaration.module_path, declaration.decl_name])
+}
+
+// THE PATH-JOINED LOOKUP the census and the B0 reach use: a walked operation's QualifiedName becomes
+// the DeclarationRef (owning module segments -> module_path, last segment -> decl_name) and the row
+// is read by that key. This is the single join between the walked corpus and the declarations; the
+// deleted slug index did the same job by stringified path compared to a primitive slug, and matched
+// nothing a module walk produced.
+fn declaration_ref_of_qualified_name(
+  path: QualifiedName
+) -> DeclarationRef {
+  match qualified_name_last_segment(qn: path) {
+    Present { value: decl_sym } =>
+      decl_ref(
+        module_path: qualified_name_to_dotted_string(qn: qualified_name_init(qn: path)),
+        decl_name: symbol_lexeme(sym: decl_sym)
+      )
+    Absent => decl_ref(module_path: "", decl_name: "")
+  }
+}
+
+fn operation_declaration_for_path(
+  path: QualifiedName
+) -> Optional<OperationDeclaration> {
+  operation_declaration_for(declaration: declaration_ref_of_qualified_name(path: path))
+}
+
+// THE M2V POPULATION, as a view over the roster: the seven operations the M2V census counts (the
+// read authority and the six corpus-fact seams). The census rosters derive from DISPOSITIONS on
+// these rows, exactly as they derived from the deleted classification roster's dispositions -- the
+// view exists so the census keeps counting the population it always counted, while the full roster
+// (every projected seam) is what D13 opacity reads.
+fn operation_declaration_m2v_population() -> List<OperationDeclaration> {
+  fold_list(
+    xs: operation_declaration_roster,
+    empty: [],
+    cons: fn(acc, row) {
+      if (row.declaration.module_path == "v2.std.live_read" && row.declaration.decl_name == "filesystem_read")
+        || (row.declaration.module_path == "v2.std.decl_index" && row.declaration.decl_name == "decl_facts")
+        || (row.declaration.module_path == "v2.std.layer_import_scan" && row.declaration.decl_name == "layer_import_facts")
+        || (row.declaration.module_path == "v2.lens.module_graph"
+          && (row.declaration.decl_name == "module_declaration_facts"
+            || row.declaration.decl_name == "import_resolution_facts"
+            || row.declaration.decl_name == "reference_resolution_facts"
+            || row.declaration.decl_name == "dependency_resolution_facts")) {
+        list_snoc_item(xs: acc, item: row)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// THE M2V CLASSIFICATION VIEW, the shape the M2V census reads. Same three facts the deleted roster
+// carried -- operation identity, semantics, disposition -- with operation identity moved from a
+// PRIMITIVE-IDENTITY SLUG to the DECLARATION. The census's derivations read row.disposition exactly
+// as before, so the blocked/implementable split is unchanged; what changed is that the key is the path
+// D13 joins by, making the two keyings of one concept into one. This is the deleted roster's data as a
+// view over operation_declaration_roster, not a second roster (DESIGN 2, delete-first).
+type EffectOperationClassification {
+  declaration: DeclarationRef
+  semantics: PrimitiveExecutionSemantics
+  disposition: EffectOperationDisposition
+}
+
+fn effect_demand_operation_classification(
+  module_path: String,
+  decl_name: String,
+  semantics: PrimitiveExecutionSemantics,
+  disposition: EffectOperationDisposition
+) -> EffectOperationClassification {
+  EffectOperationClassification {
+    declaration: decl_ref(module_path: module_path, decl_name: decl_name),
+    semantics: semantics,
+    disposition: disposition
+  }
+}
+
+fn effect_demand_operation_classifications() -> List<EffectOperationClassification> {
+  fold_list(
+    xs: operation_declaration_m2v_population(),
+    empty: [],
+    cons: fn(acc, row) {
+      list_snoc_item(
+        xs: acc,
+        item: EffectOperationClassification {
+          declaration: row.declaration,
+          semantics: row.semantics,
+          disposition: row.disposition
+        }
+      )
+    }
+  )
 }
