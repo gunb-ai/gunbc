@@ -168,6 +168,14 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
 
 pub type Bool = bool;
 
+pub fn bool_text(b: bool) -> String {
+    if b.clone() {
+        "true".to_string()
+    } else {
+        "false".to_string()
+    }
+}
+
 pub type Unit = ();
 
 pub type Json = serde_json::Value;
