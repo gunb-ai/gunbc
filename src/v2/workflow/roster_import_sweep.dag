@@ -3636,10 +3636,20 @@ fn roster_wave_control_expect_applied(name: String, fixture: String, legs: List<
 }
 
 fn roster_wave_control_wrong_binding() -> String {
-  // A DIFFERENT HOME, SAME NAME: the file already binds int_to_decimal_string from std.types. The wave's rename onto
-  // std.integer's declaration must REFUSE (a silent retarget is exactly what the binding admission exists to stop);
-  // std.nat's row, whose target name is unbound here, does not conflict with anything in this fixture.
+  // A DIFFERENT HOME, SAME NAME: the file already binds int_to_decimal_string from std.types. The keyed site needs the
+  // std.integer import to resolve, so the row is NEEDED, and the needed-plane rule fires first: a needed row whose
+  // target name the file already binds from another import would give one local name two targets, so the write REFUSES
+  // (shape-name-bound-elsewhere, roster_any_needed_bound_elsewhere) -- refuse, not rename, which is the manager's rule.
+  // The precise per-home refusal (wave-wrong-binding) is exercised where THAT rule applies: the double-binding fixture.
   "module c.wave\n\nimport std.types { int_to_decimal_string }\nimport std.nat { succ }\n\nfn f(v: Int, n: Nat) -> String { to_string(value: v) + to_string(value: n) }\n"
+}
+
+fn roster_wave_control_double_binding() -> String {
+  // THE CANDIDATE PLANE, SHADOWED: the nat row's target name is VISIBLE from std.nat (so the row is not needed and the
+  // needed-plane gate is silent) but ALSO bound from std.types. The keyed head would rename onto an ambiguous name --
+  // one spelling, two declarations -- which is a silent retarget waiting to happen, so the write must REFUSE with the
+  // precise per-home reason naming std.nat as expected and std.types as the shadowing binder.
+  "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\nimport std.types { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { to_string(value: v) + to_string(value: n) }\n"
 }
 
 fn roster_wave_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
@@ -3661,7 +3671,8 @@ fn roster_wave_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules
   roster_control_verdict(name: "wave-empty-claim", fail: roster_wave_control_expect_refusal(name: "wave-empty-claim", fixture: plain, legs: roster_wave_control_two_legs(ik: [], nk: ["control/wave.dag:3:58"]), want: "REFUSE control/wave.dag scope-selects-no-row home=std.integer selection=call=to_string occurrences=empty", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-duplicate-keys", fail: roster_wave_control_expect_refusal(name: "wave-duplicate-keys", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:43"]), want: "REFUSE control/wave.dag wave-duplicate-keys call=to_string key=control/wave.dag:3:43", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-leg-overlap", fail: roster_wave_control_expect_refusal(name: "wave-leg-overlap", fixture: plain, legs: list_append(left: list_snoc_item(xs: [], item: roster_wave_control_int_leg(keys: ["control/wave.dag:3:43"])), right: list_snoc_item(xs: [], item: roster_wave_control_int_leg(keys: ["control/wave.dag:3:58"]))), want: "REFUSE control/wave.dag wave-leg-overlap call=to_string homes=std.integer|std.integer", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-wrong-binding", fail: roster_wave_control_expect_refusal(name: "wave-wrong-binding", fixture: roster_wave_control_wrong_binding(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=int_to_decimal_string expected-home=std.integer bound-home=std.types", prepared: prepared, lex: lex)),
+  roster_control_verdict(name: "wave-wrong-binding", fail: roster_wave_control_expect_refusal(name: "wave-wrong-binding", fixture: roster_wave_control_wrong_binding(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag shape-name-bound-elsewhere", prepared: prepared, lex: lex)),
+  roster_control_verdict(name: "wave-candidate-wrong-binding", fail: roster_wave_control_expect_refusal(name: "wave-candidate-wrong-binding", fixture: roster_wave_control_double_binding(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:7:34"], nk: ["control/wave.dag:7:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=nat_to_decimal_string expected-home=std.nat bound-home=std.types", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-applies-text", fail: roster_wave_control_expect_applied(name: "wave-applies-text", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat, b: Bool) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) + to_string(b) }\n", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-applies-half-imported", fail: roster_wave_control_expect_applied(name: "wave-applies-half-imported", fixture: int_imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) }\n", prepared: prepared, lex: lex))]
   let imported_labels = roster_control_verdict(name: "wave-imported-labels", fail: roster_wave_control_expect(name: "wave-imported-labels", fixture: imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:43"], nk: ["control/wave.dag:6:58"]), want: "LABEL control/wave.dag 144 153 to_string int_to_decimal_string\nLABEL control/wave.dag 154 154  value: \nLABEL control/wave.dag 159 168 to_string nat_to_decimal_string\nLABEL control/wave.dag 169 169  value: \n", prepared: prepared, lex: lex))
