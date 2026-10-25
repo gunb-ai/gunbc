@@ -41,13 +41,6 @@ fn refuses_with(o: Optional<v2.lens.complexity_accumulator_copy.Finding>, cause:
   }
 }
 
-fn is_absent(o: Optional<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
-  match o {
-    Present { value: _ } => false
-    Absent => true
-  }
-}
-
 test fn red_list_append_right_is_suspect() -> Bool {
   is_suspect(
     o: classify(
@@ -101,8 +94,8 @@ test fn map_merge_noncarrier_overlay_refuses_may_alias() -> Bool {
 }
 
 test fn pure_literal_in_copied_port_is_provably_fresh() -> Bool {
-  is_absent(
-    o: classify(
+  optional_is_absent(
+    opt: classify(
       combiner: ^list_append,
       ports: [bare(s: ^acc), PortPureLiteral],
       carriers: [^acc]
@@ -170,8 +163,8 @@ test fn unregistered_combiner_reached_by_carrier_refuses() -> Bool {
 }
 
 test fn unregistered_combiner_without_carrier_is_out_of_scope() -> Bool {
-  is_absent(
-    o: classify(
+  optional_is_absent(
+    opt: classify(
       combiner: ^mystery_op,
       ports: [bare(s: ^item), bare(s: ^other)],
       carriers: [^acc]
