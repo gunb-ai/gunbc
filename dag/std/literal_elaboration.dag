@@ -309,7 +309,7 @@ type SignedArmAgreement
   = SignedArmAgrees { natural: DeclarationRef }
   | SignedArmDisagrees { reason: SignedViewDisagreement }
 
-// A grounded NATURAL carrier: a Peano view whose declared extent is the naturals.
+// A grounded NATURAL carrier: a Peano view whose declared extent is exactly the naturals (each inside the other).
 fn declaration_is_grounded_natural(rows: List<KernelGrounding>, d: DeclarationRef) -> Bool {
   rows |> any(r =>
     declaration_ref_eq(a: r.carrier, b: d)
@@ -317,10 +317,8 @@ fn declaration_is_grounded_natural(rows: List<KernelGrounding>, d: DeclarationRe
         PeanoGroundingView => true
         SignedGroundingView { nonnegative: _, negative: _ } => false
       })
-      && (match r.extent {
-        UnboundedNaturals => true
-        UnboundedIntegers => false
-      }))
+      && integer_extent_within(inner: r.extent, outer: UnboundedNaturals)
+      && integer_extent_within(inner: UnboundedNaturals, outer: r.extent))
 }
 
 fn signed_arm_agreement(arm: KernelGroundingArm, constructors: List<GroundedConstructorShape>) -> SignedArmAgreement {
