@@ -89,7 +89,7 @@ test fn comment_lines_and_blank_lines_are_skipped() -> Bool {
 // THE DIFF CONTROL. A not-held row must name WHERE the emitted program and the oracle disagree,
 // byte first, before anyone re-runs the interpreter.
 test fn first_diff_names_the_byte_where_bytes_disagree() -> Bool {
-  first_diff(a: "EDIT 1 2 x\n", b: "EDIT 1 2 y\n") == "8:native[x\n] oracle[y\n]"
+  first_diff(a: "EDIT 1 2 x\n", b: "EDIT 1 2 y\n") == "9:native[x\n] oracle[y\n]"
 }
 
 test fn first_diff_names_a_missing_tail_as_the_shared_prefix() -> Bool {
