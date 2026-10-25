@@ -245,8 +245,18 @@ test fn mab_binder_spelling_a_where_alias_binds() -> Bool {
     && mab_has_atom(o: mab_resolved_where_alias_binder(), id: ^W)
 }
 
+// REVERSED BY THE DECLARATION-SHAPE SPLIT (queued item of tidy-ant-251, 2026-10-25, decided there with
+// its reason). This row asserted that a field binder spelled like a module `data` row binds. Once the
+// index tells a `data` row (an Arrow marked ConstantMemberEdge) from a function (v2.std.symbol_index
+// type_decl_member_shape), a pattern atom naming a visible module-level value is the same situation at
+// either pattern position as one naming a frame value: the author meant to compare or to shadow, and
+// the compiler cannot tell which, so it refuses resolve_reason_pattern_atom_names_visible_value
+// (rename to bind, or use an equality guard to compare). Binding it is the silent wrong answer when
+// the arm reads the atom (`A(d) => d` would return the scrutinee's payload, not the constant). Kept,
+// reversed, as the regression control (DESIGN section 4b(4)); a binder spelled like a module FUNCTION
+// still binds (mab_a_binder_spelled_like_a_module_function_still_binds).
 test fn mab_binder_spelling_a_record_data_row_binds() -> Bool {
-  mab_has_atom(o: mab_resolved_record_data_binder(), id: ^d)
+  mab_outcome_refuses_with(o: mab_resolved_record_data_binder(), reason: ^resolve_reason_pattern_atom_names_visible_value)
 }
 
 // A BINDER SPELLED LIKE A NON-PAYLOAD DECLARED IN TWO MODULES BINDS. `n` is off the arm's lexical
@@ -634,4 +644,20 @@ test fn mab_a_field_pattern_atom_naming_a_frame_value_refuses_naming_both_readin
 test fn mab_a_binder_spelled_like_a_module_function_still_binds() -> Bool {
   mab_outcome_accepts(o: mab_resolved_binder_spelled_like_a_function())
     && mab_has_atom(o: mab_resolved_binder_spelled_like_a_function(), id: ^twice)
+}
+
+// A MODULE-LEVEL CONSTANT IN PATTERN POSITION refuses with the same cause, now that the index tells a
+// `data` row from a function (v2.std.symbol_index type_decl_member_shape). The first row is
+// v2.extdeps.languages.wasm's shape: the seed read each atom as a catch-all binder.
+fn mab_resolved_module_constant_pattern() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype F { w: Int }\n\ndata fa: F = F { w: 1 }\n\ndata fb: F = F { w: 2 }\n\nfn id(f: F) -> Int {\n  match f {\n    fa => 1\n    fb => 2\n  }\n}\n")
+}
+
+fn mab_resolved_module_constant_read_pattern() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype F { w: Int }\n\ndata fa: F = F { w: 1 }\n\nfn id(f: F) -> F {\n  match f {\n    fa => fa\n  }\n}\n")
+}
+
+test fn mab_a_module_constant_in_pattern_position_refuses_naming_both_readings() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_module_constant_pattern(), reason: ^resolve_reason_pattern_atom_names_visible_value)
+    && mab_outcome_refuses_with(o: mab_resolved_module_constant_read_pattern(), reason: ^resolve_reason_pattern_atom_names_visible_value)
 }
