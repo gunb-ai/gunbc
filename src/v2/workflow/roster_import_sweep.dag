@@ -247,6 +247,10 @@ type RosterRefusalReason
   | RefusalWaveLegSelectsNoRow { home: String, call: String }
   | RefusalWaveLegOverlap { call: String, homes: String }
   | RefusalWaveDuplicateKeys { call: String, key: String }
+  // A WIDE-WAVE WRITE REFUSES when the file already binds one of its rows' target names from ANOTHER home: that name is
+  // another home's declaration, and renaming a keyed head onto it would silently retarget the call (manager ruling,
+  // NAMESPACE-XL to_string wave). The binding-diff instrument is the corpus-wide admission; this is the write's own.
+  | RefusalWaveWrongBinding { path: String, name: String, expected_home: String, bound_home: String }
   | RefusalDuplicateWaveGate { home: String, call: String }
   // A RenameHead row whose companion would import a tag the module spells at a pattern-tag position whose binding the
   // reference walk could not decide (an enclosing arm's pattern atom of that spelling that may bind it, not an import):
@@ -305,6 +309,7 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalWaveLegSelectsNoRow { home: h, call: c } => "wave-leg-selects-no-row home=" + h + " call=" + c
     RefusalWaveLegOverlap { call: c, homes: hs } => "wave-leg-overlap call=" + c + " homes=" + hs
     RefusalWaveDuplicateKeys { call: c, key: k } => "wave-duplicate-keys call=" + c + " key=" + k
+    RefusalWaveWrongBinding { path: p, name: n, expected_home: e, bound_home: b } => "wave-wrong-binding path=" + p + " name=" + n + " expected-home=" + e + " bound-home=" + b
     RefusalDuplicateWaveGate { home: h, call: c } => "duplicate-wave-gate home=" + h + " call=" + c
   }
 }
@@ -697,6 +702,7 @@ fn roster_wave_probe_report(prepared: PreparedGrammar, lex: PreparedLexRules) ->
   "]\ncase int-imported:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "int-imported"), ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]\ncase named:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "named"), ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:65"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]\ncase named-wrong:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "named-wrong"), ik: ["control/wave.dag:3:34"], nk: ["control/wave.dag:3:56"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
+  "]\ncase wrong-binding:\n[" + roster_wave_probe_case(fixture: roster_wave_control_wrong_binding(), ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]\ncase empty-claim:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "plain"), ik: [], nk: [], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]\ncase unkeyed-second-file:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "plain"), ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
   "]\ncase pass2:\n[" + roster_wave_probe_case(fixture: roster_wave_fixture(which: "applied"), ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"], prepared: prepared, lex: lex, closures: closures, sides: sides) +
@@ -2671,6 +2677,12 @@ fn roster_import_row(sides: List<RosterHomeSide>, parse_root: Node, spans: SpanI
       } else {
         roster_rows_of_home(rows: needed, home: first.home)
       }
+      // A VISIBLE IMPORT THAT BINDS THE WRONG DECLARATION REFUSES, IT DOES NOT RENAME (manager ruling on the widened
+      // label plane): a file that already binds this row's target name from ANOTHER home is not a site of this wave --
+      // renaming would silently retarget another home's declaration. The binding-diff instrument stays the corpus-wide
+      // admission; this is the same rule enforced at the write itself, multi-home only so the single-home history is
+      // byte-identical.
+      let conflict = if multi_home { roster_wave_binding_conflicts(imported: imported, rows: label_rows) } else { Absent }
       let edits = fold_list(
         xs: homes,
         empty: RosterClean,
@@ -2700,6 +2712,9 @@ fn roster_import_row(sides: List<RosterHomeSide>, parse_root: Node, spans: SpanI
           }
         }
       )
+      match conflict {
+        Present { value: reason } => RosterRefused { reason: reason }
+        Absent =>
       match edits {
         RosterClean => roster_with_pending_labels(sides: sides, gates: gates, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, rows: label_rows, edit: RosterClean)
         RosterRefused { reason: reason } => RosterRefused { reason: reason }
@@ -2724,7 +2739,44 @@ fn roster_import_row(sides: List<RosterHomeSide>, parse_root: Node, spans: SpanI
           }
         other => other
       }
+      }
   }
+}
+
+// A LABEL-PLANE ROW'S TARGET NAME, ALREADY BOUND FROM ANOTHER HOME, IS A WRONG BINDING: the wave's rename would retarget
+// the call onto a different home's declaration. The check is parse-level (import binding rows, the same fact the import
+// edit reads); the binding-diff instrument keeps the corpus-wide admission. Only rows whose import is ALREADY visible can
+// conflict (a needed row has no binding of its target name by definition), and only the label plane adds such rows.
+fn roster_wave_binding_conflicts(imported: List<AliasBindingRow>, rows: List<RosterHeadRow>) -> Optional<RosterRefusalReason> {
+  fold_list(xs: rows, empty: Absent, cons: fn(acc, row) {
+    match acc {
+      Present { value: r } => Present { value: r }
+      Absent => roster_binding_conflict(imported: imported, row: row)
+    }
+  })
+}
+
+fn roster_binding_conflict(imported: List<AliasBindingRow>, row: RosterHeadRow) -> Optional<RosterRefusalReason> {
+  let h = roster_qn_text(qn: row.home)
+  fold_list(xs: imported, empty: Absent, cons: fn(acc, b) {
+    match acc {
+      Present { value: r } => Present { value: r }
+      Absent =>
+        if symbol_lexeme(sym: b.binding) == row.import_name {
+          let t = roster_qn_text(qn: b.target)
+          if (t == h) || roster_starts_with(prefix: h + ".", text: t) { Absent } else {
+            Present { value: RefusalWaveWrongBinding { path: "*", name: row.import_name, expected_home: h, bound_home: t } }
+          }
+        } else {
+          Absent
+        }
+    }
+  })
+}
+
+fn roster_starts_with(prefix: String, text: String) -> Bool {
+  let n = length(xs: prefix)
+  (n == 0) || (substring(s: text, start: 0, end: n) == prefix)
 }
 
 // THE HOMES NEEDED, duplicates dropped and ordered by DOTTED NAME (roster_needed_rows already yields each row at most
@@ -3447,6 +3499,7 @@ fn roster_rename_control_names() -> List<String> {
     "wave-empty-claim",
     "wave-duplicate-keys",
     "wave-leg-overlap",
+    "wave-wrong-binding",
     "wave-applies-text",
     "wave-applies-half-imported",
     "wave-imported-labels"
@@ -3582,6 +3635,13 @@ fn roster_wave_control_expect_applied(name: String, fixture: String, legs: List<
   }
 }
 
+fn roster_wave_control_wrong_binding() -> String {
+  // A DIFFERENT HOME, SAME NAME: the file already binds int_to_decimal_string from std.types. The wave's rename onto
+  // std.integer's declaration must REFUSE (a silent retarget is exactly what the binding admission exists to stop);
+  // std.nat's row, whose target name is unbound here, does not conflict with anything in this fixture.
+  "module c.wave\n\nimport std.types { int_to_decimal_string }\nimport std.nat { succ }\n\nfn f(v: Int, n: Nat) -> String { to_string(value: v) + to_string(value: n) }\n"
+}
+
 fn roster_wave_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
   let plain = roster_wave_control_plain()
   let named = roster_wave_control_named()
@@ -3598,9 +3658,10 @@ fn roster_wave_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules
   roster_control_verdict(name: "wave-named-argument", fail: roster_wave_control_expect(name: "wave-named-argument", fixture: named, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:65"]), want: "EDIT control/wave.dag 13 13 \\n\\nimport std.integer { int_to_decimal_string }\\nimport std.nat { nat_to_decimal_string }\nLABEL control/wave.dag 57 66 to_string int_to_decimal_string\nLABEL control/wave.dag 79 88 to_string nat_to_decimal_string\n", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-named-mismatch", fail: roster_wave_control_expect_refusal(name: "wave-named-mismatch", fixture: "module c.wave\n\nfn f(v: Int, n: Nat) -> String { to_string(value: v) + to_string(arg: n) }\n", legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:34"], nk: ["control/wave.dag:3:56"]), want: "REFUSE control/wave.dag rename-call-named-argument call=to_string", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-unmatched-key", fail: roster_wave_control_expect_refusal(name: "wave-unmatched-key", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:41"], nk: ["control/wave.dag:3:58"]), want: "REFUSE control/wave.dag occurrence-key-unmatched path=control/wave.dag call=to_string key=control/wave.dag:3:41", prepared: prepared, lex: lex)),
-  roster_control_verdict(name: "wave-empty-claim", fail: roster_wave_control_expect_refusal(name: "wave-empty-claim", fixture: plain, legs: roster_wave_control_two_legs(ik: [], nk: ["control/wave.dag:3:58"]), want: "REFUSE control/wave.dag scope-selects-no-row home=std.integer call=to_string", prepared: prepared, lex: lex)),
+  roster_control_verdict(name: "wave-empty-claim", fail: roster_wave_control_expect_refusal(name: "wave-empty-claim", fixture: plain, legs: roster_wave_control_two_legs(ik: [], nk: ["control/wave.dag:3:58"]), want: "REFUSE control/wave.dag scope-selects-no-row home=std.integer selection=call=to_string occurrences=empty", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-duplicate-keys", fail: roster_wave_control_expect_refusal(name: "wave-duplicate-keys", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:43"]), want: "REFUSE control/wave.dag wave-duplicate-keys call=to_string key=control/wave.dag:3:43", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-leg-overlap", fail: roster_wave_control_expect_refusal(name: "wave-leg-overlap", fixture: plain, legs: list_append(left: list_init_item(xs: [], item: roster_wave_control_int_leg(keys: ["control/wave.dag:3:43"])), right: list_init_item(xs: [], item: roster_wave_control_int_leg(keys: ["control/wave.dag:3:58"]))), want: "REFUSE control/wave.dag wave-leg-overlap call=to_string homes=std.integer|std.integer", prepared: prepared, lex: lex)),
+  roster_control_verdict(name: "wave-wrong-binding", fail: roster_wave_control_expect_refusal(name: "wave-wrong-binding", fixture: roster_wave_control_wrong_binding(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=int_to_decimal_string expected-home=std.integer bound-home=std.types", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-applies-text", fail: roster_wave_control_expect_applied(name: "wave-applies-text", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat, b: Bool) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) + to_string(b) }\n", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-applies-half-imported", fail: roster_wave_control_expect_applied(name: "wave-applies-half-imported", fixture: int_imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) }\n", prepared: prepared, lex: lex))]
   let imported_labels = roster_control_verdict(name: "wave-imported-labels", fail: roster_wave_control_expect(name: "wave-imported-labels", fixture: imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:43"], nk: ["control/wave.dag:6:58"]), want: "LABEL control/wave.dag 144 153 to_string int_to_decimal_string\nLABEL control/wave.dag 154 154  value: \nLABEL control/wave.dag 159 168 to_string nat_to_decimal_string\nLABEL control/wave.dag 169 169  value: \n", prepared: prepared, lex: lex))
