@@ -1,6 +1,9 @@
 module extdeps.systemd.loginctl
 
-import std.types { NonEmptyStr, String, List }
+import std.types { NonEmptyStr, String, List, Int }
+import std.algebra { trim, string_contains }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -57,4 +60,35 @@ fn loginctl_enable_linger_command(subject: NonEmptyStr) -> NonEmptyStr {
     " ", loginctl_enable_linger_verb as String,
     " ", subject as String,
   ], "") as NonEmptyStr
+}
+
+// show-user READS THE LINGER PROPERTY OF ONE ACCOUNT, the record enable-linger writes. loginctl(1): show-user
+// prints the user's properties as Key=value lines; --property= restricts them; Linger is "yes" or "no". An
+// account logind holds no record of (no session, not lingering) is refused with "is not logged in or lingering",
+// which is a reading of not-lingering, not an unreadable answer. Unelevated: logind answers it for any caller.
+data loginctl_show_user_verb: NonEmptyStr = "show-user" as NonEmptyStr
+
+// PATH-resolved, as systemctl_path_resolved_program is: the invoking host's layout is unobserved.
+fn loginctl_path_resolved_program() -> ProgramIdentity = uncataloged_program(invocation: loginctl_binary_name as String)
+
+fn loginctl_show_user_linger_command(subject: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: loginctl_path_resolved_program(), arguments: [loginctl_show_user_verb as String, subject as String, "--property=Linger"])
+}
+
+type LoginctlLingerReading
+  = LoginctlLingerEnabled
+  | LoginctlLingerDisabled
+  | LoginctlLingerUnread { cause: String }
+
+fn loginctl_linger_reading(exit_code: Int, stdout: String, stderr: String) -> LoginctlLingerReading {
+  let line = trim(s: stdout)
+  if exit_code == 0 && line == "Linger=yes" {
+    LoginctlLingerEnabled
+  } else if exit_code == 0 && line == "Linger=no" {
+    LoginctlLingerDisabled
+  } else if exit_code != 0 && string_contains(s: stderr, pattern: "is not logged in or lingering") {
+    LoginctlLingerDisabled
+  } else {
+    LoginctlLingerUnread { cause: join(["loginctl show-user exit ", to_string(value: exit_code), ": stdout=", line, " stderr=", trim(s: stderr)], "") }
+  }
 }

@@ -205,6 +205,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.util_linux_flock", decl_name: "flock_program"),
     decl_ref(module_path: "extdeps.tools.util_linux_setsid", decl_name: "setsid_program"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_path_resolved_program"),
+    decl_ref(module_path: "extdeps.systemd.loginctl", decl_name: "loginctl_path_resolved_program"),
     decl_ref(module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_program"),
     decl_ref(module_path: "extdeps.ntfy.serve", decl_name: "ntfy_version_command"),
     decl_ref(module_path: "extdeps.ntfy.access", decl_name: "ntfy_access_list_command"),
