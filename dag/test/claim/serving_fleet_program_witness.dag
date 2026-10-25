@@ -2,12 +2,25 @@ module test.claim.serving_fleet_program_witness
 
 import std.types { Bool, Int, List, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.algebra { Cons, Empty, string_contains }
+import std.algebra { string_contains }
 import std.markdown { MarkdownDocument }
 import gunbc.plan { plan_projects_committed_markdown }
 import gunbc.plan_registry { all_plans }
 import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.plans.serving_fleet_program { serving_fleet_program_plan }
+import gunbc.plans.serving_fleet_program {
+  serving_fleet_program_plan,
+  serving_fleet_rows,
+  ServingFleetRow,
+  ServingFleetRowId,
+  ServingFleetOwner,
+  SfpOwnedBy,
+  SfpUnowned,
+  SfpA1,
+  SfpA2,
+  SfpSupply,
+  SfpUnstarted,
+  sfp_row_label
+}
 import test.claim.plan_citation_census {
   plan_citation_has_positional_citation,
   plan_citation_citation_roster,
@@ -16,11 +29,11 @@ import test.claim.plan_citation_census {
 }
 
 // Guards on the serving-fleet umbrella CARRIER (DESIGN section 1: a plan's authority is its
-// .dag carrier). The plan is an index, so the claims are about its rows. The body is read
-// through the repository's own serializer, and citations through the shared reader
-// `test.claim.plan_citation_census`. No claim compares the row population to a literal: rows
-// are identified by their own `Row <label>` heads, and the dependency edges are joined
-// against those identities (DESIGN section 5, completeness is an identity join).
+// .dag carrier). The rows are typed records, so a row's id, owner, standing and edges are
+// read as fields and the claims fold over them; only the claims about what the projected
+// text says (no endpoint, no line number, citations resolve) read the serialized body.
+// No claim compares a population to a literal: edges are joined against row ids
+// (DESIGN section 5, completeness is an identity join).
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -60,168 +73,8 @@ test fn the_carrier_names_no_endpoint_or_secret() -> Bool {
       || string_contains(s: t, pattern: ".ts.net"))
 }
 
-// ── Row identity. A row is a line carrying `Standing:`; its label is the word after the
-// first `Row ` on that line, which is the row's own head. Keyed on plain words rather than
-// on emphasis markup, since the serializer, not this claim, owns how emphasis is written.
-fn row_lines() -> List<String> {
-  filter(carrier_text().split(delimiter: "\n"), l => string_contains(s: l, pattern: "Standing:"))
-}
-
-// The first word of the text, cut at a newline as well as a space: a reference that ends
-// its line (`Depends on Row D5.`) must not absorb the line after it.
-fn first_word(s: String) -> String {
-  let lines: List<String> = s.split(delimiter: "\n")
-  match lines {
-    Cons { head: line, tail: _ } =>
-      {
-      let words: List<String> = line.split(delimiter: " ")
-      match words {
-        Cons { head: w, tail: _ } => w
-        Empty => ""
-      }
-      }
-    Empty => ""
-  }
-}
-
-fn without_trailing_punctuation(w: String) -> String {
-  let last = substring(s: w, start: w.length() - 1, end: w.length())
-  if last == "," || last == "." || last == ";" { substring(s: w, start: 0, end: w.length() - 1) } else { w }
-}
-
-fn row_label(l: String) -> String {
-  let parts: List<String> = l.split(delimiter: "Row ")
-  match parts {
-    Cons { head: _, tail: Cons { head: rest, tail: _ } } => without_trailing_punctuation(w: first_word(s: rest))
-    _ => ""
-  }
-}
-
-fn row_labels() -> List<String> {
-  map(row_lines(), l => row_label(l: l))
-}
-
-// Every `Row <label>` reference anywhere in the text: the edges in `Depends on`, and the
-// closure order in section 5.
-fn referenced_labels(t: String) -> List<String> {
-  let parts: List<String> = t.split(delimiter: "Row ")
-  match parts {
-    Cons { head: _, tail: rest } => map(rest, r => without_trailing_punctuation(w: first_word(s: r)))
-    Empty => []
-  }
-}
-
-fn row_has_required_parts(l: String) -> Bool {
-  string_contains(s: l, pattern: "Standing:")
-    && string_contains(s: l, pattern: "Done:")
-    && string_contains(s: l, pattern: "Depends on")
-}
-
-fn row_citations_resolve(l: String) -> Bool {
-  all(plan_citation_citation_roster(t: l), c => citation_resolves(cite: c))
-}
-
-test fn every_row_has_its_parts_and_its_citations_resolve() -> Bool {
-  let rows = row_lines()
-  rows.length() >= 1
-    && all(rows, l => row_has_required_parts(l: l))
-    && all(rows, l => row_citations_resolve(l: l))
-}
-
-// ── Owner field. The text after `Owner: ` is either a backticked symbol, which must resolve,
-// or the word `unowned`, an explicit modeling obligation. Any other text, or no field, reads
-// as "" and fails: a related symbol elsewhere on the line is not an owner.
-fn row_owner(l: String) -> String {
-  let parts: List<String> = l.split(delimiter: "Owner: ")
-  match parts {
-    Cons { head: _, tail: Cons { head: rest, tail: _ } } =>
-      if rest.length() >= 7 && substring(s: rest, start: 0, end: 7) == "unowned" {
-        "unowned"
-      } else if rest.length() >= 1 && substring(s: rest, start: 0, end: 1) == "`" {
-        let ticks: List<String> = rest.split(delimiter: "`")
-        match ticks {
-          Cons { head: _, tail: Cons { head: cite, tail: _ } } => cite
-          _ => ""
-        }
-      } else {
-        ""
-      }
-    _ => ""
-  }
-}
-
-fn owner_is_declared(l: String) -> Bool {
-  let o = row_owner(l: l)
-  o == "unowned" || (o != "" && citation_resolves(cite: o))
-}
-
-test fn every_row_names_a_resolvable_owner_or_is_unowned() -> Bool {
-  let rows = row_lines()
-  rows.length() >= 1
-    && any(rows, l => row_owner(l: l) != "unowned")
-    && all(rows, l => owner_is_declared(l: l))
-    && !owner_is_declared(l: "Row X1 x. Owner: `gunbc.serving.no_such_module::NoSuchSymbol`. Standing: s.")
-    && !owner_is_declared(l: "Row X1 x. Owner plan `gunbc.serving.serving_enrollment::ServingRoute`. Standing: s.")
-}
-
-// ── Acyclicity. A row's edges are every `Row <label>` reference in its completion text,
-// from `Done:` on: its `Depends on` clause and any row its done criterion waits on, so a
-// row cannot close on an observation owned by a row that depends on it. Each round admits
-// every row whose dependencies are all admitted; after as many rounds as there are rows,
-// the graph is acyclic exactly when every row is admitted.
-fn row_dependencies(l: String) -> List<String> {
-  let own = row_label(l: l)
-  let parts: List<String> = l.split(delimiter: "Done:")
-  match parts {
-    Cons { head: _, tail: Cons { head: clause, tail: _ } } => filter(referenced_labels(t: clause), r => r != own)
-    _ => []
-  }
-}
-
-fn dependencies_of(rows: List<String>, a: String) -> List<String> {
-  fold(filter(rows, l => row_label(l: l) == a), init: [], f: (acc, l) => row_dependencies(l: l))
-}
-
-fn dependency_graph_is_acyclic(rows: List<String>) -> Bool {
-  let labels = map(rows, l => row_label(l: l))
-  let admitted = fold(labels, init: [], f: (done, round) =>
-    filter(labels, a => any(done, d => d == a)
-      || all(dependencies_of(rows: rows, a: a), d => any(done, x => x == d))))
-  admitted.length() == labels.length()
-}
-
-test fn the_dependency_graph_is_acyclic() -> Bool {
-  let rows = row_lines()
-  rows.length() >= 1
-    && any(rows, l => row_dependencies(l: l).length() >= 1)
-    && dependency_graph_is_acyclic(rows: rows)
-    && dependency_graph_is_acyclic(rows: [
-      "Row X1 a. Standing: s. Done: d. Depends on Row X2.",
-      "Row X2 b. Standing: s. Done: d, not Row X2 itself. Depends on: nothing."
-    ])
-    && !dependency_graph_is_acyclic(rows: [
-      "Row X1 a. Standing: s. Done: d. Depends on Row X2.",
-      "Row X2 b. Standing: s. Done: d. Depends on Row X1."
-    ])
-    && !dependency_graph_is_acyclic(rows: [
-      "Row X1 a. Standing: s. Done: d. Depends on Row X2.",
-      "Row X2 b. Standing: s. Done: observed live under Row X1. Depends on: nothing."
-    ])
-}
-
-// Row labels are identities: unique and nonempty, and every reference to a row, each
-// dependency edge included, names a row that exists.
-test fn every_dependency_edge_names_a_declared_row() -> Bool {
-  let labels = row_labels()
-  let refs = referenced_labels(t: carrier_text())
-  labels.length() >= 1
-    && all(labels, a => a != "" && filter(labels, b => b == a).length() == 1)
-    && refs.length() > labels.length()
-    && all(refs, r => any(labels, a => a == r))
-}
-
-// Every `::` in the text is covered by the derived roster, and every roster entry resolves
-// in the declaration census; a name no module declares stays unresolved.
+// Every `::` in the projected text is covered by the derived roster, and every roster entry
+// resolves in the declaration census; a name no module declares stays unresolved.
 test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bool {
   let t = carrier_text()
   let roster = plan_citation_citation_roster(t: t)
@@ -230,4 +83,100 @@ test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bo
     && covered == t.split(delimiter: "::").length() - 1
     && !citation_resolves(cite: "gunbc.serving.no_such_module::NoSuchSymbol")
     && all(roster, cite => citation_resolves(cite: cite))
+}
+
+// ── Row identity. The id is a closed sum, so a misspelled label has no constructor; what
+// remains to check is that each id is carried by exactly one row, and that every edge and
+// cross-reference names an id some row carries.
+fn same_row(a: ServingFleetRowId, b: ServingFleetRowId) -> Bool {
+  sfp_row_label(id: a) == sfp_row_label(id: b)
+}
+
+fn carries(rows: List<ServingFleetRow>, id: ServingFleetRowId) -> Bool {
+  any(rows, r => same_row(a: r.id, b: id))
+}
+
+test fn every_row_id_is_carried_once_and_every_edge_names_a_row() -> Bool {
+  let rows = serving_fleet_rows
+  rows.length() >= 1
+    && any(rows, r => r.depends_on.length() >= 1)
+    && all(rows, r => filter(rows, q => same_row(a: q.id, b: r.id)).length() == 1)
+    && all(rows, r => all(r.depends_on, d => carries(rows: rows, id: d)))
+    && all(rows, r => all(r.related, d => carries(rows: rows, id: d)))
+    && !carries(rows: [fixture_row(id: SfpA1, depends_on: [])], id: SfpA2)
+}
+
+// ── Owner. An owned row's symbol must resolve in the declaration census; an unowned row
+// states its obligation. A symbol no module declares fails.
+fn owner_is_declared(o: ServingFleetOwner) -> Bool {
+  match o {
+    SfpOwnedBy { symbol } => citation_resolves(cite: symbol)
+    SfpUnowned { obligation } => obligation != ""
+  }
+}
+
+fn is_owned(o: ServingFleetOwner) -> Bool {
+  match o {
+    SfpOwnedBy { symbol: _ } => true
+    SfpUnowned { obligation: _ } => false
+  }
+}
+
+test fn every_row_names_a_resolvable_owner_or_its_obligation() -> Bool {
+  let rows = serving_fleet_rows
+  any(rows, r => is_owned(o: r.owner))
+    && all(rows, r => owner_is_declared(o: r.owner))
+    && !owner_is_declared(o: SfpOwnedBy { symbol: "gunbc.serving.no_such_module::NoSuchSymbol" })
+    && !owner_is_declared(o: SfpUnowned { obligation: "" })
+}
+
+// ── Relations are typed. A row's prose names no row, so every relation between rows is a
+// `depends_on` edge or a `related` cross-reference, and the acyclicity claim sees all of
+// them. A done criterion that waits on a dependent row by name would be a hidden edge.
+fn owner_prose(o: ServingFleetOwner) -> String {
+  match o {
+    SfpOwnedBy { symbol: _ } => ""
+    SfpUnowned { obligation } => obligation
+  }
+}
+
+fn row_prose_names_no_row(r: ServingFleetRow) -> Bool {
+  all([r.title, r.summary, r.standing_note, r.pr, r.done, owner_prose(o: r.owner)], t => !string_contains(s: t, pattern: "Row "))
+}
+
+test fn row_prose_names_no_row_so_every_relation_is_typed() -> Bool {
+  let rows = serving_fleet_rows
+  rows.length() >= 1
+    && all(rows, r => row_prose_names_no_row(r: r))
+    && !row_prose_names_no_row(r: ServingFleetRow {
+      id: SfpA1, section: SfpSupply, title: "t", owner: SfpUnowned { obligation: "o" },
+      summary: "s", standing: SfpUnstarted, standing_note: "", pr: "p",
+      done: "observed live under Row A2.", depends_on: [], related: []
+    })
+}
+
+// ── Acyclicity, over typed edges. Each round admits every row whose prerequisites are all
+// admitted; after as many rounds as there are rows, the graph is acyclic exactly when every
+// row is admitted.
+fn fixture_row(id: ServingFleetRowId, depends_on: List<ServingFleetRowId>) -> ServingFleetRow {
+  ServingFleetRow {
+    id: id, section: SfpSupply, title: "t", owner: SfpUnowned { obligation: "o" },
+    summary: "s", standing: SfpUnstarted, standing_note: "", pr: "p", done: "d",
+    depends_on: depends_on, related: []
+  }
+}
+
+fn dependency_graph_is_acyclic(rows: List<ServingFleetRow>) -> Bool {
+  let admitted = fold(rows, init: [], f: (done, round) =>
+    filter(rows, r => any(done, d => same_row(a: d.id, b: r.id))
+      || all(r.depends_on, p => any(done, d => same_row(a: d.id, b: p)))))
+  admitted.length() == rows.length()
+}
+
+test fn the_dependency_graph_is_acyclic() -> Bool {
+  let rows = serving_fleet_rows
+  rows.length() >= 1
+    && dependency_graph_is_acyclic(rows: rows)
+    && dependency_graph_is_acyclic(rows: [fixture_row(id: SfpA1, depends_on: [SfpA2]), fixture_row(id: SfpA2, depends_on: [])])
+    && !dependency_graph_is_acyclic(rows: [fixture_row(id: SfpA1, depends_on: [SfpA2]), fixture_row(id: SfpA2, depends_on: [SfpA1])])
 }
