@@ -89,8 +89,8 @@ import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import gunbc.host_command_binding { admitted_scratch_path }
-import gunbc.managed_directory { managed_directory_admit, managed_directory_permissions, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
-import gunbc.auth.approval_device_redemption { approval_device_store_directory, approval_jwks_cache_directory }
+import gunbc.managed_directory { managed_directory_admit, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
+import gunbc.auth.approval_broker_state_directories { approval_broker_state_directories, broker_state_directory_install_argv }
 import gunbc.fleet.fleet_posix_accounts { GroundedPosixPrincipal, grounded_posix_principal_name, fleet_rm_binary_path, fleet_posix_nologin_shell_path }
 import gunbc.live_deploy.spec {
   deployment_owns_the_host_approval_broker,
@@ -219,7 +219,6 @@ import extdeps.tools.websocat {
 }
 import extdeps.bmc.os_install_actuator_toolchain { gunbc_bin_dir }
 import gunbc.srv3.srv3_actuate_shell_paths {
-  srv3_bmcweb_login_body_path,
   srv3_bmcweb_login_response_path,
   srv3_bmcweb_token_path,
 }
@@ -651,7 +650,7 @@ type ResolvedHostEffectCell =
   | ReceiptEmitOnHost { node: ComputeHost, lines: List<String> }
   | BootOnceReadBackSleepOnHost { node: ComputeHost }
   | SeededInstallMediaToolchainOnHost { node: ComputeHost }
-  | BmcwebSessionLoginOnHost { node: ComputeHost }
+  | BmcwebSessionLoginOnHost { node: ComputeHost, request_body_file: NonEmptyStr }
   | BmcwebTokenExtractOnHost { node: ComputeHost }
   | EffectivePrincipalReadOnHost { node: ComputeHost, read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
@@ -720,8 +719,8 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
     Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
     Srv3SeededInstallMediaToolchainEnsure =>
       SeededInstallMediaToolchainOnHost { node: n }
-    Srv3BmcwebSessionLogin =>
-      BmcwebSessionLoginOnHost { node: n }
+    Srv3BmcwebSessionLogin { request_body_file: f } =>
+      BmcwebSessionLoginOnHost { node: n, request_body_file: f }
     Srv3BmcwebTokenExtract =>
       BmcwebTokenExtractOnHost { node: n }
     Srv3BootOnceReadBackSleep =>
@@ -804,7 +803,7 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaRemaster is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     Srv3SeededInstallMediaToolchainEnsure =>
       IncompatibleCell { reason: "host_effect: Srv3SeededInstallMediaToolchainEnsure is in-band (actuator host typed toolchain ensure) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-    Srv3BmcwebSessionLogin =>
+    Srv3BmcwebSessionLogin { request_body_file: _ } =>
       IncompatibleCell { reason: "host_effect: Srv3BmcwebSessionLogin is in-band (actuator host typed curl login) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     Srv3BmcwebTokenExtract =>
       IncompatibleCell { reason: "host_effect: Srv3BmcwebTokenExtract is in-band (actuator host typed jq extract + write) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -885,7 +884,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3InstallMediaFetch => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3SeededInstallMediaRemaster => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3SeededInstallMediaToolchainEnsure => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
-        Srv3BmcwebSessionLogin => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        Srv3BmcwebSessionLogin { request_body_file: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3BmcwebTokenExtract => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -927,8 +926,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           BootOnceReadBackSleepOnHost { node: n }
         Srv3SeededInstallMediaToolchainEnsure =>
           SeededInstallMediaToolchainOnHost { node: n }
-        Srv3BmcwebSessionLogin =>
-          BmcwebSessionLoginOnHost { node: n }
+        Srv3BmcwebSessionLogin { request_body_file: f } =>
+          BmcwebSessionLoginOnHost { node: n, request_body_file: f }
         Srv3BmcwebTokenExtract =>
           BmcwebTokenExtractOnHost { node: n }
         LiveDeployApply { warrant: w } =>
@@ -993,7 +992,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3InstallMediaFetch => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3SeededInstallMediaRemaster => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3SeededInstallMediaToolchainEnsure => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
-        Srv3BmcwebSessionLogin => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        Srv3BmcwebSessionLogin { request_body_file: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BmcwebTokenExtract => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3BootOnceReadBackSleep => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3ReceiptEmit { lines: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1285,13 +1284,18 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
 // this site supplies only the paths its materialization bracket owns and runs the FLAGS through
 // srv3_run_tool_by_name, which resolves the program from the same cited curl_cli_tool row the
 // builder's identity carries.
+// THE BODY PATH ARRIVES ON THE EFFECT. It names the owner-only file the caller's
+// gunbc.auth.private_secret_file bracket created in a per-run private directory and removes when the
+// login returns. It used to be the fixed constant /tmp/srv3_bmcweb_login_body.json, written with
+// the ambient umask and never removed, so after a login the BMC password stayed in /tmp.
 fn realize_bmcweb_session_login_body(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  request_body_file: NonEmptyStr,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
+    request_body_file: request_body_file,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
   match srv3_run_tool_by_name(
@@ -1328,14 +1332,15 @@ fn realize_bmcweb_session_login_body(
 fn realize_bmcweb_session_login_on_host(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
+  request_body_file: NonEmptyStr,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     LocalShell =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     SshShell { ssh_host: _ } =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     FleetSsh { target: _, context: _ } =>
-      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+      realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3BmcwebSessionLogin cannot use EmitArtifactThenThinRun transport; typed mismatch.",
@@ -1836,7 +1841,7 @@ fn realize_provision_codex_runtime(
     Srv3InstallMediaFetch => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaRemaster => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaToolchainEnsure => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
-    Srv3BmcwebSessionLogin => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin { request_body_file: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3BmcwebTokenExtract => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3658,7 +3663,7 @@ fn realize_provision_build_cache(
     Srv3InstallMediaFetch => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaRemaster => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3SeededInstallMediaToolchainEnsure => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
-    Srv3BmcwebSessionLogin => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    Srv3BmcwebSessionLogin { request_body_file: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3BmcwebTokenExtract => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3NbdProxyServe { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -6902,25 +6907,65 @@ fn approval_broker_dark_install(
   }
 }
 
-// THE BROKER'S STATE DIRECTORIES: the device store and the JWKS cache, each converged to its managed
-// declaration (owner, group, derived mode) before the broker's tree is staged.
-fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
-  match dark_managed_state_directory(i: i, d: approval_device_store_directory()) {
-    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
-    DarkOk => dark_managed_state_directory(i: i, d: approval_jwks_cache_directory())
+// ONE CENSUS ROW AS ITS CONVERGING LEG: `sudo install -d -m <derived> -o <owner> -g <group> <path>` —
+// the same single-step ownership install as before, spelled from the row's own declaration (mode derived
+// by gunbc.managed_directory managed_directory_permissions, never a literal). Pure, like dark_unit_legs:
+// the witness can name the emitted leg without running a transport, which is what makes the census's
+// contents a CLAIM rather than a hope.
+fn dark_state_directory_leg(d: ManagedDirectory) -> DarkLeg {
+  DarkLegArgv {
+    step: DarkStepDeviceStore,
+    command: sudo_elevate_command(command: broker_state_directory_install_argv(d: d)),
   }
 }
 
-fn dark_managed_state_directory(i: DarkInstallInputs, d: ManagedDirectory) -> DarkState {
-  match managed_directory_admit(d: d) {
-    ManagedDirectoryRefused { member: m, path: p, writer: w } =>
-      DarkFailed { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
-    ManagedDirectoryAdmitted { dir: d } =>
-      dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
-        step: DarkStepDeviceStore,
-        command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
-          mode: managed_directory_permissions(d: d).mode, owner: d.owner.name, group: d.group_principal.name, path: d.path as String)),
-      })
+// THE EMITTED STATE-DIRECTORY LEGS FOR A SET OF CENSUS ROWS, in census order. THE POSITIVE CONTROL:
+// called with the census (dark_state_directory_legs below), this list carries the assertion-counter
+// root's argv — delete a row from gunbc.auth.approval_broker_state_directories
+// approval_broker_state_directories and the dark-install witness's claim over this list fails.
+fn dark_state_directory_legs_for(directories: List<ManagedDirectory>) -> List<DarkLeg> {
+  list_map(xs: directories, f: fn(d) { dark_state_directory_leg(d: d) })
+}
+
+// THE EMITTED STATE-DIRECTORY LEGS, at the census.
+fn dark_state_directory_legs() -> List<DarkLeg> {
+  dark_state_directory_legs_for(directories: approval_broker_state_directories())
+}
+
+// ONE ADMIT STEP: refuse on the first row whose dependents fail to cover their writes
+// (gunbc.managed_directory managed_directory_admit); carry any earlier refusal forward unchanged.
+fn dark_state_directory_admit_step(st: DarkState, d: ManagedDirectory) -> DarkState {
+  match st {
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+    DarkOk => match managed_directory_admit(d: d) {
+      ManagedDirectoryRefused { member: m, path: p, writer: w } =>
+        DarkFailed { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
+      ManagedDirectoryAdmitted { dir: _ } => DarkOk
+    }
+  }
+}
+
+// THE GATE RUNS BEFORE ANY MUTATION: every census row must admit (no uncovered writer) BEFORE a single
+// install -d touches the host. The fold this replaces admitted lazily per row, so a malformed row FIVE
+// refused AFTER rows one through four had already mutated the host; fail-closed means nothing is written
+// when the plan is bad.
+fn dark_state_directories_admit(directories: List<ManagedDirectory>) -> DarkState {
+  fold(directories, init: DarkOk, f: (st, d) => dark_state_directory_admit_step(st: st, d: d))
+}
+
+// THE BROKER'S STATE DIRECTORIES: EVERY root the census (gunbc.auth.approval_broker_state_directories
+// approval_broker_state_directories) declares, each converged to its managed declaration (owner, group,
+// derived mode) before the broker's tree is staged. DESIGN 6b root generalization: this was a nested
+// match over the device store and the JWKS cache — two roots named by hand — and the assertion-counter
+// root 503'd on srv1 for exactly that reason: a new state root could only be provisioned by editing a
+// branch here, and nobody edited one. A root now joins by being a row of the census; the fold is the
+// only shape, and `install -d` Noops on a directory that already stands at its declaration (the srv1
+// counter root the operator created by hand converges as a no-op, not a fight).
+fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
+  let directories = approval_broker_state_directories()
+  match dark_state_directories_admit(directories: directories) {
+    DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
+    DarkOk => dark_run_legs(legs: dark_state_directory_legs_for(directories: directories), transport: i.transport)
   }
 }
 
@@ -7814,8 +7859,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_boot_once_read_back_sleep_on_host(transport: transport, intent: intent)
     SeededInstallMediaToolchainOnHost { node: _ } =>
       realize_seeded_install_media_toolchain_ensure_on_host(transport: transport, intent: intent)
-    BmcwebSessionLoginOnHost { node: _ } =>
-      realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
+    BmcwebSessionLoginOnHost { node: _, request_body_file: f } =>
+      realize_bmcweb_session_login_on_host(transport: transport, intent: intent, request_body_file: f)
     BmcwebTokenExtractOnHost { node: _ } =>
       realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
     EffectivePrincipalReadOnHost { node: _, read: r } =>
@@ -8002,7 +8047,7 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     Srv3InstallMediaFetch => access
     Srv3SeededInstallMediaRemaster => access
     Srv3SeededInstallMediaToolchainEnsure => access
-    Srv3BmcwebSessionLogin => access
+    Srv3BmcwebSessionLogin { request_body_file: _ } => access
     Srv3BmcwebTokenExtract => access
     Srv3NbdProxyServe { intent: _, lease_key: _ } => access
     CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => access
@@ -8073,8 +8118,8 @@ fn host_effect_apply_gated(
           realize_boot_once_read_back_sleep_on_host(transport: transport, intent: intent)
         SeededInstallMediaToolchainOnHost { node: _ } =>
           realize_seeded_install_media_toolchain_ensure_on_host(transport: transport, intent: intent)
-        BmcwebSessionLoginOnHost { node: _ } =>
-          realize_bmcweb_session_login_on_host(transport: transport, intent: intent)
+        BmcwebSessionLoginOnHost { node: _, request_body_file: f } =>
+          realize_bmcweb_session_login_on_host(transport: transport, intent: intent, request_body_file: f)
         BmcwebTokenExtractOnHost { node: _ } =>
           realize_bmcweb_token_extract_on_host(transport: transport, intent: intent)
         EffectivePrincipalReadOnHost { node: _, read: r } =>
@@ -8169,7 +8214,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             ReceiptEmitOnHost { node: _, lines: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BootOnceReadBackSleepOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SeededInstallMediaToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            BmcwebSessionLoginOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            BmcwebSessionLoginOnHost { node: _, request_body_file: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             BmcwebTokenExtractOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EffectivePrincipalReadOnHost { node: _, read: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             SudoNopasswdExecuteProbeOnHost { node: _, probe: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
