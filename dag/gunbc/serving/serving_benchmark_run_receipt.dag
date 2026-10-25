@@ -3,6 +3,7 @@ module gunbc.serving.serving_benchmark_run_receipt
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat, nat_max, nat_min }
 import std.optional { Present, Absent }
+import std.algebra { skip }
 import std.content_hash { Sha256Digest }
 import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import std.measure {
@@ -379,6 +380,12 @@ fn distinct_ascending(xs: List<Nat>) -> List<Nat> {
     if acc.seen && acc.last == x { acc } else { DistinctScan { values: acc.values |> list_push(x), last: x, seen: true } }).values
 }
 
+// The rounds a level's quantities are read from: its rounds in order, less the first `warmup`, which ran
+// and are checked like every round but measure a cache still filling.
+fn measured_round_numbers(requests: List<TimedRequest>, active: Nat, warmup: Nat) -> List<Nat> {
+  round_numbers(requests: requests, active: active) |> skip(n: warmup)
+}
+
 fn round_numbers(requests: List<TimedRequest>, active: Nat) -> List<Nat> {
   distinct_ascending(xs: map(requests |> filter(r => !r.prime && r.n_active == active), r => r.round))
 }
@@ -455,8 +462,8 @@ type LevelRead
 
 // One level's quantities over the rows supplied. It reads no version: a level is computed from what
 // the rows say, and whether the rows inhabit a version is admission's question.
-fn serving_level_result(requests: List<TimedRequest>, active: Nat) -> LevelRead {
-  let rounds = round_numbers(requests: requests, active: active)
+fn serving_level_result(requests: List<TimedRequest>, active: Nat, warmup: Nat) -> LevelRead {
+  let rounds = measured_round_numbers(requests: requests, active: active, warmup: warmup)
   let size_gaps = flat_map(rounds, n =>
     if count(round_requests(requests: requests, round: n)) == active { [] as List<ServingBenchmarkGap> } else { [GapRoundSize { round: n, active: active, observed: count(round_requests(requests: requests, round: n)) }] })
   let window_gaps = flat_map(rounds, n =>
@@ -467,7 +474,7 @@ fn serving_level_result(requests: List<TimedRequest>, active: Nat) -> LevelRead 
   } else if count(gaps) > 0 {
     LevelRefused { gaps: gaps }
   } else {
-    let warm = requests |> filter(r => !r.prime && r.n_active == active)
+    let warm = requests |> filter(r => !r.prime && r.n_active == active && any(rounds, k => k == r.round))
     let generated = fold(warm, init: 0, f: (acc, r) => acc + r.completion)
     let window = fold(rounds, init: 0, f: (acc, n) => acc + us(t: round_window(rs: round_requests(requests: requests, round: n))))
     let cpu = fold(rounds, init: 0, f: (acc, n) => acc + us(t: round_engine_cpu(rs: round_requests(requests: requests, round: n))))
@@ -555,7 +562,7 @@ fn workload_gaps(version: ServingBenchmarkVersion, requests: List<GpuBenchReques
     r => GapMaxTokens { round: r.round, observed: r.max_tokens })
   let levels = map(observed_levels(requests: timed) |> filter(n => !any(w.active_levels, l => l == n)), n => GapLevelNotInVersion { active: n })
   let rounds = flat_map(w.active_levels, n =>
-    if count(round_numbers(requests: timed, active: n)) == w.rounds_per_level { [] as List<ServingBenchmarkGap> } else { [GapLevelRounds { active: n, observed: count(round_numbers(requests: timed, active: n)) }] })
+    if count(round_numbers(requests: timed, active: n)) == w.warmup_rounds_per_level + w.rounds_per_level { [] as List<ServingBenchmarkGap> } else { [GapLevelRounds { active: n, observed: count(round_numbers(requests: timed, active: n)) }] })
   let spread_bound = millisecond_count(m: w.submission_spread_bound) * milli_per_unit()
   let spread = flat_map(w.active_levels, n => flat_map(round_numbers(requests: timed, active: n), k =>
     if us(t: round_spread(rs: round_requests(requests: timed, round: k))) <= spread_bound { [] as List<ServingBenchmarkGap> } else { [GapSubmissionSpread { round: k, spread: round_spread(rs: round_requests(requests: timed, round: k)) }] }))
@@ -600,7 +607,7 @@ fn all_gpus_covered(cell: ServingCellIdentity, t: LevelTelemetry) -> Bool {
 }
 
 fn level_results(version: ServingBenchmarkVersion, timed: List<TimedRequest>) -> LevelFold {
-  let reads = map(version.workload.active_levels, n => serving_level_result(requests: timed, active: n))
+  let reads = map(version.workload.active_levels, n => serving_level_result(requests: timed, active: n, warmup: version.workload.warmup_rounds_per_level))
   LevelFold {
     results: flat_map(reads, l => match l { LevelRead { result: r } => [r], LevelRefused { gaps: _ } => [] as List<ServingLevelResult> }),
     gaps: flat_map(reads, l => match l { LevelRead { result: _ } => [] as List<ServingBenchmarkGap>, LevelRefused { gaps: g } => g }),

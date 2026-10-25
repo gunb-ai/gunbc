@@ -55,6 +55,7 @@ data smoke_version: ServingBenchmarkVersion = ServingBenchmarkVersion {
     max_output: token_count(count: 128),
     retained_sessions: 2,
     active_levels: [1, 2],
+    warmup_rounds_per_level: 0,
     rounds_per_level: 1,
     submission_spread_bound: millisecond(count: 1000),
   },
