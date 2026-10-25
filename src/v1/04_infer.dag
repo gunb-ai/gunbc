@@ -3672,7 +3672,7 @@ fn equality_arm_is_by_target(arm: EqualityPlanArm) -> Bool {
 // A STRUCTURE'S STEP: by the target when no member below it is routed, otherwise through the plan this
 // walk records for the declaration. A structure with no declaration identity cannot be named by a plan,
 // so a routed member below an anonymous structure refuses rather than compares by the target.
-fn equality_structure_walk(identity: String, reference: DeclarationRef?, name: String, arms: List<EqualityPlanArm>, refusal: EqualityAdmissionRefusal?, plans: List<DeclarationEqualityPlan>) -> EqualityWalk {
+fn equality_structure_walk(identity: String, reference: DeclarationRef?, generic: Bool, name: String, arms: List<EqualityPlanArm>, refusal: EqualityAdmissionRefusal?, plans: List<DeclarationEqualityPlan>) -> EqualityWalk {
   if refusal != none {
     equality_walk_refused(r: refusal)
   } else if arms |> all(a => equality_arm_is_by_target(arm: a)) {
@@ -3683,7 +3683,7 @@ fn equality_structure_walk(identity: String, reference: DeclarationRef?, name: S
     EqualityWalk {
       refusal: none,
       step: EqualityThroughPlan { declaration: identity },
-      plans: list_snoc_item(xs: plans, item: DeclarationEqualityPlan { declaration: identity, reference: reference, arms: arms })
+      plans: list_snoc_item(xs: plans, item: DeclarationEqualityPlan { declaration: identity, reference: reference, generic: generic, arms: arms })
     }
   }
 }
@@ -3704,12 +3704,12 @@ fn equality_structure_reference(rt: Node, peeled: Node, scope: InferScope) -> De
   }
 }
 
-fn equality_product_walk(identity: String, reference: DeclarationRef?, name: String, fields: List<Node>, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityWalk {
+fn equality_product_walk(identity: String, reference: DeclarationRef?, generic: Bool, name: String, fields: List<Node>, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityWalk {
   let a = equality_member_fields_walk(owner_name: name, fields: fields, scope: scope, visited: visited, depth: depth + 1)
-  equality_structure_walk(identity: identity, reference: reference, name: name, arms: [EqualityPlanArm { arm: "", fields: a.fields }], refusal: a.refusal, plans: a.plans)
+  equality_structure_walk(identity: identity, reference: reference, generic: generic, name: name, arms: [EqualityPlanArm { arm: "", fields: a.fields }], refusal: a.refusal, plans: a.plans)
 }
 
-fn equality_coproduct_walk(identity: String, reference: DeclarationRef?, name: String, variants: List<Node>, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityWalk {
+fn equality_coproduct_walk(identity: String, reference: DeclarationRef?, generic: Bool, name: String, variants: List<Node>, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityWalk {
   let source_indices = scope.type_env.source_indices
   let arms_walk = fold(variants, init: EqualityCoproductWalk { refusal: none, arms: [], plans: [] }, f: (acc, v) =>
     match acc.refusal {
@@ -3723,7 +3723,7 @@ fn equality_coproduct_walk(identity: String, reference: DeclarationRef?, name: S
           plans: concat(acc.plans, a.plans)
         }
     })
-  equality_structure_walk(identity: identity, reference: reference, name: name, arms: arms_walk.arms, refusal: arms_walk.refusal, plans: arms_walk.plans)
+  equality_structure_walk(identity: identity, reference: reference, generic: generic, name: name, arms: arms_walk.arms, refusal: arms_walk.refusal, plans: arms_walk.plans)
 }
 
 type EqualityCoproductWalk {
@@ -3804,9 +3804,9 @@ fn equality_operand_walk(n: Node, scope: InferScope, visited: Map<String, Bool>,
             if (peeled.connective == Arrow) {
               equality_walk_refused(r: equality_refused(carrier: name, member: "function value", member_judged: true))
             } else if (peeled.connective == Conj) {
-              equality_product_walk(identity: identity, reference: equality_declaration_reference(n: peeled, scope: scope), name: name, fields: peeled.children, scope: scope, visited: visited2, depth: depth)
+              equality_product_walk(identity: identity, reference: equality_declaration_reference(n: peeled, scope: scope), generic: false, name: name, fields: peeled.children, scope: scope, visited: visited2, depth: depth)
             } else if (peeled.connective == Disj) {
-              equality_coproduct_walk(identity: identity, reference: equality_declaration_reference(n: peeled, scope: scope), name: name, variants: peeled.children, scope: scope, visited: visited2, depth: depth)
+              equality_coproduct_walk(identity: identity, reference: equality_declaration_reference(n: peeled, scope: scope), generic: false, name: name, variants: peeled.children, scope: scope, visited: visited2, depth: depth)
             } else if is_kernel_type(name: leaf) {
               equality_walk_by_target()
             } else {
@@ -3898,9 +3898,9 @@ fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String,
   if (rt.connective == Arrow) {
     equality_walk_refused(r: equality_refused(carrier: name, member: "function value", member_judged: true))
   } else if (rt.connective == Conj) {
-    equality_product_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), name: name, fields: rt.children, scope: scope, visited: visited, depth: depth)
+    equality_product_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0, name: name, fields: rt.children, scope: scope, visited: visited, depth: depth)
   } else if (rt.connective == Disj) {
-    equality_coproduct_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), name: name, variants: rt.children, scope: scope, visited: visited, depth: depth)
+    equality_coproduct_walk(identity: identity, reference: equality_structure_reference(rt: rt, peeled: peeled, scope: scope), generic: (rt.params |> count) > 0, name: name, variants: rt.children, scope: scope, visited: visited, depth: depth)
   } else if (rt.children |> count) > 0 || type_reference_identity(n: rt, source_indices: scope.type_env.source_indices) != type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices) {
     equality_operand_walk(n: rt, scope: scope, visited: visited, depth: depth + 1, at_root: at_root)
   } else {
@@ -3959,6 +3959,7 @@ fn equality_declaration_plan_normalized(p: DeclarationEqualityPlan, live: List<S
   DeclarationEqualityPlan {
     declaration: p.declaration,
     reference: p.reference,
+    generic: p.generic,
     arms: p.arms |> map(a => EqualityPlanArm { arm: a.arm, fields: a.fields |> map(f => EqualityPlanField { field: f.field, step: equality_step_normalized(s: f.step, live: live) }) })
   }
 }
@@ -4039,7 +4040,50 @@ fn equality_operands_never_inhabit_together(left: Node, right: Node, scope: Infe
 // target's own equality, and on every non-equality operator).
 type EqualityAdmission {
   diags: List<ErrorNode>
-  plan: EqualityPlan?
+  derived: DeclarationRef?
+}
+
+// WHAT A PLANNED `==` CALLS. A site realizes as ONE call of one declared function on its two operands, the
+// convention std.operator_realization StructuralComparison uses for a declared comparison: the routed function
+// itself when the operand is a routed declaration (NodeOccurrence), else the derived equality the operand
+// type's declaring module synthesized for it (equality_synthesized_items). Derived equality is per
+// declaration, so a root that is a container or an optional has no single function: it refuses, and the
+// author compares element-wise (std.algebra zip_eq, std.optional optional_eq, std.algebra map_values_eq),
+// each element's `==` then lowering here. A plan naming a generic declaration, or one the checker could not
+// read as a DeclarationRef, refuses too: no declaration of it is synthesized.
+type EqualityDerivedTarget
+  = EqualityCallsDeclared { function: DeclarationRef }
+  | EqualityRootRefused { member: String }
+
+fn equality_derived_name(decl_name: String) -> String {
+  concat("equality_derived_", decl_name)
+}
+
+fn equality_plan_synthesizable(plan: EqualityPlan) -> Bool {
+  plan.declarations |> all(d => !d.generic && d.reference != none)
+}
+
+fn equality_derived_target(plan: EqualityPlan) -> EqualityDerivedTarget {
+  match plan.root {
+    EqualityRouted { function: f } => EqualityCallsDeclared { function: f }
+    EqualityThroughPlan { declaration: key } =>
+      match plan.declarations |> filter(d => d.declaration == key) |> first {
+        Present { value: d } =>
+          if !equality_plan_synthesizable(plan: plan) {
+            EqualityRootRefused { member: "a generic or unidentified declaration reaches a routed equality, so no derived equality is synthesized for it" }
+          } else {
+            match d.reference {
+              Present { value: r } => EqualityCallsDeclared { function: decl_ref(module_path: r.module_path as String, decl_name: equality_derived_name(decl_name: r.decl_name as String)) }
+              Absent => EqualityRootRefused { member: "the declaration reaching a routed equality has no DeclarationRef" }
+            }
+          }
+        Absent => EqualityRootRefused { member: "the plan names a declaration it does not carry" }
+      }
+    EqualityPresence { inner: _ } => EqualityRootRefused { member: "an optional whose content reaches a routed equality: compare it with std.optional optional_eq and an element question" }
+    EqualityElements { element: _ } => EqualityRootRefused { member: "a sequence whose elements reach a routed equality: compare it with std.algebra zip_eq and an element question" }
+    EqualityMapValues { value: _ } => EqualityRootRefused { member: "a map whose values reach a routed equality: compare it with std.algebra map_values_eq and a value question" }
+    EqualityByTarget => EqualityRootRefused { member: "unreachable: a by-target root carries no plan" }
+  }
 }
 
 // THE CENSUS ROWS' TWO READINGS (gunbc.rung_drop derived_equality_residual_field_equality). Both are
@@ -4098,7 +4142,7 @@ fn equality_item_collection_key_rows(item: Node, scope: InferScope) -> List<Erro
 }
 
 fn equality_admission_refused(diags: List<ErrorNode>) -> EqualityAdmission {
-  EqualityAdmission { diags: diags, plan: none }
+  EqualityAdmission { diags: diags, derived: none }
 }
 
 fn equality_admission(op: BinOp, left_typed: Node, right_typed: Node, scope: InferScope, span: SourceSpan) -> EqualityAdmission {
@@ -4157,12 +4201,20 @@ fn equality_admission(op: BinOp, left_typed: Node, right_typed: Node, scope: Inf
                 Absent => equality_plan_of_walk(w: rw)
               }
               if plan == none && (equality_operand_is_type_variable(n: lt, scope: scope) || equality_operand_is_type_variable(n: rt, scope: scope)) {
-                EqualityAdmission { diags: [make_error_node(diagnostic: EqualityInstantiationBlindGenericSite { operand_type: authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: if equality_operand_is_type_variable(n: lt, scope: scope) { lt } else { rt })), declaration: equality_census_declaration(scope: scope), span: span }, module_name: scope.module_name)], plan: none }
+                EqualityAdmission { diags: [make_error_node(diagnostic: EqualityInstantiationBlindGenericSite { operand_type: authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: if equality_operand_is_type_variable(n: lt, scope: scope) { lt } else { rt })), declaration: equality_census_declaration(scope: scope), span: span }, module_name: scope.module_name)], derived: none }
               } else if plan != none && (equality_operand_root_is_refused_route(n: lt, scope: scope) || equality_operand_root_is_refused_route(n: rt, scope: scope)) {
                 let refused = if equality_operand_root_is_refused_route(n: lt, scope: scope) { lt } else { rt }
                 equality_admission_refused(diags: [make_error_node(diagnostic: EqualityOnInadmissibleType { type_name: authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: refused)), span: span }, module_name: scope.module_name)])
               } else {
-                EqualityAdmission { diags: [], plan: plan }
+                match plan {
+                  Absent => EqualityAdmission { diags: [], derived: none }
+                  Present { value: p } =>
+                    match equality_derived_target(plan: p) {
+                      EqualityCallsDeclared { function: f } => EqualityAdmission { diags: [], derived: Present { value: f } }
+                      EqualityRootRefused { member: m } =>
+                        equality_admission_refused(diags: [make_error_node(diagnostic: EqualityMemberUnjudgeable { type_name: authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: lt)), member: m, span: span }, module_name: scope.module_name)])
+                    }
+                }
               }
           }
       }
@@ -10918,7 +10970,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         _ => []
       }
-      let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: resolved_type(n: left_typed), scope: scope, fuel: 8), equality: eq_admission.plan }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
+      let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: resolved_type(n: left_typed), scope: scope, fuel: 8), derived: eq_admission.derived }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
         emissions: infer_emissions_concat_all(chunks: [left_emissions, right_emissions, infer_emissions_of_diagnostics(diagnostics: concat(eq_wall_diags, refinement_diags))])
@@ -18427,7 +18479,7 @@ fn grounded_binop(op: BinOp, left: Node, k: Int, result_type: Node?, occurrence_
   }
   make_expr_node(
     occurrence_identity: occurrence_identity,
-    expr_data: ExprBinOp { op: op, algebra_field: info.algebra_field, operand: Present { value: view.operand }, equality: none },
+    expr_data: ExprBinOp { op: op, algebra_field: info.algebra_field, operand: Present { value: view.operand }, derived: none },
     children: [left, grounded_int_literal(k: k, occurrence_identity: OccurrenceSynthetic, span: span)],
     inferred: Present { value: Resolved { node: rt } },
     span: span
@@ -18441,7 +18493,7 @@ fn grounded_reflect(c: Int, subject: Node, carrier_type: Node, result_type: Node
   let info = infer_binop_type_node(op: Sub, left_type: carrier_type, source_indices: ctx.env.source_indices, env: ctx.env)
   make_expr_node(
     occurrence_identity: occurrence_identity,
-    expr_data: ExprBinOp { op: Sub, algebra_field: info.algebra_field, operand: Present { value: view.operand }, equality: none },
+    expr_data: ExprBinOp { op: Sub, algebra_field: info.algebra_field, operand: Present { value: view.operand }, derived: none },
     children: [grounded_int_literal(k: c, occurrence_identity: OccurrenceSynthetic, span: span), subject],
     inferred: Present { value: Resolved { node: result_type } },
     span: span
@@ -19078,17 +19130,153 @@ fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> 
 }
 
 // DERIVED EQUALITY DECLARATIONS, SYNTHESIZED FROM TYPE FACTS FOR THIS MODULE'S OWN DECLARATIONS (ruling
-// tidy-ant-251 / sleek-owl-397 / clever-crane-830, 2026-10-25, option (iii)). They are generated as .dag
-// text, parsed by the same parser under a synthetic file (not a <kernel:...> one, and absent from the
-// source indices, so authored names fall back to each node's own name), and joined to the module's items
-// before its context is built: ordinary declarations, inferred like authored ones, with no resolve pass.
-// PROBE STAGE: only the fixture module receives a trivial declaration, built directly as nodes (the
-// checker's crate depends on no tokenizer or parser), to establish by execution that a synthesized
-// item reaches the interpreter's function index.
-fn equality_synthesized_items(module_name: String, intern_table: InternTable) -> List<Node> {
-  if module_name != "test.fixture.derived_equality_routes" { [] } else {
-    [equality_synthetic_fn(module_name: module_name, name: "equality_derived_probe", params: [], return_type: equality_synthetic_type(module_name: module_name, name: "Bool"), body: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: equality_synthetic_span(module_name: module_name, name: "true")))]
+// tidy-ant-251 / sleek-owl-397 / clever-crane-830, 2026-10-25, option (iii)). For each of the module's own
+// non-generic type declarations whose equality walk reaches a routed declaration (v2.std.node
+// equality_routes), the module gains `fn equality_derived_<Decl>(a: Decl, b: Decl) -> Bool`, built
+// directly as nodes (the checker's crate has no parser) and joined to the module's items before its
+// context is built, so it is inferred, interpreted and emitted as an ordinary declaration. Its body
+// compares member by member: an ordinary `==` for a member compared by the target or through another
+// declaration's derived equality (that `==` lowers, by the member type's declaring identity, to a call of
+// its own derived equality: no foreign copy, no name resolved), a qualified call to the routed function
+// for a routed member, and std.optional optional_eq / std.algebra zip_eq / std.algebra map_values_eq for
+// an optional, sequence or map member. A coproduct matches both operands on the same arm. Only the
+// declaring module synthesizes for a declaration (3c: one derived equality per Node-reaching declaration,
+// the type's own derived capability, used or not). The v2 front end owes the same semantics.
+fn equality_synthesized_items(items: List<Node>, module_name: String, env: TypeEnv) -> List<Node> {
+  let scope = equality_synthesis_scope(env: env, module_name: module_name)
+  items |> flat_map(item => equality_synthesized_for(item: item, scope: scope))
+}
+
+fn equality_synthesis_scope(env: TypeEnv, module_name: String) -> InferScope {
+  InferScope {
+    type_env: env,
+    func_env: ResolvedFuncEnv { name: module_name, local: empty_map(), parents: [] },
+    locals: empty_map(),
+    body_locals: empty_map(),
+    match_bound_names: empty_map(),
+    module_name: module_name,
+    service_registry: empty_map(),
+    item_registry: empty_map(),
+    lambda_param_provenance: empty_map(),
+    caller_decl_name: "",
+    in_flight_lambda_param_names: [],
+    enclosing_declared_type_param_names: []
   }
+}
+
+fn equality_synthesized_for(item: Node, scope: InferScope) -> List<Node> {
+  let is_type_decl = (item.connective == Conj || item.connective == Disj) && item.transport == none && (item.params |> count) == 0
+  if !is_type_decl { [] } else {
+    let si = scope.type_env.source_indices
+    let name = authored_name_at(source_indices: si, node: item)
+    let identity = node_declaration_identity(n: item, source_indices: si)
+    let w = equality_resolved_declaration_structure(rt: item, peeled: item, name: name, identity: identity, scope: scope, visited: map_insert(empty_map(), identity, true), depth: 0, at_root: false)
+    if w.refusal != none { [] } else {
+      match equality_plan_of_walk(w: w) {
+        Absent => []
+        Present { value: plan } =>
+          if !equality_plan_synthesizable(plan: plan) { [] } else {
+            match plan.declarations |> filter(d => d.declaration == identity) |> first {
+              Absent => []
+              Present { value: dp } => [equality_derived_declaration(module_name: scope.module_name, decl_name: name, dp: dp)]
+            }
+          }
+      }
+    }
+  }
+}
+
+fn equality_derived_declaration(module_name: String, decl_name: String, dp: DeclarationEqualityPlan) -> Node {
+  let body = match dp.arms |> filter(a => a.arm == "") |> first {
+    Present { value: product } =>
+      equality_synth_fields(m: module_name, fields: product.fields, a_of: f => equality_synth_field(m: module_name, base: equality_synth_var(m: module_name, name: "a"), field: f), b_of: f => equality_synth_field(m: module_name, base: equality_synth_var(m: module_name, name: "b"), field: f))
+    Absent =>
+      equality_synth_match(m: module_name, scrutinee: equality_synth_var(m: module_name, name: "a"), arms: dp.arms |> map(arm =>
+        equality_synth_arm(m: module_name, pattern: equality_synth_variant_pattern(m: module_name, arm: arm, prefix: "eqa_"),
+          body: equality_synth_match(m: module_name, scrutinee: equality_synth_var(m: module_name, name: "b"), arms: [
+            equality_synth_arm(m: module_name, pattern: equality_synth_variant_pattern(m: module_name, arm: arm, prefix: "eqb_"),
+              body: equality_synth_fields(m: module_name, fields: arm.fields, a_of: f => equality_synth_var(m: module_name, name: concat("eqa_", f)), b_of: f => equality_synth_var(m: module_name, name: concat("eqb_", f)))),
+            equality_synth_arm(m: module_name, pattern: Wildcard, body: equality_synth_bool(m: module_name, value: false))
+          ]))))
+  }
+  equality_synthetic_fn(module_name: module_name, name: equality_derived_name(decl_name: decl_name),
+    params: [equality_synth_param(m: module_name, name: "a", type_name: decl_name), equality_synth_param(m: module_name, name: "b", type_name: decl_name)],
+    return_type: equality_synthetic_type(module_name: module_name, name: "Bool"),
+    body: body)
+}
+
+fn equality_synth_fields(m: String, fields: List<EqualityPlanField>, a_of: fn(String) -> Node, b_of: fn(String) -> Node) -> Node {
+  match fields |> first {
+    Absent => equality_synth_bool(m: m, value: true)
+    Present { value: _ } =>
+      let cmps = fields |> map(f => equality_synth_compare(m: m, step: f.step, x: a_of(f.field), y: b_of(f.field), depth: 0))
+      fold(cmps |> skip(1), init: (cmps |> first).value, f: (acc, c) => equality_synth_binop(m: m, op: And, l: acc, r: c))
+  }
+}
+
+fn equality_synth_compare(m: String, step: EqualityStep, x: Node, y: Node, depth: Int) -> Node {
+  let p = concat("eqp", to_string(value: depth))
+  let q = concat("eqq", to_string(value: depth))
+  let inner = fn(s) { equality_synth_lambda(m: m, p: p, q: q, body: equality_synth_compare(m: m, step: s, x: equality_synth_var(m: m, name: p), y: equality_synth_var(m: m, name: q), depth: depth + 1)) }
+  match step {
+    EqualityByTarget => equality_synth_binop(m: m, op: Eq, l: x, r: y)
+    EqualityThroughPlan { declaration: _ } => equality_synth_binop(m: m, op: Eq, l: x, r: y)
+    EqualityRouted { function: f } => equality_synth_qcall(m: m, module_path: f.module_path as String, fn_name: f.decl_name as String, args: [x, y])
+    EqualityPresence { inner: i } => equality_synth_qcall(m: m, module_path: "std.optional", fn_name: "optional_eq", args: [x, y, inner(i)])
+    EqualityElements { element: e } => equality_synth_qcall(m: m, module_path: "std.algebra", fn_name: "zip_eq", args: [x, y, inner(e)])
+    EqualityMapValues { value: v } => equality_synth_qcall(m: m, module_path: "std.algebra", fn_name: "map_values_eq", args: [x, y, inner(v)])
+  }
+}
+
+fn equality_synth_var(m: String, name: String) -> Node {
+  make_named_expr_node(occurrence_identity: OccurrenceSynthetic, name: name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: equality_synthetic_span(module_name: m, name: name), name_span: equality_synthetic_span(module_name: m, name: name))
+}
+
+fn equality_synth_field(m: String, base: Node, field: String) -> Node {
+  make_named_expr_node(occurrence_identity: OccurrenceSynthetic, name: field, expr_data: ExprFieldAccess { summary: none }, children: [base], inferred: none, span: equality_synthetic_span(module_name: m, name: field), name_span: equality_synthetic_span(module_name: m, name: field))
+}
+
+fn equality_synth_bool(m: String, value: Bool) -> Node {
+  make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprLiteral { value: LitBool { value: value } }, children: [], inferred: none, span: equality_synthetic_span(module_name: m, name: if value { "true" } else { "false" }))
+}
+
+fn equality_synth_binop(m: String, op: BinOp, l: Node, r: Node) -> Node {
+  make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprBinOp { op: op, algebra_field: none, operand: none, derived: none }, children: [l, r], inferred: none, span: equality_synthetic_span(module_name: m, name: "=="))
+}
+
+// A QUALIFIED CALL in the shape the parser gives `a.b.f(x, y)`: a method call named by the last segment
+// whose receiver is the module path as a field-access chain, which the checker's qualified resolution
+// reads (qualified_or_service_projection). Arguments are positional.
+fn equality_synth_qcall(m: String, module_path: String, fn_name: String, args: List<Node>) -> Node {
+  let segments = module_path |> split(delimiter: ".")
+  let receiver = fold(segments |> skip(1), init: equality_synth_var(m: m, name: (segments |> first).value), f: (acc, seg) => equality_synth_field(m: m, base: acc, field: seg))
+  let sp = equality_synthetic_span(module_name: m, name: fn_name)
+  make_named_expr_node(occurrence_identity: OccurrenceSynthetic, name: fn_name, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], args |> map(a => make_arg_node(occurrence_identity: OccurrenceSynthetic, name: none, value: a, span: sp, name_span: sp))), inferred: none, span: sp, name_span: sp)
+}
+
+fn equality_synth_lambda(m: String, p: String, q: String, body: Node) -> Node {
+  make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprLambda, children: [body, leaf_node_with_span(occurrence_identity: OccurrenceSynthetic, name: p, span: equality_synthetic_span(module_name: m, name: p)), leaf_node_with_span(occurrence_identity: OccurrenceSynthetic, name: q, span: equality_synthetic_span(module_name: m, name: q))], inferred: none, span: equality_synthetic_span(module_name: m, name: "fn"))
+}
+
+fn equality_synth_match(m: String, scrutinee: Node, arms: List<Node>) -> Node {
+  make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprMatch, children: concat([scrutinee], arms), inferred: none, span: equality_synthetic_span(module_name: m, name: "match"))
+}
+
+fn equality_synth_arm(m: String, pattern: MatchPattern, body: Node) -> Node {
+  make_arm_node(occurrence_identity: OccurrenceSynthetic, pattern: pattern, guard: none, body: body, span: equality_synthetic_span(module_name: m, name: "=>"))
+}
+
+fn equality_synth_variant_pattern(m: String, arm: EqualityPlanArm, prefix: String) -> MatchPattern {
+  VariantPattern {
+    name: arm.arm,
+    parent_enum: none,
+    field_bindings: arm.fields |> map(f => make_field_binding_node(occurrence_identity: OccurrenceSynthetic, field_name: f.field, binding: Bind { declaration: make_pattern_binder_declaration_node(occurrence_identity: OccurrenceSynthetic, name: concat(prefix, f.field), span: equality_synthetic_span(module_name: m, name: concat(prefix, f.field))) }, span: equality_synthetic_span(module_name: m, name: f.field), name_span: equality_synthetic_span(module_name: m, name: f.field))),
+    parent_identity: VariantParentBeforeInference
+  }
+}
+
+fn equality_synth_param(m: String, name: String, type_name: String) -> Node {
+  make_param_node(occurrence_identity: OccurrenceSynthetic, name: name, type_expr: equality_synthetic_type(module_name: m, name: type_name), default_value: none, span: equality_synthetic_span(module_name: m, name: name), name_span: equality_synthetic_span(module_name: m, name: name))
 }
 
 // A SYNTHESIZED NODE'S SPAN names a pseudo-file that is in no source index and is not a <kernel:...>
@@ -19145,7 +19333,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   }
 
   let resolved_module_name = authored_name_at(source_indices: source_indices, node: resolved.module)
-  let synthesized_items = equality_synthesized_items(module_name: resolved_module_name, intern_table: intern_table)
+  let synthesized_items = equality_synthesized_items(items: module_items(n: resolved.module), module_name: resolved_module_name, env: env)
   let contributions = map(concat(module_items(n: resolved.module), synthesized_items), item =>
     analyze_item(item: item, env: env, module_name: resolved_module_name)
   )

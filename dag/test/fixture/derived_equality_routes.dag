@@ -56,3 +56,22 @@ fn deq_synthetic_different_structure() -> Bool { NodeOccurrence { node: deq_synt
 // ONE COMPOSITE ROUTING THROUGH BOTH, each member decided by its own type.
 fn deq_composite_value_differs() -> Bool { DeqBoth { value: deq_x1(), at: NodeOccurrence { node: deq_x1() } } == DeqBoth { value: deq_x2(), at: NodeOccurrence { node: deq_x1() } } }
 fn deq_composite_occurrence_differs() -> Bool { DeqBoth { value: deq_x1(), at: NodeOccurrence { node: deq_x1() } } == DeqBoth { value: deq_x1(), at: NodeOccurrence { node: deq_x2() } } }
+
+// CARRIER CONTROLS (permanent, sleek-owl-397 / clever-crane-830): a routed leaf behind a RECURSIVE field (the
+// emitter stores it Box<..>) and behind a SHARED field (Rc<..>). The derived equality is an ordinary
+// declaration, so each carrier comes from the emitter's ordinary rules; these pairs fail if it does not.
+type DeqTree
+  = DeqLeaf { at: NodeOccurrence }
+  | DeqBranch { value: Node, rest: DeqTree }
+
+type DeqShared {
+  value: Node
+  holder: DeqValue
+}
+
+fn deq_tree(value: Node, at: Node) -> DeqTree { DeqBranch { value: value, rest: DeqLeaf { at: NodeOccurrence { node: at } } } }
+
+fn deq_boxed_value_occurrence_only() -> Bool { deq_tree(value: deq_x1(), at: deq_x1()) == deq_tree(value: deq_x2(), at: deq_x1()) }
+fn deq_boxed_occurrence_occurrence_only() -> Bool { deq_tree(value: deq_x1(), at: deq_x1()) == deq_tree(value: deq_x1(), at: deq_x2()) }
+fn deq_shared_value_occurrence_only() -> Bool { DeqShared { value: deq_x1(), holder: DeqValue { value: deq_x1() } } == DeqShared { value: deq_x2(), holder: DeqValue { value: deq_x2() } } }
+fn deq_shared_value_structure_only() -> Bool { DeqShared { value: deq_x1(), holder: DeqValue { value: deq_x1() } } == DeqShared { value: deq_x1(), holder: DeqValue { value: deq_y1() } } }

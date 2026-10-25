@@ -182,6 +182,18 @@ test fn collection_key_census_row_is_present_and_the_program_stays_accepted() ->
     && eq_class_count(source: collection_key_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
 }
 
+// ONE CALLING CONVENTION (sleek-owl-397's RED). A planned `==` emits as one call of the declared derived
+// equality, and the emitter carries no hand-spelled conversion of a routed leaf's arguments: the routed call
+// is inside that declaration's ordinary body. The forbidden text is what the retired plan reader emitted.
+test fn planned_equality_emits_one_declared_call_and_no_hand_spelled_route() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_emit_probe\nimport v2.std.node { Node }\ntype DeqEmitWrap { n: Node }\nfn same(a: DeqEmitWrap, b: DeqEmitWrap) -> Bool { a == b }\n",
+    "src/test_claim_deq_emit_probe.rs",
+    ["equality_derived_"],
+    ["::core::convert::From::from("]
+  )
+}
+
 test fn presence_test_stays_admitted() -> Bool {
   eq_census_clean(source: presence_test_green_source)
 }
