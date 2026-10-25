@@ -17,7 +17,7 @@ import gunbc.review_sheet_projection {
   validate_header_schema,
 }
 import gunbc.review_sheet_format_actuator { FormatRule, ColumnWidth }
-import std.measure { Measure, DisplayPixelCount }
+import std.measure { Measure, DisplayPixelCount, CharacterCount }
 
 // A REVIEW SHEET KIND IS A VALUE, AND THE CONVERGE TAKES IT AS ONE. Before this module the converge
 // knew one kind by name -- the CI prospect sheet's schema, file name and Drive marker were literals
@@ -61,30 +61,44 @@ type ReviewSheetTab {
   rows: ReviewTabRows
 }
 
-data review_sheet_column_character_pixels: DisplayPixelCount = Measure { count: 7 }
-data review_sheet_column_padding_pixels: DisplayPixelCount = Measure { count: 16 }
-data review_sheet_identifier_characters: Int = 40
-data review_sheet_code_characters: Int = 12
-data review_sheet_prose_characters: Int = 60
-
-fn longest(texts: List<String>) -> Int {
-  fold(texts, init: 0, f: fn(acc, t) { if string_length(s: t) > acc { string_length(s: t) } else { acc } })
+// THE FONT'S ADVANCE: display pixels PER character, a rate and not a width, so it has its own carrier
+// and is spent only through display_width_of, the one declared conversion from a character budget
+// to a display width.
+type DisplayPixelsPerCharacter {
+  advance: DisplayPixelCount
 }
 
-fn content_characters(header: String, content: ColumnContentClass) -> Int {
-  let floor = string_length(s: header)
+data review_sheet_column_character_advance: DisplayPixelsPerCharacter = DisplayPixelsPerCharacter { advance: DisplayPixelCount { pixels: 7 } }
+data review_sheet_column_padding_pixels: DisplayPixelCount = DisplayPixelCount { pixels: 16 }
+data review_sheet_identifier_characters: CharacterCount = Measure { count: 40 }
+data review_sheet_code_characters: CharacterCount = Measure { count: 12 }
+data review_sheet_prose_characters: CharacterCount = Measure { count: 60 }
+
+fn display_width_of(characters: CharacterCount, advance: DisplayPixelsPerCharacter, padding: DisplayPixelCount) -> DisplayPixelCount {
+  DisplayPixelCount { pixels: characters.count * advance.advance.pixels + padding.pixels }
+}
+
+fn characters_of(t: String) -> CharacterCount { Measure { count: string_length(s: t) } }
+
+fn wider(a: CharacterCount, b: CharacterCount) -> CharacterCount { if a.count > b.count { a } else { b } }
+
+fn longest(texts: List<String>) -> CharacterCount {
+  fold(texts, init: Measure { count: 0 }, f: fn(acc, t) { wider(a: acc, b: characters_of(t: t)) })
+}
+
+fn content_characters(header: String, content: ColumnContentClass) -> CharacterCount {
   let body = match content {
     ContentVocabulary { members: m } => longest(texts: concat([m.head], m.tail))
     ContentIdentifier => review_sheet_identifier_characters
     ContentCode => review_sheet_code_characters
-    ContentCount => 0
+    ContentCount => Measure { count: 0 }
     ContentProse => review_sheet_prose_characters
   }
-  if body > floor { body } else { floor }
+  wider(a: body, b: characters_of(t: header))
 }
 
 fn column_pixels(header: String, content: ColumnContentClass) -> DisplayPixelCount {
-  Measure { count: content_characters(header: header, content: content) * review_sheet_column_character_pixels.count + review_sheet_column_padding_pixels.count }
+  display_width_of(characters: content_characters(header: header, content: content), advance: review_sheet_column_character_advance, padding: review_sheet_column_padding_pixels)
 }
 
 // An operator's column is prose by its declared kind; a derived column takes the content its tab
