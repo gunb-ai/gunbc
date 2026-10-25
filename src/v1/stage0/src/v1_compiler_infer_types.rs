@@ -2442,6 +2442,17 @@ pub fn type_node_is_callable(n: Rc<Node>) -> bool {
     ((n.connective.clone() == Connective::Arrow) || ((n.params.clone().len() as i64) > 0))
 }
 
+pub fn applied_field_type(field_type: Rc<Node>) -> Rc<Node> {
+    if type_node_is_callable(field_type.clone()) {
+        match field_type.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: codomain, .. }) => codomain.clone(),
+            _ => field_type.clone(),
+        }
+    } else {
+        field_type.clone()
+    }
+}
+
 pub fn node_declaration_file(n: Rc<Node>) -> String {
     match n.ident_span.clone() {
         Some(sp) => sp.file.clone(),
@@ -3863,27 +3874,10 @@ pub fn infer_arithmetic_binop_type_node(
                     source_indices.clone(),
                 ) {
                     Some(m) => match m.field_node.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: rt, .. }) => {
-                            if ((rt.params.clone().len() as i64) > 0) {
-                                match rt.inferred.clone().as_deref().cloned() {
-                                    Some(InferredNode::Resolved {
-                                        node: return_type, ..
-                                    }) => Rc::new(BinOpInferred {
-                                        result_type: return_type.clone(),
-                                        algebra_field: Some(m.field_kind.clone()),
-                                    }),
-                                    _ => Rc::new(BinOpInferred {
-                                        result_type: left_type.clone(),
-                                        algebra_field: Some(m.field_kind.clone()),
-                                    }),
-                                }
-                            } else {
-                                Rc::new(BinOpInferred {
-                                    result_type: rt.clone(),
-                                    algebra_field: Some(m.field_kind.clone()),
-                                })
-                            }
-                        }
+                        Some(InferredNode::Resolved { node: rt, .. }) => Rc::new(BinOpInferred {
+                            result_type: applied_field_type(rt.clone()),
+                            algebra_field: Some(m.field_kind.clone()),
+                        }),
                         _ => Rc::new(BinOpInferred {
                             result_type: left_type.clone(),
                             algebra_field: std::option::Option::None,
