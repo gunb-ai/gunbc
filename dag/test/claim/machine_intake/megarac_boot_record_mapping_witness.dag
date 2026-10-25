@@ -19,7 +19,7 @@ module test.claim.machine_intake.megarac_boot_record_mapping_witness
 
 import std.types { NonEmptyStr }
 import std.algebra { FreeSemigroup, length, non_empty_to_list, string_contains }
-import std.decl_ref { decl_ref }
+import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionPending, DissolutionFired }
 import std.measure { byte_size }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
@@ -65,7 +65,6 @@ import gunbc.host.boot_attempt {
   AttemptIdentityReading, DiagnosticRetained, DiagnosticNotRetained, DiagnosticUnavailable,
   run_record_findings, run_record_derived_findings,
   boot_attempt_console_reading_decl_ref,
-  boot_attempt_console_debt_dissolves_when_the_typed_reading_retires,
   boot_attempt_console_debt_status,
   boot_attempt_console_debt_refs,
   boot_attempt_console_debt_outstanding,
@@ -899,7 +898,7 @@ test fn the_console_debt_carrier_names_a_declaration_that_exists_in_the_core() -
 // (b) THE DEBT IS LIVE TODAY, and the carrier says so on a census that actually contains the reading.
 // A witness that asserted the fired arm here would be the decorative carrier in a different costume.
 test fn the_console_debt_is_live_while_the_core_still_declares_the_reading() -> Bool {
-  match boot_attempt_console_debt_status(present_decls: [boot_attempt_console_reading_decl_ref]) {
+  match boot_attempt_console_debt_status(present_decls: boot_attempt_console_debt_refs) {
     DissolutionPending => true
     _ => false
   }
@@ -915,9 +914,12 @@ test fn the_debt_carrier_lists_every_machine_named_declaration_the_core_borrows(
   let live = boot_attempt_console_debt_outstanding(present_decls: census)
   let all_live = length(xs: live) == length(xs: census)
   // the list names only the two machine-named modules, never the neutral one
-  let only_machine_modules = all(census, r =>
-    r.module_path == "gunbc.machine_intake.mtcollins1_power_on_account"
-      || r.module_path == "gunbc.machine_intake.mtcollins1_console_milestone_observation")
+  let machine_named = filter(census, r => r.module_path != "gunbc.host.boot_attempt")
+  let only_machine_modules = length(xs: machine_named) == 5
+    && all(machine_named, r =>
+      r.module_path == "gunbc.machine_intake.mtcollins1_power_on_account"
+        || r.module_path == "gunbc.machine_intake.mtcollins1_console_milestone_observation")
+    && length(xs: filter(census, r => declaration_ref_eq(a: r, b: boot_attempt_console_reading_decl_ref))) == 1
   // and it CAN fire selectively: retire exactly one and the outstanding list shrinks by one, so the
   // carrier reports WHICH borrowing is left rather than a single live/fired bit.
   let one_retired = filter(census, r => r.decl_name != "SpanConsoleReading")
@@ -936,7 +938,7 @@ test fn the_console_debt_carrier_fires_when_the_reading_retires() -> Bool {
     decl_ref(module_path: "gunbc.host.boot_attempt", decl_name: "BootRunRecord"),
   ]
   let while_present = match boot_attempt_console_debt_status(
-    present_decls: census + [boot_attempt_console_reading_decl_ref]
+    present_decls: census + boot_attempt_console_debt_refs
   ) {
     DissolutionPending => true
     _ => false
@@ -945,7 +947,15 @@ test fn the_console_debt_carrier_fires_when_the_reading_retires() -> Bool {
     DissolutionFired => true
     _ => false
   }
-  while_present && after_retirement
+  // the fold and the list cannot disagree: a census that still holds ONE borrowing reports Pending,
+  // so the fired arm cannot be reached while any borrowing remains (review 85810's concrete failure).
+  let one_left = match boot_attempt_console_debt_status(
+    present_decls: census + [boot_attempt_console_reading_decl_ref]
+  ) {
+    DissolutionPending => true
+    _ => false
+  }
+  while_present && after_retirement && one_left
 }
 
 // ── THE DERIVED FINDINGS, READ OUT OF THE FIELDS THE MAPPING FILLS ────────────────────────────────
