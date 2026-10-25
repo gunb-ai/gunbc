@@ -30,6 +30,14 @@ module test.claim.runner.runner_gpu_container_toolchain_witness
 
 import std.logic { Bool }
 import std.types { NonEmptyStr }
+import std.algebra { trim }
+
+import gunbc.runner.runner_host_deploy {
+  runner_host_gpu_container_toolchain_provision_script,
+}
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
 
 import gunbc.runner.runner_gpu_container_toolchain {
   GpuContainerArm,
@@ -324,5 +332,57 @@ test fn the_plan_refuses_when_the_displaceable_account_has_a_store() -> Bool {
   ) {
     SubordinatePlanRefused { reason: _ } => true
     SubordinatePlanSteps { steps: _ } => false
+  }
+}
+
+// ── THE REPO-INSTALL BODY IS NEVER FABRICATED ────────────────────────────────────────────────
+//
+// Review 86284 caught a real hole here, and the hole was of the kind a comment cannot prevent:
+// gpu_container_provision_toolkit_body returned the empty string for a host with no declared
+// provision script, and an empty file is a VALID shell script — `sh` reads it, runs nothing, exits
+// 0. So the converge would have reported "nvidia repo install: ok", continued, and surfaced the gap
+// only at the read-back, where the cause reads as a missing package rather than as a body that was
+// never assembled. The fix returns the honest Absent and turns it into a refusal, but the property
+// that matters is the one an empty string would violate, and it has to be claimed rather than
+// commented: NO HOST IS EVER HANDED A BODY THAT IS PRESENT BUT EMPTY.
+// Both halves are needed. Asserting only "srv3 gets a body" would pass on an implementation that
+// returned "" for every host. Asserting only "srv2 gets nothing" would pass on an implementation
+// that returned "" for srv2 — which is exactly the bug. So: the Desired hosts answer with a body
+// that has bytes in it, and the not-Desired hosts answer Absent, never the empty string.
+
+
+// THE POSITIVE HALF: each host that declares the toolchain gets a body with real content in it —
+// not the empty string. The marker is something only a real installer carries (the keyring is
+// dearmored into the keyring path), so a body that merely exists but installs nothing fails here.
+test fn a_desired_host_gets_a_non_empty_repo_install_body() -> Bool {
+  let b1 = runner_host_gpu_container_toolchain_provision_script(host: operator_host_srv1)
+  let b3 = runner_host_gpu_container_toolchain_provision_script(host: operator_host_srv3)
+  match b1 {
+    Absent => false
+    Present { value: v1 } =>
+      if trim(s: v1) == "" {
+        false
+      } else {
+        match b3 {
+          Absent => false
+          Present { value: v3 } =>
+            trim(s: v3) != ""
+              && string_contains(s: v1, pattern: "keyring")
+              && string_contains(s: v3, pattern: "keyring")
+          }
+      }
+  }
+}
+
+// THE NEGATIVE HALF, WHICH IS THE BUG ITSELF: a host that does not declare the toolchain must answer
+// Absent. Returning Present{""} here would be indistinguishable from the fix at the call site only
+// until the moment it staged an empty installer and called it success.
+test fn a_host_without_the_toolchain_declared_answers_absent_not_empty() -> Bool {
+  match runner_host_gpu_container_toolchain_provision_script(host: operator_host_srv2) {
+    Absent => match runner_host_gpu_container_toolchain_provision_script(host: operator_host_srv4) {
+      Absent => true
+      Present { value: v4 } => false
+    }
+    Present { value: v2 } => false
   }
 }
