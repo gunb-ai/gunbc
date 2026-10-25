@@ -2712,8 +2712,11 @@ fn roster_import_row(sides: List<RosterHomeSide>, parse_root: Node, spans: SpanI
                 LabelsRenameRefused { reason: rr } => RosterRefused { reason: rr }
                 LabelsSelected { edits: labels } =>
                   match roster_import_edit_merge(edits: raw) {
-                    // ONE EDIT: the single-home shape stays byte-identical (the wave every prior run exercises).
-                    Cons { head: e, tail: _ } => roster_outcome_with_labels(edit: RosterEdit { start: e.start, end: e.end, text: e.text, own_line: e.own_line }, labels: labels)
+                    // ONE EDIT (and ONLY one -- tail must be Empty): the single-home shape stays byte-identical (the wave
+                    // every prior run exercises). The first draft matched tail: _ and SWALLOWED multi-edit plans into the
+                    // single-edit shape, dropping every edit after the head -- the probe's anchors case caught it (the
+                    // std.integer import vanished beside the std.nat block extension, leaving a plan that would not resolve).
+                    Cons { head: e, tail: Empty } => roster_outcome_with_labels(edit: RosterEdit { start: e.start, end: e.end, text: e.text, own_line: e.own_line }, labels: labels)
                     Empty => RosterClean
                     es => roster_outcome_with_labels(edit: RosterEditsWithLabels { edits: es, labels: [] }, labels: labels)
                   }
