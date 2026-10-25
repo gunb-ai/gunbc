@@ -1,5 +1,6 @@
 module gunbc.census_closure_frontier
 
+import gunbc.fleet.fleet_known_hosts_anchor { remote_word_quoting_frontier_rows }
 import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 import gunbc.host.host_assimilation_program { host_assimilation_program_frontier_rows }
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
@@ -116,6 +117,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     hetzner_money_rate_frontier_rows,
     mac_address_anemic_brand_frontier_rows,
     container_state_detail_redundant_bools_frontier_rows,
+    remote_word_quoting_frontier_rows,
     memory_swap_unlimited_convention_frontier_rows,
     hostconfig_containerconfig_anemic_leaves_frontier_rows,
     network_settings_bare_strings_frontier_rows,

@@ -2,7 +2,8 @@ module test.claim.plan_citation_census
 
 import std.types { Bool, Int, List, String }
 import std.algebra { Cons, Empty, string_contains }
-import v2.std.decl_index { DeclFact, decl_facts, decl_facts_at, qualified_name_from_module }
+import v2.std.decl_index { DeclFact, decl_facts_at, qualified_name_from_module }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 
 // The one citation reader for plan witnesses (DESIGN section 3: cite the symbol, not the
 // position). A plan witness serializes its carrier with `serialize_markdown_source` and asks
@@ -142,24 +143,21 @@ fn plan_citation_census_key(c: PlanCitation) -> String {
   qualified_name_from_module(module_name: c.module_path, name: c.decl_name)
 }
 
-fn plan_citation_census_rows_parsed(c: PlanCitation) -> List<DeclFact> {
-  decl_facts_at(pool_roots: plan_citation_census_pool_roots(), qualified_name: plan_citation_census_key(c: c))
-}
-
-// MANY CITATIONS, ONE READ. A keyed read rebuilds the declaration pool on every call: measured on
-// BuildBuddy 2026-10-25, one lookup took 91s and six took 506s in one process, while one full
-// read joined against the same six (and a name no module declares) took 114s. A claim that
-// resolves a population reads the census once and joins each citation against it; the key is
-// the same `plan_citation_census_key`, so the two routes cannot disagree about a citation.
-fn plan_citation_census_facts() -> List<DeclFact> {
-  decl_facts(pool_roots: plan_citation_census_pool_roots())
+// MANY CITATIONS, ONE READ. A claim names every citation it will ask about before it asks any of
+// them, so it reads the census ONCE with all of their keys (`v2.std.decl_index` decl_facts_at over
+// a key set) and joins each citation against that read. A read per citation re-walked the whole
+// pool per citation: measured on BuildBuddy 2026-10-25, one lookup took 91s and six took 506s in one
+// process. The join key is the same `plan_citation_census_key`, and the join is
+// `v2.std.decl_facts_skeleton` decl_facts_matching_qualified_name, so a citation answers here with
+// exactly the rows a one-key read would have returned for it, multiplicity included.
+fn plan_citation_census_read(cites: List<String>) -> List<DeclFact> {
+  decl_facts_at(
+    pool_roots: plan_citation_census_pool_roots(),
+    qualified_names: map(cites, cite => plan_citation_census_key(c: plan_citation_parse(w: cite))),
+    type_names: []
+  )
 }
 
 fn plan_citation_census_rows_in(facts: List<DeclFact>, cite: String) -> List<DeclFact> {
-  let k = plan_citation_census_key(c: plan_citation_parse(w: cite))
-  filter(facts, f => f.qualified_name == k)
-}
-
-fn plan_citation_census_rows(cite: String) -> List<DeclFact> {
-  plan_citation_census_rows_parsed(c: plan_citation_parse(w: cite))
+  decl_facts_matching_qualified_name(qn: plan_citation_census_key(c: plan_citation_parse(w: cite)), facts: facts)
 }
