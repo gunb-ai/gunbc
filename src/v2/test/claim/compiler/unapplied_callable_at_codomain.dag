@@ -1,0 +1,95 @@
+module v2.test.claim.compiler.unapplied_callable_at_codomain
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
+import v2.compiler.infer { infer }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN ARROW IS NEVER ITS CODOMAIN, ON THE v2 ROUTE (gunbc.recurring_failure_mode
+// function_typed_argument_mismatch_accepted). The seed accepted an unapplied `o.ask` of type `fn() -> Answer` wherever
+// Answer was declared, because its nominal arms exempt a callable and its default arm admitted it. v2's relation has
+// no such default: v2.std.inhabitance declared_type_inhabitance_structural sends a pair that is not two arrows to
+// exact structural equality, under which an Arrow and a declaration reference differ. These claims run the real
+// route (source assembly, then infer) per position v2 judges -- a declared return through a field and through a
+// parameter, a record-literal field, an annotated let, a direct-call argument and a callable record field's
+// argument -- and each unapplied form is REFUSED, while its applied form is accepted, so the refusal is the arrow
+// and not an assembly slip.
+
+fn uca_source(body: String) -> String {
+  concat(uca_prelude, body)
+}
+
+fn uca_refused(src: String) -> Bool {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+  }
+}
+
+fn uca_accepted(src: String) -> Bool {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+data uca_prelude: String = "module p\n\ntype Answer {\n  v: Int\n}\n\ntype Ops {\n  ask: fn() -> Answer\n}\n\ntype Holder {\n  held: Answer\n}\n\ntype Consume {\n  consume: fn(Answer) -> Bool\n}\n\nfn take(a: Answer) -> Bool {\n  true\n}\n\n"
+
+test fn uca_an_unapplied_callable_at_a_return_field_refuses() -> Bool {
+  uca_refused(src: uca_source(body: "fn g(o: Ops) -> Answer {\n  o.ask\n}\n"))
+}
+
+test fn uca_the_applied_callable_at_a_return_field_is_accepted() -> Bool {
+  uca_accepted(src: uca_source(body: "fn g(o: Ops) -> Answer {\n  o.ask()\n}\n"))
+}
+
+test fn uca_an_unapplied_callable_at_a_return_param_refuses() -> Bool {
+  uca_refused(src: uca_source(body: "fn g(h: fn() -> Answer) -> Answer {\n  h\n}\n"))
+}
+
+test fn uca_the_applied_callable_at_a_return_param_is_accepted() -> Bool {
+  uca_accepted(src: uca_source(body: "fn g(h: fn() -> Answer) -> Answer {\n  h()\n}\n"))
+}
+
+test fn uca_an_unapplied_callable_at_a_record_field_refuses() -> Bool {
+  uca_refused(src: uca_source(body: "fn g(o: Ops) -> Holder {\n  Holder { held: o.ask }\n}\n"))
+}
+
+test fn uca_the_applied_callable_at_a_record_field_is_accepted() -> Bool {
+  uca_accepted(src: uca_source(body: "fn g(o: Ops) -> Holder {\n  Holder { held: o.ask() }\n}\n"))
+}
+
+test fn uca_an_unapplied_callable_at_a_let_annotation_refuses() -> Bool {
+  uca_refused(src: uca_source(body: "fn g(o: Ops) -> Bool {\n  let a: Answer = o.ask\n  take(a: a)\n}\n"))
+}
+
+test fn uca_the_applied_callable_at_a_let_annotation_is_accepted() -> Bool {
+  uca_accepted(src: uca_source(body: "fn g(o: Ops) -> Bool {\n  let a: Answer = o.ask()\n  take(a: a)\n}\n"))
+}
+
+test fn uca_an_unapplied_callable_at_a_direct_call_argument_refuses() -> Bool {
+  uca_refused(src: uca_source(body: "fn g(o: Ops) -> Bool {\n  take(a: o.ask)\n}\n"))
+}
+
+test fn uca_the_applied_callable_at_a_direct_call_argument_is_accepted() -> Bool {
+  uca_accepted(src: uca_source(body: "fn g(o: Ops) -> Bool {\n  take(a: o.ask())\n}\n"))
+}
+
+test fn uca_an_unapplied_callable_at_a_callable_field_argument_refuses() -> Bool {
+  uca_refused(src: uca_source(body: "fn g(o: Ops, c: Consume) -> Bool {\n  c.consume(o.ask)\n}\n"))
+}
+
+test fn uca_the_applied_callable_at_a_callable_field_argument_is_accepted() -> Bool {
+  uca_accepted(src: uca_source(body: "fn g(o: Ops, c: Consume) -> Bool {\n  c.consume(o.ask())\n}\n"))
+}
