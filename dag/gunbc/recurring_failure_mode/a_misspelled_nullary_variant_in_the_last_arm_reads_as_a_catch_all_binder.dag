@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "a typed refusal for a pattern atom that names no constructor and is read as a binder, decided without consulting its spelling: for example exhaustiveness proving the binder covers only variants the scrutinee's type declares, or explicit binder syntax." } },
+
+  receipts: [
+    "INVALID STATE: the LAST arm of a match is a misspelled nullary variant (`Absnet => 0` where `Absent` was meant). A bare name in pattern position has one grammatical form whether it is a constructor or a binder (v2.extdeps.languages.dag dag_grammar_constructor_pattern_expr), and v2 decides by ONE rule at every pattern position (v2.compiler.lexical_scope pattern_binder_candidates, v2.compiler.resolve pattern_binders): an atom that names a declared payload is a constructor, otherwise a binder. A misspelling names no payload, so it binds, and as a catch-all it covers every alternative the earlier arms leave.",
+
+    "HARM: exhaustiveness is lost silently. The arm also takes every variant the author forgot, and a variant added to the type later is absorbed into it rather than refused as non-exhaustive. No diagnostic fires; the program is Accepted and wrong in a way its own text does not show.",
+
+    "WHAT ALREADY REFUSES, so the residual is exactly the last arm: an arm after any catch-all, binder or wildcard, refuses as unreachable (v2.compiler.infer infer_coproduct_arm_after_catch_all, reason infer_match_arm_unreachable), so a misspelling that is not the last arm is caught by the arms after it. An atom spelling a payload declared anywhere in the corpus is a constructor and refuses unbound when it is not in scope (resolve_pattern_atom_names_constructor), so an unimported but correctly spelled variant is not a binder either.",
+
+    "WHY NOT THE SEED'S RULE: the seed decides by spelling at parse (v1.compiler.parse is_variant_pattern_start: dotted or uppercase-initial is a variant), which refuses this typo but makes convention choose a meaning. Ruled by tidy-ant-251 on 2026-10-25: one rule at every position, no spelling guard, because the enrolled field controls hold that an uppercase field binder binds (v2.test.claim.match_arm_binder_frame mab_unshadowed_binder_atom_survives) and a top-level-only guard would fork the field rule. This row is the declared residual of that ruling.",
+
+    "RUNG: found BELOW the ladder (silent wrongness).",
+
+    "CEILING 3, structurally guaranteed: whether a binder arm covers alternatives the scrutinee's type does not leave to it, or whether a name is meant as a binder at all, is decidable once the language says so; nothing about it is external or undecidable.",
+
+    "NEXT-RUNG TRIGGER: a typed refusal for a pattern atom read as a binder that does not consult its spelling, for example exhaustiveness proving the binder covers only variants the scrutinee's type declares, or explicit binder syntax (tidy-ant-251, 2026-10-25).",
+
+    "REVIEW TELL: a match whose last arm is a bare capitalised name that is not a variant of the scrutinee's type.",
+  ],
+
+  evidence: [],
+}

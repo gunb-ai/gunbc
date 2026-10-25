@@ -4,7 +4,7 @@ import v2.std.language_model { LanguageModel }
 import v2.compiler.normalized_tree { normalized_tree_record_declarations, MemberDeclarationsNotRead, MemberDeclarationsRead, NormalizedTree, normalized_tree_resource_declarations }
 import v2.compiler.body_lowering_fold { TypeDeclModuleModifierRows, TypeDeclarationModifierChannel, TypeDeclarationModifiersCaptured }
 import v2.std.member_declaration_kind { DeclaredMember, declared_members_have_duplicate, MemberKindChannel, MemberKindsCaptured, MemberKindsUnavailable, QualifiedDeclaredMember, no_member_declaration_kinds }
-import v2.compiler.lexical_scope { ArrowAuthoredSlot, ArrowBodyOrNamedSlot, ArrowCarriedSlot, ArrowCodomainSlot, ArrowDomainSlot, ArrowResourceRequirementsSlot, ArrowSlotScope, ArrowTypeParamsSlot, PatternBinderCandidate, SlotScopeOuter, SlotScopeParamsOverOuter, SlotScopeParamsOverTypeParams, SlotScopeTypeParams, arrow_domain_binder_names, arrow_domain_binders, arrow_slot, arrow_slot_scope, bind_binder, bind_value, bind_carries_arm_scope_exit, declaration_names_value, module_root_bindings, pattern_binder_candidates, try_edge_declared_binding }
+import v2.compiler.lexical_scope { ArmPatternBinderSite, ArrowAuthoredSlot, ArrowBodyOrNamedSlot, ArrowCarriedSlot, ArrowCodomainSlot, ArrowDomainSlot, ArrowResourceRequirementsSlot, ArrowSlotScope, ArrowTypeParamsSlot, PatternBinderCandidate, SlotScopeOuter, SlotScopeParamsOverOuter, SlotScopeParamsOverTypeParams, SlotScopeTypeParams, arrow_domain_binder_names, arrow_domain_binders, arrow_slot, arrow_slot_scope, bind_binder, bind_value, bind_carries_arm_scope_exit, declaration_names_value, module_root_bindings, FieldBinderSite, pattern_binder_candidates, try_edge_declared_binding }
 import v2.std.declaration_marker { ReachesNoTestCode, ReachesTestMarkedDeclaration, TestCodeIndex, test_code_index_add_module, test_code_index_empty, test_code_reach }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -871,7 +871,8 @@ fn binder_hides_visible_value_diagnostic(binder: Symbol, at: Node) -> Diagnostic
 // (pattern_binders) and a `let`'s (bind_binder_name_list) mirrors bind_frame_binders.
 // A match arm's binders are the candidates the pattern's syntax offers (v2.compiler.lexical_scope
 // pattern_binder_candidates, which module acquisition reads too) less the one exclusion that needs the
-// symbol index: a field target that names a CONSTRUCTOR is a nested pattern, not a binder.
+// symbol index: an atom that names a CONSTRUCTOR is a nullary variant (the whole pattern) or a nested
+// pattern (a field target), not a binder.
 fn pattern_binders(ctx: ResolveContext, pat: Node) -> List<PatternBinderCandidate> {
   fold(pattern_binder_candidates(pat: pat), init: [], f: fn(acc, c) {
     if resolve_pattern_atom_names_constructor(ctx: ctx, id: c.name) {
@@ -3164,10 +3165,14 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) ->
       fb: fb,
       name: c.name,
       binding: LexicalBinding {
-        binder_site: c.field.target.occurrence_id,
-        standing: match resolve_pattern_binder_declared_type(ctx: ctx, pat: c.pattern, field: c.field) {
-          PatternBinderFormal { field_type: ft } => LexicalOwedFormal { field_type: ft }
-          PatternBinderUntyped => LexicalUntyped
+        binder_site: c.atom.occurrence_id,
+        standing: match c.site {
+          FieldBinderSite { pattern: p, field: f } =>
+            match resolve_pattern_binder_declared_type(ctx: ctx, pat: p, field: f) {
+              PatternBinderFormal { field_type: ft } => LexicalOwedFormal { field_type: ft }
+              PatternBinderUntyped => LexicalUntyped
+            }
+          ArmPatternBinderSite => LexicalUntyped
         }
       }
     )
@@ -3183,6 +3188,10 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) ->
 // record_field_value_does_not_inhabit wall). Infer types every payload binder from the arm's RESOLVED
 // declaration, the row a construction of that arm is judged at (v2.compiler.infer
 // infer_match_arm_child_frame), so a concrete field's binder is LexicalUntyped here.
+//
+// A binder that IS the whole arm pattern captures the scrutinee, not a field, so resolve has nothing to
+// read for it either: infer types it as the scrutinee's own type (v2.compiler.infer
+// infer_match_arm_paid_frame).
 //
 // A field whose type names the DECLARING TYPE's formal is OWED (LexicalBinderStanding.LexicalOwedFormal):
 // infer pays it from the scrutinee's arguments or refuses. Detecting that needs only the field's
