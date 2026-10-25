@@ -12322,7 +12322,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           let actual_peeled = expand_nominal_alias_rhs(n: got_node, env: scope.type_env, module_name: scope.module_name)
           if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
             [type_mismatch_error(
-              expected: concat("@A key=", concat(match generic_substitution_key(n: expected_node) { Present { value: dbg_k } => dbg_k  Absent => "-" }, concat(" ", node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices)))),
+              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
               span: ar_typed.span,
               module_name: scope.module_name
@@ -12330,7 +12330,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           } else if structured_application_site_type_mismatch(
             formal: expected_node, actual_expr: field_init_node_value(n: fi), scope: scope) {
             [type_mismatch_error(
-              expected: concat("@B key=", concat(match generic_substitution_key(n: expected_node) { Present { value: dbg_k } => dbg_k  Absent => "-" }, concat(" ", node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices)))),
+              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
               span: ar_typed.span,
               module_name: scope.module_name
@@ -12350,7 +12350,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
             && coproduct_payload_where_parent_required(
               formal: formal_peeled, actual: actual_peeled, scope: scope) {
             [type_mismatch_error(
-              expected: concat("@C key=", concat(match generic_substitution_key(n: expected_node) { Present { value: dbg_k } => dbg_k  Absent => "-" }, concat(" ", node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices)))),
+              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
               span: ar_typed.span,
               module_name: scope.module_name
