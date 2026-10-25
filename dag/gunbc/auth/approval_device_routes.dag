@@ -5,10 +5,8 @@ import std.logic { Bool }
 import std.integer { UInt8 }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, exit_failure }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.encoding { base64_decode, Standard, UrlSafe }
 import extdeps.clock { Clock }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import extdeps.crypto.mac { MacKey, MacSigned, MacKeyMaterialNotHex, mac_sign }
 import extdeps.crypto.signature { SignatureVerification, SignatureInvalid, EcdsaP256Sha256 }
@@ -46,7 +44,7 @@ import gunbc.auth.approval_decision_store {
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import gunbc.auth.approval_device_wire {
   MobileIos, MobileAndroid, device_read_client_data, device_push_update_client_data, approval_device_read_skew,
-  ReadAuthentication, decode_read_request, PushUpdateRequest, decode_push_update_request, push_update_json,
+  ReadAuthentication, decode_read_request, PushUpdateRequest, decode_push_update_request,
   GoogleEnrolmentRequest, decode_google_enrolment_request,
   SignedRedemption, decode_signed_redemption, IosAppAttestAssertion, AndroidDecisionKeyOnly, device_redemption_signing_input,
   WireDecoded, WireRefused,
@@ -80,6 +78,7 @@ import gunbc.auth.approval_decision_store {
 }
 import gunbc.auth.approval_device_redemption {
   approval_device_store_root, approval_jwks_cache_root,
+  commit_push_registration, PushRegistrationWritten, PushRegistrationUnchanged, PushRegistrationRaced, PushRegistrationRefused,
   observe_google_enrolment, commit_google_enrolment, create_or_read_subject_pin, enrolment_readback_of,
   list_google_enrolments, GoogleEnrolmentsListed, GoogleEnrolmentListingRefused, revoke_google_enrolment,
   DeviceStoreWrite, DeviceStoreWritten, DeviceStoreSlotOccupied, DeviceStoreRefused,
@@ -431,33 +430,6 @@ fn publish_new_device_notice(notice: NewDeviceNotice) -> String?
   }
 }
 
-// THE PUSH REGISTRATION HAS ITS OWN ROOT. gunbc.durable_cas_file_store owns both directions of the
-// layout under approval_device_store_root (review 69827 of gunbc#12000), so a record that is not a
-// CAS generation does not live there: it is a last-write-wins owner-only file under a sibling root
-// this module owns, keyed by the server-derived enrolment id (never a request-supplied string --
-// both writers pass the verified enrolment's id).
-data approval_device_push_root: NonEmptyStr = "/var/lib/gunbc/approval-device-push"
-
-fn push_registration_path(enrollment_id: NonEmptyStr) -> String {
-  (approval_device_push_root as String) + "/" + (enrollment_id as String) + ".json"
-}
-
-// WRITTEN BY TWO ROUTES, READ BY A CONSUMER THAT DOES NOT EXIST YET, and the frontier is declared
-// beside the write rather than left for the reader to infer (DESIGN section 3c). Nothing in this
-// corpus sends an APNs push: the consumer is the push sender that wakes the phone when a request is
-// filed (gunbc.auth.approval_request_submission notify_filed is where it attaches), loading this
-// record by the pending request's operator enrolment. It cannot land before the operator creates an
-// APNs authentication key (Apple Developer > Keys) and it reaches srv1 as a secret; until then the
-// app polls its pending list on the authenticated read route, which needs no registration.
-data approval_device_push_sender_frontier: DissolutionCondition = unbound_dissolution(
-  description: "an APNs push sender bound at notify_filed that loads the operator's push registration from approval_device_push_root by enrolment id and sends the wakeup with the operator-created APNs key held on srv1 -- SUFFICIENT FOR a filed request to wake the enrolled phone without polling; until it lands the registration is stored and unread, and the app polls",
-)
-
-fn store_push_registration(enrollment_id: NonEmptyStr, push_json: String) -> DeviceRouteResponse? {
-  let w = Filesystem.WriteOwnerOnly(path: push_registration_path(enrollment_id: enrollment_id), content: push_json)
-  if w.success { none } else { Present { value: device_refused(status: 503, reason: "push registration not stored: " + w.error) } }
-}
-
 fn device_enrol_response(body: String, process: ApprovalServingProcess) -> DeviceRouteResponse {
   match device_observed_at() {
     Absent => device_clock_refused()
@@ -801,9 +773,11 @@ fn device_push_update_response_at(realization: DeviceCryptoRealization, body: St
           match admit_device_read(realization: realization, auth: r.auth, client_data: device_push_update_client_data(enrollment_id: r.auth.enrollment_id, requested_at: r.auth.requested_at, push: r.push), observed_at: observed_at) {
             DeviceReadRefused { status: s, reason: rr } => device_refused(status: s, reason: rr)
             DeviceReadAdmitted { enrollment: e } =>
-              match store_push_registration(enrollment_id: e.enrollment_id, push_json: push_update_json(p: r.push)) {
-                Present { value: refused } => refused
-                Absent => DeviceRouteResponse { status: 200, body: serialize_json(v: json_object(members: [json_kv(key: "stored", value: json_string(s: e.enrollment_id as String))])) }
+              match commit_push_registration(root: approval_device_store_root, enrollment_id: e.enrollment_id, push: r.push) {
+                PushRegistrationRefused { detail: d } => device_refused(status: 503, reason: "push registration not stored: " + (d as String))
+                PushRegistrationRaced => device_refused(status: 503, reason: "a concurrent push update for this enrolment won; present the token again")
+                PushRegistrationWritten => DeviceRouteResponse { status: 200, body: serialize_json(v: json_object(members: [json_kv(key: "stored", value: json_string(s: e.enrollment_id as String))])) }
+                PushRegistrationUnchanged => DeviceRouteResponse { status: 200, body: serialize_json(v: json_object(members: [json_kv(key: "stored", value: json_string(s: e.enrollment_id as String))])) }
               }
           }
       }
