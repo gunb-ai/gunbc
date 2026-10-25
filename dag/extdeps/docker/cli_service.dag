@@ -60,7 +60,7 @@ service DockerCli {
 
   operation CopyInto {
     requires opaque
-    input { docker: NonEmptyStr, source: NonEmptyStr, destination: NonEmptyStr }
+    input { docker: NonEmptyStr, source: String, destination: String }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"

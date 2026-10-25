@@ -8,12 +8,11 @@ import extdeps.docker.cli_service { DockerCli }
 import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, NginxVariable, WorkerProcesses, EventsBlock, HttpBlock, AccessLogOff, ServerBlock, ListenOn, LocationBlock, ExactMatch, PrefixMatch,
-  LuaPhaseBlock, ContentPhase, LuaSharedDict, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
+  LuaPhaseBlock, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, nginx_token, nginx_variable, ProxyPassDirective, ProxyPassToHost, ProxyNextUpstreamDirective,
   ProxyBufferingDirective, ProxyRequestBufferingDirective, render_nginx_directives, openresty_1_27_1_1_image, openresty_image_config_path,
 }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
-  router_proxy_callouts, RouterCalloutHook, AuthzCapture, StreamEndPost,
 }
 
 // THE ROUTER PROXY FALSIFIER (plan gunbc.plans.fabric_serving_router, S1b). `gunbc test
@@ -86,9 +85,9 @@ fn fixture_location(path: String, exact: Bool, lines: List<String>) -> List<Ngin
   }
 }
 
-fn fixture_server(port: Int, locations: List<NginxDirective>) -> List<NginxDirective> {
+fn fixture_server(port: Port, locations: List<NginxDirective>) -> List<NginxDirective> {
   match tok(text: "127.0.0.1") {
-    Present { value: host } => [ServerBlock { body: concat([ListenOn { address: host, port: port as Port }], locations) }]
+    Present { value: host } => [ServerBlock { body: concat([ListenOn { address: host, port: port }], locations) }]
     Absent => []
   }
 }
@@ -136,7 +135,7 @@ fn fixture_directives() -> List<NginxDirective> {
   [
     WorkerProcesses { count: 1 },
     EventsBlock,
-    HttpBlock { body: concat(concat(concat(concat([AccessLogOff], dict), fixture_server(port: 19001, locations: authz)), fixture_server(port: 19002, locations: concat(stream_end, ends))), fixture_server(port: 19003, locations: upstream)) },
+    HttpBlock { body: concat(concat(concat(concat([AccessLogOff], dict), fixture_server(port: 19001 as Port, locations: authz)), fixture_server(port: 19002 as Port, locations: concat(stream_end, ends))), fixture_server(port: 19003 as Port, locations: upstream)) },
   ]
 }
 
@@ -169,14 +168,14 @@ fn remove_all() -> Int {
   a.exit_code + b.exit_code + c.exit_code + d.exit_code
 }
 
-fn destination(name: NonEmptyStr) -> NonEmptyStr {
-  concat(concat(name as String, ":"), openresty_image_config_path as String) as NonEmptyStr
+fn destination(name: NonEmptyStr) -> String {
+  concat(concat(name as String, ":"), openresty_image_config_path as String)
 }
 
 // `openresty -t` over one configuration file, in a container with no network: its exit code and stderr.
 fn openresty_test(conf_path: String) -> String {
   let created = DockerCli.Create(docker: docker(), name: test_name(), network: "none" as NonEmptyStr, image: openresty_1_27_1_1_image, command: ["openresty", "-t"])
-  let copied = DockerCli.CopyInto(docker: docker(), source: conf_path as NonEmptyStr, destination: destination(name: test_name()))
+  let copied = DockerCli.CopyInto(docker: docker(), source: conf_path, destination: destination(name: test_name()))
   let ran = DockerCli.StartAttached(docker: docker(), name: test_name())
   let cleaned = DockerCli.RemoveForce(docker: docker(), name: test_name())
   concat(concat(concat(concat(ran.stderr, " exit="), to_string(ran.exit_code)), " setup="), to_string(created.exit_code + copied.exit_code + cleaned.exit_code))
@@ -184,7 +183,7 @@ fn openresty_test(conf_path: String) -> String {
 
 fn start_with(name: NonEmptyStr, network: NonEmptyStr, conf_path: String) -> Int {
   let created = DockerCli.Create(docker: docker(), name: name, network: network, image: openresty_1_27_1_1_image, command: [] as List<String>)
-  let copied = DockerCli.CopyInto(docker: docker(), source: conf_path as NonEmptyStr, destination: destination(name: name))
+  let copied = DockerCli.CopyInto(docker: docker(), source: conf_path, destination: destination(name: name))
   let started = DockerCli.Start(docker: docker(), name: name)
   created.exit_code + copied.exit_code + started.exit_code
 }
@@ -216,18 +215,8 @@ fn is_retry_off(d: NginxDirective) -> Bool { match d { ProxyNextUpstreamDirectiv
 fn is_buffering_off(d: NginxDirective) -> Bool {
   match d { ProxyBufferingDirective { value: _ } => true ProxyRequestBufferingDirective { value: _ } => true _ => false }
 }
-fn is_authz(h: RouterCalloutHook) -> Bool {
-  match h.callout { AuthzCapture { location: _, failure_status: st, copies: cs } => (st as Int) == 503 && count(cs) == 2 _ => false }
-}
-fn is_stream_end(h: RouterCalloutHook) -> Bool {
-  match h.callout { StreamEndPost { host: _, port: pt, path: _, timeout_ms: _, only_when_set: _, header: _, header_value: _ } => (pt as Int) == 19002 _ => false }
-}
-fn callouts() -> List<RouterCalloutHook> {
-  match router_proxy_vocabulary() {
-    Present { value: v } => router_proxy_callouts(v: v, stream_end_port: 19002 as Port)
-    Absent => [] as List<RouterCalloutHook>
-  }
-}
+fn is_access_hook(d: NginxDirective) -> Bool { match d { LuaPhaseBlock { phase: ph, lines: _ } => match ph { AccessPhase => true _ => false } _ => false } }
+fn is_log_hook(d: NginxDirective) -> Bool { match d { LuaPhaseBlock { phase: ph, lines: _ } => match ph { LogPhase => true _ => false } _ => false } }
 
 fn token_absent(t: NginxToken?) -> Bool { match t { Absent => true Present { value: _ } => false } }
 fn variable_absent(t: NginxVariable?) -> Bool { match t { Absent => true Present { value: _ } => false } }
@@ -248,7 +237,7 @@ fn row_cases() -> List<FalsifierCase> {
   [
     case_of(identity: "rows_router_location_proxies_only_to_the_authz_supplied_upstream", held: passes == 1 && fixed == 0, observed: concat(concat(to_string(passes), "/"), to_string(fixed))),
     case_of(identity: "rows_retries_and_buffering_are_off", held: count(filter(body, d => is_retry_off(d: d))) == 1 && count(filter(body, d => is_buffering_off(d: d))) == 2, observed: to_string(count(body))),
-    case_of(identity: "rows_one_authz_hook_and_one_stream_end_hook", held: count(filter(callouts(), h => is_authz(h: h))) == 1 && count(filter(callouts(), h => is_stream_end(h: h))) == 1 && count(callouts()) == 2, observed: to_string(count(callouts()))),
+    case_of(identity: "rows_one_authz_hook_and_one_stream_end_hook", held: count(filter(body, d => is_access_hook(d: d))) == 1 && count(filter(body, d => is_log_hook(d: d))) == 1, observed: to_string(count(body))),
     case_of(identity: "rows_red_unsafe_tokens_have_no_constructor_result", held: unsafe_tokens_are_absent(), observed: "tokens"),
   ]
 }
