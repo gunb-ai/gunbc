@@ -63,7 +63,7 @@ import gunbc.ci.ci_runner_placement {
   CapacityQuota, NoCpuCeiling,
 }
 import gunbc.runner.runner_registration_labels {
-  runner_registration_labels, runner_browser_ready_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_registration_labels, runner_browser_ready_registration_labels, runner_gpu_docker_ready_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
   runner_slot_registration_labels,
 }
 import gunbc.runner.runner_slot_job_role {
@@ -501,6 +501,38 @@ fn runner_host_browser_ready_labels_dropin_text(host: HostIdentity) -> RunnerUni
           RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as a hosted runner" as NonEmptyStr }
         RunnerUnitLabelsUnresolvedExpression { expression: _ } =>
           RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as an unresolved expression" as NonEmptyStr }
+      }
+  }
+}
+
+// THE GPU-CONTAINER READINESS LABEL REACHES THE RUNNER THE SAME WAY, ONE FILE LATER. The browser
+// drop-in above is 85- and this is 86-, and the ORDER IS THE DESIGN: systemd applies the template's
+// drop-in directory in filename order and a later Environment= of the same name REPLACES the earlier
+// one, so 86- is the LABELS_JSON that survives on a host that gained both toolchains. That is only
+// safe because gunbc.runner.runner_registration_labels
+// runner_gpu_docker_ready_registration_labels builds its set ON TOP OF the browser-ready one — a
+// plain host+gpu-docker rendering here would silently revoke gunbc-browser-ready from exactly the
+// hosts that have both, and the browser floor would stop scheduling there with nothing on the
+// browser side reporting a problem. Its only writer is
+// gunbc.runner.runner_gpu_container_toolchain gpu_docker_labels_converge_wet, which removes this file
+// when the readback does not hold; removal is self-healing in the other direction too, because with
+// 86- gone the 85- file is what applies again.
+fn runner_host_gpu_docker_labels_dropin_text(host: HostIdentity) -> RunnerUnitTextRendering {
+  match runner_gpu_docker_ready_registration_labels(host: host) {
+    RegistrationLabelsRefused { host: _, cause: c } =>
+      RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
+    RegistrationLabelsResolved { labels: labels } =>
+      match runner_unit_labels_json(spec: SelfHosted { labels: labels }) {
+        RunnerUnitLabels { json_text: labels_json } =>
+          RunnerUnitText {
+            text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
+              sections: [DropInServiceSection { directives: [runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json)] }],
+            }),
+          }
+        RunnerUnitLabelsHostedRunner =>
+          RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted GPU label set rendered as a hosted runner" as NonEmptyStr }
+        RunnerUnitLabelsUnresolvedExpression { expression: _ } =>
+          RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted GPU label set rendered as an unresolved expression" as NonEmptyStr }
       }
   }
 }

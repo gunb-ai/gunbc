@@ -18,6 +18,12 @@ import extdeps.cache.sccache { sccache_release_0_15_0 }
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.host.sccache_verified_install { sccache_verified_install_script }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
+import extdeps.container.nvidia_container_toolkit {
+  NvidiaContainerToolkitAptRepo,
+  nvidia_container_toolkit_apt_repo_stable,
+  nvidia_container_toolkit_packages,
+  nvidia_container_toolkit_repo_install_script,
+}
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { runner_slot_index_suffix, RunnerSlotIdentity }
@@ -427,6 +433,126 @@ data fleet_runner_host_deploy_resolutions: List<RunnerHostDeployResolution> = fl
 
 fn runner_host_docker_provision_script() -> String {
   docker_ce_repo_install_script(repo: docker_ce_apt_repo_noble_arm64, packages: docker_ce_packages)
+}
+
+// ── THE GPU CONTAINER TOOLCHAIN IS A DECLARED PER-HOST CAPABILITY, AND DESIRE IS NOT PRESENCE ──
+//
+// Operator decision 2026-10-25 (work item node://adhoc-0cabf47d-be0): fleet CI jobs must run
+// containers that see GPUs WITHOUT root equivalence. Two .dag gates depend on it — the S1b
+// //gunbc/instruments:router-proxy-falsifier (#15089) and the serving benchmark. The shape the
+// decision names is rootless Docker for the job user plus the NVIDIA container toolkit with a
+// generated CDI spec, so `docker run --device nvidia.com/gpu=all` resolves.
+//
+// WHY A DECLARATION HERE RATHER THAN AN INSTALL. A host either carries this capability or it does
+// not, and the ONLY thing that may change that is converge: nothing here is hand-installed. So this
+// row states the DESIRED state — which host is meant to be able to run GPU containers, from which
+// pinned repository — and gunbc.runner.runner_gpu_container_toolchain turns the same fact into a
+// runner registration label ONLY after a readback on the machine holds. Desire and presence are two
+// different claims and get two different carriers; a host can be Desired-and-not-yet-Ready, which is
+// exactly the state converge exists to leave behind, and it can never be Ready-without-Desired.
+//
+// WHY THE DOCKER GROUP IS NOT THE FIX. gunbc.fleet.fleet_posix_accounts
+// fleet_root_equivalent_group_names lists "docker" as root-equivalent: the rootful socket IS the root
+// socket, so adding the job user to it buys the capability by granting root, which the decision
+// forbids. Every row here therefore means the ROOTLESS shape — the job user's own
+// unix:///run/user/<uid>/docker.sock, which gunbc.runner.runner_unit_file docker_host_from_uid_reading
+// already forms for the slot's job user. A host that only has the rootful socket has NOT got this
+// capability, however well its nvidia-smi reads.
+type RunnerHostGpuContainerToolchain
+  = GpuContainerToolchainDesired {
+      repo: NvidiaContainerToolkitAptRepo
+      packages: List<NonEmptyStr>
+    }
+  | GpuContainerToolchainNotWanted { reason: NonEmptyStr }
+  // UNMEASURED IS NOT NOT-WANTED. srv2 and srv4 have never been probed for GPUs, container
+  // toolchains, or a rootless socket, and "nobody looked" must not be recorded as "this host does not
+  // want GPU containers" — the first is a gap that blocks converge, the second is a decision that
+  // justifies it. A host with no row at all is a fourth, distinct answer (RunnerHostGpuToolchainAbsent).
+  | GpuContainerToolchainUnmeasured { }
+
+type RunnerHostGpuContainerToolchainLookup
+  = RunnerHostGpuToolchainFound { host: HostIdentity, toolchain: RunnerHostGpuContainerToolchain }
+  | RunnerHostGpuToolchainAbsent { host: HostIdentity }
+
+type RunnerHostGpuContainerToolchainRow {
+  host: HostIdentity
+  toolchain: RunnerHostGpuContainerToolchain
+}
+
+// srv3: the host the two gates need, measured 2026-10-25 — `nvidia-smi -L` reports the two RTX 2000
+// Ada cards and a driver, and NEITHER docker NOR the container toolkit is installed, so this row is
+// the instruction to install them. srv1: measured the same day to already carry the rootless shape
+// (docker-ce-rootless-extras, nvidia-container-toolkit, /etc/cdi/nvidia.yaml, and the job user's own
+// socket answering), and `docker run --device nvidia.com/gpu=all` ran as the job user and saw the
+// card. Both rows cite the same pinned repository row and the same package closure; a per-host
+// divergence in either would be a supply-chain difference smuggled in as topology.
+//
+// THE DRIVER VERSION IS NOT DECLARED HERE, ON PURPOSE. srv3's driver read 580.126.09 on one probe and
+// 595.91.07 on another within the same day, so any pin authored from a message would be a coin flip.
+// The toolkit is what makes a container see whatever driver is present; the driver belongs to the host
+// OS axis, not to this one, and converge reads it rather than asserting it.
+data runner_host_gpu_container_toolchain_rows: List<RunnerHostGpuContainerToolchainRow> = [
+  RunnerHostGpuContainerToolchainRow {
+    host: operator_host_srv1,
+    toolchain: GpuContainerToolchainDesired {
+      repo: nvidia_container_toolkit_apt_repo_stable,
+      packages: nvidia_container_toolkit_packages,
+    },
+  },
+  RunnerHostGpuContainerToolchainRow {
+    host: operator_host_srv3,
+    toolchain: GpuContainerToolchainDesired {
+      repo: nvidia_container_toolkit_apt_repo_stable,
+      packages: nvidia_container_toolkit_packages,
+    },
+  },
+  RunnerHostGpuContainerToolchainRow {
+    host: operator_host_srv2,
+    toolchain: GpuContainerToolchainUnmeasured { },
+  },
+  RunnerHostGpuContainerToolchainRow {
+    host: operator_host_srv4,
+    toolchain: GpuContainerToolchainUnmeasured { },
+  },
+]
+
+fn runner_host_gpu_container_toolchain_for(host: HostIdentity) -> RunnerHostGpuContainerToolchainLookup {
+  match filter(runner_host_gpu_container_toolchain_rows, r => (r.host as String) == (host as String)).first() {
+    Present { value: r } => RunnerHostGpuToolchainFound { host: host, toolchain: r.toolchain }
+    Absent => RunnerHostGpuToolchainAbsent { host: host }
+  }
+}
+
+// THE ONE QUESTION A CONSUMER IS ALLOWED TO ASK. Granting anything on the strength of this row alone
+// would read a wish as a fact, so this returns true only for the DESIRED arm and every consumer that
+// ships capacity has to reach for the readback in gunbc.runner.runner_gpu_container_toolchain as
+// well. Kept as a single fold rather than letting each caller pattern-match, because the failure that
+// matters — a host being treated as GPU-capable because it was merely named — is easier to commit in
+// three scattered matches than in one function.
+fn runner_host_gpu_container_toolchain_declared(host: HostIdentity) -> Bool {
+  match runner_host_gpu_container_toolchain_for(host: host) {
+    RunnerHostGpuToolchainFound { host: _, toolchain: t } => match t {
+      GpuContainerToolchainDesired { repo: _, packages: _ } => true
+      GpuContainerToolchainNotWanted { reason: _ } => false
+      GpuContainerToolchainUnmeasured { } => false
+    }
+    RunnerHostGpuToolchainAbsent { host: _ } => false
+  }
+}
+
+// The GPU-container half of the execution-surface prereq set, next to the docker_ce and sccache
+// scripts it follows. Same carrier discipline as runner_host_docker_provision_script: it renders the
+// cited, fingerprint-pinned provisioning sequence for the container toolkit and does NOT run it —
+// the caller is converge, and the shell leaf dissolves when the repo+package ensure binds on
+// host_effect_apply (the trigger lives in extdeps.container.nvidia_container_toolkit).
+fn runner_host_gpu_container_toolchain_provision_script(host: HostIdentity) -> String? {
+  match runner_host_gpu_container_toolchain_for(host: host) {
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainDesired { repo: r, packages: p } } =>
+      Present { value: nvidia_container_toolkit_repo_install_script(repo: r, packages: p) }
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainNotWanted { reason: _ } } => Absent
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainUnmeasured { } } => Absent
+    RunnerHostGpuToolchainAbsent { host: _ } => Absent
+  }
 }
 
 // THE SCCACHE PREREQ USES THE GENERIC VERIFIED DOWNLOAD-PLUS-INSTALL EFFECT, run with sccache's

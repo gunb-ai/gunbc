@@ -86,6 +86,41 @@ fn runner_browser_ready_registration_labels(host: HostIdentity) -> RunnerRegistr
   }
 }
 
+// ── GPU CONTAINER READINESS: A LABEL THE GPU-CONTAINER-TOOLCHAIN CONVERGE GRANTS AND NOTHING ELSE ──
+//
+// Same shape as browser-ready, and the reason is the same: a capability a host can gain and lose has
+// to be a LABEL, so a workflow selects the capability and an unconverged runner cannot take the job.
+// gunbc.runner.runner_gpu_container_toolchain gpu_docker_labels_converge_wet writes it as a template
+// drop-in when that converge's readback holds (rootless Docker reachable by the job user, the NVIDIA
+// container toolkit installed, a CDI spec generated) and removes it when it does not.
+//
+// IT STATES THE CONTAINER HALF ONLY, and that is the one way this label is NOT a copy of
+// browser-ready. It does not assert the slot's job principal is free of root equivalence: the model
+// already classes the docker GROUP as root-equivalent
+// (gunbc.fleet.fleet_posix_accounts fleet_root_equivalent_group_names lists "docker"), which is why
+// the group route is refused and rootless Docker is the shape. A consumer that reads this label as
+// the whole precondition has silently dropped the principal half, so consumers assert on both and
+// answer exit 2 (no observation) for either -- never green.
+data gunbc_gpu_docker_label: String = "gunbc-gpu-docker"
+
+// IT ADDS ON TOP OF BROWSER-READY, NOT BESIDE IT, AND THE REASON IS systemd's OWN RULE. Both labels
+// reach a runner the same way: a template drop-in setting `Environment=LABELS_JSON=…`, and systemd
+// applies drop-ins in filename order with the LATER value of a repeated key winning outright — not
+// merging, replacing. So the GPU drop-in (86-gpu-docker-labels.conf, after the browser's 85-…) is the
+// ONLY LABELS_JSON a converged-to-both host sees, and if it rendered host+gpu-docker alone it would
+// silently revoke gunbc-browser-ready on the host that has both toolchains: a browser job would stop
+// scheduling there with nothing broken on the browser side and no failure in any log. Building this
+// from runner_browser_ready_registration_labels rather than from runner_registration_labels is what
+// makes that unreachable. The converse direction is already safe by construction — when the GPU
+// converge removes its drop-in, the browser's 85 file is what applies, so the browser label returns.
+fn runner_gpu_docker_ready_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
+  match runner_browser_ready_registration_labels(host: host) {
+    RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsRefused { host: h, cause: c }
+    RegistrationLabelsResolved { labels: ls } =>
+      RegistrationLabelsResolved { labels: runner_label_set_union(a: ls, b: [gunbc_gpu_docker_label]) }
+  }
+}
+
 // WHETHER AN OBSERVED REGISTRATION CONFORMS TO ITS SLOT. The host's set exactly, or the host's set
 // plus the readiness label: those are the only two states the converge writes, so both are healthy,
 // and anything else -- another host's label, a stray extra -- is a divergence. Treating the ungranted
