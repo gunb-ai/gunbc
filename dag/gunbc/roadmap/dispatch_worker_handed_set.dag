@@ -13,7 +13,7 @@ import extdeps.systemd {
   systemd_path_list_separator,
   systemd_path_list_entry_wire,
 }
-import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet, LoadCredentialSetting }
 import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties }
 import extdeps.systemd.unit_file { OutputAppendFile, systemd_output_stream_wire }
 
@@ -46,6 +46,11 @@ type HandedPathRole
   | HandedExitRoot
   | HandedExecutable
   | HandedSourceRoot
+  // A FILE THE MANAGER READS AT START AND HANDS IN AS A CREDENTIAL (systemd.exec(5) LoadCredential=): the
+  // unit sees its bytes under `identifier` in $CREDENTIALS_DIRECTORY, never the source path, so the worker
+  // neither enters nor traverses it. Its source is a root-owned credstore file, because the manager opens
+  // it as root: a source the requester could write or relink would make the launch a root read oracle.
+  | HandedCredentialSource { identifier: NonEmptyStr }
 
 type HandedEntry {
   role: HandedPathRole
@@ -65,6 +70,7 @@ fn handed_entry_leaf_is_directory(entry: HandedEntry) -> Bool {
     HandedExitRoot => true
     HandedExecutable => false
     HandedSourceRoot => true
+    HandedCredentialSource { identifier: _ } => false
   }
 }
 
@@ -77,6 +83,7 @@ fn handed_entry_leaf_is_directory(entry: HandedEntry) -> Bool {
 fn handed_entry_is_entered_by_the_worker(entry: HandedEntry) -> Bool {
   match entry.role {
     HandedExitRoot => false
+    HandedCredentialSource { identifier: _ } => false
     _ => true
   }
 }
@@ -159,22 +166,37 @@ fn dispatch_worker_set_read_only_wire(set: List<HandedEntry>) -> String {
 // HandedExitRoot directory); it rides as the command it is, and the claim below compares it as that.
 fn dispatch_worker_set_path_settings(set: List<HandedEntry>, exit_hook: NonEmptyStr) -> List<SystemdRunProperty> {
   concat(
-    worker_root_equivalent_socket_denial_properties(),
-    [
-    NamedUnitSetting { property: WorkingDirectoryProperty, value: dispatch_worker_set_working_directory(set: set) as NonEmptyStr },
-    NamedUnitSetting { property: StandardOutputProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: true) as NonEmptyStr },
-    NamedUnitSetting { property: StandardErrorProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: false) as NonEmptyStr },
-    NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_set_read_write_wire(set: set) as NonEmptyStr },
-    NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_set_read_only_wire(set: set) as NonEmptyStr },
-    NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
-    ],
+    concat(
+      worker_root_equivalent_socket_denial_properties(),
+      [
+      NamedUnitSetting { property: WorkingDirectoryProperty, value: dispatch_worker_set_working_directory(set: set) as NonEmptyStr },
+      NamedUnitSetting { property: StandardOutputProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: true) as NonEmptyStr },
+      NamedUnitSetting { property: StandardErrorProperty, value: dispatch_worker_set_stream_wire(set: set, stdout: false) as NonEmptyStr },
+      NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_set_read_write_wire(set: set) as NonEmptyStr },
+      NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_set_read_only_wire(set: set) as NonEmptyStr },
+      NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
+      ],
+    ),
+    dispatch_worker_set_credential_settings(set: set),
   )
+}
+
+// THE CREDENTIALS THE MANAGER HANDS THE UNIT, one LoadCredential= per credential entry, in set order. Empty
+// for a set with none, which is every set but a dedicated worker's (gunbc.roadmap.dispatch_worker_unit_confinement
+// dispatch_worker_credentials).
+fn dispatch_worker_set_credential_settings(set: List<HandedEntry>) -> List<SystemdRunProperty> {
+  fold(set, init: [], f: (acc, e) =>
+    match e.role {
+      HandedCredentialSource { identifier: id } => concat(acc, [LoadCredentialSetting { identifier: id, source: e.path as NonEmptyStr }])
+      _ => acc
+    })
 }
 
 fn setting_carries_paths(p: SystemdRunProperty) -> Bool {
   match p {
     NamedUnitSetting { property: prop, value: _ } => systemd_property_carries_paths(property: prop)
     EmptyCapabilityBoundingSet => false
+    LoadCredentialSetting { identifier: _, source: _ } => true
   }
 }
 
