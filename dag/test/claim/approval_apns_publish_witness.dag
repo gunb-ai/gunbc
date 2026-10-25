@@ -120,9 +120,9 @@ test fn the_payload_is_the_generic_alert_and_the_escalation_locator() -> Bool {
 // collapse id are each refused before anything is sent.
 test fn a_foreign_topic_an_fcm_registration_and_an_overlong_id_are_refused() -> Bool {
   let long_id = "esc-0123456789012345678901234567890123456789012345678901234567890"
-  match approval_push_request(registration: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.other", token: "t" }, escalation_id: "esc-1") { ApprovalPushRequestRefused { detail: d } => contains(d, "not this app's bundle")  ApprovalPushRequestReady { request: _ } => false }
-    && match approval_push_request(registration: FcmRegistration { project: "p" as FcmProjectId, token: "t" as FcmRegistrationToken }, escalation_id: "esc-1") { ApprovalPushRequestRefused { detail: d } => contains(d, "FCM")  ApprovalPushRequestReady { request: _ } => false }
-    && match approval_push_request(registration: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "t" }, escalation_id: long_id as NonEmptyStr) { ApprovalPushRequestRefused { detail: d } => contains(d, "collapse id")  ApprovalPushRequestReady { request: _ } => false }
+  match approval_push_request(registration: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.other", token: "t" }, escalation_id: "esc-1") { ApprovalPushRequestRefused { detail: d } => contains(d as String, "not this app's bundle")  ApprovalPushRequestReady { request: _ } => false }
+    && match approval_push_request(registration: FcmRegistration { project: "p" as FcmProjectId, token: "t" as FcmRegistrationToken }, escalation_id: "esc-1") { ApprovalPushRequestRefused { detail: d } => contains(d as String, "FCM")  ApprovalPushRequestReady { request: _ } => false }
+    && match approval_push_request(registration: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "t" }, escalation_id: long_id as NonEmptyStr) { ApprovalPushRequestRefused { detail: d } => contains(d as String, "collapse id")  ApprovalPushRequestReady { request: _ } => false }
 }
 
 // THE CONFIG ON STDIN: the sandbox host for a development token, HTTP/2, the bearer as a header line
