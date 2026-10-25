@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_review_role {
   ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
 }
 import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra, review_criterion_identity_text, review_home_text, conformance_criterion_from_domain }
-import std.decl_ref { DeclarationRef, DeclarationSymbol, declaration_ref_display_key, decl_ref }
+import std.decl_ref { DeclarationRef, DeclarationSymbol, declaration_ref_display_key, declaration_ref_digest, decl_ref }
 import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance_domains, ConformanceDomain, ConformanceHomeGroup, conformance_domain_homes }
 import gunbc.design_document { expected_design_md, conformance_domain_section }
 import extdeps.languages.markdown { serialize_markdown_source }
@@ -238,10 +238,26 @@ test fn conformance_reader_text_does_not_affect_plan_revision() -> Bool {
       let id = review_criterion_identity_text(c: c)
       string_contains(s: id, pattern: "conformance-extdeps")
         && string_contains(s: id, pattern: "conformance-three-valued")
-        && string_contains(s: id, pattern: "extdeps.external_authority::ExternalModelScope")
+        && string_contains(s: id, pattern: declaration_ref_digest(ref: decl_ref(module_path: "extdeps.external_authority", decl_name: "ExternalModelScope")).digest as String)
     }
     Absent => false
   }
+}
+
+// A RENDERER-ONLY CHANGE CANNOT MOVE THE PLAN REVISION (review 86159 on gunb-ai/gunbc#14803). Every home
+// of every conformance criterion enters the identity as its structural digest and never as its rendered
+// spelling, so changing std.decl_ref declaration_ref_display_key leaves review_criterion_identity_text,
+// and the ReviewPlan revision hashed from it, unchanged. Red if a home is hashed by its spelling again.
+test fn a_home_enters_the_criterion_identity_by_structure_not_by_spelling() -> Bool {
+  let conformance = filter(review_criteria, c => match c.answer { ConformanceThreeValued => true  YesIsADefect => false })
+  count(conformance) > 0
+    && all(conformance, c => {
+      let id = review_criterion_identity_text(c: c)
+      count(c.homes) > 0
+        && all(c.homes, h =>
+          string_contains(s: id, pattern: declaration_ref_digest(ref: h).digest as String)
+            && !string_contains(s: id, pattern: declaration_ref_display_key(ref: h)))
+    })
 }
 
 test fn every_conformance_domain_is_a_criterion_whose_brief_names_its_homes() -> Bool {

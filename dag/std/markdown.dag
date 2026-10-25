@@ -9,7 +9,7 @@ import std.markup {
   UrlContext,
 
 }
-import std.decl_ref { CitedSymbol, DeclarationSymbol, ModuleSymbol, WholeDeclaration, NamedField, TypeParameter }
+import std.decl_ref { CitedSymbol, DeclarationSymbol, ModuleSymbol, declaration_ref_display_key }
 import std.coercion { unicode_scalar_fold }
 
 type HeadingLevel = H1 | H2 | H3 | H4 | H5 | H6
@@ -23,27 +23,13 @@ type MarkdownInline
   | ImageInline { alt: String, url: String }
   | SymbolRefInline { symbol: CitedSymbol }
 
-// The rendered spelling of a cited symbol in documentation: the module path, then the declaration after a
-// space, then a field after a dot or a type parameter in angle brackets (the two are distinct components of
-// the declaration, so they never share a spelling). Every documentation citation renders here, never by a
-// per-site choice between ::, . and space. This is NOT yet the only spelling of a DeclarationRef:
-// std.decl_ref declaration_ref_display_key still writes the :: form, and about 350 call sites in about 80
-// modules read it, many of them comparing its strings where declaration_ref_eq is the identity. The two
-// spellings are one concept, so the stated divergence is temporary. It ends when the display key renders
-// through this spelling and its string comparisons become declaration_ref_eq; that one cut is named on
-// gunb-ai/gunbc#14803. A module's name is structural text, so it reaches host text through the declared
-// crossing (std.coercion unicode_scalar_fold).
+// A cited symbol's spelling: a module renders as its name, which is structural text and reaches host text
+// through the declared crossing (std.coercion unicode_scalar_fold); a declaration renders through the one
+// spelling its carrier owns (std.decl_ref declaration_ref_display_key), never a second one here.
 fn cited_symbol_spelling(symbol: CitedSymbol) -> String {
   match symbol {
     ModuleSymbol { module: m } => unicode_scalar_fold(xs: m.name)
-    DeclarationSymbol { reference: r } =>
-      match r.field {
-        WholeDeclaration => concat(r.module_path as String, concat(" ", r.decl_name as String))
-        NamedField { field_name: f } =>
-          concat(r.module_path as String, concat(" ", concat(r.decl_name as String, concat(".", f as String))))
-        TypeParameter { name: t } =>
-          concat(r.module_path as String, concat(" ", concat(r.decl_name as String, concat("<", concat(t as String, ">")))))
-      }
+    DeclarationSymbol { reference: r } => declaration_ref_display_key(ref: r)
   }
 }
 

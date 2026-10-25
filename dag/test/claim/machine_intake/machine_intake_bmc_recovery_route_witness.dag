@@ -251,9 +251,9 @@ test fn a_duplicated_catalog_reports_ambiguity_and_never_blames_the_measurement(
 // OperatorApprovedCapability. The pattern is what the effect's characteristics force, so a row cannot
 // realize a friendlier pattern than its own effect permits.
 
-data recovery_in_band_site_name: String = "gunbc.machine_intake.bmc_recovery_route::admit_recovery_in_band_password_write"
+data recovery_in_band_site_name: String = "gunbc.machine_intake.bmc_recovery_route admit_recovery_in_band_password_write"
 
-data recovery_reset_site_name: String = "gunbc.machine_intake.bmc_recovery_route::admit_recovery_manager_reset_to_defaults"
+data recovery_reset_site_name: String = "gunbc.machine_intake.bmc_recovery_route admit_recovery_manager_reset_to_defaults"
 
 fn recovery_site_verdicts() -> List<SiteVerdict> {
   filter(
@@ -338,7 +338,7 @@ test fn each_recovery_census_row_points_at_a_declaration_the_live_tree_has() -> 
     && census_row_names_a_declared_declaration(wanted: recovery_in_band_site_name)
     && census_row_names_a_declared_declaration(wanted: recovery_reset_site_name)
     // a site name that was never declared is refused -- the exact defect this replaces
-    && census_row_names_a_declared_declaration(wanted: "gunbc.machine_intake.bmc_recovery_route::no_such_recovery_gate") == false
+    && census_row_names_a_declared_declaration(wanted: "gunbc.machine_intake.bmc_recovery_route no_such_recovery_gate") == false
 }
 
 // BOTH ROWS LAND ON THE OPERATOR-APPROVED CAPABILITY, AND THE CLAIM SAYS SO RATHER THAN HOPING ONE
@@ -773,7 +773,7 @@ fn recovery_reset_interlock() -> PrivilegedEffectInterlock? {
   filter(
     privileged_effect_interlocks,
     i => declaration_ref_display_key(ref: i.site)
-      == "gunbc.machine_intake.bmc_recovery_route::admit_recovery_manager_reset_to_defaults",
+      == "gunbc.machine_intake.bmc_recovery_route admit_recovery_manager_reset_to_defaults",
   )
     |> first()
 }

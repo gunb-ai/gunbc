@@ -810,7 +810,7 @@ fn generic_identity_fixture_standing(sources: List<SourceFile>) -> String {
       let rows = gi_rows_of_graph(g: g, si: si)
       let marked_signature_leaf = rows |> any(r =>
         r.enclosing == "head_of" && r.carrier == "signature_param_type" && r.path == "xs/arg"
-          && gi_declaration_label(d: r.declaration) == "gic.a::head_of::<T>")
+          && gi_declaration_label(d: r.declaration) == "gic.a head_of<T>")
       let minted_container_child = rows |> any(r =>
         r.enclosing == "ints" && r.parent_label == "List" && r.spelled == "T" && r.resolved_label == "Int" && gi_mark_label(r: r) == "neither")
       let bound_call = gi_result_carrier_observation(g: g, si: si, sigs: sigs, function_name: "caller_function")
@@ -819,7 +819,7 @@ fn generic_identity_fixture_standing(sources: List<SourceFile>) -> String {
       let owner_argument_arms = gi_owner_argument_arms_discriminate(g: g, si: si, sigs: sigs)
       let conformance_keeps_mark = rows |> any(r =>
         r.enclosing == "same_spelling_as_a_record_parameter" && r.carrier == "formal_declaration_bound_conformance" && r.path == "q"
-          && gi_declaration_label(d: r.declaration) == "gic.a::same_spelling_as_a_record_parameter::<Q>")
+          && gi_declaration_label(d: r.declaration) == "gic.a same_spelling_as_a_record_parameter<Q>")
       let missing_carriers = gi_missing_carriers_are_unobserved(g: g, si: si, sigs: sigs)
       let held = marked_signature_leaf && minted_container_child && bound_call_observed_clean && unobserved_declared && owner_argument_arms && missing_carriers && conformance_keeps_mark
       concat([

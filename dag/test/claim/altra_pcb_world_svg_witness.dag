@@ -611,11 +611,11 @@ test fn w_established_envelopes_name_the_declaration_read_not_a_datasheet_senten
     Absent => false
     Present { value: s } =>
       string_contains(s: s, pattern: "read: ")
-        && string_contains(s: s, pattern: "extdeps.programmable_logic.ice40.subject::ice40_tq144_package")
-        && string_contains(s: s, pattern: "extdeps.cpu.ampere_altra_package::altra_package_body_width")
-        && string_contains(s: s, pattern: "extdeps.network.ti_dp83867::dp83867_rgz0048b_body")
-        && string_contains(s: s, pattern: "extdeps.power.ti_tps53688::tps53688_rsb0040a_body")
-        && string_contains(s: s, pattern: "extdeps.power.ti_tps3808::tps3808_dbv0006a_body")
+        && string_contains(s: s, pattern: "extdeps.programmable_logic.ice40.subject ice40_tq144_package")
+        && string_contains(s: s, pattern: "extdeps.cpu.ampere_altra_package altra_package_body_width")
+        && string_contains(s: s, pattern: "extdeps.network.ti_dp83867 dp83867_rgz0048b_body")
+        && string_contains(s: s, pattern: "extdeps.power.ti_tps53688 tps53688_rsb0040a_body")
+        && string_contains(s: s, pattern: "extdeps.power.ti_tps3808 tps3808_dbv0006a_body")
         && !string_contains(s: s, pattern: "Mechanical Data")
         && !string_contains(s: s, pattern: "verified")
   }
@@ -642,11 +642,11 @@ test fn w_dropping_an_envelope_read_from_the_document_is_detected() -> Bool {
       let scene = project_engineering_scene(w: w)
       let represented = drop_label(
         xs: scene_identities(scene: scene),
-        needle: "extdeps.cpu.ampere_altra_package::altra_package_body_width",
+        needle: "extdeps.cpu.ampere_altra_package altra_package_body_width",
       )
       match first_unrepresented_scene_identity(scene: scene, represented: represented) {
         Absent => false
-        Present { value: id } => (id as String) == "extdeps.cpu.ampere_altra_package::altra_package_body_width"
+        Present { value: id } => (id as String) == "extdeps.cpu.ampere_altra_package altra_package_body_width"
       }
   }
 }

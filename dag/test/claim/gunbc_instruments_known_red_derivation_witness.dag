@@ -2005,7 +2005,7 @@ test fn every_classification_arm_is_registered_as_a_tied_pair() -> Bool {
 test fn the_decoder_debt_is_bound_to_a_declaration_ref_not_to_prose() -> Bool {
   dissolution_is_bound(condition: known_red_transport_decoder_dissolution)
     && declaration_ref_display_key(ref: known_red_transport_decoder_target)
-      == "v1_compiler.claim_batch::claim_run_outcomes"
+      == "v1_compiler.claim_batch claim_run_outcomes"
 }
 
 // THE TRIGGER IS CHECKABLE, AND ITS LIMIT IS STATED WHERE A READER MEETS IT. The capability, the owner and the

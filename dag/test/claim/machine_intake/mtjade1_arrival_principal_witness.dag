@@ -189,7 +189,7 @@ test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
     && rulings_without_a_rostered_interlock().length() == 1
     && match rulings_without_a_rostered_interlock().first() {
       Present { value: s } =>
-        declaration_ref_display_key(ref: s) == "gunbc.auth.mtjade1_arrival_federation::mtjade1_arrival_firmware_qualification_effect"
+        declaration_ref_display_key(ref: s) == "gunbc.auth.mtjade1_arrival_federation mtjade1_arrival_firmware_qualification_effect"
       Absent => false
     }
     && match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeFirmwareQualification) {

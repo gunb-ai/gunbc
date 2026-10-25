@@ -1,7 +1,7 @@
 module std.decision
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key, declaration_ref_before }
 import std.interval { OrderedClosedInterval, degenerate_interval, interval_low, interval_high }
 import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, checked_int_add, checked_int_multiply, checked_int_subtract }
 import std.measure {
@@ -1210,7 +1210,7 @@ fn mint_receipt(
 }
 
 fn identity_ref_before(a: DeclarationRef, b: DeclarationRef) -> Bool {
-  declaration_ref_display_key(ref: a) < declaration_ref_display_key(ref: b)
+  declaration_ref_before(a: a, b: b)
 }
 
 // CONSUMER: apply_policy ValuedObjective equal-sum arm, and the valuation-blind RED in

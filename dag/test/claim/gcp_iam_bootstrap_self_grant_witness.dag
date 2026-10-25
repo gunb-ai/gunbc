@@ -113,7 +113,7 @@ test fn a_role_carrying_a_denied_permission_is_caught() -> Bool {
 // THE CENSUS ROW MIRRORS THE CONVERGE'S: the selection asks for an operator-approved capability, the
 // site realizes a gated federated grant, and the divergence carries the converge's stated reason.
 test fn the_bootstrap_delta_census_row_diverges_with_the_converges_reason() -> Bool {
-  let rows = filter(privileged_effect_census, r => declaration_ref_display_key(ref: r.site) == "gunbc.auth.gcp_iam_bootstrap_delta_run::gcp_iam_bootstrap_delta_apply_wet")
+  let rows = filter(privileged_effect_census, r => declaration_ref_display_key(ref: r.site) == "gunbc.auth.gcp_iam_bootstrap_delta_run gcp_iam_bootstrap_delta_apply_wet")
   count(rows) == 1
     && (match select_authorization_pattern(e: bootstrap_delta_privileged_effect) { PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true  _ => false })
     && all(rows, r => match site_verdict(row: r).conformance { DivergesWithReason { reason } => reason == gcp_iam_approval_enforced_in_reviewed_code  _ => false })
