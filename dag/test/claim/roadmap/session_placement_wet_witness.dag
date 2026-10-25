@@ -26,6 +26,7 @@ import gunbc.compute.attempt_lifecycle {
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
+import gunbc.roadmap.roadmap_belt_actuate { belt_session_slots_ensure }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
@@ -86,7 +87,6 @@ fn subject_at(dir: String) -> ComputeCapacitySubject {
 
 fn stores_at(dir: String) -> SessionPlacementStores {
   SessionPlacementStores {
-    slots_root: dir as NonEmptyStr,
     slots: file_slot_store(root: dir as NonEmptyStr),
     records_dir: dir,
     store: compute_capacity_store(subject: subject_at(dir: dir)),
@@ -269,6 +269,27 @@ fn launched_ok(dir: String, rec: AttemptRecord) -> Bool {
 fn release_text(dir: String) -> String {
   let r = Filesystem.Read(path: join([dir, "/", rel_name()], ""))
   if r.success { r.content } else { "" }
+}
+
+// CONTROL 0, SETUP AND THE FIRST LIFECYCLE WRITE ADDRESS ONE STORE (side-chat finding on #14944 at
+// 28b521fe493: SessionPlacementStores carried slots_root beside slots, so a record could set up A and write
+// to B). The record now holds only the SlotStore; production setup, belt_session_slots_ensure, creates the
+// directory read off that store through the instance's own install capability, and the lifecycle's first
+// write, attempt_open on stores.slots, lands in exactly the directory setup created. The directory is absent
+// before setup, so a setup that created some other path leaves the open refused and this control red.
+test fn setup_and_the_first_lifecycle_write_address_the_same_store() -> Bool {
+  let dir = fresh_dir(tag: "c0")
+  let slots = join([dir, "/session-attempts"], "")
+  let stores = stores_at(dir: slots)
+  let absent_before = !Filesystem.List(path: slots).success
+  let set_up = match belt_session_slots_ensure(instance: srv2_deploy_dashboard_instance(), stores: stores) { Absent => true  Present { value: _ } => false }
+  let wrote = match attempt_open(store: stores.slots, record: slot_a(opened: 1000)) {
+    AttemptAdvanced { state: _, generation: _ } => true
+    AttemptLostRace { expected: _, observed: _ } => false
+    AttemptTransitionRefused { detail: _ } => false
+  }
+  let after = Filesystem.List(path: slots)
+  absent_before && set_up && wrote && after.success && string_contains(s: after.entries, pattern: unit_a())
 }
 
 // CONTROL 1, ACQUIRE -> NO PLACEMENT RECORD: the slot opened before the reservation is all that

@@ -73,7 +73,6 @@ fn ssh_keygen_generate_command(key_type: NonEmptyStr, key_file: String, comment:
 }
 
 data ssh_keygen_ed25519_type: NonEmptyStr = "ed25519"
-
 // -l prints the FINGERPRINT of the key in the named file, rather than the key. A fingerprint is what
 // a human compares and what a receipt records; the key itself is what gets installed. Two different
 // products, so two different builders.

@@ -79,7 +79,6 @@ fn unit_b() -> String {
 
 fn stores_at(dir: String) -> SessionPlacementStores {
   SessionPlacementStores {
-    slots_root: dir as NonEmptyStr,
     slots: file_slot_store(root: dir as NonEmptyStr),
     records_dir: dir,
     store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: join([dir, "/ledger"], "") as NonEmptyStr) },
