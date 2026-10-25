@@ -2,12 +2,12 @@ module gunbc.fleet.fleet_job_principal
 
 import std.types { List, String, NonEmptyStr, Int }
 import std.optional { Present, Absent }
-import gunbc.fleet.fleet_posix_accounts { fleet_root_equivalent_group_names }
+import gunbc.fleet.fleet_root_equivalent_groups { fleet_root_equivalent_group_names }
 import extdeps.linux.procfs { procfs_status_effective_uid, procfs_status_supplementary_gids }
 import extdeps.linux.etc_group { etc_group_entries, etc_group_name_of }
 
 // A JOB'S OWN PRINCIPAL, read from inside the job: its /proc/self/status and the host's /etc/group. The
-// fleet model's closed list of root-equivalent groups (gunbc.fleet.fleet_posix_accounts
+// fleet model's closed list of root-equivalent groups (gunbc.fleet.fleet_root_equivalent_groups
 // fleet_root_equivalent_group_names) decides: a principal in any of them is refused, and so is one with a
 // supplementary GID /etc/group cannot name, since an unnamed group could be one of them. This judges
 // group membership only. Whether a home another account can reach makes a principal root-equivalent has

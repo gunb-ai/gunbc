@@ -10,7 +10,7 @@ import extdeps.vllm.engine_args {
   VllmIndexerKvDtypeRequest, vllm_indexer_kv_dtype_key, VllmSchedulerAdmissionRequest, vllm_scheduler_admission_key,
 }
 import extdeps.nvidia.nccl { NcclRealizedTransport, nccl_realized_transport_wire }
-import extdeps.docker.cli { DockerEnvAssignment }
+import extdeps.docker.create_spec { DockerEnvAssignment }
 import extdeps.storage.types { PcieLink, pcie_generation_wire }
 import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
 import extdeps.ninfer.ninfer_serve {

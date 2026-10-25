@@ -68,8 +68,9 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_worker_user, fleet_posix_worker_shared_group_name, fleet_posix_worker_shared_group_gid,
   fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_automation_user, fleet_posix_root_user,
   fleet_srv1_observed_numeric_ids,
-  fleet_posix_worker_supplementary_groups, fleet_root_equivalent_group_names,
+  fleet_posix_worker_supplementary_groups,
 }
+import gunbc.fleet.fleet_root_equivalent_groups { fleet_root_equivalent_group_names }
 
 // WORKER-ROOT-EQUIVALENT-1, DECLARATION-LEVEL ONLY (rung stays Mitigatable; see
 // gunbc.rung_drop.worker_root_equivalent_socket_denylist). The worker unit's User= is a dedicated account that holds
