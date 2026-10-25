@@ -45,8 +45,10 @@ import gunbc.durable_exclusive_hold_file_store {
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.host.managed_host { ManagedHost, ResetNoUnitHold, ResetUnitHoldRequired, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_memberships, managed_membership_for }
-import gunbc.host.host_maintenance_hold_reason { maintenance_hold_reason_env }
+import gunbc.host.managed_host { ManagedHost, OrdinaryMember, MemberUnderDeclaredDrop, managed_host_memberships, managed_membership_for }
+import gunbc.host.host_maintenance_hold_reason {
+  ResetUnitHold, ResetNoUnitHold, ResetUnitHoldRequired, maintenance_hold_reason_env, unit_hold_decision,
+}
 import extdeps.tools.hostname
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 
@@ -59,8 +61,9 @@ import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 // federated pattern for it). The second is a physical-safety fact about the unit, not about who may
 // authorize, so it does not dissolve with the approval stage: a boot that power-cycles a unit whose
 // DIMMs are being reseated is the harm. It is carried here as ONE std.durable_exclusive_hold slot
-// per unit, keyed by the key its gunbc.host.managed_host ManagedHost row declares (unit_hold). Nothing here
-// names a unit: which hosts have a hold, under which key and on which store host, is read off the row.
+// per unit, keyed by the key the host's hold decision declares (gunbc.host.host_maintenance_hold_reason
+// unit_hold_decision). Nothing here names a unit: which hosts have a hold, under which key and on which
+// store host, is read off that decision.
 //
 // ONE SLOT, TWO KINDS OF HOLDER, AND THAT IS THE POINT. The operator takes the slot for
 // maintenance; the boot run takes the SAME slot before any BMC actuation and frees it after. So
@@ -76,12 +79,15 @@ import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 data unit_hold_store_root: NonEmptyStr = "/var/lib/gunbc/unit-holds" as NonEmptyStr
 
 // ── THE ADMISSION: WHICH HOSTS HAVE A HOLD AT ALL ─────────────────────────────────────────────
-// Taking, releasing or checking a unit hold is an operation on a managed host, and its policy is the
-// row's own unit_hold decision. A host whose row says ResetNoUnitHold has no slot, and a label that
-// names no row of managed_hosts() is not a host this fleet drives; both are typed refusals, and no
-// arm falls back to a key spelled from the label. AdmittedUnitHoldSubject is sole_constructor and
-// admit_unit_hold_subject is its only mint, so every acquire, release and proof check below is fed a
-// key and a store host that came from a ManagedHost row and from nowhere else.
+// Taking, releasing or checking a unit hold is an operation on a managed host, and its policy is that
+// host's hold decision (gunbc.host.host_maintenance_hold_reason unit_hold_decision), maintenance policy
+// that lives beside the operation rather than on the ManagedHost row. A host decided ResetNoUnitHold has
+// no slot; a host with NO decision is UnitHoldUndecided, never read as no hold, so every hold-gated effect
+// refuses it; and a label that names no row of managed_hosts() is not a host this fleet drives. All three
+// are typed refusals, and no arm falls back to a key spelled from the label. AdmittedUnitHoldSubject is
+// sole_constructor and unit_hold_subject_under is its only literal: the production route reaches it only
+// through admit_unit_hold_subject, which reads the decision itself, so every acquire, release and proof
+// check below is fed a key and a store host that came from that decision and from nowhere else.
 type AdmittedUnitHoldSubject sole_constructor {
   host: ManagedHost
   key: NonEmptyStr
@@ -91,35 +97,66 @@ type AdmittedUnitHoldSubject sole_constructor {
 type UnitHoldAdmission
   = UnitHoldSubjectAdmitted { subject: AdmittedUnitHoldSubject }
   | UnitHoldNotRequired { host: HostIdentity }
+  | UnitHoldUndecided { host: HostIdentity }
 
 fn admit_unit_hold_subject(host: ManagedHost) -> UnitHoldAdmission {
-  match host.unit_hold {
-    ResetUnitHoldRequired { key: k, store_host: s } =>
-      UnitHoldSubjectAdmitted { subject: AdmittedUnitHoldSubject { host: host, key: k, store_host: s } }
-    ResetNoUnitHold => UnitHoldNotRequired { host: host.host }
+  unit_hold_subject_under(host: host, decision: unit_hold_decision(host: host.host))
+}
+
+// THE ONE DOOR, ADMITTED TO THE PRODUCTION ADMISSION AND TO THE WITNESSES THAT SUPPLY A DECISION the
+// committed policy does not hold (no hold, a store host with no allocation, a held host with no reason
+// variable); admit_callers keeps every other caller out.
+fn unit_hold_subject_under(host: ManagedHost, decision: ResetUnitHold?) -> UnitHoldAdmission
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "admit_unit_hold_subject"),
+    decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store"),
+    decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_held_host_with_no_reason_variable_is_refused_for_maintenance"),
+    decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_store_host_with_no_allocated_hostname_refuses_the_executor"),
+    decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_managed_host_with_no_hold_decision_is_undecided_and_refused"),
+  ]
+{
+  match decision {
+    Absent => UnitHoldUndecided { host: host.host }
+    Present { value: d } =>
+      match d {
+        ResetUnitHoldRequired { key: k, store_host: s } =>
+          UnitHoldSubjectAdmitted { subject: AdmittedUnitHoldSubject { host: host, key: k, store_host: s } }
+        ResetNoUnitHold => UnitHoldNotRequired { host: host.host }
+      }
   }
 }
 
-// THE SAME ADMISSION FOR A LABEL, over the rows it is given so the refusals have something to refuse:
-// a caller that knows only a host's name (an operator's argument, a unit procedure's own identity)
-// reaches the row here and nowhere else.
+fn unit_hold_admission_host(admission: UnitHoldAdmission) -> HostIdentity {
+  match admission {
+    UnitHoldSubjectAdmitted { subject: s } => s.host.host
+    UnitHoldNotRequired { host: h } => h
+    UnitHoldUndecided { host: h } => h
+  }
+}
+
+// THE SAME ADMISSION FOR A LABEL, over the admissions it is given so the refusals have something to
+// refuse: a caller that knows only a host's name (an operator's argument, a unit procedure's own
+// identity) reaches the admission here and nowhere else.
 type UnitHoldHostAdmission
   = UnitHoldHostAdmitted { subject: AdmittedUnitHoldSubject }
   | UnitHoldHostNotManaged { host: NonEmptyStr }
   | UnitHoldHostNotRequired { host: HostIdentity }
+  | UnitHoldHostUndecided { host: HostIdentity }
 
-fn unit_hold_admission_in(hosts: List<ManagedHost>, host: NonEmptyStr) -> UnitHoldHostAdmission {
+fn unit_hold_admission_in(admissions: List<UnitHoldAdmission>, host: NonEmptyStr) -> UnitHoldHostAdmission {
   fold(
-    hosts,
+    admissions,
     init: UnitHoldHostNotManaged { host: host },
-    f: (acc, h) => match acc {
+    f: (acc, a) => match acc {
       UnitHoldHostAdmitted { subject: _ } => acc
       UnitHoldHostNotRequired { host: _ } => acc
+      UnitHoldHostUndecided { host: _ } => acc
       UnitHoldHostNotManaged { host: _ } =>
-        if (h.host as String) == (host as String) {
-          match admit_unit_hold_subject(host: h) {
+        if (unit_hold_admission_host(admission: a) as String) == (host as String) {
+          match a {
             UnitHoldSubjectAdmitted { subject: s } => UnitHoldHostAdmitted { subject: s }
             UnitHoldNotRequired { host: x } => UnitHoldHostNotRequired { host: x }
+            UnitHoldUndecided { host: x } => UnitHoldHostUndecided { host: x }
           }
         } else {
           acc
@@ -133,9 +170,9 @@ fn unit_hold_admission_for(host: NonEmptyStr) -> UnitHoldHostAdmission {
     Absent => UnitHoldHostNotManaged { host: host }
     Present { value: m } =>
       match m {
-        OrdinaryMember { host: h } => unit_hold_admission_in(hosts: [h], host: host)
+        OrdinaryMember { host: h } => unit_hold_admission_in(admissions: [admit_unit_hold_subject(host: h)], host: host)
         MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
-          unit_hold_admission_in(hosts: [h], host: host)
+          unit_hold_admission_in(admissions: [admit_unit_hold_subject(host: h)], host: host)
       }
   }
 }
@@ -148,6 +185,8 @@ fn unit_hold_host_admission_refusal(admission: UnitHoldHostAdmission) -> NonEmpt
       Present { value: join(["'", h as String, "' is not a managed host (gunbc.host.managed_host managed_hosts has no row for it), so it has no unit hold; nothing was taken, released or written"], "") as NonEmptyStr }
     UnitHoldHostNotRequired { host: h } =>
       Present { value: join(["managed host '", h as String, "' declares no unit hold (ResetNoUnitHold), so there is no hold slot for it; nothing was taken, released or written"], "") as NonEmptyStr }
+    UnitHoldHostUndecided { host: h } =>
+      Present { value: join(["managed host '", h as String, "' has no unit hold decision (gunbc.host.host_maintenance_hold_reason unit_hold_decision has no row for it), and an undecided host is never driven as if it needed no hold; nothing was taken, released or written"], "") as NonEmptyStr }
   }
 }
 
@@ -155,29 +194,30 @@ fn unit_hold_host_admission_refusal(admission: UnitHoldHostAdmission) -> NonEmpt
 // in row order. gunbc.runner.runner_host_grants provisions the store root on exactly these. The named hosts
 // are gathered by prepending and reversed once, and std.list distinct_by_key removes repeats through
 // its keyed map, so neither step copies an accumulator or scans one per row.
-fn unit_hold_named_store_hosts_reversed(hosts: List<ManagedHost>) -> List<NonEmptyStr> {
+fn unit_hold_named_store_hosts_reversed(admissions: List<UnitHoldAdmission>) -> List<NonEmptyStr> {
   fold(
-    hosts,
+    admissions,
     init: [],
-    f: (acc, h) => match admit_unit_hold_subject(host: h) {
+    f: (acc, a) => match a {
       UnitHoldNotRequired { host: _ } => acc
+      UnitHoldUndecided { host: _ } => acc
       UnitHoldSubjectAdmitted { subject: s } => concat([s.store_host], acc)
     },
   )
 }
 
-fn unit_hold_store_hosts_of(hosts: List<ManagedHost>) -> List<NonEmptyStr> {
-  distinct_by_key(xs: reverse(unit_hold_named_store_hosts_reversed(hosts: hosts)), key: fn(h) { h as String })
+fn unit_hold_store_hosts_of(admissions: List<UnitHoldAdmission>) -> List<NonEmptyStr> {
+  distinct_by_key(xs: reverse(unit_hold_named_store_hosts_reversed(admissions: admissions)), key: fn(h) { h as String })
 }
 
 fn unit_hold_store_hosts() -> List<NonEmptyStr> {
   unit_hold_store_hosts_of(
-    hosts: fold(
+    admissions: fold(
       managed_host_memberships(),
       init: [],
       f: (acc, m) => match m {
-        OrdinaryMember { host: h } => concat(acc, [h])
-        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } => concat(acc, [h])
+        OrdinaryMember { host: h } => concat(acc, [admit_unit_hold_subject(host: h)])
+        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } => concat(acc, [admit_unit_hold_subject(host: h)])
       },
     ),
   )
@@ -569,6 +609,7 @@ fn boot_run_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> UnitHo
   match unit_hold_admission_for(host: host as NonEmptyStr) {
     UnitHoldHostNotManaged { host: h } => unit_hold_not_admitted(admission: UnitHoldHostNotManaged { host: h })
     UnitHoldHostNotRequired { host: h } => unit_hold_not_admitted(admission: UnitHoldHostNotRequired { host: h })
+    UnitHoldHostUndecided { host: h } => unit_hold_not_admitted(admission: UnitHoldHostUndecided { host: h })
     UnitHoldHostAdmitted { subject: subject } =>
       match self_process_identity() {
         SelfUnidentified { cause: c } =>
@@ -599,6 +640,7 @@ fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> Un
   match unit_hold_admission_for(host: host as NonEmptyStr) {
     UnitHoldHostNotManaged { host: h } => unit_hold_not_admitted(admission: UnitHoldHostNotManaged { host: h })
     UnitHoldHostNotRequired { host: h } => unit_hold_not_admitted(admission: UnitHoldHostNotRequired { host: h })
+    UnitHoldHostUndecided { host: h } => unit_hold_not_admitted(admission: UnitHoldHostUndecided { host: h })
     UnitHoldHostAdmitted { subject: subject } =>
       match self_process_identity() {
         SelfUnidentified { cause: c } =>
@@ -706,6 +748,7 @@ fn kvm_observer_release_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> Pr
   match unit_hold_admission_for(host: host as NonEmptyStr) {
     UnitHoldHostNotManaged { host: h } => kvm_observer_release_not_admitted(admission: UnitHoldHostNotManaged { host: h })
     UnitHoldHostNotRequired { host: h } => kvm_observer_release_not_admitted(admission: UnitHoldHostNotRequired { host: h })
+    UnitHoldHostUndecided { host: h } => kvm_observer_release_not_admitted(admission: UnitHoldHostUndecided { host: h })
     UnitHoldHostAdmitted { subject: subject } =>
       match unit_hold_store_executor(subject: subject) {
         UnitHoldNotOnStoreHost { reason: r } => ProbeHoldUnreleased { cause: r as String }
@@ -803,17 +846,18 @@ fn admit_maintenance_hold_for(host: NonEmptyStr) -> MaintenanceHoldAdmission {
     Absent => MaintenanceHoldHostRefused { admission: UnitHoldHostNotManaged { host: host } }
     Present { value: m } =>
       match m {
-        OrdinaryMember { host: h } => admit_maintenance_hold_in(hosts: [h], host: host)
+        OrdinaryMember { host: h } => admit_maintenance_hold_in(admissions: [admit_unit_hold_subject(host: h)], host: host)
         MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
-          admit_maintenance_hold_in(hosts: [h], host: host)
+          admit_maintenance_hold_in(admissions: [admit_unit_hold_subject(host: h)], host: host)
       }
   }
 }
 
-fn admit_maintenance_hold_in(hosts: List<ManagedHost>, host: NonEmptyStr) -> MaintenanceHoldAdmission {
-  match unit_hold_admission_in(hosts: hosts, host: host) {
+fn admit_maintenance_hold_in(admissions: List<UnitHoldAdmission>, host: NonEmptyStr) -> MaintenanceHoldAdmission {
+  match unit_hold_admission_in(admissions: admissions, host: host) {
     UnitHoldHostNotManaged { host: h } => MaintenanceHoldHostRefused { admission: UnitHoldHostNotManaged { host: h } }
     UnitHoldHostNotRequired { host: h } => MaintenanceHoldHostRefused { admission: UnitHoldHostNotRequired { host: h } }
+    UnitHoldHostUndecided { host: h } => MaintenanceHoldHostRefused { admission: UnitHoldHostUndecided { host: h } }
     UnitHoldHostAdmitted { subject: s } =>
       match maintenance_hold_reason_env(host: s.host) {
         Absent => MaintenanceHoldNoReasonVariable { host: s.host.host }

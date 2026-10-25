@@ -1,0 +1,38 @@
+module extdeps.tools.util_linux_findmnt
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+import std.types { String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+// findmnt(8), util-linux: "findmnt is a command line tool to list filesystems". The option this
+// module models is findmnt(8)'s "-T, --target path" -- "Return all filesystems that contain the
+// given path" -- NOT -w/--timeout and not -a/--ascii (read 2026-10-24, man7.org findmnt(8)). Only
+// the fstype-probe form is modeled: -n -o FSTYPE -T <path>, which prints the FILESYSTEM TYPE the
+// path lives on and nothing else. That is the form the mint runbook's tmpfs verification needs --
+// the answer must be exactly "tmpfs" or the mint refuses -- and it is the only form whose output is
+// a single classification token a caller can compare. -l, -r, -m and the tree forms print more than
+// one field and are not modeled.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/findmnt.8.html"
+  }
+}
+
+// The mint runbook verifies the working directory is RAM-backed before ANY private half is created
+// there, and a claim that says "verify tmpfs" must name the executable that verifies it, not leave
+// `findmnt` as prose inside a heredoc.
+fn findmnt_program() -> ProgramIdentity = uncataloged_program(invocation: "findmnt")
+
+// `findmnt -no FSTYPE -T <path>`: -n suppresses the header, -o FSTYPE selects the single column,
+// -T resolves the containing filesystem of the path. One argv word per flag (not the bundled -no)
+// so each word is independently visible in argv -- the reason an argv carrier exists at all.
+fn findmnt_fstype_for_path_command(path: String) -> ArgvCommand {
+  argv_command(
+    program: findmnt_program(),
+    arguments: ["-n", "-o", "FSTYPE", "-T", path],
+  )
+}

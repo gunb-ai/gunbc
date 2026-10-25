@@ -1,0 +1,128 @@
+module product.printing.print_recipe
+import std.types { String, NonEmptyStr, List, Int, Bool }
+import extdeps.printing.fdm { FilamentMaterial, Pla, Petg }
+import std.measure { micrometer, micrometre_per_second, micrometre_per_second_squared, percent }
+import extdeps.printing.orca_slicer {
+  OrcaProcessSetting, OrcaSpeedSetting, OrcaAccelerationSetting, OrcaLengthSetting, OrcaCountSetting, OrcaSparseInfillDensity, OrcaSparseInfillPattern, OrcaBrimTypeSetting, OrcaBedTypeSetting,
+  OrcaOuterWallSpeed, OrcaInnerWallSpeed, OrcaSparseInfillSpeed, OrcaInternalSolidInfillSpeed, OrcaBridgeSpeed, OrcaDefaultAcceleration, OrcaOuterWallAcceleration, OrcaInnerWallAcceleration,
+  OrcaBrimWidth, OrcaRaftFirstLayerExpansion, OrcaWallLoops, OrcaBottomShellLayers, OrcaGyroidInfill, OrcaOuterOnlyBrim, OrcaTexturedPeiPlate, orca_process_setting_kv,
+  OrcaProfileKind, OrcaMachineProfile, OrcaFilamentProfile, OrcaProcessProfile, orca_bbl_profile_path }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, json_kv, json_string, json_array }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import product.printing.process_geometry { prototype_support_policy, support_settings }
+
+// A PRINT RECIPE IS THE WHOLE SLICER INPUT, NAMED ONCE. Selecting a material alone would leave the
+// machine, filament and process profiles to whichever files a host happens to hold. A recipe names
+// three system profiles of the pinned Orca release (extdeps.printing.orca_slicer) and the process
+// keys this product imposes over them; the support keys come from
+// product.printing.process_geometry support_settings, never restated here. A changed override is a
+// new recipe name.
+type PrintRecipe {
+  name: NonEmptyStr
+  material: FilamentMaterial
+  machine: NonEmptyStr
+  filament: NonEmptyStr
+  process: NonEmptyStr
+  process_name: NonEmptyStr
+  process_overrides: List<OrcaProcessSetting>
+}
+
+// The speed, acceleration, wall and infill policy of the unpowered cassette prototypes, read as the
+// difference between the profiles those prints used and Orca 2.4.2's 0.20mm Standard @BBL A1M.
+data a1_mini_slow_strong_process: List<OrcaProcessSetting> = [
+  OrcaCountSetting { key: OrcaBottomShellLayers, count: 5 },
+  OrcaSpeedSetting { key: OrcaBridgeSpeed, speed: micrometre_per_second(count: 25000) },
+  OrcaBrimTypeSetting { brim: OrcaOuterOnlyBrim },
+  OrcaLengthSetting { key: OrcaBrimWidth, length: micrometer(count: 4000) },
+  OrcaBedTypeSetting { bed: OrcaTexturedPeiPlate },
+  OrcaAccelerationSetting { key: OrcaDefaultAcceleration, acceleration: micrometre_per_second_squared(count: 1000000) },
+  OrcaAccelerationSetting { key: OrcaInnerWallAcceleration, acceleration: micrometre_per_second_squared(count: 1000000) },
+  OrcaSpeedSetting { key: OrcaInnerWallSpeed, speed: micrometre_per_second(count: 100000) },
+  OrcaSpeedSetting { key: OrcaInternalSolidInfillSpeed, speed: micrometre_per_second(count: 100000) },
+  OrcaAccelerationSetting { key: OrcaOuterWallAcceleration, acceleration: micrometre_per_second_squared(count: 500000) },
+  OrcaSpeedSetting { key: OrcaOuterWallSpeed, speed: micrometre_per_second(count: 60000) },
+  OrcaLengthSetting { key: OrcaRaftFirstLayerExpansion, length: micrometer(count: 0) },
+  OrcaSparseInfillDensity { density: percent(count: 20) },
+  OrcaSparseInfillPattern { pattern: OrcaGyroidInfill },
+  OrcaSpeedSetting { key: OrcaSparseInfillSpeed, speed: micrometre_per_second(count: 120000) },
+  OrcaCountSetting { key: OrcaWallLoops, count: 4 },
+]
+
+data a1_mini_pla_prototype_v1: PrintRecipe = PrintRecipe {
+  name: "a1-mini-pla-prototype-v1",
+  material: Pla,
+  machine: "Bambu Lab A1 mini 0.4 nozzle",
+  filament: "Generic PLA @BBL A1M",
+  process: "0.20mm Standard @BBL A1M",
+  process_name: "Cassette unpowered prototype 0.20 PLA supported",
+  process_overrides: a1_mini_slow_strong_process,
+}
+
+// Same process policy over Orca's own PETG temperatures and flow limit. Fit, heat and service
+// acceptance are separate observations of the printed part, not properties of this recipe.
+data a1_mini_petg_functional_v1: PrintRecipe = PrintRecipe {
+  name: "a1-mini-petg-functional-v1",
+  material: Petg,
+  machine: "Bambu Lab A1 mini 0.4 nozzle",
+  filament: "Generic PETG @BBL A1M",
+  process: "0.20mm Standard @BBL A1M",
+  process_name: "Functional 0.20 PETG supported",
+  process_overrides: a1_mini_slow_strong_process,
+}
+
+data print_recipes: List<PrintRecipe> = [a1_mini_pla_prototype_v1, a1_mini_petg_functional_v1]
+
+fn print_recipe_from_wire(s: String) -> PrintRecipe? {
+  filter(print_recipes, r => (r.name as String) == s).first()
+}
+
+fn recipe_process_overrides(r: PrintRecipe) -> List<JsonKeyValue> {
+  concat(concat(map(r.process_overrides, o => orca_process_setting_kv(s: o)), support_settings(p: prototype_support_policy)), [
+    json_kv(key: "name", value: json_string(s: r.process_name as String)),
+    json_kv(key: "from", value: json_string(s: "user")),
+  ])
+}
+
+// FLATTENING FOLLOWS THE UPSTREAM INHERITANCE RULE AND REFUSES EVERYTHING ELSE: an unreadable file,
+// a file whose `name` is not its stem, a non-object, or a chain deeper than the bound.
+type OrcaProfileFlattening
+  = OrcaProfileFlattened { members: List<JsonKeyValue> }
+  | OrcaProfileRefused { name: String, cause: NonEmptyStr }
+
+data orca_profile_inheritance_bound: Int = 8
+
+fn keyed(members: List<JsonKeyValue>, key: String) -> Bool { any(members, m => m.key == key) }
+
+fn overlay(base: List<JsonKeyValue>, top: List<JsonKeyValue>) -> List<JsonKeyValue> {
+  concat(filter(base, m => !keyed(members: top, key: m.key)), top)
+}
+
+fn string_member(members: List<JsonKeyValue>, key: String) -> String? {
+  match filter(members, m => m.key == key).first() {
+    Absent => none
+    Present { value: m } => match m.value { JsonString { value: v } => Present { value: v } _ => none }
+  }
+}
+
+fn flatten_orca_profile(extracted_into: String, kind: OrcaProfileKind, name: String, depth: Int) -> OrcaProfileFlattening {
+  if depth <= 0 { return OrcaProfileRefused { name: name, cause: "Profile inheritance deeper than the declared bound" } }
+  let read = Filesystem.Read(path: orca_bbl_profile_path(extracted_into: extracted_into, kind: kind, name: name))
+  if !read.success { return OrcaProfileRefused { name: name, cause: "Profile file unreadable in the extracted archive" } }
+  let members = match parse_json_document(s: read.content) {
+    JsonDocumentParsed { value: JsonObject { members: m } } => m
+    _ => return OrcaProfileRefused { name: name, cause: "Profile is not a JSON object" }
+  }
+  match string_member(members: members, key: "name") {
+    Present { value: n } => if n != name { return OrcaProfileRefused { name: name, cause: "Profile name differs from its file stem" } }
+    Absent => return OrcaProfileRefused { name: name, cause: "Profile carries no name" }
+  }
+  let own = filter(members, m => m.key != "inherits" && m.key != "instantiation")
+  match string_member(members: members, key: "inherits") {
+    Absent => OrcaProfileFlattened { members: own }
+    Present { value: parent } => match flatten_orca_profile(extracted_into: extracted_into, kind: kind, name: parent, depth: depth - 1) {
+      OrcaProfileFlattened { members: base } => OrcaProfileFlattened { members: overlay(base: base, top: own) }
+      refused => refused
+    }
+  }
+}

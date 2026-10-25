@@ -34,6 +34,7 @@ test fn separate_job_uses_dedicated_identity() -> Bool {
 test fn observer_has_no_fleet_ssh_demand() -> Bool {
   match fleet_converge_mode_fleet_ssh_key_demand(mode: NamecheapObserve) { FleetSshKeyNotConsumed => true _ => false }
 }
+// The trusted-checkout conjuncts live once in test.claim.fleet.fleet_converge_checkout_trust; #14690's three per-file copies were consolidated there, the literal shared-job exclusion included.
 test fn trusted_code_cannot_be_replaced_by_dispatch_revision() -> Bool {
   fleet_converge_checkout_trust_holds()
     && fleet_converge_shared_job_runs_all_but(excluded: NamecheapObserve)

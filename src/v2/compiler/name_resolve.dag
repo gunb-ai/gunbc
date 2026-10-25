@@ -78,6 +78,7 @@ import v2.std.diagnostic {
   Diagnostic,
   Diagnostics,
   ExternalContractUnknown,
+  Locus,
   NonEmptyDiagnostics,
   None,
   Outcome,
@@ -659,11 +660,31 @@ fn admit_import_visible_entry(
   )
 }
 
+// AN IMPORT-ADMISSION REFUSAL IS LOCATED AT THE IMPORT THAT CAUSED IT, when the caller holds that
+// import's authored locus: NamespaceOnlyY's captured module targets carry the import declaration's own
+// span (v2.std.namespace_alias CapturedImportTarget), exactly the locus the module-not-found arm
+// already reports (admit_imported_module_existence). A caller that carries no locus -- ImportScoped's
+// caller-supplied Import, a captured alias row (v2.std.namespace_alias AliasBindingRow carries none) --
+// passes Absent, and the refusal keeps the port's typed invariant locus: an absence the census
+// reports as FileRefusalAtInvariant, never a position borrowed from another occurrence.
+fn import_admission_diagnostics(reason: Symbol, at: Optional<Locus>) -> NonEmptyDiagnostics {
+  match at {
+    Present { value: locus } =>
+      diagnostics_singleton(d: Diagnostic {
+        reason: reason,
+        at: locus,
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    Absent => resolve_diagnostics(reason: reason)
+  }
+}
+
 // THE ONE CROSS-TREE GATE. ImportScoped then merges named exports (admit_import_entry);
 // NamespaceOnlyY records listed-name origins from captured rows (admit_captured_import_rows)
 // without a second cross_tree_edge_decision.
 fn admit_import_cross_tree_gate(
   import_edge: Import,
+  at: Optional<Locus>,
   state: AdmissionState,
   subject_qn: QualifiedName,
   index: SourceRootIndex,
@@ -676,7 +697,7 @@ fn admit_import_cross_tree_gate(
       match import_edge.visibility {
         ImportHidden =>
           AdmissionRejected {
-            diagnostics: resolve_diagnostics(reason: ^resolve_import_not_visible)
+            diagnostics: import_admission_diagnostics(reason: ^resolve_import_not_visible, at: at)
           }
         ImportVisible =>
           match v2.std.cross_tree.resolution.cross_tree_edge_decision(
@@ -689,11 +710,11 @@ fn admit_import_cross_tree_gate(
             EdgeCrossAdmitted => state
             EdgeCrossDenied =>
               AdmissionRejected {
-                diagnostics: resolve_diagnostics(reason: ^resolve_cross_tree_import_denied)
+                diagnostics: import_admission_diagnostics(reason: ^resolve_cross_tree_import_denied, at: at)
               }
             EdgeCrossAmbiguous =>
               AdmissionRejected {
-                diagnostics: resolve_diagnostics(reason: ^resolve_cross_tree_import_ambiguous)
+                diagnostics: import_admission_diagnostics(reason: ^resolve_cross_tree_import_ambiguous, at: at)
               }
           }
       }
@@ -710,6 +731,7 @@ fn admit_import_entry(
 ) -> AdmissionState {
   match admit_import_cross_tree_gate(
     import_edge: import_edge,
+    at: optional_absent(),
     state: state,
     subject_qn: subject_qn,
     index: index,
@@ -811,6 +833,7 @@ fn admit_imported_modules(
       let edge = Import { target: located.target, visibility: ImportVisible }
       match admit_import_cross_tree_gate(
         import_edge: edge,
+        at: optional_present(value: located.at),
         state: acc,
         subject_qn: subject_qn,
         index: index,
@@ -838,6 +861,7 @@ fn admit_captured_import_rows(
     cons: fn(acc, row) {
       match admit_import_cross_tree_gate(
         import_edge: import_edge_from_binding_row(row: row),
+        at: optional_absent(),
         state: acc,
         subject_qn: subject_qn,
         index: index,

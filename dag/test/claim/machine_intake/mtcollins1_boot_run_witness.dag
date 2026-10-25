@@ -1,8 +1,9 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness
 
-import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateNotReached, PostPowerFanGateReached, PostPowerFanEstablished, PostPowerFanRefused, FanManagerUnread, FanGateSafeStopReceipt, FanGatePowerDownAttempt, FanGateRepeatNotNeeded, FanGateEvidence, FanGateWritten, post_power_fan_gate_text, PostPowerFanGateReading }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PoweredFanGate, PostPowerFanGatePowered, PostPowerFanGateAbandoned, PostPowerFanGateNotReached, PostPowerFanGateReached, PostPowerFanEstablished, PostPowerFanRefused, FanManagerUnread, FanGateSafeStopReceipt, FanGatePowerDownAttempt, FanGateRepeatNotNeeded, FanGateEvidence, FanGateWritten, post_power_fan_gate_text, PostPowerFanGateReading }
 import gunbc.machine_intake.mtcollins1_boot_run { fan_gate_continuation, FanGateContinuation, FanGateStopsBoot, FanGateAdmitsBoot, post_power_fan_gate_exit_of }
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set, mtcollins1_boot_fan_gate_allowance }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
 import gunbc.machine_intake.chassis_fan_establishment { PostPowerChassisUnreadable }
 import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalUnreadable, FanSensorsUnreadable }
 import extdeps.bmc.ipmi_chassis_control { ChassisUnreadable }
@@ -53,7 +54,7 @@ import std.temporal_effect {
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, stock_installer_boot_medium }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, uefi_once_boot_selection }
 import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
@@ -96,6 +97,7 @@ test fn the_step_timeout_covers_the_boot_phases() -> Bool {
     + (second_count(s: mtcollins1_boot_cleanup_allowance) as Int)
     + (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int)
     + (second_count(s: mtcollins1_boot_fan_gate_allowance()) as Int)
+    + (second_count(s: mtcollins1_fan_transition_window) as Int)
   (minute_count(m: mtcollins1_boot_step_timeout_minutes()) as Int) * 60 >= covered
 }
 
@@ -719,6 +721,7 @@ fn step_inputs_text(s: Step) -> String {
 // the witness sits outside the gate closure (gunbc.recurring_failure_mode
 // witness_outside_gate_closure_falsified_by_other_file). It now asserts the mode's clause opens the
 // expression and that the clause resolves to github.sha before any dispatch input.
+// The trusted-checkout conjuncts live once in test.claim.fleet.fleet_converge_checkout_trust; #14690's three per-file copies were consolidated there, the literal shared-job exclusion included.
 test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -> Bool {
   let inputs = join(map(supplied_boot_steps(), s => step_inputs_text(s: s)), "\n")
   fleet_converge_checkout_trust_holds()
@@ -765,7 +768,7 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr })
   let ended = mtcollins1_boot_run_record(
     media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
-    stage: ActuationCensusEnded { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
+    stage: ActuationCensusEnded { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
     before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
     timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
   )
@@ -774,7 +777,7 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
     && (match ended.override { OverrideConsumedByCensusBoot => true _ => false })
     && (match mtcollins1_boot_run_record(
       media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
-      stage: ActuationPoweredOn { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
+      stage: ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
       before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
       timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
     ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
@@ -1071,13 +1074,15 @@ test fn a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait() -> Bool 
 
 // THE GATE-TO-BOOT DECISION, EXECUTED (side-chat hold 2026-10-19, the pairing obligation). fan_gate_continuation is the one decision
 // mtcollins1_boot_actuate branches on; each control supplies a gate reading and reads whether the boot is admitted or stopped. Ignoring the
-// reading (always admitting) fails the NotReached and Refused controls; always stopping fails the Established control. The effectful
-// gate (settle, read, PowerDown) is exercised only by a real boot; no control here claims it.
+// reading (always admitting) fails the Refused and Abandoned controls; always stopping fails the Established control. The decision takes
+// the POWERED gate, which has no not-reached arm, so the former unreached control is now a compile RED
+// (test.claim.machine_intake.mtcollins1_boot_fan_gate_admission_witness). The effectful gate (settle, read, PowerDown) is exercised
+// only by a real boot; no control here claims it.
 fn gc_round() -> FanObservationRound {
   FanObservationRound { observed_at: "2026-10-19T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisUnreadable, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsUnreadable }
 }
 
-fn gc_refused_reading() -> PostPowerFanGateReading {
+fn gc_refused_reading() -> PoweredFanGate {
   PostPowerFanGateReached {
     fitted: mtcollins1_fitted_fan_set,
     outcome: PostPowerFanRefused {
@@ -1090,19 +1095,26 @@ fn gc_refused_reading() -> PostPowerFanGateReading {
   }
 }
 
-fn gc_established_reading() -> PostPowerFanGateReading {
+fn gc_established_reading() -> PoweredFanGate {
   PostPowerFanGateReached { fitted: mtcollins1_fitted_fan_set, outcome: PostPowerFanEstablished { observation: gc_round() } }
 }
 
-fn gc_decision(reading: PostPowerFanGateReading) -> FanGateContinuation {
-  fan_gate_continuation(reading: reading, selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), at_power_on: smpro_probed_empty(), smpro_read: UptimeRefused { detail: "fixture" })
+fn gc_abandoned_reading() -> PoweredFanGate {
+  PostPowerFanGateAbandoned {
+    reason: "fixture: the settle stopped the boot" as NonEmptyStr,
+    stop: FanGateSafeStopReceipt { first: FanGatePowerDownAttempt { command_success: true, command_stdout: "", command_exit_code: 0, command_stderr: "", readbacks: [] }, repeat: FanGateRepeatNotNeeded },
+  }
 }
 
-fn gc_stopped_failure(reading: PostPowerFanGateReading) -> Bool {
+fn gc_decision(reading: PoweredFanGate) -> FanGateContinuation {
+  fan_gate_continuation(gate: reading, selection: uefi_once_boot_selection(device: IpmiBootCdrom), at_power_on: smpro_probed_empty(), smpro_read: UptimeRefused { detail: "fixture" })
+}
+
+fn gc_stopped_failure(reading: PoweredFanGate) -> Bool {
   match gc_decision(reading: reading) {
     FanGateStopsBoot { watch: w } => (match w.outcome { ExitFailure { code: _, reason: _ } => true  ExitSuccess => false })
       && (match w.terminal_step { PhaseStepSkipped { reason: _ } => true  _ => false })
-      && post_power_fan_gate_text(reading: w.fan_gate) == post_power_fan_gate_text(reading: reading)
+      && post_power_fan_gate_text(reading: w.fan_gate) == post_power_fan_gate_text(reading: PostPowerFanGatePowered { gate: reading })
     FanGateAdmitsBoot => false
   }
 }
@@ -1113,11 +1125,10 @@ test fn an_observed_established_gate_admits_the_boot() -> Bool {
 
 test fn a_refused_gate_stops_the_boot_carrying_the_reading() -> Bool { gc_stopped_failure(reading: gc_refused_reading()) }
 
-test fn an_unreached_gate_stops_the_boot_carrying_the_reading() -> Bool {
-  gc_stopped_failure(reading: PostPowerFanGateNotReached { reason: "no BMC account is modeled" as NonEmptyStr })
-}
+test fn an_abandoned_gate_stops_the_boot_carrying_the_reading() -> Bool { gc_stopped_failure(reading: gc_abandoned_reading()) }
 
 test fn the_gate_exit_is_failure_unless_established() -> Bool {
-  (match post_power_fan_gate_exit_of(reading: gc_established_reading()) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
-    && (match post_power_fan_gate_exit_of(reading: gc_refused_reading()) { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true })
+  (match post_power_fan_gate_exit_of(gate: gc_established_reading()) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
+    && (match post_power_fan_gate_exit_of(gate: gc_refused_reading()) { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true })
+    && (match post_power_fan_gate_exit_of(gate: gc_abandoned_reading()) { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true })
 }

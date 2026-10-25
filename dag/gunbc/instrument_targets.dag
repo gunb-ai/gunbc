@@ -6,7 +6,7 @@ import gunbc.native_serve_probe_plan {
   NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
   native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
 }
-import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef }
+import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair }
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -54,6 +54,7 @@ import gunbc.target_binding {
   SelfHostBehavioralEquivalenceProducer,
   V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, AmbientOperationDispositionReading, BindingDiffReading, NativeProcessMemoryReading,
   NativeCensusVerbProducer,
+  SelfHostFrontierProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -697,6 +698,20 @@ fn self_host_behavioral_equivalence_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "self-host-behavioral-equivalence" } }
 }
 
+// THE DERIVED SELF-HOST FRONTIER (v2.compiler.self_host.seed_retention_frontier self_host_frontier, the
+// emitted driver's `self-host-frontier` mode): every observed .rs file of the stage0 crate is SelfEmitted
+// (emitted and its module in the executed closure whose controls passed), EmittedUnexecuted, SeedRetained
+// by a declared row, or Unclassified -- the only refusal. Judged by the seed-emitted driver built by the
+// self-host step; no CI job of its own.
+// `gunbc test //gunbc/instruments:self-host-frontier`.
+fn self_host_frontier_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "self-host-frontier" } }
+}
+
+fn self_host_frontier_binding() -> TargetBinding {
+  TargetBinding { target: self_host_frontier_label() producer: SelfHostFrontierProducer {} }
+}
+
 // D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.source_root_eval native_demand_census_output, the emitted compiler's
 // `demand-census` verb): one row per fn that authors a `uses` clause, pairing the authored rows with
 // the demand derived over the whole closure and a verdict scoped to the audited vocabulary (Network).
@@ -714,6 +729,17 @@ fn dependency_demand_census_label() -> Label {
 // or stale span. `gunbc test //gunbc/instruments:decl-ref-census`.
 fn decl_ref_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "decl-ref-census" } }
+}
+
+// THE EFFECT-PAIR CENSUS (gunbc.plans.demand_engine_program D16 TRIGGER; v2.compiler.source_root_eval
+// native_effect_pair_census_output, the emitted compiler's `effect-pair-census` verb): per function body,
+// every pair of effect-reaching call occurrences with no derived ordering (value use or Branch/Match
+// activation), with the not-derived rows, per-module totals, the unobserved population and a per-root
+// refusal report. Resource identity is unmodelled, so the count OVER-COUNTS and says so. Measurement
+// only: exit 0 means the census was observed, never that no pair exists.
+// `gunbc test //gunbc/instruments:effect-pair-census`.
+fn effect_pair_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "effect-pair-census" } }
 }
 
 // THE DERIVED-NODE-IDENTITY STEP-2 INSTRUMENT (docs/plans/derived-node-identity-design.md section 7;
@@ -864,6 +890,10 @@ fn decl_ref_census_binding() -> TargetBinding {
   TargetBinding { target: decl_ref_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDeclRef } }
 }
 
+fn effect_pair_census_binding() -> TargetBinding {
+  TargetBinding { target: effect_pair_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbEffectPair } }
+}
+
 fn generic_identity_census_binding() -> TargetBinding {
   TargetBinding { target: generic_identity_census_label() producer: GenericIdentityCensusProducer {} }
 }
@@ -913,6 +943,36 @@ fn append_chain_ladder_entry() -> String {
 // over its timing rows extends this same label (one instrument, not two).
 fn append_chain_ladder_binding() -> TargetBinding {
   TargetBinding { target: append_chain_ladder_label() producer: NativeClaimProgramProducer { entry: append_chain_ladder_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn last_use_move_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "last-use-move" } }
+}
+
+// The move-at-last-use fixtures on the emitted path: every shape compiles and agrees with its reference
+// (gunbc.recurring_failure_mode a_last_use_argument_is_cloned_into_a_by_value_parameter).
+fn last_use_move_binding() -> TargetBinding {
+  TargetBinding { target: last_use_move_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/last_use_move_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
+fn cons_tail_recursion_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "cons-tail-recursion" } }
+}
+
+// The tail-recursion-modulo-cons fixtures on the emitted path: a lowered tail Cons step is linear and
+// correct, and the shapes the rule must refuse stay correct on the ordinary lowering
+// (gunbc.recurring_failure_mode a_cons_around_a_self_call_rebuilds_the_result_per_element).
+fn cons_tail_recursion_binding() -> TargetBinding {
+  TargetBinding { target: cons_tail_recursion_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/cons_tail_recursion_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
+fn member_home_cost_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "member-home-cost" } }
+}
+
+// The N7 member wall's cost receipt: each ambient member against its std.algebra home on the emitted path.
+fn member_home_cost_binding() -> TargetBinding {
+  TargetBinding { target: member_home_cost_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/member_home_cost_native.dag" deadline: native_claim_policy_child_deadline() } }
 }
 
 fn claim_coverage_census_label() -> Label {
@@ -1161,6 +1221,27 @@ fn value_position_block_nests_binding() -> TargetBinding {
   TargetBinding { target: value_position_block_nests_label() producer: NativeClaimProgramProducer { entry: value_position_block_nests_entry() deadline: value_position_block_nests_child_deadline() } }
 }
 
+fn roster_import_sweep_native_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "roster-import-sweep-native" } }
+}
+
+fn roster_import_sweep_native_entry() -> String {
+  "dag/gunbc/instruments/roster_import_sweep_native.dag"
+}
+
+// Wall budget for //gunbc/instruments:roster-import-sweep-native. The interpreted front end of one
+// node.dag pass measured about 16m (sunny-bee-153), and the whole point of the native route is that
+// the child does NOT pay that front end; this starts at the policy ceiling and is tightened to
+// 2x the measured child wall -- the instrument's own rows print child_wall_ms per case, so the
+// tightening number comes from the instrument, not from a transcription (DESIGN section 5).
+fn roster_import_sweep_native_child_deadline() -> Millisecond {
+  millisecond(count: 600000)
+}
+
+fn roster_import_sweep_native_binding() -> TargetBinding {
+  TargetBinding { target: roster_import_sweep_native_label() producer: NativeClaimProgramProducer { entry: roster_import_sweep_native_entry() deadline: roster_import_sweep_native_child_deadline() } }
+}
+
 fn type_declaration_use_census_binding() -> TargetBinding {
   TargetBinding { target: type_declaration_use_census_label() producer: V2NativeCensusProducer { reading: TypeDeclarationUseReading } }
 }
@@ -1327,16 +1408,16 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
-    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), last_use_move_label(), member_home_cost_label(), cons_tail_recursion_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
+    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), roster_import_sweep_native_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
   ]
 }
 
@@ -1349,16 +1430,16 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), decl_ref_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), self_host_frontier_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
   ]
 }
 

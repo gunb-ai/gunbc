@@ -11,7 +11,7 @@ import std.algebra { Cons, Empty }
 import std.optional { Optional, Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
 import std.content_hash { content_hash_atom }
-import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch, tracker_web_test_console_readback_valid_until_epoch, tracker_web_test_oidc_config_host_path }
 import gunbc.host.host_effect { HostEffectIntent, HostOs, SshShell, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, LiveDeployRetract, host_effect_identity_evidence }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect_realize { realize_live_deploy_apply_on_host, deploy_apply_ports_on_host, deploy_apply_run_legs, DeployApplyPorts, ApplyRunOk, ApplyRunFailed }
@@ -22,19 +22,24 @@ import gunbc.live_deploy.apply_legs {
   ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   ApplyLegRootHelperSnapshot, HelperSnapshotInstall, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   deploy_apply_plan_legs, deploy_apply_leg_step, deploy_apply_oidc_plan, deploy_apply_step_plan,
-  deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan,
+  deploy_apply_git_worker_subtree_plan, deploy_apply_directories_plan, deploy_apply_chain,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
-import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, deployment_fabric_storage_unit_name, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan, uniform_release_plan, KeepMember, InstallExecutable, RestartService, Executable, ServiceProcess }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_sudo_grants }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.sudo.elevation { sudo_program }
-import gunbc.live_deploy.emit { device_crypto_sidecar_binary_path }
-import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, release_locus_binary_path }
+import gunbc.live_deploy.emit { device_crypto_sidecar_binary_path, path_parent_dir, install_file_owner_only_mode }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, release_locus_binary_path, approval_broker_helper_root_principal }
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_helpers_root }
+import gunbc.host.host_layout { belt_spawn_workdir_env_var }
+import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv }
+import extdeps.tailscale.serve { tailscale_serve_enable_argv }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_release_revision }
 
 fn lab_spec() -> DeploymentSpec {
@@ -175,6 +180,7 @@ fn leg_within_grants(leg: DeployApplyLeg) -> Bool {
     ApplyLegRetract { step: _, leg: _ } => true
     ApplyLegDependency { dep: _ } => true
     ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => true
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => true
   }
 }
 
@@ -302,6 +308,7 @@ fn env_binary(legs: List<DeployApplyLeg>) -> String {
     Cons { head: h, tail: rest } =>
       match h {
         ApplyLegDigestEnvFile { step: _, binary: b, env_name: _, dest: _, owner: _ } => b
+        ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => env_binary(legs: rest)
         ApplyLegCommand { step: _, command: _ } => env_binary(legs: rest)
         ApplyLegInstallFile { step: _, command: _, payload: _ } => env_binary(legs: rest)
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => env_binary(legs: rest)
@@ -560,4 +567,310 @@ test fn the_realized_fold_stops_at_the_premise_leg_by_its_step_name() -> Bool {
       n == 0 && s == "git-worker-subtree-premise" && string_contains(s: r, pattern: "EmitArtifactThenThinRun")
     ApplyRunOk { legs_run: _, reports: _ } => false
   }
+}
+
+// ── ASSERTIONS RESTORED FROM THE DELETED SCRIPT-TEXT CLAIMS ──────────────────────────────────────────
+//
+// c11aa2317029 (#14660) deleted the bash apply script and with it the claims that searched its text. Most
+// of those claims moved here as typed-leg claims; the ones below did not, and at main head d2b027b5f41 a
+// production mutation that breaks each property left every surviving claim green (the audit table on
+// #14824 names the mutation and the green set per row). Each is restored as its own claim, read at the
+// typed plan interface, and names the deleted claim it replaces.
+
+// One leg by its step name, and what it carries at its interface. Every arm is enumerated so a new leg
+// kind must be placed here rather than read as carrying nothing.
+fn leg_at(legs: List<DeployApplyLeg>, step: String) -> Optional<DeployApplyLeg> {
+  match legs {
+    Empty => Absent
+    Cons { head: h, tail: rest } => if deploy_apply_leg_step(leg: h) == step { Present { value: h } } else { leg_at(legs: rest, step: step) }
+  }
+}
+
+fn leg_argv_words(leg: DeployApplyLeg) -> List<String> {
+  match leg {
+    ApplyLegCommand { step: _, command: c } => argv_words(command: c)
+    ApplyLegInstallFile { step: _, command: c, payload: _ } => argv_words(command: c)
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
+    ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
+    ApplyLegReport { step: _, line: _ } => []
+    ApplyLegEnsureDirectory { target: _ } => []
+    ApplyLegBrokerStateDirectories { revision: _ } => []
+    ApplyLegObjectSource => []
+    ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
+    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
+    ApplyLegBrokerTree { revision: _ } => []
+    ApplyLegRetract { step: _, leg: _ } => []
+    ApplyLegDependency { dep: _ } => []
+    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => []
+  }
+}
+
+fn leg_payload(leg: DeployApplyLeg) -> String {
+  match leg {
+    ApplyLegInstallFile { step: _, command: _, payload: p } => p
+    ApplyLegCommand { step: _, command: _ } => ""
+    ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => ""
+    ApplyLegRepairDirectoryEntries { command: _ } => ""
+    ApplyLegReport { step: _, line: _ } => ""
+    ApplyLegEnsureDirectory { target: _ } => ""
+    ApplyLegBrokerStateDirectories { revision: _ } => ""
+    ApplyLegObjectSource => ""
+    ApplyLegDigestVerify { step: _, path: _, digest: _ } => ""
+    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => ""
+    ApplyLegBrokerTree { revision: _ } => ""
+    ApplyLegRetract { step: _, leg: _ } => ""
+    ApplyLegDependency { dep: _ } => ""
+    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => ""
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => ""
+  }
+}
+
+fn words_at(legs: List<DeployApplyLeg>, step: String) -> List<String> {
+  match leg_at(legs: legs, step: step) {
+    Absent => []
+    Present { value: l } => leg_argv_words(leg: l)
+  }
+}
+
+fn payload_at(legs: List<DeployApplyLeg>, step: String) -> String {
+  match leg_at(legs: legs, step: step) {
+    Absent => ""
+    Present { value: l } => leg_payload(leg: l)
+  }
+}
+
+fn has_word(words: List<String>, w: String) -> Bool {
+  any(words, x => x == w)
+}
+
+// THE FOLD'S REFUSAL LAW, AT THE CHAIN (was a_supplied_refused_decide_yields_zero_mutation_steps): a family that
+// refuses ahead of planned legs refuses the plan, so none of the later legs is dispatched.
+test fn a_refusal_ahead_of_planned_legs_yields_no_leg() -> Bool {
+  match deploy_apply_chain(
+    first: ApplyPlanRefused { step: "refused-family", reason: "supplied refusal" },
+    rest: ApplyPlanReady { legs: [ApplyLegReport { step: "planted-later", line: "later" }] },
+  ) {
+    ApplyPlanRefused { step: s, reason: _ } => s == "refused-family"
+    ApplyPlanReady { legs: _ } => false
+  }
+}
+
+// (was a_refused_slice_control_drops_prior_mutate_from_the_composed_plan): a refusal AFTER legs were already
+// planned drops them too; the plan is the refusal, never the prefix that preceded it.
+test fn a_refusal_after_planned_legs_drops_them_from_the_plan() -> Bool {
+  match deploy_apply_chain(
+    first: ApplyPlanReady { legs: [ApplyLegReport { step: "planted-prior", line: "prior" }] },
+    rest: ApplyPlanRefused { step: "slice-control", reason: "supplied refusal" },
+  ) {
+    ApplyPlanRefused { step: s, reason: _ } => s == "slice-control"
+    ApplyPlanReady { legs: _ } => false
+  }
+}
+
+// THE SAME LAW ON THE REAL PLAN (was a_refused_oidc_clock_projects_no_other_member_mutates): the lab twin's whole
+// plan with no observer clock is a refusal, so no other member's leg survives it, while the same plan with a
+// clock carries the serve unit. This is the inhabitance pair of the two supplied claims above; it shares their
+// discriminating mutations (either arm of deploy_apply_chain) rather than having one of its own.
+test fn an_unreadable_oidc_clock_refuses_the_whole_lab_apply_plan() -> Bool {
+  let spec = lab_spec()
+  has_step(legs: full_legs(spec: spec), step: "serve-unit")
+    && match deploy_apply_plan_legs(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), authorization: CapConvergeWithheld { cause: "witness" }, source_root: "/src", oidc_now: Absent) {
+      ApplyPlanRefused { step: _, reason: r } => string_contains(s: r, pattern: "observer clock unreadable")
+      ApplyPlanReady { legs: _ } => false
+    }
+}
+
+// THE TREE PUBLICATION CONVERGES THROUGH THE OWNER ENTRY AND READS BACK THROUGH THE READBACK ENTRY (was
+// the_publication_member_emits_convergence_and_no_rsync). Both legs are present by name elsewhere; this pins
+// which function each runs, so a readback that re-ran the converge cannot pass as the same plan.
+test fn the_tree_publication_converges_through_the_owner_entry_and_reads_back_separately() -> Bool {
+  let legs = full_legs(spec: deployment_spec_srv1())
+  let readback = words_at(legs: legs, step: "convergence-readback")
+  string_contains(s: payload_at(legs: legs, step: "tree-sync-unit"), pattern: "--function repository_converge_owner_wet")
+    && has_word(words: readback, w: "repository_convergence_readback_wet")
+    && !has_word(words: readback, w: "repository_converge_owner_wet")
+}
+
+// THE CONVERGENCE UNIT IS BOUND TO THE PLAN'S REVISION AND ITS INSTANCE, AND THE READBACK READS THAT INSTANCE'S
+// RECEIPT BOUND TO THE SAME REVISION (the part of apply_script_stays_within_ci_runner_grants no typed claim
+// carried; its grant half is every_elevated_leg_stays_within_the_ci_runner_grants). The readback leg must carry
+// the SAME candidate identity the unit's ExecStart was written with -- that pairing is what stops a prior run's
+// receipt exiting 0 for this plan (S83469995): the unit answers for a candidate and the readback asks about
+// that candidate, from the same plan field rendered through the same row.
+test fn the_tree_plan_binds_the_plans_revision_and_reads_back_its_receipt() -> Bool {
+  let spec = deployment_spec_srv1()
+  let legs = full_legs(spec: spec)
+  let unit = payload_at(legs: legs, step: "tree-sync-unit")
+  string_contains(s: unit, pattern: join(["--arg candidate=", deploy_witness_release_revision as String], ""))
+    && string_contains(s: unit, pattern: join(["--arg instance_id=", spec.instance_id as String], ""))
+    && string_contains(s: join(words_at(legs: legs, step: "convergence-readback"), " "), pattern: "/opt/gunbc/receipts/repository-convergence.json")
+    && string_contains(s: join(words_at(legs: legs, step: "convergence-readback"), " "), pattern: join(["--arg candidate=", deploy_witness_release_revision as String], ""))
+}
+
+// THE TWIN WRITES NEITHER PRODUCTION'S TREE-SYNC ENVIRONMENT NOR PRODUCTION'S SERVE UNIT (was
+// emitted_twin_apply_touches_none_of_productions_effects), and its serve unit runs the twin's own handler.
+test fn a_twin_apply_writes_neither_productions_tree_sync_env_nor_its_serve_unit() -> Bool {
+  let prod = deployment_spec_srv1()
+  let legs = full_legs(spec: lab_spec())
+  let env = words_at(legs: legs, step: "tree-sync-env")
+  let unit = words_at(legs: legs, step: "serve-unit")
+  env != []
+    && !has_word(words: env, w: prod.names.tree_sync_env_path as String)
+    && unit != []
+    && !has_word(words: unit, w: deployment_systemd_unit_path(names: prod.names) as String)
+    && string_contains(s: payload_at(legs: legs, step: "serve-unit"), pattern: "--function roadmap_serve_handle_srv1_lab ")
+}
+
+// PRODUCTION WRITES ITS OWN TREE-SYNC ENVIRONMENT AND RUNS ITS OWN HANDLER (was
+// production_apply_carries_its_own_handler_and_tree_sync_env).
+test fn the_production_apply_writes_its_own_tree_sync_env_and_names_its_own_handler() -> Bool {
+  let spec = deployment_spec_srv1()
+  let legs = full_legs(spec: spec)
+  has_word(words: words_at(legs: legs, step: "tree-sync-env"), w: spec.names.tree_sync_env_path as String)
+    && string_contains(s: payload_at(legs: legs, step: "serve-unit"), pattern: "--function roadmap_serve_handle ")
+}
+
+// THE TREE-SYNC ENVIRONMENT NAMES THE APPLY'S SOURCE ROOT (the residual of
+// witness_apply_script_contains_systemd_and_tailscale). The convergence unit reads every root through
+// ${GUNBC_TREE_SRC}, and this leg is its only writer: an env file naming the deployed repo root would converge
+// the tree onto itself. "/src" is the source root plan_for supplies.
+test fn the_tree_sync_env_names_the_apply_source_root() -> Bool {
+  payload_at(legs: full_legs(spec: deployment_spec_srv1()), step: "tree-sync-env") == "GUNBC_TREE_SRC=/src\n"
+}
+
+// THE PRODUCTION APPLY CREATES ITS BINARY'S PARENT BEFORE INSTALLING INTO IT (was
+// production_apply_creates_productions_binary_parent_directory).
+test fn the_production_apply_creates_its_binary_parent_before_installing() -> Bool {
+  let spec = deployment_spec_srv1()
+  let legs = full_legs(spec: spec)
+  let dir = step_index(legs: legs, step: "executable-dir")
+  dir >= 0
+    && dir < step_index(legs: legs, step: "executable-install")
+    && has_word(words: words_at(legs: legs, step: "executable-dir"), w: path_parent_dir(path: fixed_serve_binary_path(binary: spec.service.serve_binary)))
+}
+
+// THE TWIN CREATES ITS OWN BINARY'S PARENT AND NOT PRODUCTION'S (was
+// twin_apply_creates_its_own_binary_parent_directory_and_not_productions).
+test fn a_twin_apply_creates_its_own_binary_parent_directory_and_not_productions() -> Bool {
+  let twin = words_at(legs: full_legs(spec: lab_spec()), step: "executable-dir")
+  let twin_dir = path_parent_dir(path: fixed_serve_binary_path(binary: lab_spec().service.serve_binary))
+  let prod_dir = path_parent_dir(path: fixed_serve_binary_path(binary: deployment_spec_srv1().service.serve_binary))
+  twin_dir != prod_dir && has_word(words: twin, w: twin_dir) && !has_word(words: twin, w: prod_dir)
+}
+
+// THE USER-WORK SLICE LANDS IN THE USER MANAGER'S UNIT DIRECTORY (was
+// the_user_work_slice_is_installed_into_the_user_unit_directory).
+test fn the_user_work_slice_is_installed_into_the_user_unit_directory() -> Bool {
+  has_word(words: words_at(legs: full_legs(spec: deployment_spec_srv1()), step: "user-work-slice"), w: gunbc_user_work_slice_unit_path() as String)
+}
+
+// (was the_user_work_slice_install_reloads_the_user_manager): the reload after the slice reaches the service
+// user's manager, never only the system manager.
+test fn the_user_work_slice_install_reloads_the_user_manager() -> Bool {
+  let legs = full_legs(spec: deployment_spec_srv1())
+  step_index(legs: legs, step: "user-work-slice") < step_index(legs: legs, step: "user-work-slice-reload")
+    && string_contains(s: join(words_at(legs: legs, step: "user-work-slice-reload"), " "), pattern: join(systemctl_user_daemon_reload_argv(uid: gunbc_service_uid), " "))
+}
+
+// THE TWIN PUBLISHES ITS OWN SERVE MAPPING AND NOT PRODUCTION'S (was twin_apply_serves_its_own_endpoint_and_not_productions).
+test fn a_twin_apply_serves_its_own_endpoint_and_not_productions() -> Bool {
+  let twin = join(words_at(legs: full_legs(spec: lab_spec()), step: "tailscale-serve-mapping"), " ")
+  let own = join(tailscale_serve_enable_argv(endpoint: lab_spec().names.tailscale_serve_endpoint), " ")
+  let prod = join(tailscale_serve_enable_argv(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint), " ")
+  own != prod && string_contains(s: twin, pattern: own) && !string_contains(s: twin, pattern: prod)
+}
+
+// THE TWIN'S BELT UNIT SPAWNS UNDER THE TWIN'S ROOT AND NOT PRODUCTION'S (was
+// twin_belt_unit_carries_the_twins_spawn_root_and_not_productions).
+test fn a_twin_belt_unit_carries_the_twins_spawn_root_and_not_productions() -> Bool {
+  let unit = payload_at(legs: full_legs(spec: lab_spec()), step: "belt-service-unit")
+  let env = join([belt_spawn_workdir_env_var as String, "="], "")
+  let twin_root = lab_spec().service.repo_root as String
+  let prod_root = deployment_spec_srv1().service.repo_root as String
+  twin_root != prod_root
+    && string_contains(s: unit, pattern: join([env, twin_root], ""))
+    && !string_contains(s: unit, pattern: join([env, prod_root], ""))
+}
+
+// THE LAB OIDC CONFIG IS WRITTEN OWNER-ONLY AT ITS HOST PATH (was lab_apply_identity_route_writes_oidc_config_file).
+// The file carries the client secret, so its mode is part of the claim.
+test fn the_lab_apply_writes_the_oidc_config_owner_only_at_its_host_path() -> Bool {
+  match deploy_apply_oidc_plan(spec: lab_spec(), plan: deploy_witness_full_install_plan(spec: lab_spec()), oidc_now: tracker_web_test_console_readback_observed_at_epoch) {
+    ApplyPlanReady { legs: ls } =>
+      let words = words_at(legs: ls, step: "oidc-config")
+      has_word(words: words, w: install_file_owner_only_mode as String)
+        && has_word(words: words, w: tracker_web_test_oidc_config_host_path as String)
+    ApplyPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// AN EXPIRED CONSOLE READBACK REFUSES THE OIDC FAMILY ITSELF (was lab_apply_oidc_config_refuses_when_console_readback_expired).
+// Arm grain: the whole lab plan would still refuse through the serve unit, so only this claim sees the OIDC arm
+// stop refusing.
+test fn lab_apply_oidc_config_refuses_when_console_readback_expired() -> Bool {
+  match tracker_web_test_console_readback_valid_until_epoch {
+    Absent => false
+    Present { value: until } =>
+      match deploy_apply_oidc_plan(spec: lab_spec(), plan: deploy_witness_full_install_plan(spec: lab_spec()), oidc_now: Present { value: until }) {
+        ApplyPlanRefused { step: s, reason: _ } => s == "oidc-config"
+        ApplyPlanReady { legs: _ } => false
+      }
+  }
+}
+
+// THE FABRIC STORAGE UNIT IS RESTARTED BY THE APPLY (was the_fold_restarts_the_journal_store_before_the_gate_reads_the_journal):
+// the journal store the health gate reads is the unit this leg names.
+test fn the_production_apply_restarts_the_fabric_storage_unit() -> Bool {
+  let spec = deployment_spec_srv1()
+  has_word(words: words_at(legs: full_legs(spec: spec), step: "fabric-storage-restart"), w: deployment_fabric_storage_unit_name(names: spec.names) as String)
+}
+
+// THE BROKER LIFECYCLE RESTARTS THE BROKER AND NOT THE SIDECAR (the conjunct of
+// the_sidecar_start_precedes_the_broker_swap_and_the_lifecycle_holds_only_the_broker that
+// the_sidecar_starts_before_the_broker_unit_is_swapped did not carry: that claim reads step names only).
+test fn the_broker_lifecycle_restarts_the_broker_and_not_the_sidecar() -> Bool {
+  let words = words_at(legs: full_legs(spec: deployment_spec_srv1()), step: "approval-broker-restart")
+  has_word(words: words, w: gunbc_approval_broker_unit_name as String)
+    && !has_word(words: words, w: gunbc_device_crypto_sidecar_unit_name as String)
+}
+
+fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
+  match legs {
+    Empty => ""
+    Cons { head: h, tail: rest } =>
+      match h {
+        ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: a } =>
+          match a {
+            HelperSnapshotInstall => l.owner as String
+            HelperSnapshotRetireSuperseded => launcher_snapshot_owner(legs: rest)
+          }
+        ApplyLegCommand { step: _, command: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegInstallFile { step: _, command: _, payload: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegRepairDirectoryEntries { command: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegReport { step: _, line: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegEnsureDirectory { target: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegBrokerStateDirectories { revision: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegObjectSource => launcher_snapshot_owner(legs: rest)
+        ApplyLegDigestVerify { step: _, path: _, digest: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegBrokerTree { revision: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegRetract { step: _, leg: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegDependency { dep: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => launcher_snapshot_owner(legs: rest)
+        ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => launcher_snapshot_owner(legs: rest)
+      }
+  }
+}
+
+// THE LAUNCHER SNAPSHOT ROOT RUNS IS ROOT-OWNED AND OUTSIDE THE SERVICE'S RELEASE (the conjunct of
+// the_launcher_grant_pins_a_root_owned_release_the_deploy_installs that the drain claims did not carry): a
+// snapshot the grantee owned could be rewritten under what root executes.
+test fn the_launcher_snapshot_is_root_owned_and_outside_the_service_release() -> Bool {
+  let spec = deployment_spec_srv1()
+  let legs = full_legs(spec: spec)
+  let base = launcher_snapshot_base(legs: legs)
+  launcher_snapshot_owner(legs: legs) == (approval_broker_helper_root_principal as String)
+    && starts_with(s: base, prefix: attempt_system_unit_launcher_helpers_root)
+    && !starts_with(s: base, prefix: spec.service.repo_root as String)
 }

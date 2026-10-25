@@ -22,7 +22,7 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   node_locus
 }
-import v2.std.node { Node, node_subtree_nodes }
+import v2.std.node { node_same_occurrence, Node, node_subtree_nodes }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.program_segment {
   partition_boundary_ambient_context,
@@ -44,7 +44,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn program_partition_node_list_member_seen(seen: List<Node>, needle: Node) -> Bool {
-  any(xs: seen, predicate: fn(member) { member == needle })
+  any(xs: seen, predicate: fn(member) { node_same_occurrence(a: member, b: needle) })
 }
 
 fn program_partition_node_list_is_duplicate_free(xs: List<Node>) -> Bool {
