@@ -81,11 +81,19 @@ fn agrees_with_seed(name: String, directory: String, seed_identities: List<Strin
     && for_all(xs: zip_map(a: members, b: seed_identities, f: fn(stem, identity) { row_file_spells(directory: directory, stem: stem, identity: identity) }), predicate: fn(ok) { ok })
 }
 
+fn rung_drop_identity(r: RungDrop) -> String {
+  r.identity as String
+}
+
+fn failure_mode_identity(r: RecurringFailureMode) -> String {
+  r.identity as String
+}
+
 test fn the_native_rung_drop_roster_agrees_with_the_seeds() -> Bool {
   agrees_with_seed(
     name: "gunbc.rung_drop.roster",
     directory: "dag/gunbc/rung_drop",
-    seed_identities: list_map(xs: rung_drop_roster, f: fn(r) { r.identity as String })
+    seed_identities: list_map(xs: rung_drop_roster, f: rung_drop_identity)
   )
 }
 
@@ -93,7 +101,7 @@ test fn the_native_recurring_failure_mode_roster_agrees_with_the_seeds() -> Bool
   agrees_with_seed(
     name: "gunbc.recurring_failure_mode.roster",
     directory: "dag/gunbc/recurring_failure_mode",
-    seed_identities: list_map(xs: recurring_failure_mode_roster, f: fn(r) { r.identity as String })
+    seed_identities: list_map(xs: recurring_failure_mode_roster, f: failure_mode_identity)
   )
 }
 
