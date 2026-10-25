@@ -26,10 +26,10 @@ import gunbc.runner.runner_slot_actuation {
   runner_job_process_comm,
 }
 import gunbc.runner.runner_host_file_converge {
-  RunnerHostFileDesired,
+  FleetHostFileDesired,
   RunnerHostFileWithheld,
   runner_host_cpu_dropin_gate,
-  RunnerHostFilesApply,
+  FleetHostFilesApply,
   ActuationAdmitted,
 }
 import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path }
@@ -153,8 +153,8 @@ test fn every_actuation_argv_crosses_the_ssh_edge() -> Bool {
 
 // ── Sequencing: no width-21 quota over a 17-runner host ─────────────────────────────────────────
 
-fn cpu_file() -> RunnerHostFileDesired {
-  RunnerHostFileDesired { subject: "runner-cpu-dropin" as NonEmptyStr, path: gunbc_runner_per_slot_cpu_dropin_path as FilePath, content: "[Service]\nCPUQuota=500%\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
+fn cpu_file() -> FleetHostFileDesired {
+  FleetHostFileDesired { subject: "runner-cpu-dropin" as NonEmptyStr, path: gunbc_runner_per_slot_cpu_dropin_path as FilePath, content: "[Service]\nCPUQuota=500%\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
 }
 
 // RED: one unsettled actuation withholds the CPU drop-in (and a withheld file refuses apply);

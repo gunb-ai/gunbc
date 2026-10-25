@@ -386,6 +386,18 @@ test fn the_broker_slice_bound_is_not_the_roadmap_deployment_bound() -> Bool {
     && slice_has_bytes(file: approval_broker_slice_unit_file(), target: approval_broker_slice_memory_max, as_max: true)
 }
 
+// BOTH SERVED SLICES DENY SWAP FROM THE SAME ROW (restored: c11aa2317029 deleted this claim with
+// emit_approval_broker_slice_unit_doc, and the typed apply writes approval_broker_slice_unit_file instead).
+// The roadmap slice's line is also inside the byte pin above; the broker slice's is pinned nowhere else, and
+// at main head d2b027b5f41 deleting it left every surviving claim green. The row's reason is
+// gunbc.live_deploy.slice_bounds' own (a swapped page is a stall on the request path), and the broker serves
+// the approval path.
+test fn both_served_slices_deny_swap_from_the_same_row() -> Bool {
+  let expected = join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], "")
+  string_contains(s: serialize_systemd_unit_file(file: approval_broker_slice_unit_file()), pattern: expected)
+    && string_contains(s: render(doc: emit_slice_unit_doc(spec: live_spec()), proto: live_deploy_protocol), pattern: expected)
+}
+
 // THE CONVERGENCE SLICE CARRIES ITS OWN ROWS, AND FORBIDS SWAP BY ITS OWN ROW. The slice exists so the
 // oneshot's bound is sized from its demand rather than inherited; a slice file reading the roadmap
 // rows would be the co-tenancy moved into a second file. The swap row is its own because its reason is

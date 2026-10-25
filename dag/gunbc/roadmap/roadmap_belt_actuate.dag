@@ -160,7 +160,7 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_attempt_key_path_for_instance, dispatch_attempt_admission_path_for_instance, dispatch_attempt_launch_path_for_instance, dispatch_attempt_spawn_origin_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_spawn_failure_path_for_instance, dispatch_attempt_oracle_identity_path_for_instance, dispatch_attempt_oracle_revision_path_for_instance, dispatch_attempt_oracle_pin_refusal_path_for_instance, dispatch_attempt_validation_receipt_path_for_instance, dispatch_attempt_verification_receipt_path_for_instance, dispatch_attempt_verification_dir_for_instance, dispatch_attempt_diff_window_path_for_instance, dispatch_attempt_verification_current_selection_path_for_instance, dispatch_attempt_publication_receipt_path_for_instance, dispatch_attempt_publication_dir_for_instance, publication_receipt_directory_segment, dispatch_current_attempt_oracle_identity_path_for_instance, dispatch_current_attempt_oracle_revision_path_for_instance, dispatch_current_attempt_oracle_pin_refusal_path_for_instance, dispatch_current_attempt_validation_receipt_path_for_instance, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_key_path_for_instance, dispatch_current_attempt_admission_path_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_current_attempt_spawn_failure_path_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_codex_home, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, dispatch_worktree_root, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane }
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_attempt_key_path_for_instance, dispatch_attempt_admission_path_for_instance, dispatch_attempt_launch_path_for_instance, dispatch_attempt_spawn_origin_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_spawn_failure_path_for_instance, dispatch_attempt_oracle_identity_path_for_instance, dispatch_attempt_oracle_revision_path_for_instance, dispatch_attempt_oracle_pin_refusal_path_for_instance, dispatch_attempt_validation_receipt_path_for_instance, dispatch_attempt_verification_receipt_path_for_instance, dispatch_attempt_verification_dir_for_instance, dispatch_attempt_diff_window_path_for_instance, dispatch_attempt_verification_current_selection_path_for_instance, dispatch_attempt_publication_receipt_path_for_instance, dispatch_attempt_publication_dir_for_instance, publication_receipt_directory_segment, dispatch_current_attempt_oracle_identity_path_for_instance, dispatch_current_attempt_oracle_revision_path_for_instance, dispatch_current_attempt_oracle_pin_refusal_path_for_instance, dispatch_current_attempt_validation_receipt_path_for_instance, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_key_path_for_instance, dispatch_current_attempt_admission_path_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_current_attempt_spawn_failure_path_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane }
 import extdeps.tmux {
   classify_tmux_session_list,
   TmuxSessionsListed,
@@ -198,7 +198,7 @@ import gunbc.worker_lifecycle {
   terminal_outcome_evidence_label,
 }
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
-import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
+import gunbc.host.host_layout { belt_spawn_workdir_env_var, instance_receipts_dir, attempt_exit_stalled_dir, attempt_exit_stall_record_path }
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
@@ -227,7 +227,6 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardObserveOnly,
   DashboardActuating,
-  srv1_live_dashboard_instance,
   dashboard_instance_for_id,
   DashboardInstanceForId,
   DashboardInstanceIdUnknown,
@@ -731,9 +730,8 @@ data belt_actuate_fingerprint_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
-data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). belt_actuate_workdir is the SPAWN root: `git worktree add` must run inside the gunbc repo — a PROJECTION of gunbc.host.host_layout.srv1_gunbc_repo_root (the single path authority; its former private copy deleted, DESIGN §3): the same tree `gunbc serve` loads, which is why dispatch works in-process. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
+data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). The SPAWN root is the instance's own repo_root: `git worktree add` must run inside the gunbc repo the instance serves — the same tree `gunbc serve` loads, which is why dispatch works in-process — and it is read from the instance the caller passed, never from one host's layout. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
 
-data belt_actuate_workdir: FilePath = srv1_gunbc_repo_root
 
 data belt_observe_workdir: FilePath = "/" as FilePath
 
@@ -1304,7 +1302,7 @@ data belt_spawn_oracle_pin_standing_production_consumer_frontier: FrontierRow = 
   ref: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_spawn_oracle_pin_standing"),
   reason: "live spawn refuses via belt_attempt_oracle_pin_capture_for_instance after worktree-add; belt_spawn_oracle_pin_standing is not on that path",
   dissolution: unbound_dissolution(
-    description: "a production fold on the POST /dispatch or belt-intent-admission path calls belt_spawn_oracle_pin_standing with observations of the exact admitted-base Git objects. Not satisfied by belt_dispatch_node existing, nor by a witness constructing OracleMissing / OracleFound, nor by re-binding spawn to instance.repo_root"
+    description: "a production fold on the POST /dispatch or belt-intent-admission path calls belt_spawn_oracle_pin_standing with observations of the exact admitted-base Git objects. Not satisfied by belt_dispatch_node_for_instance existing, nor by a witness constructing OracleMissing / OracleFound, nor by re-binding spawn to instance.repo_root"
   ),
 )
 
@@ -1964,7 +1962,7 @@ fn belt_dispatch_spawn_provider_wire_label(provider: DispatchCliProvider) -> Str
 // srv1 at go-live (ancestor-inheritance makes the single root sufficient; steps claude-trust-home /
 // claude-trust-store / claude-trust-seed, each detail naming the exact convergence). The DECISION
 // is the pure witnessed fn belt_claude_preflight_decision (every arm on synthetic facts, like
-// belt_observe_from_result); belt_claude_preflight only threads live observations in. Residue:
+// belt_observe_from_result); belt_claude_preflight_for_instance only threads live observations in. Residue:
 // refuse-with-instructions, not auto-seed — the trust store is claude's own runtime-mutable file,
 // so a read-modify-write APPLY arm races the upstream writer; seeding stays with the live_deploy
 // membership convergence (the go-live receipt's named dissolution).
@@ -2040,10 +2038,6 @@ fn belt_claude_preflight_for_instance(instance: HostDashboardInstance) -> BeltCl
       trust_root: dashboard_instance_dispatch_worktree_root(instance: instance) as String,
     )
   }
-}
-
-fn belt_claude_preflight() -> BeltClaudePreflight {
-  belt_claude_preflight_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 type BeltCodexPreflight
@@ -2192,10 +2186,6 @@ fn belt_codex_preflight_for_instance(instance: HostDashboardInstance) -> BeltCod
   }
 }
 
-fn belt_codex_preflight() -> BeltCodexPreflight {
-  belt_codex_preflight_for_instance(instance: srv1_live_dashboard_instance())
-}
-
 type BeltProviderPreflight
   = ProviderPreflightOk
   | ProviderPreflightRefused { step: String, detail: String }
@@ -2232,13 +2222,6 @@ fn belt_provider_preflight_for_instance(
           }
       }
   }
-}
-
-fn belt_provider_preflight(provider: DispatchCliProvider) -> BeltProviderPreflight {
-  belt_provider_preflight_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    provider: provider,
-  )
 }
 
 // Step 0b: the runtime admits against its own deployment footprint BEFORE mutating anything. The
@@ -3663,8 +3646,13 @@ fn belt_spawn_admitted(
 // spawned one could disagree with nothing recording it. That is the same class the observe fold
 // closed, sitting on the one route where the model actually reaches a process, and this module's own
 // rule is that the fix is the carrier rather than the call.
-fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {
-  let instance = srv1_live_dashboard_instance()
+fn belt_actuate_spawn(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  probed_at: String,
+  workdir: String,
+  launch: LaunchIdentity,
+) -> BeltSpawnOutcome {
   match dispatch_environment_admit(
     contract: node.execution,
     environment: instance.execution_environment,
@@ -3712,7 +3700,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
           }
         DispatchAttemptPrepared { prepared } => {
           let provider = prepared_attempt_provider(prepared: prepared)
-          match belt_provider_preflight(provider: provider) {
+          match belt_provider_preflight_for_instance(instance: instance, provider: provider) {
             ProviderPreflightRefused { step: st, detail: d } =>
               SpawnFailed {
                 node_id: node.node as String,
@@ -3901,13 +3889,6 @@ fn belt_actuate_teardown_for_instance(
   }
 }
 
-fn belt_actuate_teardown(session_name: String) -> BeltTeardownOutcome {
-  belt_actuate_teardown_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    session_name: session_name,
-  )
-}
-
 // The reconcile guarantees spawns are DesiredMembers (carry the RoadmapNode for the brief) and
 // teardowns ObservedMembers (carry the live session). The cross arms are unreachable by
 // construction; if reached they REFUSE (typed SpawnFailed/TeardownFailed), never a fabricated
@@ -3985,12 +3966,12 @@ fn belt_spawn_session_uuid(node_id: String, attempt_key: String) -> String {
   belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id, attempt_key: attempt_key)))
 }
 
-fn belt_actuate_spawn_member(m: DispatchMember, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {
+fn belt_actuate_spawn_member(instance: HostDashboardInstance, m: DispatchMember, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {
   match m {
     DesiredMember { node_id: nid, node: node } =>
       match clock_now_probed_at() {
         Present { value: probed_at } =>
-          belt_actuate_spawn(node: node, probed_at: probed_at as String, workdir: workdir, launch: launch)
+          belt_actuate_spawn(instance: instance, node: node, probed_at: probed_at as String, workdir: workdir, launch: launch)
         Absent =>
           SpawnFailed {
             node_id: nid,
@@ -4027,13 +4008,6 @@ fn belt_actuate_teardown_member_for_instance(
         detail: "belt teardown expected ObservedMember (carries live session); got DesiredMember — fail-closed, no teardown without an observed session",
       }
   }
-}
-
-fn belt_actuate_teardown_member(m: DispatchMember) -> BeltTeardownOutcome {
-  belt_actuate_teardown_member_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    m: m,
-  )
 }
 
 type BeltObserve
@@ -4984,6 +4958,7 @@ fn belt_tick_for_instance(
     },
   )
   let spawn_outcomes = belt_tick_spawn_after_settlement(
+    instance: instance,
     settled: belt_session_settlement_pass(instance: instance),
     decisions: pass.decisions,
     workdir: spawn_workdir,
@@ -5084,9 +5059,9 @@ fn belt_launch_member_node_id(m: DispatchMember) -> String {
   }
 }
 
-fn belt_tick_spawn_after_settlement(settled: SessionSettlePass, decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
+fn belt_tick_spawn_after_settlement(instance: HostDashboardInstance, settled: SessionSettlePass, decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
   match settled {
-    SessionSettlePassRan { settlements: _ } => belt_tick_spawn_decided(decisions: decisions, workdir: workdir)
+    SessionSettlePassRan { settlements: _ } => belt_tick_spawn_decided(instance: instance, decisions: decisions, workdir: workdir)
     SessionSettlePassRefused { detail } =>
       decisions |> map(d => match d {
         BeltLaunchWithheld { node_id, refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
@@ -5099,14 +5074,15 @@ fn belt_tick_spawn_after_settlement(settled: SessionSettlePass, decisions: List<
   }
 }
 
-fn belt_tick_spawn_decided(decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
+fn belt_tick_spawn_decided(instance: HostDashboardInstance, decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
   decisions |> map(d => match d {
     BeltLaunchWithheld { node_id, refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
-    BeltLaunchDecided { member, launch } => belt_actuate_spawn_member(m: member, workdir: workdir, launch: launch)
+    BeltLaunchDecided { member, launch } => belt_actuate_spawn_member(instance: instance, m: member, workdir: workdir, launch: launch)
   })
 }
 
 fn belt_tick_admit_and_spawn(
+  instance: HostDashboardInstance,
   candidates: List<DispatchMember>,
   standing: LaunchHostStanding,
   graph: LaunchGraphStanding,
@@ -5114,6 +5090,7 @@ fn belt_tick_admit_and_spawn(
   workdir: String,
 ) -> List<BeltSpawnOutcome> {
   belt_tick_spawn_decided(
+    instance: instance,
     decisions: belt_tick_admit(candidates: candidates, standing: standing, graph: graph, merged: merged),
     workdir: workdir,
   )
@@ -5129,29 +5106,6 @@ fn belt_tick_launch_identities(outcomes: List<BeltSpawnOutcome>) -> List<LaunchI
     SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch, entry: _ } => [launch]
     SpawnNotAdmitted { node_id: _, refusal: _ } => [] as List<LaunchIdentity>
   })
-}
-
-fn belt_tick(
-  state: SpawnMode,
-  frontier: SpawnFrontier,
-  cap: BeltCapacity,
-  spawn_workdir: String,
-) -> BeltTickResult {
-  belt_tick_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    state: state,
-    frontier: frontier,
-    cap: cap,
-    spawn_workdir: spawn_workdir,
-  )
-}
-
-fn belt_tick_default_workdir(
-  state: SpawnMode,
-  frontier: SpawnFrontier,
-  cap: BeltCapacity,
-) -> BeltTickResult {
-  belt_tick(state: state, frontier: frontier, cap: cap, spawn_workdir: belt_actuate_workdir as String)
 }
 
 // ONE fold over the tick's spawn outcomes to a typed tally; every count the tick JSON, receipt and
@@ -5227,9 +5181,11 @@ fn belt_tick_teardown_ok_count(t: BeltTickResult) -> Int {
 // frontier, and reconciles it in the production spawn mode (ManualReady) at the default capacity.
 // gunbc.roadmap.roadmap_belt_tick_cli belt_run_once_cli is the executable entrypoint (`gunbc run --function belt_run_once_cli`, wet):
 // it requires the deployment's GUNBC_BELT_SPAWN_WORKDIR, resolves that root to its dashboard
-// instance, ticks against it, and persists the BeltTickReceipt and the served observation. belt_run_once and
-// belt_run_once_json are non-executable projections (typed BeltTickResult for the production
-// instance; its serialization) — `gunbc run` rejects both return types. The tick observes live
+// instance, ticks against it, and persists the BeltTickReceipt and the served observation.
+// belt_run_once_in and belt_run_once_json_in are non-executable projections over a supplied
+// instance (typed BeltTickResult; its serialization) — `gunbc run` rejects both return types. No
+// form of the tick names an instance itself: every entry resolves one from its own input and every
+// step below receives it, down to the spawn (belt_actuate_spawn). The tick observes live
 // sessions before actuating planned spawns and teardowns through the provider
 // dispatch_actuator_selection resolves (a refused selection is a typed SpawnFailed at step
 // dispatch-selection, never a defaulted provider), then DISCOVERS which attempts owe an obligation and
@@ -5260,13 +5216,6 @@ fn belt_run_once_in(
         spawn_workdir: spawn_workdir,
       )
   }
-}
-
-fn belt_run_once() -> BeltTickResult {
-  belt_run_once_in(
-    instance: srv1_live_dashboard_instance(),
-    spawn_workdir: belt_actuate_workdir as String,
-  )
 }
 
 fn belt_spawn_outcome_json(o: BeltSpawnOutcome) -> JsonValue {
@@ -5395,8 +5344,8 @@ type BeltAttempts
 // U3: the attempts observation mirrors belt_observe's fail-closed grammar — git absent or a
 // non-zero for-each-ref is an UNKNOWABLE attempts set (AttemptsRefused, typed, carries stderr),
 // never widened to zero; exit 0 with empty output IS a genuine zero (for-each-ref's documented
-// no-match behavior). Runs in belt_actuate_workdir — the repo-root authority the spawn's worktree
-// add uses, because attempt branches live where spawns mint them.
+// no-match behavior). Runs in the instance's repo root — the root the spawn's worktree add uses,
+// because attempt branches live where spawns mint them.
 fn belt_attempts_observe_for_instance(instance: HostDashboardInstance) -> BeltAttempts {
   let cmd = git_for_each_ref_dispatch_argv_for_instance(instance: instance)
   if belt_program_available(program: cmd.program) {
@@ -5413,10 +5362,6 @@ fn belt_attempts_observe_for_instance(instance: HostDashboardInstance) -> BeltAt
   } else {
     AttemptsRefused { reason: "git not found on PATH — the attempts set is unknowable" }
   }
-}
-
-fn belt_attempts_observe() -> BeltAttempts {
-  belt_attempts_observe_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 fn belt_attempt_slots_json_members(slots: SessionSlotRecords) -> List<JsonKeyValue> {
@@ -5732,12 +5677,6 @@ fn belt_sessions_observe_for_instance(
       reason: "belt_sessions_observe: tmux not found; session containers are unknowable",
     }
   }
-}
-
-fn belt_sessions_observe() -> BeltObserve {
-  belt_sessions_observe_for_instance(
-    instance: srv1_live_dashboard_instance(),
-  )
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -10777,15 +10716,6 @@ fn belt_workflow_attempts_json_value_for_instance(
   }
 }
 
-fn belt_workflow_attempts_json_value(
-  observed: BeltWorkflowAttempts,
-) -> JsonValue {
-  belt_workflow_attempts_json_value_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    observed: observed,
-  )
-}
-
 fn belt_workflow_attempts_observed_json_for_instance(
   instance: HostDashboardInstance,
   observed: BeltWorkflowAttempts,
@@ -10796,12 +10726,6 @@ fn belt_workflow_attempts_observed_json_for_instance(
     observed: observed,
     stale_nodes: stale_nodes,
   ))
-}
-
-fn belt_workflow_attempts_observed_json(
-  observed: BeltWorkflowAttempts,
-) -> String {
-  serialize_json(v: belt_workflow_attempts_json_value(observed: observed))
 }
 
 fn belt_workflow_attempts_http_status(
@@ -10946,13 +10870,6 @@ fn belt_stop_node_for_instance(
   }
 }
 
-fn belt_stop_node(node_id: String) -> BeltStopResult {
-  belt_stop_node_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    node_id: node_id,
-  )
-}
-
 fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
   match r {
     StopProcessStopped { node_id: nid, session_name: sn } =>
@@ -11047,10 +10964,6 @@ fn belt_stop_http_status(r: BeltStopResult) -> Int {
   }
 }
 
-fn belt_stop_json(node_id: String) -> String {
-  serialize_json(v: belt_stop_result_json_value(r: belt_stop_node(node_id: node_id)))
-}
-
 // The sessions wire projects independent session-container, process-lifecycle, provider, readiness,
 // phase and cleanup facts. Inclusion in sessions proves only `session_presence=present`.
 // process_state comes from the exact dead/status pane observation; cleanup_action is derived
@@ -11115,10 +11028,6 @@ fn belt_sessions_observed_json(o: BeltObserve) -> String {
   serialize_json(v: belt_sessions_json_value(o: o))
 }
 
-fn belt_sessions_json() -> String {
-  belt_sessions_observed_json(o: belt_sessions_observe())
-}
-
 fn belt_sessions_http_status(o: BeltObserve) -> Int {
   match o {
     ObserveRefused { reason: _ } => 503
@@ -11126,13 +11035,9 @@ fn belt_sessions_http_status(o: BeltObserve) -> Int {
   }
 }
 
-fn belt_run_once_json() -> String {
-  serialize_json(v: belt_tick_result_json_value(t: belt_run_once()))
-}
-
-// THE JSON TICK RESOLVES ITS INSTANCE FROM THE SPAWN WORKDIR, the way the CLI does. belt_run_once_json
-// above is bound to the srv1 live instance; run on any other host it ticks a nonexistent layout and
-// reports refusals about the wrong machine. This entry takes the workdir as its argument and returns
+// THE JSON TICK RESOLVES ITS INSTANCE FROM THE SPAWN WORKDIR, the way the CLI does. A form bound to
+// one named instance would, run on any other host, tick a nonexistent layout and report refusals
+// about the wrong machine. This entry takes the workdir as its argument and returns
 // the full per-attempt commit, verify and publish outcomes as one JSON document for a reader.
 fn belt_run_once_json_in(spawn_workdir: String) -> String {
   match dashboard_instance_for_repo_root(repo_root: spawn_workdir) {
@@ -11145,7 +11050,7 @@ fn belt_run_once_json_in(spawn_workdir: String) -> String {
 
 
 // Per-node MANUAL dispatch — the click path (operator 2026-07-20: 'i should just manually
-// click/dispatch'). belt_run_once ticks the WHOLE ready frontier; belt_dispatch_node spawns exactly
+// click/dispatch'). belt_run_once_in ticks the WHOLE ready frontier; belt_dispatch_node_for_instance spawns exactly
 // ONE node by id, operator-selected from the roadmap UI, NOT frontier-gated (the click IS the
 // selection). DONE = the operator's SIGNOFF, never a merged PR (operator: 'PR merged not
 // necessarily mean item == done — they may not be 1:1'): a signoff-accepted node refuses
@@ -11579,13 +11484,6 @@ fn belt_dispatch_node_staged_over(
           }
       }
   }
-}
-
-fn belt_dispatch_node(node_id: String) -> BeltSpawnOutcome {
-  belt_dispatch_node_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    node_id: node_id,
-  )
 }
 
 fn belt_dispatch_result_ok(r: BeltSpawnOutcome) -> Bool {
@@ -14035,7 +13933,7 @@ fn belt_publish_project_worktree(instance: HostDashboardInstance, project_key: S
         ),
         args: ["worktree", "add", "--detach", path, base_sha],
       ),
-      workdir: belt_actuate_workdir as String,
+      workdir: instance.repo_root as String,
     )
   } else {
     ExecOk { stdout: "" }
