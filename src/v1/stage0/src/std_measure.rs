@@ -1742,7 +1742,7 @@ pub fn giga_tensor_operations_per_second(count: Nat) -> GigaTensorOperationsPerS
 }
 
 pub fn giga_tensor_operations_per_second_count(r: GigaTensorOperationsPerSecond) -> Nat {
-    measure_count(r)
+    measure_count(r.clone())
 }
 
 pub type MilliRequestsPerSecond = Rc<Measure<Frequency, Milli, Nat>>;
@@ -2078,7 +2078,7 @@ pub fn permille(count: Nat) -> Permille {
 }
 
 pub fn permille_count(p: Permille) -> Nat {
-    measure_count(p)
+    measure_count(p.clone())
 }
 
 pub type ConcurrentRequestThousandths = Rc<Measure<Dimensionless, Milli, Nat>>;
@@ -2091,7 +2091,7 @@ pub fn concurrent_request_thousandths(count: Nat) -> ConcurrentRequestThousandth
 }
 
 pub fn concurrent_request_thousandths_count(c: ConcurrentRequestThousandths) -> Nat {
-    measure_count(c)
+    measure_count(c.clone())
 }
 
 pub type AmortizationMonths = Rc<Measure<Count, One, Nat>>;
