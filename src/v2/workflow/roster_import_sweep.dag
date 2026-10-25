@@ -814,12 +814,31 @@ fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
       match roster_label_splices(before: before, edits: labels) {
         RosterApplyRefused { reason: r } => RosterApplyRefused { reason: r }
         RosterApplyWritten { content: relabelled } =>
-          if roster_labels_below(labels: labels, at: end) {
+          if roster_labels_below(labels: labels, at: end) && roster_import_and_labels_admitted(start: start, end: end, text: text, labels: labels) {
             roster_splice(before: relabelled, start: start, end: end, replacement: roster_edit_replacement(text: text, own_line: own_line))
           } else {
             RosterApplyRefused { reason: RefusalExtentMismatch }
           }
       }
+  }
+}
+
+// THE IMPORT EDIT AND THE LABEL EDITS ARE ONE PLAN FOR DISJOINTNESS (tidy-ant-251's side chat on #15062): the import
+// (possibly zero-width) is checked with every label and head edit by the one predicate, so a zero-width label at the
+// import's offset refuses as coincident instead of slipping past a separate check.
+fn roster_import_and_labels_disjoint(start: Int, end: Int, text: String, labels: List<RosterLabelEdit>) -> Optional<RosterRefusalReason> {
+  let import_edit = RosterLabelEdit { start: start, end: end, from: "", to: text }
+  match roster_label_edits_disjoint(edits: list_sort_by_key(xs: list_snoc_item(xs: labels, item: import_edit), key: roster_label_edit_order_key, order: int_total_order())) {
+    LabelsRenameRefused { reason: r } => Present { value: r }
+    LabelsSelected { edits: _ } => Absent
+    LabelsAmbiguous => Present { value: RefusalLabelSitesAmbiguous }
+  }
+}
+
+fn roster_import_and_labels_admitted(start: Int, end: Int, text: String, labels: List<RosterLabelEdit>) -> Bool {
+  match roster_import_and_labels_disjoint(start: start, end: end, text: text, labels: labels) {
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
@@ -1523,7 +1542,12 @@ fn roster_with_pending_labels(sides: List<RosterHomeSide>,
     LabelsSelected { edits: labels } =>
       match edit {
         RosterEdit { start: st, end: en, text: tx, own_line: ol } =>
-          if is_empty(xs: labels) { edit } else { RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: labels } }
+          if is_empty(xs: labels) { edit } else {
+            match roster_import_and_labels_disjoint(start: st, end: en, text: tx, labels: labels) {
+              Present { value: r } => RosterRefused { reason: r }
+              Absent => RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: labels }
+            }
+          }
         other => other
       }
   }
@@ -2319,7 +2343,17 @@ fn roster_control_edits_disjoint() -> String {
     + roster_edits_disjoint_expect(name: "edits-overlap", edits: [roster_edit_replace(start: 2, end: 9), roster_edit_replace(start: 5, end: 7)], want: "edits-overlap start=5 end=7 covered-to=9")
     + roster_edits_disjoint_expect(name: "edits-insert-inside-replacement", edits: [roster_edit_replace(start: 2, end: 9), roster_edit_insert(at: 5)], want: "edits-overlap start=5 end=5 covered-to=9")
     + roster_edits_disjoint_expect(name: "edits-rename-shape", edits: [roster_edit_insert(at: 3), roster_edit_replace(start: 3, end: 10), roster_edit_insert(at: 11), roster_edit_insert(at: 15)], want: "")
+    + roster_import_labels_expect(name: "import-and-label-coincide", start: 30, end: 30, labels: [roster_edit_insert(at: 30)], want: "edits-coincide at=30")
+    + roster_import_labels_expect(name: "import-then-label-disjoint", start: 30, end: 30, labels: [roster_edit_insert(at: 41)], want: "")
     + roster_edits_disjoint_expect(name: "edits-adjacent-replacements", edits: [roster_edit_replace(start: 0, end: 4), roster_edit_replace(start: 4, end: 8)], want: "")
+}
+
+fn roster_import_labels_expect(name: String, start: Int, end: Int, labels: List<RosterLabelEdit>, want: String) -> String {
+  let got = match roster_import_and_labels_disjoint(start: start, end: end, text: "import std.algebra { map_lookup }", labels: labels) {
+    Present { value: r } => roster_refusal_text(reason: r)
+    Absent => ""
+  }
+  if got == want { "" } else { "CONTROL-FAIL " + name + ": want '" + want + "', got '" + got + "'\n" }
 }
 
 fn roster_edit_insert(at: Int) -> RosterLabelEdit {
