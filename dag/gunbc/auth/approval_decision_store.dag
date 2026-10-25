@@ -17,11 +17,10 @@ import std.scoped_authorization {
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
-import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.network.address { IpV4, ip_address_is_loopback }
 import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
-import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify, mac_key_material_hex_length }
+import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, mac_key_material_hex_length }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
@@ -43,54 +42,40 @@ import std.durable_compare_and_set {
   ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_count,
 }
 import gunbc.auth.approval_capability {
-  ApprovalCapability,
   ApprovalCapabilityClaims,
   CapabilityExpectation,
   ProposedDecision,
   ProposeApprove,
-  ProposeDeny,
-  approval_capability_signing_input,
-  proposed_decision_name,
   utc_instant_is_canonical,
   capability_live_at,
 }
 import gunbc.auth.approval_broker {
-  BrokerDecision, IdentityAttribution, HeaderAttributedToProxy, HeaderUnattributed,
+  BrokerDecision,
   BrokerApproved,
   BrokerDenied,
   ExecutionObligation,
-  Redemption,
-  RedemptionAdmitted,
-  RedemptionRefused,
-  RedemptionRefusal,
-  redeem_capability,
-  redemption_refusal_reason,
 }
-import extdeps.ietf.http_semantics { HttpMethod }
 import std.algebra { collection_concat_shape, collection_count_shape, collection_join_shape, list_push }
 
 // THE DURABLE HALF OF THE APPROVAL LOOP: WHERE A REQUEST WAITS, WHERE A DECISION LANDS, AND THE
-// KEY THAT MAKES A TAPPED LINK MEAN SOMETHING. gunbc.auth.approval_broker owns the lifecycle and
-// gunbc.auth.approval_capability owns the signed link; neither can answer "what did the operator
-// decide about escalation E" after the process that asked has exited, and the roadmap server's
-// POST /approve/{capability} answered 501 for exactly that reason -- "the keyring, the decision
-// store and the notification publisher are not deployed". This module is the keyring and the
-// store. The publisher is gunbc.auth.approval_notification over the deployed ntfy server.
+// KEY THAT MAKES A CAPABILITY MEAN SOMETHING. gunbc.auth.approval_broker owns the lifecycle and
+// gunbc.auth.approval_capability owns the signed capability; neither can answer "what did the
+// operator decide about escalation E" after the process that asked has exited. This module is the
+// keyring and the store. The phone is woken by gunbc.auth.approval_apns_publish and redeems through
+// gunbc.auth.approval_device_redemption redeem_device_over_store, which commits here.
 //
-// THE LINK CARRIES A REFERENCE, NOT THE CLAIMS. The path segment is
-// `<escalation_id>.<approve|deny>.<tag_hex>`: the server loads the claims it stored when the request
-// was filed, re-derives approval_capability_signing_input over THOSE bytes, and verifies the tag
-// against them. The tag still authenticates the whole claim set -- issuer, audience, authority,
-// revision, decision, attempt, issued/expires, key id -- because it was computed over it; a forged
-// id or a flipped decision fails the MAC. What this buys is that no URL-safe claims encoding is
-// needed and the store is the one authority for what was asked, which the broker's one-commit law
-// (approval_and_obligation_commit_together_note) already wants. verify_capability's join is
-// unchanged: VerifiedMessage.message must equal the server's own signing input, byte for byte.
+// THE CAPABILITY'S CLAIMS ARE RE-DERIVED FROM THE STORE, never carried: the server loads the claims
+// it stored when the request was filed (claims_for), re-derives approval_capability_signing_input
+// over THOSE bytes, and verifies the tag against them. The tag authenticates the whole claim set --
+// issuer, audience, authority, revision, decision, attempt, issued/expires, key id -- because it was
+// computed over it; a forged id or a flipped decision fails the MAC, and the store is the one
+// authority for what was asked, which the broker's one-commit law
+// (approval_and_obligation_commit_together_note) already wants.
 //
 // WHAT THE STORE HOLDS PER ESCALATION IS ONE CAS SLOT, TWO GENERATIONS. Generation 1 is the filed
 // request (the claims-grade facts and who asked); generation 2 is the decision WITH its execution
 // obligation, in one commit. Approve and deny race for generation 2 and the CAS lets exactly one
-// win; a second tap of either link finds generation 2 present and reports what was decided
+// win; a second redemption of either verb finds generation 2 present and reports what was decided
 // rather than deciding again. The subject and the scopes are NOT stored: they live with the
 // workflow's own AuthorizationRequest<Subject> row in source, and the grant is derived by JOINING
 // the stored decision to that row on escalation id and revision (the intent hash's wire form), so
@@ -104,7 +89,7 @@ import std.algebra { collection_concat_shape, collection_count_shape, collection
 // value never touched this repository or a session transcript; a materialized copy is checked
 // against gunbc.auth.approval_keyring_pins approval_mac_key_payload_sha256_prefix without printing
 // the key. Version is PINNED because a keyring that
-// followed `latest` would let a rotation invalidate every link in flight (approval_capability:
+// followed `latest` would let a rotation invalidate every capability in flight (approval_capability:
 // "key_id -- which key to check, so rotation does not invalidate what is in flight").
 data approval_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
   ref: fleet_secret_ref(secret_id: "approval-capability-mac-key"),
@@ -114,8 +99,8 @@ data approval_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
 data approval_mac_key_id: MacKeyId = "approval-capability-mac-key/1" as MacKeyId
 
 
-// WHERE THE KEY LIVES ON THE HOST THAT SERVES /approve: a file under the roadmap server's config
-// directory, the same shape as /etc/gunbc-ntfy/publisher-token, materialized from the SecretRef
+// WHERE THE KEY LIVES ON THE HOST THAT SERVES THE DEVICE ROUTES: a file under the roadmap server's
+// config directory, materialized from the SecretRef
 // above by the converge step approval_keyring_materialization_frontier names, readable by the
 // unit's user only. The server reads the PATH from this row and the material into a Secret;
 // nothing renders it.
@@ -127,9 +112,9 @@ fn read_approval_keyring() -> ApprovalKeyringRead {
 
 // ── what the verifier accepts ──────────────────────────────────────────────────────────────────
 
-// THE EXPECTATION IS CONFIGURATION, NEVER READ FROM THE LINK (approval_capability
-// CapabilityExpectation). Issuer is the process that mints links, audience is the broker that
-// redeems them, authority is the one this store brokers for: operator consent to a fleet
+// THE EXPECTATION IS CONFIGURATION, NEVER READ FROM THE CAPABILITY (approval_capability
+// CapabilityExpectation). Issuer is the process that mints capabilities, audience is the broker
+// that redeems them, authority is the one this store brokers for: operator consent to a fleet
 // convergence step. A capability minted for another authority fails here on audience or
 // authority before any decision is read.
 data approval_capability_issuer: NonEmptyStr = "gunbc.roadmap_serve"
@@ -174,10 +159,11 @@ type IdentityTrustStanding
 // loopback keeps the gate closed: the header is self-assertable by whoever reaches the port. A
 // loopback bind rules out off-host callers only; an on-host process under another POSIX user can
 // still present any header, and nothing at the serve boundary attributes the peer yet. So the
-// loopback arm is IdentityHeaderUnattributed: redemption is admitted on the CAPABILITY alone (the
-// bearer authority the server minted and ntfy delivered to the operator's phone), and the consent
-// record names the bearer, never a login (approval_broker HeaderUnattributed). A forged header on
-// that deployment therefore changes nothing the record says. IdentityHeaderTrustEstablished is
+// loopback arm is IdentityHeaderUnattributed, and the operator's tailnet-gated routes (the devices
+// list and revoke in gunbc.auth.approval_device_routes) refuse on it. No DECISION reads this
+// standing any more: a redemption is attributed by the enrolled device's signature
+// (gunbc.auth.approval_device_redemption redeem_device_over_store), never by a header, so a forged
+// header changes nothing a consent record says. IdentityHeaderTrustEstablished is
 // minted by nothing until peer attribution lands (approval_identity_attribution_frontier). A later
 // edit of the row back to 0.0.0.0 closes the gate in the same commit, with no second row to forget.
 fn approval_identity_trust_for(listen_host: NonEmptyStr) -> IdentityTrustStanding {
@@ -185,7 +171,7 @@ fn approval_identity_trust_for(listen_host: NonEmptyStr) -> IdentityTrustStandin
     Ipv4Parsed { address: a } =>
       if ip_address_is_loopback(addr: IpV4 { v4: a }) {
         IdentityHeaderUnattributed {
-          residual: join(["gunbc-approval-broker.service binds --host ", listen_host as String, " (gunbc.auth.approval_broker_endpoint approval_broker_listen_host) behind its tailscale serve front door, so off-host callers cannot reach it; an on-host process under another POSIX user still can, so the header is not attributed and the record names the capability's bearer"], "") as NonEmptyStr,
+          residual: join(["gunbc-approval-broker.service binds --host ", listen_host as String, " (gunbc.auth.approval_broker_endpoint approval_broker_listen_host) behind its tailscale serve front door, so off-host callers cannot reach it; an on-host process under another POSIX user still can, so the header is not attributed and the operator routes refuse"], "") as NonEmptyStr,
         }
       } else {
         IdentityHeaderTrustNotEstablished {
@@ -215,8 +201,8 @@ data approval_identity_trust: IdentityTrustStanding = approval_identity_trust_fo
 data approval_decision_store_root: NonEmptyStr = "/var/lib/gunbc/approvals"
 
 // THE CLAIMS-GRADE FACTS OF A FILED REQUEST. Everything approval_capability_signing_input reads is
-// here except the decision, which is what the two links differ in; requester, purpose and
-// destructive are what the operator READS on the confirmation page and what admission checked
+// here except the decision, which is what the two capabilities differ in; requester, purpose and
+// destructive are what the operator READS on the phone and what admission checked
 // before the notification went out.
 type StoredApprovalRequest {
   escalation_id: NonEmptyStr
@@ -487,10 +473,10 @@ fn commit_broker_decision(root: NonEmptyStr, decision: BrokerDecision) -> StoreW
   }
 }
 
-// ── the link ───────────────────────────────────────────────────────────────────────────────────
+// ── the capability claims ─────────────────────────────────────────────────────────────────────
 
-// THE CLAIMS A STORED REQUEST STANDS FOR, under one proposed decision. The two links a request
-// gets differ only in this field, so they carry different tags.
+// THE CLAIMS A STORED REQUEST STANDS FOR, under one proposed decision. The two capabilities a
+// request gets differ only in this field, so they carry different tags.
 fn claims_for(request: StoredApprovalRequest, decision: ProposedDecision) -> ApprovalCapabilityClaims {
   ApprovalCapabilityClaims {
     protocol: "gunbc.approval-capability.v1",
@@ -504,160 +490,6 @@ fn claims_for(request: StoredApprovalRequest, decision: ProposedDecision) -> App
     issued_at: request.issued_at,
     expires_at: request.expires_at,
     key_id: request.key_id,
-  }
-}
-
-data capability_segment_separator: String = "."
-
-fn capability_path_segment(escalation_id: NonEmptyStr, decision: ProposedDecision, tag_hex: NonEmptyStr) -> NonEmptyStr {
-  join([escalation_id as String, proposed_decision_name(d: decision) as String, tag_hex as String], capability_segment_separator) as NonEmptyStr
-}
-
-type CapabilitySegmentParse
-  = CapabilitySegmentParsed { escalation_id: NonEmptyStr, decision: ProposedDecision, tag_hex: NonEmptyStr }
-  | CapabilitySegmentMalformed { detail: NonEmptyStr }
-
-// THE ESCALATION ID MAY NOT CONTAIN THE SEPARATOR; that is the price of a three-part segment and
-// it is checked at filing time by cas_key_is_slot_addressable's caller, and again here on the way
-// in so a crafted id cannot shift the decision word.
-fn parse_capability_segment(segment: String) -> CapabilitySegmentParse {
-  let parts = segment.split(sep: capability_segment_separator)
-  if count(parts) != 3 {
-    CapabilitySegmentMalformed { detail: "capability segment is not <escalation_id>.<decision>.<tag_hex>" }
-  } else {
-    let e = match parts.first() { Present { value: v } => v Absent => "" }
-    let d = match parts.skip(n: 1).first() { Present { value: v } => v Absent => "" }
-    let t = match parts.skip(n: 2).first() { Present { value: v } => v Absent => "" }
-    if e == "" || t == "" {
-      CapabilitySegmentMalformed { detail: "capability segment has an empty escalation id or tag" }
-    } else if d == (proposed_decision_name(d: ProposeApprove) as String) {
-      CapabilitySegmentParsed { escalation_id: e as NonEmptyStr, decision: ProposeApprove, tag_hex: t as NonEmptyStr }
-    } else if d == (proposed_decision_name(d: ProposeDeny) as String) {
-      CapabilitySegmentParsed { escalation_id: e as NonEmptyStr, decision: ProposeDeny, tag_hex: t as NonEmptyStr }
-    } else {
-      CapabilitySegmentMalformed { detail: concat("capability segment decision word is not approve or deny: ", d) as NonEmptyStr }
-    }
-  }
-}
-
-// ── redemption over the store ──────────────────────────────────────────────────────────────────
-
-// EVERY WAY A TAP CAN END, each located. RedeemedApproved and RedeemedDenied are the two facts a
-// tap can establish; AlreadyDecided is what a second tap sees; everything else is a refusal with
-// the layer that refused named in the arm.
-type StoreRedemption
-  = RedeemedApproved { decision: BrokerDecision }
-  | RedeemedDenied { decision: BrokerDecision }
-  | AlreadyDecided { decision: BrokerDecision }
-  | RedemptionSegmentMalformed { detail: NonEmptyStr }
-  | RedemptionEscalationNotFiled { escalation_id: NonEmptyStr }
-  | RedemptionStoreUnreadable { detail: NonEmptyStr }
-  | RedemptionKeyringUnavailable { cause: ApprovalKeyringRefusal }
-  | RedemptionIdentityUntrusted { blocker: NonEmptyStr }
-  | RedemptionBrokerRefused { cause: RedemptionRefusal }
-  | RedemptionLostTheRace
-  | RedemptionCommitRefused { detail: NonEmptyStr }
-
-fn store_redemption_reason(r: StoreRedemption) -> String {
-  match r {
-    RedeemedApproved { decision: _ } => "approved and recorded"
-    RedeemedDenied { decision: _ } => "denied and recorded"
-    AlreadyDecided { decision: _ } => "this escalation was already decided; nothing changed"
-    RedemptionSegmentMalformed { detail: d } => d as String
-    RedemptionEscalationNotFiled { escalation_id: e } => concat("no request is filed under escalation ", e as String)
-    RedemptionStoreUnreadable { detail: d } => concat("approval store unreadable: ", d as String)
-    RedemptionKeyringUnavailable { cause: k } => match k {
-      ApprovalKeyFileAbsent { path: p } => concat("approval MAC key file is absent: ", p as String)
-      ApprovalKeyFileUnreadable { path: p, error: e } => concat("approval MAC key file is unreadable: ", concat(p as String, concat(" -- ", e)))
-      ApprovalKeyMalformed { path: p, length: n } => concat("approval MAC key file is malformed (", concat(to_string(n), concat(" chars): ", p as String)))
-    }
-    RedemptionIdentityUntrusted { blocker: b } => concat("the identity header cannot be trusted on this deployment: ", b as String)
-    RedemptionBrokerRefused { cause: c } => redemption_refusal_reason(r: c)
-    RedemptionLostTheRace => "another decision landed first; this tap changed nothing"
-    RedemptionCommitRefused { detail: d } => concat("decision could not be committed: ", d as String)
-  }
-}
-
-// THE ONE FOLD BEHIND POST /approve/{capability}. Order: the deployment must vouch for the
-// identity header at all; the segment must parse; the escalation must be filed and pending; the
-// keyring must load; then the broker decides (MAC over the STORED claims first, then policy, then
-// identity); and only an admitted redemption is committed, with the obligation, at generation 2.
-// A second tap lands on AlreadyDecided before the MAC is even checked -- there is nothing left to
-// decide and no oracle in saying so, since the store's own state is not a secret. The obligation's
-// execute_by is the filed request's own lifetime: the operator approved THAT window, and a
-// separate deadline supplied at tap time would be a second authority on how long consent lasts.
-fn redeem_over_store(
-  root: NonEmptyStr,
-  trust: IdentityTrustStanding,
-  keyring: ApprovalKeyringRead,
-  method: HttpMethod,
-  segment: String,
-  presented_identity: TailnetIdentity,
-  observed_at: Timestamp,
-) -> StoreRedemption {
-  match trust {
-    IdentityHeaderTrustNotEstablished { blocker: b } => RedemptionIdentityUntrusted { blocker: b }
-    IdentityHeaderUnattributed { residual: r } => redeem_trusted_over_store(root: root, keyring: keyring, method: method, segment: segment, attribution: HeaderUnattributed { residual: r }, observed_at: observed_at)
-    IdentityHeaderTrustEstablished { evidence: _ } => redeem_trusted_over_store(root: root, keyring: keyring, method: method, segment: segment, attribution: HeaderAttributedToProxy { presented: presented_identity }, observed_at: observed_at)
-  }
-}
-
-// THE REDEMPTION PAST THE TRUST GATE, one fold for both admitting arms.
-fn redeem_trusted_over_store(
-  root: NonEmptyStr,
-  keyring: ApprovalKeyringRead,
-  method: HttpMethod,
-  segment: String,
-  attribution: IdentityAttribution,
-  observed_at: Timestamp,
-) -> StoreRedemption {
-  match parse_capability_segment(segment: segment) {
-    CapabilitySegmentMalformed { detail: d } => RedemptionSegmentMalformed { detail: d }
-    CapabilitySegmentParsed { escalation_id: e, decision: proposed, tag_hex: tag } =>
-      match observe_escalation(root: root, escalation_id: e) {
-        EscalationNotFiled => RedemptionEscalationNotFiled { escalation_id: e }
-        EscalationUnreadable { detail: d } => RedemptionStoreUnreadable { detail: d }
-        EscalationDecided { decision: d } => AlreadyDecided { decision: d }
-        EscalationPending { request: req } =>
-          match keyring {
-            ApprovalKeyLoaded { key: key } => {
-              let claims = claims_for(request: req, decision: proposed)
-              let mac_result: MacVerification = mac_verify(key: key, message: approval_capability_signing_input(c: claims), tag_hex: tag)
-              match redeem_capability(
-                method: method,
-                capability: ApprovalCapability { claims: claims, tag_b64url: tag },
-                expectation: approval_capability_expectation,
-                mac_result: mac_result,
-                attribution: attribution,
-                expected_operator: approval_operator_login,
-                observed_at: observed_at,
-              ) {
-                RedemptionRefused { cause: c } => RedemptionBrokerRefused { cause: c }
-                RedemptionAdmitted { claims: cl, decided_by: by } => {
-                  let decision = match cl.decision {
-                    ProposeApprove => BrokerApproved {
-                      escalation_id: cl.escalation_id, revision: cl.request_revision, decided_by: by, decided_at: observed_at,
-                      obligation: ExecutionObligation { authority: cl.authority, intent_revision: cl.request_revision, execute_by: req.expires_at },
-                    }
-                    ProposeDeny => BrokerDenied {
-                      escalation_id: cl.escalation_id, revision: cl.request_revision, decided_by: by, decided_at: observed_at,
-                      reason: "denied by the operator through the approval link",
-                    }
-                  }
-                  match commit_broker_decision(root: root, decision: decision) {
-                    StoreWritten => match decision {
-                      BrokerApproved { escalation_id: _, revision: _, decided_by: _, decided_at: _, obligation: _ } => RedeemedApproved { decision: decision }
-                      BrokerDenied { escalation_id: _, revision: _, decided_by: _, decided_at: _, reason: _ } => RedeemedDenied { decision: decision }
-                    }
-                    StoreSlotOccupied => RedemptionLostTheRace
-                    StoreRefused { detail: d } => RedemptionCommitRefused { detail: d }
-                  }
-                }
-              }
-            }
-            ApprovalKeyringRefused { cause: c } => RedemptionKeyringUnavailable { cause: c }
-          }
-      }
   }
 }
 
@@ -739,14 +571,14 @@ fn grant_from_store<Subject>(root: NonEmptyStr, request: AuthorizationRequest<Su
   }
 }
 
-// ATTRIBUTION: the consent record names a login only when the serve boundary can attribute the
-// header to the tailscale proxy; on the loopback bind it names the capability's bearer. The
-// capability that restores the login is peer attribution -- the loopback client's socket owner
+// ATTRIBUTION: the operator routes admit the tailnet login only when the serve boundary can
+// attribute the header to the tailscale proxy; on the loopback bind they refuse. The capability that
+// opens them is peer attribution -- the loopback client's socket owner
 // (the kernel's /proc/net/tcp uid for the peer port) joined at the serve boundary and required to
 // be tailscaled's -- at which point approval_identity_trust_for answers
 // IdentityHeaderTrustEstablished from that attribution and the Unattributed arm is deleted.
 data approval_identity_attribution_frontier: DissolutionCondition = unbound_dissolution(
-  description: "the serve runtime exposes the connecting peer's address and the approve handler joins it to the socket owner's uid, refusing every peer that is not the tailscale proxy -- SUFFICIENT FOR the Tailscale-User-Login header to be evidence of the tailnet login on every request the route admits, so decided_by can name the login rather than the bearer",
+  description: "the serve runtime exposes the connecting peer's address and the operator routes (gunbc.auth.approval_device_routes devices list and revoke) join it to the socket owner's uid, refusing every peer that is not the tailscale proxy -- SUFFICIENT FOR the Tailscale-User-Login header to be evidence of the tailnet login on every request those routes admit",
 )
 
 // ── the frontiers ──────────────────────────────────────────────────────────────────────────────
@@ -754,14 +586,14 @@ data approval_identity_attribution_frontier: DissolutionCondition = unbound_diss
 // THE KEYS ON THE HOST: a converge step materializes approval_mac_key_secret_ref into
 // approval_mac_key_path AND gunbc.auth.approval_request_submission
 // approval_submission_mac_key_secret_ref into its approval_submission_mac_key_path, 0640, owned by
-// root and readable by the roadmap unit's user, the same shape as /etc/gunbc-ntfy/publisher-token.
+// root and readable by the roadmap unit's user.
 // Until that step lands the keyrings read absent and every redemption refuses
-// RedemptionKeyringUnavailable and every filing SubmissionKeyUnavailable -- loud, never a
+// DeviceKeyringUnavailable and every filing SubmissionKeyUnavailable -- loud, never a
 // fabricated key. The step is gunbc.auth.approval_keyring_converge in #11484 (fleet-converge mode
 // approval_keyring_converge, writing over the fleet SSH edge as the administrator); its first live
 // receipt is fleet-converge run 35181154197 on srv1 (2026-09-17), from an integration tree.
 data approval_keyring_materialization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "a fleet-converge step that reads approval_mac_key_secret_ref and approval_submission_mac_key_secret_ref through the WIF-backed convergence account and writes approval_mac_key_path and approval_submission_mac_key_path (0640 root:<roadmap unit user>) on the host that serves /approve and /approvals, over the fleet SSH administrator edge rather than a job-user sudo -- SUFFICIENT FOR both keyrings to read ApprovalKeyLoaded on that host; lands as gunbc.auth.approval_keyring_converge (#11484)",
+  description: "a fleet-converge step that reads approval_mac_key_secret_ref and approval_submission_mac_key_secret_ref through the WIF-backed convergence account and writes approval_mac_key_path and approval_submission_mac_key_path (0640 root:<roadmap unit user>) on the host that serves the device routes and /approvals, over the fleet SSH administrator edge rather than a job-user sudo -- SUFFICIENT FOR both keyrings to read ApprovalKeyLoaded on that host; lands as gunbc.auth.approval_keyring_converge (#11484)",
 )
 
 

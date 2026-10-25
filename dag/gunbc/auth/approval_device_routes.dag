@@ -96,13 +96,11 @@ import extdeps.entropy { Urandom }
 import extdeps.numeric.base16 { base16_encode_lower }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.encoding { base64_octets }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import std.types { FilePath }
-import extdeps.ntfy.ntfy { NtfyAccepted }
-import gunbc.auth.approval_notification { approval_notification }
-import gunbc.auth.approval_broker_endpoint { approval_broker_serving_base_url, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
-import gunbc.auth.approval_request_submission {
-  read_publisher_token, publish_notification, NotificationPublish, NotificationAttempted, NotificationPublisherTokenUnavailable,
+import gunbc.auth.approval_apns_publish {
+  read_device_push_targets, read_apns_sender, notify_devices, new_device_push_notice, device_notification_reached_anyone, device_notification_sentence,
+  DeviceNotificationAttempted, DeviceNotificationNoRecipient, DeviceNotificationNotAttempted,
 }
 import std.decl_ref { decl_ref }
 
@@ -398,35 +396,25 @@ fn device_verify_id() -> NonEmptyStr? {
   }
 }
 
-// THE NEW-DEVICE NOTICE, delivered on the approval channel (gunbc.auth.approval_notification). Sent
-// only for a GoogleEnrolmentWrites, never a replay. An enrolment whose notice was not delivered is
-// still written: the route answers 503 so the phone resends, the resend replays the same grant, and
-// no second notice is sent -- the undelivered notice is named in the response, never swallowed.
-fn device_enrolment_notification(notice: NewDeviceNotice, approval_url: NonEmptyStr) -> NtfyMessage {
-  approval_notification(
-    title: "New approval device enrolled",
-    body: ("A device enrolled for " + (notice.google_email as String) + " (App Attest key " + (notice.attest_key_id as String) + ") at " + notice.enrolled_at + ". Revoke it from the devices list if this was not you.") as NonEmptyStr,
-    approval_url: approval_url,
-  )
-}
-
+// THE NEW-DEVICE NOTICE, pushed to every enrolled approver device (gunbc.auth.approval_apns_publish
+// new_device_push_notice). Sent only for a GoogleEnrolmentWrites, never a replay. An enrolment whose
+// notice was not delivered is still written: the route answers 503 so the phone resends, the resend
+// replays the same grant, and no second notice is sent -- the undelivered notice is named in the
+// response, never swallowed. THE FIRST DEVICE HAS NOBODY TO TELL: no registered recipient (and no
+// enrolment that failed to read) is a delivered notice, not a refusal, or the first enrolment could
+// never complete; an enrolment that did not read is named, because it might have been the recipient.
 fn publish_new_device_notice(notice: NewDeviceNotice) -> String?
   admit_callers: [
     decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "device_enrol_admit"),
   ]
 {
-  match approval_broker_serving_base_url() {
-    ApprovalBrokerAddressRefused { detail: d } => Present { value: d as String }
-    ApprovalBrokerAddressResolved { value: url } =>
-      match publish_notification(message: device_enrolment_notification(notice: notice, approval_url: url), publisher: read_publisher_token()) {
-        NotificationPublisherTokenUnavailable { detail: d } => Present { value: "publisher token unavailable: " + d }
-        NotificationAttempted { publish: _, acceptance: a } =>
-          match a {
-            NtfyAccepted { message_id: _ } => none
-            NtfyRefusedExplicitly { status: _, detail: d } => Present { value: "ntfy refused the notice: " + d }
-            NtfyAcceptanceIndeterminate { detail: d } => Present { value: "ntfy acceptance is indeterminate: " + d }
-          }
-      }
+  let pushed = notify_devices(targets: read_device_push_targets(), sender: read_apns_sender(), notice: new_device_push_notice(enrollment_id: notice.enrollment_id))
+  match pushed {
+    DeviceNotificationNoRecipient { unregistered: _, unreadable: ur } =>
+      if length(ur) == 0 { none } else { Present { value: device_notification_sentence(n: pushed) } }
+    DeviceNotificationNotAttempted { detail: _ } => Present { value: device_notification_sentence(n: pushed) }
+    DeviceNotificationAttempted { outcomes: _, unregistered: _, unreadable: _ } =>
+      if device_notification_reached_anyone(n: pushed) { none } else { Present { value: device_notification_sentence(n: pushed) } }
   }
 }
 
