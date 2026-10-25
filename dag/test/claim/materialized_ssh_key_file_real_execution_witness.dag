@@ -32,7 +32,24 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data real_execution_home_doc: String = "Wet execution witnesses for SECRETREF-WIRE-0 ssh key materialization: the SshKeyFile leg, gunbc.auth.private_secret_file with_private_secret_file (a fresh 0700 directory per call, Filesystem.WriteOwnerOnly mode 0600 at creation via create_new/O_EXCL, file and directory removed after the body) and WriteOwnerOnly refusal when the path already exists. The mode checks are TYPED (Charter 2, 2026-10-19): the bracket classifies coreutils.Stat.PathMode's output (coreutils_stat_path_mode -> PathModeObservation) ONLY through ssh_key_mode_verdict / private_dir_mode_verdict, whose three arms are distinct values — OwnerOnlyAccepted carries the accepted FileMode, WrongModeObserved carries the observed FileMode, ModeUnobservable carries the producer's reason — so at the refusal site an unreadable mode and a wrong mode arrive as different data, and a stat that cannot read the file never reads as 'not 600'. The retained shell stat bridge (shell.Exec.Run(stat) via gunbc.retained_shell_script) that spelled these checks as stdout string comparisons is deleted here: the file 600 check and the private directory 700 check both run through the typed producer. The third test fn ssh_key_mode_probe_distinguishes_unobservable_from_wrong_mode drives that same ssh_key_mode_verdict from a supplied PathModeObserved carrying a zero mode and a PathModeUnobservable carrying a reason, and asserts they land on different arms; it takes no host effect. NOTE ON DISCOVERY: this file is excluded from hermetic DISCOVERY (gunbc.ci.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries — nothing in it runs discovered, including the pure test, which executes only when named explicitly (claim_batch --functions, wet or hermetic). shell.Mktemp.Dir, shell.Mkdir, shell.Chmod, shell.Remove, Filesystem.Write/WriteOwnerOnly, and coreutils.Stat.PathMode have no mock_response on the file-effect path (WriteOwnerOnly uses the v1 file transport, not shell.Exec mock; Stat.PathMode has no mock_response block, unlike Stat.PathSize). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag --functions witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"
+// The bracket's obligations in this file, kept OUT of the data row per DESIGN §4c: the file-mode
+// and directory-mode checks are TYPED (Charter 2, 2026-10-19) -- the bracket classifies
+// coreutils.Stat.PathMode's output (coreutils_stat_path_mode -> PathModeObservation) only through
+// owner_only_mode_verdict, whose three arms are distinct values, so at a refusal site an unreadable
+// mode and a wrong mode arrive as different data and a stat that cannot read never reads as 'not
+// <owed>'. The retained shell stat bridge (shell.Exec.Run(stat) via gunbc.retained_shell_script)
+// that spelled these checks as stdout string comparisons is deleted here; both the file 600 check
+// and the private directory 700 check run through the typed producer. The pure test
+// ssh_key_mode_probe_distinguishes_unobservable_from_wrong_mode drives that same owner_only_mode_verdict
+// from a supplied PathModeObserved carrying a zero mode and a PathModeUnobservable carrying a
+// reason, and asserts they land on different arms; it takes no host effect. DISCOVERY: this file is
+// excluded from hermetic discovery (gunbc.ci.ci_layer_roots witness_exclusion_frontier) and enrolled
+// in bin_witness_wet_entries -- nothing here runs discovered, including the pure test, which
+// executes only when named explicitly (claim_batch --functions, wet or hermetic). Local recipe:
+// claim_batch --wet --source-root dag --source-root src/v2 --entry
+// dag/test/claim/materialized_ssh_key_file_real_execution_witness.dag --functions
+// witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target
+data real_execution_home_doc: String = "Wet execution witnesses for SECRETREF-WIRE-0 ssh key materialization"
 
 data ssh_key_owner_only_mode: FileMode = FileMode {
   owner: PermissionBits { read: true, write: true, execute: false },
@@ -70,24 +87,16 @@ fn ssh_key_file_mode_probe(path: String) -> PathModeObservation {
   coreutils_stat_path_mode(path: path as NonEmptyStr)
 }
 
-fn ssh_key_mode_verdict(observation: PathModeObservation) -> SshKeyModeVerdict {
+// ONE rule, one implementation (DESIGN §6b): classify a typed stat observation against the owed
+// FileMode the caller supplies. The key file's 600 check and the private directory's 700 check are
+// two CALLS of this one function, each passing its own owed FileMode -- not two copies. The three
+// arms are distinct values, so at a refusal site an unreadable mode (ModeUnobservable, carrying the
+// producer's reason) and a wrong mode (WrongModeObserved, carrying the observed FileMode) arrive
+// differently, and a stat that cannot read never reads as 'not <owed>'.
+fn owner_only_mode_verdict(observation: PathModeObservation, owed: FileMode) -> SshKeyModeVerdict {
   match observation {
     PathModeObserved { path: _, mode } =>
-      if file_mode_bits(mode: mode) == file_mode_bits(mode: ssh_key_owner_only_mode) {
-        OwnerOnlyAccepted { observed: mode }
-      } else {
-        WrongModeObserved { observed: mode }
-      }
-    PathModeUnobservable { path: _, reason } => ModeUnobservable { reason: reason }
-  }
-}
-
-// The directory's 0700 obligation rides the SAME producer and the same three-arm refusal grammar,
-// with its own owed FileMode: an unreadable directory never reads as 'not 700'.
-fn private_dir_mode_verdict(observation: PathModeObservation) -> SshKeyModeVerdict {
-  match observation {
-    PathModeObserved { path: _, mode } =>
-      if file_mode_bits(mode: mode) == file_mode_bits(mode: private_dir_owner_only_mode) {
+      if file_mode_bits(mode: mode) == file_mode_bits(mode: owed) {
         OwnerOnlyAccepted { observed: mode }
       } else {
         WrongModeObserved { observed: mode }
@@ -97,8 +106,8 @@ fn private_dir_mode_verdict(observation: PathModeObservation) -> SshKeyModeVerdi
 }
 
 // DISCRIMINATING, dry (no host effects; the file is wet-excluded, so this runs only through
-// explicit claim_batch --functions, not discovery — see real_execution_home_doc). It drives the SAME
-// ssh_key_mode_verdict the wet bracket calls, from a supplied PathModeObserved{zero mode} and a
+// explicit claim_batch --functions, not discovery — see the annotations above real_execution_home_doc). It drives the SAME
+// owner_only_mode_verdict the wet bracket calls, from a supplied PathModeObserved{zero mode} and a
 // PathModeUnobservable{reason}, and asserts they land on DIFFERENT arms: the zero mode must arrive
 // as WrongModeObserved still carrying the zero FileMode (so a producer that reported read-failure as
 // Observed-with-zero-mode lands on the wrong arm), and the unreadable probe must arrive as
@@ -115,20 +124,26 @@ test fn ssh_key_mode_probe_distinguishes_unobservable_from_wrong_mode() -> Bool 
     setgid: false,
     sticky: false,
   }
-  let wrong_verdict = ssh_key_mode_verdict(
-    observation: PathModeObserved { path: "keys/witness-key" as NonEmptyStr, mode: zero_mode }
+  let wrong_verdict = owner_only_mode_verdict(
+    
+    observation: PathModeObserved { path: "keys/witness-key" as NonEmptyStr, mode: zero_mode },
+    owed: ssh_key_owner_only_mode
   )
-  let unobservable_verdict = ssh_key_mode_verdict(
+  let unobservable_verdict = owner_only_mode_verdict(
+    
     observation: PathModeUnobservable {
       path: "keys/witness-key" as NonEmptyStr,
       reason: unreadable_reason,
-    }
+    },
+    owed: ssh_key_owner_only_mode
   )
-  let owed_verdict = ssh_key_mode_verdict(
+  let owed_verdict = owner_only_mode_verdict(
+    
     observation: PathModeObserved {
       path: "keys/witness-key" as NonEmptyStr,
       mode: ssh_key_owner_only_mode,
-    }
+    },
+    owed: ssh_key_owner_only_mode
   )
   let wrong_mode_arm = match wrong_verdict {
     WrongModeObserved { observed } => file_mode_bits(mode: observed) == file_mode_bits(mode: zero_mode)
@@ -188,19 +203,21 @@ type BracketModeReadback {
 // observation IS its owed mode (file 600, directory 700), the accepted arms are the only arms with
 // an empty diagnostic, the paths come from the producer's own scoped root, and nothing sits under
 // target/.
+// The accepted arm's one check, parameterized by the owed FileMode (§6b). A refusal arm answers
+// false, so only an accepted arm carries its observation onward.
+fn verdict_accepted_against(verdict: SshKeyModeVerdict, owed: FileMode) -> Bool {
+  match verdict {
+    OwnerOnlyAccepted { observed } => file_mode_bits(mode: observed) == file_mode_bits(mode: owed)
+    WrongModeObserved { observed: _ } => false
+    ModeUnobservable { reason: _ } => false
+  }
+}
+
 fn bracket_readback_accepted(readback: BracketModeReadback) -> Bool {
-  let key_arm = match readback.key_verdict {
-    OwnerOnlyAccepted { observed } =>
-      file_mode_bits(mode: observed) == file_mode_bits(mode: ssh_key_owner_only_mode)
-    WrongModeObserved { observed: _ } => false
-    ModeUnobservable { reason: _ } => false
-  }
-  let dir_arm = match readback.dir_verdict {
-    OwnerOnlyAccepted { observed } =>
-      file_mode_bits(mode: observed) == file_mode_bits(mode: private_dir_owner_only_mode)
-    WrongModeObserved { observed: _ } => false
-    ModeUnobservable { reason: _ } => false
-  }
+  // One accepted-arm check, applied to each verdict with its owed mode (DESIGN §6b: one
+  // implementation, not a per-mode copy).
+  let key_arm = verdict_accepted_against(verdict: readback.key_verdict, owed: ssh_key_owner_only_mode)
+  let dir_arm = verdict_accepted_against(verdict: readback.dir_verdict, owed: private_dir_owner_only_mode)
   // Each refusal state is its own arm (no default) and each arrives HERE carrying its payload:
   // WrongModeObserved with the observed FileMode and a 'wrong-mode: <octal>' diagnostic,
   // ModeUnobservable with the producer's reason and an 'unobservable: <reason>' diagnostic — the
@@ -230,15 +247,21 @@ test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -
     content: secret,
     use: fn(key_path) {
       // Same classification fns, same producer, same arms as the pure test: the bracket calls
-      // ssh_key_mode_verdict / private_dir_mode_verdict on coreutils_stat_path_mode's output.
+      // owner_only_mode_verdict on coreutils_stat_path_mode's output, each against its owed FileMode.
       // A stat that cannot read arrives at the refusal site as ModeUnobservable CARRYING the
       // producer's reason; a wrong mode arrives as WrongModeObserved CARRYING the observed
       // FileMode. Neither refusal is the old collapsed ""-that-means-both, and neither path
       // (file nor directory) touches the retained shell bridge.
       let path = key_path as String
       let dir = replace(s: path, from: "/witness-bracket-key", to: "")
-      let key_verdict = ssh_key_mode_verdict(observation: ssh_key_file_mode_probe(path: path))
-      let dir_verdict = private_dir_mode_verdict(observation: ssh_key_file_mode_probe(path: dir))
+      let key_verdict = owner_only_mode_verdict(
+        observation: ssh_key_file_mode_probe(path: path),
+        owed: ssh_key_owner_only_mode
+      )
+      let dir_verdict = owner_only_mode_verdict(
+        observation: ssh_key_file_mode_probe(path: dir),
+        owed: private_dir_owner_only_mode
+      )
       BracketModeReadback {
         key_path: path,
         dir_path: dir,
