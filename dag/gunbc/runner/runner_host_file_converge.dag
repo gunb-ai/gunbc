@@ -2533,9 +2533,10 @@ fn write_reload_and_restart_admitted_over(
   // when memory.max, memory.swap.max and memory.high all read back from its live cgroup at the desired
   // bytes -- no carve-out for who wrote the drop-in. Value-disagreement is DEFERRED (only a pass dispatched
   // from ANOTHER slot can stop/start the holder), but the deferral is COUNTED on the host and BOUNDED
-  // (review 86146, finding 2): the ledger next to the obligation file counts consecutive deferred passes,
-  // past the fleet bound the same reading refuses red, and a converged holder clears the count. A ledger
-  // this pass cannot read defers UNCOUNTED, named as such -- never silently unbounded. A FAILED READ is a
+  // (review 86146, finding 2): the ledger in the holder's slot directory counts deferred passes, past
+  // the fleet bound the same reading refuses red, and a converged holder clears the count. A ledger this
+  // pass cannot read or write REFUSES red (review 86323, finding 1) and this pass resets it behind that
+  // loud step -- see holder_ledger_after_verdict. A FAILED READ of the live cgroup is likewise a
   // REFUSAL, not a deferral (review 86146, finding 1; DESIGN §5: a failure arm refuses, never widens).
   let holder_ledger = holder_deferral_ledger_read(host: subject.host as String, unit: holder)
   let holder_slot = slot_cap_holder_standing_over(target: subject.target, context: context, unit: holder, desired: desired, ledger: holder_ledger)

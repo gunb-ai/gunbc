@@ -589,17 +589,23 @@ data slot_cap_holder_cgroup_files: List<NonEmptyStr> = ["memory.max" as NonEmpty
 // host (the ledger the bracket module keeps next to the obligation file, gunbc.runner.runner_host_cap_bracket):
 // a holder may be deferred for at most slot_cap_holder_deferral_bound passes; past the bound the SAME
 // reading is a REFUSAL -- the run goes red, the obligation stays, and an operator sees the named
-// break-glass rung (systemctl set-property, operator-only, fleet slot rulings 2026-10-10). A ledger the
-// pass could not read defers UNCOUNTED, named as such on the wire -- uncounted is typed and greppable,
-// never silently counted and never silently unbounded.
+// break-glass rung (systemctl set-property, operator-only, fleet slot rulings 2026-10-10). A ledger
+// this pass cannot read also refuses (step holder-deferral-ledger): the bracket pass resets it behind
+// that loud red step (holder_ledger_after_verdict), so a corrupted count costs one red run -- never a
+// green the bound can never stop.
 type HolderDeferralLedger
   = LedgerFresh
   | LedgerCount { prior: Int }
   | LedgerUnwritable { cause: String }
 
 // THE FLEET'S DEFERRAL BOUND. srv3 and srv4 carry nineteen slots each and converge passes are frequent;
-// three CONSECUTIVE passes finding the same holder owed -- every one of them able to pick a different
-// slot -- is not placement luck any more, it is the stuck-placement case the bound exists to make red.
+// three passes finding the same holder owed -- every one of them able to pick a different slot -- is not
+// placement luck any more, it is the stuck-placement case the bound exists to make red. The count is
+// per-unit and durable, and ONLY a holder pass that finds the unit back at desired clears it; a slot
+// converged as an OWNED unit by ANOTHER slot's bracket keeps its old count, because that pass has no
+// reason to look at this unit's holder ledger. The safe direction holds: a stale count makes the bound
+// fire EARLY (a red run that names the disagreement and the break-glass rung), never late -- so the
+// bound can be strict, it can never be fooled into a permanent green.
 data slot_cap_holder_deferral_bound: Int = 3
 
 fn slot_cap_holder_deferral_outcome(ledger: HolderDeferralLedger, unit: NonEmptyStr, live: SlotCapLive, desired: RunnerSlotDesired) -> SlotCapOutcome

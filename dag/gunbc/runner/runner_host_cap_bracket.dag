@@ -1135,12 +1135,13 @@ fn acquire_bracket_over(target: SshTarget, context: FleetSshExecutionContext, ho
 // landing every pass on this same slot, the deferral must not be a permanent green. The count lives on
 // the HOST, in the holder's own slot directory (see holder_deferral_ledger_path: a per-run file could
 // not carry state across passes, and that is exactly the state this ledger exists to carry). It is
-// keyed to the
-// HOST AND THE UNIT: slot 02's debt is not slot 03's. A pass that finds the holder at desired DELETES the
-// file (convergence clears the debt); a pass that finds it owed increments the count; past the fleet bound
-// the cap module turns the same reading into a REFUSAL. A ledger this pass cannot read or write -- no
-// no slot directory for the unit, an unreadable file -- yields an UNCOUNTED deferral, typed as such: uncounted is greppable
-// and red-flagged on the wire, never silently treated as counted or unbounded.
+// keyed to the HOST AND THE UNIT: slot 02's debt is not slot 03's. A pass that finds the holder at
+// desired DELETES the file (convergence clears the debt); a pass that finds it owed increments the
+// count; past the fleet bound the cap module turns the same reading into a REFUSAL, and an unreadable
+// or stale-key ledger ALSO refuses -- this pass then resets it behind that loud red step (see
+// holder_ledger_after_verdict, review 86323). A slot converged as an OWNED unit by another slot's pass
+// keeps its old count: a stale count makes the bound fire EARLY -- a red run, fail-closed -- never late,
+// so the bound's safety property (no permanent green) survives even when only holder passes clear.
 type HolderDeferralLedgerFile {
   key: String
   deferred_passes: Int
@@ -1217,9 +1218,10 @@ fn holder_deferral_ledger_reading_of(observation: FilesystemFileObservation, exp
   }
 }
 
-// THE LEDGER READING, FOLDED TO THE CAP MODULE'S INPUT. Stale and unreadable both become UNCOUNTED (with
-// the cause named), never Fresh: a file that exists but cannot be trusted says the host HAS deferral
-// state this pass cannot see, and pretending freshness would restart the bound for free.
+// THE LEDGER READING, FOLDED TO THE CAP MODULE'S INPUT. Stale and unreadable both become UNWRITABLE
+// (with the cause named), never Fresh: a file that exists but cannot be trusted says the host HAS
+// deferral state this pass cannot see, and pretending freshness would restart the bound for free --
+// the fold on this reading REFUSES red, and the bracket pass resets the file behind that loud step.
 fn holder_deferral_ledger_read(host: String, unit: NonEmptyStr) -> HolderDeferralLedger
 {
   let key = holder_deferral_ledger_key(host: host, unit: unit as String)
