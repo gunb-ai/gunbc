@@ -37053,7 +37053,7 @@ pub fn emit_rust_equality_fn_name(r: Rc<DeclarationRef>) -> String {
                 "__eq_".to_string(),
                 crate::gunbc_rust_emitted_edge::module_to_filename(r.module_path.clone()),
             ),
-            "__".to_string(),
+            "_".to_string(),
         ),
         crate::v1_compiler_emit_core_support::to_snake(r.decl_name.clone()),
     )
