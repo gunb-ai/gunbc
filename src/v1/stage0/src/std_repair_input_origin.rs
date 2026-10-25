@@ -166,36 +166,36 @@ pub fn repair_input_origin_candidates(
     v1_rt::concat(
         source_origin_candidates(
             emitting_module.clone(),
-            unlisted_type_names.clone(),
+            unlisted_type_names,
             SourceCarrierOrigin::UnlistedTypeResolutionOrigin,
         ),
         v1_rt::concat(
             source_origin_candidates(
                 emitting_module.clone(),
-                value_reference_names.clone(),
+                value_reference_names,
                 SourceCarrierOrigin::ValueReferenceResolutionOrigin,
             ),
             v1_rt::concat(
                 source_origin_candidates(
                     emitting_module.clone(),
-                    item_emit_surface_names.clone(),
+                    item_emit_surface_names,
                     SourceCarrierOrigin::ItemEmitSurfaceOrigin,
                 ),
                 v1_rt::concat(
                     source_origin_candidates(
                         emitting_module.clone(),
-                        field_import_surface_names.clone(),
+                        field_import_surface_names,
                         SourceCarrierOrigin::FieldImportSurfaceOrigin,
                     ),
                     v1_rt::concat(
                         source_origin_candidates(
                             emitting_module.clone(),
-                            variant_payload_surface_names.clone(),
+                            variant_payload_surface_names,
                             SourceCarrierOrigin::VariantPayloadSurfaceOrigin,
                         ),
                         rendered_origin_candidates(
                             emitting_module.clone(),
-                            rendered_type_surface_names.clone(),
+                            rendered_type_surface_names,
                         ),
                     ),
                 ),

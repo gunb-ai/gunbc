@@ -5,13 +5,11 @@ import extdeps.pci.identity { PciVendorId, PciDeviceId }
 import std.types { NonEmptyStr, Bool, String, List, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.uri { Uri, Http, Tftp }
-import extdeps.provisioning.network_boot { UefiPxe, ProxyDhcp, NativeDhcpBootOptions }
+import extdeps.provisioning.network_boot { UefiPxe, ProxyDhcp, NativeDhcpBootOptions, FirmwareSignatureDatabase, network_boot_loader_chain_is_chainloader_only }
 import extdeps.systems.nvidia_dgx_spark_pxe {
   spark_pxe_bootloader_filename,
-  spark_pxe_tftp_relative_path,
+  spark_pxe_loader_chain,
   spark_pxe_http_install_image_path,
-  TftpBootloader,
-  TftpKernelImage,
   FastOsRecoveryTarball,
   DgxOsIsoImage,
   spark_fastos_unattended_kernel_cmdline,
@@ -73,7 +71,7 @@ data witness_dhcp_authority: DeclarationRef = decl_ref(
 
 data witness_tftp_endpoint: DeclarationRef = decl_ref(
   module_path: "extdeps.systems.nvidia_dgx_spark_pxe",
-  decl_name: "spark_pxe_tftp_relative_path",
+  decl_name: "spark_pxe_loader_chain",
 )
 
 data witness_http_endpoint: DeclarationRef = decl_ref(
@@ -86,8 +84,10 @@ test fn w_bootloader_filename_matches_cited_page() -> Bool {
 }
 
 test fn w_fastos_tftp_layout_matches_cited_page() -> Bool {
-  spark_pxe_tftp_relative_path(p: TftpBootloader, image: FastOsRecoveryTarball) == "grubnetaa64.efi.signed"
-    && spark_pxe_tftp_relative_path(p: TftpKernelImage, image: FastOsRecoveryTarball) == "fastos/vmlinuz"
+  (spark_pxe_loader_chain(image: FastOsRecoveryTarball).members.head.served_path as String) == "grubnetaa64.efi.signed"
+    && spark_pxe_loader_chain(image: FastOsRecoveryTarball).members.head.verifier == FirmwareSignatureDatabase
+    && map(spark_pxe_loader_chain(image: FastOsRecoveryTarball).members.tail, m => m.served_path as String) == ["grub/grub.cfg", "fastos/vmlinuz", "fastos/initrd"]
+    && !network_boot_loader_chain_is_chainloader_only(chain: spark_pxe_loader_chain(image: FastOsRecoveryTarball))
     && spark_pxe_http_install_image_path(image: FastOsRecoveryTarball) == "fastos/usb.customer.tar.gz"
 }
 
@@ -112,7 +112,7 @@ test fn w_unattended_boot_model_uses_uefi_pxe_not_http_boot() -> Bool {
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
     isolation: ProxyDhcpPxeOnly,
-    tftp_bootloader: spark_pxe_tftp_relative_path(p: TftpBootloader, image: FastOsRecoveryTarball),
+    tftp_bootloader: spark_pxe_bootloader_filename,
   ).network_chain.boot_mode {
     UefiPxe { tftp_root: _ } => true
     _ => false
@@ -302,7 +302,7 @@ test fn w_enrolled_bootloader_carries_to_boot_plan() -> Bool {
     },
   ) {
     SparkUnattendedPxeBootAdmitted { boot: b } =>
-      b.tftp_bootloader == "bootaa64.efi"
+      (b.loader_chain.members.head.served_path as String) == "bootaa64.efi"
     SparkUnattendedPxeBootRefused { reason: _ } =>
       false
   }
@@ -367,7 +367,7 @@ test fn w_admission_with_ready_standings_succeeds() -> Bool {
   ) {
     SparkUnattendedPxeBootAdmitted { boot: b } =>
       b.image_kind == FastOsRecoveryTarball
-        && b.tftp_kernel == "fastos/vmlinuz"
+        && any(b.loader_chain.members.tail, m => (m.served_path as String) == "fastos/vmlinuz")
         && match b.network_chain.dhcp_direction {
           ProxyDhcp => true
           NativeDhcpBootOptions => false

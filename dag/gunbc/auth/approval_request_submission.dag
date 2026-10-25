@@ -14,6 +14,7 @@ import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, Propos
 import gunbc.auth.approval_broker { SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled, SubmissionAuthorityNotPermittedForRequester, admit_submission, BrokerApproved, BrokerDenied }
 import gunbc.auth.approval_notification { approval_notification }
 import gunbc.auth.approval_ntfy_publish
+import gunbc.auth.approval_apns_publish { DevicePushTargets, ApnsSender, DeviceNotification, notify_devices, device_notification_sentence }
 import gunbc.auth.approval_broker_endpoint { approval_broker_confirm_path_prefix, ApprovalBrokerAddress, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
 import std.algebra { trim }
 import gunbc.auth.approval_status_wire {
@@ -249,9 +250,9 @@ fn approval_message(request: StoredApprovalRequest, links: LinkIssuance) -> Ntfy
 // ── filing and publishing ──────────────────────────────────────────────────────────────────────
 
 type SubmissionOutcome
-  = SubmissionFiledAndNotified { escalation_id: NonEmptyStr, message_id: NonEmptyStr }
-  | SubmissionFiledNotNotified { escalation_id: NonEmptyStr, publish: NtfyPublishOutcome }
-  | SubmissionFiledPublisherTokenUnavailable { escalation_id: NonEmptyStr, detail: String }
+  = SubmissionFiledAndNotified { escalation_id: NonEmptyStr, message_id: NonEmptyStr, devices: DeviceNotification }
+  | SubmissionFiledNotNotified { escalation_id: NonEmptyStr, publish: NtfyPublishOutcome, devices: DeviceNotification }
+  | SubmissionFiledPublisherTokenUnavailable { escalation_id: NonEmptyStr, detail: String, devices: DeviceNotification }
   | SubmissionFiledLinksNotIssued { escalation_id: NonEmptyStr, key_id: MacKeyId }
   | SubmissionFiledBrokerAddressRefused { escalation_id: NonEmptyStr, detail: NonEmptyStr }
   | SubmissionAlreadyFiled { escalation_id: NonEmptyStr }
@@ -261,9 +262,9 @@ type SubmissionOutcome
 
 fn submission_outcome_admits_poll(o: SubmissionOutcome) -> Bool {
   match o {
-    SubmissionFiledAndNotified { escalation_id: _, message_id: _ } => true
-    SubmissionFiledNotNotified { escalation_id: _, publish: _ } => true
-    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => true
+    SubmissionFiledAndNotified { escalation_id: _, message_id: _, devices: _ } => true
+    SubmissionFiledNotNotified { escalation_id: _, publish: _, devices: _ } => true
+    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _, devices: _ } => true
     SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => false
     SubmissionFiledBrokerAddressRefused { escalation_id: _, detail: _ } => false
     SubmissionAlreadyFiled { escalation_id: _ } => true
@@ -279,9 +280,9 @@ fn submission_outcome_http_body(o: SubmissionOutcome) -> String {
 
 fn submission_outcome_reason(o: SubmissionOutcome) -> String {
   match o {
-    SubmissionFiledAndNotified { escalation_id: e, message_id: m } => join(["filed ", e as String, " and notified (ntfy message ", m as String, ")"], "")
-    SubmissionFiledNotNotified { escalation_id: e, publish: p } => join(["filed ", e as String, " but the notification is not confirmed published (a re-submission re-notifies the same request): ", ntfy_publish_outcome_sentence(o: p)], "")
-    SubmissionFiledPublisherTokenUnavailable { escalation_id: e, detail: d } => join(["filed ", e as String, " but the publisher token is unavailable: ", d], "")
+    SubmissionFiledAndNotified { escalation_id: e, message_id: m, devices: n } => join(["filed ", e as String, " and notified (ntfy message ", m as String, "); ", device_notification_sentence(n: n)], "")
+    SubmissionFiledNotNotified { escalation_id: e, publish: p, devices: n } => join(["filed ", e as String, " but the notification is not confirmed published (a re-submission re-notifies the same request): ", ntfy_publish_outcome_sentence(o: p), "; ", device_notification_sentence(n: n)], "")
+    SubmissionFiledPublisherTokenUnavailable { escalation_id: e, detail: d, devices: n } => join(["filed ", e as String, " but the publisher token is unavailable: ", d, "; ", device_notification_sentence(n: n)], "")
     SubmissionFiledLinksNotIssued { escalation_id: e, key_id: k } => join(["filed ", e as String, " but no link could be issued under key ", k as String], "")
     SubmissionFiledBrokerAddressRefused { escalation_id: e, detail: d } => join(["filed ", e as String, " but no link could be issued: ", d as String], "")
     SubmissionAlreadyFiled { escalation_id: e } => join(["escalation ", e as String, " is already filed"], "")
@@ -308,6 +309,8 @@ fn submission_outcome_reason(o: SubmissionOutcome) -> String {
 fn notify_filed(
   capability_keyring: ApprovalKeyringRead,
   publisher: PublisherTokenRead,
+  devices: DevicePushTargets,
+  sender: ApnsSender,
   request: StoredApprovalRequest,
   broker: ApprovalBrokerAddress,
 ) -> SubmissionOutcome {
@@ -319,13 +322,17 @@ fn notify_filed(
       LinksNotIssued { key_id: k } => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: k }
       links => match approval_message(request: request, links: links) {
         Absent => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: key.id }
-        Present { value: message } => match publish_notification(message: message, publisher: publisher) {
-          NotificationPublisherTokenUnavailable { detail: d } => SubmissionFiledPublisherTokenUnavailable { escalation_id: request.escalation_id, detail: d }
-          NotificationAttempted { publish: p, acceptance: a } => match a {
-            NtfyAccepted { message_id: Present { value: m } } => SubmissionFiledAndNotified { escalation_id: request.escalation_id, message_id: m }
-            NtfyAccepted { message_id: Absent } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
-            NtfyRefusedExplicitly { status: _, detail: _ } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
-            NtfyAcceptanceIndeterminate { detail: _ } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
+        Present { value: message } => {
+          let published = publish_notification(message: message, publisher: publisher)
+          let pushed = notify_devices(targets: devices, sender: sender, escalation_id: request.escalation_id)
+          match published {
+            NotificationPublisherTokenUnavailable { detail: d } => SubmissionFiledPublisherTokenUnavailable { escalation_id: request.escalation_id, detail: d, devices: pushed }
+            NotificationAttempted { publish: p, acceptance: a } => match a {
+              NtfyAccepted { message_id: Present { value: m } } => SubmissionFiledAndNotified { escalation_id: request.escalation_id, message_id: m, devices: pushed }
+              NtfyAccepted { message_id: Absent } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p, devices: pushed }
+              NtfyRefusedExplicitly { status: _, detail: _ } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p, devices: pushed }
+              NtfyAcceptanceIndeterminate { detail: _ } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p, devices: pushed }
+            }
           }
         }
       }
@@ -398,18 +405,20 @@ fn file_and_notify(
   root: NonEmptyStr,
   capability_keyring: ApprovalKeyringRead,
   publisher: PublisherTokenRead,
+  devices: DevicePushTargets,
+  sender: ApnsSender,
   request: StoredApprovalRequest,
   broker: ApprovalBrokerAddress,
 ) -> SubmissionOutcome {
   match file_approval_request(root: root, request: request) {
     StoreSlotOccupied =>
       match occupied_slot_standing(slot: observe_escalation(root: root, escalation_id: request.escalation_id), request: request) {
-        OccupiedRenotifiable => notify_filed(capability_keyring: capability_keyring, publisher: publisher, request: request, broker: broker)
+        OccupiedRenotifiable => notify_filed(capability_keyring: capability_keyring, publisher: publisher, devices: devices, sender: sender, request: request, broker: broker)
         OccupiedConflict => SubmissionAlreadyFiled { escalation_id: request.escalation_id }
         OccupiedUnreadable { detail: d } => SubmissionStoreRefused { detail: d }
       }
     StoreRefused { detail: d } => SubmissionStoreRefused { detail: d }
-    StoreWritten => notify_filed(capability_keyring: capability_keyring, publisher: publisher, request: request, broker: broker)
+    StoreWritten => notify_filed(capability_keyring: capability_keyring, publisher: publisher, devices: devices, sender: sender, request: request, broker: broker)
   }
 }
 
@@ -425,12 +434,14 @@ fn submit_parsed_submission(
   submission_keyring: ApprovalKeyringRead,
   capability_keyring: ApprovalKeyringRead,
   publisher: PublisherTokenRead,
+  devices: DevicePushTargets,
+  sender: ApnsSender,
   tag_hex: NonEmptyStr,
   request: StoredApprovalRequest,
   broker: ApprovalBrokerAddress,
 ) -> SubmissionOutcome {
   match admit_parsed_submission(tag_hex: tag_hex, request: request, keyring: submission_keyring) {
-    SubmissionVerified { request: r } => file_and_notify(root: root, capability_keyring: capability_keyring, publisher: publisher, request: r, broker: broker)
+    SubmissionVerified { request: r } => file_and_notify(root: root, capability_keyring: capability_keyring, publisher: publisher, devices: devices, sender: sender, request: r, broker: broker)
     SubmissionNotAdmitted { refusal: refused } => SubmissionRefused { refusal: refused }
   }
 }

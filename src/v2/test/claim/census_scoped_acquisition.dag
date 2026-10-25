@@ -213,7 +213,8 @@ fn cross_layout() -> SourceStorageLayout {
   source_storage_layout(
     namespace_roots: [StorageNamespaceRoot { namespace: "v2", tree: V2Tree, elides_namespace: true }],
     default_tree: DagTree,
-    namespace_rows: ["v2.cx"]
+    namespace_rows: ["v2.cx"],
+    derived_rosters: []
   )
 }
 
