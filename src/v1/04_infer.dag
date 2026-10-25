@@ -1767,7 +1767,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
-  else if product_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
+  else if value_at_scalar_declared_type(declared: declared, produced: produced, env: scope.type_env) {
     declared_type_obligation_diags(
       obligation: DeclaredTypeObligation {
         position: position, subject: subject, declared: declared, produced: produced, span: span
@@ -3443,9 +3443,13 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
 // same declared type now receive the SAME verdict, which is the DESIGN section 4b floor: values
 // inhabit their DECLARED types, not their literal spellings.
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
-  kernel_value_declared_type_mismatch_bounded(
-    formal: formal, actual: actual, type_env: type_env, source_indices: source_indices,
-    formal_name_override: "", depth: 0)
+  if declared_head_is_kernel_scalar_through_refinement(declared: formal, env: type_env) {
+    value_at_scalar_declared_type(declared: formal, produced: actual, env: type_env)
+  } else {
+    kernel_value_declared_type_mismatch_bounded(
+      formal: formal, actual: actual, type_env: type_env, source_indices: source_indices,
+      formal_name_override: "", depth: 0)
+  }
 }
 
 // The produced side is peeled to its where-refinement base exactly as the declared side is, so a
@@ -3483,7 +3487,7 @@ fn kernel_value_declared_type_mismatch_bounded(
         false
       } else {
         if is_kernel_type(name: formal_name) {
-          true
+          value_at_scalar_declared_type(declared: formal_base, produced: actual, env: type_env)
         } else {
           match lookup_type_by_name(env: type_env, name: formal_name) {
             Present { value: decl } =>
@@ -3515,14 +3519,18 @@ fn kernel_value_declared_type_mismatch_bounded(
 }
 
 fn expected_type_head_exposure(formal: Node, scope: InferScope) -> TypeHeadExposure {
-  let source_indices = scope.type_env.source_indices
+  expected_type_head_exposure_in(formal: formal, env: scope.type_env)
+}
+
+fn expected_type_head_exposure_in(formal: Node, env: TypeEnv) -> TypeHeadExposure {
+  let source_indices = env.source_indices
   let direct = exposure_view_for_node(n: formal, source_indices: source_indices)
   match direct {
     ExposedTypeHead { view: _ } => direct
     MalformedApplicationHead { cause: _ } => direct
     _ => {
       let identity = type_reference_identity(n: formal, source_indices: source_indices)
-      match map_get(scope.type_env.symbol_index.type_head_exposures, identity) {
+      match map_get(env.symbol_index.type_head_exposures, identity) {
         Present { value: exposure } => exposure
         Absent => direct
       }
@@ -4369,7 +4377,7 @@ type InhabitanceRefusalReason
   | RefusedDistinctProductConstructor
   | RefusedDistinctAppliedTypeArgument
   | RefusedOptionalAtRequired
-  | RefusedProductAtScalar
+  | RefusedValueAtScalar
   | RefusedValueAtNever
 
 
@@ -4664,8 +4672,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     Inhabits
   } else if collection_versus_established_identity(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedCollectionAtEstablishedIdentity }
-  } else if product_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
-    InhabitanceRefused { reason: RefusedProductAtScalar }
+  } else if value_at_scalar_declared_type(declared: declared, produced: produced, env: scope.type_env) {
+    InhabitanceRefused { reason: RefusedValueAtScalar }
   } else if product_versus_coproduct_head_mismatch(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedProductCoproductHeadMismatch }
   } else {
@@ -4891,22 +4899,83 @@ fn collection_versus_established_identity(declared: Node, produced: Node, scope:
   }
 }
 
-// A PRODUCT NEVER INHABITS A KERNEL SCALAR, NOR A WHERE-REFINEMENT OF ONE
-// (gunbc.recurring_failure_mode product_value_at_a_scalar_formal_is_accepted). Both heads are read
-// from expected_type_head_exposure, which is keyed on DECLARATION IDENTITY (declaring file plus
-// name, via the resolved declaration node) and never on a bare spelling, so the std.types FilePath
-// (a String refinement) / v2.extdeps.file_system FilePath (a record) homonym pair that made
-// gunbc#9706 decline this judgment is judged by declaration: each side's head is the exposure of
-// the declaration it resolved to. Before this, the arm answered UndecidableProducedIdentityErased
-// (an advisory) at a plain kernel formal, and at a refined formal such as std.types EpochMs it did
-// not fire at all, because a where-refinement exposes OpaqueTypeHead and the pair fell through to
-// Inhabits. The refined declared type is therefore judged through its base carrier: the modeled
-// where_refinement_chain names it, and an UNREFINED product cannot reach the base by any link.
-// A produced value that is itself a refinement exposes OpaqueTypeHead and is not judged here --
-// refinement_inhabitance and the produced-side peel own that pair.
-fn product_at_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
-  type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: produced, scope: scope))
-    && declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope)
+// ONE SCALAR-FORMAL RULE, DECIDED FROM THE FORMAL'S DECLARATION (gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel; product_value_at_a_scalar_formal_is_accepted).
+// A formal whose head is a kernel scalar, directly or through a where-refinement, is inhabited by a
+// produced value with a resolved head (a kernel scalar, a product or a coproduct) only when that value
+// IS the formal (scalar_formal_identity) or crosses into it by a declared implicit-safe route
+// (scalar_formal_crossing). The produced value's KIND decides nothing: a record, a coproduct, a user
+// Nat or Opt<T>, Unit and a different kernel scalar are refused by this one arm. It replaces two
+// leaves that each keyed on the produced kind -- product_at_scalar_declared_type judged only a PRODUCT,
+// and kernel_value_declared_type_mismatch's scalar branch only a KERNEL-NAMED actual -- so a coproduct
+// reached a String formal at every slot and was accepted (gunbc#15057), and a record or Unit was
+// accepted at a record-literal field, whose seam consulted only the kernel-named branch. Its three
+// consumers are declared_type_conformance_diags, declared_type_inhabitance and, through
+// kernel_value_declared_type_mismatch, every seam that relation serves (the record-literal field, the
+// list-literal element, the direct call argument). AN OPTIONAL PRODUCED VALUE IS NOT JUDGED HERE:
+// `none` is the unit placeholder carrying CardOptional, and absence at an optional formal is the
+// cardinality relation's (gunbc.design_ruling dag_absence_is_one_meaning); an optional FORMAL is
+// judged at its payload, so `5` at `String?` still refuses. An unresolved, generic, opaque or refined
+// produced head is not judged here either: refinement_inhabitance and the produced-side peel own it.
+fn value_at_scalar_declared_type(declared: Node, produced: Node, env: TypeEnv) -> Bool {
+  if produced.return_cardinality == CardOptional || !declared_head_is_kernel_scalar_through_refinement(declared: declared, env: env) {
+    false
+  } else {
+    let produced_exposure = expected_type_head_exposure_in(formal: produced, env: env)
+    let produced_head_resolved = type_head_exposure_is_kernel_scalar(exposure: produced_exposure)
+      || type_head_exposure_is_product(exposure: produced_exposure)
+      || type_head_exposure_is_coproduct(exposure: produced_exposure)
+    let base = scalar_formal_base(declared: declared, env: env)
+    produced_head_resolved
+      && !scalar_formal_identity(formal: base, produced: produced, env: env)
+      && !scalar_formal_crossing(formal: base, produced: produced, env: env)
+  }
+}
+
+// The kernel scalar a scalar formal stands for: the formal itself, or the base its where-refinement
+// chain names (peel_where_refinement_base), so `"x"` at NonEmptyStr is judged against String here and
+// the refinement's introduction is left to refinement_inhabitance.
+fn scalar_formal_base(declared: Node, env: TypeEnv) -> Node {
+  let required = with_required_cardinality(n: declared)
+  if type_head_exposure_is_kernel_scalar(exposure: expected_type_head_exposure_in(formal: required, env: env)) {
+    required
+  } else {
+    let resolved = match lookup_type_for(env: env, node: required) {
+      Present { value: r } => r
+      Absent => required
+    }
+    peel_where_refinement_base(ty: resolved, type_env: env)
+  }
+}
+
+// THE ONE IDENTITY TEST of the scalar-formal rule: is the produced value the formal itself? It is the
+// corpus identity relation, v1.compiler.infer_types alias_identity_in_judgment over settled_type, and
+// nothing beside it. For a kernel-scalar formal no declaration-versus-declaration question arises: a
+// declaration standing for a kernel type is the CROSSING relation's question (scalar_formal_crossing).
+// DISSOLUTION: when v1.compiler.infer_types type_identity_verdict mints kernel identity (gunbc#15091 and
+// sunny-deer-180's follow-up), this body becomes `type_identity_verdict(left: formal, right: produced, ..)`
+// read as IdentitySame, and IdentityUnknown keeps meaning "not refused here".
+fn scalar_formal_identity(formal: Node, produced: Node, env: TypeEnv) -> Bool {
+  alias_identity_in_judgment(left: formal, right: produced, source_indices: env.source_indices, text: TextJudgedIn { env: env })
+}
+
+// THE IMPLICIT-SAFE CROSSINGS into a kernel-scalar formal that a different produced head may take: the
+// declared dag_can_cast rows (Int <-> Float), a kernel-grounded carrier or its transparent alias
+// (produced_is_kernel_grounded_carrier_or_its_alias), and the shared structural-carrier template. These
+// are the admissions kernel_value_declared_type_mismatch already granted, consumed rather than restated.
+// KNOWN RESIDUAL, stated so no RED is read as covering it: the name arm and the grounded-carrier arm
+// decide by SPELLING, so a reference spelled `Int` is admitted as the kernel Int even where its module
+// binds Int to another declaration (measured by valiant-badger-855). TRIGGER: the
+// kernel_grounding_crossing rows for kernel scalars land (the #14769 + #15033 + crossing stack); this
+// body then becomes a lookup in those rows, keyed on both declarations.
+fn scalar_formal_crossing(formal: Node, produced: Node, env: TypeEnv) -> Bool {
+  let si = env.source_indices
+  let formal_name = authored_name_at(source_indices: si, node: formal)
+  let produced_name = authored_name_at(source_indices: si, node: produced)
+  qualified_last_segment(name: formal_name) == qualified_last_segment(name: produced_name)
+    || dag_can_cast(source_type: produced_name, target_type: formal_name)
+    || produced_is_kernel_grounded_carrier_or_its_alias(declared_name: formal_name, produced_name: produced_name, env: env)
+    || structural_carrier_template_name(n: formal, source_indices: si) == structural_carrier_template_name(n: produced, source_indices: si)
 }
 
 // A VALUE NEVER INHABITS NEVER. Never has no producer, so any produced value that is not itself
@@ -4936,18 +5005,19 @@ fn value_at_never_declared_type(declared: Node, produced: Node, scope: InferScop
     && !node_is_never_declaration(resolved: produced_resolved, env: env)
 }
 
-fn declared_head_is_kernel_scalar_through_refinement(declared: Node, scope: InferScope) -> Bool {
-  if type_head_exposure_is_kernel_scalar(exposure: expected_type_head_exposure(formal: declared, scope: scope)) {
+fn declared_head_is_kernel_scalar_through_refinement(declared: Node, env: TypeEnv) -> Bool {
+  let required = with_required_cardinality(n: declared)
+  if type_head_exposure_is_kernel_scalar(exposure: expected_type_head_exposure_in(formal: required, env: env)) {
     true
   } else {
-    let resolved = match lookup_type_for(env: scope.type_env, node: declared) {
+    let resolved = match lookup_type_for(env: env, node: required) {
       Present { value: r } => r
-      Absent => declared
+      Absent => required
     }
     is_where_refinement_type(ty: resolved)
       && type_head_exposure_is_kernel_scalar(
-        exposure: expected_type_head_exposure(
-          formal: peel_where_refinement_base(ty: resolved, type_env: scope.type_env), scope: scope))
+        exposure: expected_type_head_exposure_in(
+          formal: peel_where_refinement_base(ty: resolved, type_env: env), env: env))
   }
 }
 
@@ -7813,7 +7883,7 @@ fn algebra_method_host_text_crossing_diags(method_name: String, semantics: Metho
 // has no declared conversion to any target; abstaining here (the is_dag_cast_domain_type arms
 // below) let v1_interpreter eval_cast supply a route no declaration owns, the host's debug text.
 // source_is_nominal is the head exposure of the source's declaration identity, the same authority
-// product_at_scalar_declared_type reads, never a bare spelling.
+// value_at_scalar_declared_type reads, never a bare spelling.
 // A CAST FROM A GROUNDED CARRIER IS DECIDED BY THE DERIVED CROSSING, keyed on both declarations
 // (std.literal_elaboration kernel_grounding_crossing over gunbc.structural_realization_bindings
 // kernel_grounding_rows): onto another grounded carrier it is admitted exactly when the source's extent lies
