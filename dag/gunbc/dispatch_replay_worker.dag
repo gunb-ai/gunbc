@@ -7,7 +7,7 @@ import extdeps.git
 import extdeps.git.plumbing { GitWorktreeAt, GitRepositoryAddress }
 import gunbc.dispatch_replay_recording {
   RecordingId, recording_id_decode, RecordingIdDecoded, RecordingIdMalformed,
-  recording_ref_of, replay_refusal_exit_code, recording_peel_to_tree_suffix, recording_replay_admission, RecordingReplayAdmitted, RecordingReplayBaseMismatch,
+  recording_ref_of, replay_refusal_exit_code, RecordedSuccess, RecordedExitCode, recording_object_hex, recording_peel_to_tree_suffix, recording_replay_admission, RecordingReplayAdmitted, RecordingReplayBaseMismatch,
 }
 
 // THE REPLAY WORKER: what the replay executor runs inside the same transient unit, as the same gunbc-worker
@@ -21,10 +21,9 @@ import gunbc.dispatch_replay_recording {
 // ref's tree must equal the id's tree; any other answer exits 78 with the typed cause and leaves the worktree
 // untouched, never rebasing or merging toward the recording.
 fn replay_recorded_exit(id: RecordingId) -> ProcessExit {
-  if id.exit_status == 0 {
-    ExitSuccess
-  } else {
-    ExitFailure { code: id.exit_status, reason: "replayed the recorded nonzero exit" }
+  match id.end {
+    RecordedSuccess => ExitSuccess
+    RecordedExitCode { status } => ExitFailure { code: status, reason: "replayed the recorded nonzero exit" }
   }
 }
 
@@ -45,8 +44,8 @@ fn replay_worker_admit(worktree: String, id: RecordingId) -> ProcessExit {
   let head_read = git.Plumbing.ObserveRef(address: address, ref_name: "HEAD")
   if !(tree_read.exit_code == 0) {
     replay_refused(reason: join(["the recording ref ", recording_ref_of(id: id), " could not be read (git exit ", to_string(tree_read.exit_code), "): ", trim(s: tree_read.stderr)], ""))
-  } else if trim(s: tree_read.revision) != (id.result_tree as String) {
-    replay_refused(reason: join(["the recording ref ", recording_ref_of(id: id), " does not resolve to the recorded tree ", id.result_tree as String], ""))
+  } else if trim(s: tree_read.revision) != recording_object_hex(oid: id.result_tree) {
+    replay_refused(reason: join(["the recording ref ", recording_ref_of(id: id), " does not resolve to the recorded tree ", recording_object_hex(oid: id.result_tree)], ""))
   } else if !(head_read.exit_code == 0) {
     replay_refused(reason: join(["the attempt's HEAD could not be read (git exit ", to_string(head_read.exit_code), "), so its base is not established: ", trim(s: head_read.stderr)], ""))
   } else {
@@ -59,7 +58,7 @@ fn replay_worker_admit(worktree: String, id: RecordingId) -> ProcessExit {
 }
 
 fn replay_worker_apply(address: GitRepositoryAddress, id: RecordingId) -> ProcessExit {
-  let reset = git.Plumbing.ResetWorktreeToTree(address: address, treeish: id.result_tree as String)
+  let reset = git.Plumbing.ResetWorktreeToTree(address: address, treeish: recording_object_hex(oid: id.result_tree))
   if !(reset.exit_code == 0) {
     replay_refused(reason: join(["forcing the worktree to the recorded tree failed: ", trim(s: reset.stderr)], ""))
   } else {
