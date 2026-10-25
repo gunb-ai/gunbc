@@ -862,7 +862,7 @@ fn yaml_map_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
   let entries = flat_map(reads, r => match r { YamlEntryAccepted { entry: e } => [e]  YamlEntryRefused { line: _, reason: _ } => [] })
   if (entries |> count) != (chunks |> count) {
     yaml_first_entry_refusal(chunks: chunks, reads: reads, index: 0, line: base)
-  } else if yaml_key_sequence_is_clean(keys: join(map(entries, e => e.key), yaml_key_separator), count: entries |> count) {
+  } else if yaml_key_sequence_is_clean(keys: join(map(entries, e => e.key), yaml_key_separator), expected_count: entries |> count) {
     YamlBlockParsed { value: YamlMapping { entries: entries } }
   } else {
     yaml_map_block_keys(chunks: chunks, entries: entries, base: base)
@@ -875,12 +875,12 @@ fn yaml_map_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
 data yaml_key_separator: String = "\u{3}"
 
 // True exactly when the spelled keys split back into `count` keys and no key repeats.
-fn yaml_key_sequence_is_clean(keys: String, count: Int) -> Bool {
+fn yaml_key_sequence_is_clean(keys: String, expected_count: Int) -> Bool {
   let ks = split(s: keys, delimiter: yaml_key_separator)
-  if (ks |> count) != count {
+  if (ks |> count) != expected_count {
     false
   } else {
-    (map_keys(fold(ks, init: empty_map(), f: (m, k) => map_insert(m, k, true))) |> count) == count
+    (map_keys(fold(ks, init: empty_map(), f: (m, k) => map_insert(m, k, true))) |> count) == expected_count
   }
 }
 

@@ -299,8 +299,8 @@ type PackageContactMapStanding
   | DuplicateContactDesignator { designator: NonEmptyStr }
   | IncompleteDifferentialPolarity { pair: NonEmptyStr }
 
-fn contact_designators(map: PackageContactMap) -> List<NonEmptyStr> {
-  map.contacts |> map(c => c.designator)
+fn contact_designators(contact_map: PackageContactMap) -> List<NonEmptyStr> {
+  contact_map.contacts |> map(c => c.designator)
 }
 
 fn contact_count(map: PackageContactMap) -> Int {
@@ -494,7 +494,7 @@ fn first_duplicate_designator(designators: List<NonEmptyStr>) -> NonEmptyStr? {
 fn admit_package_contact_map(map: PackageContactMap, expected: Int) -> PackageContactMapStanding {
   match first_incomplete_polarity_pair(contacts: map.contacts) {
     Present { value: pair } => IncompleteDifferentialPolarity { pair: pair }
-    Absent => match first_duplicate_designator(designators: contact_designators(map: map)) {
+    Absent => match first_duplicate_designator(designators: contact_designators(contact_map: map)) {
       Present { value: dup } => DuplicateContactDesignator { designator: dup }
       Absent => {
         let resolved = contact_count(map: map)
