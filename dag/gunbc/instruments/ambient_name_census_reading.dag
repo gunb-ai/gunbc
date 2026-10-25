@@ -5,6 +5,7 @@ import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional, colle
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.source_layout { layout_module_storage_path }
+import gunbc.rung_drop.ambient_name_census_carried_refusals { ambient_census_listed_new_modules }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.instruments.namespace_wave_binding_shard { shard_owned_rewritten }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitCall, AmbientNameKitType, ambient_name_homes, ambient_name_candidates }
@@ -389,6 +390,16 @@ fn refused_by_carried_dependency(cause_rows: List<String>, carried: List<String>
   count(mine) != 0 && count(unexplained) == 0
 }
 
+// THE EDGE MUST EXIST AT THE BASE: a module the base resolved (or refused) has its imports at the base, so one that resolved
+// there and is refused now gained the edge in this change and is newly refused. Only a module ABSENT at the base has no base
+// edge to compare, and it classifies as a cascade solely when it is on the closed identity list the declared rung drop
+// (gunbc.rung_drop ambient_name_census_new_modules_on_carried_declarer) carries; any other new module is newly refused.
+fn absent_at_base(module: String, base_probed: String, base_stdout: String) -> Bool {
+  count(split(s: base_probed, delimiter: "\n") |> filter(l => l == module)) == 0
+    && (match map_get(observed_modules(tree_stdout: base_stdout), module) { Present { value: _ } => false  Absent => true })
+    && count(unreached_lines(stdout: base_stdout) |> filter(l => field_at(line: l, index: 1) == module)) == 0
+}
+
 fn ambient_name_census_standing(
   fixture_stdout: String,
   fixture_status: Int,
@@ -398,6 +409,20 @@ fn ambient_name_census_standing(
   rewritten: String,
   base_stdout: String,
   base_probed: String
+) -> CliWireResponse {
+  ambient_name_census_standing_listing(fixture_stdout: fixture_stdout, fixture_status: fixture_status, unindexed_status: unindexed_status, tree_stdout: tree_stdout, tree_runs: tree_runs, rewritten: rewritten, base_stdout: base_stdout, base_probed: base_probed, listed: ambient_census_listed_new_modules)
+}
+
+fn ambient_name_census_standing_listing(
+  fixture_stdout: String,
+  fixture_status: Int,
+  unindexed_status: Int,
+  tree_stdout: String,
+  tree_runs: String,
+  rewritten: String,
+  base_stdout: String,
+  base_probed: String,
+  listed: List<String>
 ) -> CliWireResponse {
   // EVERY module-level row is printed, not only the ambient ones: this output is also the base or head
   // half the namespace-wave binding diff reads (gunbc.instruments.namespace_wave_binding_diff), which
@@ -420,7 +445,7 @@ fn ambient_name_census_standing(
   // at the head leaves refused_rewritten, and a module the base did not refuse is newly_refused, not carried.
   let carried = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { PreviouslyRefused => true  _ => false })
   let cause_rows = distinct_lines(lines: split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_refusal_cause\t")))
-  let cascaded = newly_candidates |> filter(m => refused_by_carried_dependency(cause_rows: cause_rows, carried: carried, base_stdout: base_stdout, base_probed: base_probed, module: m))
+  let cascaded = newly_candidates |> filter(m => count(listed |> filter(x => x == m)) != 0 && absent_at_base(module: m, base_probed: base_probed, base_stdout: base_stdout) && refused_by_carried_dependency(cause_rows: cause_rows, carried: carried, base_stdout: base_stdout, base_probed: base_probed, module: m))
   let newly_refused = newly_candidates |> filter(m => count(cascaded |> filter(c => c == m)) == 0)
   let failed = failed_subject_runs(tree_runs: tree_runs)
   let attribution = module_subject_attribution(tree_stdout: tree_stdout)
