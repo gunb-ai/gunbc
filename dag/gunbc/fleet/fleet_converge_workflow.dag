@@ -2,6 +2,7 @@ module gunbc.fleet.fleet_converge_workflow
 
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
+import gunbc.host.export_host_reader_converge { export_host_reader_receipt_path }
 import gunbc.host.boot_medium_reader_key_mint { boot_medium_reader_key_mint_receipt_path }
 import gunbc.fleet.flex_pass_run { flex_pass_receipt_path }
 import product.fabric.flex_vast_template_control { flex_vast_template_receipt_path }
@@ -112,7 +113,7 @@ import gunbc.host.managed_host_unit_hold {
   UnitHoldHostAdmission, UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired, UnitHoldHostUndecided,
   unit_hold_admission_for, unit_hold_host_admission_refusal,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1, operator_host_srv2 }
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gcp_iam_observe_wif_provider_resource }
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account }
 import gunbc.auth.gcp_operation_wait { iam_converge_token_lifetime }
@@ -166,6 +167,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_r2_workspace_object_write_mint_invoke,
   gunbc_ci_r2_cache_object_read_mint_invoke,
   gunbc_ci_hetzner_cloud_server_read_invoke,
+  gunbc_ci_export_host_reader_converge_invoke,
   gunbc_ci_boot_medium_reader_key_mint_invoke,
   gunbc_ci_flex_pass_invoke,
   gunbc_ci_flex_template_ensure_invoke,
@@ -349,6 +351,7 @@ type FleetConvergeWorkflowMode
   | R2WorkspaceObjectWriteMint
   | R2CacheObjectReadMint
   | HetznerCloudServerRead
+  | ExportHostReaderConverge
   | BootMediumReaderKeyMint
   | FlexPass
   | FlexTemplateEnsure
@@ -426,6 +429,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     R2WorkspaceObjectWriteMint => "r2_workspace_object_write_mint"
     R2CacheObjectReadMint => "r2_cache_object_read_mint"
     HetznerCloudServerRead => "hetzner_cloud_server_read"
+    ExportHostReaderConverge => "export_host_reader_converge"
     BootMediumReaderKeyMint => "boot_medium_reader_key_mint"
     FlexPass => "flex_pass"
     FlexTemplateEnsure => "flex_template_ensure"
@@ -477,7 +481,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -531,6 +535,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     R2WorkspaceObjectWriteMint => SixteenBinaryPack
     R2CacheObjectReadMint => SixteenBinaryPack
     HetznerCloudServerRead => SixteenBinaryPack
+    ExportHostReaderConverge => SixteenBinaryPack
     BootMediumReaderKeyMint => SixteenBinaryPack
     FlexPass => SixteenBinaryPack
     FlexTemplateEnsure => SixteenBinaryPack
@@ -644,6 +649,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     R2WorkspaceObjectWriteMint => none
     R2CacheObjectReadMint => none
     HetznerCloudServerRead => none
+    ExportHostReaderConverge => none
     BootMediumReaderKeyMint => none
     FlexPass => none
     FlexTemplateEnsure => none
@@ -792,6 +798,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2WorkspaceObjectWriteMint => FleetSshKeyNotConsumed
     R2CacheObjectReadMint => FleetSshKeyNotConsumed
     HetznerCloudServerRead => FleetSshKeyNotConsumed
+    ExportHostReaderConverge => FleetSshKeyConsumed
     BootMediumReaderKeyMint => FleetSshKeyNotConsumed
     FlexPass => FleetSshKeyNotConsumed
     FlexTemplateEnsure => FleetSshKeyNotConsumed
@@ -1654,6 +1661,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     R2WorkspaceObjectWriteMint => ExecutorDomain
     R2CacheObjectReadMint => ExecutorDomain
     HetznerCloudServerRead => ExecutorDomain
+    ExportHostReaderConverge => SubjectDomain { group: concat(fleet_host_mutation_group_prefix, operator_host_srv2 as String) }
     BootMediumReaderKeyMint => ExecutorDomain
     FlexPass => SubjectDomain { group: fleet_converge_flex_vast_account_group }
     FlexTemplateEnsure => SubjectDomain { group: fleet_converge_flex_vast_account_group }
@@ -4646,6 +4654,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_r2_workspace_object_write_mint_receipt_upload_step(),
         fleet_converge_hetzner_cloud_server_read_step(),
         fleet_converge_hetzner_cloud_server_read_receipt_upload_step(),
+        fleet_converge_export_host_reader_converge_step(),
+        fleet_converge_export_host_reader_converge_receipt_upload_step(),
         fleet_converge_flex_pass_step(),
         fleet_converge_flex_pass_receipt_upload_step(),
         fleet_converge_flex_template_ensure_step(),
@@ -4929,6 +4939,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     R2WorkspaceObjectWriteMint => fleet_converge_shared_job_id
     R2CacheObjectReadMint => fleet_converge_shared_job_id
     HetznerCloudServerRead => fleet_converge_shared_job_id
+    ExportHostReaderConverge => fleet_converge_shared_job_id
     BootMediumReaderKeyMint => fleet_converge_boot_medium_reader_key_mint_job_id
     FlexPass => fleet_converge_shared_job_id
     FlexTemplateEnsure => fleet_converge_shared_job_id
@@ -5434,6 +5445,25 @@ fn fleet_converge_hetzner_cloud_server_read_receipt_upload_step() -> Step {
   }
 }
 
+data fleet_converge_export_host_reader_converge_step_if: String = fleet_converge_mode_step_if(mode: ExportHostReaderConverge)
+
+// THE BMC EXPORT HOST'S READER ROWS (gunbc.host.export_host_reader_converge): the export host is the
+// TARGET, reached over fleet SSH as its administrator from whichever runner executes; it is never the
+// dispatch's host input, and the mode serializes on the export host's own mutation group.
+fn fleet_converge_export_host_reader_converge_step() -> Step {
+  RunStep {
+    name: Present { value: "Export host reader rows (srv2): account, key file, sshd drop-in; sshd -t, reload, fresh-login readback, rollback" },
+    id: Present { value: "export_host_reader_converge" },
+    run: gunbc_ci_export_host_reader_converge_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_export_host_reader_converge_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 data fleet_converge_boot_medium_reader_key_mint_step_if: String = fleet_converge_mode_step_if(mode: BootMediumReaderKeyMint)
 
 // THE BOOT MEDIUM READER KEY'S MINT (gunbc.host.boot_medium_reader_key_mint), as the fleet identity at
@@ -5453,6 +5483,24 @@ fn fleet_converge_boot_medium_reader_key_mint_step() -> Step {
     if_condition: Present { value: fleet_converge_boot_medium_reader_key_mint_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_export_host_reader_converge_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload export host reader converge receipt" },
+    id: Present { value: "export_host_reader_converge_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "export-host-reader-converge-receipt")),
+      kv(key: "path", value: yaml_string(s: export_host_reader_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_export_host_reader_converge_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }
 

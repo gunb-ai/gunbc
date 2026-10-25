@@ -424,9 +424,5 @@ pub fn strip_one_import_statement(
     source: String,
     statement: Rc<ParsedImportStatement>,
 ) -> Rc<ImportStripOutcome> {
-    strip_import_statements(
-        source_file.clone(),
-        source.clone(),
-        Rc::new(vec![statement.clone()]),
-    )
+    strip_import_statements(source_file, source, Rc::new(vec![statement.clone()]))
 }

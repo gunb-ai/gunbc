@@ -6,9 +6,14 @@ import UserNotifications
 
 @MainActor
 final class AppState: ObservableObject {
-    @Published private(set) var state: EnrolmentState = .signedOut
+    /// Entering a phase drops the errors of operations that are not relevant in it (OperationErrors.enter).
+    @Published private(set) var state: EnrolmentState = .signedOut {
+        didSet { errors.enter(state.phase) }
+    }
     @Published var pending: [PendingApproval] = []
-    @Published var lastError: String?
+    /// One current error per operation (the generated OperationErrors): every attempt records its
+    /// outcome, so the next success of an operation removes that operation's error.
+    @Published private(set) var errors = OperationErrors()
     /// The APNs token most recently delivered by the system. Arrives asynchronously; buffered here
     /// so a token that lands before the state is installed is not lost.
     @Published private(set) var apnsToken: String?
@@ -25,8 +30,12 @@ final class AppState: ObservableObject {
         } catch {
             config = nil
             client = nil
-            lastError = error.localizedDescription
+            errors.record(.configuration, .failed(error.localizedDescription))
         }
+    }
+
+    func record(_ operation: AppOperation, _ outcome: OperationOutcome) {
+        errors.record(operation, outcome)
     }
 
     /// Called once by the root view: read the persisted state, then register for APNs on every
@@ -34,7 +43,10 @@ final class AppState: ObservableObject {
     func install() async {
         guard !installed else { return }
         installed = true
-        do { state = try EnrolmentStore.load() } catch { lastError = error.localizedDescription }
+        do {
+            state = try EnrolmentStore.load()
+            record(.enrolmentRead, .succeeded)
+        } catch { record(.enrolmentRead, .failed(error.localizedDescription)) }
         if state.enrolled != nil {
             UIApplication.shared.registerForRemoteNotifications()
             await convergePushToken()
@@ -42,7 +54,7 @@ final class AppState: ObservableObject {
     }
 
     private func requireClient() throws -> Client {
-        guard let client else { throw WireError.configMissing(lastError ?? "no server configuration") }
+        guard let client else { throw WireError.configMissing("no server configuration") }
         return client
     }
 
@@ -59,6 +71,7 @@ final class AppState: ObservableObject {
 
     func tokenDelivered(_ hex: String) {
         apnsToken = hex
+        record(.apnsRegistration, .succeeded)
         guard installed else { return }            // buffered until install()
         Task { await convergePushToken() }
     }
@@ -102,8 +115,9 @@ final class AppState: ObservableObject {
                       now.attest_key_id == e.attest_key_id else { continue }
                 now.forwarded_apns_token = desired
                 try transition(.enrolled(now))
+                record(.pushForward, .succeeded)
             } catch {
-                lastError = "APNs token not forwarded: \(error.localizedDescription)"
+                record(.pushForward, .failed("APNs token not forwarded: \(error.localizedDescription)"))
                 // Superseded in flight (token or enrolment changed): go on with the current pair.
                 guard apnsToken == desired, case .enrolled(let now) = state,
                       now.enrollment_id == attempt.enrollmentId, now.attest_key_id == attempt.attestKeyId else { continue }
@@ -135,7 +149,6 @@ final class AppState: ObservableObject {
     /// body (the server is idempotent); nothing is persisted before the answer. Which phase follows
     /// is the generated EnrolmentMachine's decision.
     func signIn() async {
-        lastError = nil
         do {
             try AppAttest.requireSupported()
             let key = try DecisionKey.create()
@@ -156,8 +169,9 @@ final class AppState: ObservableObject {
             try apply(.signedIn(.newKey), enrolled: EnrolledDevice(
                 enrollment_id: grant.enrollment_id, decision_key_blob: key.dataRepresentation,
                 attest_key_id: attestKeyId, forwarded_apns_token: nil), push: registration(client.config, token))
+            record(.signIn, .succeeded)
         } catch {
-            lastError = error.localizedDescription
+            record(.signIn, .failed(error.localizedDescription))
             try? apply(.refused, enrolled: nil, push: nil)
         }
     }
@@ -181,7 +195,10 @@ final class AppState: ObservableObject {
     func signOut() {
         switch state {
         case .revoked, .enrolled:
-            do { try transition(.signedOut) } catch { lastError = error.localizedDescription }
+            do {
+                try transition(.signedOut)
+                record(.signOut, .succeeded)
+            } catch { record(.signOut, .failed(error.localizedDescription)) }
         default:
             return
         }
@@ -220,7 +237,9 @@ final class AppState: ObservableObject {
     // ── Inbox ────────────────────────────────────────────────────────────────────────────────
     enum RefreshResult { case changed, unchanged, failed }
 
-    /// The list, re-read. The result is the real one, so the background-push callback can report
+    /// The list, re-read and REPLACED: the server answers exactly the requests that still need the
+    /// operator (gunbc.auth.approval_decision_store pending_escalations), so nothing is kept from an
+    /// earlier read. The result is the real one, so the background-push callback can report
     /// .newData / .noData / .failed truthfully.
     @discardableResult
     func refresh() async -> RefreshResult {
@@ -229,9 +248,10 @@ final class AppState: ObservableObject {
             let fresh = try await requireClient().pending(try await readAuth(path: Route.pending))
             let changed = fresh != pending
             pending = fresh
+            record(.inboxRefresh, .succeeded)
             return changed ? .changed : .unchanged
         } catch {
-            lastError = error.localizedDescription
+            record(.inboxRefresh, .failed(error.localizedDescription))
             return .failed
         }
     }
