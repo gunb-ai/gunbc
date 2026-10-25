@@ -66,28 +66,30 @@ pub fn oci_encoded_digest_syntax_valid(
     mut __tco_loop_text: String,
     mut __tco_loop_index: i64,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text;
-        #[allow(unused_mut)]
-        let mut index = __tco_loop_index;
-        if (index.clone() >= v1_rt::string_length(&text)) {
-            break (v1_rt::string_length(&text) > 0);
-        } else {
-            if oci_encoded_digest_char_allowed(v1_rt::code_point(v1_rt::substring(
-                &text,
-                index.clone(),
-                v1_rt::int_add(index.clone(), 1),
-            ))) {
-                {
-                    let __tco_0 = text;
-                    let __tco_1 = v1_rt::int_add(index, 1);
-                    __tco_loop_text = __tco_0;
-                    __tco_loop_index = __tco_1;
-                    continue;
-                }
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut text = __tco_loop_text;
+            #[allow(unused_mut)]
+            let mut index = __tco_loop_index;
+            if (index.clone() >= v1_rt::string_length(&text)) {
+                break (v1_rt::string_length(&text) > 0);
             } else {
-                break false;
+                if oci_encoded_digest_char_allowed(v1_rt::code_point(v1_rt::substring(
+                    &text,
+                    index.clone(),
+                    v1_rt::int_add(index.clone(), 1),
+                ))) {
+                    {
+                        let __tco_0 = text;
+                        let __tco_1 = v1_rt::int_add(index, 1);
+                        __tco_loop_text = __tco_0;
+                        __tco_loop_index = __tco_1;
+                        continue;
+                    }
+                } else {
+                    break false;
+                }
             }
         }
     }
@@ -114,38 +116,54 @@ pub fn oci_digest_algorithm_syntax_valid(
     mut __tco_loop_index: i64,
     mut __tco_loop_in_component: bool,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text;
-        #[allow(unused_mut)]
-        let mut index = __tco_loop_index;
-        #[allow(unused_mut)]
-        let mut in_component = __tco_loop_in_component;
-        if (index.clone() >= v1_rt::string_length(&text)) {
-            break in_component.clone();
-        } else {
-            let cp = v1_rt::code_point(v1_rt::substring(
-                &text,
-                index.clone(),
-                v1_rt::int_add(index.clone(), 1),
-            ));
-            if in_component.clone() {
-                if oci_digest_algorithm_component_char_allowed(cp.clone()) {
-                    {
-                        let __tco_0 = text;
-                        let __tco_1 = v1_rt::int_add(index, 1);
-                        let __tco_2 = true;
-                        __tco_loop_text = __tco_0;
-                        __tco_loop_index = __tco_1;
-                        __tco_loop_in_component = __tco_2;
-                        continue;
-                    }
-                } else {
-                    if oci_digest_algorithm_separator_char_allowed(cp.clone()) {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut text = __tco_loop_text;
+            #[allow(unused_mut)]
+            let mut index = __tco_loop_index;
+            #[allow(unused_mut)]
+            let mut in_component = __tco_loop_in_component;
+            if (index.clone() >= v1_rt::string_length(&text)) {
+                break in_component.clone();
+            } else {
+                let cp = v1_rt::code_point(v1_rt::substring(
+                    &text,
+                    index.clone(),
+                    v1_rt::int_add(index.clone(), 1),
+                ));
+                if in_component.clone() {
+                    if oci_digest_algorithm_component_char_allowed(cp.clone()) {
                         {
                             let __tco_0 = text;
                             let __tco_1 = v1_rt::int_add(index, 1);
-                            let __tco_2 = false;
+                            let __tco_2 = true;
+                            __tco_loop_text = __tco_0;
+                            __tco_loop_index = __tco_1;
+                            __tco_loop_in_component = __tco_2;
+                            continue;
+                        }
+                    } else {
+                        if oci_digest_algorithm_separator_char_allowed(cp.clone()) {
+                            {
+                                let __tco_0 = text;
+                                let __tco_1 = v1_rt::int_add(index, 1);
+                                let __tco_2 = false;
+                                __tco_loop_text = __tco_0;
+                                __tco_loop_index = __tco_1;
+                                __tco_loop_in_component = __tco_2;
+                                continue;
+                            }
+                        } else {
+                            break false;
+                        }
+                    }
+                } else {
+                    if oci_digest_algorithm_component_char_allowed(cp.clone()) {
+                        {
+                            let __tco_0 = text;
+                            let __tco_1 = v1_rt::int_add(index, 1);
+                            let __tco_2 = true;
                             __tco_loop_text = __tco_0;
                             __tco_loop_index = __tco_1;
                             __tco_loop_in_component = __tco_2;
@@ -154,20 +172,6 @@ pub fn oci_digest_algorithm_syntax_valid(
                     } else {
                         break false;
                     }
-                }
-            } else {
-                if oci_digest_algorithm_component_char_allowed(cp.clone()) {
-                    {
-                        let __tco_0 = text;
-                        let __tco_1 = v1_rt::int_add(index, 1);
-                        let __tco_2 = true;
-                        __tco_loop_text = __tco_0;
-                        __tco_loop_index = __tco_1;
-                        __tco_loop_in_component = __tco_2;
-                        continue;
-                    }
-                } else {
-                    break false;
                 }
             }
         }

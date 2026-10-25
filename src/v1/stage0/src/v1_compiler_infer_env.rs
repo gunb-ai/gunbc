@@ -519,47 +519,54 @@ pub fn bare_occurrence_import_terminal(
     mut __tco_loop_name: String,
     mut __tco_loop_fuel: i64,
 ) -> Rc<BareOccurrenceBinding> {
-    loop {
-        #[allow(unused_mut)]
-        let mut index = __tco_loop_index;
-        #[allow(unused_mut)]
-        let mut module_path = __tco_loop_module_path;
-        #[allow(unused_mut)]
-        let mut name = __tco_loop_name;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if (fuel.clone() == 0) {
-            break Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided);
-        } else {
-            match symbol_index_named_import_source(index.clone(), module_path.clone(), name.clone())
-            {
-                Some(next) => {
-                    let __tco_0 = index;
-                    let __tco_1 = next.clone();
-                    let __tco_2 = name;
-                    let __tco_3 = v1_rt::int_sub(fuel, 1);
-                    __tco_loop_index = __tco_0;
-                    __tco_loop_module_path = __tco_1;
-                    __tco_loop_name = __tco_2;
-                    __tco_loop_fuel = __tco_3;
-                    continue;
-                }
-                std::option::Option::None => {
-                    match symbol_index_lookup(
-                        index.clone(),
-                        v1_rt::concat(
-                            v1_rt::concat(module_path.clone(), ".".to_string()),
-                            name.clone(),
-                        ),
-                    ) {
-                        Some(decl) => {
-                            break Rc::new(BareOccurrenceBinding::BareOccurrenceImportedByName {
-                                module_path: module_path.clone(),
-                                declaration: decl.clone(),
-                            });
-                        }
-                        std::option::Option::None => {
-                            break Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided);
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut index = __tco_loop_index;
+            #[allow(unused_mut)]
+            let mut module_path = __tco_loop_module_path;
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() == 0) {
+                break Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided);
+            } else {
+                match symbol_index_named_import_source(
+                    index.clone(),
+                    module_path.clone(),
+                    name.clone(),
+                ) {
+                    Some(next) => {
+                        let __tco_0 = index;
+                        let __tco_1 = next.clone();
+                        let __tco_2 = name;
+                        let __tco_3 = v1_rt::int_sub(fuel, 1);
+                        __tco_loop_index = __tco_0;
+                        __tco_loop_module_path = __tco_1;
+                        __tco_loop_name = __tco_2;
+                        __tco_loop_fuel = __tco_3;
+                        continue;
+                    }
+                    std::option::Option::None => {
+                        match symbol_index_lookup(
+                            index.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(module_path.clone(), ".".to_string()),
+                                name.clone(),
+                            ),
+                        ) {
+                            Some(decl) => {
+                                break Rc::new(
+                                    BareOccurrenceBinding::BareOccurrenceImportedByName {
+                                        module_path: module_path.clone(),
+                                        declaration: decl.clone(),
+                                    },
+                                );
+                            }
+                            std::option::Option::None => {
+                                break Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided);
+                            }
                         }
                     }
                 }
@@ -3336,194 +3343,129 @@ pub fn text_representation_by_identity_bounded(
     mut __tco_loop_fuel: i64,
     mut __tco_loop_visited: Rc<Vec<String>>,
 ) -> TextRepresentation {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut env = __tco_loop_env;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        #[allow(unused_mut)]
-        let mut visited = __tco_loop_visited;
-        let resolved = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: r, .. }) => Some(r.clone()),
-            _ => std::option::Option::None,
-        };
-        let kernel_string = (node_is_kernel_mint_named(n.clone(), "String".to_string())
-            || match resolved.clone() {
-                Some(r) => node_is_kernel_mint_named(r.clone(), "String".to_string()),
-                std::option::Option::None => false,
-            });
-        let generic_or_error = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: _, .. }) => true,
-            Some(InferredNode::CompilerError { .. }) => true,
-            _ => false,
-        };
-        let kernel_other = (node_is_kernel_mint(n.clone())
-            || match resolved.clone() {
-                Some(r) => node_is_kernel_mint(r.clone()),
-                std::option::Option::None => false,
-            });
-        if kernel_string.clone() {
-            break TextRepresentation::HostText;
-        } else {
-            if generic_or_error.clone() {
-                break TextRepresentation::NotText;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            #[allow(unused_mut)]
+            let mut visited = __tco_loop_visited;
+            let resolved = match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: r, .. }) => Some(r.clone()),
+                _ => std::option::Option::None,
+            };
+            let kernel_string = (node_is_kernel_mint_named(n.clone(), "String".to_string())
+                || match resolved.clone() {
+                    Some(r) => node_is_kernel_mint_named(r.clone(), "String".to_string()),
+                    std::option::Option::None => false,
+                });
+            let generic_or_error = match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                Some(InferredNode::CompilerError { .. }) => true,
+                _ => false,
+            };
+            let kernel_other = (node_is_kernel_mint(n.clone())
+                || match resolved.clone() {
+                    Some(r) => node_is_kernel_mint(r.clone()),
+                    std::option::Option::None => false,
+                });
+            if kernel_string.clone() {
+                break TextRepresentation::HostText;
             } else {
-                if (fuel.clone() <= 0) {
-                    break TextRepresentation::TextRepresentationUnidentified;
+                if generic_or_error.clone() {
+                    break TextRepresentation::NotText;
                 } else {
-                    if is_where_refinement_node(n.clone()) {
-                        match n.children.clone().first().cloned() {
-                            Some(base) => {
-                                let __tco_0 = base.clone();
-                                let __tco_1 = env;
-                                let __tco_2 = v1_rt::int_sub(fuel, 1);
-                                let __tco_3 = visited;
-                                __tco_loop_n = __tco_0;
-                                __tco_loop_env = __tco_1;
-                                __tco_loop_fuel = __tco_2;
-                                __tco_loop_visited = __tco_3;
-                                continue;
-                            }
-                            std::option::Option::None => {
-                                break TextRepresentation::TextRepresentationUnidentified;
-                            }
-                        }
+                    if (fuel.clone() <= 0) {
+                        break TextRepresentation::TextRepresentationUnidentified;
                     } else {
-                        match (*type_reference_declaration_reading(
-                            n.clone(),
-                            env.source_indices.clone(),
-                            env.clone(),
-                        ))
-                        .clone()
-                        {
-                            TypeReferenceDeclarationReading::TypeReferenceUnidentified {
-                                ..
-                            } => {
-                                if kernel_other.clone() {
-                                    break TextRepresentation::NotText;
-                                } else {
+                        if is_where_refinement_node(n.clone()) {
+                            match n.children.clone().first().cloned() {
+                                Some(base) => {
+                                    let __tco_0 = base.clone();
+                                    let __tco_1 = env;
+                                    let __tco_2 = v1_rt::int_sub(fuel, 1);
+                                    let __tco_3 = visited;
+                                    __tco_loop_n = __tco_0;
+                                    __tco_loop_env = __tco_1;
+                                    __tco_loop_fuel = __tco_2;
+                                    __tco_loop_visited = __tco_3;
+                                    continue;
+                                }
+                                std::option::Option::None => {
                                     break TextRepresentation::TextRepresentationUnidentified;
                                 }
                             }
-                            TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
-                                name: k,
-                                ..
-                            } => {
-                                if (k.clone() == "String".to_string()) {
-                                    break TextRepresentation::HostText;
-                                } else {
-                                    break TextRepresentation::NotText;
-                                }
-                            }
-                            TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable {
-                                id: _,
-                                ..
-                            } => {
-                                break TextRepresentation::NotText;
-                            }
-                            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-                                declaration: d,
-                                ..
-                            } => {
-                                if crate::std_decl_ref::declaration_ref_eq(
-                                    d.clone(),
-                                    text_identity_std_algebra_free_monoid(),
-                                ) {
-                                    break text_element_is_char(n.clone(), env.clone());
-                                } else {
-                                    let key =
-                                        crate::std_decl_ref::declaration_ref_display_key(d.clone());
-                                    if {
-                                        let mut __found = false;
-                                        for v in visited.iter().cloned() {
-                                            if (v.clone() == key.clone()) {
-                                                __found = true;
-                                                break;
-                                            }
-                                        }
-                                        __found
-                                    } {
-                                        break TextRepresentation::TextRepresentationUnidentified;
-                                    } else {
-                                        match declaration_binding_of_ref(d.clone(), env.clone()) {
-                                            std::option::Option::None => {
-                                                break TextRepresentation::TextRepresentationUnidentified;
-                                            }
-                                            Some(b) => {
-                                                let decl = b.resolved.clone();
-                                                let is_alias = ((decl.connective.clone()
-                                                    == Connective::NoConnective)
-                                                    && ((decl.children.clone().len() as i64) == 0));
-                                                if is_where_refinement_node(decl.clone()) {
-                                                    {
-                                                        let __tco_0 = decl.clone();
-                                                        let __tco_1 = env;
-                                                        let __tco_2 = v1_rt::int_sub(fuel, 1);
-                                                        let __tco_3 = v1_rt::concat(
-                                                            visited,
-                                                            Rc::new(vec![key.clone()]),
-                                                        );
-                                                        __tco_loop_n = __tco_0;
-                                                        __tco_loop_env = __tco_1;
-                                                        __tco_loop_fuel = __tco_2;
-                                                        __tco_loop_visited = __tco_3;
-                                                        continue;
-                                                    }
-                                                } else {
-                                                    if !is_alias.clone() {
-                                                        break TextRepresentation::NotText;
-                                                    } else {
-                                                        match decl
-                                                            .inferred
-                                                            .clone()
-                                                            .as_deref()
-                                                            .cloned()
-                                                        {
-                                                            Some(InferredNode::Resolved {
-                                                                node: target,
-                                                                ..
-                                                            }) => {
-                                                                let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.source_indices.clone(), env.clone())).clone() {
+                        } else {
+                            match (*type_reference_declaration_reading(n.clone(), env.source_indices.clone(), env.clone())).clone() {
+    TypeReferenceDeclarationReading::TypeReferenceUnidentified { .. } => { if kernel_other.clone() {
+                            break TextRepresentation::NotText;
+} else {
+                            break TextRepresentation::TextRepresentationUnidentified;
+} },
+    TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: k, .. } => { if (k.clone() == "String".to_string()) {
+                            break TextRepresentation::HostText;
+} else {
+                            break TextRepresentation::NotText;
+} },
+    TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => { break TextRepresentation::NotText; },
+    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: d, .. } => { if crate::std_decl_ref::declaration_ref_eq(d.clone(), text_identity_std_algebra_free_monoid()) {
+                            break text_element_is_char(n.clone(), env.clone());
+} else {
+                            let key = crate::std_decl_ref::declaration_ref_display_key(d.clone());
+if { let mut __found = false; for v in visited.iter().cloned() { if (v.clone() == key.clone()) { __found = true; break; } } __found } {
+                                break TextRepresentation::TextRepresentationUnidentified;
+} else {
+                                match declaration_binding_of_ref(d.clone(), env.clone()) {
+    std::option::Option::None => { break TextRepresentation::TextRepresentationUnidentified; },
+    Some(b) => { let decl = b.resolved.clone();
+let is_alias = ((decl.connective.clone() == Connective::NoConnective) && ((decl.children.clone().len() as i64) == 0));
+if is_where_refinement_node(decl.clone()) {
+                                    {
+                                        let __tco_0 = decl.clone();
+let __tco_1 = env;
+let __tco_2 = v1_rt::int_sub(fuel, 1);
+let __tco_3 = v1_rt::concat(visited, Rc::new(vec![key.clone()]));
+__tco_loop_n = __tco_0;
+__tco_loop_env = __tco_1;
+__tco_loop_fuel = __tco_2;
+__tco_loop_visited = __tco_3;
+continue;
+}
+} else {
+                                    if !is_alias.clone() {
+                                        break TextRepresentation::NotText;
+} else {
+                                        match decl.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: target, .. }) => { let target_is_itself = match (*type_reference_declaration_reading(target.clone(), env.source_indices.clone(), env.clone())).clone() {
     TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: t, .. } => crate::std_decl_ref::declaration_ref_eq(t.clone(), d.clone()),
     _ => false,
 };
-                                                                if target_is_itself.clone() {
-                                                                    break TextRepresentation::NotText;
-                                                                } else {
-                                                                    {
-                                                                        let __tco_0 =
-                                                                            target.clone();
-                                                                        let __tco_1 = env;
-                                                                        let __tco_2 =
-                                                                            v1_rt::int_sub(fuel, 1);
-                                                                        let __tco_3 = v1_rt::concat(
-                                                                            visited,
-                                                                            Rc::new(vec![
-                                                                                key.clone()
-                                                                            ]),
-                                                                        );
-                                                                        __tco_loop_n = __tco_0;
-                                                                        __tco_loop_env = __tco_1;
-                                                                        __tco_loop_fuel = __tco_2;
-                                                                        __tco_loop_visited =
-                                                                            __tco_3;
-                                                                        continue;
-                                                                    }
-                                                                }
-                                                            }
-                                                            _ => {
-                                                                break TextRepresentation::NotText;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+if target_is_itself.clone() {
+                                            break TextRepresentation::NotText;
+} else {
+                                            {
+                                                let __tco_0 = target.clone();
+let __tco_1 = env;
+let __tco_2 = v1_rt::int_sub(fuel, 1);
+let __tco_3 = v1_rt::concat(visited, Rc::new(vec![key.clone()]));
+__tco_loop_n = __tco_0;
+__tco_loop_env = __tco_1;
+__tco_loop_fuel = __tco_2;
+__tco_loop_visited = __tco_3;
+continue;
+}
+} },
+    _ => { break TextRepresentation::NotText; },
+}
+}
+} },
+}
+}
+} },
+}
                         }
                     }
                 }
@@ -3735,48 +3677,50 @@ pub fn settled_rhs(
     mut __tco_loop_env: Rc<TypeEnv>,
     mut __tco_loop_fuel: i64,
 ) -> Option<Rc<SettledType>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut rhs = __tco_loop_rhs;
-        #[allow(unused_mut)]
-        let mut head = __tco_loop_head;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut env = __tco_loop_env;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        match alias_rhs_of_declaration(head.clone(), env.clone()) {
-            std::option::Option::None => {
-                break Some(Rc::new(SettledType {
-                    head: head.clone(),
-                    args: rhs.children.clone(),
-                }));
-            }
-            Some(next) => match next.declaration.clone() {
-                Some(next_head) => {
-                    if (fuel.clone() <= 0) {
-                        break std::option::Option::None;
-                    } else {
-                        {
-                            let __tco_0 = next.clone();
-                            let __tco_1 = next_head.clone();
-                            let __tco_2 = source_indices;
-                            let __tco_3 = env;
-                            let __tco_4 = v1_rt::int_sub(fuel, 1);
-                            __tco_loop_rhs = __tco_0;
-                            __tco_loop_head = __tco_1;
-                            __tco_loop_source_indices = __tco_2;
-                            __tco_loop_env = __tco_3;
-                            __tco_loop_fuel = __tco_4;
-                            continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut rhs = __tco_loop_rhs;
+            #[allow(unused_mut)]
+            let mut head = __tco_loop_head;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            match alias_rhs_of_declaration(head.clone(), env.clone()) {
+                std::option::Option::None => {
+                    break Some(Rc::new(SettledType {
+                        head: head.clone(),
+                        args: rhs.children.clone(),
+                    }));
+                }
+                Some(next) => match next.declaration.clone() {
+                    Some(next_head) => {
+                        if (fuel.clone() <= 0) {
+                            break std::option::Option::None;
+                        } else {
+                            {
+                                let __tco_0 = next.clone();
+                                let __tco_1 = next_head.clone();
+                                let __tco_2 = source_indices;
+                                let __tco_3 = env;
+                                let __tco_4 = v1_rt::int_sub(fuel, 1);
+                                __tco_loop_rhs = __tco_0;
+                                __tco_loop_head = __tco_1;
+                                __tco_loop_source_indices = __tco_2;
+                                __tco_loop_env = __tco_3;
+                                __tco_loop_fuel = __tco_4;
+                                continue;
+                            }
                         }
                     }
-                }
-                std::option::Option::None => {
-                    break std::option::Option::None;
-                }
-            },
+                    std::option::Option::None => {
+                        break std::option::Option::None;
+                    }
+                },
+            }
         }
     }
 }
@@ -4014,56 +3958,62 @@ pub fn kernel_settled_name(
     mut __tco_loop_env: Rc<TypeEnv>,
     mut __tco_loop_fuel: i64,
 ) -> Option<String> {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut env = __tco_loop_env;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        let reading = match n.declaration.clone() {
-            Some(dn) => Rc::new(
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            let reading = match n.declaration.clone() {
+                Some(dn) => Rc::new(
+                    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                        declaration: dn.clone(),
+                    },
+                ),
+                std::option::Option::None => type_reference_declaration_reading(
+                    n.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                ),
+            };
+            match (*reading.clone()).clone() {
+                TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
+                    name: kernel, ..
+                } => {
+                    break Some(kernel.clone());
+                }
                 TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-                    declaration: dn.clone(),
-                },
-            ),
-            std::option::Option::None => {
-                type_reference_declaration_reading(n.clone(), source_indices.clone(), env.clone())
-            }
-        };
-        match (*reading.clone()).clone() {
-            TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: kernel, .. } => {
-                break Some(kernel.clone());
-            }
-            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-                declaration: d,
-                ..
-            } => {
-                if (fuel.clone() <= 0) {
-                    break std::option::Option::None;
-                } else {
-                    match alias_rhs_of_declaration(d.clone(), env.clone()) {
-                        std::option::Option::None => {
-                            break std::option::Option::None;
-                        }
-                        Some(rhs) => {
-                            let __tco_0 = rhs.clone();
-                            let __tco_1 = source_indices;
-                            let __tco_2 = env;
-                            let __tco_3 = v1_rt::int_sub(fuel, 1);
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_source_indices = __tco_1;
-                            __tco_loop_env = __tco_2;
-                            __tco_loop_fuel = __tco_3;
-                            continue;
+                    declaration: d,
+                    ..
+                } => {
+                    if (fuel.clone() <= 0) {
+                        break std::option::Option::None;
+                    } else {
+                        match alias_rhs_of_declaration(d.clone(), env.clone()) {
+                            std::option::Option::None => {
+                                break std::option::Option::None;
+                            }
+                            Some(rhs) => {
+                                let __tco_0 = rhs.clone();
+                                let __tco_1 = source_indices;
+                                let __tco_2 = env;
+                                let __tco_3 = v1_rt::int_sub(fuel, 1);
+                                __tco_loop_n = __tco_0;
+                                __tco_loop_source_indices = __tco_1;
+                                __tco_loop_env = __tco_2;
+                                __tco_loop_fuel = __tco_3;
+                                continue;
+                            }
                         }
                     }
                 }
-            }
-            _ => {
-                break std::option::Option::None;
+                _ => {
+                    break std::option::Option::None;
+                }
             }
         }
     }
