@@ -56,7 +56,7 @@ import v2.compiler.source_root_eval {
   native_lane_module_reachable
 }
 
-import v2.compiler.module_acquisition { AcquiredModule }
+import v2.compiler.module_acquisition { AcquiredFromFile, AcquiredModule }
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.compiler.native_test_vocabulary {
@@ -1577,7 +1577,8 @@ fn an_acquired(name: String, path: String, markers: List<String>, content: Strin
     host_directory: "src/v2",
     content: content,
     requests: [],
-    test_markers: markers
+    test_markers: markers,
+    origin: AcquiredFromFile
   }
 }
 
