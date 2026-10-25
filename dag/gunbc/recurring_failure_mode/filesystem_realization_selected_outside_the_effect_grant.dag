@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.filesystem_realization_selected_outside_the_effect_grant
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data filesystem_realization_selected_outside_the_effect_grant: RecurringFailureMode = RecurringFailureMode {
+  identity: "filesystem_realization_selected_outside_the_effect_grant" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "a second realization of extdeps.filesystem.filesystem_io Filesystem gaining a consumer (the remote-host realization through gunbc.typed_remote_file_write, which the slot-host durable hold is to take) together with a typed remote-host arm of std.effect_grant HandlerBinding, sufficient for that consumer's Filesystem operations to be answered only through a std.effect_grant covering_grant selection, and for an operation reachable under two realizations with no covering grant, or with two, to refuse rather than be answered by the file transport" } },
+
+  receipts: [
+    "**a Filesystem operation answered by a realization chosen anywhere but the effect-grant selection** (INVALID STATE: which realization answers an extdeps.filesystem.filesystem_io Filesystem operation -- the local file transport, or a remote host -- is decided by a value threaded through consumer logic, a dispatch match, or a default, instead of by a std.effect_grant HandlerBinding reached through covering_grant. DESIGN section 3: interface, realization and policy are three facts, and the dispatch that selects a realization is itself realization, so it sits in the grant binding and not in the store.",
+
+    "SPECIMEN, DISSOLVED: gunbc.filesystem_interface (gunbc#14678) restated Filesystem as a record of closures and threaded its one value, local_filesystem, through every core of gunbc.durable_cas_file_store, so the realization was a value the store logic carried. gunbc#15047 deleted the module and returned the cores to the Filesystem operations directly (stern-bat-401 side chat, 2026-10-24).",
+
+    "BOUNDED POPULATION TODAY, AND WHY IT IS EMPTY BY CONSTRUCTION RATHER THAN BY CHECK: every Filesystem operation declares exactly one transport (transport file), so there is no selection to make and no site that makes one. An operation with no declared transport refuses by name (v1.compiler.emit emit_unbound_operation_refusal, gunbc#15015). Nothing refuses a future value-threaded seam or a second transport arm selected by a match; that is why the rung is mitigatable and not higher.",
+
+    "DECLARED FRONTIER (DESIGN section 3c): the effect-grant selection the store refactor plan named is deferred, not delivered, by gunbc#15047. The grant model already selects REST handlers this way (extdeps.transports.rest covering_grant, RestHandlerSelected), and std.effect_grant HandlerBinding has no typed remote-host arm (ModeledRealization carries a String), which is the grounding this row awaits. The trigger is the second realization's first consumer, because until one exists no choice exists to route.",
+
+    "WHY std.effect_grant HandlerBinding AND covering_grant ARE NAMED IN PROSE AND NOT CITED AS DeclarationRef EVIDENCE: cited as DeclarationRef rows they were each reported unresolved by gunbc.instruments decl-ref-census at this change (measured 2026-10-24 on the branch of gunbc#15047), so citing them would add two unresolved sites to a census this change must not grow, while both declarations exist in std.effect_grant. They become evidence rows when that census resolves std.effect_grant declarations; until then the evidence below cites only declarations it resolves.",
+
+    "RUNG: found at mitigatable (the seam was writable and nothing refused it); still mitigatable. Ceiling structurally guaranteed: with a typed binding arm and the grant as the only route, an accepted program cannot answer a multiply-realized Filesystem operation without a covering grant.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.typed_remote_file_write", decl_name: "typed_remote_file_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_windowed", field: WholeDeclaration },
+  ],
+}

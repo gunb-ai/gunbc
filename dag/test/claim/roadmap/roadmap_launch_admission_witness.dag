@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_launch_admission_witness
 
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId }
 import gunbc.roadmap.roadmap_status { Unsigned }
@@ -10,7 +11,7 @@ import gunbc.worker_lifecycle { WorkerProcessRunning, WorkerProcessExited, Worke
 import gunbc.roadmap.roadmap_launch_admission { LaunchCensusRow }
 import gunbc.roadmap.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, DesiredMember, roadmap_belt_production_spawn_mode, spawn_mode_label, belt_reconcile_upsert_count }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
   belt_tick_admit_and_spawn, belt_dispatch_status_label, belt_dispatch_result_ok,
   BeltLaunchDecision, BeltLaunchDecided, BeltLaunchWithheld, belt_tick_admit,
   BeltLaunchPass, belt_tick_launch_pass,
@@ -164,6 +165,7 @@ fn no_actuation_outcome(o: BeltSpawnOutcome) -> Bool {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
     SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
+    SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => false
   }
 }
 
@@ -173,6 +175,7 @@ fn no_actuation_outcome(o: BeltSpawnOutcome) -> Bool {
 // actuator was never entered.
 test fn witness_blocked_child_fold_reaches_no_actuation() -> Bool {
   let outcomes = belt_tick_admit_and_spawn(
+    instance: srv1_live_dashboard_instance(),
     candidates: [ DesiredMember { node_id: child_id(), node: child_with_contract() } ],
     standing: launch_fixture_standing_clear(mode: AutomaticReady),
     graph: graph_child_contracted(),
@@ -255,6 +258,7 @@ test fn witness_timer_in_manual_ready_refused_cause_not_permitted() -> Bool {
 
 test fn witness_timer_fold_in_manual_ready_starts_nothing() -> Bool {
   let outcomes = belt_tick_admit_and_spawn(
+    instance: srv1_live_dashboard_instance(),
     candidates: [ DesiredMember { node_id: parent_id(), node: canary_parent(signoff: Unsigned) } ],
     standing: launch_fixture_standing_clear(mode: ManualReady),
     graph: graph(),
@@ -293,6 +297,7 @@ test fn witness_unobserved_revision_refuses_ui_and_backend_with_one_reason() -> 
   let drifted = launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_unobserved(), live: [], max_concurrent: 3)
   let ui = decide(cause: Operator, standing: drifted, g: graph(), node_id: parent_id())
   let backend = belt_tick_admit_and_spawn(
+    instance: srv1_live_dashboard_instance(),
     candidates: [ DesiredMember { node_id: parent_id(), node: canary_parent(signoff: Unsigned) } ],
     standing: launch_fixture_standing(mode: AutomaticReady, revision: launch_fixture_revision_unobserved(), live: [], max_concurrent: 3),
     graph: graph(),
