@@ -56,7 +56,7 @@ fn ncl_is_ambiguous(lookup: NamedChildLookup) -> Bool {
 
 fn ncl_rejected_with(o: Outcome<Node>, reason: Symbol) -> Bool {
   match o {
-    Rejected { diagnostics: d } => d.head.reason == reason
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
     Accepted { value: _, diagnostics: _ } => false
   }
 }
