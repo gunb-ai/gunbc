@@ -1,0 +1,335 @@
+module gunbc.host.host_primary_network_observed
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import std.measure { Bandwidth, bandwidth, bandwidth_count, ByteSize, byte_size }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import extdeps.network.mac { Eui48Address, mac_address, mac_addresses_are_equal }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, PrefixLength }
+import extdeps.netplan.netplan {
+  NetplanRenderer, SystemdNetworkd,
+  NetplanConfigWriter, WrittenByCloudInit, WrittenByOperator,
+  InterfaceAdminState, AdminUpConfigured, AdminDownUnconfigured,
+  InterfaceCarrier, CarrierPresent, CarrierAbsent, CarrierUnobserved,
+  NetplanMatch, MatchByName, MatchByMacAddress,
+}
+import extdeps.cloud_init.cloud_init {
+  CloudInitDisposition, CloudInitDisabledByMarkerFile, cloud_init_disabled_marker_path, ubuntu_live_installer_disable_marker_text,
+}
+
+// WHAT srv1 AND srv2 CARRY FOR THEIR PRIMARY NETWORK, AS READ, AND HOW THEY CAME TO CARRY IT.
+//
+// On 2026-10-24 the operator moved srv1 and srv2 off their X550 10GBASE-T ports onto their I210 1G
+// ports by hand: links brought up and down with `ip link`, a netplan file written with tee, and a plain
+// `netplan apply`. That is an operator-performed effect outside any modeled route, so it is recorded
+// here as a divergence with its standing, never as a converged state; gunbc.host.host_primary_network
+// is the authority that adopts it. The operator's reason, that the 10G link drops while PCIe is busy,
+// is an inference, and it is recorded as a bet beside a rival the read raised, each with the reading
+// that would decide it (DESIGN section 4d).
+//
+// srv1 WAS READ, srv2 WAS NOT. srv1 was read over the fleet edge on 2026-10-25 at 04:54Z (ip, networkctl,
+// resolvectl, /etc/netplan, netplan get, /sys/class/net, ethtool, the journal of twelve boots and its
+// sudo log), with no write. srv2 refused this session (its fleet alias resolves to this container's
+// loopback, and its tailnet name denies the session's keys), so its hand change stands on the operator's
+// word and its read obligation is named.
+
+// ── One NIC as read ─────────────────────────────────────────────────────────────────────────────
+
+type ObservedNicDriver = DriverIgb | DriverIxgbe | DriverCdcEther
+
+type ObservedNic {
+  mac: Eui48Address
+  kernel_name: NonEmptyStr
+  pci_address: NonEmptyStr
+  driver: ObservedNicDriver
+  admin: InterfaceAdminState
+  carrier: InterfaceCarrier
+  negotiated: Bandwidth?
+}
+
+type ObservedNetplanFile {
+  path: NonEmptyStr
+  writer: NetplanConfigWriter
+  modified_at: NonEmptyStr
+  text: String
+}
+
+type ObservedDhcpLease {
+  holder: Eui48Address
+  address: Ipv4Address
+  prefix: PrefixLength
+  gateway: Ipv4Address
+  route_metric: Nat
+  dns: List<Ipv4Address>
+}
+
+type HostPrimaryNetworkReceipt {
+  host: HostIdentity
+  observed_at: NonEmptyStr
+  nics: List<ObservedNic>
+  netplan_files: List<ObservedNetplanFile>
+  renderer: NetplanRenderer
+  lease: ObservedDhcpLease
+  mtu: ByteSize
+  cloud_init: CloudInitDisposition
+  wait_online_failed_this_boot: Bool
+}
+
+data srv1_i210_mac: Eui48Address = mac_address(octet1: 72, octet2: 33, octet3: 11, octet4: 129, octet5: 198, octet6: 235)
+data srv1_x550_port0_mac: Eui48Address = mac_address(octet1: 72, octet2: 33, octet3: 11, octet4: 129, octet5: 198, octet6: 233)
+data srv1_x550_port1_mac: Eui48Address = mac_address(octet1: 72, octet2: 33, octet3: 11, octet4: 129, octet5: 198, octet6: 234)
+data srv1_bmc_usb_nic_mac: Eui48Address = mac_address(octet1: 170, octet2: 122, octet3: 19, octet4: 218, octet5: 115, octet6: 211)
+
+// The files as `sudo cat` printed them. 50-cloud-init.yaml is unchanged since install (cloud-init has
+// been disabled by its marker since then, so nothing regenerated it); 60-enP3p6s0.yaml is the hand
+// change's file.
+data srv1_netplan_cloud_init_text: String = "network:\n  version: 2\n  ethernets:\n    enP3p3s0f1:\n      dhcp4: true\n"
+data srv1_netplan_hand_text: String = "network:\n  version: 2\n  ethernets:\n    enP3p6s0:\n      dhcp4: true\n      dhcp4-overrides:\n        route-metric: 200\n"
+
+data srv1_primary_network_receipt_2026_10_25: HostPrimaryNetworkReceipt = HostPrimaryNetworkReceipt {
+  host: operator_host_srv1,
+  observed_at: "2026-10-25T04:54:24Z" as NonEmptyStr,
+  nics: [
+    ObservedNic { mac: srv1_i210_mac, kernel_name: "enP3p6s0" as NonEmptyStr, pci_address: "0003:06:00.0" as NonEmptyStr, driver: DriverIgb, admin: AdminUpConfigured, carrier: CarrierPresent, negotiated: Present { value: link_speed_mbps(megabits: 1000) } },
+    ObservedNic { mac: srv1_x550_port0_mac, kernel_name: "enP3p3s0f0" as NonEmptyStr, pci_address: "0003:03:00.0" as NonEmptyStr, driver: DriverIxgbe, admin: AdminDownUnconfigured, carrier: CarrierUnobserved, negotiated: none },
+    ObservedNic { mac: srv1_x550_port1_mac, kernel_name: "enP3p3s0f1" as NonEmptyStr, pci_address: "0003:03:00.1" as NonEmptyStr, driver: DriverIxgbe, admin: AdminUpConfigured, carrier: CarrierAbsent, negotiated: none },
+    ObservedNic { mac: srv1_bmc_usb_nic_mac, kernel_name: "enxaa7a13da73d3" as NonEmptyStr, pci_address: "0003:05:00.0" as NonEmptyStr, driver: DriverCdcEther, admin: AdminDownUnconfigured, carrier: CarrierUnobserved, negotiated: none },
+  ],
+  netplan_files: [
+    ObservedNetplanFile { path: "/etc/netplan/50-cloud-init.yaml" as NonEmptyStr, writer: WrittenByCloudInit, modified_at: "2026-05-20T03:36:40Z" as NonEmptyStr, text: srv1_netplan_cloud_init_text },
+    ObservedNetplanFile { path: "/etc/netplan/60-enP3p6s0.yaml" as NonEmptyStr, writer: WrittenByOperator, modified_at: "2026-10-24T23:12:41Z" as NonEmptyStr, text: srv1_netplan_hand_text },
+  ],
+  renderer: SystemdNetworkd,
+  lease: ObservedDhcpLease {
+    holder: srv1_i210_mac,
+    address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 203),
+    prefix: 24,
+    gateway: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1),
+    route_metric: 200,
+    dns: [ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)],
+  },
+  mtu: byte_size(count: 1500),
+  cloud_init: CloudInitDisabledByMarkerFile { path: cloud_init_disabled_marker_path, reason: ubuntu_live_installer_disable_marker_text },
+  wait_online_failed_this_boot: true,
+}
+
+// ── The hand change, as a divergence ─────────────────────────────────────────────────────────────
+
+type NetplanApplyRouteTaken = PlainNetplanApply | NetplanTryWithRollback
+
+// WHAT IS KNOWN OF A HAND CHANGE IS ITS STANDING. Read from the host's own sudo journal, its commands
+// and files are facts; attested only, they are the operator's report and owe a read.
+type HandNetworkChangeStanding
+  = HandChangeReadFromJournal { commands: List<NonEmptyStr>, written_files: List<NonEmptyStr>, applied_by: NetplanApplyRouteTaken }
+  | HandChangeAttestedUnread { read_obligation: NonEmptyStr }
+
+type OperatorHandNetworkChange {
+  host: HostIdentity
+  performed_on: NonEmptyStr
+  moved_from: NonEmptyStr
+  moved_to: NonEmptyStr
+  standing: HandNetworkChangeStanding
+}
+
+// srv1's sudo journal (boot of 2026-10-24T21:04:40Z), verbatim commands, 23:08:40Z to 23:12:41Z; the
+// links were raised from the serial console (TTY=ttyAMA0) because the 10G uplink was down.
+data srv1_hand_move_to_1g: OperatorHandNetworkChange = OperatorHandNetworkChange {
+  host: operator_host_srv1,
+  performed_on: "2026-10-24" as NonEmptyStr,
+  moved_from: "X550 port 1 (48:21:0b:81:c6:ea, enP3p3s0f1)" as NonEmptyStr,
+  moved_to: "I210 (48:21:0b:81:c6:eb, enP3p6s0)" as NonEmptyStr,
+  standing: HandChangeReadFromJournal {
+    commands: [
+      "ip link set enP3p3s0f1 down" as NonEmptyStr,
+      "ip link set enP3p3s0f1 up" as NonEmptyStr,
+      "ip link set enP3p3s0f0 up" as NonEmptyStr,
+      "ip link set enP3p3s0f1 up" as NonEmptyStr,
+      "ip link set enP3p6s0 up" as NonEmptyStr,
+      "tee /etc/netplan/60-enP3p6s0.yaml" as NonEmptyStr,
+      "chmod 600 /etc/netplan/60-enP3p6s0.yaml" as NonEmptyStr,
+      "netplan apply" as NonEmptyStr,
+    ],
+    written_files: ["/etc/netplan/60-enP3p6s0.yaml" as NonEmptyStr],
+    applied_by: PlainNetplanApply,
+  },
+}
+
+data srv2_hand_move_to_1g: OperatorHandNetworkChange = OperatorHandNetworkChange {
+  host: operator_host_srv2,
+  performed_on: "2026-10-24" as NonEmptyStr,
+  moved_from: "its 10G port" as NonEmptyStr,
+  moved_to: "its I210 1G port" as NonEmptyStr,
+  standing: HandChangeAttestedUnread {
+    read_obligation: "on srv2: ip -br link/addr, ip route, networkctl list, /etc/netplan and netplan get, resolvectl, each en* NIC's MAC/speed/PCI address, the kernel journal of every recorded boot for ixgbe/igb link and AER lines, and the sudo journal of 2026-10-24 for ip link, tee and netplan" as NonEmptyStr,
+  },
+}
+
+data operator_hand_network_changes: List<OperatorHandNetworkChange> = [srv1_hand_move_to_1g, srv2_hand_move_to_1g]
+
+fn hand_network_change_for(host: HostIdentity) -> OperatorHandNetworkChange? {
+  first(filter(operator_hand_network_changes, c => host_identity_eq(a: c.host, b: host)))
+}
+
+// ── Twelve boots of srv1's kernel journal ────────────────────────────────────────────────────────
+
+// One boot as its kernel journal reads. Boot -11's journal begins mid-boot (no "Booting Linux" line),
+// so its I210 name and the X550's link are unread rather than absent. `aer_reported_to_os` is whether
+// the firmware's _OSC left AER to the kernel: from the boot of 2026-10-24T03:36:58Z it answers
+// "platform does not support [... AER ...]", so from then on no AER error can appear in this journal
+// whatever the hardware does.
+type NicBootReading {
+  boot_first_entry: NonEmptyStr
+  i210_kernel_name: NonEmptyStr?
+  i210_pci_address: NonEmptyStr?
+  x550_port1_linked: List<Bandwidth>
+  x550_aer_correctable: Nat
+  aer_reported_to_os: Bool
+  x550_tx_hang_resets: Nat
+}
+
+fn srv1_boot(first: NonEmptyStr, name: NonEmptyStr, pci: NonEmptyStr, mbps: List<Nat>, aer: Nat, reported: Bool, hangs: Nat) -> NicBootReading {
+  NicBootReading { boot_first_entry: first, i210_kernel_name: Present { value: name }, i210_pci_address: Present { value: pci }, x550_port1_linked: map(mbps, m => link_speed_mbps(megabits: m)), x550_aer_correctable: aer, aer_reported_to_os: reported, x550_tx_hang_resets: hangs }
+}
+
+data srv1_nic_boot_readings: List<NicBootReading> = [
+  NicBootReading { boot_first_entry: "2026-10-22T21:27:47Z" as NonEmptyStr, i210_kernel_name: none, i210_pci_address: none, x550_port1_linked: [], x550_aer_correctable: 160, aer_reported_to_os: true, x550_tx_hang_resets: 0 },
+  srv1_boot(first: "2026-10-23T22:03:07Z" as NonEmptyStr, name: "enP3p5s0" as NonEmptyStr, pci: "0003:05:00.0" as NonEmptyStr, mbps: [100], aer: 0, reported: true, hangs: 0),
+  srv1_boot(first: "2026-10-23T22:14:31Z" as NonEmptyStr, name: "enP3p5s0" as NonEmptyStr, pci: "0003:05:00.0" as NonEmptyStr, mbps: [100], aer: 0, reported: true, hangs: 0),
+  srv1_boot(first: "2026-10-23T22:22:34Z" as NonEmptyStr, name: "enP3p5s0" as NonEmptyStr, pci: "0003:05:00.0" as NonEmptyStr, mbps: [100], aer: 0, reported: true, hangs: 0),
+  srv1_boot(first: "2026-10-23T22:38:42Z" as NonEmptyStr, name: "enP3p5s0" as NonEmptyStr, pci: "0003:05:00.0" as NonEmptyStr, mbps: [100], aer: 0, reported: true, hangs: 0),
+  srv1_boot(first: "2026-10-23T23:57:34Z" as NonEmptyStr, name: "enP3p5s0" as NonEmptyStr, pci: "0003:05:00.0" as NonEmptyStr, mbps: [100], aer: 0, reported: true, hangs: 0),
+  srv1_boot(first: "2026-10-24T00:13:30Z" as NonEmptyStr, name: "enP3p5s0" as NonEmptyStr, pci: "0003:05:00.0" as NonEmptyStr, mbps: [100], aer: 0, reported: true, hangs: 0),
+  srv1_boot(first: "2026-10-24T00:24:52Z" as NonEmptyStr, name: "enP3p5s0" as NonEmptyStr, pci: "0003:05:00.0" as NonEmptyStr, mbps: [100], aer: 1, reported: true, hangs: 0),
+  srv1_boot(first: "2026-10-24T03:36:58Z" as NonEmptyStr, name: "enP3p6s0" as NonEmptyStr, pci: "0003:06:00.0" as NonEmptyStr, mbps: [100], aer: 0, reported: false, hangs: 0),
+  srv1_boot(first: "2026-10-24T20:53:24Z" as NonEmptyStr, name: "enP3p6s0" as NonEmptyStr, pci: "0003:06:00.0" as NonEmptyStr, mbps: [100], aer: 0, reported: false, hangs: 0),
+  srv1_boot(first: "2026-10-24T21:04:40Z" as NonEmptyStr, name: "enP3p6s0" as NonEmptyStr, pci: "0003:06:00.0" as NonEmptyStr, mbps: [100, 100, 1000, 1000], aer: 0, reported: false, hangs: 1),
+  srv1_boot(first: "2026-10-25T02:22:02Z" as NonEmptyStr, name: "enP3p6s0" as NonEmptyStr, pci: "0003:06:00.0" as NonEmptyStr, mbps: [], aer: 0, reported: false, hangs: 0),
+]
+
+// THE AER COUNTS SIT ON PORT 0 (0003:03:00.0), the port no configuration names: 160 correctable
+// Data Link Layer Timeout reports in the partial boot of 2026-10-22 and one in the boot of 2026-10-24
+// 00:24, all "error status/mask=00001000/00002000 [12] Timeout". Port 1, the one that carried the
+// uplink, reported none while AER was visible.
+
+// ── Which netplan selector survives srv1's enumeration ───────────────────────────────────────────
+
+// The I210 enumerated at 0003:05:00.0 as enP3p5s0 through 2026-10-24 00:24, and at 0003:06:00.0 as
+// enP3p6s0 from 03:36 on, when a USB controller carrying the BMC's virtual USB NIC (cdc_ether "ASRR",
+// aa:7a:13:da:73:d3) took 0003:05:00.0 -- the same boot from which the firmware stopped granting AER,
+// which places a firmware or BMC change between those boots without naming it. So a kernel name or a
+// PCI address is not this NIC's identity; its MAC is. A selector holds on a boot when the NIC it must
+// select is the one it matches; an unread boot decides nothing.
+type SelectorOnBoot = SelectorHolds | SelectorMisses | SelectorUnread
+
+fn selector_on_boot(selector: NetplanMatch, nic_mac: Eui48Address, boot: NicBootReading) -> SelectorOnBoot {
+  match selector {
+    MatchByMacAddress { mac: m } => if mac_addresses_are_equal(left: m, right: nic_mac) { SelectorHolds } else { SelectorMisses }
+    MatchByName { name: n } =>
+      match boot.i210_kernel_name {
+        Absent => SelectorUnread
+        Present { value: k } => if (k as String) == (n as String) { SelectorHolds } else { SelectorMisses }
+      }
+  }
+}
+
+fn selector_missed_boots(selector: NetplanMatch, nic_mac: Eui48Address, boots: List<NicBootReading>) -> Int {
+  length(filter(boots, b => match selector_on_boot(selector: selector, nic_mac: nic_mac, boot: b) { SelectorMisses => true  SelectorHolds => false  SelectorUnread => false }))
+}
+
+// ── The two bets about the 10G port ──────────────────────────────────────────────────────────────
+
+// LINK SPEED IS std.measure's Bandwidth, bits per second. The kernel ("NIC Link is Up 100 Mbps") and
+// ethtool ("Speed: 1000Mb/s") print megabits per second, so a reading enters through this one
+// constructor and the scale lives here, not in field names.
+fn link_speed_mbps(megabits: Nat) -> Bandwidth {
+  bandwidth(count: megabits * 1000000)
+}
+
+// The X550's nameplate is read, not assumed: ethtool lists 10000baseT/Full among its supported and
+// advertised modes on srv1 (2026-10-25).
+data x550_nameplate: Bandwidth = link_speed_mbps(megabits: 10000)
+
+data no_link: Bandwidth = bandwidth(count: 0)
+
+// WHAT THE LINK SPEEDS SAY. Port 1 linked at 100 Mb/s on every boot whose link was read from 2026-10-23
+// to 2026-10-24, and at 1000 Mb/s twice late on 2026-10-24; it never linked at its nameplate. A
+// 10GBASE-T port negotiating 100 Mb/s is the signature of the physical layer (a cable pair, a
+// connector, or a far end that offers no more), which no PCIe load explains; a drop under load would
+// show a link that came up at speed and then went down.
+type LinkSpeedBearing
+  = BelowNameplateOnEveryReadBoot { read_boots: Int, fastest: Bandwidth }
+  | NameplateReachedOnSomeBoot
+  | NoLinkRead
+
+fn x550_link_speed_bearing(boots: List<NicBootReading>) -> LinkSpeedBearing {
+  let read = filter(boots, b => length(b.x550_port1_linked) > 0)
+  let speeds = flat_map(read, b => b.x550_port1_linked)
+  if length(read) == 0 {
+    NoLinkRead
+  } else if any(speeds, s => bandwidth_count(b: s) >= bandwidth_count(b: x550_nameplate)) {
+    NameplateReachedOnSomeBoot
+  } else {
+    BelowNameplateOnEveryReadBoot { read_boots: length(read), fastest: fold(speeds, init: no_link, f: (acc, s) => if bandwidth_count(b: s) > bandwidth_count(b: acc) { s } else { acc }) }
+  }
+}
+
+// WHETHER AER CAN STILL ANSWER. The PCIe bet is decided by the AER reports and the load beside them;
+// once the firmware stops granting AER to the OS, the kernel journal cannot carry them, and the
+// reading moves to the BMC's event log.
+type AerVisibility = AerReportedOnEveryReadBoot | AerWithheldSince { boot_first_entry: NonEmptyStr }
+
+fn aer_visibility(boots: List<NicBootReading>) -> AerVisibility {
+  match first(filter(boots, b => !b.aer_reported_to_os)) {
+    Absent => AerReportedOnEveryReadBoot
+    Present { value: b } => AerWithheldSince { boot_first_entry: b.boot_first_entry }
+  }
+}
+
+type UplinkFaultLayer = PcieLinkUnderLoad | PhysicalLayerCableOrFarEnd
+
+// A BET IS ITS CLAIM, WHAT IT PREDICTS THAT ITS RIVAL DOES NOT, AND THE READING THAT DECIDES IT. It is
+// never consumed as a fact: gunbc.host.host_primary_network refuses to make a NIC primary while a bet
+// blaming that NIC is open, which is the only use a bet has.
+type UplinkFaultBet {
+  host: HostIdentity
+  nic: Eui48Address
+  layer: UplinkFaultLayer
+  claim: NonEmptyStr
+  predicts: NonEmptyStr
+  read_obligation: NonEmptyStr
+}
+
+fn pcie_bet_read_obligation(boots: List<NicBootReading>) -> NonEmptyStr {
+  match aer_visibility(boots: boots) {
+    AerReportedOnEveryReadBoot =>
+      "journalctl -k for pcieport/ixgbe AER lines on 0003:03:00.x and ethtool -S rx/tx error counters, correlated by timestamp with PCIe load (the NVMe and accelerator traffic on the same root complex)" as NonEmptyStr
+    AerWithheldSince { boot_first_entry: since } =>
+      join(["the BMC's SEL for PCIe correctable/uncorrectable events on the X550 slot, because the firmware has withheld AER from the OS since the boot of ", since as String, "; then ethtool -S error counters correlated with PCIe load"], "") as NonEmptyStr
+  }
+}
+
+fn srv1_x550_bets() -> List<UplinkFaultBet> {
+  [
+    UplinkFaultBet {
+      host: operator_host_srv1,
+      nic: srv1_x550_port1_mac,
+      layer: PcieLinkUnderLoad,
+      claim: "the operator's inference: the X550 link drops while PCIe is busy" as NonEmptyStr,
+      predicts: "link-down and AER events clustered under PCIe load, with the link otherwise at its negotiated speed" as NonEmptyStr,
+      read_obligation: pcie_bet_read_obligation(boots: srv1_nic_boot_readings),
+    },
+    UplinkFaultBet {
+      host: operator_host_srv1,
+      nic: srv1_x550_port1_mac,
+      layer: PhysicalLayerCableOrFarEnd,
+      claim: "the X550 port 1 link is limited by its cable, connector or far-end port: it negotiated 100 Mb/s on every read boot and never its 10000 Mb/s nameplate" as NonEmptyStr,
+      predicts: "a below-nameplate negotiated speed on every boot regardless of load, unchanged by a load-free boot, and corrected by a cable or far-end change" as NonEmptyStr,
+      read_obligation: "the far-end port's speed capability and negotiated speed (the switch or router port the X550 cable lands on), the cable's category, and one boot with a known-good Cat6a cable to a 10GBASE-T far end" as NonEmptyStr,
+    },
+  ]
+}
+
+fn uplink_fault_bets_on(nic: Eui48Address) -> List<UplinkFaultBet> {
+  filter(srv1_x550_bets(), b => mac_addresses_are_equal(left: b.nic, right: nic))
+}

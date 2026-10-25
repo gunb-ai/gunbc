@@ -1,0 +1,72 @@
+module v2.test.claim.compiler.infer_type_decl_identity_coproduct
+
+import v2.compiler.infer { infer_type_decl_identity_node }
+import v2.std.node { Atom, Authored, Conj, Disj, Edge, Node, NotADeclaration, Symbol, TypeNode, node_same_occurrence }
+import v2.std.node_query { node_is_coproduct }
+import v2.std.qualified_name { QualifiedName }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A STORED COPRODUCT IS ITSELF THE DECLARATION, even when one of its variants is named like it.
+// The specimen is the real shape of extdeps.rust.cargo_diagnostic
+//   type RustcSpanRead = RustcSpanRead { location: RustcDiagnosticLocation } | RustcSpanUnreadable
+// whose variant tags are authored edges on the Disj. v2.std.node_query named_child_lookup reads authored
+// edges on every node kind, so v2.compiler.infer infer_type_decl_identity_node, asked for the leaf
+// `RustcSpanRead` of that declaration, would hand back the VARIANT's payload instead of the declaration
+// unless its own node_is_coproduct guard stops it. The claim goes red when that guard is removed.
+// The control: a non-coproduct stored node that carries the leaf as an authored member still descends.
+
+fn tdi_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn tdi_named(name: Symbol, target: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
+}
+
+fn tdi_rustc_span_read_payload() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [tdi_named(name: ^location, target: tdi_atom(s: ^RustcDiagnosticLocation))],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn tdi_rustc_span_read_declaration() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      tdi_named(name: ^RustcSpanRead, target: tdi_rustc_span_read_payload()),
+      tdi_named(name: ^RustcSpanUnreadable, target: tdi_atom(s: ^RustcSpanUnreadable))
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn tdi_identity() -> QualifiedName {
+  [^extdeps, ^rust, ^cargo_diagnostic, ^RustcSpanRead]
+}
+
+test fn infer_type_decl_identity_returns_a_coproduct_not_its_same_named_variant_holds() -> Bool {
+  let got = infer_type_decl_identity_node(declared: tdi_rustc_span_read_declaration(), identity: tdi_identity())
+  node_is_coproduct(node: got) && node_same_occurrence(a: got, b: tdi_rustc_span_read_declaration())
+}
+
+// CONTROL: a stored node that is not a coproduct and carries the leaf as an authored member descends to it,
+// so the guard above is not a blanket "never descend".
+fn tdi_wrapper() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [tdi_named(name: ^RustcSpanRead, target: tdi_rustc_span_read_declaration())],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn infer_type_decl_identity_descends_a_non_coproduct_to_the_named_member_holds() -> Bool {
+  node_same_occurrence(
+    a: infer_type_decl_identity_node(declared: tdi_wrapper(), identity: tdi_identity()),
+    b: tdi_rustc_span_read_declaration()
+  )
+}
