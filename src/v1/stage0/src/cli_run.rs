@@ -32188,7 +32188,6 @@ mod peel_alias_fixpoint_termination {
                 type_head_exposures: empty_index.type_head_exposures.clone(),
                 file_modules: empty_index.file_modules.clone(),
                 module_named_imports: empty_index.module_named_imports.clone(),
-                alias_cycles: empty_index.alias_cycles.clone(),
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),
