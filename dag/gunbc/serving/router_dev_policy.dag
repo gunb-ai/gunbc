@@ -117,6 +117,7 @@ fn router_dev_access_lines() -> List<String> {
     "for _, u in ipairs(ROUTER_UPSTREAMS) do if body.model == ROUTER_ALIAS or body.model == u.model then candidates[u.name] = u end end",
     "if next(candidates) == nil then return refuse(404, 'invalid_request_error', 'unknown model') end",
     "local stuck = state:get('session:' .. session)",
+    "if stuck and not candidates[stuck] then for _, u in pairs(candidates) do for _, old in ipairs(u.retiring_names or \{}) do if stuck == old then stuck=u.name end end end end",
     "if stuck and not candidates[stuck] and body.model ~= ROUTER_ALIAS then return refuse(409, 'invalid_request_error', 'session is bound to another model') end",
     "local pick, priority, spare = nil, nil, -1",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
