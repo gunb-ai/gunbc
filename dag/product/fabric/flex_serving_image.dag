@@ -1,0 +1,40 @@
+module product.fabric.flex_serving_image
+
+import std.types { String, NonEmptyStr, Port }
+import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
+
+// THE SERVING IMAGE AS ONE SUPPLIER-AGNOSTIC FACT: what a rented card runs, whoever rents it. Each supplier
+// realizes it in its own launch shape (Vast: a template, product.fabric.flex_vast_template; EC2: a launch
+// template whose user-data starts this image under docker, gunbc.plans.flex_supplier_generalization PR 3),
+// and neither restates a field here. One image, one onstart, N realizations.
+type FlexServingImage {
+  // The OCI repository and the sha256 digest that pins it; the pull reference is
+  // flex_serving_image_reference, never a second literal.
+  repository: NonEmptyStr
+  digest_sha256: NonEmptyStr
+  // The port the server listens on inside the container (18000: 8000 is the image's Caddy portal).
+  port: Port
+  // The container's shared memory.
+  shm: ByteSize
+  // The serving script, run inside the container. It needs a driver 580+, a /cache with room for the
+  // model and the disk KV tier, and env POOL_API_KEY and PORT; it names no supplier.
+  onstart: String
+}
+
+// THE ONSTART, carried verbatim as the operator supplied it (read live on srv1 from the retired Vast
+// template, 2026-10-18, relayed by deep-otter-797). It names POOL_API_KEY only to READ it from the
+// container's environment; it carries no credential value. Moved here unchanged from
+// product.fabric.flex_vast_template (was flex_vast_onstart), because nothing in it is a Vast fact.
+data flex_serving_onstart: String = "#!/bin/bash\n# Qwen3.8-Flash-Next on the local-inference-lab vLLM build; the model from Hugging Face.\n# Needs: driver 580+ (CUDA 13.x; tested on 595, 610 and 615), ~400 GB disk, env POOL_API_KEY and PORT.\n# Serves HTTPS with a certificate made on first start; the dashboard pins it on first contact.\n# Logs: /root/serve/events.log (steps) and /root/serve/serve.log (server, including the download)\nD=/root/serve; mkdir -p $D /cache/kv; ev()\{ echo \"$(date -u +%FT%TZ) $*\" >> $D/events.log; }\n# Template env is on PID 1; an on-start shell may not inherit it.\nfor v in POOL_API_KEY PORT CACHE_MODE; do\n  [ -n \"$\{!v}\" ] || export $v=\"$(tr '\\0' '\\n' < /proc/1/environ | sed -n \"s/^$v=//p\")\"\ndone\nfor v in POOL_API_KEY PORT; do [ -n \"$\{!v}\" ] || \{ ev \"REFUSED: $v not set in template env\"; exit 1; }; done\nDRV=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)\n[ \"$\{DRV%%.*}\" -ge 580 ] || \{ ev \"REFUSED: driver $DRV; this image needs 580+ (CUDA 13.x)\"; exit 1; }\numask 077; printf %s \"$POOL_API_KEY\" > /root/.pool_key\n# TLS: one key per card, kept across restarts so its pin holds. No TLS, no start.\n[ -s $D/tls.key ] && [ -s $D/tls.crt ] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \\\n  -days 3650 -subj \"/CN=pool-card\" -keyout $D/tls.key -out $D/tls.crt >> $D/events.log 2>&1\numask 022\n[ -s $D/tls.key ] && [ -s $D/tls.crt ] || \{ ev \"REFUSED: no TLS certificate could be made\"; exit 1; }\nTLS=\"--ssl-keyfile $D/tls.key --ssl-certfile $D/tls.crt\"\n\n# Session caches: ram-disk (default) = LMCache, sessions evicted from the GPU go to RAM, then disk.\n# vram = GPU only; set CACHE_MODE=vram in the template env to use it.\nCACHE_MODE=$\{CACHE_MODE:-ram-disk}\n# RAM tier: half of the RAM this container may use, at most 60 GB. The container's own limit\n# (cgroup memory.max) can be far below the host's RAM (183 of 251 GB seen 2026-10-16).\nAVAIL=$(awk '/MemAvailable/\{print int($2/1048576)}' /proc/meminfo)\nMAX=$(cat /sys/fs/cgroup/memory.max 2>/dev/null); CUR=$(cat /sys/fs/cgroup/memory.current 2>/dev/null)\n[[ \"$MAX\" =~ ^[0-9]+$ ]] && [[ \"$CUR\" =~ ^[0-9]+$ ]] && \{ C=$(( (MAX - CUR) / 1073741824 )); [ $C -lt $AVAIL ] && AVAIL=$C; }\nL1=$(( AVAIL / 2 )); [ $L1 -gt 60 ] && L1=60\n# Disk tier: 80% of the disk left after the model (~110 GB), at most 800 GB.\nL2=$(( ($(df -BG --output=avail /cache | tail -1 | tr -dc 0-9) - 110) * 8 / 10 )); [ $L2 -gt 800 ] && L2=800\nif [ \"$CACHE_MODE\" = ram-disk ] && \{ [ $L1 -lt 8 ] || [ $L2 -lt 20 ]; }; then\n  ev \"too little RAM/disk for ram-disk (L1 $\{L1}G, L2 $\{L2}G); using vram\"; CACHE_MODE=vram\nfi\n\n# The server downloads the pinned model revision from Hugging Face on first start (~103 GB),\n# and tunes its kernels on first start (~9 min); both stay on disk for restarts.\ncat > $D/run.sh <<EOS\n#!/bin/bash\nexport PORT=$PORT\n# Restart on crash; the pool stops routing to it while it is down.\nwhile true; do\n  if [ \"$CACHE_MODE\" = ram-disk ]; then\n    /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\\\n      --env LMCACHE_MODE=ram-disk --env LMCACHE_L1_GB=$L1 --env LMCACHE_L2_GB=$L2 --env LMCACHE_L2_ROOT=/cache/kv \\\\\n      -- --port $PORT $TLS --api-key \"\\$(cat /root/.pool_key)\"\n  else\n    /usr/local/bin/lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie \\\\\n      -- --cache-mode vram --port $PORT $TLS --api-key \"\\$(cat /root/.pool_key)\"\n  fi\n  echo \"\\$(date -u +%FT%TZ) lil-serve exited \\$?; restarting in 10s\" >> $D/events.log; sleep 10\ndone\nEOS\nchmod +x $D/run.sh\nev \"START (driver $DRV, cache $CACHE_MODE, L1 $\{L1}G, L2 $\{L2}G, TLS)\"\nnohup $D/run.sh >> $D/serve.log 2>&1 &\n"
+
+data flex_lil_serving_image: FlexServingImage = FlexServingImage {
+  repository: "ghcr.io/local-inference-lab/vllm" as NonEmptyStr,
+  digest_sha256: "751ee72beb242b163e1124b2e0b825a509e20bacaf1423f467d65f6b8b664bc7" as NonEmptyStr,
+  port: 18000,
+  shm: gibibyte_to_byte_size(g: gibibyte(count: 80)),
+  onstart: flex_serving_onstart,
+}
+
+fn flex_serving_image_reference(image: FlexServingImage) -> NonEmptyStr {
+  join([image.repository as String, "@sha256:", image.digest_sha256 as String], "") as NonEmptyStr
+}

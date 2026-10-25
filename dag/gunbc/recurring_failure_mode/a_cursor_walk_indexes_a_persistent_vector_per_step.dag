@@ -1,0 +1,41 @@
+module gunbc.recurring_failure_mode.a_cursor_walk_indexes_a_persistent_vector_per_step
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_cursor_walk_indexes_a_persistent_vector_per_step: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_cursor_walk_indexes_a_persistent_vector_per_step" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a REQUIRED control that times an emitted self-tail-recursive list walk across a quadrupling of n and goes red outside a linear band, SUFFICIENT FOR a revert of the focus read in v1.compiler.emit_rust fm_head_bind_lets to turn v2-bootstrap red; //gunbc/instruments:member-home-cost case fold.cursor_walk is that control everywhere except that it is not on the required path."
+    }
+  },
+
+  receipts: [
+    "INVALID STATE: the emitted Rust for a self-tail-recursive Cons/Empty walk over a FreeMonoid reads each element by indexing the im Vector base, `(*__fm)[cursor + i]`, once per loop step. im::Vector indexing descends the RRB tree from the root, O(log n), so the walk costs O(n log n) where a sequential traversal of the same vector is amortized O(1) per step. The lowering is v1.compiler.emit_rust tco_cursor_plan plus fm_head_bind_lets; every fold the seed emits through it inherits the shape, std.algebra fold_list first (and with it for_all, count_where and every fold defined over fold_list).",
+    "HARM: every emitted list fold pays a factor that grows with log n and steps up each time the vector's tree gains a level (past 4096 elements for im 15.1), so a fold over a large member home is superlinear on the emitted path. It blocked the N7 member-home sweeps, which compare emitted folds against the host.",
+    "CAUSE, THE EARLIEST UNJUSTIFIED BOUNDARY: the cursor lowering (v1.compiler.emit_rust, the CURSOR LIST PARAMETER block) replaced the per-step `skip` with a base vector plus an index, and justified it by `skip` costing O(log n) per step. It then read the base by random index, which on the same carrier is ALSO O(log n) per step: it assumed O(1) random access on a persistent vector that does not offer it. The analysis upstream (which params are cursors, which tails advance by how much) is sound and unchanged; the producer of the walk, fold_list, is sound; the defect is the read primitive the lowering chose, so the repair is there and not at any emitted site.",
+    "THE REPAIR: each cursor param's reads go through one im::vector::Focus held across loop iterations. A Focus caches the leaf chunk it last read, so increasing reads are amortized O(1), the traversal host `.iter()` uses. A Focus borrows its base, so the loop is split: an inner loop advances indices with every focus intact, and an outer `'__tco_rebase` loop, continued only by a self-call that passes a cursor param a list that is not its own tail, re-borrows every focus from the current bases (v1.compiler.emit_rust emit_typed_tco_body, emit_typed_tco_reassign). Clone semantics are unchanged: each head read clones the element, as before.",
+    "PROTOTYPE READING (a one-off, not an instrument): the old and new emitted shapes of fold_list, hand-transcribed into one crate beside host iter().fold, timed best-of-7 on the remote amd64 runner, 2026-10-24, im 15.1.0, n = 2000 to 1024000 doubling. Old: 10.2 ns per element up to 4000, 15.2 from 8000, 20.0 from 512000 (a step per tree level). New: 4.05 to 4.26 ns per element across the whole range. Host: 1.75 to 1.89. All three agreed on every sum.",
+    "THE CONTROL: //gunbc/instruments:member-home-cost (gunbc.instruments.member_home_cost_native, sunny-bee-153) times the emitted fold_list and for_all against host at n = 2000, 4000, 8000 and 16000. Case fold.cursor_walk holds when quadrupling n from 4000 to 16000 multiplies fold_list's time by at most 5x; cases fold.home_linear and all.home_linear hold inside a 2.5x-per-doubling band. Both budgets are policy, not measured constants.",
+    "EXECUTED RED, 2026-10-24, remote amd64, one dispatch, main 476be2f5386 plus the control: the label exited 1; fold.cursor_walk not_held at 2000:17085, 4000:34502, 8000:99569, 16000:194251 ns (5.63x for 4x n); fold.home_linear not_held at 2.88x per doubling from 4000; all.home_linear not_held at 2.75x.",
+    "EXECUTED GREEN, 2026-10-24, remote amd64, one dispatch, the same base and control plus this repair, with the regen round's candidate v1_compiler_emit_rust.rs installed into the seed before it emitted the label's closure (the installed mirror was checked to carry the focus read before timing): fold.cursor_walk held at 2000:8313, 4000:16515, 8000:33450, 16000:66730 ns (4.04x for 4x n); fold.home_linear and all.home_linear held; fold at 16000 is 1.46x host (was 3.95x) and for_all 1.55x (was 4.92x); every case agreed with host. The label still exited 1 on map and sort_by, which are linear (map.home_linear and sort_by.home_linear held in both runs) and fail only the 3x host ratio; that residual is a constant inside their step bodies, not this lowering, and this row does not claim it.",
+    "CEILING: mechanically preventable, through a timing control over an emitted walk. Construction is not available while the carrier's access costs are not modeled: no extdeps module states im::Vector's index, focus and pop costs, so the lowering cannot select its read primitive from a declared cost and the choice is hand-made in the emitter. That model is the follow-up that would let the lowering derive the choice; it does not lift this class above mechanical prevention, because a cost claim on an external carrier stays a boundary obligation that only timing can confirm.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "fm_head_bind_lets"),
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "tco_cursor_plan"),
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_tco_body"),
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_tco_reassign"),
+    decl_ref(module_path: "std.algebra", decl_name: "fold_list"),
+  ],
+}

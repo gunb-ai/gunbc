@@ -105,6 +105,10 @@ data approve_ios_bodied_member_frontier: DissolutionCondition = unbound_dissolut
 //     transition table) and ApproveTests/EnrolmentMachineTests.swift, both from
 //     gunbc.approve_ios_swift_enrolment_machine over gunbc.approve_ios_enrolment_machine. AppState.swift
 //     and EnrolmentState.swift keep only the UI glue and payload persistence, and call that table.
+//     Likewise Approve/OperationErrors.swift (the error lifetime: one current error per operation,
+//     cleared by its next success or by leaving the phases it is relevant in) and
+//     ApproveTests/OperationErrorsTests.swift, from gunbc.approve_ios_swift_operation_errors over
+//     gunbc.approve_ios_operation_errors; AppState.swift and Views.swift record every outcome into it.
 //   HAND-AUTHORED REALIZATION: the other .swift files under apps/approve-ios/Approve, named by
 //     approve_ios_retained_swift_rows above, and the operator-local Config/Team.xcconfig,
 //     which is operator identity, not a model fact.
