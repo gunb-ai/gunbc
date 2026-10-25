@@ -185,6 +185,8 @@ test fn the_new_device_notice_is_generic_and_keyed_by_the_enrolment() -> Bool {
         && !contains(p, "@") && (r.collapse_id as String) == "genr-new"
     }
   }
+}
+
 // ABSENT AND EMPTY ARE TWO WIRE FACTS (review 86055): an Absent subtitle or category sends no key,
 // and a Present one sends exactly its value. The golden above is the Absent half; this is the other.
 test fn a_present_subtitle_and_category_are_sent_and_absent_ones_are_not() -> Bool {
