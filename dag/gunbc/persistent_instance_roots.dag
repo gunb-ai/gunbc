@@ -2,21 +2,31 @@ module gunbc.persistent_instance_roots
 
 import std.types { String }
 
-// THE INSTANCES WHOSE MATERIALIZATION STORE OUTLIVES A RUN, as a closed set. They are facts about two
-// deployment instances (macbook_local, srv2_deploy), so they live in the gunbc layer;
+// THE INSTANCES WHOSE MATERIALIZATION STORE OUTLIVES A RUN, as a closed set. They are facts about
+// deployment instances (macbook_local, srv2_deploy, the srv1 lab), so they live in the gunbc layer;
 // std.materialization_store_grant's PersistentInstanceWorkspace arm carries one of these and grants
 // exactly its root, and gunbc.roadmap.roadmap_dashboard_instance reads the same root as that
 // instance's instance_root. A third persistent host is a new arm here before either can name it.
 type PersistentInstanceScope
   = MacbookLocal
   | Srv2Deploy
+  | Srv1Lab
 
 data materialization_store_persistent_macbook_scope: String = "/Users/briansrls/.local/share/gunbc-macbook-local"
 data materialization_store_persistent_srv2_scope: String = "/home/briansrls/.local/share/gunbc-srv2-deploy"
+// THE SRV1 LAB INSTANCE'S ROOT, and the one authority for it. The lab was the first isolated
+// instance to be given a materialization store (2026-10-25, srv1): its verification obligation runs
+// as the instance's SERVICE USER, and an instance with no declared store cannot run compute at all
+// (gunbc.compute.work_request MaterializationStoreUndeclared), so the lab could never accept an
+// attempt. This literal is that root: gunbc.roadmap.roadmap_dashboard_instance srv1_dashboard_lab_root
+// reads it, so the instance root and the store's scope root are one authority, not two literals that
+// could drift apart.
+data materialization_store_persistent_srv1_lab_scope: String = "/opt/gunbc-lab/codex-provider-feedback-v0"
 
 fn persistent_instance_scope_root(scope: PersistentInstanceScope) -> String {
   match scope {
     MacbookLocal => materialization_store_persistent_macbook_scope
     Srv2Deploy => materialization_store_persistent_srv2_scope
+    Srv1Lab => materialization_store_persistent_srv1_lab_scope
   }
 }

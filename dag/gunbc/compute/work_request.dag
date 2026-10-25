@@ -240,14 +240,24 @@ type WorkOutcome
 // refused build reached the dependent's caller as 'dependency <id> ended refused_by_infrastructure'
 // and its typed cause was gone: no outcome.json is written for a refusal, so nothing else held it
 // (srv1 lab 2026-10-11, a worker's compile refused and the worker never saw why).
-type WorkInfrastructureRefusal
-  = ProducerInFlight { lease_path: String }
-  | HostComputeCapacityFull { wire: String }
-  | HostBelowMemoryFloor { requested: Kibibyte, available: Kibibyte }
-  | ComputeCapacityLedgerUnavailable { detail: String }
-  | CheckoutUnavailable { detail: String }
-  | StoreUnavailable { detail: String }
-  | MaterializationStoreUndeclared { instance_id: String }
+// THE RUNNING ACCOUNT IS NOT THE INSTANCE'S SERVICE USER, so the request is refused before it can
+// reach a store, the capacity ledger or the compute root. This is a PRINCIPAL exclusion, and the
+// reason it is typed rather than left to file permissions is measured: compute_root(instance)
+// (gunbc.compute.host_capacity) is the instance's SHARED compute directory and the compute route
+// draws grants from the HOST capacity ledger (/opt/gunbc/compute/capacity), so an untrusted worker
+// that got as far as either could forge or exhaust shared state, and a worker-writable durable
+// materialization store is a cache-poisoning surface. Before 2026-10-25 the dedicated worker was
+// kept out only because the lab instance declared NO store -- MaterializationStoreUndeclared refused
+// before any shared state was touched -- and that single-purpose absence was the whole exclusion.
+// Giving the lab a store (its verification runs compute as the service user) moved the worker's
+// refusal later, to an EACCES somewhere in the ledger or the compute root, which is not an exclusion
+// at all: it depends on modes the deploy happens to have set. So the worker is refused HERE, by the
+// account its process runs as, by the decision gunbc.compute.work_provider_local compute_principal_refusal.
+// The principal carries the account name the observation reported, or the unobservable stand-in; it
+// is never a numeric id, because a host-specific uid literal is not portable ground (DESIGN 4d).
+// The refusal's readable text is its own sentence in work_refusal_detail below, in the same shape
+// as every other cause here: what was refused, of which instance, and the remedy.
+  | ComputePrincipalNotServiceUser { instance_id: String, principal: String }
   | ToolchainUnobserved { detail: String }
   | DependencyNotSucceeded { dependency_identity: String, ending: String, dependency_outcome: String }
   | SubjectUnresolved { detail: String }
@@ -318,6 +328,7 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     CheckoutUnavailable { detail } => join(["checkout unavailable: ", detail], "")
     StoreUnavailable { detail } => join(["store unavailable: ", detail], "")
     MaterializationStoreUndeclared { instance_id } => join(["instance ", instance_id, " declares no materialization store, so it has nowhere to commit or read a result; declare one before it runs compute"], "")
+    ComputePrincipalNotServiceUser { instance_id, principal } => join(["compute refuses to run as '", principal, "' on instance ", instance_id, ": only the instance's own service user runs compute, and this is refused at admission -- before the materialization store, the capacity ledger or the compute root are touched -- so a principal the instance does not trust never reaches shared state; run the work through the instance's service user (the belt's verification obligation does), never through the dedicated worker's account"], "")
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
     DependencyNotSucceeded { dependency_identity, ending, dependency_outcome } => join(["dependency ", dependency_identity, " ended ", ending, "; its outcome: ", dependency_outcome], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")

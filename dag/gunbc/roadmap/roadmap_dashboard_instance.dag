@@ -35,7 +35,8 @@ import std.materialization_store_grant {
 }
 import gunbc.persistent_instance_roots {
   materialization_store_persistent_macbook_scope, materialization_store_persistent_srv2_scope,
-  MacbookLocal, Srv2Deploy,
+  materialization_store_persistent_srv1_lab_scope,
+  MacbookLocal, Srv2Deploy, Srv1Lab,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
@@ -368,7 +369,7 @@ data srv2_dashboard_preview_id: NonEmptyStr = "srv2-preview-codex-feedback-v0" a
 // membership and other gets nothing. Reachability is established before a unit starts by
 // gunbc.roadmap.dispatch_worker_traversal.
 data srv1_dashboard_lab_provision_parent: FilePath = "/opt/gunbc-lab" as FilePath
-data srv1_dashboard_lab_root: FilePath = "/opt/gunbc-lab/codex-provider-feedback-v0" as FilePath
+data srv1_dashboard_lab_root: FilePath = materialization_store_persistent_srv1_lab_scope as FilePath
 // srv2's roots stay under the home tree on purpose: the preview is DashboardObserveOnly and the srv2
 // lab is a WorkerIsServiceUser instance, so neither runs a dedicated worker uid and no foreign uid is
 // handed a path under them. They move when an srv2 instance adopts WorkerDedicatedAccount.
@@ -1241,12 +1242,23 @@ fn isolated_dashboard_instance(
     publication_base_branch: "main" as NonEmptyStr,
     worker: WorkerIsServiceUser,
     provision_parent_root: dashboard_home_provision_parent_root,
+    materialization_store_root: none,
   )
 }
 
 // An isolated instance whose admitted revision is NOT the fleet's: a development instance that serves
 // a branch is admitted by a ref in its own repository the operator advances deliberately (the
 // DashboardAdmittedRevisionSource annotation; precedent srv2_deploy_admitted_revision_source).
+//
+// THE STORE IS A PARAMETER, NOT A HARD-CODED `none`. Every isolated instance used to declare no
+// materialization store, which quietly decided more than isolation: a compute request against such an
+// instance refuses with MaterializationStoreUndeclared (gunbc.compute.work_request) before touching
+// any shared state, and that refusal was the ONLY thing keeping an untrusted dedicated worker out of
+// compute (DESIGN 6b post-mortem; the recurring-failure-mode row
+// gunbc.recurring_failure_mode.compute_admission_excluded_an_untrusted_principal_by_a_missing_store).
+// An instance that needs to run compute -- the srv1 lab, whose verification obligation runs as the
+// instance's service user -- must therefore be able to declare a store, and the rest must keep
+// declaring none; so it is named per instance at the call site, the way `worker` already is.
 fn isolated_dashboard_instance_admitting(
   deployment: DeploymentId,
   instance_id: NonEmptyStr,
@@ -1261,6 +1273,7 @@ fn isolated_dashboard_instance_admitting(
   publication_base_branch: NonEmptyStr,
   worker: WorkerIdentity,
   provision_parent_root: FilePath,
+  materialization_store_root: MaterializationStoreRoot?,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: deployment,
@@ -1306,7 +1319,7 @@ fn isolated_dashboard_instance_admitting(
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
     worker: worker,
-    materialization_store_root: none,
+    materialization_store_root: materialization_store_root,
   }
 }
 
@@ -1335,6 +1348,19 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     publication_base_branch: srv1_lab_publication_base_branch,
     worker: WorkerDedicatedAccount,
     provision_parent_root: srv1_dashboard_lab_provision_parent,
+    // THE LAB'S VERIFICATION RUNS COMPUTE, AS THE SERVICE USER. The belt's verification obligation
+    // (gunbc.roadmap.roadmap_belt_actuate) runs the handed-in tests through compute after hand-in, and
+    // it runs them as the instance's service user -- the standing decision is that the DEDICATED
+    // worker runs none. A compute request against an instance with no declared store refuses with
+    // MaterializationStoreUndeclared before any shared state is touched, so the store-less lab could
+    // never accept an attempt: measured 2026-10-25 on srv1, attempt 71ac07ca21af8e29 handed in, the
+    // belt committed the candidate, and acceptance came back `unavailable`. The lab's store is its own
+    // workspace under the lab root -- the scope root IS the instance root (gunbc.persistent_instance_roots),
+    // so the store is declared once and read twice, never by a second literal. The dedicated worker is
+    // kept out NOT by this declaration's absence but by compute admission refusing it by principal
+    // (gunbc.compute.work_provider_local compute_principal_refusal), before store, ledger or
+    // compute-root access.
+    materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: Srv1Lab } },
   )
 }
 

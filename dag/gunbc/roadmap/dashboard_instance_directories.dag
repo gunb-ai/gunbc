@@ -10,6 +10,7 @@ import gunbc.auth.profile_projection { profile_store_directory }
 import gunbc.roadmap.roadmap_view_preference_store { issue_view_store_directory }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
 import gunbc.compute.host_capacity { compute_root_directory }
+import gunbc.compute.work_provider_local { compute_store_directories }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory_demands }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_directory }
 import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_directory, cursor_attempt_runtime_directory }
@@ -47,5 +48,10 @@ fn dashboard_instance_directory_demands(realization: ProdRoleRealization, instan
     credential_acquisition_slots_directory(instance: instance),
     cursor_attempt_runtime_directory(instance: instance),
     worktree_claim_slots_directory(instance: instance),
-  ], fabric_storage_directory_demands(realization: realization, instance: instance)))
+  // THE MATERIALIZATION STORE AND ITS STAGING SIBLING, demanded by the route that writes them
+  // (gunbc.compute.work_provider_local compute_store_directories) and empty unless the instance
+  // declares a PersistentInstanceWorkspace store. Without this row the srv1 lab's verification
+  // could reach admission but not the store: compute_store_open initializes a store idempotently
+  // and refuses a root that is missing, and a missing root is created by nothing else.
+  ], concat(fabric_storage_directory_demands(realization: realization, instance: instance), compute_store_directories(instance: instance))))
 }
