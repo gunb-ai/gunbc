@@ -9,6 +9,7 @@ import v2.compiler.parse { PreparedGrammar }
 import v2.compiler.tokenize { PreparedLexRules }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.workflow.roster_import_sweep {
+  roster_rename_companions,
   RosterApplied,
   RosterApplyRefused,
   RosterApplyWritten,
@@ -180,9 +181,13 @@ fn proof_round(state: ProofState, path: String, prepared: PreparedGrammar, lex: 
   if state.done || (state.stuck != "") {
     state
   } else {
+    // Per scope, the same companions the apply step derives from that scope's rows (a RenameHead row's companion
+    // import), so the recomputation reproduces exactly what the generator writes.
     let outcome = fold_list(xs: scopes, empty: RosterClean, cons: fn(acc, scope) {
       match acc {
-        RosterClean => roster_sweep_text_scoped(sides: roster_home_sides(rows: roster_rows_for_scope(scope: scope)), path: path, text: state.text, prepared: prepared, lex: lex, scope: scope, closures: closures)
+        RosterClean =>
+          let rows = roster_rows_for_scope(scope: scope)
+          roster_sweep_text_scoped(sides: roster_home_sides(rows: rows), companions: roster_rename_companions(rows: rows, prepared: prepared, lex: lex), path: path, text: state.text, prepared: prepared, lex: lex, scope: scope, closures: closures)
         _ => acc
       }
     })
