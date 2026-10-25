@@ -512,54 +512,16 @@ test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
     && !string_contains(s: r.body, pattern: "submission unreadable")
 }
 
-// THE TRANSPORT OBSERVATION DOES NOT REACH THE HANDLER AS IDENTITY. Under the 2026-09-25 ruling
-// this is the end-to-end forged-header control: a login supplied at the serve entry is DROPPED
-// unless the access-path modeling vouches for it — and this entry's ingress attests no peer, so
-// nothing can — so the consent record names no login. Without this the plumbing could
-// be silently laundering the header back into an identity and every unit-level witness would
-// still pass. The positive half (a modeled proxy path carries the observation) is
-// test.claim.request_authentication_witness's subject; the wiring between them is one function
-// call, roadmap_serve_request_security.
-test fn a_tailnet_header_without_readback_reaches_the_approval_handler_as_absent() -> Bool {
-  let r = roadmap_serve_respond_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    method_label: "POST",
-    path: "/approve/abc123",
-    body: "",
-    tailscale_identity: "briansrls@github",
-    release_revision: deploy_witness_release_revision,
-  )
-  string_contains(s: r.body, pattern: "transport observation: \n")
-    && !string_contains(s: r.body, pattern: "briansrls")
-}
-
-// AND A GENUINELY ABSENT HEADER IS THE SAME ANSWER: no observation, no identity, no default.
-test fn an_absent_header_arrives_at_the_handler_as_absent() -> Bool {
-  let r = roadmap_serve_respond_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    method_label: "POST",
-    path: "/approve/abc123",
-    body: "",
-    tailscale_identity: "",
-    release_revision: deploy_witness_release_revision,
-  )
-  string_contains(s: r.body, pattern: "transport observation: \n")
-    && !string_contains(s: r.body, pattern: "briansrls")
-}
-
-test fn a_garbage_approval_submission_is_400_and_names_the_unreadable_body() -> Bool {
-  let r = roadmap_serve_respond_for_instance(
-    instance: srv1_live_dashboard_instance(),
-    method_label: "POST",
-    path: "/approvals",
-    body: "nope",
-    tailscale_identity: "",
-    release_revision: deploy_witness_release_revision,
-  )
-  r.status == 400
-    && string_contains(s: r.body, pattern: "approval submission:")
-    && !string_contains(s: r.body, pattern: "http")
-}
+// THE TRANSPORT-OBSERVATION CONTROLS LEFT WITH THE BEARER ROUTE. The forged-header controls posted to
+// /approve/{capability} and read the consent record's "transport observation" line; that route and
+// gunbc.auth.approval_broker IdentityAttribution's header arms were deleted in the device cutover
+// (ruling gunbc.design_ruling one_approval_route_for_every_privileged_action), so no handler here
+// turns a header into a principal any more -- a redemption names the enrolled login its device
+// signature verifies. The header's own reading stays test.claim.request_authentication_witness's
+// subject, and a_planted_header_list_reads_as_absent_single_or_repeated keeps the serve entry's half.
+// The garbage-body claim beside them expected the parse-first 400 from a process that is not the
+// writer; the non-writer 503 above is this route's answer and the 400 is the writer's
+// (test.claim.approval_broker_serve_witness).
 
 test fn an_unfiled_escalation_status_is_text_plain_standing() -> Bool {
   let body = filed_approval_status_text(status: StatusNotFiled)
@@ -1096,7 +1058,8 @@ test fn witness_inline_assignment_context_refuses_without_session_or_issue() -> 
 }
 
 // ── THE APPROVAL ROUTES, MID-CUTOVER ────────────────────────────────────────────────────────
-// The four approval routes are being moved to gunbc.auth.approval_broker_serve under its own unit
+// The approval routes (the filing POST and the status GET, since the device cutover deleted the
+// bearer pair) are being moved to gunbc.auth.approval_broker_serve under its own unit
 // and slice, for an availability reason rather than a tidiness one: boot 15 refused on an approval
 // status poll because THIS process's heap was swapped and OOM-killed (side-chat ruling
 // 2026-09-19). The staged transaction deploys the broker dark and measures it BEFORE anything is
@@ -1111,11 +1074,17 @@ test fn witness_inline_assignment_context_refuses_without_session_or_issue() -> 
 //
 // THE WALL THIS BECOMES. At stage 6 of gunbc.auth.approval_broker_cutover the arm and the
 // projection are deleted, and these two claims are replaced by the standing regression control that
-// this table answers NOTHING for the four approval (method, path) pairs.
+// this table answers NOTHING for the two approval (method, path) pairs.
 
+// THE PROJECTION IS A SUBSET, BY IDENTITY: the broker also serves the device routes, which this table
+// deliberately does not mount (roadmap_mounts_during_cutover), so the old count equality with the
+// broker's whole table was false the day the device routes landed. Each projected row is the broker's
+// row (same method, same path literal), and the live table is exactly own rows plus projected rows.
 test fn roadmap_approval_rows_are_projected_from_the_broker() -> Bool {
   let projected = roadmap_serve_approval_cutover_route_specs()
-  count(projected) == count(approval_broker_route_specs())
+  let broker = approval_broker_route_specs()
+  count(projected) > 0
+    && all(projected, p => any(broker, b => b.method == p.method && b.raw == p.raw))
     && count(roadmap_serve_route_specs())
        == count(roadmap_serve_own_route_specs()) + count(projected)
 }
@@ -1136,9 +1105,7 @@ fn roadmap_approval_request_lands_on_the_broker_arm(method: HttpMethod, path: St
 }
 
 test fn roadmap_approval_paths_are_owned_only_by_the_broker_arm() -> Bool {
-  roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approve/esc-1.approve.0badc0de")
-    && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approve/esc-1.approve.0badc0de")
-    && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approvals")
+  roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approvals")
     && roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approvals/esc-1")
 }
 
