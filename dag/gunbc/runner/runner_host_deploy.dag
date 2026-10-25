@@ -22,7 +22,6 @@ import extdeps.container.nvidia_container_toolkit {
   NvidiaContainerToolkitAptRepo,
   nvidia_container_toolkit_apt_repo_stable,
   nvidia_container_toolkit_packages,
-  nvidia_container_toolkit_repo_install_script,
 }
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
 import product.host_identity { HostIdentity }
@@ -540,20 +539,14 @@ fn runner_host_gpu_container_toolchain_declared(host: HostIdentity) -> Bool {
   }
 }
 
-// The GPU-container half of the execution-surface prereq set, next to the docker_ce and sccache
-// scripts it follows. Same carrier discipline as runner_host_docker_provision_script: it renders the
-// cited, fingerprint-pinned provisioning sequence for the container toolkit and does NOT run it —
-// the caller is converge, and the shell leaf dissolves when the repo+package ensure binds on
-// host_effect_apply (the trigger lives in extdeps.container.nvidia_container_toolkit).
-fn runner_host_gpu_container_toolchain_provision_script(host: HostIdentity) -> String? {
-  match runner_host_gpu_container_toolchain_for(host: host) {
-    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainDesired { repo: r, packages: p } } =>
-      Present { value: nvidia_container_toolkit_repo_install_script(repo: r, packages: p) }
-    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainNotWanted { reason: _ } } => Absent
-    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainUnmeasured { } } => Absent
-    RunnerHostGpuToolchainAbsent { host: _ } => Absent
-  }
-}
+// THE GPU TOOLCHAIN ROW IS READ AS TYPED DATA, NOT RENDERED TO A SCRIPT. This module once carried
+// runner_host_gpu_container_toolchain_provision_script, which returned the whole provisioning sequence as a
+// String? for the converge to stage and run — and it returned Absent for three quite different situations
+// (unwanted, unmeasured, no row at all) collapsed into one answer. Both halves are gone. The plan reads the
+// typed GpuContainerToolchainDesired { repo, packages } through runner_host_gpu_container_toolchain_for
+// above and builds the install itself, so the host row is the single place that says what a host should
+// have AND the only shape that fact travels in: there is no string in this system that has to stay in
+// step with the row, and an absence is distinguished by reason at the site that refuses.
 
 // THE SCCACHE PREREQ USES THE GENERIC VERIFIED DOWNLOAD-PLUS-INSTALL EFFECT, run with sccache's
 // boundary values (gunbc.host.sccache_verified_install). It used to call

@@ -103,21 +103,48 @@ fn runner_browser_ready_registration_labels(host: HostIdentity) -> RunnerRegistr
 // answer exit 2 (no observation) for either -- never green.
 data gunbc_gpu_docker_label: String = "gunbc-gpu-docker"
 
-// IT ADDS ON TOP OF BROWSER-READY, NOT BESIDE IT, AND THE REASON IS systemd's OWN RULE. Both labels
-// reach a runner the same way: a template drop-in setting `Environment=LABELS_JSON=…`, and systemd
-// applies drop-ins in filename order with the LATER value of a repeated key winning outright — not
-// merging, replacing. So the GPU drop-in (86-gpu-docker-labels.conf, after the browser's 85-…) is the
-// ONLY LABELS_JSON a converged-to-both host sees, and if it rendered host+gpu-docker alone it would
-// silently revoke gunbc-browser-ready on the host that has both toolchains: a browser job would stop
-// scheduling there with nothing broken on the browser side and no failure in any log. Building this
-// from runner_browser_ready_registration_labels rather than from runner_registration_labels is what
-// makes that unreachable. The converse direction is already safe by construction — when the GPU
-// converge removes its drop-in, the browser's 85 file is what applies, so the browser label returns.
-fn runner_gpu_docker_ready_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
-  match runner_browser_ready_registration_labels(host: host) {
+// IT ADDS ON TOP OF BROWSER-READY ONLY WHEN BROWSER-READY IS ACTUALLY HELD, AND BOTH HALVES OF THAT
+// SENTENCE ARE LOAD-BEARING FOR DIFFERENT REASONS.
+//
+// Why it can add at all — systemd's own rule. Both labels reach a runner the same way: a template
+// drop-in setting `Environment=LABELS_JSON=…`, and systemd applies drop-ins in filename order with the
+// LATER value of a repeated key winning outright — not merging, replacing. So the GPU drop-in
+// (86-gpu-docker-labels.conf, after the browser's 85-…) is the ONLY LABELS_JSON a host converged to both
+// toolchains sees, and if it rendered host+gpu-docker alone it would silently revoke
+// gunbc-browser-ready on the host that has both: a browser job would stop scheduling there with nothing
+// broken on the browser side and no failure in any log. Restating the browser label is what makes that
+// unreachable. The converse direction is already safe by construction — when the GPU converge removes its
+// drop-in, the browser's 85 file is what applies, so the browser label returns.
+//
+// Why it may only add what was OBSERVED. Restating is not the same as asserting, and an earlier draft of
+// this function restated unconditionally: it built its set on top of
+// runner_browser_ready_registration_labels, which derives the browser label from the host's fleet offer
+// and says nothing about whether the browser converge ever read back ok. Review 86378 caught what that
+// meant on srv1, where 85-browser-ready-labels.conf is absent although that mode has been dispatched:
+// the first GPU converge to succeed would have written a drop-in advertising gunbc-browser-ready on a
+// host whose browser toolchain was never verified, and browser jobs would have started scheduling onto a
+// host that cannot run a browser — a fabricated capability, which is the same defect class as the
+// fabricated empty installer, arriving through the label axis instead of the install axis. It also
+// contradicted this module's own stated reason for being a label at all: "an unconverged runner cannot
+// take the job" is only true if the label means converged.
+//
+// So the caller must supply the browser half as an OBSERVATION, and this function adds the label only
+// for a host where the 85 drop-in was read back carrying it. Passing `true` because it seemed likely is
+// exactly the failure being removed; the argument exists to be earned by a read, and the one place that
+// reads it is gunbc.runner.runner_gpu_container_toolchain gpu_docker_labels_observe_browser_ready, which
+// asks the host. A caller that cannot ask must fail the converge rather than choose — which is why the
+// observation's own transport refusal is reported rather than mapped to false, since false here is not a
+// conservative value, it is a decision to revoke a label the host may legitimately hold.
+fn runner_gpu_docker_ready_registration_labels(host: HostIdentity, browser_ready_granted: Bool) -> RunnerRegistrationLabelsResolution {
+  let capability_labels = if browser_ready_granted {
+    [gunbc_gpu_docker_label, gunbc_browser_ready_label]
+  } else {
+    [gunbc_gpu_docker_label]
+  }
+  match runner_registration_labels(host: host) {
     RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsRefused { host: h, cause: c }
     RegistrationLabelsResolved { labels: ls } =>
-      RegistrationLabelsResolved { labels: runner_label_set_union(a: ls, b: [gunbc_gpu_docker_label]) }
+      RegistrationLabelsResolved { labels: runner_label_set_union(a: ls, b: capability_labels) }
   }
 }
 

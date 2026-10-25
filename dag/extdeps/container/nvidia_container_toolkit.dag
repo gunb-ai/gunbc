@@ -21,13 +21,9 @@ module extdeps.container.nvidia_container_toolkit
 // verifies the fetched key against the pinned fingerprint and refuses on mismatch — the
 // same posture as extdeps.container.docker_ce docker_ce_apt_repo_noble_arm64.
 
-import extdeps.sudo.elevation { sudo_elevate_argv }
-import extdeps.posix.shell_command_language { posix_single_quote }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.exec.command { ArgvCommand, argv_command }
 
-import std.dissolution { DissolutionCondition, retires_dissolution }
-import std.decl_ref { decl_ref }
 
 import std.types { NonEmptyStr, String, List }
 import extdeps.external_authority { ExternalAuthority }
@@ -83,40 +79,45 @@ fn nvidia_container_toolkit_apt_source_line(repo: NvidiaContainerToolkitAptRepo)
   )
 }
 
-// The provisioning sequence — dearmor the cited key to the pinned path, VERIFY the fetched key
-// carries the pinned fingerprint, write the deb source line, update, install — rendered as POSIX
-// shell (medium-as-string), elevated per simple command exactly as
-// extdeps.container.docker_ce docker_ce_repo_install_script does. It dissolves when
-// host_effect_apply binds an AptRepoEnsure plus PackageInstall without the shell leaf; until then
-// deleting it would delete the only carrier of the keyring-verify posture.
-data nvidia_container_toolkit_install_dissolution_trigger: DissolutionCondition = retires_dissolution(
-  ref: decl_ref(
-    module_path: "extdeps.container.nvidia_container_toolkit",
-    decl_name: "nvidia_container_toolkit_repo_install_script",
-  )
-)
+// THE INSTALL IS MODELLED AS ARGOV LEGS, NOT SHELL. This module once rendered the whole
+// provisioning sequence — curl | gpg --dearmor, chmod, the fingerprint grep inside `|| { …; exit 1; }`,
+// echo '…' | tee >/dev/null, apt-get — as one POSIX string built by join (medium-as-string), and the
+// keyring fingerprint check that guards the blind curl existed only as TEXT inside that string, so no
+// part of the model could see or check it. That is gone. The sequence is now carried by
+// gunbc.runner.runner_gpu_container_toolchain gpu_container_provision_repo_actions as a list of typed
+// argv legs plus one sealed file write:
+//   curl -fsSL <keyring_url> -o <staged armored key>            (a leg; fetch is unprivileged)
+//   gpg --batch --with-colons --show-keys <staged armored key>  (a GpuContainerProvisionCheck whose
+//                                                                stdout is PARSED, field-for-field, against
+//                                                                keyring_fingerprint — the trust decision
+//                                                                is now a value the model computes)
+//   gpg --batch --yes --dearmor -o <keyring_path> <staged>      (a leg)
+//   chmod 644 <keyring_path>                                     (a leg; see the mode note)
+//   <apt_source_line> written to sources_list_path               (typed writer, content = this fn's output)
+//   apt-get update -q                                            (a leg)
+// The package install is NOT here: runner_gpu_container_toolchain_ensure_wet installs the row's
+// `packages` through the apt effect, so a second install in the legs would be a duplicate action.
+// Each leg is elevated by the executor (run_leg wraps with sudo), and every word crosses as a true
+// argv element gated by gunbc.fleet.fleet_known_hosts_anchor portable_remote_words, so an interpolated
+// path or URL can never be re-split by a shell — which is the class of defect the string form hid.
+//
+// WHY THE ARMORED FETCH IS VERIFIED BEFORE THE DEARMOR WRITE. --show-keys reads either the armored or
+// the dearmored key (both measured on srv1, 2026-10-25, exit 0), so the fingerprint is checked on the
+// fetched bytes BEFORE anything is written under /usr/share/keyrings. A key that fails never reaches
+// the system path, and the fold stops the whole plan on the first refusal, so no later leg runs on a
+// host that failed the check.
+//
+// THE DEARMORED KEYRING'S MODE IS 0644, not the string form's `chmod a+r`. `a+r` is refused outright
+// by portable_remote_words (the `+` is not in the allowlist), so it could not have crossed as a word
+// anyway; 0644 says the same access in the operand form the allowlist carries, and it is the mode the
+// keyring already carries on the measuring host (srv1: /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+// root:root 0644) — the mode apt's signed-by needs: readable by every user, writable only by root.
 
-fn nvidia_container_toolkit_repo_install_script(repo: NvidiaContainerToolkitAptRepo, packages: List<NonEmptyStr>) -> String {
-  join(
-    [
-      "set -e",
-      join(
-        ["curl -fsSL ", repo.keyring_url as String, " | ", join(map(sudo_elevate_argv(command: ["gpg", "--dearmor", "--yes", "-o", repo.keyring_path as String]), w => posix_single_quote(spelling: w)), " ")],
-        "",
-      ),
-      join(["chmod a+r ", repo.keyring_path as String], ""),
-      join(["gpg --show-keys --with-colons ", repo.keyring_path as String, " | grep -q ", repo.keyring_fingerprint as String, " || { echo 'NvidiaKeyringFingerprintRefusal: fetched key does not match pinned fingerprint ", repo.keyring_fingerprint as String, "' >&2; exit 1; }"], ""),
-      join(
-        ["echo '", nvidia_container_toolkit_apt_source_line(repo: repo), "' | ", join(map(sudo_elevate_argv(command: ["tee", "/etc/apt/sources.list.d/nvidia-container-toolkit.list"]), w => posix_single_quote(spelling: w)), " "), " >/dev/null"],
-        "",
-      ),
-      join(map(sudo_elevate_argv(command: ["apt-get", "update", "-q"]), w => posix_single_quote(spelling: w)), " "),
-      join(map(sudo_elevate_argv(command: append(["apt-get", "install", "-y", "-q"], items: map(packages, p => p as String))), w => posix_single_quote(spelling: w)), " "),
-      "",
-    ],
-    "\n",
-  )
-}
+// THE SOURCES FILE'S PATH, as a row beside the repo row it is written from, so the leg that writes it
+// and the readback that looks for it cannot drift by spelling the path twice. The file the measuring
+// host carries today (srv1 2026-10-25: /etc/apt/sources.list.d/nvidia-container-toolkit.list) is
+// exactly the rendering of nvidia_container_toolkit_apt_source_line(nvidia_container_toolkit_apt_repo_stable).
+data nvidia_container_toolkit_sources_list_path: NonEmptyStr = "/etc/apt/sources.list.d/nvidia-container-toolkit.list"
 
 // THE CDI SPEC IS THE ARTIFACT, not a side effect. A rootless dockerd cannot reach the host driver
 // through the privileged runc hook the rootful path uses; `--device nvidia.com/gpu=all` resolves
