@@ -1533,50 +1533,14 @@ pub fn global_bare_chain_candidates(
     }
 }
 
-pub fn global_bare_unique_chain_candidate(
-    env_module_path: String,
-    candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
-) -> Option<Rc<GlobalBareCandidate>> {
-    {
-        let chain = global_bare_chain_candidates(env_module_path, candidates);
-        match (*crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide(
-            Rc::new({
-                let mut __result = Vec::new();
-                for c in chain.iter().cloned() {
-                    __result.push(c.module_path.clone());
-                }
-                __result
-            }),
-        ))
-        .clone()
-        {
-            ModulePathBindingProjection::ModulePathBindingHit { owner: owner, .. } => Rc::new({
-                let mut __result = Vec::new();
-                for c in chain.iter().cloned() {
-                    if (c.module_path.clone() == owner.clone()) {
-                        __result.push(c);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned(),
-            ModulePathBindingProjection::ModulePathBindingMiss => std::option::Option::None,
-            ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => {
-                std::option::Option::None
-            }
-        }
-    }
-}
-
 pub fn global_bare_policy_candidate(
     env_module_path: String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<GlobalBareCandidate>> {
     if v1_rt::name_resolution_policy_is_namespace_only() {
-        global_bare_unique_chain_candidate(env_module_path.clone(), candidates.clone())
+        std::option::Option::None
     } else {
-        global_bare_nearest_ancestor_candidate(env_module_path.clone(), candidates.clone())
+        global_bare_nearest_ancestor_candidate(env_module_path, candidates)
     }
 }
 
@@ -1953,7 +1917,7 @@ pub fn global_bare_lookup_candidates(env: Rc<TypeEnv>, name: String) -> Option<R
             candidates: cands, ..
         }) => {
             if v1_rt::name_resolution_policy_is_namespace_only() {
-                match global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) {
+                match global_bare_policy_candidate(env.module_path.clone(), cands.clone()) {
                     Some(cand) => Some(cand.binding.clone()),
                     std::option::Option::None => std::option::Option::None,
                 }
