@@ -177,7 +177,6 @@ import gunbc.dispatch_selection {
   resolved_model_selection,
   dispatch_claude_process_fingerprint,
   dispatch_cursor_process_fingerprint,
-  srv1_live_dashboard_instance,
 }
 import extdeps.llm.cursor_cli {
   cursor_cli_program,
@@ -207,10 +206,8 @@ import gunbc.worker_lifecycle {
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host.host_layout { srv1_dispatch_worktree_root, srv1_roadmap_codex_home }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
-  srv1_live_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   dashboard_instance_provider_executable_refusal_detail,
@@ -299,7 +296,6 @@ data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposit
   reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
 }
 
-data dispatch_worktree_root: String = srv1_dispatch_worktree_root as String
 data dispatch_git_remote_ref: String = gunbc_merge_target_ref as String
 data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
 // NAMED FINDING (U4 live drive, macOS, 2026-07-25): pane_current_command is the kernel process name
@@ -500,9 +496,12 @@ fn dispatch_actuator_selection(sizing_expectation: SizingProfileExpectation) -> 
   dispatch_harness_selection()
 }
 
-fn dispatch_actuator_vendor_selection(sizing_expectation: SizingProfileExpectation) -> DispatchActuatorSelection {
+fn dispatch_actuator_vendor_selection(
+  instance: HostDashboardInstance,
+  sizing_expectation: SizingProfileExpectation,
+) -> DispatchActuatorSelection {
   match dispatch_selection_for_instance(
-    instance: srv1_live_dashboard_instance(),
+    instance: instance,
     request: default_provider_selection_request(),
     sizing_expectation: sizing_expectation,
   ) {
@@ -523,20 +522,10 @@ fn dispatch_actuator_vendor_selection(sizing_expectation: SizingProfileExpectati
 // facts it reads. Routing the harness through it would require inventing an account and a quota to
 // get a verdict, so the executor without a vendor kind refuses here and is selected by its own
 // path instead.
-fn dispatch_actuator_selection_for_provider(
-  provider: DispatchCliProvider,
-  sizing_expectation: SizingProfileExpectation,
-) -> DispatchActuatorSelection {
-  dispatch_actuator_selection_for_provider_on(
-    instance: srv1_live_dashboard_instance(),
-    provider: provider,
-    sizing_expectation: sizing_expectation,
-  )
-}
-
-// THE SELECTION IS JUDGED ON THE INSTANCE BEING DISPATCHED ON (side-chat finding, 2026-10-05). The
-// srv1-pinned form above survives only for callers that carry no instance; a dispatch that has one
-// passes it here, so a srv2 request sees srv2's offers rather than refusing against srv1's.
+//
+// THE SELECTION IS JUDGED ON THE INSTANCE BEING DISPATCHED ON (side-chat finding, 2026-10-05). There
+// is no form that names an instance for its caller: a dispatch passes the one it carries, so a srv2
+// request sees srv2's offers rather than refusing against srv1's.
 fn dispatch_actuator_selection_for_provider_on(
   instance: HostDashboardInstance,
   provider: DispatchCliProvider,
@@ -951,7 +940,6 @@ data claude_skip_permission_settings_json: String = "{\"skipDangerousModePermiss
 data dispatch_claude_start_prompt: String = "Begin working on the assigned node."
 data dispatch_claude_permission_args: List<String> = ["--dangerously-skip-permissions"]
 data dispatch_codex_start_prompt: String = "Begin working on the assigned node."
-data dispatch_codex_home: String = srv1_roadmap_codex_home as String
 data dispatch_codex_exec_spec: CodexExecSpec = CodexExecSpec {
   sandbox: CodexWorkspaceWrite,
   approval: CodexApprovalNever,
@@ -1190,17 +1178,6 @@ fn dispatch_applied_effort() -> ReasoningEffort? {
   }
 }
 
-fn dispatch_provider_process_fingerprint(provider: DispatchCliProvider) -> NonEmptyStr? {
-  match dispatch_actuator_selection_for_provider(
-    provider: provider,
-    sizing_expectation: NoDerivedSizingExpectation,
-  ) {
-    DispatchActuatorSelectionOk { provider: _, effort: _, model: _, process_fingerprint } =>
-      Present { value: process_fingerprint }
-    DispatchActuatorSelectionRefused { reason: _ } => none
-  }
-}
-
 fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
   concat(dispatch_tmux_session_prefix, node_id)
 }
@@ -1263,10 +1240,6 @@ fn dispatch_attempt_identity_claim(instance: HostDashboardInstance, node_id: Roa
       FilesystemCreateKindUnrecognized { path: _, observed: _, error: e } => DispatchAttemptIdentityRefused { detail: join(["the attempt identity could not be created at ", path, ": ", e], "") }
     }
   }
-}
-
-fn dispatch_worktree_path(node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_worktree_root, "/", node_id as String, "-a", attempt_key], "")
 }
 
 // Verification validates the committed head in a DETACHED checkout, never the mutable
@@ -2326,13 +2299,6 @@ fn dispatch_brief_fields_for_environment(
   }
 }
 
-fn dispatch_brief_fields(node: RoadmapNode) -> DispatchBriefFields {
-  dispatch_brief_fields_for_environment(
-    node: node,
-    environment: srv1_live_dashboard_instance().execution_environment,
-  )
-}
-
 fn fill_dispatch_brief(template: String, fields: DispatchBriefFields) -> String {
   template
     .replace(from: "<node_id>", to: fields.node_id)
@@ -2348,10 +2314,10 @@ fn fill_dispatch_brief(template: String, fields: DispatchBriefFields) -> String 
     .replace(from: "<what comes back even if the fix does not land>", to: fields.expected_artifact)
 }
 
-fn filled_dispatch_brief_for_node(node: RoadmapNode) -> String {
+fn filled_dispatch_brief_for_node(instance: HostDashboardInstance, node: RoadmapNode) -> String {
   dispatch_brief_with_centering(
     node: node,
-    fields: dispatch_brief_fields(node: node),
+    fields: dispatch_brief_fields_for_environment(node: node, environment: instance.execution_environment),
   )
 }
 
@@ -2473,13 +2439,14 @@ fn claude_spawn_argv(
 }
 
 fn codex_spawn_argv(
+  instance: HostDashboardInstance,
   effort: ReasoningEffort,
   model: ProviderModelSelection,
   worktree_path: String,
   brief: String,
 ) -> List<String> {
   shape_codex_exec_argv(
-    codex_home: dispatch_codex_home,
+    codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
     cwd: worktree_path,
     prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
     reasoning_effort: effort,
@@ -3893,6 +3860,7 @@ fn node_in_ready(node_id: RoadmapNodeId, ready: List<RoadmapNode>) -> Bool {
 }
 
 fn dispatch_permitted_from_selection(
+  instance: HostDashboardInstance,
   node: RoadmapNode,
   attempt_key: String,
   effort: ReasoningEffort,
@@ -3900,15 +3868,16 @@ fn dispatch_permitted_from_selection(
 ) -> DispatchRequestGate {
   DispatchPermitted {
     session_name: dispatch_tmux_session_name(node_id: node.node),
-    worktree_path: dispatch_worktree_path(node_id: node.node, attempt_key: attempt_key),
+    worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node.node, attempt_key: attempt_key),
     branch_name: dispatch_branch_name(node_id: node.node, attempt_key: attempt_key),
-    brief: filled_dispatch_brief_for_node(node: node),
+    brief: filled_dispatch_brief_for_node(instance: instance, node: node),
     reasoning_effort: effort,
     model: model,
   }
 }
 
 fn classify_dispatch_lease_after_destination(
+  instance: HostDashboardInstance,
   node: RoadmapNode,
   tmux_entries: List<TmuxLsEntry>,
   attempt_key: String,
@@ -3928,6 +3897,7 @@ fn classify_dispatch_lease_after_destination(
       DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
     UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
       dispatch_permitted_from_selection(
+        instance: instance,
         node: node,
         attempt_key: attempt_key,
         effort: effort,
@@ -3952,6 +3922,7 @@ fn classify_dispatch_destination_gate(node: RoadmapNode) -> DispatchRequestGate?
 }
 
 fn classify_dispatch_request_for_process_fingerprint(
+  instance: HostDashboardInstance,
   node: RoadmapNode,
   ready: List<RoadmapNode>,
   tmux_entries: List<TmuxLsEntry>,
@@ -3967,6 +3938,7 @@ fn classify_dispatch_request_for_process_fingerprint(
       Present { value: refused } => refused
       Absent =>
         classify_dispatch_lease_after_destination(
+          instance: instance,
           node: node,
           tmux_entries: tmux_entries,
           attempt_key: attempt_key,
@@ -3995,6 +3967,7 @@ fn classify_dispatch_request_for_process_fingerprint(
 // under the floor from "cannot run" to "runs and refuses", a corpus-wide change of meaning that this
 // witness's repair has no business making.
 fn classify_dispatch_request(
+  instance: HostDashboardInstance,
   node: RoadmapNode,
   ready: List<RoadmapNode>,
   tmux_entries: List<TmuxLsEntry>,
@@ -4012,6 +3985,7 @@ fn classify_dispatch_request(
             DispatchRefused { reason: reason }
           DispatchActuatorSelectionOk { provider: _, effort, model, process_fingerprint } =>
             classify_dispatch_lease_after_destination(
+              instance: instance,
               node: node,
               tmux_entries: tmux_entries,
               attempt_key: attempt_key,
@@ -4854,8 +4828,8 @@ fn argv_contains_token(argv: List<String>, token: String) -> Bool {
   any(argv, a => a == token)
 }
 
-fn hostile_node_id_stays_single_argv_token(node_id: String) -> Bool {
-  let worktree_path = dispatch_worktree_path(node_id: node_id, attempt_key: "feedfacefeedface")
+fn hostile_node_id_stays_single_argv_token(instance: HostDashboardInstance, node_id: String) -> Bool {
+  let worktree_path = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: "feedfacefeedface")
   let branch_name = dispatch_branch_name(node_id: node_id, attempt_key: "feedfacefeedface")
   let worktree = git_worktree_add_argv(
     worktree_path: worktree_path,

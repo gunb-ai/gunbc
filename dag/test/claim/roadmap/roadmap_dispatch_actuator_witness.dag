@@ -75,7 +75,7 @@ import extdeps.llm.cli {
   ProviderModelSelection,
   reasoning_effort_label,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_wire_dir_for_instance, dispatch_audit_unit_command, dispatch_supervisor_unit_command, dispatch_attempt_audit_events_path_for_instance, dispatch_attempt_supervisor_events_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_unit_name, attempt_state_prepare_argvs_for_instance, dispatch_reviewer_attempt_identity, dispatch_attempt_publication_dir_for_instance, dispatch_actuator_selection, dispatch_actuator_vendor_selection, dispatch_actuator_selection_for_provider, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, dispatch_brief_fields, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_home, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, dispatch_brief_for_origin, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_continuation_alignment_preamble, dispatch_review_unit_command, dispatch_supervisor_unit_command, dispatch_unit_exec_argv, dispatch_supervisor_unit_name, dispatch_supervisor_attempt_identity, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_audit_unit_command, dispatch_supervisor_unit_command, dispatch_attempt_audit_events_path_for_instance, dispatch_attempt_supervisor_events_path_for_instance, dispatch_attempt_events_path_for_instance, dispatch_attempt_unit_name, dispatch_reviewer_attempt_identity, dispatch_attempt_publication_dir_for_instance, dispatch_actuator_selection, dispatch_actuator_vendor_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, dispatch_brief_for_origin, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_continuation_alignment_preamble, dispatch_review_unit_command, dispatch_supervisor_unit_command, dispatch_unit_exec_argv, dispatch_supervisor_unit_name, dispatch_supervisor_attempt_identity, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv, dispatch_attempt_wire_dir_for_instance, attempt_state_prepare_argvs_for_instance }
 import gunbc.dispatch_selection {
   dispatch_selection_standing_ineligible_reason,
   default_provider_selection_request,
@@ -129,6 +129,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   srv2_lab_dashboard_instance,
   dashboard_instance_provider_executable,
+  dashboard_instance_provider_state_root,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, ContinueFromAttempt, FreshFromBase,
@@ -258,7 +259,7 @@ test fn witness_brief_fill_includes_node_metadata() -> Bool {
   let node = sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
   let brief = fill_dispatch_brief(
     template: dispatch_brief_template,
-    fields: dispatch_brief_fields(node: node),
+    fields: dispatch_brief_fields_for_environment(node: node, environment: srv1_live_dashboard_instance().execution_environment),
   )
   string_contains(s: brief, pattern: "Node: brief-node")
     && string_contains(s: brief, pattern: "Brief Title")
@@ -384,7 +385,8 @@ test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() ->
 }
 
 test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
-  match dispatch_actuator_selection_for_provider(
+  match dispatch_actuator_selection_for_provider_on(
+    instance: srv1_live_dashboard_instance(),
     provider: ClaudeCodeProvider,
     sizing_expectation: NoDerivedSizingExpectation,
   ) {
@@ -409,13 +411,14 @@ test fn witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt() -> Bo
 
 test fn witness_codex_argv_is_unattended_but_sandboxed() -> Bool {
   let argv = codex_spawn_argv(
+    instance: srv1_live_dashboard_instance(),
     effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
     worktree_path: "/opt/gunbc/dispatch-worktrees/codex-node",
     brief: "brief body",
   )
   let wire = join(argv, separator: "\0")
-  starts_with(s: wire, prefix: concat("env\0CODEX_HOME=", dispatch_codex_home))
+  starts_with(s: wire, prefix: concat("env\0CODEX_HOME=", dashboard_instance_provider_state_root(instance: srv1_live_dashboard_instance()) as String))
     && string_contains(s: wire, pattern: "\0codex\0--ask-for-approval\0never\0exec")
     && string_contains(s: wire, pattern: "\0--sandbox\0workspace-write")
     && string_contains(s: wire, pattern: "\0--json")
@@ -638,6 +641,7 @@ test fn witness_not_ready_node_refused() -> Bool {
   let doc = fixture_doc(nodes: [parent, child], edges: edges)
   let ready = next_spawnable(doc: doc, merged: [])
   match classify_dispatch_request_for_process_fingerprint(
+    instance: srv1_live_dashboard_instance(),
     node: child,
     ready: ready,
     tmux_entries: [],
@@ -656,6 +660,7 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
   match classify_dispatch_request_for_process_fingerprint(
+    instance: srv1_live_dashboard_instance(),
     node: node,
     ready: ready,
     tmux_entries: [],
@@ -680,6 +685,7 @@ test fn witness_live_lease_refused() -> Bool {
   let ready = next_spawnable(doc: doc, merged: [])
   let entries = [TmuxLsEntry { session_name: "gunbc-dispatch-leased-node", windows: 1 }]
   match classify_dispatch_request_for_process_fingerprint(
+    instance: srv1_live_dashboard_instance(),
     node: node,
     ready: ready,
     tmux_entries: entries,
@@ -707,7 +713,7 @@ test fn witness_absent_lease_classifies_spawn() -> Bool {
 }
 
 test fn witness_hostile_node_id_single_argv_token() -> Bool {
-  hostile_node_id_stays_single_argv_token(node_id: "foo;rm -rf /")
+  hostile_node_id_stays_single_argv_token(instance: srv1_live_dashboard_instance(), node_id: "foo;rm -rf /")
 }
 
 test fn witness_live_sessions_panel_rows() -> Bool {
@@ -762,7 +768,7 @@ test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   let node = sized_derivable(id: "panel-a", prs: [12], title: "Panel")
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
-  let selection = dispatch_actuator_vendor_selection(sizing_expectation: NoDerivedSizingExpectation)
+  let selection = dispatch_actuator_vendor_selection(instance: srv1_live_dashboard_instance(), sizing_expectation: NoDerivedSizingExpectation)
   match selection {
     DispatchActuatorSelectionRefused { reason } =>
       reason == dispatch_selection_standing_ineligible_reason
@@ -770,6 +776,7 @@ test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   }
     && count(dispatch_live_sessions_from_entries(entries: [entry], selection: selection)) == 0
     && match classify_dispatch_request(
+      instance: srv1_live_dashboard_instance(),
       node: node,
       ready: ready,
       tmux_entries: [entry],
@@ -927,7 +934,7 @@ fn ticket_fixture_node() -> RoadmapNode {
 }
 
 test fn witness_ticket_brief_fills_real_slots() -> Bool {
-  let brief = filled_dispatch_brief_for_node(node: ticket_fixture_node())
+  let brief = filled_dispatch_brief_for_node(instance: srv1_live_dashboard_instance(), node: ticket_fixture_node())
   string_contains(s: brief, pattern: "the real displaced cost")
     && string_contains(s: brief, pattern: "the real current state")
     && string_contains(s: brief, pattern: "the real first slice")
@@ -938,7 +945,7 @@ test fn witness_ticket_brief_fills_real_slots() -> Bool {
 
 test fn witness_legacy_brief_still_stubs_with_title() -> Bool {
   let node = sized_derivable(id: "brief-node", prs: [1], title: "Brief Title")
-  let brief = filled_dispatch_brief_for_node(node: node)
+  let brief = filled_dispatch_brief_for_node(instance: srv1_live_dashboard_instance(), node: node)
   string_contains(s: brief, pattern: "Brief Title")
     && !string_contains(s: brief, pattern: "the real displaced cost")
 }
@@ -1103,6 +1110,7 @@ test fn witness_claude_account_default_passes_no_model_flag() -> Bool {
 
 test fn witness_pinned_model_reaches_codex_argv() -> Bool {
   let argv = codex_spawn_argv(
+    instance: srv1_live_dashboard_instance(),
     effort: ReasoningHigh,
     model: ProviderModelPinned { model: witness_pinned_dispatch_model },
     worktree_path: "/opt/gunbc/dispatch-worktrees/codex-pin",
@@ -1116,6 +1124,7 @@ test fn witness_pinned_model_reaches_codex_argv() -> Bool {
 
 test fn witness_codex_account_default_passes_no_model_flag() -> Bool {
   let argv = codex_spawn_argv(
+    instance: srv1_live_dashboard_instance(),
     effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
     worktree_path: "/opt/gunbc/dispatch-worktrees/codex-default",

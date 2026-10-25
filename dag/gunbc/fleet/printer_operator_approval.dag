@@ -9,7 +9,9 @@ import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterS
 import gunbc.fleet.printer_execution_hold {with_execution_hold}
 import gunbc.fleet.fleet_printer_access {read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
-import gunbc.fleet.printer_actuation { print_request, start_authorized }
+import gunbc.fleet.printer_actuation { print_request, start_authorized, printer_state_generation, report_allows_start }
+import gunbc.fleet.printer_report { report_using_session }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.auth.access_token_source { AccessTokenSource }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
 import gunbc.auth.approval_gate {
@@ -21,44 +23,50 @@ import gunbc.auth.approval_gate {
 
 // The ntfy approval adapter: it files the start request, polls for the signed grant and hands
 // that grant to gunbc.fleet.printer_actuation start_authorized, which owns every physical effect.
-fn approve_and_print(printer: String, path: String, digest: String, version: String, attempt: String, bed_clear: String, token_source: AccessTokenSource) -> ProcessExit {
+// The human approves the printer state read before filing; start_authorized re-reads it and
+// refuses if it moved.
+fn approve_and_print(printer: String, path: String, digest: String, version: String, attempt: String, token_source: AccessTokenSource) -> ProcessExit {
   let host=os.Hostname.ReadShort()
   if !host.success || trim(s:host.value)!=(printer_lan_host_identity() as String) {
     return exit_failure(reason:"Print starts must run on the modeled printer LAN host so approvals share one durable claim store")
   }
-  if path == "" || attempt == "" || !print_inputs_admitted(version: version, digest: digest, bed_clear: bed_clear) {
-    return exit_failure(reason: "Print requires a path, digest, numeric credential version, attempt and clear-bed confirmation")
+  if path == "" || attempt == "" || !print_inputs_admitted(version: version, digest: digest) {
+    return exit_failure(reason: "Print requires a path, digest, numeric credential version and attempt")
   }
   if !printer_mqtt_tool_ready() { return exit_failure(reason: "MQTT tool is not ready; nothing requested or sent") }
-  match select_printer(name: printer) {
-    PrinterSelectionRefused => exit_failure(reason: "Unknown printer")
-    PrinterSelected { printer: p } => match print_request(printer: p, digest: digest, version: version, attempt: attempt) {
-        Absent => exit_failure(reason: "Cannot identify print request")
-        Present { value: request } => match approval_instant_now() {
-          Absent => exit_failure(reason: "Cannot read clock")
-          Present { value: now } => {
-            let expires = approval_expires_at(issued: now, window: second(count: 900))
-            let stored = stored_request_from_authorization(request: request, issued_at: now, expires_at: expires)
-            match approval_file_stored_request(stored: stored, body_file_name: concat(printer, "-approval.json"), submit_timeout: second(count: 30)) {
-              ApprovalFilingRefused { reason: r } => exit_failure(reason: r)
-              ApprovalFiled => match approval_poll_ticks(remaining: 90, cadence: second(count: 10), escalation_id: request.escalation_id, expires_at: expires) {
-                PollClockUnreadable => exit_failure(reason: "Cannot read approval clock")
-                PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "Print approval did not arrive; nothing sent")
-                PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
-                  GateRefused { cause: c } => exit_failure(reason: approval_refusal_text(cause: c))
-                  GateAdmitted { authorization: authorization } => {
-                    let session = match read_existing_printer_session(printer:p,version:version as NonEmptyStr,token_source:token_source) {
-                      PrinterSessionRefused {cause:c}=>return exit_failure(reason:c as String)
-                      PrinterSessionReady {session:s}=>s
-                    }
-                    with_execution_hold(owner:request.escalation_id,use:h=>start_authorized(hold:h,printer:p,path:path,digest:digest,version:version as NonEmptyStr,token_source:token_source,session:session,authorization:authorization,request:request))
-                  }
-                }
-              }
+  let p = match select_printer(name: printer) { PrinterSelected { printer: x } => x PrinterSelectionRefused => return exit_failure(reason: "Unknown printer") }
+  let session = match read_existing_printer_session(printer:p,version:version as NonEmptyStr,token_source:token_source) {
+    PrinterSessionRefused {cause:c}=>return exit_failure(reason:c as String)
+    PrinterSessionReady {session:s}=>s
+  }
+  let report = match report_using_session(session:session) {
+    ProcessOutputPresent {text:t}=>t
+    ProcessOutputAbsent=>return exit_failure(reason:"Printer report empty; no approval requested")
+    ProcessRefused {exit_code:_,stderr:_}=>return exit_failure(reason:"Printer report unreadable; no approval requested")
+  }
+  if !report_allows_start(text:report) { return exit_failure(reason:"Printer is not ready; no approval requested") }
+  let state = match printer_state_generation(text:report) {Present {value:g}=>g Absent=>return exit_failure(reason:"Printer state cannot be identified; no approval requested")}
+  match print_request(printer: p, digest: digest, version: version, attempt: attempt, printer_state: state) {
+    Absent => exit_failure(reason: "Cannot identify print request")
+    Present { value: request } => match approval_instant_now() {
+      Absent => exit_failure(reason: "Cannot read clock")
+      Present { value: now } => {
+        let expires = approval_expires_at(issued: now, window: second(count: 900))
+        let stored = stored_request_from_authorization(request: request, issued_at: now, expires_at: expires)
+        match approval_file_stored_request(stored: stored, body_file_name: concat(printer, "-approval.json"), submit_timeout: second(count: 30)) {
+          ApprovalFilingRefused { reason: r } => exit_failure(reason: r)
+          ApprovalFiled => match approval_poll_ticks(remaining: 90, cadence: second(count: 10), escalation_id: request.escalation_id, expires_at: expires) {
+            PollClockUnreadable => exit_failure(reason: "Cannot read approval clock")
+            PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "Print approval did not arrive; nothing sent")
+            PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
+              GateRefused { cause: c } => exit_failure(reason: approval_refusal_text(cause: c))
+              GateAdmitted { authorization: authorization } =>
+                with_execution_hold(owner:request.escalation_id,use:h=>start_authorized(hold:h,printer:p,path:path,digest:digest,version:version as NonEmptyStr,token_source:token_source,session:session,authorization:authorization,request:request))
             }
           }
         }
       }
+    }
   }
 }
 
