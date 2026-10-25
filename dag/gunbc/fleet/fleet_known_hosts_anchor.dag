@@ -24,6 +24,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.ssh.openssh_remote_command { openssh_release_of_version_output, openssh_remote_command_release_covered }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Int }
 import extdeps.ssh.client_options {
@@ -733,9 +734,15 @@ fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
   }
 }
 
-// THE SECOND CONSTRUCTOR OF THE SAME WORD: a POSIX single-quoted word, for a word the alphabet above refuses. It is
-// one PortableRemoteWord type with two ways to mint it (merry-fox-82, msg_2c9dcc3c), never a second word type beside
-// it: a bare word still renders bare, so every leg whose words are all in the alphabet sends identical bytes.
+// THE QUOTED ROUTE: POSIX single-quoted words, for words the alphabet above refuses. They are NOT PortableRemoteWords
+// (review 86015): a PortableRemoteWord is literal under ANY far-side shell, and consumers rely on exactly that -- some
+// interpolate one into a script (gunbc.spark.managed_access_apply) or hand it on as a raw argv word (gunbc.spark
+// grant_privileged_operation) -- while a quoted word is literal only under the POSIX shell its proof names. A
+// materially different contract takes a materially different name (DESIGN section 3), so the quoted words live in their
+// own sealed carrier, PosixQuotedRemoteCommand, which carries the proof and so the target it was read from. The ONE type
+// with two constructors (merry-fox-82, msg_2c9dcc3c) is the leg the transport takes, FleetRemoteLeg below: a bare
+// leg or a quoted leg through one shaper, never a second transport path. A word in the alphabet still renders bare
+// inside a quoted command, so a leg whose words are all in the alphabet sends identical bytes either way.
 //
 // WHY QUOTING IS EXACT HERE, when the comment on portable_remote_word refuses it: that refusal rests on the far-side
 // shell being UNKNOWN. A quoted word requires a PosixLoginShellProof, minted only from the target principal's own
@@ -755,16 +762,13 @@ data posix_quoting_authority: ExternalAuthority = ExternalAuthority {
 // fish, a nologin) refuses the quoted route; it is not guessed compatible.
 data posix_login_shell_paths: List<String> = ["/bin/sh", "/usr/bin/sh", "/bin/bash", "/usr/bin/bash", "/bin/dash", "/usr/bin/dash"]
 
-// THE PROOF IS BOUND TO THE TARGET IT WAS READ FROM (address and principal), and the only route that uses it reads it
-// in the same call (gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_posix), so a proof read before a login-shell
-// change, or for another host, never authorizes a quoted leg.
+// THE PROOF IS BOUND TO THE TARGET IT WAS READ FROM (address and principal). A quoted command carries it, and a quoted
+// leg has no target of its own: it runs against the proof's target, so it cannot be sent to another host or principal.
+// The route that mints commands reads the proof in the same call (gunbc.typed_argv_exec
+// typed_argv_exec_over_fleet_ssh_posix), so a proof read before a login-shell change is never the one a leg runs under.
 type PosixLoginShellProof sole_constructor {
   target: SshTarget
   shell: NonEmptyStr
-}
-
-fn posix_proof_admits(proof: PosixLoginShellProof, target: SshTarget) -> Bool {
-  proof.target == target
 }
 
 type LoginShellStanding
@@ -818,25 +822,107 @@ fn posix_single_quote(raw: String) -> String {
   join(["'", join(split(s: raw, delimiter: "'"), "'\\''"), "'"], "")
 }
 
-// A word the alphabet admits stays bare; any other word is single-quoted under the proof, or refused when it carries
-// NUL, newline or carriage return. The proof is a parameter, so a quoted word cannot be minted for an unread shell.
-fn posix_quoted_remote_word(raw: String, shell: PosixLoginShellProof) -> PortableRemoteWord? {
+// A word the alphabet admits stays bare; any other word is single-quoted, or refused when it carries NUL, newline or
+// carriage return.
+fn posix_quoted_remote_word_text(raw: String) -> NonEmptyStr? {
   match portable_remote_word(raw: raw) {
-    Present { value: bare } => Present { value: bare }
+    Present { value: bare } => Present { value: bare.value }
     Absent =>
       if raw != "" && remote_word_quotable(text: raw, i: 0, len: length(raw)) {
-        Present { value: PortableRemoteWord { value: posix_single_quote(raw: raw) as NonEmptyStr } }
+        Present { value: posix_single_quote(raw: raw) as NonEmptyStr }
       } else {
         none
       }
   }
 }
 
-fn posix_quoted_remote_words(raws: List<String>, shell: PosixLoginShellProof) -> PortableRemoteWords? {
+// THE ROUTE THE QUOTING IS CORRECT FOR (merry-fox-82, hold at 1859d9cc). Single quoting is exact only where the
+// client joins the words after `--` with spaces and the server hands that string to the login shell's -c, which
+// extdeps.ssh.openssh_remote_command states per release from source. So the route binds the login-shell proof to the
+// two releases actually MEASURED -- the executor's `ssh -V` and the target's `sshd -V` -- and is minted only when both
+// are releases that module covers. An unmeasured side, or a release it does not list, refuses, typed and sided.
+type OpenSshMeasuredSide
+  = OpenSshExecutorClient
+  | OpenSshTargetServer
+
+type PosixRemoteRoute sole_constructor {
+  proof: PosixLoginShellProof
+  client_release: NonEmptyStr
+  server_release: NonEmptyStr
+}
+
+type PosixRemoteRouteStanding
+  = PosixRemoteRouteCovered { route: PosixRemoteRoute }
+  | PosixRemoteRouteUnmeasured { side: OpenSshMeasuredSide, reason: String }
+  | PosixRemoteRouteUncovered { side: OpenSshMeasuredSide, release_name: NonEmptyStr }
+
+// The daemon the fleet's Ubuntu hosts run (openssh-server's sshd.service starts /usr/sbin/sshd). Each new connection
+// is served by the binary on disk, not by the listener's image: 9.6p1 re-executes saved_argv[0] per connection
+// (sshd.c rexec_flag = 1), and 10.0p2 executes sshd-session from the same package. So `sshd -V` names the release that
+// runs session.c for the leg. A host where this path does not answer is unmeasured, and refuses.
+data fleet_openssh_server_binary: NonEmptyStr = "/usr/sbin/sshd"
+
+fn posix_remote_route_standing(
+  proof: PosixLoginShellProof,
+  client_success: Bool,
+  client_output: String,
+  server_success: Bool,
+  server_output: String,
+) -> PosixRemoteRouteStanding {
+  if client_success == false {
+    PosixRemoteRouteUnmeasured { side: OpenSshExecutorClient, reason: "ssh -V did not answer on the executor" }
+  } else {
+    match openssh_release_of_version_output(output: client_output) {
+      Absent => PosixRemoteRouteUnmeasured { side: OpenSshExecutorClient, reason: "ssh -V printed no single OpenSSH_ release line" }
+      Present { value: client } =>
+        if openssh_remote_command_release_covered(release_name: client) == false {
+          PosixRemoteRouteUncovered { side: OpenSshExecutorClient, release_name: client }
+        } else {
+          if server_success == false {
+            PosixRemoteRouteUnmeasured { side: OpenSshTargetServer, reason: "sshd -V did not answer on the target" }
+          } else {
+            match openssh_release_of_version_output(output: server_output) {
+              Absent => PosixRemoteRouteUnmeasured { side: OpenSshTargetServer, reason: "sshd -V printed no single OpenSSH_ release line" }
+              Present { value: server } =>
+                if openssh_remote_command_release_covered(release_name: server) == false {
+                  PosixRemoteRouteUncovered { side: OpenSshTargetServer, release_name: server }
+                } else {
+                  PosixRemoteRouteCovered { route: PosixRemoteRoute { proof: proof, client_release: client, server_release: server } }
+                }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn posix_remote_route_refusal_text(standing: PosixRemoteRouteStanding) -> String {
+  match standing {
+    PosixRemoteRouteCovered { route: _ } => ""
+    PosixRemoteRouteUnmeasured { side: sd, reason: r } => join([openssh_measured_side_wire(side: sd), " unmeasured: ", r], "")
+    PosixRemoteRouteUncovered { side: sd, release_name: rl } => join([openssh_measured_side_wire(side: sd), " release ", rl as String, " is not one extdeps.ssh.openssh_remote_command covers"], "")
+  }
+}
+
+fn openssh_measured_side_wire(side: OpenSshMeasuredSide) -> String {
+  match side {
+    OpenSshExecutorClient => "executor ssh client"
+    OpenSshTargetServer => "target sshd"
+  }
+}
+
+// Head-plus-tail like PortableRemoteWords, so an empty quoted command has no constructor either.
+type PosixQuotedRemoteCommand sole_constructor {
+  route: PosixRemoteRoute
+  first: NonEmptyStr
+  more: List<NonEmptyStr>
+}
+
+fn posix_quoted_remote_command(raws: List<String>, route: PosixRemoteRoute) -> PosixQuotedRemoteCommand? {
   let admitted = fold(raws, init: Present { value: [] }, f: fn(acc, r) {
     match acc {
       Absent => none
-      Present { value: ws } => match posix_quoted_remote_word(raw: r, shell: shell) {
+      Present { value: ws } => match posix_quoted_remote_word_text(raw: r) {
         Present { value: w } => Present { value: concat(ws, [w]) }
         Absent => none
       }
@@ -846,8 +932,32 @@ fn posix_quoted_remote_words(raws: List<String>, shell: PosixLoginShellProof) ->
     Absent => none
     Present { value: ws } => match list_head(xs: ws) {
       Absent => none
-      Present { value: h } => Present { value: PortableRemoteWords { first: h, more: skip(xs: ws, n: 1) } }
+      Present { value: h } => Present { value: PosixQuotedRemoteCommand { route: route, first: h, more: skip(xs: ws, n: 1) } }
     }
+  }
+}
+
+fn posix_quoted_remote_command_strings(command: PosixQuotedRemoteCommand) -> List<String> {
+  concat([command.first as String], map(command.more, w => w as String))
+}
+
+// THE LEG THE TRANSPORT TAKES: one type, two constructors. A bare leg names its target beside words literal under any
+// shell; a quoted leg names none, because its command's route already binds the one target it is literal for.
+type FleetRemoteLeg
+  = FleetBareWordLeg { target: SshTarget, words: PortableRemoteWords }
+  | FleetPosixQuotedLeg { command: PosixQuotedRemoteCommand }
+
+fn fleet_remote_leg_target(leg: FleetRemoteLeg) -> SshTarget {
+  match leg {
+    FleetBareWordLeg { target: t, words: _ } => t
+    FleetPosixQuotedLeg { command: c } => c.route.proof.target
+  }
+}
+
+fn fleet_remote_leg_strings(leg: FleetRemoteLeg) -> List<String> {
+  match leg {
+    FleetBareWordLeg { target: _, words: w } => portable_remote_words_strings(words: w)
+    FleetPosixQuotedLeg { command: c } => posix_quoted_remote_command_strings(command: c)
   }
 }
 
@@ -867,7 +977,7 @@ data remote_word_quoting_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "typed_argv_exec_over_fleet_ssh_posix"),
     reason: "no fleet leg runs a quoted word yet; its first consumer is the srv4 placement step, which names the 24.04.3 ISO's pool .debs (versions carrying '+'). The final remote string is proven structurally (extdeps.ssh.openssh_remote_command, cited to OpenSSH V_9_6_P1) and executed under a real login shell locally; it has not crossed a live sshd",
     dissolution: unbound_dissolution(
-      description: "dissolves when a site_pxe_edge_converge apply dispatch on srv4 runs a leg with a quoted word through typed_argv_exec_over_fleet_ssh_posix, the proof read inside that call, and the placed member's sha256 readback agrees with its pin; a hermetic rendering check does not fire this"
+      description: "dissolves when a site_pxe_edge_converge apply dispatch on srv4 runs a leg with a quoted word through typed_argv_exec_over_fleet_ssh_posix, the proof and the executor and srv4 OpenSSH releases read inside that call and covered by extdeps.ssh.openssh_remote_command, and the placed member's sha256 readback agrees with its pin; a hermetic rendering check or a supplied version line does not fire this"
     )
   ),
   frontier_row_decl(
@@ -1116,6 +1226,14 @@ fn shape_fleet_ssh_password_exec_trusting(
   target: SshTarget,
   words: PortableRemoteWords,
 ) -> List<String> {
+  shape_fleet_ssh_password_leg_trusting(trust: trust, leg: FleetBareWordLeg { target: target, words: words })
+}
+
+fn shape_fleet_ssh_password_leg_trusting(
+  trust: FleetOpenSshTrustPolicy,
+  leg: FleetRemoteLeg,
+) -> List<String> {
+  let target = fleet_remote_leg_target(leg: leg)
   let config_suppression = openssh_suppress_ambient_configuration_options()
   let derived = fleet_ssh_password_client_options(
     trust: fleet_openssh_trust_options(policy: trust),
@@ -1126,7 +1244,7 @@ fn shape_fleet_ssh_password_exec_trusting(
       flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
       serialize_ssh_client_options(options: concat(derived, ssh_target_port_options(target: target))),
     ),
-    concat([ssh_target_destination(target: target), "--"], portable_remote_words_strings(words: words)),
+    concat([ssh_target_destination(target: target), "--"], fleet_remote_leg_strings(leg: leg)),
   )
 }
 
@@ -1143,6 +1261,14 @@ fn shape_fleet_ssh_exec(
   target: SshTarget,
   words: PortableRemoteWords,
 ) -> List<String> {
+  shape_fleet_ssh_leg(context: context, leg: FleetBareWordLeg { target: target, words: words })
+}
+
+fn shape_fleet_ssh_leg(
+  context: FleetSshExecutionContext,
+  leg: FleetRemoteLeg,
+) -> List<String> {
+  let target = fleet_remote_leg_target(leg: leg)
   let config_suppression = openssh_suppress_ambient_configuration_options()
   let derived = concat(
     fleet_openssh_trust_options(policy: context.trust),
@@ -1165,7 +1291,7 @@ fn shape_fleet_ssh_exec(
       flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
       serialize_ssh_client_options(options: concat(derived, ssh_target_port_options(target: target))),
     ),
-    concat([ssh_target_destination(target: target), "--"], portable_remote_words_strings(words: words)),
+    concat([ssh_target_destination(target: target), "--"], fleet_remote_leg_strings(leg: leg)),
   )
 }
 

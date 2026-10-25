@@ -5,21 +5,30 @@ import std.algebra { trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import std.types { FilePath }
-import extdeps.ssh.openssh_remote_command { openssh_remote_command_string }
+import extdeps.ssh.openssh_remote_command { openssh_remote_command_string, openssh_release_of_version_output, openssh_remote_command_release_covered }
+import extdeps.ssh.openssh_remote_command
 import gunbc.fleet.fleet_known_hosts_anchor {
   SshTarget,
   SshTargetResolved,
   SshTargetRefused,
   fleet_ssh_target_at_standard_port,
-  posix_proof_admits,
+  FleetPosixQuotedLeg,
+  fleet_remote_leg_target,
+  fleet_remote_leg_strings,
   LoginShellStanding,
   PosixLoginShellProof,
+  PosixRemoteRouteStanding,
   LoginShellPosix,
   LoginShellNotPosix,
   LoginShellUnreadable,
   login_shell_standing,
-  posix_quoted_remote_words,
-  portable_remote_words_strings,
+  posix_quoted_remote_command,
+  PosixRemoteRouteCovered,
+  PosixRemoteRouteUnmeasured,
+  PosixRemoteRouteUncovered,
+  OpenSshExecutorClient,
+  OpenSshTargetServer,
+  posix_remote_route_standing,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -51,6 +60,14 @@ fn runner_target() -> SshTarget? {
 fn runner_standing(target: SshTarget) -> LoginShellStanding {
   let entry = shell.Passwd.Entry(name: target.principal)
   login_shell_standing(target: target, success: entry.success, output: entry.stdout)
+}
+
+// THE ROUTE UNDER THE RUNNER'S REAL CLIENT: `ssh -V` as this runner answers it (the producer the quoted route reads on
+// the executor). The server reading is SUPPLIED -- no sshd runs here -- as the line Ubuntu 24.04's openssh-server
+// prints; its real producer is the srv4 placement step (frontier row on typed_argv_exec_over_fleet_ssh_posix).
+fn runner_route(proof: PosixLoginShellProof) -> PosixRemoteRouteStanding {
+  let client = openssh.Client.Version()
+  posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: true, server_output: "OpenSSH_9.6p1 Ubuntu-3ubuntu13.5, OpenSSL 3.0.13 30 Jan 2024\n")
 }
 
 fn hostile_words(canary: String) -> List<String> {
@@ -88,10 +105,15 @@ test fn hostile_words_reach_sh_as_one_literal_word_each() -> Bool {
           LoginShellNotPosix { principal: _, shell: _ } => false
           LoginShellUnreadable { principal: _, reason: _ } => false
           LoginShellPosix { proof: p } =>
-        match posix_quoted_remote_words(raws: concat(["printf", "%s\\n"], words), shell: p) {
+        match runner_route(proof: p) {
+          PosixRemoteRouteUnmeasured { side: _, reason: _ } => false
+          PosixRemoteRouteUncovered { side: _, release_name: _ } => false
+          PosixRemoteRouteCovered { route: route } =>
+        match posix_quoted_remote_command(raws: concat(["printf", "%s\\n"], words), route: route) {
           Absent => false
-          Present { value: rendered } => {
-            let command = openssh_remote_command_string(arguments: portable_remote_words_strings(words: rendered))
+          Present { value: quoted } => {
+            let leg = FleetPosixQuotedLeg { command: quoted }
+            let command = openssh_remote_command_string(arguments: fleet_remote_leg_strings(leg: leg))
             let ran = shell.Sh.ReparseWith(shell: p.shell, command: command as NonEmptyStr)
             let canary_present = shell.Test.IsFile(path: canary as FilePath)
             let cleaned = shell.Remove.RecursiveForce(path: dir.path)
@@ -99,8 +121,9 @@ test fn hostile_words_reach_sh_as_one_literal_word_each() -> Bool {
               && filter(split(s: ran.stdout, delimiter: "\n"), l => l != "") == words
               && canary_present.is_file == false
               && cleaned.success
-              && posix_proof_admits(proof: p, target: t)
+              && fleet_remote_leg_target(leg: leg) == t
           }
+        }
         }
         }
     }
@@ -123,5 +146,31 @@ test fn the_real_getent_output_mints_the_proof_for_its_own_principal() -> Bool {
         LoginShellUnreadable { principal: _, reason: _ } => false
       }
     }
+  }
+}
+
+// INHABITANCE OF THE CLIENT PRODUCER: the runner's real `ssh -V` yields exactly one release line, and the route standing
+// classifies that release by the covered rows -- Covered when listed, Uncovered on the client side when not. Which it is
+// on a given runner is a fact of that runner's image; the route never treats an unlisted release as covered.
+test fn the_runners_real_ssh_version_is_read_and_classified_by_the_rows() -> Bool {
+  let client = openssh.Client.Version()
+  match openssh_release_of_version_output(output: client.stderr) {
+    Absent => false
+    Present { value: release_name } =>
+      match runner_target() {
+        Absent => false
+        Present { value: t } =>
+          match runner_standing(target: t) {
+            LoginShellNotPosix { principal: _, shell: _ } => false
+            LoginShellUnreadable { principal: _, reason: _ } => false
+            LoginShellPosix { proof: p } =>
+              match runner_route(proof: p) {
+                PosixRemoteRouteCovered { route: r } => r.client_release == release_name && openssh_remote_command_release_covered(release_name: release_name)
+                PosixRemoteRouteUncovered { side: OpenSshExecutorClient, release_name: rl } => rl == release_name && openssh_remote_command_release_covered(release_name: release_name) == false
+                PosixRemoteRouteUncovered { side: OpenSshTargetServer, release_name: _ } => false
+                PosixRemoteRouteUnmeasured { side: _, reason: _ } => false
+              }
+          }
+      }
   }
 }
