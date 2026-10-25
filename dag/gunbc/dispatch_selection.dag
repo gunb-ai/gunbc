@@ -58,6 +58,7 @@ import gunbc.fleet.fleet_capacity_control {
   HostCapacityWithdrawal, ProviderCapacityWithdrawal,
   withdrawn_hosts, withdrawn_providers,
 }
+import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardExistingProviderState,
@@ -66,7 +67,6 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardExistingRepo,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
-  srv1_live_dashboard_instance,
   srv2_lab_dashboard_instance,
   srv2_dashboard_lab_id,
   srv2_dashboard_preview_id,
@@ -987,7 +987,9 @@ fn declared_provider_inventory_for_instance(instance: HostDashboardInstance) -> 
       ),
     }
   } else {
-    if instance.host_identity == srv1_live_dashboard_instance().host_identity {
+    // The Claude CLI is provisioned per HOST (gunbc#13720), so the offer keys on the host layout that
+    // declares it, never on another instance's constructor read for its host.
+    if instance.host_identity == srv1_host_layout().host_identity {
       ProviderInventory {
         offers: concat(
           codex_inventory_offers_for_instance(instance: instance),

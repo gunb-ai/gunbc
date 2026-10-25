@@ -1,7 +1,7 @@
 module v2.test.claim.single_resolution_row_witness
 
 import std.types { Bool }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.witness { Holds, Violates }
 import v2.std.grammar { derive_grammar_relation_row_for_lhs, derive_grammar_relation_row_node, formal_production_for_lhs_exact }
@@ -37,7 +37,7 @@ fn one_resolution_row() -> Node {
 }
 
 test fn one_resolution_derives_the_row_two_resolutions_derived() -> Bool {
-  one_resolution_row() == two_resolution_row() && one_resolution_row() != verilog_conj(children: [])
+  node_same_occurrence(a: one_resolution_row(), b: two_resolution_row()) && !node_same_occurrence(a: one_resolution_row(), b: verilog_conj(children: []))
 }
 
 test fn serializing_the_derived_row_gives_the_reselecting_serializers_bytes() -> Bool {
