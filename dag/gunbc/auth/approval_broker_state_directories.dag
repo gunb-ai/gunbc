@@ -142,7 +142,6 @@ fn approval_broker_state_directories() -> List<ManagedDirectory> {
   [
     approval_device_store_directory(),
     approval_jwks_cache_directory(),
-    approval_assertion_counter_directory(),
     approval_device_push_directory(),
     approval_decision_store_directory(),
   ]
