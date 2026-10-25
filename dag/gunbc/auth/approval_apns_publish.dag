@@ -389,10 +389,10 @@ fn approval_push_request(registration: PushRegistration, escalation_id: NonEmpty
           priority: PriorityImmediate,
           collapse_id: escalation_id as ApnsCollapseId,
           aps: ApnsAps {
-            alert: ApnsAlert { title: approval_push_alert_title, subtitle: "", body: approval_push_alert_body },
+            alert: ApnsAlert { title: approval_push_alert_title, subtitle: none, body: approval_push_alert_body },
             mutable_content: false,
             interruption_level: InterruptionActive,
-            category: "",
+            category: none,
           },
           custom: approval_push_custom_keys(h: ApprovalPushHint { notification_id: escalation_id }),
         }
