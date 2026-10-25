@@ -8807,46 +8807,70 @@ fn belt_commit_record_member(doc: JsonValue, key: String) -> String? {
   }
 }
 
-// THE RECORD SETTLES ONLY THE SUBJECT AND HEAD IT NAMES. A record for another attempt is unexplained
-// state and refuses; a record at another head, with no head, or from before the record named its head
-// settles nothing here, so the capture of this head is owed; at this head, the kind's disposition decides.
-fn belt_commit_record_standing_of_text(content: String, node_id: String, attempt_key: String, head_sha: String) -> BeltCommitRecordStanding {
+// THE ONE DECODE OF THE COMMIT STEP'S RECORD for one attempt: its schema, subject and kind are checked here, once,
+// and the record's head and detail come back with the kind. A record for another attempt is unexplained state and
+// refuses; a v1 record predates the head binding. Read by the head-grain capture standing below and by the replay
+// recording capture (gunbc.dispatch_replay_capture), which takes the settled head as the attempt's result commit.
+type BeltCommitRecordDecode
+  = CommitRecordDecoded { kind: BeltCommitOutcomeKind, outcome: String, head_sha: String?, detail: String }
+  | CommitRecordPredatesHead
+  | CommitRecordRefused { reason: String }
+
+fn belt_commit_record_decode(content: String, node_id: String, attempt_key: String) -> BeltCommitRecordDecode {
   match parse_json_document(s: content) {
     JsonDocumentUnreadable { gap } =>
-      CommitStepRefused { reason: join(["the commit step's record is ", json_document_gap_text(gap: gap)], "") }
+      CommitRecordRefused { reason: join(["the commit step's record is ", json_document_gap_text(gap: gap)], "") }
     JsonDocumentParsed { value: doc } =>
       match belt_commit_record_member(doc: doc, key: "schema") {
-        Absent => CommitStepRefused { reason: "the commit step's record names no schema" }
+        Absent => CommitRecordRefused { reason: "the commit step's record names no schema" }
         Present { value: schema } =>
           if schema == belt_commit_outcome_schema_v1 {
-            CommitStepOwed { reason: "the commit step's record predates its head binding, so which head it settled is unknown" }
+            CommitRecordPredatesHead
           } else if schema != belt_commit_outcome_schema {
-            CommitStepRefused { reason: join(["the commit step's record is ", schema, ", not ", belt_commit_outcome_schema], "") }
+            CommitRecordRefused { reason: join(["the commit step's record is ", schema, ", not ", belt_commit_outcome_schema], "") }
           } else if belt_commit_record_member(doc: doc, key: "node_id") != Present { value: node_id }
             || belt_commit_record_member(doc: doc, key: "attempt_key") != Present { value: attempt_key } {
-            CommitStepRefused { reason: join(["the commit step's record at attempt ", attempt_key, "'s address names another subject, which is unexplained state"], "") }
+            CommitRecordRefused { reason: join(["the commit step's record at attempt ", attempt_key, "'s address names another subject, which is unexplained state"], "") }
           } else {
             match belt_commit_record_member(doc: doc, key: "outcome") {
-              Absent => CommitStepRefused { reason: "the commit step's record names no outcome" }
+              Absent => CommitRecordRefused { reason: "the commit step's record names no outcome" }
               Present { value: outcome } =>
                 match belt_commit_outcome_kind_of_key(key: outcome) {
-                  Absent => CommitStepRefused { reason: join(["the commit step's record names outcome ", outcome, ", which the commit step does not write"], "") }
+                  Absent => CommitRecordRefused { reason: join(["the commit step's record names outcome ", outcome, ", which the commit step does not write"], "") }
                   Present { value: kind } =>
-                    match belt_commit_record_member(doc: doc, key: "head_sha") {
-                      Absent => CommitStepOwed { reason: join(["the commit step's last run ended ", outcome, " at a head it could not observe"], "") }
-                      Present { value: settled } =>
-                        if settled != head_sha {
-                          CommitStepOwed { reason: join(["the commit step last ran at ", settled, ", not at this head"], "") }
-                        } else {
-                          let said = join(["the commit step's last run at this head ended ", outcome, ": ", match belt_commit_record_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" }], "")
-                          match belt_commit_outcome_kind_capture_disposition(k: kind) {
-                            CommitSettlesCapture => CommitStepSettled
-                            CommitLeavesCaptureOwed => CommitStepOwed { reason: said }
-                            CommitRefusesCapture => CommitStepRefused { reason: said }
-                          }
-                        }
+                    CommitRecordDecoded {
+                      kind: kind,
+                      outcome: outcome,
+                      head_sha: belt_commit_record_member(doc: doc, key: "head_sha"),
+                      detail: match belt_commit_record_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" },
                     }
                 }
+            }
+          }
+      }
+  }
+}
+
+// THE RECORD SETTLES ONLY THE SUBJECT AND HEAD IT NAMES. A record at another head, with no head, or from before the
+// record named its head settles nothing here, so the capture of this head is owed; at this head, the kind's
+// disposition decides.
+fn belt_commit_record_standing_of_text(content: String, node_id: String, attempt_key: String, head_sha: String) -> BeltCommitRecordStanding {
+  match belt_commit_record_decode(content: content, node_id: node_id, attempt_key: attempt_key) {
+    CommitRecordRefused { reason } => CommitStepRefused { reason: reason }
+    CommitRecordPredatesHead =>
+      CommitStepOwed { reason: "the commit step's record predates its head binding, so which head it settled is unknown" }
+    CommitRecordDecoded { kind, outcome, head_sha: settled_head, detail } =>
+      match settled_head {
+        Absent => CommitStepOwed { reason: join(["the commit step's last run ended ", outcome, " at a head it could not observe"], "") }
+        Present { value: settled } =>
+          if settled != head_sha {
+            CommitStepOwed { reason: join(["the commit step last ran at ", settled, ", not at this head"], "") }
+          } else {
+            let said = join(["the commit step's last run at this head ended ", outcome, ": ", detail], "")
+            match belt_commit_outcome_kind_capture_disposition(k: kind) {
+              CommitSettlesCapture => CommitStepSettled
+              CommitLeavesCaptureOwed => CommitStepOwed { reason: said }
+              CommitRefusesCapture => CommitStepRefused { reason: said }
             }
           }
       }

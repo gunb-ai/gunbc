@@ -38,8 +38,8 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // DECLARED FRONTIER: recording_capture has no executing consumer on the production path in this change; until it
 // does, a recording can only be written by hand and the 'owes none' claim above is NOT yet established. The
 // tracking authority is the frontier row below (dispatch_replay_recording_frontier_rows), read by
-// gunbc.census_closure_frontier; until it dissolves, the lab operator writes a recording by calling
-// recording_capture directly.
+// gunbc.census_closure_frontier; until it dissolves, the lab operator captures a recording with the entry
+// gunbc.dispatch_replay_capture srv1_lab_recording_capture_cli, which reads one completed attempt's own records.
 //
 // WHERE IT LIVES: refs/gunbc/recordings/<RecordingId> in the controller's repository, a commit whose tree is the
 // result tree and whose single parent is the base. The existing refs/gunbc/ consumers are named single refs
@@ -311,7 +311,7 @@ fn recording_replay_admission(id: RecordingId, attempt_base: String) -> Recordin
 data dispatch_replay_recording_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.dispatch_replay_recording", decl_name: "recording_capture"),
-    reason: "recording_capture is not yet bound to a completed attempt's belt step, so it is executed only by its wet witness and a recording on the lab is written by the operator calling it directly",
+    reason: "recording_capture is not yet bound to a completed attempt's belt step; until it is, its executing consumer is the operator-run entry gunbc.dispatch_replay_capture srv1_lab_recording_capture_cli over one completed attempt's records",
     dissolution: unbound_dissolution(description: "a completed lab attempt's belt step captures its recording"),
   ),
 ]

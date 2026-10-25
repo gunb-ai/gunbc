@@ -15,7 +15,7 @@ module test.claim.roadmap.dispatch_replay_wet_witness
 // drop the object-id check on the base in recording_capture (the non-object-id base control goes red).
 
 import std.logic { Bool }
-import std.types { String, FilePath, List }
+import std.types { String, FilePath, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -28,6 +28,20 @@ import gunbc.dispatch_replay_recording {
   recording_ref_of, recording_peel_to_tree_suffix, replay_refusal_exit_code,
 }
 import gunbc.dispatch_replay_worker { replay_worker_cli }
+import gunbc.dispatch_replay_capture { recording_capture_for_instance }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_dashboard_lab_id,
+}
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap.roadmap_belt_actuate {
+  belt_commit_outcome_receipt_json, belt_commit_outcome_receipt, belt_commit_outcome_last_basename, CommitRecorded, CommitDeferred, BeltCommitOutcome,
+}
+import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_spool_prepare, attempt_exit_record_put_worker_exited, AttemptExitRecordPutOk, AttemptExitRecordPutFailed }
+import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
+import extdeps.languages.json.emit { serialize_json }
 
 fn git_out(dir: String, args: List<String>) -> String {
   match belt_exec(cmd: host_exec_argv(program: "git", args: args), workdir: dir) {
@@ -185,4 +199,80 @@ test fn a_recording_replays_its_tree_byte_for_byte_and_refuses_inexactly_in_a_re
   let cleaned_repo = shell.Remove.RecursiveForce(path: repo.path)
   let cleaned_work = shell.Remove.RecursiveForce(path: work.path)
   observed && cleaned_repo.success && cleaned_work.success
+}
+
+// THE CAPTURE ENTRY OVER A COMPLETED ATTEMPT'S OWN RECORDS (gunbc.dispatch_replay_capture). An instance carrying the
+// lab id is rooted in a throwaway directory; its controller repository holds a base and a result commit; the
+// attempt's state directory holds the spawn origin's base_sha and the commit step's record, written by the belt's
+// own receipt encoder; the exit spool holds the worker's exit, written by the spool's own writer. The entry must
+// write refs/gunbc/recordings/<id> whose tree is the result tree and whose parent is the base, and exit 0.
+// Controls: the same attempt captured again refuses naming the existing ref; a commit step that ended deferred
+// refuses naming the unsettled result, by reason, since both controls exit nonzero. Mutations: let replay_capture_result_commit admit CommitLeavesCaptureOwed
+// (the deferred control goes red); read the base from the result commit instead of the spawn origin (the parent
+// assertion goes red).
+data capture_node: String = "replay-capture-control"
+data capture_attempt: String = "k1"
+
+fn capture_instance(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "replay-capture-control" as NonEmptyStr),
+    instance_id: srv1_dashboard_lab_id,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18133,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn capture_records_written(instance: HostDashboardInstance, base: String, outcome: BeltCommitOutcome, head: String) -> Bool {
+  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: capture_node as RoadmapNodeId, attempt_key: capture_attempt)
+  shell.Mkdir.Parents(path: dir as FilePath).success
+    && Filesystem.Write(path: join([dir, "/", dispatch_spawn_origin_basename], ""), content: join(["{\"base_sha\":\"", base, "\"}"], "")).success
+    && Filesystem.Write(
+      path: join([dir, "/", belt_commit_outcome_last_basename as String], ""),
+      content: serialize_json(v: belt_commit_outcome_receipt_json(r: belt_commit_outcome_receipt(o: outcome, attempt_key: capture_attempt, settled_head: Present { value: head }))),
+    ).success
+}
+
+fn capture_over(root: String) -> Bool {
+  let instance = capture_instance(root: root)
+  let repo = instance.repo_root as String
+  let built = git_ok(dir: root, args: ["init", "-q", repo])
+    && git_ok(dir: repo, args: ["config", "user.name", "witness"])
+    && git_ok(dir: repo, args: ["config", "user.email", "witness@invalid"])
+    && Filesystem.Write(path: join([repo, "/a.txt"], ""), content: "one").success
+    && commit_all(dir: repo, message: "base")
+  let base = git_out(dir: repo, args: ["rev-parse", "HEAD"])
+  let second = built
+    && Filesystem.Write(path: join([repo, "/a.txt"], ""), content: "two").success
+    && commit_all(dir: repo, message: "result")
+  let result = git_out(dir: repo, args: ["rev-parse", "HEAD"])
+  let result_tree = git_out(dir: repo, args: ["rev-parse", concat(result, recording_peel_to_tree_suffix)])
+  let spooled = attempt_exit_spool_prepare(instance_root: instance.instance_root as String)
+    && (match attempt_exit_record_put_worker_exited(instance_root: instance.instance_root as String, node_id: capture_node, attempt_key: capture_attempt, status: 3) {
+      AttemptExitRecordPutOk => true
+      AttemptExitRecordPutFailed { reason: _ } => false
+    })
+  let recorded = second && spooled
+    && capture_records_written(instance: instance, base: base, outcome: CommitRecorded { node_id: capture_node, message: "result" }, head: result)
+  let ref_name = join(["refs/gunbc/recordings/", base, ".", result_tree, ".3.exit-code"], "")
+  let captured = recorded && exit_code_of(exit: recording_capture_for_instance(instance: instance, node_id: capture_node, attempt_key: capture_attempt)) == 0
+  let ref_tree = git_out(dir: repo, args: ["rev-parse", concat(ref_name, recording_peel_to_tree_suffix)])
+  let ref_parent = git_out(dir: repo, args: ["rev-parse", concat(ref_name, "^")])
+  let again = recording_capture_for_instance(instance: instance, node_id: capture_node, attempt_key: capture_attempt)
+  let deferred_written = capture_records_written(instance: instance, base: base, outcome: CommitDeferred { node_id: capture_node, reason: "control" }, head: result)
+  let deferred = recording_capture_for_instance(instance: instance, node_id: capture_node, attempt_key: capture_attempt)
+  captured && result_tree != "" && ref_tree == result_tree && ref_parent == base
+    && exit_code_of(exit: again) != 0 && string_contains(s: reason_of(exit: again), pattern: "already exists")
+    && deferred_written && exit_code_of(exit: deferred) != 0 && string_contains(s: reason_of(exit: deferred), pattern: "did not settle a result")
+}
+
+test fn the_capture_entry_records_a_completed_attempt_from_its_own_records() -> Bool {
+  let root = shell.Mktemp.Dir()
+  let observed = root.success && capture_over(root: root.path as String)
+  let cleaned = shell.Remove.RecursiveForce(path: root.path)
+  observed && cleaned.success
 }
