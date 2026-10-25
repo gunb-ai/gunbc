@@ -60,6 +60,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   SecureBootObserved,
   SecureBootVerdictBooted,
   site_pxe_edge_chainloader_build_receipt,
+  SitePxeEdgeCommittedArtifact,
 }
 import gunbc.firmware_network_boot_standing {
   FirmwareNetworkBootStanding,
@@ -175,7 +176,7 @@ fn pin_with(secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeChainPin {
       built_from_commit: "fixture-commit",
       build_target: ipxe_arm64_efi_snponly,
       architecture: Aarch64,
-      digest: digest_a,
+      artifact: SitePxeEdgeCommittedArtifact { path: "artifacts/ipxe/snponly-arm64.efi", digest: digest_a },
       installed_filename: "snponly.efi",
       secure_boot: secure_boot,
     )

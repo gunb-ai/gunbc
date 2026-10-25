@@ -60,7 +60,6 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_pinned_members,
   site_pxe_edge_member_digest,
   SitePxeEdgeMemberObservation,
-  SitePxeEdgeEmbeddedObservation,
   SitePxeEdgeChainStanding,
   SitePxeEdgeChainServable,
   SitePxeEdgeChainWithheld,
@@ -68,8 +67,9 @@ import gunbc.fleet.site_pxe_edge_converge {
   ChainUnpinned,
   MemberUnobservable,
   MemberDigestMismatch,
-  IpxeEmbeddedRevisionUnobservable,
-  IpxeEmbeddedRevisionMismatch,
+  IpxeArtifactNotTheCheckedArtifact,
+  SitePxeEdgeCommittedArtifact,
+  site_pxe_edge_committed_ipxe_arm64,
   IpxeBuildTargetMismatch,
   IpxeBuildArchitectureMismatch,
   IpxeInstalledFilenameMismatch,
@@ -140,7 +140,9 @@ import gunbc.fleet.site_pxe_edge_converge {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data hex_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+// The fixtures pin the committed artifact itself, so a claim about one cause is not also a claim about the
+// artifact-identity cause; digest_b is other bytes.
+data hex_a: String = "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05"
 
 data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: hex_a })
 
@@ -170,7 +172,7 @@ fn build_with(filename: NonEmptyStr, target: IpxeBuildTarget, architecture: Arch
     built_from_commit: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394",
     build_target: target,
     architecture: architecture,
-    digest: digest,
+    artifact: SitePxeEdgeCommittedArtifact { path: site_pxe_edge_committed_ipxe_arm64.path, digest: digest },
     installed_filename: filename,
     secure_boot: secure_boot,
   )
@@ -207,11 +209,10 @@ fn path_of(pin: SitePxeEdgeChainloaderPin) -> NonEmptyStr {
 }
 
 // THE ARM CHAIN'S CAUSES for one supplied digest reading and one supplied revision reading of its member.
-fn ipxe_causes(pin: SitePxeEdgeChainloaderPin, digest: SitePxeEdgeChainloaderObservation, embedded: SitePxeEdgeEmbeddedRevision) -> List<SitePxeEdgeChainCause> {
+fn ipxe_causes(pin: SitePxeEdgeChainloaderPin, digest: SitePxeEdgeChainloaderObservation) -> List<SitePxeEdgeChainCause> {
   causes_of(standing: site_pxe_edge_chain_standing(
     pin: site_pxe_edge_arm64_ipxe_chain_pin(pin: pin),
     observations: [SitePxeEdgeMemberObservation { served_path: path_of(pin: pin), digest: digest }],
-    embedded: [SitePxeEdgeEmbeddedObservation { served_path: path_of(pin: pin), revision: embedded }],
   ))
 }
 
@@ -226,7 +227,6 @@ fn servable_ipxe(pin: SitePxeEdgeChainloaderPin, digest: SitePxeEdgeChainloaderO
   site_pxe_edge_servable_chains(standings: [site_pxe_edge_chain_standing(
     pin: site_pxe_edge_arm64_ipxe_chain_pin(pin: pin),
     observations: [SitePxeEdgeMemberObservation { served_path: path_of(pin: pin), digest: digest }],
-    embedded: [SitePxeEdgeEmbeddedObservation { served_path: path_of(pin: pin), revision: landed_embedded() }],
   )])
 }
 
@@ -247,7 +247,7 @@ fn landed_digest() -> ContentHash {
 }
 
 test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
-  ipxe_causes(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded()) == []
+  ipxe_causes(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a }) == []
     && gate(servable: servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a }), dnsmasq_binary: SitePxeEdgeProbeHeld, privilege: SitePxeEdgeProbeHeld) == []
 }
 
@@ -255,7 +255,7 @@ test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
 // artifacts/ipxe/snponly-arm64.efi`). Supplying the file as observed at the pinned digest, exactly one chain
 // cause remains, Secure Boot unobserved, and with no other chain servable the edge-wide gate closes on that.
 test fn the_landed_pin_is_pinned_and_closes_the_gate_only_on_secure_boot() -> Bool {
-  let causes = ipxe_causes(pin: site_pxe_edge_chainloader_pin, digest: ChainloaderDigestObserved { digest: landed_digest() }, embedded: landed_embedded())
+  let causes = ipxe_causes(pin: site_pxe_edge_chainloader_pin, digest: ChainloaderDigestObserved { digest: landed_digest() })
   length(causes) == 1
     && (match causes.first() {
       Present { value: IpxeSecureBootUnobserved { why: _ } } => true
@@ -268,7 +268,7 @@ test fn the_landed_pin_is_pinned_and_closes_the_gate_only_on_secure_boot() -> Bo
 // WHAT REMAINS CLOSED TODAY, ENUMERATED: with the file not yet on srv4, the ARM chain has two causes given a
 // supplied revision reading, and the edge-wide gate three (no chain servable, dnsmasq and privilege unprobed).
 test fn the_landed_pin_leaves_exactly_the_four_unanswered_causes() -> Bool {
-  let chain_texts = map(ipxe_causes(pin: site_pxe_edge_chainloader_pin, digest: ChainloaderDigestUnobservable { reason: "file not placed on srv4" }, embedded: landed_embedded()), c => site_pxe_edge_chain_cause_text(cause: c))
+  let chain_texts = map(ipxe_causes(pin: site_pxe_edge_chainloader_pin, digest: ChainloaderDigestUnobservable { reason: "file not placed on srv4" }), c => site_pxe_edge_chain_cause_text(cause: c))
   let gate_texts = map(gate(servable: [], dnsmasq_binary: SitePxeEdgeProbeUnobservable { reason: "not probed" }, privilege: SitePxeEdgeProbeUnobservable { reason: "not probed" }), c => site_pxe_edge_gate_cause_text(cause: c))
   length(chain_texts) == 2
     && contains(join(chain_texts, "\n"), "member-unobservable snponly.efi: file not placed on srv4\nipxe-secure-boot-unobserved: ")
@@ -277,7 +277,7 @@ test fn the_landed_pin_leaves_exactly_the_four_unanswered_causes() -> Bool {
 }
 
 test fn the_real_route_before_placement_has_five_causes() -> Bool {
-  length(ipxe_causes(pin: site_pxe_edge_chainloader_pin, digest: ChainloaderDigestUnobservable { reason: "file not placed on srv4" }, embedded: EmbeddedRevisionUnobservable { reason: "file not placed on srv4" })) == 3
+  length(ipxe_causes(pin: site_pxe_edge_chainloader_pin, digest: ChainloaderDigestUnobservable { reason: "file not placed on srv4" })) == 2
     && length(gate(servable: [], dnsmasq_binary: SitePxeEdgeProbeUnobservable { reason: "not probed" }, privilege: SitePxeEdgeProbeUnobservable { reason: "not probed" })) == 3
 }
 
@@ -285,16 +285,16 @@ test fn the_real_route_before_placement_has_five_causes() -> Bool {
 // observed rejection each withhold the chain with their own cause.
 test fn secure_boot_acceptance_is_derived_and_each_standing_has_its_own_cause() -> Bool {
   let at = ChainloaderDigestObserved { digest: digest_a }
-  length(ipxe_causes(pin: with_secure_boot(secure_boot: booted()), digest: at, embedded: landed_embedded())) == 0
-    && ipxe_causes(pin: with_secure_boot(secure_boot: SecureBootUnobserved { why: "x" }), digest: at, embedded: landed_embedded()) == [IpxeSecureBootUnobserved { why: "x" }]
-    && ipxe_causes(pin: with_secure_boot(secure_boot: SecureBootRefused { why: "y" }), digest: at, embedded: landed_embedded()) == [IpxeSecureBootRefused { why: "y" }]
-    && ipxe_causes(pin: with_secure_boot(secure_boot: SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: "e" }), digest: at, embedded: landed_embedded()) == [IpxeSecureBootRejected { evidence: "e" }]
+  length(ipxe_causes(pin: with_secure_boot(secure_boot: booted()), digest: at)) == 0
+    && ipxe_causes(pin: with_secure_boot(secure_boot: SecureBootUnobserved { why: "x" }), digest: at) == [IpxeSecureBootUnobserved { why: "x" }]
+    && ipxe_causes(pin: with_secure_boot(secure_boot: SecureBootRefused { why: "y" }), digest: at) == [IpxeSecureBootRefused { why: "y" }]
+    && ipxe_causes(pin: with_secure_boot(secure_boot: SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: "e" }), digest: at) == [IpxeSecureBootRejected { evidence: "e" }]
 }
 
 // HASH-MISMATCH RED: a placed member whose bytes differ from its pin withholds its chain with the member named,
 // and an edge with no other servable chain renders no config at all -- nothing is served.
 test fn mismatched_digest_closes_the_gate() -> Bool {
-  ipxe_causes(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b }, embedded: landed_embedded()) == [MemberDigestMismatch { served_path: "snponly.efi", observed: digest_b, pinned: digest_a }]
+  ipxe_causes(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b }) == [MemberDigestMismatch { served_path: "snponly.efi", observed: digest_b, pinned: digest_a }]
     && length(servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b })) == 0
     && (match site_pxe_edge_desired_inputs(servable: servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_b }), roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
       Absent => true
@@ -304,11 +304,11 @@ test fn mismatched_digest_closes_the_gate() -> Bool {
 
 test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool {
   let p = pinned_as(filename: "grubnetaa64.efi", digest: digest_a)
-  ipxe_causes(pin: p, digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded()) == [IpxeInstalledFilenameMismatch { pinned: "grubnetaa64.efi", expected: "snponly.efi" }]
+  ipxe_causes(pin: p, digest: ChainloaderDigestObserved { digest: digest_a }) == [IpxeInstalledFilenameMismatch { pinned: "grubnetaa64.efi", expected: "snponly.efi" }]
 }
 
 test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {
-  ipxe_causes(pin: pinned(digest: digest_a), digest: ChainloaderDigestUnobservable { reason: "no such file" }, embedded: landed_embedded()) == [MemberUnobservable { served_path: "snponly.efi", reason: "no such file" }]
+  ipxe_causes(pin: pinned(digest: digest_a), digest: ChainloaderDigestUnobservable { reason: "no such file" }) == [MemberUnobservable { served_path: "snponly.efi", reason: "no such file" }]
     && gate(servable: [], dnsmasq_binary: SitePxeEdgeProbeObservedNegative { reason: "absent" }, privilege: SitePxeEdgeProbeHeld) == [NoChainServable, DnsmasqBinaryAbsent { reason: "absent" }]
 }
 
@@ -392,9 +392,9 @@ test fn an_unparseable_roster_closes_the_gate() -> Bool {
 // THE REFUSAL'S ADVICE IS FOLLOWABLE: pin exactly the `expected` the filename refusal reports and that cause is
 // gone. Paired with a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate.
 test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool {
-  match ipxe_causes(pin: pinned_as(filename: "grubnetaa64.efi", digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded()).first() {
+  match ipxe_causes(pin: pinned_as(filename: "grubnetaa64.efi", digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a }).first() {
     Present { value: IpxeInstalledFilenameMismatch { pinned: _, expected: e } } =>
-      length(ipxe_causes(pin: pinned_as(filename: e, digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded())) == 0
+      length(ipxe_causes(pin: pinned_as(filename: e, digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a })) == 0
     Present { value: _ } => false
     Absent => false
   }
@@ -507,14 +507,14 @@ test fn a_served_path_collision_closes_the_gate() -> Bool {
 // PROVENANCE: an x86 build installed under the expected basename with a digest that agrees is still refused on the
 // arm64 row -- the receipt's architecture is checked against the ROW's, not only the filename and digest.
 test fn a_non_arm64_build_with_the_expected_name_and_digest_is_refused() -> Bool {
-  ipxe_causes(pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: ipxe_arm64_efi_snponly, architecture: X86_64, digest: digest_a) }, digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded())
+  ipxe_causes(pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: ipxe_arm64_efi_snponly, architecture: X86_64, digest: digest_a) }, digest: ChainloaderDigestObserved { digest: digest_a })
     == [IpxeBuildArchitectureMismatch { build: X86_64, chain: Aarch64 }]
 }
 
 // PROVENANCE: a receipt naming a different iPXE build target is refused even when its installed name and digest agree.
 test fn a_different_ipxe_build_target_is_refused() -> Bool {
   let x86_target = IpxeBuildTarget { platform: "bin-x86_64-efi", image: "snponly.efi" }
-  ipxe_causes(pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: x86_target, architecture: Aarch64, digest: digest_a) }, digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded())
+  ipxe_causes(pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: x86_target, architecture: Aarch64, digest: digest_a) }, digest: ChainloaderDigestObserved { digest: digest_a })
     == [IpxeBuildTargetMismatch { pinned: x86_target, expected: ipxe_arm64_efi_snponly }]
 }
 
@@ -594,22 +594,28 @@ test fn the_full_commit_is_not_decision_bearing() -> Bool {
     built_from_commit: "c51caffffffffffffffffffffffffffffffffff0",
     build_target: ipxe_arm64_efi_snponly,
     architecture: Aarch64,
-    digest: digest_a,
+    artifact: site_pxe_edge_committed_ipxe_arm64,
     installed_filename: ipxe_arm64_efi_snponly.image,
     secure_boot: booted(),
   )
-  ipxe_causes(pin: SitePxeEdgeChainloaderPinned { build: other }, digest: ChainloaderDigestObserved { digest: digest_a }, embedded: landed_embedded()) == []
+  ipxe_causes(pin: SitePxeEdgeChainloaderPinned { build: other }, digest: ChainloaderDigestObserved { digest: digest_a }) == []
 }
 
-// RED: an image whose embedded revision differs from the pinned one (including by a single character) withholds
-// the chain with a typed mismatch; the matching image adds no revision cause; an unreadable one is its own cause.
-test fn an_embedded_revision_that_differs_from_the_pin_is_a_typed_refusal() -> Bool {
-  let at = ChainloaderDigestObserved { digest: digest_a }
-  (ipxe_causes(pin: pinned(digest: digest_a), digest: at, embedded: landed_embedded()) == [])
-    && (ipxe_causes(pin: pinned(digest: digest_a), digest: at, embedded: site_pxe_edge_embedded_revision(success: true, output: "(gc51cb)\n"))
-        == [IpxeEmbeddedRevisionMismatch { embedded: "c51cb", pinned: "c51ca" }])
-    && (ipxe_causes(pin: pinned(digest: digest_a), digest: at, embedded: site_pxe_edge_embedded_revision(success: false, output: ""))
-        == [IpxeEmbeddedRevisionUnobservable { reason: "grep found no embedded iPXE revision in the image" }])
+// RED: a receipt naming any artifact but the committed one the real-execution witness checks is refused, even
+// when the srv4 bytes agree with its own digest; the landed pin names exactly that artifact.
+test fn a_pin_naming_another_artifact_is_refused() -> Bool {
+  let other = SitePxeEdgeChainloaderPinned { build: site_pxe_edge_chainloader_build_receipt(
+    embedded_revision: "c51ca",
+    built_from_commit: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394",
+    build_target: ipxe_arm64_efi_snponly,
+    architecture: Aarch64,
+    artifact: SitePxeEdgeCommittedArtifact { path: "artifacts/ipxe/snponly-arm64-rebuilt.efi", digest: digest_b },
+    installed_filename: ipxe_arm64_efi_snponly.image,
+    secure_boot: booted(),
+  ) }
+  ipxe_causes(pin: other, digest: ChainloaderDigestObserved { digest: digest_b }) == [IpxeArtifactNotTheCheckedArtifact { pinned: "artifacts/ipxe/snponly-arm64-rebuilt.efi", checked: "artifacts/ipxe/snponly-arm64.efi" }]
+    && target_of(pin: site_pxe_edge_chainloader_pin).artifact == site_pxe_edge_committed_ipxe_arm64
+    && content_hash_equal(left: target_of(pin: site_pxe_edge_chainloader_pin).digest, right: site_pxe_edge_committed_ipxe_arm64.digest)
 }
 
 // THE ARM LOADER CHAIN IS UNCHANGED (control, merry-fox-82 condition 2): the roster derived from the LANDED iPXE pin
@@ -692,7 +698,7 @@ test fn an_amd64_chain_read_back_at_its_pins_is_served() -> Bool {
   match amd64_chain() {
     Absent => false
     Present { value: c } =>
-      causes_of(standing: site_pxe_edge_chain_standing(pin: SitePxeEdgeChainPinned { chain: c }, observations: observed_at_pins(chain: c), embedded: [])) == []
+      causes_of(standing: site_pxe_edge_chain_standing(pin: SitePxeEdgeChainPinned { chain: c }, observations: observed_at_pins(chain: c))) == []
         && (match roster_of_chains(chains: arm_chain(pin: pinned(digest: digest_a)) + [c]) {
           Absent => false
           Present { value: r } => {
@@ -715,11 +721,10 @@ test fn an_amd64_member_with_other_bytes_withholds_only_its_chain() -> Bool {
   match amd64_chain() {
     Absent => false
     Present { value: c } => {
-      let x86 = site_pxe_edge_chain_standing(pin: SitePxeEdgeChainPinned { chain: c }, observations: with_one_differing(chain: c, path: "vmlinuz"), embedded: [])
+      let x86 = site_pxe_edge_chain_standing(pin: SitePxeEdgeChainPinned { chain: c }, observations: with_one_differing(chain: c, path: "vmlinuz"))
       let arm = site_pxe_edge_chain_standing(
         pin: site_pxe_edge_arm64_ipxe_chain_pin(pin: pinned(digest: digest_a)),
         observations: [SitePxeEdgeMemberObservation { served_path: "snponly.efi", digest: ChainloaderDigestObserved { digest: digest_a } }],
-        embedded: [SitePxeEdgeEmbeddedObservation { served_path: "snponly.efi", revision: landed_embedded() }],
       )
       let served = site_pxe_edge_servable_chains(standings: [arm, x86])
       length(causes_of(standing: x86)) == 1

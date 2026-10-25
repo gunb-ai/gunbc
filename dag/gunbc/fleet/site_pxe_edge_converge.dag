@@ -177,22 +177,38 @@ type SitePxeEdgeSecureBootStanding
 // built_from_commit is the full upstream SHA kept as build provenance for a reader reproducing the build;
 // NO gate reads it, because the image cannot confirm the other 35 characters, so a gate on it would be a
 // check the artefact cannot answer. Gating on the full SHA would need a source the image does not carry.
+// THE COMMITTED IMAGE A RECEIPT IS ABOUT, BY IDENTITY: its checkout path and digest. The receipt's digest IS this
+// artifact's, so the bytes the srv4 placement and readback pin are the bytes the real-execution witness
+// (test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness) hashes and reads the revision of. The revision
+// is a property of those bytes, so a srv4 digest match carries it; reading it again on srv4 was redundant work.
+type SitePxeEdgeCommittedArtifact {
+  path: NonEmptyStr
+  digest: ContentHash
+}
+
+data site_pxe_edge_committed_ipxe_arm64: SitePxeEdgeCommittedArtifact = SitePxeEdgeCommittedArtifact {
+  path: "artifacts/ipxe/snponly-arm64.efi",
+  digest: Sha256Hash(Sha256Digest { hex: "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05" }),
+}
+
 type SitePxeEdgeChainloaderBuildReceipt sole_constructor {
   embedded_revision: NonEmptyStr
   built_from_commit: NonEmptyStr
   build_target: IpxeBuildTarget
   architecture: Architecture
+  artifact: SitePxeEdgeCommittedArtifact
   digest: ContentHash
   installed_filename: NonEmptyStr
   secure_boot: SitePxeEdgeSecureBootStanding
 }
 
+// The digest is the artifact's, never a second argument that could name other bytes.
 fn site_pxe_edge_chainloader_build_receipt(
   embedded_revision: NonEmptyStr,
   built_from_commit: NonEmptyStr,
   build_target: IpxeBuildTarget,
   architecture: Architecture,
-  digest: ContentHash,
+  artifact: SitePxeEdgeCommittedArtifact,
   installed_filename: NonEmptyStr,
   secure_boot: SitePxeEdgeSecureBootStanding,
 ) -> SitePxeEdgeChainloaderBuildReceipt {
@@ -201,7 +217,8 @@ fn site_pxe_edge_chainloader_build_receipt(
     built_from_commit: built_from_commit,
     build_target: build_target,
     architecture: architecture,
-    digest: digest,
+    artifact: artifact,
+    digest: artifact.digest,
     installed_filename: installed_filename,
     secure_boot: secure_boot,
   }
@@ -216,8 +233,8 @@ type SitePxeEdgeChainloaderPin
 // GNU Make 4.4.1, GNU ld 2.44. A future requirement to gate on toolchain identity adds typed tool entries to the receipt then.
 // THE COMMITTED IMAGE IS GUARDED BY REAL EXECUTION, OFF THE REQUIRED PATH: the witness
 // test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness runs `sha256sum` and
-// `grep -a -o -E "[(]g[0-9a-f]{5}[)]"` over artifacts/ipxe/snponly-arm64.efi and feeds the production parsers and gate,
-// so a swapped blob or flipped marker bytes red there. It is a LocalRepoWetLane exclusion in
+// `grep -a -o -E "[(]g[0-9a-f]{5}[)]"` over site_pxe_edge_committed_ipxe_arm64's path and checks the digest and the
+// pinned embedded revision, so a swapped blob or flipped marker bytes red there; srv4 is checked by digest only. It is a LocalRepoWetLane exclusion in
 // gunbc.ci.ci_layer_roots witness_exclusion_frontier, so it is not merge-blocking; the wet placement step's digest
 // check against this pin is the other guard.
 // BUILT, NOT YET PLACED. The committed image's consumer is the wet placement step (the srv4 TFTP write run
@@ -236,7 +253,7 @@ data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChain
     built_from_commit: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394",
     build_target: ipxe_arm64_efi_snponly,
     architecture: Aarch64,
-    digest: Sha256Hash(Sha256Digest { hex: "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05" }),
+    artifact: site_pxe_edge_committed_ipxe_arm64,
     installed_filename: ipxe_arm64_efi_snponly.image,
     secure_boot: SecureBootUnobserved { why: "self-built iPXE is unsigned and no Altra board's Secure Boot state has been read; an enrolled certificate or an observed boot attempt would settle it" },
   ),
@@ -429,10 +446,6 @@ type SitePxeEdgeMemberObservation {
   digest: SitePxeEdgeChainloaderObservation
 }
 
-type SitePxeEdgeEmbeddedObservation {
-  served_path: NonEmptyStr
-  revision: SitePxeEdgeEmbeddedRevision
-}
 
 // WHY ONE CHAIN IS WITHHELD, typed and located on the member. A withheld chain gets no pxe-service line,
 // so a member whose bytes differ from its pin is never offered to any client.
@@ -440,8 +453,7 @@ type SitePxeEdgeChainCause
   = ChainUnpinned { obligation: NonEmptyStr }
   | MemberUnobservable { served_path: NonEmptyStr, reason: String }
   | MemberDigestMismatch { served_path: NonEmptyStr, observed: ContentHash, pinned: ContentHash }
-  | IpxeEmbeddedRevisionUnobservable { reason: String }
-  | IpxeEmbeddedRevisionMismatch { embedded: NonEmptyStr, pinned: NonEmptyStr }
+  | IpxeArtifactNotTheCheckedArtifact { pinned: NonEmptyStr, checked: NonEmptyStr }
   | IpxeBuildTargetMismatch { pinned: IpxeBuildTarget, expected: IpxeBuildTarget }
   | IpxeBuildArchitectureMismatch { build: Architecture, chain: Architecture }
   | IpxeInstalledFilenameMismatch { pinned: NonEmptyStr, expected: NonEmptyStr }
@@ -510,11 +522,11 @@ fn site_pxe_edge_chain_secure_boot(chain: SitePxeEdgePinnedChain) -> SitePxeEdge
 // THE iPXE BUILD'S OWN CHECKS, for an iPXE member only: the receipt names the arm64 snponly target, an
 // architecture equal to the chain's, the served filename, and a settled Secure Boot verdict. These were
 // the edge-wide gate's chainloader causes when the edge had one chain.
-fn site_pxe_edge_ipxe_build_causes(build: SitePxeEdgeChainloaderBuildReceipt, member: SitePxeEdgePinnedMember, chain_architecture: Architecture, embedded: SitePxeEdgeEmbeddedRevision) -> List<SitePxeEdgeChainCause> {
-  (match embedded {
-    EmbeddedRevisionUnobservable { reason: r } => [IpxeEmbeddedRevisionUnobservable { reason: r }]
-    EmbeddedRevisionRead { abbreviated: a } =>
-      if (a as String) == (build.embedded_revision as String) { [] } else { [IpxeEmbeddedRevisionMismatch { embedded: a, pinned: build.embedded_revision }] }
+fn site_pxe_edge_ipxe_build_causes(build: SitePxeEdgeChainloaderBuildReceipt, member: SitePxeEdgePinnedMember, chain_architecture: Architecture) -> List<SitePxeEdgeChainCause> {
+  (if build.artifact == site_pxe_edge_committed_ipxe_arm64 {
+    []
+  } else {
+    [IpxeArtifactNotTheCheckedArtifact { pinned: build.artifact.path, checked: site_pxe_edge_committed_ipxe_arm64.path }]
   }) + (if build.build_target == ipxe_arm64_efi_snponly {
     []
   } else {
@@ -550,35 +562,27 @@ fn site_pxe_edge_digest_causes(member: SitePxeEdgePinnedMember, observations: Li
 
 // A RENDERED MEMBER HAS NO DIGEST CAUSE HERE: it is a desired file, and its readback is the file write's
 // own comparison; gating the chain on it would withhold the chain whose rendering has not been written yet.
-fn site_pxe_edge_member_causes(member: SitePxeEdgePinnedMember, chain_architecture: Architecture, observations: List<SitePxeEdgeMemberObservation>, embedded: List<SitePxeEdgeEmbeddedObservation>) -> List<SitePxeEdgeChainCause> {
+fn site_pxe_edge_member_causes(member: SitePxeEdgePinnedMember, chain_architecture: Architecture, observations: List<SitePxeEdgeMemberObservation>) -> List<SitePxeEdgeChainCause> {
   match member.source {
     RenderedSource { content: _, digest: _ } => []
     VerifiedMediaSource { media: _, source: _, pin: _, digest: _ } => site_pxe_edge_digest_causes(member: member, observations: observations)
     IpxeBuildSource { build: b } =>
       site_pxe_edge_digest_causes(member: member, observations: observations)
-        + site_pxe_edge_ipxe_build_causes(
-          build: b,
-          member: member,
-          chain_architecture: chain_architecture,
-          embedded: match first_where(xs: embedded, keep: e => (e.served_path as String) == (member.member.served_path as String)) {
-            Absent => EmbeddedRevisionUnobservable { reason: "no revision was read from this member" }
-            Present { value: e } => e.revision
-          },
-        )
+        + site_pxe_edge_ipxe_build_causes(build: b, member: member, chain_architecture: chain_architecture)
   }
 }
 
-fn site_pxe_edge_chain_standing(pin: SitePxeEdgeChainPin, observations: List<SitePxeEdgeMemberObservation>, embedded: List<SitePxeEdgeEmbeddedObservation>) -> SitePxeEdgeChainStanding {
+fn site_pxe_edge_chain_standing(pin: SitePxeEdgeChainPin, observations: List<SitePxeEdgeMemberObservation>) -> SitePxeEdgeChainStanding {
   match pin {
     SitePxeEdgeChainUnpinned { architecture: a, obligation: o } => SitePxeEdgeChainWithheld { architecture: a, causes: FreeSemigroup { head: ChainUnpinned { obligation: o }, tail: [] } }
     SitePxeEdgeChainPinned { chain: c } =>
-      match flat_map(site_pxe_edge_pinned_members(chain: c), m => site_pxe_edge_member_causes(member: m, chain_architecture: c.architecture, observations: observations, embedded: embedded)).first() {
+      match flat_map(site_pxe_edge_pinned_members(chain: c), m => site_pxe_edge_member_causes(member: m, chain_architecture: c.architecture, observations: observations)).first() {
         Absent => SitePxeEdgeChainServable { chain: c }
         Present { value: first } => SitePxeEdgeChainWithheld {
           architecture: c.architecture,
           causes: FreeSemigroup {
             head: first,
-            tail: skip(xs: flat_map(site_pxe_edge_pinned_members(chain: c), m => site_pxe_edge_member_causes(member: m, chain_architecture: c.architecture, observations: observations, embedded: embedded)), n: 1),
+            tail: skip(xs: flat_map(site_pxe_edge_pinned_members(chain: c), m => site_pxe_edge_member_causes(member: m, chain_architecture: c.architecture, observations: observations)), n: 1),
           },
         }
       }
@@ -595,10 +599,9 @@ fn site_pxe_edge_servable_chains(standings: List<SitePxeEdgeChainStanding>) -> L
 fn site_pxe_edge_chain_cause_is_unobserved(cause: SitePxeEdgeChainCause) -> Bool {
   match cause {
     MemberUnobservable { served_path: _, reason: _ } => true
-    IpxeEmbeddedRevisionUnobservable { reason: _ } => true
     ChainUnpinned { obligation: _ } => false
     MemberDigestMismatch { served_path: _, observed: _, pinned: _ } => false
-    IpxeEmbeddedRevisionMismatch { embedded: _, pinned: _ } => false
+    IpxeArtifactNotTheCheckedArtifact { pinned: _, checked: _ } => false
     IpxeBuildTargetMismatch { pinned: _, expected: _ } => false
     IpxeBuildArchitectureMismatch { build: _, chain: _ } => false
     IpxeInstalledFilenameMismatch { pinned: _, expected: _ } => false
@@ -613,8 +616,7 @@ fn site_pxe_edge_chain_cause_text(cause: SitePxeEdgeChainCause) -> String {
     ChainUnpinned { obligation: o } => concat("chain-unpinned: ", o as String)
     MemberUnobservable { served_path: p, reason: r } => join(["member-unobservable ", p as String, ": ", r], "")
     MemberDigestMismatch { served_path: p, observed: o, pinned: q } => join(["member-digest-mismatch ", p as String, ": observed ", serialize_content_hash(hash: o) as String, ", pinned ", serialize_content_hash(hash: q) as String], "")
-    IpxeEmbeddedRevisionUnobservable { reason: r } => concat("ipxe-embedded-revision-unobservable: ", r)
-    IpxeEmbeddedRevisionMismatch { embedded: e, pinned: p } => join(["ipxe-embedded-revision-mismatch: image carries ", e as String, ", pinned ", p as String], "")
+    IpxeArtifactNotTheCheckedArtifact { pinned: p, checked: c } => join(["ipxe-artifact-not-the-checked-artifact: the pin names ", p as String, ", the real-execution witness checks ", c as String], "")
     IpxeBuildTargetMismatch { pinned: p, expected: e } => join(["ipxe-build-target-mismatch: pinned ", ipxe_build_target_path(target: p) as String, ", expected ", ipxe_build_target_path(target: e) as String], "")
     IpxeBuildArchitectureMismatch { build: _, chain: _ } => "ipxe-build-architecture-mismatch: the pinned build is not for the chain's architecture"
     IpxeInstalledFilenameMismatch { pinned: p, expected: e } => join(["ipxe-installed-filename-mismatch: pinned ", p as String, ", expected ", e as String], "")
@@ -990,6 +992,8 @@ type SitePxeEdgeProbe
 // bytes, the embedded revision says the receipt's claim about where they came from is not a different build's.
 // Unobservable is its own arm because "the image carries no revision" and "grep could not run" are both a
 // failure to read, never a mismatch.
+// ITS CONSUMER IS THE LOCAL CHECK OF THE COMMITTED ARTIFACT (test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness):
+// srv4 is checked by digest alone, which carries the revision because the pinned digest is that artifact's.
 type SitePxeEdgeEmbeddedRevision
   = EmbeddedRevisionRead { abbreviated: NonEmptyStr }
   | EmbeddedRevisionUnobservable { reason: String }
@@ -1310,16 +1314,6 @@ fn site_pxe_edge_argv_probe(target: SshTarget, context: FleetSshExecutionContext
   }
 }
 
-fn observe_site_pxe_edge_member_revision(target: SshTarget, context: FleetSshExecutionContext, member: SitePxeEdgePinnedMember) -> SitePxeEdgeEmbeddedObservation
-{
-  SitePxeEdgeEmbeddedObservation {
-    served_path: member.member.served_path,
-    revision: match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["grep", "-a", "-o", "-E", "[(]g[0-9a-f]{5}[)]", site_pxe_edge_member_path(member: member) as String]) {
-      TypedArgvExecRefused { reason: why } => EmbeddedRevisionUnobservable { reason: why }
-      TypedArgvExecConverged { result: r } => site_pxe_edge_embedded_revision(success: r.success, output: r.stdout)
-    },
-  }
-}
 
 fn observe_site_pxe_edge_member(target: SshTarget, context: FleetSshExecutionContext, member: SitePxeEdgePinnedMember) -> SitePxeEdgeMemberObservation
 {
@@ -1333,8 +1327,8 @@ fn observe_site_pxe_edge_member(target: SshTarget, context: FleetSshExecutionCon
   }
 }
 
-// EVERY PLACED BLOB MEMBER OF EVERY PINNED CHAIN IS DIGESTED, and every iPXE member's revision read; a
-// rendered member is a desired file and is compared by the file write instead.
+// EVERY PLACED BLOB MEMBER OF EVERY PINNED CHAIN IS DIGESTED; a rendered member is a desired file and is
+// compared by the file write instead.
 fn site_pxe_edge_blob_members(pins: List<SitePxeEdgeChainPin>) -> List<SitePxeEdgePinnedMember> {
   flat_map(pins, p => match p {
     SitePxeEdgeChainUnpinned { architecture: _, obligation: _ } => []
@@ -1342,13 +1336,6 @@ fn site_pxe_edge_blob_members(pins: List<SitePxeEdgeChainPin>) -> List<SitePxeEd
   })
 }
 
-fn site_pxe_edge_ipxe_members(pins: List<SitePxeEdgeChainPin>) -> List<SitePxeEdgePinnedMember> {
-  filter(site_pxe_edge_blob_members(pins: pins), m => match m.source {
-    IpxeBuildSource { build: _ } => true
-    VerifiedMediaSource { media: _, source: _, pin: _, digest: _ } => false
-    RenderedSource { content: _, digest: _ } => false
-  })
-}
 
 type SitePxeEdgeFileStanding
   = EdgeFileIdentical
@@ -1622,8 +1609,7 @@ fn site_pxe_edge_file_results(
   })
 }
 
-// ORDER: privilege, dnsmasq binary, every placed member's digest and every iPXE member's revision (the
-// per-chain standings and the gate), then every desired file, then activation only when the gate is open
+// ORDER: privilege, dnsmasq binary, every placed member's digest (the per-chain standings and the gate), then every desired file, then activation only when the gate is open
 // and every file settled, then the unit's active state read back. A closed gate still observes the files,
 // so an observe dispatch says what WOULD be written. Every effect is sequenced by a let.
 fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode) -> SitePxeEdgeRun
@@ -1633,8 +1619,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
   let package = ensure_site_pxe_edge_package(target: target, context: context, mode: mode, privilege: privilege)
   let binary = site_pxe_edge_argv_probe(target: target, context: context, argv: ["test", "-x", site_pxe_edge_dnsmasq_binary as String], what: "test -x dnsmasq")
   let observations = map(site_pxe_edge_blob_members(pins: pins), m => observe_site_pxe_edge_member(target: target, context: context, member: m))
-  let embedded = map(site_pxe_edge_ipxe_members(pins: pins), m => observe_site_pxe_edge_member_revision(target: target, context: context, member: m))
-  let standings = map(pins, p => site_pxe_edge_chain_standing(pin: p, observations: observations, embedded: embedded))
+  let standings = map(pins, p => site_pxe_edge_chain_standing(pin: p, observations: observations))
   let servable = site_pxe_edge_servable_chains(standings: standings)
   let inputs = site_pxe_edge_desired_inputs(servable: servable, roster: first_onboarding_known_client_mac, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
   let collisions = match inputs {
