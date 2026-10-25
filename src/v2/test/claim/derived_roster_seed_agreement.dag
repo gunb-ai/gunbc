@@ -8,12 +8,19 @@ import gunbc.source_root_read { source_root_read_file }
 import v2.compiler.module_acquisition {
   AcquiredDerivedRoster,
   AcquiredModule,
-  AcquisitionNotVerified,
-  AcquisitionVerified,
   PopulationMemberRead,
   PopulationMemberRefused,
+  CensusAcquisitionBlocked,
+  CensusAcquisitionClosed,
+  CensusAcquisitionRefused,
+  CensusBlock,
+  CensusEdgeBlock,
+  CensusEdgeLookupRefused,
+  CensusEdgeTreeUnbound,
+  CensusEdgeUnknownModule,
+  CensusMemberBlock,
   SourceRootBinding,
-  acquire_verified,
+  acquire_census_closure_of,
   population_member
 }
 import v2.cli.repository_layout { repository_storage_layout, repository_tree_directory }
@@ -105,18 +112,47 @@ test fn the_native_recurring_failure_mode_roster_agrees_with_the_seeds() -> Bool
   )
 }
 
-// gunbc.rung_drop.standing acquires as an exact closure that holds its derived roster.
-test fn rung_drop_standing_acquires_with_its_derived_roster() -> Bool {
-  match acquire_verified(layout: repository_storage_layout(), bindings: repository_bindings(), entries: ["gunbc.rung_drop.standing"]) {
-    AcquisitionNotVerified { reason: _, cause: _ } => false
-    AcquisitionVerified { modules: modules, reads: _, absent_probes: _ } =>
-      match list_find_first(xs: modules, predicate: fn(m) { m.name == "gunbc.rung_drop.roster" }) {
-        Absent => false
-        Present { value: roster } =>
-          match roster.origin {
-            AcquiredDerivedRoster { inputs: inputs } => length(xs: inputs) > 0
-            _ => false
-          }
+// gunbc.rung_drop.standing's closure holds its derived roster, and nothing in the closure is blocked ON the
+// roster. This goes through the census door (acquire_census_closure_of) and not the compiler's exact door,
+// because standing's closure is blocked elsewhere, by a defect this lane does not own: std.removal_tombstone,
+// a dag module, makes a qualified reference to v2.lens.module_impact_query, and the cross-tree model denies
+// that edge. The census door records that block and goes on, so the claim can observe the roster positively
+// rather than inferring it from the absence of a refusal.
+// ITS COST IS STATED BECAUSE IT DECIDES WHERE IT RUNS: under the seed interpreter the census door
+// front-ends standing's whole closure (about 1,300 modules) at roughly two a minute, so this claim takes
+// hours there. The executed receipt for the same question is the emitted compiler's census-scoped verb
+// over //gunbc/rung_drop:standing, cited in gunbc#15078. Once gunbc#15080 admits the std.removal_tombstone
+// edge, this claim returns to the exact door (acquire_verified), which stops at no block.
+fn census_block_names_roster(block: CensusBlock) -> Bool {
+  match block {
+    CensusMemberBlock { module: module, refusal: _, content: _, host_directory: _, requesters: _ } => module == "gunbc.rung_drop.roster"
+    CensusEdgeBlock { refusal: refusal } =>
+      match refusal {
+        CensusEdgeUnknownModule { request: request } => request.spelling == "gunbc.rung_drop.roster"
+        CensusEdgeLookupRefused { request: request, lookup: _ } => request.spelling == "gunbc.rung_drop.roster"
+        CensusEdgeTreeUnbound { tree: _, request: request } => request.spelling == "gunbc.rung_drop.roster"
       }
+  }
+}
+
+fn holds_derived_roster(modules: List<AcquiredModule>) -> Bool {
+  match list_find_first(xs: modules, predicate: fn(m) { m.name == "gunbc.rung_drop.roster" }) {
+    Absent => false
+    Present { value: roster } =>
+      match roster.origin {
+        AcquiredDerivedRoster { inputs: inputs } => length(xs: inputs) > 0
+        _ => false
+      }
+  }
+}
+
+test fn rung_drop_standing_acquires_with_its_derived_roster() -> Bool {
+  match acquire_census_closure_of(layout: repository_storage_layout(), bindings: repository_bindings(), entries: ["gunbc.rung_drop.standing"]) {
+    CensusAcquisitionRefused { refusal: _ } => false
+    CensusAcquisitionClosed { entries: _, modules: modules, reads: _ } => holds_derived_roster(modules: modules)
+    CensusAcquisitionBlocked { entries: _, modules: modules, blocked_first: first, blocked_rest: rest, reads: _ } =>
+      holds_derived_roster(modules: modules)
+        && !census_block_names_roster(block: first)
+        && for_all(xs: rest, predicate: fn(b) { !census_block_names_roster(block: b) })
   }
 }
