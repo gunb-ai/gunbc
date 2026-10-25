@@ -54,3 +54,27 @@ test fn the_sha256_hex_wall_refuses_an_uppercase_render() -> Bool {
     Absent => true
   }
 }
+
+// THE REALIZATION BINDING, AT RUST EMISSION. std.content_hash sha256_hex_of_text has a projection row
+// (std.primitive_projection primitive_sha256_hex_of_text, HostRealizedSeam) and no rt_function_registry bridge, so its
+// emitted body is the unrealized-seam refusal -- a panic naming the seam -- and never a self-recursive call. The probe
+// imports it and calls it; the declaration's module is emitted beside the probe.
+test fn w_declared_sha256_seam_emits_the_unrealized_refusal_not_recursion() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.content_hash_sha256_probe\nimport std.types { String }\nimport std.content_hash { sha256_hex_of_text }\nfn probe() -> String { sha256_hex_of_text(text: \"abc\") }\n",
+    "src/std_content_hash.rs",
+    ["unrealized host seam 'sha256_hex_of_text' in std.content_hash"],
+    ["sha256_hex_of_text(text)\n"]
+  )
+}
+
+// A same-named ordinary fn keeps its authored body: the seam is keyed by std.content_hash's declaration through its
+// projection row, never by the spelling `sha256_hex_of_text`.
+test fn w_homonym_sha256_hex_of_text_keeps_authored_body() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.homonym_sha256_probe\nimport std.integer { Int }\nfn sha256_hex_of_text(text: Int) -> Int { 424244 }\nfn probe() -> Int { sha256_hex_of_text(text: 1) }\n",
+    "src/test_claim_homonym_sha256_probe.rs",
+    ["424244"],
+    ["unrealized host seam"]
+  )
+}
