@@ -671,10 +671,7 @@ fn demand_fact_declaration(w: DemandFactWalk, path: QualifiedName, node: Node, r
       demand_fact_with_operation(w: w, op: OperationFact { path: path, requirement: RequiresResources { resources: [declared] } })
     Absent =>
       if demand_census_declaration_is_host_seam(path: path) {
-        match operation_declaration_for(declaration: declaration_ref_of_qualified_name(path: path)) {
-          Present { value: row } => demand_fact_with_declared_operation(w: w, op: OperationFact { path: path, requirement: row.requirement })
-          Absent => demand_fact_with_operation(w: w, op: OperationFact { path: path, requirement: RequiresUndeclared })
-        }
+        demand_fact_with_declared_operation(w: w, op: demand_census_seam_operation_fact(path: path))
       } else if demand_census_is_operation_arrow(node: node) {
         demand_fact_with_declared_operation(w: w, op: OperationFact { path: path, requirement: demand_census_requirement(arrow: node) })
       } else {
@@ -719,6 +716,30 @@ fn demand_census_declaration_is_host_seam(path: QualifiedName) -> Bool {
         DivergentProjection { divergence: _ } => false
       }
     Absent => false
+  }
+}
+
+// THE SEAM ARM, as a decision over its own key: the declaration row's requirement IS the
+// operation's requirement; with no row there is nothing to trust and the operation BLOCKS as
+// RequiresUndeclared (the same arm an undeclared opaque operation takes), never a default and never
+// a walk of the self-call body. demand_fact_declaration dispatches here; the claims drive it
+// directly, so deleting a declaration row reddens through THIS arm.
+fn demand_census_seam_operation_fact(path: QualifiedName) -> OperationFact {
+  OperationFact {
+    path: path,
+    requirement: demand_census_seam_requirement(declaration: declaration_ref_of_qualified_name(path: path))
+  }
+}
+
+// THE BLOCKING ARM, one step further in: the requirement a seam carries as a function of its
+// declaration key alone. A row is trusted; NO ROW IS THE TYPED UNDECLARED ARM, which blocks the
+// caller exactly as an undeclared opaque operation does -- never a default, never a silent
+// RequiresNone. Driving this from a key lets the controls exercise the blocking branch directly
+// (a key no row answers) as well as through deletion of a real row.
+fn demand_census_seam_requirement(declaration: DeclarationRef) -> RequirementClass {
+  match operation_declaration_for(declaration: declaration) {
+    Present { value: row } => row.requirement
+    Absent => RequiresUndeclared
   }
 }
 

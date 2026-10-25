@@ -1,0 +1,322 @@
+module v2.test.claim.compiler.operation_declaration_seam
+
+// ONE DECLARATION PER OPERATION, KEYED BY ITS DECLARATION PATH (M2V two-keyings + D16 part 1).
+// These controls pin what the change owes, in the order DESIGN 3 asks of a model swap:
+// (1) the declaration ROW is the only fact source -- an operation with no row refuses, and
+//     deleting a row turns a named control red through the typed blocking arm, never a default
+//     (the shape below asserts the arm is RequiresUndeclared, never RequiresNone);
+// (2) the roster and std.primitive_projection agree in BOTH directions over the projection's own
+//     enumerated rows: no row can outlive its seam, and no seam can arrive undeclared;
+// (3) the INHABITANCE PAIRING runs the REAL producer (DESIGN 3: a supplied boundary owes one
+//     claim that the real producer reaches it). The census walk over the real std.data_index
+//     closure -- its files read from disk, the same bytes the instrument walks -- must MATCH the
+//     walked seam to its row by DeclarationRef and carry the ROW's requirement into the demand,
+//     and must form NO FunctionFact for the seam (its self-call body is never walked).
+// The fail-open this closes: on main, a projected HostRealizedSeam with a self-call body settled
+// DemandDerived{empty} THROUGH THE BODY WALK -- a host observation read as pure (measured on
+// main before this change). Pre-change, the deleted slug-keyed index could not even match a
+// walked, module-qualified path, so the walk-based claims here are the delta the swap must show.
+import std.algebra { Cons, Empty, fold_list, length, list_snoc_item }
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.decl_ref { decl_ref }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.primitive_projection { HostRealizedSeam, primitive_projection_roster }
+import std.types { Bool, List }
+import v2.compiler.dependency_demand {
+  DependencyDemandRow,
+  DemandDerived,
+  DemandUndecided,
+  OperationFact,
+  RequiresResources,
+  RequiresUndeclared,
+  dependency_demand_of
+}
+import v2.compiler.dependency_demand_census {
+  DemandCensusModuleFacts,
+  demand_census_declaration_is_host_seam,
+  demand_census_module_facts,
+  demand_census_seam_requirement
+}
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol, symbol_intern_lexeme }
+import v2.std.operation_declaration {
+  NativeHostObservation,
+  ObservesHost,
+  OperationDispositionUnclassified,
+  effect_demand_blocked_operations,
+  effect_demand_implementable_operations,
+  effect_demand_operation_classifications,
+  every_declaration_is_a_host_seam,
+  operation_declaration_for,
+  operation_declaration_m2v_population,
+  operation_declaration_row_count_for
+}
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_dotted_string,
+  qualified_name_from_string_segments,
+  qualified_name_to_dotted_string
+}
+import v2.std.text { String }
+
+// ---- THE POPULATION BIJECTION WITH std.primitive_projection ------------------------------------
+// Both directions, over the projection's own enumerated rows (not a hand list). A seam with no
+// row is the typed undeclared arm below; a row for something the projection does not seam is a
+// fabricated opacity, and the reverse direction of the pairing kills it.
+test fn every_host_realized_seam_carries_exactly_one_declaration_row_holds() -> Bool {
+  fold_list(
+    xs: primitive_projection_roster(),
+    empty: true,
+    cons: fn(acc, row) {
+      match row.fidelity {
+        HostRealizedSeam => acc && (operation_declaration_row_count_for(declaration: row.declaration) == 1)
+        _ => acc
+      }
+    }
+  )
+}
+
+test fn every_declaration_row_is_a_projected_host_seam_holds() -> Bool {
+  every_declaration_is_a_host_seam()
+}
+
+// ---- THE TYPED UNDECLARED ARM, NEVER A DEFAULT ----------------------------------------------------
+// Discriminating direction of RED A: deleting filesystem_read's row from the roster turns the
+// row-reading claims red, and any seam whose row vanishes lands HERE -- RequiresUndeclared, which
+// blocks the caller through UndeclaredOperationCalled -- never RequiresNone, so a deleted
+// declaration can never be read as pure. Driving this from an arbitrary key lets the control name
+// the arm; the census dispatches on it for real seams.
+test fn an_operation_with_no_declaration_row_is_the_typed_undeclared_arm_holds() -> Bool {
+  demand_census_seam_requirement(declaration: decl_ref(module_path: "t.never.declared", decl_name: "nothing"))
+    == RequiresUndeclared
+}
+
+// ---- THE M2V CENSUS UNCHANGED BY THE SWAP (the honest 1/6) ---------------------------------------
+// Blocked/implementable still derive from DISPOSITION alone: seven operations in the population,
+// one implementable (filesystem_read: ObservesHost + NativeHostObservation), six blocked whose
+// semantics (ObservesHost) stay KNOWN while their disposition stays OPEN with the same
+// blocking_question -- the open question never moved to the semantics channel.
+test fn the_m2v_population_still_splits_one_implementable_and_six_blocked_holds() -> Bool {
+  length(xs: operation_declaration_m2v_population()) == 7
+    && length(xs: effect_demand_implementable_operations(classifications: effect_demand_operation_classifications())) == 1
+    && length(xs: effect_demand_blocked_operations(classifications: effect_demand_operation_classifications())) == 6
+}
+
+test fn filesystem_read_declares_observes_host_read_named_file_with_the_filesystem_requirement_holds() -> Bool {
+  match operation_declaration_for(declaration: decl_ref(module_path: "v2.std.live_read", decl_name: "filesystem_read")) {
+    Absent => false
+    Present { value: row } =>
+      match row.semantics {
+        ObservesHost { operation_identity: identity } =>
+          match row.disposition {
+            NativeHostObservation { operation_identity: _ } =>
+              identity == symbol_intern_lexeme(lexeme: "read_named_file")
+                && row.requirement == RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] }
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn the_six_corpus_fact_operations_keep_known_semantics_and_their_open_disposition_holds() -> Bool {
+  fold_list(
+    xs: operation_declaration_m2v_population(),
+    empty: 0,
+    cons: fn(n, row) {
+      if row.declaration.module_path == "v2.std.live_read" {
+        n
+      } else {
+        match row.semantics {
+          ObservesHost { operation_identity: _ } =>
+            match row.disposition {
+              OperationDispositionUnclassified { blocking_question: q } =>
+                if q == symbol_intern_lexeme(lexeme: "does_lens_execution_bind_a_corpus_snapshot") { n + 1 } else { n }
+              _ => n
+            }
+          _ => n
+        }
+      }
+    }
+  ) == 6
+}
+
+// ---- THE INHABITANCE PAIRING: THE REAL PRODUCER, KEYED BY DECLARATION PATH ------------------------
+// The real producer is the census walk over the REAL bytes of the std.data_index closure (8 files
+// read from disk). data_init_decl_facts_live is one of the seven: projected HostRealizedSeam, self-call
+// body, RequiresResources{Filesystem} at its declaration.
+data ods_closure: List<String> = [
+  "dag/std/algebra.dag",
+  "dag/std/error_primitives.dag",
+  "dag/std/float.dag",
+  "dag/std/optional.dag",
+  "dag/std/types.dag",
+  "dag/std/unicode/types.dag",
+  "src/v2/std/data_index.dag",
+  "src/v2/std/text.dag"
+]
+
+data ods_v2_files: List<String> = ["src/v2/std/data_index.dag", "src/v2/std/text.dag"]
+
+fn ods_is_v2(path: String) -> Bool {
+  fold_list(
+    xs: ods_v2_files,
+    empty: false,
+    cons: fn(acc, p) { acc || (p == path) }
+  )
+}
+
+fn ods_witness(path: String) -> DagSourceReadWitness {
+  let read = Filesystem.Read(path: path)
+  DagSourceReadWitness {
+    source: Medium { carried: read.content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: if ods_is_v2(path: path) { V2Tree } else { DagTree }
+  }
+}
+
+// ONE ingest, the closure's real bytes beside the caller fixture; each subject is WALKED as the
+// instrument walks it -- demand_census_module_facts per module, the per-root route
+// native_effect_pair_census_module takes (the census module facts, not the report: the report
+// carries authored-row verdicts and this claim is about the FACTS the walk records).
+// ONE route, the ddc precedent: an ingest over the closure's real bytes (the same files the
+// instrument walks), resolved per subject. Each subject is then WALKED as the instrument walks
+// it -- demand_census_module_facts at that module's own qualified name, the per-root route
+// native_effect_pair_census_module takes -- so the seam's declarations settle at their real
+// module-qualified paths.
+fn ods_assemble(extra: List<DagSourceReadWitness>, subject: Symbol) -> Optional<ResolvedTree> {
+  match assemble_program_from_ingest(
+    ingest: fold_list(
+      xs: ods_closure,
+      empty: extra,
+      cons: fn(acc, path) { list_snoc_item(xs: acc, item: ods_witness(path: path)) }
+    ),
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: subject, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } => optional_present(value: resolved)
+  }
+}
+
+fn ods_seam_facts() -> Optional<DemandCensusModuleFacts> {
+  match ods_assemble(extra: Empty, subject: ^v2) {
+    Absent => optional_absent()
+    Present { value: resolved } =>
+      optional_present(value: demand_census_module_facts(resolved: resolved, module_qn: qualified_name_from_dotted_string(dotted: "v2.std.data_index")))
+  }
+}
+
+fn ods_walked_operation(path: String) -> Optional<OperationFact> {
+  match ods_seam_facts() {
+    Absent => optional_absent()
+    Present { value: facts } =>
+      fold_list(
+        xs: facts.operations,
+        empty: optional_absent(),
+        cons: fn(acc, op) {
+          if qualified_name_to_dotted_string(qn: op.path) == path { optional_present(value: op) } else { acc }
+        }
+      )
+  }
+}
+
+// THE CLAIM THE DELETED KEY COULD NOT PASS: the walked seam appears as an OperationFact keyed at
+// its MODULE-QUALIFIED PATH (the slug index matched no such path), and its requirement IS the
+// declaration row's requirement -- RequiresResources{Filesystem}, what its declaration says.
+test fn the_walked_seam_is_matched_by_declaration_path_and_carries_the_rows_requirement_holds() -> Bool {
+  match ods_walked_operation(path: "v2.std.data_index.data_init_decl_facts_live") {
+    Absent => false
+    Present { value: op } =>
+      match op.requirement {
+        RequiresResources { resources: rs } =>
+          length(xs: rs) == 1
+            && qualified_name_to_dotted_string(qn: ods_head(paths: rs)) == "std.resources.Filesystem"
+        _ => false
+      }
+  }
+}
+
+// THE BODY IS NEVER WALKED: no FunctionFact forms for the seam, so nothing about its demand can
+// come from its self-call. On main the seam settled through its body; this is the fail-open,
+// closed and measured.
+test fn the_walked_seam_forms_no_function_fact_holds() -> Bool {
+  match ods_seam_facts() {
+    Absent => false
+    Present { value: facts } =>
+      fold_list(
+        xs: facts.functions,
+        empty: true,
+        cons: fn(all, f) { all && (qualified_name_to_dotted_string(qn: f.path) != "v2.std.data_index.data_init_decl_facts_live") }
+      )
+  }
+}
+
+// The census dispatches the seam arm by PROJECTION membership on the real walked path.
+test fn the_seam_predicate_holds_on_a_real_projection_path_holds() -> Bool {
+  demand_census_declaration_is_host_seam(path: qualified_name_from_dotted_string(dotted: "v2.std.data_index.data_init_decl_facts_live"))
+}
+
+// ---- THE TRANSPARENT-CALLER FLIP, THROUGH THE REAL D13 FOLD ---------------------------------------
+// The flip the manager asked to see claimed, not narrated: a transparent body that calls the seam
+// now settles at the ROW's requirement. Pre-change it reached a self-call-only FunctionFact that
+// derived NOTHING (DemandDerived{empty}, read as pure); post-change the fold reaches the row's
+// Filesystem requirement through the seam arm. Both module walks run on ONE ingest of the real
+// closure's bytes; the fold is the real dependency_demand_of.
+data ods_caller_source: String = "module ods.caller\n\nfn reads_the_corpus() -> Int {\n  let xs = v2.std.data_index.data_init_decl_facts_live()\n  1\n}\n"
+
+fn ods_caller_witness() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: ods_caller_source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^ods_caller_artifact, file_path: "src/v2/test/fixture/operation_declaration_seam_caller.dag" },
+    compilation_unit: ^ods_caller_cu,
+    source_root: V2Tree
+  }
+}
+
+fn ods_caller_demand() -> Optional<DependencyDemandRow> {
+  match ods_seam_facts() {
+    Absent => optional_absent()
+    Present { value: seam_facts } =>
+      match ods_assemble(extra: [ods_caller_witness()], subject: ^ods) {
+        Absent => optional_absent()
+        Present { value: resolved } =>
+          let caller_facts = demand_census_module_facts(resolved: resolved, module_qn: qualified_name_from_dotted_string(dotted: "ods.caller"))
+          fold_list(
+            xs: dependency_demand_of(functions: caller_facts.functions, operations: seam_facts.operations),
+            empty: optional_absent(),
+            cons: fn(acc, r) {
+              if qualified_name_to_dotted_string(qn: r.function) == "ods.caller.reads_the_corpus" { optional_present(value: r) } else { acc }
+            }
+          )
+      }
+  }
+}
+
+test fn a_transparent_caller_of_the_seam_settles_at_the_rows_filesystem_requirement_holds() -> Bool {
+  match ods_caller_demand() {
+    Absent => false
+    Present { value: r } =>
+      match r.demand {
+        DemandDerived { resources: set } =>
+          set.size == 1 && qualified_name_to_dotted_string(qn: ods_head(paths: set.members)) == "std.resources.Filesystem"
+        DemandUndecided { cause: _ } => false
+      }
+  }
+}
+
+fn ods_head(paths: List<QualifiedName>) -> QualifiedName {
+  match paths {
+    Cons { head: h, tail: _ } => h
+    Empty => qualified_name_from_dotted_string(dotted: "")
+  }
+}

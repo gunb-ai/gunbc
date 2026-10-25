@@ -10,6 +10,7 @@ import v2.std.integer { Int }
 import v2.std.node { Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_string_segments, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string }
 import v2.compiler.dependency_demand { RequirementClass, RequiresResources, RequiresOpaque, RequiresUndeclared }
+import std.primitive_projection { primitive_projection_roster, primitive_projection_row_for_declaration, HostRealizedSeam, ModeledProjection, DivergentProjection }
 
 // ONE DECLARATION PER HOST-BOUNDARY OPERATION, keyed by its declaration path.
 //
@@ -519,6 +520,42 @@ fn effect_demand_operation_classifications() -> List<EffectOperationClassificati
           disposition: row.disposition
         }
       )
+    }
+  )
+}
+
+// THE BIJECTION WITH std.primitive_projection (DESIGN 2: one authority per fact). The projection is
+// the corpus's only authority for "this declaration is host-realized"; this roster is the authority
+// for what a host-realized operation IS. The two must agree exactly, in both directions, checked
+// over the projection's own enumerated rows: EVERY HostRealizedSeam row has a declaration (the
+// census would otherwise reach RequiresUndeclared, which blocks -- the honest failure, named), and
+// NO declaration row exists for something the projection does not seam (a row for a transparent fn
+// would hand it opaque facts its body derivation should have made -- the fail-open this change
+// closes, run in reverse).
+fn every_host_seam_is_declared() -> Bool {
+  fold_list(
+    xs: primitive_projection_roster(),
+    empty: true,
+    cons: fn(ok, row) {
+      match row.fidelity {
+        HostRealizedSeam => ok && (operation_declaration_row_count_for(declaration: row.declaration) >= 1)
+        ModeledProjection => ok
+        DivergentProjection { divergence: _ } => ok
+      }
+    }
+  )
+}
+
+fn every_declaration_is_a_host_seam() -> Bool {
+  fold_list(
+    xs: operation_declaration_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      match primitive_projection_row_for_declaration(declaration: row.declaration) {
+        Present { value: p } =>
+          ok && (match p.fidelity { HostRealizedSeam => true, ModeledProjection => false, DivergentProjection { divergence: _ } => false })
+        Absent => false
+      }
     }
   )
 }
