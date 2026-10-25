@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.an_unbraced_arm_body_swallows_an_arm_its_predicate_does_not_spell
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+
+data an_unbraced_arm_body_swallows_an_arm_its_predicate_does_not_spell: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_unbraced_arm_body_swallows_an_arm_its_predicate_does_not_spell" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "where an unbraced arm body ends is now decided by the arm grammar itself (the seed's parse_pattern, parse_optional_guard, then `=>`; v2's arm-head-guarded match_arm_stmt_body), so no separate predicate exists to disagree with the parse that follows." as NonEmptyStr } },
+
+  receipts: [
+    "INVALID STATE: an unbraced match-arm body that is a statement sequence (it opens with `let` or `return`) reads the NEXT arm as one more statement. The seed decided where such a body ends with a hand-written predicate over the first tokens (v1.compiler.parse looks_like_arm_start), which recognised `_`, an uppercase leaf (bare or braced) and a dotted path ending uppercase. Every other pattern form was not an arm start to it: a lowercase binder (`other =>`), a keyword or number or string literal (`false =>`, `0 =>`, `none =>`), a guarded arm.",
+
+    "HARM: with a nested match as the body's last statement, the outer arm is RE-PARENTED into the inner match. sunny-bee-153's repro: `A { n: n } => let m = n + 1` then `match g(x: m) { A { n: _ } => A { n: m }  other => other }` then the outer `other => other`; the seed refused `non-exhaustive match: missing variant(s) B, C` on the OUTER match. A keyword-literal arm after the same shape refused `expected expression, found FatArrow`. Where the swallowed arm type-checks in its new home, nothing refuses and the program is silently wrong. It also shaped v2 authoring: sunny-bee-153 wrote helper fns to avoid it (v2.workflow.roster_import_sweep roster_sorted_disjoint_plan in gunbc#15101, and six more on an unpushed stacked branch).",
+
+    "SAME CLASS, SECOND INSTANCE: the predicate had been widened once already, for the dotted form (the namespace-cut reproduction recorded on looks_like_arm_start). Each widening spelled one more pattern form; the defect was spelling forms at all.",
+
+    "REPAIR AT THE EARLIEST BOUNDARY: looks_like_arm_start runs the seed's own parse_pattern and parse_optional_guard and asks for `=>`, so an arm start is exactly what parse_match_arm reads. The hand-written helpers (arm_start_after_qualified_path, scan_for_fat_arrow_after_braces, peek_is_expected_at) are deleted. v2 was never affected: its arm body is the grammar's match_arm_stmt_body, guarded by an arm-head predicate (v2.extdeps.languages.dag), and the v2 cross-check is v2.test.claim.body_lowering.let_arm_body_ends_at_the_next_arm.",
+
+    "EXECUTED, 2026-10-25 (jolly-cat-271): seed built from main 963e18 (sha256 3a7458506284e616f841f4a8d1d7d8b99a304ccaaa9ee00f85cde6ccafab6998) refuses both `let` forms (the binder repro and the keyword-literal form) and compiles both no-`let` forms. Seed built from the repair (sha256 5d3039c4109d726b6136a2ebe8d8ffeb22ea5251ad079758bdecfc1118062140) compiles all four, and the emitted Rust keeps the outer `other` arm on the outer match.",
+
+    "RUNG: found BELOW the ladder (silent re-parenting where the swallowed arm type-checks). At ceiling: structurally guaranteed by construction of the decision.",
+
+    "REVIEW TELL: a predicate that decides where a grammatical form ends by spelling the forms that may follow, instead of running the production that reads them.",
+  ],
+
+  evidence: [],
+}
