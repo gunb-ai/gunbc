@@ -32,7 +32,9 @@ import gunbc.host.managed_host_unit_hold {
   UnitHoldExecutorIsStoreHost, UnitHoldExecutorElsewhere, UnitHoldStoreHostUnallocated, UnitHoldExecutorUnread,
   unit_hold_store_executor_decision, unit_hold_store_executor_refusal,
   UnitHoldOnStoreHost, UnitHoldNotOnStoreHost, unit_hold_store_executor,
+  UnitHoldStoreUnreadyOnExecutor,
 }
+import gunbc.host_state_root { host_state_tree }
 import std.optional { Present, Absent }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 
@@ -278,9 +280,10 @@ test fn w_the_executor_carrier_is_minted_only_from_this_process_own_hostname() -
     UnitHoldHostNotRequired { host: _ } => false
     UnitHoldHostUndecided { host: _ } => false
     UnitHoldHostAdmitted { subject: s } =>
-      match unit_hold_store_executor(subject: s) {
+      match unit_hold_store_executor(subject: s, tree: host_state_tree()) {
         UnitHoldOnStoreHost { executor: e } => (e.observed_hostname as String) == "srv1" && (e.subject.key as String) == (s.key as String)
         UnitHoldNotOnStoreHost { reason: r } => string_contains(s: r as String, pattern: "nothing was read or written")
+        UnitHoldStoreUnreadyOnExecutor { detail: _ } => false
       }
   }
 }

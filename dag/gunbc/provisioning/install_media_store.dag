@@ -1,7 +1,7 @@
 module gunbc.provisioning.install_media_store
 
 import std.types { NonEmptyStr, FilePath }
-import std.optional { Present }
+import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaArtifactRow, ubuntu_install_media_install_path }
 import gunbc.host_state_root { HostStateTree, host_state_tree_path, host_state_tree }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse }
@@ -9,12 +9,16 @@ import extdeps.posix.identity { PosixOwnerNames }
 import extdeps.filesystem.filesystem_io { filesystem_listing_observation, Filesystem, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
 
 // THE INSTALL MEDIA ARTIFACT STORE, sealed on the gunbc side (cohort C-host). The store's records are
-// the media files themselves (the fetched ISO and its `.part` staging file), so their paths ARE
-// business paths and the seal is over the ROOT the paths are built under. The facts about the media --
-// which version, which digest, which mirrors -- stay upstream in
-// extdeps.provisioning.ubuntu_install_media, where they belong; only the host's install root lives
-// here, because the root is a gunbc host-state fact, not an Ubuntu fact. The extdeps module receives
-// the directory; it no longer declares it.
+// the media files themselves (the fetched ISO and its `.part` staging file); their names are upstream
+// facts (the cited filename of an UbuntuInstallMediaArtifactRow), but the ROOT they live under is a
+// gunbc host-state fact, not an Ubuntu fact -- so the root lives HERE and the extdeps modules receive
+// it (extdeps.provisioning.ubuntu_install_media carries upstream facts only).
+//
+// NO FORMAT CHANGE (operator ruling 1 for a RECORD_DIR store): the on-disk names and bytes are exactly
+// what the deleted root-taking trio (ubuntu_install_media_artifacts_dir / _install_path / _part_path)
+// produced -- the path the old ubuntu_install_media_install_path computed for a row is, byte for byte,
+// install_media_install_path over host_state_tree() for the same row, pinned by the readback witness.
+// Moving the record format onto SlotStore is a FormatConsolidation follow-up, not this PR.
 
 // THE ONE DECLARATION (operator ruling, sealed-store lane): the member the store lives under in the ONE
 // host-state tree (gunbc.host_state_root host_state_tree_root), and the mode its directory is created
@@ -30,16 +34,25 @@ data install_media_slots: InstallMediaSlotsDeclaration = InstallMediaSlotsDeclar
   mode: DirectoryOwnerAllEveryoneTraverse,
 }
 
-// THE ROOT, DERIVED: the tree's path plus this store's member. Never a literal; only the mint and the
-// provisioning target read the declaration.
+// THE ROOT, DERIVED: the tree's path plus this store's member. Never a literal. Pure, and it takes the
+// sealed tree VALUE (a value, not a path argument), like the reference lane's worktree_claim_slots_path
+// -- so path-shaping consumers (the srv3 data rows, the seeded boundary, the witnesses) derive paths
+// without an effect, while anything that TOUCHES the store must hold the minted record.
 fn install_media_store_path(tree: HostStateTree) -> NonEmptyStr {
   join([host_state_tree_path(tree: tree) as String, "/", install_media_slots.member as String], "") as NonEmptyStr
 }
 
+// THE ONE FORMULATION OF A MEDIA PATH, used by both the tree-based and the record-based routes so the
+// two cannot drift: it is the upstream module's own path function (extdeps carries the filename fact),
+// fed the derived root -- no second concatenation exists.
+fn install_media_path_under(root: NonEmptyStr, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+  ubuntu_install_media_install_path(dir: root, artifact: artifact)
+}
+
 // THE SEALED STORE (the operator's sealed-store shape): data only, sole_constructor, non-generic, never
 // a variant arm (the seal does not reach those: test.claim.sole_constructor_completeness_audit_probe
-// f13/f19). Construction is sealed to install_media_store; the rung claimed here is construction only
-// (field reads are the declared residual, gunbc.recurring_failure_mode
+// f13/f19). Construction is sealed to install_media_store below; the rung claimed here is construction
+// only (field reads are the declared residual, gunbc.recurring_failure_mode
 // a_slot_store_is_built_over_a_literal_path_by_any_module): no forged or wrong-root media store.
 type InstallMediaStore sole_constructor {
   root: NonEmptyStr
@@ -63,18 +76,36 @@ fn install_media_store(tree: HostStateTree) -> InstallMediaStoreReading {
   }
 }
 
-// THE BUSINESS PATHS, over the sealed store. A media file's path is the store's root plus the row's
-// cited filename (the upstream module's ubuntu_install_media_filename); a `.part` sibling is the
-// staging path of the same file. NO FORMAT CHANGE (operator ruling 1 for a RECORD_DIR store): the
-// on-disk bytes and names are exactly what the old root-taking functions produced -- the path the old
-// ubuntu_install_media_install_path produced for a row is, byte for byte, the path this pair produces
-// for the same row over host_state_tree(), asserted by the readback witness.
-fn install_media_install_path(store: InstallMediaStore, filename: NonEmptyStr) -> NonEmptyStr {
-  join([store.root as String, "/", filename as String], "") as NonEmptyStr
+// THE PRODUCTION CALLER'S ONE LINE.
+fn install_media_store_on_production_host() -> InstallMediaStoreReading {
+  install_media_store(tree: host_state_tree())
 }
 
-fn install_media_part_path(store: InstallMediaStore, filename: NonEmptyStr) -> NonEmptyStr {
-  concat(install_media_install_path(store: store, filename: filename) as String, ".part") as NonEmptyStr
+// THE BUSINESS PATHS. The install path of a row is the store root plus the row's cited filename; the
+// `.part` sibling is the staging path of the same file. The record-based pair is what the fetch and the
+// seeded publication use -- a holder of the sealed record cannot be pointed at another directory.
+fn install_media_install_path(store: InstallMediaStore, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+  install_media_path_under(root: store.root, filename: ubuntu_install_media_filename(artifact: artifact))
+}
+
+fn install_media_part_path(store: InstallMediaStore, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+  concat(install_media_install_path(store: store, artifact: artifact) as String, ".part") as NonEmptyStr
+}
+
+// THE TREE-BASED PAIR, for pure path shapes (module data rows, the seeded write boundary): the same
+// formulation over the derived root.
+fn install_media_install_path_on_tree(tree: HostStateTree, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+  install_media_path_under(root: install_media_store_path(tree: tree), filename: ubuntu_install_media_filename(artifact: artifact))
+}
+
+fn install_media_part_path_on_tree(tree: HostStateTree, artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+  concat(install_media_install_path_on_tree(tree: tree, artifact: artifact) as String, ".part") as NonEmptyStr
+}
+
+// THE PARENT DIRECTORY A FETCH WRITES INTO, read from the minted record: only this module reads the
+// store's root, and the acquisition library receives the derived directory as subject data.
+fn install_media_parent_directory(store: InstallMediaStore) -> NonEmptyStr {
+  store.root
 }
 
 // THE STORE ROOT IS A DEMANDED DIRECTORY, derived from the same declaration as the path above. The

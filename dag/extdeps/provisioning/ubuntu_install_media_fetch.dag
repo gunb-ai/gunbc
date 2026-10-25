@@ -11,12 +11,15 @@ import extdeps.http.client
 import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
 import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
-  ubuntu_install_media_install_path,
-  ubuntu_install_media_part_path,
   ubuntu_install_media_mirror_rows,
   ubuntu_install_media_mirror_url,
-  ubuntu_install_media_artifacts_dir,
   UbuntuInstallMediaMirrorRow,
+}
+// THE INSTALL ROOT ARRIVES AS A SEALED STORE (cohort C-host): the subject's install path, staging
+// path and parent directory all come off the minted record, so this fetch cannot be pointed at a
+// directory its caller was never given.
+import gunbc.provisioning.install_media_store {
+  InstallMediaStore, install_media_install_path, install_media_part_path, install_media_parent_directory,
 }
 import gunbc.url_file_acquisition { url_file_acquisition_handler }
 import gunbc.artifact_acquisition {
@@ -83,18 +86,18 @@ fn install_media_sources(artifact: UbuntuInstallMediaArtifactRow) -> List<Acquis
   })
 }
 
-fn install_media_subject(artifact: UbuntuInstallMediaArtifactRow) -> AcquisitionSubject {
-  let final_path = ubuntu_install_media_install_path(artifact: artifact)
+fn install_media_subject(store: InstallMediaStore, artifact: UbuntuInstallMediaArtifactRow) -> AcquisitionSubject {
+  let final_path = install_media_install_path(store: store, artifact: artifact)
   AcquisitionSubject {
     identity: final_path,
     key: ContentDigestSha256 { hex: artifact.content_sha256 as NonEmptyStr },
     install_path: final_path,
-    staging_path: Present { value: ubuntu_install_media_part_path(install_path: final_path) },
-    parent_directory: ubuntu_install_media_artifacts_dir(),
+    staging_path: Present { value: install_media_part_path(store: store, artifact: artifact) },
+    parent_directory: install_media_parent_directory(store: store),
     sources: install_media_sources(artifact: artifact),
   }
 }
 
-fn install_media_fetch_reconcile(artifact: UbuntuInstallMediaArtifactRow) -> AcquisitionOutcome {
-  acquire_artifact(subject: install_media_subject(artifact: artifact), handler: url_file_acquisition_handler)
+fn install_media_fetch_reconcile(store: InstallMediaStore, artifact: UbuntuInstallMediaArtifactRow) -> AcquisitionOutcome {
+  acquire_artifact(subject: install_media_subject(store: store, artifact: artifact), handler: url_file_acquisition_handler)
 }

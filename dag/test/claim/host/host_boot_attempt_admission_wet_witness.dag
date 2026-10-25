@@ -15,7 +15,7 @@ import gunbc.host.host_boot_attempt_admission {
   BootAttemptSlotStore, BootAttemptStoreReading, BootAttemptStoreReady, BootAttemptStoreUnready,
   boot_attempt_store, boot_attempt_slot_path,
 }
-import gunbc.host.managed_host_unit_hold { unit_hold_store_path }
+import gunbc.host.managed_host_unit_hold { unit_hold_store_path, unit_hold_store, UnitHoldStoreReading, UnitHoldStoreReady, UnitHoldStoreUnready }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import extdeps.crypto.hash { Digest }
 import gunbc.host.host_boot_attempt_admission {
@@ -134,10 +134,16 @@ fn attempt_slot_controls(tree: HostStateTree) -> Bool {
   }
 }
 
+// The hold directory is created, then the hold store is minted through the sealed mint; the root the
+// hold library runs on is the mint's, never a path assembled here.
 fn unit_hold_store_opened(tree: HostStateTree) -> NonEmptyStr? {
-  let hold_root = unit_hold_store_path(tree: tree) as NonEmptyStr
-  let made = shell.Mkdir.Parents(path: hold_root as FilePath)
-  if made.success { Present { value: hold_root } } else { none }
+  let made = shell.Mkdir.Parents(path: unit_hold_store_path(tree: tree) as FilePath)
+  if made.success {
+    match unit_hold_store(tree: tree) {
+      UnitHoldStoreUnready { detail: _ } => none
+      UnitHoldStoreReady { store: h } => Present { value: h.root }
+    }
+  } else { none }
 }
 
 test fn an_attempt_slot_admits_each_nonce_once_across_later_attempts_and_hold_releases_by_real_execution() -> Bool {
