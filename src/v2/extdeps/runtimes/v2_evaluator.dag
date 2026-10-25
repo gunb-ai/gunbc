@@ -46,7 +46,7 @@ import v2.std.model_core {
   ResourceAccess,
   bool_model_core
 }
-import v2.std.node { positional_child_target_nodes,
+import v2.std.node { node_equal_ignoring_provenance, positional_child_target_nodes,
   ComputationNode,
   Atom,
   Edge,
@@ -102,9 +102,24 @@ type V4EvaluatorRuntime {
 // footprint anchor relies on). Next-rung trigger: declared slot identities on
 // ValueRepresentationModel / ExecutionSemantics / ModelCore, at which point this comparator widens
 // to the full slot-identity conjunction (the InterpretationAlgebra precedent).
+fn boundary_allowance_equal(a: BoundaryAllowance, b: BoundaryAllowance) -> Bool {
+  node_equal_ignoring_provenance(a: a.operation.operation, b: b.operation.operation)
+    && node_equal_ignoring_provenance(a: a.operation.effect_signature.signature, b: b.operation.effect_signature.signature)
+    && node_equal_ignoring_provenance(a: a.resource.resource, b: b.resource.resource)
+    && (a.allowed == b.allowed)
+}
+
+fn resource_effect_boundary_equal(a: ResourceEffectBoundary, b: ResourceEffectBoundary) -> Bool {
+  boundary_allowance_equal(a: a.ffi, b: b.ffi)
+    && boundary_allowance_equal(a: a.exceptions, b: b.exceptions)
+    && boundary_allowance_equal(a: a.async, b: b.async)
+    && boundary_allowance_equal(a: a.concurrency, b: b.concurrency)
+    && boundary_allowance_equal(a: a.identity_reference, b: b.identity_reference)
+}
+
 fn v4_evaluator_runtime_models_equal(a: V4EvaluatorRuntime, b: V4EvaluatorRuntime) -> Bool {
   (a.runtime_identity == b.runtime_identity)
-    && (a.boundary == b.boundary)
+    && resource_effect_boundary_equal(a: a.boundary, b: b.boundary)
 }
 
 fn v2_eval_unit_type_node() -> Node {
@@ -208,9 +223,9 @@ fn v2_eval_bool_runtime_value(is_true: Bool) -> RuntimeValue {
 
 // 🟢 Terminal (FLAG D): v2_eval_is_literal_shaped_node is the sole admission predicate for eval_type_node_atom Atom literal-vs-binding dispatch; v2_eval_represent_literal routes through it before allocate dispatch — one surface, not a parallel entry guard. Atom rows project dag_node_is_eval_literal_atom (dag.dag single authority); magnitudes are supplied by the interpretation algebra allocate_literal hook, not by this runtime. Non-Atom TypeNodes (Conj record/variant constructs) route to allocate_literal in eval_type_node_atom directly.
 fn v2_eval_is_literal_shaped_node(node: Node) -> Bool {
-  if node == v2_eval_bool_literal_pin {
+  if node_equal_ignoring_provenance(a: node, b: v2_eval_bool_literal_pin) {
     true
-  } else if node == v2_eval_unit_literal_pin {
+  } else if node_equal_ignoring_provenance(a: node, b: v2_eval_unit_literal_pin) {
     true
   } else if dag_node_is_eval_literal_atom(node: node) {
     true
@@ -222,9 +237,9 @@ fn v2_eval_is_literal_shaped_node(node: Node) -> Bool {
 fn v2_eval_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   if !v2_eval_is_literal_shaped_node(node: node) {
     outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
-  } else if node == v2_eval_bool_literal_pin {
+  } else if node_equal_ignoring_provenance(a: node, b: v2_eval_bool_literal_pin) {
     outcome_accepted(value: v2_eval_bool_runtime_value(is_true: true))
-  } else if node == v2_eval_unit_literal_pin {
+  } else if node_equal_ignoring_provenance(a: node, b: v2_eval_unit_literal_pin) {
     outcome_accepted(value: v2_eval_unit_runtime_value())
   } else if dag_node_is_int_literal_atom(node: node) {
     bind_outcome(
@@ -254,9 +269,9 @@ fn v2_eval_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
 }
 
 fn v2_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  if node == v2_eval_bool_literal_pin {
+  if node_equal_ignoring_provenance(a: node, b: v2_eval_bool_literal_pin) {
     Accepted { value: v2_eval_bool_true_primitive(), diagnostics: None }
-  } else if node == v2_eval_unit_literal_pin {
+  } else if node_equal_ignoring_provenance(a: node, b: v2_eval_unit_literal_pin) {
     Accepted { value: v2_eval_unit_runtime_value(), diagnostics: None }
   } else {
     v2_eval_represent_literal(node: node, env: env)
@@ -266,7 +281,7 @@ fn v2_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<R
 fn v2_eval_runtime_value_as_int(value: RuntimeValue) -> Outcome<Int> {
   match value {
     RuntimePrimitive { value: p } =>
-      if p.primitive_type == integer_int_type_node() {
+      if node_equal_ignoring_provenance(a: p.primitive_type, b: integer_int_type_node()) {
         integer_signed_i32_le_bytes_to_int(bytes: p.bytes)
       } else {
         outcome_rejected(d: v2_eval_runtime_diagnostic(node: p.primitive_type))
@@ -292,7 +307,7 @@ fn v2_eval_runtime_value_as_int(value: RuntimeValue) -> Outcome<Int> {
 fn v2_eval_runtime_bool_is_true(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      if p.primitive_type == bool_node() {
+      if node_equal_ignoring_provenance(a: p.primitive_type, b: bool_node()) {
         match list_at_optional(xs: p.bytes, index: 0) {
           Present { value: b } => integer_byte_bit_at(b: b, shift: 0) == 1
           Absent => false
@@ -310,7 +325,7 @@ fn v2_eval_runtime_bool_is_true(value: RuntimeValue) -> Bool {
 fn v2_eval_runtime_bool_is_false(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      p.primitive_type == bool_node() && !v2_eval_runtime_bool_is_true(value: value)
+      node_equal_ignoring_provenance(a: p.primitive_type, b: bool_node()) && !v2_eval_runtime_bool_is_true(value: value)
     RuntimeAggregate { value: _ } => false
     RuntimeReference { value: _ } => false
     RuntimeClosure { value: _ } => false

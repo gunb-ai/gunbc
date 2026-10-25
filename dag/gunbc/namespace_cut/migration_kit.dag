@@ -5,7 +5,7 @@ import std.optional { Optional, Present, Absent }
 import std.algebra { length, list_at_optional }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow, census_blocking_rows, census_total_count }
 import gunbc.compile_census_probe { ProbeCensusRows, census_rows_for }
-import gunbc.namespace_cut.ambient_name_home { AmbientNameHome }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ambient_name_declaration }
 import gunbc.instruments.ambient_name_census_reading { binding_lines, field_at, ambient_census_kit_source, ambient_census_kit_module }
 
 // THE NAMESPACE-MIGRATION ACCEPTANCE KIT (Seat 13). The proof shape every ambient-to-declared move repeats,
@@ -24,7 +24,7 @@ import gunbc.instruments.ambient_name_census_reading { binding_lines, field_at, 
 // (gunbc.instruments.namespace_wave_binding_diff), run by the wave's author on the wave's own PR over the real
 // ambient-name-census population (`//gunbc/instruments:ambient-name-census`). It reads the wave's row in
 // gunbc.namespace_cut.ambient_name_home ambient_name_homes() and admits only an occurrence that was ambient on base and
-// binds row.home on head. Deleting that integration leaves these supplied-value checks green over a world that moved,
+// binds the row's declaration (ambient_name_declaration) on head. Deleting that integration leaves these supplied-value checks green over a world that moved,
 // so a wave PR is not accepted on this module alone: it names that run's result beside this module's.
 //
 // A VERDICT, NOT A BOOL: a claim over a not-yet-migrated name must say WHICH check fired, so the list_push
@@ -75,7 +75,7 @@ fn binding_reading(stdout: String, module: String, spelling: String) -> BindingR
 }
 
 // Check 1 holds when the unimported occurrence is Unbound; check 2 when the imported one is bound to exactly the
-// row's declaration identity (home + "." + name) -- spelling-equal paths of another module do not satisfy it.
+// row's declaration identity (ambient_name_declaration: the home module + "." + name) -- spelling-equal paths of another module do not satisfy it.
 fn reading_is_unbound(r: BindingReading) -> Bool {
   match r { ReadUnbound => true  _ => false }
 }
@@ -102,7 +102,7 @@ fn kit_binding_finding(unimported_stdout: String, imported_stdout: String, row: 
   if !reading_is_unbound(r: red) {
     match red { ReadNotReached => KitNotRunnable { cause: "unimported occurrence not reached" as NonEmptyStr }  _ => KitNoImportDoesNotRefuse }
   } else {
-    if reading_is_bound_to(r: green, identity: row.home + "." + spelling) { KitMigrated }
+    if reading_is_bound_to(r: green, identity: ambient_name_declaration(row: row)) { KitMigrated }
     else { match green { ReadNotReached => KitNotRunnable { cause: "imported occurrence not reached" as NonEmptyStr }  _ => KitImportDoesNotClear } }
   }
 }

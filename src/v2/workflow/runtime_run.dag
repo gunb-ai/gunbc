@@ -67,7 +67,7 @@ import v2.compiler.eval {
 import v2.compiler.infer { InferredTree }
 import v2.std.dependency { ActivationAlternative, ActivationSelection, SelectedByBranchSlot, SelectedByPattern }
 import v2.std.diagnostic { Accepted, Diagnostics, Outcome, Rejected, bind_outcome_accepted, outcome_rejected }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import v2.std.runtime { RuntimeValue }
 
 // HOW AN EVALUATED NODE WAS REACHED.
@@ -311,7 +311,7 @@ fn runtime_run_alternatives_rooted_at(
     xs: alternatives,
     empty: [],
     cons: fn(acc, alternative) {
-      if alternative.root == chosen { list_snoc_item(xs: acc, item: alternative.selected_by) } else { acc }
+      if node_same_occurrence(a: alternative.root, b: chosen) { list_snoc_item(xs: acc, item: alternative.selected_by) } else { acc }
     }
   )
 }
