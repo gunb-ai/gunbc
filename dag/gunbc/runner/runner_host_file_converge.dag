@@ -37,6 +37,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotD
 import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, }
 import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
+import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
@@ -59,7 +60,8 @@ import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner.runner_slot_job_role { deploy_slot_identities }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name }
+import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_read, SplitOk, SplitRefused, fleet_converge_split_refusal_line }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text, ssh_target_wire }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -2793,10 +2795,33 @@ data runner_host_file_converge_attempt_raw: String = "runner-host-file-converge-
 // write across the fleet from an empty variable.
 fn runner_host_file_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
 {
-  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
-    ActionsVariableAbsent { variable: v, detail: d } =>
-      exit_failure(reason: join(["runner_host_file_converge: ", v, " ", d, "; one host per run, named by the dispatch"], ""))
-    ActionsVariablePresent { value: raw_host } =>
+  // THE SPLIT APPLIES TO THE ACT MODE, NOT THE OBSERVER (operator ruling 2026-10-24, run 40085967610).
+  // In OBSERVE mode the run reports on the host the job is pinned to -- reading one's own host is not a
+  // drain, and plan mode has always observed the executor. In APPLY mode the run writes AND drains the
+  // bracket on a host it must NOT be standing on: the subject arrives as its own input, and the typed
+  // precheck refuses before the subject admission, the ssh context, and every leg.
+  match mode {
+    FleetHostFilesObserveOnly => runner_host_file_ci_wet_hosted(
+      mode: mode,
+      host: match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+        ActionsVariablePresent { value: v } => Present { value: v }
+        ActionsVariableAbsent => none
+      },
+    )
+    FleetHostFilesApply => match fleet_converge_split_read() {
+      SplitRefused { reason: why } => exit_failure(reason: fleet_converge_split_refusal_line(reason: why))
+      SplitOk { executor_runner_name: _, subject_host: subject } =>
+        runner_host_file_ci_wet_hosted(mode: mode, host: Present { value: subject })
+    }
+  }
+}
+
+fn runner_host_file_ci_wet_hosted(mode: FleetHostFileConvergeMode, host: String?) -> ProcessExit
+{
+  match host {
+    Absent =>
+      exit_failure(reason: "runner_host_file_converge: the host was not named; one host per run, named by the dispatch (apply mode names its subject in FLEET_CONVERGE_SUBJECT_HOST)")
+    Present { value: raw_host } =>
       match runner_host_file_subject(host: raw_host as HostIdentity) {
         RunnerHostFileSubjectRefused { cause: c } => exit_failure(reason: c)
         RunnerHostFileSubjectAdmitted { subject: subject } =>
@@ -2816,6 +2841,7 @@ fn runner_host_file_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
                     context_receipt,
                     runner_job_user_uid_reading_line(reading: uid_reading),
                     runner_host_current_registration_line(mode: mode, target: subject.target, context: context, units: subject.desired_units),
+                    runner_host_withdraw_observe_line_for(host: raw_host, target: subject.target, context: context, units: subject.desired_units),
                     join(map(withheld, w => join(["withheld subject=", w.subject as String, " cause=", w.cause as String, "\n"], "")), ""),
                     runner_host_file_run_text(run: run),
                   ], "")
@@ -2898,11 +2924,25 @@ fn runner_host_current_registration_text(target: SshTarget, context: FleetSshExe
 // no-op. A release that cannot read the host back as admitting exits failure and names what it left.
 fn runner_host_cap_release_ci_wet() -> ProcessExit
 {
-  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
-    ActionsVariableAbsent { variable: v, detail: d } =>
-      finish_runner_host_cap_release(host: "unknown", decision: ReleaseObligationUntrusted { cause: join(["the release could not start: ", v, " ", d, "; one host per run, named by the dispatch"], "") }, outcomes: [])
-    ActionsVariablePresent { value: raw_host } =>
-      match runner_host_file_subject(host: raw_host as HostIdentity) {
+  // THE SPLIT CARRIED THROUGH THE FINALIZER: the obligation lives in the EXECUTOR's job temp (this job
+  // wrote it), but the units it re-admits live on the SUBJECT -- so when the dispatch named one, the
+  // release resolves its subject from SUBJECT_HOST, the same host the converge step acted on. Without a
+  // named subject it falls back to the dispatch host, the pre-split behavior. A converge step that died
+  // before the bracket opened owes nothing: the obligation read comes back absent and the release is a
+  // settled no-op, which is exactly what a refused split run leaves behind.
+  match actions_variable_read(name: fleet_converge_subject_host_env_name) {
+    ActionsVariablePresent { value: named_subject } => runner_host_cap_release_for_host(named_subject)
+    ActionsVariableAbsent => match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+      ActionsVariablePresent { value: dispatch_host } => runner_host_cap_release_for_host(dispatch_host)
+      ActionsVariableAbsent { variable: v, detail: d } =>
+        finish_runner_host_cap_release(host: "unknown", decision: ReleaseObligationUntrusted { cause: join(["the release could not start: ", v, " ", d, "; one host per run, named by the dispatch"], "") }, outcomes: [])
+    }
+  }
+}
+
+fn runner_host_cap_release_for_host(raw_host: String) -> ProcessExit
+{
+  match runner_host_file_subject(host: raw_host as HostIdentity) {
         RunnerHostFileSubjectRefused { cause: c } =>
           finish_runner_host_cap_release(host: raw_host, decision: ReleaseObligationUntrusted { cause: concat("the release could not start: ", c) }, outcomes: [])
         RunnerHostFileSubjectAdmitted { subject: subject } =>
@@ -2919,7 +2959,6 @@ fn runner_host_cap_release_ci_wet() -> ProcessExit
             }
           }
       }
-  }
 }
 
 // THE ONE FINISHER OF THE RELEASE, for every arm including the ones that could not start: the receipt is
