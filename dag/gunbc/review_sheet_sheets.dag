@@ -1,8 +1,6 @@
 module gunbc.review_sheet_sheets
 
 import std.types { NonEmptyStr, String, Int, List, Bool }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure {
   EnsurePolicy,
@@ -701,17 +699,3 @@ fn review_sheet_ensure(
   )
 }
 
-// sunny-carp-475 binds a live sheets.Spreadsheets GetValues and BatchUpdateValues adapter onto
-// review_sheet_ensure (policy is the caller's EnsurePolicy, never a literal in this module).
-// review_sheet_ensure takes caller-supplied DerivedPayloadErasure rows; empty means no erasure
-// this pass. That same adapter is the named later consumer of sheets_spreadsheets_oauth_scope
-// (writes) and sheets_spreadsheets_readonly_oauth_scope (get-only). sheets_api_base is already
-// the service endpoint. Quota numbers are enrolled via sheets_rate_limits, not a citation grep.
-data live_sheets_transport_frontier: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.review_sheet_sheets",
-    decl_name: "review_sheet_ensure",
-    field: WholeDeclaration
-  }
-}

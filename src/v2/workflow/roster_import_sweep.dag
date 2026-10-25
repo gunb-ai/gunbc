@@ -14,7 +14,7 @@ import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.reference_site_collector { ScopedReferenceSite, collect_scoped_module_reference_sites, HeadLexicallyUnbound, HeadBoundAtRootValue, HeadBoundInFrame, HeadBindingUndecided }
 import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
 import v2.std.type_binder { type_decl_view, GenericTypeDecl, TypeAlias, OpaqueTypeDecl, PlainTypeDecl, NotATypeDecl }
-import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_site_verdict_is_unclassified, roster_home_kind_sites_text, roster_home_declaration_is_type, roster_home_declaration_is_value, roster_home_pool_roots_text, RosterHomeSide, roster_home_side_read, roster_home_side_of, roster_home_exact_file_control }
+import v2.workflow.roster_home_kind { roster_site_needs_home_import, roster_site_verdict_is_unclassified, roster_home_kind_sites_text, roster_home_side_is_type, roster_home_side_is_value, roster_home_pool_roots_text, RosterHomeAsk, RosterHomeSide, roster_home_sides_read, roster_home_side_of, roster_home_exact_file_control }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
 import v2.extdeps.languages.dag {
@@ -443,10 +443,10 @@ fn roster_import_sweep_apply_row_exit(root_dir: String, paths_csv: String, home:
   if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
 }
 
-// ONE HomeKindSide PER ROW, READ ONCE WHEN A RUN STARTS (v2.workflow.roster_home_kind roster_home_side_read) and carried
+// ONE HomeKindSide PER ROW, READ ONCE WHEN A RUN STARTS (v2.workflow.roster_home_kind roster_home_sides_read, one census read per home directory) and carried
 // to every site fold; the site folds never ask the census themselves.
 fn roster_home_sides(rows: List<RosterHeadRow>) -> List<RosterHomeSide> {
-  list_map(xs: rows, f: fn(r) { roster_home_side_read(home: roster_qn_text(qn: r.home), import_name: r.import_name) })
+  roster_home_sides_read(asks: list_map(xs: rows, f: fn(r) { RosterHomeAsk { home: roster_qn_text(qn: r.home), import_name: r.import_name } }))
 }
 
 fn roster_rows_for_scope(scope: RosterHomeScope) -> List<RosterHeadRow> {
@@ -2870,12 +2870,17 @@ fn roster_control_census_knows_the_homes() -> String {
   let type_row = roster_kind_type_row()
   let value_row = roster_kind_value_row()
   let data_row = roster_kind_data_row()
-  let wrong = (if roster_home_declaration_is_type(home: roster_qn_text(qn: type_row.home), import_name: type_row.import_name) { "" } else { type_row.import_name + " @ " + roster_qn_text(qn: type_row.home) + " reads no type/data declaration" })
-    + (if roster_home_declaration_is_value(home: roster_qn_text(qn: value_row.home), import_name: value_row.import_name) { "" } else { "; " + value_row.import_name + " @ " + roster_qn_text(qn: value_row.home) + " reads no value declaration" })
-    + (if !roster_home_declaration_is_type(home: roster_qn_text(qn: value_row.home), import_name: value_row.import_name) { "" } else { "; " + value_row.import_name + " @ " + roster_qn_text(qn: value_row.home) + " ALSO reads a TYPE declaration" })
-    + (if !roster_home_declaration_is_value(home: roster_qn_text(qn: type_row.home), import_name: type_row.import_name) { "" } else { "; " + type_row.import_name + " @ " + roster_qn_text(qn: type_row.home) + " ALSO reads a VALUE declaration" })
-    + (if roster_home_declaration_is_value(home: roster_qn_text(qn: data_row.home), import_name: data_row.import_name) { "" } else { "; data home " + roster_qn_text(qn: data_row.home) + "." + data_row.import_name + " reads no value declaration (a typed `data` constant is a value)" })
-    + (if !roster_home_declaration_is_type(home: roster_qn_text(qn: data_row.home), import_name: data_row.import_name) { "" } else { "; data home " + roster_qn_text(qn: data_row.home) + "." + data_row.import_name + " reads a TYPE declaration" })
+  let sides = roster_home_sides_read(asks: [
+    RosterHomeAsk { home: roster_qn_text(qn: type_row.home), import_name: type_row.import_name },
+    RosterHomeAsk { home: roster_qn_text(qn: value_row.home), import_name: value_row.import_name },
+    RosterHomeAsk { home: roster_qn_text(qn: data_row.home), import_name: data_row.import_name }
+  ])
+  let wrong = (if roster_home_side_is_type(side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: type_row.home), import_name: type_row.import_name)) { "" } else { type_row.import_name + " @ " + roster_qn_text(qn: type_row.home) + " reads no type/data declaration" })
+    + (if roster_home_side_is_value(side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: value_row.home), import_name: value_row.import_name)) { "" } else { "; " + value_row.import_name + " @ " + roster_qn_text(qn: value_row.home) + " reads no value declaration" })
+    + (if !roster_home_side_is_type(side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: value_row.home), import_name: value_row.import_name)) { "" } else { "; " + value_row.import_name + " @ " + roster_qn_text(qn: value_row.home) + " ALSO reads a TYPE declaration" })
+    + (if !roster_home_side_is_value(side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: type_row.home), import_name: type_row.import_name)) { "" } else { "; " + type_row.import_name + " @ " + roster_qn_text(qn: type_row.home) + " ALSO reads a VALUE declaration" })
+    + (if roster_home_side_is_value(side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: data_row.home), import_name: data_row.import_name)) { "" } else { "; data home " + roster_qn_text(qn: data_row.home) + "." + data_row.import_name + " reads no value declaration (a typed `data` constant is a value)" })
+    + (if !roster_home_side_is_type(side: roster_home_side_of(sides: sides, home: roster_qn_text(qn: data_row.home), import_name: data_row.import_name)) { "" } else { "; data home " + roster_qn_text(qn: data_row.home) + "." + data_row.import_name + " reads a TYPE declaration" })
   if wrong == "" { "" } else { "CONTROL-FAIL census-homes: " + wrong + " (v2.std.decl_index decl_facts_at over the home directories " + roster_home_pool_roots_text(home: roster_qn_text(qn: type_row.home)) + roster_home_pool_roots_text(home: roster_qn_text(qn: value_row.home)) + roster_home_pool_roots_text(home: roster_qn_text(qn: data_row.home)) + ")\n" }
 }
 
@@ -2886,8 +2891,9 @@ fn roster_control_census_knows_the_homes() -> String {
 // answer (OtherItem), which would silently stop their rows importing.
 fn roster_control_wave_two_alias_homes_are_types() -> String {
   let names = ["List", "Map", "Set"]
+  let sides = roster_home_sides_read(asks: list_map(xs: names, f: fn(n) { RosterHomeAsk { home: "std.types", import_name: n } }))
   let not_types = fold_list(xs: names, empty: "", cons: fn(acc, n) {
-    if roster_home_declaration_is_type(home: "std.types", import_name: n) { acc } else { acc + " " + n }
+    if roster_home_side_is_type(side: roster_home_side_of(sides: sides, home: "std.types", import_name: n)) { acc } else { acc + " " + n }
   })
   if not_types == "" {
     ""
