@@ -58,6 +58,7 @@ import gunbc.declaration_index_seed_growth { declaration_index_fixture_exemption
 import gunbc.guarantee_stall.floor_cost_basis_boundedness_stall { floor_cost_basis_boundedness_stall }
 import gunbc.guarantee_stall.complexity_incomplete_assessment_stall { complexity_incomplete_assessment_stall }
 import gunbc.guarantee_stall.accumulator_copy_untyped_combiner_refusals_stall { accumulator_copy_untyped_combiner_refusals_stall }
+import gunbc.guarantee_stall.accumulator_copy_roster_gate_bool_names_no_suspect_stall { accumulator_copy_roster_gate_bool_names_no_suspect_stall }
 import gunbc.guarantee_stall.keyed_apply_patch_rebuilds_rows_per_hunk_stall { keyed_apply_patch_rebuilds_rows_per_hunk_stall }
 import gunbc.guarantee_stall.grounding_extract_closed_set_stall { grounding_extract_closed_set_stall }
 import gunbc.guarantee_stall.grounding_ledger_residue_uninhabited_stall { grounding_ledger_residue_uninhabited_stall }
@@ -88,7 +89,6 @@ import gunbc.guarantee_stall.native_step_trip_awaits_fleet_job_cgroup_stall { na
 import gunbc.guarantee_stall.decl_ref_host_resolver_awaits_native_claim_evaluation_stall { decl_ref_host_resolver_awaits_native_claim_evaluation_stall }
 import gunbc.guarantee_stall.census_live_routes_interpreted_only_stall { census_live_routes_interpreted_only_stall }
 import gunbc.guarantee_stall.compute_cold_reserve_durable_commit_stall { compute_cold_reserve_durable_commit_stall }
-import gunbc.guarantee_stall.enrolment_commit_evidence_remains_caller_authored_stall { enrolment_commit_evidence_remains_caller_authored_stall }
 import gunbc.guarantee_stall.rust_primitive_rows_hand_spelled_from_the_seed_stall { rust_primitive_rows_hand_spelled_from_the_seed_stall }
 import gunbc.guarantee_stall.local_repo_wet_lane_per_row_wall_budget_unarmed_stall { local_repo_wet_lane_per_row_wall_budget_unarmed_stall }
 
@@ -264,6 +264,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   grammar_change_parses_no_real_corpus_file_stall,
   browser_ready_labels_fleet_route_stall,
   accumulator_copy_untyped_combiner_refusals_stall,
+  accumulator_copy_roster_gate_bool_names_no_suspect_stall,
   keyed_apply_patch_rebuilds_rows_per_hunk_stall,
   member_kind_door_binding_executed_by_no_claim_stall,
   filesystem_read_outcome_node_grain_census_stall,
@@ -272,7 +273,6 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   census_live_routes_interpreted_only_stall,
   compute_cold_reserve_durable_commit_stall,
   approve_ios_swift_join_live_off_the_merge_path_stall,
-  enrolment_commit_evidence_remains_caller_authored_stall,
   infer_checking_mode_expected_red_pair_stall,
   rust_primitive_rows_hand_spelled_from_the_seed_stall,
   decl_ref_host_resolver_awaits_native_claim_evaluation_stall,

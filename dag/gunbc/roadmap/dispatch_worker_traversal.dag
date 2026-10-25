@@ -1,0 +1,238 @@
+module gunbc.roadmap.dispatch_worker_traversal
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.algebra { trim }
+import extdeps.access.posix { FileMode, FileOwnership, file_mode_octal, file_mode_class_bits }
+import extdeps.tools.coreutils_stat {
+  coreutils_stat_path_ownership,
+  coreutils_stat_path_mode,
+  PathOwnershipObserved,
+  PathOwnershipUnobservable,
+  PathModeObserved,
+  PathModeUnobservable,
+}
+import extdeps.tools.id { IdCredentials, IdCredentialsObserved, IdCredentialsUnobserved, id_credentials_of_line }
+import gunbc.file_access { path_ancestor_prefixes }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_worker_user }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, dispatch_worker_handed_set }
+import gunbc.roadmap.dispatch_worker_handed_set { HandedEntry, handed_entry_leaf_is_directory, handed_entry_is_entered_by_the_worker }
+
+// A UNIT'S WORKER UID MUST BE ABLE TO TRAVERSE TO EVERY PATH IT ENTERS, AND THAT IS DECIDED BEFORE THE
+// UNIT STARTS. systemd starts WorkingDirectory=, ExecStart= and the sandbox's ReadWritePaths= as the
+// unit's User=, so a handed path under an ancestor that user cannot traverse fails at runtime as
+// status=200/CHDIR with the worker never having run (srv1 lab, 2026-10-21: .local/share was 0710
+// briansrls:briansrls under a unit running as gunbc-worker). Chain re-derivation (DESIGN 6b) stops at
+// the earliest unjustified boundary: the unit plan hands over paths and nothing had established that
+// the identity it names can enter their ancestors. gunbc.fleet.fleet_posix_accounts established
+// traversal for one directory, attempts/, and never for its ancestors.
+//
+// WHAT THIS JUDGES, AND WHAT IT DOES NOT. It judges ANCESTOR traversal (execute on every ancestor)
+// plus the leaf's own execute bit when the leaf is a directory. It does NOT judge the operation the
+// worker performs on the leaf: read on a read-only pointer file, write on a read-write carve-out,
+// execute on the executable, read+execute on a source root, create-or-append on a stream target. The
+// name says traversal for that reason. The next rung is per-role leaf operation bits (role -> required
+// bits, the same owner/group/other leg rule); trigger: the first dispatch that fails for a leaf
+// operation rather than an ancestor, or the process-filesystem contract programme, whichever is first.
+//
+// THE EXIT ROOT IS NOT THE WORKER'S. ExecStopPost carries the "+" prefix, so it runs outside the
+// sandbox with the manager's privileges; the worker uid never touches the exit inbox, and judging it
+// here would refuse the safer layout in which the worker cannot even see it. It stays in the handed
+// set (the unit renders ExecStopPost from it) and is left out of this fold.
+//
+// ADMISSION CONSUMES RECEIPTS AND DOES NOT STAT. dispatch_worker_traversal_admit is pure over a stat
+// receipt per ancestor and the worker's observed membership; the observe functions are the only ones
+// that look at the host. The climb is judged for EVERY worker identity, including the service user:
+// that arm must pass by observation (the owner traverses its own ancestors), it is not skipped by
+// matching the arm.
+//
+// THE WORKER'S GROUPS ARE OBSERVED, NOT DECLARED. A group the roster declares and the host lacks
+// must never make a traversal pass, so membership comes from id(1) against the account database
+// (extdeps.tools.id id_credentials_of_line) and an unreadable membership is its own refusal arm
+// (DispatchWorkerTraversalCouldNotLook) rather than a guess. The root of the filesystem is not
+// stat'd: it is not a boundary this corpus can move.
+//
+// CONSUMER: gunbc.roadmap.roadmap_belt_actuate belt_session_container_create's spawn chain
+// (dispatch_worker_traversal_for_plan) before any placement record or enqueue; the only effect is the
+// stat/id observation. Executing route: test.claim.roadmap.dispatch_worker_traversal_witness.
+type HandedPath {
+  path: String
+  leaf_is_directory: Bool
+}
+
+type AncestorStat
+  = AncestorStatObserved { path: String, ownership: FileOwnership, mode: FileMode }
+  | AncestorStatUnobserved { path: String, reason: String }
+
+type WorkerMembership
+  = WorkerMembershipObserved { worker: String, uid: Int, gids: List<Int> }
+  | WorkerMembershipUnobserved { worker: String, reason: String }
+
+type DispatchWorkerTraversal
+  = DispatchWorkerTraversalAdmitted
+  | DispatchWorkerAncestorNotTraversable {
+      worker: String,
+      handed_path: String,
+      blocking_dir: String,
+      observed_owner: FileOwnership,
+      observed_mode: FileMode,
+    }
+  | DispatchWorkerTraversalCouldNotLook { worker: String, handed_path: String, subject: String, reason: String }
+
+fn dispatch_worker_handed_chain(handed: HandedPath) -> List<String> {
+  if handed.leaf_is_directory {
+    concat(path_ancestor_prefixes(path: handed.path), [handed.path])
+  } else {
+    path_ancestor_prefixes(path: handed.path)
+  }
+}
+
+// EVERYTHING THE WORKER ENTERS, read off the typed set the unit's properties are rendered from
+// (gunbc.roadmap.dispatch_worker_handed_set): the working directory, the serve binary, the writable and
+// read-only carve-outs, both stream targets and the harness worker's module roots (not the manager's
+// exit root). No list is assembled here, so a path a later change hands the unit is judged the moment it
+// is in the set.
+fn dispatch_worker_handed_paths(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> List<HandedPath> {
+  let set = dispatch_worker_handed_set(
+    instance: instance,
+    working_directory: plan.working_directory,
+    attempt_worktree: plan.attempt_worktree,
+    stdout_path: plan.stdout_path,
+    stderr_path: plan.stderr_path,
+  )
+  dispatch_worker_entered_paths(set: set)
+}
+
+fn dispatch_worker_entered_paths(set: List<HandedEntry>) -> List<HandedPath> {
+  map(
+    filter(set, e => handed_entry_is_entered_by_the_worker(entry: e)),
+    e => HandedPath { path: e.path, leaf_is_directory: handed_entry_leaf_is_directory(entry: e) },
+  )
+}
+
+fn dispatch_worker_chain_paths(handed: List<HandedPath>) -> List<String> {
+  fold(handed, init: [], f: (acc, h) =>
+    fold(dispatch_worker_handed_chain(handed: h), init: acc, f: (inner, p) =>
+      if any(inner, q => q == p) { inner } else { concat(inner, [p]) }))
+}
+
+fn ancestor_stat_of(stats: List<AncestorStat>, path: String) -> AncestorStat {
+  fold(stats, init: AncestorStatUnobserved { path: path, reason: "no stat receipt was supplied for this ancestor" }, f: (acc, s) =>
+    match s {
+      AncestorStatObserved { path: p, ownership: _, mode: _ } => if p == path { s } else { acc }
+      AncestorStatUnobserved { path: p, reason: _ } => if p == path { s } else { acc }
+    })
+}
+
+// A DIRECTORY'S EXECUTE BIT ON THE CLASS THE WORKER FALLS IN (extdeps.access.posix file_mode_class_bits):
+// owner is the numeric uid, group is ANY observed gid. uid 0 passes, as the kernel does.
+fn worker_may_traverse(uid: Int, gids: List<Int>, ownership: FileOwnership, mode: FileMode) -> Bool {
+  if uid == 0 {
+    true
+  } else {
+    file_mode_class_bits(mode: mode, caller_is_owner: ownership.uid == uid, caller_in_group: any(gids, g => g == ownership.gid)).execute
+  }
+}
+
+fn dispatch_worker_traversal_first_blocking(
+  membership: WorkerMembership,
+  handed: HandedPath,
+  stats: List<AncestorStat>,
+) -> DispatchWorkerTraversal {
+  match membership {
+    WorkerMembershipUnobserved { worker, reason } =>
+      DispatchWorkerTraversalCouldNotLook { worker: worker, handed_path: handed.path, subject: "the worker's group membership", reason: reason }
+    WorkerMembershipObserved { worker, uid, gids } =>
+      fold(dispatch_worker_handed_chain(handed: handed), init: DispatchWorkerTraversalAdmitted, f: (acc, dir) =>
+        match acc {
+          DispatchWorkerTraversalAdmitted =>
+            match ancestor_stat_of(stats: stats, path: dir) {
+              AncestorStatUnobserved { path: p, reason } =>
+                DispatchWorkerTraversalCouldNotLook { worker: worker, handed_path: handed.path, subject: p, reason: reason }
+              AncestorStatObserved { path: _, ownership, mode } =>
+                if worker_may_traverse(uid: uid, gids: gids, ownership: ownership, mode: mode) {
+                  DispatchWorkerTraversalAdmitted
+                } else {
+                  DispatchWorkerAncestorNotTraversable {
+                    worker: worker,
+                    handed_path: handed.path,
+                    blocking_dir: dir,
+                    observed_owner: ownership,
+                    observed_mode: mode,
+                  }
+                }
+            }
+          _ => acc
+        })
+  }
+}
+
+fn dispatch_worker_traversal_admit(
+  handed: List<HandedPath>,
+  stats: List<AncestorStat>,
+  membership: WorkerMembership,
+) -> DispatchWorkerTraversal {
+  fold(handed, init: DispatchWorkerTraversalAdmitted, f: (acc, h) =>
+    match acc {
+      DispatchWorkerTraversalAdmitted => dispatch_worker_traversal_first_blocking(membership: membership, handed: h, stats: stats)
+      _ => acc
+    })
+}
+
+fn dispatch_worker_traversal_wire(reach: DispatchWorkerTraversal) -> String {
+  match reach {
+    DispatchWorkerTraversalAdmitted => "every path the worker enters is traversable by it"
+    DispatchWorkerAncestorNotTraversable { worker, handed_path, blocking_dir, observed_owner, observed_mode } =>
+      join([
+        "the unit runs as ", worker, " and enters ", handed_path, ", but its ancestor ", blocking_dir,
+        " is owned ", to_string(observed_owner.uid), ":", to_string(observed_owner.gid),
+        " with mode ", file_mode_octal(mode: observed_mode),
+        ", which gives that worker no execute bit, so systemd would fail the unit at start (status=200/CHDIR) and the worker would never run",
+      ], "")
+    DispatchWorkerTraversalCouldNotLook { worker, handed_path, subject, reason } =>
+      join([
+        "the unit runs as ", worker, " and enters ", handed_path, ", but ", subject,
+        " could not be observed (", reason, "), so traversal is refused rather than assumed",
+      ], "")
+  }
+}
+
+// The numeric ids come off extdeps.tools.id's structured result; the primary gid is a group the
+// process holds whether or not id lists it under groups=.
+fn worker_membership_of_id_line(worker: String, line: String) -> WorkerMembership {
+  match id_credentials_of_line(line: line) {
+    IdCredentialsUnobserved { reason } => WorkerMembershipUnobserved { worker: worker, reason: reason }
+    IdCredentialsObserved { uid, primary_gid, supplementary_gids } =>
+      WorkerMembershipObserved { worker: worker, uid: uid, gids: concat([primary_gid], supplementary_gids) }
+  }
+}
+
+fn dispatch_worker_membership_observe(worker: NonEmptyStr) -> WorkerMembership {
+  let r = os.Id.Lookup(user: worker)
+  if r.success && trim(s: r.stdout) != "" {
+    worker_membership_of_id_line(worker: worker as String, line: r.stdout)
+  } else {
+    WorkerMembershipUnobserved { worker: worker as String, reason: "id could not look the account up" }
+  }
+}
+
+fn dispatch_worker_ancestor_observe(path: String) -> AncestorStat {
+  match coreutils_stat_path_ownership(path: path as NonEmptyStr) {
+    PathOwnershipUnobservable { path: _, reason } => AncestorStatUnobserved { path: path, reason: reason }
+    PathOwnershipObserved { path: _, ownership, owner_name: _, group_name: _ } =>
+      match coreutils_stat_path_mode(path: path as NonEmptyStr) {
+        PathModeUnobservable { path: _, reason } => AncestorStatUnobserved { path: path, reason: reason }
+        PathModeObserved { path: _, mode } => AncestorStatObserved { path: path, ownership: ownership, mode: mode }
+      }
+  }
+}
+
+// THE OBSERVER AND THE JUDGE, COMPOSED. This is the only function in this module that looks at the
+// host; the belt calls it before any placement record is written or request enqueued.
+fn dispatch_worker_traversal_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> DispatchWorkerTraversal {
+  let handed = dispatch_worker_handed_paths(instance: instance, plan: plan)
+  dispatch_worker_traversal_admit(
+    handed: handed,
+    stats: map(dispatch_worker_chain_paths(handed: handed), p => dispatch_worker_ancestor_observe(path: p)),
+    membership: dispatch_worker_membership_observe(worker: dashboard_instance_worker_user(instance: instance)),
+  )
+}

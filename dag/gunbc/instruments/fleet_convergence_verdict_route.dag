@@ -1,0 +1,128 @@
+module gunbc.instruments.fleet_convergence_verdict_route
+
+import std.types { Bool, List, String }
+import std.algebra { length }
+import std.process { ExitSuccess, exit_failure }
+import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_enrollment { EnrollmentAdmission, EnrollmentRefused, fleet_enrollments, fleet_enrollment_refusals }
+import gunbc.fleet.fleet_host_backing { OwnedProvisioning, NoOutOfBand, InstalledViaVirtualMedia }
+import gunbc.fleet.fleet_converge_cli { ConvergeCliReceipt }
+import gunbc.fleet.fleet_receipt_collector { CollectedHostReceipt, collected_receipts_only, fleet_verdict_line }
+import gunbc.fleet.fleet_convergence_verdict {
+  fleet_convergence_verdict,
+  FleetConvergenceVerdict,
+  FleetConverged,
+  FleetNotConverged,
+  FleetEnrollmentRefused,
+  fleet_unobserved_cell_count,
+}
+
+// THE FLEET CONVERGENCE VERDICT ROUTE, RESOLVED AND EVALUATED BY THE SEED
+// (`gunbc test //gunbc/instruments:fleet-convergence-verdict-route`, a CliWireProgramProducer).
+//
+// WHY IT EXISTS: the closure of gunbc.fleet.fleet_receipt_collector collect_fleet_convergence_wet lies
+// outside both closures the required gate compiles (gunbc.emitted_subject_build_gate
+// emitted_subject_build_rows), so on main d2b027b5f412 gunbc.host.host_identity_adopt could fail to
+// resolve -- one import line had turned the seed's bare channel off for every other name in it
+// (gunbc.recurring_failure_mode bare_reference_channel_declines_a_pull_in_silence) -- while every
+// required check stayed green and the verdict's refused-enrolment RED could not execute. This entry
+// imports the collector, so the production route's whole import closure must resolve before any case
+// runs; when it does not, the label reports no observation rather than a smaller green.
+//
+// WHY IT IS NOT A NATIVE PROGRAM. A NativeClaimDriver over this closure was built and run on
+// 2026-10-24 (gunbc#14984): the seed's emit took 28 minutes, wrote 1663 files and the emitted crate
+// failed cargo with 529 rustc errors, so a native control here could only ever be red. Emitting this
+// closure is the capability that would admit one.
+//
+// IT IS RUN BY NAME AND BLOCKS NO LANDING (gunbc.design_ruling
+// emit_build_subjects_are_the_two_compiler_products).
+//
+// THE FIRST TWO CASES SUPPLY the verdict's inputs at its interface (DESIGN section 3, a witness
+// discriminates at one interface); the third is the pairing obligation's inhabitance case: the real
+// enrolment producers reach the verdict through the collector's own receipt filter with nothing
+// collected, and the route it takes is asserted, not only its answer. Every row renders through the
+// collector's own fleet_verdict_line.
+
+type FleetVerdictRouteCase {
+  identity: String
+  held: Bool
+  observed: String
+}
+
+fn no_receipts() -> List<ConvergeCliReceipt> {
+  []
+}
+
+fn supplied_refusal() -> EnrollmentAdmission {
+  EnrollmentRefused { host: operator_host_srv1, provisioning: OwnedProvisioning { control: NoOutOfBand, delivery: InstalledViaVirtualMedia } }
+}
+
+fn supplied_refused_verdict() -> FleetConvergenceVerdict {
+  fleet_convergence_verdict(enrollments: [], refusals: [supplied_refusal()], receipts: no_receipts())
+}
+
+fn supplied_admitted_verdict() -> FleetConvergenceVerdict {
+  fleet_convergence_verdict(enrollments: [], refusals: [], receipts: no_receipts())
+}
+
+fn live_roster_verdict() -> FleetConvergenceVerdict {
+  let none_collected: List<CollectedHostReceipt> = []
+  fleet_convergence_verdict(
+    enrollments: fleet_enrollments,
+    refusals: fleet_enrollment_refusals,
+    receipts: collected_receipts_only(collected: none_collected),
+  )
+}
+
+// RED: a refused enrolment stops the line, naming the one refusal, instead of vanishing from the verdict.
+fn a_refused_enrollment_stops_the_verdict() -> Bool {
+  match supplied_refused_verdict() {
+    FleetEnrollmentRefused { refusals: r } => length(r) == 1
+    FleetConverged { host_count: _ } => false
+    FleetNotConverged { standings: _ } => false
+  }
+}
+
+// CONTROL: with no refusal the same inputs read convergence, and an empty fleet is not converged.
+fn without_a_refusal_the_verdict_reads_convergence() -> Bool {
+  match supplied_admitted_verdict() {
+    FleetEnrollmentRefused { refusals: _ } => false
+    FleetConverged { host_count: _ } => false
+    FleetNotConverged { standings: _ } => true
+  }
+}
+
+// INHABITANCE: the live roster, through the collector's receipt filter with nothing collected, reaches
+// the convergence reading (no refusal at this revision), is not converged, and counts a positive
+// number of unobserved cells.
+fn the_live_roster_reaches_the_convergence_reading() -> Bool {
+  match live_roster_verdict() {
+    FleetNotConverged { standings: ss } => length(ss) > 0 && fleet_unobserved_cell_count(standings: ss) > 0
+    FleetConverged { host_count: _ } => false
+    FleetEnrollmentRefused { refusals: _ } => false
+  }
+}
+
+fn fleet_verdict_route_cases() -> List<FleetVerdictRouteCase> {
+  [
+    FleetVerdictRouteCase { identity: "a_refused_enrollment_stops_the_verdict", held: a_refused_enrollment_stops_the_verdict(), observed: fleet_verdict_line(verdict: supplied_refused_verdict()) },
+    FleetVerdictRouteCase { identity: "without_a_refusal_the_verdict_reads_convergence", held: without_a_refusal_the_verdict_reads_convergence(), observed: fleet_verdict_line(verdict: supplied_admitted_verdict()) },
+    FleetVerdictRouteCase { identity: "the_live_roster_reaches_the_convergence_reading", held: the_live_roster_reaches_the_convergence_reading(), observed: fleet_verdict_line(verdict: live_roster_verdict()) }
+  ]
+}
+
+fn case_row(c: FleetVerdictRouteCase) -> String {
+  concat("case ", concat(c.identity, concat(if c.held { " held" } else { " not_held" }, concat(" observed=", concat(c.observed, "\n")))))
+}
+
+fn fleet_convergence_verdict_route_wire() -> CliWireResponse {
+  let cases = fleet_verdict_route_cases()
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let rows = cases |> map(c => case_row(c: c)) |> join(separator: "")
+  if (failed |> count) == 0 {
+    CliWirePrintable { bytes: rows, exit: ExitSuccess }
+  } else {
+    CliWirePrintable { bytes: rows, exit: exit_failure(reason: concat("fleet-convergence-verdict-route: not held: ", failed |> join(separator: ","))) }
+  }
+}
