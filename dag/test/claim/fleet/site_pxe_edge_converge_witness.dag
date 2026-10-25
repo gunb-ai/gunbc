@@ -143,6 +143,9 @@ import gunbc.fleet.site_pxe_edge_converge {
   HttpLegActivation,
   site_pxe_edge_install_bindings,
   site_pxe_edge_seed_origin_resolution,
+  PlacementNotNeeded,
+  PlacementRefused,
+  PlacementVerified,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -418,6 +421,7 @@ fn observe_run_with_unit(chains: List<SitePxeEdgeChainStanding>, causes: List<Si
     chains: chains,
     gate_causes: causes,
     installs: [],
+    placement: PlacementNotNeeded,
     files: [],
     activation: SitePxeEdgeProbeNotAttempted { reason: "observe-only" },
     unit_active: unit_active,
@@ -433,6 +437,7 @@ fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
     chains: [],
     gate_causes: [],
     installs: [],
+    placement: PlacementNotNeeded,
     files: [],
     activation: SitePxeEdgeProbeHeld,
     unit_active: SitePxeEdgeProbeHeld,
@@ -941,8 +946,8 @@ test fn the_listening_socket_must_be_the_onboarding_address() -> Bool {
 // AN APPLY WHOSE HTTP LISTENER IS A WILDCARD IS NOT CONVERGED.
 test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } } }
-  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
+  let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } } }
+  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
   !site_pxe_edge_run_succeeded(run: wildcard) && site_pxe_edge_run_succeeded(run: bound)
 }
 
@@ -950,7 +955,7 @@ test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
 // reason, and an apply whose probe was unobservable is not converged either.
 test fn an_unobservable_listener_probe_is_its_own_arm_and_not_converged() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
+  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
   !site_pxe_edge_run_succeeded(run: blind) && HttpListenUnobservable { reason: "x" } != HttpListenAbsent
 }
 
@@ -963,4 +968,12 @@ test fn the_net_seed_token_is_built_once_and_quoted_by_grub() -> Bool {
       Present { value: a } => grub_cmdline_arg_render(arg: a) == "\"ds=nocloud-net;s=http://srv4:8080/seed/y/\""
       Absent => false
     })
+}
+
+// AN APPLY WHOSE PLACEMENT REFUSED IS NOT CONVERGED, whatever else held.
+test fn an_apply_whose_placement_refused_is_not_converged() -> Bool {
+  let base = apply_run(post: PostActivationDigestHeld)
+  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementRefused { step: "verify vmlinuz", reason: "the placed bytes differ from the pin; removed" }, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let placed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementVerified { placed: ["vmlinuz"] }, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  !site_pxe_edge_run_succeeded(run: refused) && site_pxe_edge_run_succeeded(run: placed)
 }

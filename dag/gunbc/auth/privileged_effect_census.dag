@@ -1235,7 +1235,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_converge_ci_wet"),
-    effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming srv4, as the administrator over the fleet SSH edge: install dnsmasq-base if absent, write what differs among the edge's ProxyDHCP config and unit, the rendered loader configuration in the TFTP root, each admitted install binding's grub.cfg-01-<mac> and NoCloud seed, and the HTTP unit bound to srv4's onboarding address; daemon-reload, enable and restart both units; read back files, served digests and the listening socket" as NonEmptyStr),
+    effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming srv4, as the administrator over the fleet SSH edge: install dnsmasq-base if absent; when the x86 chain is withheld only on its members, fetch the 24.04.3 amd64 ISO from Canonical into staging, verify it against the SHA256SUMS digest, loop-mount it read-only, unpack the pool .debs after verifying them against Packages, and install and re-verify each pinned member under the TFTP root and the image under the HTTP root (removing any that disagree); write what differs among the edge's ProxyDHCP config and unit, the rendered loader configuration in the TFTP root, each admitted install binding's grub.cfg-01-<mac> and NoCloud seed, and the HTTP unit bound to srv4's onboarding address; daemon-reload, enable and restart both units; read back files, served digests and the listening socket" as NonEmptyStr),
     realized: RealizedAdministratorEdge,
     divergence_reason: Present { value: site_pxe_edge_converge_edge_beside_the_broker_route },
   },
