@@ -48,8 +48,7 @@ import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshCo
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, read_fleet_login_shell, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { PosixLoginShellProof, LoginShellPosix, LoginShellNotPosix, LoginShellUnreadable }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.typed_remote_file_write { NoValidation,
   RemoteFileModeOwnerReadWriteWorldRead,
   RemoteFileViaNonInteractiveSudo,
@@ -1630,8 +1629,8 @@ fn activate_site_pxe_edge_named_unit(target: SshTarget, context: FleetSshExecuti
 // pool .deb against its Packages digest before it is unpacked, and each placed member against its pin after it is
 // written -- a member that disagrees is removed again, so a mismatch is never left servable. The readback of the next
 // observation is the third check. The .deb names carry '+', which the bare word alphabet refuses, so the legs go
-// through gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_posix under the principal's login-shell proof, read
-// first in the same run.
+// through gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_posix which reads the principal's login shell in
+// the same call as each leg and quotes only under the proof that read mints for this target.
 data site_pxe_edge_staging_root: NonEmptyStr = "/var/lib/gunbc-site-pxe-edge/staging"
 
 data site_pxe_edge_iso_mount: NonEmptyStr = "/mnt/gunbc-site-pxe-edge-iso"
@@ -1642,15 +1641,15 @@ type SitePxeEdgePlacementOutcome
   | PlacementRefused { step: String, reason: String }
   | PlacementVerified { placed: List<NonEmptyStr> }
 
-fn site_pxe_edge_posix_leg(target: SshTarget, context: FleetSshExecutionContext, shell: PosixLoginShellProof, argv: List<String>, step: String) -> String? {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: elevated_argv(command: argv), shell: shell) {
+fn site_pxe_edge_posix_leg(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>, step: String) -> String? {
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: elevated_argv(command: argv)) {
     TypedArgvExecRefused { reason: why } => Present { value: why }
     TypedArgvExecConverged { result: r } => if r.success { Absent } else { Present { value: join([step, " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
   }
 }
 
-fn site_pxe_edge_posix_digest(target: SshTarget, context: FleetSshExecutionContext, shell: PosixLoginShellProof, path: NonEmptyStr) -> SitePxeEdgeChainloaderObservation {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: elevated_argv(command: ["sha256sum", path as String]), shell: shell) {
+fn site_pxe_edge_posix_digest(target: SshTarget, context: FleetSshExecutionContext, path: NonEmptyStr) -> SitePxeEdgeChainloaderObservation {
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: elevated_argv(command: ["sha256sum", path as String])) {
     TypedArgvExecRefused { reason: why } => ChainloaderDigestUnobservable { reason: why }
     TypedArgvExecConverged { result: r } => site_pxe_edge_digest_observation(path: path, success: r.success, line: r.stdout)
   }
@@ -1664,7 +1663,7 @@ fn site_pxe_edge_digest_agrees(observation: SitePxeEdgeChainloaderObservation, p
 }
 
 // ONE MEMBER: where its bytes are inside the mounted ISO (unpacking a pool .deb first), then install, then verify.
-fn site_pxe_edge_place_member(target: SshTarget, context: FleetSshExecutionContext, shell: PosixLoginShellProof, member: SitePxeEdgePinnedMember) -> SitePxeEdgePlacementOutcome {
+fn site_pxe_edge_place_member(target: SshTarget, context: FleetSshExecutionContext, member: SitePxeEdgePinnedMember) -> SitePxeEdgePlacementOutcome {
   let dest = site_pxe_edge_member_path(member: member)
   let source = match member.source {
     VerifiedMediaSource { media: _, source: IsoMember { iso_path: p }, pin: _, digest: _ } => Present { value: join([site_pxe_edge_iso_mount as String, "/", p as String], "") }
@@ -1674,8 +1673,8 @@ fn site_pxe_edge_place_member(target: SshTarget, context: FleetSshExecutionConte
       match sha256_hex_digest(hex: deb_hex as String) {
         Absent => Absent
         Present { value: deb_digest } =>
-          if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, shell: shell, path: deb), pinned: Sha256Hash(deb_digest)) {
-            match site_pxe_edge_posix_leg(target: target, context: context, shell: shell, argv: ["dpkg-deb", "-x", deb as String, unpacked], step: "dpkg-deb -x") {
+          if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, path: deb), pinned: Sha256Hash(deb_digest)) {
+            match site_pxe_edge_posix_leg(target: target, context: context, argv: ["dpkg-deb", "-x", deb as String, unpacked], step: "dpkg-deb -x") {
               Present { value: _ } => Absent
               Absent => Present { value: join([unpacked, "/", inner as String], "") }
             }
@@ -1691,13 +1690,13 @@ fn site_pxe_edge_place_member(target: SshTarget, context: FleetSshExecutionConte
   match source {
     Absent => PlacementRefused { step: concat("source ", member.member.served_path as String), reason: "the member's bytes could not be located in the verified ISO (a .deb digest disagreed, an unpack failed, or the member is not media-sourced)" }
     Present { value: src } =>
-      match site_pxe_edge_posix_leg(target: target, context: context, shell: shell, argv: ["install", "-m", "0644", "-D", src, dest as String], step: "install") {
+      match site_pxe_edge_posix_leg(target: target, context: context, argv: ["install", "-m", "0644", "-D", src, dest as String], step: "install") {
         Present { value: why } => PlacementRefused { step: concat("install ", member.member.served_path as String), reason: why }
         Absent =>
-          if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, shell: shell, path: dest), pinned: site_pxe_edge_member_digest(m: member)) {
+          if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, path: dest), pinned: site_pxe_edge_member_digest(m: member)) {
             PlacementVerified { placed: [member.member.served_path] }
           } else {
-            let removed = site_pxe_edge_posix_leg(target: target, context: context, shell: shell, argv: ["rm", "-f", dest as String], step: "rm")
+            let removed = site_pxe_edge_posix_leg(target: target, context: context, argv: ["rm", "-f", dest as String], step: "rm")
             PlacementRefused { step: concat("verify ", member.member.served_path as String), reason: match removed { Absent => "the placed bytes differ from the pin; removed" Present { value: why } => concat("the placed bytes differ from the pin, and removing them failed: ", why) } }
           }
       }
@@ -1706,24 +1705,24 @@ fn site_pxe_edge_place_member(target: SshTarget, context: FleetSshExecutionConte
 
 // THE IMAGE: fetched from Canonical's publishing mirror into staging only when the served copy does not already hold
 // the media row's digest, verified there, then installed under the HTTP root and verified again.
-fn site_pxe_edge_place_image(target: SshTarget, context: FleetSshExecutionContext, shell: PosixLoginShellProof, image: SitePxeEdgeInstallerImage) -> SitePxeEdgePlacementOutcome {
+fn site_pxe_edge_place_image(target: SshTarget, context: FleetSshExecutionContext, image: SitePxeEdgeInstallerImage) -> SitePxeEdgePlacementOutcome {
   let served = site_pxe_edge_installer_image_path(image: image)
-  if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, shell: shell, path: served), pinned: image.digest) {
+  if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, path: served), pinned: image.digest) {
     PlacementVerified { placed: [image.served_path] }
   } else {
     let staged = join([site_pxe_edge_staging_root as String, "/", ubuntu_install_media_filename(artifact: image.media) as String], "") as NonEmptyStr
     let url = ubuntu_install_media_mirror_url(artifact: image.media, mirror: ubuntu_install_media_publishing_mirror(arch: image.media.architecture))
-    match site_pxe_edge_posix_leg(target: target, context: context, shell: shell, argv: ["curl", "-fL", "--retry", "3", "-o", staged as String, url as String], step: "curl") {
+    match site_pxe_edge_posix_leg(target: target, context: context, argv: ["curl", "-fL", "--retry", "3", "-o", staged as String, url as String], step: "curl") {
       Present { value: why } => PlacementRefused { step: "fetch installer image", reason: why }
       Absent =>
-        if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, shell: shell, path: staged), pinned: image.digest) == false {
-          let removed = site_pxe_edge_posix_leg(target: target, context: context, shell: shell, argv: ["rm", "-f", staged as String], step: "rm")
+        if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, path: staged), pinned: image.digest) == false {
+          let removed = site_pxe_edge_posix_leg(target: target, context: context, argv: ["rm", "-f", staged as String], step: "rm")
           PlacementRefused { step: "verify installer image", reason: match removed { Absent => "the fetched image's sha256 is not the SHA256SUMS line; removed" Present { value: why } => concat("the fetched image's sha256 is not the SHA256SUMS line, and removing it failed: ", why) } }
         } else {
-          match site_pxe_edge_posix_leg(target: target, context: context, shell: shell, argv: ["install", "-m", "0644", "-D", staged as String, served as String], step: "install") {
+          match site_pxe_edge_posix_leg(target: target, context: context, argv: ["install", "-m", "0644", "-D", staged as String, served as String], step: "install") {
             Present { value: why } => PlacementRefused { step: "install installer image", reason: why }
             Absent =>
-              if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, shell: shell, path: served), pinned: image.digest) {
+              if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, path: served), pinned: image.digest) {
                 PlacementVerified { placed: [image.served_path] }
               } else {
                 PlacementRefused { step: "verify served installer image", reason: "the installed image differs from the SHA256SUMS line" }
@@ -1749,28 +1748,24 @@ fn site_pxe_edge_placement_join(left: SitePxeEdgePlacementOutcome, right: SitePx
   }
 }
 
-// THE WHOLE PLACEMENT, in order, stopping at the first refusal: login shell, directories, image, mount, members,
+// THE WHOLE PLACEMENT, in order, stopping at the first refusal: directories, image, mount, members,
 // unmount (attempted whatever the members' fate once the mount held).
 fn place_site_pxe_edge_ubuntu_chain(target: SshTarget, context: FleetSshExecutionContext, chain: SitePxeEdgePinnedChain, image: SitePxeEdgeInstallerImage) -> SitePxeEdgePlacementOutcome {
-  match read_fleet_login_shell(target: target, context: context) {
-    LoginShellUnreadable { principal: _, reason: r } => PlacementNotAttempted { reason: concat("login shell unreadable: ", r) }
-    LoginShellNotPosix { principal: _, shell: sh } => PlacementNotAttempted { reason: concat("the login shell is not a POSIX sh: ", sh) }
-    LoginShellPosix { proof: shell } =>
-      match site_pxe_edge_posix_leg(target: target, context: context, shell: shell, argv: ["mkdir", "-p", site_pxe_edge_staging_root as String, site_pxe_edge_iso_mount as String, concat(site_pxe_edge_tftp_root as String, "/grub"), concat(site_pxe_edge_http_root as String, "/iso")], step: "mkdir") {
+      match site_pxe_edge_posix_leg(target: target, context: context, argv: ["mkdir", "-p", site_pxe_edge_staging_root as String, site_pxe_edge_iso_mount as String, concat(site_pxe_edge_tftp_root as String, "/grub"), concat(site_pxe_edge_http_root as String, "/iso")], step: "mkdir") {
         Present { value: why } => PlacementRefused { step: "directories", reason: why }
         Absent =>
-          match site_pxe_edge_place_image(target: target, context: context, shell: shell, image: image) {
+          match site_pxe_edge_place_image(target: target, context: context, image: image) {
             PlacementVerified { placed: img } =>
-              match site_pxe_edge_posix_leg(target: target, context: context, shell: shell, argv: ["mount", "-o", "loop,ro", site_pxe_edge_installer_image_path(image: image) as String, site_pxe_edge_iso_mount as String], step: "mount") {
+              match site_pxe_edge_posix_leg(target: target, context: context, argv: ["mount", "-o", "loop,ro", site_pxe_edge_installer_image_path(image: image) as String, site_pxe_edge_iso_mount as String], step: "mount") {
                 Present { value: why } => PlacementRefused { step: "mount installer image", reason: why }
                 Absent => {
                   let members = fold(filter(site_pxe_edge_pinned_members(chain: chain), m => site_pxe_edge_member_is_rendered(m: m) == false), init: PlacementVerified { placed: img }, f: (acc, m) => match acc {
-                    PlacementVerified { placed: _ } => site_pxe_edge_placement_join(left: acc, right: site_pxe_edge_place_member(target: target, context: context, shell: shell, member: m))
+                    PlacementVerified { placed: _ } => site_pxe_edge_placement_join(left: acc, right: site_pxe_edge_place_member(target: target, context: context, member: m))
                     PlacementNotNeeded => acc
                     PlacementNotAttempted { reason: _ } => acc
                     PlacementRefused { step: _, reason: _ } => acc
                   })
-                  let unmounted = site_pxe_edge_posix_leg(target: target, context: context, shell: shell, argv: ["umount", site_pxe_edge_iso_mount as String], step: "umount")
+                  let unmounted = site_pxe_edge_posix_leg(target: target, context: context, argv: ["umount", site_pxe_edge_iso_mount as String], step: "umount")
                   match unmounted {
                     Absent => members
                     Present { value: why } => match members {
@@ -1787,7 +1782,6 @@ fn place_site_pxe_edge_ubuntu_chain(target: SshTarget, context: FleetSshExecutio
             PlacementNotNeeded => PlacementNotNeeded
           }
       }
-  }
 }
 
 // WHICH CHAIN PLACEMENT RUNS FOR: apply mode with privilege held, a pinned Ubuntu chain whose ONLY causes are its own
