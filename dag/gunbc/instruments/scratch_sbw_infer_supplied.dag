@@ -1,0 +1,83 @@
+module gunbc.instruments.scratch_sbw_infer_supplied
+
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import std.process { ExitSuccess }
+import std.integer { int_to_decimal_string }
+import std.algebra { fold_list }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.parse { PreparedGrammar }
+import v2.compiler.tokenize { PreparedLexRules }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.workflow.roster_import_sweep { RosterHeadRow, RosterHomeClosure, RosterSiteSupply, RosterOutcome, RosterClean, RosterRefused, RosterApplyWritten, RosterApplyRefused, RosterSuppliesParsed, RosterSuppliesUnparsed, OneHome, OnlyCall, roster_read_supplies, roster_table_with_sites, roster_head_rows, roster_rows_for_scope_in, roster_home_sides, roster_home_closures, roster_sweep_text_rows, roster_applied, roster_refusal_text, roster_render_outcome }
+
+// SCRATCH, NEVER LANDED (branch scratch/sbw-infer-supplied): the sort_by wave 1 supplied sweep of infer.dag on a fleet
+// runner (BuildBuddy's 1h cap is shorter than its passes). The supply is the one-shot site table, generator input for this
+// run only. The file is converged IN MEMORY (each pass's outcome spliced by roster_applied, the apply's own splice) and the
+// final text printed between markers, because a fleet runner's writes are not kept.
+data scratch_sbw_infer_supply: String = "src/v2/compiler/infer.dag\tsort_by(indexed, infer_indexed_label_key)\tv2.std.node.symbol_total_order\t-\tsymbol_total_order()\nsrc/v2/compiler/infer.dag\tsort_by(formals, infer_formal_identity_key)\tv2.std.node.symbol_total_order\t-\tsymbol_total_order()\nsrc/v2/compiler/infer.dag\tsort_by(pairs, infer_pairing_position_key)\tstd.algebra.int_total_order\t-\tint_total_order()\nsrc/v2/compiler/infer.dag\tsort_by(infer_slot_formals(formals: formals, slots: slots), infer_slot_formal_index_key)\tstd.algebra.int_total_order\t-\tint_total_order()\n"
+
+data scratch_sbw_infer_path: String = "src/v2/compiler/infer.dag"
+
+type ScratchPass {
+  text: String
+  log: String
+  done: Bool
+}
+
+fn scratch_sbw_infer_supplied_wire() -> CliWireResponse {
+  CliWirePrintable { bytes: scratch_report(), exit: ExitSuccess }
+}
+
+fn scratch_report() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "SCRATCH grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } => scratch_with_supplies(prepared: prepared, lex: dag_prepared_lex())
+  }
+}
+
+fn scratch_with_supplies(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_read_supplies(content: scratch_sbw_infer_supply) {
+    RosterSuppliesUnparsed { reason: r } => "SCRATCH supply " + roster_refusal_text(reason: r) + "\n"
+    RosterSuppliesParsed { supplies: supplies } => scratch_converge(prepared: prepared, lex: lex, supplies: supplies)
+  }
+}
+
+fn scratch_converge(prepared: PreparedGrammar, lex: PreparedLexRules, supplies: List<RosterSiteSupply>) -> String {
+  let scope = OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyCall { call: "sort_by" } }
+  let rows = roster_rows_for_scope_in(table: roster_table_with_sites(table: roster_head_rows(), call: "sort_by", sites: supplies), scope: scope)
+  let closures = roster_home_closures(root: "", scope: scope)
+  let read = Filesystem.Read(path: scratch_sbw_infer_path)
+  if read.success {
+    let last = fold_list(xs: [1, 2, 3, 4, 5], empty: ScratchPass { text: read.content, log: "", done: false }, cons: fn(acc, i) {
+      scratch_pass(acc: acc, i: i, rows: rows, closures: closures, prepared: prepared, lex: lex)
+    })
+    last.log + "FINAL-BEGIN\n" + last.text + "\nFINAL-END\n"
+  } else {
+    "SCRATCH unreadable\n"
+  }
+}
+
+fn scratch_pass(acc: ScratchPass, i: Int, rows: List<RosterHeadRow>, closures: List<RosterHomeClosure>, prepared: PreparedGrammar, lex: PreparedLexRules) -> ScratchPass {
+  if acc.done {
+    acc
+  } else {
+    scratch_step(acc: acc, i: i, outcome: roster_sweep_text_rows(sides: roster_home_sides(rows: rows), companions: [], path: scratch_sbw_infer_path, text: acc.text, prepared: prepared, lex: lex, candidates: rows, closures: closures))
+  }
+}
+
+fn scratch_step(acc: ScratchPass, i: Int, outcome: RosterOutcome) -> ScratchPass {
+  let head = "PASS " + int_to_decimal_string(value: i) + " "
+  match outcome {
+    RosterClean => ScratchPass { text: acc.text, log: acc.log + head + "CLEAN\n", done: true }
+    RosterRefused { reason: r } => ScratchPass { text: acc.text, log: acc.log + head + "REFUSED " + roster_refusal_text(reason: r) + "\n", done: true }
+    other => scratch_applied(acc: acc, head: head, row: roster_render_outcome(path: scratch_sbw_infer_path, outcome: other), outcome: other)
+  }
+}
+
+fn scratch_applied(acc: ScratchPass, head: String, row: String, outcome: RosterOutcome) -> ScratchPass {
+  match roster_applied(before: acc.text, outcome: outcome) {
+    RosterApplyRefused { reason: r } => ScratchPass { text: acc.text, log: acc.log + head + "SPLICE-REFUSED " + roster_refusal_text(reason: r) + "\n", done: true }
+    RosterApplyWritten { content: c } => ScratchPass { text: c, log: acc.log + head + row, done: false }
+  }
+}
