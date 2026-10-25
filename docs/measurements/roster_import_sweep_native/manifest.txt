@@ -1,0 +1,15 @@
+# THE WORK LIST for //gunbc/instruments:roster-import-sweep-native. One row per case, `id|paths-csv`;
+# `#` lines and blanks are skipped. The native claim child gets no arguments and no environment
+# (cli_run/native_lane_runner spawn site), so the manifest at this FIXED path is its only subject
+# channel -- the same channel gunbc.instruments.value_position_block_nests uses for its fixtures.
+# Each id's expected bytes live at expected/<id>.txt beside this file, committed ONCE from the
+# interpreter as the offline differential oracle (the interpreter never runs on this route).
+# The two sweep cases are the NAMESPACE-XL-wave subjects named in the work item: src/v2/std/node.dag
+# (138,516 B, about 16m per interpreted pass at sunny-bee-153's measurement) and
+# src/v2/compiler/infer.dag (585,795 B, about 50m, past the runner's 1h cap).
+# The last case is the seeded RED: a path the admission refuses before any read, so its expected
+# file IS the REFUSE row -- if the emitted program ever routes it as a success, the case goes not
+# held by itself.
+node_dag_sweep|src/v2/std/node.dag
+infer_dag_sweep|src/v2/compiler/infer.dag
+refuse_escaped_path|../outside_repository.dag

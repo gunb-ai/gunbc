@@ -538,6 +538,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("roster-import-sweep-native"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/roster_import_sweep_native.dag",
+            },
+        ),
+        (
             instrument_label("native-serve"),
             TargetProducer::NativeServeProgram {
                 entry: "dag/gunbc/instruments/native_serve_fixture.dag",
