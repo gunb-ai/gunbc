@@ -347,3 +347,21 @@ fn ods_head(paths: List<QualifiedName>) -> QualifiedName {
     Empty => qualified_name_from_dotted_string(dotted: "")
   }
 }
+
+// ---- WALK STAGE PROBES (preconditions of the inhabitance claims, also the diagnosis) --------------
+test fn the_instrument_context_accepts_the_real_closure_ingest() -> Bool {
+  match ods_context() { Present { value: _ } => true, Absent => false }
+}
+
+test fn the_instrument_resolves_the_seam_module_of_the_real_closure() -> Bool {
+  match ods_resolved(module: qualified_name_from_dotted_string(dotted: "v2.std.data_index")) {
+    Present { value: _ } => true, Absent => false
+  }
+}
+
+test fn the_walk_of_the_real_closure_records_operations() -> Bool {
+  match ods_seam_facts() {
+    Present { value: facts } => length(xs: facts.operations) > 0
+    Absent => false
+  }
+}
