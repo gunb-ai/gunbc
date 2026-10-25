@@ -4504,7 +4504,7 @@ fn ct_shared_roster_follows_declaration_test() -> String {
     "                );\n",
     "                assert!(\n",
     "                    words.contains(\"struct Word64\") && words.contains(\"Copy\"),\n",
-    "                    \"the constant Word64 { hi: Int, lo: Int } keeps its Copy roster; probe_words:\\n{}\",\n",
+    "                    \"the constant Word64 {{ hi: Int, lo: Int }} keeps its Copy roster; probe_words:\\n{}\",\n",
     "                    words\n",
     "                );\n",
     "                assert!(\n",
