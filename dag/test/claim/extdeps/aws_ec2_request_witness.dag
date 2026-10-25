@@ -1,0 +1,36 @@
+module test.claim.extdeps.aws_ec2_request_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, List, Bool, String }
+import std.optional { Present, Absent }
+import extdeps.cloud.aws_ec2 {
+  AwsEc2SpotRequestBehavior, AwsEc2OneTimeTerminate, AwsEc2PersistentStop, AwsEc2PersistentHibernate,
+  AwsEc2SpotMarketOptions, AwsEc2SpotMarket, aws_ec2_spot_request_wire, aws_ec2_market_type_wire,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn w_wire_pair(b: AwsEc2SpotRequestBehavior) -> String {
+  let w = aws_ec2_spot_request_wire(behavior: b)
+  join([w.spot_instance_type as String, "+", w.instance_interruption_behavior as String], "")
+}
+
+// THE SPOT REQUEST PAIRS THAT CAN BE BUILT ARE EXACTLY THE PAIRS EC2 ACCEPTS. Every constructor of
+// AwsEc2SpotRequestBehavior projects to a documented valid (SpotInstanceType, InstanceInterruptionBehavior)
+// pair, and the three are distinct; the two rejected pairs (one-time + stop or hibernate, persistent +
+// terminate) are not among them and have no constructor to project from. The expected strings are the
+// API's documented values, not a copy of the projection.
+test fn every_constructible_spot_request_is_a_pair_ec2_accepts() -> Bool {
+  let pairs = [w_wire_pair(b: AwsEc2OneTimeTerminate), w_wire_pair(b: AwsEc2PersistentStop), w_wire_pair(b: AwsEc2PersistentHibernate)]
+  pairs == ["one-time+terminate", "persistent+stop", "persistent+hibernate"]
+    && !contains(pairs, "persistent+terminate")
+    && !contains(pairs, "one-time+stop")
+    && !contains(pairs, "one-time+hibernate")
+}
+
+// SPOT OPTIONS RIDE ONLY ON THE SPOT MARKET. The market-options request is a sum whose arm is the market
+// type, so the spot options a request carries always project to MarketType spot.
+test fn spot_options_always_project_to_the_spot_market_type() -> Bool {
+  let o = AwsEc2SpotMarket { spot_options: AwsEc2SpotMarketOptions { max_price: none, request_behavior: AwsEc2OneTimeTerminate } }
+  (aws_ec2_market_type_wire(options: o) as String) == "spot"
+}
