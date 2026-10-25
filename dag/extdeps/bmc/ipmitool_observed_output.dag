@@ -1,6 +1,9 @@
 module extdeps.bmc.ipmitool_observed_output
 
 import std.types { Int, NonEmptyStr, String }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import std.content_hash { Sha256Digest }
+import extdeps.crypto.sha2 { sha256_computed_digest }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 
@@ -70,6 +73,34 @@ data ipmitool_mc_info_mt_collins: String = "Firmware Revision         : 0.32\nIP
 // layout, not the controller's current state. Source: artifacts/bmc/mtcollins1-ipmitool-hpm-check-bmc0.32-2026-10-02.txt
 // (sha256 689624b261a32784a3a7d0373b1f05cfd7a46c1cff63e1ff761736cd9184a590), verbatim.
 data ipmitool_hpm_check_bmc0_32: String = "\nPICMG HPM.1 Upgrade Agent 1.0.9: \n\n-------Target Information-------\nDevice Id          : 0x20\nDevice Revision    : 0x81\nProduct Id         : 0x0202\nManufacturer Id    : 0x0000 (Unknown)\n\n\n--------------------------------------------------------------------------\n|ID  | Name        |                     Versions                        |\n|    |             |     Active      |     Backup      |      Deferred   |\n--------------------------------------------------------------------------\n|*  0|BOOT         |   0.32 00000000 | ---.-- -------- |   0.00 00000000 |\n|*  1|APP          |   0.32 01112100 | ---.-- -------- |   0.00 00000000 |\n|*  2|BIOS         |   0.00 00000000 | ---.-- -------- |   0.00 00000000 |\n|*  5|CPLD         |   0.32 9D380300 | ---.-- -------- |   0.00 00000000 |\n|*  6|BOOTFW       |   0.00 00000000 | ---.-- -------- |   0.00 00000000 |\n--------------------------------------------------------------------------\n(*) Component requires Payload Cold Reset\n\n\n"
+
+// `ipmitool hpm check` on BMC 0.45, read by the machine. Source:
+// artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt
+// (sha256 31d953d5e2ffc0ee084d7c7087d40be88a29ddf94cdc0b30d2b368610fca273d) -- retained stdout of
+// boot run 40082618814, the first machine read of this controller's build. The committed bytes are
+// the component-properties table only: the PICMG preamble the 0.32 row above carries is absent from
+// this capture, and the decoder does not need it (it keys rows on the `|N|NAME |` shape). APP Active
+// reads `0.45 03000000`; a version is DERIVED from these bytes by
+// gunbc.host.bmc_release_capability_catalog, never typed here.
+data ipmitool_hpm_check_bmc0_45: String = "--------------------------------------------------------------------------\n|ID  | Name        |                     Versions                        |\n|    |             |     Active      |     Backup      |      Deferred   |\n--------------------------------------------------------------------------\n|*  0|BOOT         |   0.45 03000000 | ---.-- -------- |   0.00 00000000 |\n|*  1|APP          |   0.45 03000000 | ---.-- -------- |   0.00 00000000 |\n|*  2|BIOS         |   0.14 00000000 | ---.-- -------- |   0.00 00000000 |\n|*  3|MMC          |   0.45 03000000 | ---.-- -------- |   0.00 00000000 |\n|*  5|CPLD         |   6.00 00000000 | ---.-- -------- |   0.00 00000000 |\n|*  6|BOOTFW       |   0.00 00000000 | ---.-- -------- |   0.00 00000000 |\n--------------------------------------------------------------------------"
+
+// THE COMMITTED BOOT-RUN READING, IN ONE HOME (review 86103 finding 2). The boot run 40082618814 hpm
+// check is ONE artifact with three facts about it -- where it lives, what it says, and its digest -- and
+// all three are spelled exactly here, beside each other, because the digest is not an independent secret:
+// it is sha256 OVER THESE BYTES, so spelling it as a literal would add a second home whose drift nothing
+// could catch. The path is what the catalogue's 0.45.x row keys, what the operation ledger's committed
+// evidence names, and what this module's own source comments cite; retyping it at any of those sites was
+// review 86103's second finding. The digest below is COMPUTED from ipmitool_hpm_check_bmc0_45 (the same
+// bytes the file carries -- byte-equality was verified against artifacts/bmc/
+// mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt at commit time, and its hex is
+// 31d953d5e2ffc0ee084d7c7087d40be88a29ddf94cdc0b30d2b368610fca273d); if the literal and the file ever
+// part, the computed value moves with the bytes and the witnesses that pin the parse go red, which is the
+// only way this digest can change.
+data mtcollins1_boot_run_40082618814_hpm_check_artifact_path: NonEmptyStr =
+  "artifacts/bmc/mtcollins1-boot-run-40082618814/mtcollins1-boot-hpm-check-40082618814.txt"
+
+data mtcollins1_boot_run_40082618814_hpm_check_digest: Sha256Digest =
+  sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: ipmitool_hpm_check_bmc0_45)))
 
 // The CPLD's component row as BMC 0.45.3 printed it during the 2026-10-02 CPLD upgrade, verbatim.
 // Source: artifacts/bmc/mtcollins1-cpld-hpm-upgrade-2026-10-02.log line 26
