@@ -3617,7 +3617,7 @@ fn infer_match_coproduct_rows(
 // silent widen. Only a BINDER is judged (a wildcard binds nothing), and every binder that reaches infer is
 // read: an unread one already refused at resolve (v2.compiler.resolve resolve_catch_all_binder_read_gate).
 // The remainder is the coproduct's alternatives less the tags the earlier arms name; a nullary alternative's
-// payload is the empty product, a childless Conj. RULED by sleek-owl-397 on tidy-ant-251's escalation,
+// payload is the empty product, read through its one reader (infer_empty_product_shape). RULED by sleek-owl-397 on tidy-ant-251's escalation,
 // 2026-10-25, after review 86112; keen-heron-809 co-reviews. The residual (a misspelling over a singleton
 // remainder, accepted and behaviour-identical) is recorded on gunbc.recurring_failure_mode
 // a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder.
@@ -3651,7 +3651,7 @@ fn infer_remainder_widens_over_a_nullary(variants: Node, earlier: List<Symbol>) 
         if contains(xs: earlier, item: tag, eq: fn(x, y) { x == y }) {
           acc
         } else {
-          InferRemainderTally { alternatives: acc.alternatives + 1, nullary: acc.nullary || infer_payload_is_empty_product(payload: e.target) }
+          InferRemainderTally { alternatives: acc.alternatives + 1, nullary: acc.nullary || infer_empty_product_shape(node: e.target) }
         }
       StructuralLabel { label: _ } => acc
       Positional => acc
@@ -3663,14 +3663,6 @@ fn infer_remainder_widens_over_a_nullary(variants: Node, earlier: List<Symbol>) 
 type InferRemainderTally {
   alternatives: Int
   nullary: Bool
-}
-
-fn infer_payload_is_empty_product(payload: Node) -> Bool {
-  match payload.kind {
-    TypeNode { connective: Conj } => length(xs: payload.children) == 0
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
 }
 
 fn infer_match_catch_all_binder_widens_over_a_nullary_diagnostic(arm: Node) -> Diagnostic {
