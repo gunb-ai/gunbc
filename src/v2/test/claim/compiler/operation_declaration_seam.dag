@@ -348,42 +348,9 @@ fn ods_head(paths: List<QualifiedName>) -> QualifiedName {
   }
 }
 
-// ---- WALK STAGE PROBES (preconditions of the inhabitance claims; localize, do not guess) --------
-test fn the_instrument_context_accepts_the_real_closure_ingest() -> Bool {
-  match ods_context() { Present { value: _ } => true, Absent => false }
-}
-
-test fn the_instrument_resolves_the_seam_module_of_the_real_closure() -> Bool {
-  match ods_resolved(module: qualified_name_from_dotted_string(dotted: "v2.std.data_index")) {
-    Present { value: _ } => true, Absent => false
-  }
-}
-
-test fn the_walk_of_the_real_closure_records_operations() -> Bool {
-  match ods_seam_facts() {
-    Present { value: facts } => length(xs: facts.operations) > 0
-    Absent => false
-  }
-}
-
-// Root-tag isolation: ddc tags every witness DagTree, production_ingest tags real files V2Tree.
-fn ods_witness_as(path: String, as_v2: Bool) -> DagSourceReadWitness {
-  DagSourceReadWitness {
-    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
-    compilation_unit: symbol_intern_lexeme(lexeme: path),
-    source_root: if as_v2 { V2Tree } else { DagTree }
-  }
-}
-
-fn ods_resolve_tags(module: String, as_v2: Bool) -> Bool {
-  match native_test_context_from_ingest(
-    ingest: fold_list(
-      xs: ods_closure,
-      empty: Empty,
-      cons: fn(acc, path) { list_snoc_item(xs: acc, item: ods_witness_as(path: path, as_v2: as_v2)) }
-    )
-  ) {
+// ---- ROUTE PROBES (localize the resolve step; deleted once the harness is right) ------------------
+fn ods_resolve_from(ingest: List<DagSourceReadWitness>, module: String) -> Bool {
+  match native_test_context_from_ingest(ingest: ingest) {
     Rejected { diagnostics: _ } => false
     Accepted { value: context, diagnostics: _ } =>
       match native_test_resolve_module(context: context, module: qualified_name_from_dotted_string(dotted: module)).resolved {
@@ -393,14 +360,40 @@ fn ods_resolve_tags(module: String, as_v2: Bool) -> Bool {
   }
 }
 
-test fn probe_resolve_all_dag_tree_tags() -> Bool {
-  ods_resolve_tags(module: "v2.std.data_index", as_v2: false)
+fn ods_witness_v2(path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: V2Tree
+  }
 }
 
-test fn probe_resolve_all_v2_tree_tags() -> Bool {
-  ods_resolve_tags(module: "v2.std.data_index", as_v2: true)
+// A: the runner's prepared context already carries the corpus -- an EMPTY ingest resolves a corpus
+// module (the ddc/nds fixtures only ever add NOVEL modules, which fits this reading).
+test fn probe_resolve_corpus_module_with_empty_ingest() -> Bool {
+  ods_resolve_from(ingest: Empty, module: "v2.std.data_index")
 }
 
-test fn probe_resolve_std_algebra_any_tag() -> Bool {
-  ods_resolve_tags(module: "std.algebra", as_v2: false)
+// B: only the two v2-tree files, the std closure left to the prepared front end.
+test fn probe_resolve_corpus_module_with_v2_files_only() -> Bool {
+  ods_resolve_from(
+    ingest: [ods_witness_v2(path: "src/v2/std/data_index.dag"), ods_witness_v2(path: "src/v2/std/text.dag")],
+    module: "v2.std.data_index"
+  )
+}
+
+// C: sanity of the route itself -- a novel, import-free module always resolves (the nds precedent).
+test fn probe_resolve_novel_trivial_module() -> Bool {
+  ods_resolve_from(
+    ingest: [
+      DagSourceReadWitness {
+        source: Medium { carried: "module ods.trivial\n\nfn x() -> Int { 1 }\n", fidelity: Lossless },
+        artifact: Artifact { kind: SourceFile, id: ^ods_trivial_artifact, file_path: "src/v2/test/fixture/ods_trivial.dag" },
+        compilation_unit: ^ods_trivial_cu,
+        source_root: V2Tree
+      }
+    ],
+    module: "ods.trivial"
+  )
 }
