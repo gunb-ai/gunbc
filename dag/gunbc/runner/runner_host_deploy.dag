@@ -762,3 +762,103 @@ fn runner_host_admission_gate_accepts(
       }
   }
 }
+
+// ── SUBORDINATE IDS: THE DECLARATION ROOTLESS DOCKER CANNOT START WITHOUT ───────────────────────
+//
+// /etc/subuid and /etc/subgid are per-host state, so they are declared per host, beside the other
+// per-host facts this module owns. They belong in the MODEL rather than in an installer because the
+// failure mode is silent and cross-account: RootlessKit maps the daemon's uid 0 onto the first uid of
+// the account's subordinate range, so when two accounts hold the SAME range the second daemon to start
+// builds a namespace over ids a namespace already claims, and fails — with a message that names neither
+// file. Neither account's own state reveals the collision; only the file does, and only read whole.
+//
+// EVERY NUMBER HERE IS COPIED FROM A HOST OR DERIVED FROM NUMBERS COPIED FROM A HOST, on 2026-10-25.
+// The rule for the re-grant is that it lands above the highest range the plan does not delete, so
+// adjacency is allowed and overlap is not — a range ending at 362143 and the next starting at 362144 is
+// free, while a range starting at 296608 would sit on top of gunbc-worker.
+//
+// THE JOB USER KEEPS ITS CURRENT RANGE ON BOTH HOSTS, and that is a deliberate choice rather than an
+// accident of measurement. The operator decision of 2026-10-25 says to give the NEW range to whichever
+// account has no rootless container store, because a subordinate range is baked into the ownership of
+// every file a rootless daemon has ever written under that account: pull a range out from under a
+// account with images and its store becomes unreadable uid numbers. On srv1 that means ghrunner stays at
+// 100000:65536 (its daemon is running against a 149 MB store) and briansrls — which has no
+// ~/.local/share/docker — is what moves. On srv3 nobody has a store yet, so the job user keeps the low
+// range and the admin account is displaced.
+//
+// BEING DECLARED IS NOT BEING PERMITTED. gunbc.runner.runner_gpu_container_toolchain re-reads both
+// files, refuses to touch any range belonging to an account other than the declared-displaceable one,
+// and re-establishes at run time that the displaceable account still holds no container store — the
+// latter matters because the store's absence is a fact about today, not about the model's lifetime.
+type RunnerHostSubordinateIds {
+  // The range the JOB USER must hold. This is the one rootless Docker needs.
+  job_user_first: Int
+  job_user_count: Int
+  // The one account permitted to be moved off that range, if it currently occupies it.
+  displaceable: NonEmptyStr
+  // Where the displaced account is re-granted. It is MOVED, never stripped: it arrived holding a range,
+  // and anything already running under it was built expecting one. Width is preserved from the file.
+  displacee_regrant_first: Int
+}
+
+data runner_host_subordinate_id_rows: List<RunnerHostSubordinateIdRow> = [
+  // srv1 /etc/subuid as read: briansrls 100000:65536, ghrunner 100000:65536 (COLLIDE),
+  // gunbc-fleet 165536:65536, ubuntu 231072:65536, gunbc-worker 296608:65536. The plan therefore keeps
+  // ghrunner at 100000:65536 — which it already holds, so it costs no usermod — drops briansrls's
+  // colliding range, and re-grants briansrls above gunbc-worker's end at 362143.
+  RunnerHostSubordinateIdRow {
+    host: operator_host_srv1,
+    ids: RunnerHostSubordinateIds {
+      job_user_first: 100000, job_user_count: 65536,
+      displaceable: "briansrls" as NonEmptyStr, displacee_regrant_first: 362144,
+    },
+  },
+  // srv3 /etc/subuid as read: ghrunner 100000:65536, ubuntu 100000:65536 (COLLIDE),
+  // briansrls 165536:65536. The job user keeps 100000:65536 and ubuntu is re-granted above
+  // briansrls's end at 231071.
+  RunnerHostSubordinateIdRow {
+    host: operator_host_srv3,
+    ids: RunnerHostSubordinateIds {
+      job_user_first: 100000, job_user_count: 65536,
+      displaceable: "ubuntu" as NonEmptyStr, displacee_regrant_first: 231072,
+    },
+  },
+  // srv2 and srv4 are never measured, so nothing is declared. A range here would be a value with no
+  // measurement behind it, and the converge would usermod accounts on a host whose subordinate file has
+  // not been read — on a host where, for all we know, both accounts already have container stores. The
+  // gap is recorded as a gap and the converge refuses, which is the honest arm.
+  RunnerHostSubordinateIdRow { host: operator_host_srv2, ids: RunnerHostSubordinateIdsUnmeasured {} },
+  RunnerHostSubordinateIdRow { host: operator_host_srv4, ids: RunnerHostSubordinateIdsUnmeasured {} },
+]
+
+data runner_host_subordinate_id_row_count_bound: Int = 8
+
+fn subordinate_ids_declared_for(host: HostIdentity) -> RunnerHostSubordinateIdsResolution {
+  if length(runner_host_subordinate_id_rows) > runner_host_subordinate_id_row_count_bound {
+    RunnerHostSubordinateIdsUnmeasured {
+      reason: concat("gunbc.runner.runner_host_deploy: the subordinate-id row table has ",
+                     to_string(length(runner_host_subordinate_id_rows)),
+                     " rows, over its bound of ", to_string(runner_host_subordinate_id_row_count_bound),
+                     " — refusing to read a table that may be truncated"),
+    }
+  } else {
+    match filter(runner_host_subordinate_id_rows, row => row.host == host).first() {
+      Absent => RunnerHostSubordinateIdsUnmeasured {
+        reason: concat("gunbc.runner.runner_host_deploy: host ", host as String,
+                       " has no subordinate-id row, so the job user has no declared range to be given"),
+      }
+      Present { value: row } => match row.ids {
+        RunnerHostSubordinateIdsUnmeasured {} => RunnerHostSubordinateIdsUnmeasured {
+          reason: concat("gunbc.runner.runner_host_deploy: host ", host as String,
+                         " declares no subordinate range because its /etc/subuid has never been read"),
+        }
+        RunnerHostSubordinateIds { job_user_first: f, job_user_count: c, displaceable: d, displacee_regrant_first: g } =>
+          RunnerHostSubordinateIdsDeclared {
+            spec: RunnerHostSubordinateIds {
+              job_user_first: f, job_user_count: c, displaceable: d, displacee_regrant_first: g,
+            },
+          },
+      }
+    }
+  }
+}
