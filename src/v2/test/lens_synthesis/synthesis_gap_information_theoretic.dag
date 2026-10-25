@@ -11,7 +11,7 @@ import v2.lens.synthesis {
   synthesis_lens
 }
 import std.algebra { non_empty }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Instantiation,
   ComputationNode,
@@ -86,5 +86,5 @@ fn synthesis_gap_it_first_reason_node() -> Node {
 }
 
 test fn synthesis_gap_it_reason_claim_holds() -> Bool {
-  synthesis_gap_it_first_reason_node() == synthesis_gap_it_input
+  node_same_occurrence(a: synthesis_gap_it_first_reason_node(), b: synthesis_gap_it_input)
 }

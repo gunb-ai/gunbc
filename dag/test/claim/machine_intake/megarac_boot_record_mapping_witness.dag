@@ -76,7 +76,7 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_boot_override_consumption, megarac_power_after_from_observation,
 }
 import extdeps.bmc.ipmi_boot_selection {
-  IpmiBootCdrom, aarch64_uefi_once_boot_selection,
+  IpmiBootCdrom, uefi_once_boot_selection,
   ipmi_boot_expected_flag_rendering, ipmi_boot_expected_device_rendering,
   ipmi_boot_expected_mode_rendering, ipmi_boot_expected_persistence_rendering,
 }
@@ -512,10 +512,10 @@ fn p5(readback: String) -> BootParam5Reading = BootParam5Read { readback: readba
 // consumed the one-shot override.
 fn p5_pending_text() -> String {
   join([
-    ipmi_boot_expected_flag_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
-    ipmi_boot_expected_persistence_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
-    ipmi_boot_expected_mode_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
-    ipmi_boot_expected_device_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_flag_rendering(selection: uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_persistence_rendering(selection: uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_mode_rendering(selection: uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_device_rendering(selection: uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
   ], "\n")
 }
 
@@ -567,7 +567,7 @@ test fn an_override_read_that_failed_after_the_attempt_says_so_too() -> Bool {
 // THE REDUCTION THE ROW OWNS. The same readback string, read twice, becomes the two standings; a read
 // that never answered becomes Unanswered with the cause named, so the row cannot lose why.
 test fn the_two_reads_become_the_core_input_standings() -> Bool {
-  let sel = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+  let sel = uefi_once_boot_selection(device: IpmiBootCdrom)
   (megarac_override_standing(read: p5(p5_consumed_text), which: "after", selection: sel) == OverrideFlagNotPending)
     && (megarac_override_standing(read: p5(p5_pending_text()), which: "after", selection: sel) == OverrideFlagPending)
     && (match megarac_override_standing(read: p5_unread("link down"), which: "before", selection: sel) {
@@ -581,7 +581,7 @@ test fn the_two_reads_become_the_core_input_standings() -> Bool {
 // consumption by THIS attempt (design §4d -- the flag's valid bit times out on its own, so order is the
 // argument). The row supplies that argument; it no longer makes the decision with it.
 test fn the_census_end_marker_is_what_establishes_consumption() -> Bool {
-  let sel = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+  let sel = uefi_once_boot_selection(device: IpmiBootCdrom)
   let before = BootParam5NotTaken { reason: "not taken yet" }
   (megarac_boot_override_consumption(before: p5(p5_consumed_text), after: p5(p5_consumed_text), selection: sel,
       booted_through_override_device: true) == OverrideConsumedByAttempt)
