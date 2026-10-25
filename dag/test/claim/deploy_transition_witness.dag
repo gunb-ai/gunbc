@@ -11,6 +11,14 @@ import extdeps.filesystem.filesystem_io {
   filesystem_file_observation,
 }
 import gunbc.deploy_transition_store { transition_inhibition_slots }
+import std.durable_compare_and_set {
+  CasSlotObservationRefused,
+  CasGenerationPublicationRefused,
+  CasGenerationSpaceExhausted,
+  CasUnreadableReadRefused,
+  cas_store_failure_detail,
+  cas_generation_first,
+}
 import gunbc.deploy_transition_lease_store {
   transition_lease_slots,
   TransitionLeaseRefusal,
@@ -197,6 +205,18 @@ test fn one_badly_spelled_root_fails_the_instance_set() -> Bool {
 test fn every_declared_instance_root_is_absolute_and_spelled_one_way() -> Bool {
   dashboard_declared_instance_roots_are_one_spelling()
     && root_spelling_answer(root: srv1_live_dashboard_instance().instance_root as String) == "admitted"
+}
+
+// THE ONE STORE-FAILURE RENDERING KEEPS EVERY ARM: std.durable_compare_and_set cas_store_failure_detail, which the
+// lease store's unavailable and release-refused arms consume. Each arm by its own input, so a fold that answered one
+// arm for all, or dropped the exhausted arm into a generic sentence, fails.
+test fn the_store_failure_detail_keeps_every_arm() -> Bool {
+  let unreadable = cas_store_failure_detail(cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: "EACCES" as NonEmptyStr } })
+  let refused = cas_store_failure_detail(cause: CasGenerationPublicationRefused { detail: "ENOSPC" as NonEmptyStr })
+  let exhausted = cas_store_failure_detail(cause: CasGenerationSpaceExhausted { head: cas_generation_first() })
+  string_contains(s: unreadable, pattern: "read refused: EACCES")
+    && refused == "ENOSPC"
+    && string_contains(s: exhausted, pattern: "exhausted at 1")
 }
 
 // ALL FOUR REFUSAL ARMS ARE DISTINCT, and none is an acquisition, driven through the one fold over the store's
