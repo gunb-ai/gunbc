@@ -90,7 +90,7 @@ temperature-0 fixed prompt set against the live server. The instrument is a loca
 dev script (`.gitignore` excludes Python scripts from the committed substrate — so
 it is deliberately NOT committed here); it lives at `srv1:/home/briansrls/lil/srv1_serving_bench.py`
 alongside `run_eval3.py` / `run_cold.py` / `run_longctx2.py` as local dev tooling.
-This receipt retains what the instrument produced: the four `raw_*` files in this
+This receipt retains what the instrument produced: the six `raw_*` files in this
 directory. The prompt set, fixed: `code-rot13`, `code-bugfix`, `reason-train`,
 `recall-facts`, `json-struct`, `code-tests` (texts in the correctness section), plus
 load probes `prefill-30k`, `countdown-200`, `burst-16`, `ctx-120k/180k/240k/260k`,
