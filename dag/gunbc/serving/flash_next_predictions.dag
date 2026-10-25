@@ -3,9 +3,9 @@ module gunbc.serving.flash_next_predictions
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { ByteSize, byte_size, byte_size_count, Bandwidth, bandwidth, gibibyte, gibibyte_to_byte_size, BasisPoint, basis_point, Permille, permille_count }
-import extdeps.external_authority { CitedFigureStanding }
-import extdeps.gpu.types { GpuModelCatalogRow, TensorDatatype, TensorFp4, TensorBf16 }
+import std.measure { ByteSize, byte_size, byte_size_count, bandwidth, gibibyte, gibibyte_to_byte_size, BasisPoint, basis_point, Permille, permille_count }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.gpu.types { GpuModelCatalogRow, TensorDatatype, TensorFp4, TensorBf16, GpuBandwidthFigure }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_max_q_catalog, nvidia_h200_nvl_catalog, nvidia_b200_sxm_catalog }
 import extdeps.qwen.qwen3_8_flash_next { qwen3_8_flash_next_architecture }
 import gunbc.serving.flash_next_maxq_run_receipt { flash_next_maxq_run_2026_10_21 }
@@ -57,7 +57,7 @@ data flash_next_registered_predictions: List<PredictionRow> = [
 // Weights: the Max-Q's observed 71.86 GiB; H200 and B200 the registered ~76 GiB (non-CSF scales).
 // Overhead: the registered 6-8 GiB, taken at its midpoint 7 GiB. Main-KV width comes from the image
 // observation of that arch, not from the Max-Q.
-fn flash_next_card(catalog: GpuModelCatalogRow, observed: ObservedGpuMemory, bandwidth_override: Bandwidth?, weights_bytes: ByteSize, arch: ImageGpuArch, math: TensorDatatype) -> RooflineCard? {
+fn flash_next_card(catalog: GpuModelCatalogRow, observed: ObservedGpuMemory, bandwidth_override: GpuBandwidthFigure?, weights_bytes: ByteSize, arch: ImageGpuArch, math: TensorDatatype) -> RooflineCard? {
   match image_main_kv_element_bytes(rows: flash_next_image_observations, arch: arch) {
     Present { value: w } => Present {
       value: RooflineCard {
@@ -79,15 +79,22 @@ data flash_next_other_card_weights_bytes: ByteSize = gibibyte_to_byte_size(g: gi
 
 // The Max-Q row carries its own bandwidth, so no override is supplied. Declared as data with its
 // type spelled, because a bare `none` at call-argument position loses the Measure payload's type.
-data no_bandwidth_override: Bandwidth? = none
+data no_bandwidth_override: GpuBandwidthFigure? = none
 
 data flash_next_maxq_card: RooflineCard? = flash_next_card(catalog: nvidia_rtx_pro_6000_max_q_catalog, observed: max_q_observed_memory, bandwidth_override: no_bandwidth_override, weights_bytes: flash_next_maxq_run_2026_10_21.weights_bytes, arch: Sm120, math: TensorFp4)
 
 data flash_next_h200_card: RooflineCard? = flash_next_card(catalog: nvidia_h200_nvl_catalog, observed: h200_nvl_observed_memory, bandwidth_override: no_bandwidth_override, weights_bytes: flash_next_other_card_weights_bytes, arch: Sm90, math: TensorBf16)
 
-// The B200's 8 TB/s HBM3e rate, the operator figure the catalog row does not carry; carried as
-// std.measure Bandwidth (bytes per second), the same carrier roofline_bandwidth answers in (review 84774).
-data flash_next_b200_bandwidth_operator_figure: Bandwidth = bandwidth(count: 8000000000000)
+// The B200's 8 TB/s HBM3e rate, the operator figure the catalog row does not carry; its rate is
+// std.measure Bandwidth (bytes per second, review 84774) and it carries its own standing, which every
+// bandwidth floor on the B200 card reports (review 5641830716): no page this repository read states it.
+// As a PEAK ("up to") it is the right figure for a floor, since a floor divides by the fastest rate.
+data flash_next_b200_bandwidth_obligation: NonEmptyStr = "Read the B200 SXM HBM3e memory bandwidth from an NVIDIA B200 datasheet. The 8 TB/s used here is an operator figure (2026-10-21); the catalog row extdeps.gpu.nvidia nvidia_b200_sxm_catalog carries no memory_bandwidth because no page read states an exact rate." as NonEmptyStr
+
+data flash_next_b200_bandwidth_operator_figure: GpuBandwidthFigure = GpuBandwidthFigure {
+  rate: bandwidth(count: 8000000000000),
+  standing: TranscribedUncited { read_obligation: flash_next_b200_bandwidth_obligation },
+}
 
 data flash_next_b200_fp4_card: RooflineCard? = flash_next_card(catalog: nvidia_b200_sxm_catalog, observed: b200_observed_memory, bandwidth_override: Present { value: flash_next_b200_bandwidth_operator_figure }, weights_bytes: flash_next_other_card_weights_bytes, arch: Sm100, math: TensorFp4)
 
@@ -128,20 +135,22 @@ fn interval_position(row: PredictionRow, value: Nat) -> IntervalPosition {
 }
 
 // CEILING VERSUS REGISTERED INTERVAL for the speedup rows (P3, P4): a roofline ceiling below the interval's
-// LOW end means the interval needs the Max-Q to be running below its own roofline by at least that gap,
+// LOW end means the interval needs the Max-Q to be running below its own floor by at least that gap,
 // which the registered figures neither state nor refute -- reported as `IntervalAboveCeiling`, a finding
-// about the transcribed specs or the Max-Q's efficiency. The ceiling carries its spec standing.
+// about the transcribed specs or the Max-Q's efficiency. The deduction holds because both ends of the
+// ratio are floors over mandatory work (gunbc.serving.flash_next_roofline); the verdict carries the
+// CeilingRatio whole, so every standing the ratio stood on travels with it.
 type CeilingVerdict
   = CeilingNotScored
-  | IntervalAboveCeiling { ceiling_permille: Permille, spec_standing: CitedFigureStanding }
-  | IntervalReachableUnderCeiling { ceiling_permille: Permille, spec_standing: CitedFigureStanding }
+  | IntervalAboveCeiling { ceiling: CeilingRatio }
+  | IntervalReachableUnderCeiling { ceiling: CeilingRatio }
 
 fn ceiling_verdict(row: PredictionRow, ceiling: CeilingRatio?) -> CeilingVerdict {
   match ceiling {
     Present { value: c } => if permille_count(p: c.permille) < row.low {
-      IntervalAboveCeiling { ceiling_permille: c.permille, spec_standing: c.spec_standing }
+      IntervalAboveCeiling { ceiling: c }
     } else {
-      IntervalReachableUnderCeiling { ceiling_permille: c.permille, spec_standing: c.spec_standing }
+      IntervalReachableUnderCeiling { ceiling: c }
     }
     none => CeilingNotScored
   }

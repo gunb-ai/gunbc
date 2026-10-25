@@ -751,6 +751,17 @@ fn positive_measure_count_value(
   }
 }
 
+// The same count as a natural, for a consumer whose arithmetic is over Nat (a divisor, a multiplier of
+// byte counts): the successor of a natural is a natural, so no Int crossing is needed to read it.
+fn positive_measure_count_nat(
+  count: PositiveMeasureCount,
+) -> Nat {
+  match count {
+    PositiveMeasureSuccessor { predecessor: predecessor } =>
+      predecessor + 1
+  }
+}
+
 type PositiveCelsiusDelta
   = PositiveCelsiusDeltaValue { count: PositiveMeasureCount }
 
