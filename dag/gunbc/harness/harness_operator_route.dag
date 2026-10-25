@@ -131,7 +131,8 @@ fn operator_class_admission(route: HarnessOperatorRoute, class: ServingCoTenancy
 // dedicated worker account (gunbc.roadmap.roadmap_dashboard_instance WorkerDedicatedAccount) is the untrusted
 // principal and has no home, so that custody cannot be its own. Its unit is handed the file by the manager
 // (systemd.exec(5) LoadCredential=, from a root-owned credstore copy the deploy makes as the service user:
-// gunbc.roadmap.dispatch_worker_unit_confinement dispatch_worker_credentials) under the credential's identifier,
+// gunbc.roadmap.dispatch_worker_unit_confinement dispatch_worker_credentials, installed by
+// gunbc.live_deploy.apply_legs credstore_copy_legs) under the credential's identifier,
 // in the per-invocation directory the manager names in $CREDENTIALS_DIRECTORY, owned by the unit's user and
 // removed when the unit stops. The two locations are not tried in turn: a process the manager handed a
 // credentials directory reads only that directory, so a unit started without this route's credential refuses

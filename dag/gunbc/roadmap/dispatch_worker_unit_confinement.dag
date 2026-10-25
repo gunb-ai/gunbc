@@ -400,7 +400,7 @@ fn dispatch_worker_handed_set(
 // is a root-owned copy under the system credstore and never the custody path itself: a path the service user can
 // write or relink, opened by root, would let any launch it requests read an arbitrary root-only file into a unit
 // it directs. The deploy makes the copy reading the custody AS THE SERVICE USER
-// (gunbc.live_deploy.emit dispatch_worker_credstore_steps), so the copy can only ever hold bytes that principal
+// (gunbc.live_deploy.apply_legs credstore_copy_legs), so the copy can only ever hold bytes that principal
 // could read itself. Per instance, because two instances on one host may hold different keys. A rotated key
 // reaches the worker at the next deploy, not before.
 //
