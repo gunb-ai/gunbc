@@ -689,6 +689,8 @@ fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObserva
 fn observe_cas_slot_state_windowed(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow) -> CasSlotObservation<NonEmptyStr>
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_read_index"),
+    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "observe_push_registration"),
+    decl_ref(module_path: "gunbc.auth.approval_apns_publish", decl_name: "observe_apns_provider_token"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_window_slot_holds_at_most_k_plus_one_generations_by_real_execution"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_window_observation_at_generation_1500_terminates_by_real_execution"),
   ]
@@ -1175,6 +1177,8 @@ fn file_compare_and_set(root: NonEmptyStr, publication: CasGenerationPublication
 fn file_compare_and_set_windowed(root: NonEmptyStr, publication: CasGenerationPublication, verified: VerifiedCasAttempt, window: CasGenerationWindow) -> CasFileWrite
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index_settled"),
+    decl_ref(module_path: "gunbc.auth.approval_device_redemption", decl_name: "push_registration_cas"),
+    decl_ref(module_path: "gunbc.auth.approval_apns_publish", decl_name: "publish_apns_provider_token"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "run_cas_in"),
   ]
 {
