@@ -548,3 +548,25 @@ test fn mab_absence_literal_pattern_refuses_rather_than_binding() -> Bool {
     && mab_outcome_refuses_with(o: mab_resolved_bare_null(), reason: ^resolve_reason_unbound_symbol)
     && mab_outcome_refuses_with(o: mab_resolved_field_null(), reason: ^resolve_reason_unbound_symbol)
 }
+
+// A CATCH-ALL BINDER ITS ARM NEVER READS REFUSES (v2.compiler.resolve
+// resolve_catch_all_binder_read_gate); the remedy is `_`. Its sharpest case is the one this gate exists
+// for: a MISSPELLED nullary variant in the last arm (`Bx` for `B`) names no payload and reads as a
+// binder, and, unread, it refuses rather than silently covering `B`. Both rows red with the gate
+// deleted: the first accepts, and the second accepts with the misspelling covering every leftover
+// variant.
+fn mab_resolved_unread_catch_all() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    other => 0\n  }\n}\n")
+}
+
+fn mab_resolved_misspelled_last_nullary() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    Bx => 0\n  }\n}\n")
+}
+
+test fn mab_unread_catch_all_binder_refuses() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_unread_catch_all(), reason: ^resolve_reason_catch_all_binder_unread)
+}
+
+test fn mab_misspelled_nullary_in_the_last_arm_refuses() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_misspelled_last_nullary(), reason: ^resolve_reason_catch_all_binder_unread)
+}

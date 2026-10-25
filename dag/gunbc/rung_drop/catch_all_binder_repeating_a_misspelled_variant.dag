@@ -1,0 +1,42 @@
+module gunbc.rung_drop.catch_all_binder_repeating_a_misspelled_variant
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger, NotYetCounted, NoInstrumentObservesTheZero }
+import gunbc.guarantee_rung { StructurallyGuaranteed, OutsideTheLadder }
+
+// THE DECLARED RUNG DROP for a misspelled nullary variant in a match's LAST arm whose own body repeats
+// the misspelling (`Absnet => Absnet`), landed with gunbc#15125 (DESIGN 4b(3); review 86011 found the
+// loss and that an RFM row alone does not declare it). Decided by tidy-ant-251 (Manager 1),
+// 2026-10-25, message to jolly-cat-271 on #15125.
+//
+// WHAT FELL. Before #15125 a bare atom in arm-pattern position was never a binder candidate, so any
+// bare name naming no constructor resolved as a reference and refused unbound: no Accepted program
+// held a misspelled nullary arm. #15125 made a bare atom a binder by the same payload rule as a field
+// atom (v2.compiler.lexical_scope pattern_binder_candidates), so a misspelling that names no payload is
+// now a catch-all binder. Two refusals take back almost all of it: an arm after any catch-all refuses
+// as unreachable (v2.compiler.infer infer_coproduct_arm_after_catch_all), and a catch-all binder its
+// arm never reads refuses (v2.compiler.resolve resolve_catch_all_binder_read_gate), which covers
+// `Absnet => 0`. What is left is a last-arm misspelling whose arm READS the misspelled name: it binds
+// the scrutinee, the program can type, and it is Accepted silently. That is below the ladder, which
+// GuaranteeRung spells with its lowest arm, OutsideTheLadder.
+//
+// POPULATION: not counted. No instrument observes it; a corpus site would be an Accepted program
+// with no diagnostic, and the class is about programs authored after the change as much as about
+// the corpus. The class row is gunbc.recurring_failure_mode
+// a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder.
+
+data catch_all_binder_repeating_a_misspelled_variant: RungDrop = RungDrop {
+  identity: "catch_all_binder_repeating_a_misspelled_variant" as NonEmptyStr,
+
+  subject: "a misspelled nullary variant in a match's last arm whose own arm body repeats the misspelling, read as a catch-all binder and Accepted silently",
+
+  declared: "2026-10-25",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: OutsideTheLadder,
+    reason: LostAsPassenger { carrier: "the rule that a bare atom in arm-pattern position is never a binder candidate (v2.compiler.lexical_scope pattern_binder_candidates before gunbc#15125)" },
+    population: NotYetCounted { cause: NoInstrumentObservesTheZero },
+    restoration_trigger: "a typed refusal for an unbound pattern atom read as a binder, decided without consulting its spelling (for example exhaustiveness proving the binder covers only variants the scrutinee's type declares, or explicit binder syntax), with a discriminating RED for `Absnet => Absnet` executed on the real acceptance path."
+  } }
+}

@@ -3591,8 +3591,9 @@ fn infer_match_coproduct_rows(
 // alternative (infer_coproduct_arm_row CoversAll), so a later arm can never be taken: the authored
 // program says something the match will never do. For a binder this is also the first defence against a
 // misspelled nullary variant (`Absnet => ..`), which names no payload and so reads as a binder: unless it
-// is the LAST arm, the arms after it refuse here. The last-arm typo is the declared residual
-// (gunbc.recurring_failure_mode a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder).
+// is the LAST arm, the arms after it refuse here, and an unread last-arm typo refuses at resolve
+// (v2.compiler.resolve resolve_catch_all_binder_read_gate). A last-arm typo its own arm reads is the
+// declared drop gunbc.rung_drop catch_all_binder_repeating_a_misspelled_variant.
 fn infer_coproduct_arm_after_catch_all(rows: List<InferCoproductArmRow>) -> Optional<Node> {
   let walked = fold(rows, init: InferCatchAllWalk { seen: false, unreachable: Absent }, f: fn(acc, row) {
     match acc.unreachable {
