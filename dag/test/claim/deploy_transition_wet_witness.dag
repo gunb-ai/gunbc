@@ -293,23 +293,23 @@ fn lease_refusal(test: String, a: LeaseAcquisition) -> ProcessExit {
 }
 
 // THE LEASE STORE THROUGH ITS PRODUCTION MINT, then the acquire. Each refusal is its own failure.
-fn with_lease_store(test: String, dir: String, then: fn(TransitionLeaseStore) -> ProcessExit) -> ProcessExit {
+fn with_lease_store(test: String, dir: String, proceed: fn(TransitionLeaseStore) -> ProcessExit) -> ProcessExit {
   match transition_lease_store(instance: instance_at(dir: dir)) {
     TransitionLeaseStoreUnready { detail: d } => failed(test: test, reason: join(["the lease mint refused: ", d], ""))
-    TransitionLeaseStoreReady { store: l } => then(l)
+    TransitionLeaseStoreReady { store: l } => proceed(l)
   }
 }
 
-fn with_inhibition_store(test: String, dir: String, then: fn(TransitionInhibitionStore) -> ProcessExit) -> ProcessExit {
+fn with_inhibition_store(test: String, dir: String, proceed: fn(TransitionInhibitionStore) -> ProcessExit) -> ProcessExit {
   match transition_inhibition_store(instance: instance_at(dir: dir)) {
     TransitionInhibitionStoreUnready { detail: d } => failed(test: test, reason: join(["the inhibition mint refused: ", d], ""))
-    TransitionInhibitionStoreReady { store: s } => then(s)
+    TransitionInhibitionStoreReady { store: s } => proceed(s)
   }
 }
 
-fn with_guard(test: String, a: LeaseAcquisition, then: fn(TransitionGuard) -> ProcessExit) -> ProcessExit {
+fn with_guard(test: String, a: LeaseAcquisition, proceed: fn(TransitionGuard) -> ProcessExit) -> ProcessExit {
   match a {
-    LeaseAcquired(g) => then(g)
+    LeaseAcquired(g) => proceed(g)
     LeaseHeldBy { holder: _ } => lease_refusal(test: test, a: a)
     LeaseHeldUndecodable { cause: _ } => lease_refusal(test: test, a: a)
     LeaseAcquireLost { cause: _ } => lease_refusal(test: test, a: a)
@@ -363,9 +363,9 @@ test fn the_sealed_inhibition_sets_and_clears_in_the_unchanged_format() -> Proce
   let t = "the_sealed_inhibition_sets_and_clears_in_the_unchanged_format"
   let dir = fresh_dir(tag: "set")
   let before = expect_permitted(test: t, step: "before the set", s: standing_at(dir: dir))
-  let verdict = with_lease_store(test: t, dir: dir, then: l =>
-    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), then: g =>
-      with_inhibition_store(test: t, dir: dir, then: s => {
+  let verdict = with_lease_store(test: t, dir: dir, proceed: l =>
+    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), proceed: g =>
+      with_inhibition_store(test: t, dir: dir, proceed: s => {
         let held = expect_lease_held_by(test: t, step: "after the acquire", dir: dir, invocation: "run-1", generation: 1)
         let set = expect_completed(test: t, step: "set", a: set_transition_inhibition(inhibition: s, guard: g))
         let bytes = expect_bytes(test: t, step: "after the set", path: old_inhibition_path(dir: dir), expected: old_record_bytes(dir: dir, phase: "in-force"))
@@ -407,9 +407,9 @@ test fn a_marker_in_the_pre_seal_format_inhibits_through_the_sealed_store() -> P
 test fn a_second_set_refuses_and_leaves_the_standing_marker() -> ProcessExit {
   let t = "a_second_set_refuses_and_leaves_the_standing_marker"
   let dir = fresh_dir(tag: "excl")
-  let verdict = with_lease_store(test: t, dir: dir, then: l =>
-    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), then: g =>
-      with_inhibition_store(test: t, dir: dir, then: s => {
+  let verdict = with_lease_store(test: t, dir: dir, proceed: l =>
+    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), proceed: g =>
+      with_inhibition_store(test: t, dir: dir, proceed: s => {
         let first = expect_completed(test: t, step: "first set", a: set_transition_inhibition(inhibition: s, guard: g))
         let second = expect_refused_naming(test: t, step: "second set", a: set_transition_inhibition(inhibition: s, guard: g), names: "already stands for deployer/run-1")
         let bytes = expect_bytes(test: t, step: "after the second set", path: old_inhibition_path(dir: dir), expected: old_record_bytes(dir: dir, phase: "in-force"))
@@ -425,9 +425,9 @@ test fn a_second_set_refuses_and_leaves_the_standing_marker() -> ProcessExit {
 test fn a_partial_transition_rewrites_the_phase_in_place() -> ProcessExit {
   let t = "a_partial_transition_rewrites_the_phase_in_place"
   let dir = fresh_dir(tag: "part")
-  let verdict = with_lease_store(test: t, dir: dir, then: l =>
-    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), then: g =>
-      with_inhibition_store(test: t, dir: dir, then: s => {
+  let verdict = with_lease_store(test: t, dir: dir, proceed: l =>
+    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), proceed: g =>
+      with_inhibition_store(test: t, dir: dir, proceed: s => {
         let set = expect_completed(test: t, step: "set", a: set_transition_inhibition(inhibition: s, guard: g))
         let marked = expect_completed(test: t, step: "mark partial", a: mark_transition_partial(inhibition: s, guard: g, detail: "worktree transition failed"))
         let bytes = expect_bytes(test: t, step: "after the mark", path: old_inhibition_path(dir: dir), expected: old_record_bytes(dir: dir, phase: "partial-transition-left"))
@@ -503,7 +503,7 @@ test fn the_lease_mint_refuses_every_spelling_but_the_canonical_absolute_root() 
   let dotted = expect_lease_mint_refused(test: t, step: "a dot segment", root: join([dir, "/."], ""), names: "segment")
   let doubled = expect_lease_mint_refused(test: t, step: "a doubled separator", root: join(["/", dir], ""), names: "segment")
   let relative = expect_lease_mint_refused(test: t, step: "a relative root", root: "tmp/gunbc_transition_relative", names: "not absolute")
-  let canonical = with_lease_store(test: t, dir: dir, then: l => ExitSuccess)
+  let canonical = with_lease_store(test: t, dir: dir, proceed: l => ExitSuccess)
   cleaned(test: t, dir: dir, verdict: first_failure(steps: [trailing, dotted, doubled, relative, canonical]))
 }
 
@@ -512,8 +512,8 @@ test fn the_lease_mint_refuses_every_spelling_but_the_canonical_absolute_root() 
 test fn a_held_lease_refuses_a_second_acquire_until_its_holder_releases() -> ProcessExit {
   let t = "a_held_lease_refuses_a_second_acquire_until_its_holder_releases"
   let dir = fresh_dir(tag: "hold")
-  let verdict = with_lease_store(test: t, dir: dir, then: l =>
-    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), then: g => {
+  let verdict = with_lease_store(test: t, dir: dir, proceed: l =>
+    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), proceed: g => {
       let second = match acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: successor()) {
         LeaseHeldBy { holder: h } =>
           if string_contains(s: h, pattern: "run-1") { ExitSuccess } else { failed(test: t, reason: join(["the second acquire names another holder: ", h], "")) }
@@ -526,7 +526,7 @@ test fn a_held_lease_refuses_a_second_acquire_until_its_holder_releases() -> Pro
         TransitionLeaseReleased => ExitSuccess
         TransitionLeaseReleaseRefused { detail: d } => failed(test: t, reason: join(["the holder's release refused: ", d], ""))
       }
-      let next = with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: successor()), then: n =>
+      let next = with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: successor()), proceed: n =>
         expect_lease_held_by(test: t, step: "after the successor's acquire", dir: dir, invocation: "run-2", generation: 3))
       first_failure(steps: [second, released, next])
     })
@@ -540,13 +540,13 @@ test fn a_held_lease_refuses_a_second_acquire_until_its_holder_releases() -> Pro
 test fn a_stale_holders_release_refuses_and_leaves_the_successor_holding() -> ProcessExit {
   let t = "a_stale_holders_release_refuses_and_leaves_the_successor_holding"
   let dir = fresh_dir(tag: "stale")
-  let verdict = with_lease_store(test: t, dir: dir, then: l =>
-    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), then: g => {
+  let verdict = with_lease_store(test: t, dir: dir, proceed: l =>
+    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), proceed: g => {
       let released = match transition_lease_release(held: g.lease, released_by: "holder-cleared deployer/run-1" as NonEmptyStr) {
         TransitionLeaseReleased => ExitSuccess
         TransitionLeaseReleaseRefused { detail: d } => failed(test: t, reason: join(["the first release refused: ", d], ""))
       }
-      let next = with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: successor()), then: n => ExitSuccess)
+      let next = with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: successor()), proceed: n => ExitSuccess)
       let stale = match transition_lease_release(held: g.lease, released_by: "holder-cleared deployer/run-1" as NonEmptyStr) {
         TransitionLeaseReleaseRefused { detail: d } =>
           if string_contains(s: d, pattern: "run-2") { ExitSuccess } else { failed(test: t, reason: join(["the stale release refused without naming the successor: ", d], "")) }
@@ -565,8 +565,8 @@ test fn a_guard_for_one_instance_refuses_another_instances_inhibition() -> Proce
   let t = "a_guard_for_one_instance_refuses_another_instances_inhibition"
   let dir = fresh_dir(tag: "inst_a")
   let other = fresh_dir(tag: "inst_b")
-  let verdict = with_lease_store(test: t, dir: dir, then: l =>
-    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), then: g =>
+  let verdict = with_lease_store(test: t, dir: dir, proceed: l =>
+    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), proceed: g =>
       match transition_inhibition_store(instance: instance_named(dir: other, id: "transition-wet-other")) {
         TransitionInhibitionStoreUnready { detail: d } => failed(test: t, reason: join(["the other instance's mint refused: ", d], ""))
         TransitionInhibitionStoreReady { store: s } =>
@@ -598,9 +598,9 @@ fn residue_at(record: TransitionRecord) -> ResidueEvidence {
 test fn evidence_clears_the_inhibition_and_leaves_the_lease_held() -> ProcessExit {
   let t = "evidence_clears_the_inhibition_and_leaves_the_lease_held"
   let dir = fresh_dir(tag: "evid")
-  let verdict = with_lease_store(test: t, dir: dir, then: l =>
-    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), then: g =>
-      with_inhibition_store(test: t, dir: dir, then: s => {
+  let verdict = with_lease_store(test: t, dir: dir, proceed: l =>
+    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), proceed: g =>
+      with_inhibition_store(test: t, dir: dir, proceed: s => {
         let set = expect_completed(test: t, step: "set", a: set_transition_inhibition(inhibition: s, guard: g))
         let record = transition_guard_record(guard: g, phase: TransitionInForce)
         let cleared = expect_refused_naming(
@@ -624,9 +624,9 @@ test fn evidence_clears_the_inhibition_and_leaves_the_lease_held() -> ProcessExi
 test fn an_abandonment_clears_the_inhibition_and_leaves_the_lease_held() -> ProcessExit {
   let t = "an_abandonment_clears_the_inhibition_and_leaves_the_lease_held"
   let dir = fresh_dir(tag: "aban")
-  let verdict = with_lease_store(test: t, dir: dir, then: l =>
-    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), then: g =>
-      with_inhibition_store(test: t, dir: dir, then: s => {
+  let verdict = with_lease_store(test: t, dir: dir, proceed: l =>
+    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), proceed: g =>
+      with_inhibition_store(test: t, dir: dir, proceed: s => {
         let set = expect_completed(test: t, step: "set", a: set_transition_inhibition(inhibition: s, guard: g))
         let record = transition_guard_record(guard: g, phase: TransitionInForce)
         let cleared = match mint_transition_abandonment(operator: "operator", operator_admitted: true, evidence: residue_at(record: record)) {
@@ -688,15 +688,15 @@ fn expect_clearance_refused_naming(test: String, step: String, c: ClearanceAdmis
 test fn the_holders_clearance_is_subject_matched_and_readback_conditioned() -> ProcessExit {
   let t = "the_holders_clearance_is_subject_matched_and_readback_conditioned"
   let dir = fresh_dir(tag: "subj")
-  let verdict = with_lease_store(test: t, dir: dir, then: l =>
-    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), then: g => {
+  let verdict = with_lease_store(test: t, dir: dir, proceed: l =>
+    with_guard(test: t, a: acquire_transition_lease(lease: l, subject: subject_at(dir: dir), holder: holder()), proceed: g => {
       let own = TransitionFilePresent { record: transition_guard_record(guard: g, phase: TransitionInForce) }
       first_failure(steps: [
         expect_clearance_admitted(test: t, step: "own marker, converged", c: clearance_admission(basis: ClearedByHolder(g), readback_converged: true, observed: own)),
         expect_clearance_refused_naming(test: t, step: "own marker, not converged", c: clearance_admission(basis: ClearedByHolder(g), readback_converged: false, observed: own), names: ["readback"]),
         expect_clearance_refused_naming(test: t, step: "a newer transition's marker", c: clearance_admission(basis: ClearedByHolder(g), readback_converged: true, observed: TransitionFilePresent { record: newer_record() }), names: ["run-1", "run-2", "cccccccccccccccccccccccccccccccccccccccc"]),
         expect_clearance_refused_naming(test: t, step: "an unreadable marker", c: clearance_admission(basis: ClearedByHolder(g), readback_converged: true, observed: TransitionFileIndeterminate { cause: "corrupt" }), names: ["unreadable"]),
-        with_inhibition_store(test: t, dir: dir, then: s =>
+        with_inhibition_store(test: t, dir: dir, proceed: s =>
           expect_refused_naming(test: t, step: "a marker that is not there", a: clear_transition_records(inhibition: s, basis: ClearedByHolder(g), readback_converged: true), names: "no longer readable")),
         expect_lease_held_by(test: t, step: "after the refused clearances", dir: dir, invocation: "run-1", generation: 1),
       ])
