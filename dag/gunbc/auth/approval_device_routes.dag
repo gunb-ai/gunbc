@@ -665,7 +665,7 @@ fn device_pending_response_at(realization: DeviceCryptoRealization, body: String
       match admit_device_read(realization: realization, auth: auth, client_data: device_read_client_data(path: approval_device_pending_path, enrollment_id: auth.enrollment_id, requested_at: auth.requested_at), observed_at: observed_at) {
         DeviceReadRefused { status: s, reason: r } => device_refused(status: s, reason: r)
         DeviceReadAdmitted { enrollment: _ } =>
-          match pending_escalations(root: approval_decision_store_root) {
+          match pending_escalations(root: approval_decision_store_root, observed_at: observed_at) {
             PendingEscalationsRefused { detail: d } => device_refused(status: 503, reason: d)
             PendingEscalationsListed { pending: rows, unreadable: u } =>
               if count(u) > 0 { device_refused(status: 503, reason: "an escalation slot could not be read: " + join(map(u, x => x as String), ", ")) }
