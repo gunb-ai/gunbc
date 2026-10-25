@@ -2840,12 +2840,6 @@ pub fn list_at_reference<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<
     }
 }
 
-pub fn map_support_keys<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
-    m: Rc<HashMap<K, V>>,
-) -> Rc<FreeMonoid<K>> {
-    Rc::new(v1_rt::map_keys(&m))
-}
-
 pub fn is_empty<T: Clone>(xs: Rc<FreeMonoid<T>>) -> bool {
     {
         let __fm = xs.clone();

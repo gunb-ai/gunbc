@@ -6,7 +6,7 @@ use self::AnnotationPlacement::*;
 use self::AnnotationScope::*;
 pub use crate::std_algebra::{
     collection_concat_shape, empty_map, int_total_order, length, list_at_optional, list_push,
-    list_snoc_item, list_sort_by_key, map_insert, map_lookup, map_support_keys,
+    list_snoc_item, list_sort_by_key, map_insert, map_lookup, map_keys,
 };
 pub use crate::std_coercion::unicode_scalar_unfold;
 pub use crate::std_occurrence_identity::OccurrenceId;
@@ -232,7 +232,7 @@ pub fn annotation_region_index(
         );
         let children_seed = v1_rt::rc_empty_map::<_, _>();
         Rc::new(AnnotationRegionIndex {
-            children: crate::std_algebra::map_support_keys(grouped.clone())
+            children: crate::std_algebra::map_keys(grouped.clone())
                 .iter()
                 .cloned()
                 .fold(

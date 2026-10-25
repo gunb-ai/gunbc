@@ -1519,12 +1519,6 @@ fn list_at_reference<T>(xs: FreeMonoid<T>, index: Int) -> Optional<T> {
   }
 }
 
-// The key set of a map: the support of its FinitelySupportedFunction, read through the declared
-// `map_keys` above, so the realization is that seam's.
-fn map_support_keys<K, V>(m: Map<K, V>) -> FreeMonoid<K> {
-  m |> map_keys
-}
-
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match xs {
     Empty => true

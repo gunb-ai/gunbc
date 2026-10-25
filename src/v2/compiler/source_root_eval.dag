@@ -363,7 +363,7 @@ import std.algebra {
   map_contains_key,
   map_insert,
   map_lookup,
-  map_support_keys,
+  map_keys,
 }
 import v2.std.integer {
   Int,
@@ -3647,10 +3647,10 @@ fn native_census_module_inference(
               resolved: resolved,
               inferred: prepared.inferred,
               frontier: prepared.frontier,
-              loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings))
+              loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_keys(m: resolved.occurrence_bindings))
             }
           Rejected { diagnostics: d } =>
-            NativeInferCensusInferRefused { resolved: resolved, chain: d, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_support_keys(m: resolved.occurrence_bindings)) }
+            NativeInferCensusInferRefused { resolved: resolved, chain: d, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: map_keys(m: resolved.occurrence_bindings)) }
         }
     },
     context: step.context,

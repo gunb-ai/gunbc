@@ -10,7 +10,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.compiler.resolve { ResolvedTree }
 import v2.std.node { Node }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.algebra { Cons, Empty, fold_list, length, map_lookup, map_support_keys }
+import std.algebra { Cons, Empty, fold_list, length, map_lookup, map_keys }
 import std.types { List, Map }
 import v2.std.integer { Int }
 import v2.std.runtime { runtime_value_conj_node }
@@ -126,7 +126,7 @@ fn sfk_facts_under_key(entries: Map<Node, List<InferredFacts>>) -> List<Inferred
 }
 
 fn sfk_nonempty(entries: Map<Node, List<InferredFacts>>) -> Bool {
-  match map_support_keys(m: entries) {
+  match map_keys(m: entries) {
     Cons { head: _, tail: _ } => true
     Empty => false
   }
