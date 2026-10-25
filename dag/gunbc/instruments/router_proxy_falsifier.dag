@@ -183,7 +183,7 @@ fn openresty_test(conf_path: String) -> String {
 }
 
 fn start_with(name: NonEmptyStr, network: NonEmptyStr, conf_path: String) -> Int {
-  let created = DockerCli.Create(docker: docker(), name: name, network: network, image: openresty_1_27_1_1_image, command: [])
+  let created = DockerCli.Create(docker: docker(), name: name, network: network, image: openresty_1_27_1_1_image, command: [] as List<String>)
   let copied = DockerCli.CopyInto(docker: docker(), source: conf_path as NonEmptyStr, destination: destination(name: name))
   let started = DockerCli.Start(docker: docker(), name: name)
   created.exit_code + copied.exit_code + started.exit_code
