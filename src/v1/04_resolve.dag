@@ -655,7 +655,12 @@ data resolve_node_bounded_masked_boundary: String = "Selective-import fail-close
 // AuthoredArguments (only the parser sets that role, and only the INPUT's role is judged for arity), so no producer
 // downstream that copies a resolved node can make it be judged as a written application again.
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, masked: Bool) -> NodeResolveResult {
-  let r = resolve_node_arm(n: n, env: env, module_name: module_name, depth: depth, masked: masked)
+  role_unforgeable(r: resolve_node_arm(n: n, env: env, module_name: module_name, depth: depth, masked: masked))
+}
+
+// The exit rule, applied by every caller of resolve_node_arm. The arm recurses on ITSELF (never through the wrapper) so the
+// emitter's direct-self-recursion test still guards the stack at the recursion site; each child result passes through here.
+fn role_unforgeable(r: NodeResolveResult) -> NodeResolveResult {
   if r.resolved.application_role == Present { value: AuthoredArguments } {
     NodeResolveResult { resolved: node_with_application_role(n: r.resolved, role: Present { value: ResolvedArguments }), diagnostics: r.diagnostics }
   } else { r }
@@ -677,7 +682,7 @@ fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, mask
   if n_is_callable_type {
     let param_results = n.params |> map(p =>
       let authored_param_type = param_node_type_expr(n: p)
-      let pr = resolve_node_bounded(n: authored_param_type, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+      let pr = role_unforgeable(r: resolve_node_arm(n: authored_param_type, env: env, module_name: module_name, depth: depth + 1, masked: masked))
       ParamResolveResult {
         param: make_resolved_param_node(
           occurrence_identity: p.occurrence_identity,
@@ -695,7 +700,7 @@ fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, mask
     let param_diags = flat_map(param_results, pr => pr.diagnostics)
     let return_resolution = match n.inferred {
       Present { value: Resolved { node: rt } } =>
-        let rr = resolve_node_bounded(n: rt, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+        let rr = role_unforgeable(r: resolve_node_arm(n: rt, env: env, module_name: module_name, depth: depth + 1, masked: masked))
         NodeResolveResult { resolved: rendered_use_site_type(authored: rt, resolved: rr.resolved), diagnostics: rr.diagnostics }
       _ => NodeResolveResult { resolved: unit_type, diagnostics: [] }
     }
@@ -717,7 +722,7 @@ fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, mask
       if n.type_annotation != none {
         match n.children |> first {
           Present { value: base } =>
-            let base_result = resolve_node_bounded(n: base, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+            let base_result = role_unforgeable(r: resolve_node_arm(n: base, env: env, module_name: module_name, depth: depth + 1, masked: masked))
             let base_resolved = base_result.resolved
             let base_diags = base_result.diagnostics
             NodeResolveResult {
@@ -732,7 +737,7 @@ fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, mask
             NodeResolveResult { resolved: child, diagnostics: [] }
           } else {
             let child_rt = resolved_type(n: child)
-            let rt_result = resolve_node_bounded(n: child_rt, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+            let rt_result = role_unforgeable(r: resolve_node_arm(n: child_rt, env: env, module_name: module_name, depth: depth + 1, masked: masked))
             let rt_resolved = rt_result.resolved
             let rt_diags = rt_result.diagnostics
             NodeResolveResult {
@@ -752,7 +757,7 @@ fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, mask
       let is_optional = n.return_cardinality == CardOptional
       if is_optional {
         let inner = with_required_cardinality(n: n)
-        let inner_result = resolve_node_bounded(n: inner, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+        let inner_result = role_unforgeable(r: resolve_node_arm(n: inner, env: env, module_name: module_name, depth: depth + 1, masked: masked))
         let inner_resolved = inner_result.resolved
         let inner_diags = inner_result.diagnostics
         NodeResolveResult {
@@ -770,7 +775,7 @@ fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, mask
               let rt_result = if is_self_ref {
                 NodeResolveResult { resolved: field_rt, diagnostics: [] }
               } else {
-                resolve_node_bounded(n: field_rt, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+                role_unforgeable(r: resolve_node_arm(n: field_rt, env: env, module_name: module_name, depth: depth + 1, masked: masked))
               }
               let rt_resolved = rt_result.resolved
               let rt_diags = rt_result.diagnostics
@@ -807,7 +812,7 @@ fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, mask
       [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: expected_arity, got: actual_arity, span: n.span }, module_name: module_name)]
     } else { [] }
     let kind_diags = type_param_kind_diagnostics(carrier: n, decl: decl, type_name: type_name, env: env, module_name: module_name)
-    let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1, masked: masked))
+    let arg_results = n.children |> map(child => role_unforgeable(r: resolve_node_arm(n: child, env: env, module_name: module_name, depth: depth + 1, masked: masked)))
     // A nested type application is a use site, the same fact rendered_use_site_type stamps at a
     // parameter root. The container arm leaves List.inferred empty; without this wrap, Optional<List<T>>
     // carries an unstamped List while List<T> as the root is stamped -- one construction of one question.
@@ -832,7 +837,7 @@ fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, mask
         Present { value: Resolved { node: target } } => substitute_type_slots(n: target, slot_bindings: slot_bindings, decl_name: type_name, source_indices: env.source_indices)
         _ => n
       }
-      let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, depth: depth + 1, masked: false)
+      let target_result = role_unforgeable(r: resolve_node_arm(n: alias_target, env: env, module_name: module_name, depth: depth + 1, masked: false))
       let is_recursive = is_recursive_type_by_name(env: env, name: type_name)
       let expanded_node = Node { occurrence_identity: OccurrenceSynthetic, name: type_name, span: n.span, ident_span: n.ident_span, children: target_result.resolved.children, connective: target_result.resolved.connective, params: [], inferred: target_result.resolved.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, application_role: Present { value: ResolvedArguments }, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
       let resolved_node = Node { occurrence_identity: n.occurrence_identity, name: type_name, span: n.span, ident_span: n.ident_span, children: resolved_args, connective: NoConnective, params: [], inferred: Present { value: Resolved { node: expanded_node } }, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, application_role: Present { value: ResolvedArguments }, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
@@ -852,10 +857,10 @@ fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, mask
       let val_child_node = match skip(n.children, 1) |> first { Present { value: v } => v  Absent => unit_type }
       let key_type = child_type_node(ch: key_child_node)
       let val_type = child_type_node(ch: val_child_node)
-      let key_result = resolve_node_bounded(n: key_type, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+      let key_result = role_unforgeable(r: resolve_node_arm(n: key_type, env: env, module_name: module_name, depth: depth + 1, masked: masked))
       let key_resolved = key_result.resolved
       let key_diags = key_result.diagnostics
-      let val_result = resolve_node_bounded(n: val_type, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+      let val_result = role_unforgeable(r: resolve_node_arm(n: val_type, env: env, module_name: module_name, depth: depth + 1, masked: masked))
       let val_resolved = val_result.resolved
       let val_diags = val_result.diagnostics
       let key_param_name = if key_child_node.inferred != none { authored_name(env: env, node: key_child_node) } else { match container_param_name(kind_name: type_name, index: 0) { Present { value: pn } => pn  Absent => authored_name(env: env, node: key_child_node) } }
@@ -871,7 +876,7 @@ fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, mask
     match n.children |> first {
       Present { value: child_node } =>
         let el_type = child_type_node(ch: child_node)
-        let el_result = resolve_node_bounded(n: el_type, env: env, module_name: module_name, depth: depth + 1, masked: masked)
+        let el_result = role_unforgeable(r: resolve_node_arm(n: el_type, env: env, module_name: module_name, depth: depth + 1, masked: masked))
         let el_resolved = el_result.resolved
         let el_diags = el_result.diagnostics
         let el_param_name = if child_node.inferred != none { authored_name(env: env, node: child_node) } else { match container_param_name(kind_name: type_name, index: 0) { Present { value: pn } => pn  Absent => authored_name(env: env, node: child_node) } }
@@ -895,7 +900,7 @@ fn resolve_node_arm(n: Node, env: TypeEnv, module_name: String, depth: Int, mask
               Present { value: Resolved { node: target } } =>
                 let target_is_coproduct_use = target.connective == NoConnective && target.children |> count > 0 && is_user_generic_use_site(n: target, env: env) && resolve_generic_use_decl(env: env, n: target).connective == Disj
                 if target_is_coproduct_use {
-                  resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1, masked: false).resolved
+                  role_unforgeable(r: resolve_node_arm(n: target, env: env, module_name: module_name, depth: depth + 1, masked: false)).resolved
                 } else {
                   preserve_nominal_brand_on_resolve(
                     identity: resolved,

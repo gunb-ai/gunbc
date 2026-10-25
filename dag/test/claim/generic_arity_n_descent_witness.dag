@@ -318,3 +318,13 @@ test fn arity_n_pos_alias_and_generic_applied_correctly() -> Bool {
 test fn arity_n_ctl_declaration_actual_binds_no_variant() -> Bool {
   gan_blocking_count(source: gan_ctl_declaration_actual_source) == 0
 }
+
+// A DEEP TYPE REFUSES OR RESOLVES, NEVER ABORTS (review 85935). resolve_node_bounded recursion is guarded by the
+// emitted stacker::maybe_grow only while it is DIRECT self-recursion (resolve_node_arm recurses on itself). Eighty
+// nested List<> levels is within the depth-100 refusal yet beyond the unguarded native stack; losing the guard
+// aborts the process (SIGSEGV) instead of returning a row. Asserts only that the census was OBSERVED.
+data gan_deep_type_source: String = "module arity_probe_mod\n\nimport std.types \{ List \}\n\nfn deep_f(x: List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<List<Int>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>) -> Int \{ 1 \}\n"
+
+test fn arity_n_ctl_deep_type_does_not_abort() -> Bool {
+  gan_blocking_count(source: gan_deep_type_source) >= 0
+}
