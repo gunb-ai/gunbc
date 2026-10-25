@@ -2141,7 +2141,8 @@ fn transport_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
 fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
 fn is_shell_transport(t: Node) -> Bool { t.body != none }
 fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
-// A local transport is the one undeclared_transport_node builds: no properties, no argv, no body.
+// A bare transport is the one undeclared_transport_node builds: no properties, no argv, no body. It
+// declares no realization, so it binds UnboundOperation and refuses; it is not a local transport.
 fn is_bare_transport(t: Node) -> Bool {
   t.properties |> count == 0 && t.children |> count == 0 && t.body == none
 }
