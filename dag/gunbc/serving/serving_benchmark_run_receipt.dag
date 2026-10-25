@@ -62,10 +62,17 @@ type ServingEngineBuild {
 type ServingEngineCell
   = StrataEngineCell { build: ServingEngineBuild, flags: StrataServeFlags }
 
+// The weights as files: a GGUF artifact may be split into shards, and each shard is identified by its own
+// digest, so one digest per artifact could not say which bytes the engine served.
+type ServingArtifactFile {
+  name: NonEmptyStr
+  digest: Sha256Digest
+}
+
 type ServingArtifact {
   name: NonEmptyStr
   quantization: NonEmptyStr
-  digest: Sha256Digest
+  files: List<ServingArtifactFile>
 }
 
 // What the host says its CPU is, as /proc/cpuinfo says it (extdeps.linux.proc_cpuinfo CpuModelReading):
