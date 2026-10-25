@@ -426,6 +426,7 @@ pub enum BareOccurrenceBinding {
         declaration: Rc<Node>,
     },
     BareOccurrenceIsKernelName,
+    BareOccurrenceUnbound,
     BareOccurrenceUndecided,
 }
 impl BareOccurrenceBinding {
@@ -438,6 +439,9 @@ impl BareOccurrenceBinding {
                 declaration: __val, ..
             } => __val.clone(),
             BareOccurrenceBinding::BareOccurrenceIsKernelName => {
+                panic!("no declaration on unit variant")
+            }
+            BareOccurrenceBinding::BareOccurrenceUnbound => {
                 panic!("no declaration on unit variant")
             }
             BareOccurrenceBinding::BareOccurrenceUndecided => {
@@ -608,7 +612,7 @@ pub fn bare_occurrence_binding(
                         if overlay_skips_kernel_name(name.clone()) {
                             Rc::new(BareOccurrenceBinding::BareOccurrenceIsKernelName)
                         } else {
-                            Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided)
+                            Rc::new(BareOccurrenceBinding::BareOccurrenceUnbound)
                         }
                     }
                 }
