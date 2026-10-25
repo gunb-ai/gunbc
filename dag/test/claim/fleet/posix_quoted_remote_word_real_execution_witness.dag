@@ -38,9 +38,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // login shell as its real passwd entry names it (extdeps.shell shell.Sh ReparseWith; no wrapping quotes, so no second
 // copy of the quoting under test, review 85958). It is not a live sshd: the transport itself is proven structurally
 // in the hermetic witness. The words are prefixed by
-// `printf '%s\n'`, so each word the shell sees becomes one output line. The words pass when the lines equal the raw
-// words exactly (no hostile word is empty, so the non-empty lines are compared: a runner that trims the final
-// newline changes nothing, and a word split in two still reds), and no expansion ran: the canary path named inside a $( ) word and a backtick word is never created.
+// `printf '%s\036'`, so each word the shell sees is followed by one ASCII record separator (octal 036, a byte no
+// hostile word carries). The words pass when the separated fields equal the raw words exactly (no hostile word is
+// empty, so the non-empty fields are compared), so a word split in two -- including the word whose newline is followed
+// by `touch <canary>` (merry-fox-82's condition for carrying newlines) -- still reds, and no expansion or second
+// command ran: the canary path named inside the $( ), backtick, `;`, `&&` and newline words is never created.
 // Refused by the hermetic envelope (shell.Exec and shell.Mktemp.Dir have no mock_response), so it is a LocalRepoWetLane
 // exclusion in gunbc.ci.ci_layer_roots.
 
@@ -79,6 +81,7 @@ fn hostile_words(canary: String) -> List<String> {
     concat(concat("`touch ", canary), "`"),
     concat("x;touch ", canary),
     concat("x&&touch ", canary),
+    concat("x\ntouch ", canary),
     "it's",
     "'\"",
     "a\\b",
@@ -108,7 +111,7 @@ test fn hostile_words_reach_sh_as_one_literal_word_each() -> Bool {
           PosixRemoteRouteUnmeasured { side: _, reason: _ } => false
           PosixRemoteRouteUncovered { side: _, release_name: _ } => false
           PosixRemoteRouteCovered { route: route } =>
-        match fleet_posix_quoted_leg(route: route, argv: concat(["printf", "%s\\n"], words)) {
+        match fleet_posix_quoted_leg(route: route, argv: concat(["printf", "%s\\036"], words)) {
           Absent => false
           Present { value: leg } => {
             let command = openssh_remote_command_string(arguments: fleet_remote_leg_strings(leg: leg))
@@ -116,7 +119,7 @@ test fn hostile_words_reach_sh_as_one_literal_word_each() -> Bool {
             let canary_present = shell.Test.IsFile(path: canary as FilePath)
             let cleaned = shell.Remove.RecursiveForce(path: dir.path)
             ran.success
-              && filter(split(s: ran.stdout, delimiter: "\n"), l => l != "") == words
+              && filter(split(s: ran.stdout, delimiter: "\x1e"), l => l != "") == words
               && canary_present.is_file == false
               && cleaned.success
               && fleet_remote_leg_target(leg: leg) == t
