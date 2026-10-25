@@ -2344,6 +2344,58 @@ fn ct_nat_beyond_the_64_bit_range_refuses_on_both_routes_test() -> String {
   )
 }
 
+// Every member of a recursive call-graph component gets the stack-growth guard, not only a direct
+// self-call: a two-function mutual recursion run past the default stack, built and executed.
+fn ct_mutually_recursive_group_survives_a_depth_past_the_default_stack_test() -> String {
+  concat(
+    "    // A MUTUALLY RECURSIVE GROUP GETS THE STACK-GROWTH GUARD, EXECUTED. v1.compiler.emit_rust guards a\n",
+    "    // function with stacker::maybe_grow when it can re-enter itself through any call chain (the registry's\n",
+    "    // component fact, v1.compiler.infer_sigs module_recursive_callables), not only a direct self-call.\n",
+    "    // THE FIXTURE is even_depth and odd_depth, each calling the other outside tail position through a\n",
+    "    // non-associative operation (n - f(n - 1)), which the optimizer cannot turn into a loop, and plain,\n",
+    "    // which calls nothing. Compiled by compile_sources, built as a crate and run at a depth past the\n",
+    "    // default 8 MiB main-thread stack: without the guard the process dies on a stack overflow; with it the\n",
+    "    // depth is returned. THE CONTROL: plain carries no guard, and the two group members each carry one.\n",
+    "    // Live: it builds a crate (minutes), so the receipts lane runs it.\n",
+    "    #[test]\n",
+    "    #[ignore = \"live-corpus: builds and runs an emitted crate (minutes per run); the receipts lane runs these with --ignored, the required unit run does not\"]\n",
+    "    fn mutually_recursive_group_survives_a_depth_past_the_default_stack() \{\n",
+    "        let fixture = \"module test.fixture.mutual_recursion_depth\\n\\nfn even_depth(n: Int) -> Int \{\\n  if n == 0 \{\\n    0\\n  } else \{\\n    n - odd_depth(n: n - 1)\\n  }\\n}\\n\\nfn odd_depth(n: Int) -> Int \{\\n  if n == 0 \{\\n    0\\n  } else \{\\n    n - even_depth(n: n - 1)\\n  }\\n}\\n\\nfn plain(n: Int) -> Int \{\\n  n + 1\\n}\\n\";\n",
+    "        let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile \{ path: \"dag/test/fixture/mutual_recursion_depth.dag\".to_string(), content: fixture.to_string() });\n",
+    "        let emitted = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![source].into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let module = emitted.files.iter().find(|f| f.path.contains(\"test_fixture_mutual_recursion_depth\")).map(|f| f.content.clone()).unwrap_or_else(|| panic!(\"the fixture must be emitted, diagnostics \{:?}\", emitted.diagnostics));\n",
+    "        let fn_text = |name: &str| -> String \{\n",
+    "            let start = module.find(&format!(\"pub fn \{name}(\")).unwrap_or_else(|| panic!(\"fn \{name} must be emitted:\\n\{module}\"));\n",
+    "            let rest = &module[start + 1..];\n",
+    "            let end = rest.find(\"\\npub fn \").map(|e| start + 1 + e).unwrap_or(module.len());\n",
+    "            module[start..end].to_string()\n",
+    "        };\n",
+    "        assert!(!fn_text(\"plain\").contains(\"stacker::maybe_grow\"), \"a function on no call cycle gets no guard:\\n\{module}\");\n",
+    "        for member in [\"even_depth\", \"odd_depth\"] \{\n",
+    "            assert!(fn_text(member).contains(\"stacker::maybe_grow\"), \"every member of a recursive group gets the guard (\{member}):\\n\{module}\");\n",
+    "        }\n",
+    "        let dir = std::env::temp_dir().join(format!(\"mutual_recursion_\{}\", std::process::id()));\n",
+    "        let _ = std::fs::remove_dir_all(&dir);\n",
+    "        std::fs::create_dir_all(&dir).expect(\"create the workspace root\");\n",
+    "        let rust_crate = emitted.rust_crates.front().expect(\"one emitted Rust crate\").clone();\n",
+    "        crate::cli_run::write_emitted_workspace(&emitted.files, &emitted.emitted_edges, &emitted.rust_crates, &dir, &rust_crate.crate_name).expect(\"the emitted workspace must be written by the one workspace writer\");\n",
+    "        std::fs::create_dir_all(dir.join(\"src/bin\")).expect(\"create bin dir\");\n",
+    "        std::fs::write(dir.join(\"src/bin/depth_probe.rs\"), String::from(\"fn main() \{\\n    use v1_compiled::test_fixture_mutual_recursion_depth as p;\\n    let n: i64 = std::env::args().nth(1).and_then(|a| a.parse().ok()).unwrap_or(1);\\n    println!(\\\"\{}\\\", p::even_depth(n));\\n}\\n\").replace(\"v1_compiled\", &rust_crate.crate_name)).expect(\"write probe bin\");\n",
+    "        let build = std::process::Command::new(\"cargo\")\n",
+    "            .args([\"build\", \"--release\", \"--offline\", \"--bin\", \"depth_probe\"])\n",
+    "            .current_dir(&dir)\n",
+    "            .env(\"CARGO_TARGET_DIR\", dir.join(\"target\"))\n",
+    "            .output()\n",
+    "            .expect(\"cargo must be on PATH\");\n",
+    "        assert!(build.status.success(), \"the emitted crate must build:\\n\{}\", String::from_utf8_lossy(&build.stderr));\n",
+    "        let out = std::process::Command::new(dir.join(\"target/release/depth_probe\")).arg(\"1000000\").output().expect(\"run the emitted probe\");\n",
+    "        assert!(out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == \"500000\", \"a mutually recursive group must survive a depth past the default stack; status \{:?}, stdout \{}, stderr \{}\", out.status, String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));\n",
+    "        let _ = std::fs::remove_dir_all(&dir);\n",
+    "    }\n",
+    "\n"
+  )
+}
+
 // The referencing-module arm admits only a bare spelling: a qualified reference to another module's
 // declaration, arriving unstamped, is not decided by the referencing module's own same-leaf one.
 fn ct_qualified_reference_is_not_decided_by_the_local_declarer_test() -> String {
@@ -2528,6 +2580,7 @@ fn ct_coercion_tests() -> String {
     ct_unbound_reference_to_a_twice_declared_leaf_refuses_test(),
     ct_qualified_reference_is_not_decided_by_the_local_declarer_test(),
     ct_nat_beyond_the_64_bit_range_refuses_on_both_routes_test(),
+    ct_mutually_recursive_group_survives_a_depth_past_the_default_stack_test(),
     ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test(),
     ct_unstamped_bare_optional_follows_the_lookup_binding_order_test(),
     ct_a_coproduct_named_optional_emits_as_its_own_enum_test(),
@@ -2573,6 +2626,7 @@ fn ct_generic_param_declines_fail_closed_unwrap_test() -> String {
     "            params: std::rc::Rc::new(vec![param].into()),\n",
     "            is_self_recursive: false,\n",
     "            has_non_tail_self_call: false,\n",
+    "            in_recursive_component: false,\n",
     "        }))\n",
     "    }\n\n",
     "    #[test]\n",

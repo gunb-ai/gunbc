@@ -51,7 +51,7 @@ import v1.std.core {
   lambda_param_names_at, lambda_body, is_children_list_field, is_sub_value_field,
   is_tree_size_preserving, is_tree_size_reducing, authored_name_at
 }
-import v1.compiler.infer_sigs { CallEdge }
+import v1.compiler.infer_sigs { CallEdge, collect_calls_in_expr }
 import v1.compiler.infer_types {
   resolved_type, node_is_collection
 }
@@ -2698,27 +2698,13 @@ fn extract_unknown_reason(expr: CostExpr) -> String {
   }
 }
 
-fn collect_local_call_edges_in_expr(caller: String, body: Node, local_func_set: Map<String, Bool>, si: Map<String, NewlineIndex>) -> List<CallEdge> {
-  let this_edges = match body.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
-      let callee = expr_call_func_at(texpr: body, source_indices: si)
-      if set_has(m: local_func_set, key: callee) { [CallEdge { caller: caller, callee: callee }] }
-      else { [] }
-    _ => []
-  }
-  let child_edges = body.children |> flat_map(child =>
-    collect_local_call_edges_in_expr(caller: caller, body: child, local_func_set: local_func_set, si: si)
-  )
-  concat(this_edges, child_edges)
-}
-
 fn build_call_graph(func_entries: List<FuncEntry>, si: Map<String, NewlineIndex>) -> CallGraph {
   let names = func_entries |> map(entry => entry.name)
   let local_func_set = names |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
   )
   let edges = func_entries |> flat_map(entry =>
-    collect_local_call_edges_in_expr(caller: entry.name, body: entry.body, local_func_set: local_func_set, si: si)
+    collect_calls_in_expr(caller: entry.name, texpr: entry.body, local_func_set: local_func_set, source_indices: si)
   )
   CallGraph {
     edges: edges

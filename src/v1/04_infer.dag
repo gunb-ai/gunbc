@@ -188,7 +188,7 @@ import v1.compiler.infer_resolve {
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
   DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
-  resolve_func_sigs, flatten_parent_envs,
+  resolve_func_sigs, flatten_parent_envs, module_recursive_callables,
   FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
   CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
   callable_identity_label, callable_candidate_labels,
@@ -17316,7 +17316,8 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module
         resource_requirements: requirements,
         params: item.params,
         is_self_recursive: if item.body == none { false } else { expr_has_self_call(texpr: item.body.value, fn_name: item_name_str, source_indices: source_indices) },
-        has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(texpr: item.body.value, fn_name: item_name_str, in_tail: true, source_indices: source_indices) }
+        has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(texpr: item.body.value, fn_name: item_name_str, in_tail: true, source_indices: source_indices) },
+        in_recursive_component: false
       }
     _ =>
       ItemInfo {
@@ -17327,7 +17328,8 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module
         resource_requirements: requirements,
         params: item.params,
         is_self_recursive: false,
-        has_non_tail_self_call: false
+        has_non_tail_self_call: false,
+        in_recursive_component: false
       }
   }
 }
@@ -17383,6 +17385,29 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
 // not this fold, and it is not walled here. Trigger: a per-module declaration census that counts
 // authored names before the registry flattens them, at which point the refusal has a subject that
 // can tell the two cases apart.
+// The one place in_recursive_component is set: once per module, after its items' infos are built, from
+// the module's call graph (v1.compiler.infer_sigs module_recursive_callables). A direct self-call is on
+// a cycle too, so the direct fact implies the component fact.
+fn mark_recursive_components(registry: Map<String, ItemInfo>, items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, ItemInfo> {
+  let members = module_recursive_callables(items: items, source_indices: source_indices)
+    |> fold(init: empty_set(), f: (acc, name) => set_insert(acc, name))
+  map_values(registry) |> fold(init: registry, f: (acc, info) =>
+    if info.is_self_recursive || set_contains(members, info.name) {
+      insert_item_by_identity(registry: acc, info: ItemInfo {
+        name: info.name,
+        module_name: info.module_name,
+        kind: info.kind,
+        service_names: info.service_names,
+        resource_requirements: info.resource_requirements,
+        params: info.params,
+        is_self_recursive: info.is_self_recursive,
+        has_non_tail_self_call: info.has_non_tail_self_call,
+        in_recursive_component: true
+      })
+    } else { acc }
+  )
+}
+
 fn insert_item_by_identity(registry: Map<String, ItemInfo>, info: ItemInfo) -> Map<String, ItemInfo> {
   map_insert(registry, callable_identity(id: DeclaredCallableIdentity {
     owner_module_path: info.module_name,
@@ -17874,7 +17899,7 @@ fn build_module_context(contributions: List<ItemContribution>,
     svc_registry: merged_scope.svc_registry,
     locals: all_locals,
     variant_locals: env_variant_locals,
-    item_registry: local.item_registry,
+    item_registry: mark_recursive_components(registry: local.item_registry, items: local.resolved_items, source_indices: env.source_indices),
     diagnostics: concat(concat(flat_map(local.diag_chunks, c => c), resolve_result.diagnostics), variant_collision_errors)
   }
 }

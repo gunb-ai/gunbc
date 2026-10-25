@@ -1942,6 +1942,16 @@ fn is_self_recursive(id: DeclaredCallableIdentity, body: Node, registry: Map<Str
   }
 }
 
+// WHETHER A FUNCTION CAN RE-ENTER ITSELF THROUGH ANY CALL CHAIN, which is what a stack-growth guard needs:
+// the registry's component fact (v1.compiler.infer build_module_context mark_recursive_components),
+// never a per-pair search here. An unregistered callable falls back to its own direct self-call.
+fn is_in_recursive_component(id: DeclaredCallableIdentity, body: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match lookup_item_by_identity(registry: registry, id: id) {
+    Present { value: info } => info.in_recursive_component
+    Absent => expr_has_self_call(texpr: body, fn_name: id.decl_name, source_indices: source_indices)
+  }
+}
+
 fn tco_loop_slot_name(param_name: String) -> String {
   concat("__tco_loop_", param_name)
 }

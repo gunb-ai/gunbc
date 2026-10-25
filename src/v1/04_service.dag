@@ -350,7 +350,8 @@ fn expand_transitive_services_once(module_callees: List<ModuleCallees>, registry
               resource_requirements: info.resource_requirements,
               params: info.params,
               is_self_recursive: info.is_self_recursive,
-              has_non_tail_self_call: info.has_non_tail_self_call
+              has_non_tail_self_call: info.has_non_tail_self_call,
+              in_recursive_component: info.in_recursive_component
             })
           }
         }

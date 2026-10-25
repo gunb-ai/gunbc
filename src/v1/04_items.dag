@@ -88,6 +88,9 @@ type ItemInfo {
   params: List<Node>
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
+  // On a cycle of its module's call graph, directly or through other functions of the module
+  // (v1.compiler.infer_sigs module_recursive_callables); is_self_recursive is the direct case alone.
+  in_recursive_component: Bool
 }
 
 // DOES THIS CALLEE HAVE EFFECTS -- ONE AUTHORITY, NAMED FOR WHAT IT ANSWERS RATHER THAN FOR ITS
