@@ -1623,12 +1623,16 @@ fn dashboard_declared_instance_roots_are_unique() -> Bool {
 }
 
 // The uniqueness law above compares spellings, so it means "one directory per instance" only over roots
-// spelled one way; this is that precondition, read off the same declared rows.
-fn dashboard_declared_instance_roots_are_one_spelling() -> Bool {
-  all(public_builtin_dashboard_instances(), i => match dashboard_instance_root_spelling_refusal(instance: i) {
+// spelled one way; this is that precondition, over any instance set, and read off the same declared rows.
+fn dashboard_instance_roots_are_one_spelling(instances: List<HostDashboardInstance>) -> Bool {
+  all(instances, i => match dashboard_instance_root_spelling_refusal(instance: i) {
     Present { value: _ } => false
     Absent => true
   })
+}
+
+fn dashboard_declared_instance_roots_are_one_spelling() -> Bool {
+  dashboard_instance_roots_are_one_spelling(instances: public_builtin_dashboard_instances())
 }
 
 // AT MOST ONE per host_identity among instances that answer host lookup. Distinct instance_ids

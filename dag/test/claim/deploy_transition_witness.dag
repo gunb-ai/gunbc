@@ -23,7 +23,7 @@ import gunbc.durable_cas_file_store { cas_file_slot_path }
 import std.durable_compare_and_set { cas_generation_first }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, dashboard_instance_root_spelling_refusal, dashboard_declared_instance_roots_are_one_spelling, srv1_live_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, dashboard_instance_root_spelling_refusal, dashboard_declared_instance_roots_are_one_spelling, dashboard_instance_roots_are_one_spelling, srv1_live_dashboard_instance }
 import gunbc.deploy_transition {
   TransitionSubject,
   TransitionActor,
@@ -251,6 +251,15 @@ test fn the_instance_root_rule_answers_each_spelling_by_its_own_arm() -> Bool {
     && string_contains(s: root_spelling_answer(root: "//opt/gunbc"), pattern: "segment")
     && string_contains(s: root_spelling_answer(root: "/opt/./gunbc"), pattern: "segment")
     && string_contains(s: root_spelling_answer(root: "/opt/gunbc/.."), pattern: "segment")
+}
+
+// THE LAW DISCRIMINATES: one relative or one trailing-separator root among canonical ones fails the set, and the
+// canonical set holds. Without this the declared-row claim below could only go red by a change to the rows.
+test fn one_badly_spelled_root_fails_the_instance_set() -> Bool {
+  let good = [instance_rooted(root: "/opt/gunbc"), instance_rooted(root: "/srv/gunbc")]
+  dashboard_instance_roots_are_one_spelling(instances: good)
+    && !dashboard_instance_roots_are_one_spelling(instances: [instance_rooted(root: "/opt/gunbc"), instance_rooted(root: "srv/gunbc")])
+    && !dashboard_instance_roots_are_one_spelling(instances: [instance_rooted(root: "/srv/gunbc/"), instance_rooted(root: "/opt/gunbc")])
 }
 
 // THE DECLARED INSTANCES INHABIT THE RULE: every production root both stores would mint over is spelled one way,
