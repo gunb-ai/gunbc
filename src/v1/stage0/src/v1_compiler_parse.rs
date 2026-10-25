@@ -14999,29 +14999,38 @@ pub fn parse_pipe_rhs(
             })
         };
         let method = callee.method.clone();
-        let wrapper_mint = mint_parsed_node_identity(
-            callee.ctx.clone(),
-            Rc::new(ParsedExtentAt::ConsumedWindow {
-                from: receiver_from.clone(),
-                to: receiver_to.clone(),
+        let leading_result = match callee.spine.clone() {
+            std::option::Option::None => Rc::new(ParsedNodesResult {
+                nodes: Rc::new(vec![receiver.clone()]),
+                ctx: callee.ctx.clone(),
             }),
-        );
-        let piped_arg = crate::v1_std_core::make_arg_node(
-            wrapper_mint.identity.clone(),
-            std::option::Option::None,
-            receiver.clone(),
-            receiver.span.clone(),
-            receiver.span.clone(),
-        );
-        let leading_nodes = match callee.spine.clone() {
-            std::option::Option::None => Rc::new(vec![piped_arg.clone()]),
-            Some(qualifier) => Rc::new(vec![qualifier.clone(), piped_arg.clone()]),
+            Some(qualifier) => {
+                let wrapper_mint = mint_parsed_node_identity(
+                    callee.ctx.clone(),
+                    Rc::new(ParsedExtentAt::ConsumedWindow {
+                        from: receiver_from.clone(),
+                        to: receiver_to.clone(),
+                    }),
+                );
+                Rc::new(ParsedNodesResult {
+                    nodes: Rc::new(vec![
+                        qualifier.clone(),
+                        crate::v1_std_core::make_arg_node(
+                            wrapper_mint.identity.clone(),
+                            std::option::Option::None,
+                            receiver.clone(),
+                            receiver.span.clone(),
+                            receiver.span.clone(),
+                        ),
+                    ]),
+                    ctx: wrapper_mint.ctx.clone(),
+                })
+            }
         };
-        let call_data = pipe_call_expr_data(callee.spine.clone());
         let tokens = skip_newlines(callee.tokens.clone());
         if tok_is_lparen(token_stream_first(tokens.clone())) {
             {
-                let r2 = parse_call_args(tokens.clone(), wrapper_mint.ctx.clone());
+                let r2 = parse_call_args(tokens.clone(), leading_result.ctx.clone());
                 if has_err(r2.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: dummy_expr.clone(),
@@ -15038,9 +15047,11 @@ pub fn parse_pipe_rhs(
                         crate::v1_std_core::make_named_expr_node(
                             identity,
                             method.clone(),
-                            call_data.clone(),
+                            Rc::new(ExprData::ExprMethodCall {
+                                method_semantics: std::option::Option::None,
+                            }),
                             v1_rt::concat(
-                                leading_nodes.clone(),
+                                leading_result.nodes.clone(),
                                 Rc::new({
                                     let mut __result = Vec::new();
                                     for na in r2.args.clone().iter().cloned() {
@@ -15069,13 +15080,15 @@ pub fn parse_pipe_rhs(
             parsed_expr_result(
                 receiver_from.clone(),
                 tokens.clone(),
-                wrapper_mint.ctx.clone(),
+                leading_result.ctx.clone(),
                 |identity| {
                     crate::v1_std_core::make_named_expr_node(
                         identity,
                         method.clone(),
-                        call_data.clone(),
-                        leading_nodes.clone(),
+                        Rc::new(ExprData::ExprMethodCall {
+                            method_semantics: std::option::Option::None,
+                        }),
+                        leading_result.nodes.clone(),
                         std::option::Option::None,
                         span.clone(),
                         callee.method_span.clone(),
@@ -15083,18 +15096,6 @@ pub fn parse_pipe_rhs(
                 },
             )
         }
-    }
-}
-
-pub fn pipe_call_expr_data(spine: Option<Rc<Node>>) -> Rc<ExprData> {
-    match spine.clone() {
-        std::option::Option::None => Rc::new(ExprData::ExprCall {
-            call_semantics: std::option::Option::None,
-            descent_evidence: std::option::Option::None,
-        }),
-        Some(_) => Rc::new(ExprData::ExprMethodCall {
-            method_semantics: std::option::Option::None,
-        }),
     }
 }
 
