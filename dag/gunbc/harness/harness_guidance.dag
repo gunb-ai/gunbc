@@ -203,7 +203,7 @@ fn harness_premise_text(p: HarnessPremise) -> String {
 fn harness_worker_guidance_at(worktree: String, test_command: String, test_receipt_path: String, compile_command: String, compile_receipt_path: String) -> List<HarnessGroundedPremise> {
   concat(harness_worker_guidance(), [
     grounded(premise: WorktreeAt { path: worktree },
-             module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_worktree_path_for_instance"),
+             module_path: "gunbc.roadmap.dispatch_worker_unit_confinement", decl_name: "dispatch_worktree_path_for_instance"),
     grounded(premise: CompileProcessIs { command: compile_command, receipt_path: compile_receipt_path },
              module_path: "gunbc.compute.test_run", decl_name: "compile_entry_cli"),
     grounded(premise: TestProcessIs { command: test_command, receipt_path: test_receipt_path },
