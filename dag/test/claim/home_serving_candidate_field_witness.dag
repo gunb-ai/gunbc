@@ -309,10 +309,16 @@ test fn home_serving_sxm_rows_stay_out_of_the_field() -> ProcessExit {
 // stops being minted goes red with the name of the missing cell in the failure reason.
 fn hscf_identity_key(e: ParetoEntry) -> String = e.identity.decl_name as String
 
+// THE RUNGS ARE READ FROM THE LADDER ITSELF, not typed here. The fold keeps the ladder in
+// home_serving_applied_rung_watts and a second copy of the same values in hscf_rung_for's lookup
+// chain (review 86426: a fifth rung is where the two would drift apart). Nothing else compared the
+// chain to the ladder -- with the rungs hard-coded here, adding a fifth rung to the ladder while
+// forgetting the chain would leave the field silently four-rung-wide and this claim still green.
+// Deriving them makes that omission red, naming the missing cell.
 test fn home_serving_field_covers_every_card_and_rung() -> ProcessExit {
   let keys = map(hscf_live(), e => hscf_identity_key(e: e))
   let cards = ["rtx_pro_5000_48gb", "rtx_pro_5000_72gb", "rtx_pro_6000_workstation", "rtx_pro_6000_max_q"]
-  let rungs = ["200w", "300w", "400w", "600w"]
+  let rungs = map(home_serving_applied_rung_watts, r => (nat_to_decimal_string(value: watt_count(w: r)) + "w") as String)
   let missing = flat_map(cards, c =>
     flat_map(rungs, r =>
       if any(keys, k => string_contains(s: k, pattern: (c + "_at_" + r) as String)) { [] } else { [(c + " @ " + r) as String] }
