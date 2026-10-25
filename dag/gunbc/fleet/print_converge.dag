@@ -36,7 +36,7 @@ import gunbc.fleet.printer_actuation { attempt_claim_key, start_claim_path, star
 import gunbc.fleet.printer_operator_approval { approve_and_print }
 import gunbc.fleet.printer_receipt { write_receipt }
 import gunbc.auth.access_token_source { AccessTokenSource }
-import gunbc.fleet.print_request {
+import gunbc.fleet.print_request { field, field_is, completion_text, completion_matches,
   PrintRequest, PrintRequestRecord, print_attempt_id, request_record_name, record_matches,
   PrintEvidence, NoRequestRecord, RecordedNotClaimed, ClaimedObserved, CompletionRecorded, CompletionRecordMismatched,
   print_standing, print_standing_name, print_action, Prepare, RequestBedClearThenStart, RecordCompletion, ObserveOnly, Stop,
@@ -99,13 +99,6 @@ fn record_json(r: PrintRequestRecord) -> String {
   ]))
 }
 
-// A field that is absent, malformed or empty is a refusal of the whole record, never a default.
-fn field(v: JsonValue, key: String) -> NonEmptyStr? {
-  match json_field_string(obj: v, key: key) { FieldRead { value: s } => if s == "" { none } else { Present { value: s as NonEmptyStr } } FieldAbsent => none FieldMalformed { cause: _ } => none }
-}
-fn field_is(v: JsonValue, key: String, expected: String) -> Bool {
-  match field(v: v, key: key) { Present { value: s } => (s as String) == expected Absent => false }
-}
 fn digest_field(v: JsonValue, key: String) -> Sha256Digest? {
   match field(v: v, key: key) { Present { value: s } => sha256_hex_digest(hex: s as String) Absent => none }
 }
@@ -125,6 +118,7 @@ fn read_record(request: PrintRequest) -> RecordRead {
       match parse_json_document(s: read.content) {
         JsonDocumentUnreadable { gap: _ } => RecordRefused { cause: "Request record is not JSON" }
         JsonDocumentParsed { value: v } => {
+          if !field_is(v: v, key: "schema", expected: "gunbc.print-request-record.v2") { return RecordRefused { cause: "Request record does not declare schema gunbc.print-request-record.v2" } }
           let request_id = match field(v: v, key: "request_id") { Present { value: x } => x Absent => return missing(name: "request_id") }
           let root = match field(v: v, key: "root") { Present { value: x } => x Absent => return missing(name: "root") }
           let recipe = match field(v: v, key: "recipe") { Present { value: x } => x Absent => return missing(name: "recipe") }
@@ -197,34 +191,6 @@ fn claimed_version(claim_path: String) -> NonEmptyStr? {
   match parse_json_document(s: read.content) { JsonDocumentParsed { value: v } => field(v: v, key: "credential_version") JsonDocumentUnreadable { gap: _ } => none }
 }
 
-fn completion_text(record: PrintRequestRecord, remote: NonEmptyStr, run_id: String, report: String) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "gunbc.print-completion.v2")),
-    json_kv(key: "request_id", value: json_string(s: record.request.request_id as String)),
-    json_kv(key: "printer", value: json_string(s: record.request.printer as String)),
-    json_kv(key: "attempt_id", value: json_string(s: record.attempt_id as String)),
-    json_kv(key: "artifact_sha256", value: json_string(s: record.artifact_sha256.hex as String)),
-    json_kv(key: "remote_name", value: json_string(s: remote as String)),
-    json_kv(key: "run_id", value: json_string(s: run_id)),
-    json_kv(key: "printer_report", value: json_string(s: report)),
-    json_kv(key: "meaning", value: json_string(s: "the printer finished this attempt; fit and visual acceptance are separate observations")),
-  ]))
-}
-
-// Completion counts only when the record restates this request, printer, attempt, artifact and job.
-fn completion_matches(text: String, record: PrintRequestRecord, remote: NonEmptyStr) -> Bool {
-  match parse_json_document(s: text) {
-    JsonDocumentUnreadable { gap: _ } => false
-    JsonDocumentParsed { value: v } =>
-      field_is(v: v, key: "schema", expected: "gunbc.print-completion.v2") &&
-      field_is(v: v, key: "request_id", expected: record.request.request_id as String) &&
-      field_is(v: v, key: "printer", expected: record.request.printer as String) &&
-      field_is(v: v, key: "attempt_id", expected: record.attempt_id as String) &&
-      field_is(v: v, key: "artifact_sha256", expected: record.artifact_sha256.hex as String) &&
-      field_is(v: v, key: "remote_name", expected: remote as String)
-  }
-}
-
 // The recorded file is copied to this pass's working path and re-hashed there; only bytes that hash
 // to the recorded digest reach the printer.
 fn copy_verified(record: PrintRequestRecord, path: String) -> Bool {
@@ -269,12 +235,17 @@ fn converge_print(request: PrintRequest, source_revision: NonEmptyStr, run_id: S
   } else {
     match resolve_credential_version(printer: record.request.printer, token_source: token_source) { Present { value: v } => v Absent => return exit_failure(reason: "Printer credential version could not be resolved from the registry") }
   }
-  let evidence = if completed {
-    let read = Filesystem.Read(path: concat(printer_start_claim_directory as String, concat("/", completion_name(claim_file: claim_file))))
-    if read.success && completion_matches(text: read.content, record: record, remote: remote) { CompletionRecorded } else { CompletionRecordMismatched }
-  } else {
-    let report = match session_report(printer: record.request.printer, version: version, token_source: token_source) { Present { value: t } => t Absent => return exit_failure(reason: "Printer observation unavailable; standing cannot be derived and nothing was sent") }
-    if claimed { ClaimedObserved { job: observe_job(text: report, remote: remote as String) } } else { RecordedNotClaimed { printer_ready: report_allows_start(text: report) } }
+  // The report that derives this pass's standing is the one any completion record retains; the
+  // record never carries a second, later observation that nothing checked.
+  let observed = if completed { none } else {
+    match session_report(printer: record.request.printer, version: version, token_source: token_source) { Present { value: t } => Present { value: t } Absent => return exit_failure(reason: "Printer observation unavailable; standing cannot be derived and nothing was sent") }
+  }
+  let evidence = match observed {
+    Absent => {
+      let read = Filesystem.Read(path: concat(printer_start_claim_directory as String, concat("/", completion_name(claim_file: claim_file))))
+      if read.success && completion_matches(text: read.content, record: record, remote: remote) { CompletionRecorded } else { CompletionRecordMismatched }
+    }
+    Present { value: report } => if claimed { ClaimedObserved { job: observe_job(text: report, remote: remote as String) } } else { RecordedNotClaimed { printer_ready: report_allows_start(text: report) } }
   }
   let standing = print_standing(evidence: evidence)
   let name = print_standing_name(s: standing)
@@ -285,7 +256,7 @@ fn converge_print(request: PrintRequest, source_revision: NonEmptyStr, run_id: S
       _ => exit_failure(reason: concat(name, ": a person must inspect the printer and the attempt's records; this request will not start again"))
     }
     RecordCompletion => {
-      let report = match session_report(printer: record.request.printer, version: version, token_source: token_source) { Present { value: t } => t Absent => return exit_failure(reason: "Printer observation unavailable at completion") }
+      let report = match observed { Present { value: t } => t Absent => return exit_failure(reason: "Completion standing without the observation that derived it") }
       if !Filesystem.WriteCreateNew(path: concat(printer_start_claim_directory as String, concat("/", completion_name(claim_file: claim_file))), content: completion_text(record: record, remote: remote, run_id: run_id, report: report)).success { return exit_failure(reason: "Completion observed but its record cannot be written") }
       write_receipt(printer: record.request.printer, standing: "completed", version: version as String, remote: remote as String, digest: record.artifact_sha256.hex as String, token_source: token_source)
     }
