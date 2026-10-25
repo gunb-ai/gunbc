@@ -3,7 +3,7 @@ module gunbc.deployment_risk
 import std.types { String, NonEmptyStr, Int, List, Bool }
 import std.optional { Present, Absent }
 import extdeps.ntfy.ntfy { NtfyTopic }
-import gunbc.auth.approval_notification { approval_ntfy_topic }
+import gunbc.auth.approval_ntfy_deployment { approval_ntfy_topic }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_bot_declared }
 
 // DEPLOYMENT-RISK CONFORMANCE -- the home of the vocabulary the operator fixed on 2026-10-03

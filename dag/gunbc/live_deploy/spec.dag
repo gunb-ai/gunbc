@@ -81,7 +81,7 @@ import gunbc.auth.tracker_web_oauth_client {
   TrackerWebOidcPlacementMissingRealization,
 }
 import extdeps.http.server { HttpServerListenConfig }
-import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_confirm_front_door }
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_approve_front_door }
 import gunbc.auth.approval_broker_cutover { approval_front_door_mounts_installed, approval_broker_front_door_endpoints }
 import product.network_topology { NetworkEndpoint }
 import gunbc.live_deploy.serve_binary { ServeBinarySource, AdmittedFixedServeBinary, admit_fixed_serve_path, PerReleaseBinary }
@@ -1248,7 +1248,7 @@ fn deployment_approval_broker_front_door_steps(holding: RoleSingletonHolding) ->
     [
       DeploymentArtifactStep {
         kind: UpsertOwned { kind: ApprovalBrokerFrontDoor },
-        path: tailscale_serve_route_member_path(endpoint: approval_broker_confirm_front_door(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)),
+        path: tailscale_serve_route_member_path(endpoint: approval_broker_approve_front_door(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)),
       },
     ]
   } else {
