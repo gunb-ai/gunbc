@@ -107,6 +107,14 @@ data rlm_expected_revision_env_name: String = "RLM_EXPECTED_REVISION"
 
 data fleet_converge_expected_host_env_name: String = "FLEET_CONVERGE_EXPECTED_HOST"
 
+// THE SUBJECT, NAMED SEPARATELY FROM THE EXECUTOR (operator ruling 2026-10-24, after run 40085967610).
+// The host-file modes (converge, withdraw, restore) pin their job to `inputs.host` -- the EXECUTOR -- and
+// act on a DIFFERENT host named here, over the FleetSsh edge. The reason is the drain: capping the host
+// the job itself runs on means the bracket waits for its own executor slot to drain, which never
+// happens (srv3-13 ran the converge that tried to drain srv3). A mode whose executor equals its subject
+// refuses as a precondition, before any drain or mask actuation, and readback stays an edge read.
+data fleet_converge_subject_host_env_name: String = "FLEET_CONVERGE_SUBJECT_HOST"
+
 data fleet_converge_arrival_subject_env_name: String = "FLEET_CONVERGE_ARRIVAL_SUBJECT"
 
 type ExpectedRevisionRead
