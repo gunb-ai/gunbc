@@ -1,7 +1,7 @@
 module product.printed_chassis.gpu_duct
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { Micrometer, micrometer, micrometer_count, rpm }
+import std.measure { Micrometer, micrometer, micrometer_count, rpm, milliampere_count, millilitre_per_second_count, pascal_count }
 import std.euclidean_geometry { Axis3Z }
 import extdeps.gpu.nvidia_a16 { a16_stated_length }
 import extdeps.fans.types {
@@ -14,7 +14,7 @@ import extdeps.fans.noctua {
 }
 import extdeps.fans.delta {
   delta_bfb1012m_envelope, delta_bfb1012m_envelope_standing, delta_bfb1012m_outlet_standing, delta_bfb1012m_rating,
-  delta_bfb1012m_rating_standing, delta_bfb1012m_listing_current_milliamperes, delta_bfb1012m_current_reconciliation,
+  delta_bfb1012m_rating_standing, delta_bfb1012m_listing_current, delta_bfb1012m_current_reconciliation,
   delta_bfb_series_datasheet_sha256,
 }
 import extdeps.units.iec_61672 { dba_tenths }
@@ -501,8 +501,11 @@ fn blower_presentation_members() -> List<JsonKeyValue> {
     json_kv(key: "blower_rating", value: json_object(members: [
       json_kv(key: "standing", value: cited_figure_json(standing: delta_bfb1012m_rating_standing)),
       json_kv(key: "datasheet_sha256", value: json_string(s: delta_bfb_series_datasheet_sha256 as String)),
-      json_kv(key: "rated_current_milliamperes", value: json_int(n: delta_bfb1012m_rating.rated_current_milliamperes)),
-      json_kv(key: "listing_current_milliamperes", value: json_int(n: delta_bfb1012m_listing_current_milliamperes)),
+      json_kv(key: "rated_current_milliamperes", value: json_int(n: milliampere_count(i: delta_bfb1012m_rating.rated_current) as Int)),
+      json_kv(key: "listing_current_milliamperes", value: json_int(n: milliampere_count(i: delta_bfb1012m_listing_current) as Int)),
+      json_kv(key: "free_air_flow_millilitres_per_second", value: json_int(n: millilitre_per_second_count(f: delta_bfb1012m_rating.free_air_flow) as Int)),
+      json_kv(key: "zero_flow_pressure_pascals", value: json_int(n: pascal_count(p: delta_bfb1012m_rating.zero_flow_pressure) as Int)),
+      json_kv(key: "tenths_dba", value: json_int(n: dba_tenths(level: delta_bfb1012m_rating.sound_pressure))),
       json_kv(key: "current_reconciliation", value: cited_figure_json(standing: delta_bfb1012m_current_reconciliation)),
     ])),
   ]

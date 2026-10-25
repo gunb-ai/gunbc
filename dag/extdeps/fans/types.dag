@@ -1,7 +1,7 @@
 module extdeps.fans.types
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.measure { Micrometer, Millimeter, Millivolt, Milliwatt, Percent, PublishedLevelCount, RevolutionsPerMinute, percent_count, published_level_count, published_level_count_value, rpm, rpm_count }
+import std.measure { Micrometer, Millimeter, Millivolt, Milliwatt, Milliampere, MillilitrePerSecond, Pascal, Percent, PublishedLevelCount, RevolutionsPerMinute, percent_count, published_level_count, published_level_count_value, rpm, rpm_count }
 import extdeps.units.iec_61672 { AWeightedSoundPressureLevel, dba_tenths }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.vendor { Vendor }
@@ -352,17 +352,17 @@ type RadialBlowerOutletCandidates {
   printed_figures: List<Micrometer>
 }
 
-// THE PUBLISHED RATING. Current, free-air flow and zero-flow pressure have no std.measure quantity
-// yet, so their unit is in the field name (milliamperes, thousandths of a CFM, millionths of an inch
-// of water); a quantity for each is the trigger to retype them.
+// THE PUBLISHED RATING, each figure on its std.measure carrier. Flow and pressure are carried at the
+// grain the axial fan rows already use (millilitres per second, pascals), converted from the sheet's
+// own unit by floor; the row that declares a figure states the sheet's figure beside it.
 type RadialBlowerRating {
   rated_voltage: Millivolt
   operating_voltage_low: Millivolt
   operating_voltage_high: Millivolt
-  rated_current_milliamperes: Int
+  rated_current: Milliampere
   input_power: Milliwatt
   speed: RevolutionsPerMinute
-  free_air_flow_milli_cfm: Int
-  zero_flow_pressure_micro_inh2o: Int
-  sound_pressure_tenths_dba: Int
+  free_air_flow: MillilitrePerSecond
+  zero_flow_pressure: Pascal
+  sound_pressure: AWeightedSoundPressureLevel
 }

@@ -1,7 +1,8 @@
 module extdeps.fans.delta
 
-import std.types { Int, NonEmptyStr }
-import std.measure { micrometer, millivolt, milliwatt, rpm }
+import std.types { NonEmptyStr }
+import std.measure { Milliampere, micrometer, millivolt, milliwatt, milliampere, millilitre_per_second, pascal, rpm }
+import extdeps.units.iec_61672 { tenths_dba }
 import extdeps.fans.types { RadialBlowerEnvelope, RadialBlowerOutletCandidates, RadialBlowerRating }
 import extdeps.vendor.delta { delta_electronics }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
@@ -76,23 +77,25 @@ data delta_bfb1012m_outlet_standing: CitedFigureStanding = TranscribedUncited {
 }
 
 // THE RATING ROW, read from the same sheet for -R00/-F00. Free-air flow and speed, pressure at zero
-// flow; "function type is optional". The operator's purchase listing says 0.48 A where the sheet says
+// flow; "function type is optional". The sheet states flow as 0.640 m3/min (22.60 CFM), carried as
+// 10666 mL/s (floor of 10666.7), and pressure as 19.00 mmH2O (0.748 inH2O), carried as 186 Pa (floor of
+// 186.3 at 9.80665 Pa per mmH2O). The operator's purchase listing says 0.48 A where the sheet says
 // 0.57 A, so the received unit's label is read before either is relied on.
 data delta_bfb1012m_rating: RadialBlowerRating = RadialBlowerRating {
   rated_voltage: millivolt(count: 12000),
   operating_voltage_low: millivolt(count: 4000),
   operating_voltage_high: millivolt(count: 13800),
-  rated_current_milliamperes: 570,
+  rated_current: milliampere(count: 570),
   input_power: milliwatt(count: 6840),
   speed: rpm(3200),
-  free_air_flow_milli_cfm: 22600,
-  zero_flow_pressure_micro_inh2o: 748000,
-  sound_pressure_tenths_dba: 490,
+  free_air_flow: millilitre_per_second(count: 10666),
+  zero_flow_pressure: pascal(count: 186),
+  sound_pressure: tenths_dba(490),
 }
 
 data delta_bfb1012m_rating_standing: CitedFigureStanding = CitedToAuthority { authority: delta_bfb_series_datasheet }
 
-data delta_bfb1012m_listing_current_milliamperes: Int = 480
+data delta_bfb1012m_listing_current: Milliampere = milliampere(count: 480)
 
 data delta_bfb1012m_current_reconciliation: CitedFigureStanding = TranscribedUncited {
   read_obligation: "Read the received BFB1012M's label: the purchase listing says 0.48 A and the datasheet says 0.57 A.",
