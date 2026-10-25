@@ -236,3 +236,66 @@ test fn a_cascade_with_one_unexplained_cause_among_cascade_causes_still_exits_on
     _ => false
   }
 }
+
+fn outside_declarer_cause() -> String {
+  "binding_refusal_cause\tbroken_by_wave\town\tresolve_reason_declarer_refused\t3:4\text.declarer\nbinding_refusal_cause\text.declarer\town\tresolve_reason_declarer_refused\t9:1\text.root\n"
+}
+
+fn standing_with_declarer(base_stdout: String, base_probed: String) -> CliWireResponse {
+  ambient_name_census_standing(
+    fixture_stdout: ambient_census_fixture_stdout(),
+    fixture_status: 0,
+    unindexed_status: 2,
+    tree_stdout: healthy_head() + outside_declarer_cause(),
+    tree_runs: "",
+    rewritten: both_rewritten(),
+    base_stdout: base_stdout,
+    base_probed: base_probed
+  )
+}
+
+test fn a_declarer_observed_refused_at_head_and_base_with_the_same_cause_class_carries_the_cascade() -> Bool {
+  match standing_with_declarer(
+    base_stdout: "binding_module\tbroken_by_wave\t1\t0\t0\t0\nbinding_unreached\talready_refused\tresolve\nbinding_unreached\text.declarer\tresolve\nbinding_refusal_cause\text.declarer\town\tresolve_reason_declarer_refused\t9:1\text.root\n",
+    base_probed: "broken_by_wave\nalready_refused\next.declarer\n"
+  ) {
+    CliWirePrintable { bytes: bytes, exit: ExitSuccess } =>
+      string_contains(s: bytes, pattern: "refused_rewritten\tbroken_by_wave\tresolve\trefused_by_carried_dependency")
+    _ => false
+  }
+}
+
+test fn a_declarer_refused_at_head_but_resolved_at_base_does_not_carry_and_exits_one() -> Bool {
+  match standing_with_declarer(
+    base_stdout: "binding_module\tbroken_by_wave\t1\t0\t0\t0\nbinding_unreached\talready_refused\tresolve\nbinding_module\text.declarer\t1\t0\t0\t0\n",
+    base_probed: "broken_by_wave\nalready_refused\next.declarer\n"
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: _ } } => code == 1
+    _ => false
+  }
+}
+
+test fn a_declarer_the_base_probe_did_not_observe_never_carries_and_exits_one() -> Bool {
+  match standing_with_declarer(
+    base_stdout: "binding_module\tbroken_by_wave\t1\t0\t0\t0\nbinding_unreached\talready_refused\tresolve\nbinding_unreached\text.declarer\tresolve\nbinding_refusal_cause\text.declarer\town\tresolve_reason_declarer_refused\t9:1\text.root\n",
+    base_probed: "broken_by_wave\nalready_refused\n"
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: _ } } => code == 1
+    _ => false
+  }
+}
+
+test fn a_declarer_refused_at_base_for_a_different_cause_class_does_not_carry() -> Bool {
+  match standing_with_declarer(
+    base_stdout: "binding_module\tbroken_by_wave\t1\t0\t0\t0\nbinding_unreached\talready_refused\tresolve\nbinding_unreached\text.declarer\tresolve\nbinding_refusal_cause\text.declarer\town\tresolve_reason_unbound_symbol\t9:1\t-\n",
+    base_probed: "broken_by_wave\nalready_refused\next.declarer\n"
+  ) {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: code, reason: _ } } => code == 1
+    _ => false
+  }
+}
+
+test fn the_probe_list_adds_the_named_declarers_one_hop_and_not_their_declarers() -> Bool {
+  ambient_census_probe_modules(tree_stdout: healthy_head() + outside_declarer_cause(), rewritten: both_rewritten())
+    == ["broken_by_wave", "already_refused", "ext.declarer"]
+}

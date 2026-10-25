@@ -322,10 +322,32 @@ fn ambient_census_module_storage_paths(module: String) -> List<String> {
   }
 }
 
+// THE MERGE-BASE PROBE LIST: the head-refused rewritten modules, plus the declarers those modules' located causes NAME
+// (binding_refusal_cause field 5), ONE HOP out and never transitively. A declarer that is not a rewritten module is still
+// a fact the cascade verdict stands on, so the base is asked about it; one the base is not asked about is unobserved.
 fn ambient_census_probe_modules(tree_stdout: String, rewritten: String) -> List<String> {
   let refused = fold(distinct_lines(lines: unreached_lines(stdout: tree_stdout)), init: empty_map(), f: fn(m, l) { map_insert(m, field_at(line: l, index: 1), field_at(line: l, index: 2)) })
-  unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
+  let heads = unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
     |> filter(m => match map_get(refused, m) { Present { value: _ } => true  Absent => false })
+  let named = distinct_lines(lines: split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_refusal_cause\t")))
+    |> filter(l => count(heads |> filter(m => m == field_at(line: l, index: 1))) != 0)
+    |> map(l => field_at(line: l, index: 5))
+    |> filter(d => d != "" && d != "-")
+  list_append(left: heads, right: distinct_lines(lines: named) |> filter(d => count(heads |> filter(m => m == d)) == 0))
+}
+
+// A DECLARER IS CARRIED WHEN IT IS OBSERVED REFUSED AT THE BASE AND AT THE HEAD WITH THE SAME CAUSE CLASS, rewritten or not.
+// Observed means the host probed it at the base and the base printed a binding_unreached line for it; a declarer the base was
+// not asked about, did not hold, or resolved is unobserved or newly refused, never carried. The cause class is the located
+// fatal reason (binding_refusal_cause field 3), compared head against base, one hop: the declarer's own declarer is not chased.
+fn declarer_refused_at_head_and_base(declarer: String, head_cause_rows: List<String>, base_stdout: String, base_probed: String) -> Bool {
+  let probed = split(s: base_probed, delimiter: "\n") |> filter(l => l == declarer)
+  let base_refused = unreached_lines(stdout: base_stdout) |> filter(l => field_at(line: l, index: 1) == declarer)
+  let head_reasons = head_cause_rows |> filter(l => field_at(line: l, index: 1) == declarer) |> map(l => field_at(line: l, index: 3))
+  let base_reasons = distinct_lines(lines: split(s: base_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_refusal_cause\t")))
+    |> filter(l => field_at(line: l, index: 1) == declarer) |> map(l => field_at(line: l, index: 3))
+  count(probed) != 0 && count(base_refused) != 0 && count(head_reasons) != 0
+    && count(head_reasons |> filter(r => count(base_reasons |> filter(b => b == r)) == 0)) == 0
 }
 
 // A head-refused rewritten module, judged against the merge base read by the same compiler over the base tree.
@@ -360,9 +382,9 @@ fn refused_standing_text(standing: RefusedStanding) -> String {
 // causes name no declarer, so they cannot be checked against the carried set and are never admitted here. The state is
 // listed and counted every run; it dissolves when its declarer resolves (the native-unbound `join` root in the import-wave
 // program, tidy-ant-251) because the module then leaves the refused set.
-fn refused_by_carried_dependency(cause_rows: List<String>, carried: List<String>, module: String) -> Bool {
+fn refused_by_carried_dependency(cause_rows: List<String>, carried: List<String>, base_stdout: String, base_probed: String, module: String) -> Bool {
   let mine = cause_rows |> filter(l => field_at(line: l, index: 1) == module)
-  let unexplained = mine |> filter(l => !(field_at(line: l, index: 2) == "own" && field_at(line: l, index: 3) == "resolve_reason_declarer_refused" && count(carried |> filter(c => c == field_at(line: l, index: 5))) != 0))
+  let unexplained = mine |> filter(l => !(field_at(line: l, index: 2) == "own" && field_at(line: l, index: 3) == "resolve_reason_declarer_refused" && (count(carried |> filter(c => c == field_at(line: l, index: 5))) != 0 || declarer_refused_at_head_and_base(declarer: field_at(line: l, index: 5), head_cause_rows: cause_rows, base_stdout: base_stdout, base_probed: base_probed))))
   count(mine) != 0 && count(unexplained) == 0
 }
 
@@ -397,7 +419,7 @@ fn ambient_name_census_standing(
   // at the head leaves refused_rewritten, and a module the base did not refuse is newly_refused, not carried.
   let carried = refused_rewritten |> filter(m => match refused_standing(module: m, base_probed: base_probed, base_stdout: base_stdout) { PreviouslyRefused => true  _ => false })
   let cause_rows = distinct_lines(lines: split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_refusal_cause\t")))
-  let cascaded = newly_candidates |> filter(m => refused_by_carried_dependency(cause_rows: cause_rows, carried: carried, module: m))
+  let cascaded = newly_candidates |> filter(m => refused_by_carried_dependency(cause_rows: cause_rows, carried: carried, base_stdout: base_stdout, base_probed: base_probed, module: m))
   let newly_refused = newly_candidates |> filter(m => count(cascaded |> filter(c => c == m)) == 0)
   let failed = failed_subject_runs(tree_runs: tree_runs)
   let attribution = module_subject_attribution(tree_stdout: tree_stdout)
