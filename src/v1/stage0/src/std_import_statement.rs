@@ -6,6 +6,7 @@ use self::ImportStripOutcome::*;
 use self::ImportStripProgress::*;
 use self::ImportStripRefusal::*;
 use self::ParsedImportStatements::*;
+pub use crate::std_algebra::{collection_join_shape, list_push};
 pub use crate::std_types::{FilePath, List, NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -423,9 +424,5 @@ pub fn strip_one_import_statement(
     source: String,
     statement: Rc<ParsedImportStatement>,
 ) -> Rc<ImportStripOutcome> {
-    strip_import_statements(
-        source_file.clone(),
-        source.clone(),
-        Rc::new(vec![statement.clone()]),
-    )
+    strip_import_statements(source_file, source, Rc::new(vec![statement.clone()]))
 }

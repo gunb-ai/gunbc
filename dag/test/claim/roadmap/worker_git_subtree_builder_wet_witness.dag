@@ -1,0 +1,717 @@
+module test.claim.roadmap.worker_git_subtree_builder_wet_witness
+
+// WORKER-ROOT-EQUIVALENT-3 wet witnesses for the argv builders the lab worker's commit grant is made
+// of: the shared-repository posture, written by the instance's own principal (extdeps/git), and the
+// bounded subtree re-group
+// (extdeps/tools/findutils). DESIGN 5 -- done means EXECUTED: an argv-shape claim stays green over a
+// command that cannot run. At 2dc2b8de3f98 all five git builders rendered
+// `git env GIT_CONFIG_GLOBAL=... git config ...` (argv_words is [program] ++ arguments, and their
+// arguments began with the word env), every one exited 1 with "git: 'env' is not a git command", and
+// the migration's chmod carried an unclosed `(` so find refused the expression and the grant never
+// landed. Not one of those was visible to any shape claim. These witnesses RUN each builder against a
+// throwaway tree and read back the EFFECT -- the config key git reports, the mode find reports.
+//
+// THE ROUTE IS THE PRODUCTION ROUTE: gunbc.command_runner run_shell_command_capture over
+// CommandTransport LocalExec, the same call the provision executor and the actuator make when they
+// spawn one of these ArgvCommands, and the same route the runner-revision wet witnesses take. The
+// witness never re-shells an argv: the ArgvCommand goes in as an ArgvCommand.
+//
+// WET: it creates a throwaway tree, writes into it, and runs real processes, so the hermetic envelope
+// refuses it; it is excluded from discovery and enrolled as declared wet entries
+// (gunbc.ci.ci_layer_roots, v2.workflow.local_repo_wet_terminal local_repo_wet_schedule). Local:
+//   claim_batch --wet --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag --functions <csv>
+// It needs a real `git`, GNU `find`, `stat`, `chmod`, `install`, `mkdir`, `rm` on the host and nothing
+// else: no srv1, no GPU card, no network, no systemd unit, no sudo -- and every directory it touches is
+// one it created under a mktemp root.
+
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import std.algebra { trim, Cons, Empty }
+import std.optional { Optional, Present, Absent }
+import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
+import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.git {
+  git_core_shared_repository_config_key, git_core_shared_repository_group_value,
+  git_gc_auto_config_key, git_maintenance_auto_config_key,
+  git_disabled_config_value, git_disabled_maintenance_config_value,
+  git_shared_repository_group_config_command, git_gc_auto_disabled_config_command,
+  git_maintenance_auto_disabled_config_command, git_repack_quiet_command, git_pack_refs_all_command,
+  git_local_config_get_command, git_init_quiet_command, git_add_all_force_command,
+  git_commit_snapshot_command, git_branch_command, git_show_ref_verify_quiet_command,
+  git_absolute_git_dir_premise_argv,
+}
+import extdeps.tools.findutils {
+  find_subtree_regroup_command, find_subtree_group_writable_command, find_subtree_mode_readback_command,
+  find_printf_type_directory_letter, find_printf_type_regular_file_letter,
+}
+// THE DEPTH THE WET TREE IS WALKED AT IS THE MODEL'S, NOT THE WITNESS'S PREFERENCE. Spelling 32 here
+// would let the witness walk deeper than the migration ever does -- and a tree the migration cannot
+// reach would look granted here and stay ungranted on the host.
+import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_git_worker_subtree_walk_depth, dashboard_git_worker_subtree_writes_files_in_place,
+  dashboard_git_worker_objects_child, dashboard_git_worker_refs_child, dashboard_git_worker_logs_child,
+}
+import extdeps.tools.gnu_coreutils {
+  mktemp_directory_command, mkdir_parents_command, install_empty_file_command, rm_recursive_force_command,
+  mv_exact_destination_command,
+}
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
+import extdeps.tools.id { id_gid_command, id_uid_command, id_group_name_command }
+import extdeps.posix.test_utility { test_regular_file_command }
+
+// RUNNING ONE BUILDER, exactly as the shipper would. This is gunbc.command_runner's production spawn --
+// the call the provision executor makes with the very ArgvCommand values the roadmap hands it -- so what
+// is tested is what ships, and the witness adds no shell, no quoting and no word list of its own
+// between the model and execve. A Refused outcome is FALSE here, never an error: an argv the host cannot
+// exec is the exact defect this file was written to catch.
+fn wet_ran(command: ArgvCommand) -> Bool {
+  match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+  }
+}
+
+fn wet_out(command: ArgvCommand) -> String {
+  match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessOutputPresent { text: t } => trim(s: t)
+    ProcessOutputAbsent => ""
+    ProcessRefused { exit_code: _, stderr: _ } => ""
+  }
+}
+
+fn wet_all(steps: List<ArgvCommand>) -> Bool {
+  all(xs: steps, predicate: c => wet_ran(command: c))
+}
+
+// THE INSTRUMENTS, all of them minted by an admitted tool builder and run through the same production
+// route: mkdir -p, install(1) for empty files at a stated mode, chmod, rm -rf, id -g, stat -c %a, test
+// -f, git init/add/commit/branch/show-ref. THE WITNESS MINTS NOTHING ITSELF -- no argv_command call
+// appears in this file at all, which is why no instrument can quietly disagree with the shape its tool
+// module declares.
+
+fn wet_mktree(paths: List<String>) -> Bool {
+  wet_all(steps: map(xs: paths, f: p => mkdir_parents_command(path: p)))
+}
+
+fn wet_touch_at(mode: NonEmptyStr, paths: List<String>, gid: Int) -> Bool {
+  wet_all(steps: map(xs: paths, f: p => install_empty_file_command(path: p, octal_mode: mode, uid: wet_self_uid(), gid: gid)))
+}
+
+// THE TREE THE MIGRATION IS APPLIED TO, in the state bright-moth-475 read on srv1 on 2026-10-17: the lab
+// instance repo's objects, refs and logs -- AND THEIR EXISTING SUBDIRECTORIES -- owned by a human account
+// at 0755 on directories / 0644 on files, which is what #14270 left behind (its owned-directory provider
+// asserts the top level and does not recurse). THE NESTED NAMES ARE NOT DECORATION:
+//   refs/heads/branches/x   a legal ref whose LAST SEGMENT is one of the confined names, and the shape a
+//                           bare prune pattern would silently cut out of the walk
+//   objects/pack, objects/info   the two subtrees #13942 keeps for root, which must not be re-grouped
+data wet_lab_tree_directories: List<String> = [
+  "objects/f9", "objects/pack", "objects/info", "refs/heads/branches", "logs/refs/heads", "hooks", "info",
+]
+
+data wet_lab_tree_directories_0755: List<String> = [
+  "objects", "objects/f9", "objects/pack", "objects/info", "refs", "refs/heads", "refs/heads/branches",
+  "logs", "logs/refs", "logs/refs/heads",
+]
+
+data wet_lab_tree_files_0644: List<String> = [
+  "objects/f9/0123456789abcdef0123456789abcdef01234567",
+  "objects/pack/pack.pack",
+  "objects/info/commit-graph",
+  "refs/heads/branches/x",
+  "logs/refs/heads/x",
+  "hooks/pre-commit",
+  "info/exclude",
+]
+
+fn wet_build_lab_tree(root: String, gid: Int) -> Bool {
+  wet_mktree(paths: map(xs: wet_lab_tree_directories, f: d => concat(root, concat("/", d))))
+    && wet_touch_at(mode: "0644", paths: map(xs: wet_lab_tree_files_0644, f: p => concat(root, concat("/", p))), gid: gid)
+    // THE TOP LEVEL TOO: objects/, refs/, logs/ themselves must be 0755, because that is the state the
+    // srv1 read found them in -- a fresh mkdir is 0755 under the usual umask, and chmod states it rather
+    // than trusting the umask of whatever process is running the witness.
+    && wet_all(steps: map(xs: wet_lab_tree_directories_0755, f: d => chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "0755", path: concat(root, concat("/", d)))))
+}
+
+// THE CLAIM'S OWN CREDENTIALS, asked of the host rather than assumed: the gid files are seeded with (so
+// the group bit the receipt reads is comparable) and the uid install(1) needs for ownership. install(1)
+// refuses to set an owner a non-root caller does not have, so both come from id(1) itself -- the
+// witness runs unprivileged and stays that way.
+// -1 WHEN THE GROUP CANNOT BE READ, not 0. The first version returned 0 for "absent", and 0 is a
+// REAL group -- the superuser's -- so every claim that guarded on `gid <= 0` refused to run on the
+// one host where the re-group can reach an arbitrary group at all, while the actual read failure
+// and root's own group were indistinguishable in the verdict. A sentinel must be outside the domain
+// it stands for; 0 was inside it.
+fn wet_self_gid() -> Int {
+  match parse_int(s: wet_out(command: id_gid_command())) {
+    Present { value: n } => n
+    Absent => -1
+  }
+}
+
+// install(1) takes a NUMERIC uid; `id -u` is the only honest answer for "the account running this
+// witness", and it is asked of the host through the same production route as everything else.
+// -1 WHEN THE USER CANNOT BE READ, for the same reason as wet_self_gid: 0 is a REAL uid -- the
+// superuser's -- so a guard written as `uid <= 0` would refuse to run on a root runner while the
+// genuine read failure was indistinguishable from it. A sentinel must sit OUTSIDE the domain it
+// stands for; 0 sits inside both domains.
+fn wet_self_uid() -> Int {
+  match parse_int(s: wet_out(command: id_uid_command())) {
+    Present { value: n } => n
+    Absent => -1
+  }
+}
+
+// THE GROUP TOKEN THIS WITNESS GROUPS WITH, AND THE ONE ITS RECEIPTS EXPECT: `id -gn`, the primary group
+// of the account running the claim. THE TWO MUST BE THE SAME STRING IN THE SAME SPELLING, which is why
+// this asks for the NAME and not the number `id -g` gives: find(1)'s `%g` prints the group NAME whenever
+// the gid maps to one, so a claim that grouped by number and compared receipts by number would watch its
+// own correct grant refuse -- the argv would carry "1000" while the receipt carried "node". The production
+// grant groups to fleet_posix_worker_shared_group_name, which a CI host has never been told about, and
+// `find -chgrp nosuchgroup` prints "invalid group" and EXITS 1 (verified against find 4.10.0), so naming
+// the production account here would measure the host's account database instead of the model. The tree is
+// the claim's own, in a directory the claim created, so the runner's own group is the honest token; the
+// production name is asserted by the dry pairing claim
+// the_production_route_names_the_declared_group_in_every_grant_command instead.
+//
+// "" WHEN THE HOST CANNOT SAY, and the claims below refuse on it: `chgrp ""` is a real command that
+// refuses, and a claim that read that as evidence about ownership would be fabricating a verdict.
+fn wet_group_token() -> String {
+  trim(s: wet_out(command: id_group_name_command()))
+}
+
+// THE RECEIPT AS EXACT LINES. The readback builder prints `<type-letter> <octal-mode>
+// <path-relative-to-target>`; a grant is asserted by a line being PRESENT AND EQUAL to what the model's
+// predicates demand -- never by a substring, which could match a different entry (or match "277" inside
+// "2775"). THE TYPE LETTER IS PART OF THE LINE HERE FOR THE SAME REASON THE MODEL DECIDES ON IT: the
+// claim says which KIND of entry it expects, so a walk that granted a setgid FILE where a directory
+// should be cannot satisfy a directory line and pass.
+//
+// ONE DIRECTORY LINE, as find prints it: `d`, the octal mode, a single space, then the path relative to
+// the target. Spelled here once so no claim can compare against a mode-and-path glued by the wrong
+// separator and pass on nothing.
+fn wet_line(mode: String, group: String, path: String) -> String {
+  concat(
+    find_printf_type_directory_letter as String,
+    concat(" ", concat(mode, concat(" ", concat(group, concat(" ", path))))),
+  )
+}
+
+// ONE REGULAR-FILE LINE. Separate from wet_line because the letter is the fact under test, not padding:
+// the two constructors cannot be confused with each other, and a claim that wanted a file can never be
+// satisfied by a directory at the same mode.
+fn wet_file_line(mode: String, group: String, path: String) -> String {
+  concat(
+    find_printf_type_regular_file_letter as String,
+    concat(" ", concat(mode, concat(" ", concat(group, concat(" ", path))))),
+  )
+}
+
+// THE TARGET'S OWN LINE: find's %P is EMPTY for the starting point, so the target prints as `d`, the
+// mode, a space and nothing else. Asserting it is the only way to say objects/ itself is granted -- the
+// entries alone would all be right while the parent that must accept tomorrow's new fan-out directory
+// stayed 0755.
+fn wet_target_line(mode: String, group: String) -> String {
+  concat(
+    find_printf_type_directory_letter as String,
+    concat(" ", concat(mode, concat(" ", concat(group, " ")))),
+  )
+}
+
+// A RECEIPT CONTAINS A LINE ENDING IN EACH OF THESE. The confined-subtree leg of the prunes claim needs
+// this rather than wet_receipt_has_all: those entries are read from the WHOLE-SUBTREE walk, so their lines
+// carry a group token, and the question being asked about them is "did the walk leave the mode alone" --
+// comparing the whole line would additionally require naming the group the tree was planted with, which is
+// a fact about the fixture's uid/gid and not the point of the leg. It is still a WHOLE-TAIL comparison
+// (the letter, the mode and the path must match in order at the end of the line), not a substring: "277"
+// still cannot match inside "2775", and a path cannot be matched by a different entry's suffix.
+fn wet_receipt_has_suffix(out: String, wanted: List<String>) -> Bool {
+  let lines = split(s: out, delimiter: "\n")
+  all(xs: wanted, predicate: w => any(xs: lines, predicate: l => ends_with(s: l, suffix: w)))
+}
+
+fn wet_receipt_has_all(out: String, wanted: List<String>) -> Bool {
+  let lines = split(s: out, delimiter: "\n")
+  all(xs: wanted, predicate: w => any(xs: lines, predicate: l => l == w))
+}
+
+// AN INTERIOR DIRECTORY, WHICH MAY BE EITHER GRANTED SHAPE. The migration's chmod leaves every
+// directory it walked sticky under objects/, but a fan-out directory git creates tomorrow CANNOT be:
+// mkdir inherits S_ISGID and not S_ISVTX, and git's adjust_shared_perm adds only the group triple.
+// A receipt demanding 3775 throughout would therefore refuse a correctly granted repository a day
+// after it passed -- so the target is asserted exactly (wet_receipt_has_all above) and the interior is
+// asserted as "one of the two granted shapes".
+fn wet_receipt_has_either(out: String, alternatives: List<List<String>>) -> Bool {
+  let lines = split(s: out, delimiter: "\n")
+  all(xs: alternatives, predicate: options => any(xs: options, predicate: o => any(xs: lines, predicate: l => l == o)))
+}
+
+fn wet_receipt_has_none(out: String, forbidden: List<String>) -> Bool {
+  let lines = split(s: out, delimiter: "\n")
+  all(xs: forbidden, predicate: w => !any(xs: lines, predicate: l => l == w))
+}
+
+// THE GRANTED MODES THE MODEL DECLARES, spelled here as the octal strings find prints. 2775 and 664 are
+// the same two numbers the model carries as 1533 and 436 (roadmap_dashboard_instance
+// dashboard_git_worker_granted_directory_mode / _file_mode); this witness is where they meet the
+// filesystem, so a model that declared a mode git or find would not actually produce goes red HERE and
+// not on srv1. THE SETGID BIT IS THE ONE THAT CANNOT BE FAKED by `chmod g+w` alone, and it is what makes
+// a fan-out directory git creates tomorrow inherit gunbc-attempt instead of the creating process's group.
+data wet_granted_directory_mode: String = "2775"
+
+// 03775, the mode .git/objects must END UP at: the granted directory plus the STICKY BIT. Rename(2)
+// checks the PARENT for write and not the entry, so a 02775 objects/ let a confined worker move the
+// tree owner's objects/pack aside (the 0555 on pack/ is no bar to a rename) and plant a symlink in
+// its place -- after which the named maintenance job writes new packs into, and `repack -d` deletes
+// packs from, a directory the worker chose. +t keeps the group's right to CREATE entries and takes
+// away only the rename and unlink of entries the caller does not own.
+data wet_granted_shared_directory_mode: String = "3775"
+data wet_granted_file_mode: String = "664"
+
+// 0644, THE MODE THE SRV1 READ FOUND THE FILES AT (briansrls:briansrls 775 directories, 644 files) and
+// the mode the migration must LEAVE ALONE wherever git only REPLACES a file. git creates a loose object at
+// 0444 and a leaf ref at 0644 even with core.sharedRepository=group (measured, 2026-10-19, git 2.47.3);
+// both are written by link-then-rename, which needs write on the PARENT DIRECTORY and none on the entry.
+// So the model asks for g+w behind `-type d` for objects/ and refs/, and only for logs/ -- the subtree
+// git APPENDS to, in place, on every commit (dashboard_git_worker_subtree_writes_files_in_place) -- does it
+// ask for g+w on files. This witness is where that per-subtree decision meets the filesystem: a model that
+// sprayed the file grant everywhere (the shape this PR shipped until the 0444 measurement) goes red below,
+// and a model that withheld it from logs/ goes red on the reflog line.
+data wet_planted_file_mode: String = "644"
+
+// The confined children of .git/objects, exactly as
+// gunbc.roadmap.roadmap_dashboard_instance dashboard_git_worker_subtree_confined_children declares them.
+data wet_objects_pruned: List<String> = ["pack", "info"]
+
+// ONE, THE SHARED-REPOSITORY POSTURE WRITES THE KEYS IT CLAIMS TO WRITE. The three config builders,
+// which production runs as the instance's own principal, RUN, and the repository afterwards says what
+// the model says it says: `git config --get
+// core.sharedRepository` answers `group`. That key is what the whole worker grant rests on -- without it
+// git creates a new object fan-out directory 0755 and a new reflog 0644, so the group write dies at the
+// worker's FIRST commit even though every directory above it is group-writable. At 2dc2b8de all three
+// exited 1 without writing anything, and no claim noticed. gc.auto=0 and maintenance.auto=false are the
+// consumer obligation for the repack that moves to the named maintenance job (DESIGN 3c): `git commit`
+// spawns `git maintenance run --auto`, whose sweep opens packed-refs.lock IN .git ITSELF, a path #13942
+// keeps out of the worker's reach -- measured as a printed "error unable to lock packed-refs file" over
+// an exit-0 commit, which
+// is exactly the noise that teaches an operator to ignore a confined write. THE READBACK IS THE
+// REPOSITORY'S OWN git (a builder is never asked to grade its own work), and a stray global config
+// cannot satisfy it: the posture's typed GIT_CONFIG_GLOBAL/GIT_CONFIG_NOSYSTEM refusals are what keep the
+// write pointed at the repository, and the keys land under the [core]/[gc]/[maintenance] sections
+// --local, not anywhere else.
+test fn the_shared_repository_posture_writers_reach_the_repository_when_run() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "wre3-posture-XXXXXX"))
+  if root == "" {
+    false
+  } else {
+    let seeded = wet_ran(command: git_init_quiet_command(repository_dir: root))
+    let wrote = wet_ran(command: git_shared_repository_group_config_command(repo: root as NonEmptyStr))
+      && wet_ran(command: git_gc_auto_disabled_config_command(repo: root as NonEmptyStr))
+      && wet_ran(command: git_maintenance_auto_disabled_config_command(repo: root as NonEmptyStr))
+    let shared = wet_out(command: git_local_config_get_command(repo: root as FilePath, key: git_core_shared_repository_config_key))
+    let gc_auto = wet_out(command: git_local_config_get_command(repo: root as FilePath, key: git_gc_auto_config_key))
+    let maintenance = wet_out(command: git_local_config_get_command(repo: root as FilePath, key: git_maintenance_auto_config_key))
+    // THE THREE KEY NAMES, HELD TO WHAT GIT CALLS THEM. The reads above go through the MODEL's rows, so
+    // this witness cannot drift away from the writers (the key names used to be
+    // restated here as literals, so a rename in the model left the readback checking a stale key). But a
+    // read that follows the model everywhere would pass while git ignores the repository -- write
+    // core.sharedRepositoryX, read core.sharedRepositoryX, and the claim is green over a posture that is
+    // not in effect. So the git-documented spellings appear exactly ONCE, HERE, as an assertion about
+    // what the model named the keys -- not as a second source used to read them. A rename in the model
+    // moves the read with it and FAILS here, which is the answer the reviewer wanted: the claim still
+    // pins the fact, and it does it in one place.
+    let keys_are_what_git_calls_them =
+      git_core_shared_repository_config_key == "core.sharedRepository"
+        && git_gc_auto_config_key == "gc.auto"
+        && git_maintenance_auto_config_key == "maintenance.auto"
+    let clean = wet_ran(command: rm_recursive_force_command(path: root))
+    keys_are_what_git_calls_them && seeded && wrote && shared == git_core_shared_repository_group_value
+      && gc_auto == git_disabled_config_value
+      && maintenance == git_disabled_maintenance_config_value && clean
+  }
+}
+
+// TWO, THE MIGRATION LANDS THE MODES ON AN EXISTING TREE. The re-group and the group-writable builders
+// RUN over the srv1-shaped tree and the receipt shows 2775 on every walked directory and 664 on every
+// walked file. At 2dc2b8de the chmod carried `"(", "-type", "d", ... "+"` with no closing paren: find
+// exited non-zero ("invalid expression; I was expecting to find a ')'"), the chmod never ran, the receipt
+// was empty -- and every shape claim stayed green because an argv is a list of words to a word-list
+// claim. THE EXISTING SUBDIRECTORIES ARE THE POINT: objects/f9 is the fan-out directory whose 0755 made
+// gunbc-worker's first commit fail, and it is the case #14270's non-recursive provider does not cover.
+test fn the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "wre3-migrate-XXXXXX"))
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || gid < 0 || group == "" {
+    false
+  } else {
+    let objects = concat(root, "/objects")
+    let refs = concat(root, "/refs")
+    let logs = concat(root, "/logs")
+    let built = wet_build_lab_tree(root: root, gid: gid)
+    let granted = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, pruned: wet_objects_pruned, depth: dashboard_git_worker_subtree_walk_depth))
+      // THE STICKY ARGUMENT IS THE MODEL'S DECISION, passed in rather than assumed: objects/ is the one
+      // subtree the model declares needs it (dashboard_git_worker_sticky_children), refs/ and logs/ are
+      // the ones it declares must not get it. So this claim exercises BOTH arms of that decision, and a
+      // model that flipped either goes red here.
+      && wet_ran(command: find_subtree_group_writable_command(
+        target: objects, pruned: wet_objects_pruned, sticky: true,
+        files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_objects_child),
+        depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_regroup_command(target: refs, group: group, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_group_writable_command(
+        target: refs, pruned: [], sticky: false,
+        files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_refs_child),
+        depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_regroup_command(target: logs, group: group, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_group_writable_command(
+        target: logs, pruned: [], sticky: false,
+        files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_logs_child),
+        depth: dashboard_git_worker_subtree_walk_depth))
+    let objects_receipt = wet_out(command: find_subtree_mode_readback_command(target: objects, pruned: wet_objects_pruned, depth: dashboard_git_worker_subtree_walk_depth))
+    let refs_receipt = wet_out(command: find_subtree_mode_readback_command(target: refs, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    let logs_receipt = wet_out(command: find_subtree_mode_readback_command(target: logs, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    let clean = wet_ran(command: rm_recursive_force_command(path: root))
+    built
+      && granted
+      // objects/, its EXISTING fan-out directory, and the loose object inside it. The bare "3775 " line
+      // is objects/ itself: without a group-writable AND setgid objects/, git cannot create tomorrow's
+      // fan-out directory at all -- the half of the grant a recursive chmod of CONTENTS alone would miss.
+      // THE LOOSE OBJECT IS READ AT THE MODE IT WAS PLANTED IN, 0644, and the matching has_none below
+      // forbids the grant's own 0664 spelling anywhere under objects/: git replaces a loose object by
+      // link-and-rename (write on the parent, none on the entry) and creates it at 0444 even with
+      // core.sharedRepository=group, so the file grant would buy nothing and is what the model withholds.
+      && wet_receipt_has_all(out: objects_receipt, wanted: [
+        wet_target_line(mode: wet_granted_shared_directory_mode, group: group),
+        // AN EXISTING FAN-OUT DIRECTORY GETS 3775, NOT 2775, AND THE DIFFERENCE IS THE STICKY ACTION'S
+        // REACH: the objects/ walk applies `a+t` to EVERY DIRECTORY IT WALKS, not only to objects/ itself
+        // (measured, find 4.10.0 on this tree: top 3775, f9 3775, object 644). The 2775 shape belongs to a
+        // fan-out directory GIT CREATES TOMORROW -- mkdir under a setgid parent inherits setgid and gets no
+        // sticky bit -- which is exactly why the fold's interior window accepts 2775 OR 3775 rather than one
+        // exact figure. Pinning 3775 here (rather than accepting either) is the point: this claim observes
+        // the migration's own output, and a sticky action that silently stopped covering interior
+        // directories -- leaving a worker-owned loose object renameable by a sibling attempt -- would read
+        // back 2775 and pass a lenient expectation.
+        wet_line(mode: wet_granted_shared_directory_mode, group: group, path: "f9"),
+        wet_file_line(mode: wet_planted_file_mode, group: group, path: "f9/0123456789abcdef0123456789abcdef01234567"),
+      ])
+      && wet_receipt_has_none(out: objects_receipt, forbidden: [
+        wet_file_line(mode: wet_granted_file_mode, group: group, path: "f9/0123456789abcdef0123456789abcdef01234567"),
+      ])
+      // refs/, its intermediate refs/heads (git mkdir's that path when a new branch is nested), and a
+      // branch UNDER a directory named branches -- both directories at 2775, so a new branch and a nested
+      // one are both creatable by the worker. THE LEAF REF KEEPS ITS PLANTED 0644 for the same reason the
+      // object does: git writes a ref via <ref>.lock + rename, and a sibling in the attempt group can
+      // still read it. The has_none forbids the grant's spelling on it.
+      && wet_receipt_has_all(out: refs_receipt, wanted: [
+        wet_target_line(mode: wet_granted_directory_mode, group: group),
+        wet_line(mode: wet_granted_directory_mode, group: group, path: "heads"),
+        wet_line(mode: wet_granted_directory_mode, group: group, path: "heads/branches"),
+        wet_file_line(mode: wet_planted_file_mode, group: group, path: "heads/branches/x"),
+      ])
+      && wet_receipt_has_none(out: refs_receipt, forbidden: [
+        wet_file_line(mode: wet_granted_file_mode, group: group, path: "heads/branches/x"),
+      ])
+      // logs/ mirrors refs/ one level at a time, and is THE ONE SUBTREE WHOSE FILES THE GRANT LANDS ON:
+      // the reflog is appended to IN PLACE by git on every commit, so a 0644 reflog is the exact failure
+      // measured on the host ("unable to append to .git/logs/HEAD: Permission denied", exit 128) even with
+      // every directory above it group-writable. This is the leg that distinguishes the model's per-child
+      // decision from a blanket one -- objects/ and refs/ above must NOT show it, logs/ must.
+      && wet_receipt_has_all(out: logs_receipt, wanted: [
+        wet_target_line(mode: wet_granted_directory_mode, group: group),
+        wet_line(mode: wet_granted_directory_mode, group: group, path: "refs"),
+        wet_line(mode: wet_granted_directory_mode, group: group, path: "refs/heads"),
+        wet_file_line(mode: wet_granted_file_mode, group: group, path: "refs/heads/x"),
+      ])
+      // THE PRUNED SUBTREES ARE NOT MERELY UNGRANTED, THEY ARE NOT EVEN LISTED: reaching the -printf is
+      // proof the walk stopped at the prune. EVERY granted spelling is forbidden -- both directory modes
+      // and both confined FILES -- because the first version of the prune fold emitted
+      // `( -path <t>/pack -path <t>/info )` with no separator between the tests, find read it as an
+      // impossible AND, pruned NOTHING, and the receipt came back with "2775 pack / 664 pack/pack.pack /
+      // 2775 info". A has_none that checked only one spelling, or only the directories, is the shape that
+      // let that defect look like a passing migration.
+      && wet_receipt_has_none(out: objects_receipt, forbidden: [
+        wet_line(mode: wet_granted_directory_mode, group: group, path: "pack"),
+        wet_line(mode: wet_granted_shared_directory_mode, group: group, path: "pack"),
+        wet_file_line(mode: wet_granted_file_mode, group: group, path: "pack/pack.pack"),
+        wet_line(mode: wet_granted_directory_mode, group: group, path: "info"),
+        wet_line(mode: wet_granted_shared_directory_mode, group: group, path: "info"),
+        wet_file_line(mode: wet_granted_file_mode, group: group, path: "info/commit-graph"),
+      ])
+      && clean
+  }
+}
+
+// THREE, THE PRUNE IS BOUNDED TO ITS TARGET, in both directions, read off the FILESYSTEM and never off
+// the word list. (a) WITH the prunes, the confined subtrees are still 755/644 -- read WITHOUT them,
+// because a receipt that omits them is not evidence they were left alone, only that the walk did not
+// look. (b) The SAME walk with the prunes DROPPED does reach them and grant them -- which is the state
+// #13942 forbids, so the effect the prunes prevent is demonstrated, not assumed. (c) THE ANCHOR: at
+// 2dc2b8de the prunes were bare `*/pack`, `*/info`, `*/hooks`, `*/branches` patterns, which match at ANY
+// depth -- so refs/heads/branches (a legal branch whose segment collides with a confined name) was
+// pruned out of the walk, left ungranted, and its owner could never update it. refs and logs therefore
+// declare NO prunes at all in the model, and the ref under a directory named branches is granted above.
+test fn the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "wre3-prune-XXXXXX"))
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || gid < 0 || group == "" {
+    false
+  } else {
+    let objects = concat(root, "/objects")
+    let refs = concat(root, "/refs")
+    let built = wet_build_lab_tree(root: root, gid: gid)
+    let walked = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, pruned: wet_objects_pruned, depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_group_writable_command(
+        target: objects, pruned: wet_objects_pruned, sticky: true,
+        files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_objects_child),
+        depth: dashboard_git_worker_subtree_walk_depth))
+    // (a) Whole-subtree read, prunes ABSENT, so the confined paths are visible at all.
+    let whole = wet_out(command: find_subtree_mode_readback_command(target: objects, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    let confined_untouched = wet_receipt_has_suffix(out: whole, wanted: [
+      join(["d 755 ", group, " pack"], ""),
+      join(["f 644 ", group, " pack/pack.pack"], ""),
+      join(["d 755 ", group, " info"], ""),
+      join(["f 644 ", group, " info/commit-graph"], ""),
+    ])
+    // (b) The same walk with the prunes dropped REACHES them -- the prunes are what stand between the
+    // migration and a confined-subtree grant, so this is the control that makes leg (a) mean something.
+    let unpruned = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(
+        command: find_subtree_group_writable_command(
+          target: objects, pruned: [], sticky: true,
+          // THE WORST CASE THE PRUNES PREVENT, asked for on purpose: the unpruned walk at the WIDEST grant
+          // the builder can emit (files included), which is what would land on pack/ and info/ if the prune
+          // group were ever dropped. The model itself passes false for objects/; this leg asks the opposite
+          // question so a leaked prune shows as a confined subtree handed the whole grant.
+          files_group_writable: true,
+          depth: dashboard_git_worker_subtree_walk_depth,
+        ),
+      )
+    let after = wet_out(command: find_subtree_mode_readback_command(target: objects, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    // Both granted directory shapes are accepted here: the walk is asked for the sticky bit (it is the
+    // same builder the migration runs over objects/), so pack/ and info/ come back 3775; the point of the
+    // leg is only that they are GRANTED at all, which the prunes are what prevent.
+    let unpruned_reaches_them = wet_receipt_has_either(out: after, alternatives: [
+      [wet_line(mode: wet_granted_directory_mode, group: group, path: "pack"), wet_line(mode: wet_granted_shared_directory_mode, group: group, path: "pack")],
+      [wet_file_line(mode: wet_granted_file_mode, group: group, path: "pack/pack.pack")],
+      [wet_line(mode: wet_granted_directory_mode, group: group, path: "info"), wet_line(mode: wet_granted_shared_directory_mode, group: group, path: "info")],
+    ])
+    // (c) The collision, read from the filesystem: the DIRECTORY named branches, and the directory under
+    // it, are walked and granted, which is what a bare `*/branches` prune would have prevented (it stopped
+    // the walk at refs/heads/branches, leaving BOTH 0755 -- and a worker cannot create the leaf ref, or a
+    // nested branch, under a directory it cannot write). THE GRANT HAS TO BE RUN TO BE OBSERVED -- the
+    // first version read refs/ back and expected 664 heads/branches/x without ever migrating refs/, so the
+    // leg asserted a mode no step in the claim had produced (it is green on srv1 only when something else
+    // happened to grant it, which is not a claim). refs/ walks with NO prunes and sticky: false, exactly as
+    // the model does for it, and the leaf ref keeps its planted 0644: refs are replaced, not appended.
+    let refs_granted = wet_ran(command: find_subtree_regroup_command(target: refs, group: group, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_group_writable_command(
+        target: refs, pruned: [], sticky: false,
+        files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_refs_child),
+        depth: dashboard_git_worker_subtree_walk_depth))
+    let refs_read = wet_out(command: find_subtree_mode_readback_command(target: refs, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    let clean = wet_ran(command: rm_recursive_force_command(path: root))
+    built
+      && walked
+      && confined_untouched
+      && unpruned
+      && unpruned_reaches_them
+      && wet_receipt_has_all(out: refs_read, wanted: [
+        // The DIRECTORY as well as the file: a bare `*/branches` prune stopped the walk at
+        // refs/heads/branches, so BOTH would have stayed 0755 / 0644.
+        wet_line(mode: wet_granted_directory_mode, group: group, path: "heads"),
+        wet_line(mode: wet_granted_directory_mode, group: group, path: "heads/branches"),
+        wet_file_line(mode: wet_planted_file_mode, group: group, path: "heads/branches/x"),
+      ])
+      && wet_receipt_has_none(out: refs_read, forbidden: [
+        wet_file_line(mode: wet_granted_file_mode, group: group, path: "heads/branches/x"),
+      ])
+      && clean
+  }
+}
+
+// SIX, THE STICKY BIT LANDS AND STILL LETS THE WORKER WORK. The finding that forced it is
+// that rename(2) checks the PARENT for write and not the entry, so a group-writable objects/ let a
+// confined attempt move the tree owner's objects/pack aside (its 0555 is no bar to being RENAMED) and
+// plant a symlink there -- after which the named maintenance job writes new packs into, and `repack -d`
+// deletes packs from, a directory the worker chose. THE CLAIM HAS TWO HALVES AND BOTH ARE NEEDED:
+//   (a) THE BIT IS THERE. objects/ reads back 03775 after the migration, and the two subtrees that do
+//       not need it (refs/, logs/) read back 02775 -- the model's own decision, exercised on both arms
+//       of the sticky: true / sticky: false split. If the model dropped `a+t` this goes red; if it put
+//       +t on refs and logs too, this also goes red.
+//   (b) THE FEATURE STILL WORKS. +t is only a hazard if it bars the worker from its OWN entries, so the
+//       worker renames a file it owns inside the sticky objects/, creates a new fan-out directory, and
+//       replaces its own index.lock-style entry -- all must succeed. This is the half that protects
+//       against the fix being applied where it must not be (the per-attempt worktree entry, where the
+//       instance principal's `git worktree add` leaves index and HEAD owned by IT: +t there would EPERM
+//       the very first `git add`).
+// THE HALF THIS FILE CANNOT RUN, and where it lives: mv of an entry the caller does NOT own must fail
+// with EPERM. Minting a foreign-owned entry needs privileges the wet runtime does not have (no sudo, no
+// root), and protected_hardlinks bars a hardlink of a file the caller cannot read, so the discriminating
+// EPERM case is a DECLARED STEP OF THE HOST QUALIFICATION (PR body, step 4b): root plants
+// objects/pack at 0644 in the migrated lab repo and the commit attempt's user must be refused. What is
+// checkable without privileges -- that the bit is set, and that it does not break the owner's own
+// renames -- is checked here, on the host, by executing.
+test fn the_sticky_bit_lands_where_the_model_puts_it_and_still_lets_the_worker_work() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "wre3-sticky-XXXXXX"))
+  let gid = wet_self_gid()
+  let group = wet_group_token()
+  if root == "" || gid < 0 || group == "" {
+    false
+  } else {
+    let objects = concat(root, "/objects")
+    let refs = concat(root, "/refs")
+    let built = wet_build_lab_tree(root: root, gid: gid)
+    let migrated = wet_ran(command: find_subtree_regroup_command(target: objects, group: group, pruned: wet_objects_pruned, depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_group_writable_command(
+        target: objects, pruned: wet_objects_pruned, sticky: true,
+        files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_objects_child),
+        depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_regroup_command(target: refs, group: group, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+      && wet_ran(command: find_subtree_group_writable_command(
+        target: refs, pruned: [], sticky: false,
+        files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: dashboard_git_worker_refs_child),
+        depth: dashboard_git_worker_subtree_walk_depth))
+    let objects_receipt = wet_out(command: find_subtree_mode_readback_command(target: objects, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    let refs_receipt = wet_out(command: find_subtree_mode_readback_command(target: refs, pruned: [], depth: dashboard_git_worker_subtree_walk_depth))
+    // (a) THE BIT, where the model says it goes and nowhere else.
+    let bit_placed = wet_receipt_has_all(out: objects_receipt, wanted: [
+      wet_target_line(mode: wet_granted_shared_directory_mode, group: group),
+    ])
+      && wet_receipt_has_none(out: refs_receipt, forbidden: [
+        wet_target_line(mode: wet_granted_shared_directory_mode, group: group),
+      ])
+      && wet_receipt_has_all(out: refs_receipt, wanted: [
+        wet_target_line(mode: wet_granted_directory_mode, group: group),
+      ])
+    // (b) THE WORKER STILL WORKS UNDER IT: create a fan-out directory, write an object into it, rename
+    // the file it owns (the index.lock -> index shape of every `git add`), and remove its own entry.
+    let mine = concat(objects, "/ab")
+    let worker_moves_still_work = wet_ran(command: mkdir_parents_command(path: mine))
+      && wet_touch_at(mode: "0664", paths: [concat(mine, "/lock")], gid: gid)
+      && wet_ran(command: mv_exact_destination_command(source: concat(mine, "/lock"), destination: concat(mine, "/c0ffee0000000000000000000000000000000000")))
+      && wet_ran(command: rm_recursive_force_command(path: mine))
+    let clean = wet_ran(command: rm_recursive_force_command(path: root))
+    built && migrated && bit_placed && worker_moves_still_work && clean
+  }
+}
+
+// FOUR, THE MAINTENANCE PAIR THE ROOT UNIT RUNS. `git gc --quiet` must complete and
+// `git pack-refs --all` must LEAVE A PACKED-REFS FILE -- the very file the worker is forbidden to
+// rewrite, whose lock lives in .git itself. The loose ref is asserted present BEFORE the packer runs
+// (test -f, not a cat), so a packed-refs afterwards can only be the packer's doing, and the ref is
+// asserted still reachable afterwards (git show-ref --verify), so a packer that mangled refs cannot
+// pass. At 2dc2b8de the gc argv spelled its option as four words (`-c`, `gc.auto`, `=`, `0`), which dies
+// as `git -c gc.auto = 0 gc` with "git: '=' is not a git command" -- and a builder that produced no
+// packed-refs at all would leave the nightly repack a silent no-op while every claim about it stayed
+// green. The identity flags git commit demands are carried by the builder that ships with them.
+test fn the_maintenance_pair_repacks_and_leaves_a_packed_refs_file() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "wre3-repack-XXXXXX"))
+  if root == "" {
+    false
+  } else {
+    let seeded = wet_ran(command: git_init_quiet_command(repository_dir: root))
+      && wet_ran(command: git_add_all_force_command(repository_dir: root))
+      && wet_ran(command: git_commit_snapshot_command(
+        repository_dir: root,
+        identity_name: "WORKER ROOT EQUIVALENT 3 WITNESS",
+        identity_email: "witness@invalid",
+        message: "seed",
+      ))
+      && wet_ran(command: git_branch_command(repository_dir: root, branch: "witness-branch" as NonEmptyStr))
+    let loose_before = wet_ran(command: test_regular_file_command(path: concat(root, "/.git/refs/heads/witness-branch")))
+    let gc = wet_ran(command: git_repack_quiet_command(repo: root as NonEmptyStr))
+    let packed = wet_ran(command: git_pack_refs_all_command(repo: root as NonEmptyStr))
+    let packed_file = wet_ran(command: test_regular_file_command(path: concat(root, "/.git/packed-refs")))
+    let ref_reachable = wet_ran(command: git_show_ref_verify_quiet_command(repository_dir: root, target: "refs/heads/witness-branch"))
+    let clean = wet_ran(command: rm_recursive_force_command(path: root))
+    seeded && loose_before && gc && packed && packed_file && ref_reachable && clean
+  }
+}
+
+// FIVE, THE ARGV SHAPE, pinned as the exact words the executor will spawn. `env` leads and appears
+// EXACTLY ONCE (at 2dc2b8de the builders passed program=git AND arguments beginning with the word env, so
+// the words read `git env GIT_CONFIG_GLOBAL=... git config ...`); `git` appears exactly once, as env's
+// operand; an option is never split across words (`=` alone, or a bare `gc.auto`, is not a git command);
+// and the two untrusted-config refusals are still there as bound words. This is the cheap half of the
+// wall -- claims ONE to FOUR are the half that RUNS. It needs no host at all, so it stays meaningful on
+// a machine with no git: a shape this file cannot execute is still a shape that must not ship.
+test fn the_posture_argv_words_are_executable_shapes() -> Bool {
+  let root = "/tmp/wre3-shape-unused"
+  let posture = [
+    git_shared_repository_group_config_command(repo: root as NonEmptyStr),
+    git_gc_auto_disabled_config_command(repo: root as NonEmptyStr),
+    git_maintenance_auto_disabled_config_command(repo: root as NonEmptyStr),
+    git_repack_quiet_command(repo: root as NonEmptyStr),
+    git_pack_refs_all_command(repo: root as NonEmptyStr),
+  ]
+  all(xs: posture, predicate: c => wet_argv_is_executable_shape(words: argv_words(command: c)))
+}
+
+// THE HEAD, then the shape. Read through the Option the list already gives -- an empty word list is
+// exactly what a builder that minted nothing would produce, and it must be FALSE here, not a panic.
+fn wet_argv_is_executable_shape(words: List<String>) -> Bool {
+  match first(words) {
+    Absent => false
+    Present { value: head } => wet_argv_leads_with_env(words: words, head: head as String)
+  }
+}
+
+fn wet_argv_leads_with_env(words: List<String>, head: String) -> Bool {
+  head == "env"
+    && wet_count_of(words: words, wanted: "env") == 1
+    && wet_count_of(words: words, wanted: "git") == 1
+    && !any(xs: words, predicate: w => w == "=")
+    // A SPLIT OPTION, not a key: `-c gc.auto = 0` was the 2dc2b8de shape, where the `key=value` operand
+    // became three words and git died naming `=`. The KEYS themselves (gc.auto, maintenance.auto) are
+    // legitimate words -- they are what the config write is about -- so the leg is about the `=` and the
+    // stray `-c`, never about a key's name. (An earlier version of this claim refused the word
+    // `maintenance.auto` outright and was therefore refuted by a builder doing its job.)
+    && !any(xs: words, predicate: w => w == "gc.auto = 0")
+    && !any(xs: words, predicate: w => w == "-c")
+    && any(xs: words, predicate: w => w == "GIT_CONFIG_GLOBAL=/dev/null")
+    && any(xs: words, predicate: w => w == "GIT_CONFIG_NOSYSTEM=1")
+}
+
+fn wet_count_of(words: List<String>, wanted: String) -> Int {
+  count(filter(xs: words, predicate: w => w == wanted))
+}
+
+// SIX, THE PREMISE ARGV SHAPE, pinned as the exact words the executor spawns -- the word-order claim the
+// port needs. The premise is an EXIT-STATUS leg whose ArgvCommand carries program: git_program(); the
+// arguments must therefore be ARGS-ONLY, and the whole executable line must read EXACTLY
+//   git -c safe.directory=<repo> --git-dir <repo>/.git rev-parse --absolute-git-dir
+// with the program word "git" present EXACTLY ONCE. This is the second sighting of the 2dc2b8de defect
+// class in this file's own ledger: there the builders passed program=git AND arguments beginning with "env"
+// (so the words read `git env ... git config`); here a git_argv_of_args wrapper put the program word into
+// the arguments of an argv_command that also supplied program=git, so every spawn was `git git -c ...` and
+// git answered "'git' is not a git command" (exit 1). srv1 caught it (job r14328p3t2 at 96f6c467ab9c): the
+// premise halted at git-worker-subtree-premise on EVERY repository. The DRY word-order claim that was here
+// pinned the args LIST (program word first) and the plan witness compared the leg's command to the same
+// builder -- both the builder agreeing with itself, so both stayed green over a broken argv. Pinning
+// argv_words (program ++ arguments, the shape that actually executes) discriminates: a doubled program
+// makes "git" count 2 and the whole comparison false. Like the posture shape claim it needs no host, so it
+// is meaningful on a machine with no git -- a shape this file cannot execute still must not ship.
+test fn the_premise_argv_words_are_an_executable_shape_with_one_program_word() -> Bool {
+  let root = "/tmp/wre3-premise-shape-unused"
+  let command = git_absolute_git_dir_premise_argv(repo: root as NonEmptyStr)
+  // The PROGRAM and the ARGUMENTS are pinned separately, the way they execute: the program is git's, and
+  // the arguments are ARGS-ONLY -- their first word is the option "-c", never the program word. A builder
+  // that wraps git_argv_of_args again puts "git" at the head of the arguments, and the words the executor
+  // spawns become `git git -c ...`.
+  (command.program.invocation as String) == "git"
+    && (match command.arguments {
+      Cons { head: h, tail: _ } => h == "-c"
+      Empty => false
+    })
+    && argv_words(command: command)
+      == [
+        "git", "-c", concat("safe.directory=", root),
+        "--git-dir", concat(root, "/.git"), "rev-parse", "--absolute-git-dir",
+      ]
+    && wet_count_of(words: argv_words(command: command), wanted: "git") == 1
+    && wet_count_of(words: argv_words(command: command), wanted: "-c") == 1
+    && wet_count_of(words: argv_words(command: command), wanted: "rev-parse") == 1
+}

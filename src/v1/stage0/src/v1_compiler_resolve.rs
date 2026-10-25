@@ -234,13 +234,16 @@ pub fn resolve_modules_with_occurrence_transport(
             __result
         });
         let sorted_resolved = Rc::new({
-            let mut __sorted: Vec<_> = acyclic_resolved.iter().cloned().collect();
-            __sorted.sort_by(|a: &Rc<ResolvedModule>, b: &Rc<ResolvedModule>| {
-                let __ka = (|m: Rc<ResolvedModule>| m.dep_order.clone())(a.clone());
-                let __kb = (|m: Rc<ResolvedModule>| m.dep_order.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            let mut __keyed: Vec<_> = acyclic_resolved
+                .iter()
+                .cloned()
+                .map(|__e: Rc<ResolvedModule>| {
+                    let __k = (|m: Rc<ResolvedModule>| m.dep_order.clone())(__e.clone());
+                    (__k, __e)
+                })
+                .collect();
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         Rc::new(ModuleGraph {
             modules: sorted_resolved.clone(),
@@ -277,7 +280,7 @@ pub fn resolve_modules(
             }
             __result
         }),
-        source_indices.clone(),
+        source_indices,
         Rc::new(OccurrenceTransport {
             index: Rc::new(OccurrenceIndex {
                 entries: Rc::new(vec![]),
@@ -387,10 +390,7 @@ pub fn module_type_declaration_names(
             let mut __result = Vec::new();
             for item in Rc::new({
                 let mut __result = Vec::new();
-                for item in crate::v1_std_core::module_items(module.clone())
-                    .iter()
-                    .cloned()
-                {
+                for item in crate::v1_std_core::module_items(module).iter().cloned() {
                     if (item.module_item_kind.clone()
                         == ParsedModuleItemKind::ModuleItemTypeDeclaration)
                     {
@@ -464,17 +464,17 @@ pub fn kernel_named_import_child_diags(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone());
+        let name = crate::v1_std_core::authored_name_at(source_indices, child.clone());
         kernel_named_import_diags(
             crate::std_literal_elaboration::kernel_named_import_standing(
                 name.clone(),
                 import_path.clone(),
-                map_has(type_decl_names.clone(), name.clone()),
+                map_has(type_decl_names, name.clone()),
                 kernel_mint_declaration_rows(),
             ),
             name.clone(),
             import_path.clone(),
-            importing_module.clone(),
+            importing_module,
             child.span.clone(),
         )
     }
@@ -522,7 +522,7 @@ pub fn resolve_import(
     {
         let import_path =
             crate::v1_std_core::authored_name_at(source_indices.clone(), import.clone());
-        let target = find_module(module_index.clone(), import_path.clone());
+        let target = find_module(module_index, import_path.clone());
         match target.clone() {
             std::option::Option::None => {
                 let diag = crate::v1_std_core::make_error_node(
@@ -758,7 +758,7 @@ pub fn get_item_name(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
+    crate::v1_std_core::authored_name_at(source_indices, item)
 }
 
 pub fn get_variant_names(
@@ -1019,7 +1019,7 @@ pub fn topological_sort(
             },
         );
         let initial_queue = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new({
+            let mut __keyed: Vec<_> = Rc::new({
                 let mut __result = Vec::new();
                 for name in module_names.iter().cloned() {
                     if match v1_rt::map_get(&in_degree_map, name.clone()) {
@@ -1033,20 +1033,20 @@ pub fn topological_sort(
             })
             .iter()
             .cloned()
+            .map(|__e: String| {
+                let __k = (|name: String| topo_sort_key(name.clone()))(__e.clone());
+                (__k, __e)
+            })
             .collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|name: String| topo_sort_key(name.clone()))(a.clone());
-                let __kb = (|name: String| topo_sort_key(name.clone()))(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         let module_count = (modules.clone().len() as i64);
         let result = kahn_drain(
-            initial_queue.clone(),
+            initial_queue,
             Rc::new(vec![]),
             in_degree_map.clone(),
-            adjacency.clone(),
+            adjacency,
             module_count.clone(),
         );
         if ((result.sorted.clone().len() as i64) == module_count.clone()) {
@@ -1189,19 +1189,19 @@ pub fn kahn_drain(
             },
         );
         let new_zero = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&new_zero_set))
+            let mut __keyed: Vec<_> = Rc::new(v1_rt::map_keys(&new_zero_set))
                 .iter()
                 .cloned()
+                .map(|__e: String| {
+                    let __k = (|name: String| name.clone())(__e.clone());
+                    (__k, __e)
+                })
                 .collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|name: String| name.clone())(a.clone());
-                let __kb = (|name: String| name.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
-            });
-            __sorted
+            __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+            __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
         });
         {
-            let __tco_0 = new_zero.clone();
+            let __tco_0 = new_zero;
             let __tco_1 = batch_result.sorted.clone();
             let __tco_2 = batch_result.in_degree_map.clone();
             let __tco_3 = adjacency;

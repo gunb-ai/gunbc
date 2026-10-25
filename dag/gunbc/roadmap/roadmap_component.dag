@@ -37,7 +37,7 @@ import extdeps.languages.typescript.program {
   TsProgram, TsExpr, TsStmt, serialize_typescript_program,
   ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_binop, ts_arrow, ts_block,
   ts_const, ts_let, ts_return, ts_new, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_object, ts_field,
-  ts_array, ts_try,
+  ts_quoted_field, ts_array, ts_try,
 }
 import extdeps.w3c.device_orientation_and_motion {
   devicemotion_event_type, device_motion_event_interface,
@@ -501,6 +501,63 @@ fn dispatch_fetch_url_expr() -> TsExpr {
   )
 }
 
+// CSRF TOKEN, NOT ORIGIN: gunbc.auth.request_authentication csrf_write_decision is the inhabited
+// cross-site proof. The daily page is prerendered, so the token cannot ride in HTML; GET
+// /auth/session returns it only on a live Google OIDC session. A cross-site POST presents no
+// matching token (and typically no session cookie).
+fn dispatch_csrf_post_expr(url_expr: TsExpr) -> TsExpr {
+  ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(
+          object: ts_call(
+            callee: ts_ident(name: "fetch"),
+            args: [
+              ts_lit_str(value: "/auth/session"),
+              ts_object(fields: [
+                ts_field(key: "credentials", value: ts_lit_str(value: "same-origin")),
+                ts_field(key: "cache", value: ts_lit_str(value: "no-store")),
+              ]),
+            ],
+          ),
+          property: "then",
+        ),
+        args: [ts_arrow(params: ["response"], body: ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "response"), property: "json"), args: [])))],
+      ),
+      property: "then",
+    ),
+    args: [ts_arrow(params: ["session"], body: ts_expr_stmt(expr: ts_call(
+      callee: ts_ident(name: "fetch"),
+      args: [
+        url_expr,
+        ts_object(fields: [
+          ts_field(key: "method", value: ts_lit_str(value: "POST")),
+          ts_field(key: "credentials", value: ts_lit_str(value: "same-origin")),
+          ts_field(key: "headers", value: ts_object(fields: [
+            ts_quoted_field(key: "Content-Type", value: ts_lit_str(value: "application/x-www-form-urlencoded")),
+          ])),
+          ts_field(key: "body", value: ts_binop(
+            left: ts_lit_str(value: "csrf="),
+            op: "+",
+            right: ts_call(
+              callee: ts_ident(name: "encodeURIComponent"),
+              args: [ts_binop(
+                left: ts_binop(
+                  left: ts_ident(name: "session"),
+                  op: "&&",
+                  right: ts_member(object: ts_ident(name: "session"), property: "csrf"),
+                ),
+                op: "||",
+                right: ts_lit_str(value: ""),
+              )],
+            ),
+          )),
+        ]),
+      ],
+    )))],
+  )
+}
+
 // The presented-state choreography (remodel W1d, operator ruling 2026-07-24: transitions are sugar
 // over the data layer). The DATA layer applies the wire answer the moment it arrives —
 // b.dataset.status lands immediately, nothing about the operation waits. The PRESENTATION holds the
@@ -755,9 +812,15 @@ fn dispatch_terminal_apply_body() -> TsStmt {
             test: ts_binop(
               left: ts_ident(name: "band"),
               op: "===",
-              right: ts_lit_str(value: "fail")),
-            consequent: ts_lit_str(value: dispatch_caption_fail),
-            alternate: ts_lit_str(value: dispatch_caption_loud)),
+              right: ts_lit_str(value: "in-progress")),
+            consequent: ts_lit_str(value: dispatch_caption_requested),
+            alternate: ts_cond(
+              test: ts_binop(
+                left: ts_ident(name: "band"),
+                op: "===",
+                right: ts_lit_str(value: "fail")),
+              consequent: ts_lit_str(value: dispatch_caption_fail),
+              alternate: ts_lit_str(value: dispatch_caption_loud))),
         ),
       ),
     )),
@@ -768,7 +831,11 @@ fn dispatch_terminal_apply_body() -> TsStmt {
     js_classlist_call(method: "add", arg: ts_cond(
       test: ts_ident(name: "ok"),
       consequent: ts_lit_str(value: dispatch_class_ok),
-      alternate: ts_lit_str(value: dispatch_class_refused),
+      alternate: ts_cond(
+        test: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "in-progress")),
+        consequent: ts_lit_str(value: dispatch_class_requested),
+        alternate: ts_lit_str(value: dispatch_class_refused),
+      ),
     )),
     ts_if(
       cond: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "loud")),
@@ -888,10 +955,7 @@ fn dispatch_click_handler_body(url_expr: TsExpr) -> TsStmt {
           callee: ts_member(
             object: ts_call(
               callee: ts_member(
-                object: ts_call(
-                  callee: ts_ident(name: "fetch"),
-                  args: [url_expr, ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))])],
-                ),
+                object: dispatch_csrf_post_expr(url_expr: url_expr),
                 property: "then",
               ),
               args: [ts_arrow(params: ["r"], body: ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: [])))],
@@ -1334,15 +1398,10 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
                       callee: ts_member(
                         object: ts_call(
                           callee: ts_member(
-                            object: ts_call(callee: ts_ident(name: "fetch"), args: [
-                              ts_binop(
-                                left: ts_lit_str(value: "/cleanup/"),
-                                op: "+",
-                                right: ts_member(object: ts_ident(name: "sess"), property: "node_id")),
-                              ts_object(fields: [
-                                ts_field(key: "method", value: ts_lit_str(value: "POST")),
-                              ]),
-                            ]),
+                            object: dispatch_csrf_post_expr(url_expr: ts_binop(
+                              left: ts_lit_str(value: "/cleanup/"),
+                              op: "+",
+                              right: ts_member(object: ts_ident(name: "sess"), property: "node_id"))),
                             property: "then"),
                           args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
                             ts_return(expr: ts_call(
@@ -3421,10 +3480,7 @@ fn issue_action_click_handler_body() -> TsStmt {
           callee: ts_member(
             object: ts_call(
               callee: ts_member(
-                object: ts_call(
-                  callee: ts_ident(name: "fetch"),
-                  args: [issue_action_url_expr(), ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))])],
-                ),
+                object: dispatch_csrf_post_expr(url_expr: issue_action_url_expr()),
                 property: "then",
               ),
               args: [ts_arrow(params: ["r"], body: ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: [])))],

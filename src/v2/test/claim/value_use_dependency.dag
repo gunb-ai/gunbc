@@ -40,9 +40,9 @@ import v2.compiler.value_use_dependency {
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.dependency { DataDependsOn, DependencyView, dependency_view_relation }
+import v2.std.dependency { dependency_view_equal, DataDependsOn, DependencyView, dependency_view_relation }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Bind, ComputationNode, Node, NodeOccurrenceIdentity, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
+import v2.std.node { node_same_occurrence, Bind, ComputationNode, Node, NodeOccurrenceIdentity, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
 import v2.std.provenance { node_occurrence_id_optional }
 import v2.std.qualified_name { lexical_reference_label_optional }
 import v2.std.text { String }
@@ -227,7 +227,7 @@ test fn vudd_f_source_is_the_resolved_value_holds() -> Bool {
             d =>
               match d.relations {
                 Cons { head: r, tail: Empty } =>
-                  r.view.source == resolved_value
+                  node_same_occurrence(a: r.view.source, b: resolved_value)
                     && vudd_views_carry_every_relation(d: d)
                     && vudd_row_agrees_with_resolve(r: r, tree: tree)
                     && vudd_recorded_value_differs(r: r, tree: tree, resolved_value: resolved_value)
@@ -273,7 +273,7 @@ fn vudd_recorded_value_differs(r: ValueUseRelation, tree: ResolvedTree, resolved
   match resolved_tree_lexical_binding(tree: tree, reference: r.view.dependent) {
     Present { value: b } =>
       match b.standing {
-        LexicalValued { node: recorded } => !(recorded == resolved_value)
+        LexicalValued { node: recorded } => !(node_same_occurrence(a: recorded, b: resolved_value))
         LexicalDeclared { node: _ } => false
         LexicalOwedFormal { field_type: _ } => false
         LexicalUntyped => false
@@ -427,7 +427,7 @@ fn vudd_row_agrees_with_resolve(r: ValueUseRelation, tree: ResolvedTree) -> Bool
 // grade the index by itself -- and require exactly one, whose value IS the source under structural equality.
 fn vudd_source_is_the_bound_value(source: Node, binder_site: NodeOccurrenceIdentity, tree: ResolvedTree) -> Bool {
   match vudd_bind_values_at(root: tree.root, binder_site: binder_site) {
-    Cons { head: value, tail: Empty } => value == source
+    Cons { head: value, tail: Empty } => node_same_occurrence(a: value, b: source)
     _ => false
   }
 }
@@ -472,7 +472,7 @@ fn vudd_view_in(views: List<DependencyView>, view: DependencyView) -> Bool {
 }
 
 fn vudd_view_eq(a: DependencyView, b: DependencyView) -> Bool {
-  a == b
+  dependency_view_equal(a: a, b: b)
 }
 
 // A ROW'S ENDPOINT IS A NODE OF THE RESOLVED GRAPH under the consumer's own equality (structural, as
@@ -640,7 +640,7 @@ fn vudd_same_node(a: Node, b: Node) -> Bool {
     Absent =>
       match node_occurrence_id_optional(node: b) {
         Present { value: _ } => false
-        Absent => a == b
+        Absent => node_same_occurrence(a: a, b: b)
       }
   }
 }

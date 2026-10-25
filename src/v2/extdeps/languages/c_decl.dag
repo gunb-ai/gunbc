@@ -34,6 +34,7 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 
 type CStage1TypeDeclFrontierDisposition
@@ -92,7 +93,7 @@ fn c_stage1_type_decl_frontier_deferred_count() -> Int {
 }
 
 fn c_decl_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn c_decl_shape_productions() -> List<FormalProduction> {

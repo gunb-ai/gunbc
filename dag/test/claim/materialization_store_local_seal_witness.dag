@@ -1,7 +1,9 @@
 module test.claim.materialization_store_local_seal_witness
 
 import std.types { Bool, Int, String }
-import gunbc.compile_census_probe { blocking_subject_count_for }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit}
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
 
 // A FAMILY MUTATION WITHOUT THE FAMILY HOLD IS UNWRITABLE. Every mutator of
 // extdeps.realization.materialization_store_local takes a LocalStoreFamilyHeld (or, for the sweep, a
@@ -9,24 +11,24 @@ import gunbc.compile_census_probe { blocking_subject_count_for }
 // acquisitions. So a caller that wants to write without holding the family has to spell one of them,
 // and that spelling is a located compile refusal. Each probe asserts EXACTLY ONE refusal on its subject.
 
-fn seal_violations(source: String, subject: String) -> Int {
-  blocking_subject_count_for(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
 }
 
-fn admission_refusals(source: String, callee: String) -> Int {
-  blocking_subject_count_for(source: source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: callee)
+fn admission_refusals(source: String, callee: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: callee)
 }
 
 data forged_family_hold_source: String = "module probe_store_forged_family_hold\nimport extdeps.realization.materialization_store_local { LocalStoreFamilyHeld }\nfn forged(h: LocalStoreFamilyHeld) -> LocalStoreFamilyHeld {\n  LocalStoreFamilyHeld { root_path: h.root_path, family: h.family, owner: h.owner, generation: h.generation, retention: h.retention }\n}\n"
 
 data forged_all_families_source: String = "module probe_store_forged_all_families\nimport extdeps.realization.materialization_store_local { LocalStoreAllFamiliesHeld }\nfn forged(a: LocalStoreAllFamiliesHeld) -> LocalStoreAllFamiliesHeld {\n  LocalStoreAllFamiliesHeld { root_path: a.root_path, held: a.held }\n}\n"
 
-test fn a_forged_family_hold_is_refused_at_compile() -> Bool {
-  seal_violations(source: forged_family_hold_source, subject: "LocalStoreFamilyHeld") == 1
+test fn a_forged_family_hold_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_family_hold_source, subject: "LocalStoreFamilyHeld"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_forged_all_families_hold_is_refused_at_compile() -> Bool {
-  seal_violations(source: forged_all_families_source, subject: "LocalStoreAllFamiliesHeld") == 1
+test fn a_forged_all_families_hold_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_all_families_source, subject: "LocalStoreAllFamiliesHeld"), holds: fn(n) { n == 1 }))
 }
 
 
@@ -34,8 +36,8 @@ test fn a_forged_all_families_hold_is_refused_at_compile() -> Bool {
 // mints it, so skipping admission means spelling one.
 data forged_admission_source: String = "module probe_store_forged_admission\nimport extdeps.realization.materialization_store_local { LocalStoreAdmission }\nfn forged(a: LocalStoreAdmission) -> LocalStoreAdmission {\n  LocalStoreAdmission { budget: a.budget, evicted: a.evicted, retired: a.retired, reclamation: a.reclamation }\n}\n"
 
-test fn a_forged_reservation_admission_is_refused_at_compile() -> Bool {
-  seal_violations(source: forged_admission_source, subject: "LocalStoreAdmission") == 1
+test fn a_forged_reservation_admission_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_admission_source, subject: "LocalStoreAdmission"), holds: fn(n) { n == 1 }))
 }
 
 // THE RAW HELPERS ARE SEALED TO THE BRACKET'S OWN PATH: a caller outside it is an admission refusal,
@@ -44,12 +46,12 @@ data direct_write_index_source: String = "module probe_store_direct_write_index\
 
 data direct_acquire_settled_source: String = "module probe_store_direct_acquire_settled\nimport std.types { Bool, NonEmptyStr }\nimport std.cache_identity { ArtifactKindId }\nimport std.durable_exclusive_hold { DurableHoldOwnerRef }\nimport gunbc.durable_cas_file_store { CasGenerationWindow }\nimport extdeps.realization.materialization_store_local { LocalStoreBinding, LocalStoreHoldAcquisition, local_store_acquire_settled }\nfn direct(b: LocalStoreBinding, f: ArtifactKindId, k: NonEmptyStr, o: DurableHoldOwnerRef, w: CasGenerationWindow) -> LocalStoreHoldAcquisition {\n  local_store_acquire_settled(binding: b, family: f, key: k, owner: o, window: w, recovered: false)\n}\n"
 
-test fn a_direct_index_write_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_write_index_source, callee: "local_store_write_index") == 1
+test fn a_direct_index_write_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_write_index_source, callee: "local_store_write_index"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_direct_settled_acquire_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_acquire_settled_source, callee: "local_store_acquire_settled") == 1
+test fn a_direct_settled_acquire_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_acquire_settled_source, callee: "local_store_acquire_settled"), holds: fn(n) { n == 1 }))
 }
 
 // THE PART PUBLICATION HELPERS ARE SEALED TOO: publishing a part copy, or settling against a verified
@@ -58,12 +60,12 @@ data direct_copy_and_link_source: String = "module probe_store_direct_copy_and_l
 
 data direct_commit_verified_source: String = "module probe_store_direct_commit_verified\nimport std.types { String }\nimport std.content_hash { ContentHash }\nimport std.materialization_object { OpenedMaterializationStore }\nimport std.materialization_provider { ArtifactRequest, ResultContentIdentity }\nimport extdeps.realization.materialization_store_local { LocalStoreFamilyHeld, LocalStoreCommit, local_store_commit_verified }\nfn direct(h: LocalStoreFamilyHeld, s: OpenedMaterializationStore, q: ArtifactRequest, k: ContentHash, n: String, o: String, d: ContentHash, r: ResultContentIdentity) -> LocalStoreCommit {\n  local_store_commit_verified(held: h, store: s, req: q, key: k, name: n, object: o, offered: d, offered_result: r)\n}\n"
 
-test fn a_direct_part_copy_publish_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_copy_and_link_source, callee: "local_store_copy_and_link") == 1
+test fn a_direct_part_copy_publish_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_copy_and_link_source, callee: "local_store_copy_and_link"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_direct_verified_settle_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_commit_verified_source, callee: "local_store_commit_verified") == 1
+test fn a_direct_verified_settle_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_commit_verified_source, callee: "local_store_commit_verified"), holds: fn(n) { n == 1 }))
 }
 
 // THE REMAINING EFFECTFUL HELPERS ARE SEALED: creating a store file, and reclaiming a slot's
@@ -73,12 +75,12 @@ data direct_create_new_source: String = "module probe_store_direct_create_new\ni
 
 data direct_settle_slot_source: String = "module probe_store_direct_settle_slot\nimport std.types { String, NonEmptyStr }\nimport extdeps.realization.materialization_store_local { LocalStoreSlotSettlement, local_store_settle_slot }\nfn direct(r: String, k: NonEmptyStr) -> LocalStoreSlotSettlement {\n  local_store_settle_slot(root_path: r, key: k)\n}\n"
 
-test fn a_direct_store_file_create_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_create_new_source, callee: "local_store_create_new") == 1
+test fn a_direct_store_file_create_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_create_new_source, callee: "local_store_create_new"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_direct_slot_settle_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_settle_slot_source, callee: "local_store_settle_slot") == 1
+test fn a_direct_slot_settle_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_settle_slot_source, callee: "local_store_settle_slot"), holds: fn(n) { n == 1 }))
 }
 
 // THE OPENED STORE IS UNFORGEABLE. A capability is a verified binding plus its clean-sweep proof, minted
@@ -91,16 +93,16 @@ data forged_binding_source: String = "module probe_store_forged_binding\nimport 
 
 data forged_clean_sweep_source: String = "module probe_store_forged_clean_sweep\nimport extdeps.realization.materialization_store_local { LocalStoreCleanSweep }\nfn forged() -> LocalStoreCleanSweep {\n  LocalStoreCleanSweep { removed: [], releases: [] }\n}\n"
 
-test fn a_forged_store_capability_is_refused_at_compile() -> Bool {
-  seal_violations(source: forged_capability_source, subject: "LocalStoreCapability") == 1
+test fn a_forged_store_capability_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_capability_source, subject: "LocalStoreCapability"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_forged_store_binding_is_refused_at_compile() -> Bool {
-  seal_violations(source: forged_binding_source, subject: "LocalStoreBinding") == 1
+test fn a_forged_store_binding_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_binding_source, subject: "LocalStoreBinding"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_forged_clean_sweep_proof_is_refused_at_compile() -> Bool {
-  seal_violations(source: forged_clean_sweep_source, subject: "LocalStoreCleanSweep") == 1
+test fn a_forged_clean_sweep_proof_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_clean_sweep_source, subject: "LocalStoreCleanSweep"), holds: fn(n) { n == 1 }))
 }
 
 // THE WINDOWED CONTRACT IS THE STORE'S ALONE. Keep-all callers use the unchanged file_compare_and_set
@@ -123,34 +125,34 @@ data direct_raw_observe_source: String = "module probe_direct_raw_observe\nimpor
 // deleting an audit slot's generations below a caller-chosen head
 data direct_raw_reclaim_source: String = "module probe_direct_raw_reclaim\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.durable_cas_file_store { CasGenerationWindow, CasWindowReclamation, cas_reclaim_below }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, w: CasGenerationWindow, h: CasGeneration) -> CasWindowReclamation {\n  cas_reclaim_below(root: r, key: k, window: w, head: h)\n}\n"
 
-test fn a_direct_windowed_compare_and_set_call_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_windowed_compare_and_set_source, callee: "file_compare_and_set_windowed") == 1
+test fn a_direct_windowed_compare_and_set_call_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_windowed_compare_and_set_source, callee: "file_compare_and_set_windowed"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_direct_windowed_hold_call_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_windowed_hold_source, callee: "file_hold_acquire_windowed") == 1
+test fn a_direct_windowed_hold_call_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_windowed_hold_source, callee: "file_hold_acquire_windowed"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_direct_raw_outcome_call_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_raw_outcome_source, callee: "cas_compare_and_set_outcome") == 1
+test fn a_direct_raw_outcome_call_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_raw_outcome_source, callee: "cas_compare_and_set_outcome"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_direct_raw_observe_call_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_raw_observe_source, callee: "cas_observe_retained_slot") == 1
+test fn a_direct_raw_observe_call_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_raw_observe_source, callee: "cas_observe_retained_slot"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_direct_raw_reclaim_call_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_raw_reclaim_source, callee: "cas_reclaim_below") == 1
+test fn a_direct_raw_reclaim_call_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_raw_reclaim_source, callee: "cas_reclaim_below"), holds: fn(n) { n == 1 }))
 }
 
 data direct_held_session_source: String = "module probe_direct_held_session\nimport std.cache_identity { ArtifactKindId }\nimport extdeps.realization.materialization_store_local { LocalStoreCapability, LocalStoreFamilyHeld, LocalStoreBracket, local_store_held_session }\nfn direct(c: LocalStoreCapability, f: ArtifactKindId) -> LocalStoreBracket<LocalStoreFamilyHeld> {\n  local_store_held_session(capability: c, family: f, run: h => h)\n}\n"
 
 data direct_named_window_observe_source: String = "module probe_direct_named_window_observe\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.durable_cas_file_store { cas_verify_named_window_head, CasNamedWindowVerify }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, g: CasGeneration) -> CasNamedWindowVerify {\n  cas_verify_named_window_head(root: r, key: k, generation: g)\n}\n"
 
-test fn a_direct_held_session_call_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_held_session_source, callee: "local_store_held_session") == 1
+test fn a_direct_held_session_call_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_held_session_source, callee: "local_store_held_session"), holds: fn(n) { n == 1 }))
 }
 
-test fn a_direct_named_window_observe_call_is_an_admission_refusal() -> Bool {
-  admission_refusals(source: direct_named_window_observe_source, callee: "cas_verify_named_window_head") == 1
+test fn a_direct_named_window_observe_call_is_an_admission_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: admission_refusals(source: direct_named_window_observe_source, callee: "cas_verify_named_window_head"), holds: fn(n) { n == 1 }))
 }

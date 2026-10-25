@@ -39,6 +39,7 @@ import std.algebra {
   collection_count_shape,
   collection_fold_shape,
   collection_map_shape,
+  contains,
   template_accumulator_position,
   template_receiver_position,
   template_step_position,
@@ -62,7 +63,7 @@ import std.algebra {
 import v2.std.compilers.body_lowering { lower_bind }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 
-import v2.std.node { positional_child_target_nodes,
+import v2.std.node { NotADeclaration, positional_child_target_nodes,
   Atom,
   Bind,
   BinderStructureEdge,
@@ -250,8 +251,10 @@ fn collection_step_slot_name(form: CollectionRosterForm) -> Symbol {
 // (calm-boar-904, ruling B': the roster row is the one typing authority for a collection operation), the
 // declarations deleted and their imports dropped by v2.workflow.source_reference_repoint's retire-member mode.
 // WHAT IS NOT HERE, BY NAME: flat_map (its step is
-// itself a fold over the callback's result) and sort_by (ShapeSortBody, not an iterate body). Their rows
-// are named in std.algebra and their calls stay unrealized; gunbc.recurring_failure_mode
+// itself a fold over the callback's result) and sort_by (ShapeSortBody, not an iterate body). sort_by is a
+// primitive-call row below -- TYPED by its row like concat and count, its key callable framed at the carrier's
+// generator and its SortKey instantiated per call -- but, like flat_map, not REALIZED: the call carries no
+// denotation, so a consumer that must execute it refuses at its own gate. gunbc.recurring_failure_mode
 // collection_callback_operation_unrealized_in_v2_lowering is the counted frontier with each trigger.
 type CallbackRealization
   = CallbackMapsToCons
@@ -421,7 +424,7 @@ fn collection_roster_carrier_type() -> Node {
 fn collection_roster_carrier_binder() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: ^collection_roster_carrier } },
-    children: [Edge { label: core_edge_label(marker: BinderStructureEdge), target: free_monoid_structure_node(inhabitant: collection_roster_carrier_type(), generator: collection_roster_element_type()) }]
+    children: [Edge { label: core_edge_label(marker: BinderStructureEdge), target: free_monoid_structure_node(inhabitant: collection_roster_carrier_type(), generator: collection_roster_element_type()), declaration: NotADeclaration }]
   )
 }
 
@@ -445,25 +448,79 @@ fn collection_roster_template_type(t: AlgebraTypeTemplate) -> Optional<Node> {
     OptionalOf { inner: _ } => optional_absent()
     WitnessOf { inner: _ } => optional_absent()
     TupleOf { first: _, second: _ } => optional_absent()
-    CallableOf { params: _, return_type: _ } => optional_absent()
-    AlgebraTypeVariable { id: _ } => optional_absent()
+    CallableOf { params: ps, return_type: r } =>
+      match fold(ps, init: optional_present(value: Empty), f: fn(acc, p) {
+        match acc {
+          Absent => acc
+          Present { value: types } =>
+            match collection_roster_template_type(t: p) {
+              Absent => optional_absent()
+              Present { value: ty } => optional_present(value: list_snoc_item(xs: types, item: ty))
+            }
+        }
+      }) {
+        Absent => optional_absent()
+        Present { value: domain_types } =>
+          match collection_roster_template_type(t: r) {
+            Absent => optional_absent()
+            Present { value: codomain } => optional_present(value: anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: collection_roster_carrier_type()))
+          }
+      }
+    AlgebraTypeVariable { id: v } => optional_present(value: collection_roster_type_variable(id: v))
   }
+}
+
+fn collection_roster_template_types(ts: List<AlgebraTypeTemplate>) -> Optional<List<Node>> {
+  fold(ts, init: optional_present(value: Empty), f: fn(acc, t) {
+    match acc {
+      Absent => acc
+      Present { value: types } =>
+        match collection_roster_template_type(t: t) {
+          Absent => optional_absent()
+          Present { value: ty } => optional_present(value: list_snoc_item(xs: types, item: ty))
+        }
+    }
+  })
+}
+
+// A ROW'S OWN TYPE VARIABLE IS A TYPE PARAMETER OF THE SIGNATURE THE ROW IS READ AS. `sort_by`'s callable returns
+// AlgebraTypeVariable "SortKey": the key's type is whatever the key callable produces, fixed per call. So the
+// variable is bound in the signature's binder set beside the carrier and its generator, and each use instantiates
+// it through the ordinary generic application route -- the instance lands in the call's InferredFacts.type_instances
+// like any other parameter's. The variable's identity is the row's own spelling: a signature's binders are local
+// to it, so two rows naming one spelling are two signatures, never one variable.
+fn collection_roster_type_variable(id: String) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: id) } }, children: [])
+}
+
+fn collection_roster_template_variables(t: AlgebraTypeTemplate, seen: List<String>) -> List<String> {
+  match t {
+    AlgebraTypeVariable { id: v } => if contains(xs: seen, item: v, eq: fn(a, b) { a == b }) { seen } else { list_snoc_item(xs: seen, item: v) }
+    CallableOf { params: ps, return_type: r } =>
+      collection_roster_template_variables(t: r, seen: fold(ps, init: seen, f: fn(acc, p) { collection_roster_template_variables(t: p, seen: acc) }))
+    ReceiverSelf => seen
+    ReceiverElement => seen
+    ReceiverKey => seen
+    ReceiverValue => seen
+    NamedTemplate { name: _ } => seen
+    ContainerOf { source: _, element: _ } => seen
+    OptionalOf { inner: _ } => seen
+    WitnessOf { inner: _ } => seen
+    TupleOf { first: _, second: _ } => seen
+  }
+}
+
+fn collection_roster_signature_variable_binders(t: AlgebraFieldTemplate) -> List<Edge> {
+  let ids = collection_roster_template_variables(t: t.return_type, seen: fold(t.param_types, init: Empty, f: fn(acc, p) { collection_roster_template_variables(t: p, seen: acc) }))
+  fold(ids, init: Empty, f: fn(acc, id) {
+    list_snoc_item(xs: acc, item: Edge { label: Authored { name: symbol_intern_lexeme(lexeme: id) }, target: collection_roster_type_variable(id: id), declaration: NotADeclaration })
+  })
 }
 
 fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node> {
   match row.form {
     RosterFreeMonoidPrimitiveCall =>
-      let domain = fold(row.template.param_types, init: optional_present(value: Empty), f: fn(acc, t) {
-        match acc {
-          Absent => acc
-          Present { value: types } =>
-            match collection_roster_template_type(t: t) {
-              Absent => optional_absent()
-              Present { value: ty } => optional_present(value: list_snoc_item(xs: types, item: ty))
-            }
-        }
-      })
-      match domain {
+      match collection_roster_template_types(ts: row.template.param_types) {
         Absent => optional_absent()
         Present { value: domain_types } =>
           match collection_roster_template_type(t: row.template.return_type) {
@@ -472,7 +529,7 @@ fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node>
               let arrow = anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: collection_roster_carrier_type())
               let binders = node_synthetic(
                 kind: TypeNode { connective: Conj },
-                children: type_binder_set_children(binders: [Edge { label: Authored { name: ^collection_roster_carrier }, target: collection_roster_carrier_binder() }, Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type() }], source: collection_roster_carrier_type())
+                children: type_binder_set_children(binders: concat([Edge { label: Authored { name: ^collection_roster_carrier }, target: collection_roster_carrier_binder(), declaration: NotADeclaration }, Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type(), declaration: NotADeclaration }], collection_roster_signature_variable_binders(t: row.template)), source: collection_roster_carrier_type())
               )
               optional_present(value: node_synthetic(kind: arrow.kind, children: list_snoc_item(xs: arrow.children, item: type_params_edge(conj: binders))))
           }
@@ -1458,11 +1515,11 @@ fn fold_recurrence_encoding(operands: FoldCallOperands) -> Node {
     body_binding: node_synthetic(
       kind: ComputationNode { behavior: Loop },
       children: [
-        Edge { label: Positional, target: operands.step },
-        Edge { label: core_edge_label(marker: LoopDomainEdge), target: operands.collection },
-        Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: slot) },
-        Edge { label: core_edge_label(marker: LoopBoundEdge), target: fold_iteration_measure_atom() },
-        Edge { label: core_edge_label(marker: LoopRealizedDeclarationEdge), target: operands.head }
+        Edge { label: Positional, target: operands.step, declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopDomainEdge), target: operands.collection, declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: slot), declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopBoundEdge), target: fold_iteration_measure_atom(), declaration: NotADeclaration },
+        Edge { label: core_edge_label(marker: LoopRealizedDeclarationEdge), target: operands.head, declaration: NotADeclaration }
       ]
     )
   )

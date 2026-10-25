@@ -6,7 +6,7 @@ import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, Ord
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable, AmbiguousIntent }
-import v2.std.node { Arrow, Atom, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Symbol, TypeNode, is_empty_conj_root, fold_list_node }
+import v2.std.node { node_same_occurrence, Arrow, Atom, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Symbol, TypeNode, is_empty_conj_root, fold_list_node, NotADeclaration }
 import v2.std.node_query { find_named_child }
 import std.integer { Signedness, Signed, Unsigned, decimal_digit_of_units, int_to_decimal_string }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
@@ -453,7 +453,7 @@ fn integer_standard_integer_type_from_node_step(
   match acc {
     Accepted { value: _, diagnostics: _ } => acc
     Rejected { diagnostics: _ } =>
-      if node == candidate.node {
+      if node_same_occurrence(a: node, b: candidate.node) {
         Accepted { value: candidate.standard_integer_type, diagnostics: None }
       } else {
         acc
@@ -751,7 +751,7 @@ fn integer_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn integer_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn integer_bound_sign_node(sign: IntegerBoundSign) -> Node {

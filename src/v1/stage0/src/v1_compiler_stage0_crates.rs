@@ -316,7 +316,7 @@ pub fn stage0_lookup_module_owner_package_name(
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Stage0ModuleOwnerLookup> {
     {
-        let package_name = crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over(module_basename.clone(), rows.clone()).iter().cloned().fold("".to_string(), |acc: String, pkg: String| if (acc.clone() == "".to_string()) {
+        let package_name = crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over(module_basename.clone(), rows).iter().cloned().fold("".to_string(), |acc: String, pkg: String| if (acc.clone() == "".to_string()) {
             pkg.clone()
         } else {
             acc.clone()
@@ -698,7 +698,7 @@ pub fn stage0_partition_row_to_spec_outcome(
     match (*stage0_partition_row_dependencies_outcome(
         row.clone(),
         rows.clone(),
-        registry_dependencies.clone(),
+        registry_dependencies,
     ))
     .clone()
     {
@@ -916,13 +916,16 @@ pub fn render_stage0_layered_core_lib(
         let reexports = Rc::new({
             let mut __result = Vec::new();
             for ident in Rc::new({
-                let mut __sorted: Vec<_> = reexport_idents.iter().cloned().collect();
-                __sorted.sort_by(|a: &String, b: &String| {
-                    let __ka = (|ident: String| ident.clone())(a.clone());
-                    let __kb = (|ident: String| ident.clone())(b.clone());
-                    v1_rt::canonical_key_cmp(&__ka, &__kb)
-                });
-                __sorted
+                let mut __keyed: Vec<_> = reexport_idents
+                    .iter()
+                    .cloned()
+                    .map(|__e: String| {
+                        let __k = (|ident: String| ident.clone())(__e.clone());
+                        (__k, __e)
+                    })
+                    .collect();
+                __keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0));
+                __keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()
             })
             .iter()
             .cloned()
@@ -1229,7 +1232,7 @@ pub fn partition_crate_plan_outcome_over(
         } => stage0_crate_plan_from_admitted_rows(
             bindings.clone(),
             rows.clone(),
-            registry_dependencies.clone(),
+            registry_dependencies,
         ),
     }
 }
@@ -1321,7 +1324,7 @@ pub fn partition_crate_boundary_emit_outcome_over(
     rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
     registry_dependencies: Rc<Vec<Rc<CargoDependency>>>,
 ) -> Rc<Stage0CrateBoundaryEmitOutcome> {
-    match (*partition_crate_plan_outcome_over(rows.clone(), registry_dependencies.clone())).clone() {
+    match (*partition_crate_plan_outcome_over(rows, registry_dependencies)).clone() {
     Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
     cause: stage0_map_package_dir_refusal_to_boundary(cause.clone()),
 }),

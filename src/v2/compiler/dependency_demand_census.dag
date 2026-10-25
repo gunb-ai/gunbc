@@ -31,7 +31,9 @@ import v2.compiler.dependency_demand {
   resource_set_of,
   ResourceSet
 }
-import v2.compiler.resolve { ResolveContext, ResolvedTree, resolve_node }
+import v2.std.list_introduction { list_introduction_elements_optional }
+import v2.compiler.resolve { ResolveContext, ResolvedTree, resolve_ctx_with_reference_category, resolve_node }
+import std.occurrence_identity { OccurrenceCategory, TypeOccurrence }
 import v2.compiler.eval { eval_node_is_arrow, eval_transform_has_callee_reference }
 import v2.std.node_query { find_arrow_body_child }
 import v2.compiler.parse { parse_tree_projection_edge }
@@ -59,11 +61,14 @@ import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.grammar { grammar_empty_node, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
 import std.types { Bool }
-import v2.std.node { positional_child_target_nodes, Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, NodeKind, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild, symbol_lexeme }
+import v2.compiler.activation_dependency { ActivationNotDerivedReason, activation_dispose, ActivationDependencies }
+import v2.std.node { BranchConditionSlot, BranchSlot, ChildSlot, LabeledChild, MatchScrutineeSlot, PositionalOrdinal, branch_positional_slot, loop_edge_contributes_to_iteration_fold, match_positional_slot, node_child_slots, positional_child_target_nodes, Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, NodeKind, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild, symbol_lexeme, NotADeclaration }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_from_node, qualified_name_init, qualified_name_snoc, qualified_name_spine_shape_present, qualified_name_to_dotted_string }
 import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
 import v2.std.text { String }
+import std.occurrence_identity { OccurrenceId }
+import v2.std.provenance { node_occurrence_id_optional }
 
 // THE DEPENDENCY-DEMAND CENSUS (D13 step b2): for every fn that authors a `uses` clause, the
 // authored rows read from THAT fn's parse, paired with the demand v2.compiler.dependency_demand
@@ -233,7 +238,7 @@ fn demand_census_elide_uses(node: Node) -> Node {
 
 fn demand_census_elide_children(node: Node) -> Node {
   node_rebuild(n: node, children: fold(node.children, init: Empty, f: fn(acc, e) {
-    list_snoc_item(xs: acc, item: Edge { label: e.label, target: demand_census_elide_uses(node: e.target) })
+    list_snoc_item(xs: acc, item: Edge { label: e.label, target: demand_census_elide_uses(node: e.target), declaration: e.declaration })
   }))
 }
 
@@ -243,6 +248,7 @@ type DemandCensusModuleFacts {
   functions: List<FunctionFact>
   operations: List<OperationFact>
   audited: List<QualifiedName>
+  bodies: List<FactBodySites>
 }
 
 type DemandFactWalk {
@@ -251,6 +257,69 @@ type DemandFactWalk {
   audited: List<QualifiedName>
   current: List<QualifiedName>
   value_call: Bool
+  sites: List<FactCallSite>
+  bodies: List<FactBodySites>
+  tick: Int
+  groups: List<FactGroup>
+}
+
+// ADDITIVE, FOR v2.compiler.effect_pair_census; THIS CENSUS IGNORES BOTH FIELDS. A call-site is the
+// callee reference occurrence (the key value_use_dependency uses) and the path it names; a body is
+// one declaration's sites in walk order.
+type FactCallSite {
+  occurrence: Optional<OccurrenceId>
+  callee: FactCallee
+  enter: Int
+  exit: Int
+  operands: List<Optional<OccurrenceId>>
+}
+
+// WHAT A CALL SITE CALLS, decided by demand_fact_call_callee over the evaluator's own Transform/call-head
+// authority (eval_transform_has_callee_reference plus the parameter head resolve mints). A static
+// declaration call names its path, which may be outside the closure (unresolved is the consumer's reading of
+// that path); a function-value call names no declaration, only which kind of head it has.
+type FactCallee
+  = FactStaticCall { callee: QualifiedName }
+  | FactFunctionValueCall { head: FactValueHead }
+
+type FactValueHead
+  = FactLexicalHead
+  | FactParameterHead
+
+// A Branch or Match node: the preorder span of each child, selector first. Sites in different non-selector
+// children are alternatives; a selector's sites order before every arm's.
+type FactSpan {
+  enter: Int
+  exit: Int
+  role: FactSpanRole
+}
+
+// WHAT A CHILD OF A Branch/Match IS, read through v2.std.node's slot tables (branch_positional_slot,
+// match_positional_slot) and only for a site v2.compiler.activation_dependency derived; a labeled child is
+// neither, and every child of a group A2 did not derive is FactUnroled. Never "the first positional".
+type FactSpanRole
+  = FactSelector
+  | FactAlternative
+  | FactUnroled
+
+// WHY A REPEATED EXTENT RUNS MORE THAN ONCE, or that it is not known. A Loop repeats only its iterated BODY
+// (v2.std.node loop_edge_contributes_to_iteration_fold; its domain, bound, carrier and metadata do not). An inline
+// lambda is repeated only where its consumer instantiates it repeatedly, which this census does not read, so
+// it is a typed unknown, never counted as repeated.
+type FactRepetition
+  = LoopIteratedBody
+  | LambdaInstantiationUnknown
+
+// A Branch/Match extent with each child's role, or the typed reason A2 did not derive the site (no role then);
+// or a repeated extent. One group per such node.
+type FactGroup
+  = FactActivationGroup { children: List<FactSpan>, not_derived: Optional<ActivationNotDerivedReason> }
+  | FactRepeatedGroup { children: List<FactSpan>, repetition: FactRepetition }
+
+type FactBodySites {
+  function: QualifiedName
+  sites: List<FactCallSite>
+  groups: List<FactGroup>
 }
 
 // A declaration is a named edge whose path the resolved tree's own declaration index carries
@@ -258,12 +327,12 @@ type DemandFactWalk {
 // containment inside the declaration that holds it.
 fn demand_census_module_facts(resolved: ResolvedTree, module_qn: QualifiedName) -> DemandCensusModuleFacts {
   let w = demand_fact_node(
-    w: DemandFactWalk { functions: Empty, operations: Empty, audited: Empty, current: Empty, value_call: false },
+    w: DemandFactWalk { functions: Empty, operations: Empty, audited: Empty, current: Empty, value_call: false, sites: Empty, bodies: Empty, tick: 0, groups: Empty },
     position: module_qn,
     node: resolved.root,
     resolved: resolved
   )
-  DemandCensusModuleFacts { functions: w.functions, operations: w.operations, audited: w.audited }
+  DemandCensusModuleFacts { functions: w.functions, operations: w.operations, audited: w.audited, bodies: w.bodies }
 }
 
 // THE CONTAINMENT RULE IS THE INDEX'S OWN (v2.compiler.symbol_index_fill symbol_index_fill_containment_node
@@ -278,12 +347,205 @@ fn demand_fact_children(node: Node) -> List<Edge> {
   }
 }
 
+// A LIST INTRODUCTION IS NOT A CALL: its head is the compiler-generated reference to the free monoid's
+// declaration (v2.std.list_introduction), a type, so only its elements are mentioned. The reader is
+// the one eval uses, so every list introduction is excluded, not only a fn's parameter-order list.
 fn demand_fact_node(w: DemandFactWalk, position: QualifiedName, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
+  match list_introduction_elements_optional(node: node) {
+    Present { value: elements } =>
+      fold(elements, init: w, f: fn(acc, e) { demand_fact_node(w: acc, position: position, node: e, resolved: resolved) })
+    Absent => demand_fact_reference_or_children(w: w, position: position, node: node, resolved: resolved)
+  }
+}
+
+fn demand_fact_reference_or_children(w: DemandFactWalk, position: QualifiedName, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
   match declaration_reference_path_optional(node: node) {
     Present { value: target } =>
-      DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: list_snoc_item(xs: w.current, item: target), value_call: w.value_call }
+      DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: list_snoc_item(xs: w.current, item: target), value_call: w.value_call, sites: w.sites, bodies: w.bodies, tick: w.tick + 1, groups: w.groups }
     Absent =>
-      fold(demand_fact_children(node: node), init: demand_fact_note_call(w: w, node: node, resolved: resolved), f: fn(acc, e) { demand_fact_edge(w: acc, position: position, edge: e, resolved: resolved) })
+      demand_fact_note_site(
+        before: w,
+        node: node,
+        after: demand_fact_walk_children(w: demand_fact_reserve_site_tick(w: demand_fact_note_call(w: w, node: node, resolved: resolved), node: node), position: position, node: node, resolved: resolved)
+      )
+  }
+}
+
+// One tick at a call site's entry, so its `enter` is unique among the sites of a body.
+fn demand_fact_reserve_site_tick(w: DemandFactWalk, node: Node) -> DemandFactWalk {
+  match demand_fact_call_callee(node: node) {
+    Present { value: _ } =>
+      DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: w.current, value_call: w.value_call, sites: w.sites, bodies: w.bodies, tick: w.tick + 1, groups: w.groups }
+    Absent => w
+  }
+}
+
+// THE CHILDREN WALK. A Branch or Match also records each child's preorder span as one group, so a consumer
+// can tell alternatives from selector; every other node is walked exactly as before. Additive.
+type FactSpanScan {
+  walk: DemandFactWalk
+  spans: List<FactSpan>
+}
+
+fn demand_fact_walk_children(w: DemandFactWalk, position: QualifiedName, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
+  if demand_fact_is_branching(node: node) {
+    let refusal = demand_fact_activation_refusal(node: node)
+    let scan = fold(node_child_slots(n: node), init: FactSpanScan { walk: w, spans: Empty }, f: fn(acc, s) {
+      let next = demand_fact_edge(w: acc.walk, position: position, edge: s.edge, resolved: resolved)
+      let role = match refusal {
+        Present { value: _ } => FactUnroled
+        Absent => demand_fact_span_role(node: node, s: s)
+      }
+      FactSpanScan { walk: next, spans: list_snoc_item(xs: acc.spans, item: FactSpan { enter: acc.walk.tick, exit: next.tick, role: role }) }
+    })
+    DemandFactWalk {
+      functions: scan.walk.functions, operations: scan.walk.operations, audited: scan.walk.audited, current: scan.walk.current, value_call: scan.walk.value_call,
+      sites: scan.walk.sites, bodies: scan.walk.bodies, tick: scan.walk.tick,
+      groups: list_snoc_item(xs: scan.walk.groups, item: FactActivationGroup { children: scan.spans, not_derived: refusal })
+    }
+  } else {
+    match demand_fact_repetition(node: node) {
+      Absent => fold(demand_fact_children(node: node), init: w, f: fn(acc, e) { demand_fact_edge(w: acc, position: position, edge: e, resolved: resolved) })
+      Present { value: repetition } => {
+        let scan = fold(demand_fact_children(node: node), init: FactSpanScan { walk: w, spans: Empty }, f: fn(acc, e) {
+          let next = demand_fact_edge(w: acc.walk, position: position, edge: e, resolved: resolved)
+          let repeated = match repetition {
+            LoopIteratedBody => loop_edge_contributes_to_iteration_fold(parent: node, e: e)
+            LambdaInstantiationUnknown => true
+          }
+          if repeated {
+            FactSpanScan { walk: next, spans: list_snoc_item(xs: acc.spans, item: FactSpan { enter: acc.walk.tick, exit: next.tick, role: FactUnroled }) }
+          } else {
+            FactSpanScan { walk: next, spans: acc.spans }
+          }
+        })
+        DemandFactWalk {
+          functions: scan.walk.functions, operations: scan.walk.operations, audited: scan.walk.audited, current: scan.walk.current, value_call: scan.walk.value_call,
+          sites: scan.walk.sites, bodies: scan.walk.bodies, tick: scan.walk.tick,
+          groups: list_snoc_item(xs: scan.walk.groups, item: FactRepeatedGroup { children: scan.spans, repetition: repetition })
+        }
+      }
+    }
+  }
+}
+
+// A node whose extent runs its sites more than once: a Loop, or an inline lambda (Arrow), whose
+// template is executed once per element the callee feeds it. ADDITIVE; D13 ignores it.
+fn demand_fact_repetition(node: Node) -> Optional<FactRepetition> {
+  match node.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Arrow => Present { value: LambdaInstantiationUnknown }
+        _ => Absent
+      }
+    ComputationNode { behavior: b } =>
+      match b {
+        Loop => Present { value: LoopIteratedBody }
+        _ => Absent
+      }
+  }
+}
+
+fn demand_fact_span_role(node: Node, s: ChildSlot) -> FactSpanRole {
+  match s.ordinal {
+    LabeledChild => FactUnroled
+    PositionalOrdinal { index: i } =>
+      match node.kind {
+        ComputationNode { behavior: b } =>
+          match b {
+            Branch =>
+              match branch_positional_slot(ordinal: i) {
+                Present { value: slot } =>
+                  match slot {
+                    BranchConditionSlot => FactSelector
+                    _ => FactAlternative
+                  }
+                Absent => FactUnroled
+              }
+            Match =>
+              match match_positional_slot(ordinal: i) {
+                MatchScrutineeSlot => FactSelector
+                _ => FactAlternative
+              }
+            _ => FactUnroled
+          }
+        TypeNode { connective: _ } => FactUnroled
+      }
+  }
+}
+
+// A2's disposition of THIS site (identity join at the point of use, never a parallel walk): the typed reason
+// when v2.compiler.activation_dependency did not derive the site, else Absent and the roles stand.
+fn demand_fact_activation_refusal(node: Node) -> Optional<ActivationNotDerivedReason> {
+  let act = activation_dispose(acc: ActivationDependencies { demands: [], not_derived: [], zero_alternatives: [] }, n: node)
+  match act.not_derived {
+    Cons { head: row, tail: _ } => Present { value: row.reason }
+    Empty => Absent
+  }
+}
+
+fn demand_fact_is_branching(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: b } =>
+      match b {
+        Branch => true
+        Match => true
+        Value => false
+        Transform => false
+        Loop => false
+        Bind => false
+      }
+  }
+}
+
+// A CALL SITE is a Transform the evaluator reads as a call (demand_fact_call_callee); its extent is the
+// preorder interval the walk spent on it. The walk reserves one tick at the site's entry, so a nested site
+// never shares its parent's `enter` even when no declaration reference ticks between them. Additive:
+// nothing in this census reads it.
+fn demand_fact_note_site(before: DemandFactWalk, node: Node, after: DemandFactWalk) -> DemandFactWalk {
+  match demand_fact_call_callee(node: node) {
+    Present { value: callee } =>
+      DemandFactWalk {
+        functions: after.functions, operations: after.operations, audited: after.audited, current: after.current, value_call: after.value_call,
+        sites: list_snoc_item(xs: after.sites, item: FactCallSite { occurrence: node_occurrence_id_optional(node: node), callee: callee, enter: before.tick, exit: after.tick, operands: fold(node.children, init: Empty, f: fn(acc, c) { list_snoc_item(xs: acc, item: node_occurrence_id_optional(node: c.target)) }) }),
+        bodies: after.bodies, tick: after.tick, groups: after.groups
+      }
+    Absent => after
+  }
+}
+
+// The one call-head decision both the site and the value_call flag read. A Transform is a call only where
+// eval_transform_has_callee_reference says so (a declaration reference, a lexical reference, or an Atom /
+// Arrow head, which is a kernel operator or an inline lambda and is no site: the lambda's body is read as
+// its own extent, an operator reaches no effect); a Transform headed by a resolve-minted parameter
+// reference is a function-value call that predicate does not see. A Branch/Match/Value whose first child is
+// a declaration reference is not a call.
+fn demand_fact_call_callee(node: Node) -> Optional<FactCallee> {
+  if demand_fact_is_transform(node: node) {
+    if eval_transform_has_callee_reference(node: node) {
+      match first(node.children) {
+        Present { value: e } =>
+          match declaration_reference_path_optional(node: e.target) {
+            Present { value: callee } => Present { value: FactStaticCall { callee: callee } }
+            Absent =>
+              if demand_fact_head_is_lexical(node: node) {
+                Present { value: FactFunctionValueCall { head: FactLexicalHead } }
+              } else {
+                Absent
+              }
+          }
+        Absent => Absent
+      }
+    } else {
+      if demand_fact_head_is_parameter(node: node) {
+        Present { value: FactFunctionValueCall { head: FactParameterHead } }
+      } else {
+        Absent
+      }
+    }
+  } else {
+    Absent
   }
 }
 
@@ -303,17 +565,16 @@ fn demand_fact_node(w: DemandFactWalk, position: QualifiedName, node: Node, reso
 // positional child is a parameter reference is a function-value call too (review of gunbc#12992).
 fn demand_fact_note_call(w: DemandFactWalk, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
   if demand_fact_is_value_call(node: node) {
-    DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: w.current, value_call: true }
+    DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: w.current, value_call: true, sites: w.sites, bodies: w.bodies, tick: w.tick, groups: w.groups }
   } else {
     w
   }
 }
 
 fn demand_fact_is_value_call(node: Node) -> Bool {
-  if eval_transform_has_callee_reference(node: node) {
-    demand_fact_head_is_lexical(node: node)
-  } else {
-    demand_fact_is_transform(node: node) && demand_fact_head_is_parameter(node: node)
+  match demand_fact_call_callee(node: node) {
+    Present { value: FactFunctionValueCall { head: _ } } => true
+    _ => false
   }
 }
 
@@ -401,25 +662,29 @@ fn demand_fact_declaration(w: DemandFactWalk, path: QualifiedName, node: Node, r
       if demand_census_is_operation_arrow(node: node) {
         demand_fact_with_declared_operation(w: w, op: OperationFact { path: path, requirement: demand_census_requirement(arrow: node) })
       } else {
-        let inner = demand_fact_node(
-          w: DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: Empty, value_call: false },
-          position: path,
-          node: node,
-          resolved: resolved
-        )
+        let start = DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: Empty, value_call: false, sites: Empty, bodies: w.bodies, tick: w.tick, groups: Empty }
+        let inner = match demand_fact_repetition(node: node) {
+          Present { value: LambdaInstantiationUnknown } =>
+            fold(demand_fact_children(node: node), init: start, f: fn(acc, e) { demand_fact_edge(w: acc, position: path, edge: e, resolved: resolved) })
+          _ => demand_fact_node(w: start, position: path, node: node, resolved: resolved)
+        }
         DemandFactWalk {
           functions: list_snoc_item(xs: inner.functions, item: FunctionFact { path: path, callees: inner.current, calls_function_value: inner.value_call }),
           operations: inner.operations,
           audited: inner.audited,
           current: w.current,
-          value_call: w.value_call
+          value_call: w.value_call,
+          sites: w.sites,
+          bodies: list_snoc_item(xs: inner.bodies, item: FactBodySites { function: path, sites: inner.sites, groups: inner.groups }),
+          tick: inner.tick,
+          groups: w.groups
         }
       }
   }
 }
 
 fn demand_fact_with_operation(w: DemandFactWalk, op: OperationFact) -> DemandFactWalk {
-  DemandFactWalk { functions: w.functions, operations: list_snoc_item(xs: w.operations, item: op), audited: w.audited, current: w.current, value_call: w.value_call }
+  DemandFactWalk { functions: w.functions, operations: list_snoc_item(xs: w.operations, item: op), audited: w.audited, current: w.current, value_call: w.value_call, sites: w.sites, bodies: w.bodies, tick: w.tick, groups: w.groups }
 }
 
 // A DECLARED operation: its requirement is the authority the audited vocabulary is read from.
@@ -427,7 +692,7 @@ fn demand_fact_with_declared_operation(w: DemandFactWalk, op: OperationFact) -> 
   let with_op = demand_fact_with_operation(w: w, op: op)
   match op.requirement {
     RequiresResources { resources: rs } =>
-      DemandFactWalk { functions: with_op.functions, operations: with_op.operations, audited: fold_list(xs: rs, empty: with_op.audited, cons: fn(a, r) { list_snoc_item(xs: a, item: r) }), current: with_op.current, value_call: with_op.value_call }
+      DemandFactWalk { functions: with_op.functions, operations: with_op.operations, audited: fold_list(xs: rs, empty: with_op.audited, cons: fn(a, r) { list_snoc_item(xs: a, item: r) }), current: with_op.current, value_call: with_op.value_call, sites: with_op.sites, bodies: with_op.bodies, tick: with_op.tick, groups: with_op.groups }
     RequiresNone => with_op
     RequiresOpaque => with_op
     RequiresUndeclared => with_op
@@ -586,7 +851,7 @@ fn demand_census_authored_reading(ctx: ResolveContext, shell: Optional<Node>) ->
       match body_lower_type_expr_lowered_optional(node: s) {
         Absent => AuthoredTypeUnresolved
         Present { value: lowered } =>
-          match resolve_node(ctx: ctx, n: lowered) {
+          match resolve_node(ctx: resolve_ctx_with_reference_category(ctx: ctx, category: TypeOccurrence), n: lowered) {
             Rejected { diagnostics: _ } => AuthoredTypeUnresolved
             Accepted { value: r, diagnostics: _ } =>
               match declaration_reference_path_optional(node: r) {

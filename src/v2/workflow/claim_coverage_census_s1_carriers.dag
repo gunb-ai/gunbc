@@ -1,7 +1,7 @@
 module v2.workflow.claim_coverage_census_s1_carriers
 
 import std.types { String, Bool, List }
-import std.algebra { map_lookup }
+import std.algebra { map_lookup, non_empty_to_list }
 import std.realization_schedule { ScheduleWitnessEntry }
 import std.optional { Optional, Absent, Present }
 import v2.workflow.claim_coverage_census_s1 { ClassifierRow, ClassifierRole, CoverRole, EnrollmentRole, IdentityMember, DeclaredMember, FileMember, ExactMemberMatch, SubstringMemberMatch }
@@ -11,7 +11,7 @@ import gunbc.explicit_witness_admission { explicit_witness_admissions }
 import v2.workflow.floor_expected_red { floor_expected_red_chunks }
 import v2.workflow.floor_pure_producer_share { floor_single_claim_fill_debt_active_claims }
 import gunbc.rung_drop.roster { rung_drop_roster }
-import gunbc.rung_drop { RungDropDeclaration, TypedDeclaration, AuthoredProse }
+import gunbc.rung_drop { RungDrop, RungDropPopulation, Enumerated, DerivedBy, DeclaredBy, NotYetCounted, rung_drop_population, rung_drop_population_at_retirement }
 
 // THE CLASSIFIERS, READ FROM THEIR OWN CARRIERS AS DATA (Charter 4 ruling 2026-10-19: the enrolled
 // population is S1 alone; every carrier below is a CLASSIFIER over subsets of S1, never a peer
@@ -223,18 +223,30 @@ fn explicit_admission_classifier_rows() -> List<ClassifierRow> {
 // whose declaration is AuthoredProse has no population to classify and contributes no rows.
 fn rung_drop_population_classifier_rows() -> List<ClassifierRow> {
   flat_map(
-    rung_drop_roster(),
-    drop => match drop.declaration {
-      TypedDeclaration { population: population } => map(
-        population,
+    rung_drop_roster,
+    drop => match rung_drop_recorded_population(d: drop) {
+      Present { value: Enumerated { members: members } } => map(
+        non_empty_to_list(xs: members),
         member => cover_declared_row(
-          carrier: concat("gunbc.rung_drop.", drop.identity),
+          carrier: concat("gunbc.rung_drop.", drop.identity as String),
           text: member
         )
       )
-      AuthoredProse { legacy: _, authored: _ } => []
+      Present { value: DerivedBy { label: _ } } => []
+      Present { value: DeclaredBy { declaration: _ } } => []
+      Present { value: NotYetCounted { cause: _ } } => []
+      Absent => []
     }
   )
+}
+
+// The members a drop recorded, live or at retirement: a Standing or Superseded drop's population, and
+// the population a Retired drop kept as evidence. A Dissolved or prose drop recorded none.
+fn rung_drop_recorded_population(d: RungDrop) -> Optional<RungDropPopulation> {
+  match rung_drop_population(d: d) {
+    Present { value: p } => Present { value: p }
+    Absent => rung_drop_population_at_retirement(d: d)
+  }
 }
 
 // THE MODULE REAL-PATH PAIRING CLAIM (jolly-boar-495, gunbc#14389): the only claim that judges the full
