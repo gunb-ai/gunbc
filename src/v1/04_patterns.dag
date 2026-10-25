@@ -212,7 +212,9 @@ fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
       } else {
         expand_settled_scrut_type(scrut_node: scrut_node, env: env)
       }
-    Absent => scrut_node
+    // The type is not visible by its spelling here (a value imported without its type), but the node
+    // still names the declaration it resolved to, and that identity is what it expands to.
+    Absent => expand_settled_scrut_type(scrut_node: scrut_node, env: env)
   }
 }
 
