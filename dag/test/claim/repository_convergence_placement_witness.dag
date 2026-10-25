@@ -45,6 +45,9 @@ import gunbc.live_deploy.repository_convergence_placement {
   PlacementReceiptDecoded,
   PlacementReceiptUnreadable,
   ConvergenceReadbackDecoded,
+  ConvergenceReadbackReceiptAbsent,
+  ConvergenceReadbackWrongCandidate,
+  ConvergenceReadbackStale,
   ConvergenceReadbackRefused,
   convergence_base_ref,
   convergence_unit_start_timeout,
@@ -52,7 +55,9 @@ import gunbc.live_deploy.repository_convergence_placement {
   convergence_operands_for,
   convergence_principal_admission,
   convergence_readback_holds,
-  convergence_readback_of_text,
+  convergence_readback_of_text_bound,
+  read_convergence_receipt_bound,
+  repository_convergence_readback_wet,
   convergence_receipt_path,
   convergence_unit_doc,
   convergence_unit_rendering,
@@ -65,17 +70,28 @@ import gunbc.live_deploy.repository_convergence_placement {
   placement_receipt_text,
 }
 
-// EVERY WITNESS HERE IS PURE, AND SAYING SO IS WHAT MAKES THEM RUN. The floor's default disposition
-// is fail-closed -- a file that declares none is treated as ReadsLiveTree and DECLINED, discovered
-// and counted and never executed. That is the inert-family shape DESIGN indicts, where a reader
-// counts witnesses named for a subject and concludes it is covered. Nothing below reaches git, the
-// filesystem or a subprocess: the principal observation is driven through its DECODER over an
-// authored read outcome rather than through the read, so these are substrate inputs only.
+// EVERY WITNESS HERE IS PURE-OR-SUBSTRATE, AND SAYING SO IS WHAT MAKES THEM RUN. The floor's default
+// disposition is fail-closed -- a file that declares none is treated as ReadsLiveTree and DECLINED,
+// discovered and counted and never executed. That is the inert-family shape DESIGN indicts, where a
+// reader counts witnesses named for a subject and concludes it is covered. Nothing below reaches git
+// or a subprocess, and the ONLY filesystem access is the checkout-input carve-out: the absent-receipt
+// row reads a path under the checkout root, where absence is read OFF THE COMMIT -- input access, not
+// host state -- which is exactly what SubstrateInputsOnly declares. The principal observation is
+// driven through its DECODER over an authored read outcome rather than through the read.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CANDIDATE USED THROUGHOUT IS A FIXTURE OBJECT ID, forty lowercase hex characters, so the shape
 // admission it must pass is the production one rather than a relaxed test spelling.
 data fixture_candidate: String = "0123456789abcdef0123456789abcdef01234567"
+
+// THE PRIOR RUN'S CANDIDATE: a second forty-hex object id, so the stale RED above differs from the
+// positive control by the ONE fact that matters -- which run the receipt names -- and not by shape.
+data fixture_stale_candidate: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+// THE SAME SIXTY-FOUR CHARACTERS IN A NON-CANONICAL SPELLING. Git's cited decoder admits only the
+// lowercase hex spelling of an object id (one commit, one name), so this is the fixture the binding
+// must REFUSE on each side it touches -- used by the case-drift row below.
+data fixture_candidate_upper_tail: String = "0123456789ABCDEF0123456789abcdef01234567"
 
 data fixture_object_source: String = "/home/ghrunner/work/gunbc/gunbc"
 
@@ -448,14 +464,23 @@ test fn a_malformed_or_ambiguous_receipt_refuses_instead_of_decoding() -> Bool {
 test fn only_a_decoded_converged_receipt_lets_the_transaction_proceed() -> Bool {
   let converged = PlacementConverged { candidate: fixture_candidate, repo: srv1_repo_root() }
   convergence_readback_holds(
-    readback: convergence_readback_of_text(text: placement_receipt_text(receipt: converged)),
+    readback: convergence_readback_of_text_bound(
+      text: placement_receipt_text(receipt: converged),
+      expected_candidate: fixture_candidate,
+    ),
   )
-    && !convergence_readback_holds(readback: convergence_readback_of_text(text: ""))
+    && !convergence_readback_holds(readback: convergence_readback_of_text_bound(
+      text: "",
+      expected_candidate: fixture_candidate,
+    ))
     && !convergence_readback_holds(readback: ConvergenceReadbackRefused { cause: "no receipt" })
     && !convergence_readback_holds(
-      readback: convergence_readback_of_text(text: placement_receipt_text(
-        receipt: PlacementWrongPrincipal { expected: srv1_service_user(), observed: "ghrunner" },
-      )),
+      readback: convergence_readback_of_text_bound(
+        text: placement_receipt_text(
+          receipt: PlacementWrongPrincipal { expected: srv1_service_user(), observed: "ghrunner" },
+        ),
+        expected_candidate: fixture_candidate,
+      ),
     )
     && placement_converged(receipt: converged)
     && !placement_converged(receipt: PlacementOperandsRefused { reason: "x" })
@@ -465,6 +490,174 @@ test fn only_a_decoded_converged_receipt_lets_the_transaction_proceed() -> Bool 
       repo: srv1_repo_root(),
       detail: "x",
     })
+}
+
+// THE POSITIVE CONTROL OF THE BINDING. A fresh receipt written by THIS run -- the candidate on it is
+// the plan's, the same fixture string operand admission admitted -- converges. This row is what
+// keeps the RED below honest: without it, a readback that refused EVERYTHING would satisfy the stale
+// assertions and read as covered.
+test fn a_fresh_receipt_naming_the_plan_candidate_converges() -> Bool {
+  let fresh = PlacementConverged { candidate: fixture_candidate, repo: srv1_repo_root() }
+  match convergence_readback_of_text_bound(
+    text: placement_receipt_text(receipt: fresh),
+    expected_candidate: fixture_candidate,
+  ) {
+    ConvergenceReadbackDecoded { receipt: r } => placement_converged(receipt: r)
+      && convergence_readback_holds(readback: convergence_readback_of_text_bound(
+        text: placement_receipt_text(receipt: fresh),
+        expected_candidate: fixture_candidate,
+      ))
+    _ => false
+  }
+}
+
+// THE RED (S83469995): A STALE RECEIPT READS AS STALE, NEVER AS SUCCESS. A prior run converged
+// candidate X and wrote the per-instance receipt; this plan asks for candidate Y. The readback must
+// refuse with the TYPED stale cause, naming both identities. REVERT THE BINDING AND THIS FAILS: the
+// pre-fix readback took only the text, and a prior run's CONVERGED receipt exited 0 for any plan --
+// which is the silent wrong answer the store migration found. The typed cause is the point: an
+// untyped refusal could be produced by a reader that simply never finds anything, and then this row
+// would be green for the wrong reason; the shape below asks for the stale arm specifically, with the
+// expected identity normalized and the found identity named.
+test fn a_prior_run_receipt_read_back_for_another_plan_refuses_as_stale() -> Bool {
+  let stale = PlacementConverged { candidate: fixture_stale_candidate, repo: srv1_repo_root() }
+  let readback = convergence_readback_of_text_bound(
+    text: placement_receipt_text(receipt: stale),
+    expected_candidate: fixture_candidate,
+  )
+  !convergence_readback_holds(readback: readback)
+    && match readback {
+      // THE STALE CAUSE, TYPED, WITH BOTH IDENTITIES CARRIED. The path arm is the text-route
+      // sentinel because this leg never touches the filesystem; the wet route's own row below
+      // checks the path-carrying shape.
+      ConvergenceReadbackStale { path: p, expected: e, found: f } =>
+        e == fixture_candidate
+          && f == fixture_stale_candidate
+          && string_contains(s: p, pattern: "no path was involved")
+          && string_contains(s: convergence_readback_line(readback: readback), pattern: "stale-receipt")
+      _ => false
+    }
+}
+
+// A RECEIPT THAT NAMES NO CANDIDATE IS ALSO NEVER SUCCESS. The decoder requires the candidate field
+// to exist, but nothing requires it to be an identity -- a writer that emitted `"candidate": ""` (or
+// any malformed spelling) produced a receipt that the unbound readback accepted. Under the binding,
+// an unnameable candidate fails the comparison from the artifact side, which is the stale arm: the
+// file does not answer for this run.
+test fn a_receipt_naming_no_candidate_refuses_as_stale() -> Bool {
+  let unbound = PlacementConverged { candidate: "", repo: srv1_repo_root() }
+  match convergence_readback_of_text_bound(
+    text: placement_receipt_text(receipt: unbound),
+    expected_candidate: fixture_candidate,
+  ) {
+    ConvergenceReadbackStale { path: _, expected: e, found: f } =>
+      e == fixture_candidate
+        && string_contains(s: f, pattern: "names no candidate")
+    _ => false
+  }
+}
+
+// THE QUESTION ITSELF CAN BE MALFORMED, AND THAT IS A DIFFERENT CAUSE. If upstream hands the
+// readback an expected candidate that is not an identity, no file could ever answer -- the repair is
+// upstream, not on the host. Collapsing this into stale would send an operator to delete a receipt
+// that is not the problem, so the causes stay separate and the refusal carries the malformed
+// expectation it refuses to bind against.
+test fn a_malformed_expected_candidate_refuses_as_wrong_candidate() -> Bool {
+  let fresh = PlacementConverged { candidate: fixture_candidate, repo: srv1_repo_root() }
+  match convergence_readback_of_text_bound(
+    text: placement_receipt_text(receipt: fresh),
+    expected_candidate: "not-a-git-object-id",
+  ) {
+    ConvergenceReadbackWrongCandidate { expected: e } =>
+      e == "not-a-git-object-id"
+        && string_contains(
+          s: convergence_readback_line(readback: ConvergenceReadbackWrongCandidate { expected: e }),
+          pattern: "wrong-candidate",
+        )
+    _ => false
+  }
+}
+
+// THE BINDING IS GIT'S DECODER RULE, NOT A LOOSE COMPARISON. The decoder's rule is the canonical
+// spelling -- hex, lowercase, forty -- and the binding uses it on BOTH sides, so an uppercase
+// spelling is refused rather than folded away (the operand admission refuses it for the same
+// reason: one commit cannot have two names). An uppercase `expected` is a malformed question and
+// refuses as wrong-candidate; an uppercase candidate stamped on a receipt normalizes to nothing and
+// that receipt is stale. If the binding had used a case-insensitive compare, this row would be the
+// one to notice it drifting from the admission's rule.
+test fn case_drift_refuses_on_both_sides_rather_than_folding() -> Bool {
+  let fresh = PlacementConverged { candidate: fixture_candidate, repo: srv1_repo_root() }
+  let upper = PlacementConverged { candidate: fixture_candidate_upper_tail, repo: srv1_repo_root() }
+  match convergence_readback_of_text_bound(
+    text: placement_receipt_text(receipt: fresh),
+    expected_candidate: fixture_candidate_upper_tail,
+  ) {
+    ConvergenceReadbackWrongCandidate { expected: e } => e == fixture_candidate_upper_tail
+    _ => false
+  }
+    && match convergence_readback_of_text_bound(
+      text: placement_receipt_text(receipt: upper),
+      expected_candidate: fixture_candidate,
+    ) {
+      ConvergenceReadbackStale { path: _, expected: e, found: f } =>
+        e == fixture_candidate && f == fixture_candidate_upper_tail
+      _ => false
+    }
+    && !convergence_readback_holds(readback: convergence_readback_of_text_bound(
+      text: placement_receipt_text(
+        receipt: PlacementConverged { candidate: fixture_stale_candidate, repo: srv1_repo_root() },
+      ),
+      expected_candidate: fixture_candidate,
+    ))
+}
+
+// THE ENTRY POINT ITSELF REFUSES AN UNBOUND CALL. `repository_convergence_readback_wet` is the route
+// the store migration found unguarded -- the installed binary reaches it with `run --function ...`
+// and no restart leg in front of it -- and its second argument is the run it answers for. This row
+// is HERMETIC-SAFE: an empty candidate returns its refusal BEFORE any filesystem read, so no host
+// effect is touched and no mock is needed; it pins that the entry has the parameter AND requires it,
+// rather than defaulting to the old unbound read that let a prior run's CONVERGED receipt exit 0.
+// The composition the entry performs -- hand `candidate` to the bound read -- is pinned by the
+// stale RED above (which IS that bound read) plus the apply-plan witness that pins `--arg candidate`
+// on the readback leg's argv.
+test fn the_readback_entry_refuses_without_the_candidate_it_answers_for() -> Bool {
+  match repository_convergence_readback_wet(receipt: "/opt/gunbc/receipts/repository-convergence.json", candidate: "") {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "candidate")
+    ExitSuccess => false
+  }
+}
+
+// THE ENTRY STILL REFUSES WITHOUT ITS SUBJECT, AND THE TWO REFUSALS ARE DISTINCT. The receipt path
+// and the candidate are BOTH required; neither empty-argument refusal touches the filesystem, so a
+// caller that supplies only one gets a specific message, not a spurious absent-file error.
+test fn the_readback_entry_refuses_without_a_receipt_path() -> Bool {
+  match repository_convergence_readback_wet(receipt: "", candidate: fixture_candidate) {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "receipt")
+    ExitSuccess => false
+  }
+}
+
+// THE PATH ROUTE CARRIES ITS OWN CAUSE SHAPE. `read_convergence_receipt_bound` is what the wet entry
+// calls once the arguments hold; a missing file refuses as ReceiptAbsent naming the path and error,
+// NOT as stale -- a file that does not exist answers for no run and must not be reported as a stale
+// one (which would send an operator hunting for a writer that never wrote). The path is a
+// NONEXISTENT FILE UNDER THE CHECKOUT ROOT, which the hermetic route serves as a real read (absence
+// off the commit is input access, not host state), so this row is hermetic-safe: it observes the
+// read's refusal rather than needing a mock.
+test fn an_absent_receipt_refuses_as_absent_not_stale() -> Bool {
+  match read_convergence_receipt_bound(
+    receipt_path: "gunbc-nonexistent-repository-convergence-receipt.json",
+    expected_candidate: fixture_candidate,
+  ) {
+    ConvergenceReadbackReceiptAbsent { path: p, error: _ } =>
+      string_contains(s: p, pattern: "repository-convergence")
+        && !convergence_readback_holds(readback: ConvergenceReadbackReceiptAbsent { path: p, error: "x" })
+        && string_contains(
+          s: convergence_readback_line(readback: ConvergenceReadbackReceiptAbsent { path: p, error: "x" }),
+          pattern: "UNREPORTED",
+        )
+    _ => false
+  }
 }
 
 // THE CONVERGENCE'S OWN EXIT MAPS TO THE RECEIPT WITHOUT INVENTING A CAUSE. A failure carries the

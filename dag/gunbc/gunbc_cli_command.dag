@@ -120,6 +120,43 @@ fn gunbc_installed_run_with_argument_command(
   }
 }
 
+// THE SAME INVOCATION WITH TWO NAMED ARGUMENTS. It exists because the convergence readback needs
+// the run it answers for as input alongside its subject -- a readback that took only the receipt
+// path was a question with the run removed from it, and it answered for whichever run wrote the
+// file last (store row S83469995). One admission failure on either argument yields no command
+// rather than a command silently missing a binding.
+fn gunbc_installed_run_with_two_argument_command(
+  binary: NonEmptyStr,
+  source_roots: List<String>,
+  entry: String,
+  function: String,
+  first_name: String,
+  first_value: String,
+  second_name: String,
+  second_value: String,
+) -> Optional<ArgvCommand> {
+  match admit_named_argument(name: first_name, value: first_value) {
+    NamedArgumentAdmitted { argument: a } =>
+      match admit_named_argument(name: second_name, value: second_value) {
+        NamedArgumentAdmitted { argument: b } =>
+          Present { value: argv_command(
+            program: uncataloged_program(invocation: binary),
+            arguments: invocation_words_bare(words: gunbc_run_invocation_words_with_functions(
+              source_roots: source_roots,
+              entry: entry,
+              functions: [function],
+              claim_run: false,
+              arguments: [a, b],
+            )),
+          ) }
+        NamedArgumentNameEmpty => Absent
+        NamedArgumentNameHoldsSeparator { name: _ } => Absent
+      }
+    NamedArgumentNameEmpty => Absent
+    NamedArgumentNameHoldsSeparator { name: _ } => Absent
+  }
+}
+
 fn gunbc_command_argv(cmd: ArgvCommand) -> List<String> {
   concat([cmd.program.invocation as String], cmd.arguments)
 }
