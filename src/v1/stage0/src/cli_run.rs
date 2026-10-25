@@ -4336,7 +4336,7 @@ pub struct DeclaredImportClosureBindingObserved {
     pub blocking_hard_diagnostic_count: i64,
 }
 
-/// Result of [`observe_declared_import_closure_symbol_binding`]. `NotRunnable` is distinct from
+/// Result of [`declared_import_closure_binding_observation_from_resolved`]. `NotRunnable` is distinct from
 /// an observed refusal so could-not-measure never reads as the subject passing (DESIGN §5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeclaredImportClosureBindingObservation {
@@ -4374,40 +4374,6 @@ const CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS: &[(&str, &str)] = &[
     ),
     ("src/v2/std/grounding.dag", "v2.std.verdict.VerdictTally"),
 ];
-
-/// Host realization backing the `observe_declared_import_closure_symbol_binding` builtin:
-/// compile an entry's **declared import-edge closure only** (no reference-derived widening) under
-/// primary-precedence `pool_roots`, then classify how `consumer_module` binds `symbol`.
-///
-/// MEASUREMENT ONLY — binding-source classification (`ListedImport` vs `PoolCoincidence`) is
-/// carried as data for Class B (#6985) controls; callers judge acceptance.
-pub fn observe_declared_import_closure_symbol_binding(
-    pool_roots: &[String],
-    entry_path: &str,
-    consumer_module: &str,
-    symbol: &str,
-) -> DeclaredImportClosureBindingObservation {
-    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        compile_declared_import_closure_only_with_pool(pool_roots, entry_path, None)
-    }));
-    let resolved = match compiled {
-        Ok(Ok(r)) => r,
-        Ok(Err(cause)) => {
-            return DeclaredImportClosureBindingObservation::NotRunnable(cause);
-        }
-        Err(_) => {
-            return DeclaredImportClosureBindingObservation::NotRunnable(
-                "observe_declared_import_closure_symbol_binding: compile panicked before producing a graph"
-                    .to_string(),
-            );
-        }
-    };
-    declared_import_closure_binding_observation_from_resolved(
-        resolved.as_ref(),
-        consumer_module,
-        symbol,
-    )
-}
 
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
