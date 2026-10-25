@@ -4,7 +4,7 @@ module gunbc.srv3.srv3_os_install_actuate
 // declares imports has its bare channel off, so every provider name it reads is imported here
 // explicitly, each from the module that declares it.
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.types { NonEmptyStr, Secret, String }
+import std.types { NonEmptyStr, PathSegment, Secret, String }
 import gunbc.auth.private_secret_file {
   PrivateSecretFileCompleted,
   PrivateSecretFileCompletedResidueRemains,
@@ -87,7 +87,7 @@ fn srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> Pr
   // never removed. It is a file, not stdin, because the login runs as a described curl command
   // through the host-effect transport, which has no stdin channel.
   let login_exit = match with_private_secret_file(
-    file_name: "bmcweb_login_body.json",
+    file_name: "bmcweb_login_body.json" as PathSegment,
     content: srv3_bmcweb_login_body_content_for_resolution(resolution: resolution, password: password) as Secret,
     use: fn(body_file) {
       srv3_apply_to_process_exit(

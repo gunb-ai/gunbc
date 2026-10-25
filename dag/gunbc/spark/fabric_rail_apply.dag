@@ -1,6 +1,6 @@
 module gunbc.spark.fabric_rail_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Secret }
+import std.types { String, Bool, List, NonEmptyStr, Secret, PathSegment }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -89,7 +89,7 @@ fn fabric_rail_apply_wet() -> ProcessExit
               Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
               Present { value: trust } =>
                 match with_private_secret_file(
-                  file_name: "gunbc-fabric-rail-apply-admin-password" as NonEmptyStr,
+                  file_name: "gunbc-fabric-rail-apply-admin-password" as PathSegment,
                   content: administrator as Secret,
                   use: fn(file) { fabric_rail_apply_legs(trust: trust, plans: plans, administrator: administrator as Secret, file: file) },
                 ) {

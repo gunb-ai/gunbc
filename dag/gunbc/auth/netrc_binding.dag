@@ -1,6 +1,6 @@
 module gunbc.auth.netrc_binding
 
-import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
+import std.types { NonEmptyStr, String, Bool, Secret, FilePath, PathSegment }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.private_secret_file { PrivateSecretFileBracket, with_private_secret_file }
@@ -163,7 +163,7 @@ fn with_private_netrc_binding<R>(
 ) -> PrivateSecretFileBracket<R>
 {
   with_private_secret_file(
-    file_name: "netrc",
+    file_name: "netrc" as PathSegment,
     content: netrc_content(machine: machine, login: login, password: password) as Secret,
     use: fn(path) { use(NetrcBinding { path: path as FilePath }) },
   )

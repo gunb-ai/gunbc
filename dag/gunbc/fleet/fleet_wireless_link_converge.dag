@@ -1,6 +1,6 @@
 module gunbc.fleet.fleet_wireless_link_converge
 
-import std.types { String, Bool, NonEmptyStr, Secret }
+import std.types { String, Bool, NonEmptyStr, Secret, PathSegment }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -83,7 +83,7 @@ fn spark_wireless_link_converge_ci_wet() -> ProcessExit
                         Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
                         Present { value: trust } =>
                           match with_private_secret_file(
-                            file_name: "gunbc-spark-wireless-link-converge-admin-password" as NonEmptyStr,
+                            file_name: "gunbc-spark-wireless-link-converge-admin-password" as PathSegment,
                             content: administrator as Secret,
                             use: fn(file) {
                               let ctx = SparkMaterializeContext {

@@ -1,7 +1,7 @@
 module test.claim.materialized_ssh_key_file_real_execution_witness
 
 import std.algebra { trim }
-import std.types { String, NonEmptyStr, Secret, FilePath, Bool }
+import std.types { String, NonEmptyStr, Secret, FilePath, Bool, PathSegment }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
@@ -35,7 +35,7 @@ fn stat_octal_mode(path: String) -> String {
 }
 
 test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -> Bool {
-  let identity = "witness-bracket-key" as NonEmptyStr
+  let identity = "witness-bracket-key" as PathSegment
   let secret = "synthetic-ssh-private-key-material" as Secret
   let outcome = with_private_secret_file(
     file_name: identity,

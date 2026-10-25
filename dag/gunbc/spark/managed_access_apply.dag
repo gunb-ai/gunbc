@@ -1,6 +1,6 @@
 module gunbc.spark.managed_access_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Int, Secret }
+import std.types { String, Bool, List, NonEmptyStr, Int, Secret, PathSegment }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, serialize_content_hash }
@@ -188,8 +188,8 @@ fn apply_outcome_label(outcome: SparkApplyOutcome) -> String {
 // not by itself PREVENT a future caller putting the credential in argv -- `as String` is still
 // writable -- so this is mitigatable, not structural; what it buys is that the wrong move now
 // requires an explicit unwrap at the site that makes it, where a reader and a lens can both see it.
-fn spark_admin_credential_file_name(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
-  join(["gunbc-spark-attempt-", attempt as String, "-admin-password"], "") as NonEmptyStr
+fn spark_admin_credential_file_name(attempt: FleetSshAttemptIdentity) -> PathSegment {
+  join(["gunbc-spark-attempt-", attempt as String, "-admin-password"], "") as PathSegment
 }
 
 // THE PASSWORD SESSION IS NO LONGER CHOSEN HERE, IT IS DERIVED. This leg was already correct --
