@@ -3645,9 +3645,9 @@ pub fn parameterized_alias_rhs(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<ParameterizedAlias>> {
     if (((((pre.connective.clone() != Connective::NoConnective)
-        || ((pre.params.clone().len() as i64) > 0))
+        || ((pre.params.clone().len() as i64) == 0))
         || (pre.type_annotation.clone() != std::option::Option::None))
-        || ((pre.children.clone().len() as i64) == 0))
+        || ((pre.children.clone().len() as i64) > 0))
         || (pre.return_cardinality.clone() != Cardinality::Required))
     {
         std::option::Option::None
@@ -3663,10 +3663,10 @@ pub fn parameterized_alias_rhs(
                     Some(Rc::new(ParameterizedAlias {
                         params: Rc::new({
                             let mut __result = Vec::new();
-                            for c in pre.children.clone().iter().cloned() {
-                                __result.push(crate::v1_std_core::authored_name_at(
+                            for p in pre.params.clone().iter().cloned() {
+                                __result.push(crate::v1_std_core::param_node_name_at(
+                                    p.clone(),
                                     source_indices.clone(),
-                                    c.clone(),
                                 ));
                             }
                             __result
