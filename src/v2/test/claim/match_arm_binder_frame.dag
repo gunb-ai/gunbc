@@ -255,7 +255,7 @@ test fn mab_binder_spelling_a_where_alias_binds() -> Bool {
 // the arm reads the atom (`A(d) => d` would return the scrutinee's payload, not the constant). Kept,
 // reversed, as the regression control (DESIGN section 4b(4)); a binder spelled like a module FUNCTION
 // still binds (mab_a_binder_spelled_like_a_module_function_still_binds).
-test fn mab_binder_spelling_a_record_data_row_binds() -> Bool {
+test fn mab_binder_spelling_a_record_data_row_refuses() -> Bool {
   mab_outcome_refuses_with(o: mab_resolved_record_data_binder(), reason: ^resolve_reason_pattern_atom_names_visible_value)
 }
 
