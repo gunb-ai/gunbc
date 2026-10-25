@@ -30,6 +30,7 @@ import gunbc.machine_intake.mtjade1_access_observation {
   read_mtjade1_media_general_put_standing,
   read_mtjade1_rmedia_general_residue,
 }
+import std.content_hash { sha256_hex_of_text }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
