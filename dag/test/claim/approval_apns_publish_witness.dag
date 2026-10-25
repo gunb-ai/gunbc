@@ -1,0 +1,197 @@
+module test.claim.approval_apns_publish_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String, Int, List }
+import std.algebra { length }
+import std.optional { Absent, Present }
+import extdeps.tools.openssl { openssl_signature_of, OpensslSigned, OpensslSignRefused }
+import extdeps.auth.jws { JwsRs256, JwsEs256, jws_signing_input, JwsEncoded, JwsEncodeNotOctets, JwsSigned, JwsSignRefused }
+import extdeps.auth.jwt { JwtCompactSerialization }
+import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
+import extdeps.apple.apns {
+  ApnsProviderIdentity, AppleTeamId, ApnsKeyId, ApnsDevelopment, ApnsProduction, apns_provider_token_claims_json, apns_payload_json,
+  apns_send_outcome_of, ApnsAccepted, ApnsRefused, ApnsUnreached, ApnsUndecodable, ApnsTokenUnregistered,
+  ApnsRequest, ApnsAps, ApnsAlert, ApnsDeviceToken, ApnsTopic, ApnsCollapseId, PushTypeAlert, PriorityImmediate, InterruptionActive,
+}
+import gunbc.jws_signer_realize { jws_signature_of_openssl }
+import gunbc.auth.approval_device_wire { ApnsRegistration, FcmRegistration }
+import gunbc.auth.approval_device_redemption { push_outcome_of_apns, PushRegistrationInvalid, PushProviderAccepted, PushProviderRefused, ProviderApns }
+import gunbc.auth.approval_apns_publish {
+  approval_apns_provider, CachedProviderToken, cached_provider_token_text, parse_cached_provider_token, provider_token_reusable,
+  approval_push_request, ApprovalPushRequestReady, ApprovalPushRequestRefused, apns_curl_config, apns_rest_result_of,
+  DeviceNotificationAttempted, DevicePushSent, DevicePushNotSent, device_notification_sentence,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── ES256: openssl's DER read to the JWS R || S ──────────────────────────────────────────────
+// THE FIXTURE IS A REAL PRODUCER'S OUTPUT: `printf x7 | openssl dgst -sha256 -sign <P-256 key> -hex`
+// under OpenSSL 3.5.7, exactly the argv extdeps.tools.openssl SignSha256Hex runs, label and all. It
+// is the inhabitance pairing for the supplied signature below: openssl prints this shape, and the
+// conversion reads THIS shape. Its r has a 31-octet magnitude (DER 0x00 0x94 ...: the 0x00 is the
+// sign byte) and its s a 32-octet one behind a sign byte, so both a left pad and a sign-byte strip
+// are exercised; dropping either goes red. The expected R || S was computed outside this tree.
+data openssl_ec_stdout: String = "SHA2-256(stdin)= 3045022000940176ac9a1806dc894b1ac246bb282a18ca7428061479fd20e00c6807b4ec022100e4d1302f56bf2f33280ca10a4c82dcfbba5e17d6da3e9e52f137efc371944ba2"
+
+data openssl_ec_der: List<Int> = [48, 69, 2, 32, 0, 148, 1, 118, 172, 154, 24, 6, 220, 137, 75, 26, 194, 70, 187, 40, 42, 24, 202, 116, 40, 6, 20, 121, 253, 32, 224, 12, 104, 7, 180, 236, 2, 33, 0, 228, 209, 48, 47, 86, 191, 47, 51, 40, 12, 161, 10, 76, 130, 220, 251, 186, 94, 23, 214, 218, 62, 158, 82, 241, 55, 239, 195, 113, 148, 75, 162]
+
+data expected_r_s: List<Int> = [0, 148, 1, 118, 172, 154, 24, 6, 220, 137, 75, 26, 194, 70, 187, 40, 42, 24, 202, 116, 40, 6, 20, 121, 253, 32, 224, 12, 104, 7, 180, 236, 228, 209, 48, 47, 86, 191, 47, 51, 40, 12, 161, 10, 76, 130, 220, 251, 186, 94, 23, 214, 218, 62, 158, 82, 241, 55, 239, 195, 113, 148, 75, 162]
+
+test fn openssl_prints_the_ec_signature_as_der_and_es256_reads_it_to_r_s() -> Bool {
+  match openssl_signature_of(exit_code: 0, stdout: openssl_ec_stdout, stderr: "") {
+    OpensslSignRefused { exit_code: _, detail: _ } => false
+    OpensslSigned { octets: der } =>
+      der == openssl_ec_der
+        && match jws_signature_of_openssl(alg: JwsEs256, octets: der) {
+          JwsSigned { signature: rs } => length(rs) == 64 && rs == expected_r_s
+          JwsSignRefused { detail: _ } => false
+        }
+  }
+}
+
+// RS256 passes openssl's octets through untouched; ES256 refuses octets that are not a DER
+// ECDSA-Sig-Value -- an RSA key filed under ES256 lands here, by name.
+test fn rs256_passes_through_and_es256_refuses_what_is_not_der() -> Bool {
+  match jws_signature_of_openssl(alg: JwsRs256, octets: [1, 2, 3]) { JwsSigned { signature: s } => s == [1, 2, 3]  JwsSignRefused { detail: _ } => false }
+    && match jws_signature_of_openssl(alg: JwsEs256, octets: [1, 2, 3]) { JwsSignRefused { detail: d } => contains(d, "not a DER ECDSA-Sig-Value")  JwsSigned { signature: _ } => false }
+}
+
+// ── The provider token ───────────────────────────────────────────────────────────────────────
+// Goldens are base64url of {"alg":"ES256","kid":"FTXPF2UJ65","typ":"JWT"} and {"alg":"RS256","typ":"JWT"},
+// computed outside this tree. The RS256 one is the header the GitHub App mint has always printed:
+// generalizing the header must not move it.
+data es256_header_b64url: String = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkZUWFBGMlVKNjUiLCJ0eXAiOiJKV1QifQ"
+data rs256_header_b64url: String = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9"
+
+test fn the_es256_header_names_the_key_id_and_the_rs256_header_is_unmoved() -> Bool {
+  match jws_signing_input(alg: JwsEs256, kid: Present { value: approval_apns_provider.key_id as NonEmptyStr }, payload_json: "x") {
+    JwsEncoded { text: t } => starts_with(s: t, prefix: concat(es256_header_b64url, "."))
+    JwsEncodeNotOctets { observed: _ } => false
+  }
+    && match jws_signing_input(alg: JwsRs256, kid: none, payload_json: "x") {
+      JwsEncoded { text: t } => starts_with(s: t, prefix: concat(rs256_header_b64url, "."))
+      JwsEncodeNotOctets { observed: _ } => false
+    }
+}
+
+test fn the_claims_are_apples_two_members() -> Bool {
+  apns_provider_token_claims_json(identity: approval_apns_provider, issued_at: 1761379200) == "\{\"iss\": \"72HGYAMBVQ\", \"iat\": 1761379200}"
+}
+
+fn token_at(issued_at: Int, key_id: String) -> CachedProviderToken {
+  CachedProviderToken {
+    issued_at: issued_at,
+    provider: ApnsProviderIdentity { team_id: "72HGYAMBVQ" as AppleTeamId, key_id: key_id as ApnsKeyId },
+    jwt: "h.p.s" as JwtCompactSerialization,
+  }
+}
+
+// THE WINDOW IS 3600 - 1200 = 2400 SECONDS (Apple's two rows): reused at 2399, re-minted at 2400; a
+// token from the future (a clock stepped back) or from another key is never reused.
+test fn a_cached_token_is_reused_inside_the_window_and_only_for_its_own_key() -> Bool {
+  let now = 1761379200
+  provider_token_reusable(t: token_at(issued_at: now, key_id: "FTXPF2UJ65"), provider: approval_apns_provider, now: now)
+    && provider_token_reusable(t: token_at(issued_at: now - 2399, key_id: "FTXPF2UJ65"), provider: approval_apns_provider, now: now)
+    && !provider_token_reusable(t: token_at(issued_at: now - 2400, key_id: "FTXPF2UJ65"), provider: approval_apns_provider, now: now)
+    && !provider_token_reusable(t: token_at(issued_at: now + 1, key_id: "FTXPF2UJ65"), provider: approval_apns_provider, now: now)
+    && !provider_token_reusable(t: token_at(issued_at: now, key_id: "OTHERKEY01"), provider: approval_apns_provider, now: now)
+}
+
+test fn the_cached_token_record_round_trips_and_refuses_a_foreign_record() -> Bool {
+  let t = token_at(issued_at: 1761379200, key_id: "FTXPF2UJ65")
+  match parse_cached_provider_token(text: cached_provider_token_text(t: t) as String) {
+    Present { value: back } => back.issued_at == 1761379200 && (back.provider.key_id as String) == "FTXPF2UJ65" && (back.provider.team_id as String) == "72HGYAMBVQ" && (back.jwt as String) == "h.p.s"
+    Absent => false
+  }
+    && match parse_cached_provider_token(text: "gunbc.other.v1\n1\nk\ni\nj") { Absent => true  Present { value: _ } => false }
+    && match parse_cached_provider_token(text: "gunbc.apns-provider-token.v1\n-5\nk\ni\nj") { Absent => true  Present { value: _ } => false }
+}
+
+// ── The request ──────────────────────────────────────────────────────────────────────────────
+data dev_registration_token: String = "a1b2c3d4"
+
+test fn the_payload_is_the_generic_alert_and_the_escalation_locator() -> Bool {
+  match approval_push_request(registration: ApnsRegistration { environment: ApnsDevelopment, topic: "ai.gunb.approve", token: "a1b2c3d4" }, escalation_id: "esc-1") {
+    ApprovalPushRequestRefused { detail: _ } => false
+    ApprovalPushRequestReady { request: r } =>
+      apns_payload_json(r: r) == "\{\"aps\": \{\"alert\": \{\"title\": \"Approval requested\", \"body\": \"A request is waiting for your decision in Approve.\"}, \"interruption-level\": \"active\"}, \"notification_id\": \"esc-1\"}"
+  }
+}
+
+// A topic other than this app's bundle, an FCM registration, and an escalation id too long for a
+// collapse id are each refused before anything is sent.
+test fn a_foreign_topic_an_fcm_registration_and_an_overlong_id_are_refused() -> Bool {
+  let long_id = "esc-0123456789012345678901234567890123456789012345678901234567890"
+  match approval_push_request(registration: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.other", token: "t" }, escalation_id: "esc-1") { ApprovalPushRequestRefused { detail: d } => contains(d as String, "not this app's bundle")  ApprovalPushRequestReady { request: _ } => false }
+    && match approval_push_request(registration: FcmRegistration { project: "p" as FcmProjectId, token: "t" as FcmRegistrationToken }, escalation_id: "esc-1") { ApprovalPushRequestRefused { detail: d } => contains(d as String, "FCM")  ApprovalPushRequestReady { request: _ } => false }
+    && match approval_push_request(registration: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "t" }, escalation_id: long_id as NonEmptyStr) { ApprovalPushRequestRefused { detail: d } => contains(d as String, "collapse id")  ApprovalPushRequestReady { request: _ } => false }
+}
+
+// THE CONFIG ON STDIN: the sandbox host for a development token, HTTP/2, the bearer as a header line
+// (never argv), and a body whose quotes are escaped so curl reads the JSON back unchanged.
+test fn the_curl_config_carries_the_host_the_bearer_and_the_escaped_body() -> Bool {
+  match approval_push_request(registration: ApnsRegistration { environment: ApnsDevelopment, topic: "ai.gunb.approve", token: "a1b2c3d4" }, escalation_id: "esc-1") {
+    ApprovalPushRequestRefused { detail: _ } => false
+    ApprovalPushRequestReady { request: r } => {
+      let c = apns_curl_config(r: r, token: "h.p.s" as JwtCompactSerialization) as String
+      contains(c, "url = \"https://api.sandbox.push.apple.com/3/device/a1b2c3d4\"\n")
+        && contains(c, "\nhttp2\n")
+        && contains(c, "header = \"authorization: bearer h.p.s\"\n")
+        && contains(c, "header = \"apns-priority: 10\"\n")
+        && contains(c, "header = \"apns-collapse-id: esc-1\"\n")
+        && contains(c, "data-binary = \"\{\\\"aps\\\": ")
+    }
+  }
+}
+
+// ── The answer ───────────────────────────────────────────────────────────────────────────────
+// curl's dumped head, body and trailing status line, as `--dump-header - --write-out "\n%{http_code}"`
+// prints them, folded through extdeps.apple.apns apns_send_outcome_of. A 410 is the registration fact
+// (the token is dead), not a retryable refusal; a 200 with no apns-id is undecodable, never accepted.
+test fn curls_answer_folds_to_apples_outcomes() -> Bool {
+  let accepted = apns_send_outcome_of(rest: apns_rest_result_of(exit_code: 0, stdout: "HTTP/2 200\napns-id: 7d2b0c1e-0000-4000-8000-000000000001\n\n\n200", stderr: ""))
+  let no_id = apns_send_outcome_of(rest: apns_rest_result_of(exit_code: 0, stdout: "HTTP/2 200\n\n\n200", stderr: ""))
+  let gone = apns_send_outcome_of(rest: apns_rest_result_of(exit_code: 0, stdout: "HTTP/2 410\napns-id: x\n\n\{\"reason\":\"Unregistered\",\"timestamp\":1761379200000}\n410", stderr: ""))
+  let unreached = apns_send_outcome_of(rest: apns_rest_result_of(exit_code: 6, stdout: "", stderr: "curl: (6) Could not resolve host"))
+  match accepted { ApnsAccepted { apns_id: i } => (i as String) == "7d2b0c1e-0000-4000-8000-000000000001"  _ => false }
+    && match no_id { ApnsUndecodable { status: s, cause: c } => s == 200 && contains(c, "no apns-id header")  _ => false }
+    && match gone { ApnsRefused { status: s, class: ApnsTokenUnregistered, reason: r } => s == 410 && r == "Unregistered"  _ => false }
+    && match push_outcome_of_apns(o: gone) { PushRegistrationInvalid { provider: ProviderApns, detail: d } => d == "Unregistered"  _ => false }
+    && match unreached { ApnsUnreached { cause: c } => contains(c, "curl exit 6")  _ => false }
+}
+
+// A PARTIAL DELIVERY IS SAID TO BE PARTIAL.
+test fn the_sentence_counts_accepted_devices_out_of_attempted() -> Bool {
+  let n = DeviceNotificationAttempted {
+    outcomes: [
+      DevicePushSent { enrollment_id: "genr-a", outcome: PushProviderAccepted { provider: ProviderApns, receipt: "id-a" } },
+      DevicePushSent { enrollment_id: "genr-b", outcome: PushProviderRefused { provider: ProviderApns, status: 403, detail: "InvalidProviderToken", retryable: false } },
+    ],
+    unregistered: ["genr-c" as NonEmptyStr],
+    unreadable: [],
+  }
+  let s = device_notification_sentence(n: n)
+  contains(s, "1/2 accepted") && contains(s, "genr-b: refused 403 InvalidProviderToken") && contains(s, "1 enrolled device(s) without a registration")
+}
+
+// ABSENT AND EMPTY ARE TWO WIRE FACTS (review 86055): an Absent subtitle or category sends no key,
+// and a Present one sends exactly its value. The golden above is the Absent half; this is the other.
+test fn a_present_subtitle_and_category_are_sent_and_absent_ones_are_not() -> Bool {
+  let present = ApnsRequest {
+    environment: ApnsDevelopment,
+    device_token: "a1b2" as ApnsDeviceToken,
+    topic: "ai.gunb.approve" as ApnsTopic,
+    push_type: PushTypeAlert,
+    priority: PriorityImmediate,
+    collapse_id: "c" as ApnsCollapseId,
+    aps: ApnsAps {
+      alert: ApnsAlert { title: "t", subtitle: Present { value: "s" as NonEmptyStr }, body: "b" },
+      mutable_content: false,
+      interruption_level: InterruptionActive,
+      category: Present { value: "APPROVAL" as NonEmptyStr },
+    },
+    custom: [],
+  }
+  let p = apns_payload_json(r: present)
+  contains(p, "\"subtitle\": \"s\"") && contains(p, "\"category\": \"APPROVAL\"")
+}
