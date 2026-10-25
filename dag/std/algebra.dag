@@ -1411,6 +1411,36 @@ fn int_total_order() -> TotalOrder<Int> {
   TotalOrder { compare: int_compare_canonical }
 }
 
+// THE ORDER PULLED BACK THROUGH A PROJECTION (the contravariant map of TotalOrder): a on A is ordered
+// as project(a) is ordered on B. Totality, antisymmetry and transitivity hold on A exactly where
+// project is injective; a projection that identifies two values orders them Equal. The one rule for
+// every order a type takes from a declared view of itself, so no type restates a comparator.
+fn total_order_by<A, B>(order: TotalOrder<B>, project: fn(A) -> B) -> TotalOrder<A> {
+  TotalOrder { compare: fn(a, b) { order.compare(project(a), project(b)) } }
+}
+
+// The canonical content order on String keys: lexicographic by Unicode scalar value, the order the
+// host sort_by applies to them. It equals bytewise order over the UTF-8 encoding, as a THEOREM of
+// UTF-8 and not a coincidence of the host: UTF-8 preserves scalar order byte by byte (RFC 3629
+// section 3, "byte-oriented sorting ... preserves code point order"), so the host String Ord, which
+// compares bytes, and this order cannot disagree.
+fn string_compare_canonical(a: String, b: String) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+fn string_total_order() -> TotalOrder<String> {
+  TotalOrder { compare: string_compare_canonical }
+}
+
+// The canonical content order on Bool keys, false before true (the host's bool Ord).
+fn bool_compare_canonical(a: Bool, b: Bool) -> Ordering {
+  if a == b { Equal } else { if b { Less } else { Greater } }
+}
+
+fn bool_total_order() -> TotalOrder<Bool> {
+  TotalOrder { compare: bool_compare_canonical }
+}
+
 // std.primitives sort_by_contract inhabited by a MODELED merge sort (named apart from the `sort_by` method
 // spelling, which is a primitive with the host realization): no host seam, so the realization
 // is this body. The key order is the caller's TotalOrder (the host admits String, Int and Bool keys
