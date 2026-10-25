@@ -2342,8 +2342,8 @@ jobs:
         id: fleet_converge_executor_subject_split_gate
         run: |
           set -e
-          if '[' "$FLEET_CONVERGE_EXPECTED_HOST" '=' "$FLEET_CONVERGE_SUBJECT_HOST" ']'; then 'echo' 'REFUSED: fleet-converge self-subject' >&2; exit 1; fi
           if '[' '-z' "$FLEET_CONVERGE_SUBJECT_HOST" ']' || '[' '-z' "$FLEET_CONVERGE_EXPECTED_HOST" ']'; then 'echo' 'REFUSED: fleet-converge subject absent: both executor and subject must be named' >&2; exit 1; fi
+          if '[' "$FLEET_CONVERGE_EXPECTED_HOST" '=' "$FLEET_CONVERGE_SUBJECT_HOST" ']'; then 'echo' 'REFUSED: fleet-converge self-subject' >&2; exit 1; fi
           'echo' 'split precondition holds: executor differs from subject'
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
