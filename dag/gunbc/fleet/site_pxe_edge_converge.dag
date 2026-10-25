@@ -9,7 +9,7 @@ import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg }
-import gunbc.provisioning.public_nocloud_seed { PublicNoCloudSeed, public_nocloud_seed_user_data, public_nocloud_seed_meta_data }
+import gunbc.provisioning.public_nocloud_seed { PublicNoCloudSeed, public_nocloud_seed_client_mac, public_nocloud_seed_user_data, public_nocloud_seed_meta_data }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, Ipv4ParseError, parse_ipv4_address, render_ipv4_address }
 import gunbc.fleet.fleet_intent_network { srv4_host_lan_endpoint, operator_lan_segment }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -859,12 +859,17 @@ fn site_pxe_edge_http_uri(name: NonEmptyStr, path: String) -> Uri {
   Uri { scheme: Http, locator: join([name as String, ":", to_string(site_pxe_edge_http_port), "/", path], "") as NonEmptyStr }
 }
 
-// ONE HOST'S INSTALL, as the provisioning attempt hands it over: the client's NIC MAC and its PUBLIC NoCloud seed,
+// ONE HOST'S INSTALL, as the provisioning attempt hands it over: its PUBLIC NoCloud seed, admitted for the client's NIC MAC
 // admitted secret-free by gunbc.provisioning.public_nocloud_seed admit_public_nocloud_seed from the seed renderer's
 // documents. The edge serves the seed's bytes and never authors them; a raw document string has no way in.
 type SitePxeEdgeInstallBinding {
-  client_mac: Eui48Address
   seed: PublicNoCloudSeed
+}
+
+// The binding's client is its seed's: the seed was admitted for that MAC (its meta-data instance-id is derived from
+// it), so the routing MAC and the seed cannot name two different clients.
+fn site_pxe_edge_binding_mac(binding: SitePxeEdgeInstallBinding) -> Eui48Address {
+  public_nocloud_seed_client_mac(seed: binding.seed)
 }
 
 type SitePxeEdgeImageStanding
@@ -889,7 +894,7 @@ type SitePxeEdgeInstallRefusal
   | InstallChainNotServable
 
 fn site_pxe_edge_install_refusals(binding: SitePxeEdgeInstallBinding, roster: SiteEdgeRoster, image: SitePxeEdgeImageStanding, name_resolution: BootNetworkProbe) -> List<SitePxeEdgeInstallRefusal> {
-  (if roster.known_client_macs |> any(m => m == binding.client_mac) { [] } else { [InstallClientNotOnRoster { mac: binding.client_mac }] })
+  (if roster.known_client_macs |> any(m => m == site_pxe_edge_binding_mac(binding: binding)) { [] } else { [InstallClientNotOnRoster { mac: site_pxe_edge_binding_mac(binding: binding) }] })
     + (match image {
       InstallerImageServable { image: _ } => []
       InstallerImageUnplaced { reason: _ } => [InstallImageNotServable { standing: image }]
@@ -919,7 +924,7 @@ fn site_pxe_edge_seed_path(mac: Eui48Address) -> String {
 // rendered by grub_config_render, so the ds= argument (built from its NoCloudNet carrier by extdeps.os.ubuntu_autoinstall
 // nocloud_net_ds_kernel_arg) is quoted by grub_cmdline_arg_render's one rule for GRUB's ';' (review 86171).
 fn site_pxe_edge_host_kernel_cmdline(binding: SitePxeEdgeInstallBinding, image: SitePxeEdgeInstallerImage) -> List<KernelCmdlineArg> {
-  let seed = NoCloudNet { seed_url: site_pxe_edge_http_uri(name: site_pxe_edge_seed_origin_name, path: concat(site_pxe_edge_seed_path(mac: binding.client_mac), "/")) }
+  let seed = NoCloudNet { seed_url: site_pxe_edge_http_uri(name: site_pxe_edge_seed_origin_name, path: concat(site_pxe_edge_seed_path(mac: site_pxe_edge_binding_mac(binding: binding)), "/")) }
   concat(
     [
       KernelKeyValue { key: "ip", value: "dhcp" },
@@ -939,7 +944,7 @@ fn site_pxe_edge_host_kernel_cmdline(binding: SitePxeEdgeInstallBinding, image: 
 
 fn site_pxe_edge_host_grub_cfg(binding: SitePxeEdgeInstallBinding, image: SitePxeEdgeInstallerImage) -> String {
   join([
-    "# gunbc.fleet.site_pxe_edge_converge: install binding for ", render_mac_address(addr: binding.client_mac) as String, "\n",
+    "# gunbc.fleet.site_pxe_edge_converge: install binding for ", render_mac_address(addr: site_pxe_edge_binding_mac(binding: binding)) as String, "\n",
     grub_config_render(cfg: GrubConfig {
       timeout_seconds: 1,
       default_entry: 0,
@@ -957,11 +962,11 @@ fn site_pxe_edge_host_grub_cfg(binding: SitePxeEdgeInstallBinding, image: SitePx
 }
 
 fn site_pxe_edge_binding_files(binding: SitePxeEdgeInstallBinding, image: SitePxeEdgeInstallerImage) -> List<SitePxeEdgeFile> {
-  let seed_dir = join([site_pxe_edge_http_root as String, "/", site_pxe_edge_seed_path(mac: binding.client_mac)], "")
+  let seed_dir = join([site_pxe_edge_http_root as String, "/", site_pxe_edge_seed_path(mac: site_pxe_edge_binding_mac(binding: binding))], "")
   [
-    SitePxeEdgeFile { subject: concat("install-grub ", render_mac_address(addr: binding.client_mac) as String) as NonEmptyStr, path: join([site_pxe_edge_tftp_root as String, "/", site_pxe_edge_grub_mac_path(mac: binding.client_mac) as String], "") as FilePath, content: site_pxe_edge_host_grub_cfg(binding: binding, image: image), scope: site_pxe_edge_tftp_scope },
-    SitePxeEdgeFile { subject: concat("install-user-data ", render_mac_address(addr: binding.client_mac) as String) as NonEmptyStr, path: concat(seed_dir, "/user-data") as FilePath, content: public_nocloud_seed_user_data(seed: binding.seed), scope: site_pxe_edge_http_scope },
-    SitePxeEdgeFile { subject: concat("install-meta-data ", render_mac_address(addr: binding.client_mac) as String) as NonEmptyStr, path: concat(seed_dir, "/meta-data") as FilePath, content: public_nocloud_seed_meta_data(seed: binding.seed), scope: site_pxe_edge_http_scope },
+    SitePxeEdgeFile { subject: concat("install-grub ", render_mac_address(addr: site_pxe_edge_binding_mac(binding: binding)) as String) as NonEmptyStr, path: join([site_pxe_edge_tftp_root as String, "/", site_pxe_edge_grub_mac_path(mac: site_pxe_edge_binding_mac(binding: binding)) as String], "") as FilePath, content: site_pxe_edge_host_grub_cfg(binding: binding, image: image), scope: site_pxe_edge_tftp_scope },
+    SitePxeEdgeFile { subject: concat("install-user-data ", render_mac_address(addr: site_pxe_edge_binding_mac(binding: binding)) as String) as NonEmptyStr, path: concat(seed_dir, "/user-data") as FilePath, content: public_nocloud_seed_user_data(seed: binding.seed), scope: site_pxe_edge_http_scope },
+    SitePxeEdgeFile { subject: concat("install-meta-data ", render_mac_address(addr: site_pxe_edge_binding_mac(binding: binding)) as String) as NonEmptyStr, path: concat(seed_dir, "/meta-data") as FilePath, content: public_nocloud_seed_meta_data(seed: binding.seed), scope: site_pxe_edge_http_scope },
   ]
 }
 
@@ -1532,8 +1537,8 @@ type SitePxeEdgeInstallStanding
 fn site_pxe_edge_install_standing(binding: SitePxeEdgeInstallBinding, roster: SiteEdgeRoster, image: SitePxeEdgeImageStanding, name_resolution: BootNetworkProbe) -> SitePxeEdgeInstallStanding {
   let refusals = site_pxe_edge_install_refusals(binding: binding, roster: roster, image: image, name_resolution: name_resolution)
   match refusals.first() {
-    Absent => InstallAdmitted { mac: binding.client_mac }
-    Present { value: first } => InstallWithheld { mac: binding.client_mac, refusals: FreeSemigroup { head: first, tail: skip(xs: refusals, n: 1) } }
+    Absent => InstallAdmitted { mac: site_pxe_edge_binding_mac(binding: binding) }
+    Present { value: first } => InstallWithheld { mac: site_pxe_edge_binding_mac(binding: binding), refusals: FreeSemigroup { head: first, tail: skip(xs: refusals, n: 1) } }
   }
 }
 
@@ -1672,10 +1677,10 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
       }
   }
   let installs = match inputs {
-    Absent => map(site_pxe_edge_install_bindings, b => InstallWithheld { mac: b.client_mac, refusals: FreeSemigroup { head: InstallChainNotServable, tail: [] } })
+    Absent => map(site_pxe_edge_install_bindings, b => InstallWithheld { mac: site_pxe_edge_binding_mac(binding: b), refusals: FreeSemigroup { head: InstallChainNotServable, tail: [] } })
     Present { value: i } => map(site_pxe_edge_install_bindings, b => site_pxe_edge_install_standing(binding: b, roster: i.roster, image: image_standing, name_resolution: site_pxe_edge_seed_origin_resolution))
   }
-  let admitted = filter(site_pxe_edge_install_bindings, b => any(installs, st => match st { InstallAdmitted { mac: m } => m == b.client_mac InstallWithheld { mac: _, refusals: _ } => false }))
+  let admitted = filter(site_pxe_edge_install_bindings, b => any(installs, st => match st { InstallAdmitted { mac: m } => m == site_pxe_edge_binding_mac(binding: b) InstallWithheld { mac: _, refusals: _ } => false }))
   let files = match inputs {
     Absent => [site_pxe_edge_unit_file()]
     Present { value: i } => site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains) + match site_pxe_edge_tftp_server_address {
