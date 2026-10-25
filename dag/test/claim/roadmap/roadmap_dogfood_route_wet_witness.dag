@@ -6,10 +6,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.process { ExitSuccess, ExitFailure }
 import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
-import gunbc.durable_cas_file_store {
-  admit_cas_attempt_for_derived_payload, file_compare_and_set, DefaultAccessCreateOnly,
-  DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
-}
+import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, file_compare_and_set, DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
