@@ -195,6 +195,16 @@ fn instrument_dispatch_wave_concurrency_group_keys() -> List<String> {
 // characters invalidates the whole file (recorded beside the row that emits one).
 data instrument_dispatch_concurrency_cap: Int = length(instrument_dispatch_wave_concurrency_group_keys())
 
+// THE BASE PROBE BUDGET (side-chat review note, 2026-10-25): the base search tries this many of the
+// freshest same-named candidates. An unusable candidate NEVER ends the search -- fetch() returns
+// False when the zip lacks the file for THIS merge base and the loop moves on -- so the first
+// same-named artifact cannot mask a usable one behind it (a stale instrument revision, a wrong main
+// revision). Past the budget the search STOPS fail-closed: staleness is likely, and the reader then
+// refuses unobserved (2) rather than grind every artifact in the repo. Cost bound: one receipt zip
+// per attempt (kilobytes -- the versioning module's rows, not the 22MB census stdout). Raise it here,
+// as a row, if the fleet ever holds a deeper pile of same-named base artifacts than this.
+data instrument_dispatch_base_probe_budget: Int = 16
+
 // THE BOUNDEDNESS PREDICATE, ASSERTED BY THE WITNESS OVER THE EMITTED KEYS: a closed key is a literal
 // -- no expression braces, no context access, no input interpolation, not empty, no slash, no space.
 // A key that fails this is unbounded by construction (per-run-unique, free-text, or unrepresentable)
@@ -921,6 +931,22 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     }), "]\n",
     "def role_artifact_name(role):\n",
     "    return ARTIFACT_PREFIX + '-' + role\n",
+    // PROVENANCE (side-chat review at 3c78dc9fa49, Q3 blocker, 2026-10-25): the repo-wide artifacts
+    // endpoint filters by NAME only -- a DIFFERENT workflow could publish a same-named artifact whose
+    // bytes satisfy the reader, and the fast path would download it. So the fast path PROVES the
+    // producing run's workflow identity per candidate BEFORE any download: the run's workflow.path
+    // must equal this workflow's file -- the same identity the fallback path enforces structurally by
+    // enumerating only this workflow's runs. Cached per run id; an identity check that errors is
+    // False: an unverifiable candidate is not ours (fail-closed).
+    "_workflow_cache = {}\n",
+    "def run_produced_by_this_workflow(rid):\n",
+    "    if rid not in _workflow_cache:\n",
+    "        try:\n",
+    "            w = api('/repos/' + REPO + '/actions/runs/' + str(rid))\n",
+    "            _workflow_cache[rid] = (w.get('workflow') or {}).get('path') == 'workflows/' + WORKFLOW_FILE\n",
+    "        except urllib.error.HTTPError:\n",
+    "            _workflow_cache[rid] = False\n",
+    "    return _workflow_cache[rid]\n",
     "def artifact_candidates(role, head_ok):\n",
     "    target = role_artifact_name(role)\n",
     "    out = []\n",
@@ -931,6 +957,8 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "            if rid is None or rid == RUN:\n",
     "                continue\n",
     "            if head_ok and (wr.get('head_sha') or '') != HEAD:\n",
+    "                continue\n",
+    "            if not run_produced_by_this_workflow(rid):\n",
     "                continue\n",
     "            out.append((str(a.get('created_at') or ''), rid))\n",
     "        out.sort(reverse=True)\n",
@@ -1010,7 +1038,7 @@ fn instrument_dispatch_wave_lookup_program() -> String {
     "            for created, wid in artifact_candidates(role, True):\n",
     "                if fetch(wid, STAGING, role_artifact_name(role), 'shard-*-' + role + '.txt'):\n",
     "                    break\n",
-    "    for created, wid in artifact_candidates('base', False)[:8]:\n",
+    "    for created, wid in artifact_candidates('base', False)[:", to_string(instrument_dispatch_base_probe_budget), "]:\n",
     "        clear(PROBE)\n",
     "        if fetch(wid, PROBE, role_artifact_name('base'), 'base-' + MB + '-*' + '.txt'):\n",
     "            for hit in glob.glob(os.path.join(PROBE, '**', 'base-' + MB + '-*' + '.txt'), recursive=True):\n",
