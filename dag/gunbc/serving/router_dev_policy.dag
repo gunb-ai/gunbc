@@ -4,7 +4,7 @@ import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port }
 import std.measure { second }
 import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
-import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, serialize_json }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, json_bool, serialize_json }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.proxy.openresty {
@@ -12,7 +12,7 @@ import extdeps.proxy.openresty {
   PrefixMatch, ListenTlsOn, SslCertificate, SslCertificateKey, SetEmptyVariable, SetLiteral, ProxyHttpVersion11, ProxyBufferingDirective,
   ProxyRequestBufferingDirective, ProxyNextUpstreamDirective, ProxyReadTimeout, ProxySetHeader, HeaderFromVariable,
   HeaderPrefixedVariable, ProxySslServerNameOn, ProxySslName, ProxySslVerifyOn, ProxySslVerifyDepth, ProxySslTrustedCertificate,
-  ProxyPassSchemeAndHostVariables, LuaPhaseBlock, InitPhase, AccessPhase, ContentPhase, LogPhase, LuaSharedDict, ProxyBufferingOff,
+  ProxyPassSchemeAndHostVariables, LuaPhaseBlock, InitPhase, AccessPhase, ContentPhase, HeaderFilterPhase, LogPhase, LuaSharedDict, ProxyBufferingOff,
   ProxyRequestBufferingOff, ProxyNextUpstreamOff, ClientMaxBodySize, ClientBodyBufferSize, nginx_token, nginx_variable, render_nginx_directives,
 }
 
@@ -34,13 +34,13 @@ import extdeps.proxy.openresty {
 // Every interpolated value, the state directory and the alias included, passes the checked token
 // constructor, which refuses a quote; a refusal names the token that failed.
 //
-// A session is named by the x-session-id header, else the OpenAI body field user, else an md5 of the first
-// system and user messages (first 4 KiB). Its first request binds it to one upstream for six hours: the
-// named model's upstreams, or for the alias every upstream, choosing the one with the most spare turns. A
-// later request of a bound session goes to that upstream or is refused (429 at its cap, 409 for another
-// model), never to a second one, because the session's KV is tied to that upstream's weights. The alias is
-// rewritten to the chosen upstream's model id. A turn is counted from admission to the end of its log phase,
-// on completion, client abort or upstream failure alike.
+// A session is named by x-session-id, the body user, or the first-message prefix. At each new
+// request, owned capacity is chosen first; the cached binding is preferred only within that tier.
+// When all compatible owned lanes are busy or temporarily unavailable, ctrl's rented-only pool
+// receives the request and accounts for overflow demand. Returning owned capacity takes preference
+// again on the next request. No request is retried after streaming starts; failures cool an upstream
+// for 30 seconds and the client can retry. The existing local cap applies through the log phase.
+// The overflow endpoint has no router-side GPU cap: ctrl discovers the cards and observes their queues.
 
 fn tok(text: String) -> NginxToken? { nginx_token(text: text) }
 fn var(text: String) -> NginxVariable? { nginx_variable(text: text) }
@@ -54,6 +54,11 @@ fn router_dev_init_lines(state_dir: String, alias: String) -> List<String> {
     "for line in (slurp(dir .. '/client_keys') or ''):gmatch('[^\\r\\n]+') do ROUTER_KEYS[line] = true end",
     "ROUTER_UPSTREAMS = cjson.decode(slurp(dir .. '/upstreams.json') or '[]') or \{}",
     "ROUTER_ALIAS = '" + alias + "'",
+    "function router_comparison(model)",
+    "  local quant = model == 'qwen3.8-flash-next-iq3_s' and 'iq3_s' or (model == 'Qwen3.8-Flash-Next' and 'nvfp4' or (model == ROUTER_ALIAS and 'mixed' or nil))",
+    "  if not quant then return nil end",
+    "  return \{currency='USD', unit='per_million_tokens', input=0, output=0.47, quantization=quant, estimated=true, reference_model='qwen/qwen3.8-flash', source='https://openrouter.ai/api/v1/models/qwen/qwen3.8-flash/endpoints', as_of='2026-10-25', method='Unadjusted Alibaba output-price proxy; vendor quantization is undisclosed. Input comparison is zero by operator policy.'}",
+    "end",
   ]
 }
 
@@ -67,8 +72,14 @@ fn router_dev_models_lines() -> List<String> {
     "local lens, order, all_len = \{}, \{}, nil",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do local n = tonumber(u.max_model_len) if lens[u.model] == nil then order[#order + 1] = u.model lens[u.model] = false end if n and n > 0 then if not lens[u.model] or n < lens[u.model] then lens[u.model] = n end if not all_len or n < all_len then all_len = n end end end",
     "local data = \{}",
-    "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc', max_model_len = all_len}",
-    "for _, m in ipairs(order) do data[#data + 1] = \{id = m, object = 'model', owned_by = 'gunbc', max_model_len = lens[m] or nil} end",
+    "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc', max_model_len = all_len, comparison_pricing = router_comparison(ROUTER_ALIAS)}",
+    "for _, m in ipairs(order) do data[#data + 1] = \{id = m, object = 'model', owned_by = 'gunbc', max_model_len = lens[m] or nil, comparison_pricing = router_comparison(m)} end",
+    "for _, entry in ipairs(data) do",
+    "  entry.routes = \{}",
+    "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "    if entry.id == ROUTER_ALIAS or entry.id == u.model then entry.routes[#entry.routes + 1] = \{name=u.name, billing=u.overflow and 'rented_hourly' or 'owned', actual_spend_usd=u.overflow and cjson.null or 0, quantization=(router_comparison(u.model) or \{}).quantization} end",
+    "  end",
+    "end",
     "ngx.header['Content-Type'] = 'application/json'",
     "ngx.say(cjson.encode(\{object = 'list', data = data}))",
   ]
@@ -104,24 +115,26 @@ fn router_dev_access_lines() -> List<String> {
     "local candidates = \{}",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do if body.model == ROUTER_ALIAS or body.model == u.model then candidates[u.name] = u end end",
     "if next(candidates) == nil then return refuse(404, 'invalid_request_error', 'unknown model') end",
-    "local pick = nil",
     "local stuck = state:get('session:' .. session)",
-    "if stuck then",
-    "  pick = candidates[stuck]",
-    "  if not pick then return refuse(409, 'invalid_request_error', 'session is bound to another model') end",
-    "  if (state:get('active:' .. pick.name) or 0) >= pick.cap then ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'session upstream at its active-turn cap') end",
-    "else",
-    "  local best, spare = nil, 0",
-    "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
-    "    local c = candidates[u.name]",
-    "    if c then local s = c.cap - (state:get('active:' .. c.name) or 0) if s > spare then best, spare = c, s end end",
+    "if stuck and not candidates[stuck] and body.model ~= ROUTER_ALIAS then return refuse(409, 'invalid_request_error', 'session is bound to another model') end",
+    "local pick, priority, spare = nil, nil, -1",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "  local c = candidates[u.name]",
+    "  if c and not state:get('unavailable:' .. c.name) then",
+    "    local p = c.overflow and 1 or 0",
+    "    local free = c.overflow and 1 or (c.cap - (state:get('active:' .. c.name) or 0))",
+    "    if free > 0 and (not pick or p < priority or (p == priority and ((c.name == stuck and pick.name ~= stuck) or (pick.name ~= stuck and free > spare)))) then pick, priority, spare = c, p, free end",
     "  end",
-    "  if not best then ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'every upstream at its active-turn cap') end",
-    "  pick = best",
     "end",
+    "if not pick then ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'every compatible upstream is busy or unavailable') end",
     "local n = state:incr('active:' .. pick.name, 1, 0)",
-    "if n > pick.cap then state:incr('active:' .. pick.name, -1, 0) ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'upstream at its active-turn cap') end",
+    "if not pick.overflow and n > pick.cap then state:incr('active:' .. pick.name, -1, 0) ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'upstream at its active-turn cap') end",
     "ngx.ctx.counted = pick.name",
+    "ngx.ctx.route = pick",
+    "state:set('seen:' .. session, ngx.now(), 21600)",
+    "ngx.req.set_header('X-Pool-Session', session)",
+    "ngx.req.set_header('X-Session-Id', session)",
+    "if pick.path_prefix and pick.path_prefix ~= '' then ngx.req.set_uri(pick.path_prefix .. ngx.var.uri, false) end",
     "state:set('session:' .. session, pick.name, 21600)",
     "if body.model == ROUTER_ALIAS then body.model = pick.model ngx.req.set_body_data(cjson.encode(body)) end",
     "ngx.var.up = pick.host .. ':' .. tostring(pick.port)",
@@ -133,11 +146,33 @@ fn router_dev_access_lines() -> List<String> {
 
 // The log phase releases the turn and tallies the outcome: every answered request by status, and each
 // admitted one by upstream and status, so the cut-over has a 4xx/5xx rate to watch (the access log is off).
+// Comparison value is metadata, never a token charge. The body and SSE bytes are relayed unchanged.
+// Alibaba's current vendor rate was checked 2026-10-25; quant-specific quotes are not published.
+fn router_dev_header_lines() -> List<String> {
+  [
+    "local u = ngx.ctx.route",
+    "if u then",
+    "  local p = router_comparison(u.model)",
+    "  ngx.header['X-Gunbc-Upstream'] = u.name",
+    "  ngx.header['X-Gunbc-Model'] = u.model",
+    "  ngx.header['X-Gunbc-Billing'] = u.overflow and 'rented_hourly' or 'owned'",
+    "  if not u.overflow then ngx.header['X-Gunbc-Actual-Spend-Usd'] = '0' end",
+    "  if p then",
+    "    ngx.header['X-Gunbc-Quantization'] = p.quantization",
+    "    ngx.header['X-Gunbc-Comparison-Input-Per-M'] = tostring(p.input)",
+    "    ngx.header['X-Gunbc-Comparison-Output-Per-M'] = tostring(p.output)",
+    "    ngx.header['X-Gunbc-Comparison-Estimated'] = 'true'",
+    "    ngx.header['X-Gunbc-Comparison-Source'] = p.source",
+    "  end",
+    "end",
+  ]
+}
+
 fn router_dev_log_lines() -> List<String> {
   [
     "local state = ngx.shared.router_state",
     "state:incr('status:' .. tostring(ngx.status), 1, 0)",
-    "if ngx.ctx.counted then state:incr('active:' .. ngx.ctx.counted, -1, 0) state:incr('upstream:' .. ngx.ctx.counted .. ':' .. tostring(ngx.status), 1, 0) end",
+    "if ngx.ctx.counted then state:incr('active:' .. ngx.ctx.counted, -1, 0) state:incr('upstream:' .. ngx.ctx.counted .. ':' .. tostring(ngx.status), 1, 0) if ngx.status >= 500 or ngx.status == 401 or ngx.status == 403 then state:set('unavailable:' .. ngx.ctx.counted, true, 30) end end",
   ]
 }
 
@@ -151,6 +186,10 @@ fn router_dev_stats_lines() -> List<String> {
     "local out = \{}",
     "for _, k in ipairs(state:get_keys(0)) do if k:find('^status:') or k:find('^upstream:') or k:find('^active:') then out[k] = state:get(k) end end",
     "ngx.header['Content-Type'] = 'application/json'",
+    "if ngx.var.arg_sessions == '1' then",
+    "  out.sessions = \{}",
+    "  for _, k in ipairs(state:get_keys(0)) do if k:find('^session:') then local id=k:sub(9) out.sessions[id]=\{upstream=state:get(k), last_seen=state:get('seen:' .. id)} end end",
+    "end",
     "ngx.say(cjson.encode(out))",
   ]
 }
@@ -186,6 +225,7 @@ fn router_dev_location(up: NginxVariable, scheme: NginxVariable, key: NginxVaria
     ProxySslVerifyDepth { depth: 1 },
     ProxySslTrustedCertificate { path: ca },
     ProxyPassSchemeAndHostVariables { scheme: scheme, host: up },
+    LuaPhaseBlock { phase: HeaderFilterPhase, lines: router_dev_header_lines() },
     LuaPhaseBlock { phase: LogPhase, lines: router_dev_log_lines() },
   ] }
 }
@@ -275,6 +315,8 @@ type RouterDevUpstream {
   model: String
   cap: Int
   max_model_len: Int
+  overflow: Bool
+  path_prefix: String
 }
 
 fn upstream_scheme_text(s: RouterUpstreamScheme) -> String {
@@ -294,6 +336,8 @@ fn router_dev_upstream_value(u: RouterDevUpstream) -> JsonValue {
     json_kv(key: "model", value: json_string(s: u.model)),
     json_kv(key: "cap", value: json_int(n: u.cap)),
     json_kv(key: "max_model_len", value: json_int(n: u.max_model_len)),
+    json_kv(key: "overflow", value: json_bool(b: u.overflow)),
+    json_kv(key: "path_prefix", value: json_string(s: u.path_prefix)),
   ]))
 }
 
@@ -301,20 +345,23 @@ fn no_members() -> List<JsonKeyValue> { [] }
 
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
   [
-    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144 },
-    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376 },
+    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "" },
+    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "" },
     // h11-a16 (x86): one engine per GPU, named by its PCI bus (indices renumber when a card is added). Buses
     // 05-08 and 85-88 are the two A16 boards; c1 is an RTX 2000 Ada. A single 16 GB engine serves ~10-13 warm
     // tok/s at 200k, so cap 2.
-    RouterDevUpstream { name: "h11-05", scheme: UpstreamHttp, host: "192.168.1.202", port: 18081, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
-    RouterDevUpstream { name: "h11-06", scheme: UpstreamHttp, host: "192.168.1.202", port: 18082, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
-    RouterDevUpstream { name: "h11-07", scheme: UpstreamHttp, host: "192.168.1.202", port: 18083, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
-    RouterDevUpstream { name: "h11-08", scheme: UpstreamHttp, host: "192.168.1.202", port: 18084, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
-    RouterDevUpstream { name: "h11-85", scheme: UpstreamHttp, host: "192.168.1.202", port: 18085, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
-    RouterDevUpstream { name: "h11-86", scheme: UpstreamHttp, host: "192.168.1.202", port: 18086, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
-    RouterDevUpstream { name: "h11-87", scheme: UpstreamHttp, host: "192.168.1.202", port: 18087, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
-    RouterDevUpstream { name: "h11-88", scheme: UpstreamHttp, host: "192.168.1.202", port: 18088, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
-    RouterDevUpstream { name: "h11-c1", scheme: UpstreamHttp, host: "192.168.1.202", port: 18089, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376 },
+    RouterDevUpstream { name: "h11-05", scheme: UpstreamHttp, host: "192.168.1.202", port: 18081, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
+    RouterDevUpstream { name: "h11-06", scheme: UpstreamHttp, host: "192.168.1.202", port: 18082, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
+    RouterDevUpstream { name: "h11-07", scheme: UpstreamHttp, host: "192.168.1.202", port: 18083, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
+    RouterDevUpstream { name: "h11-08", scheme: UpstreamHttp, host: "192.168.1.202", port: 18084, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
+    RouterDevUpstream { name: "h11-85", scheme: UpstreamHttp, host: "192.168.1.202", port: 18085, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
+    RouterDevUpstream { name: "h11-86", scheme: UpstreamHttp, host: "192.168.1.202", port: 18086, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
+    RouterDevUpstream { name: "h11-87", scheme: UpstreamHttp, host: "192.168.1.202", port: 18087, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
+    RouterDevUpstream { name: "h11-88", scheme: UpstreamHttp, host: "192.168.1.202", port: 18088, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
+    RouterDevUpstream { name: "h11-c1", scheme: UpstreamHttp, host: "192.168.1.202", port: 18089, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
+    // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router.
+    // cap is unused for overflow: the pool's engines admit work and expose their own queue to the bidder.
+    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", cap: 0, max_model_len: 262144, overflow: true, path_prefix: "/rented-pool" },
   ]
 }
 
@@ -323,9 +370,20 @@ fn router_dev_first_party_json() -> String {
 }
 
 // The deploy's second render step: the first-party rows, without keys, for the deploy to join keys into
-// by name and append the rented cards to.
+// by name, including the dedicated ctrl overflow credential. Rentals remain behind ctrl.
 // gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/serving/router_dev_policy.dag --function router_dev_srv1_write_first_party_upstreams
 fn router_dev_srv1_write_first_party_upstreams() -> ProcessExit {
   let w = Filesystem.Write(path: "/home/briansrls/router/upstreams.first_party.json", content: router_dev_first_party_json())
   if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: concat("write failed: ", w.error) } }
+}
+
+// Render a candidate for a graceful reload, without changing the running router's config.
+fn router_dev_srv1_write_candidate() -> ProcessExit {
+  match router_dev_config(site: router_dev_srv1_site()) {
+    RouterDevConfigRefused { token: k } => ExitFailure { code: 1, reason: concat("refused token: ", k) }
+    RouterDevConfigRendered { text: t } => {
+      let w = Filesystem.Write(path: "/home/briansrls/router/nginx.candidate.conf", content: t)
+      if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: concat("write failed: ", w.error) } }
+    }
+  }
 }

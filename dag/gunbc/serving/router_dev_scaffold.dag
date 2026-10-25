@@ -12,9 +12,9 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 // Each row below is one debt, bound to the declaration that carries it, with the trigger that retires it.
 
 // 1. ROUTER POLICY IN THE PROXY, bound to router_dev_config, which renders every Lua carrier (init, access,
-// models, stats, log lines). gunbc.serving.router_dev_policy decides in OpenResty Lua what the S3
+// models, stats, response headers, log lines). gunbc.serving.router_dev_policy decides in OpenResty Lua what the S3
 // callout service is to decide. Against gunbc.serving.router_realization's forbidden list it is:
-//   - its own load score: spare active turns per upstream, counted in a lua_shared_dict;
+//   - its own load score: owned-first priority, then spare active turns per upstream, counted in a lua_shared_dict;
 //   - direct host choice: the upstream is chosen in the proxy from upstreams.json, not taken from a grant;
 //   - its own binding ledger: session-to-upstream bindings, held six hours in the same dict;
 //   - invented placement: no product.fabric.selection select_supply, no turn_admission, no lease;
@@ -33,15 +33,15 @@ data router_dev_policy_scaffold: Disposition = Scaffold {
 
 
 // 2. HAND-RUN DEPLOY. No live-deploy leg exists before S7, so the operator account on srv1 runs, in order:
-//   a. build gunbc at the deployed head and run gunbc.serving.router_dev_policy router_dev_srv1_write_config,
-//      which writes /home/briansrls/router/nginx.conf;
+//   a. build gunbc at the deployed head and run gunbc.serving.router_dev_policy router_dev_srv1_write_candidate,
+//      validate nginx.candidate.conf, then copy it into the existing nginx.conf inode and reload gracefully;
 //   b. once: mint a client key into /home/briansrls/router/client_keys (mode 0600) and a self-signed
 //      listener certificate into /home/briansrls/router/tls/ (kept across restarts);
 //   c. write /home/briansrls/router/upstreams.json (mode 0600) from the upstream list (row 3) and the
 //      upstream keys: srv1 vLLM's ~/lil/pool_key, srv3 Strata's /home/ubuntu/strata-pool/api_key (over the
-//      fleet SSH key), each Vast card's api_key;
+//      fleet SSH key), the h11 Strata key and ctrl's dedicated pool-front client key;
 //   d. write /home/briansrls/router/upstream_ca.pem from each TLS upstream's leaf certificate, fetched once
-//      and admitted only when its sha256 equals the recorded pin (row 4);
+//      and admitted only when its sha256 equals the recorded pin (row 4), plus ctrl's verified mkcert root;
 //   e. docker run -d --restart unless-stopped --network host with the pinned image
 //      extdeps.proxy.openresty openresty_1_27_1_1_image, mounting /home/briansrls/router at /etc/router
 //      read-only and nginx.conf over the image's configuration path; a restart re-reads state.
@@ -56,14 +56,14 @@ data router_dev_hand_deploy_scaffold: Disposition = Scaffold {
 }
 
 
-// 3. HAND-MAINTAINED UPSTREAM LIST. upstreams.json names srv1 vLLM (cap 4), srv3 Strata (cap 4) and the
-// rented Vast cards. The cards come from the retiring ctrl router's list, refreshed by reading srv2's
-// dashboard database read-only (sqlite3 -readonly ~/.local/share/session-dashboard/db.sqlite, table
-// mini_agent_pool_cards: url, api_key, model, context_window, cert_sha256) into
-// /home/briansrls/router/ctrl_pool_cards.json, then into upstreams.json. While the ctrl router still
-// routes to a card its cap here is 1; at cut-over every card takes its full cap. Dissolves when rented
-// enrolment is durable state derived from gunbc.serving.rented_allocation (plan S5), replacing the hand list
-// gunbc.serving.rented_enrollment rented_cohort_enrollments.
+// 3. HAND-MAINTAINED FIRST-PARTY LIST. upstreams.json names srv1 vLLM (cap 4), srv3 Strata
+// (cap 4), nine h11 Strata lanes (cap 2 each), and ctrl's /rented-pool overflow gateway. The gateway
+// deliberately bypasses ctrl's /pool router setting, so it cannot loop back here. ctrl discovers rented
+// cards and bids from distinct overflow conversations, subject to its existing budget and queue policy.
+// No rented card is copied into this router's list; replacements remain ctrl's responsibility. The
+// gateway has no GPU cap here. Owned lanes take priority on every request, including after overflow.
+// Dissolves when enrolment is durable state derived from gunbc.serving.rented_allocation (plan S5),
+// replacing the hand list gunbc.serving.rented_enrollment rented_cohort_enrollments.
 
 // 4. CERTIFICATE PINS AS A TRUST BUNDLE. nginx verifies an upstream against a CA file, not a fingerprint, so
 // each pinned leaf certificate is installed into upstream_ca.pem after its sha256 is compared by hand with
@@ -115,7 +115,7 @@ data router_dev_falsifier_shell_scaffold: Disposition = Scaffold {
 data router_dev_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_config"),
-    reason: "Router policy in the proxy (row 1): key check, stickiness, active-turn caps, model routing and tallies decided in OpenResty Lua (router_dev_init_lines, router_dev_access_lines, router_dev_models_lines, router_dev_stats_lines, router_dev_log_lines, all rendered by router_dev_config).",
+    reason: "Router policy in the proxy (row 1): key check, stickiness, active-turn caps, model routing and tallies decided in OpenResty Lua (router_dev_init_lines, router_dev_access_lines, router_dev_models_lines, router_dev_stats_lines, router_dev_header_lines, router_dev_log_lines, all rendered by router_dev_config).",
     dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.serving_router", decl_name: "serving_router_authz_callout"))
   ),
   frontier_row_decl(
@@ -125,7 +125,7 @@ data router_dev_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party_upstreams"),
-    reason: "Hand-maintained upstream list (row 3): literal first-party rows and the rented cards copied from the ctrl dashboard database.",
+    reason: "Hand-maintained upstream list (row 3): literal first-party rows and the ctrl rented-pool overflow gateway.",
     dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_enrollment", decl_name: "rented_cohort_enrollments_from_allocations"))
   ),
   frontier_row_decl(
