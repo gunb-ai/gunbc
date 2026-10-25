@@ -218,6 +218,7 @@ import v2.std.compilers.target_model { EmitSpellingEscape,
   TargetAtomRealization,
   DeclarationReferenceForm,
   ModuleScopedPath,
+  CalleeScopeRealized,
   TargetAtomTypeShape,
   TargetTypeExpression,
   target_atom_alias_type_expression,
@@ -4690,7 +4691,8 @@ fn rust_declaration_reference_form() -> DeclarationReferenceForm {
   ModuleScopedPath {
     root_text: "crate",
     scope_separator_text: "::",
-    module_segment_joiner: "_"
+    module_segment_joiner: "_",
+    callee_scope: CalleeScopeRealized
   }
 }
 data rust_sg2_type_alias_text: String = "type Sg2Probe = Rc<FooBar<X, Y>>;"

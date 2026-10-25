@@ -6,7 +6,14 @@ import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.rust { rust_type_expression_projection }
 import v2.extdeps.languages.rust_fixtures { rust_sg2_type_expression_projection_target_model }
 import v2.std.compilers.target_model {
+  CalleeScopeRealized,
+  CalleeScopeUnrealized,
+  DeclarationCalleeScope,
   DeclarationReferenceForm,
+  decode_declaration_reference_form_bundle,
+  target_model_named_edge,
+  target_model_type_atom_node,
+  target_model_type_conj_node,
   ModuleScopedPath,
   NoDeclarationReferenceForm,
   TargetModel,
@@ -134,7 +141,7 @@ test fn a_bare_atom_still_emits_through_the_atom_row_holds() -> Bool {
 
 fn drf_form_is_module_scoped(form: DeclarationReferenceForm) -> Bool {
   match form {
-    ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _ } => true
+    ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _, callee_scope: _ } => true
     NoDeclarationReferenceForm => false
   }
 }
@@ -150,4 +157,54 @@ test fn the_rust_target_declares_a_module_scoped_path_form_and_its_bundle_carrie
         drf_form_is_module_scoped(form: decoded.declaration_reference_form)
       Rejected { diagnostics: _ } => false
     })
+}
+
+// (c) THE WIRE IS CLOSED. The callee-scope atom of the encoded reference row is a two-value wire
+// (^target_callee_scope_realized, ^target_callee_scope_unrealized). The bundle here is built by hand
+// at the decoder's own interface so the scope is a SUPPLIED value; the encoder-to-decoder route the
+// rust row takes is the (b) claim above, which is the inhabitance claim for this boundary.
+fn drf_scope_bundle(scope: Symbol) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_type_expr_field_declaration_reference,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(name: ^target_type_expr_field_reference_root, target: target_model_type_atom_node(identity: ^crate)),
+            target_model_named_edge(name: ^target_type_expr_field_reference_scope_separator, target: target_model_type_atom_node(identity: ^drf_sep)),
+            target_model_named_edge(name: ^target_type_expr_field_reference_module_joiner, target: target_model_type_atom_node(identity: ^drf_joiner)),
+            target_model_named_edge(name: ^target_type_expr_field_reference_callee_scope, target: target_model_type_atom_node(identity: scope))
+          ]
+        )
+      )
+    ]
+  )
+}
+
+fn drf_decoded_scope_is(scope: Symbol, expected: DeclarationCalleeScope) -> Bool {
+  match decode_declaration_reference_form_bundle(bundle: drf_scope_bundle(scope: scope)) {
+    Accepted { value: form, diagnostics: _ } =>
+      match form {
+        ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _, callee_scope: got } => got == expected
+        NoDeclarationReferenceForm => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// POSITIVE CONTROLS: both declared scopes decode to their own row.
+test fn the_realized_callee_scope_decodes_to_realized_holds() -> Bool {
+  drf_decoded_scope_is(scope: ^target_callee_scope_realized, expected: CalleeScopeRealized)
+}
+
+test fn the_unrealized_callee_scope_decodes_to_unrealized_holds() -> Bool {
+  drf_decoded_scope_is(scope: ^target_callee_scope_unrealized, expected: CalleeScopeUnrealized)
+}
+
+// THE RED: a mutated scope value refuses with the typed reason, not CalleeScopeRealized.
+test fn a_mutated_callee_scope_is_refused_by_the_decoder() -> Bool {
+  match decode_declaration_reference_form_bundle(bundle: drf_scope_bundle(scope: ^target_callee_scope_mutated)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => drf_last_reason(d: d) == ^target_callee_scope_unrecognized
+  }
 }
