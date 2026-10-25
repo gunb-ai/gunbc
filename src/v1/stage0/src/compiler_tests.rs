@@ -4992,7 +4992,7 @@ mod compiler_tests {
         );
         env_value.unit_variant_index_observed = observed;
         matches!(
-            *crate::v1_compiler_infer_env::type_ref_measure_binding_authority(
+            crate::v1_compiler_infer_env::type_ref_measure_binding_authority(
                 std::rc::Rc::new(env_value),
                 "Alpha".to_string()
             ),
