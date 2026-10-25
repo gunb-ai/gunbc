@@ -3,6 +3,7 @@
 
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
+pub use crate::std_types::bool_text;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_emit_core_support::escape_json_string;
 use crate::v1_rt;
@@ -82,7 +83,7 @@ pub fn json_quote(s: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
             "\"".to_string(),
-            crate::v1_compiler_emit_core_support::escape_json_string(s.clone()),
+            crate::v1_compiler_emit_core_support::escape_json_string(s),
         ),
         "\"".to_string(),
     )
@@ -209,9 +210,10 @@ pub fn literal_value_fingerprint(value: Rc<LiteralValue>) -> String {
         LiteralValue::LitFloat { value: v, .. } => {
             v1_rt::concat("LitFloat:".to_string(), v.clone())
         }
-        LiteralValue::LitBool { value: v, .. } => {
-            v1_rt::concat("LitBool:".to_string(), (v.clone()).to_string())
-        }
+        LiteralValue::LitBool { value: v, .. } => v1_rt::concat(
+            "LitBool:".to_string(),
+            crate::std_types::bool_text(v.clone()),
+        ),
         LiteralValue::LitNull => "LitNull".to_string(),
         LiteralValue::LitSymbol { value: v, .. } => {
             v1_rt::concat("LitSymbol:".to_string(), v.clone())
@@ -257,7 +259,7 @@ pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> Strin
                 }
                 __result
             });
-            v1_rt::hash_combine(base.clone(), dag_node_seq_hash(field_hashes.clone()))
+            v1_rt::hash_combine(base, dag_node_seq_hash(field_hashes))
         }
         Some(MatchPattern::Wildcard) => v1_rt::atom_identity_hash("Wildcard".to_string()),
     }
@@ -281,21 +283,18 @@ pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
         });
         let with_children = v1_rt::hash_combine(
             dag_node_surface_leaf_mix(node.clone()),
-            child_subtree_hash(node.connective.clone(), child_hashes.clone()),
+            child_subtree_hash(node.connective.clone(), child_hashes),
         );
-        let with_params = v1_rt::hash_combine(
-            with_children.clone(),
-            dag_node_seq_hash(param_hashes.clone()),
-        );
+        let with_params = v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes));
         v1_rt::hash_combine(
-            with_params.clone(),
+            with_params,
             match_pattern_fingerprint_rec(node.match_pattern.clone()),
         )
     })
 }
 
 pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint_rec(node.clone())
+    dag_node_surface_fingerprint_rec(node)
 }
 
 pub fn dag_collect_fp_memo_reset() -> bool {
@@ -303,5 +302,5 @@ pub fn dag_collect_fp_memo_reset() -> bool {
 }
 
 pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint(node.clone())
+    dag_node_surface_fingerprint(node)
 }

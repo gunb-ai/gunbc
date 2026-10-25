@@ -2,7 +2,7 @@ module test.claim.runner.runner_host_cap_bracket_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_phase_text, runner_host_cap_files, RunnerHostFileSubject, RunnerHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
+import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_phase_text, runner_host_cap_files, RunnerHostFileSubject, FleetHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, list_head, skip }
 import std.materialization_ladder { Frame, SharedStateFrame }
@@ -1125,8 +1125,8 @@ test fn an_unread_roster_at_the_reread_prevents_the_stop() -> Bool {
 // The residual is declared in the refusal text itself: the window between the last reading and the stop.
 test fn the_declared_residual_and_frontier_are_typed_and_the_wire_renders_them() -> Bool {
   let w = listener_restart_residual_wire()
-  length(listener_reregistration_frontier.triggers) == 2 && length(listener_restart_residual.window_opens_after) == 3
-    && string_contains(s: w, pattern: "(mask, roster busy=false, no Runner.Worker)")
+  length(listener_reregistration_frontier.triggers) == 2 && length(listener_restart_residual.window_opens_after) == 4
+    && string_contains(s: w, pattern: "(mask, roster busy=false, no Runner.Worker, current registration)")
     && any(listener_reregistration_frontier.triggers, t => match t { UpstreamAtomicBusyRefusingAdmissionClose => true LongLivedSlotReregistrationRoute => false })
     && string_contains(s: w, pattern: "residual: ") && string_contains(s: w, pattern: "frontier: ")
     && string_contains(s: w, pattern: "an upstream-documented atomic busy-refusing admission close AND a re-registration route for long-lived slots")
@@ -1201,7 +1201,7 @@ fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -
   bracket_run_over(legs: legs, roster: roster, environment: route_environment(), body: fn(target, context) {
     cap_phase_after_drain_over(
       subject: RunnerHostFileSubject { host: "srv1" as HostIdentity, target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [] },
-      context: context, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
+      context: context, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
       // What the drain certified: one typed record per admitted idle listener, the shape the bracket's own
       // verdict carries. The flow controls below assert this reaches the receipt.
       owned: owned, certified: [CertifiedListener { unit: u(n: "01"), registration: minted(n: "01", tag: slot_current_mint_tag) as NonEmptyStr }])

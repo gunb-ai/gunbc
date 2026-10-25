@@ -1,7 +1,7 @@
 module extdeps.fans.types
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.measure { Micrometer, Millimeter, Percent, PublishedLevelCount, RevolutionsPerMinute, percent_count, published_level_count, published_level_count_value, rpm, rpm_count }
+import std.measure { Micrometer, Millimeter, Millivolt, Milliwatt, Milliampere, MillilitrePerSecond, Pascal, Percent, PublishedLevelCount, RevolutionsPerMinute, percent_count, published_level_count, published_level_count_value, rpm, rpm_count }
 import extdeps.units.iec_61672 { AWeightedSoundPressureLevel, dba_tenths }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.vendor { Vendor }
@@ -327,4 +327,42 @@ fn fan_mounting_pattern_is_verified(p: FanMountingPattern) -> Bool {
     RelayedFromVendorDocument { document: _ } => false
     ConventionUnverified { convention: _ } => false
   }
+}
+
+// A RADIAL (CENTRIFUGAL) BLOWER'S HOUSING, as a part designed around it needs it: the box, its
+// thickness tolerance, and the mounting holes' count and size. The housing lies with its broad face in
+// a plane and its thickness across it; air enters through the broad face and leaves through an outlet
+// on one edge, so a part may enclose an edge but must leave that face open. The figures' standing is a
+// sibling row in the product's own module.
+type RadialBlowerEnvelope {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  housing_length: Micrometer
+  housing_depth: Micrometer
+  thickness: Micrometer
+  thickness_tolerance: Micrometer
+  mounting_hole_count: Int
+  mounting_hole_diameter: Micrometer
+}
+
+// THE OUTLET IS A SEPARATE ROW BECAUSE ITS STANDING IS SEPARATE: a drawing can print the housing in
+// text while its outlet dimensions stay unattributed to any feature. The printed figures are kept as
+// they appear, with no feature assigned, until a reading attributes them.
+type RadialBlowerOutletCandidates {
+  printed_figures: List<Micrometer>
+}
+
+// THE PUBLISHED RATING, each figure on its std.measure carrier. Flow and pressure are carried at the
+// grain the axial fan rows already use (millilitres per second, pascals), converted from the sheet's
+// own unit by floor; the row that declares a figure states the sheet's figure beside it.
+type RadialBlowerRating {
+  rated_voltage: Millivolt
+  operating_voltage_low: Millivolt
+  operating_voltage_high: Millivolt
+  rated_current: Milliampere
+  input_power: Milliwatt
+  speed: RevolutionsPerMinute
+  free_air_flow: MillilitrePerSecond
+  zero_flow_pressure: Pascal
+  sound_pressure: AWeightedSoundPressureLevel
 }

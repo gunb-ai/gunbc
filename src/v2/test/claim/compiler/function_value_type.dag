@@ -1,0 +1,409 @@
+module v2.test.claim.compiler.function_value_type
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
+import v2.test.claim.compiler.callback_argument_formal { caf_refused_at }
+import v2.test.claim.callexec.declaration_reference_eval { cref_the_call_to }
+import v2.compiler.infer { InferFormalMatched, InferFormalShapeMismatch, infer_match_generic_formal, infer, infer_descent_witness_for_node, infer_function_value_signature, infer_instances_with_binder_generator, infer_node_is_function_value, inferred_facts_from_derived_type, inferred_facts_resolved_type_optional, infer_type_equal_ignoring_provenance }
+import v2.compiler.inferred_tree { FunctionValueSignatureUndetermined, GroundingNotDerived, DerivedGrounding, InferredFacts }
+import v2.compiler.fold_lowering { collection_roster_row, collection_roster_signature_arrow, collection_roster_carrier_type, RosterFreeMonoidPrimitiveCall }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.inhabitance { TypeVariableInstance, type_variable_instance_lookup }
+import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature_arrow }
+import v2.std.type_binder { edge_is_type_params, type_param_names }
+import v2.std.integer { integer_int_type_node }
+import v2.std.node_query { binder_edge, binder_node_parts }
+import v2.std.diagnostic { Accepted, Diagnostic, Rejected, diagnostics_fatal, diagnostics_has_reason }
+import v2.std.node { Atom, Authored, Edge, Node, Symbol, TypeNode, arrow_body_target_lookup, Found, Ambiguous, NotFound, node_subtree_nodes, node_synthetic, positional_child_target_nodes, symbol_intern_lexeme }
+import v2.test.claim.compiler.free_monoid_structure_bound { fmb_declared, fmb_list_of }
+import v2.std.symbol_index { empty_symbol_index }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.algebra { Cons, Empty, collection_sort_by_shape, empty_map, list_at_optional, list_snoc_item, map_insert }
+import std.types { Bool, List, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a function value's type is a fact about the function value (v2.compiler.infer infer_function_value_facts,
+// closing gunbc.recurring_failure_mode lambda_value_has_no_derived_type_in_v2_infer). A key callable passed to a
+// generic key-sort -- the shape of std.algebra list_sort_by_key and of the collection roster's sort_by row -- carries
+// its own derived Arrow type, and the call's instance of the key parameter is that type's codomain.
+//
+// SHAPE, PER DESIGN SECTION 3's WITNESS RULE: the supplied-value claims ask ONE interface each with its inputs
+// supplied -- infer_function_value_signature (a function value, its body's facts, the frame's instances), and the
+// roster projection collection_roster_signature_arrow over the sort_by template row. The PAIRING obligation is
+// fvt_a_lambda_key_sort_derives_its_key_type, which runs the real route (source assembly, then infer) and asserts the
+// ROUTE: the lambda node's own facts are derived, and the call's K instance is that type's codomain.
+//
+// RED ON MAIN, measured on gunbc#15038 against main 44c027aef41 with the same binary: the key lambda's facts are on the
+// frontier and the call records no K (it is accepted carrying inhabitance_undecidable_argument_type_not_derived), so
+// fvt_a_lambda_key_sort_derives_its_key_type is red; the record-field lambda's facts are on the frontier, so
+// fvt_a_record_field_function_value_is_typed is red; and collection_roster_signature_arrow answers Absent for the sort_by
+// row, so fvt_sort_by_row_binds_its_key_variable is red. The order pair is NOT red on main: main's consumer-position
+// signature already refused the Int key against a String order. It is kept as a control the repair must preserve.
+// MUTATION CONTROL: disabling the settle-row dispatch to infer_function_value_facts (the value takes product formation
+// again) reds the two real-route type claims, the order refusal, and callback_argument_formal's monomorphic positive;
+// the supplied interface claims are unaffected (both measured on the PR).
+
+data fvt_key_sort: String = "module p\n\nimport v2.std.collection { List }\n\ntype Item {\n  id: Int\n}\n\nfn sort_by_key<T, K>(xs: List<T>, key: fn(T) -> K) -> List<T> {\n  xs\n}\n\nfn by_id(xs: List<Item>) -> List<Item> {\n  sort_by_key(xs: xs, key: fn(x) { x.id })\n}\n"
+
+data fvt_record_field: String = "module p\n\ntype Pred {\n  p: fn(Int) -> Bool\n}\n\nfn mk() -> Pred {\n  Pred { p: fn(n) { n > 0 } }\n}\n"
+
+fn fvt_function_values(root: Node) -> List<Node> {
+  fold(node_subtree_nodes(root: root), init: Empty, f: fn(acc, n) { if infer_node_is_function_value(n: n) { Cons { head: n, tail: acc } } else { acc } })
+}
+
+fn fvt_the_function_value(root: Node) -> Optional<Node> {
+  match fvt_function_values(root: root) {
+    Cons { head: v, tail: rest } =>
+      match rest {
+        Empty => optional_present(value: v)
+        Cons { head: _, tail: _ } => optional_absent()
+      }
+    Empty => optional_absent()
+  }
+}
+
+type FvtKeySortReading {
+  value_type: Optional<Node>
+  key_instance: Optional<Node>
+  element_instance: Optional<Node>
+}
+
+fn fvt_no_reading() -> FvtKeySortReading {
+  FvtKeySortReading { value_type: optional_absent(), key_instance: optional_absent(), element_instance: optional_absent() }
+}
+
+fn fvt_key_sort_reading() -> FvtKeySortReading {
+  match fmi_assemble(src: fvt_key_sort) {
+    Rejected { diagnostics: _ } => fvt_no_reading()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => fvt_no_reading()
+        Accepted { value: tree, diagnostics: _ } =>
+          FvtKeySortReading {
+            value_type: match fvt_the_function_value(root: tree.root) {
+              Absent => optional_absent()
+              Present { value: v } =>
+                match tree.facts.lookup(v) {
+                  Absent => optional_absent()
+                  Present { value: facts } => inferred_facts_resolved_type_optional(facts: facts)
+                }
+            },
+            key_instance: fvt_call_instance(tree_root: tree.root, facts_of: fn(n) { tree.facts.lookup(n) }, binder: ^K),
+            element_instance: fvt_call_instance(tree_root: tree.root, facts_of: fn(n) { tree.facts.lookup(n) }, binder: ^T)
+          }
+      }
+  }
+}
+
+fn fvt_call_instance(tree_root: Node, facts_of: fn(Node) -> Optional<InferredFacts>, binder: Symbol) -> Optional<Node> {
+  match cref_the_call_to(root: tree_root, name: ^sort_by_key) {
+    Absent => optional_absent()
+    Present { value: call } =>
+      match facts_of(call) {
+        Absent => optional_absent()
+        Present { value: facts } => type_variable_instance_lookup(instances: facts.type_instances, binder: binder)
+      }
+  }
+}
+
+fn fvt_same(a: Optional<Node>, b: Optional<Node>) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => infer_type_equal_ignoring_provenance(a: x, b: y)
+      }
+  }
+}
+
+fn fvt_codomain(t: Optional<Node>) -> Optional<Node> {
+  match t {
+    Absent => optional_absent()
+    Present { value: arrow } => list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 1)
+  }
+}
+
+fn fvt_first_input(t: Optional<Node>) -> Optional<Node> {
+  match t {
+    Absent => optional_absent()
+    Present { value: arrow } =>
+      match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
+        Absent => optional_absent()
+        Present { value: domain } =>
+          match list_at_optional(xs: domain.children, index: 0) {
+            Absent => optional_absent()
+            Present { value: e } =>
+              match binder_node_parts(n: e.target) {
+                Present { value: parts } => optional_present(value: parts.type_node)
+                Absent => optional_present(value: e.target)
+              }
+          }
+      }
+  }
+}
+
+// THE REAL ROUTE (the pairing claim): the key lambda's OWN facts carry its type, its input is the call's element
+// instance and its result is the call's key instance -- so the key type a generator reads off the call and the type
+// the lambda was checked at are one fact.
+test fn fvt_a_lambda_key_sort_derives_its_key_type() -> Bool {
+  let r = fvt_key_sort_reading()
+  fvt_same(a: fvt_codomain(t: r.value_type), b: r.key_instance) && fvt_same(a: fvt_first_input(t: r.value_type), b: r.element_instance)
+}
+
+// A SECOND POSITION, THE SAME ROW: a lambda at a record field is framed by the field's declared type
+// (infer_construct_callback_frame), and its own facts carry fn(Int) -> <body type>. On main its facts were on the
+// frontier while the construction's judgment saw a signature assembled at the field.
+test fn fvt_a_record_field_function_value_is_typed() -> Bool {
+  match fmi_assemble(src: fvt_record_field) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: tree, diagnostics: _ } =>
+          match fvt_the_function_value(root: tree.root) {
+            Absent => false
+            Present { value: v } =>
+              match tree.facts.lookup(v) {
+                Absent => false
+                Present { value: facts } =>
+                  match fvt_codomain(t: inferred_facts_resolved_type_optional(facts: facts)) {
+                    Present { value: _ } => true
+                    Absent => false
+                  }
+              }
+          }
+      }
+  }
+}
+
+// SUPPLIED VALUES FROM HERE DOWN. The function value is the key lambda as lowering produced it (its fresh input
+// variable is read off the value itself), its body's facts are supplied, and the frame's instances are supplied.
+fn fvt_supplied_value() -> Optional<Node> {
+  match fmi_assemble(src: fvt_key_sort) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } => fvt_the_function_value(root: resolved.root)
+  }
+}
+
+fn fvt_input_variable(v: Node) -> Optional<Symbol> {
+  match type_param_names(n: v) {
+    Cons { head: first, tail: _ } => optional_present(value: first)
+    Empty => optional_absent()
+  }
+}
+
+fn fvt_item_atom() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^fvt_supplied_item } }, children: [])
+}
+
+fn fvt_signature_with(instances_for: fn(Symbol) -> List<TypeVariableInstance>) -> Optional<Node> {
+  match fvt_supplied_value() {
+    Absent => optional_absent()
+    Present { value: v } =>
+      match arrow_body_target_lookup(children: v.children) {
+        Ambiguous => optional_absent()
+        NotFound => optional_absent()
+        Found { target: body } =>
+          match inferred_facts_from_derived_type(node: body, derived_type: integer_int_type_node(), descent: infer_descent_witness_for_node(n: body)) {
+            Rejected { diagnostics: _ } => optional_absent()
+            Accepted { value: facts, diagnostics: _ } =>
+              match fvt_input_variable(v: v) {
+                Absent => optional_absent()
+                Present { value: x } =>
+                  infer_function_value_signature(callback: v, entries: map_insert(m: empty_map(), key: body, value: [facts]), instances: instances_for(x))
+              }
+          }
+      }
+  }
+}
+
+// SUPPLIED, POSITIVE: the frame instantiates the input; the unwritten return is the body's type.
+test fn fvt_supplied_frame_instance_and_body_type_assemble_the_signature() -> Bool {
+  let t = fvt_signature_with(instances_for: fn(x) { [TypeVariableInstance { binder: x, instance: fvt_item_atom() }] })
+  fvt_same(a: fvt_first_input(t: t), b: optional_present(value: fvt_item_atom())) && fvt_same(a: fvt_codomain(t: t), b: optional_present(value: integer_int_type_node()))
+}
+
+// SUPPLIED, FAIL-CLOSED: no frame instantiates the input, so the type is undetermined -- Absent, never a guess.
+test fn fvt_supplied_uninstantiated_input_is_undetermined() -> Bool {
+  match fvt_supplied_value() {
+    Absent => false
+    Present { value: _ } => fvt_signature_with(instances_for: fn(_x) { [] }) == optional_absent()
+  }
+}
+
+// SUPPLIED, THE ROSTER INTERFACE: the sort_by template row reads as a generic signature that binds its own key
+// variable SortKey, and whose second formal is a callable from the carrier's generator to that variable -- so a use
+// instantiates SortKey through the ordinary application route.
+fn fvt_sort_by_signature() -> Optional<Node> {
+  collection_roster_signature_arrow(row: collection_roster_row(t: collection_sort_by_shape(), decl_name: "collection_sort_by_shape", form: RosterFreeMonoidPrimitiveCall))
+}
+
+test fn fvt_sort_by_row_binds_its_key_variable() -> Bool {
+  match fvt_sort_by_signature() {
+    Absent => false
+    Present { value: arrow } =>
+      fold(type_param_names(n: arrow), init: false, f: fn(acc, p) { acc || p == ^SortKey })
+  }
+}
+
+// SUPPLIED, THE GENERATOR RULE: once the carrier M is instantiated (here at List<Edge>), the structure's generator E is
+// fixed by the inhabitance row M inhabits -- so a callback over E (sort_by's key) is framed at Edge. The binders are
+// the sort_by row's own, read through the production projection; an E already fixed is left alone.
+fn fvt_generator_after(instances: List<TypeVariableInstance>) -> Optional<Node> {
+  match fvt_sort_by_signature() {
+    Absent => optional_absent()
+    Present { value: arrow } =>
+      let closed = fold(arrow.children, init: instances, f: fn(acc, e) {
+        if edge_is_type_params(e: e) {
+          fold(e.target.children, init: acc, f: fn(inner, b) { infer_instances_with_binder_generator(binder: b, declarations: empty_symbol_index(), bindings: empty_symbol_index(), instances: inner) })
+        } else {
+          acc
+        }
+      })
+      type_variable_instance_lookup(instances: closed, binder: ^collection_roster_element)
+  }
+}
+
+test fn fvt_a_carrier_instance_fixes_its_generator() -> Bool {
+  fvt_same(
+    a: fvt_generator_after(instances: [TypeVariableInstance { binder: ^collection_roster_carrier, instance: fmb_list_of(element: fmb_declared(dotted: "v2.std.node.Edge")) }]),
+    b: optional_present(value: fmb_declared(dotted: "v2.std.node.Edge"))
+  )
+}
+
+// SUPPLIED, CONTROL: with no carrier instance nothing fixes the generator -- the rule reads an instance, it never mints one.
+test fn fvt_no_carrier_instance_fixes_no_generator() -> Bool {
+  match fvt_sort_by_signature() {
+    Absent => false
+    Present { value: _ } => fvt_generator_after(instances: []) == optional_absent()
+  }
+}
+
+// THE KEY'S TYPE AND THE ORDER'S TYPE ARE ONE PARAMETER. The shape of std.algebra list_sort_by_key: K is fixed by the
+// order actual (settled first), and the key lambda's OWN type must then inhabit fn(T) -> K. An Int key against a
+// String order refuses AT `key`, typed and located. The seed checker accepts this call and only rustc on the emitted
+// crate refuses it (gunbc.recurring_failure_mode function_typed_argument_mismatch_accepted) -- a seed defect v2 does not
+// carry forward (DESIGN section 7); v2 refused it on main too, so this pair is a control the repair must keep, not a
+// RED. The matching Int order is accepted and decided -- the minimal pair, so the refusal is the key's type and not an
+// assembly slip.
+data fvt_ord_prelude: String = "module p\n\nimport v2.std.collection { List }\n\ntype Row {\n  rank: Int\n}\n\ntype Ord<K> {\n  pick: K\n}\n\nfn int_ord() -> Ord<Int> {\n  Ord { pick: 0 }\n}\n\nfn str_ord() -> Ord<String> {\n  Ord { pick: \"a\" }\n}\n\nfn sort_k<T, K>(xs: List<T>, key: fn(T) -> K, order: Ord<K>) -> List<T> {\n  xs\n}\n\n"
+
+fn fvt_ord_source(order: String) -> String {
+  concat(fvt_ord_prelude, concat(concat("fn use_it(rows: List<Row>) -> List<Row> {\n  sort_k(xs: rows, key: fn(r) { r.rank }, order: ", order), ")\n}\n"))
+}
+
+fn fvt_fatal(src: String) -> Optional<Diagnostic> {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => optional_absent()
+        Rejected { diagnostics: d } => optional_present(value: diagnostics_fatal(d: d))
+      }
+  }
+}
+
+test fn fvt_a_key_disagreeing_with_its_order_refuses_at_the_key() -> Bool {
+  caf_refused_at(d: fvt_fatal(src: fvt_ord_source(order: "str_ord()")), name: ^key)
+}
+
+test fn fvt_a_key_agreeing_with_its_order_is_accepted_and_decided() -> Bool {
+  match fmi_assemble(src: fvt_ord_source(order: "int_ord()")) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } => !diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_argument_type_not_derived)
+      }
+  }
+}
+
+// ARROW INPUTS PAIR IN DECLARED ORDER, NOT IN THE DOMAIN'S STORED ORDER (review on gunbc#15038): an Arrow's domain is a
+// Conj whose stored child order is not its parameter order, so the matcher's Arrow arm reads each side's declared
+// order (v2.compiler.infer infer_arrow_ordered_domain_types). `g(z: Int, a: String)` passed to `f: fn(A, B) -> R` fixes
+// A as Int and B as String, so `first: 1, second: "x"` is accepted. Read in stored label order (a, z) the arm would fix
+// A as String and the call would refuse at `first`. MEASURED: source ingest stores this domain in authored order, so
+// this real-route claim stays green when the reader is mutated to domain.children -- it is the positive control. The
+// discriminating case is the supplied Arrow below, whose stored order differs from its declared order.
+data fvt_arrow_order: String = "module p\n\nfn apply<A, B, R>(f: fn(A, B) -> R, first: A, second: B, fallback: R) -> R {\n  fallback\n}\n\nfn g(z: Int, a: String) -> Bool {\n  true\n}\n\nfn use_it() -> Bool {\n  apply(f: g, first: 1, second: \"x\", fallback: true)\n}\n"
+
+test fn fvt_arrow_inputs_pair_in_declared_order() -> Bool {
+  match fmi_assemble(src: fvt_arrow_order) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+// SUPPLIED, THE DISCRIMINATING CASE: an Arrow whose domain is STORED as (a: String, z: Int) while its declared order is
+// (z, a). Matched against fn(A, B) -> R, A is Int and B is String -- the declared order -- never the stored one.
+// MUTATION CONTROL: reading domain.children positionally fixes A as String and reds this claim (measured on the PR).
+fn fvt_atom(id: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
+}
+
+fn fvt_reversed(xs: List<Edge>) -> List<Edge> {
+  fold(xs, init: Empty, f: fn(acc, x) { Cons { head: x, tail: acc } })
+}
+
+type FvtRebuild {
+  index: Int
+  edges: List<Edge>
+}
+
+// The domain (the Arrow's first child) with its children stored in reverse; every other child, the order edge
+// included, as declared.
+fn fvt_stored_out_of_order(declared: Node) -> Node {
+  let rebuilt = fold(declared.children, init: FvtRebuild { index: 0, edges: Empty }, f: fn(acc, e) {
+    FvtRebuild {
+      index: acc.index + 1,
+      edges: list_snoc_item(xs: acc.edges, item: if acc.index == 0 {
+        Edge { label: e.label, target: Node { kind: e.target.kind, children: fvt_reversed(xs: e.target.children), occurrence_id: e.target.occurrence_id }, declaration: e.declaration }
+      } else {
+        e
+      })
+    }
+  })
+  Node { kind: declared.kind, children: rebuilt.edges, occurrence_id: declared.occurrence_id }
+}
+
+// The Arrow's domain and codomain only: its declared-order edge (the third child) dropped.
+fn fvt_without_order(declared: Node) -> Node {
+  let rebuilt = fold(declared.children, init: FvtRebuild { index: 0, edges: Empty }, f: fn(acc, e) {
+    FvtRebuild { index: acc.index + 1, edges: if acc.index < 2 { list_snoc_item(xs: acc.edges, item: e) } else { acc.edges } }
+  })
+  Node { kind: declared.kind, children: rebuilt.edges, occurrence_id: declared.occurrence_id }
+}
+
+fn fvt_produced_g() -> Node {
+  declared_signature_arrow(params: [binder_edge(name: ^z, type_node: integer_int_type_node()), binder_edge(name: ^a, type_node: fvt_atom(id: ^fvt_supplied_text))], codomain: fvt_atom(id: ^fvt_supplied_truth), source: fvt_atom(id: ^fvt_supplied_source))
+}
+
+fn fvt_formal_f() -> Node {
+  anonymous_signature_arrow(domain_types: [fvt_atom(id: ^A), fvt_atom(id: ^B)], codomain: fvt_atom(id: ^R), source: fvt_atom(id: ^fvt_supplied_source))
+}
+
+fn fvt_learned(produced: Node, binder: Symbol) -> Optional<Node> {
+  match infer_match_generic_formal(formal: fvt_formal_f(), produced: produced, type_params: [^A, ^B, ^R], instances: [], declarations: empty_symbol_index()) {
+    InferFormalShapeMismatch => optional_absent()
+    InferFormalMatched { instances: learned } => type_variable_instance_lookup(instances: learned, binder: binder)
+  }
+}
+
+test fn fvt_supplied_arrow_inputs_pair_in_declared_not_stored_order() -> Bool {
+  let produced = fvt_stored_out_of_order(declared: fvt_produced_g())
+  fvt_same(a: fvt_learned(produced: produced, binder: ^A), b: optional_present(value: integer_int_type_node()))
+    && fvt_same(a: fvt_learned(produced: produced, binder: ^B), b: optional_present(value: fvt_atom(id: ^fvt_supplied_text)))
+}
+
+// SUPPLIED, FAIL-CLOSED: an Arrow with no declared order teaches nothing -- not even its codomain -- rather than a
+// positional guess.
+test fn fvt_supplied_arrow_without_an_order_learns_nothing() -> Bool {
+  let produced = fvt_without_order(declared: fvt_produced_g())
+  fvt_learned(produced: produced, binder: ^A) == optional_absent() && fvt_learned(produced: produced, binder: ^R) == optional_absent()
+}

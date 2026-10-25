@@ -18,7 +18,7 @@ import v2.workflow.v2_native_route {
   native_route_package_text_module,
   required_v2_native_job_name
 }
-import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
+import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
 import gunbc.native_route_universe {
   native_route_default_pattern,
   native_route_label_in_package,
@@ -270,7 +270,10 @@ import v2.compiler.dependency_demand {
   FunctionFact,
   OperationFact,
 }
+import v2.compiler.self_host.seed_retention_frontier { self_host_frontier_report }
 import v2.compiler.decl_ref_census { LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
+import v2.compiler.effect_pair_census { BodyOrdered, EffectPairCensusReport, ImporteeRefusedCause, ResolveRefusedCause, ResolveUnclassifiedCause, UnobservedRoot, effect_pair_census_exit, effect_pair_census_lines, effect_pair_census_of_module, effect_reach_table, module_ordered_bodies, not_derived_keys_of, unobserved_roots_add, use_edges_of }
+import v2.compiler.value_use_dependency { value_use_dispositions }
 import v2.compiler.dependency_demand_census {
   AuthoredRowReading,
   AuthoredTypeUnresolved,
@@ -1545,6 +1548,7 @@ type NativeDriverVerb
   | NativeDriverCensusVerb { verb: NativeCensusVerbWord, source_roots: FreeMonoid<String> }
   | NativeDriverCensusScoped { subject: String, subjects_rest: List<String>, against: Optional<String>, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
+  | NativeDriverSelfHostFrontier { manifest_path: String, verdict_path: String, observed_path: String }
 
 type NativeDriverPlan
   = NativeDriverPlanned { verb: NativeDriverVerb }
@@ -1563,6 +1567,14 @@ data native_driver_verb_census_infer: String = "census-infer"
 // emitted run function serve every verb here, and native_census_verb_output is the single dispatch from a
 // verb to its fold. The closed verb type and its spelling are gunbc.native_census_verb.
 
+// THE SELF-HOST FRONTIER MODE (v2.compiler.self_host.seed_retention_frontier self_host_frontier_report): three
+// operands, each a FILE the self-host step wrote or the seed emitted -- the emitted-population
+// manifest, the controls verdict, the observed stage0 paths. It takes no source root, because its
+// subject is not a corpus to ingest but the join of those three populations.
+data native_driver_verb_self_host_frontier: String = "self-host-frontier"
+
+data native_driver_self_host_frontier_needs_operands: String = "REFUSED: self-host-frontier takes <emitted-population-manifest> <controls-verdict> <observed-paths>"
+
 data native_driver_verb_census_scoped: String = "census-scoped"
 
 data native_driver_census_scoped_needs_subject: String = "REFUSED: census-scoped takes a subject package label before the source roots"
@@ -1577,7 +1589,7 @@ data native_driver_census_scoped_against_one_subject: String = "REFUSED: census-
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>... | decl-ref-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>... | self-host-frontier <emitted-population-manifest> <controls-verdict> <observed-paths> | decl-ref-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -1618,6 +1630,10 @@ type NativeDriverParseState
   | DriverAdjudicateOptions { facts_path: String }
   | DriverAdjudicateSeekPatternValue { facts_path: String }
   | DriverAdjudicateRoots { facts_path: String, pattern: TargetPattern, roots: FreeMonoid<String> }
+  | DriverSelfHostFrontierSeekManifest
+  | DriverSelfHostFrontierSeekVerdict { manifest_path: String }
+  | DriverSelfHostFrontierSeekObserved { manifest_path: String, verdict_path: String }
+  | DriverSelfHostFrontierOperands { manifest_path: String, verdict_path: String, observed_path: String }
   | DriverParseRefused { reason: Symbol, detail: String }
 
 fn native_driver_unknown_verb_detail(word: String) -> String {
@@ -1625,7 +1641,7 @@ fn native_driver_unknown_verb_detail(word: String) -> String {
     concat("REFUSED: unknown mode ", word),
     fold_list(
       xs: native_census_verbs,
-      empty: " -- expected adjudicate, census, census-resolve, census-infer, census-scoped",
+      empty: " -- expected adjudicate, census, census-resolve, census-infer, census-scoped, self-host-frontier",
       cons: fn(acc, v) { concat(concat(acc, ", "), native_census_verb_word(v: v)) }
     )
   )
@@ -1645,6 +1661,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusResolveRoots { roots: [] }
       } else if word == native_driver_verb_census_infer {
         DriverCensusInferRoots { roots: [] }
+      } else if word == native_driver_verb_self_host_frontier {
+        DriverSelfHostFrontierSeekManifest
       } else if word == native_driver_verb_census_scoped {
         DriverCensusScopedSeekSubject
       } else if word == native_driver_verb_adjudicate {
@@ -1696,6 +1714,14 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusScopedRoots { subject: subject, rest: [], against: optional_present(value: word), roots: [] }
     DriverCensusScopedRoots { subject: subject, rest: rest, against: against, roots: roots } =>
       DriverCensusScopedRoots { subject: subject, rest: rest, against: against, roots: list_snoc_item(xs: roots, item: word) }
+    DriverSelfHostFrontierSeekManifest => DriverSelfHostFrontierSeekVerdict { manifest_path: word }
+    DriverSelfHostFrontierSeekVerdict { manifest_path: manifest_path } =>
+      DriverSelfHostFrontierSeekObserved { manifest_path: manifest_path, verdict_path: word }
+    DriverSelfHostFrontierSeekObserved { manifest_path: manifest_path, verdict_path: verdict_path } =>
+      DriverSelfHostFrontierOperands { manifest_path: manifest_path, verdict_path: verdict_path, observed_path: word }
+    // A FOURTH OPERAND IS A REFUSAL, not an ignored word: the mode's inputs are exactly three files.
+    DriverSelfHostFrontierOperands { manifest_path: _, verdict_path: _, observed_path: _ } =>
+      DriverParseRefused { reason: ^native_driver_self_host_frontier_extra_operand, detail: native_driver_self_host_frontier_needs_operands }
     DriverAdjudicateSeekFacts =>
       DriverAdjudicateOptions { facts_path: word }
     DriverAdjudicateOptions { facts_path: facts_path } =>
@@ -1739,6 +1765,14 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
         reason: ^native_driver_no_verb_given,
         detail: native_driver_usage
       }
+    DriverSelfHostFrontierSeekManifest =>
+      NativeDriverPlanRefused { reason: ^native_driver_self_host_frontier_without_operands, detail: native_driver_self_host_frontier_needs_operands }
+    DriverSelfHostFrontierSeekVerdict { manifest_path: _ } =>
+      NativeDriverPlanRefused { reason: ^native_driver_self_host_frontier_without_operands, detail: native_driver_self_host_frontier_needs_operands }
+    DriverSelfHostFrontierSeekObserved { manifest_path: _, verdict_path: _ } =>
+      NativeDriverPlanRefused { reason: ^native_driver_self_host_frontier_without_operands, detail: native_driver_self_host_frontier_needs_operands }
+    DriverSelfHostFrontierOperands { manifest_path: manifest_path, verdict_path: verdict_path, observed_path: observed_path } =>
+      NativeDriverPlanned { verb: NativeDriverSelfHostFrontier { manifest_path: manifest_path, verdict_path: verdict_path, observed_path: observed_path } }
     DriverAdjudicateSeekFacts =>
       NativeDriverPlanRefused {
         reason: ^native_driver_adjudicate_without_facts_path,
@@ -1807,6 +1841,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensusVerb { verb: _, source_roots: roots } => roots
         NativeDriverCensusScoped { subject: _, subjects_rest: _, against: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
+        NativeDriverSelfHostFrontier { manifest_path: _, verdict_path: _, observed_path: _ } => []
       }
   }
 }
@@ -3224,6 +3259,13 @@ fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOu
   }
 }
 
+// THE FRONTIER VERB'S ANSWER: the report and exit are v2.compiler.self_host.seed_retention_frontier
+// self_host_frontier_report's; the host only reads the three files and prints.
+type NativeSelfHostFrontierOutput {
+  lines: List<String>
+  exit: Int
+}
+
 // THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (`decl-ref-census`). Cut to its demand: the
 // candidates (modules whose Node tree constructs a DeclarationRef, or whose prose cites a symbol) and
 // the targets those cite, each reached by one path lookup in the layout and a normalize, never the
@@ -3242,6 +3284,11 @@ fn native_decl_ref_census_file_in_prose_scope(path: String) -> Bool {
 type NativeDeclRefCensusOutput {
   lines: List<String>
   exit: Int
+}
+
+fn native_self_host_frontier_output(manifest_text: String, verdict_text: String, observed_text: String) -> NativeSelfHostFrontierOutput {
+  let report = self_host_frontier_report(manifest_text: manifest_text, verdict_text: verdict_text, observed_text: observed_text)
+  NativeSelfHostFrontierOutput { lines: report.lines, exit: report.exit }
 }
 
 // THE CENSUS DEMANDS THE CANDIDATES AND THE MODULES THEIR CITATIONS NAME, NOTHING ELSE (DESIGN 2:
@@ -5855,6 +5902,116 @@ fn list_append_rows(
   fold_list(xs: right, empty: left, cons: fn(acc, r) { list_snoc_item(xs: acc, item: r) })
 }
 
+// THE EFFECT-PAIR CENSUS DRIVER (v2.compiler.effect_pair_census). It reads the SAME per-module facts as the
+// demand census (demand_census_module_facts: one walk, one function-boundary rule) and, per resolved
+// module, derives the module-local order edges and drops the tree; the closure-wide reach table is applied
+// once at the end. A module that did not resolve is counted under its root (first refused file and cause),
+// never as a module with zero pairs.
+type NativeEffectPairCensusWalk {
+  context: NativeTestContext
+  functions: List<FunctionFact>
+  operations: List<OperationFact>
+  modules: List<ModuleOrderedBodies>
+  roots: List<UnobservedRoot>
+  unobserved_modules: Int
+}
+
+type ModuleOrderedBodies {
+  module: QualifiedName
+  bodies: List<BodyOrdered>
+}
+
+fn native_effect_pair_unobserved(w: NativeEffectPairCensusWalk, step: NativeTestResolved, module_qn: QualifiedName, d: NonEmptyDiagnostics) -> NativeEffectPairCensusWalk {
+  let standing = native_demand_census_resolve_refused(context: step.context, module_qn: module_qn, authored: Empty, d: d)
+  let cause = match standing {
+    DemandModuleImporteeRefused { authored: _, importee_file: f, importee_cause: c } => ImporteeRefusedCause { file: f, cause: c }
+    DemandModuleResolveRefused { authored: _, first_reason: r, first_unbound: _ } => ResolveRefusedCause { reason: r }
+    DemandModuleResolved { readings: _ } => ResolveUnclassifiedCause
+  }
+  NativeEffectPairCensusWalk {
+    context: step.context,
+    functions: w.functions,
+    operations: w.operations,
+    modules: w.modules,
+    roots: unobserved_roots_add(roots: w.roots, cause: cause, module: module_qn),
+    unobserved_modules: w.unobserved_modules + 1
+  }
+}
+
+fn native_effect_pair_census_module(w: NativeEffectPairCensusWalk, root: NormalizedTree) -> NativeEffectPairCensusWalk {
+  match qualified_name_from_module_node(root: root.root) {
+    Rejected { diagnostics: _ } => w
+    Accepted { value: module_qn, diagnostics: _ } =>
+      let step = native_test_resolve_module(context: w.context, module: module_qn)
+      match step.resolved {
+        Rejected { diagnostics: d } => native_effect_pair_unobserved(w: w, step: step, module_qn: module_qn, d: d)
+        Accepted { value: resolved, diagnostics: _ } =>
+          let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
+          let deps = value_use_dispositions(tree: resolved)
+          NativeEffectPairCensusWalk {
+            context: step.context,
+            functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
+            operations: fold_list(xs: facts.operations, empty: w.operations, cons: fn(acc, o) { list_snoc_item(xs: acc, item: o) }),
+            modules: list_snoc_item(xs: w.modules, item: ModuleOrderedBodies {
+              module: module_qn,
+              bodies: module_ordered_bodies(module: module_qn, bodies: facts.bodies, uses: use_edges_of(deps: deps), not_derived: not_derived_keys_of(deps: deps))
+            }),
+            roots: w.roots,
+            unobserved_modules: w.unobserved_modules
+          }
+      }
+  }
+}
+
+type NativeEffectPairCensusOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_effect_pair_census_output(ingest: SourceRootIngest) -> NativeEffectPairCensusOutput {
+  match native_effect_pair_census_report(ingest: ingest) {
+    Rejected { diagnostics: d } =>
+      NativeEffectPairCensusOutput { lines: [concat("[effect-pair-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: report, diagnostics: _ } =>
+      NativeEffectPairCensusOutput { lines: effect_pair_census_lines(r: report), exit: effect_pair_census_exit(r: report) }
+  }
+}
+
+fn native_effect_pair_census_report(ingest: SourceRootIngest) -> Outcome<EffectPairCensusReport> {
+  bind_outcome(o: native_test_front_end_prepare(), f: fn(front) {
+    bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
+      let folded = fold_list(
+        xs: ingest,
+        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: Empty },
+        cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
+      )
+      let walked = fold_list(
+        xs: folded.context.roots,
+        empty: NativeEffectPairCensusWalk {
+          context: native_test_context_finish(state: folded.context, front: front, ingest: ingest),
+          functions: Empty,
+          operations: Empty,
+          modules: Empty,
+          roots: Empty,
+          unobserved_modules: 0
+        },
+        cons: fn(w, root) { native_effect_pair_census_module(w: w, root: root) }
+      )
+      let table = effect_reach_table(functions: walked.functions, operations: walked.operations)
+      outcome_accepted(value: EffectPairCensusReport {
+        modules: fold_list(xs: walked.modules, empty: Empty, cons: fn(acc, m) { list_snoc_item(xs: acc, item: effect_pair_census_of_module(module: m.module, bodies: m.bodies, table: table)) }),
+        roots: walked.roots,
+        unobserved_modules: walked.unobserved_modules,
+        unclassified_operations: length(xs: table.unclassified),
+        unclassified_names: table.unclassified,
+        ambiguous_semantics_rows: table.ambiguous_rows,
+        file_refusals: length(xs: folded.context.file_refusals),
+        unreadable_files: length(xs: folded.unreadable)
+      })
+    })
+  })
+}
+
 // THE ENTRY POINT THE DRIVER CALLS IN PLACE OF ITS MODULE LOOP.
 fn native_demand_schedule_universe(
   modules: List<NativeLaneUniverseModule>,
@@ -7289,6 +7446,9 @@ fn native_census_verb_output(verb: NativeCensusVerbWord, ingest: SourceRootInges
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
     CensusVerbDeclRef =>
       let o = native_decl_ref_census_output(ingest: ingest)
+      NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+    CensusVerbEffectPair =>
+      let o = native_effect_pair_census_output(ingest: ingest)
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
   }
 }

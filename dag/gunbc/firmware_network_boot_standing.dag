@@ -3020,7 +3020,7 @@ fn nic_candidates(nics: List<NonEmptyStr>) -> NicCandidateStanding {
 // ProxyDHCP edge boot this?' instead of an assumed answer.
 //
 // Legacy BIOS is refused rather than Unobserved because the finding is real and belongs in the
-// report: the unit's firmware is fine, OUR edge (gunbc.site_uefi_arm64_pxe_edge, cut 6) serves UEFI
+// report: the unit's firmware is fine, OUR edge (gunbc.site_pxe_edge, cut 6) serves UEFI
 // only, so the thing that has to change is not the unit. A future legacy-capable edge adds the arm
 // together with the evidence that it exists.
 type EdgeServiceableByMode

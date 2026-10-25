@@ -5,7 +5,6 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.host.host_layout { belt_spawn_workdir_env_var }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
-  srv1_live_dashboard_instance,
   DashboardInstanceLookup,
   DashboardInstanceResolved,
   DashboardInstanceRootUnknown,
@@ -298,30 +297,13 @@ fn dispatch_preflight_json_value(preflight: DispatchPreflight) -> JsonValue {
   }
 }
 
-// TWO SPELLINGS, ONE IMPLEMENTATION, for the same reason belt_run_once_in exists:
-// dispatch_preflight_json is the surface a reader invokes by hand to SEE the report whatever it
-// says, and dispatch_preflight_cli is the surface a caller invokes to have the line STOP on a
-// refusal. Both route through dispatch_preflight_for_instance, so the printed report and the exit
-// status cannot disagree. The refusal carries the whole report in its reason rather than a summary,
+// ONE SPELLING, ONE IMPLEMENTATION. dispatch_preflight_cli is the surface a caller invokes to have
+// the line STOP on a refusal, and it routes through dispatch_preflight_for_instance like every
+// reader of the report. The refusal carries the whole report in its reason rather than a summary,
 // because a caller that has just been told the preflight failed needs the axes, not the count.
 //
-// ONLY THE BY-HAND SPELLING DEFAULTS TO PRODUCTION, and the asymmetry is deliberate rather than an
-// oversight in one of the two. dispatch_preflight_json takes no channel and names
-// srv1_live_dashboard_instance directly, exactly as belt_run_once does and for the same reason: it
-// is an inspection surface someone invokes against production, where the subject is what they came
-// for. dispatch_preflight_cli is the SCHEDULED spelling -- the one a unit or another host could
-// invoke -- so it reads the workdir channel and fail-closes on its absence rather than inheriting a
-// default that would silently make a lab caller a production reader.
-
-fn dispatch_preflight_json_for_instance(instance: HostDashboardInstance) -> String {
-  serialize_json(v: dispatch_preflight_json_value(
-    preflight: dispatch_preflight_for_instance(instance: instance),
-  ))
-}
-
-fn dispatch_preflight_json() -> String {
-  dispatch_preflight_json_for_instance(instance: srv1_live_dashboard_instance())
-}
+// IT NAMES NO INSTANCE. It reads the workdir channel and fail-closes on its absence; a default would
+// silently make a lab caller a production reader.
 
 fn dispatch_preflight_cli_for_instance(instance: HostDashboardInstance) -> ProcessExit {
   let preflight = dispatch_preflight_for_instance(instance: instance)

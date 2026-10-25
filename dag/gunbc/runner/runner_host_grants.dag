@@ -14,7 +14,9 @@ import gunbc.fleet.fleet_bootstrap_principal { ExecutorBootstrapPrincipal, execu
 import std.types { String, NonEmptyStr, List, FilePath, list_length }
 import gunbc.live_deploy.desired { ProdRoleDeployment, prod_role_desired_deployment, ProdRoleDeploymentSelected, ProdRoleDeploymentRefused, ProdRoleDeploymentRosterRefused, ProdRoleDeploymentHolderRowMismatch, selected_deployment_spec }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
-import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors }
+import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors, owned_directory_owner, owned_directory_mode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
+import gunbc.fleet.printer_workflow_artifact { printer_state_directories, printer_state_group }
+import gunbc.fleet.printer_federation { printer_lan_host_identity }
 import extdeps.virtualization.firecracker { kvm_device_group }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
 import gunbc.executor_privileged_operation {
@@ -22,6 +24,7 @@ import gunbc.executor_privileged_operation {
   ReadDirectoryIdentity,
   ListDirectoryEntries,
   EnsureOwnedDirectory,
+  EnsureSupplementaryGroupMembership,
   SystemdDaemonReload,
   SystemdEnableUnit,
   SystemdStartUnit,
@@ -452,6 +455,7 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     + runner_host_wide_privileged_operations(deploy: deploy)
     + microvm_network_granted_operations()
     + dashboard_directory_observation_operations(deploy: deploy)
+    + printer_state_privileged_operations(deploy: deploy)
 }
 
 // THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module
@@ -632,5 +636,27 @@ fn dashboard_directory_observation_operations_of(deploy: RunnerHostDeploy, spec:
       map(demanded, p => ReadDirectoryIdentity { path: p as NonEmptyStr }),
       map(listed, p => ListDirectoryEntries { path: p as NonEmptyStr }),
     )
+  }
+}
+
+// THE PRINTER PASS'S STATE ROOTS, ON THE PRINTER LAN HOST ONLY (gunbc.fleet.printer_workflow_artifact
+// printer_state_directories). The job user ensures each root owned by the fleet account at its
+// declared mode, observes it and its parents, and holds the fleet account's group, which is how it
+// reads and writes the records inside; it gains no ownership and no other path. A root whose mode
+// cannot be resolved grants nothing for it, so the pass refuses on the same cause.
+fn printer_state_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  if (deploy.host_label as String) != (printer_lan_host_identity() as String) {
+    []
+  } else {
+    let targets = printer_state_directories()
+    let paths = map(targets, t => owned_directory_path(t: t) as String)
+    let listed = fold(flat_map(paths, p => map(owned_directory_listed_ancestors(path: p as FilePath), a => a as String)), init: [], f: (acc, a) => if any(acc, x => x == a) { acc } else { concat(acc, [a]) })
+    flat_map(targets, t => match owned_directory_mode(t: t) {
+      OwnedDirectoryModeRefused { reason: _ } => []
+      OwnedDirectoryModeResolved { mode: m } => [EnsureOwnedDirectory { path: owned_directory_path(t: t) as String as NonEmptyStr, owner: owned_directory_owner(t: t).user, group: owned_directory_owner(t: t).group, mode: m }]
+    })
+      + map(paths, p => ReadDirectoryIdentity { path: p as NonEmptyStr })
+      + map(listed, p => ListDirectoryEntries { path: p as NonEmptyStr })
+      + [EnsureSupplementaryGroupMembership { login: deploy.job_user, group: printer_state_group() }]
   }
 }

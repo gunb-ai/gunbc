@@ -16,7 +16,7 @@ import v2.std.diagnostic {
   Unavailable
 }
 import v2.std.integer { integer_interval_spec_node_contains }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, well_formed, NotADeclaration }
+import v2.std.node { node_equal_ignoring_provenance, Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, well_formed, NotADeclaration }
 import v2.std.node_query { find_named_child }
 import std.algebra { collection_count_shape }
 
@@ -105,7 +105,7 @@ fn integer_value_set_from_node(value_set: Node) -> Outcome<IntegerValueSet> {
   } else {
     match find_named_child(root: value_set, name: ^integer_value_set_field_kind) {
       Accepted { value: found_kind, diagnostics: kind_ds } =>
-        if found_kind == integer_value_set_atom(id: ^integer_value_set_kind_unbounded) {
+        if node_equal_ignoring_provenance(a: found_kind, b: integer_value_set_atom(id: ^integer_value_set_kind_unbounded)) {
           if count(value_set.children) == 1 {
             match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
               Accepted { value: _, diagnostics: _ } =>
@@ -122,7 +122,7 @@ fn integer_value_set_from_node(value_set: Node) -> Outcome<IntegerValueSet> {
               source_carrier: value_set
             )
           }
-        } else if found_kind == integer_value_set_atom(id: ^integer_value_set_kind_interval) {
+        } else if node_equal_ignoring_provenance(a: found_kind, b: integer_value_set_atom(id: ^integer_value_set_kind_interval)) {
           if count(value_set.children) == 2 {
             match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
               Accepted { value: interval, diagnostics: interval_ds } =>

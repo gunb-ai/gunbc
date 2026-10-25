@@ -1,0 +1,59 @@
+module gunbc.recurring_failure_mode.the_live_runner_unit_memory_shape_drifts_from_the_declared_slot
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// WHY THIS IS A LEDGER ROW AND NOT A QUEUE COMPENSATION. The operator rejected (2026-10-21, #14613)
+// the premise that taking the global instrument concurrency group apart loses an isolation guarantee:
+// a concurrency group never isolated jobs, so no upper edge on concurrent occupancy was lost, and
+// gunbc.design_ruling instrument_measurement_queues_run_in_parallel carries that ruling. It would have
+// been the wrong move to re-file some "upper edge" drop or add a queue-side cap to compensate -- that
+// would resurrect the rejected premise. The gap that IS real is on the OTHER axis: the authority the
+// operator named -- the SLOT -- does not fully hold on the live fleet today. That is a fleet-convergence
+// defect with its own cause, its own owner and its own remedy (converge the unit; read it back), and it
+// belongs here as its own class rather than smuggled in beside a queue change it has nothing to do with.
+
+// THE ONE THING THAT IS NOT EXPLAINABLE AWAY IS SWAP. memory.high / memory.max on the live slots read
+// 25 GiB / 26 GiB, which are the values of gunbc.floor.floor_demand gunbc_floor_pinned_memory_high /
+// _memory_max -- so a reader could argue they are a competing declared shape, not drift. MemorySwapMax
+// cannot be argued away: gunbc.runner.runner_slot_desired declares memory_swap_max = byte_size(0), and
+// the live slots read 34359738368 (32 GiB). That is not a different correct number, it is the pre-2026-
+// 10-09 shape still installed -- the exact value the 2026-08-07 srv1 control row recorded as what slots
+// carried BEFORE convergence. So the swap half of the slot's enforcement -- the half that makes an
+// overrun an OOM REFUSAL rather than silent paging -- is simply not present on those hosts.
+
+data the_live_runner_unit_memory_shape_drifts_from_the_declared_slot: RecurringFailureMode = RecurringFailureMode {
+  identity: "the_live_runner_unit_memory_shape_drifts_from_the_declared_slot" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a scheduled read of every fleet slot's MemoryHigh/MemoryMax/MemorySwapMax feeds gunbc.runner.runner_unit_live_read runner_unit_memory_max_drifts_against_cap and runner_unit_swap_max_converged against the slot actually declared for that host (gunbc.runner.runner_slot_desired), with a swap read of 0 enforced and a required-context refusal on drift",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a runner unit's effective systemd memory shape (MemoryHigh, MemoryMax, MemorySwapMax) sits away from what gunbc.runner.runner_slot_desired declares for that slot, and nothing on the required path notices, because the readers that could notice are called only on a fixture. HARM: the slot is the isolation authority -- it is what the operator ruling on #14613 pointed to when it said a job should not have to worry about what else is running on the machine -- so a drifted slot silently weakens the guarantee the whole parallel-instrument change relies on. Concretely at the declared MemorySwapMax = 0: the slot is sized so an overrun is REFUSED (oom_kill, a loud red), and a drifted drop-in that permits swap turns that same overrun into memory.high throttling inside a run that still exits green, so the instrument reports a duration that is partly throttling and reports it as work.",
+
+    "PROVENANCE OF THE NUMBERS, stated at their real locus rather than asserted as one clean read. Declared (gunbc.runner.runner_slot_desired gunbc_runner_slot_memory_max_bytes, and the shape fn): memory_max 23622320128 (22 GiB), memory_high 22548578304 (21 GiB), memory_swap_max 0, tasks_max 16384. Live, this session, on the arm64 fleet (an operator reading of srv3-20 and srv3-01 via systemctl show ghrunner -p MemoryMax -p MemoryHigh and the cgroup memory.max / memory.swap.max): memory.high 26843545600 (25 GiB), memory.max 27917287424 (26 GiB), MemorySwapMax 34359738368 (32 GiB). This is a MEASUREMENT on the hosts, not a gate: the build container is not a ghrunner host (its own /sys/fs/cgroup/system.slice/ghrunner.service reads NA) so it could not be reproduced from the runner, and the reading is not what blocks a merge -- it is what a future gate must refuse on.",
+
+    "THE 25/26 GiB COINCIDE WITH A COMPETING DECLARED ROW, and the row says so instead of hiding it. 26843545600 and 27917287424 are exactly gunbc.floor.floor_demand gunbc_floor_pinned_memory_high / gunbc_floor_pinned_memory_max, and the same pair is attested as a live slot read for srv4-03 in run 35716368507 (gunbc.recurring_failure_mode required_floor_runs_at_its_memory_ceiling). So high/max on srv3 are not provably 'undeclared' -- they match a different row that is also on main, and the real first defect may be the two competing pins, not the hosts. WHAT DOES NOT DEPEND ON THAT AMBIGUITY IS SWAP: no declared shape has swap 32 GiB; runner_slot_desired says 0, and 34359738368 is recorded (gunbc.runner.runner_capacity_operator_access srv1 acceptance row-6 control, 2026-08-07) as the pre-convergence value slots carried. Swap is therefore the half to file, read and gate on; the high/max disagreement is an input to the same convergence pass, not a separate accusation.",
+
+    "WHY NOTHING REFUSES TODAY, named so the next rung is the fix and not a new instrument. The tree already has the detectors -- gunbc.runner.runner_unit_live_read runner_unit_memory_max_drifts_against_cap and runner_unit_swap_max_converged -- and they are correct; the defect is their only caller. Both are invoked exclusively from dag/test/claim/runner/runner_unit_live_read_witness, on hand-authored data: fixture_live_read() wraps gunbc_srv1_runner_unit_live_read_fixture (a committed row that declares its own shape), and the matching_* rows are BUILT from gunbc_runner_slot_desired() itself -- the compared sides share an author. No call site anywhere feeds a real probed row. So a slot drifted to any shape whatsoever is reported green by every gate. A correct instrument that nothing feeds live data is, per DESIGN §6, a lens nothing gates on -- the reading this class exists to force.",
+
+    "THE RUNG. CEILING: mechanically preventable -- the values are read from systemctl/cgroup files that a scheduled instrument can read, and the comparison functions already exist. NEXT-RUNG TRIGGER (names the capability restored, not a date): a scheduled read of every fleet slot's MemoryHigh/MemoryMax/MemorySwapMax feeds runner_unit_memory_max_drifts_against_cap and runner_unit_swap_max_converged against the slot actually declared for that host (gunbc.runner.runner_slot_desired), with a swap read of 0 enforced and a required-context refusal on drift -- so the first drifted drop-in stops being invisible and the instrument duration stops being silently throttled. Until then the parallel-instrument change runs against an isolation authority that is not fully installed, and that fact lives here rather than in a queue-side cap that was never the answer.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.runner.runner_slot_desired", decl_name: "gunbc_runner_slot_desired", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.host.memory_envelope", decl_name: "memory_envelope_verdict", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_unit_live_read", decl_name: "runner_unit_swap_max_converged", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.runner.runner_unit_live_read", decl_name: "runner_unit_memory_max_drifts_against_cap", field: WholeDeclaration },
+  ],
+}

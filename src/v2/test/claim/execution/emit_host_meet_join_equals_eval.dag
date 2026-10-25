@@ -63,7 +63,7 @@ import v2.std.node {
   TypeNode,
   MatchArmBodyEdge,
 }
-import v2.std.runtime {
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,
   ControlTransfer,
@@ -136,11 +136,11 @@ fn meet_join_eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 }
 
 fn meet_join_eval_bool_true(value: RuntimeValue) -> Bool {
-  value == meet_join_eval_octet_value(n: 1)
+  (runtime_value_equality(a: value, b: meet_join_eval_octet_value(n: 1)) == RuntimeValuesEqual)
 }
 
 fn meet_join_eval_bool_false(value: RuntimeValue) -> Bool {
-  value == meet_join_eval_octet_value(n: 0)
+  (runtime_value_equality(a: value, b: meet_join_eval_octet_value(n: 0)) == RuntimeValuesEqual)
 }
 
 fn meet_join_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {

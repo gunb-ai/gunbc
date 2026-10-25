@@ -3826,6 +3826,63 @@ mod compiler_tests {
     }
 
     #[test]
+    fn record_literal_phantom_field_follows_the_constructed_declaration() {
+        // DISCRIMINATING RED for the class-2 emitter defect (stern-bat-401's emitter-debt list):
+        // gunbc.roadmap.roadmap_model's `Group { group: .. }` is an arm of SectionElement, but the
+        // phantom-field decision looked the constructor SPELLING up and found std.algebra's record
+        // `Group<T>`, whose T is unused, so the variant literal was emitted with `_phantom` (E0559).
+        // probe.algebra declares the record `Group<T>`; probe.sections constructs the variant arm
+        // `Group`. The control is the record literal itself, which must keep its phantom field.
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let source = |path: &str, content: &str| {
+                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.to_string(),
+                        content: content.to_string(),
+                    })
+                };
+                let sources = im::vector![
+                    source("probe_algebra.dag", "module probe.algebra\ntype Group<T> { carrier: Int }\nfn trivial_group() -> Group<Int> { Group { carrier: 1 } }\n"),
+                    source("probe_sections.dag", "module probe.sections\ntype SectionElement = Prose { text: Int } | Group { size: Int }\nfn group_of(n: Int) -> SectionElement { Group { size: n } }\n")
+                ];
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(sources),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                for d in result.diagnostics.iter() {
+                    eprintln!("DIAG {} {}", d.module_name, crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()));
+                }
+                let emitted = |suffix: &str| -> String {
+                    result.files.iter()
+                        .find(|f| f.path.ends_with(suffix))
+                        .map(|f| f.content.clone())
+                        .unwrap_or_else(|| panic!("no emitted file ending {}; files: {:?}", suffix, result.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()))
+                };
+                let sections = emitted("probe_sections.rs");
+                let algebra = emitted("probe_algebra.rs");
+                assert!(
+                    !sections.contains("_phantom"),
+                    "the variant literal Group(size) constructs an arm of SectionElement, which declares no phantom field; probe.sections:\n{}",
+                    sections
+                );
+                assert!(
+                    !sections.contains("compile_error!"),
+                    "the variant literal's type resolves to one declaration; probe.sections:\n{}",
+                    sections
+                );
+                assert!(
+                    algebra.contains("_phantom: std::marker::PhantomData,"),
+                    "the record literal Group(carrier) constructs Group<T>, whose unused T owes the phantom field; probe.algebra:\n{}",
+                    algebra
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("record_literal_phantom_field_follows_the_constructed_declaration panicked");
+    }
+
+    #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn self_resolve_all_modules() {
         let result = std::thread::Builder::new()
@@ -5766,6 +5823,115 @@ mod compiler_tests {
         );
     }
 
+    // A std.nat NAT BEYOND THE 64-BIT RANGE REFUSES ON BOTH ROUTES, EXECUTED (review 85900). std.nat Nat
+    // realizes as the kernel integer (gunbc.structural_realization_bindings kernel_grounding_rows), and a
+    // grounded natural cast onto the kernel Int is realized as the identity
+    // (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged), so that
+    // identity is safe only while no Nat past i64::MAX can be produced. THE FIXTURE is real std.nat Nat
+    // arithmetic. INTERPRETER: v1_interpreter::run refuses `+` and `*` past the range with IntegerOverflow,
+    // and an in-range Nat computes 4. EMITTED: the fixture is compiled to Rust by compile_sources, built as
+    // a crate and run; past the range the program exits non-zero with an overflow message, in range it
+    // prints 4. No emitted text is searched. Live: it builds a crate (minutes), so the receipts lane runs it.
+    #[test]
+    #[ignore = "live-corpus: builds and runs an emitted crate (minutes per run); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn nat_beyond_the_64_bit_range_refuses_on_both_routes() {
+        let root = workspace_root();
+        let fixture = "module test.fixture.nat_overflow_probe\n\nimport std.nat { Nat }\n\nfn nat_at_i64_max() -> Nat {\n  9223372036854775807\n}\n\nfn past_by_addition() -> Nat {\n  nat_at_i64_max() + 1\n}\n\nfn past_by_multiplication() -> Nat {\n  nat_at_i64_max() * 2\n}\n\nfn in_range() -> Nat {\n  2 + 2\n}\n";
+        let dag_root = root.join("dag").to_string_lossy().to_string();
+        let closure = || {
+            resolve_source_closure(
+                vec![(
+                    "dag/test/fixture/nat_overflow_probe.dag".to_string(),
+                    fixture.to_string(),
+                )],
+                &[dag_root.as_str()],
+            )
+        };
+        let resolved =
+            crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(closure().into()));
+        let graph = resolved
+            .graph
+            .clone()
+            .expect("the std.nat fixture must resolve");
+        for (entry, op) in [("past_by_addition", "+"), ("past_by_multiplication", "*")] {
+            match crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), entry) {
+                Err(crate::v1_interpreter::InterpError::IntegerOverflow { op: o, .. })
+                    if o == op => {}
+                other => panic!(
+                    "the interpreter must refuse {entry} with IntegerOverflow on {op}, got {:?}",
+                    other
+                ),
+            }
+        }
+        match crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), "in_range") {
+            Ok(crate::v1_interpreter::Value::Int(4)) => {}
+            other => panic!(
+                "the interpreter must compute an in-range Nat, got {:?}",
+                other
+            ),
+        }
+        let emitted = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(closure().into()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        assert!(
+            emitted
+                .files
+                .iter()
+                .any(|f| f.path.contains("test_fixture_nat_overflow_probe")),
+            "the std.nat fixture must be emitted, diagnostics {:?}",
+            emitted.diagnostics
+        );
+        let dir = std::env::temp_dir().join(format!("nat_overflow_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create the workspace root");
+        let rust_crate = emitted
+            .rust_crates
+            .front()
+            .expect("one emitted Rust crate")
+            .clone();
+        crate::cli_run::write_emitted_workspace(
+            &emitted.files,
+            &emitted.emitted_edges,
+            &emitted.rust_crates,
+            &dir,
+            &rust_crate.crate_name,
+        )
+        .expect("the emitted workspace must be written by the one workspace writer");
+        std::fs::create_dir_all(dir.join("src/bin")).expect("create bin dir");
+        std::fs::write(dir.join("src/bin/nat_probe.rs"), String::from("fn main() {\n    use v1_compiled::test_fixture_nat_overflow_probe as p;\n    let v = match std::env::args().nth(1).as_deref() {\n        Some(\"add\") => p::past_by_addition(),\n        Some(\"mul\") => p::past_by_multiplication(),\n        _ => p::in_range(),\n    };\n    println!(\"{v}\");\n}\n").replace("v1_compiled", &rust_crate.crate_name)).expect("write probe bin");
+        let build = std::process::Command::new("cargo")
+            .args(["build", "--release", "--offline", "--bin", "nat_probe"])
+            .current_dir(&dir)
+            .env("CARGO_TARGET_DIR", dir.join("target"))
+            .output()
+            .expect("cargo must be on PATH");
+        assert!(
+            build.status.success(),
+            "the emitted crate must build:\n{}",
+            String::from_utf8_lossy(&build.stderr)
+        );
+        let probe = dir.join("target/release/nat_probe");
+        for arm in ["add", "mul"] {
+            let out = std::process::Command::new(&probe)
+                .arg(arm)
+                .output()
+                .expect("run the emitted probe");
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert!(!out.status.success() && stderr.contains("overflow"), "the emitted program must refuse {arm} past i64::MAX with an overflow panic; status {:?}, stdout {}, stderr {}", out.status, String::from_utf8_lossy(&out.stdout), stderr);
+        }
+        let ok = std::process::Command::new(&probe)
+            .output()
+            .expect("run the emitted probe");
+        assert!(
+            ok.status.success() && String::from_utf8_lossy(&ok.stdout).trim() == "4",
+            "the emitted program must compute an in-range Nat; status {:?}, stdout {}",
+            ok.status,
+            String::from_utf8_lossy(&ok.stdout)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     // A SAME-LEAF TYPE ANYWHERE MUST NOT CHANGE ANOTHER MODULE'S EMISSION. hom.user returns the kernel
     // optional's Absent; hom.edge declares an unrelated enum that also has an Absent variant. With the
     // leaf-keyed type summaries, adding hom.coll (a coproduct it declares as Optional) replaced the
@@ -6980,5 +7146,69 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("profile_reconcile_per_module panicked");
+    }
+
+    #[test]
+    fn service_root_binds_only_where_its_service_is_imported() {
+        // DISCRIMINATING RED for the service-root channel of gunbc.recurring_failure_mode
+        // binding_chosen_by_pool_membership_rather_than_by_the_declared_rule. v1.compiler.infer
+        // build_module_context used to bind EVERY closure service's namespace root in every module's
+        // locals, over the module's own variant locals. So zz_arm's own `ZzEcho` arm, in a module
+        // that never imports the bare-named service of the same spelling, read as that service's
+        // root once any module of the closure imported it, and the interpreter raised
+        // NoSuchVariable { name: "ZzEcho" } for a program the checker accepted (the live specimen:
+        // gunbc-private strategy.compute_fabric_model AccessSemantics.Filesystem beside
+        // extdeps.filesystem.filesystem_io Filesystem). RED WITHOUT THE FIX: the with-service run
+        // refuses. CONTROL: the same subject with no service in the closure runs on both seeds.
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let source = |path: &str, content: &str| {
+                    std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.to_string(),
+                        content: content.to_string(),
+                    })
+                };
+                let service = source(
+                    "zz_svc.dag",
+                    "module zz_svc\nservice ZzEcho {\n  operation Say {\n    input { word: String }\n    output {\n      stdout: String from \"stdout\"\n    }\n    transport shell { argv: [\"echo\", \"{word}\"] }\n  }\n}\n",
+                );
+                let arm = source(
+                    "zz_arm.dag",
+                    "module zz_arm\ntype Access = BlockAccess | ZzEcho\nfn chosen_access() -> Access { ZzEcho }\nfn chosen_access_is_the_arm() -> Bool {\n  match chosen_access() {\n    BlockAccess => false\n    ZzEcho => true\n  }\n}\n",
+                );
+                let with_service = source(
+                    "zz_with_service.dag",
+                    "module zz_with_service\nimport zz_svc { ZzEcho }\nimport zz_arm { chosen_access_is_the_arm }\nfn shadow_entry() -> Bool { chosen_access_is_the_arm() }\n",
+                );
+                let without_service = source(
+                    "zz_without_service.dag",
+                    "module zz_without_service\nimport zz_arm { chosen_access_is_the_arm }\nfn shadow_entry() -> Bool { chosen_access_is_the_arm() }\n",
+                );
+                let run = |sources: Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>>| {
+                    let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(
+                        sources.into_iter().collect(),
+                    ));
+                    let graph = resolved
+                        .graph
+                        .clone()
+                        .expect("the service-root fixture must resolve: it is a runtime probe");
+                    crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), "shadow_entry")
+                };
+                match run(vec![service, arm.clone(), with_service]) {
+                    Ok(crate::v1_interpreter::Value::Bool(true)) => {}
+                    other => panic!(
+                        "a module's own arm must stay its arm when another module of the closure imports a same-spelled service; got: {:?}",
+                        other
+                    ),
+                }
+                match run(vec![arm, without_service]) {
+                    Ok(crate::v1_interpreter::Value::Bool(true)) => {}
+                    other => panic!("control: with no service in the closure the arm evaluates; got: {:?}", other),
+                }
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("service_root_binds_only_where_its_service_is_imported panicked");
     }
 }

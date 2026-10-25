@@ -3,7 +3,7 @@ module v2.workflow.executor
 import std.types { List }
 import std.algebra { list_snoc_item, contains, non_empty }
 import v2.std.dependency { DependencyView, ReadinessLayer }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import v2.workflow.scheduler {
   RunnableFrontier,
   SchedulerBlockedEvidence,
@@ -130,7 +130,7 @@ fn parallel_executor_plan_from_layers(layers: List<ReadinessLayer<Node>>) -> Exe
 }
 
 fn executor_batch_contains_node(batch: ExecutorBatch, node: Node) -> Bool {
-  contains(xs: executor_job_nodes(jobs: batch.jobs), item: node, eq: fn(left, right) { left == right })
+  contains(xs: executor_job_nodes(jobs: batch.jobs), item: node, eq: fn(left, right) { node_same_occurrence(a: left, b: right) })
 }
 
 fn executor_batches_preserve_frontiers(batches: List<ExecutorBatch>, layers: List<ReadinessLayer<Node>>) -> Bool {

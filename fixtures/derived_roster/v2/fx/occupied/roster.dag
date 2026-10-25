@@ -1,0 +1,6 @@
+module v2.fx.occupied.roster
+
+import std.types { List }
+import v2.fx.occupied { FxRow }
+
+data occupied_roster: List<FxRow> = []

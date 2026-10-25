@@ -53,6 +53,7 @@ import gunbc.target_binding {
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
   NativeCensusVerbProducer,
+  SelfHostFrontierProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -110,6 +111,7 @@ import gunbc.instrument_targets {
   required_lane_resolution_census_label,
   self_host_behavioral_equivalence_label,
   dependency_demand_census_label,
+  self_host_frontier_label,
   generic_identity_census_label,
   interpolation_hole_census_label,
   shared_type_leaf_collision_census_label,
@@ -1056,6 +1058,17 @@ test fn the_dependency_demand_census_operand_routes_to_its_own_producer() -> Boo
       label_eq(a: b.target, b: dependency_demand_census_label())
         && (b.producer == NativeCensusVerbProducer { verb: CensusVerbDemand })
         && !(b.producer == SelfHostBehavioralEquivalenceProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// The derived self-host frontier is a label bound to its own producer, never a mode of the self-host label.
+test fn the_self_host_frontier_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:self-host-frontier") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: self_host_frontier_label())
+        && (b.producer == SelfHostFrontierProducer {})
+        && !(b.producer == NativeCensusVerbProducer { verb: CensusVerbDemand })
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }

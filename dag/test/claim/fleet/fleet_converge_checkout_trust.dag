@@ -6,7 +6,7 @@ import extdeps.github.expressions { interpolate }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_build_checkout_ref,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_mode_job_id, fleet_converge_shared_job_id,
-  fleet_converge_shared_job_if, fleet_converge_any_mode_step_if
+  fleet_converge_shared_job_if, fleet_converge_any_mode_step_if, fleet_converge_workflow_mode_wire
 }
 
 // THE CHECKOUT TRUST BOUNDARY, ASSERTED PER JOB KIND (one shared predicate for the three mode
@@ -38,4 +38,5 @@ fn fleet_converge_checkout_trust_holds() -> Bool {
 fn fleet_converge_shared_job_runs_all_but(excluded: FleetConvergeWorkflowMode) -> Bool {
   fleet_converge_mode_job_id(mode: excluded) != fleet_converge_shared_job_id
     && fleet_converge_shared_job_if == fleet_converge_any_mode_step_if(modes: filter(fleet_converge_workflow_modes, mode => fleet_converge_mode_job_id(mode: mode) == fleet_converge_shared_job_id && mode != excluded))
+    && string_contains(s: fleet_converge_shared_job_if, pattern: concat(concat("github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: excluded)), "'"))
 }

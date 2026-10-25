@@ -11,6 +11,7 @@ import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, Symbol,
 import v2.std.text { String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node_query { binder_edge }
+import v2.test.claim.coproduct_fixture { cpf_standing_disj }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -158,4 +159,18 @@ test fn swift_unsupported_shape_refuses_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
+}
+
+// THE SHARED-FIXTURE ARM OF THE PAIRING (DESIGN section 3). The node is v2.test.claim.coproduct_fixture
+// cpf_standing_disj, the very shape v2.test.claim.coproduct_pipe_chain_declaration_order asserts the
+// lowering produces, so the two claims cannot drift apart: the arms print in declaration order, and the
+// Beta-before-Zed scramble the old lowering produced is the wrong golden. Int-free nullary arms only;
+// Int-field records are covered by the Point golden above.
+data swift_standing_golden: String = "enum Standing: Equatable, Sendable { case Active, Pending, Revoked, Zed, Beta }"
+
+data swift_standing_scrambled_golden: String = "enum Standing: Equatable, Sendable { case Active, Beta, Zed, Revoked, Pending }"
+
+test fn swift_coproduct_from_the_lowering_fixture_prints_in_declaration_order_holds() -> Bool {
+  sdr_emits(name: ^Standing, params: Empty, node: cpf_standing_disj(), golden: swift_standing_golden)
+    && !sdr_emits(name: ^Standing, params: Empty, node: cpf_standing_disj(), golden: swift_standing_scrambled_golden)
 }
