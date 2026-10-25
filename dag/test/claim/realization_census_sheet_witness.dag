@@ -60,6 +60,12 @@ import gunbc.review_sheet_format_actuator {
   HeaderRangeWire,
   HeaderRangeUnqualifiable,
   review_sheet_header_range,
+  FormatRequestPlan,
+  FormatTermReading,
+  FormatRemediationPlanned,
+  FormatRemediationRefused,
+  format_remediation,
+  format_remediation_shape,
 }
 import gunbc.review_sheet_kind {
   ReviewSheetKind,
@@ -321,7 +327,7 @@ test fn the_findings_widths_follow_each_columns_content() -> Bool {
   match admitted_tab(title: "findings") {
     Absent => false
     Present { value: at } =>
-      join(map(review_sheet_tab_widths(tab: at.tab), w => concat(w.column as String, "=", to_string(w.pixels))), ",")
+      join(map(review_sheet_tab_widths(tab: at.tab), w => concat(w.column as String, "=", to_string(w.pixels.pixels))), ",")
         == "finding_id=296,class_id=296,module=296,class=114,dimension=79,site=79,level=51,symbol=296,specimen=436,note=436,existing_authority=296,fix_shape=436,Ruling=436,Note=436"
   }
 }
@@ -432,7 +438,9 @@ test fn the_format_readback_covers_the_nineteen_and_eighteen_column_tabs() -> Bo
 }
 
 // THE POPULATION'S ROOTS ARE EXACTLY THE THREE THE CENSUS READ, and every row the census names by
-// path sits under one of them: a row under an undeclared root, or a root dropped, fails here.
+// path sits under one of them: a row under an undeclared root, or a root dropped, fails here. The
+// 161 is the pinned receipt's src/v1 row count (docs/probes/realization_census_1dd3eda5_2026-10-24/
+// modules.tsv at census commit f0e73dc1d045), a versioned authority rather than today's tree.
 fn census_roots() -> List<String> {
   concat([realization_census_population.first_source_root as String], map(realization_census_population.additional_source_roots, r => r as String))
 }
@@ -442,5 +450,73 @@ test fn the_population_roots_are_dag_src_v1_and_src_v2_and_cover_every_path_row(
     && count(filter(realization_census_module_rows, m =>
          string_contains(s: m.module as String, pattern: "/")
            && count(filter(census_roots(), r => starts_with(s: m.module as String, prefix: concat(r, "/")))) == 0)) == 0
-    && count(filter(realization_census_module_rows, m => starts_with(s: m.module as String, prefix: "src/v1/"))) > 0
+    && count(filter(realization_census_module_rows, m => starts_with(s: m.module as String, prefix: "src/v1/"))) == 161
+}
+
+// ── remediation is term-specific ──────────────────────────────────────────────────────────────
+// SUPPLIED READINGS AT THE REMEDIATION BOUNDARY: each term's observed state is a value here, and the
+// plan is the real modules plan through the real locate. The converge reaches format_remediation
+// through format_terms_of over the read it performs (gunbc.review_sheet_format_actuator
+// converge_planned), which is the route these readings stand in for.
+
+fn modules_plan() -> FormatRequestPlan? {
+  match admitted_tab(title: "modules") {
+    Absent => none
+    Present { value: at } =>
+      match locate_review_tab(spreadsheet_id: w_spreadsheet, title: at.tab.title) {
+        TabLocated { tab: t } =>
+          match format_request_plan(tab: t, validated: at.validated, rules: at.tab.rules, widths: review_sheet_tab_widths(tab: at.tab)) {
+            FormatPlanned { plan: p } => Present { value: p }
+            FormatPlanRefused { cause: _ } => none
+          }
+        _ => none
+      }
+  }
+}
+
+// The widths the plan wants, read back as Sheets would report them; `wrong` names one column whose
+// observed width is off by one pixel.
+fn observed_width_at(p: FormatRequestPlan, i: Int, wrong: Int) -> Int? {
+  match first(filter(p.widths, w => w.column_index == i)) {
+    Present { value: w } => Present { value: if i == wrong { w.pixel_size.pixels + 1 } else { w.pixel_size.pixels } }
+    Absent => none
+  }
+}
+
+fn observed_widths(p: FormatRequestPlan, wrong: Int) -> List<Int?> {
+  map([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18], i => observed_width_at(p: p, i: i, wrong: wrong))
+}
+
+fn remediation_shape(rule_count: Int, wrong: Int) -> String {
+  match modules_plan() {
+    Absent => "no plan"
+    Present { value: p } =>
+      match format_remediation(terms: FormatTermReading { frozen_ok: true, header_ok: true, rule_count: rule_count, column_widths: observed_widths(p: p, wrong: wrong) }, plan: p) {
+        FormatRemediationPlanned { remediation: r } => join(map(format_remediation_shape(r: r), n => to_string(n)), ",")
+        FormatRemediationRefused { cause: _ } => "refused"
+      }
+  }
+}
+
+fn modules_rule_count() -> Int {
+  match modules_plan() { Present { value: p } => count(p.rules)  Absent => -1 }
+}
+
+// THE RED: freeze, header and every rule are right and one width is wrong, so the run sends that
+// width and nothing else -- no AddTextColorRule, which would stack a second rule set.
+test fn one_wrong_width_remediates_that_width_alone_with_no_rule_writes() -> Bool {
+  modules_rule_count() > 0 && remediation_shape(rule_count: modules_rule_count(), wrong: 0) == "0,0,0,1"
+}
+
+// THE RETRY: a run whose width write refused leaves the rules it added and the width still wrong;
+// the next run reads N rules and so again writes the width only.
+test fn a_retry_after_a_failed_width_write_issues_no_rule_writes() -> Bool {
+  remediation_shape(rule_count: modules_rule_count(), wrong: 18) == "0,0,0,1"
+    && remediation_shape(rule_count: modules_rule_count(), wrong: -1) == "0,0,0,0"
+}
+
+test fn zero_observed_rules_add_the_full_set_and_any_other_count_refuses() -> Bool {
+  remediation_shape(rule_count: 0, wrong: -1) == join(["0,0,", to_string(modules_rule_count()), ",0"], "")
+    && remediation_shape(rule_count: modules_rule_count() * 2, wrong: -1) == "refused"
+    && remediation_shape(rule_count: 1, wrong: -1) == "refused"
 }

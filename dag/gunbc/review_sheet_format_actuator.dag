@@ -36,6 +36,7 @@ import gunbc.review_sheet_projection {
   ListingStanding,
   DerivedErasureMark,
 }
+import std.measure { DisplayPixelCount }
 import extdeps.google.sheets
 import extdeps.google.sheets {
   SheetsBooleanConditionType,
@@ -381,14 +382,14 @@ fn format_rule_condition_text(c: FormatRuleCondition) -> String {
 // this module resolves the name against the validated header exactly as it resolves a rule's.
 type ColumnWidth {
   column: NonEmptyStr
-  pixels: Int
+  pixels: DisplayPixelCount
 }
 
 type ColumnWidthRequest sole_constructor {
   spreadsheet_id: String
   sheet_id: Int
   column_index: Int
-  pixel_size: Int
+  pixel_size: DisplayPixelCount
 }
 
 fn resolved_width_request(tab: LocatedReviewTab, validated: ValidatedHeaderSchema, width: ColumnWidth) -> List<ColumnWidthRequest> {
@@ -442,13 +443,13 @@ fn format_request_plan(tab: LocatedReviewTab, validated: ValidatedHeaderSchema, 
 }
 
 fn set_column_width(q: ColumnWidthRequest) -> FormatStepOutcome {
-  let step = join(["width of column ", to_string(q.column_index), " to ", to_string(q.pixel_size), "px"], "") as NonEmptyStr
+  let step = join(["width of column ", to_string(q.column_index), " to ", to_string(q.pixel_size.pixels), "px"], "") as NonEmptyStr
   match sheets.Spreadsheets.SetColumnWidth(
     spreadsheet_id: q.spreadsheet_id,
     sheet_id: q.sheet_id,
     start_index: q.column_index,
     end_index: q.column_index + 1,
-    pixel_size: q.pixel_size,
+    pixel_size: q.pixel_size.pixels,
   ) {
     RestAnswered { answer: _ } => FormatStepApplied { step: step }
     RestRefused { refusal } => classify_format_step(step: step, outcome: refusal)
@@ -537,31 +538,60 @@ fn format_step_is_applied(o: FormatStepOutcome) -> Bool {
 }
 
 
+// A FREEZE OR HEADER STEP NOT TAKEN IS ABSENT, not applied: the remediation writes only the terms
+// the readback found wrong, so a report says which steps ran.
 type FormatReport {
-  freeze: FormatStepOutcome
-  header: FormatStepOutcome
+  freeze: FormatStepOutcome?
+  header: FormatStepOutcome?
   rules: List<FormatStepOutcome>
   widths: List<FormatStepOutcome>
 }
 
-fn format_review_sheet(plan: FormatRequestPlan) -> FormatReport {
-  let freeze = freeze_header(q: plan.freeze)
-  let header = format_header_band(q: plan.header)
-  let rules = map(plan.rules, q => color_standing(q: q))
-  let widths = map(plan.widths, q => set_column_width(q: q))
+// THE WRITES ONE RUN SENDS, TERM BY TERM. The plan is the whole desired format; a remediation is the
+// part of it the readback found wrong. It is a separate carrier because the earlier converge had one
+// Bool for four terms, so one wrong width re-sent the whole plan, and the plan's AddTextColorRule
+// requests ADD: a sheet with N correct rules then carried 2N, then 3N, and never verified again.
+type FormatRemediation sole_constructor {
+  freeze: FreezeRowsRequest?
+  header: HeaderBandRequest?
+  rules: List<StandingRuleRequest>
+  widths: List<ColumnWidthRequest>
+}
+
+fn full_format_remediation(plan: FormatRequestPlan) -> FormatRemediation {
+  FormatRemediation { freeze: Present { value: plan.freeze }, header: Present { value: plan.header }, rules: plan.rules, widths: plan.widths }
+}
+
+fn apply_format_remediation(r: FormatRemediation) -> FormatReport {
+  let freeze = match r.freeze { Present { value: q } => Present { value: freeze_header(q: q) }  Absent => none }
+  let header = match r.header { Present { value: q } => Present { value: format_header_band(q: q) }  Absent => none }
+  let rules = map(r.rules, q => color_standing(q: q))
+  let widths = map(r.widths, q => set_column_width(q: q))
   FormatReport { freeze: freeze, header: header, rules: rules, widths: widths }
+}
+
+fn format_review_sheet(plan: FormatRequestPlan) -> FormatReport {
+  apply_format_remediation(r: full_format_remediation(plan: plan))
+}
+
+fn optional_step_texts(o: FormatStepOutcome?) -> List<String> {
+  match o { Present { value: s } => [format_step_text(o: s)]  Absent => [] }
+}
+
+fn optional_step_is_applied(o: FormatStepOutcome?) -> Bool {
+  match o { Present { value: s } => format_step_is_applied(o: s)  Absent => true }
 }
 
 fn format_report_text(r: FormatReport) -> String {
   join(
-    concat(concat([format_step_text(o: r.freeze), format_step_text(o: r.header)], map(r.rules, o => format_step_text(o: o))), map(r.widths, o => format_step_text(o: o))),
+    concat(concat(concat(optional_step_texts(o: r.freeze), optional_step_texts(o: r.header)), map(r.rules, o => format_step_text(o: o))), map(r.widths, o => format_step_text(o: o))),
     "\n",
   )
 }
 
 fn format_report_all_applied(r: FormatReport) -> Bool {
-  format_step_is_applied(o: r.freeze)
-    && format_step_is_applied(o: r.header)
+  optional_step_is_applied(o: r.freeze)
+    && optional_step_is_applied(o: r.header)
     && all(r.rules, o => format_step_is_applied(o: o))
     && all(r.widths, o => format_step_is_applied(o: o))
 }
@@ -967,15 +997,81 @@ fn desired_rule_count(rules: List<FormatRule>) -> Int {
 // the fragment and colour this module would write. A sheet carrying five unrelated rules reads as
 // converged. The narrower check needs the rule's condition values and format compared per rule,
 // which the response models but this fold does not yet walk.
-fn width_is_observed(observed: List<Int?>, desired: ColumnWidthRequest) -> Bool {
-  match first(skip(observed, desired.column_index)) {
-    Present { value: observed_width } =>
-      match observed_width {
-        Present { value: px } => px == desired.pixel_size
-        Absent => false
-      }
+// THE INDEX IS PAIRED BEFORE IT IS LOOKED UP. `first` over a List<Int?> answers Int?? and the
+// evaluator folds that to one optional layer, so the inner match then met a bare integer and the
+// first width that differed raised a type error instead of reading as wrong (the remediation RED
+// found it; no earlier claim compared a width that differed). Each column is matched as the
+// (index, width) pair it is, so the optional layer is the width's own.
+fn width_matches(observed: Int?, desired: ColumnWidthRequest) -> Bool {
+  match observed {
+    Present { value: px } => px == desired.pixel_size.pixels
     Absent => false
   }
+}
+
+fn width_is_observed(observed: List<Int?>, desired: ColumnWidthRequest) -> Bool {
+  count(filter(enumerate(observed), p => p.first == desired.column_index && width_matches(observed: p.second, desired: desired))) > 0
+}
+
+// THE FOUR TERMS, READ SEPARATELY, so each can be remediated on its own.
+type FormatTermReading {
+  frozen_ok: Bool
+  header_ok: Bool
+  rule_count: Int
+  column_widths: List<Int?>
+}
+
+fn format_terms_of(rows: Int, h: SheetsCellFormatRead?, rules: Int, widths: List<Int?>, inclusive_max: Int, header_bg: SheetsColor, header_fg: SheetsColor) -> FormatTermReading {
+  FormatTermReading {
+    frozen_ok: rows == review_sheet_header_row_count,
+    header_ok: header_matches(h: h, inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg),
+    rule_count: rules,
+    column_widths: widths,
+  }
+}
+
+type FormatRemediationDecision
+  = FormatRemediationPlanned { remediation: FormatRemediation }
+  | FormatRemediationRefused { cause: NonEmptyStr }
+
+// EACH TERM IS WRITTEN ONLY WHEN IT IS WRONG. The freeze and the header band are idempotent
+// replacements, so a wrong one is re-sent alone. Each width is re-sent alone when its observed
+// pixelSize differs. The rules are the one term that cannot be repaired by re-sending, because an
+// add is not a replacement: the right count writes none, zero writes the full set, and any other
+// count refuses, since reconciling a partial or foreign rule set needs the delete and update
+// requests this module does not model yet.
+fn format_remediation(terms: FormatTermReading, plan: FormatRequestPlan) -> FormatRemediationDecision {
+  let desired_rules = count(plan.rules)
+  if terms.rule_count != desired_rules && terms.rule_count != 0 {
+    FormatRemediationRefused {
+      cause: join(["the tab carries ", to_string(terms.rule_count), " conditional rules where ", to_string(desired_rules), " are declared; adding would stack a second set and nothing here can delete or update a rule, so the rule set needs reconciling before this converge may write"], "") as NonEmptyStr
+    }
+  } else {
+    FormatRemediationPlanned {
+      remediation: FormatRemediation {
+        freeze: if terms.frozen_ok { none } else { Present { value: plan.freeze } },
+        header: if terms.header_ok { none } else { Present { value: plan.header } },
+        rules: if terms.rule_count == desired_rules { [] } else { plan.rules },
+        widths: filter(plan.widths, d => !width_is_observed(observed: terms.column_widths, desired: d)),
+      }
+    }
+  }
+}
+
+fn format_remediation_is_empty(r: FormatRemediation) -> Bool {
+  let no_freeze = match r.freeze { Present { value: _ } => false  Absent => true }
+  let no_header = match r.header { Present { value: _ } => false  Absent => true }
+  no_freeze && no_header && count(r.rules) == 0 && count(r.widths) == 0
+}
+
+// HOW MANY WRITES OF EACH KIND A REMEDIATION SENDS: freeze, header, rules, widths.
+fn format_remediation_shape(r: FormatRemediation) -> List<Int> {
+  [
+    match r.freeze { Present { value: _ } => 1  Absent => 0 },
+    match r.header { Present { value: _ } => 1  Absent => 0 },
+    count(r.rules),
+    count(r.widths),
+  ]
 }
 
 fn format_is_converged(o: FormatObservation, desired_rules: Int, desired_widths: List<ColumnWidthRequest>, inclusive_max: Int, header_bg: SheetsColor, header_fg: SheetsColor) -> Bool {
@@ -1096,20 +1192,24 @@ fn converge_planned(
       FormatConvergeRefused {
         cause: join(["the sheet's current format could not be read, so applying would be writing blind: ", c as String], "") as NonEmptyStr
       }
-    FormatObserved { frozen_rows: _, header: _, rule_count: _, column_widths: _ } =>
-      if format_is_converged(o: observed, desired_rules: desired_rules, desired_widths: plan.widths, inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg) {
-        FormatAlreadyConverged
-      } else {
-        verify_applied_format(
-          tab: tab,
-          validated: validated,
-          report: format_review_sheet(plan: plan),
-          desired_rules: desired_rules,
-          desired_widths: plan.widths,
-          inclusive_max: inclusive_max,
-          header_bg: header_bg,
-          header_fg: header_fg,
-        )
+    FormatObserved { frozen_rows: rows, header: h, rule_count: n, column_widths: ws } =>
+      match format_remediation(terms: format_terms_of(rows: rows, h: h, rules: n, widths: ws, inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg), plan: plan) {
+        FormatRemediationRefused { cause: c } => FormatConvergeRefused { cause: c }
+        FormatRemediationPlanned { remediation: r } =>
+          if format_remediation_is_empty(r: r) {
+            FormatAlreadyConverged
+          } else {
+            verify_applied_format(
+              tab: tab,
+              validated: validated,
+              report: apply_format_remediation(r: r),
+              desired_rules: desired_rules,
+              desired_widths: plan.widths,
+              inclusive_max: inclusive_max,
+              header_bg: header_bg,
+              header_fg: header_fg,
+            )
+          }
       }
   }
 }

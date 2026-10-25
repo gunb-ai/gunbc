@@ -493,6 +493,8 @@ pub type PhysicalCoreCount = Rc<Measure<Count, One, Nat>>;
 
 pub type CharacterCount = Rc<Measure<Count, One, Nat>>;
 
+pub type DisplayPixelCount = Rc<Measure<Count, One, Nat>>;
+
 pub type TokenCount = Rc<Measure<Count, One, Nat>>;
 
 pub type AllocatorBlockCount = Rc<Measure<Count, One, Nat>>;
