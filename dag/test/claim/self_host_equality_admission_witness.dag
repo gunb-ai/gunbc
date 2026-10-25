@@ -86,6 +86,10 @@ data composite_reaching_node_occurrence_green_source: String = "module eq_probe_
 
 data node_occurrence_root_green_source: String = "module eq_probe_node_occurrence\nimport v2.std.node { NodeOccurrence }\nfn same(a: NodeOccurrence, b: NodeOccurrence) -> Bool { a == b }\n"
 
+data generic_eq_census_row_source: String = "module eq_probe_generic\nfn same<T>(a: T, b: T) -> Bool { a == b }\n"
+
+data collection_key_census_row_source: String = "module eq_probe_collection_key\nimport std.types { Map, Int }\nimport v2.std.node { Node }\ntype Keyed { by_node: Map<Node, Int> }\n"
+
 data presence_test_green_source: String = "module eq_probe_presence\nfn has(x: Int?) -> Bool { x != none }\n"
 
 test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
@@ -156,6 +160,26 @@ test fn composite_reaching_node_and_node_occurrence_is_admitted() -> Bool {
 
 test fn node_occurrence_root_is_admitted() -> Bool {
   eq_admitted(source: node_occurrence_root_green_source)
+}
+
+// THE RESIDUAL'S CENSUS ROWS ARE NEVER A VERDICT (gunbc.rung_drop derived_equality_residual_field_equality,
+// condition of sleek-owl-397's 2026-10-25 admission): each source below is ACCEPTED -- no blocking row --
+// while carrying its census row, so promoting either class into a gate turns these red.
+fn eq_class_count(source: String, wanted: String) -> Int {
+  match eq_census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn generic_eq_census_row_is_present_and_the_program_stays_accepted() -> Bool {
+  eq_admitted(source: generic_eq_census_row_source)
+    && eq_class_count(source: generic_eq_census_row_source, wanted: "EqualityInstantiationBlindGenericSite") >= 1
+}
+
+test fn collection_key_census_row_is_present_and_the_program_stays_accepted() -> Bool {
+  eq_admitted(source: collection_key_census_row_source)
+    && eq_class_count(source: collection_key_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
 }
 
 test fn presence_test_stays_admitted() -> Bool {
