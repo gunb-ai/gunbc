@@ -539,17 +539,45 @@ fn acquisition_derive_siblings(
   directory: String,
   stems: List<String>
 ) -> DerivedSiblingsRead {
-  let members = acquisition_member_contents(modules: state.modules)
-  fold_list(xs: stems, empty: DerivedSiblingsReadOk { state: state, siblings: [] }, cons: fn(acc, stem) {
-    match acc {
-      DerivedSiblingsReadRefused { refusal: _ } => acc
-      DerivedSiblingsReadOk { state: so_far, siblings: read } =>
-        match acquisition_derive_sibling(state: so_far, members: members, roster: roster, roster_file: roster_file, directory: directory, stem: stem) {
-          DerivedSiblingReadRefused { refusal: refusal } => DerivedSiblingsReadRefused { refusal: refusal }
-          DerivedSiblingReadOk { state: next, sibling: one } => DerivedSiblingsReadOk { state: next, siblings: list_snoc_item(xs: read, item: one) }
-        }
-    }
-  })
+  acquisition_derive_siblings_go(
+    state: state,
+    members: acquisition_member_contents(modules: state.modules),
+    roster: roster,
+    roster_file: roster_file,
+    directory: directory,
+    pending: stems,
+    read: []
+  )
+}
+
+// The reads are effects, so the walk over the stems is a self-recursion and not a fold: an effectful
+// call inside a lambda is not lowered by the emitter.
+fn acquisition_derive_siblings_go(
+  state: AcquisitionState,
+  members: Map<String, String>,
+  roster: StorageDerivedRoster,
+  roster_file: ModuleFileRef,
+  directory: String,
+  pending: List<String>,
+  read: List<DerivedSiblingRead>
+) -> DerivedSiblingsRead {
+  match list_head(xs: pending) {
+    Absent => DerivedSiblingsReadOk { state: state, siblings: read }
+    Present { value: stem } =>
+      match acquisition_derive_sibling(state: state, members: members, roster: roster, roster_file: roster_file, directory: directory, stem: stem) {
+        DerivedSiblingReadRefused { refusal: refusal } => DerivedSiblingsReadRefused { refusal: refusal }
+        DerivedSiblingReadOk { state: next, sibling: one } =>
+          acquisition_derive_siblings_go(
+            state: next,
+            members: members,
+            roster: roster,
+            roster_file: roster_file,
+            directory: directory,
+            pending: skip(xs: pending, n: 1),
+            read: list_snoc_item(xs: read, item: one)
+          )
+      }
+  }
 }
 
 fn derived_sibling_stem(roster: StorageDerivedRoster, sibling: DerivedSiblingRead) -> String {
@@ -2030,28 +2058,35 @@ type PopulationSiblings
   = PopulationSiblingsRead { siblings: List<DerivedRosterSibling>, inputs: List<String> }
   | PopulationSiblingsRefused { refusal: DerivedRosterRefusal }
 
-fn population_derived_siblings(file: ModuleFileRef, host_directory: String, stems: List<String>) -> PopulationSiblings {
-  fold_list(xs: stems, empty: PopulationSiblingsRead { siblings: [], inputs: [] }, cons: fn(acc, stem) {
-    match acc {
-      PopulationSiblingsRefused { refusal: _ } => acc
-      PopulationSiblingsRead { siblings: siblings, inputs: inputs } => {
-        let sibling = derived_sibling_file(roster_file: file, stem: stem)
-        match acquisition_probe(host_directory: host_directory, file: sibling) {
-          ModuleFilePresent { file: _, content: content } =>
-            PopulationSiblingsRead {
-              siblings: list_snoc_item(xs: siblings, item: DerivedRosterSibling { stem: stem, content: content }),
-              inputs: list_snoc_item(xs: inputs, item: module_file_key(file: sibling))
-            }
-          ModuleFileAbsent { file: _ } => PopulationSiblingsRefused { refusal: DerivedRosterSiblingUnread { file: sibling, cause: "the listing named the file and it is absent" } }
-          ModuleFileRefused { file: _, cause: cause } => PopulationSiblingsRefused { refusal: DerivedRosterSiblingUnread { file: sibling, cause: cause } }
-        }
+fn population_derived_siblings(
+  file: ModuleFileRef,
+  host_directory: String,
+  pending: List<String>,
+  siblings: List<DerivedRosterSibling>,
+  inputs: List<String>
+) -> PopulationSiblings {
+  match list_head(xs: pending) {
+    Absent => PopulationSiblingsRead { siblings: siblings, inputs: inputs }
+    Present { value: stem } => {
+      let sibling = derived_sibling_file(roster_file: file, stem: stem)
+      match acquisition_probe(host_directory: host_directory, file: sibling) {
+        ModuleFilePresent { file: _, content: content } =>
+          population_derived_siblings(
+            file: file,
+            host_directory: host_directory,
+            pending: skip(xs: pending, n: 1),
+            siblings: list_snoc_item(xs: siblings, item: DerivedRosterSibling { stem: stem, content: content }),
+            inputs: list_snoc_item(xs: inputs, item: module_file_key(file: sibling))
+          )
+        ModuleFileAbsent { file: _ } => PopulationSiblingsRefused { refusal: DerivedRosterSiblingUnread { file: sibling, cause: "the listing named the file and it is absent" } }
+        ModuleFileRefused { file: _, cause: cause } => PopulationSiblingsRefused { refusal: DerivedRosterSiblingUnread { file: sibling, cause: cause } }
       }
     }
-  })
+  }
 }
 
 fn population_derived_listed(roster: StorageDerivedRoster, name: String, file: ModuleFileRef, host_directory: String, stems: List<String>) -> PopulationMember {
-  match population_derived_siblings(file: file, host_directory: host_directory, stems: stems) {
+  match population_derived_siblings(file: file, host_directory: host_directory, pending: stems, siblings: [], inputs: []) {
     PopulationSiblingsRefused { refusal: refusal } => population_derived_refused(name: name, refusal: refusal)
     PopulationSiblingsRead { siblings: siblings, inputs: inputs } =>
       match derived_roster_select(roster: roster, siblings: siblings) {
