@@ -1,0 +1,696 @@
+module gunbc.runner.runner_gpu_container_toolchain
+
+// THE GPU CONTAINER TOOLCHAIN AS A FLEET CAPABILITY: declared per host in
+// gunbc.runner.runner_host_deploy, converged here, read back on the machine, and granted as the
+// runner registration label gunbc.runner.runner_registration_labels gunbc_gpu_docker_label ONLY when
+// the readback holds. Operator decision 2026-10-25 (node://adhoc-0cabf47d-be0): fleet CI jobs must
+// run containers that see GPUs WITHOUT root equivalence; the S1b gate
+// //gunbc/instruments:router-proxy-falsifier (#15089) and the serving benchmark both depend on it.
+//
+// WHY A CONVERGE AND NOT AN INSTALL. The brief's rule is that this is applied by `gunbc converge` and
+// never hand-installed, so the only writer of the label and the only installer of the packages is the
+// fold below, run from the fleet-converge workflow as mode runner_gpu_container_toolchain_converge.
+// A host whose label was set by hand is a host that loses it at the next converge, because the label
+// here is a READING of the machine and never a declaration of intent.
+//
+// WHY ROOTLESS, STATED TWICE BECAUSE IT IS THE WHOLE POINT. The capability is the JOB USER'S OWN
+// daemon at unix:///run/user/<uid>/docker.sock — the endpoint
+// gunbc.runner.runner_unit_file docker_host_from_uid_reading already forms for the slot — plus the
+// NVIDIA container toolkit and a generated CDI spec. The rootful socket is NOT this capability:
+// gunbc.fleet.fleet_posix_accounts fleet_root_equivalent_group_names classes "docker" as a
+// root-equivalent group, so joining that group buys GPU containers by granting root, which is the
+// thing the decision forbids. Readiness therefore asks whether the JOB USER can run a container that
+// sees the devices; a host where only root can is not ready, however healthy its nvidia-smi.
+//
+// WHY THE READBACK RUNS FOUR ARMS AND NOT ONE. `--device nvidia.com/gpu=all` resolves only against a
+// CDI spec, so a host with the packages and no /etc/cdi/nvidia.yaml fails at run time in a way no
+// package query predicts; and a host with all three still fails if the job user's own daemon is not
+// running (lingering off, socket gone). So the arms are: the toolkit package present, a CDI spec
+// naming the complete-device arm, the job user's daemon answering, and — the one that actually
+// decides — a container run by the job user through that daemon that sees a device. Each is a
+// separate observed fact with its own refusal text, because "docker is installed" is not the question
+// the two gates ask.
+//
+// MIRRORS, EXPLICITLY: gunbc.runner.runner_browser_toolchain (its apt ensure over the admin edge via
+// gunbc.host.host_effect_realize srv3_ensure_apt, its typed-argv label drop-in, its *_ci_wet receipt
+// entry). Deviations are stated where they occur, not hidden.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.algebra { string_contains, trim }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.env_binding { EnvSet }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, argv_words, env_prefixed_command }
+import extdeps.sudo.elevation { sudo_elevate_as_command, sudo_elevate_command }
+import extdeps.systemd.systemctl { systemctl_daemon_reload_command }
+import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, rm_force_command }
+import extdeps.posix.getent { getent_passwd_command }
+import extdeps.docker.cli { docker_gpu_cdi_probe_run_command, docker_info_command }
+import extdeps.docker.endpoint { docker_rootless_unix_endpoint }
+import extdeps.container.nvidia_container_toolkit {
+  NvidiaContainerToolkitAptRepo,
+  nvidia_ctk_cdi_generate_command,
+  nvidia_ctk_cdi_list_command,
+  nvidia_cdi_all_gpu_device,
+  nvidia_container_toolkit_apt_repo_stable,
+  nvidia_container_toolkit_packages,
+}
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_host_deploy {
+  GpuContainerToolchainDesired,
+  GpuContainerToolchainNotWanted,
+  GpuContainerToolchainUnmeasured,
+  RunnerHostGpuToolchainAbsent,
+  RunnerHostGpuToolchainFound,
+  runner_host_gpu_container_toolchain_for,
+}
+import gunbc.runner.runner_unit { runner_unit_dropin_path }
+import gunbc.runner.runner_unit_file {
+  RunnerJobUserUidReading,
+  JobUserUidObserved,
+  JobUserUidUnobserved,
+  runner_host_gpu_docker_labels_dropin_text,
+  runner_job_user_uid_reading,
+}
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  FleetSshExecutionContext,
+  SshTarget,
+  SshTargetResolution,
+  SshTargetResolved,
+  SshTargetRefused,
+  fleet_ssh_target_at_standard_port,
+  ssh_target_refusal_text,
+}
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.runner.runner_microvm_host_ready {
+  MicrovmHostBound,
+  MicrovmHostBindingRefused,
+  microvm_host_binding_wet,
+  microvm_host_binding_refusal_text,
+}
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host.host_effect_realize {
+  RunArgvTransportOutcome,
+  RunArgvTransportObserved,
+  RunArgvTransportRefused,
+  Srv3HostPredicate,
+  Srv3PredicateHolds,
+  Srv3PredicateFails,
+  Srv3PredicateUnobserved,
+  run_argv_over_host_effect_transport,
+  run_argv_transport_succeeded,
+  srv3_ensure_apt,
+  AptPresenceSubject,
+  AptPackageInstalled,
+}
+import gunbc.typed_remote_file_write {
+  converge_typed_remote_file,
+  typed_remote_file_write_seal,
+  TypedRemoteFileConverged,
+  TypedRemoteFileConvergenceRefused,
+  RemoteFileModeOwnerReadWriteWorldRead,
+  RemoteFileViaNonInteractiveSudo,
+  NoValidation,
+}
+import gunbc.file_access { FileTreeScope }
+
+// ── ONE QUESTION PER ARM, AND A REFUSED LEG IS NEVER A MISSING ARM ────────────────────────────────
+//
+// One field per question the two gates actually ask, each carrying its own refusal text. A single
+// Bool would make "the toolkit is installed but the CDI spec was never generated" and "there is no
+// GPU on this host" the same answer, and those need different repairs.
+//
+// A TRANSPORT THAT CANNOT EXECUTE IS UNOBSERVED, NEVER MISSING — the distinction this repository
+// polices hardest, because a refused leg that becomes a green reading is the failure that matters.
+// UNOBSERVED AND MISSING BOTH BLOCK READINESS; they differ in what an operator is told to do next.
+type GpuContainerArm
+  = GpuContainerArmOk { detail: String }
+  | GpuContainerArmMissing { detail: String }
+  | GpuContainerArmUnobserved { reason: String }
+
+fn gpu_container_arm_holds(a: GpuContainerArm) -> Bool {
+  match a {
+    GpuContainerArmOk { detail: _ } => true
+    GpuContainerArmMissing { detail: _ } => false
+    GpuContainerArmUnobserved { reason: _ } => false
+  }
+}
+
+fn gpu_container_arm_text(a: GpuContainerArm) -> String {
+  match a {
+    GpuContainerArmOk { detail: d } => concat("ok(", d, ")")
+    GpuContainerArmMissing { detail: d } => concat("missing(", d, ")")
+    GpuContainerArmUnobserved { reason: r } => concat("unobserved(", r, ")")
+  }
+}
+
+fn gpu_container_arm_from(outcome: RunArgvTransportOutcome, what: String, marker: String) -> GpuContainerArm {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => GpuContainerArmUnobserved { reason: concat(what, " leg refused: ", r) }
+    RunArgvTransportObserved { observed: o } =>
+      if o.success == false {
+        GpuContainerArmMissing { detail: concat(what, " exited ", to_string(o.exit_code), ": ", trim(s: o.stderr)) }
+      } else if marker == "" || string_contains(s: o.stdout, pattern: marker) {
+        GpuContainerArmOk { detail: first_line(text: o.stdout) }
+      } else {
+        GpuContainerArmMissing {
+          detail: concat(what, " succeeded but its output does not contain ", marker, ": ", first_line(text: o.stdout)),
+        }
+      }
+  }
+}
+
+fn first_line(text: String) -> String {
+  match split(s: text, delimiter: "\n").first() {
+    Present { value: l } => trim(s: l)
+    Absent => ""
+  }
+}
+
+// ── THE OBSERVE SIDE: WHAT THE HOST IS ASKED ────────────────────────────────────────────────────
+//
+// THE ARMS RUN AS THE JOB USER, NOT AS THE ADMIN. The admin edge installs; the job user is who must
+// be able to run the container, so readiness is measured in that identity or it proves nothing. The
+// socket URL is formed from the uid the HOST itself answered — gunbc.runner.runner_unit_file
+// runner_job_user_uid_reading, the same passwd-reading authority the depriv drop-in uses, fed from a
+// getent over this transport — so nothing here guesses 999, and an unobserved uid leaves every
+// job-user arm UNOBSERVED rather than pointing the probe at a socket nobody owns.
+type GpuContainerToolchainReadback {
+  job_user: NonEmptyStr
+  // The toolkit package is installed (the dpkg query is the authority).
+  toolkit_package: GpuContainerArm
+  // A CDI spec exists AND names the complete-device arm.
+  cdi_spec: GpuContainerArm
+  // The job user's own rootless daemon answers.
+  job_user_daemon: GpuContainerArm
+  // THE ARM THAT DECIDES: a container the job user runs through its own daemon sees the device.
+  container_sees_device: GpuContainerArm
+}
+
+fn job_user_uid_arm(user: NonEmptyStr, transport: HostEffectTransport) -> RunnerJobUserUidReading {
+  match run_argv_over_host_effect_transport(command: getent_passwd_command(key: user), transport: transport) {
+    RunArgvTransportRefused { reason: r } => JobUserUidUnobserved { cause: r as NonEmptyStr }
+    RunArgvTransportObserved { observed: o } =>
+      runner_job_user_uid_reading(job_user: user, exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
+  }
+}
+
+fn toolkit_package_arm(transport: HostEffectTransport) -> GpuContainerArm {
+  match srv3_ensure_apt(
+    subject: AptPackageInstalled { package: ("nvidia-container-toolkit" as NonEmptyStr) },
+    package: ("nvidia-container-toolkit" as NonEmptyStr),
+    require_version_probe: false,
+    transport: transport,
+  ) {
+    Srv3PredicateHolds => GpuContainerArmOk { detail: "nvidia-container-toolkit installed" }
+    Srv3PredicateFails => GpuContainerArmMissing { detail: "nvidia-container-toolkit not installed" }
+    Srv3PredicateUnobserved { reason: why } => GpuContainerArmUnobserved { reason: why }
+  }
+}
+
+// UNELEVATED ON PURPOSE. `nvidia-ctk cdi list` reads the spec the generate step wrote, and a readback
+// that had to be root would stop proving that the unprivileged identity which actually runs CI can
+// resolve the device. The marker is the cited complete-device name, so an empty spec, a stale spec, or
+// a spec generated for a host with no GPUs all answer Missing rather than Ok.
+fn cdi_spec_arm(transport: HostEffectTransport) -> GpuContainerArm {
+  gpu_container_arm_from(
+    outcome: run_argv_over_host_effect_transport(command: nvidia_ctk_cdi_list_command(), transport: transport),
+    what: ("nvidia-ctk cdi list" as NonEmptyStr),
+    marker: nvidia_cdi_all_gpu_device as String,
+  )
+}
+
+// THE DOCKER HOST IS THE POINT OF THE WHOLE MODULE, so it is spelled once, here. DOCKER_HOST is set to
+// the job user's own rootless socket and the command is run AS the job user: if the daemon answers and
+// the container sees the device, the capability is real for the identity that will actually run CI.
+// env_prefixed_command puts the assignment in front of the sudo, so the value survives into the
+// command the job user's shell execs.
+fn job_user_command(user: NonEmptyStr, socket: String, inner: ArgvCommand) -> ArgvCommand {
+  env_prefixed_command(
+    bindings: [EnvSet { name: "DOCKER_HOST", value: socket }],
+    command: sudo_elevate_as_command(user: user, command: argv_words(command: inner)),
+  )
+}
+
+// ── THE ACCEPTANCE PROBE: THE EXACT COMMAND MEASURED TO WORK ─────────────────────────────────────
+//
+// ubuntu:24.04 because it is already present in the job user's own rootless store on the host that
+// carries the shape today (srv1 2026-10-25: `docker images` as ghrunner lists ubuntu:24.04 and
+// alpine:3), so the acceptance run does not depend on the host being able to reach a registry — a
+// probe that fails because the network is down would be reported as a missing GPU capability. The
+// probe is nvidia-smi -L for the reason recorded at
+// extdeps.docker.cli docker_gpu_cdi_probe_run_command: it asks whether the device reached the
+// container, not whether the host's driver stack is healthy. Both rows are here, at the call site's
+// module, rather than buried in extdeps, because which image the fleet accepts as its GPU probe is a
+// fleet decision with a supply-chain consequence, while how to render a `docker run` is not.
+data gpu_container_acceptance_image: NonEmptyStr = "ubuntu:24.04"
+
+data gpu_container_acceptance_probe_argv: List<String> = ["nvidia-smi", "-L"]
+
+fn job_user_daemon_arm(user: NonEmptyStr, uid: Int, transport: HostEffectTransport) -> GpuContainerArm {
+  gpu_container_arm_from(
+    outcome: run_argv_over_host_effect_transport(
+      command: job_user_command(user: user, socket: docker_rootless_unix_endpoint(uid: uid), inner: docker_info_command()),
+      transport: transport,
+    ),
+    what: ("job-user docker info" as NonEmptyStr),
+    marker: "Server Version",
+  )
+}
+
+fn container_sees_device_arm(user: NonEmptyStr, uid: Int, transport: HostEffectTransport) -> GpuContainerArm {
+  gpu_container_arm_from(
+    outcome: run_argv_over_host_effect_transport(
+      command: job_user_command(
+        user: user,
+        socket: docker_rootless_unix_endpoint(uid: uid),
+        inner: docker_gpu_cdi_probe_run_command(
+          image: gpu_container_acceptance_image,
+          device: nvidia_cdi_all_gpu_device,
+          probe_argv: gpu_container_acceptance_probe_argv,
+        ),
+      ),
+      transport: transport,
+    ),
+    what: ("job-user GPU container probe" as NonEmptyStr),
+    marker: "GPU",
+  )
+}
+
+fn runner_gpu_container_toolchain_readback_wet(job_user: NonEmptyStr, transport: HostEffectTransport) -> GpuContainerToolchainReadback {
+  match job_user_uid_arm(user: job_user, transport: transport) {
+    JobUserUidUnobserved { cause: c } =>
+      GpuContainerToolchainReadback {
+        job_user: job_user,
+        toolkit_package: toolkit_package_arm(transport: transport),
+        cdi_spec: cdi_spec_arm(transport: transport),
+        job_user_daemon: GpuContainerArmUnobserved { reason: concat("job user uid unobserved: ", c as String) },
+        container_sees_device: GpuContainerArmUnobserved { reason: concat("job user uid unobserved: ", c as String) },
+      }
+    JobUserUidObserved { uid: uid, passwd_line: _ } =>
+      GpuContainerToolchainReadback {
+        job_user: job_user,
+        toolkit_package: toolkit_package_arm(transport: transport),
+        cdi_spec: cdi_spec_arm(transport: transport),
+        job_user_daemon: job_user_daemon_arm(user: job_user, uid: uid, transport: transport),
+        container_sees_device: container_sees_device_arm(user: job_user, uid: uid, transport: transport),
+      }
+  }
+}
+
+// THE GATE IS CONJUNCTIVE AND THE CONTAINER ARM IS NOT OPTIONAL. A host can pass every package and
+// spec query and still be unable to run a container as the job user; calling that ready would be the
+// exact green-without-capability failure the dependent instruments are built to refuse.
+fn runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback) -> Bool {
+  gpu_container_arm_holds(a: r.toolkit_package)
+    && gpu_container_arm_holds(a: r.cdi_spec)
+    && gpu_container_arm_holds(a: r.job_user_daemon)
+    && gpu_container_arm_holds(a: r.container_sees_device)
+}
+
+fn runner_gpu_container_toolchain_readback_text(r: GpuContainerToolchainReadback) -> String {
+  join(
+    [
+      "job_user=", r.job_user as String, "\n",
+      "toolkit_package=", gpu_container_arm_text(a: r.toolkit_package), "\n",
+      "cdi_spec=", gpu_container_arm_text(a: r.cdi_spec), "\n",
+      "job_user_daemon=", gpu_container_arm_text(a: r.job_user_daemon), "\n",
+      "container_sees_device=", gpu_container_arm_text(a: r.container_sees_device), "\n",
+      "ready=", if runner_gpu_container_toolchain_ready(r: r) { "yes" } else { "no" }, "\n",
+    ],
+    "",
+  )
+}
+
+// ── THE ADMIN-SIDE ENSURE: WHAT CONVERGE DOES ABOUT A DECLARED HOST ──────────────────────────────
+//
+// The packages are ensured through the SAME fold the browser toolchain and the password-session
+// converge use (gunbc.host.host_effect_realize srv3_ensure_apt), one typed subject per package, over
+// the ADMIN edge. The repository and its keyring are NOT re-implemented here: the pinned repo row and
+// the provisioning sequence live in extdeps.container.nvidia_container_toolkit, which carries the
+// fingerprint verification, and declared-ness comes from gunbc.runner.runner_host_deploy. This module
+// adds no third spelling of either.
+type GpuToolchainEnsureStep {
+  label: String
+  subject: AptPresenceSubject
+  package: NonEmptyStr
+}
+
+fn runner_gpu_container_toolchain_ensure_steps(packages: List<NonEmptyStr>) -> List<GpuToolchainEnsureStep> {
+  map(packages, p =>
+    GpuToolchainEnsureStep {
+      label: p as String,
+      subject: AptPackageInstalled { package: p },
+      package: p,
+    }
+  )
+}
+
+type GpuToolchainEnsureOutcome
+  = GpuToolchainEnsureHolds { label: String }
+  | GpuToolchainEnsureFailed { label: String, cause: String }
+  | GpuToolchainEnsureUnobserved { label: String, reason: String }
+
+fn runner_gpu_container_toolchain_ensure_wet(
+  packages: List<NonEmptyStr>,
+  transport: HostEffectTransport,
+) -> List<GpuToolchainEnsureOutcome> {
+  map(
+    runner_gpu_container_toolchain_ensure_steps(packages: packages),
+    step =>
+      match srv3_ensure_apt(subject: step.subject, package: step.package, require_version_probe: false, transport: transport) {
+        Srv3PredicateHolds => GpuToolchainEnsureHolds { label: step.label }
+        Srv3PredicateFails => GpuToolchainEnsureFailed { label: step.label, cause: "not installed after ensure" }
+        Srv3PredicateUnobserved { reason: why } => GpuToolchainEnsureUnobserved { label: step.label, reason: why }
+      },
+  )
+}
+
+fn gpu_toolchain_ensure_outcome_holds(o: GpuToolchainEnsureOutcome) -> Bool {
+  match o {
+    GpuToolchainEnsureHolds { label: _ } => true
+    GpuToolchainEnsureFailed { label: _, cause: _ } => false
+    GpuToolchainEnsureUnobserved { label: _, reason: _ } => false
+  }
+}
+
+fn gpu_toolchain_ensure_outcome_text(o: GpuToolchainEnsureOutcome) -> String {
+  match o {
+    GpuToolchainEnsureHolds { label: l } => concat(l, "=present")
+    GpuToolchainEnsureFailed { label: l, cause: c } => concat(l, "=failed cause=", c)
+    GpuToolchainEnsureUnobserved { label: l, reason: r } => concat(l, "=unobserved reason=", r)
+  }
+}
+
+// ── THE CDI GENERATE: AN EFFECT, RUN ONLY WHEN THE PACKAGES HOLD ─────────────────────────────────
+//
+// Installing the toolkit does not produce the spec; `nvidia-ctk cdi generate` does, and a host with
+// the packages and no spec is a host whose `--device nvidia.com/gpu=all` fails at run time. The argv
+// comes from extdeps.container.nvidia_container_toolkit, the same row the readback asks about, so
+// generate and readback cannot disagree about where the spec lives or what it must contain. The write
+// goes to /etc/cdi/nvidia.yaml and so runs ELEVATED: the unprivileged job user must not be able to
+// decide what "all GPUs" means.
+type CdiGenerateOutcome
+  = CdiGenerateRan { output: String }
+  | CdiGenerateFailed { cause: String }
+  | CdiGenerateSkipped { cause: String }
+
+fn runner_gpu_container_toolchain_generate_cdi_wet(packages_hold: Bool, transport: HostEffectTransport) -> CdiGenerateOutcome {
+  if packages_hold == false {
+    CdiGenerateSkipped { cause: "the toolkit packages did not hold, so generating a spec would be reading from a host that has no toolkit" }
+  } else {
+    match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: argv_words(command: nvidia_ctk_cdi_generate_command())), transport: transport) {
+      RunArgvTransportRefused { reason: r } => CdiGenerateFailed { cause: r }
+      RunArgvTransportObserved { observed: o } =>
+        if o.success {
+          CdiGenerateRan { output: first_line(text: o.stdout) }
+        } else {
+          CdiGenerateFailed { cause: concat("nvidia-ctk cdi generate exited ", to_string(o.exit_code), ": ", trim(s: o.stderr)) }
+        }
+    }
+  }
+}
+
+fn cdi_generate_outcome_holds(o: CdiGenerateOutcome) -> Bool {
+  match o {
+    CdiGenerateRan { output: _ } => true
+    CdiGenerateFailed { cause: _ } => false
+    CdiGenerateSkipped { cause: _ } => false
+  }
+}
+
+fn cdi_generate_outcome_text(o: CdiGenerateOutcome) -> String {
+  match o {
+    CdiGenerateRan { output: _ } => "cdi_generate=ran"
+    CdiGenerateFailed { cause: c } => concat("cdi_generate=failed cause=", c)
+    CdiGenerateSkipped { cause: c } => concat("cdi_generate=skipped cause=", c)
+  }
+}
+
+// ── THE LABEL: GRANTED BY THIS CONVERGE, FROM THE READBACK, BY NOTHING ELSE ──────────────────────
+//
+// gunbc.runner.runner_registration_labels gunbc_gpu_docker_label reaches the runner as a TEMPLATE
+// DROP-IN that replaces LABELS_JSON for every instance on the host with the host's set plus this
+// label — the mechanism gunbc.runner.runner_unit_file gives the browser readiness, and for the same
+// reason: systemd reads the template's drop-in directory after the fragment, so a later LABELS_JSON
+// wins and there is no per-slot hook to hang it on. Written when the readback holds, REMOVED when it
+// does not. The number is 86 so it lands after the browser label's 85 and both are visible in one
+// `systemctl cat`, rather than one silently overwriting the other.
+data gpu_docker_labels_dropin_path: NonEmptyStr = runner_unit_dropin_path(file_name: "86-gpu-docker-labels.conf" as NonEmptyStr)
+
+type GpuDockerLabelsPlan
+  = GpuDockerLabelsGrant { write: ArgvCommand, content: String, reload: ArgvCommand }
+  | GpuDockerLabelsRevoke { remove: ArgvCommand, reload: ArgvCommand }
+  | GpuDockerLabelsUnrenderable { cause: String }
+
+fn gpu_docker_labels_grant_plan(host: HostIdentity, target: NonEmptyStr) -> GpuDockerLabelsPlan {
+  match runner_host_gpu_docker_labels_dropin_text(host: host) {
+    // A refused rendering is a failed converge, never a silent skip: a host that keeps a stale label
+    // set because the new one could not be rendered is a host still advertising a capability it lost.
+    // THE CONTENT IS THE SUBJECT OF THE WRITE, NOT A STRING SHIPPED BESIDE A PATH, and the route is
+    // chosen for that reason. The obvious carrier — an elevated `dd of=<path>` with the body on stdin —
+    // is what this module did FIRST, and it is wrong twice over. It cannot RUN: the stdin transport
+    // refuses a FleetSsh transport outright (gunbc.host.host_effect_realize
+    // run_argv_stdin_over_host_effect_transport's FleetSsh arm), so the leg was a guaranteed refusal on
+    // the only transport this converge has — the same trap gunbc.runner.runner_browser_toolchain
+    // browser_ready_labels_converge_wet is still standing in, which is why 85-browser-ready-labels.conf
+    // is absent on srv1 despite that mode having been dispatched. And it could not be PROVEN even if it
+    // ran: an exit-0 from `dd` establishes that a process exited, not that these bytes are at this path.
+    // converge_typed_remote_file stages, chmods, renames and then has the FAR SIDE `cmp -s -` the
+    // destination against the payload, and its carrier embeds the exact write; the bytes are confirmed
+    // by something other than the writer's own exit status.
+    // MODE 0644 AND PRIVILEGE VIA SUDO, both deliberate. The file is read by systemd as root but its
+    // content is public by nature — a label list — and world-readable is what every sibling drop-in in
+    // that directory already is, so 0644 asks for nothing the neighbours do not have. Sudo rather than
+    // the session principal because /etc belongs to root and the converge's ssh principal is an
+    // operator account, not root; the alternative would be a write that fails on permissions and reads
+    // as a broken renderer.
+    RunnerUnitText { text: content } =>
+      GpuDockerLabelsGrant {
+        write: gpu_docker_labels_write_command(),
+        content: content,
+        reload: sudo_elevate_command(command: argv_words(command: systemctl_daemon_reload_command())),
+      }
+    RunnerUnitTextRefused { reason: r } => GpuDockerLabelsUnrenderable { cause: r as String }
+  }
+}
+
+// The argv of the write, named so the wet step can pass it to the typed writer without re-spelling it.
+// The typed route builds its own `tee` staging leg from the sealed write; this command is the SUBJECT
+// the operator sees in the plan and the thing the receipt names.
+fn gpu_docker_labels_write_command() -> ArgvCommand {
+  sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: gpu_docker_labels_dropin_path as String)))
+}
+
+// THE SCOPE THE SEAL REQUIRES. /etc because the drop-in lives under it, which is also what every other
+// writer of a system file in this repository declares (gunbc.runner.runner_host_file_converge
+// fleet_host_file_scope, gunbc.auth.approval_keyring_converge approval_keyring_etc_scope). A scope is
+// not decoration: it is what stops a rendering bug from sealing a write to /etc/shadow under the name
+// of a runner label file.
+data gpu_docker_labels_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc" as NonEmptyStr }
+
+fn gpu_docker_labels_revoke_plan(target: NonEmptyStr) -> GpuDockerLabelsPlan {
+  GpuDockerLabelsRevoke {
+    remove: sudo_elevate_command(command: argv_words(command: rm_force_command(path: target as String))),
+    reload: sudo_elevate_command(command: argv_words(command: systemctl_daemon_reload_command())),
+  }
+}
+
+type GpuDockerLabelsOutcome
+  = GpuDockerLabelsGranted
+  | GpuDockerLabelsRevoked
+  | GpuDockerLabelsFailed { cause: String }
+
+fn gpu_docker_labels_outcome_text(o: GpuDockerLabelsOutcome) -> String {
+  match o {
+    GpuDockerLabelsGranted => "gpu_docker_label=granted"
+    GpuDockerLabelsRevoked => "gpu_docker_label=revoked"
+    GpuDockerLabelsFailed { cause: c } => concat("gpu_docker_label=failed cause=", c)
+  }
+}
+
+// A REVOKE IS THE RIGHT LABEL ACTION AND STILL A FAILED CONVERGE, exactly as in the browser case:
+// removing the label from a host that lost the toolchain is correct, but the converge did not make
+// the host able to run a GPU container, so only a grant on a ready readback can leave the run green.
+fn gpu_docker_labels_outcome_holds(o: GpuDockerLabelsOutcome, ready: Bool) -> Bool {
+  match o {
+    GpuDockerLabelsGranted => ready
+    GpuDockerLabelsRevoked => !ready
+    GpuDockerLabelsFailed { cause: _ } => false
+  }
+}
+
+fn gpu_docker_labels_step_failed(step: String, outcome: RunArgvTransportOutcome) -> GpuDockerLabelsOutcome {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => GpuDockerLabelsFailed { cause: concat(step, " refused: ", r) }
+    RunArgvTransportObserved { observed: o } =>
+      GpuDockerLabelsFailed { cause: concat(step, " exited ", to_string(o.exit_code), ": ", trim(s: o.stderr)) }
+  }
+}
+
+fn gpu_docker_labels_reload_then(success: GpuDockerLabelsOutcome, reload: ArgvCommand, transport: HostEffectTransport) -> GpuDockerLabelsOutcome {
+  let reloaded = run_argv_over_host_effect_transport(command: reload, transport: transport)
+  if run_argv_transport_succeeded(outcome: reloaded) {
+    success
+  } else {
+    gpu_docker_labels_step_failed(step: "daemon-reload", outcome: reloaded)
+  }
+}
+
+// THE TRANSPORT IS BUILT HERE, NOT PASSED IN. The grant leg needs the SshTarget and the agent context
+// separately — converge_typed_remote_file takes them apart, because it names the exact target inside
+// its success carrier and an opaque transport could not give it that. Deriving the argv transport from
+// the same two values here is what keeps the grant and the revoke from ever addressing different
+// machines: two callers passing a transport and a target that disagreed would be a check running
+// against one host and a label being written to another.
+fn gpu_docker_labels_converge_wet(
+  host: NonEmptyStr,
+  ready: Bool,
+  admin: SshTarget,
+  context: FleetSshExecutionContext,
+) -> GpuDockerLabelsOutcome {
+  let transport = gpu_container_toolchain_admin_transport(target: admin, context: context)
+  let target = gpu_docker_labels_dropin_path
+  let plan =
+    if ready {
+      gpu_docker_labels_grant_plan(host: (host as String) as HostIdentity, target: target)
+    } else {
+      gpu_docker_labels_revoke_plan(target: target)
+    }
+  match plan {
+    GpuDockerLabelsUnrenderable { cause: c } => GpuDockerLabelsFailed { cause: c }
+    GpuDockerLabelsGrant { write: write, content: content, reload: reload } =>
+      // THE WRITE GOES THROUGH THE TYPED WRITER, not through this module's own transport. Two
+      // independent reasons, both load-bearing:
+      //   (1) It is the only route that runs. The stdin transport arm of
+      //       gunbc.host.host_effect_realize run_argv_stdin_over_host_effect_transport REFUSES a
+      //       FleetSsh transport, and FleetSsh is the only transport this converge has — so the
+      //       `dd`-on-stdin leg this module first wrote was a guaranteed refusal, and would have made
+      //       the grant step report a failure that looks like an ssh problem. That is the same trap
+      //       gunbc.runner.runner_browser_toolchain browser_ready_labels_converge_wet is still in;
+      //       verified on srv1, where 85-browser-ready-labels.conf is absent although that mode has
+      //       been dispatched. Fixing it here is deliberate; fixing it there is out of scope and left
+      //       as a note rather than a silent drift between two modules that look identical.
+      //   (2) It is the only route that PROVES the write. converge_typed_remote_file stages, chmods,
+      //       atomically renames, and then asks the FAR SIDE to `cmp -s -` the destination against
+      //       these bytes; its carrier embeds the exact write and the exact target. An exit-0 from a
+      //       writer process establishes a process exited — the class of substitution this repository
+      //       has repeatedly retracted. The label is what makes GPU jobs schedule here, so "granted"
+      //       has to mean the bytes are there.
+      // NOT CONVERGED IS NOT REFUSED. A refusal at "admission" means the seal sent nothing — the
+      // destination is untouched and the previous label state stands. Any later step may have left a
+      // staged sibling behind, so the destination is UNKNOWN; both are failures of the converge, but
+      // they are named apart because only the first is safe to retry blindly.
+      match converge_typed_remote_file(
+        target: admin,
+        context: context,
+        admission: typed_remote_file_write_seal(path: gpu_docker_labels_dropin_path as String, content: content, allowed_scope: gpu_docker_labels_file_scope),
+        mode: RemoteFileModeOwnerReadWriteWorldRead,
+        privilege: RemoteFileViaNonInteractiveSudo,
+        validation: NoValidation,
+      ) {
+        TypedRemoteFileConvergenceRefused { step: s, reason: r } =>
+          GpuDockerLabelsFailed { cause: concat("drop-in write ", s, ": ", r) }
+        TypedRemoteFileConverged { converged: _ } =>
+          gpu_docker_labels_reload_then(success: GpuDockerLabelsGranted, reload: reload, transport: transport)
+      }
+    GpuDockerLabelsRevoke { remove: remove, reload: reload } => {
+      let removed = run_argv_over_host_effect_transport(command: remove, transport: transport)
+      if run_argv_transport_succeeded(outcome: removed) == false {
+        gpu_docker_labels_step_failed(step: "drop-in remove", outcome: removed)
+      } else {
+        gpu_docker_labels_reload_then(success: GpuDockerLabelsRevoked, reload: reload, transport: transport)
+      }
+    }
+  }
+}
+
+// ── THE WET ENTRY: THE FLEET-CONVERGE MODE'S OWN GATE ────────────────────────────────────────────
+//
+// BOUND FIRST, THEN TRUSTED, THEN ACTED ON — the order the browser converge uses, for the reason it
+// gives: the workflow's `host` input is workflow_write text and the SSH edge is a network fact, so
+// acting before the reading is what lets a mistyped or hostile host value reach the fleet-admin key.
+//   1. gunbc.runner.runner_microvm_host_ready microvm_host_binding_wet pins this runner to the machine
+//      it claims to be, and hands over the host's declared spec — whose job_user is the identity the
+//      readback asks, so the question is put to the account the model named rather than one guessed;
+//   2. the host model must DECLARE the capability (gunbc.runner.runner_host_deploy) — a host that
+//      never declared it is refused outright, because installing a GPU container stack on a machine
+//      that never asked for one is how an operator's box quietly becomes a CI runner;
+//   3. only then the admin edge, with the pinned host key;
+//   4. ensure -> generate -> readback -> label, each leg run only when the previous held.
+//
+// A declared host that fails the readback gets the label REMOVED and exits non-zero. It never exits 0
+// on a host that cannot actually run a GPU container as the job user — that is the never-green rule
+// the dependent instruments rely on for their own exit-2 arms.
+data runner_gpu_container_toolchain_converge_attempt_raw: NonEmptyStr = "fleet-ci-gpu-container-toolchain"
+
+data runner_gpu_container_toolchain_converge_receipt_path: String = "target/runner-gpu-container-toolchain-converge-receipt.txt"
+
+fn gpu_container_toolchain_admin_target(host: NonEmptyStr) -> SshTargetResolution {
+  fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login)
+}
+
+fn gpu_container_toolchain_admin_transport(target: SshTarget, context: FleetSshExecutionContext) -> HostEffectTransport {
+  FleetSsh { target: target, context: context }
+}
+
+fn runner_gpu_container_toolchain_converge_ci_wet() -> ProcessExit {
+  match microvm_host_binding_wet() {
+    MicrovmHostBindingRefused { cause: c } =>
+      exit_failure(reason: join(["runner_gpu_container_toolchain_converge: ", microvm_host_binding_refusal_text(c: c)], ""))
+    MicrovmHostBound { spec: spec, host: host } =>
+      match runner_host_gpu_container_toolchain_for(host: (host as String) as HostIdentity) {
+        RunnerHostGpuToolchainAbsent { host: h } =>
+          exit_failure(reason: concat("runner_gpu_container_toolchain_converge: host ", h as String, " carries no GPU container toolchain row in gunbc.runner.runner_host_deploy; converge installs only what the model declares"))
+        RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainNotWanted { reason: r } } =>
+          exit_failure(reason: concat("runner_gpu_container_toolchain_converge: this host does not want the GPU container toolchain: ", r as String))
+        RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainUnmeasured { } } =>
+          exit_failure(reason: "runner_gpu_container_toolchain_converge: this host's GPU capability is UNMEASURED, so nothing is installed and nothing is granted; measure it, then declare it")
+        RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainDesired { repo: repo, packages: packages } } =>
+          match prepare_fleet_ssh_agent_context(attempt_raw: runner_gpu_container_toolchain_converge_attempt_raw) {
+            FleetSshContextRefused { cause: c } => exit_failure(reason: c)
+            FleetSshContextReady { context: context, receipt: context_receipt } =>
+              match gpu_container_toolchain_admin_target(host: host) {
+                SshTargetRefused { endpoint: e, refusal: why } =>
+                  exit_failure(reason: join(["runner_gpu_container_toolchain_converge: ", ssh_target_refusal_text(endpoint: e, refusal: why)], ""))
+                SshTargetResolved { target: admin } => {
+                  let transport = gpu_container_toolchain_admin_transport(target: admin, context: context)
+                  let ensure = runner_gpu_container_toolchain_ensure_wet(packages: packages, transport: transport)
+                  let ensure_ok = fold(ensure, init: true, f: (ok, o) => ok && gpu_toolchain_ensure_outcome_holds(o: o))
+                  let generate = runner_gpu_container_toolchain_generate_cdi_wet(packages_hold: ensure_ok, transport: transport)
+                  let readback = runner_gpu_container_toolchain_readback_wet(job_user: spec.job_user, transport: transport)
+                  let ready = ensure_ok && cdi_generate_outcome_holds(o: generate) && runner_gpu_container_toolchain_ready(r: readback)
+                  let labels = gpu_docker_labels_converge_wet(host: host, ready: ready, admin: admin, context: context)
+                  // THE RECEIPT IS WRITTEN BEFORE THE VERDICT on every path past the binding, so a
+                  // failed converge still says why in the artifact a human reads.
+                  let body = join(
+                    [
+                      "runner_gpu_container_toolchain_converge host=", host as String,
+                      " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+                      context_receipt,
+                      "repo=", repo.repo_base as String, "\n",
+                      "ensure: ", join(map(ensure, o => gpu_toolchain_ensure_outcome_text(o: o)), " "), "\n",
+                      cdi_generate_outcome_text(o: generate), "\n",
+                      runner_gpu_container_toolchain_readback_text(r: readback),
+                      gpu_docker_labels_outcome_text(o: labels), "\n",
+                    ],
+                    "",
+                  )
+                  let w = Filesystem.Write(path: runner_gpu_container_toolchain_converge_receipt_path, content: body)
+                  if w.success == false {
+                    exit_failure(reason: join(["runner_gpu_container_toolchain_converge: receipt write failed: ", w.error, "\n", body], ""))
+                  } else if ready && gpu_docker_labels_outcome_holds(o: labels, ready: ready) {
+                    ExitSuccess
+                  } else {
+                    exit_failure(reason: body)
+                  }
+                }
+              }
+          }
+      }
+  }
+}

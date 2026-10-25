@@ -1,0 +1,374 @@
+// SUBORDINATE IDS: THE FILE ROOTLESS CONTAINERS ACTUALLY REST ON. `usermod`, shadow's suite, owns
+// /etc/subuid and /etc/subgid; nothing in this repository had modelled them, because nothing had
+// needed to start a rootless daemon as another user until now. Rootless Docker cannot start without a
+// subordinate range of its own: dockerd-rootless.sh hands the range to RootlessKit, which builds the
+// user namespace that maps the daemon's 0 to the range's first uid. Two accounts sharing one range
+// therefore do not merely compete for ids — the kernel refuses the second namespace, and the failure
+// surfaces as a rootless daemon that will not start, which reads like a Docker bug and is not one.
+//
+// THE SHAPE IS name:first:count, one account per line, and BOTH numbers are decimal integers. A line
+// that does not parse is refused rather than skipped: a file half-written by a concurrent
+// `usermod`, or an entry someone added with a stray space, is exactly the situation where silently
+// ignoring one line makes a collision look absent. Skipping is the fail-open this module exists to
+// prevent, so parsing answers Read or Unreadable and the caller converges only on Read.
+module extdeps.shadow.subordinate_ids
+
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import gunbc.fleet.fleet_posix_accounts { fleet_usermod_binary_path }
+
+import std.types { NonEmptyStr, String, List, Int }
+import std.optional { Absent, Present }
+
+// Which of the two files. They are separate files with separate contents and shadow maintains them
+// separately (`-v/-V` add uid ranges, `-w/-W` add gid ranges); conflating them would let a caller that
+// meant uids quietly write gids.
+type SubordinateIdFile
+  = SubordinateUids
+  | SubordinateGids
+
+fn subordinate_id_file_path(f: SubordinateIdFile) -> String {
+  match f {
+    SubordinateUids => "/etc/subuid"
+    SubordinateGids => "/etc/subgid"
+  }
+}
+
+// One account's subordinate range, exactly as the file spells it.
+type SubordinateRange {
+  account: NonEmptyStr
+  first: Int
+  count: Int
+}
+
+// WHAT THE FILE SAID. Unreadable is its own arm because a missing or unreadable file is not an empty
+// one: an empty file means nobody has a range, which is a fact converge can act on, while an unreadable
+// file means nobody knows, which it must not.
+type SubordinateFileReading
+  = SubordinateFileRead { path: String, ranges: List<SubordinateRange> }
+  | SubordinateFileUnreadable { path: String, cause: String }
+
+fn parse_subordinate_line(line: String) -> SubordinateRange? {
+  let fields = split(s: line, delimiter: ":")
+  if length(fields) != 3 {
+    Absent
+  } else {
+    let account = match fields.first() { Absent => "" Present { value: a } => a }
+    let first = match fields.skip(n: 1).first() { Absent => "" Present { value: f } => f }
+    let count = match fields.skip(n: 2).first() { Absent => "" Present { value: c } => c }
+    if account == "" {
+      Absent
+    } else {
+      match parse_int(s: first) {
+        Absent => Absent
+        Present { value: first_id } =>
+          match parse_int(s: count) {
+            Absent => Absent
+            Present { value: count_id } =>
+              if first_id < 0 || count_id <= 0 {
+                Absent
+              } else {
+                Present { value: SubordinateRange { account: account as NonEmptyStr, first: first_id, count: count_id } }
+              }
+          }
+      }
+    }
+  }
+}
+
+// THE PARSE REFUSES THE WHOLE FILE IF ANY LINE FAILS. A malformed entry beside the account converge is
+// about to grant a range to could make the collision check pass while the file is in fact not the one
+// shadow will read.
+fn parse_subordinate_file(path: String, exit_code: Int, stdout: String, stderr: String) -> SubordinateFileReading {
+  if exit_code != 0 {
+    SubordinateFileUnreadable { path: path, cause: join([path, " exit=", to_string(exit_code), " ", trim(s: stderr)], "") }
+  } else {
+    let lines = filter(split(s: stdout, delimiter: "\n"), l => trim(s: l) != "")
+    let parsed = map(lines, l => parse_subordinate_line(line: trim(s: l)))
+    if parsed.any(p => match p { Absent => true Present { value: _ } => false }) {
+      SubordinateFileUnreadable { path: path, cause: concat(path, " contains an entry that does not parse as name:first:count") }
+    } else {
+      SubordinateFileRead {
+        path: path,
+        ranges: map(filter(parsed, p => match p { Absent => false Present { value: _ } => true }),
+                    p => match p { Absent => SubordinateRange { account: "unparsed" as NonEmptyStr, first: 0, count: 0 } Present { value: r } => r }),
+      }
+    }
+  }
+}
+
+fn subordinate_ranges_for(rs: List<SubordinateRange>, account: NonEmptyStr) -> List<SubordinateRange> {
+  filter(rs, r => (r.account as String) == (account as String))
+}
+
+// DO TWO RANGES OVERLAP. The arithmetic is the whole point: first < other_first + other_count AND
+// other_first < first + count, on integers, so adjacency (first + count == other_first) is NOT a
+// collision and two accounts may sit side by side. Comparing only the starting numbers — the obvious
+// mistake, and one that reads as correct — would let a wide range swallow a narrow one unseen.
+fn subordinate_ranges_overlap(a: SubordinateRange, b: SubordinateRange) -> Bool {
+  a.first < b.first + b.count && b.first < a.first + a.count
+}
+
+// THE COLLISIONS, PAIRED. Both accounts are reported rather than the second one, because the remedy
+// differs by account: the one that has no container store is the one that moves.
+fn subordinate_collisions(rs: List<SubordinateRange>) -> List<String> {
+  flat_map(rs, a =>
+    filter(rs, b =>
+      (a.account as String) < (b.account as String) && subordinate_ranges_overlap(a: a, b: b)
+    )
+      |> map(b => join([a.account as String, "<->", b.account as String, " @", to_string(a.first), "+", to_string(a.count),
+                        " vs ", to_string(b.first), "+", to_string(b.count)], ""))
+  )
+}
+
+// WHAT CONVERGE OWES THE FILE. None is a real answer, not a placeholder: a host that already declares
+// exactly the wanted range needs no usermod, and a step that no-ops by running usermod anyway would be
+// a write to a file nobody needed changed. Blocked is NOT a refusal to do the work — it is this module
+// saying it will not move a range it cannot prove is safe, with the reason naming the owner.
+type SubordinateReconcile
+  = SubordinateReconcileNone
+  | SubordinateReconcileGrant { account: NonEmptyStr, first: Int, count: Int }
+  | SubordinateReconcileBlocked { reason: String }
+
+// THE TRANSITION RULE, and the constraint it encodes is the one that keeps a host from being silently
+// broken. Granting the job user its declared range is safe on its own. Removing a COLLIDING range is
+// not: a subordinate range is baked into the ownership of every file a rootless daemon has ever written
+// under that account's store, so a range pulled out from under an account that has images and
+// containers turns that store into unreadable uid numbers. So the collision may only be cleared when
+// the other account holds NO container store — established by the caller, which is the part that can
+// look at the filesystem; this function only refuses to move what was not declared movable.
+//
+// THE DIRECTION IS NOT CHOSEN HERE EITHER. Whether the job user moves or the other one does is a
+// per-host decision sitting in gunbc.runner.runner_host_deploy, because on one host the job user has
+// the store and on another it does not, and a generic "always move the other account" would pick the
+// destructive arm on the first host.
+fn reconcile_subordinate_range(
+  path: String,
+  reading: SubordinateFileReading,
+  account: NonEmptyStr,
+  want_first: Int,
+  want_count: Int,
+  movable_accounts: List<NonEmptyStr>,
+) -> SubordinateReconcile {
+  match reading {
+    SubordinateFileUnreadable { path: p, cause: c } =>
+      SubordinateReconcileBlocked { reason: join(["cannot reconcile ", p, ": ", c], "") }
+    SubordinateFileRead { path: _, ranges: rs } =>
+      match reconcile_grant(rs: rs, account: account, want_first: want_first, want_count: want_count, movable_accounts: movable_accounts) {
+        Present { value: r } => r
+        Absent =>
+          SubordinateReconcileBlocked {
+            reason: join(["declared range ", to_string(want_first), "+", to_string(want_count), " for ", account as String,
+                          " collides with an account that holds a container store; moving it would orphan that store, so ",
+                          path, " is not written"], ""),
+          }
+      }
+  }
+}
+
+// The arm-selection kept separate because the language's blocks are expressions: this answers the
+// three-way decision and lets the caller's match stay one level deep. Absent means "there is a clash
+// this call is not allowed to clear".
+fn reconcile_grant(
+  rs: List<SubordinateRange>,
+  account: NonEmptyStr,
+  want_first: Int,
+  want_count: Int,
+  movable_accounts: List<NonEmptyStr>,
+) -> SubordinateReconcile? {
+  let mine = subordinate_ranges_for(rs: rs, account: account)
+  let already_holds = mine.any(r => r.first == want_first && r.count == want_count)
+  // The account's OWN ranges never justify a block: they are what this call is about to fix.
+  let others = filter(rs, r => (r.account as String) != (account as String))
+  let clashes = filter(others, o =>
+    subordinate_ranges_overlap(a: SubordinateRange { account: account, first: want_first, count: want_count }, b: o))
+  let stuck = filter(clashes, o => !movable_accounts.any(m => (m as String) == (o.account as String)))
+  if length(stuck) > 0 {
+    Absent
+  } else if already_holds {
+    Present { value: SubordinateReconcileNone }
+  } else {
+    Present { value: SubordinateReconcileGrant { account: account, first: want_first, count: want_count } }
+  }
+}
+
+// THE WRITER: shadow's usermod, which is the ONLY sanctioned way to edit these files — a hand-written
+// line can duplicate an account or race another usermod, and usermod rewrites both files as a pair.
+// The four flags are four named rows rather than one row with a flag parameter because the flag pairs
+// are easy to transpose and the two mistakes fail differently: -v/-V are add/remove for UIDS and -w/-W
+// are add/remove for GIDS. A single row taking a flag string would let an add for uids be paired with
+// a remove for gids and still render, and the damage would only show up when a namespace failed to
+// build. THE RANGE IS INCLUSIVE (FIRST-LAST) on the command line while the FILE is (first:count), so
+// last is first + count - 1; that off-by-one is the caller's to get right, which is why it lives in
+// these builders and not at the call sites.
+data usermod_add_subuids_flag: NonEmptyStr = "-v"
+data usermod_del_subuids_flag: NonEmptyStr = "-V"
+data usermod_add_subgids_flag: NonEmptyStr = "-w"
+data usermod_del_subgids_flag: NonEmptyStr = "-W"
+
+fn subordinate_range_last(first: Int, count: Int) -> Int {
+  first + count - 1
+}
+
+// ELEVATED AS ROOT, not as the account being changed: usermod on another account is a system
+// administration act, and running it as the account it edits would let the job user widen its own
+// subordinate reach.
+//
+// THE BINARY IS ADDRESSED BY ABSOLUTE PATH, which is what sudo actually needs rather than what is
+// merely tidy. sudoers matches a Cmnd_Spec on the absolute path, so a rule written for
+// /usr/sbin/usermod never matches an argv that says bare `usermod`, and the run fails with a
+// permission refusal that reads as a missing grant rather than as a spelling mistake. The path is
+// imported from the row gunbc.fleet.fleet_posix_accounts already owns for this binary — the same one
+// the KVM grant renders — because re-declaring the literal here would create two spellings of where
+// usermod lives, and the sudoers line and the argv could then drift apart while both still rendered.
+fn usermod_subordinate_argv(user: NonEmptyStr, flag: NonEmptyStr, first: Int, last: Int) -> List<String> {
+  sudo_elevate_argv(command: [fleet_usermod_binary_path as String, flag as String, join([to_string(first), "-", to_string(last)], ""), user as String])
+}
+
+fn usermod_add_subuids_argv(user: NonEmptyStr, first: Int, count: Int) -> List<String> {
+  usermod_subordinate_argv(user: user, flag: usermod_add_subuids_flag, first: first, last: subordinate_range_last(first: first, count: count))
+}
+
+fn usermod_add_subgids_argv(user: NonEmptyStr, first: Int, count: Int) -> List<String> {
+  usermod_subordinate_argv(user: user, flag: usermod_add_subgids_flag, first: first, last: subordinate_range_last(first: first, count: count))
+}
+
+fn usermod_del_subuids_argv(user: NonEmptyStr, first: Int, count: Int) -> List<String> {
+  usermod_subordinate_argv(user: user, flag: usermod_del_subuids_flag, first: first, last: subordinate_range_last(first: first, count: count))
+}
+
+fn usermod_del_subgids_argv(user: NonEmptyStr, first: Int, count: Int) -> List<String> {
+  usermod_subordinate_argv(user: user, flag: usermod_del_subgids_flag, first: first, last: subordinate_range_last(first: first, count: count))
+}
+
+// THE COLLISION REPORT IS FOR THE RECEIPT, and it is a string fold rather than a structured value
+// because its only consumer is the operator reading the converge output. A non-"none" answer means the
+// host has two accounts whose ranges overlap RIGHT NOW, which is the condition that makes a rootless
+// daemon refuse to start.
+fn subordinate_collision_report(rs: List<SubordinateRange>) -> String {
+  let clashes = subordinate_collisions(rs: rs)
+  if length(clashes) == 0 { "none" } else { join(["collisions: ", join(clashes, "; ")], "") }
+}
+
+// ── THE TRANSITION, WHEN THE FILE ALREADY DISAGREES WITH THE DECLARATION ──
+//
+// WHY reconcile_subordinate_range IS NOT ENOUGH. It answers "what should this account hold", which is
+// the right question only when the file is otherwise clean. Neither fleet host is: srv3's /etc/subuid
+// has ghrunner AND ubuntu both at 100000:65536, and srv1's has briansrls AND ghrunner there. Left alone,
+// an account that already holds its declared range short-circuits to "nothing to do" and the host keeps
+// shipping the collision — and a collision is not cosmetic. RootlessKit maps the daemon's uid 0 onto the
+// range's first uid, so two accounts on one range build two namespaces claiming the same backing ids,
+// and whichever daemon starts second fails in a way that reads as a Docker bug. srv1 only looks fine
+// because briansrls has never started a rootless daemon; the moment it does, ghrunner's is what breaks.
+// A converge that declared the range and reported converged over an overlap would be the model
+// certifying a host it knows is one daemon away from broken.
+//
+// THE ANSWER IS AN ORDERED STEP LIST, not a three-way arm. A transition on this file has up to FOUR
+// distinct edits — drop the job user's own stale range, drop the displaced account's colliding range,
+// add the job user's declared range — and they are not interchangeable: they differ in which account they
+// touch and in whether the converge is even permitted to touch that account. A single arm per situation
+// multiplies (stale/no-stale x clash/no-clash x movable/not-movable = eight) and the bugs hide in the
+// combinations nobody enumerated, especially the one that silently leaves the job user holding TWO
+// ranges: adding a range without removing the old one is a success at the argv level and a host with a
+// stale 65536-wide claim nobody can account for afterwards.
+type SubordinateStep
+  = SubordinateStepRemove { account: NonEmptyStr, first: Int, count: Int }
+  | SubordinateStepAdd { account: NonEmptyStr, first: Int, count: Int }
+
+// The plan, as the file's delta. Refused carries the reason the converge must NOT touch the file, and
+// unlike a Blocked arm it is terminal in the strong sense: the caller must fail the converge, because
+// proceeding without subordinate ids produces a daemon that will not start, and "installed everything
+// else" is not a partial success here — it is a host that looks configured and cannot run a container.
+type SubordinatePlan
+  = SubordinatePlanSteps { steps: List<SubordinateStep> }
+  | SubordinatePlanRefused { reason: String }
+
+// THE DISPLACEABLE ACCOUNT IS DECLARED, NOT INVENTED AT RUN TIME, and the pairing is the whole safety
+// case. The host row names ONE account permitted to be moved off the job user's range (the operator
+// decision of 2026-10-25 names srv1's briansrls and srv3's admin account, precisely because neither has
+// a ~/.local/share/docker), and the converge may act on that name only after it has LOOKED and found no
+// container store under it. A model-only check would trust a fact that changes the moment someone runs
+// their first container; a runtime-only check would let the converge displace whoever it liked. The
+// caller therefore supplies `displaceable` from the model and `store_free` from a readback, and this
+// function refuses unless both agree.
+fn plan_subordinate_file(
+  path: String,
+  reading: SubordinateFileReading,
+  account: NonEmptyStr,
+  want_first: Int,
+  want_count: Int,
+  displaceable: NonEmptyStr,
+  displaceable_store_free: Bool,
+) -> SubordinatePlan {
+  match reading {
+    SubordinateFileUnreadable { path: p, cause: c } =>
+      SubordinatePlanRefused { reason: join(["cannot read ", p, ": ", c], "") }
+    SubordinateFileRead { path: p, ranges: rs } => {
+      let mine = subordinate_ranges_for(rs: rs, account: account)
+      let stale = filter(mine, r => !(r.first == want_first && r.count == want_count))
+      let others = filter(rs, r => (r.account as String) != (account as String))
+      let wanted = SubordinateRange { account: account, first: want_first, count: want_count }
+      let clashes = filter(others, o => subordinate_ranges_overlap(a: wanted, b: o))
+      let movable = filter(clashes, o => (o.account as String) == (displaceable as String))
+      let immovable = filter(clashes, o => (o.account as String) != (displaceable as String))
+      if length(immovable) > 0 {
+        SubordinatePlanRefused {
+          reason: join(["declared range ", to_string(want_first), "+", to_string(want_count), " for ", account as String,
+                        " on ", p, " overlaps ", match immovable.first() {
+                          Absent => "another account" as NonEmptyStr
+                          Present { value: o } => o.account,
+                        }, ", which is not the declared-displaceable account; refusing to move it"], ""),
+        }
+      } else if length(movable) > 0 && displaceable_store_free == false {
+        SubordinatePlanRefused {
+          reason: join([displaceable as String, " holds the colliding range on ", p, " and the converge has not established it",
+                        " holds no container store; moving a range out from under a store orphans every image in it"], ""),
+        }
+      } else {
+        // REMOVE BEFORE ADD, and not as tidiness: adding while the job user still holds a stale range
+        // leaves it owning two ranges, and adding while the displaced account still holds the overlap
+        // leaves the overlap in place, which is the very condition that breaks the second namespace.
+        let removals = map(stale, r => SubordinateStepRemove { account: account, first: r.first, count: r.count })
+        let drops = map(movable, o => SubordinateStepRemove { account: o.account, first: o.first, count: o.count })
+        let holds_exactly = length(mine) == 1 && length(stale) == 0
+        let additions = if holds_exactly { [] } else { [SubordinateStepAdd { account: account, first: want_first, count: want_count }] }
+        SubordinatePlanSteps { steps: append(append(removals, items: drops), items: additions) }
+      }
+    }
+  }
+}
+
+// THE ARGV FOR ONE STEP, routed by which file is being reconciled. Kept as one function taking the file
+// rather than eight call sites choosing between uid and gid builders, because the uid/gid mix-up is the
+// mistake this file is most likely to make and most unlikely to notice: -V on a gid file removes a uid
+// range, exits 0, and quietly leaves the intended collision in place.
+fn subordinate_step_argv(f: SubordinateIdFile, step: SubordinateStep) -> List<String> {
+  match step {
+    SubordinateStepRemove { account: a, first: x, count: c } =>
+      match f {
+        SubordinateUids => usermod_del_subuids_argv(user: a, first: x, count: c)
+        SubordinateGids => usermod_del_subgids_argv(user: a, first: x, count: c)
+      }
+    SubordinateStepAdd { account: a, first: x, count: c } =>
+      match f {
+        SubordinateUids => usermod_add_subuids_argv(user: a, first: x, count: c)
+        SubordinateGids => usermod_add_subgids_argv(user: a, first: x, count: c)
+      }
+  }
+}
+
+// WHAT THE RECEIPT SHOULD SAY ABOUT THE PLAN, as text: a no-op needs to be distinguishable from an
+// untried converge, and a refusal needs to name the account that blocked it rather than the range.
+fn subordinate_plan_text(plan: SubordinatePlan) -> String {
+  match plan {
+    SubordinatePlanRefused { reason: r } => join(["refused: ", r], "")
+    SubordinatePlanSteps { steps: ss } =>
+      if length(ss) == 0 {
+        "already declared; nothing to write"
+      } else {
+        join([to_string(length(ss)), " step(s): ", join(map(ss, s => match s {
+          SubordinateStepRemove { account: a, first: x, count: c } => join(["-", a as String, " ", to_string(x), "+", to_string(c)], "")
+          SubordinateStepAdd { account: a, first: x, count: c } => join(["+", a as String, " ", to_string(x), "+", to_string(c)], "")
+        }), ", "))], "")
+      }
+  }
+}

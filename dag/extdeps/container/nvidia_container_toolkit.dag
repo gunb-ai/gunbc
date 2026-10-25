@@ -1,0 +1,167 @@
+module extdeps.container.nvidia_container_toolkit
+
+// Authority: NVIDIA's published package-repository instruction,
+// https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+// (the `curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o
+// /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg` + `deb [signed-by=…]
+// https://nvidia.github.io/libnvidia-container/stable/deb/$(ARCH) /` shape).
+//
+// Why this module exists: fleet CI jobs must run containers that see GPUs WITHOUT root
+// equivalence (operator decision 2026-10-25, work item node://adhoc-0cabf47d-be0). The
+// NVIDIA container toolkit is what makes `docker run --device nvidia.com/gpu=all` real: it
+// supplies the runtime hook plus `nvidia-ctk cdi generate`, whose output is the CDI spec a
+// rootless daemon consumes. Declaring it here — pinned, fingerprinted, cited — is what lets
+// `gunbc converge` install it; nothing about it may be hand-installed on a fleet host.
+//
+// THE PUBLISHED KEY IS PINNED, NOT TRUSTED. The fingerprint row below is a measured fact:
+// read from the keyring of the host that carries this shape today (srv1, 2026-10-25,
+// `gpg --show-keys --with-colons /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg`,
+// whose uid is "NVIDIA CORPORATION (Open Source Projects) <cudatools@nvidia.com>"). A
+// keyring fetched by blind curl is a supply-chain fail-open, so the provisioning script
+// verifies the fetched key against the pinned fingerprint and refuses on mismatch — the
+// same posture as extdeps.container.docker_ce docker_ce_apt_repo_noble_arm64.
+
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+import std.dissolution { DissolutionCondition, retires_dissolution }
+import std.decl_ref { decl_ref }
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html",
+  }
+}
+
+type NvidiaContainerToolkitAptRepo {
+  keyring_url: NonEmptyStr
+  keyring_path: NonEmptyStr
+  keyring_fingerprint: NonEmptyStr
+  repo_base: NonEmptyStr
+  component: NonEmptyStr
+}
+
+// The stable channel's deb line carries the literal `$(ARCH)` token — apt substitutes it from
+// the dpk architecture — so the row stores the token rather than a per-arch spelling that would
+// silently pin the row to the host it was written on. The line the measuring host carries today
+// (srv1 2026-10-25, /etc/apt/sources.list.d/nvidia-container-toolkit.list) is exactly the
+// rendering of this row for arm64, which is the check that the token is not folklore.
+data nvidia_container_toolkit_apt_repo_stable: NvidiaContainerToolkitAptRepo = NvidiaContainerToolkitAptRepo {
+  keyring_url: "https://nvidia.github.io/libnvidia-container/gpgkey",
+  keyring_path: "/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg",
+  keyring_fingerprint: "C95B321B61E88C1809C4F759DDCAE044F796ECB0",
+  repo_base: "https://nvidia.github.io/libnvidia-container/stable/deb/$(ARCH)",
+  component: "/",
+}
+
+// The four-source package closure of the toolkit, as dpkg reports it on the host that carries the
+// shape today (srv1 2026-10-25: nvidia-container-toolkit 1.20.1-1, nvidia-container-toolkit-base
+// 1.20.1-1, libnvidia-container1 1.20.1-1, libnvidia-container-tools 1.20.1-1, all arm64). The
+// two dependency rows are listed because a readback names each package by name and an unnamed
+// dependency is an unmodeled one — the same closure that ships the working CDI path.
+data nvidia_container_toolkit_packages: List<NonEmptyStr> = [
+  "nvidia-container-toolkit",
+  "nvidia-container-toolkit-base",
+  "libnvidia-container1",
+  "libnvidia-container-tools",
+]
+
+fn nvidia_container_toolkit_apt_source_line(repo: NvidiaContainerToolkitAptRepo) -> String {
+  join(
+    [
+      "deb [signed-by=", repo.keyring_path as String, "] ",
+      repo.repo_base as String, " ", repo.component as String,
+    ],
+    "",
+  )
+}
+
+// The provisioning sequence — dearmor the cited key to the pinned path, VERIFY the fetched key
+// carries the pinned fingerprint, write the deb source line, update, install — rendered as POSIX
+// shell (medium-as-string), elevated per simple command exactly as
+// extdeps.container.docker_ce docker_ce_repo_install_script does. It dissolves when
+// host_effect_apply binds an AptRepoEnsure plus PackageInstall without the shell leaf; until then
+// deleting it would delete the only carrier of the keyring-verify posture.
+data nvidia_container_toolkit_install_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(
+    module_path: "extdeps.container.nvidia_container_toolkit",
+    decl_name: "nvidia_container_toolkit_repo_install_script",
+  )
+)
+
+fn nvidia_container_toolkit_repo_install_script(repo: NvidiaContainerToolkitAptRepo, packages: List<NonEmptyStr>) -> String {
+  join(
+    [
+      "set -e",
+      join(
+        ["curl -fsSL ", repo.keyring_url as String, " | ", join(map(sudo_elevate_argv(command: ["gpg", "--dearmor", "--yes", "-o", repo.keyring_path as String]), w => posix_single_quote(spelling: w)), " ")],
+        "",
+      ),
+      join(["chmod a+r ", repo.keyring_path as String], ""),
+      join(["gpg --show-keys --with-colons ", repo.keyring_path as String, " | grep -q ", repo.keyring_fingerprint as String, " || { echo 'NvidiaKeyringFingerprintRefusal: fetched key does not match pinned fingerprint ", repo.keyring_fingerprint as String, "' >&2; exit 1; }"], ""),
+      join(
+        ["echo '", nvidia_container_toolkit_apt_source_line(repo: repo), "' | ", join(map(sudo_elevate_argv(command: ["tee", "/etc/apt/sources.list.d/nvidia-container-toolkit.list"]), w => posix_single_quote(spelling: w)), " "), " >/dev/null"],
+        "",
+      ),
+      join(map(sudo_elevate_argv(command: ["apt-get", "update", "-q"]), w => posix_single_quote(spelling: w)), " "),
+      join(map(sudo_elevate_argv(command: append(["apt-get", "install", "-y", "-q"], items: map(packages, p => p as String))), w => posix_single_quote(spelling: w)), " "),
+      "",
+    ],
+    "\n",
+  )
+}
+
+// THE CDI SPEC IS THE ARTIFACT, not a side effect. A rootless dockerd cannot reach the host driver
+// through the privileged runc hook the rootful path uses; `--device nvidia.com/gpu=all` resolves
+// ONLY against a generated CDI spec. `nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml` is
+// NVIDIA's own instruction for producing it (the authority anchor's runtime-configuration step);
+// `nvidia-ctk cdi list` is the readback that proves a device exists, which is what a capability
+// witness cites. These are argv ROWS, not shell: the caller composes them with elevation where the
+// write needs privilege.
+data nvidia_ctk_cdi_generate_argv: List<NonEmptyStr> = [
+  "nvidia-ctk",
+  "cdi",
+  "generate",
+  "--output=/etc/cdi/nvidia.yaml",
+]
+
+data nvidia_ctk_cdi_list_argv: List<NonEmptyStr> = ["nvidia-ctk", "cdi", "list"]
+
+// The complete-device name a job must pass to select every GPU on the host. One spelling here, so
+// no instrument, unit, or probe gets to invent a variant — nvidia-ctk's own list output on the
+// measuring host (srv1 2026-10-25: `nvidia-ctk cdi list` prints nvidia.com/gpu=0,
+// =GPU-96b749dc-…, and =all) is the citation.
+data nvidia_cdi_all_gpu_device: NonEmptyStr = "nvidia.com/gpu=all"
+
+// The CDI spec's canonical location, per the CDI spec's own search path as exercised on the
+// measuring host (srv1 2026-10-25: /etc/cdi/nvidia.yaml, root:root 0644). Named so the observe arm
+// and the generate argv cannot drift apart by spelling the path twice.
+data nvidia_cdi_spec_path: NonEmptyStr = "/etc/cdi/nvidia.yaml"
+
+// THE BINARY ROW THE TYPED ARGV BOUNDARY ASKS FOR. extdeps.exec.command argv_command admits a
+// program whose identity is a row in the corpus, and nothing had ever declared nvidia-ctk — the
+// tool arrives only with the package this module's repo serves, so it had never been cited because
+// nothing had ever run it. Declared here in the image extdeps.docker.cli docker_program sets: an
+// absolute invocation, uncataloged. The path is the one dpkg's nvidia-container-toolkit-base
+// installs on the measuring host (srv1 2026-10-25: `which nvidia-ctk` -> /usr/bin/nvidia-ctk).
+fn nvidia_ctk_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/nvidia-ctk" as NonEmptyStr)
+
+// The generate leg, elevated: it writes /etc/cdi/nvidia.yaml, which the unprivileged job user must
+// NOT be able to do — a writable spec would let any container author decide what "all GPUs" means.
+fn nvidia_ctk_cdi_generate_command() -> ArgvCommand {
+  argv_command(program: nvidia_ctk_program(), arguments: map(nvidia_ctk_cdi_generate_argv, w => w as String))
+}
+
+// The list leg, UNELEVATED on purpose: it READS the spec the generate wrote, and a readback that
+// had to be root would stop proving that the unprivileged identity which will actually run CI can
+// resolve the device.
+fn nvidia_ctk_cdi_list_command() -> ArgvCommand {
+  argv_command(program: nvidia_ctk_program(), arguments: map(nvidia_ctk_cdi_list_argv, w => w as String))
+}
