@@ -36,7 +36,7 @@ import v1.compiler.type_head_exposure {
   type_declaration_identity_key,
   type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
-import v1.std.core { Unmarked, ModuleItemTypeDeclaration, ParsedModuleItemKind, declaration_provenance_of,
+import v1.std.core { Unmarked, ModuleItemTypeDeclaration, ModuleItemFunction, NotAModuleItem, ParsedModuleItemKind, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
   resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
@@ -19077,6 +19077,40 @@ fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> 
   }
 }
 
+// DERIVED EQUALITY DECLARATIONS, SYNTHESIZED FROM TYPE FACTS FOR THIS MODULE'S OWN DECLARATIONS (ruling
+// tidy-ant-251 / sleek-owl-397 / clever-crane-830, 2026-10-25, option (iii)). They are generated as .dag
+// text, parsed by the same parser under a synthetic file (not a <kernel:...> one, and absent from the
+// source indices, so authored names fall back to each node's own name), and joined to the module's items
+// before its context is built: ordinary declarations, inferred like authored ones, with no resolve pass.
+// PROBE STAGE: only the fixture module receives a trivial declaration, built directly as nodes (the
+// checker's crate depends on no tokenizer or parser), to establish by execution that a synthesized
+// item reaches the interpreter's function index.
+fn equality_synthesized_items(module_name: String, intern_table: InternTable) -> List<Node> {
+  if module_name != "test.fixture.derived_equality_routes" { [] } else {
+    [equality_synthetic_fn(module_name: module_name, name: "equality_derived_probe", params: [], return_type: equality_synthetic_type(module_name: module_name, name: "Bool"), body: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: equality_synthetic_span(module_name: module_name, name: "true")))]
+  }
+}
+
+// A SYNTHESIZED NODE'S SPAN names a pseudo-file that is in no source index and is not a <kernel:...>
+// file, so authored_name_at answers each node's own name and no kernel-identity rule applies to it.
+fn equality_synthetic_span(module_name: String, name: String) -> SourceSpan {
+  SourceSpan { file: concat("<derived:", module_name, ">"), start: 0, end: string_length(s: name) }
+}
+
+fn equality_synthetic_type(module_name: String, name: String) -> Node {
+  let sp = equality_synthetic_span(module_name: module_name, name: name)
+  Node { occurrence_identity: OccurrenceSynthetic, name: name, span: sp, ident_span: Present { value: sp }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+}
+
+fn equality_synthetic_fn(module_name: String, name: String, params: List<Node>, return_type: Node, body: Node) -> Node {
+  let sp = equality_synthetic_span(module_name: module_name, name: name)
+  Node { occurrence_identity: OccurrenceSynthetic, name: name, span: sp, ident_span: Present { value: sp }, children: [], params: params,
+    inferred: Present { value: Resolved { node: return_type } }, return_cardinality: Required, uses: [],
+    body: Present { value: body }, connective: NoConnective, transport: none,
+    properties: [], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: ModuleItemFunction, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+}
+
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
   let env = env_result.env
@@ -19111,7 +19145,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   }
 
   let resolved_module_name = authored_name_at(source_indices: source_indices, node: resolved.module)
-  let contributions = map(module_items(n: resolved.module), item =>
+  let synthesized_items = equality_synthesized_items(module_name: resolved_module_name, intern_table: intern_table)
+  let contributions = map(concat(module_items(n: resolved.module), synthesized_items), item =>
     analyze_item(item: item, env: env, module_name: resolved_module_name)
   )
   let ctx = build_module_context(

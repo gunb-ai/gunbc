@@ -380,7 +380,9 @@ use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcar
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
-use crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration;
+use crate::v1_std_core::ParsedModuleItemKind::{
+    ModuleItemFunction, ModuleItemTypeDeclaration, NotAModuleItem,
+};
 use crate::v1_std_core::ServiceConfigField::{
     SvcAuth, SvcAuthInput, SvcAuthSource, SvcEndpoint, SvcRateLimit,
 };
@@ -35251,6 +35253,110 @@ pub fn ground_kernel_views(
     }
 }
 
+pub fn equality_synthesized_items(
+    module_name: String,
+    intern_table: Rc<InternTable>,
+) -> Rc<Vec<Rc<Node>>> {
+    if (module_name.clone() != "test.fixture.derived_equality_routes".to_string()) {
+        Rc::new(vec![])
+    } else {
+        Rc::new(vec![equality_synthetic_fn(
+            module_name.clone(),
+            "equality_derived_probe".to_string(),
+            Rc::new(vec![]),
+            equality_synthetic_type(module_name.clone(), "Bool".to_string()),
+            crate::v1_std_core::make_expr_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                Rc::new(ExprData::ExprLiteral {
+                    value: Rc::new(LiteralValue::LitBool { value: true }),
+                }),
+                Rc::new(vec![]),
+                std::option::Option::None,
+                equality_synthetic_span(module_name.clone(), "true".to_string()),
+            ),
+        )])
+    }
+}
+
+pub fn equality_synthetic_span(module_name: String, name: String) -> Rc<SourceSpan> {
+    Rc::new(SourceSpan {
+        file: v1_rt::concat(
+            v1_rt::concat("<derived:".to_string(), module_name.clone()),
+            ">".to_string(),
+        ),
+        start: 0,
+        end: v1_rt::string_length(&name),
+    })
+}
+
+pub fn equality_synthetic_type(module_name: String, name: String) -> Rc<Node> {
+    {
+        let sp = equality_synthetic_span(module_name, name.clone());
+        Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: name.clone(),
+            span: sp.clone(),
+            ident_span: Some(sp.clone()),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+}
+
+pub fn equality_synthetic_fn(
+    module_name: String,
+    name: String,
+    params: Rc<Vec<Rc<Node>>>,
+    return_type: Rc<Node>,
+    body: Rc<Node>,
+) -> Rc<Node> {
+    {
+        let sp = equality_synthetic_span(module_name, name.clone());
+        Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: name.clone(),
+            span: sp.clone(),
+            ident_span: Some(sp.clone()),
+            children: Rc::new(vec![]),
+            params: params.clone(),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: return_type.clone(),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: Some(body.clone()),
+            connective: Connective::NoConnective,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::ModuleItemFunction,
+            declaration_marker: DeclarationMarker::Unmarked,
+            declaration: std::option::Option::None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+}
+
 pub fn typecheck_module(
     resolved: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -35265,7 +35371,7 @@ pub fn typecheck_module(
             resolved.clone(),
             parent_index.clone(),
             source_indices.clone(),
-            intern_table,
+            intern_table.clone(),
             symbol_index,
         );
         let env = env_result.env.clone();
@@ -35317,11 +35423,16 @@ pub fn typecheck_module(
         }
         let resolved_module_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.module.clone());
+        let synthesized_items =
+            equality_synthesized_items(resolved_module_name.clone(), intern_table.clone());
         let contributions = Rc::new({
             let mut __result = Vec::new();
-            for item in crate::v1_std_core::module_items(resolved.module.clone())
-                .iter()
-                .cloned()
+            for item in v1_rt::concat(
+                crate::v1_std_core::module_items(resolved.module.clone()),
+                synthesized_items.clone(),
+            )
+            .iter()
+            .cloned()
             {
                 __result.push(analyze_item(
                     item.clone(),
