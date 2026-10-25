@@ -140,9 +140,29 @@ fn standing_ruling_discharges_irreversibility(r: StandingDestructiveAuthorizatio
   }
 }
 
+// THE WITNESS WAS GIVEN TO THE CONVERGENCE THAT ENTAILS THE EFFECT (operator ruling 2026-10-25,
+// gunbc.design_ruling the_initial_convergence_is_the_only_approval). The operator approves ONE thing:
+// the initial convergence -- its plan, its host, its scopes, through route (b). Every effect that plan
+// entails is granted THAT approval when it is sufficient, and is not asked about again. This is not
+// the standing ruling above: a standing ruling witnesses a CLASS ahead of every instance and discharges
+// only irreversibility, while this witness is per INSTANCE -- the operator read this plan -- so it meets
+// every witness ground the plan's effects carry, and only inside the approval that covers them.
+// `root` names the census site where the convergence's approval is requested; the census refuses a
+// root that does not itself select OperatorApprovedCapability
+// (gunbc.auth.privileged_effect_census convergence_lineage_defects), so an approval cannot be inherited
+// from something nobody approved, and a lineage cannot chain through another lineage.
 type WitnessDischarge
   = NoWitnessDischarge
   | StandingRulingUnderInterlock { ruling: StandingDestructiveAuthorization }
+  | EntailedByApprovedConvergence { root: DeclarationRef }
+
+fn convergence_lineage_root(e: PrivilegedEffect) -> DeclarationRef? {
+  match e.witness_discharge {
+    EntailedByApprovedConvergence { root: r } => Present { value: r }
+    NoWitnessDischarge => none
+    StandingRulingUnderInterlock { ruling: _ } => none
+  }
+}
 
 type PrivilegedEffect {
   subject: NonEmptyStr
@@ -168,6 +188,7 @@ fn witness_required(e: PrivilegedEffect) -> Bool {
       match e.witness_discharge {
         NoWitnessDischarge => true
         StandingRulingUnderInterlock { ruling: r } => !standing_ruling_discharges_irreversibility(r: r)
+        EntailedByApprovedConvergence { root: _ } => true
       }
     ReversibleByReapply => false
   }
@@ -205,7 +226,7 @@ fn unattended_required(e: PrivilegedEffect) -> Bool {
   }
 }
 
-// ── The candidate field: five patterns, of which three are ever selected ─────────────────────
+// ── The candidate field: six patterns, of which the operator's own session is never selected ──────
 //
 // (a) FederatedScopedGrant -- a dispatched run's own identity (GitHub OIDC -> STS, the
 //     WorkloadIdentityToken arm of gunbc.auth.access_token_source) holding one cell per effect
@@ -236,18 +257,31 @@ fn unattended_required(e: PrivilegedEffect) -> Bool {
 //     the edge is not a second approval route. An effect a human can attend is approved through the
 //     broker route (b) alone, so for FleetOnce, DeviceOnce, EveryOperatorRequest and BreakGlassOnly
 //     host-root reach the edge is not a candidate; it remains only where no human can be present.
+// (f) ApprovedConvergenceGrant -- the effect runs inside the attempt that claimed the operator's
+//     approval of the convergence entailing it (EntailedByApprovedConvergence), under that approval's
+//     std.scoped_authorization OperatorGrant: authorize() with the effect's own required scopes refuses
+//     a changed plan (AuthorizationIntentMismatch), a scope the operator did not approve
+//     (AuthorizationScopeNotGranted), an expired approval and another attempt's claim, and an
+//     insufficient approval is a fresh request, never a widening. Zero human actions per effect, a
+//     witness per instance, unattended, scoped to the approved plan, receipt the decision row plus the
+//     claim. It is a candidate ONLY where a lineage root is declared and the effect is not break-glass,
+//     which is witnessed per instance by declaration. Where it is a candidate it dominates both (b),
+//     which asks again for what was already approved, and (e), whose reach is the whole host: operator
+//     ruling 2026-10-25 (gunbc.design_ruling the_initial_convergence_is_the_only_approval).
 type AuthorizationPattern
   = FederatedScopedGrant
   | OperatorApprovedCapability
   | HumanOnlyStep { step: HumanIntervention }
   | OperatorOwnSession
   | AdministratorEdge
+  | ApprovedConvergenceGrant
 
 data pattern_federated_scoped_grant: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_federated_scoped_grant")
 data pattern_operator_approved_capability: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_operator_approved_capability")
 data pattern_human_only_step: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_human_only_step")
 data pattern_operator_own_session: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_operator_own_session")
 data pattern_administrator_edge: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_administrator_edge")
+data pattern_approved_convergence_grant: DeclarationRef = decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "pattern_approved_convergence_grant")
 
 fn pattern_identity(p: AuthorizationPattern) -> DeclarationRef {
   match p {
@@ -256,6 +290,7 @@ fn pattern_identity(p: AuthorizationPattern) -> DeclarationRef {
     HumanOnlyStep { step: _ } => pattern_human_only_step
     OperatorOwnSession => pattern_operator_own_session
     AdministratorEdge => pattern_administrator_edge
+    ApprovedConvergenceGrant => pattern_approved_convergence_grant
   }
 }
 
@@ -266,6 +301,7 @@ fn pattern_label(p: AuthorizationPattern) -> NonEmptyStr {
     HumanOnlyStep { step: s } => join(["human-only step: ", s.identity as String], "") as NonEmptyStr
     OperatorOwnSession => "the operator's own interactive session or token file" as NonEmptyStr
     AdministratorEdge => "the fleet administrator principal over its SSH edge, key released to a run pinned at reviewed main" as NonEmptyStr
+    ApprovedConvergenceGrant => "the operator's approval of the convergence that entails this effect, authorized inside the attempt that claimed it" as NonEmptyStr
   }
 }
 
@@ -273,7 +309,18 @@ fn pattern_label(p: AuthorizationPattern) -> NonEmptyStr {
 // anything through a console, but a candidate with no HumanIntervention row behind it would be
 // selected with nothing to name, and "do it by hand" is not a step.
 fn candidate_patterns(e: PrivilegedEffect) -> List<AuthorizationPattern> {
-  let api_patterns = [FederatedScopedGrant, OperatorApprovedCapability, OperatorOwnSession]
+  let break_glass = match e.frequency {
+    BreakGlassOnly => true
+    FleetOnce => false
+    DeviceOnce => false
+    EveryOperatorRequest => false
+    EveryProvision => false
+  }
+  let base_patterns = [FederatedScopedGrant, OperatorApprovedCapability, OperatorOwnSession]
+  let api_patterns = match convergence_lineage_root(e: e) {
+    Present { value: _ } => if break_glass { base_patterns } else { concat(base_patterns, [ApprovedConvergenceGrant]) }
+    Absent => base_patterns
+  }
   let with_edge = match e.minted_reach {
     MintsHostRootReach => if unattended_required(e: e) { concat(api_patterns, [AdministratorEdge]) } else { api_patterns }
     MintsNoCredential => api_patterns
@@ -322,6 +369,7 @@ fn pattern_is_api_pattern(p: AuthorizationPattern) -> Bool {
     OperatorApprovedCapability => true
     OperatorOwnSession => true
     AdministratorEdge => true
+    ApprovedConvergenceGrant => true
   }
 }
 
@@ -345,6 +393,7 @@ fn identity_bound(e: PrivilegedEffect, p: AuthorizationPattern) -> Int {
     HumanOnlyStep { step: _ } => 1
     OperatorOwnSession => 1
     AdministratorEdge => 1
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -358,6 +407,7 @@ fn credential_custody(p: AuthorizationPattern) -> Int {
     HumanOnlyStep { step: _ } => 1
     OperatorOwnSession => 1
     AdministratorEdge => 1
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -370,6 +420,7 @@ fn witnessed(p: AuthorizationPattern) -> Int {
     FederatedScopedGrant => 0
     OperatorOwnSession => 0
     AdministratorEdge => 1
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -382,6 +433,7 @@ fn unattended(p: AuthorizationPattern) -> Int {
     HumanOnlyStep { step: _ } => 0
     OperatorOwnSession => 0
     AdministratorEdge => 1
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -405,6 +457,7 @@ fn human_actions_per_effect(p: AuthorizationPattern) -> Int {
     HumanOnlyStep { step: _ } => 1
     OperatorOwnSession => 1
     AdministratorEdge => 0
+    ApprovedConvergenceGrant => 0
   }
 }
 
@@ -417,6 +470,7 @@ fn credential_scoped_to_resource(p: AuthorizationPattern) -> Int {
     HumanOnlyStep { step: _ } => 0
     OperatorOwnSession => 0
     AdministratorEdge => 0
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -433,6 +487,7 @@ fn receipt_in_substrate(p: AuthorizationPattern) -> Int {
       }
     OperatorOwnSession => 0
     AdministratorEdge => 1
+    ApprovedConvergenceGrant => 1
   }
 }
 
@@ -603,6 +658,8 @@ fn witness_discharge_text(d: WitnessDischarge) -> String {
     NoWitnessDischarge => "NoWitnessDischarge"
     StandingRulingUnderInterlock { ruling: r } =>
       join(["StandingRulingUnderInterlock: under ", standing_ruling_interlock_label(r: r), "; ruling ", r.ruling_text as String], "")
+    EntailedByApprovedConvergence { root: r } =>
+      join(["EntailedByApprovedConvergence: approved at ", declaration_ref_display_key(ref: r)], "")
   }
 }
 
@@ -719,6 +776,7 @@ fn select_authorization_pattern(e: PrivilegedEffect) -> AuthorizationPatternSele
             OperatorApprovedCapability => PatternSelected { pattern: p, receipt: r }
             OperatorOwnSession => PatternSelected { pattern: p, receipt: r }
             AdministratorEdge => PatternSelected { pattern: p, receipt: r }
+            ApprovedConvergenceGrant => PatternSelected { pattern: p, receipt: r }
           }
       }
     CandidateFieldUnestablished { causes: cs2 } => PatternSelectionRefused { defects: cs2 }

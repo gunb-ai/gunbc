@@ -1466,6 +1466,7 @@ fn pattern_identity_text(p: AuthorizationPattern) -> NonEmptyStr {
     HumanOnlyStep { step: _ } => "human-only step" as NonEmptyStr
     OperatorOwnSession => "operator's own session" as NonEmptyStr
     AdministratorEdge => "administrator edge" as NonEmptyStr
+    ApprovedConvergenceGrant => "approved-convergence grant" as NonEmptyStr
   }
 }
 
@@ -1478,6 +1479,7 @@ fn realized_authorization_text(r: RealizedAuthorization) -> NonEmptyStr {
     RealizedOperatorSession { arm: _ } => "operator session" as NonEmptyStr
     RealizedUnauthorized => "unauthorized" as NonEmptyStr
     RealizedAdministratorEdge => "administrator edge" as NonEmptyStr
+    RealizedUnderApprovedConvergence => "under an approved convergence" as NonEmptyStr
   }
 }
 
