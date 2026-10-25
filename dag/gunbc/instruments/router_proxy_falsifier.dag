@@ -2,6 +2,7 @@ module gunbc.instruments.router_proxy_falsifier
 
 import std.types { Int, List, String, Bool, NonEmptyStr, Port }
 import std.optional { Optional, Present, Absent }
+import std.algebra { skip }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.docker.cli_service { DockerCli }
@@ -218,9 +219,9 @@ fn start_with(name: NonEmptyStr, network: NonEmptyStr, conf_path: String) -> Int
 fn start_with_command(name: NonEmptyStr, network: NonEmptyStr, conf_path: String, command: List<String>, extras: List<CopyPair>) -> Int {
   let created = DockerCli.Create(docker: docker(), name: name, network: network, image: openresty_1_27_1_1_image, command: command)
   let copied = DockerCli.CopyInto(docker: docker(), source: conf_path, destination: destination(name: name))
-  let extras = fold(extras, init: 0, f: (acc, st) => acc + DockerCli.CopyInto(docker: docker(), source: st.source, destination: concat(concat(name as String, ":"), st.target)).exit_code)
+  let extras_copied = copy_all(name: name, extras: extras)
   let started = DockerCli.Start(docker: docker(), name: name)
-  created.exit_code + copied.exit_code + extras + started.exit_code
+  created.exit_code + copied.exit_code + extras_copied + started.exit_code
 }
 
 type CopyPair {
@@ -229,6 +230,15 @@ type CopyPair {
 }
 
 fn no_copies() -> List<CopyPair> { [] }
+
+// Each copy in order, summing the exit codes; recursion rather than a fold, because each step performs an
+// effect and its result must be awaited before the next.
+fn copy_all(name: NonEmptyStr, extras: List<CopyPair>) -> Int {
+  match first(extras) {
+    Absent => 0
+    Present { value: c } => DockerCli.CopyInto(docker: docker(), source: c.source, destination: concat(concat(name as String, ":"), c.target)).exit_code + copy_all(name: name, extras: skip(extras, 1))
+  }
+}
 
 // A self-signed certificate made inside the container before the server starts (the image carries the
 // openssl tool), so no key material is in the repository or on the host.
