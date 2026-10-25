@@ -51,7 +51,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_review_unit_properties, dispatch_attempt_worker_git_entry_directories,
   dispatch_attempt_worker_git_entry_migration, dispatch_repository_shared_posture_commands,
-  dispatch_worker_unit_properties, dispatch_codex_home,
+  dispatch_worker_unit_properties,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.host.host_layout { attempt_exit_spool_root }
@@ -155,8 +155,8 @@ test fn the_lab_attempt_directories_are_shared_with_the_worker() -> Bool {
 
 // THE PROVIDER-CREDENTIAL DIRECTORY IS THE ATTEMPT'S HOME, AND ITS MODE KEEPS OTHERS OUT (the security
 // reading bright-moth-475 asked me to confirm FROM THE MODEL): a dedicated-worker attempt runs the
-// provider with HOME = the provider-state directory -- dispatch_codex_home is the same authority the
-// instance's provider-state root resolves to -- so the worker must be able to read it (it is the
+// provider with HOME = the provider-state directory -- codex_spawn_argv reads that home from the
+// instance's provider-state root, the authority asserted below -- so the worker must be able to read it (it is the
 // provider's own auth/config/session state), and grouping it to the shared attempt group is required,
 // not incidental. The declared mode is DirectoryOwnerGroupWritableSetgid (02770): owner rwx, group rwx,
 // NO other bits -- so the regroup hands the attempt group access and nothing to any other account.
@@ -164,7 +164,6 @@ test fn the_provider_credential_directory_is_the_attempt_home_and_admits_only_th
   let lab = srv1_lab_dashboard_instance()
   let provider_dir = dashboard_instance_provider_state_directory(instance: lab)
   (owned_path_text(t: provider_dir) == (dashboard_instance_provider_state_root(instance: lab) as String))
-    && (owned_path_text(t: provider_dir) == dispatch_codex_home)
     && declared_owner_group(t: provider_dir) == (fleet_posix_worker_shared_group_name as String)
     && declared_mode_octal(t: provider_dir) == declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid)
     && declared_mode_octal(t: provider_dir) == "2770"
