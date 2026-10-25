@@ -112,6 +112,7 @@ fn router_dev_access_lines() -> List<String> {
     "  session = 'prefix:' .. ngx.md5((sys .. '\\0' .. first):sub(1, 4096))",
     "end",
     "local state = ngx.shared.router_state",
+    "local function active(u) local n=state:get('active:' .. u.name) or 0 for _, old in ipairs(u.retiring_names or \{}) do n=n+(state:get('active:' .. old) or 0) end return n end",
     "local candidates = \{}",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do if body.model == ROUTER_ALIAS or body.model == u.model then candidates[u.name] = u end end",
     "if next(candidates) == nil then return refuse(404, 'invalid_request_error', 'unknown model') end",
@@ -122,13 +123,13 @@ fn router_dev_access_lines() -> List<String> {
     "  local c = candidates[u.name]",
     "  if c and not state:get('unavailable:' .. c.name) then",
     "    local p = c.overflow and 1 or 0",
-    "    local free = c.overflow and 1 or (c.cap - (state:get('active:' .. c.name) or 0))",
+    "    local free = c.overflow and 1 or (c.cap - active(c))",
     "    if free > 0 and (not pick or p < priority or (p == priority and ((c.name == stuck and pick.name ~= stuck) or (pick.name ~= stuck and free > spare)))) then pick, priority, spare = c, p, free end",
     "  end",
     "end",
     "if not pick then ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'every compatible upstream is busy or unavailable') end",
     "local n = state:incr('active:' .. pick.name, 1, 0)",
-    "if not pick.overflow and n > pick.cap then state:incr('active:' .. pick.name, -1, 0) ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'upstream at its active-turn cap') end",
+    "if not pick.overflow and active(pick) > pick.cap then state:incr('active:' .. pick.name, -1, 0) ngx.header['Retry-After'] = '2' return refuse(429, 'rate_limit_error', 'upstream at its active-turn cap') end",
     "ngx.ctx.counted = pick.name",
     "ngx.ctx.route = pick",
     "state:set('seen:' .. session, ngx.now(), 21600)",
@@ -317,6 +318,7 @@ type RouterDevUpstream {
   max_model_len: Int
   overflow: Bool
   path_prefix: String
+  retiring_names: List<String>
 }
 
 fn upstream_scheme_text(s: RouterUpstreamScheme) -> String {
@@ -338,6 +340,7 @@ fn router_dev_upstream_value(u: RouterDevUpstream) -> JsonValue {
     json_kv(key: "max_model_len", value: json_int(n: u.max_model_len)),
     json_kv(key: "overflow", value: json_bool(b: u.overflow)),
     json_kv(key: "path_prefix", value: json_string(s: u.path_prefix)),
+    json_kv(key: "retiring_names", value: json_array(elements: map(u.retiring_names, n => json_string(s: n)))),
   ]))
 }
 
@@ -345,23 +348,24 @@ fn no_members() -> List<JsonKeyValue> { [] }
 
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
   [
-    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "" },
-    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "" },
+    RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card", retiring_names: [] }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "", retiring_names: [] },
+    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
     // h11-a16 (x86): one engine per GPU, named by its PCI bus (indices renumber when a card is added). Buses
     // 05-08 and 85-88 are the two A16 boards; c1 is an RTX 2000 Ada. A single 16 GB engine serves ~10-13 warm
-    // tok/s at 200k, so cap 2.
-    RouterDevUpstream { name: "h11-05", scheme: UpstreamHttp, host: "192.168.1.202", port: 18081, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
-    RouterDevUpstream { name: "h11-06", scheme: UpstreamHttp, host: "192.168.1.202", port: 18082, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
-    RouterDevUpstream { name: "h11-07", scheme: UpstreamHttp, host: "192.168.1.202", port: 18083, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
-    RouterDevUpstream { name: "h11-08", scheme: UpstreamHttp, host: "192.168.1.202", port: 18084, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
-    RouterDevUpstream { name: "h11-85", scheme: UpstreamHttp, host: "192.168.1.202", port: 18085, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
-    RouterDevUpstream { name: "h11-86", scheme: UpstreamHttp, host: "192.168.1.202", port: 18086, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
-    RouterDevUpstream { name: "h11-87", scheme: UpstreamHttp, host: "192.168.1.202", port: 18087, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
-    RouterDevUpstream { name: "h11-88", scheme: UpstreamHttp, host: "192.168.1.202", port: 18088, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
-    RouterDevUpstream { name: "h11-c1", scheme: UpstreamHttp, host: "192.168.1.202", port: 18089, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "" },
+    // tok/s at 200k, so cap 2. Retiring names count old-worker turns during a graceful rename;
+    // old workers decrement their original counters when those requests finish.
+    RouterDevUpstream { name: "h11-05", scheme: UpstreamHttp, host: "192.168.1.202", port: 18081, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-0"] },
+    RouterDevUpstream { name: "h11-06", scheme: UpstreamHttp, host: "192.168.1.202", port: 18082, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-1"] },
+    RouterDevUpstream { name: "h11-07", scheme: UpstreamHttp, host: "192.168.1.202", port: 18083, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-2"] },
+    RouterDevUpstream { name: "h11-08", scheme: UpstreamHttp, host: "192.168.1.202", port: 18084, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-3"] },
+    RouterDevUpstream { name: "h11-85", scheme: UpstreamHttp, host: "192.168.1.202", port: 18085, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-a16-4"] },
+    RouterDevUpstream { name: "h11-86", scheme: UpstreamHttp, host: "192.168.1.202", port: 18086, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
+    RouterDevUpstream { name: "h11-87", scheme: UpstreamHttp, host: "192.168.1.202", port: 18087, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
+    RouterDevUpstream { name: "h11-88", scheme: UpstreamHttp, host: "192.168.1.202", port: 18088, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
+    RouterDevUpstream { name: "h11-c1", scheme: UpstreamHttp, host: "192.168.1.202", port: 18089, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 2, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: [] },
     // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router.
     // cap is unused for overflow: the pool's engines admit work and expose their own queue to the bidder.
-    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", cap: 0, max_model_len: 262144, overflow: true, path_prefix: "/rented-pool" },
+    RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net", retiring_names: [] }, model: "Qwen3.8-Flash-Next", cap: 0, max_model_len: 262144, overflow: true, path_prefix: "/rented-pool", retiring_names: [] },
   ]
 }
 
